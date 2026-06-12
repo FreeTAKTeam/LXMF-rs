@@ -153,18 +153,24 @@ pub(super) async fn wait_for_link_request_response(
     expected_link_id: AddressHash,
     request_id: [u8; 16],
     timeout: Duration,
-) -> Result<rmpv::Value, String> {
+) -> Result<rmpv::Value, std::io::Error> {
     let deadline = tokio::time::Instant::now() + timeout;
     loop {
         let now = tokio::time::Instant::now();
         if now >= deadline {
-            return Err("propagation control response timed out".to_string());
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "propagation control response timed out",
+            ));
         }
         let remaining = deadline.saturating_duration_since(now);
 
         tokio::select! {
             _ = tokio::time::sleep(remaining) => {
-                return Err("propagation control response timed out".to_string());
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    "propagation control response timed out",
+                ));
             }
             result = data_rx.recv() => {
                 match result {
@@ -187,7 +193,10 @@ pub(super) async fn wait_for_link_request_response(
                     }
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
                     Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                        return Err("propagation control response channel closed".to_string());
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::BrokenPipe,
+                            "propagation control response channel closed",
+                        ));
                     }
                 }
             }
@@ -212,7 +221,10 @@ pub(super) async fn wait_for_link_request_response(
                     }
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
                     Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                        return Err("propagation control resource channel closed".to_string());
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::BrokenPipe,
+                            "propagation control resource channel closed",
+                        ));
                     }
                 }
             }
@@ -220,21 +232,32 @@ pub(super) async fn wait_for_link_request_response(
     }
 }
 
-fn link_close_signal_error(event: &rns_transport::transport::ReceivedData) -> Option<String> {
+fn link_close_signal_error(
+    event: &rns_transport::transport::ReceivedData,
+) -> Option<std::io::Error> {
     if event.context != Some(PacketContext::LinkClose) {
         return None;
     }
     let value = rmp_serde::from_slice::<rmpv::Value>(event.data.as_slice()).ok()?;
     let rmpv::Value::Array(entries) = value else {
-        return Some("propagation control link closed".to_string());
+        return Some(std::io::Error::new(
+            std::io::ErrorKind::ConnectionAborted,
+            "propagation control link closed",
+        ));
     };
     let Some(signal) = entries.first() else {
-        return Some("propagation control link closed".to_string());
+        return Some(std::io::Error::new(
+            std::io::ErrorKind::ConnectionAborted,
+            "propagation control link closed",
+        ));
     };
     let Some(error) = super::remote_control::response_code_error(signal) else {
-        return Some("propagation control link closed".to_string());
+        return Some(std::io::Error::new(
+            std::io::ErrorKind::ConnectionAborted,
+            "propagation control link closed",
+        ));
     };
-    Some(error.to_string())
+    Some(error)
 }
 
 fn parse_link_response_frame(bytes: &[u8]) -> Option<([u8; 16], rmpv::Value)> {
@@ -311,6 +334,7 @@ mod tests {
         .await
         .expect_err("link-close signal should fail the active request");
 
-        assert!(err.contains("propagation node denied access"));
+        assert_eq!(err.kind(), std::io::ErrorKind::PermissionDenied);
+        assert!(err.to_string().contains("propagation node denied access"));
     }
 }

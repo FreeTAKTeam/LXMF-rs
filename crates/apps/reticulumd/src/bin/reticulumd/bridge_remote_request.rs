@@ -60,8 +60,7 @@ pub(super) async fn remote_control_request(
         request_id,
         timeout,
     )
-    .await
-    .map_err(|err| std::io::Error::new(std::io::ErrorKind::TimedOut, err))?;
+    .await?;
 
     Ok((response, remote_identity))
 }

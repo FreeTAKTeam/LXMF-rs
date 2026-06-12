@@ -63,8 +63,7 @@ pub(super) async fn propagation_download_request(
         list_request_id,
         timeout,
     )
-    .await
-    .map_err(|err| std::io::Error::new(std::io::ErrorKind::TimedOut, err))?;
+    .await?;
     let available = binary_array_response(&list_response)?;
     let (wanted, haves) = classify_remote_transient_ids(daemon, available)?;
     let available_count = wanted.len().saturating_add(haves.len());
@@ -105,8 +104,7 @@ pub(super) async fn propagation_download_request(
         get_request_id,
         timeout,
     )
-    .await
-    .map_err(|err| std::io::Error::new(std::io::ErrorKind::TimedOut, err))?;
+    .await?;
     let payloads = binary_array_response(&get_response)?;
 
     let mut accepted_haves = haves;
@@ -146,8 +144,7 @@ pub(super) async fn propagation_download_request(
             ack_request_id,
             timeout,
         )
-        .await
-        .map_err(|err| std::io::Error::new(std::io::ErrorKind::TimedOut, err))?;
+        .await?;
         propagation_download_ack_response_result(&ack_response)?;
     }
 
