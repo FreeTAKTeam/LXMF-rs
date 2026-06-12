@@ -34,6 +34,8 @@ Required request/response/event types:
 2. Session ordering:
 - `Connected` must precede `Notification`, `WriteComplete`, and `Disconnected` for a session.
 - `Disconnected` closes a session and no further session-bound events are valid.
+- RNode/LXMF sessions must not emit `Connected` until the host has negotiated and reported a
+  usable notification payload size.
 
 3. Cancellation:
 - `cancel_operation` is optional.
@@ -51,6 +53,15 @@ Required request/response/event types:
 - Adapter errors must map to stable `SdkError` categories/machine codes.
 - Validation errors (ordering/shape violations) use `SDK_VALIDATION_INVALID_ARGUMENT`.
 
+7. RNode/LXMF MTU readiness:
+- RNode firmware delivers a complete KISS frame in one BLE notification, so adapters must
+  negotiate/report at least `170` notification payload bytes (`ATT MTU >= 173`) before a
+  session is considered ready.
+- Hosts that remain at the Bluetooth default `ATT MTU 23` (`20` payload bytes) must fail
+  readiness with validation semantics instead of surfacing a healthy-but-silent session.
+- Native `btleplug` backends cannot request a larger MTU in version `0.11.8`; platform hosts
+  that can negotiate MTU must do so before enabling notifications.
+
 ## Conformance
 
 Reference validation helpers:
@@ -58,6 +69,7 @@ Reference validation helpers:
 - `validate_event_sequence`
 - `validate_capabilities`
 - `validate_event_payload_bounds`
+- `validate_rnode_lxmf_readiness`
 
 These are covered by tests in:
 

@@ -37,6 +37,7 @@ pub const RNODE_BLE_TX_CHARACTERISTIC_UUID: &str = "6E400003-B5A3-F393-E0A9-E50E
 pub const RNODE_BLE_SCAN_TIMEOUT: Duration = Duration::from_secs(2);
 pub const RNODE_BLE_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 pub const RNODE_BLE_READ_FRAME_TIMEOUT: Duration = Duration::from_millis(1_250);
+const DEFAULT_ATT_NOTIFICATION_PAYLOAD_BYTES: usize = 20;
 #[cfg(feature = "rnode-ble")]
 const RNODE_BLE_STARTUP_STABILIZATION_TIMEOUT: Duration = Duration::from_secs(2);
 #[cfg(feature = "rnode-ble")]
@@ -1102,6 +1103,15 @@ impl RnodeBleKissSession {
         }
         self.last_read_at = Instant::now();
         let frames = self.decoder.push_bytes(payload)?;
+        if frames.is_empty()
+            && payload.len() == DEFAULT_ATT_NOTIFICATION_PAYLOAD_BYTES
+            && self.decoder.has_partial_frame()
+        {
+            return Err(RnodeBleKissError::Backend {
+                operation: "accept_notification_events",
+                message: "incomplete 20-byte RNode BLE notification; likely ATT MTU 23 / 20-byte notification payload, and btleplug cannot request a larger MTU before notifications in this backend".to_string(),
+            });
+        }
         let mut notification = RnodeBleNotification::default();
         for frame in frames {
             match frame {
@@ -1155,5 +1165,27 @@ impl RnodeBleKissSession {
                 payload: chunk.to_vec(),
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{RnodeBleKissConfig, RnodeBleKissError, RnodeBleKissSession};
+
+    #[test]
+    fn rnode_ble_notification_reports_likely_default_att_mtu_cap() {
+        let mut session = RnodeBleKissSession::new(RnodeBleKissConfig::default());
+        let err = session
+            .accept_notification_events(&[0x42; 20])
+            .expect_err("20-byte incomplete notification should be diagnosed");
+
+        match err {
+            RnodeBleKissError::Backend { operation, message } => {
+                assert_eq!(operation, "accept_notification_events");
+                assert!(message.contains("likely ATT MTU 23"));
+                assert!(message.contains("btleplug cannot request a larger MTU"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
     }
 }

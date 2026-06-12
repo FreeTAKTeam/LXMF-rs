@@ -3,6 +3,9 @@ use crate::types::Ack;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
+pub const RNODE_LXMF_MIN_NOTIFICATION_PAYLOAD_BYTES: usize = 170;
+pub const RNODE_LXMF_MIN_ATT_MTU: u16 = (RNODE_LXMF_MIN_NOTIFICATION_PAYLOAD_BYTES as u16) + 3;
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum MobileBleEventKind {
@@ -212,4 +215,49 @@ pub fn validate_event_payload_bounds(
         }
     }
     Ok(())
+}
+
+pub fn validate_rnode_lxmf_readiness(
+    descriptor: &MobileBleSessionDescriptor,
+    capabilities: &MobileBleCapabilities,
+) -> Result<(), SdkError> {
+    validate_capabilities(capabilities)?;
+
+    if descriptor.negotiated_mtu < RNODE_LXMF_MIN_ATT_MTU {
+        return Err(rnode_lxmf_mtu_error(descriptor, capabilities));
+    }
+    if capabilities.max_payload_bytes < RNODE_LXMF_MIN_NOTIFICATION_PAYLOAD_BYTES {
+        return Err(rnode_lxmf_mtu_error(descriptor, capabilities));
+    }
+
+    Ok(())
+}
+
+fn rnode_lxmf_mtu_error(
+    descriptor: &MobileBleSessionDescriptor,
+    capabilities: &MobileBleCapabilities,
+) -> SdkError {
+    SdkError::new(
+        code::VALIDATION_INVALID_ARGUMENT,
+        ErrorCategory::Validation,
+        format!(
+            "RNode/LXMF BLE notifications require at least {RNODE_LXMF_MIN_NOTIFICATION_PAYLOAD_BYTES} payload bytes; negotiate ATT MTU {RNODE_LXMF_MIN_ATT_MTU} or larger before marking the session connected",
+        ),
+    )
+    .with_user_actionable(true)
+    .with_detail("session_id", serde_json::json!(descriptor.session_id))
+    .with_detail("peripheral_id", serde_json::json!(descriptor.peripheral_id))
+    .with_detail("negotiated_mtu", serde_json::json!(descriptor.negotiated_mtu))
+    .with_detail(
+        "min_negotiated_mtu",
+        serde_json::json!(RNODE_LXMF_MIN_ATT_MTU),
+    )
+    .with_detail(
+        "max_payload_bytes",
+        serde_json::json!(capabilities.max_payload_bytes),
+    )
+    .with_detail(
+        "min_payload_bytes",
+        serde_json::json!(RNODE_LXMF_MIN_NOTIFICATION_PAYLOAD_BYTES),
+    )
 }

@@ -2732,6 +2732,7 @@ pub fn lxmf_sdk::supports_capability(profile: lxmf_sdk::Profile, capability_id: 
 pub fn lxmf_sdk::validate_mobile_ble_capabilities(capabilities: &lxmf_sdk::MobileBleCapabilities) -> core::result::Result<(), lxmf_sdk::SdkError>
 pub fn lxmf_sdk::validate_mobile_ble_event_payload_bounds(events: &[lxmf_sdk::MobileBleEvent], capabilities: &lxmf_sdk::MobileBleCapabilities) -> core::result::Result<(), lxmf_sdk::SdkError>
 pub fn lxmf_sdk::validate_mobile_ble_event_sequence(events: &[lxmf_sdk::MobileBleEvent]) -> core::result::Result<(), lxmf_sdk::SdkError>
+pub fn lxmf_sdk::validate_mobile_ble_rnode_lxmf_readiness(descriptor: &lxmf_sdk::MobileBleSessionDescriptor, capabilities: &lxmf_sdk::MobileBleCapabilities) -> core::result::Result<(), lxmf_sdk::SdkError>
 pub type lxmf_sdk::ErrorDetails = alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
 pub type lxmf_sdk::SdkBoxFuture<'a, T> = core::pin::Pin<alloc::boxed::Box<(dyn core::future::future::Future<Output = core::result::Result<T, lxmf_sdk::SdkError>> + core::marker::Send + 'a)>>
 pub type lxmf_sdk::SdkEventStream = core::pin::Pin<alloc::boxed::Box<(dyn futures_core::stream::Stream<Item = core::result::Result<lxmf_sdk::event::SdkEvent, lxmf_sdk::SdkError>> + core::marker::Send)>>
