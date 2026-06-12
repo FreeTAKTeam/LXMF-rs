@@ -50,6 +50,13 @@ impl RpcDaemon {
             .collect()
     }
 
+    pub fn peer_record_exists(&self, peer: &str, include_unpeered: bool) -> bool {
+        self.peers.lock().expect("peers mutex poisoned").values().any(|record| {
+            record.peer.eq_ignore_ascii_case(peer)
+                && (include_unpeered || record.peer_type.as_deref() != Some("unpeered"))
+        })
+    }
+
     pub(super) fn queue_existing_propagation_for_peer(
         &self,
         peer: &str,

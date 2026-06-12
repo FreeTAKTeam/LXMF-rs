@@ -18,7 +18,7 @@ pub(super) fn handle_peer_command(
     let Some((peer_hex, transfer_limit_kb)) = peer_request_from_data(data) else {
         return Some(ControlResponse::Code(error_invalid_data));
     };
-    if !peer_exists(daemon, peer_hex.as_str()) {
+    if !peer_exists(daemon, peer_hex.as_str(), sync_command) {
         return Some(ControlResponse::Code(error_not_found));
     }
     let mut params = json!({ "peer": peer_hex });
@@ -74,7 +74,10 @@ fn transfer_limit_kb_from_value(value: &rmpv::Value) -> Option<Option<f64>> {
     }
 }
 
-fn peer_exists(daemon: &RpcDaemon, peer_hex: &str) -> bool {
+fn peer_exists(daemon: &RpcDaemon, peer_hex: &str, include_unpeered: bool) -> bool {
+    if include_unpeered && daemon.peer_record_exists(peer_hex, true) {
+        return true;
+    }
     daemon
         .handle_rpc(RpcRequest { id: 0, method: "list_peers".to_string(), params: None })
         .ok()
@@ -95,7 +98,6 @@ fn peer_exists(daemon: &RpcDaemon, peer_hex: &str) -> bool {
 mod tests {
     use super::*;
     use rns_rpc::MessagesStore;
-
     const ERROR_INVALID_DATA: u8 = 0xF4;
     const ERROR_NOT_FOUND: u8 = 0xFD;
 

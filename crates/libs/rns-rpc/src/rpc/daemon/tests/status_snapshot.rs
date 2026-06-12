@@ -19023,6 +19023,29 @@ fn peer_types_drive_python_style_peer_counts() {
 }
 
 #[test]
+fn peer_record_exists_can_include_hidden_unpeered_records() {
+    let daemon = RpcDaemon::test_instance();
+    {
+        let mut guard = daemon.peers.lock().expect("peers mutex poisoned");
+        guard.insert(
+            "Peer-Hidden-Rejoin".to_string(),
+            daemon.transient_peer_record(
+                "Peer-Hidden-Rejoin".to_string(),
+                1_700_000_902,
+                Vec::new(),
+                None,
+                None,
+                Some("unpeered".to_string()),
+            ),
+        );
+    }
+
+    assert!(daemon.peer_record_exists("peer-hidden-rejoin", true));
+    assert!(!daemon.peer_record_exists("peer-hidden-rejoin", false));
+    assert!(!daemon.peer_record_exists("peer-hidden-missing", true));
+}
+
+#[test]
 fn list_peers_static_type_tracks_current_static_peer_config() {
     let daemon = RpcDaemon::test_instance();
     daemon

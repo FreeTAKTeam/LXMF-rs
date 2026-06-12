@@ -150,7 +150,9 @@ The project is best described by capability level:
 - Inbound reticulumd `/pn/peer/sync` and `/pn/peer/unpeer` control commands now
   resolve stored peer IDs case-insensitively before dispatching to daemon RPCs,
   so binary peer-control requests do not report not-found for restored or
-  configured peers whose status rows preserve a different hex presentation.
+  configured peers whose status rows preserve a different hex presentation;
+  `/pn/peer/sync` also checks hidden unpeered peer records so operator-triggered
+  rejoin paths can reach the daemon reactivation state machine.
 - Payload-backed peer queue snapshot mirroring resolves stored peer IDs
   case-insensitively before reading live queue marks, so restart/export state
   preserves queued work when callers use Python-style peer case variants.
