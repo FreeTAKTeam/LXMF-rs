@@ -677,6 +677,7 @@ pub struct PeerRecord {
     pub last_sync_attempt: i64,
     pub next_sync_attempt: i64,
     pub sync_backoff: u32,
+    pub sync_schedule_reason: Option<String>,
     pub network_distance: u32,
     pub offered: u64,
     pub outgoing: u64,
@@ -719,6 +720,9 @@ impl serde::Serialize for PeerRecord {
         map.serialize_entry("last_sync_attempt", &self.last_sync_attempt)?;
         map.serialize_entry("next_sync_attempt", &self.next_sync_attempt)?;
         map.serialize_entry("sync_backoff", &self.sync_backoff)?;
+        if let Some(reason) = self.sync_schedule_reason.as_deref() {
+            map.serialize_entry("sync_schedule_reason", reason)?;
+        }
         map.serialize_entry("network_distance", &self.network_distance)?;
         map.serialize_entry("offered", &self.offered)?;
         map.serialize_entry("outgoing", &self.outgoing)?;
@@ -794,6 +798,8 @@ struct PeerRecordWire {
     next_sync_attempt: Option<JsonValue>,
     #[serde(default)]
     sync_backoff: u32,
+    #[serde(default)]
+    sync_schedule_reason: Option<String>,
     #[serde(default = "default_network_distance")]
     network_distance: u32,
     #[serde(default)]
@@ -941,6 +947,7 @@ impl<'de> Deserialize<'de> for PeerRecord {
             last_sync_attempt,
             next_sync_attempt,
             sync_backoff: wire.sync_backoff,
+            sync_schedule_reason: wire.sync_schedule_reason,
             network_distance: wire.network_distance,
             offered,
             outgoing,
@@ -1644,6 +1651,7 @@ mod peer_record_serde_tests {
             last_sync_attempt: 1_700_001_000,
             next_sync_attempt: 1_700_001_720,
             sync_backoff: 720,
+            sync_schedule_reason: Some("stamp_policy".to_string()),
             network_distance: 3,
             offered: 7,
             outgoing: 5,
@@ -1673,6 +1681,7 @@ mod peer_record_serde_tests {
         assert_eq!(value["last_heard"].as_i64(), Some(1_700_001_005));
         assert_eq!(value["sync_transfer_rate"].as_f64(), Some(2048.0));
         assert_eq!(value["str"].as_f64(), Some(2048.0));
+        assert_eq!(value["sync_schedule_reason"].as_str(), Some("stamp_policy"));
         assert_eq!(value["offered"].as_u64(), Some(7));
         assert_eq!(value["outgoing"].as_u64(), Some(5));
         assert_eq!(value["incoming"].as_u64(), Some(3));
@@ -1725,6 +1734,7 @@ mod peer_record_serde_tests {
             last_sync_attempt: 1_700_001_000,
             next_sync_attempt: 1_700_001_720,
             sync_backoff: 720,
+            sync_schedule_reason: None,
             network_distance: 3,
             offered: 0,
             outgoing: 0,
@@ -1769,6 +1779,7 @@ mod peer_record_serde_tests {
             last_sync_attempt: 1_700_001_000,
             next_sync_attempt: 1_700_001_720,
             sync_backoff: 720,
+            sync_schedule_reason: None,
             network_distance: 3,
             offered: 0,
             outgoing: 0,
@@ -1815,6 +1826,7 @@ mod peer_record_serde_tests {
             last_sync_attempt: 1_700_001_001,
             next_sync_attempt: 1_700_001_721,
             sync_backoff: 720,
+            sync_schedule_reason: None,
             network_distance: 2,
             offered: 9,
             outgoing: 6,

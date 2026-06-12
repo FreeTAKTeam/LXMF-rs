@@ -5268,6 +5268,9 @@ fn peer_sync_during_backoff_postpones_skipped_offers() {
     assert_eq!(result["postponed"].as_bool(), Some(true));
     assert_eq!(result["postpone_reason"].as_str(), Some("backoff"));
     assert_eq!(result["state"].as_u64(), Some(0));
+    assert_eq!(result["state_name"].as_str(), Some("idle"));
+    assert_eq!(result["sync_schedule_state"].as_str(), Some("backoff"));
+    assert_eq!(result["sync_schedule_reason"].as_str(), Some("backoff"));
     assert_eq!(result["sync_strategy"].as_u64(), Some(2));
     assert_eq!(result["ler"].as_u64(), Some(0));
     assert_eq!(result["network_distance"].as_u64(), Some(3));
@@ -5530,6 +5533,22 @@ fn peer_sync_postpones_offers_until_stamp_policy_is_known() {
     assert_eq!(result["propagation"]["offered"].as_u64(), Some(0));
     assert_eq!(result["propagation"]["handled"].as_u64(), Some(0));
     assert_eq!(result["propagation"]["skipped"].as_u64(), Some(0));
+
+    let status = daemon
+        .handle_rpc(RpcRequest { id: 55, method: "list_peers".to_string(), params: None })
+        .expect("list postponed peer")
+        .result
+        .expect("list peers result");
+    let row = status["peers"]
+        .as_array()
+        .expect("peer rows")
+        .iter()
+        .find(|row| row["peer"].as_str() == Some("peer-missing-stamp-policy"))
+        .expect("postponed peer row");
+    assert_eq!(row["state"].as_u64(), Some(0));
+    assert_eq!(row["state_name"].as_str(), Some("idle"));
+    assert_eq!(row["sync_schedule_state"].as_str(), Some("postponed"));
+    assert_eq!(row["sync_schedule_reason"].as_str(), Some("stamp_policy"));
 
     let unhandled = daemon
         .store
@@ -12517,6 +12536,11 @@ struct RemoteSyncErrorBridge {
     message: &'static str,
 }
 
+struct RemoteUnpeerErrorBridge {
+    kind: std::io::ErrorKind,
+    message: &'static str,
+}
+
 struct RemoteTransferErrorBridge {
     kind: std::io::ErrorKind,
     message: &'static str,
@@ -12803,6 +12827,71 @@ impl RemoteControlBridge for RemoteSyncErrorBridge {
             "remote": remote,
             "peer": peer,
         }))
+    }
+}
+
+impl RemoteControlBridge for RemoteUnpeerErrorBridge {
+    fn propagation_remote_status(
+        &self,
+        remote: &str,
+        _identity_private_key_hex: Option<&str>,
+        _timeout_secs: f64,
+    ) -> Result<JsonValue, std::io::Error> {
+        Ok(json!({
+            "remote": remote,
+            "status": "ok",
+        }))
+    }
+
+    fn propagation_remote_sync(
+        &self,
+        remote: &str,
+        peer: &str,
+        _identity_private_key_hex: Option<&str>,
+        _timeout_secs: f64,
+        _transfer_limit_kb: Option<f64>,
+    ) -> Result<JsonValue, std::io::Error> {
+        Ok(json!({
+            "remote": remote,
+            "peer": peer,
+            "synced": true,
+        }))
+    }
+
+    fn propagation_remote_download(
+        &self,
+        remote: &str,
+        _identity_private_key_hex: Option<&str>,
+        _timeout_secs: f64,
+        _transfer_limit_kb: Option<f64>,
+    ) -> Result<JsonValue, std::io::Error> {
+        Ok(json!({
+            "remote": remote,
+            "messages": [],
+        }))
+    }
+
+    fn propagation_remote_fetch(
+        &self,
+        remote: &str,
+        _identity_private_key_hex: Option<&str>,
+        _timeout_secs: f64,
+        _transfer_limit_kb: Option<f64>,
+    ) -> Result<JsonValue, std::io::Error> {
+        Ok(json!({
+            "remote": remote,
+            "messages": [],
+        }))
+    }
+
+    fn propagation_remote_unpeer(
+        &self,
+        _remote: &str,
+        _peer: &str,
+        _identity_private_key_hex: Option<&str>,
+        _timeout_secs: f64,
+    ) -> Result<JsonValue, std::io::Error> {
+        Err(std::io::Error::new(self.kind, self.message))
     }
 }
 
@@ -16564,6 +16653,100 @@ fn failed_propagation_remote_download_updates_source_peer_backoff_like_python() 
 }
 
 #[test]
+fn failed_propagation_remote_download_import_updates_source_peer_backoff_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    daemon.set_remote_control_bridge(Arc::new(TestRemoteControlBridge {
+        result: Ok(json!({
+            "downloaded_count": 1,
+            "imported_count": 1,
+            "messages": [{
+                "payload_hex": "not-hex",
+            }],
+        })),
+    }));
+    let peer = "peer-remote-download-import-fail-backoff";
+    daemon
+        .handle_rpc(rpc_request(80, "peer_sync", json!({ "peer": peer })))
+        .expect("initial peer sync");
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let record = peers.get_mut(peer).expect("peer record");
+        record.alive = true;
+        record.sync_backoff = 0;
+        record.next_sync_attempt = 0;
+        record.acceptance_rate = 0.5;
+        record.restored_handled_ids.clear();
+        record.restored_unhandled_ids.clear();
+    }
+    let pending = PropagationEntryRecord {
+        transient_id: "c7".repeat(32),
+        destination: "12".repeat(16),
+        payload_hex: "12".repeat(24),
+        received_at: 1_700_000_626,
+        size_bytes: 24,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&pending).expect("store propagation entry");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation(peer, pending.transient_id.as_str())
+        .expect("mark unhandled");
+    daemon.event_queue.lock().expect("event_queue mutex poisoned").clear();
+
+    let err = daemon
+        .handle_rpc(rpc_request(
+            81,
+            "propagation_remote_download",
+            json!({
+                "remote": peer,
+            }),
+        ))
+        .expect_err("remote download import failure should be returned");
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+    assert!(err.to_string().contains("invalid remote propagation payload hex"));
+
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 82, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    let row = peers["peers"]
+        .as_array()
+        .expect("peer rows")
+        .iter()
+        .find(|row| row["peer"].as_str() == Some(peer))
+        .expect("peer row");
+    assert_eq!(row["alive"].as_bool(), Some(false));
+    assert_eq!(row["sync_backoff"].as_u64(), Some(12 * 60));
+    let last_sync_attempt = row["last_sync_attempt"].as_i64().expect("last sync attempt");
+    assert!(last_sync_attempt > 0);
+    assert_eq!(row["next_sync_attempt"].as_i64(), Some(last_sync_attempt + 12 * 60));
+    assert_eq!(
+        row["messages"]["unhandled_ids"].as_array().expect("unhandled ids"),
+        &[json!(pending.transient_id.as_str())]
+    );
+
+    let event = daemon
+        .event_queue
+        .lock()
+        .expect("event_queue mutex poisoned")
+        .iter()
+        .rev()
+        .find(|event| event.event_type == "peer_sync")
+        .cloned()
+        .expect("failed remote download peer event");
+    assert_eq!(event.payload["peer"].as_str(), Some(peer));
+    assert_eq!(event.payload["remote"].as_str(), Some(peer));
+    assert_eq!(event.payload["remote_sync"].as_bool(), Some(true));
+    assert_eq!(event.payload["synced"].as_bool(), Some(false));
+    assert_eq!(event.payload["alive"].as_bool(), Some(false));
+    assert_eq!(event.payload["sync_backoff"].as_u64(), Some(12 * 60));
+    assert!(event.payload["propagation"]["error"]
+        .as_str()
+        .is_some_and(|value| value.contains("invalid remote propagation payload hex")));
+}
+
+#[test]
 fn failed_propagation_remote_fetch_import_records_existing_queue_snapshot_like_python() {
     let daemon = RpcDaemon::test_instance();
     daemon.set_remote_control_bridge(Arc::new(TestRemoteControlBridge {
@@ -16629,6 +16812,100 @@ fn failed_propagation_remote_fetch_import_records_existing_queue_snapshot_like_p
         serialized["unhandled_ids"].as_array().expect("serialized unhandled ids"),
         &[json!(pending.transient_id.as_str())]
     );
+}
+
+#[test]
+fn failed_propagation_remote_fetch_import_updates_source_peer_backoff_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    daemon.set_remote_control_bridge(Arc::new(TestRemoteControlBridge {
+        result: Ok(json!({
+            "available_count": 1,
+            "fetched_count": 1,
+            "messages": [{
+                "payload_hex": "not-hex",
+            }],
+        })),
+    }));
+    let peer = "peer-remote-fetch-import-fail-backoff";
+    daemon
+        .handle_rpc(rpc_request(80, "peer_sync", json!({ "peer": peer })))
+        .expect("initial peer sync");
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let record = peers.get_mut(peer).expect("peer record");
+        record.alive = true;
+        record.sync_backoff = 0;
+        record.next_sync_attempt = 0;
+        record.acceptance_rate = 0.5;
+        record.restored_handled_ids.clear();
+        record.restored_unhandled_ids.clear();
+    }
+    let pending = PropagationEntryRecord {
+        transient_id: "c6".repeat(32),
+        destination: "12".repeat(16),
+        payload_hex: "12".repeat(24),
+        received_at: 1_700_000_625,
+        size_bytes: 24,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&pending).expect("store propagation entry");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation(peer, pending.transient_id.as_str())
+        .expect("mark unhandled");
+    daemon.event_queue.lock().expect("event_queue mutex poisoned").clear();
+
+    let err = daemon
+        .handle_rpc(rpc_request(
+            81,
+            "propagation_remote_fetch",
+            json!({
+                "remote": peer,
+            }),
+        ))
+        .expect_err("remote fetch import failure should be returned");
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+    assert!(err.to_string().contains("invalid remote propagation payload hex"));
+
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 82, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    let row = peers["peers"]
+        .as_array()
+        .expect("peer rows")
+        .iter()
+        .find(|row| row["peer"].as_str() == Some(peer))
+        .expect("peer row");
+    assert_eq!(row["alive"].as_bool(), Some(false));
+    assert_eq!(row["sync_backoff"].as_u64(), Some(12 * 60));
+    let last_sync_attempt = row["last_sync_attempt"].as_i64().expect("last sync attempt");
+    assert!(last_sync_attempt > 0);
+    assert_eq!(row["next_sync_attempt"].as_i64(), Some(last_sync_attempt + 12 * 60));
+    assert_eq!(
+        row["messages"]["unhandled_ids"].as_array().expect("unhandled ids"),
+        &[json!(pending.transient_id.as_str())]
+    );
+
+    let event = daemon
+        .event_queue
+        .lock()
+        .expect("event_queue mutex poisoned")
+        .iter()
+        .rev()
+        .find(|event| event.event_type == "peer_sync")
+        .cloned()
+        .expect("failed remote fetch peer event");
+    assert_eq!(event.payload["peer"].as_str(), Some(peer));
+    assert_eq!(event.payload["remote"].as_str(), Some(peer));
+    assert_eq!(event.payload["remote_sync"].as_bool(), Some(true));
+    assert_eq!(event.payload["synced"].as_bool(), Some(false));
+    assert_eq!(event.payload["alive"].as_bool(), Some(false));
+    assert_eq!(event.payload["sync_backoff"].as_u64(), Some(12 * 60));
+    assert!(event.payload["propagation"]["error"]
+        .as_str()
+        .is_some_and(|value| value.contains("invalid remote propagation payload hex")));
 }
 
 #[test]
@@ -17787,6 +18064,10 @@ fn timeout_propagation_remote_sync_preserves_peer_with_retry_backoff() {
         .find(|row| row["peer"].as_str() == Some("peer-timeout"))
         .expect("peer should remain queued for retry");
     assert_eq!(row["alive"].as_bool(), Some(true));
+    assert_eq!(row["state"].as_u64(), Some(0));
+    assert_eq!(row["state_name"].as_str(), Some("idle"));
+    assert_eq!(row["sync_schedule_state"].as_str(), Some("backoff"));
+    assert_eq!(row["sync_schedule_reason"].as_str(), Some("backoff"));
     assert_eq!(row["sync_backoff"].as_u64(), Some(12 * 60));
     assert_eq!(row["acceptance_rate"].as_f64(), Some(0.5));
     let last_sync_attempt = row["last_sync_attempt"].as_i64().expect("last sync attempt");
@@ -17816,6 +18097,8 @@ fn timeout_propagation_remote_sync_preserves_peer_with_retry_backoff() {
     assert_eq!(event.payload["peer"].as_str(), Some("peer-timeout"));
     assert_eq!(event.payload["remote"].as_str(), Some("remote-node"));
     assert_eq!(event.payload["alive"].as_bool(), Some(true));
+    assert_eq!(event.payload["state"].as_u64(), Some(0xfe));
+    assert_eq!(event.payload["state_name"].as_str(), Some("failed"));
     assert_eq!(event.payload["sync_backoff"].as_u64(), Some(12 * 60));
     assert_eq!(event.payload["last_sync_attempt"].as_i64(), Some(last_sync_attempt));
     assert_eq!(
@@ -17826,6 +18109,7 @@ fn timeout_propagation_remote_sync_preserves_peer_with_retry_backoff() {
         event.payload["propagation"]["error"].as_str(),
         Some("propagation peer timed out")
     );
+    assert_eq!(event.payload["propagation"]["state_name"].as_str(), Some("failed"));
 }
 
 #[test]
@@ -18915,6 +19199,78 @@ fn failed_propagation_remote_unpeer_preserves_local_peer_and_queue_state() {
             .expect("list unhandled"),
         vec![entry]
     );
+}
+
+#[test]
+fn denied_access_propagation_remote_unpeer_breaks_peering_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    daemon.set_remote_control_bridge(Arc::new(RemoteUnpeerErrorBridge {
+        kind: std::io::ErrorKind::PermissionDenied,
+        message: "propagation node denied access",
+    }));
+    let peer = "peer-remote-unpeer-denied";
+    daemon
+        .handle_rpc(rpc_request(79, "peer_sync", json!({ "peer": peer })))
+        .expect("peer sync");
+    let entry = PropagationEntryRecord {
+        transient_id: "d4".repeat(32),
+        destination: "24".repeat(16),
+        payload_hex: "24".repeat(20),
+        received_at: 1_700_000_812,
+        size_bytes: 20,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&entry).expect("store propagation entry");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation(peer, entry.transient_id.as_str())
+        .expect("mark unhandled");
+    daemon.event_queue.lock().expect("event_queue mutex poisoned").clear();
+
+    let err = daemon
+        .handle_rpc(rpc_request(
+            80,
+            "propagation_remote_unpeer",
+            json!({
+                "remote": "remote-node",
+                "peer": peer,
+            }),
+        ))
+        .expect_err("remote unpeer access denial should be returned");
+    assert_eq!(err.kind(), std::io::ErrorKind::PermissionDenied);
+    assert_eq!(err.to_string(), "propagation node denied access");
+
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 81, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    assert_eq!(peers["peers"].as_array().map(Vec::len), Some(0));
+    assert!(
+        daemon
+            .store
+            .list_peer_unhandled_propagation(peer)
+            .expect("list unhandled")
+            .is_empty(),
+        "access-denied remote unpeer should clear retryable local queue marks"
+    );
+
+    let event = daemon
+        .event_queue
+        .lock()
+        .expect("event_queue mutex poisoned")
+        .iter()
+        .rev()
+        .find(|event| event.event_type == "peer_unpeer")
+        .cloned()
+        .expect("peer unpeer event");
+    assert_eq!(event.payload["peer"].as_str(), Some(peer));
+    assert_eq!(event.payload["remote"].as_str(), Some("remote-node"));
+    assert_eq!(event.payload["removed"].as_bool(), Some(true));
+    assert_eq!(event.payload["reason"].as_str(), Some("access_denied"));
+    assert_eq!(event.payload["error"].as_str(), Some("propagation node denied access"));
+    assert_eq!(event.payload["propagation_cleared"].as_u64(), Some(1));
+    assert_eq!(event.payload["messages"]["unhandled"].as_u64(), Some(1));
 }
 
 #[test]

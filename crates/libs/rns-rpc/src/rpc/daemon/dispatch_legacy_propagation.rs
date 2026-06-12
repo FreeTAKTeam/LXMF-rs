@@ -130,6 +130,8 @@ impl RpcDaemon {
             "transfer_limit": transfer_limit,
             "sync_limit": sync_limit,
         });
+        propagation["state"] = json!(super::dispatch_legacy_messages::PEER_SYNC_STATE_FAILED);
+        propagation["state_name"] = json!("failed");
         if let Some(reason) = postpone_reason {
             propagation["postponed"] = json!(true);
             propagation["postpone_reason"] = json!(reason);
@@ -144,7 +146,6 @@ impl RpcDaemon {
             "remote": remote,
             "remote_sync": true,
             "synced": false,
-            "state": 0,
             "sync_strategy": peer.sync_strategy,
             "ler": 0,
             "peering_timebase": peer.peering_timebase,
@@ -177,6 +178,8 @@ impl RpcDaemon {
             "messages": messages,
             "propagation": propagation,
         });
+        payload["state"] = json!(super::dispatch_legacy_messages::PEER_SYNC_STATE_FAILED);
+        payload["state_name"] = json!("failed");
         if let Some(reason) = postpone_reason {
             payload["postponed"] = json!(true);
             payload["postpone_reason"] = json!(reason);
@@ -250,6 +253,15 @@ impl RpcDaemon {
             return Ok(false);
         }
 
+        self.record_failed_remote_import_for_active_source_peer(source_peer, remote, error)
+    }
+
+    fn record_failed_remote_import_for_active_source_peer(
+        &self,
+        source_peer: &str,
+        remote: &str,
+        error: &std::io::Error,
+    ) -> Result<bool, std::io::Error> {
         let source_peer_key =
             self.active_peer_ids().into_iter().find(|peer| peer.eq_ignore_ascii_case(source_peer));
         let Some(source_peer_key) = source_peer_key else {
@@ -2318,6 +2330,11 @@ impl RpcDaemon {
                                     state.sync_progress = 0.0;
                                     state.last_sync_error = Some(err.to_string());
                                 });
+                                self.record_failed_remote_import_for_active_source_peer(
+                                    remote_id.as_str(),
+                                    remote_id.as_str(),
+                                    &err,
+                                )?;
                                 for peer in self.active_peer_ids() {
                                     self.record_payload_backed_peer_queue_snapshot(peer.as_str())?;
                                 }
@@ -2514,6 +2531,11 @@ impl RpcDaemon {
                             state.sync_progress = 0.0;
                             state.last_sync_error = Some(err.to_string());
                         });
+                        self.record_failed_remote_import_for_active_source_peer(
+                            remote_id.as_str(),
+                            remote_id.as_str(),
+                            &err,
+                        )?;
                         for peer in self.active_peer_ids() {
                             self.record_payload_backed_peer_queue_snapshot(peer.as_str())?;
                         }
@@ -2612,9 +2634,18 @@ impl RpcDaemon {
                 ) {
                     Ok(result) => result,
                     Err(err) => {
-                        self.record_remote_unpeer_failure(err.to_string());
-                        let _ =
-                            self.record_payload_backed_peer_queue_snapshot(snapshot_peer.as_str());
+                        let error = err.to_string();
+                        self.record_remote_unpeer_failure(error.clone());
+                        if is_remote_access_denied_error(&err) {
+                            self.break_remote_peer_sync_peering_on_denied_access(
+                                snapshot_peer.as_str(),
+                                remote_id.as_str(),
+                                error.as_str(),
+                            )?;
+                        } else {
+                            let _ = self
+                                .record_payload_backed_peer_queue_snapshot(snapshot_peer.as_str());
+                        }
                         return Err(err);
                     }
                 };

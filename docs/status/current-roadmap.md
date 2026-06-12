@@ -101,6 +101,10 @@ The project is best described by capability level:
 - Malformed remote fetch and download imports now mirror existing
   payload-backed live queue marks into active peer record snapshots before
   failing, preserving restart/export retry state for already queued relay work.
+- Malformed remote fetch and download imports from an already active source
+  peer now also update that peer's failure backoff and publish the failed
+  peer-sync event, so invalid post-transfer payloads share retry scheduling and
+  observability with transport-level remote transfer failures.
 - Remote fetch and download bridge failures now mirror existing payload-backed
   live queue marks into active peer record snapshots before returning the
   failure, preserving restart/export retry state for already queued relay work.
@@ -131,6 +135,9 @@ The project is best described by capability level:
 - Remote peer-sync bridge-unavailable errors for already known peers now also
   publish the failed peer-sync event and mark the propagation sync lifecycle
   failed, keeping queue retry state observable without creating new peers.
+- Peer sync RPC rows and events now preserve the Python-compatible peer `state`
+  namespace while exposing backoff and policy postponement through separate
+  scheduling fields; failed attempts continue to use the established error state.
 - Successful remote peer-sync now also mirrors existing payload-backed live
   queue marks into active peer record snapshots after applying imports, so
   restart/export state preserves queued retry work even when the remote sync
@@ -148,6 +155,9 @@ The project is best described by capability level:
   case-insensitive peer requests, so restart/export state preserves queued retry
   work when peering teardown fails; these failed attempts also mark the
   propagation lifecycle failed instead of leaving stale idle/completed state.
+- Access-denied remote unpeer failures now follow the same local peering break
+  path as access-denied remote sync/fetch/download, clearing local peer and
+  propagation queue state instead of leaving denied teardown work retryable.
 - Successful remote unpeer now also uses the stored peer ID case for the bridge
   call and nested bridge result when callers use a case-variant peer request,
   keeping remote teardown identity aligned with local queue cleanup.
@@ -415,9 +425,12 @@ The project is best described by capability level:
   from the same peer take the throttled response path even when the peer changes
   the offered transient-ID set.
 - The live Python compatibility gate now includes a Python-origin propagation
-  `/offer` case against Rust `reticulumd`, covering partial wanted-ID
-  responses, repeated-offer throttling, and source-peer completed marks before
-  broad peer/router interop is claimed.
+  `/get` haves-only case against Rust `reticulumd`, covering `true`
+  acknowledgement, Rust-side payload purge, and suppression of retryable
+  unhandled peer queue state for the declaring propagation peer, plus a
+  Python-origin `/offer` case covering partial wanted-ID responses,
+  repeated-offer throttling, and source-peer completed marks before broad
+  peer/router interop is claimed.
 
 ## Remaining Release Blockers
 
@@ -434,10 +447,10 @@ the implemented subset.
 3. **Interop breadth**
    - Add bidirectional live Python cases for every claimed delivery mode and
      newly completed peer/router row.
-   - Propagation remote-status/control now has dispatchable compatibility
-     cases for Python control-path discovery, Rust-to-Python remote status, and
-     Python-origin `/offer` side effects; broader peer/router row coverage
-     still needs additional live scenarios.
+   - Propagation remote-status/control now has dispatchable compatibility cases
+     for Python control-path discovery, Rust-to-Python remote status, and
+     Python-origin `/get` haves acknowledgement and `/offer` side effects;
+     broader peer/router row coverage still needs additional live scenarios.
    - Capture release evidence for Sideband, MeshChatX, and Columba before making
      client-specific compatibility claims.
 4. **Reticulum behavioral breadth**

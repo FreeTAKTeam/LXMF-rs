@@ -140,6 +140,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Malformed remote fetch and download imports mirror existing payload-backed
   queue marks into active peer record snapshots before returning the import
   failure, so already queued relay work remains visible after restart/export.
+- Malformed remote fetch and download imports from an already active source
+  peer update that peer's failure backoff and publish the failed peer-sync
+  event, so invalid post-transfer payloads use the same retry observability as
+  transport-level remote transfer failures.
 - Remote fetch and download bridge failures mirror existing payload-backed
   queue marks into active peer record snapshots before returning the failure,
   so already queued relay work remains visible after restart/export.
@@ -171,6 +175,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Remote peer-sync bridge-unavailable errors for already known peers also
   publish the failed peer-sync event and mark the propagation sync lifecycle
   failed, keeping queued retry state observable without creating new peers.
+- Peer sync RPC rows and events preserve the Python-compatible peer `state`
+  namespace while exposing backoff and policy postponement through separate
+  scheduling fields; failed attempts continue to use the established error state.
 - Successful remote peer-sync mirrors existing payload-backed live queue marks
   into active peer record snapshots after applying imports, preserving queued
   retry work across restart/export even when the remote sync succeeds without
@@ -192,6 +199,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   case-insensitive peer requests, so failed peering teardown preserves queued
   retry work across restart/export and marks the propagation lifecycle failed
   instead of leaving stale idle/completed state.
+- Access-denied remote unpeer failures follow the same local peering break path
+  as access-denied remote sync/fetch/download, clearing local peer and
+  propagation queue state instead of leaving denied teardown work retryable.
 - Successful remote unpeer uses the stored peer ID case for the bridge call and
   nested bridge result when callers supply a case-variant peer request, keeping
   remote teardown identity aligned with local queue cleanup.
@@ -301,6 +311,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Inbound propagation message-get `haves` handling applies peer admission
   before purging matching local payloads, so rejected peers cannot delete queued
   transfers they are not allowed to acknowledge.
+- The live Rust/Python propagation-control gate now exercises a Python-origin
+  `/get` haves-only request against Rust `reticulumd`, proving the `true`
+  acknowledgement, retained-payload purge, and absence of retryable unhandled
+  peer queue state across the live link request path.
 - Inbound propagation message-get `haves` handling records matched haves as
   received/completed work for the requesting propagation peer after purge, so
   reintroduced payloads are not queued back to peers that already declared
@@ -491,10 +505,11 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   conformance plus live channel, paper, compatibility-matrix, and LXMD
   remote-relay tests.
 - The compatibility matrix includes ignored live `propagation_remote_status_bidir`
-  and `propagation_offer_python_to_rust` cases that validate Python discovery of
-  the Rust propagation-control path, Rust-to-Python propagation-node status, and
-  Python-origin offer side effects when the Python harness environment is
-  available.
+  and `propagation_get_haves_python_to_rust` cases that validate Python
+  discovery of the Rust propagation-control path, Rust-to-Python
+  propagation-node status, and Python-origin haves-only `/get` side effects when
+  the Python harness environment is available, plus
+  `propagation_offer_python_to_rust` for Python-origin offer side effects.
 - Focused daemon/RPC tests cover delivery modes, propagation offers, peer
   maintenance, queue policy, source accounting, stamps, tickets, receipts, and
   cancellation.

@@ -1044,6 +1044,290 @@ if [[ "${COMPAT_CASE}" == "propagation_remote_status_bidir" ]]; then
   exit 0
 fi
 
+if [[ "${COMPAT_CASE}" == "propagation_get_haves_python_to_rust" ]]; then
+  rpc_call "${RUST_RPC_ADDR}" "announce_now" "null" >/dev/null
+
+  PY_GET_IDENTITY="${PY_SENDER_DIR}/get_haves_identity"
+  PY_GET_HASHES="$("${PYTHON_BIN}" - <<'PY' "${PY_SENDER_RNS_DIR}" "${PY_GET_IDENTITY}"
+import json
+import sys
+from pathlib import Path
+
+import LXMF
+import RNS
+
+rns_config, identity_path = sys.argv[1:3]
+Path(identity_path).parent.mkdir(parents=True, exist_ok=True)
+
+RNS.Reticulum(configdir=rns_config, loglevel=0)
+identity = RNS.Identity()
+identity.to_file(identity_path)
+delivery = RNS.Destination(
+    identity,
+    RNS.Destination.IN,
+    RNS.Destination.SINGLE,
+    LXMF.APP_NAME,
+    "delivery",
+)
+propagation = RNS.Destination(
+    identity,
+    RNS.Destination.IN,
+    RNS.Destination.SINGLE,
+    LXMF.APP_NAME,
+    "propagation",
+)
+print(json.dumps({
+    "delivery": RNS.hexrep(delivery.hash, delimit=False).lower(),
+    "propagation": RNS.hexrep(propagation.hash, delimit=False).lower(),
+}))
+PY
+)"
+  PY_GET_DELIVERY_HASH="$("${PYTHON_BIN}" - <<'PY' "${PY_GET_HASHES}"
+import json
+import sys
+
+print(json.loads(sys.argv[1])["delivery"])
+PY
+)"
+  PY_GET_PROPAGATION_HASH="$("${PYTHON_BIN}" - <<'PY' "${PY_GET_HASHES}"
+import json
+import sys
+
+print(json.loads(sys.argv[1])["propagation"])
+PY
+)"
+
+  "${PYTHON_BIN}" - <<'PY' "${PY_SENDER_RNS_DIR}" "${PY_GET_IDENTITY}"
+import sys
+import time
+
+import LXMF
+import RNS
+
+rns_config, identity_path = sys.argv[1:3]
+RNS.Reticulum(configdir=rns_config, loglevel=0)
+identity = RNS.Identity.from_file(identity_path)
+if identity is None:
+    raise SystemExit(f"failed to load identity from {identity_path}")
+
+propagation = RNS.Destination(
+    identity,
+    RNS.Destination.IN,
+    RNS.Destination.SINGLE,
+    LXMF.APP_NAME,
+    "propagation",
+)
+propagation.announce()
+time.sleep(1.0)
+PY
+  if ! wait_for_rust_peer "${PY_GET_PROPAGATION_HASH}"; then
+    echo "Rust lxmd did not admit Python get-haves peer before payload ingest" >&2
+    exit 1
+  fi
+
+  GET_HAVES_PAYLOAD_HEX="$("${PYTHON_BIN}" - <<'PY' "${PY_GET_DELIVERY_HASH}"
+import sys
+
+payload = bytes.fromhex(sys.argv[1]) + b" python-get-haves-payload"
+print(payload.hex())
+PY
+)"
+  GET_HAVES_INGEST="$(rpc_call "${RUST_RPC_ADDR}" "propagation_ingest" "$("${PYTHON_BIN}" - <<'PY' "${GET_HAVES_PAYLOAD_HEX}"
+import json
+import sys
+
+print(json.dumps({"payload_hex": sys.argv[1]}))
+PY
+)")"
+  GET_HAVES_TRANSIENT="$("${PYTHON_BIN}" - <<'PY' "${GET_HAVES_INGEST}"
+import json
+import sys
+
+print(json.loads(sys.argv[1])["transient_id"])
+PY
+)"
+
+  PEER_ROW="$(rpc_call "${RUST_RPC_ADDR}" "list_peers" "null")"
+  "${PYTHON_BIN}" - <<'PY' "${PEER_ROW}" "${PY_GET_PROPAGATION_HASH}" "${GET_HAVES_TRANSIENT}"
+import json
+import sys
+
+peers_raw, peer_hash, transient_id = sys.argv[1:4]
+rows = json.loads(peers_raw)["peers"]
+row = next((row for row in rows if row.get("peer") == peer_hash), None)
+assert row is not None, rows
+messages = row["messages"]
+assert transient_id in messages["unhandled_ids"], row
+PY
+
+  "${PYTHON_BIN}" - <<'PY' \
+    "${PY_SENDER_RNS_DIR}" \
+    "${PY_GET_IDENTITY}" \
+    "${RUST_PROPAGATION_HASH}" \
+    "${GET_HAVES_TRANSIENT}" \
+    "${TIMEOUT_SECS}" >"${PY_SEND_LOG}"
+import json
+import sys
+import time
+
+import LXMF
+import RNS
+
+rns_config, identity_path, propagation_hash_hex, transient_hex, timeout_secs = sys.argv[1:6]
+timeout_secs = max(float(timeout_secs), 1.0)
+propagation_hash = bytes.fromhex(propagation_hash_hex)
+transient_id = bytes.fromhex(transient_hex)
+
+RNS.Reticulum(configdir=rns_config, loglevel=0)
+identity = RNS.Identity.from_file(identity_path)
+if identity is None:
+    raise SystemExit(f"failed to load identity from {identity_path}")
+
+deadline = time.time() + timeout_secs
+while time.time() < deadline:
+    if RNS.Transport.has_path(propagation_hash):
+        break
+    RNS.Transport.request_path(propagation_hash)
+    time.sleep(0.5)
+else:
+    raise SystemExit("timed out waiting for Rust propagation path")
+
+deadline = time.time() + max(15.0, timeout_secs / 3.0)
+remote_identity = None
+while time.time() < deadline:
+    remote_identity = RNS.Identity.recall(propagation_hash)
+    if remote_identity is not None:
+        break
+    time.sleep(0.2)
+if remote_identity is None:
+    raise SystemExit("timed out recalling Rust propagation identity")
+
+destination = RNS.Destination(
+    remote_identity,
+    RNS.Destination.OUT,
+    RNS.Destination.SINGLE,
+    LXMF.APP_NAME,
+    "propagation",
+)
+link = RNS.Link(destination)
+deadline = time.time() + timeout_secs
+while time.time() < deadline:
+    if link.status == RNS.Link.ACTIVE:
+        break
+    time.sleep(0.2)
+else:
+    raise SystemExit("timed out opening Rust propagation link")
+
+link.identify(identity)
+receipt = link.request(
+    "/get",
+    data=[None, [transient_id]],
+    response_callback=None,
+    failed_callback=None,
+)
+deadline = time.time() + timeout_secs
+while time.time() < deadline:
+    if receipt.get_status() == RNS.RequestReceipt.READY:
+        break
+    if receipt.get_status() == RNS.RequestReceipt.FAILED:
+        raise SystemExit("propagation get haves request failed")
+    time.sleep(0.2)
+else:
+    raise SystemExit("timed out waiting for propagation get haves response")
+
+response = receipt.get_response()
+link.teardown()
+if response is not True:
+    raise SystemExit(f"expected haves-only get response True, got {response!r}")
+
+print(json.dumps({
+    "case": "propagation_get_haves_python_to_rust",
+    "response": response,
+    "transient_id": transient_id.hex(),
+}))
+PY
+
+  if rpc_call "${RUST_RPC_ADDR}" "propagation_fetch" "{\"transient_id\":\"${GET_HAVES_TRANSIENT}\"}" >/dev/null 2>&1; then
+    echo "haves-only /get did not purge the declared propagation payload" >&2
+    exit 1
+  fi
+
+  PEER_ROW="$(rpc_call "${RUST_RPC_ADDR}" "list_peers" "null")"
+  "${PYTHON_BIN}" - <<'PY' "${PEER_ROW}" "${PY_GET_PROPAGATION_HASH}" "${GET_HAVES_TRANSIENT}"
+import json
+import sys
+
+peers_raw, peer_hash, transient_id = sys.argv[1:4]
+rows = json.loads(peers_raw)["peers"]
+row = next((row for row in rows if row.get("peer") == peer_hash), None)
+assert row is not None, rows
+messages = row["messages"]
+assert transient_id not in messages["unhandled_ids"], row
+PY
+
+  GET_HAVES_RESULT="$("${PYTHON_BIN}" - <<'PY' "${PY_SEND_LOG}"
+import json
+import sys
+from pathlib import Path
+
+print(Path(sys.argv[1]).read_text(encoding="utf-8").strip().splitlines()[-1])
+PY
+)"
+  "${PYTHON_BIN}" - <<'PY' \
+    "${REPORT_PATH}" \
+    "${TMP_ROOT}" \
+    "${RUST_LOG}" \
+    "${PY_LOG}" \
+    "${PY_REMOTE_STATUS_LOG}" \
+    "${RUST_REMOTE_STATUS_LOG}" \
+    "${RUST_PROPAGATION_HASH}" \
+    "${PY_GET_DELIVERY_HASH}" \
+    "${PY_GET_PROPAGATION_HASH}" \
+    "${GET_HAVES_RESULT}" \
+    "${COMPAT_CASE}"
+import json
+import sys
+
+(
+    report_path,
+    tmp_root,
+    rust_log,
+    py_log,
+    py_remote_status_log,
+    rust_remote_status_log,
+    rust_propagation_hash,
+    python_delivery_hash,
+    python_propagation_hash,
+    get_haves_result,
+    compat_case,
+) = sys.argv[1:12]
+
+with open(report_path, "w", encoding="utf-8") as handle:
+    json.dump({
+        "status": "pass",
+        "case": compat_case,
+        "proof": json.loads(get_haves_result),
+        "hashes": {
+            "rust_propagation": rust_propagation_hash,
+            "python_delivery": python_delivery_hash,
+            "python_propagation": python_propagation_hash,
+        },
+        "logs": {
+            "tmp_root": tmp_root,
+            "rust_lxmd": rust_log,
+            "python_lxmd": py_log,
+            "python_remote_status": py_remote_status_log,
+            "rust_remote_status": rust_remote_status_log,
+        },
+    }, handle, indent=2)
+    handle.write("\n")
+PY
+  echo "[python-lxmd-rust-lxmd-smoke] pass"
+  echo "[python-lxmd-rust-lxmd-smoke] report=${REPORT_PATH}"
+  echo "[python-lxmd-rust-lxmd-smoke] logs=${TMP_ROOT}"
+  exit 0
+fi
+
 if [[ "${COMPAT_CASE}" == "propagation_offer_python_to_rust" ]]; then
   rpc_call "${RUST_RPC_ADDR}" "announce_now" "null" >/dev/null
   if ! wait_for_python_remote_control "${RUST_PROPAGATION_HASH}" "${REMOTE_CONTROL_PATH_TIMEOUT_SECS}"; then
