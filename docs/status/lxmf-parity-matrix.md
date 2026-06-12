@@ -171,9 +171,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Remote peer-sync bridge-unavailable errors for already known peers also
   publish the failed peer-sync event and mark the propagation sync lifecycle
   failed, keeping queued retry state observable without creating new peers.
-- Peer sync RPC rows and events expose structured peer sync state names for
-  backoff/postponed and failed attempts, so retry and failure telemetry is not
-  reported as idle while preserving existing liveness and queue fields.
+- Peer sync RPC rows and events preserve the Python-compatible peer `state`
+  namespace while exposing backoff and policy postponement through separate
+  scheduling fields; failed attempts continue to use the established error state.
 - Successful remote peer-sync mirrors existing payload-backed live queue marks
   into active peer record snapshots after applying imports, preserving queued
   retry work across restart/export even when the remote sync succeeds without

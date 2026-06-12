@@ -2,8 +2,6 @@ use super::init::LXMF_PEER_SYNC_BACKOFF_STEP_SECS;
 use super::*;
 
 pub(super) const PEER_SYNC_STATE_IDLE: u32 = 0x00;
-pub(super) const PEER_SYNC_STATE_BACKOFF: u32 = 0x08;
-pub(super) const PEER_SYNC_STATE_POSTPONED: u32 = 0x09;
 pub(super) const PEER_SYNC_STATE_FAILED: u32 = 0xfe;
 
 impl RpcDaemon {
@@ -19,13 +17,15 @@ impl RpcDaemon {
         let unhandled_ids =
             self.store.list_peer_unhandled_propagation_ids(peer.peer.as_str()).unwrap_or_default();
         let is_static_peer = self.is_static_peer(peer.peer.as_str());
-        let (peer_state, peer_state_name) = peer_sync_status_state(&peer);
+        let (sync_schedule_state, sync_schedule_reason) = peer_sync_schedule(&peer);
         let sync_strategy = peer.sync_strategy;
         let mut row = serde_json::to_value(&peer).unwrap_or_else(|_| json!({}));
         row["type"] =
             JsonValue::String(if is_static_peer { "static" } else { "discovered" }.to_string());
-        row["state"] = JsonValue::from(peer_state);
-        row["state_name"] = JsonValue::from(peer_state_name);
+        row["state"] = JsonValue::from(PEER_SYNC_STATE_IDLE);
+        row["state_name"] = JsonValue::from("idle");
+        row["sync_schedule_state"] = JsonValue::from(sync_schedule_state);
+        row["sync_schedule_reason"] = sync_schedule_reason.map_or(JsonValue::Null, JsonValue::from);
         row["sync_strategy"] = JsonValue::from(sync_strategy);
         row["ler"] = JsonValue::from(0);
         row["str"] = row
@@ -87,6 +87,8 @@ impl RpcDaemon {
             let mut guard = self.peers.lock().expect("peers mutex poisoned");
             if let Some(existing) = guard.get_mut(&record.peer) {
                 existing.last_sync_attempt = timestamp;
+                existing.sync_schedule_reason =
+                    (postpone_reason != "backoff").then(|| postpone_reason.to_string());
                 if postpone_reason == "backoff" && existing.last_sync_attempt > existing.last_seen {
                     existing.alive = false;
                 }
@@ -159,12 +161,14 @@ impl RpcDaemon {
             if self.is_static_peer(record.peer.as_str()) { "static" } else { "discovered" };
         let peering_key = peer_peering_key_value(record, self.identity_hash.as_str());
         let peering_key_status = peer_peering_key_status(record, peering_key);
-        let (peer_state, peer_state_name) = peer_sync_postponed_state(postpone_reason);
+        let sync_schedule_state = peer_sync_schedule_state(postpone_reason);
         let mut propagation_sync = propagation_sync;
         propagation_sync["peering_key"] = peering_key.map_or(JsonValue::Null, JsonValue::from);
         propagation_sync["peering_key_status"] = json!(peering_key_status);
-        propagation_sync["state"] = json!(peer_state);
-        propagation_sync["state_name"] = json!(peer_state_name);
+        propagation_sync["state"] = json!(PEER_SYNC_STATE_IDLE);
+        propagation_sync["state_name"] = json!("idle");
+        propagation_sync["sync_schedule_state"] = json!(sync_schedule_state);
+        propagation_sync["sync_schedule_reason"] = json!(postpone_reason);
         let mut event_payload = json!({
             "peer": &record.peer,
             "peer_type": peer_type_value,
@@ -175,7 +179,7 @@ impl RpcDaemon {
             "last_heard": record.last_seen,
             "first_seen": record.first_seen,
             "seen_count": record.seen_count,
-            "state": peer_state,
+            "state": PEER_SYNC_STATE_IDLE,
             "sync_strategy": record.sync_strategy,
             "ler": 0,
             "peering_timebase": record.peering_timebase,
@@ -208,7 +212,9 @@ impl RpcDaemon {
             "messages": messages,
             "propagation": propagation_sync.clone(),
         });
-        event_payload["state_name"] = json!(peer_state_name);
+        event_payload["state_name"] = json!("idle");
+        event_payload["sync_schedule_state"] = json!(sync_schedule_state);
+        event_payload["sync_schedule_reason"] = json!(postpone_reason);
         self.publish_event(RpcEvent { event_type: "peer_sync".into(), payload: event_payload });
 
         let mut result = json!({
@@ -222,7 +228,7 @@ impl RpcDaemon {
                 "synced": false,
                 "postponed": true,
                 "postpone_reason": postpone_reason,
-                "state": peer_state,
+                "state": PEER_SYNC_STATE_IDLE,
                 "sync_strategy": record.sync_strategy,
                 "ler": 0,
                 "peering_timebase": record.peering_timebase,
@@ -253,8 +259,9 @@ impl RpcDaemon {
                 "messages": messages,
                 "propagation": propagation_sync,
         });
-        result["state_name"] = json!(peer_state_name);
-
+        result["state_name"] = json!("idle");
+        result["sync_schedule_state"] = json!(sync_schedule_state);
+        result["sync_schedule_reason"] = json!(postpone_reason);
         RpcResponse { id: request_id, result: Some(result), error: None }
     }
 
@@ -1041,6 +1048,12 @@ impl RpcDaemon {
                         transfer_limit_bytes,
                         sync_limit_bytes,
                     ));
+                }
+                {
+                    let mut peers = self.peers.lock().expect("peers mutex poisoned");
+                    if let Some(existing) = peers.get_mut(record.peer.as_str()) {
+                        existing.sync_schedule_reason = None;
+                    }
                 }
                 let mut cumulative_size = 24usize;
                 let mut propagation_handled = 0usize;
@@ -2308,19 +2321,21 @@ pub(super) fn peer_acceptance_rate_for_reporting(
     }
 }
 
-fn peer_sync_status_state(peer: &PeerRecord) -> (u32, &'static str) {
+fn peer_sync_schedule(peer: &PeerRecord) -> (&'static str, Option<&str>) {
     if peer_sync_backoff_active(now_i64(), peer.next_sync_attempt) {
-        (PEER_SYNC_STATE_BACKOFF, "backoff")
+        ("backoff", Some("backoff"))
+    } else if let Some(reason) = peer.sync_schedule_reason.as_deref() {
+        (peer_sync_schedule_state(reason), Some(reason))
     } else {
-        (PEER_SYNC_STATE_IDLE, "idle")
+        ("idle", None)
     }
 }
 
-fn peer_sync_postponed_state(postpone_reason: &str) -> (u32, &'static str) {
+fn peer_sync_schedule_state(postpone_reason: &str) -> &'static str {
     if postpone_reason == "backoff" {
-        (PEER_SYNC_STATE_BACKOFF, "backoff")
+        "backoff"
     } else {
-        (PEER_SYNC_STATE_POSTPONED, "postponed")
+        "postponed"
     }
 }
 
