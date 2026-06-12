@@ -1096,6 +1096,35 @@ import sys
 print(json.loads(sys.argv[1])["propagation"])
 PY
 )"
+
+  "${PYTHON_BIN}" - <<'PY' "${PY_SENDER_RNS_DIR}" "${PY_GET_IDENTITY}"
+import sys
+import time
+
+import LXMF
+import RNS
+
+rns_config, identity_path = sys.argv[1:3]
+RNS.Reticulum(configdir=rns_config, loglevel=0)
+identity = RNS.Identity.from_file(identity_path)
+if identity is None:
+    raise SystemExit(f"failed to load identity from {identity_path}")
+
+propagation = RNS.Destination(
+    identity,
+    RNS.Destination.IN,
+    RNS.Destination.SINGLE,
+    LXMF.APP_NAME,
+    "propagation",
+)
+propagation.announce()
+time.sleep(1.0)
+PY
+  if ! wait_for_rust_peer "${PY_GET_PROPAGATION_HASH}"; then
+    echo "Rust lxmd did not admit Python get-haves peer before payload ingest" >&2
+    exit 1
+  fi
+
   GET_HAVES_PAYLOAD_HEX="$("${PYTHON_BIN}" - <<'PY' "${PY_GET_DELIVERY_HASH}"
 import sys
 
@@ -1117,6 +1146,19 @@ import sys
 print(json.loads(sys.argv[1])["transient_id"])
 PY
 )"
+
+  PEER_ROW="$(rpc_call "${RUST_RPC_ADDR}" "list_peers" "null")"
+  "${PYTHON_BIN}" - <<'PY' "${PEER_ROW}" "${PY_GET_PROPAGATION_HASH}" "${GET_HAVES_TRANSIENT}"
+import json
+import sys
+
+peers_raw, peer_hash, transient_id = sys.argv[1:4]
+rows = json.loads(peers_raw)["peers"]
+row = next((row for row in rows if row.get("peer") == peer_hash), None)
+assert row is not None, rows
+messages = row["messages"]
+assert transient_id in messages["unhandled_ids"], row
+PY
 
   "${PYTHON_BIN}" - <<'PY' \
     "${PY_SENDER_RNS_DIR}" \
