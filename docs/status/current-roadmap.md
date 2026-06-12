@@ -104,6 +104,10 @@ The project is best described by capability level:
 - Remote fetch and download bridge failures now mirror existing payload-backed
   live queue marks into active peer record snapshots before returning the
   failure, preserving restart/export retry state for already queued relay work.
+- Remote fetch and download bridge failures from an already active source peer
+  now also update that peer's failure backoff and publish the failed peer-sync
+  event, so retry scheduling and observability match the preserved queue
+  snapshot.
 - Remote fetch and download access-denied bridge errors now preserve the
   propagation `no_access` lifecycle state instead of collapsing the denial into
   generic failure, while retaining the bridge error text for operators.
@@ -150,7 +154,9 @@ The project is best described by capability level:
 - Inbound reticulumd `/pn/peer/sync` and `/pn/peer/unpeer` control commands now
   resolve stored peer IDs case-insensitively before dispatching to daemon RPCs,
   so binary peer-control requests do not report not-found for restored or
-  configured peers whose status rows preserve a different hex presentation.
+  configured peers whose status rows preserve a different hex presentation;
+  `/pn/peer/sync` also checks hidden unpeered peer records so operator-triggered
+  rejoin paths can reach the daemon reactivation state machine.
 - Payload-backed peer queue snapshot mirroring resolves stored peer IDs
   case-insensitively before reading live queue marks, so restart/export state
   preserves queued work when callers use Python-style peer case variants.
@@ -408,7 +414,10 @@ The project is best described by capability level:
 - The live Python compatibility gate now includes a Python-origin propagation
   `/get` haves-only case against Rust `reticulumd`, covering `true`
   acknowledgement, Rust-side payload purge, and suppression of retryable
-  unhandled peer queue state for the declaring propagation peer.
+  unhandled peer queue state for the declaring propagation peer, plus a
+  Python-origin `/offer` case covering partial wanted-ID responses,
+  repeated-offer throttling, and source-peer completed marks before broad
+  peer/router interop is claimed.
 
 ## Remaining Release Blockers
 
@@ -427,8 +436,8 @@ the implemented subset.
      newly completed peer/router row.
    - Propagation remote-status/control now has dispatchable compatibility cases
      for Python control-path discovery, Rust-to-Python remote status, and
-     Python-origin `/get` haves acknowledgement; broader peer/router row
-     coverage still needs additional live scenarios.
+     Python-origin `/get` haves acknowledgement and `/offer` side effects;
+     broader peer/router row coverage still needs additional live scenarios.
    - Capture release evidence for Sideband, MeshChatX, and Columba before making
      client-specific compatibility claims.
 4. **Reticulum behavioral breadth**

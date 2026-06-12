@@ -143,6 +143,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Remote fetch and download bridge failures mirror existing payload-backed
   queue marks into active peer record snapshots before returning the failure,
   so already queued relay work remains visible after restart/export.
+- Remote fetch and download bridge failures from an already active source peer
+  also update that peer's failure backoff and publish the failed peer-sync
+  event, aligning retry scheduling and observability with the preserved queue
+  snapshot.
 - Remote fetch and download access-denied bridge failures follow the remote
   peer-sync denial path for the source peer, clearing local peering and queued
   propagation marks instead of preserving denied relay work for retry, while
@@ -194,7 +198,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Inbound reticulumd `/pn/peer/sync` and `/pn/peer/unpeer` control commands
   resolve stored peer IDs case-insensitively before dispatching to daemon RPCs,
   so binary peer-control requests do not report not-found for restored or
-  configured peers whose status rows preserve a different hex presentation.
+  configured peers whose status rows preserve a different hex presentation;
+  `/pn/peer/sync` also checks hidden unpeered peer records so operator-triggered
+  rejoin paths can reach the daemon reactivation state machine.
 - Payload-backed peer queue snapshot mirroring resolves stored peer IDs
   case-insensitively before reading live queue marks, preserving queued
   restart/export work when callers use Python-style peer case variants.
@@ -267,6 +273,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   propagation destination as the Rust outbound propagation node, covering mixed
   propagation-node discovery and selection before broader store-and-forward
   claims are made.
+- The live Rust/Python propagation-control gate now also exercises a
+  Python-origin `/offer` against Rust `reticulumd`, proving partial wanted-ID
+  responses, repeated-offer throttling, and source-peer completed marks across
+  the live link request path.
 - Duplicate inbound peer propagation payloads still fan out to active relay
   peers while keeping the source peer handled, so a known local payload does
   not bypass relay queue creation.
@@ -485,7 +495,8 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   and `propagation_get_haves_python_to_rust` cases that validate Python
   discovery of the Rust propagation-control path, Rust-to-Python
   propagation-node status, and Python-origin haves-only `/get` side effects when
-  the Python harness environment is available.
+  the Python harness environment is available, plus
+  `propagation_offer_python_to_rust` for Python-origin offer side effects.
 - Focused daemon/RPC tests cover delivery modes, propagation offers, peer
   maintenance, queue policy, source accounting, stamps, tickets, receipts, and
   cancellation.
