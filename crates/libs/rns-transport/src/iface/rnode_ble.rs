@@ -822,6 +822,14 @@ impl NativeRnodeBleKissInterface {
                 match timeout(Duration::from_millis(100), runtime.poll_notification_events()).await
                 {
                     Ok(Ok(notification)) => {
+                        if !notification.packets.is_empty() || !notification.commands.is_empty() {
+                            log::debug!(
+                                "RNode BLE notification: {} data packets, {} commands iface={}",
+                                notification.packets.len(),
+                                notification.commands.len(),
+                                label
+                            );
+                        }
                         if let Some(monitor) = command_monitor.as_mut() {
                             if let Err(err) = monitor.accept_notification(&notification) {
                                 log::warn!(
@@ -871,10 +879,16 @@ impl NativeRnodeBleKissInterface {
                                         .await;
                                 }
                                 Err(err) => {
+                                    let hex: String = payload
+                                        .iter()
+                                        .map(|b| format!("{:02x}", b))
+                                        .collect::<Vec<_>>()
+                                        .join(" ");
                                     log::warn!(
-                                        "RNode BLE rx packet deserialize failed len={} err={:?} iface={}",
+                                        "RNode BLE rx packet deserialize failed len={} err={:?} bytes=[{}] iface={}",
                                         payload.len(),
                                         err,
+                                        hex,
                                         label
                                     );
                                 }
