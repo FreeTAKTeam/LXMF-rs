@@ -135,6 +135,10 @@ The project is best described by capability level:
 - Successful remote fetch and download now clear stale retry backoff on the
   active source peer when newly accepted payloads prove the source recovered,
   so later maintenance does not keep postponing a healthy replication peer.
+- Successful remote fetch and download now also refresh the active source
+  peer's sync-attempt timestamp while clearing stale backoff, so restart and
+  status views reflect the successful recovery attempt instead of an obsolete
+  failed transfer time.
 - Remote peer-sync backoff postponements now mirror existing payload-backed live
   queue marks into active peer record snapshots before returning, so
   restart/export state preserves queued retry work even when sync is deferred.

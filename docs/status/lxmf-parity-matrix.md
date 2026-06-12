@@ -414,6 +414,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Successful remote fetch/download imports clear stale retry backoff on an
   active source peer after newly accepted payloads, so recovered propagation
   sources are not left postponed by an earlier failed transfer attempt.
+- Successful remote fetch/download imports also refresh the active source
+  peer's sync-attempt timestamp while clearing stale backoff, so status and
+  restart/export views do not retain an obsolete failed transfer attempt time.
 - Link-based remote propagation downloads classify listed transient IDs before
   payload retrieval, report locally known IDs as `/get` haves, and use the
   purge-only `[nil, haves]` request when every listed ID is already local, so
