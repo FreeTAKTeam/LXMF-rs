@@ -154,6 +154,27 @@ pub(super) async fn wait_for_link_request_response(
     request_id: [u8; 16],
     timeout: Duration,
 ) -> Result<rmpv::Value, String> {
+    wait_for_link_request_response_with_terminal_policy(
+        data_rx,
+        resource_rx,
+        expected_destination,
+        expected_link_id,
+        request_id,
+        false,
+        timeout,
+    )
+    .await
+}
+
+pub(super) async fn wait_for_link_request_response_with_terminal_policy(
+    data_rx: &mut tokio::sync::broadcast::Receiver<rns_transport::transport::ReceivedData>,
+    resource_rx: &mut tokio::sync::broadcast::Receiver<rns_transport::resource::ResourceEvent>,
+    expected_destination: AddressHash,
+    expected_link_id: AddressHash,
+    request_id: [u8; 16],
+    fail_on_terminal_resource_events: bool,
+    timeout: Duration,
+) -> Result<rmpv::Value, String> {
     let deadline = tokio::time::Instant::now() + timeout;
     loop {
         let now = tokio::time::Instant::now();
@@ -205,14 +226,18 @@ pub(super) async fn wait_for_link_request_response(
                                 }
                             }
                             rns_transport::resource::ResourceEventKind::OutboundFailed => {
-                                return Err(
-                                    "propagation control resource transfer failed".to_string()
-                                );
+                                if fail_on_terminal_resource_events {
+                                    return Err(
+                                        "propagation control resource transfer failed".to_string()
+                                    );
+                                }
                             }
                             rns_transport::resource::ResourceEventKind::OutboundCancelled => {
-                                return Err(
-                                    "propagation control resource transfer cancelled".to_string()
-                                );
+                                if fail_on_terminal_resource_events {
+                                    return Err(
+                                        "propagation control resource transfer cancelled".to_string()
+                                    );
+                                }
                             }
                             rns_transport::resource::ResourceEventKind::OutboundComplete
                             | rns_transport::resource::ResourceEventKind::Progress(_) => {}
@@ -280,12 +305,13 @@ mod tests {
             })
             .expect("send terminal resource event");
 
-        wait_for_link_request_response(
+        wait_for_link_request_response_with_terminal_policy(
             &mut data_rx,
             &mut resource_rx,
             destination,
             link_id,
             request_id,
+            true,
             Duration::from_millis(50),
         )
         .await
@@ -304,5 +330,55 @@ mod tests {
         let err = resource_terminal_error(ResourceEventKind::OutboundCancelled).await;
 
         assert_eq!(err, "propagation control resource transfer cancelled");
+    }
+
+    #[tokio::test]
+    async fn wait_for_link_request_response_ignores_terminal_resource_without_policy() {
+        let (data_tx, mut data_rx) = tokio::sync::broadcast::channel(4);
+        let (resource_tx, mut resource_rx) = tokio::sync::broadcast::channel(4);
+        let destination = AddressHash::new([0x11; 16]);
+        let link_id = AddressHash::new([0x22; 16]);
+        let stale_request_id = [0x33; 16];
+        let request_id = [0x44; 16];
+        let response_payload = rmpv::Value::Array(vec![
+            rmpv::Value::Binary(request_id.to_vec()),
+            rmpv::Value::String("ok".into()),
+        ]);
+        let response_frame = rmp_serde::to_vec(&response_payload).expect("encode response frame");
+
+        resource_tx
+            .send(ResourceEvent {
+                hash: Hash::new_from_slice(b"stale propagation control resource"),
+                link_id,
+                kind: ResourceEventKind::OutboundFailed,
+            })
+            .expect("send stale terminal resource event");
+        assert!(data_tx
+            .send(rns_transport::transport::ReceivedData {
+                destination: link_id,
+                data: PacketDataBuffer::new_from_slice(&response_frame),
+                payload_mode: rns_transport::transport::ReceivedPayloadMode::FullWire,
+                ratchet_used: false,
+                context: Some(PacketContext::None),
+                request_id: None,
+                hops: None,
+                interface: None,
+            })
+            .is_ok());
+
+        let response = wait_for_link_request_response_with_terminal_policy(
+            &mut data_rx,
+            &mut resource_rx,
+            destination,
+            link_id,
+            request_id,
+            false,
+            Duration::from_millis(50),
+        )
+        .await
+        .expect("stale terminal event should not fail the current request");
+
+        assert_eq!(response.as_str(), Some("ok"));
+        assert_ne!(stale_request_id, request_id);
     }
 }
