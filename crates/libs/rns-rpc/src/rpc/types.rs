@@ -498,6 +498,7 @@ pub struct RpcDaemon {
     interfaces: Mutex<Vec<InterfaceRecord>>,
     delivery_policy: Mutex<DeliveryPolicy>,
     propagation_state: Mutex<PropagationState>,
+    remote_unpeer_failure_state: Mutex<Option<PropagationState>>,
     propagation_payloads: Mutex<HashMap<String, String>>,
     throttled_propagation_peers: Mutex<HashMap<String, i64>>,
     outbound_propagation_node: Mutex<Option<String>>,

@@ -33,6 +33,48 @@ struct RemotePropagationImportSummary {
 }
 
 impl RpcDaemon {
+    fn record_remote_unpeer_failure(&self, error: String) {
+        let timestamp = now_i64();
+        let mut state = self.propagation_state.lock().expect("propagation mutex poisoned");
+        state.sync_state = PR_FAILED;
+        state.state_name = "failed".to_string();
+        state.sync_progress = 0.0;
+        state.last_sync_started = Some(timestamp);
+        state.last_sync_completed = None;
+        state.last_sync_error = Some(error);
+        let snapshot = state.clone();
+        *self.remote_unpeer_failure_state.lock().expect("remote unpeer failure mutex poisoned") =
+            Some(snapshot.clone());
+        drop(state);
+        self.update_daemon_status_snapshot(|status| {
+            status.propagation = snapshot;
+        });
+    }
+
+    fn clear_matching_remote_unpeer_failure(&self, prior_failure: Option<PropagationState>) {
+        let Some(prior_failure) = prior_failure else {
+            return;
+        };
+        let mut state = self.propagation_state.lock().expect("propagation mutex poisoned");
+        let mut recorded_failure =
+            self.remote_unpeer_failure_state.lock().expect("remote unpeer failure mutex poisoned");
+        if recorded_failure.as_ref() != Some(&prior_failure) || *state != prior_failure {
+            return;
+        }
+        *recorded_failure = None;
+        drop(recorded_failure);
+        state.sync_state = PR_IDLE;
+        state.state_name = propagation_sync_state_name(PR_IDLE).to_string();
+        state.sync_progress = 0.0;
+        state.last_sync_completed = Some(now_i64());
+        state.last_sync_error = None;
+        let snapshot = state.clone();
+        drop(state);
+        self.update_daemon_status_snapshot(|status| {
+            status.propagation = snapshot;
+        });
+    }
+
     fn publish_failed_remote_peer_sync_event(
         &self,
         peer_id: &str,
@@ -2540,6 +2582,11 @@ impl RpcDaemon {
                         .map(|record| record.peer.clone())
                         .unwrap_or_else(|| peer_id.to_string())
                 };
+                let prior_unpeer_failure = self
+                    .remote_unpeer_failure_state
+                    .lock()
+                    .expect("remote unpeer failure mutex poisoned")
+                    .clone();
                 let bridge = match self
                     .remote_control_bridge
                     .lock()
@@ -2548,16 +2595,9 @@ impl RpcDaemon {
                 {
                     Some(bridge) => bridge,
                     None => {
-                        let timestamp = now_i64();
-                        self.update_propagation_sync_state(|state| {
-                            state.sync_state = PR_FAILED;
-                            state.state_name = "failed".to_string();
-                            state.sync_progress = 0.0;
-                            state.last_sync_started = Some(timestamp);
-                            state.last_sync_completed = None;
-                            state.last_sync_error =
-                                Some("remote control bridge unavailable".to_string());
-                        });
+                        self.record_remote_unpeer_failure(
+                            "remote control bridge unavailable".to_string(),
+                        );
                         let _ =
                             self.record_payload_backed_peer_queue_snapshot(snapshot_peer.as_str());
                         return Err(std::io::Error::other("remote control bridge unavailable"));
@@ -2572,28 +2612,13 @@ impl RpcDaemon {
                 ) {
                     Ok(result) => result,
                     Err(err) => {
-                        let timestamp = now_i64();
-                        let error = err.to_string();
-                        self.update_propagation_sync_state(|state| {
-                            state.sync_state = PR_FAILED;
-                            state.state_name = "failed".to_string();
-                            state.sync_progress = 0.0;
-                            state.last_sync_started = Some(timestamp);
-                            state.last_sync_completed = None;
-                            state.last_sync_error = Some(error);
-                        });
+                        self.record_remote_unpeer_failure(err.to_string());
                         let _ =
                             self.record_payload_backed_peer_queue_snapshot(snapshot_peer.as_str());
                         return Err(err);
                     }
                 };
-                self.update_propagation_sync_state(|state| {
-                    state.sync_state = PR_IDLE;
-                    state.state_name = propagation_sync_state_name(PR_IDLE).to_string();
-                    state.sync_progress = 0.0;
-                    state.last_sync_completed = Some(now_i64());
-                    state.last_sync_error = None;
-                });
+                self.clear_matching_remote_unpeer_failure(prior_unpeer_failure);
                 let cleanup = self.unpeer_local_state(peer_id)?;
                 let offered = cleanup.messages["offered"].as_u64().unwrap_or(0);
                 let outgoing = cleanup.messages["outgoing"].as_u64().unwrap_or(0);

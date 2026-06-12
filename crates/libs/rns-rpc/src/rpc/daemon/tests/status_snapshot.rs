@@ -18648,6 +18648,58 @@ fn successful_propagation_remote_unpeer_clears_stale_lifecycle_failure() {
 }
 
 #[test]
+fn successful_propagation_remote_unpeer_preserves_newer_active_lifecycle() {
+    let daemon = RpcDaemon::test_instance();
+    daemon.set_remote_control_bridge(Arc::new(TestRemoteControlBridge {
+        result: Err(std::io::ErrorKind::TimedOut),
+    }));
+    let peer = "peer-remote-unpeer-active";
+    daemon
+        .handle_rpc(rpc_request(84, "peer_sync", json!({ "peer": peer })))
+        .expect("peer sync");
+    daemon
+        .handle_rpc(rpc_request(
+            85,
+            "propagation_remote_unpeer",
+            json!({
+                "remote": "remote-node",
+                "peer": peer,
+            }),
+        ))
+        .expect_err("first remote unpeer should fail");
+
+    daemon.update_propagation_sync_state(|state| {
+        state.sync_state = 0x04;
+        state.state_name = "syncing".to_string();
+        state.sync_progress = 0.25;
+        state.last_sync_started = Some(1_700_001_234);
+        state.last_sync_completed = None;
+        state.last_sync_error = None;
+    });
+    daemon.set_remote_control_bridge(Arc::new(TestRemoteControlBridge {
+        result: Ok(json!({})),
+    }));
+    daemon
+        .handle_rpc(rpc_request(
+            86,
+            "propagation_remote_unpeer",
+            json!({
+                "remote": "remote-node",
+                "peer": peer,
+            }),
+        ))
+        .expect("successful remote unpeer");
+
+    let propagation = daemon.current_propagation_state();
+    assert_eq!(propagation.sync_state, 0x04);
+    assert_eq!(propagation.state_name, "syncing");
+    assert_eq!(propagation.sync_progress, 0.25);
+    assert_eq!(propagation.last_sync_started, Some(1_700_001_234));
+    assert_eq!(propagation.last_sync_completed, None);
+    assert_eq!(propagation.last_sync_error, None);
+}
+
+#[test]
 fn propagation_remote_unpeer_reports_existing_peer_case_insensitively_like_python() {
     let daemon = RpcDaemon::test_instance();
     daemon.set_remote_control_bridge(Arc::new(TestRemoteControlBridge {

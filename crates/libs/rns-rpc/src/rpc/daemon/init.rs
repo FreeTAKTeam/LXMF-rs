@@ -348,6 +348,7 @@ impl RpcDaemon {
             interfaces: Mutex::new(Vec::new()),
             delivery_policy: Mutex::new(DeliveryPolicy::default()),
             propagation_state: Mutex::new(PropagationState::default()),
+            remote_unpeer_failure_state: Mutex::new(None),
             propagation_payloads: Mutex::new(HashMap::new()),
             throttled_propagation_peers: Mutex::new(HashMap::new()),
             outbound_propagation_node: Mutex::new(None),
