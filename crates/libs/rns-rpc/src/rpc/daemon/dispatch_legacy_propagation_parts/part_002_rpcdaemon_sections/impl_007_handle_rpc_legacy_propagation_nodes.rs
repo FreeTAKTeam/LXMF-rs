@@ -57,6 +57,18 @@ impl RpcDaemon {
                     false
                 };
                 let has_payload = normalized_payload.is_some();
+                if normalized_payload
+                    .as_ref()
+                    .and_then(|(_transient_id, payload_hex)| hex::decode(payload_hex).ok())
+                    .is_some_and(|payload| {
+                        self.propagation_payload_destination_is_ignored(&payload)
+                    })
+                {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::PermissionDenied,
+                        "ignored propagation destination",
+                    ));
+                }
                 let payload_bytes = normalized_payload
                     .as_ref()
                     .and_then(|(_transient_id, payload_hex)| hex::decode(payload_hex).ok())

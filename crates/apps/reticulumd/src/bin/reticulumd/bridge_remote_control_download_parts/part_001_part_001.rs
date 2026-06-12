@@ -52,12 +52,12 @@ pub(super) async fn propagation_download_request(
     )
     .await?;
 
-    let mut data_rx = transport.received_data_events();
-    let mut resource_rx = transport.resource_events();
     let list_payload = build_link_request_payload(
         "/get",
         rmpv::Value::Array(vec![rmpv::Value::Nil, rmpv::Value::Nil]),
     )?;
+    let mut data_rx = transport.received_data_events();
+    let mut resource_rx = transport.resource_events();
     let list_request_id =
         send_link_context_packet(transport, &link, PacketContext::Request, list_payload.as_slice())
             .await?
@@ -102,6 +102,8 @@ pub(super) async fn propagation_download_request(
         haves.as_slice(),
         transfer_limit_kb,
     )?;
+    let mut data_rx = transport.received_data_events();
+    let mut resource_rx = transport.resource_events();
     let get_request_id =
         send_link_context_packet(transport, &link, PacketContext::Request, get_payload.as_slice())
             .await?

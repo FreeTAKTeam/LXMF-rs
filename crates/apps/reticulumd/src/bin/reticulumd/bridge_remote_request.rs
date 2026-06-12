@@ -1,6 +1,7 @@
 use super::remote_control_link::{
     build_link_identify_payload, build_link_request_payload, open_refreshed_remote_link,
-    resolve_remote_identity, send_link_context_packet, wait_for_link_request_response,
+    resolve_remote_identity, send_link_context_packet,
+    wait_for_link_request_response_with_terminal_policy,
 };
 use super::*;
 
@@ -52,12 +53,13 @@ pub(super) async fn remote_control_request(
     .await?
     .ok_or_else(|| std::io::Error::other("missing remote control request id"))?;
 
-    let response = wait_for_link_request_response(
+    let response = wait_for_link_request_response_with_terminal_policy(
         &mut data_rx,
         &mut resource_rx,
         destination.desc.address_hash,
         link_id,
         request_id,
+        true,
         timeout,
     )
     .await?;

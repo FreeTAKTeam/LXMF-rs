@@ -445,6 +445,9 @@ The project is best described by capability level:
   after peering-key and transient-ID validation, so repeated replication offers
   from the same peer take the throttled response path even when the peer changes
   the offered transient-ID set.
+- Propagation ingest now rejects payloads for ignored destinations before
+  storing or queueing them, enforcing local replication policy before relay
+  state is created.
 - Inbound propagation message-get `haves` completion now applies only to
   locally known payloads or existing peer queue marks, preventing unknown haves
   from suppressing future propagation work for the declaring peer.
@@ -455,6 +458,9 @@ The project is best described by capability level:
   Python-origin `/offer` case covering partial wanted-ID responses,
   repeated-offer throttling, and source-peer completed marks before broad
   peer/router interop is claimed.
+- Link-based propagation-control waits now treat matching resource transfer
+  failure and cancellation as terminal remote fetch/download outcomes instead
+  of waiting for the generic response timeout.
 - The live Python compatibility gate now also splits out a Python-origin
   `/offer` peer-queue lifecycle case, covering post-sync handled IDs,
   absence of retryable missing IDs, and cleared sync backoff after the Rust

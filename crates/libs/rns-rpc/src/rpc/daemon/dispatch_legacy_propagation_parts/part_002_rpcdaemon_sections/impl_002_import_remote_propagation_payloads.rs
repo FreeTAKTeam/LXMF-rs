@@ -363,6 +363,12 @@ impl RpcDaemon {
         };
         let has_payload = normalized.is_some();
         if let Some((_canonical_transient_id, payload)) = normalized {
+            if self.propagation_payload_destination_is_ignored(payload) {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "ignored propagation destination",
+                ));
+            }
             let payload_hex = hex::encode(payload);
             self.store_propagation_payload_hex(transient_id.as_str(), payload_hex.as_str())?;
             self.queue_propagation_entry_for_active_peers(transient_id.as_str())?;

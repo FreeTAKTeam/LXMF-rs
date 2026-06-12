@@ -340,9 +340,11 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   haves cannot pre-complete future propagation work for that peer.
 - Link-based remote propagation downloads wait for the final haves
   acknowledgement response after imported or duplicate payloads are reported,
-  and also after all-known listings are acknowledged with purge-only haves, so
-  node-side rejection or timeout is surfaced instead of reporting a completed
-  download before remote cleanup is confirmed.
+  so node-side rejection or timeout is surfaced instead of reporting a
+  completed download before remote cleanup is confirmed.
+- Link-based propagation-control waits now surface matching resource transfer
+  failure or cancellation immediately, so remote fetch/download callers see the
+  terminal transfer state instead of a generic response timeout.
 - Inbound propagation message-get purge-only requests return the Python-style
   boolean success response after haves are applied, and payload purge cleanup
   preserves completed peer accounting for other peers while removing stale
@@ -508,6 +510,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   peering-key and transient-ID validation, so repeated replication offers from
   the same peer return the throttled response even when the peer changes the
   offered transient-ID set.
+- Propagation ingest rejects payloads for ignored destinations before storing
+  or queueing them, so local replication policy is enforced before relay state
+  is created.
 - Local peer offer-error responses now expose failed peer-sync state fields at
   both the top-level event/result and nested propagation result while keeping
   retryable queue marks intact.

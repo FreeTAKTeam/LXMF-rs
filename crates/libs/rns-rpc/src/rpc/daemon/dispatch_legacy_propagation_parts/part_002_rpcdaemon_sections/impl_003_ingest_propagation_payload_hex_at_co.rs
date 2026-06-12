@@ -48,6 +48,15 @@ impl RpcDaemon {
         };
 
         if let Some((_canonical_transient_id, payload_hex)) = normalized_payload {
+            if hex::decode(payload_hex.as_str())
+                .ok()
+                .is_some_and(|payload| self.propagation_payload_destination_is_ignored(&payload))
+            {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "ignored propagation destination",
+                ));
+            }
             self.store_propagation_payload_hex(transient_id.as_str(), payload_hex.as_str())?;
             self.queue_propagation_entry_for_active_peers(transient_id.as_str())?;
             self.propagation_payloads
@@ -87,6 +96,19 @@ impl RpcDaemon {
         self.ingest_propagation_payload_hex_at_cost(payload_hex.as_str(), transient_id, stamp_cost)
     }
 
+    fn propagation_payload_destination_is_ignored(&self, payload: &[u8]) -> bool {
+        if payload.len() < 16 {
+            return false;
+        }
+        let destination_hex = hex::encode(&payload[..16]);
+        self.delivery_policy
+            .lock()
+            .expect("policy mutex poisoned")
+            .ignored_destinations
+            .iter()
+            .any(|destination| destination_hex.eq_ignore_ascii_case(destination.trim()))
+    }
+
     pub fn ingest_peer_propagation_payload_bytes_at_cost(
         &self,
         payload: &[u8],
@@ -115,6 +137,12 @@ impl RpcDaemon {
         }
         let transient_id =
             transient_id.map(normalize_propagation_transient_key).unwrap_or(canonical_transient_id);
+        if self.propagation_payload_destination_is_ignored(normalized_payload) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "ignored propagation destination",
+            ));
+        }
         let payload_hex = hex::encode(normalized_payload);
         self.store_propagation_payload_hex(transient_id.as_str(), payload_hex.as_str())?;
         let source_active_peer = self
@@ -173,6 +201,12 @@ impl RpcDaemon {
         }
         let transient_id =
             transient_id.map(normalize_propagation_transient_key).unwrap_or(canonical_transient_id);
+        if self.propagation_payload_destination_is_ignored(normalized_payload) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "ignored propagation destination",
+            ));
+        }
         let payload_hex = hex::encode(normalized_payload);
         self.store_propagation_payload_hex(transient_id.as_str(), payload_hex.as_str())?;
         self.queue_propagation_entry_from_source_for_active_peers(
