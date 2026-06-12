@@ -247,6 +247,9 @@ The project is best described by capability level:
 - Peer sync queue creation also records newly queued existing propagation IDs in
   the peer record snapshot, so postponed syncs can restart/export with the same
   unhandled queue visible in live status.
+- Local peer offer-error responses now publish failed peer-sync state fields at
+  both the top-level peer event and nested propagation result while preserving
+  the retryable peer queue, improving parity with the peer sync state machine.
 - Inbound and remotely imported propagation payloads update active peer record
   snapshots when they queue new unhandled IDs or mark source peers handled,
   keeping restart/export state aligned with live queue fan-out and source

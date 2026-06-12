@@ -8595,6 +8595,8 @@ fn peer_sync_retryable_offer_responses_preserve_peer_queue_like_python() {
 
         assert_eq!(result["peer"].as_str(), Some(peer_id.as_str()));
         assert_eq!(result["synced"].as_bool(), Some(false));
+        assert_eq!(result["state"].as_u64(), Some(0xfe));
+        assert_eq!(result["state_name"].as_str(), Some("failed"));
         assert_eq!(result["reason"].as_str(), Some(reason));
         assert_eq!(result["offer_response"].as_u64(), Some(offer_response));
         assert_eq!(result["alive"].as_bool(), Some(true));
@@ -8603,6 +8605,8 @@ fn peer_sync_retryable_offer_responses_preserve_peer_queue_like_python() {
         assert_eq!(result["acceptance_rate"].as_f64(), Some(0.6));
         assert_eq!(result["propagation"]["handled"].as_u64(), Some(0));
         assert_eq!(result["propagation"]["postponed"].as_bool(), Some(false));
+        assert_eq!(result["propagation"]["state"].as_u64(), Some(0xfe));
+        assert_eq!(result["propagation"]["state_name"].as_str(), Some("failed"));
         assert_eq!(
             daemon
                 .store
@@ -8649,11 +8653,15 @@ fn peer_sync_retryable_offer_responses_preserve_peer_queue_like_python() {
             .expect("retryable peer sync event");
         assert_eq!(event.payload["peer"].as_str(), Some(peer_id.as_str()));
         assert_eq!(event.payload["synced"].as_bool(), Some(false));
+        assert_eq!(event.payload["state"].as_u64(), Some(0xfe));
+        assert_eq!(event.payload["state_name"].as_str(), Some("failed"));
         assert_eq!(event.payload["reason"].as_str(), Some(reason));
         assert_eq!(event.payload["offer_response"].as_u64(), Some(offer_response));
         assert_eq!(event.payload["alive"].as_bool(), Some(true));
         assert_eq!(event.payload["sync_backoff"].as_u64(), Some(0));
         assert_eq!(event.payload["next_sync_attempt"].as_i64(), Some(0));
+        assert_eq!(event.payload["propagation"]["state"].as_u64(), Some(0xfe));
+        assert_eq!(event.payload["propagation"]["state_name"].as_str(), Some("failed"));
     }
 }
 

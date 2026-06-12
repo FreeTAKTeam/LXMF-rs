@@ -308,6 +308,8 @@ impl RpcDaemon {
         let propagation_sync = json!({
             "synced": false,
             "postponed": false,
+            "state": PEER_SYNC_STATE_FAILED,
+            "state_name": "failed",
             "reason": reason,
             "offer_response": offer_response,
             "handled": 0,
@@ -335,7 +337,7 @@ impl RpcDaemon {
             "target_stamp_cost": peer.propagation_stamp_cost,
             "stamp_cost_flexibility": peer.propagation_stamp_cost_flexibility,
         });
-        let payload = json!({
+        let mut payload = json!({
             "peer": &peer.peer,
             "peer_type": peer_type_value,
             "type": peer_status_type,
@@ -378,6 +380,8 @@ impl RpcDaemon {
             "messages": messages,
             "propagation": propagation_sync,
         });
+        payload["state"] = json!(PEER_SYNC_STATE_FAILED);
+        payload["state_name"] = json!("failed");
         self.publish_event(RpcEvent { event_type: "peer_sync".into(), payload: payload.clone() });
 
         RpcResponse { id: request_id, result: Some(payload), error: None }
