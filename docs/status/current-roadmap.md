@@ -281,6 +281,9 @@ The project is best described by capability level:
   haves as received/completed work for the requesting propagation peer after
   purge, so reintroduced payloads are not queued back to peers that already
   declared them.
+- Retained propagation payload listings now filter IDs already completed by
+  the requesting peer, so `retain_synced_on_node` keeps payloads available for
+  other peers without re-offering them to the peer that declared the haves.
 - Link-based remote propagation downloads now wait for the final haves
   acknowledgement response after imported or duplicate payloads are reported,
   and also after all-known listings are acknowledged with purge-only haves, so
@@ -330,6 +333,9 @@ The project is best described by capability level:
 - Link-based remote downloads now wait for the propagation node's `/get` haves
   acknowledgement and surface peer/control errors, so failed remote cleanup does
   not look like a completed replication drain.
+- Link-based remote propagation control waits now surface authenticated
+  link-close peer/control signals immediately, so denied or closed remote
+  fetch/download/sync requests do not sit until the request timeout.
 - Remote fetch/download acknowledgements now use canonical propagation
   transient IDs for stamped payloads, so `/get` haves purge the peer's offered
   queue entry instead of acknowledging the stamped payload bytes under a
@@ -446,6 +452,10 @@ The project is best described by capability level:
 - Link-based propagation-control waits now treat matching resource transfer
   failure and cancellation as terminal remote fetch/download outcomes instead
   of waiting for the generic response timeout.
+- The live Python compatibility gate now also splits out a Python-origin
+  `/offer` peer-queue lifecycle case, covering post-sync handled IDs,
+  absence of retryable missing IDs, and cleared sync backoff after the Rust
+  peer row is created by transfer.
 
 ## Remaining Release Blockers
 

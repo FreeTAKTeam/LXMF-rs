@@ -67,6 +67,12 @@ fn python_compat_propagation_offer_python_to_rust() {
 
 #[test]
 #[ignore = "requires live Python compatibility harness environment"]
+fn python_compat_propagation_offer_queue_python_to_rust() {
+    run_case("propagation_offer_queue_python_to_rust");
+}
+
+#[test]
+#[ignore = "requires live Python compatibility harness environment"]
 fn python_compat_link_liveness_rust_to_python() {
     run_case("link_liveness_rust_to_python");
 }

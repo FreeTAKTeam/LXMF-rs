@@ -25,7 +25,22 @@ pub(super) fn handle_message_get_request(
     if entries.first().is_some_and(rmpv::Value::is_nil)
         && entries.get(1).is_some_and(rmpv::Value::is_nil)
     {
-        let available = daemon.list_propagation_payloads_for_destination(&remote_delivery_hash);
+        let mut available = Vec::new();
+        for (transient_id, size) in
+            daemon.list_propagation_payloads_for_destination(&remote_delivery_hash)
+        {
+            let transient_id_hex = hex::encode(transient_id.as_slice());
+            let completed = match daemon.has_peer_completed_propagation_mark(
+                remote_propagation_hash.as_str(),
+                transient_id_hex.as_str(),
+            ) {
+                Ok(completed) => completed,
+                Err(_) => return ControlResponse::Code(error_no_access),
+            };
+            if !completed {
+                available.push((transient_id, size));
+            }
+        }
         if !available.is_empty()
             && daemon.record_propagation_offer_peer(remote_propagation_hash.as_str()).is_err()
         {
@@ -1750,7 +1765,10 @@ mod tests {
         let ControlResponse::Rmpv(rmpv::Value::Array(available)) = list_response else {
             panic!("expected retained available transient id list");
         };
-        assert_eq!(available, vec![rmpv::Value::Binary(have.to_vec())]);
+        assert!(
+            available.is_empty(),
+            "retained haves should not be listed back to the peer that completed them"
+        );
     }
 
     #[test]

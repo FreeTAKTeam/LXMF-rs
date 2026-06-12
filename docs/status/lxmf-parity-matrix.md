@@ -298,6 +298,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   Python-origin `/offer` against Rust `reticulumd`, proving partial wanted-ID
   responses, repeated-offer throttling, and source-peer completed marks across
   the live link request path.
+- The live Rust/Python propagation-control gate now also splits out a
+  Python-origin `/offer` peer-queue lifecycle case, proving post-sync handled
+  IDs, no retryable missing-ID queue state, and cleared sync backoff after
+  transfer creates the Rust peer row.
 - Duplicate inbound peer propagation payloads still fan out to active relay
   peers while keeping the source peer handled, so a known local payload does
   not bypass relay queue creation.
@@ -345,7 +349,8 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   already completed them.
 - Propagation nodes honor `retain_synced_on_node` during message-get haves
   handling: requesting peers are still marked completed, while retained payloads
-  remain stored and queued for peers that have not completed them.
+  remain stored and queued for peers that have not completed them; retained
+  payload listings now filter IDs already completed by the requesting peer.
 - Inbound propagation message-get requests mark wanted payloads skipped by the
   peer's transfer budget as transfer-limited completed work after peer
   admission, so oversized fetch attempts do not remain retryable queue entries.
@@ -393,6 +398,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Link-based remote downloads wait for the propagation node's `/get` haves
   acknowledgement and propagate peer/control errors, so failed remote cleanup is
   not reported as a completed replication drain.
+- Link-based remote propagation control waits surface authenticated link-close
+  peer/control signals immediately, so denied or closed remote fetch/download/sync
+  requests fail on the signal instead of waiting for the request timeout.
 - Remote fetch/download acknowledgements use canonical propagation transient
   IDs for stamped payloads, so `/get` haves clear the peer's offered queue entry
   instead of reporting the stamped payload bytes under a different hash.

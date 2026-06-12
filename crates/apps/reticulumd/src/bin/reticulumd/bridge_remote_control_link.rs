@@ -153,7 +153,7 @@ pub(super) async fn wait_for_link_request_response(
     expected_link_id: AddressHash,
     request_id: [u8; 16],
     timeout: Duration,
-) -> Result<rmpv::Value, String> {
+) -> Result<rmpv::Value, std::io::Error> {
     wait_for_link_request_response_with_terminal_policy(
         data_rx,
         resource_rx,
@@ -174,18 +174,24 @@ pub(super) async fn wait_for_link_request_response_with_terminal_policy(
     request_id: [u8; 16],
     fail_on_terminal_resource_events: bool,
     timeout: Duration,
-) -> Result<rmpv::Value, String> {
+) -> Result<rmpv::Value, std::io::Error> {
     let deadline = tokio::time::Instant::now() + timeout;
     loop {
         let now = tokio::time::Instant::now();
         if now >= deadline {
-            return Err("propagation control response timed out".to_string());
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "propagation control response timed out",
+            ));
         }
         let remaining = deadline.saturating_duration_since(now);
 
         tokio::select! {
             _ = tokio::time::sleep(remaining) => {
-                return Err("propagation control response timed out".to_string());
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    "propagation control response timed out",
+                ));
             }
             result = data_rx.recv() => {
                 match result {
@@ -194,6 +200,9 @@ pub(super) async fn wait_for_link_request_response_with_terminal_policy(
                             && event.destination != expected_destination
                         {
                             continue;
+                        }
+                        if let Some(error) = link_close_signal_error(&event) {
+                            return Err(error);
                         }
                         if let Some((response_id, payload)) =
                             parse_link_response_frame(event.data.as_slice())
@@ -205,7 +214,10 @@ pub(super) async fn wait_for_link_request_response_with_terminal_policy(
                     }
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
                     Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                        return Err("propagation control response channel closed".to_string());
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::BrokenPipe,
+                            "propagation control response channel closed",
+                        ));
                     }
                 }
             }
@@ -227,16 +239,18 @@ pub(super) async fn wait_for_link_request_response_with_terminal_policy(
                             }
                             rns_transport::resource::ResourceEventKind::OutboundFailed => {
                                 if fail_on_terminal_resource_events {
-                                    return Err(
-                                        "propagation control resource transfer failed".to_string()
-                                    );
+                                    return Err(std::io::Error::new(
+                                        std::io::ErrorKind::BrokenPipe,
+                                        "propagation control resource transfer failed",
+                                    ));
                                 }
                             }
                             rns_transport::resource::ResourceEventKind::OutboundCancelled => {
                                 if fail_on_terminal_resource_events {
-                                    return Err(
-                                        "propagation control resource transfer cancelled".to_string()
-                                    );
+                                    return Err(std::io::Error::new(
+                                        std::io::ErrorKind::BrokenPipe,
+                                        "propagation control resource transfer cancelled",
+                                    ));
                                 }
                             }
                             rns_transport::resource::ResourceEventKind::OutboundComplete
@@ -245,12 +259,43 @@ pub(super) async fn wait_for_link_request_response_with_terminal_policy(
                     }
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
                     Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                        return Err("propagation control resource channel closed".to_string());
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::BrokenPipe,
+                            "propagation control resource channel closed",
+                        ));
                     }
                 }
             }
         }
     }
+}
+
+fn link_close_signal_error(
+    event: &rns_transport::transport::ReceivedData,
+) -> Option<std::io::Error> {
+    if event.context != Some(PacketContext::LinkClose) {
+        return None;
+    }
+    let value = rmp_serde::from_slice::<rmpv::Value>(event.data.as_slice()).ok()?;
+    let rmpv::Value::Array(entries) = value else {
+        return Some(std::io::Error::new(
+            std::io::ErrorKind::ConnectionAborted,
+            "propagation control link closed",
+        ));
+    };
+    let Some(signal) = entries.first() else {
+        return Some(std::io::Error::new(
+            std::io::ErrorKind::ConnectionAborted,
+            "propagation control link closed",
+        ));
+    };
+    let Some(error) = super::remote_control::response_code_error(signal) else {
+        return Some(std::io::Error::new(
+            std::io::ErrorKind::ConnectionAborted,
+            "propagation control link closed",
+        ));
+    };
+    Some(error)
 }
 
 fn parse_link_response_frame(bytes: &[u8]) -> Option<([u8; 16], rmpv::Value)> {
@@ -288,9 +333,11 @@ fn value_to_bytes(value: &rmpv::Value) -> Option<Vec<u8>> {
 mod tests {
     use super::*;
     use rns_transport::hash::Hash;
+    use rns_transport::packet::PacketDataBuffer;
     use rns_transport::resource::{ResourceEvent, ResourceEventKind};
+    use rns_transport::transport::{ReceivedData, ReceivedPayloadMode};
 
-    async fn resource_terminal_error(kind: ResourceEventKind) -> String {
+    async fn resource_terminal_error(kind: ResourceEventKind) -> std::io::Error {
         let (_data_tx, mut data_rx) = tokio::sync::broadcast::channel(4);
         let (resource_tx, mut resource_rx) = tokio::sync::broadcast::channel(4);
         let destination = AddressHash::new([0x11; 16]);
@@ -322,14 +369,16 @@ mod tests {
     async fn wait_for_link_request_response_fails_on_resource_failure() {
         let err = resource_terminal_error(ResourceEventKind::OutboundFailed).await;
 
-        assert_eq!(err, "propagation control resource transfer failed");
+        assert_eq!(err.kind(), std::io::ErrorKind::BrokenPipe);
+        assert_eq!(err.to_string(), "propagation control resource transfer failed");
     }
 
     #[tokio::test]
     async fn wait_for_link_request_response_fails_on_resource_cancel() {
         let err = resource_terminal_error(ResourceEventKind::OutboundCancelled).await;
 
-        assert_eq!(err, "propagation control resource transfer cancelled");
+        assert_eq!(err.kind(), std::io::ErrorKind::BrokenPipe);
+        assert_eq!(err.to_string(), "propagation control resource transfer cancelled");
     }
 
     #[tokio::test]
@@ -354,10 +403,10 @@ mod tests {
             })
             .expect("send stale terminal resource event");
         assert!(data_tx
-            .send(rns_transport::transport::ReceivedData {
+            .send(ReceivedData {
                 destination: link_id,
                 data: PacketDataBuffer::new_from_slice(&response_frame),
-                payload_mode: rns_transport::transport::ReceivedPayloadMode::FullWire,
+                payload_mode: ReceivedPayloadMode::FullWire,
                 ratchet_used: false,
                 context: Some(PacketContext::None),
                 request_id: None,
@@ -380,5 +429,45 @@ mod tests {
 
         assert_eq!(response.as_str(), Some("ok"));
         assert_ne!(stale_request_id, request_id);
+    }
+
+    #[tokio::test]
+    async fn wait_for_link_request_response_fails_on_link_close_signal() {
+        let (data_tx, mut data_rx) = tokio::sync::broadcast::channel(4);
+        let (_resource_tx, mut resource_rx) = tokio::sync::broadcast::channel::<ResourceEvent>(4);
+        let expected_destination = AddressHash::new_from_slice(&[0x11; 16]);
+        let expected_link_id = AddressHash::new_from_slice(&[0x22; 16]);
+        let request_id = [0x33; 16];
+        let signal_payload = rmp_serde::to_vec(&vec![0xf1u8]).expect("signal msgpack");
+
+        assert!(
+            data_tx
+                .send(ReceivedData {
+                    destination: expected_link_id,
+                    data: PacketDataBuffer::new_from_slice(&signal_payload),
+                    payload_mode: ReceivedPayloadMode::FullWire,
+                    ratchet_used: false,
+                    context: Some(PacketContext::LinkClose),
+                    request_id: None,
+                    hops: None,
+                    interface: None,
+                })
+                .is_ok(),
+            "send link-close signal"
+        );
+
+        let err = wait_for_link_request_response(
+            &mut data_rx,
+            &mut resource_rx,
+            expected_destination,
+            expected_link_id,
+            request_id,
+            Duration::from_secs(10),
+        )
+        .await
+        .expect_err("link-close signal should fail the active request");
+
+        assert_eq!(err.kind(), std::io::ErrorKind::PermissionDenied);
+        assert!(err.to_string().contains("propagation node denied access"));
     }
 }
