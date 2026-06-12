@@ -428,6 +428,10 @@ The project is best described by capability level:
   Python-origin `/offer` case covering partial wanted-ID responses,
   repeated-offer throttling, and source-peer completed marks before broad
   peer/router interop is claimed.
+- The live Python compatibility gate now also splits out a Python-origin
+  `/offer` peer-queue lifecycle case, covering post-sync handled IDs,
+  absence of retryable missing IDs, and cleared sync backoff after the Rust
+  peer row is created by transfer.
 
 ## Remaining Release Blockers
 

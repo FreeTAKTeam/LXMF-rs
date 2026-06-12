@@ -287,6 +287,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   Python-origin `/offer` against Rust `reticulumd`, proving partial wanted-ID
   responses, repeated-offer throttling, and source-peer completed marks across
   the live link request path.
+- The live Rust/Python propagation-control gate now also splits out a
+  Python-origin `/offer` peer-queue lifecycle case, proving post-sync handled
+  IDs, no retryable missing-ID queue state, and cleared sync backoff after
+  transfer creates the Rust peer row.
 - Duplicate inbound peer propagation payloads still fan out to active relay
   peers while keeping the source peer handled, so a known local payload does
   not bypass relay queue creation.
