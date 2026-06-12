@@ -1,4 +1,4 @@
-include!("inbound_control_parts/part_001_part_001.rs");
+include!("inbound_control_parts/module_prelude.rs");
 
 #[path = "inbound_control_peer.rs"]
 mod peer_commands;
@@ -12,6 +12,6 @@ mod response;
 #[path = "inbound_control_status.rs"]
 mod status;
 
-include!("inbound_control_parts/part_002_part_002.rs");
+include!("inbound_control_parts/module_core.rs");
 
-include!("inbound_control_parts/part_003_test_validated_peer_links.rs");
+include!("inbound_control_parts/test_validated_peer_links.rs");

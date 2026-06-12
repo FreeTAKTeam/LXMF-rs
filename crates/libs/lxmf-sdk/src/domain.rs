@@ -1,3 +1,3 @@
-include!("domain_parts/part_001_s.rs");
+include!("domain_parts/support_types.rs");
 
-include!("domain_parts/part_002_workflowpeerreadyrequest.rs");
+include!("domain_parts/workflowpeerreadyrequest.rs");

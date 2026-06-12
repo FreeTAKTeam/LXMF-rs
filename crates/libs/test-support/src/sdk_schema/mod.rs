@@ -1,4 +1,4 @@
-include!("mod_parts/part_001_part_001.rs");
+include!("mod_parts/module_prelude.rs");
 
 mod cookbook_tests;
 
@@ -12,6 +12,6 @@ mod rpc_core_tests;
 
 mod rpc_domain_tests;
 
-include!("mod_parts/part_002_workspace_root.rs");
+include!("mod_parts/workspace_root.rs");
 
-include!("mod_parts/part_003_validate_openrpc_document.rs");
+include!("mod_parts/validate_openrpc_document.rs");

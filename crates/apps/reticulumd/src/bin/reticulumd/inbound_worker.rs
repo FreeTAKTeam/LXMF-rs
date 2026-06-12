@@ -1,4 +1,4 @@
-include!("inbound_worker_parts/part_001_part_001.rs");
+include!("inbound_worker_parts/module_prelude.rs");
 
 #[path = "inbound_control.rs"]
 mod control;
@@ -12,6 +12,6 @@ mod propagation;
 #[path = "inbound_routing.rs"]
 mod routing;
 
-include!("inbound_worker_parts/part_002_part_002.rs");
+include!("inbound_worker_parts/module_core.rs");
 
-include!("inbound_worker_parts/part_003_inbound_propagation_payload_is_inges.rs");
+include!("inbound_worker_parts/inbound_propagation_payload_is_inges.rs");

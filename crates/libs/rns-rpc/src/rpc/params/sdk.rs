@@ -1,3 +1,3 @@
-include!("sdk_parts/part_001_sdktopicrecord.rs");
+include!("sdk_parts/sdktopicrecord.rs");
 
-include!("sdk_parts/part_002_sdkidentityexportv2params.rs");
+include!("sdk_parts/sdkidentityexportv2params.rs");

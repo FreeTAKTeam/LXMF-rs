@@ -1,3 +1,3 @@
-include!("config_parts/part_001_part_001.rs");
+include!("config_parts/module_prelude.rs");
 
-include!("config_parts/part_002_sdkconfig.rs");
+include!("config_parts/sdkconfig.rs");

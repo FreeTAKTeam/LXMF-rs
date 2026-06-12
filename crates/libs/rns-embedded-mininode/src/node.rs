@@ -1,3 +1,3 @@
-include!("node_parts/part_001_part_001.rs");
+include!("node_parts/module_prelude.rs");
 
-include!("node_parts/part_002_testrng.rs");
+include!("node_parts/testrng.rs");

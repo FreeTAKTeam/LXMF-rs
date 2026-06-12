@@ -1,7 +1,7 @@
-include!("lora_parts/part_001_part_001.rs");
+include!("lora_parts/module_prelude.rs");
 
-include!("lora_parts/part_002_rnoderadiostatus.rs");
+include!("lora_parts/rnoderadiostatus.rs");
 
-include!("lora_parts/part_003_lorainterface.rs");
+include!("lora_parts/lorainterface.rs");
 
-include!("lora_parts/part_004_part_004.rs");
+include!("lora_parts/module_extra.rs");

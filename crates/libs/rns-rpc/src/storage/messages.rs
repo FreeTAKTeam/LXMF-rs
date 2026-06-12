@@ -1,5 +1,5 @@
-include!("messages_parts/part_001_part_001.rs");
+include!("messages_parts/module_prelude.rs");
 
-include!("messages_parts/part_002_messagesstore.rs");
+include!("messages_parts/messagesstore.rs");
 
-include!("messages_parts/part_003_outbound_message.rs");
+include!("messages_parts/outbound_message.rs");

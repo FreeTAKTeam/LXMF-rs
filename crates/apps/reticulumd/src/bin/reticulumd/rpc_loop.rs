@@ -1,8 +1,8 @@
-include!("rpc_loop_parts/part_001_part_001.rs");
+include!("rpc_loop_parts/module_prelude.rs");
 
 #[path = "rpc_access_log.rs"]
 mod rpc_access_log;
 
-include!("rpc_loop_parts/part_002_part_002.rs");
+include!("rpc_loop_parts/module_core.rs");
 
-include!("rpc_loop_parts/part_003_read_http_request.rs");
+include!("rpc_loop_parts/read_http_request.rs");

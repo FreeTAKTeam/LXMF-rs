@@ -1,7 +1,7 @@
-include!("node_parts/part_001_ants.rs");
+include!("node_parts/ants.rs");
 
-include!("node_parts/part_002_eventsubscription.rs");
+include!("node_parts/eventsubscription.rs");
 
-include!("node_parts/part_003_next_poll_result_locked.rs");
+include!("node_parts/next_poll_result_locked.rs");
 
-include!("node_parts/part_004_config.rs");
+include!("node_parts/config.rs");

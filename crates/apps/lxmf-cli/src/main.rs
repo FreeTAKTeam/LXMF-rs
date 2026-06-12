@@ -2,10 +2,10 @@
 
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 
-include!("main_parts/part_001_part_001.rs");
+include!("main_parts/module_prelude.rs");
 
 mod version;
 
-include!("main_parts/part_002_cli.rs");
+include!("main_parts/cli.rs");
 
-include!("main_parts/part_003_build_start_request.rs");
+include!("main_parts/build_start_request.rs");

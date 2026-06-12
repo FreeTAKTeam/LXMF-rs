@@ -1,3 +1,3 @@
-include!("status_snapshot_propagation_ingest_parts/part_001_propagation_counters_track_ingest_an.rs");
+include!("status_snapshot_propagation_ingest_parts/propagation_counters_track_ingest_an.rs");
 
-include!("status_snapshot_propagation_ingest_parts/part_002_propagation_destination_fetch_dedupl.rs");
+include!("status_snapshot_propagation_ingest_parts/propagation_destination_fetch_dedupl.rs");

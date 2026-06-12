@@ -1,5 +1,5 @@
-include!("links_parts/part_001_part_001.rs");
+include!("links_parts/module_prelude.rs");
 
-include!("links_parts/part_002_transport.rs");
+include!("links_parts/transport.rs");
 
-include!("links_parts/part_003_transportchannel.rs");
+include!("links_parts/transportchannel.rs");

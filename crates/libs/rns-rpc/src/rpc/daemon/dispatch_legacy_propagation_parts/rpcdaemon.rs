@@ -1,0 +1,10 @@
+include!("rpcdaemon_sections/record_remote_unpeer_failure.rs");
+include!("rpcdaemon_sections/import_remote_propagation_payloads.rs");
+include!("rpcdaemon_sections/ingest_propagation_payload_hex_at_co.rs");
+include!("rpcdaemon_sections/select_propagation_payloads_for_dest.rs");
+include!("rpcdaemon_sections/handle_rpc_legacy_propagation.rs");
+include!("rpcdaemon_sections/handle_rpc_legacy_propagation_policy.rs");
+include!("rpcdaemon_sections/handle_rpc_legacy_propagation_nodes.rs");
+include!("rpcdaemon_sections/handle_rpc_legacy_remote_sync.rs");
+include!("rpcdaemon_sections/handle_rpc_legacy_remote_download_fetch.rs");
+include!("rpcdaemon_sections/handle_rpc_legacy_remote_unpeer.rs");

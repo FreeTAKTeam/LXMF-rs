@@ -20,14 +20,14 @@ pub mod udp;
 
 pub mod vrn76_kiss_ble;
 
-include!("iface_parts/part_001_part_001.rs");
+include!("iface_parts/module_prelude.rs");
 
 include!("iface_types.rs");
 
-include!("iface_parts/part_002_txmessagetype.rs");
+include!("iface_parts/txmessagetype.rs");
 
 include!("iface_runtime.rs");
 
-include!("iface_parts/part_003_interfacemanager.rs");
+include!("iface_parts/interfacemanager.rs");
 
 include!("iface_tests.rs");

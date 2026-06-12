@@ -2,7 +2,7 @@
 
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 
-include!("rnx_parts/part_001_part_001.rs");
+include!("rnx_parts/module_prelude.rs");
 
 #[path = "rnx/ble.rs"]
 mod ble;
@@ -34,6 +34,6 @@ mod tcp;
 #[path = "rnx/tcp_session.rs"]
 mod tcp_session;
 
-include!("rnx_parts/part_002_cli.rs");
+include!("rnx_parts/cli.rs");
 
-include!("rnx_parts/part_003_run.rs");
+include!("rnx_parts/run.rs");

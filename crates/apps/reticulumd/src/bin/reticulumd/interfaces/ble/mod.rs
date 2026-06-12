@@ -1,4 +1,4 @@
-include!("mod_parts/part_001_part_001.rs");
+include!("mod_parts/module_prelude.rs");
 
 #[cfg(target_os = "android")]
 mod android;
@@ -15,6 +15,6 @@ mod native;
 #[cfg(target_os = "windows")]
 mod windows;
 
-include!("mod_parts/part_002_ble_startup_max_retry_attempts.rs");
+include!("mod_parts/ble_startup_max_retry_attempts.rs");
 
-include!("mod_parts/part_003_plannedfailure.rs");
+include!("mod_parts/plannedfailure.rs");

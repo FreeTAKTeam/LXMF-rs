@@ -1,4 +1,4 @@
-include!("lxmd_parts/part_001_part_001.rs");
+include!("lxmd_parts/module_prelude.rs");
 
 #[path = "lxmd/config.rs"]
 mod config;
@@ -27,6 +27,6 @@ mod types;
 #[path = "../version.rs"]
 mod version;
 
-include!("lxmd_parts/part_002_s.rs");
+include!("lxmd_parts/support_types.rs");
 
-include!("lxmd_parts/part_003_compatibility_notes_only_emitted_for.rs");
+include!("lxmd_parts/compatibility_notes_only_emitted_for.rs");

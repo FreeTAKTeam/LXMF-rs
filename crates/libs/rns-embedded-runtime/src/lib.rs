@@ -11,6 +11,6 @@ pub mod node;
 #[cfg(feature = "std")]
 pub mod tcp;
 
-include!("lib_parts/part_001_part_001.rs");
+include!("lib_parts/module_prelude.rs");
 
-include!("lib_parts/part_002_config.rs");
+include!("lib_parts/config.rs");

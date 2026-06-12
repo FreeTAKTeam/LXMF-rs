@@ -1,3 +1,3 @@
-include!("inbound_control_propagation_parts/part_001_part_001.rs");
+include!("inbound_control_propagation_parts/module_prelude.rs");
 
-include!("inbound_control_propagation_parts/part_002_test_validated_peer_links.rs");
+include!("inbound_control_propagation_parts/test_validated_peer_links.rs");
