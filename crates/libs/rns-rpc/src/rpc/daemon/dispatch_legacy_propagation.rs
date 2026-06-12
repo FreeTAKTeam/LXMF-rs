@@ -2582,8 +2582,16 @@ impl RpcDaemon {
                             state.last_sync_completed = None;
                             state.last_sync_error = Some(error);
                         });
-                        let _ =
-                            self.record_payload_backed_peer_queue_snapshot(snapshot_peer.as_str());
+                        if is_remote_access_denied_error(&err) {
+                            self.break_remote_peer_sync_peering_on_denied_access(
+                                snapshot_peer.as_str(),
+                                remote_id.as_str(),
+                                err.to_string().as_str(),
+                            )?;
+                        } else {
+                            let _ = self
+                                .record_payload_backed_peer_queue_snapshot(snapshot_peer.as_str());
+                        }
                         return Err(err);
                     }
                 };

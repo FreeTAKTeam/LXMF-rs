@@ -148,6 +148,9 @@ The project is best described by capability level:
   case-insensitive peer requests, so restart/export state preserves queued retry
   work when peering teardown fails; these failed attempts also mark the
   propagation lifecycle failed instead of leaving stale idle/completed state.
+- Access-denied remote unpeer failures now follow the same local peering break
+  path as access-denied remote sync/fetch/download, clearing local peer and
+  propagation queue state instead of leaving denied teardown work retryable.
 - Successful remote unpeer now also uses the stored peer ID case for the bridge
   call and nested bridge result when callers use a case-variant peer request,
   keeping remote teardown identity aligned with local queue cleanup.
