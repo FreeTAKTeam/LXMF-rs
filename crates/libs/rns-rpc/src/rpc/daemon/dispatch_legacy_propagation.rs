@@ -1091,6 +1091,20 @@ impl RpcDaemon {
             .map_err(std::io::Error::other)
     }
 
+    pub fn has_peer_propagation_mark(
+        &self,
+        peer: &str,
+        transient_id: &str,
+    ) -> Result<bool, std::io::Error> {
+        let peer_key = self.peer_store_key_or_input(peer);
+        self.store
+            .peer_propagation_mark_exists(
+                peer_key.as_str(),
+                normalize_propagation_transient_key(transient_id).as_str(),
+            )
+            .map_err(std::io::Error::other)
+    }
+
     pub fn record_peer_transferred_propagation(
         &self,
         peer: &str,

@@ -326,6 +326,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   IDs even when local payload rows are already absent, while still honoring
   `retain_synced_on_node` payload-retention behavior so completed peers are
   marked without regressing local payload reuse.
+- Inbound propagation message-get `haves` completion is now constrained to
+  locally known payloads or existing peer queue marks, so arbitrary unknown
+  haves cannot pre-complete future propagation work for that peer.
 - Link-based remote propagation downloads wait for the final haves
   acknowledgement response after imported or duplicate payloads are reported,
   so node-side rejection or timeout is surfaced instead of reporting a

@@ -431,6 +431,9 @@ The project is best described by capability level:
   after peering-key and transient-ID validation, so repeated replication offers
   from the same peer take the throttled response path even when the peer changes
   the offered transient-ID set.
+- Inbound propagation message-get `haves` completion now applies only to
+  locally known payloads or existing peer queue marks, preventing unknown haves
+  from suppressing future propagation work for the declaring peer.
 - The live Python compatibility gate now includes a Python-origin propagation
   `/get` haves-only case against Rust `reticulumd`, covering `true`
   acknowledgement, Rust-side payload purge, and suppression of retryable
