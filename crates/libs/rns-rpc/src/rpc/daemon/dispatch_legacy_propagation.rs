@@ -178,6 +178,9 @@ impl RpcDaemon {
             "messages": messages,
             "propagation": propagation,
         });
+        let failure_kind = remote_peer_sync_failure_kind(error, postpone_reason);
+        payload["failure_kind"] = json!(failure_kind);
+        payload["propagation"]["failure_kind"] = json!(failure_kind);
         payload["state"] = json!(super::dispatch_legacy_messages::PEER_SYNC_STATE_FAILED);
         payload["state_name"] = json!("failed");
         if let Some(reason) = postpone_reason {
@@ -2799,6 +2802,27 @@ fn is_retryable_remote_peer_sync_error(err: &std::io::Error) -> bool {
             | (std::io::ErrorKind::NotFound, "propagation peer not found")
             | (std::io::ErrorKind::TimedOut, "propagation peer timed out")
     )
+}
+
+fn remote_peer_sync_failure_kind(error: &str, postpone_reason: Option<&str>) -> &'static str {
+    if postpone_reason == Some("throttled") {
+        return "throttled";
+    }
+    if error.starts_with("invalid remote propagation payload hex") {
+        return "invalid_data";
+    }
+    match error {
+        "propagation node requires identity" => "no_identity",
+        "propagation peer invalid peering key" => "invalid_key",
+        "propagation peer invalid stamp" => "invalid_stamp",
+        "propagation node rejected the request" | "unexpected propagation control response" => {
+            "invalid_data"
+        }
+        "propagation peer not found" => "not_found",
+        "propagation peer timed out" | "remote sync failed" => "timeout",
+        "propagation node denied access" => "no_access",
+        _ => "failed",
+    }
 }
 
 fn normalize_propagation_transient_key(transient_id: &str) -> String {

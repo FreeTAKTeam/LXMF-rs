@@ -77,6 +77,10 @@ The project is best described by capability level:
   bridge-unavailable remote peer-sync paths now perform the same payload-backed
   live and restored queue snapshot mirroring before reporting the failed sync,
   keeping local and remote retry/export behavior aligned.
+- Remote peer-sync failure events now include a structured `failure_kind` on
+  the top-level event and nested propagation payload, preserving observer-level
+  distinctions for throttling, identity, key, data, stamp, not-found, timeout,
+  access-denied, and generic failures without changing retry behavior.
 - Payload-backed remote failure snapshots now replace stale serialized peer
   queue IDs with live payload-backed marks, so bridge failures do not preserve
   obsolete restart/export work after the underlying payload is gone.
