@@ -1240,6 +1240,70 @@ fn peer_propagation_ingest_marks_inactive_source_received_for_later_activation_l
 }
 
 #[test]
+fn accepted_peer_propagation_relay_rejects_ignored_destination_before_queueing() {
+    let daemon = RpcDaemon::test_instance();
+    let source_peer = "peer-ignored-source";
+    let relay_peer = "peer-ignored-relay";
+    let destination = [0x9a_u8; 16];
+    let destination_hex = hex::encode(destination);
+    let mut payload = destination.to_vec();
+    payload.extend_from_slice(b" ignored accepted peer payload");
+    let transient_id = hex::encode(Sha256::digest(&payload));
+
+    daemon
+        .handle_rpc(rpc_request(29, "peer_sync", json!({ "peer": source_peer })))
+        .expect("seed source peer");
+    daemon
+        .handle_rpc(rpc_request(30, "peer_sync", json!({ "peer": relay_peer })))
+        .expect("seed relay peer");
+    daemon
+        .handle_rpc(rpc_request(
+            31,
+            "set_delivery_policy",
+            json!({
+                "ignored_destinations": [destination_hex],
+            }),
+        ))
+        .expect("set ignored destination policy");
+
+    let err = daemon
+        .relay_accepted_peer_propagation_payload_bytes_at_cost(
+            payload.as_slice(),
+            Some(transient_id.as_str()),
+            0,
+            source_peer,
+        )
+        .expect_err("ignored accepted peer payload must be rejected");
+    assert!(err.to_string().contains("ignored propagation destination"));
+    assert_eq!(err.kind(), std::io::ErrorKind::PermissionDenied);
+
+    assert!(
+        daemon
+            .store
+            .get_propagation_entry(transient_id.as_str())
+            .expect("load propagation entry")
+            .is_none(),
+        "ignored accepted peer payload must not be stored"
+    );
+    assert!(
+        daemon
+            .store
+            .list_peer_unhandled_propagation(relay_peer)
+            .expect("relay unhandled")
+            .is_empty(),
+        "ignored accepted peer payload must not be queued to relay peers"
+    );
+    assert!(
+        daemon
+            .store
+            .list_peer_handled_propagation_ids(source_peer)
+            .expect("source handled ids")
+            .is_empty(),
+        "ignored accepted peer payload must not mark the source handled"
+    );
+}
+
+#[test]
 fn message_storage_stats_track_count_and_bytes() {
     let daemon = RpcDaemon::test_instance();
     daemon
