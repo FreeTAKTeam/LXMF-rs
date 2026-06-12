@@ -379,6 +379,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Link-based remote downloads wait for the propagation node's `/get` haves
   acknowledgement and propagate peer/control errors, so failed remote cleanup is
   not reported as a completed replication drain.
+- Link-based remote propagation control waits surface authenticated link-close
+  peer/control signals immediately, so denied or closed remote fetch/download/sync
+  requests fail on the signal instead of waiting for the request timeout.
 - Remote fetch/download acknowledgements use canonical propagation transient
   IDs for stamped payloads, so `/get` haves clear the peer's offered queue entry
   instead of reporting the stamped payload bytes under a different hash.

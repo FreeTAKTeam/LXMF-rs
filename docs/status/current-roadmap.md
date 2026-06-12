@@ -315,6 +315,9 @@ The project is best described by capability level:
 - Link-based remote downloads now wait for the propagation node's `/get` haves
   acknowledgement and surface peer/control errors, so failed remote cleanup does
   not look like a completed replication drain.
+- Link-based remote propagation control waits now surface authenticated
+  link-close peer/control signals immediately, so denied or closed remote
+  fetch/download/sync requests do not sit until the request timeout.
 - Remote fetch/download acknowledgements now use canonical propagation
   transient IDs for stamped payloads, so `/get` haves purge the peer's offered
   queue entry instead of acknowledging the stamped payload bytes under a
