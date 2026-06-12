@@ -195,6 +195,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Successful remote unpeer uses the stored peer ID case for the bridge call and
   nested bridge result when callers supply a case-variant peer request, keeping
   remote teardown identity aligned with local queue cleanup.
+- Successful remote unpeer clears stale propagation lifecycle failures and
+  error text left by earlier teardown attempts, so peer removal is not reported
+  alongside an obsolete failed control state.
 - Inbound reticulumd `/pn/peer/sync` and `/pn/peer/unpeer` control commands
   resolve stored peer IDs case-insensitively before dispatching to daemon RPCs,
   so binary peer-control requests do not report not-found for restored or

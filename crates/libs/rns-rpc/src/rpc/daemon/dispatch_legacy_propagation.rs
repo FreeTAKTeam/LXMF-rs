@@ -2587,6 +2587,13 @@ impl RpcDaemon {
                         return Err(err);
                     }
                 };
+                self.update_propagation_sync_state(|state| {
+                    state.sync_state = PR_IDLE;
+                    state.state_name = propagation_sync_state_name(PR_IDLE).to_string();
+                    state.sync_progress = 0.0;
+                    state.last_sync_completed = Some(now_i64());
+                    state.last_sync_error = None;
+                });
                 let cleanup = self.unpeer_local_state(peer_id)?;
                 let offered = cleanup.messages["offered"].as_u64().unwrap_or(0);
                 let outgoing = cleanup.messages["outgoing"].as_u64().unwrap_or(0);

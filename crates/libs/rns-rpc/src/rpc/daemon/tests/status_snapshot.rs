@@ -18579,6 +18579,75 @@ fn propagation_remote_unpeer_publishes_peer_removed_event() {
 }
 
 #[test]
+fn successful_propagation_remote_unpeer_clears_stale_lifecycle_failure() {
+    let daemon = RpcDaemon::test_instance();
+    daemon.set_remote_control_bridge(Arc::new(TestRemoteControlBridge {
+        result: Err(std::io::ErrorKind::TimedOut),
+    }));
+    daemon
+        .handle_rpc(rpc_request(79, "peer_sync", json!({ "peer": "peer-remote-unpeer-stale" })))
+        .expect("peer sync");
+
+    let err = daemon
+        .handle_rpc(rpc_request(
+            80,
+            "propagation_remote_unpeer",
+            json!({
+                "remote": "remote-node",
+                "peer": "peer-remote-unpeer-stale",
+            }),
+        ))
+        .expect_err("first remote unpeer should fail");
+    assert_eq!(err.kind(), std::io::ErrorKind::TimedOut);
+
+    let failed_status = daemon
+        .handle_rpc(RpcRequest {
+            id: 81,
+            method: "propagation_status".to_string(),
+            params: None,
+        })
+        .expect("failed propagation status")
+        .result
+        .expect("failed propagation status result");
+    assert_eq!(failed_status["propagation"]["sync_state"].as_u64(), Some(0xfe));
+    assert_eq!(failed_status["propagation"]["state_name"].as_str(), Some("failed"));
+    assert_eq!(
+        failed_status["propagation"]["last_sync_error"].as_str(),
+        Some("remote unpeer failed")
+    );
+
+    daemon.set_remote_control_bridge(Arc::new(TestRemoteControlBridge {
+        result: Ok(json!({})),
+    }));
+    daemon
+        .handle_rpc(rpc_request(
+            82,
+            "propagation_remote_unpeer",
+            json!({
+                "remote": "remote-node",
+                "peer": "peer-remote-unpeer-stale",
+            }),
+        ))
+        .expect("successful remote unpeer");
+
+    let status = daemon
+        .handle_rpc(RpcRequest {
+            id: 83,
+            method: "propagation_status".to_string(),
+            params: None,
+        })
+        .expect("propagation status")
+        .result
+        .expect("propagation status result");
+    let propagation = &status["propagation"];
+    assert_eq!(propagation["sync_state"].as_u64(), Some(0x00));
+    assert_eq!(propagation["state_name"].as_str(), Some("idle"));
+    assert_eq!(propagation["sync_progress"].as_f64(), Some(0.0));
+    assert!(propagation["last_sync_completed"].as_i64().is_some());
+    assert_eq!(propagation["last_sync_error"], JsonValue::Null);
+}
+
+#[test]
 fn propagation_remote_unpeer_reports_existing_peer_case_insensitively_like_python() {
     let daemon = RpcDaemon::test_instance();
     daemon.set_remote_control_bridge(Arc::new(TestRemoteControlBridge {

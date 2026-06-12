@@ -151,6 +151,9 @@ The project is best described by capability level:
 - Successful remote unpeer now also uses the stored peer ID case for the bridge
   call and nested bridge result when callers use a case-variant peer request,
   keeping remote teardown identity aligned with local queue cleanup.
+- Successful remote unpeer now clears stale propagation lifecycle failures and
+  error text left by earlier teardown attempts, so status reflects completed
+  peer removal instead of a prior failed control operation.
 - Inbound reticulumd `/pn/peer/sync` and `/pn/peer/unpeer` control commands now
   resolve stored peer IDs case-insensitively before dispatching to daemon RPCs,
   so binary peer-control requests do not report not-found for restored or
