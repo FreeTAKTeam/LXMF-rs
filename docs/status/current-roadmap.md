@@ -120,6 +120,9 @@ The project is best described by capability level:
   live queue marks into active peer record snapshots after applying imports, so
   restart/export state preserves queued retry work even when the remote
   transfer succeeds without consuming those local queued offers.
+- Successful remote fetch and download now clear stale retry backoff on the
+  active source peer when newly accepted payloads prove the source recovered,
+  so later maintenance does not keep postponing a healthy replication peer.
 - Remote peer-sync backoff postponements now mirror existing payload-backed live
   queue marks into active peer record snapshots before returning, so
   restart/export state preserves queued retry work even when sync is deferred.

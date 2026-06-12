@@ -372,6 +372,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   counts and receive bytes only for payload IDs not already marked received
   from that source, while still replaying known payloads into relay queues when
   their live marks were cleared.
+- Successful remote fetch/download imports clear stale retry backoff on an
+  active source peer after newly accepted payloads, so recovered propagation
+  sources are not left postponed by an earlier failed transfer attempt.
 - Link-based remote propagation downloads classify listed transient IDs before
   payload retrieval, report locally known IDs as `/get` haves, and use the
   purge-only `[nil, haves]` request when every listed ID is already local, so
