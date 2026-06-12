@@ -737,6 +737,12 @@ impl NativeRnodeBleKissInterface {
             let mut command_monitor = rnode_config
                 .map(|config| RnodeBleCommandMonitor::new(config, startup_response_timeout));
             let mut radio_config_sent = command_monitor.is_none();
+            log::info!(
+                "RNode BLE session ready: command_monitor={} radio_config_sent={} iface={}",
+                command_monitor.is_some(),
+                radio_config_sent,
+                label
+            );
             let mut detection_fallback_deadline: Option<TokioInstant> =
                 if command_monitor.is_some() {
                     detection_fallback_timeout.map(|t| TokioInstant::now() + t)
@@ -827,6 +833,11 @@ impl NativeRnodeBleKissInterface {
                                 break;
                             }
                             if !radio_config_sent && monitor.is_detected() {
+                                log::info!(
+                                    "RNode BLE detected (CMD_DETECT response received), \
+                                     sending radio config iface={}",
+                                    label
+                                );
                                 radio_config_sent = true;
                                 if let Err(err) = runtime.send_deferred_frames().await {
                                     log::warn!(
@@ -844,15 +855,29 @@ impl NativeRnodeBleKissInterface {
                             break;
                         }
                         for payload in notification.packets {
-                            if let Ok(packet) = Packet::deserialize(&mut InputBuffer::new(&payload))
-                            {
-                                let _ = rx_channel
-                                    .send(RxMessage {
-                                        address: iface_address,
-                                        packet,
-                                        source: IfaceSource::None,
-                                    })
-                                    .await;
+                            match Packet::deserialize(&mut InputBuffer::new(&payload)) {
+                                Ok(packet) => {
+                                    log::debug!(
+                                        "RNode BLE rx packet len={} iface={}",
+                                        payload.len(),
+                                        label
+                                    );
+                                    let _ = rx_channel
+                                        .send(RxMessage {
+                                            address: iface_address,
+                                            packet,
+                                            source: IfaceSource::None,
+                                        })
+                                        .await;
+                                }
+                                Err(err) => {
+                                    log::warn!(
+                                        "RNode BLE rx packet deserialize failed len={} err={:?} iface={}",
+                                        payload.len(),
+                                        err,
+                                        label
+                                    );
+                                }
                             }
                         }
                     }
