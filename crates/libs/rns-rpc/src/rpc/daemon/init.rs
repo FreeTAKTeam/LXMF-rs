@@ -798,6 +798,25 @@ impl RpcDaemon {
         bytes: usize,
         messages: usize,
     ) -> bool {
+        self.record_inbound_propagation_peer_activity_count_inner(peer, bytes, messages, false)
+    }
+
+    pub fn record_successful_remote_propagation_peer_activity_count(
+        &self,
+        peer: &str,
+        bytes: usize,
+        messages: usize,
+    ) -> bool {
+        self.record_inbound_propagation_peer_activity_count_inner(peer, bytes, messages, true)
+    }
+
+    fn record_inbound_propagation_peer_activity_count_inner(
+        &self,
+        peer: &str,
+        bytes: usize,
+        messages: usize,
+        clear_backoff: bool,
+    ) -> bool {
         let peer = peer.trim();
         if let Ok(mut guard) = self.peers.lock() {
             if let Some(existing) = guard.values_mut().find(|record| {
@@ -808,6 +827,10 @@ impl RpcDaemon {
                 existing.last_seen = now_i64();
                 existing.incoming = existing.incoming.saturating_add(messages as u64);
                 existing.rx_bytes = existing.rx_bytes.saturating_add(bytes as u64);
+                if clear_backoff {
+                    existing.sync_backoff = 0;
+                    existing.next_sync_attempt = 0;
+                }
                 return true;
             }
         }

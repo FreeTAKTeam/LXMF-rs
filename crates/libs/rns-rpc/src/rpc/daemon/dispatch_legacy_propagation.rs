@@ -576,27 +576,13 @@ impl RpcDaemon {
             }
         }
         if source_received_count > 0 {
-            self.record_inbound_propagation_peer_activity_count(
+            self.record_successful_remote_propagation_peer_activity_count(
                 source_peer_key,
                 source_received_bytes.min(transferred_bytes),
                 source_received_count,
             );
-            self.clear_successful_remote_source_backoff(source_peer_key);
         }
         Ok(())
-    }
-
-    fn clear_successful_remote_source_backoff(&self, source_peer: &str) {
-        let source_peer = source_peer.trim();
-        if let Ok(mut guard) = self.peers.lock() {
-            if let Some(existing) = guard.values_mut().find(|record| {
-                record.peer_type.as_deref() != Some("unpeered")
-                    && record.peer.eq_ignore_ascii_case(source_peer)
-            }) {
-                existing.sync_backoff = 0;
-                existing.next_sync_attempt = 0;
-            }
-        }
     }
 
     pub fn note_client_propagation_messages_received(&self, ingested_count: usize) {

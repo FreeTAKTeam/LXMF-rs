@@ -4812,6 +4812,34 @@ fn peer_activity_updates_runtime_counters() {
 }
 
 #[test]
+fn successful_remote_peer_activity_keeps_newer_failure_backoff() {
+    let daemon = RpcDaemon::test_instance();
+    let peer = "peer-remote-activity-order";
+    daemon
+        .handle_rpc(rpc_request(51, "peer_sync", json!({ "peer": peer })))
+        .expect("peer sync");
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let record = peers.get_mut(peer).expect("peer record");
+        record.alive = false;
+        record.sync_backoff = 12 * 60;
+        record.next_sync_attempt = now_i64().saturating_add(12 * 60);
+    }
+
+    assert!(daemon.record_successful_remote_propagation_peer_activity_count(peer, 120, 2));
+    daemon.record_outbound_peer_activity(peer, 40, false);
+
+    let peers = daemon.peers.lock().expect("peers mutex poisoned");
+    let record = peers.get(peer).expect("peer record");
+    assert_eq!(record.incoming, 2);
+    assert_eq!(record.rx_bytes, 120);
+    assert_eq!(record.tx_bytes, 40);
+    assert!(!record.alive);
+    assert_eq!(record.sync_backoff, 12 * 60);
+    assert_eq!(record.next_sync_attempt, record.last_sync_attempt.saturating_add(12 * 60));
+}
+
+#[test]
 fn inbound_peer_activity_matches_existing_peer_case_insensitively_like_python() {
     let daemon = RpcDaemon::test_instance();
     let stored_peer = "Peer-Inbound-Case";
