@@ -182,6 +182,31 @@ impl RpcDaemon {
         Ok(())
     }
 
+    fn record_failed_remote_transfer_for_active_source_peer(
+        &self,
+        source_peer: &str,
+        remote: &str,
+        error: &str,
+    ) -> Result<bool, std::io::Error> {
+        let source_peer_key =
+            self.active_peer_ids().into_iter().find(|peer| peer.eq_ignore_ascii_case(source_peer));
+        let Some(source_peer_key) = source_peer_key else {
+            return Ok(false);
+        };
+
+        self.record_outbound_peer_activity(source_peer_key.as_str(), 0, false);
+        self.record_payload_backed_peer_queue_snapshot(source_peer_key.as_str())?;
+        self.publish_failed_remote_peer_sync_event(
+            source_peer_key.as_str(),
+            remote,
+            error,
+            None,
+            None,
+            None,
+        );
+        Ok(true)
+    }
+
     fn break_remote_peer_sync_peering_on_denied_access(
         &self,
         peer_id: &str,
@@ -2284,6 +2309,11 @@ impl RpcDaemon {
                                 err.to_string().as_str(),
                             )?;
                         } else {
+                            self.record_failed_remote_transfer_for_active_source_peer(
+                                remote_id.as_str(),
+                                remote_id.as_str(),
+                                err.to_string().as_str(),
+                            )?;
                             for peer in self.active_peer_ids() {
                                 self.record_payload_backed_peer_queue_snapshot(peer.as_str())?;
                             }
@@ -2401,6 +2431,11 @@ impl RpcDaemon {
                                 err.to_string().as_str(),
                             )?;
                         } else {
+                            self.record_failed_remote_transfer_for_active_source_peer(
+                                remote_id.as_str(),
+                                remote_id.as_str(),
+                                err.to_string().as_str(),
+                            )?;
                             for peer in self.active_peer_ids() {
                                 self.record_payload_backed_peer_queue_snapshot(peer.as_str())?;
                             }

@@ -104,6 +104,10 @@ The project is best described by capability level:
 - Remote fetch and download bridge failures now mirror existing payload-backed
   live queue marks into active peer record snapshots before returning the
   failure, preserving restart/export retry state for already queued relay work.
+- Remote fetch and download bridge failures from an already active source peer
+  now also update that peer's failure backoff and publish the failed peer-sync
+  event, so retry scheduling and observability match the preserved queue
+  snapshot.
 - Remote fetch and download access-denied bridge errors now preserve the
   propagation `no_access` lifecycle state instead of collapsing the denial into
   generic failure, while retaining the bridge error text for operators.
