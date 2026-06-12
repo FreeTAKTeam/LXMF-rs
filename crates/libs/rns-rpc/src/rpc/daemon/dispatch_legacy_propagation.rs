@@ -208,6 +208,15 @@ impl RpcDaemon {
             return Ok(false);
         }
 
+        self.record_failed_remote_import_for_active_source_peer(source_peer, remote, error)
+    }
+
+    fn record_failed_remote_import_for_active_source_peer(
+        &self,
+        source_peer: &str,
+        remote: &str,
+        error: &std::io::Error,
+    ) -> Result<bool, std::io::Error> {
         let source_peer_key =
             self.active_peer_ids().into_iter().find(|peer| peer.eq_ignore_ascii_case(source_peer));
         let Some(source_peer_key) = source_peer_key else {
@@ -2276,6 +2285,11 @@ impl RpcDaemon {
                                     state.sync_progress = 0.0;
                                     state.last_sync_error = Some(err.to_string());
                                 });
+                                self.record_failed_remote_import_for_active_source_peer(
+                                    remote_id.as_str(),
+                                    remote_id.as_str(),
+                                    &err,
+                                )?;
                                 for peer in self.active_peer_ids() {
                                     self.record_payload_backed_peer_queue_snapshot(peer.as_str())?;
                                 }
@@ -2472,6 +2486,11 @@ impl RpcDaemon {
                             state.sync_progress = 0.0;
                             state.last_sync_error = Some(err.to_string());
                         });
+                        self.record_failed_remote_import_for_active_source_peer(
+                            remote_id.as_str(),
+                            remote_id.as_str(),
+                            &err,
+                        )?;
                         for peer in self.active_peer_ids() {
                             self.record_payload_backed_peer_queue_snapshot(peer.as_str())?;
                         }

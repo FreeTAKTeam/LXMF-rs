@@ -140,6 +140,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Malformed remote fetch and download imports mirror existing payload-backed
   queue marks into active peer record snapshots before returning the import
   failure, so already queued relay work remains visible after restart/export.
+- Malformed remote fetch and download imports from an already active source
+  peer update that peer's failure backoff and publish the failed peer-sync
+  event, so invalid post-transfer payloads use the same retry observability as
+  transport-level remote transfer failures.
 - Remote fetch and download bridge failures mirror existing payload-backed
   queue marks into active peer record snapshots before returning the failure,
   so already queued relay work remains visible after restart/export.

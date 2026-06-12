@@ -101,6 +101,10 @@ The project is best described by capability level:
 - Malformed remote fetch and download imports now mirror existing
   payload-backed live queue marks into active peer record snapshots before
   failing, preserving restart/export retry state for already queued relay work.
+- Malformed remote fetch and download imports from an already active source
+  peer now also update that peer's failure backoff and publish the failed
+  peer-sync event, so invalid post-transfer payloads share retry scheduling and
+  observability with transport-level remote transfer failures.
 - Remote fetch and download bridge failures now mirror existing payload-backed
   live queue marks into active peer record snapshots before returning the
   failure, preserving restart/export retry state for already queued relay work.
