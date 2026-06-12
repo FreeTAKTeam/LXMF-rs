@@ -1521,7 +1521,7 @@ assert row["last_sync_attempt"] > 0, row
 assert row["sync_backoff"] == 0, row
 assert row["next_sync_attempt"] == 0, row
 sync = json.loads(sync_raw)
-assert sync["propagation"]["state_name"] == "synced", sync
+assert sync["synced"] is True, sync
 assert sync["propagation"]["synced"] is True, sync
 PY
 
