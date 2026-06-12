@@ -325,8 +325,8 @@ The project is best described by capability level:
   acknowledgement can refresh relay state without inflating local received or
   ingested counters.
 - Propagation payload ingest now enforces the configured node message-storage
-  byte limit against retained propagation entries, pruning oldest payloads while
-  clearing retryable peer queue marks.
+  byte limit against retained propagation entries, using age, size, and
+  prioritised-destination weighting while clearing retryable peer queue marks.
 - Link-based remote downloads now wait for the propagation node's `/get` haves
   acknowledgement and surface peer/control errors, so failed remote cleanup does
   not look like a completed replication drain.

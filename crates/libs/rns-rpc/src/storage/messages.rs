@@ -164,6 +164,28 @@ fn propagation_entry_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Propa
     })
 }
 
+fn propagation_prune_weight(
+    destination: &str,
+    size_bytes: u64,
+    received_at: i64,
+    newest_received_at: Option<i64>,
+    prioritised_destinations: &[String],
+) -> f64 {
+    const FOUR_DAYS_SECS: f64 = 4.0 * 24.0 * 60.0 * 60.0;
+
+    let age_secs = newest_received_at.unwrap_or(received_at).saturating_sub(received_at) as f64;
+    let age_weight = (age_secs / FOUR_DAYS_SECS).max(1.0);
+    let priority_weight = if prioritised_destinations
+        .iter()
+        .any(|candidate| destination.eq_ignore_ascii_case(candidate.trim()))
+    {
+        0.1
+    } else {
+        1.0
+    };
+    priority_weight * age_weight * size_bytes as f64
+}
+
 fn normalize_hex_key(value: &str) -> String {
     value.trim().to_ascii_lowercase()
 }
@@ -1503,6 +1525,14 @@ impl MessagesStore {
         &self,
         limit_bytes: u64,
     ) -> rusqlite::Result<Vec<String>> {
+        self.prune_propagation_entries_to_limit_bytes_with_priorities(limit_bytes, &[])
+    }
+
+    pub fn prune_propagation_entries_to_limit_bytes_with_priorities(
+        &self,
+        limit_bytes: u64,
+        prioritised_destinations: &[String],
+    ) -> rusqlite::Result<Vec<String>> {
         self.with_write_conn(|conn| {
             let tx = conn.unchecked_transaction()?;
             let total: i64 = tx.query_row(
@@ -1518,20 +1548,46 @@ impl MessagesStore {
 
             let entries = {
                 let mut stmt = tx.prepare(
-                    "SELECT transient_id, size_bytes
+                    "SELECT transient_id, destination, size_bytes, received_at
                      FROM propagation_entries
                      ORDER BY received_at ASC, transient_id ASC",
                 )?;
                 let rows = stmt.query_map([], |row| {
                     let transient_id: String = row.get(0)?;
-                    let size_bytes: i64 = row.get(1)?;
-                    Ok((transient_id, size_bytes.max(0) as u64))
+                    let destination: String = row.get(1)?;
+                    let size_bytes: i64 = row.get(2)?;
+                    let received_at: i64 = row.get(3)?;
+                    Ok((transient_id, destination, size_bytes.max(0) as u64, received_at))
                 })?;
                 rows.collect::<rusqlite::Result<Vec<_>>>()?
             };
+            let newest_received_at =
+                entries.iter().map(|(_id, _destination, _size, received_at)| *received_at).max();
+            let mut entries = entries;
+            entries.sort_by(|left, right| {
+                let left_weight = propagation_prune_weight(
+                    left.1.as_str(),
+                    left.2,
+                    left.3,
+                    newest_received_at,
+                    prioritised_destinations,
+                );
+                let right_weight = propagation_prune_weight(
+                    right.1.as_str(),
+                    right.2,
+                    right.3,
+                    newest_received_at,
+                    prioritised_destinations,
+                );
+                right_weight
+                    .partial_cmp(&left_weight)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then_with(|| left.3.cmp(&right.3))
+                    .then_with(|| left.0.cmp(&right.0))
+            });
 
             let mut pruned = Vec::new();
-            for (transient_id, size_bytes) in entries {
+            for (transient_id, _destination, size_bytes, _received_at) in entries {
                 if total <= limit_bytes {
                     break;
                 }
@@ -3531,6 +3587,56 @@ mod tests {
                 .peer_completed_propagation_mark_exists("peer-done", old.transient_id.as_str())
                 .expect("completed mark"),
             "completed peer accounting should survive propagation storage pruning"
+        );
+    }
+
+    #[test]
+    fn priority_pruning_preserves_prioritised_destination_payloads() {
+        let store = MessagesStore::in_memory().expect("in-memory store");
+        let prioritised = PropagationEntryRecord {
+            transient_id: "30".repeat(32),
+            destination: "66".repeat(16),
+            payload_hex: "30".repeat(80),
+            received_at: 1,
+            size_bytes: 80,
+            stamp_value: None,
+        };
+        let ordinary = PropagationEntryRecord {
+            transient_id: "40".repeat(32),
+            destination: "77".repeat(16),
+            payload_hex: "40".repeat(40),
+            received_at: 2,
+            size_bytes: 40,
+            stamp_value: None,
+        };
+        store.upsert_propagation_entry(&prioritised).expect("upsert prioritised");
+        store.upsert_propagation_entry(&ordinary).expect("upsert ordinary");
+        store
+            .mark_peer_unhandled_propagation("peer-prune", prioritised.transient_id.as_str())
+            .expect("mark prioritised unhandled");
+        store
+            .mark_peer_unhandled_propagation("peer-prune", ordinary.transient_id.as_str())
+            .expect("mark ordinary unhandled");
+
+        let pruned = store
+            .prune_propagation_entries_to_limit_bytes_with_priorities(
+                80,
+                std::slice::from_ref(&prioritised.destination),
+            )
+            .expect("priority prune propagation entries");
+
+        assert_eq!(pruned, vec![ordinary.transient_id.clone()]);
+        assert!(store
+            .get_propagation_entry(prioritised.transient_id.as_str())
+            .expect("prioritised lookup")
+            .is_some());
+        assert!(store
+            .get_propagation_entry(ordinary.transient_id.as_str())
+            .expect("ordinary lookup")
+            .is_none());
+        assert_eq!(
+            store.list_peer_unhandled_propagation_ids("peer-prune").expect("peer unhandled ids"),
+            vec![prioritised.transient_id]
         );
     }
 

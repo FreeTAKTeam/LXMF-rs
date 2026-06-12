@@ -350,9 +350,18 @@ impl RpcDaemon {
         let Some(limit_bytes) = limit_mb.checked_mul(1_000_000) else {
             return Ok(());
         };
+        let prioritised_destinations = self
+            .delivery_policy
+            .lock()
+            .expect("policy mutex poisoned")
+            .prioritised_destinations
+            .clone();
         let pruned = self
             .store
-            .prune_propagation_entries_to_limit_bytes(limit_bytes)
+            .prune_propagation_entries_to_limit_bytes_with_priorities(
+                limit_bytes,
+                prioritised_destinations.as_slice(),
+            )
             .map_err(std::io::Error::other)?;
         if pruned.is_empty() {
             return Ok(());
