@@ -665,6 +665,7 @@ fn propagation_ingest_prunes_oldest_payload_when_storage_limit_is_exceeded() {
             json!({
                 "enabled": true,
                 "message_storage_limit_mb": 1,
+                "static_peers": ["peer-storage-prune-snapshot"],
             }),
         ))
         .expect("enable propagation storage limit");
@@ -688,6 +689,22 @@ fn propagation_ingest_prunes_oldest_payload_when_storage_limit_is_exceeded() {
         .expect("first ingest result");
     let first_transient = first["transient_id"].as_str().expect("first transient id").to_string();
     assert!(daemon.has_propagation_payload(first_transient.as_str()));
+    assert_eq!(
+        daemon
+            .store
+            .list_peer_unhandled_propagation_ids("peer-storage-prune-snapshot")
+            .expect("first live unhandled ids"),
+        vec![first_transient.clone()]
+    );
+    {
+        let peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let record = peers.get("peer-storage-prune-snapshot").expect("stored peer");
+        let serialized = serde_json::to_value(record).expect("serialize peer record");
+        assert_eq!(
+            serialized["unhandled_ids"].as_array().expect("serialized unhandled ids"),
+            &[json!(first_transient.as_str())]
+        );
+    }
 
     let second = daemon
         .handle_rpc(rpc_request(
@@ -707,6 +724,20 @@ fn propagation_ingest_prunes_oldest_payload_when_storage_limit_is_exceeded() {
         "oldest propagation payload should be pruned when storage limit is exceeded"
     );
     assert!(daemon.has_propagation_payload(second_transient.as_str()));
+    assert_eq!(
+        daemon
+            .store
+            .list_peer_unhandled_propagation_ids("peer-storage-prune-snapshot")
+            .expect("pruned live unhandled ids"),
+        vec![second_transient.clone()]
+    );
+    let peers = daemon.peers.lock().expect("peers mutex poisoned");
+    let record = peers.get("peer-storage-prune-snapshot").expect("stored peer");
+    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    assert_eq!(
+        serialized["unhandled_ids"].as_array().expect("serialized unhandled ids"),
+        &[json!(second_transient.as_str())]
+    );
     let stats = daemon.store.propagation_entry_stats().expect("propagation stats");
     assert!(stats.bytes <= 1_000_000, "stats after prune: {stats:?}");
 }
