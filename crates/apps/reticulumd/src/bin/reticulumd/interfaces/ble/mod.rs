@@ -17,6 +17,7 @@ mod windows;
 
 const BLE_STARTUP_MAX_RETRY_ATTEMPTS: u32 = 5;
 const BLE_STARTUP_PROBE_PAYLOAD: &[u8] = b"LXMF-BLE-PROBE";
+const DEFAULT_ATT_NOTIFICATION_PAYLOAD_BYTES: usize = 20;
 
 #[derive(Debug, Clone)]
 pub(crate) struct BleRuntimeSettings {
@@ -281,13 +282,18 @@ pub(crate) async fn run_startup_lifecycle<B: BleBackend>(
         if let Ok(payload) = notification_result {
             if payload != BLE_STARTUP_PROBE_PAYLOAD {
                 cleanup_backend(backend, settings).await;
+                let diagnostic = startup_probe_mismatch_diagnostic(
+                    BLE_STARTUP_PROBE_PAYLOAD.len(),
+                    payload.len(),
+                );
                 return Err(format!(
-                    "ble_gatt startup failed backend={} phase={} attempt={} err=probe payload mismatch expected_len={} actual_len={}",
+                    "ble_gatt startup failed backend={} phase={} attempt={} err=probe payload mismatch expected_len={} actual_len={}{}",
                     backend.backend_name(),
                     BleLifecyclePhase::NotificationProbe.as_str(),
                     attempt,
                     BLE_STARTUP_PROBE_PAYLOAD.len(),
-                    payload.len()
+                    payload.len(),
+                    diagnostic,
                 ));
             }
         }
@@ -425,6 +431,16 @@ fn required_non_empty(value: Option<&str>, field: &str) -> Result<String, String
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned)
         .ok_or_else(|| format!("ble_gatt.{field} is required"))
+}
+
+fn startup_probe_mismatch_diagnostic(expected_len: usize, actual_len: usize) -> &'static str {
+    if actual_len == DEFAULT_ATT_NOTIFICATION_PAYLOAD_BYTES
+        || actual_len < expected_len && actual_len < DEFAULT_ATT_NOTIFICATION_PAYLOAD_BYTES
+    {
+        "; likely ATT MTU 23 / 20-byte notification payload; btleplug cannot request a larger MTU in this backend, so configure a host adapter that negotiates MTU before enabling notifications"
+    } else {
+        ""
+    }
 }
 
 #[cfg(test)]
@@ -697,5 +713,21 @@ mod tests {
             .await
             .expect_err("mismatched probe payload should fail lifecycle");
         assert!(err.contains("probe payload mismatch"));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn ble_lifecycle_reports_likely_att_mtu_truncation() {
+        let settings = runtime_settings(&ble_iface()).expect("runtime settings");
+        let mut backend = MockBackend {
+            notification_payload_override: Some(vec![0x42; 20]),
+            ..Default::default()
+        };
+
+        let err = run_startup_lifecycle(&mut backend, &settings)
+            .await
+            .expect_err("20-byte notification should fail lifecycle with MTU diagnostic");
+
+        assert!(err.contains("likely ATT MTU 23"));
+        assert!(err.contains("btleplug cannot request a larger MTU"));
     }
 }

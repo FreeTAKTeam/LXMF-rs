@@ -1328,7 +1328,7 @@ PY
   exit 0
 fi
 
-if [[ "${COMPAT_CASE}" == "propagation_offer_python_to_rust" ]]; then
+if [[ "${COMPAT_CASE}" == "propagation_offer_python_to_rust" || "${COMPAT_CASE}" == "propagation_offer_queue_python_to_rust" ]]; then
   rpc_call "${RUST_RPC_ADDR}" "announce_now" "null" >/dev/null
   if ! wait_for_python_remote_control "${RUST_PROPAGATION_HASH}" "${REMOTE_CONTROL_PATH_TIMEOUT_SECS}"; then
     echo "Python lxmd did not learn Rust propagation control path" >&2
@@ -1361,6 +1361,7 @@ PY
   MISSING_TRANSIENT="$(printf 'bc%.0s' $(seq 1 32))"
 
   "${PYTHON_BIN}" - <<'PY' \
+    "${COMPAT_CASE}" \
     "${PY_SENDER_RNS_DIR}" \
     "${PY_SENDER_DIR}" \
     "${RUST_PROPAGATION_HASH}" \
@@ -1376,7 +1377,7 @@ from pathlib import Path
 import RNS
 import LXMF
 
-rns_config, storage_dir, propagation_hash_hex, rust_identity_hash_hex, known_hex, missing_hex, timeout_secs = sys.argv[1:8]
+compat_case, rns_config, storage_dir, propagation_hash_hex, rust_identity_hash_hex, known_hex, missing_hex, timeout_secs = sys.argv[1:9]
 timeout_secs = max(float(timeout_secs), 1.0)
 storage = Path(storage_dir)
 storage.mkdir(parents=True, exist_ok=True)
@@ -1473,7 +1474,7 @@ if second_response != 0xF6:
     raise SystemExit(f"expected throttled response 0xF6, got {second_response!r}")
 
 print(json.dumps({
-    "case": "propagation_offer_python_to_rust",
+    "case": compat_case,
     "source_propagation": RNS.hexrep(source_propagation.hash, delimit=False).lower(),
     "known_transient": known.hex(),
     "missing_transient": missing.hex(),
@@ -1502,13 +1503,13 @@ PY
     echo "known-offer source peer was admitted before transfer" >&2
     exit 1
   fi
-  rpc_call "${RUST_RPC_ADDR}" "peer_sync" "{\"peer\":\"${SOURCE_PROPAGATION_HASH}\",\"force_sync\":true}" >/dev/null
+  PEER_SYNC_RESULT="$(rpc_call "${RUST_RPC_ADDR}" "peer_sync" "{\"peer\":\"${SOURCE_PROPAGATION_HASH}\",\"force_sync\":true}")"
   PEER_ROW="$(rpc_call "${RUST_RPC_ADDR}" "list_peers" "null")"
-  "${PYTHON_BIN}" - <<'PY' "${PEER_ROW}" "${SOURCE_PROPAGATION_HASH}" "${KNOWN_TRANSIENT}" "${MISSING_TRANSIENT}"
+  "${PYTHON_BIN}" - <<'PY' "${PEER_ROW}" "${PEER_SYNC_RESULT}" "${SOURCE_PROPAGATION_HASH}" "${KNOWN_TRANSIENT}" "${MISSING_TRANSIENT}"
 import json
 import sys
 
-peers_raw, peer_hash, known, missing = sys.argv[1:5]
+peers_raw, sync_raw, peer_hash, known, missing = sys.argv[1:6]
 rows = json.loads(peers_raw)["peers"]
 row = next((row for row in rows if row.get("peer") == peer_hash), None)
 assert row is not None, rows
@@ -1516,6 +1517,12 @@ messages = row["messages"]
 assert known in messages["handled_ids"], row
 assert known not in messages["unhandled_ids"], row
 assert missing not in messages["unhandled_ids"], row
+assert row["last_sync_attempt"] > 0, row
+assert row["sync_backoff"] == 0, row
+assert row["next_sync_attempt"] == 0, row
+sync = json.loads(sync_raw)
+assert sync["synced"] is True, sync
+assert sync["propagation"]["synced"] is True, sync
 PY
 
   "${PYTHON_BIN}" - <<'PY' \
@@ -1528,6 +1535,8 @@ PY
     "${RUST_PROPAGATION_HASH}" \
     "${SOURCE_PROPAGATION_HASH}" \
     "${OFFER_RESULT}" \
+    "${PEER_SYNC_RESULT}" \
+    "${PEER_ROW}" \
     "${COMPAT_CASE}"
 import json
 import sys
@@ -1542,14 +1551,20 @@ import sys
     rust_propagation_hash,
     source_propagation_hash,
     offer_result,
+    peer_sync_result,
+    peer_row,
     compat_case,
-) = sys.argv[1:11]
+) = sys.argv[1:13]
 
 with open(report_path, "w", encoding="utf-8") as handle:
     json.dump({
         "status": "pass",
         "case": compat_case,
-        "proof": json.loads(offer_result),
+        "proof": {
+            "offer": json.loads(offer_result),
+            "peer_sync": json.loads(peer_sync_result),
+            "peer_row": json.loads(peer_row),
+        },
         "hashes": {
             "rust_propagation": rust_propagation_hash,
             "python_source_propagation": source_propagation_hash,

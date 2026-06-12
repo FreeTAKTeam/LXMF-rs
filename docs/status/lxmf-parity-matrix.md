@@ -111,6 +111,11 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   and restored queue marks into active peer record snapshots before publishing
   the failed sync event, so local and remote retry/export behavior stays
   aligned.
+- Remote peer-sync failure events expose a structured `failure_kind` on both
+  the top-level event and nested propagation payload, so observers can
+  distinguish throttling, identity, key, data, stamp, not-found, timeout,
+  access-denied, and generic failures while the retry state machine remains
+  unchanged.
 - Retryable remote peer-sync errors keep those queued snapshots but now advance
   the peer's ordinary sync backoff window, avoiding immediate retry loops after
   transient propagation-control failures.
@@ -293,6 +298,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   Python-origin `/offer` against Rust `reticulumd`, proving partial wanted-ID
   responses, repeated-offer throttling, and source-peer completed marks across
   the live link request path.
+- The live Rust/Python propagation-control gate now also splits out a
+  Python-origin `/offer` peer-queue lifecycle case, proving post-sync handled
+  IDs, no retryable missing-ID queue state, and cleared sync backoff after
+  transfer creates the Rust peer row.
 - Duplicate inbound peer propagation payloads still fan out to active relay
   peers while keeping the source peer handled, so a known local payload does
   not bypass relay queue creation.
@@ -326,6 +335,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   IDs even when local payload rows are already absent, while still honoring
   `retain_synced_on_node` payload-retention behavior so completed peers are
   marked without regressing local payload reuse.
+- Inbound propagation message-get `haves` completion is now constrained to
+  locally known payloads or existing peer queue marks, so arbitrary unknown
+  haves cannot pre-complete future propagation work for that peer.
 - Link-based remote propagation downloads wait for the final haves
   acknowledgement response after imported or duplicate payloads are reported,
   and also after all-known listings are acknowledged with purge-only haves, so
@@ -338,7 +350,8 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   already completed them.
 - Propagation nodes honor `retain_synced_on_node` during message-get haves
   handling: requesting peers are still marked completed, while retained payloads
-  remain stored and queued for peers that have not completed them.
+  remain stored and queued for peers that have not completed them; retained
+  payload listings now filter IDs already completed by the requesting peer.
 - Inbound propagation message-get requests mark wanted payloads skipped by the
   peer's transfer budget as transfer-limited completed work after peer
   admission, so oversized fetch attempts do not remain retryable queue entries.
@@ -381,11 +394,14 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   acknowledgement can refresh relay state without inflating local received or
   ingested counters.
 - Propagation-node ingest enforces the configured message-storage byte limit
-  against retained propagation entries, pruning oldest payloads and stale
-  retryable peer marks.
+  against retained propagation entries, using age, size, and
+  prioritised-destination weighting while pruning stale retryable peer marks.
 - Link-based remote downloads wait for the propagation node's `/get` haves
   acknowledgement and propagate peer/control errors, so failed remote cleanup is
   not reported as a completed replication drain.
+- Link-based remote propagation control waits surface authenticated link-close
+  peer/control signals immediately, so denied or closed remote fetch/download/sync
+  requests fail on the signal instead of waiting for the request timeout.
 - Remote fetch/download acknowledgements use canonical propagation transient
   IDs for stamped payloads, so `/get` haves clear the peer's offered queue entry
   instead of reporting the stamped payload bytes under a different hash.
@@ -495,6 +511,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Propagation ingest rejects payloads for ignored destinations before storing
   or queueing them, so local replication policy is enforced before relay state
   is created.
+- Local peer offer-error responses now expose failed peer-sync state fields at
+  both the top-level event/result and nested propagation result while keeping
+  retryable queue marks intact.
 - Inbound propagation distinguishes clients, validated peers, unpeered
   identified senders, and local delivery; source peers are accounted and not
   re-offered their own payloads.

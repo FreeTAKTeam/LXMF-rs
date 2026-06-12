@@ -77,6 +77,10 @@ The project is best described by capability level:
   bridge-unavailable remote peer-sync paths now perform the same payload-backed
   live and restored queue snapshot mirroring before reporting the failed sync,
   keeping local and remote retry/export behavior aligned.
+- Remote peer-sync failure events now include a structured `failure_kind` on
+  the top-level event and nested propagation payload, preserving observer-level
+  distinctions for throttling, identity, key, data, stamp, not-found, timeout,
+  access-denied, and generic failures without changing retry behavior.
 - Payload-backed remote failure snapshots now replace stale serialized peer
   queue IDs with live payload-backed marks, so bridge failures do not preserve
   obsolete restart/export work after the underlying payload is gone.
@@ -247,6 +251,9 @@ The project is best described by capability level:
 - Peer sync queue creation also records newly queued existing propagation IDs in
   the peer record snapshot, so postponed syncs can restart/export with the same
   unhandled queue visible in live status.
+- Local peer offer-error responses now publish failed peer-sync state fields at
+  both the top-level peer event and nested propagation result while preserving
+  the retryable peer queue, improving parity with the peer sync state machine.
 - Inbound and remotely imported propagation payloads update active peer record
   snapshots when they queue new unhandled IDs or mark source peers handled,
   keeping restart/export state aligned with live queue fan-out and source
@@ -277,6 +284,9 @@ The project is best described by capability level:
   haves as received/completed work for the requesting propagation peer after
   purge, so reintroduced payloads are not queued back to peers that already
   declared them.
+- Retained propagation payload listings now filter IDs already completed by
+  the requesting peer, so `retain_synced_on_node` keeps payloads available for
+  other peers without re-offering them to the peer that declared the haves.
 - Link-based remote propagation downloads now wait for the final haves
   acknowledgement response after imported or duplicate payloads are reported,
   and also after all-known listings are acknowledged with purge-only haves, so
@@ -321,11 +331,14 @@ The project is best described by capability level:
   acknowledgement can refresh relay state without inflating local received or
   ingested counters.
 - Propagation payload ingest now enforces the configured node message-storage
-  byte limit against retained propagation entries, pruning oldest payloads while
-  clearing retryable peer queue marks.
+  byte limit against retained propagation entries, using age, size, and
+  prioritised-destination weighting while clearing retryable peer queue marks.
 - Link-based remote downloads now wait for the propagation node's `/get` haves
   acknowledgement and surface peer/control errors, so failed remote cleanup does
   not look like a completed replication drain.
+- Link-based remote propagation control waits now surface authenticated
+  link-close peer/control signals immediately, so denied or closed remote
+  fetch/download/sync requests do not sit until the request timeout.
 - Remote fetch/download acknowledgements now use canonical propagation
   transient IDs for stamped payloads, so `/get` haves purge the peer's offered
   queue entry instead of acknowledging the stamped payload bytes under a
@@ -435,6 +448,9 @@ The project is best described by capability level:
 - Propagation ingest now rejects payloads for ignored destinations before
   storing or queueing them, enforcing local replication policy before relay
   state is created.
+- Inbound propagation message-get `haves` completion now applies only to
+  locally known payloads or existing peer queue marks, preventing unknown haves
+  from suppressing future propagation work for the declaring peer.
 - The live Python compatibility gate now includes a Python-origin propagation
   `/get` haves-only case against Rust `reticulumd`, covering `true`
   acknowledgement, Rust-side payload purge, and suppression of retryable
@@ -442,6 +458,10 @@ The project is best described by capability level:
   Python-origin `/offer` case covering partial wanted-ID responses,
   repeated-offer throttling, and source-peer completed marks before broad
   peer/router interop is claimed.
+- The live Python compatibility gate now also splits out a Python-origin
+  `/offer` peer-queue lifecycle case, covering post-sync handled IDs,
+  absence of retryable missing IDs, and cleared sync backoff after the Rust
+  peer row is created by transfer.
 
 ## Remaining Release Blockers
 

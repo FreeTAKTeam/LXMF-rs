@@ -1,8 +1,9 @@
 use lxmf_sdk::{
     validate_mobile_ble_capabilities, validate_mobile_ble_event_payload_bounds,
-    validate_mobile_ble_event_sequence, MobileBleCapabilities, MobileBleConnectRequest,
-    MobileBleEvent, MobileBleEventKind, MobileBleHostAdapter, MobileBleReadRequest,
-    MobileBleReadResult, MobileBleSessionDescriptor, MobileBleWriteAck, MobileBleWriteRequest,
+    validate_mobile_ble_event_sequence, validate_mobile_ble_rnode_lxmf_readiness,
+    MobileBleCapabilities, MobileBleConnectRequest, MobileBleEvent, MobileBleEventKind,
+    MobileBleHostAdapter, MobileBleReadRequest, MobileBleReadResult, MobileBleSessionDescriptor,
+    MobileBleWriteAck, MobileBleWriteRequest,
 };
 
 struct DefaultCancelAdapter;
@@ -177,6 +178,47 @@ fn mobile_ble_payload_bound_validation_rejects_oversized_notifications() {
     let err = validate_mobile_ble_event_payload_bounds(&events, &capabilities)
         .expect_err("payload over max should fail");
     assert_eq!(err.machine_code, lxmf_sdk::error_code::VALIDATION_INVALID_ARGUMENT);
+}
+
+#[test]
+fn mobile_ble_rnode_lxmf_readiness_rejects_default_att_mtu() {
+    let descriptor = MobileBleSessionDescriptor {
+        session_id: "session-1".to_string(),
+        peripheral_id: "AA:BB:CC:DD:EE:FF".to_string(),
+        negotiated_mtu: 23,
+    };
+    let capabilities = MobileBleCapabilities {
+        supports_background_restore: true,
+        supports_write_without_response: true,
+        supports_operation_cancel: false,
+        max_notification_queue: 32,
+        max_payload_bytes: 20,
+    };
+
+    let err = validate_mobile_ble_rnode_lxmf_readiness(&descriptor, &capabilities)
+        .expect_err("default ATT MTU must not be ready for RNode/LXMF");
+
+    assert_eq!(err.machine_code, lxmf_sdk::error_code::VALIDATION_INVALID_ARGUMENT);
+    assert!(err.message.contains("RNode/LXMF BLE notifications require"));
+}
+
+#[test]
+fn mobile_ble_rnode_lxmf_readiness_accepts_usable_notification_payload() {
+    let descriptor = MobileBleSessionDescriptor {
+        session_id: "session-1".to_string(),
+        peripheral_id: "AA:BB:CC:DD:EE:FF".to_string(),
+        negotiated_mtu: 173,
+    };
+    let capabilities = MobileBleCapabilities {
+        supports_background_restore: true,
+        supports_write_without_response: true,
+        supports_operation_cancel: false,
+        max_notification_queue: 32,
+        max_payload_bytes: 170,
+    };
+
+    validate_mobile_ble_rnode_lxmf_readiness(&descriptor, &capabilities)
+        .expect("usable MTU and payload should be ready for RNode/LXMF");
 }
 
 #[test]

@@ -25,10 +25,11 @@ pub use api::{
 pub use backend::mobile_ble::{
     validate_capabilities as validate_mobile_ble_capabilities,
     validate_event_payload_bounds as validate_mobile_ble_event_payload_bounds,
-    validate_event_sequence as validate_mobile_ble_event_sequence, MobileBleCapabilities,
-    MobileBleConnectRequest, MobileBleEvent, MobileBleEventKind, MobileBleHostAdapter,
-    MobileBleReadRequest, MobileBleReadResult, MobileBleSessionDescriptor, MobileBleWriteAck,
-    MobileBleWriteRequest,
+    validate_event_sequence as validate_mobile_ble_event_sequence,
+    validate_rnode_lxmf_readiness as validate_mobile_ble_rnode_lxmf_readiness,
+    MobileBleCapabilities, MobileBleConnectRequest, MobileBleEvent, MobileBleEventKind,
+    MobileBleHostAdapter, MobileBleReadRequest, MobileBleReadResult, MobileBleSessionDescriptor,
+    MobileBleWriteAck, MobileBleWriteRequest,
 };
 #[cfg(all(feature = "rpc-backend", feature = "std"))]
 pub use backend::rpc::RpcBackendClient;

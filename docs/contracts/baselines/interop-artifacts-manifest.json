@@ -8,8 +8,8 @@
     },
     {
       "path": "docs/contracts/baselines/lxmf-sdk-public-api.txt",
-      "bytes": 246940,
-      "sha256": "284956d7d0c15f8492630b91c36117b205c062cd1bf97dcc67336157ce463d10"
+      "bytes": 247145,
+      "sha256": "6b0cbca40bf7612183a8cef3cb10dcd7f56c93089532d4d9fbbae4168646d9a9"
     },
     {
       "path": "docs/contracts/baselines/schema-client-generation-baseline.json",
@@ -68,8 +68,8 @@
     },
     {
       "path": "docs/contracts/mobile-ble-host-contract.md",
-      "bytes": 2097,
-      "sha256": "175e24b993eab811ecdda44580df086fad212acd63e390635307fb48fcbb6b3e"
+      "bytes": 2838,
+      "sha256": "4d25c8e2ac0b839f08120bcccd175baf955f28e8225a9831c5ebbf157f4b8409"
     },
     {
       "path": "docs/contracts/native-embedded-interop-profile-v1.md",
