@@ -257,6 +257,9 @@ The project is best described by capability level:
   haves as received/completed work for the requesting propagation peer after
   purge, so reintroduced payloads are not queued back to peers that already
   declared them.
+- Retained propagation payload listings now filter IDs already completed by
+  the requesting peer, so `retain_synced_on_node` keeps payloads available for
+  other peers without re-offering them to the peer that declared the haves.
 - Link-based remote propagation downloads now wait for the final haves
   acknowledgement response after imported or duplicate payloads are reported,
   so node-side rejection or timeout is surfaced instead of reporting a
