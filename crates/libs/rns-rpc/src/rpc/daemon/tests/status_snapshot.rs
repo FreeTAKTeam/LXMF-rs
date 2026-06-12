@@ -5267,7 +5267,8 @@ fn peer_sync_during_backoff_postpones_skipped_offers() {
     assert_eq!(result["synced"].as_bool(), Some(false));
     assert_eq!(result["postponed"].as_bool(), Some(true));
     assert_eq!(result["postpone_reason"].as_str(), Some("backoff"));
-    assert_eq!(result["state"].as_u64(), Some(0));
+    assert_eq!(result["state"].as_u64(), Some(0x08));
+    assert_eq!(result["state_name"].as_str(), Some("backoff"));
     assert_eq!(result["sync_strategy"].as_u64(), Some(2));
     assert_eq!(result["ler"].as_u64(), Some(0));
     assert_eq!(result["network_distance"].as_u64(), Some(3));
@@ -17787,6 +17788,8 @@ fn timeout_propagation_remote_sync_preserves_peer_with_retry_backoff() {
         .find(|row| row["peer"].as_str() == Some("peer-timeout"))
         .expect("peer should remain queued for retry");
     assert_eq!(row["alive"].as_bool(), Some(true));
+    assert_eq!(row["state"].as_u64(), Some(0x08));
+    assert_eq!(row["state_name"].as_str(), Some("backoff"));
     assert_eq!(row["sync_backoff"].as_u64(), Some(12 * 60));
     assert_eq!(row["acceptance_rate"].as_f64(), Some(0.5));
     let last_sync_attempt = row["last_sync_attempt"].as_i64().expect("last sync attempt");
@@ -17816,6 +17819,8 @@ fn timeout_propagation_remote_sync_preserves_peer_with_retry_backoff() {
     assert_eq!(event.payload["peer"].as_str(), Some("peer-timeout"));
     assert_eq!(event.payload["remote"].as_str(), Some("remote-node"));
     assert_eq!(event.payload["alive"].as_bool(), Some(true));
+    assert_eq!(event.payload["state"].as_u64(), Some(0xfe));
+    assert_eq!(event.payload["state_name"].as_str(), Some("failed"));
     assert_eq!(event.payload["sync_backoff"].as_u64(), Some(12 * 60));
     assert_eq!(event.payload["last_sync_attempt"].as_i64(), Some(last_sync_attempt));
     assert_eq!(
@@ -17826,6 +17831,7 @@ fn timeout_propagation_remote_sync_preserves_peer_with_retry_backoff() {
         event.payload["propagation"]["error"].as_str(),
         Some("propagation peer timed out")
     );
+    assert_eq!(event.payload["propagation"]["state_name"].as_str(), Some("failed"));
 }
 
 #[test]

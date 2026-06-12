@@ -1,6 +1,11 @@
 use super::init::LXMF_PEER_SYNC_BACKOFF_STEP_SECS;
 use super::*;
 
+pub(super) const PEER_SYNC_STATE_IDLE: u32 = 0x00;
+pub(super) const PEER_SYNC_STATE_BACKOFF: u32 = 0x08;
+pub(super) const PEER_SYNC_STATE_POSTPONED: u32 = 0x09;
+pub(super) const PEER_SYNC_STATE_FAILED: u32 = 0xfe;
+
 impl RpcDaemon {
     pub(super) fn enriched_peer_status_row(&self, peer: PeerRecord) -> JsonValue {
         let (outgoing, incoming, offered, unhandled, offered_bytes, unhandled_bytes) =
@@ -14,11 +19,13 @@ impl RpcDaemon {
         let unhandled_ids =
             self.store.list_peer_unhandled_propagation_ids(peer.peer.as_str()).unwrap_or_default();
         let is_static_peer = self.is_static_peer(peer.peer.as_str());
+        let (peer_state, peer_state_name) = peer_sync_status_state(&peer);
         let sync_strategy = peer.sync_strategy;
         let mut row = serde_json::to_value(&peer).unwrap_or_else(|_| json!({}));
         row["type"] =
             JsonValue::String(if is_static_peer { "static" } else { "discovered" }.to_string());
-        row["state"] = JsonValue::from(0);
+        row["state"] = JsonValue::from(peer_state);
+        row["state_name"] = JsonValue::from(peer_state_name);
         row["sync_strategy"] = JsonValue::from(sync_strategy);
         row["ler"] = JsonValue::from(0);
         row["str"] = row
@@ -152,60 +159,59 @@ impl RpcDaemon {
             if self.is_static_peer(record.peer.as_str()) { "static" } else { "discovered" };
         let peering_key = peer_peering_key_value(record, self.identity_hash.as_str());
         let peering_key_status = peer_peering_key_status(record, peering_key);
+        let (peer_state, peer_state_name) = peer_sync_postponed_state(postpone_reason);
         let mut propagation_sync = propagation_sync;
         propagation_sync["peering_key"] = peering_key.map_or(JsonValue::Null, JsonValue::from);
         propagation_sync["peering_key_status"] = json!(peering_key_status);
-        let event = RpcEvent {
-            event_type: "peer_sync".into(),
-            payload: json!({
-                "peer": &record.peer,
-                "peer_type": peer_type_value,
-                "type": peer_status_type,
-                "timestamp": timestamp,
-                "name": &record.name,
-                "name_source": &record.name_source,
-                "last_heard": record.last_seen,
-                "first_seen": record.first_seen,
-                "seen_count": record.seen_count,
-                "state": 0,
-                "sync_strategy": record.sync_strategy,
-                "ler": 0,
-                "peering_timebase": record.peering_timebase,
-                "network_distance": record.network_distance,
-                "rx_bytes": record.rx_bytes,
-                "tx_bytes": record.tx_bytes,
-                "alive": alive,
-                "acceptance_rate": acceptance_rate,
-                "last_sync_attempt": last_sync_attempt,
-                "next_sync_attempt": next_sync_attempt,
-                "sync_backoff": sync_backoff,
-                "sync_transfer_rate": sync_transfer_rate,
-                "str": sync_transfer_rate as u64,
-                "synced": false,
-                "postponed": true,
-                "postpone_reason": postpone_reason,
-                "propagation_transfer_limit": record.propagation_transfer_limit,
-                "propagation_sync_limit": record.propagation_sync_limit,
-                "propagation_stamp_cost": record.propagation_stamp_cost,
-                "propagation_stamp_cost_flexibility": record.propagation_stamp_cost_flexibility,
-                "peering_key": peering_key,
-                "peering_key_status": peering_key_status,
-                "transfer_limit": transfer_limit_bytes,
-                "sync_limit": sync_limit_bytes,
-                "target_stamp_cost": record.propagation_stamp_cost,
-                "stamp_cost_flexibility": record.propagation_stamp_cost_flexibility,
-                "offered": offered,
-                "outgoing": outgoing,
-                "incoming": incoming,
-                "messages": messages,
-                "propagation": propagation_sync.clone(),
-            }),
-        };
-        self.publish_event(event);
+        propagation_sync["state"] = json!(peer_state);
+        propagation_sync["state_name"] = json!(peer_state_name);
+        let mut event_payload = json!({
+            "peer": &record.peer,
+            "peer_type": peer_type_value,
+            "type": peer_status_type,
+            "timestamp": timestamp,
+            "name": &record.name,
+            "name_source": &record.name_source,
+            "last_heard": record.last_seen,
+            "first_seen": record.first_seen,
+            "seen_count": record.seen_count,
+            "state": peer_state,
+            "sync_strategy": record.sync_strategy,
+            "ler": 0,
+            "peering_timebase": record.peering_timebase,
+            "network_distance": record.network_distance,
+            "rx_bytes": record.rx_bytes,
+            "tx_bytes": record.tx_bytes,
+            "alive": alive,
+            "acceptance_rate": acceptance_rate,
+            "last_sync_attempt": last_sync_attempt,
+            "next_sync_attempt": next_sync_attempt,
+            "sync_backoff": sync_backoff,
+            "sync_transfer_rate": sync_transfer_rate,
+            "str": sync_transfer_rate as u64,
+            "synced": false,
+            "postponed": true,
+            "postpone_reason": postpone_reason,
+            "propagation_transfer_limit": record.propagation_transfer_limit,
+            "propagation_sync_limit": record.propagation_sync_limit,
+            "propagation_stamp_cost": record.propagation_stamp_cost,
+            "propagation_stamp_cost_flexibility": record.propagation_stamp_cost_flexibility,
+            "peering_key": peering_key,
+            "peering_key_status": peering_key_status,
+            "transfer_limit": transfer_limit_bytes,
+            "sync_limit": sync_limit_bytes,
+            "target_stamp_cost": record.propagation_stamp_cost,
+            "stamp_cost_flexibility": record.propagation_stamp_cost_flexibility,
+            "offered": offered,
+            "outgoing": outgoing,
+            "incoming": incoming,
+            "messages": messages,
+            "propagation": propagation_sync.clone(),
+        });
+        event_payload["state_name"] = json!(peer_state_name);
+        self.publish_event(RpcEvent { event_type: "peer_sync".into(), payload: event_payload });
 
-        RpcResponse {
-            id: request_id,
-            result: Some(json!({
+        let mut result = json!({
                 "peer": &record.peer,
                 "peer_type": peer_type_value,
                 "type": peer_status_type,
@@ -216,7 +222,7 @@ impl RpcDaemon {
                 "synced": false,
                 "postponed": true,
                 "postpone_reason": postpone_reason,
-                "state": 0,
+                "state": peer_state,
                 "sync_strategy": record.sync_strategy,
                 "ler": 0,
                 "peering_timebase": record.peering_timebase,
@@ -246,9 +252,10 @@ impl RpcDaemon {
                 "incoming": incoming,
                 "messages": messages,
                 "propagation": propagation_sync,
-            })),
-            error: None,
-        }
+        });
+        result["state_name"] = json!(peer_state_name);
+
+        RpcResponse { id: request_id, result: Some(result), error: None }
     }
 
     fn local_peer_offer_error_response(
@@ -2298,6 +2305,22 @@ pub(super) fn peer_acceptance_rate_for_reporting(
         0.0
     } else {
         cached_rate.max(0.0)
+    }
+}
+
+fn peer_sync_status_state(peer: &PeerRecord) -> (u32, &'static str) {
+    if peer_sync_backoff_active(now_i64(), peer.next_sync_attempt) {
+        (PEER_SYNC_STATE_BACKOFF, "backoff")
+    } else {
+        (PEER_SYNC_STATE_IDLE, "idle")
+    }
+}
+
+fn peer_sync_postponed_state(postpone_reason: &str) -> (u32, &'static str) {
+    if postpone_reason == "backoff" {
+        (PEER_SYNC_STATE_BACKOFF, "backoff")
+    } else {
+        (PEER_SYNC_STATE_POSTPONED, "postponed")
     }
 }
 

@@ -88,6 +88,8 @@ impl RpcDaemon {
             "transfer_limit": transfer_limit,
             "sync_limit": sync_limit,
         });
+        propagation["state"] = json!(super::dispatch_legacy_messages::PEER_SYNC_STATE_FAILED);
+        propagation["state_name"] = json!("failed");
         if let Some(reason) = postpone_reason {
             propagation["postponed"] = json!(true);
             propagation["postpone_reason"] = json!(reason);
@@ -102,7 +104,6 @@ impl RpcDaemon {
             "remote": remote,
             "remote_sync": true,
             "synced": false,
-            "state": 0,
             "sync_strategy": peer.sync_strategy,
             "ler": 0,
             "peering_timebase": peer.peering_timebase,
@@ -135,6 +136,8 @@ impl RpcDaemon {
             "messages": messages,
             "propagation": propagation,
         });
+        payload["state"] = json!(super::dispatch_legacy_messages::PEER_SYNC_STATE_FAILED);
+        payload["state_name"] = json!("failed");
         if let Some(reason) = postpone_reason {
             payload["postponed"] = json!(true);
             payload["postpone_reason"] = json!(reason);
