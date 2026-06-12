@@ -438,6 +438,9 @@ The project is best described by capability level:
   Python-origin `/offer` case covering partial wanted-ID responses,
   repeated-offer throttling, and source-peer completed marks before broad
   peer/router interop is claimed.
+- Link-based propagation-control waits now treat matching resource transfer
+  failure and cancellation as terminal remote fetch/download outcomes instead
+  of waiting for the generic response timeout.
 
 ## Remaining Release Blockers
 

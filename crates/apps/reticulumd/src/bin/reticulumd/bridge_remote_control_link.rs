@@ -191,20 +191,31 @@ pub(super) async fn wait_for_link_request_response(
             result = resource_rx.recv() => {
                 match result {
                     Ok(event) => {
-                        let rns_transport::resource::ResourceEventKind::Complete(complete) =
-                            event.kind
-                        else {
-                            continue;
-                        };
                         if event.link_id != expected_link_id {
                             continue;
                         }
-                        if let Some((response_id, payload)) =
-                            parse_link_response_frame(complete.data.as_slice())
-                        {
-                            if response_id == request_id {
-                                return Ok(payload);
+                        match event.kind {
+                            rns_transport::resource::ResourceEventKind::Complete(complete) => {
+                                if let Some((response_id, payload)) =
+                                    parse_link_response_frame(complete.data.as_slice())
+                                {
+                                    if response_id == request_id {
+                                        return Ok(payload);
+                                    }
+                                }
                             }
+                            rns_transport::resource::ResourceEventKind::OutboundFailed => {
+                                return Err(
+                                    "propagation control resource transfer failed".to_string()
+                                );
+                            }
+                            rns_transport::resource::ResourceEventKind::OutboundCancelled => {
+                                return Err(
+                                    "propagation control resource transfer cancelled".to_string()
+                                );
+                            }
+                            rns_transport::resource::ResourceEventKind::OutboundComplete
+                            | rns_transport::resource::ResourceEventKind::Progress(_) => {}
                         }
                     }
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
@@ -245,5 +256,53 @@ fn value_to_bytes(value: &rmpv::Value) -> Option<Vec<u8>> {
             Some(value.as_bytes().to_vec())
         }
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rns_transport::hash::Hash;
+    use rns_transport::resource::{ResourceEvent, ResourceEventKind};
+
+    async fn resource_terminal_error(kind: ResourceEventKind) -> String {
+        let (_data_tx, mut data_rx) = tokio::sync::broadcast::channel(4);
+        let (resource_tx, mut resource_rx) = tokio::sync::broadcast::channel(4);
+        let destination = AddressHash::new([0x11; 16]);
+        let link_id = AddressHash::new([0x22; 16]);
+        let request_id = [0x33; 16];
+
+        resource_tx
+            .send(ResourceEvent {
+                hash: Hash::new_from_slice(b"terminal propagation control resource"),
+                link_id,
+                kind,
+            })
+            .expect("send terminal resource event");
+
+        wait_for_link_request_response(
+            &mut data_rx,
+            &mut resource_rx,
+            destination,
+            link_id,
+            request_id,
+            Duration::from_millis(50),
+        )
+        .await
+        .expect_err("terminal resource event should fail immediately")
+    }
+
+    #[tokio::test]
+    async fn wait_for_link_request_response_fails_on_resource_failure() {
+        let err = resource_terminal_error(ResourceEventKind::OutboundFailed).await;
+
+        assert_eq!(err, "propagation control resource transfer failed");
+    }
+
+    #[tokio::test]
+    async fn wait_for_link_request_response_fails_on_resource_cancel() {
+        let err = resource_terminal_error(ResourceEventKind::OutboundCancelled).await;
+
+        assert_eq!(err, "propagation control resource transfer cancelled");
     }
 }
