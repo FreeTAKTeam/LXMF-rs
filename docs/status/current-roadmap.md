@@ -405,6 +405,10 @@ The project is best described by capability level:
   after peering-key and transient-ID validation, so repeated replication offers
   from the same peer take the throttled response path even when the peer changes
   the offered transient-ID set.
+- The live Python compatibility gate now includes a Python-origin propagation
+  `/get` haves-only case against Rust `reticulumd`, covering `true`
+  acknowledgement, Rust-side payload purge, and suppression of retryable
+  unhandled peer queue state for the declaring propagation peer.
 
 ## Remaining Release Blockers
 
@@ -421,9 +425,10 @@ the implemented subset.
 3. **Interop breadth**
    - Add bidirectional live Python cases for every claimed delivery mode and
      newly completed peer/router row.
-   - Propagation remote-status/control now has a dispatchable compatibility
-     case for Python control-path discovery and Rust-to-Python remote status;
-     broader peer/router row coverage still needs additional live scenarios.
+   - Propagation remote-status/control now has dispatchable compatibility cases
+     for Python control-path discovery, Rust-to-Python remote status, and
+     Python-origin `/get` haves acknowledgement; broader peer/router row
+     coverage still needs additional live scenarios.
    - Capture release evidence for Sideband, MeshChatX, and Columba before making
      client-specific compatibility claims.
 4. **Reticulum behavioral breadth**

@@ -288,6 +288,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Inbound propagation message-get `haves` handling applies peer admission
   before purging matching local payloads, so rejected peers cannot delete queued
   transfers they are not allowed to acknowledge.
+- The live Rust/Python propagation-control gate now exercises a Python-origin
+  `/get` haves-only request against Rust `reticulumd`, proving the `true`
+  acknowledgement, retained-payload purge, and absence of retryable unhandled
+  peer queue state across the live link request path.
 - Inbound propagation message-get `haves` handling records matched haves as
   received/completed work for the requesting propagation peer after purge, so
   reintroduced payloads are not queued back to peers that already declared
@@ -477,11 +481,11 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - `.github/workflows/python-interop.yml` runs pinned Python reference
   conformance plus live channel, paper, compatibility-matrix, and LXMD
   remote-relay tests.
-- The compatibility matrix includes an ignored live
-  `propagation_remote_status_bidir` case that validates Python discovery of
-  the Rust propagation-control path and dispatches a Rust-to-Python
-  propagation-node status query when the Python harness environment is
-  available.
+- The compatibility matrix includes ignored live `propagation_remote_status_bidir`
+  and `propagation_get_haves_python_to_rust` cases that validate Python
+  discovery of the Rust propagation-control path, Rust-to-Python
+  propagation-node status, and Python-origin haves-only `/get` side effects when
+  the Python harness environment is available.
 - Focused daemon/RPC tests cover delivery modes, propagation offers, peer
   maintenance, queue policy, source accounting, stamps, tickets, receipts, and
   cancellation.
