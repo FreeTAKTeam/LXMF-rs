@@ -115,6 +115,10 @@ The project is best described by capability level:
 - Remote fetch and download access-denied bridge errors now preserve the
   propagation `no_access` lifecycle state instead of collapsing the denial into
   generic failure, while retaining the bridge error text for operators.
+- Access-denied remote transfer cleanup now reports the stored peer identifier
+  in peer-unpeer events even when callers address the remote with different hex
+  casing, keeping operator-visible teardown events aligned with the peer record
+  that was actually removed.
 - Remote fetch and download bridge-unavailable errors now mirror existing
   payload-backed live queue marks into active peer record snapshots before
   returning and mark the propagation sync lifecycle failed, so already queued
@@ -124,6 +128,9 @@ The project is best described by capability level:
   live queue marks into active peer record snapshots after applying imports, so
   restart/export state preserves queued retry work even when the remote
   transfer succeeds without consuming those local queued offers.
+- Successful remote fetch and download now clear stale retry backoff on the
+  active source peer when newly accepted payloads prove the source recovered,
+  so later maintenance does not keep postponing a healthy replication peer.
 - Remote peer-sync backoff postponements now mirror existing payload-backed live
   queue marks into active peer record snapshots before returning, so
   restart/export state preserves queued retry work even when sync is deferred.
@@ -161,6 +168,9 @@ The project is best described by capability level:
 - Successful remote unpeer now also uses the stored peer ID case for the bridge
   call and nested bridge result when callers use a case-variant peer request,
   keeping remote teardown identity aligned with local queue cleanup.
+- Successful remote unpeer now clears stale propagation lifecycle failures and
+  error text left by earlier teardown attempts, so status reflects completed
+  peer removal instead of a prior failed control operation.
 - Inbound reticulumd `/pn/peer/sync` and `/pn/peer/unpeer` control commands now
   resolve stored peer IDs case-insensitively before dispatching to daemon RPCs,
   so binary peer-control requests do not report not-found for restored or
@@ -269,8 +279,9 @@ The project is best described by capability level:
   declared them.
 - Link-based remote propagation downloads now wait for the final haves
   acknowledgement response after imported or duplicate payloads are reported,
-  so node-side rejection or timeout is surfaced instead of reporting a
-  completed download before remote cleanup is confirmed.
+  and also after all-known listings are acknowledged with purge-only haves, so
+  node-side rejection or timeout is surfaced instead of reporting a completed
+  download before remote cleanup is confirmed.
 - Inbound propagation message-get purge-only requests now return the
   Python-style boolean success response after haves are applied, and payload
   purge cleanup preserves completed peer accounting for other peers while

@@ -4812,6 +4812,34 @@ fn peer_activity_updates_runtime_counters() {
 }
 
 #[test]
+fn successful_remote_peer_activity_keeps_newer_failure_backoff() {
+    let daemon = RpcDaemon::test_instance();
+    let peer = "peer-remote-activity-order";
+    daemon
+        .handle_rpc(rpc_request(51, "peer_sync", json!({ "peer": peer })))
+        .expect("peer sync");
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let record = peers.get_mut(peer).expect("peer record");
+        record.alive = false;
+        record.sync_backoff = 12 * 60;
+        record.next_sync_attempt = now_i64().saturating_add(12 * 60);
+    }
+
+    assert!(daemon.record_successful_remote_propagation_peer_activity_count(peer, 120, 2));
+    daemon.record_outbound_peer_activity(peer, 40, false);
+
+    let peers = daemon.peers.lock().expect("peers mutex poisoned");
+    let record = peers.get(peer).expect("peer record");
+    assert_eq!(record.incoming, 2);
+    assert_eq!(record.rx_bytes, 120);
+    assert_eq!(record.tx_bytes, 40);
+    assert!(!record.alive);
+    assert_eq!(record.sync_backoff, 12 * 60);
+    assert_eq!(record.next_sync_attempt, record.last_sync_attempt.saturating_add(12 * 60));
+}
+
+#[test]
 fn inbound_peer_activity_matches_existing_peer_case_insensitively_like_python() {
     let daemon = RpcDaemon::test_instance();
     let stored_peer = "Peer-Inbound-Case";
@@ -15074,6 +15102,63 @@ fn propagation_remote_fetch_marks_source_received_and_queues_other_peers() {
 }
 
 #[test]
+fn propagation_remote_fetch_success_clears_source_peer_retry_backoff() {
+    let payload = b"remote-fetch-source-peer-recovery-payload";
+    let payload_hex = hex::encode(payload);
+    let transient_id = hex::encode(Sha256::digest(payload));
+    let source_peer = "remote-fetch-source-recovery";
+    let daemon = RpcDaemon::test_instance();
+    daemon
+        .handle_rpc(rpc_request(72, "peer_sync", json!({ "peer": source_peer })))
+        .expect("seed source peer");
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let peer = peers.get_mut(source_peer).expect("source peer record");
+        peer.alive = false;
+        peer.sync_backoff = 12 * 60;
+        peer.next_sync_attempt = now_i64().saturating_add(12 * 60);
+    }
+    daemon.set_remote_control_bridge(Arc::new(TestRemoteControlBridge {
+        result: Ok(json!({
+            "available_count": 1,
+            "fetched_count": 1,
+            "messages": [{
+                "transient_id": transient_id,
+                "payload_hex": payload_hex,
+            }],
+        })),
+    }));
+
+    daemon
+        .handle_rpc(rpc_request(
+            73,
+            "propagation_remote_fetch",
+            json!({ "remote": source_peer }),
+        ))
+        .expect("remote fetch from recovered source");
+
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 74, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    let source_row = peers["peers"]
+        .as_array()
+        .expect("peer rows")
+        .iter()
+        .find(|row| row["peer"].as_str() == Some(source_peer))
+        .expect("source peer row");
+    assert_eq!(source_row["alive"].as_bool(), Some(true));
+    assert_eq!(source_row["rx_bytes"].as_u64(), Some(payload.len() as u64));
+    assert_eq!(source_row["sync_backoff"].as_u64(), Some(0));
+    assert_eq!(source_row["next_sync_attempt"].as_i64(), Some(0));
+    assert_eq!(
+        source_row["messages"]["handled_ids"].as_array().expect("handled ids"),
+        &[json!(transient_id.as_str())]
+    );
+}
+
+#[test]
 fn propagation_remote_fetch_marks_inactive_source_received_for_later_activation_like_python() {
     let payload = b"remote-fetch-inactive-source-payload";
     let payload_hex = hex::encode(payload);
@@ -15921,6 +16006,62 @@ fn propagation_remote_download_marks_source_received_and_queues_other_peers() {
         .expect("relay pending");
     assert_eq!(relay_pending.len(), 1);
     assert_eq!(relay_pending[0].transient_id, transient_id);
+}
+
+#[test]
+fn propagation_remote_download_success_clears_source_peer_retry_backoff() {
+    let payload = b"remote-download-source-peer-recovery-payload";
+    let payload_hex = hex::encode(payload);
+    let transient_id = hex::encode(Sha256::digest(payload));
+    let source_peer = "remote-download-source-recovery";
+    let daemon = RpcDaemon::test_instance();
+    daemon
+        .handle_rpc(rpc_request(78, "peer_sync", json!({ "peer": source_peer })))
+        .expect("seed source peer");
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let peer = peers.get_mut(source_peer).expect("source peer record");
+        peer.alive = false;
+        peer.sync_backoff = 12 * 60;
+        peer.next_sync_attempt = now_i64().saturating_add(12 * 60);
+    }
+    daemon.set_remote_control_bridge(Arc::new(TestRemoteControlBridge {
+        result: Ok(json!({
+            "downloaded_count": 1,
+            "messages": [{
+                "transient_id": transient_id,
+                "payload_hex": payload_hex,
+            }],
+        })),
+    }));
+
+    daemon
+        .handle_rpc(rpc_request(
+            79,
+            "propagation_remote_download",
+            json!({ "remote": source_peer }),
+        ))
+        .expect("remote download from recovered source");
+
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 80, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    let source_row = peers["peers"]
+        .as_array()
+        .expect("peer rows")
+        .iter()
+        .find(|row| row["peer"].as_str() == Some(source_peer))
+        .expect("source peer row");
+    assert_eq!(source_row["alive"].as_bool(), Some(true));
+    assert_eq!(source_row["rx_bytes"].as_u64(), Some(payload.len() as u64));
+    assert_eq!(source_row["sync_backoff"].as_u64(), Some(0));
+    assert_eq!(source_row["next_sync_attempt"].as_i64(), Some(0));
+    assert_eq!(
+        source_row["messages"]["handled_ids"].as_array().expect("handled ids"),
+        &[json!(transient_id.as_str())]
+    );
 }
 
 #[test]
@@ -17291,6 +17432,47 @@ fn denied_access_propagation_remote_fetch_breaks_source_peering_like_python() {
         "propagation_remote_fetch",
         "peer-remote-fetch-denied",
     );
+}
+
+#[test]
+fn denied_access_propagation_remote_fetch_reports_stored_peer_case_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    daemon.set_remote_control_bridge(Arc::new(RemoteTransferErrorBridge {
+        kind: std::io::ErrorKind::PermissionDenied,
+        message: "propagation node denied access",
+        fail_download: false,
+        fail_fetch: true,
+    }));
+    let stored_peer = "Peer-Remote-Fetch-Denied-Case";
+    let request_peer = stored_peer.to_ascii_lowercase();
+    daemon
+        .handle_rpc(rpc_request(80, "peer_sync", json!({ "peer": stored_peer })))
+        .expect("initial peer sync");
+    daemon.event_queue.lock().expect("event_queue mutex poisoned").clear();
+
+    let err = daemon
+        .handle_rpc(rpc_request(
+            81,
+            "propagation_remote_fetch",
+            json!({
+                "remote": request_peer,
+            }),
+        ))
+        .expect_err("denied remote fetch should return the bridge error");
+    assert_eq!(err.kind(), std::io::ErrorKind::PermissionDenied);
+
+    let event = daemon
+        .event_queue
+        .lock()
+        .expect("event_queue mutex poisoned")
+        .iter()
+        .rev()
+        .find(|event| event.event_type == "peer_unpeer")
+        .cloned()
+        .expect("denied access unpeer event");
+    assert_eq!(event.payload["peer"].as_str(), Some(stored_peer));
+    assert_eq!(event.payload["remote"].as_str(), Some(request_peer.as_str()));
+    assert_eq!(event.payload["reason"].as_str(), Some("access_denied"));
 }
 
 #[test]
@@ -18860,6 +19042,127 @@ fn propagation_remote_unpeer_publishes_peer_removed_event() {
     assert_eq!(event.payload["offered"].as_u64(), Some(1));
     assert_eq!(event.payload["outgoing"].as_u64(), Some(1));
     assert_eq!(event.payload["incoming"].as_u64(), Some(1));
+}
+
+#[test]
+fn successful_propagation_remote_unpeer_clears_stale_lifecycle_failure() {
+    let daemon = RpcDaemon::test_instance();
+    daemon.set_remote_control_bridge(Arc::new(TestRemoteControlBridge {
+        result: Err(std::io::ErrorKind::TimedOut),
+    }));
+    daemon
+        .handle_rpc(rpc_request(79, "peer_sync", json!({ "peer": "peer-remote-unpeer-stale" })))
+        .expect("peer sync");
+
+    let err = daemon
+        .handle_rpc(rpc_request(
+            80,
+            "propagation_remote_unpeer",
+            json!({
+                "remote": "remote-node",
+                "peer": "peer-remote-unpeer-stale",
+            }),
+        ))
+        .expect_err("first remote unpeer should fail");
+    assert_eq!(err.kind(), std::io::ErrorKind::TimedOut);
+
+    let failed_status = daemon
+        .handle_rpc(RpcRequest {
+            id: 81,
+            method: "propagation_status".to_string(),
+            params: None,
+        })
+        .expect("failed propagation status")
+        .result
+        .expect("failed propagation status result");
+    assert_eq!(failed_status["propagation"]["sync_state"].as_u64(), Some(0xfe));
+    assert_eq!(failed_status["propagation"]["state_name"].as_str(), Some("failed"));
+    assert_eq!(
+        failed_status["propagation"]["last_sync_error"].as_str(),
+        Some("remote unpeer failed")
+    );
+
+    daemon.set_remote_control_bridge(Arc::new(TestRemoteControlBridge {
+        result: Ok(json!({})),
+    }));
+    daemon
+        .handle_rpc(rpc_request(
+            82,
+            "propagation_remote_unpeer",
+            json!({
+                "remote": "remote-node",
+                "peer": "peer-remote-unpeer-stale",
+            }),
+        ))
+        .expect("successful remote unpeer");
+
+    let status = daemon
+        .handle_rpc(RpcRequest {
+            id: 83,
+            method: "propagation_status".to_string(),
+            params: None,
+        })
+        .expect("propagation status")
+        .result
+        .expect("propagation status result");
+    let propagation = &status["propagation"];
+    assert_eq!(propagation["sync_state"].as_u64(), Some(0x00));
+    assert_eq!(propagation["state_name"].as_str(), Some("idle"));
+    assert_eq!(propagation["sync_progress"].as_f64(), Some(0.0));
+    assert!(propagation["last_sync_completed"].as_i64().is_some());
+    assert_eq!(propagation["last_sync_error"], JsonValue::Null);
+}
+
+#[test]
+fn successful_propagation_remote_unpeer_preserves_newer_active_lifecycle() {
+    let daemon = RpcDaemon::test_instance();
+    daemon.set_remote_control_bridge(Arc::new(TestRemoteControlBridge {
+        result: Err(std::io::ErrorKind::TimedOut),
+    }));
+    let peer = "peer-remote-unpeer-active";
+    daemon
+        .handle_rpc(rpc_request(84, "peer_sync", json!({ "peer": peer })))
+        .expect("peer sync");
+    daemon
+        .handle_rpc(rpc_request(
+            85,
+            "propagation_remote_unpeer",
+            json!({
+                "remote": "remote-node",
+                "peer": peer,
+            }),
+        ))
+        .expect_err("first remote unpeer should fail");
+
+    daemon.update_propagation_sync_state(|state| {
+        state.sync_state = 0x04;
+        state.state_name = "syncing".to_string();
+        state.sync_progress = 0.25;
+        state.last_sync_started = Some(1_700_001_234);
+        state.last_sync_completed = None;
+        state.last_sync_error = None;
+    });
+    daemon.set_remote_control_bridge(Arc::new(TestRemoteControlBridge {
+        result: Ok(json!({})),
+    }));
+    daemon
+        .handle_rpc(rpc_request(
+            86,
+            "propagation_remote_unpeer",
+            json!({
+                "remote": "remote-node",
+                "peer": peer,
+            }),
+        ))
+        .expect("successful remote unpeer");
+
+    let propagation = daemon.current_propagation_state();
+    assert_eq!(propagation.sync_state, 0x04);
+    assert_eq!(propagation.state_name, "syncing");
+    assert_eq!(propagation.sync_progress, 0.25);
+    assert_eq!(propagation.last_sync_started, Some(1_700_001_234));
+    assert_eq!(propagation.last_sync_completed, None);
+    assert_eq!(propagation.last_sync_error, None);
 }
 
 #[test]
