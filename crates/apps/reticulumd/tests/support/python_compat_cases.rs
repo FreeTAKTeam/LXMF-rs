@@ -24,7 +24,7 @@ struct CompatibilityCase {
     description: &'static str,
 }
 
-const COMPATIBILITY_CASES: [CompatibilityCase; 13] = [
+const COMPATIBILITY_CASES: [CompatibilityCase; 14] = [
     CompatibilityCase {
         id: "direct_rust_to_python",
         mode: CompatibilityMode::Direct,
@@ -61,6 +61,11 @@ const COMPATIBILITY_CASES: [CompatibilityCase; 13] = [
         description: "Python can resolve Rust propagation control and Rust can query Python propagation status",
     },
     CompatibilityCase {
+        id: "propagation_offer_python_to_rust",
+        mode: CompatibilityMode::PropagationControl,
+        description: "Python-origin propagation offers exercise Rust offer side effects and throttling",
+    },
+    CompatibilityCase {
         id: "link_liveness_rust_to_python",
         mode: CompatibilityMode::LinkLifecycle,
         description: "Rust-initiated direct links stay alive with adaptive keepalives and time out like Python",
@@ -94,7 +99,7 @@ const COMPATIBILITY_CASES: [CompatibilityCase; 13] = [
 
 pub(crate) fn assert_required_modes_covered() {
     assert!(
-        COMPATIBILITY_CASES.len() >= 13,
+        COMPATIBILITY_CASES.len() >= 14,
         "matrix should cover the documented required scenarios"
     );
     assert_case_present("direct_rust_to_python");
@@ -104,6 +109,7 @@ pub(crate) fn assert_required_modes_covered() {
     assert_case_present("propagated_rust_to_python");
     assert_case_present("propagated_python_to_rust");
     assert_case_present("propagation_remote_status_bidir");
+    assert_case_present("propagation_offer_python_to_rust");
     assert_case_present("link_liveness_rust_to_python");
     assert_case_present("link_liveness_python_to_rust");
     assert_case_present("link_teardown_rust_to_python");

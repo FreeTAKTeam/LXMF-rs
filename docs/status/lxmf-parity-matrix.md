@@ -267,6 +267,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   propagation destination as the Rust outbound propagation node, covering mixed
   propagation-node discovery and selection before broader store-and-forward
   claims are made.
+- The live Rust/Python propagation-control gate now also exercises a
+  Python-origin `/offer` against Rust `reticulumd`, proving partial wanted-ID
+  responses, repeated-offer throttling, and source-peer completed marks across
+  the live link request path.
 - Duplicate inbound peer propagation payloads still fan out to active relay
   peers while keeping the source peer handled, so a known local payload does
   not bypass relay queue creation.
@@ -477,10 +481,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - `.github/workflows/python-interop.yml` runs pinned Python reference
   conformance plus live channel, paper, compatibility-matrix, and LXMD
   remote-relay tests.
-- The compatibility matrix includes an ignored live
-  `propagation_remote_status_bidir` case that validates Python discovery of
-  the Rust propagation-control path and dispatches a Rust-to-Python
-  propagation-node status query when the Python harness environment is
+- The compatibility matrix includes ignored live `propagation_remote_status_bidir`
+  and `propagation_offer_python_to_rust` cases that validate Python discovery of
+  the Rust propagation-control path, Rust-to-Python propagation-node status, and
+  Python-origin offer side effects when the Python harness environment is
   available.
 - Focused daemon/RPC tests cover delivery modes, propagation offers, peer
   maintenance, queue policy, source accounting, stamps, tickets, receipts, and
