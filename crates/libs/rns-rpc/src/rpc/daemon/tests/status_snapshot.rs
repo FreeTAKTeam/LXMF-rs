@@ -16780,6 +16780,75 @@ fn failed_propagation_remote_fetch_updates_source_peer_backoff_like_python() {
     );
 }
 
+fn assert_local_remote_transfer_error_does_not_backoff_source_peer(
+    method: &str,
+    kind: std::io::ErrorKind,
+) {
+    let daemon = RpcDaemon::test_instance();
+    daemon.set_remote_control_bridge(Arc::new(TestRemoteControlBridge { result: Err(kind) }));
+    let peer = format!("peer-{method}-local-error");
+    daemon
+        .handle_rpc(rpc_request(80, "peer_sync", json!({ "peer": peer })))
+        .expect("initial peer sync");
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let record = peers.get_mut(peer.as_str()).expect("peer record");
+        record.alive = true;
+        record.sync_backoff = 60;
+        record.last_sync_attempt = 321;
+        record.next_sync_attempt = 654;
+        record.acceptance_rate = 0.5;
+    }
+    daemon.event_queue.lock().expect("event_queue mutex poisoned").clear();
+
+    let err = daemon
+        .handle_rpc(rpc_request(
+            81,
+            method,
+            json!({
+                "remote": peer,
+                "identity_private_key_hex": "not-hex",
+            }),
+        ))
+        .expect_err("local bridge failure should be returned");
+    assert_eq!(err.kind(), kind);
+
+    let peers = daemon.peers.lock().expect("peers mutex poisoned");
+    let record = peers.get(peer.as_str()).expect("stored peer");
+    assert!(record.alive);
+    assert_eq!(record.sync_backoff, 60);
+    assert_eq!(record.last_sync_attempt, 321);
+    assert_eq!(record.next_sync_attempt, 654);
+    assert_eq!(record.acceptance_rate, 0.5);
+    drop(peers);
+
+    assert!(
+        daemon
+            .event_queue
+            .lock()
+            .expect("event_queue mutex poisoned")
+            .iter()
+            .all(|event| event.event_type != "peer_sync"),
+        "local bridge failures must not publish a failed peer sync event"
+    );
+}
+
+#[test]
+fn invalid_input_propagation_remote_download_does_not_backoff_source_peer() {
+    assert_local_remote_transfer_error_does_not_backoff_source_peer(
+        "propagation_remote_download",
+        std::io::ErrorKind::InvalidInput,
+    );
+}
+
+#[test]
+fn local_setup_propagation_remote_fetch_error_does_not_backoff_source_peer() {
+    assert_local_remote_transfer_error_does_not_backoff_source_peer(
+        "propagation_remote_fetch",
+        std::io::ErrorKind::Other,
+    );
+}
+
 #[test]
 fn failed_propagation_remote_fetch_prunes_stale_queue_snapshot_ids_like_python() {
     let daemon = RpcDaemon::test_instance();
