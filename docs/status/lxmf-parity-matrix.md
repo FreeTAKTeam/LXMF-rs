@@ -322,8 +322,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   marked without regressing local payload reuse.
 - Link-based remote propagation downloads wait for the final haves
   acknowledgement response after imported or duplicate payloads are reported,
-  so node-side rejection or timeout is surfaced instead of reporting a
-  completed download before remote cleanup is confirmed.
+  and also after all-known listings are acknowledged with purge-only haves, so
+  node-side rejection or timeout is surfaced instead of reporting a completed
+  download before remote cleanup is confirmed.
 - Inbound propagation message-get purge-only requests return the Python-style
   boolean success response after haves are applied, and payload purge cleanup
   preserves completed peer accounting for other peers while removing stale
