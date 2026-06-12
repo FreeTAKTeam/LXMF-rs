@@ -613,6 +613,7 @@ pub struct NativeRnodeBleKissInterface {
     startup_response_timeout: Duration,
     reconnect_backoff: Duration,
     max_reconnect_backoff: Duration,
+    detection_fallback_timeout: Option<Duration>,
 }
 
 #[cfg(feature = "rnode-ble")]
@@ -636,6 +637,7 @@ impl NativeRnodeBleKissInterface {
             startup_response_timeout: Duration::from_millis(5_000), // was 1_500; matches Python's ble_detect_timeout
             reconnect_backoff: Duration::from_millis(500),
             max_reconnect_backoff: Duration::from_millis(5_000),
+            detection_fallback_timeout: None,
         }
     }
 
@@ -665,6 +667,15 @@ impl NativeRnodeBleKissInterface {
         self
     }
 
+    /// If CMD_DETECT response has not arrived within `timeout` of session establishment,
+    /// send the deferred radio-config frames unconditionally. Useful for firmware that
+    /// does not respond to the first probe on a fresh BLE connection.
+    #[must_use]
+    pub fn with_detection_fallback_timeout(mut self, timeout: Duration) -> Self {
+        self.detection_fallback_timeout = Some(timeout);
+        self
+    }
+
     pub async fn spawn(context: InterfaceContext<Self>) {
         let iface_stop = context.channel.stop.clone();
         let iface_address = context.channel.address;
@@ -677,6 +688,7 @@ impl NativeRnodeBleKissInterface {
             startup_response_timeout,
             reconnect_backoff,
             max_reconnect_backoff,
+            detection_fallback_timeout,
         ) = {
             let guard = context.inner.lock().expect("RNode BLE interface mutex poisoned");
             (
@@ -687,6 +699,7 @@ impl NativeRnodeBleKissInterface {
                 guard.startup_response_timeout,
                 guard.reconnect_backoff,
                 guard.max_reconnect_backoff,
+                guard.detection_fallback_timeout,
             )
         };
         let mut active_backoff = reconnect_backoff;
@@ -724,8 +737,40 @@ impl NativeRnodeBleKissInterface {
             let mut command_monitor = rnode_config
                 .map(|config| RnodeBleCommandMonitor::new(config, startup_response_timeout));
             let mut radio_config_sent = command_monitor.is_none();
+            let mut detection_fallback_deadline: Option<TokioInstant> =
+                if command_monitor.is_some() {
+                    detection_fallback_timeout.map(|t| TokioInstant::now() + t)
+                } else {
+                    None
+                };
             let mut first_tx_at: Option<TokioInstant> = None;
             while !context.cancel.is_cancelled() && !iface_stop.is_cancelled() {
+                if !radio_config_sent {
+                    if let Some(deadline) = detection_fallback_deadline {
+                        if TokioInstant::now() >= deadline {
+                            detection_fallback_deadline = None;
+                            log::warn!(
+                                "RNode BLE detection fallback: CMD_DETECT not received within \
+                                 timeout, sending deferred frames anyway iface={}",
+                                label
+                            );
+                            radio_config_sent = true;
+                            if let Err(err) = runtime.send_deferred_frames().await {
+                                log::warn!(
+                                    "RNode BLE radio config write (fallback) failed iface={} err={:?}",
+                                    label,
+                                    err
+                                );
+                                reconnect_needed = true;
+                            } else if let Some(mon) = command_monitor.as_mut() {
+                                mon.reset_startup_deadline(startup_response_timeout);
+                            }
+                        }
+                    }
+                }
+                if reconnect_needed {
+                    break;
+                }
                 if radio_config_sent {
                     while let Ok(message) = tx_channel.try_recv() {
                         let mut output = OutputBuffer::new(&mut tx_buffer[..]);
