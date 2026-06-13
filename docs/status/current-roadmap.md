@@ -254,6 +254,9 @@ The project is best described by capability level:
 - Local peer offer-error responses now publish failed peer-sync state fields at
   both the top-level peer event and nested propagation result while preserving
   the retryable peer queue, improving parity with the peer sync state machine.
+- Ordinary full-offer peer sync now validates the propagation payload batch
+  before marking any queued ID transferred, so a later malformed queued payload
+  cannot partially drain peer retry state.
 - Inbound and remotely imported propagation payloads update active peer record
   snapshots when they queue new unhandled IDs or mark source peers handled,
   keeping restart/export state aligned with live queue fan-out and source

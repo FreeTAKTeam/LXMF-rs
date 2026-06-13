@@ -142,6 +142,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Selected local peer-sync offer responses validate the full selected
   propagation response payload batch before marking any selected ID transferred,
   so malformed queued payloads cannot partially drain peer retry state.
+- Ordinary full-offer peer sync validates the propagation payload batch before
+  marking any queued ID transferred, so a later malformed queued payload cannot
+  partially drain peer retry state.
 - Malformed remote fetch and download imports mirror existing payload-backed
   queue marks into active peer record snapshots before returning the import
   failure, so already queued relay work remains visible after restart/export.

@@ -369,6 +369,34 @@ fn validate_peer_sync_wanted_ids_in_offer(
     Ok(())
 }
 
+fn validate_peer_sync_full_offer_payloads(
+    pending_propagation: &[PropagationEntryRecord],
+    transfer_limit_bytes: Option<usize>,
+    sync_limit_bytes: Option<usize>,
+    start_size: usize,
+) -> Result<(), std::io::Error> {
+    let mut cumulative_size = start_size;
+    for entry in pending_propagation {
+        let entry_size = usize::try_from(entry.size_bytes).unwrap_or(usize::MAX);
+        let transfer_size = entry_size.saturating_add(16);
+        if transfer_limit_bytes.is_some_and(|limit| transfer_size > limit) {
+            continue;
+        }
+        let next_size = cumulative_size.saturating_add(transfer_size);
+        if sync_limit_bytes.is_some_and(|limit| next_size >= limit) {
+            continue;
+        }
+        cumulative_size = next_size;
+        hex::decode(entry.payload_hex.as_str()).map_err(|err| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("invalid propagation payload hex: {err}"),
+            )
+        })?;
+    }
+    Ok(())
+}
+
 fn peer_sync_resource_data_size(payloads: &[Vec<u8>]) -> Result<u64, std::io::Error> {
     if payloads.is_empty() {
         return Ok(0);
