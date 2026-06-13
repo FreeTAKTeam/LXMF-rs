@@ -43,6 +43,21 @@ fn sdk_release_c_domain_methods_roundtrip() {
     assert!(registry_entries
         .iter()
         .any(|entry| entry["id"] == json!("app.propagation.peer_sync")));
+    assert!(registry_entries
+        .iter()
+        .any(|entry| entry["id"] == json!("app.propagation.remote_status")));
+    assert!(registry_entries
+        .iter()
+        .any(|entry| entry["id"] == json!("app.propagation.remote_fetch")));
+    assert!(registry_entries
+        .iter()
+        .any(|entry| entry["id"] == json!("app.propagation.remote_download")));
+    assert!(registry_entries
+        .iter()
+        .any(|entry| entry["id"] == json!("app.propagation.remote_sync")));
+    assert!(registry_entries
+        .iter()
+        .any(|entry| entry["id"] == json!("app.propagation.remote_unpeer")));
 
     let list_before =
         daemon.handle_rpc(rpc_request(120, "sdk_identity_list_v2", json!({}))).expect("list");
@@ -192,6 +207,49 @@ fn sdk_release_c_domain_methods_roundtrip() {
     assert_eq!(peer_sync_response["response"]["payload"]["peer"], json!("peer-sdk-prop"));
     assert!(peer_sync_response["response"]["payload"]["messages"].is_object());
     assert!(peer_sync_response["response"]["payload"]["propagation"].is_object());
+
+    daemon.set_remote_control_bridge(std::sync::Arc::new(
+        ReleasePropagationRemoteStatusBridge,
+    ));
+    let remote_status_envelope = daemon
+        .handle_rpc(rpc_request(
+            1207,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "app.propagation.remote_status",
+                "kind": "query",
+                "correlation_id": "remote-status-corr-1",
+                "payload": {
+                    "remote": "remote-sdk-prop",
+                    "identity_private_key_hex": "feedface",
+                    "timeout_secs": 2.5
+                },
+            }),
+        ))
+        .expect("remote status envelope");
+    assert!(remote_status_envelope.error.is_none());
+    let remote_status_response =
+        remote_status_envelope.result.expect("remote status envelope result");
+    assert_eq!(
+        remote_status_response["response"]["operation_id"],
+        json!("app.propagation.remote_status")
+    );
+    assert_eq!(
+        remote_status_response["response"]["correlation_id"],
+        json!("remote-status-corr-1")
+    );
+    assert_eq!(
+        remote_status_response["response"]["payload"]["remote"],
+        json!("remote-sdk-prop")
+    );
+    assert_eq!(
+        remote_status_response["response"]["payload"]["status"]["state"],
+        json!("online")
+    );
+    assert_eq!(
+        remote_status_response["response"]["payload"]["status"]["identity_private_key_hex"],
+        json!("feedface")
+    );
 
     let identity_bundle = json!({
         "identity": "node-b",
@@ -552,6 +610,65 @@ fn sdk_release_c_domain_methods_roundtrip() {
         voice_update_envelope.result.expect("voice update envelope result")["response"]["payload"],
         json!("active")
     );
+}
+
+struct ReleasePropagationRemoteStatusBridge;
+
+impl RemoteControlBridge for ReleasePropagationRemoteStatusBridge {
+    fn propagation_remote_status(
+        &self,
+        remote: &str,
+        identity_private_key_hex: Option<&str>,
+        timeout_secs: f64,
+    ) -> Result<JsonValue, std::io::Error> {
+        Ok(json!({
+            "state": "online",
+            "remote": remote,
+            "identity_private_key_hex": identity_private_key_hex,
+            "timeout_secs": timeout_secs
+        }))
+    }
+
+    fn propagation_remote_sync(
+        &self,
+        _remote: &str,
+        _peer: &str,
+        _identity_private_key_hex: Option<&str>,
+        _timeout_secs: f64,
+        _transfer_limit_kb: Option<f64>,
+    ) -> Result<JsonValue, std::io::Error> {
+        Ok(json!({ "synced": false, "postponed": true }))
+    }
+
+    fn propagation_remote_fetch(
+        &self,
+        _remote: &str,
+        _identity_private_key_hex: Option<&str>,
+        _timeout_secs: f64,
+        _transfer_limit_kb: Option<f64>,
+    ) -> Result<JsonValue, std::io::Error> {
+        Ok(json!({ "synced": false, "postponed": true }))
+    }
+
+    fn propagation_remote_download(
+        &self,
+        _remote: &str,
+        _identity_private_key_hex: Option<&str>,
+        _timeout_secs: f64,
+        _transfer_limit_kb: Option<f64>,
+    ) -> Result<JsonValue, std::io::Error> {
+        Ok(json!({ "synced": false, "postponed": true }))
+    }
+
+    fn propagation_remote_unpeer(
+        &self,
+        _remote: &str,
+        _peer: &str,
+        _identity_private_key_hex: Option<&str>,
+        _timeout_secs: f64,
+    ) -> Result<JsonValue, std::io::Error> {
+        Ok(json!({ "accepted": true }))
+    }
 }
 
 #[test]

@@ -1,9 +1,14 @@
 impl RpcDaemon {
 
     fn operation_spec(&self, id_or_alias: &str) -> Option<ResolvedSdkOperationSpec> {
-        if let Some(spec) = SDK_OPERATION_SPECS.iter().find(|spec| {
-            spec.id == id_or_alias || spec.aliases.iter().any(|alias| alias == &id_or_alias)
-        }) {
+        if let Some(spec) =
+            SDK_OPERATION_SPECS.iter().chain(PROPAGATION_SDK_OPERATION_SPECS.iter()).find(
+                |spec| {
+                    spec.id == id_or_alias
+                        || spec.aliases.iter().any(|alias| alias == &id_or_alias)
+                },
+            )
+        {
             return Some(ResolvedSdkOperationSpec {
                 id: spec.id.to_owned(),
                 kind: spec.kind.to_owned(),
@@ -32,6 +37,7 @@ impl RpcDaemon {
     pub(super) fn operation_registry_json(&self) -> JsonValue {
         let mut entries = SDK_OPERATION_SPECS
             .iter()
+            .chain(PROPAGATION_SDK_OPERATION_SPECS.iter())
             .filter(|spec| {
                 spec.required_capabilities
                     .iter()
@@ -105,6 +111,15 @@ impl RpcDaemon {
     ) -> Result<RpcResponse, std::io::Error> {
         let delegated = match method {
             "sdk_send_v2" | "sdk_send_batch_v2" | "peer_sync" => self.handle_rpc_legacy_messages(RpcRequest {
+                id: request_id,
+                method: method.to_owned(),
+                params: Some(params),
+            })?,
+            "propagation_remote_status"
+            | "propagation_remote_fetch"
+            | "propagation_remote_download"
+            | "propagation_remote_sync"
+            | "propagation_remote_unpeer" => self.handle_rpc_legacy_propagation(RpcRequest {
                 id: request_id,
                 method: method.to_owned(),
                 params: Some(params),

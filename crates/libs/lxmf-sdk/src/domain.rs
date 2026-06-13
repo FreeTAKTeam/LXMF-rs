@@ -6,4 +6,6 @@ include!("domain_parts/peerconnectionrequest.rs");
 
 include!("domain_parts/propagationpeersync.rs");
 
+include!("domain_parts/propagationremote.rs");
+
 include!("domain_parts/workflowpeerreadyrequest.rs");

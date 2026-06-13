@@ -386,6 +386,11 @@ The project is best described by capability level:
   `app.propagation.peer_sync` over `sdk_envelope_execute_v2` to the daemon's
   existing `peer_sync` lifecycle while preserving offer, transfer, postponed,
   retry, and persistent queue metadata in the typed response.
+- The same ZeroMQ SDK propagation branch now exposes remote router status,
+  fetch, download, sync, and unpeer lifecycle calls through typed
+  `ZmqPipelineBackendClient` methods and registered `app.propagation.*`
+  envelopes, preserving daemon propagation, peer-sync, transfer, denial,
+  timeout, and queue-cleanup payloads without requiring REM/RCH to use raw RPC.
 - Locally delivered inbound peer propagation payloads now also store the
   accepted transient and apply source-aware relay fan-out without double
   counting source peer activity, so local delivery does not bypass relay queue

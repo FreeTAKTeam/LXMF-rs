@@ -44,7 +44,12 @@ impl RpcDaemon {
             "sdk_cancel_message_v2" => json!({
                 "message_id": parsed.payload.get("message_id").and_then(JsonValue::as_str),
             }),
-            "peer_sync" => parsed.payload,
+            "peer_sync"
+            | "propagation_remote_status"
+            | "propagation_remote_fetch"
+            | "propagation_remote_download"
+            | "propagation_remote_sync"
+            | "propagation_remote_unpeer" => parsed.payload,
             "sdk_poll_events_v2" => json!({
                 "cursor": parsed.payload.get("cursor").cloned().unwrap_or(JsonValue::Null),
                 "max": parsed.payload.get("max").cloned().unwrap_or(JsonValue::from(32_u64)),

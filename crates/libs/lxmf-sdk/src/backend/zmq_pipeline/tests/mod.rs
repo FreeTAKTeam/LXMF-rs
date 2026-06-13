@@ -860,6 +860,11 @@ fn operation_registry_uses_zmq_sdk_method_for_chat_peer_and_propagation_operatio
     assert!(registry.supports("app.peer.disconnect"));
     assert!(registry.supports("app.peer.reconnect"));
     assert!(registry.supports("app.propagation.peer_sync"));
+    assert!(registry.supports("app.propagation.remote_status"));
+    assert!(registry.supports("app.propagation.remote_fetch"));
+    assert!(registry.supports("app.propagation.remote_download"));
+    assert!(registry.supports("app.propagation.remote_sync"));
+    assert!(registry.supports("app.propagation.remote_unpeer"));
     let captured = captured.lock().expect("captured request");
     let request = captured.as_ref().expect("zmq request");
     assert_eq!(request.method, "sdk_operation_registry_v2");

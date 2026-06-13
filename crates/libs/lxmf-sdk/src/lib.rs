@@ -64,6 +64,8 @@ pub use domain::{
     MarkerListResult, MarkerRecord, MarkerUpdatePositionRequest, PaperMessageEnvelope,
     PeerConnectionRequest, PeerConnectionResult, PeerConnectionState, PresenceListRequest,
     PresenceListResult, PresenceRecord, PropagationPeerSyncRequest, PropagationPeerSyncResult,
+    PropagationRemotePeerRequest, PropagationRemoteRequest, PropagationRemoteStatusResult,
+    PropagationRemoteSyncResult, PropagationRemoteTransferResult, PropagationRemoteUnpeerResult,
     RemoteCommandRequest, RemoteCommandResponse, RemoteCommandSession,
     RemoteCommandSessionListRequest, RemoteCommandSessionListResult, TelemetryPoint,
     TelemetryQuery, TopicCreateRequest, TopicId, TopicListRequest, TopicListResult, TopicPath,

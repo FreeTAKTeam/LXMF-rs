@@ -92,3 +92,243 @@ fn propagation_peer_sync_uses_zmq_sdk_envelope_and_preserves_queue_state() {
     );
     server.join().expect("server joined");
 }
+
+#[test]
+fn propagation_remote_lifecycle_uses_zmq_sdk_envelopes_and_preserves_raw_state() {
+    let command_endpoint = unused_loopback_endpoint();
+    let response_endpoint = unused_loopback_endpoint();
+    let captured = Arc::new(Mutex::new(Vec::new()));
+    let server = spawn_response_sequence_zmq_server(
+        command_endpoint.clone(),
+        vec![
+            json!({
+                "response": {
+                    "operation_id": "app.propagation.remote_status",
+                    "kind": "result",
+                    "accepted": true,
+                    "correlation_id": null,
+                    "payload": {
+                        "remote": "remote-a",
+                        "status": {
+                            "state": "online",
+                            "queue_depth": 3
+                        }
+                    }
+                }
+            }),
+            json!({
+                "response": {
+                    "operation_id": "app.propagation.remote_fetch",
+                    "kind": "result",
+                    "accepted": true,
+                    "correlation_id": null,
+                    "payload": {
+                        "remote": "remote-a",
+                        "propagation": {
+                            "state_name": "completed",
+                            "sync_progress": 1.0
+                        },
+                        "result": {
+                            "synced": true,
+                            "imported_count": 2,
+                            "imported_ids": ["id-a", "id-b"],
+                            "transferred_bytes": 128
+                        }
+                    }
+                }
+            }),
+            json!({
+                "response": {
+                    "operation_id": "app.propagation.remote_download",
+                    "kind": "result",
+                    "accepted": true,
+                    "correlation_id": null,
+                    "payload": {
+                        "remote": "remote-a",
+                        "propagation": {
+                            "state_name": "failed",
+                            "last_sync_error": "remote download postponed"
+                        },
+                        "result": {
+                            "synced": false,
+                            "postponed": true,
+                            "postpone_reason": "timeout"
+                        }
+                    }
+                }
+            }),
+            json!({
+                "response": {
+                    "operation_id": "app.propagation.remote_sync",
+                    "kind": "result",
+                    "accepted": true,
+                    "correlation_id": null,
+                    "payload": {
+                        "remote": "remote-a",
+                        "peer": "peer-a",
+                        "propagation": {
+                            "state_name": "completed"
+                        },
+                        "peer_sync": {
+                            "peer": "peer-a",
+                            "synced": true,
+                            "messages": {
+                                "unhandled_ids": ["retry-a"]
+                            }
+                        },
+                        "result": {
+                            "synced": true
+                        }
+                    }
+                }
+            }),
+            json!({
+                "response": {
+                    "operation_id": "app.propagation.remote_unpeer",
+                    "kind": "result",
+                    "accepted": true,
+                    "correlation_id": null,
+                    "payload": {
+                        "remote": "remote-a",
+                        "peer": "peer-a",
+                        "removed": true,
+                        "propagation_cleared": 1,
+                        "propagation_cleared_bytes": 64,
+                        "messages": {
+                            "offered": 0,
+                            "unhandled_ids": []
+                        },
+                        "result": {
+                            "accepted": true
+                        }
+                    }
+                }
+            }),
+        ],
+        Arc::clone(&captured),
+    );
+    let mut config = ZmqPipelineBackendConfig::local_tcp(command_endpoint, response_endpoint);
+    config.request_timeout = std::time::Duration::from_secs(2);
+    let client = ZmqPipelineBackendClient::new(config).expect("zmq client");
+
+    let status = client
+        .propagation_remote_status(crate::PropagationRemoteRequest {
+            remote: "remote-a".to_string(),
+            identity_private_key_hex: Some("feedface".to_string()),
+            timeout_secs: Some(2.5),
+            transfer_limit_kb: None,
+        })
+        .expect("remote status");
+    let fetch = client
+        .propagation_remote_fetch(crate::PropagationRemoteRequest {
+            remote: "remote-a".to_string(),
+            identity_private_key_hex: None,
+            timeout_secs: Some(8.0),
+            transfer_limit_kb: Some(42.5),
+        })
+        .expect("remote fetch");
+    let download = client
+        .propagation_remote_download(crate::PropagationRemoteRequest {
+            remote: "remote-a".to_string(),
+            identity_private_key_hex: None,
+            timeout_secs: Some(5.0),
+            transfer_limit_kb: Some(84.0),
+        })
+        .expect("remote download");
+    let sync = client
+        .propagation_remote_sync(crate::PropagationRemotePeerRequest {
+            remote: "remote-a".to_string(),
+            peer: "peer-a".to_string(),
+            identity_private_key_hex: None,
+            timeout_secs: Some(5.0),
+            transfer_limit_kb: Some(42.5),
+        })
+        .expect("remote sync");
+    let unpeer = client
+        .propagation_remote_unpeer(crate::PropagationRemotePeerRequest {
+            remote: "remote-a".to_string(),
+            peer: "peer-a".to_string(),
+            identity_private_key_hex: None,
+            timeout_secs: Some(5.0),
+            transfer_limit_kb: None,
+        })
+        .expect("remote unpeer");
+
+    assert_eq!(status.remote, "remote-a");
+    assert_eq!(status.status["queue_depth"], json!(3));
+    assert_eq!(fetch.result["imported_ids"], json!(["id-a", "id-b"]));
+    assert_eq!(download.result["postpone_reason"], json!("timeout"));
+    assert_eq!(download.propagation["last_sync_error"], json!("remote download postponed"));
+    assert_eq!(sync.peer.as_deref(), Some("peer-a"));
+    assert_eq!(sync.peer_sync["messages"]["unhandled_ids"], json!(["retry-a"]));
+    assert!(unpeer.removed);
+    assert_eq!(unpeer.propagation_cleared, Some(1));
+    assert_eq!(unpeer.messages["unhandled_ids"], json!([]));
+
+    let captured = captured.lock().expect("captured requests");
+    let methods = captured.iter().map(|request| request.method.as_str()).collect::<Vec<_>>();
+    assert_eq!(
+        methods,
+        vec![
+            "sdk_envelope_execute_v2",
+            "sdk_envelope_execute_v2",
+            "sdk_envelope_execute_v2",
+            "sdk_envelope_execute_v2",
+            "sdk_envelope_execute_v2",
+        ]
+    );
+    let operation_ids = captured
+        .iter()
+        .map(|request| {
+            request
+                .params
+                .as_ref()
+                .expect("params")
+                .get("operation_id")
+                .cloned()
+                .expect("operation id")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        operation_ids,
+        vec![
+            json!("app.propagation.remote_status"),
+            json!("app.propagation.remote_fetch"),
+            json!("app.propagation.remote_download"),
+            json!("app.propagation.remote_sync"),
+            json!("app.propagation.remote_unpeer"),
+        ]
+    );
+    let kinds = captured
+        .iter()
+        .map(|request| request.params.as_ref().expect("params").get("kind").cloned().expect("kind"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        kinds,
+        vec![
+            json!("query"),
+            json!("command"),
+            json!("command"),
+            json!("command"),
+            json!("command")
+        ]
+    );
+    assert_eq!(
+        captured[0].params.as_ref().expect("params")["payload"],
+        json!({
+            "remote": "remote-a",
+            "identity_private_key_hex": "feedface",
+            "timeout_secs": 2.5
+        })
+    );
+    assert_eq!(
+        captured[3].params.as_ref().expect("params")["payload"],
+        json!({
+            "remote": "remote-a",
+            "peer": "peer-a",
+            "timeout_secs": 5.0,
+            "transfer_limit_kb": 42.5
+        })
+    );
+    server.join().expect("server joined");
+}

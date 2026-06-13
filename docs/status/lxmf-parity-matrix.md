@@ -397,6 +397,11 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   `app.propagation.peer_sync` over `sdk_envelope_execute_v2` to the daemon's
   existing `peer_sync` lifecycle while preserving offer, transfer, postponed,
   retry, and persistent queue metadata in the typed response.
+- The same typed ZeroMQ SDK propagation branch now covers remote router status,
+  fetch, download, sync, and unpeer lifecycle calls through registered
+  `app.propagation.*` envelopes, preserving daemon propagation, peer-sync,
+  transfer, denial, timeout, and queue-cleanup payloads for REM/RCH clients
+  without raw RPC envelopes.
 - Python-style `lxmd` `[lxmf] announce_interval` drives peer/delivery announce
   cadence separately from `[propagation] announce_interval`, which remains the
   propagation-node announce cadence.
