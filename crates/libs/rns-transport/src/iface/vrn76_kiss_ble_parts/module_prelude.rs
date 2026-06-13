@@ -382,10 +382,13 @@ impl Vrn76KissBleBackend for NativeVrn76BleBackend {
 
         self.adapter = Some(adapter);
         self.peripheral = Some(peripheral);
-        // Skip DEFAULT_MTU_SIZE (23) — btleplug CoreBluetooth never updates its cached
-        // AtomicU16, so macOS always returns 23 regardless of the actual negotiated MTU.
         let mtu = self.peripheral.as_ref().expect("just set above").mtu();
-        self.negotiated_mtu = if mtu > DEFAULT_MTU_SIZE { Some(mtu) } else { None };
+        // On macOS, CoreBluetooth never updates its cached AtomicU16, so peripheral.mtu()
+        // always returns DEFAULT_MTU_SIZE (23) regardless of the actual negotiated value.
+        // On all other platforms btleplug reports the real negotiated MTU, including 23
+        // when that is genuinely what was negotiated.
+        self.negotiated_mtu =
+            if cfg!(target_os = "macos") && mtu == DEFAULT_MTU_SIZE { None } else { Some(mtu) };
         self.resolve_characteristics()
     }
 
