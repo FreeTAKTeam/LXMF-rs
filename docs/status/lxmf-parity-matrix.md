@@ -444,6 +444,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   `ZmqPipelineBackendClient` methods and `app.propagation.*` envelopes, keeping
   policy, stale-peer cleanup, and retry/maintenance state available without raw
   RPC calls.
+- `PropagationPeerMaintenanceResult` now projects maintenance-triggered
+  `peer_sync` payloads into typed `peer_sync_state`, so stale-peer cleanup and
+  automatic retry/rotation callers can inspect sync timing and queue transient
+  IDs without parsing raw JSON.
 - The same typed propagation branch now covers local propagation payload ingest
   and fetch through `ZmqPipelineBackendClient::propagation_ingest` and
   `propagation_fetch`, preserving transient IDs, payload bytes, duplicate

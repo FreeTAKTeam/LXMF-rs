@@ -680,9 +680,20 @@ fn propagation_local_lifecycle_uses_zmq_sdk_envelopes_and_preserves_policy_state
                         "synced_peer": "peer-sync",
                         "peer_sync": {
                             "peer": "peer-sync",
+                            "synced": true,
                             "postponed": false,
+                            "last_sync_attempt": 1_700_000_800,
+                            "next_sync_attempt": 1_700_001_400,
                             "messages": {
+                                "offered": 2,
+                                "outgoing": 1,
+                                "unhandled": 1,
+                                "handled_ids": ["msg-handled"],
                                 "unhandled_ids": ["msg-a"]
+                            },
+                            "propagation": {
+                                "transferred_ids": ["msg-handled"],
+                                "transfer_limited_ids": ["msg-a"]
                             }
                         },
                         "max_unreachable_secs": 604800
@@ -745,6 +756,19 @@ fn propagation_local_lifecycle_uses_zmq_sdk_envelopes_and_preserves_policy_state
     assert_eq!(maintenance.culled, 1);
     assert_eq!(maintenance.rotated_peers, vec!["peer-slow".to_string()]);
     assert_eq!(maintenance.peer_sync["messages"]["unhandled_ids"], json!(["msg-a"]));
+    let maintenance_sync =
+        maintenance.peer_sync_state.as_ref().expect("typed maintenance peer sync state");
+    assert_eq!(maintenance_sync.peer, "peer-sync");
+    assert!(maintenance_sync.synced);
+    assert_eq!(maintenance_sync.last_sync_attempt, Some(1_700_000_800));
+    assert_eq!(maintenance_sync.next_sync_attempt, Some(1_700_001_400));
+    assert_eq!(maintenance_sync.queue.offered, 2);
+    assert_eq!(maintenance_sync.queue.outgoing, 1);
+    assert_eq!(maintenance_sync.queue.unhandled, 1);
+    assert_eq!(maintenance_sync.queue.handled_ids, vec!["msg-handled".to_string()]);
+    assert_eq!(maintenance_sync.queue.unhandled_ids, vec!["msg-a".to_string()]);
+    assert_eq!(maintenance_sync.queue.transferred_ids, vec!["msg-handled".to_string()]);
+    assert_eq!(maintenance_sync.queue.transfer_limited_ids, vec!["msg-a".to_string()]);
 
     let captured = captured.lock().expect("captured requests");
     let operation_ids = captured

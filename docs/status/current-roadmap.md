@@ -433,6 +433,10 @@ The project is best described by capability level:
   `ZmqPipelineBackendClient` methods and `app.propagation.*` envelopes, keeping
   daemon policy, stale-peer cleanup, and retry/maintenance state visible without
   raw RPC.
+- `PropagationPeerMaintenanceResult` now projects maintenance-triggered
+  `peer_sync` payloads into typed `peer_sync_state`, so stale-peer cleanup and
+  automatic retry/rotation callers can inspect sync timing and queue transient
+  IDs without parsing raw JSON.
 - The typed propagation branch now exposes local propagation payload ingest and
   fetch as `ZmqPipelineBackendClient::propagation_ingest` and
   `propagation_fetch`, backed by `app.propagation.ingest` and

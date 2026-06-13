@@ -376,27 +376,6 @@ pub struct PropagationDeliveryPolicyResult {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[non_exhaustive]
-pub struct PropagationPeerMaintenanceResult {
-    #[serde(default)]
-    pub timestamp: i64,
-    #[serde(default)]
-    pub culled: u64,
-    #[serde(default)]
-    pub culled_peers: Vec<String>,
-    #[serde(default)]
-    pub rotated: u64,
-    #[serde(default)]
-    pub rotated_peers: Vec<String>,
-    #[serde(default)]
-    pub synced_peer: Option<String>,
-    #[serde(default)]
-    pub peer_sync: JsonValue,
-    #[serde(default)]
-    pub max_unreachable_secs: u64,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-#[non_exhaustive]
 pub struct PropagationIngestResult {
     #[serde(default)]
     pub ingested_count: u64,
