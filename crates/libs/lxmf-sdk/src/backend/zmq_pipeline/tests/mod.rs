@@ -849,7 +849,6 @@ fn operation_registry_uses_zmq_sdk_method_for_chat_peer_and_propagation_operatio
     let mut config = ZmqPipelineBackendConfig::local_tcp(command_endpoint, response_endpoint);
     config.request_timeout = std::time::Duration::from_secs(2);
     let client = ZmqPipelineBackendClient::new(config).expect("zmq client");
-
     let registry = client.operation_registry().expect("operation registry");
 
     assert!(registry.supports("app.message.conversation.list"));
@@ -865,6 +864,7 @@ fn operation_registry_uses_zmq_sdk_method_for_chat_peer_and_propagation_operatio
     assert!(registry.supports("app.propagation.remote_download"));
     assert!(registry.supports("app.propagation.remote_sync"));
     assert!(registry.supports("app.propagation.remote_unpeer"));
+    assert!(registry.supports("app.propagation.acknowledge_sync_completion"));
     let captured = captured.lock().expect("captured request");
     let request = captured.as_ref().expect("zmq request");
     assert_eq!(request.method, "sdk_operation_registry_v2");

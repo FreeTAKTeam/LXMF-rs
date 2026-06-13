@@ -59,4 +59,14 @@ const PROPAGATION_SDK_OPERATION_SPECS: &[SdkOperationSpec] = &[
         required_capabilities: &[],
         rpc_method: "propagation_remote_unpeer",
     },
+    SdkOperationSpec {
+        id: "app.propagation.acknowledge_sync_completion",
+        group: "propagation",
+        kind: "command",
+        transport_variant: "legacy_rpc",
+        description: "Acknowledge a propagation sync completion or failure and expose the resulting recovery state.",
+        aliases: &["propagation_acknowledge_sync_completion"],
+        required_capabilities: &[],
+        rpc_method: "propagation_acknowledge_sync_completion",
+    },
 ];

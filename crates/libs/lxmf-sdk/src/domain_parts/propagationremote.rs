@@ -25,6 +25,15 @@ pub struct PropagationRemotePeerRequest {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[non_exhaustive]
+pub struct PropagationAcknowledgeSyncRequest {
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub reset_state: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure_state: Option<u32>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[non_exhaustive]
 pub struct PropagationRemoteStatusResult {
     pub remote: String,
     #[serde(default)]
@@ -39,6 +48,13 @@ pub struct PropagationRemoteTransferResult {
     pub propagation: JsonValue,
     #[serde(default)]
     pub result: JsonValue,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[non_exhaustive]
+pub struct PropagationAcknowledgeSyncResult {
+    #[serde(default)]
+    pub propagation: JsonValue,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

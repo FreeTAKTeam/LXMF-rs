@@ -1,6 +1,7 @@
 use super::{code, ErrorCategory, SdkError, ZmqPipelineBackendClient};
 use crate::app::{Envelope, EnvelopeResponse};
 use crate::domain::{
+    PropagationAcknowledgeSyncRequest, PropagationAcknowledgeSyncResult,
     PropagationPeerSyncRequest, PropagationPeerSyncResult, PropagationRemotePeerRequest,
     PropagationRemoteRequest, PropagationRemoteStatusResult, PropagationRemoteSyncResult,
     PropagationRemoteTransferResult, PropagationRemoteUnpeerResult,
@@ -59,6 +60,13 @@ impl ZmqPipelineBackendClient {
         req: PropagationRemotePeerRequest,
     ) -> Result<PropagationRemoteUnpeerResult, SdkError> {
         self.execute_propagation_envelope("app.propagation.remote_unpeer", req)
+    }
+
+    pub fn propagation_acknowledge_sync_completion(
+        &self,
+        req: PropagationAcknowledgeSyncRequest,
+    ) -> Result<PropagationAcknowledgeSyncResult, SdkError> {
+        self.execute_propagation_envelope("app.propagation.acknowledge_sync_completion", req)
     }
 
     fn execute_propagation_envelope<T, R>(

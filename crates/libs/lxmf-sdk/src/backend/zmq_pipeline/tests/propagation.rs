@@ -332,3 +332,66 @@ fn propagation_remote_lifecycle_uses_zmq_sdk_envelopes_and_preserves_raw_state()
     );
     server.join().expect("server joined");
 }
+
+#[test]
+fn propagation_sync_acknowledge_uses_zmq_sdk_envelope_and_preserves_state() {
+    let command_endpoint = unused_loopback_endpoint();
+    let response_endpoint = unused_loopback_endpoint();
+    let captured = Arc::new(Mutex::new(None));
+    let server = spawn_single_response_zmq_server(
+        command_endpoint.clone(),
+        json!({
+            "response": {
+                "operation_id": "app.propagation.acknowledge_sync_completion",
+                "kind": "result",
+                "accepted": true,
+                "correlation_id": null,
+                "payload": {
+                    "propagation": {
+                        "sync_state": 254,
+                        "state_name": "failed",
+                        "sync_progress": 0.0,
+                        "last_sync_error": "remote sync timed out",
+                        "retry_count": 3,
+                        "queue_depth": 2
+                    }
+                }
+            }
+        }),
+        Arc::clone(&captured),
+    );
+    let mut config = ZmqPipelineBackendConfig::local_tcp(command_endpoint, response_endpoint);
+    config.request_timeout = std::time::Duration::from_secs(2);
+    let client = ZmqPipelineBackendClient::new(config).expect("zmq client");
+
+    let result = client
+        .propagation_acknowledge_sync_completion(crate::PropagationAcknowledgeSyncRequest {
+            reset_state: true,
+            failure_state: Some(0xfe),
+        })
+        .expect("acknowledge propagation sync");
+
+    assert_eq!(result.propagation["sync_state"], json!(254));
+    assert_eq!(result.propagation["state_name"], json!("failed"));
+    assert_eq!(result.propagation["last_sync_error"], json!("remote sync timed out"));
+    assert_eq!(result.propagation["retry_count"], json!(3));
+    let captured = captured.lock().expect("captured request");
+    let request = captured.as_ref().expect("zmq request");
+    assert_eq!(request.method, "sdk_envelope_execute_v2");
+    assert_eq!(
+        request.params,
+        Some(json!({
+            "operation_id": "app.propagation.acknowledge_sync_completion",
+            "kind": "command",
+            "target": null,
+            "correlation_id": null,
+            "timeout_ms": null,
+            "payload": {
+                "reset_state": true,
+                "failure_state": 254
+            },
+            "extensions": {}
+        }))
+    );
+    server.join().expect("server joined");
+}

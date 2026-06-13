@@ -58,6 +58,9 @@ fn sdk_release_c_domain_methods_roundtrip() {
     assert!(registry_entries
         .iter()
         .any(|entry| entry["id"] == json!("app.propagation.remote_unpeer")));
+    assert!(registry_entries
+        .iter()
+        .any(|entry| entry["id"] == json!("app.propagation.acknowledge_sync_completion")));
 
     let list_before =
         daemon.handle_rpc(rpc_request(120, "sdk_identity_list_v2", json!({}))).expect("list");
@@ -249,6 +252,40 @@ fn sdk_release_c_domain_methods_roundtrip() {
     assert_eq!(
         remote_status_response["response"]["payload"]["status"]["identity_private_key_hex"],
         json!("feedface")
+    );
+
+    let ack_envelope = daemon
+        .handle_rpc(rpc_request(
+            1208,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "app.propagation.acknowledge_sync_completion",
+                "kind": "command",
+                "correlation_id": "propagation-ack-corr-1",
+                "payload": {
+                    "reset_state": true,
+                    "failure_state": 254
+                },
+            }),
+        ))
+        .expect("propagation acknowledge envelope");
+    assert!(ack_envelope.error.is_none());
+    let ack_response = ack_envelope.result.expect("acknowledge envelope result");
+    assert_eq!(
+        ack_response["response"]["operation_id"],
+        json!("app.propagation.acknowledge_sync_completion")
+    );
+    assert_eq!(
+        ack_response["response"]["correlation_id"],
+        json!("propagation-ack-corr-1")
+    );
+    assert_eq!(
+        ack_response["response"]["payload"]["propagation"]["sync_state"],
+        json!(254)
+    );
+    assert_eq!(
+        ack_response["response"]["payload"]["propagation"]["state_name"],
+        json!("failed")
     );
 
     let identity_bundle = json!({

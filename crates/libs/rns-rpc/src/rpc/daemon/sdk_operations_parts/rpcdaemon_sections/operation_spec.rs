@@ -119,7 +119,8 @@ impl RpcDaemon {
             | "propagation_remote_fetch"
             | "propagation_remote_download"
             | "propagation_remote_sync"
-            | "propagation_remote_unpeer" => self.handle_rpc_legacy_propagation(RpcRequest {
+            | "propagation_remote_unpeer"
+            | "propagation_acknowledge_sync_completion" => self.handle_rpc_legacy_propagation(RpcRequest {
                 id: request_id,
                 method: method.to_owned(),
                 params: Some(params),

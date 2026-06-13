@@ -402,6 +402,11 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   `app.propagation.*` envelopes, preserving daemon propagation, peer-sync,
   transfer, denial, timeout, and queue-cleanup payloads for REM/RCH clients
   without raw RPC envelopes.
+- The same branch now covers propagation sync completion/failure
+  acknowledgement through
+  `ZmqPipelineBackendClient::propagation_acknowledge_sync_completion` and
+  `app.propagation.acknowledge_sync_completion`, keeping retry, timeout, and
+  restart recovery state visible through the typed ZeroMQ SDK path.
 - Python-style `lxmd` `[lxmf] announce_interval` drives peer/delivery announce
   cadence separately from `[propagation] announce_interval`, which remains the
   propagation-node announce cadence.
