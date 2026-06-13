@@ -216,18 +216,62 @@ impl<'de> Deserialize<'de> for PropagationRemoteTransferResult {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, PartialEq)]
 #[non_exhaustive]
 pub struct PropagationAcknowledgeSyncResult {
     #[serde(default)]
     pub propagation: JsonValue,
+    #[serde(default)]
+    pub recovery_state: PropagationRecoveryStateResult,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Deserialize)]
+struct RawPropagationAcknowledgeSyncResult {
+    #[serde(default)]
+    propagation: JsonValue,
+}
+
+impl<'de> Deserialize<'de> for PropagationAcknowledgeSyncResult {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = RawPropagationAcknowledgeSyncResult::deserialize(deserializer)?;
+        let recovery_state = PropagationRecoveryStateResult::from_propagation(raw.propagation.clone());
+        Ok(Self {
+            propagation: raw.propagation,
+            recovery_state,
+        })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq)]
 #[non_exhaustive]
 pub struct PropagationStatusResult {
     #[serde(default)]
     pub propagation: JsonValue,
+    #[serde(default)]
+    pub recovery_state: PropagationRecoveryStateResult,
+}
+
+#[derive(Deserialize)]
+struct RawPropagationStatusResult {
+    #[serde(default)]
+    propagation: JsonValue,
+}
+
+impl<'de> Deserialize<'de> for PropagationStatusResult {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = RawPropagationStatusResult::deserialize(deserializer)?;
+        let recovery_state = PropagationRecoveryStateResult::from_propagation(raw.propagation.clone());
+        Ok(Self {
+            propagation: raw.propagation,
+            recovery_state,
+        })
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

@@ -423,6 +423,11 @@ fn propagation_sync_acknowledge_uses_zmq_sdk_envelope_and_preserves_state() {
     assert_eq!(result.propagation["state_name"], json!("failed"));
     assert_eq!(result.propagation["last_sync_error"], json!("remote sync timed out"));
     assert_eq!(result.propagation["retry_count"], json!(3));
+    assert_eq!(result.recovery_state.sync_state, 254);
+    assert_eq!(result.recovery_state.state_name.as_deref(), Some("failed"));
+    assert_eq!(result.recovery_state.last_sync_error.as_deref(), Some("remote sync timed out"));
+    assert_eq!(result.recovery_state.retry_count, 3);
+    assert_eq!(result.recovery_state.queue_depth, 2);
     let captured = captured.lock().expect("captured request");
     let request = captured.as_ref().expect("zmq request");
     assert_eq!(request.method, "sdk_envelope_execute_v2");
@@ -580,7 +585,9 @@ fn propagation_local_lifecycle_uses_zmq_sdk_envelopes_and_preserves_policy_state
                             "enabled": false,
                             "sync_state": 0,
                             "state_name": "idle",
-                            "selected_node": null
+                            "selected_node": null,
+                            "retry_count": 1,
+                            "queue_depth": 2
                         }
                     }
                 }
@@ -594,6 +601,9 @@ fn propagation_local_lifecycle_uses_zmq_sdk_envelopes_and_preserves_policy_state
                     "payload": {
                         "propagation": {
                             "enabled": true,
+                            "sync_state": 1,
+                            "state_name": "syncing",
+                            "queue_depth": 4,
                             "auth_required": true,
                             "static_peers": ["router-a"],
                             "sync_limit": 64
@@ -701,7 +711,15 @@ fn propagation_local_lifecycle_uses_zmq_sdk_envelopes_and_preserves_policy_state
     let maintenance = client.propagation_peer_maintenance().expect("peer maintenance");
 
     assert_eq!(status.propagation["enabled"], json!(false));
+    assert!(!status.recovery_state.enabled);
+    assert_eq!(status.recovery_state.state_name.as_deref(), Some("idle"));
+    assert_eq!(status.recovery_state.queue_depth, 2);
+    assert_eq!(status.recovery_state.retry_count, 1);
     assert_eq!(enabled.propagation["static_peers"], json!(["router-a"]));
+    assert!(enabled.recovery_state.enabled);
+    assert_eq!(enabled.recovery_state.sync_state, 1);
+    assert_eq!(enabled.recovery_state.state_name.as_deref(), Some("syncing"));
+    assert_eq!(enabled.recovery_state.queue_depth, 4);
     assert_eq!(policy.policy["denied_destinations"], json!(["dest-deny"]));
     assert_eq!(updated_policy.policy["ignored_destinations"], json!(["dest-ignore"]));
     assert_eq!(maintenance.culled, 1);

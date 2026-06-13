@@ -412,6 +412,10 @@ The project is best described by capability level:
   `ZmqPipelineBackendClient::propagation_acknowledge_sync_completion` and
   `app.propagation.acknowledge_sync_completion`, preserving daemon recovery
   state for retry, timeout, and restart flows on the typed ZeroMQ SDK path.
+- `PropagationStatusResult` and `PropagationAcknowledgeSyncResult` now project
+  their propagation payloads into typed `recovery_state`, so status, enable,
+  and acknowledgement callers can inspect sync state, retry counts, queue
+  depth, and last error without parsing raw JSON.
 - The typed propagation branch also exposes outbound propagation router
   selection and listing as `ZmqPipelineBackendClient::propagation_node_get`,
   `propagation_node_set`, and `propagation_node_list`, backed by
