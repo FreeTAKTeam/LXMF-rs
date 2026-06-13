@@ -82,3 +82,68 @@ fn list_message_history_uses_zmq_sdk_method_and_preserves_receipts_and_fields() 
     );
     server.join().expect("server joined");
 }
+
+#[test]
+fn list_message_history_accepts_direct_chat_message_id_and_body_aliases() {
+    let command_endpoint = unused_loopback_endpoint();
+    let response_endpoint = unused_loopback_endpoint();
+    let captured = Arc::new(Mutex::new(None));
+    let server = spawn_single_response_zmq_server(
+        command_endpoint.clone(),
+        json!({
+            "response": {
+                "operation_id": "app.message.history.list",
+                "kind": "result",
+                "accepted": true,
+                "correlation_id": null,
+                "payload": {
+                    "messages": [{
+                        "message_id": "msg-history-legacy",
+                        "source": "peer-destination",
+                        "destination": "local-destination",
+                        "title": "legacy chat",
+                        "body": "legacy body https://example.invalid/recovery",
+                        "timestamp": 1_700_000_222,
+                        "direction": "inbound",
+                        "fields": {
+                            "body": "legacy body https://example.invalid/recovery",
+                            "FIELD_THREAD": "thread-recovered"
+                        },
+                        "receipt_status": "received"
+                    }],
+                    "next_cursor": null
+                }
+            }
+        }),
+        Arc::clone(&captured),
+    );
+    let mut config = ZmqPipelineBackendConfig::local_tcp(command_endpoint, response_endpoint);
+    config.request_timeout = std::time::Duration::from_secs(2);
+    let client = ZmqPipelineBackendClient::new(config).expect("zmq client");
+
+    let page = client
+        .list_message_history(crate::MessageHistoryListRequest {
+            peer_id: Some("peer-destination".to_string()),
+            conversation_id: None,
+            include_receipts: Some(true),
+            limit: Some(10),
+            before_ts: None,
+            cursor: None,
+        })
+        .expect("history page");
+
+    assert_eq!(page.messages.len(), 1);
+    let message = &page.messages[0];
+    assert_eq!(message.id, "msg-history-legacy");
+    assert_eq!(message.content, "legacy body https://example.invalid/recovery");
+    assert_eq!(message.receipt_status.as_deref(), Some("received"));
+    assert_eq!(message.fields.as_ref().expect("fields")["FIELD_THREAD"], json!("thread-recovered"));
+    let captured = captured.lock().expect("captured request");
+    let request = captured.as_ref().expect("zmq request");
+    assert_eq!(request.method, "sdk_envelope_execute_v2");
+    assert_eq!(
+        request.params.as_ref().expect("params")["payload"]["peer_id"],
+        json!("peer-destination")
+    );
+    server.join().expect("server joined");
+}

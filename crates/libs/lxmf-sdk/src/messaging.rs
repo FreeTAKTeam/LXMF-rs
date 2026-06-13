@@ -161,10 +161,12 @@ pub struct MessageHistoryPage {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MessageHistoryRecord {
+    #[serde(alias = "message_id")]
     pub id: String,
     pub source: String,
     pub destination: String,
     pub title: String,
+    #[serde(alias = "body")]
     pub content: String,
     pub timestamp: i64,
     pub direction: String,
