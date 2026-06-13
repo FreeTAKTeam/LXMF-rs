@@ -679,6 +679,99 @@ fn send_uses_zmq_sdk_method_and_preserves_delivery_options() {
     server.join().expect("server joined");
 }
 
+#[test]
+fn operation_registry_uses_zmq_sdk_method_for_direct_chat_operations() {
+    let command_endpoint = unused_loopback_endpoint();
+    let response_endpoint = unused_loopback_endpoint();
+    let captured = Arc::new(Mutex::new(None));
+    let server = spawn_single_response_zmq_server(
+        command_endpoint.clone(),
+        json!({ "registry": crate::app::OperationRegistry::built_in() }),
+        Arc::clone(&captured),
+    );
+    let mut config = ZmqPipelineBackendConfig::local_tcp(command_endpoint, response_endpoint);
+    config.request_timeout = std::time::Duration::from_secs(2);
+    let client = ZmqPipelineBackendClient::new(config).expect("zmq client");
+
+    let registry = client.operation_registry().expect("operation registry");
+
+    assert!(registry.supports("app.message.history.list"));
+    assert!(registry.supports("app.delivery.destination_hash"));
+    let captured = captured.lock().expect("captured request");
+    let request = captured.as_ref().expect("zmq request");
+    assert_eq!(request.method, "sdk_operation_registry_v2");
+    assert_eq!(request.params, Some(json!({})));
+    server.join().expect("server joined");
+}
+
+#[test]
+fn envelope_execute_uses_zmq_sdk_method_and_preserves_direct_chat_history_query() {
+    let command_endpoint = unused_loopback_endpoint();
+    let response_endpoint = unused_loopback_endpoint();
+    let captured = Arc::new(Mutex::new(None));
+    let server = spawn_single_response_zmq_server(
+        command_endpoint.clone(),
+        json!({
+            "response": {
+                "operation_id": "app.message.history.list",
+                "kind": "result",
+                "accepted": true,
+                "correlation_id": "history-corr",
+                "payload": {
+                    "messages": [{
+                        "message_id": "msg-1",
+                        "peer_id": "peer-a",
+                        "body": "see https://example.invalid/status",
+                        "receipt_status": "delivered"
+                    }]
+                },
+                "extensions": {
+                    "durable": true,
+                    "restart_recovery": true
+                }
+            }
+        }),
+        Arc::clone(&captured),
+    );
+    let mut config = ZmqPipelineBackendConfig::local_tcp(command_endpoint, response_endpoint);
+    config.request_timeout = std::time::Duration::from_secs(2);
+    let client = ZmqPipelineBackendClient::new(config).expect("zmq client");
+
+    let response = client
+        .envelope_execute(
+            crate::app::Envelope::query(
+                "app.message.history.list",
+                json!({
+                    "peer_id": "peer-a",
+                    "limit": 25,
+                    "include_receipts": true
+                }),
+            )
+            .with_correlation_id("history-corr")
+            .with_timeout_ms(1500)
+            .with_extension("restart_recovery", json!(true)),
+        )
+        .expect("history envelope");
+
+    assert_eq!(response.operation_id.as_str(), "app.message.history.list");
+    assert!(response.accepted);
+    assert_eq!(response.correlation_id.as_deref(), Some("history-corr"));
+    assert_eq!(response.payload["messages"][0]["receipt_status"], json!("delivered"));
+    assert_eq!(response.extensions["durable"], json!(true));
+    let captured = captured.lock().expect("captured request");
+    let request = captured.as_ref().expect("zmq request");
+    assert_eq!(request.method, "sdk_envelope_execute_v2");
+    let params = request.params.as_ref().expect("params");
+    assert_eq!(params["operation_id"], json!("app.message.history.list"));
+    assert_eq!(params["kind"], json!("query"));
+    assert_eq!(params["correlation_id"], json!("history-corr"));
+    assert_eq!(params["timeout_ms"], json!(1500));
+    assert_eq!(params["payload"]["peer_id"], json!("peer-a"));
+    assert_eq!(params["payload"]["include_receipts"], json!(true));
+    assert_eq!(params["extensions"]["restart_recovery"], json!(true));
+    server.join().expect("server joined");
+}
+
 fn parse_claims(token: &str) -> BTreeMap<String, String> {
     token
         .split(';')

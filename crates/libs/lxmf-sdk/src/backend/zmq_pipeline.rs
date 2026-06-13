@@ -1,3 +1,4 @@
+use crate::app::{Envelope, EnvelopeResponse, OperationRegistry};
 use crate::backend::SdkBackend;
 use crate::capability::{NegotiationRequest, NegotiationResponse};
 use crate::domain::{
@@ -443,6 +444,19 @@ impl SdkBackend for ZmqPipelineBackendClient {
         })?;
         let result = self.call_rpc("sdk_identity_bootstrap_v2", Some(params))?;
         Self::decode_field_or_root(&result, "contact", "identity_bootstrap response")
+    }
+
+    fn operation_registry(&self) -> Result<OperationRegistry, SdkError> {
+        let result = self.call_rpc("sdk_operation_registry_v2", Some(json!({})))?;
+        Self::decode_field_or_root(&result, "registry", "operation_registry response")
+    }
+
+    fn envelope_execute(&self, envelope: Envelope) -> Result<EnvelopeResponse, SdkError> {
+        let params = serde_json::to_value(envelope).map_err(|err| {
+            SdkError::new(code::INTERNAL, ErrorCategory::Internal, err.to_string())
+        })?;
+        let result = self.call_rpc("sdk_envelope_execute_v2", Some(params))?;
+        Self::decode_field_or_root(&result, "response", "envelope_execute response")
     }
 
     fn snapshot(&self) -> Result<RuntimeSnapshot, SdkError> {

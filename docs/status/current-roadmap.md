@@ -296,6 +296,11 @@ The project is best described by capability level:
   identity bootstrap, so REM/RCH peer discovery, identity recovery, and
   saved-peer setup can use `ZmqPipelineBackendClient` instead of falling back
   to raw RPC/HTTP identity/contact calls.
+- The typed ZeroMQ SDK backend now also covers the operation registry and SDK
+  envelope execution path, including `app.message.history.list` and
+  `app.delivery.destination_hash`, so REM/RCH direct-chat history and runtime
+  delivery-destination lookups can stay on `ZmqPipelineBackendClient` instead
+  of constructing raw RPC/HTTP envelopes.
 - Locally delivered inbound peer propagation payloads now also store the
   accepted transient and apply source-aware relay fan-out without double
   counting source peer activity, so local delivery does not bypass relay queue
