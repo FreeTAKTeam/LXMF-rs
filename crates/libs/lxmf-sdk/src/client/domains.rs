@@ -214,6 +214,29 @@ impl<B: SdkBackend> LxmfSdkIdentity for Client<B> {
     }
 }
 
+impl<B: SdkBackend> LxmfSdkPeerLifecycle for Client<B> {
+    fn peer_connect(
+        &self,
+        req: crate::domain::PeerConnectionRequest,
+    ) -> Result<crate::domain::PeerConnectionResult, SdkError> {
+        self.backend.peer_connect(req)
+    }
+
+    fn peer_disconnect(
+        &self,
+        req: crate::domain::PeerConnectionRequest,
+    ) -> Result<crate::domain::PeerConnectionResult, SdkError> {
+        self.backend.peer_disconnect(req)
+    }
+
+    fn peer_reconnect(
+        &self,
+        req: crate::domain::PeerConnectionRequest,
+    ) -> Result<crate::domain::PeerConnectionResult, SdkError> {
+        self.backend.peer_reconnect(req)
+    }
+}
+
 impl<B: SdkBackend> LxmfSdkPaper for Client<B> {
     fn paper_encode(
         &self,

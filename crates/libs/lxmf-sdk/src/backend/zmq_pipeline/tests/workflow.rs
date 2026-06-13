@@ -369,3 +369,108 @@ fn peer_directory_since_passes_presence_stale_cutoff_over_zmq_sdk_method() {
     assert_eq!(params["min_last_seen_ts_ms"], json!(1_700_000_500));
     server.join().expect("server joined");
 }
+
+#[test]
+fn peer_lifecycle_methods_use_zmq_sdk_methods_and_preserve_metadata() {
+    let command_endpoint = unused_loopback_endpoint();
+    let response_endpoint = unused_loopback_endpoint();
+    let captured = Arc::new(Mutex::new(Vec::new()));
+    let server = spawn_response_sequence_zmq_server(
+        command_endpoint.clone(),
+        vec![
+            json!({
+                "peer": {
+                    "identity": "peer-ready",
+                    "state": "connected",
+                    "display_name": "RCH Relay",
+                    "connected": true,
+                    "updated_ts_ms": 1700000600,
+                    "metadata": {
+                        "callsign": "RCH-1",
+                        "capability_flags": ["rem.direct_chat"],
+                        "announce_slots": ["rch.broadcast"]
+                    },
+                    "extensions": {
+                        "source": "connect"
+                    }
+                }
+            }),
+            json!({
+                "peer": {
+                    "identity": "peer-ready",
+                    "state": "disconnected",
+                    "display_name": "RCH Relay",
+                    "connected": false,
+                    "updated_ts_ms": 1700000610,
+                    "metadata": {
+                        "callsign": "RCH-1"
+                    },
+                    "extensions": {
+                        "source": "disconnect"
+                    }
+                }
+            }),
+            json!({
+                "peer": {
+                    "identity": "peer-ready",
+                    "state": "reconnected",
+                    "display_name": "RCH Relay",
+                    "connected": true,
+                    "updated_ts_ms": 1700000620,
+                    "metadata": {
+                        "callsign": "RCH-1"
+                    },
+                    "extensions": {
+                        "source": "reconnect"
+                    }
+                }
+            }),
+        ],
+        Arc::clone(&captured),
+    );
+    let mut config = ZmqPipelineBackendConfig::local_tcp(command_endpoint, response_endpoint);
+    config.request_timeout = std::time::Duration::from_secs(2);
+    let client = ZmqPipelineBackendClient::new(config).expect("zmq client");
+
+    let request = crate::PeerConnectionRequest {
+        identity: crate::IdentityRef("peer-ready".to_owned()),
+        display_name: Some("RCH Relay".to_owned()),
+        correlation_id: Some("peer-life-corr".to_owned()),
+        metadata: BTreeMap::from([
+            ("callsign".to_owned(), json!("RCH-1")),
+            ("capability_flags".to_owned(), json!(["rem.direct_chat"])),
+            ("announce_slots".to_owned(), json!(["rch.broadcast"])),
+        ]),
+        extensions: BTreeMap::from([("source".to_owned(), json!("rem-rch"))]),
+    };
+
+    let connected = client.peer_connect(request.clone()).expect("peer connect");
+    let disconnected = client.peer_disconnect(request.clone()).expect("peer disconnect");
+    let reconnected = client.peer_reconnect(request).expect("peer reconnect");
+
+    assert_eq!(connected.identity.0, "peer-ready");
+    assert_eq!(connected.state, crate::PeerConnectionState::Connected);
+    assert!(connected.connected);
+    assert_eq!(connected.metadata["announce_slots"][0], json!("rch.broadcast"));
+    assert_eq!(disconnected.state, crate::PeerConnectionState::Disconnected);
+    assert!(!disconnected.connected);
+    assert_eq!(reconnected.state, crate::PeerConnectionState::Reconnected);
+    assert!(reconnected.connected);
+
+    let captured = captured.lock().expect("captured requests");
+    assert_eq!(captured.len(), 3);
+    assert_eq!(captured[0].method, "sdk_peer_connect_v2");
+    assert_eq!(captured[1].method, "sdk_peer_disconnect_v2");
+    assert_eq!(captured[2].method, "sdk_peer_reconnect_v2");
+    for request in captured.iter() {
+        let params = request.params.as_ref().expect("params");
+        assert_eq!(params["identity"], json!("peer-ready"));
+        assert_eq!(params["display_name"], json!("RCH Relay"));
+        assert_eq!(params["correlation_id"], json!("peer-life-corr"));
+        assert_eq!(params["metadata"]["callsign"], json!("RCH-1"));
+        assert_eq!(params["metadata"]["capability_flags"][0], json!("rem.direct_chat"));
+        assert_eq!(params["metadata"]["announce_slots"][0], json!("rch.broadcast"));
+        assert_eq!(params["extensions"]["source"], json!("rem-rch"));
+    }
+    server.join().expect("server joined");
+}

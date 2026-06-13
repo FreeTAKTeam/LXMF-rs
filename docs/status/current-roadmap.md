@@ -330,6 +330,11 @@ The project is best described by capability level:
   `ZmqPipelineBackendClient::peer_directory_since` and a
   `min_last_seen_ts_ms` presence-list filter, so REM/RCH can suppress stale
   announce rows over the SDK path while keeping saved contacts visible offline.
+- The typed ZeroMQ SDK backend now exposes saved-peer lifecycle calls through
+  `ZmqPipelineBackendClient::peer_connect`, `peer_disconnect`, and
+  `peer_reconnect`, routing `sdk_peer_*_v2` methods while preserving identity,
+  display name, correlation ID, callsign, REM capability flags, RCH
+  announce-slot metadata, and per-call extensions.
 - The typed ZeroMQ SDK backend now also covers the operation registry and SDK
   envelope execution path, including `app.message.history.list` and
   `app.delivery.destination_hash`, so REM/RCH direct-chat history and runtime

@@ -780,6 +780,9 @@ fn operation_registry_uses_zmq_sdk_method_for_direct_chat_operations() {
     assert!(registry.supports("app.message.history.list"));
     assert!(registry.supports("app.delivery.destination_hash"));
     assert!(registry.supports("app.delivery.cancel"));
+    assert!(registry.supports("app.peer.connect"));
+    assert!(registry.supports("app.peer.disconnect"));
+    assert!(registry.supports("app.peer.reconnect"));
     let captured = captured.lock().expect("captured request");
     let request = captured.as_ref().expect("zmq request");
     assert_eq!(request.method, "sdk_operation_registry_v2");

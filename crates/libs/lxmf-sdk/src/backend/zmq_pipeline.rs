@@ -4,7 +4,8 @@ use crate::capability::{NegotiationRequest, NegotiationResponse};
 use crate::domain::{
     ContactListRequest, ContactListResult, ContactRecord, ContactUpdateRequest,
     IdentityBootstrapRequest, IdentityBundle, IdentityImportRequest, IdentityRef,
-    IdentityResolveRequest, PresenceListRequest, PresenceListResult,
+    IdentityResolveRequest, PeerConnectionRequest, PeerConnectionResult, PresenceListRequest,
+    PresenceListResult,
 };
 use crate::error::{code, ErrorCategory, SdkError};
 use crate::event::{EventBatch, EventCursor, SdkEvent, Severity};
@@ -38,6 +39,8 @@ mod history;
 mod negotiation;
 #[path = "zmq_pipeline/parsing.rs"]
 mod parsing;
+#[path = "zmq_pipeline/peer.rs"]
+mod peer;
 #[path = "zmq_pipeline/send.rs"]
 mod send;
 #[path = "zmq_pipeline/transport.rs"]
@@ -52,7 +55,6 @@ mod tests;
 pub use config::{ZmqEndpointRole, ZmqPipelineBackendConfig, ZmqPipelineTokenAuth};
 use negotiation::new_session_id;
 use transport::ZmqPipelineTransport;
-
 pub struct ZmqPipelineBackendClient {
     config: ZmqPipelineBackendConfig,
     session_id: String,
@@ -61,7 +63,6 @@ pub struct ZmqPipelineBackendClient {
     runtime: Runtime,
     transport: tokio::sync::Mutex<Option<ZmqPipelineTransport>>,
 }
-
 impl ZmqPipelineBackendClient {
     pub fn new(config: ZmqPipelineBackendConfig) -> Result<Self, SdkError> {
         config.validate()?;
@@ -410,6 +411,19 @@ impl SdkBackend for ZmqPipelineBackendClient {
         Self::decode_field_or_root(&result, "contact", "identity_bootstrap response")
     }
 
+    fn peer_connect(&self, req: PeerConnectionRequest) -> Result<PeerConnectionResult, SdkError> {
+        ZmqPipelineBackendClient::peer_connect(self, req)
+    }
+    fn peer_disconnect(
+        &self,
+        req: PeerConnectionRequest,
+    ) -> Result<PeerConnectionResult, SdkError> {
+        ZmqPipelineBackendClient::peer_disconnect(self, req)
+    }
+
+    fn peer_reconnect(&self, req: PeerConnectionRequest) -> Result<PeerConnectionResult, SdkError> {
+        ZmqPipelineBackendClient::peer_reconnect(self, req)
+    }
     fn operation_registry(&self) -> Result<OperationRegistry, SdkError> {
         let result = self.call_rpc("sdk_operation_registry_v2", Some(json!({})))?;
         Self::decode_field_or_root(&result, "registry", "operation_registry response")
