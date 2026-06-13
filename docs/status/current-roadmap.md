@@ -166,6 +166,10 @@ The project is best described by capability level:
   case-insensitive peer requests, so restart/export state preserves queued retry
   work when peering teardown fails; these failed attempts also mark the
   propagation lifecycle failed instead of leaving stale idle/completed state.
+- Failed remote unpeer bridge-unavailable errors for active peers now also
+  publish the failed peer-sync event after queue snapshot refresh, keeping
+  observer-visible peering failure state aligned with remote sync/fetch/download
+  bridge-unavailable failures.
 - Access-denied remote unpeer failures now follow the same local peering break
   path as access-denied remote sync/fetch/download, clearing local peer and
   propagation queue state instead of leaving denied teardown work retryable.

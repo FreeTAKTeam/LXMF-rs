@@ -50,6 +50,16 @@ impl RpcDaemon {
                         );
                         let _ =
                             self.record_payload_backed_peer_queue_snapshot(snapshot_peer.as_str());
+                        if self.peer_record_exists(snapshot_peer.as_str(), false) {
+                            self.publish_failed_remote_peer_sync_event(
+                                snapshot_peer.as_str(),
+                                remote_id.as_str(),
+                                "remote control bridge unavailable",
+                                None,
+                                None,
+                                None,
+                            );
+                        }
                         return Err(std::io::Error::other("remote control bridge unavailable"));
                     }
                 };
