@@ -381,6 +381,11 @@ The project is best described by capability level:
   cancellation through both `ZmqPipelineBackendClient::cancel` and
   `app.delivery.cancel` envelope execution, preserving daemon cancellation
   outcomes without raw RPC envelopes.
+- The typed ZeroMQ SDK backend now starts the final propagation-first branch
+  with `ZmqPipelineBackendClient::propagation_peer_sync`, routing
+  `app.propagation.peer_sync` over `sdk_envelope_execute_v2` to the daemon's
+  existing `peer_sync` lifecycle while preserving offer, transfer, postponed,
+  retry, and persistent queue metadata in the typed response.
 - Locally delivered inbound peer propagation payloads now also store the
   accepted transient and apply source-aware relay fan-out without double
   counting source peer activity, so local delivery does not bypass relay queue

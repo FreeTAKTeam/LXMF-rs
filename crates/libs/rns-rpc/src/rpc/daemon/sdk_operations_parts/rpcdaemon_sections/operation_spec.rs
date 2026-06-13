@@ -104,7 +104,7 @@ impl RpcDaemon {
         params: JsonValue,
     ) -> Result<RpcResponse, std::io::Error> {
         let delegated = match method {
-            "sdk_send_v2" | "sdk_send_batch_v2" => self.handle_rpc_legacy_messages(RpcRequest {
+            "sdk_send_v2" | "sdk_send_batch_v2" | "peer_sync" => self.handle_rpc_legacy_messages(RpcRequest {
                 id: request_id,
                 method: method.to_owned(),
                 params: Some(params),

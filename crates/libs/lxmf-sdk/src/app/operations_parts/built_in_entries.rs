@@ -67,6 +67,14 @@ fn built_in_entries() -> Vec<OperationEntry> {
         )
         .with_alias("sdk_cancel_message_v2"),
         OperationEntry::new(
+            "app.propagation.peer_sync",
+            "propagation",
+            OperationKind::Command,
+            TransportVariant::LegacyRpc,
+            "Run a propagation peer sync and return offer, transfer, retry, and queue state.",
+        )
+        .with_alias("peer_sync"),
+        OperationEntry::new(
             "app.event.poll",
             "events",
             OperationKind::Query,

@@ -43,6 +43,8 @@ mod negotiation;
 mod parsing;
 #[path = "zmq_pipeline/peer.rs"]
 mod peer;
+#[path = "zmq_pipeline/propagation.rs"]
+mod propagation;
 #[path = "zmq_pipeline/send.rs"]
 mod send;
 #[path = "zmq_pipeline/transport.rs"]
@@ -420,7 +422,6 @@ impl SdkBackend for ZmqPipelineBackendClient {
     ) -> Result<PeerConnectionResult, SdkError> {
         ZmqPipelineBackendClient::peer_disconnect(self, req)
     }
-
     fn peer_reconnect(&self, req: PeerConnectionRequest) -> Result<PeerConnectionResult, SdkError> {
         ZmqPipelineBackendClient::peer_reconnect(self, req)
     }
@@ -428,7 +429,6 @@ impl SdkBackend for ZmqPipelineBackendClient {
         let result = self.call_rpc("sdk_operation_registry_v2", Some(json!({})))?;
         Self::decode_field_or_root(&result, "registry", "operation_registry response")
     }
-
     fn envelope_execute(&self, envelope: Envelope) -> Result<EnvelopeResponse, SdkError> {
         let params = serde_json::to_value(envelope).map_err(|err| {
             SdkError::new(code::INTERNAL, ErrorCategory::Internal, err.to_string())

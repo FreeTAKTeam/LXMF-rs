@@ -392,6 +392,11 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   cancellation through both `ZmqPipelineBackendClient::cancel` and
   `app.delivery.cancel` envelope execution, preserving daemon cancellation
   outcomes for REM/RCH without raw RPC envelopes.
+- The typed ZeroMQ SDK backend starts the final propagation-first branch with
+  `ZmqPipelineBackendClient::propagation_peer_sync`, routing
+  `app.propagation.peer_sync` over `sdk_envelope_execute_v2` to the daemon's
+  existing `peer_sync` lifecycle while preserving offer, transfer, postponed,
+  retry, and persistent queue metadata in the typed response.
 - Python-style `lxmd` `[lxmf] announce_interval` drives peer/delivery announce
   cadence separately from `[propagation] announce_interval`, which remains the
   propagation-node announce cadence.

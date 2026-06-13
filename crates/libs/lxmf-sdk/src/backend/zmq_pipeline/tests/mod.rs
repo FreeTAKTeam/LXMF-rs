@@ -8,6 +8,7 @@ use zeromq::{PullSocket, PushSocket, Socket, SocketRecv, SocketSend, ZmqMessage}
 mod batch;
 mod destination;
 mod history;
+mod propagation;
 mod status;
 mod workflow;
 
@@ -836,7 +837,7 @@ fn cancel_uses_zmq_sdk_method_and_decodes_result() {
 }
 
 #[test]
-fn operation_registry_uses_zmq_sdk_method_for_direct_chat_operations() {
+fn operation_registry_uses_zmq_sdk_method_for_chat_peer_and_propagation_operations() {
     let command_endpoint = unused_loopback_endpoint();
     let response_endpoint = unused_loopback_endpoint();
     let captured = Arc::new(Mutex::new(None));
@@ -858,6 +859,7 @@ fn operation_registry_uses_zmq_sdk_method_for_direct_chat_operations() {
     assert!(registry.supports("app.peer.connect"));
     assert!(registry.supports("app.peer.disconnect"));
     assert!(registry.supports("app.peer.reconnect"));
+    assert!(registry.supports("app.propagation.peer_sync"));
     let captured = captured.lock().expect("captured request");
     let request = captured.as_ref().expect("zmq request");
     assert_eq!(request.method, "sdk_operation_registry_v2");

@@ -40,6 +40,9 @@ fn sdk_release_c_domain_methods_roundtrip() {
         .any(|entry| entry["id"] == json!("app.workflow.mission_update_send")));
     assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.delivery.send_batch")));
     assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.delivery.cancel")));
+    assert!(registry_entries
+        .iter()
+        .any(|entry| entry["id"] == json!("app.propagation.peer_sync")));
 
     let list_before =
         daemon.handle_rpc(rpc_request(120, "sdk_identity_list_v2", json!({}))).expect("list");
@@ -162,6 +165,33 @@ fn sdk_release_c_domain_methods_roundtrip() {
         .as_str()
         .expect("receipt status")
         .starts_with("sent"));
+
+    let peer_sync_envelope = daemon
+        .handle_rpc(rpc_request(
+            1206,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "app.propagation.peer_sync",
+                "kind": "command",
+                "correlation_id": "peer-sync-corr-1",
+                "payload": {
+                    "peer": "peer-sdk-prop",
+                    "force_sync": true,
+                    "transfer_limit_kb": 42.5
+                },
+            }),
+        ))
+        .expect("peer sync envelope");
+    assert!(peer_sync_envelope.error.is_none());
+    let peer_sync_response = peer_sync_envelope.result.expect("peer sync envelope result");
+    assert_eq!(
+        peer_sync_response["response"]["operation_id"],
+        json!("app.propagation.peer_sync")
+    );
+    assert_eq!(peer_sync_response["response"]["correlation_id"], json!("peer-sync-corr-1"));
+    assert_eq!(peer_sync_response["response"]["payload"]["peer"], json!("peer-sdk-prop"));
+    assert!(peer_sync_response["response"]["payload"]["messages"].is_object());
+    assert!(peer_sync_response["response"]["payload"]["propagation"].is_object());
 
     let identity_bundle = json!({
         "identity": "node-b",

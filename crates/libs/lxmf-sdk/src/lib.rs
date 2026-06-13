@@ -63,11 +63,12 @@ pub use domain::{
     IdentityResolveRequest, MarkerCreateRequest, MarkerDeleteRequest, MarkerId, MarkerListRequest,
     MarkerListResult, MarkerRecord, MarkerUpdatePositionRequest, PaperMessageEnvelope,
     PeerConnectionRequest, PeerConnectionResult, PeerConnectionState, PresenceListRequest,
-    PresenceListResult, PresenceRecord, RemoteCommandRequest, RemoteCommandResponse,
-    RemoteCommandSession, RemoteCommandSessionListRequest, RemoteCommandSessionListResult,
-    TelemetryPoint, TelemetryQuery, TopicCreateRequest, TopicId, TopicListRequest, TopicListResult,
-    TopicPath, TopicPublishRequest, TopicRecord, TopicSubscriptionRequest, TrustLevel,
-    VoiceSessionId, VoiceSessionOpenRequest, VoiceSessionState, VoiceSessionUpdateRequest,
+    PresenceListResult, PresenceRecord, PropagationPeerSyncRequest, PropagationPeerSyncResult,
+    RemoteCommandRequest, RemoteCommandResponse, RemoteCommandSession,
+    RemoteCommandSessionListRequest, RemoteCommandSessionListResult, TelemetryPoint,
+    TelemetryQuery, TopicCreateRequest, TopicId, TopicListRequest, TopicListResult, TopicPath,
+    TopicPublishRequest, TopicRecord, TopicSubscriptionRequest, TrustLevel, VoiceSessionId,
+    VoiceSessionOpenRequest, VoiceSessionState, VoiceSessionUpdateRequest,
     WorkflowPeerReadyRequest, WorkflowPeerReadyResult,
 };
 pub use error::{code as error_code, ErrorCategory, ErrorDetails, SdkError};

@@ -61,6 +61,16 @@ const SDK_OPERATION_SPECS: &[SdkOperationSpec] = &[
         rpc_method: "sdk_cancel_message_v2",
     },
     SdkOperationSpec {
+        id: "app.propagation.peer_sync",
+        group: "propagation",
+        kind: "command",
+        transport_variant: "legacy_rpc",
+        description: "Run a propagation peer sync and return offer, transfer, retry, and queue state.",
+        aliases: &["peer_sync"],
+        required_capabilities: &[],
+        rpc_method: "peer_sync",
+    },
+    SdkOperationSpec {
         id: "app.event.poll",
         group: "events",
         kind: "query",
