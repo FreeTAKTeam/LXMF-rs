@@ -56,8 +56,11 @@ API even when ZeroMQ event wakeups are enabled.
 The typed `ZmqPipelineBackendClient` path covers the core lifecycle and
 delivery methods plus identity list/activate/import/export, identity announce,
 presence list, identity resolve, contact update/list, identity bootstrap,
+typed peer-ready setup through `ZmqPipelineBackendClient::workflow_peer_ready`,
 operation registry, envelope execution, and typed durable direct-chat history
-through `ZmqPipelineBackendClient::list_message_history`. Runtime destination
+through `ZmqPipelineBackendClient::list_message_history`. Peer-ready setup
+preserves display names, callsigns, and capability metadata while optionally
+announcing before use. Runtime destination
 queries can use `ZmqPipelineBackendClient::local_delivery_destination_hash`;
 operation-driven clients can still use `app.delivery.destination_hash` through
 SDK envelope execution. Burst sends can use

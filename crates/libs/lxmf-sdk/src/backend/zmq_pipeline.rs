@@ -40,6 +40,8 @@ mod parsing;
 mod send;
 #[path = "zmq_pipeline/transport.rs"]
 mod transport;
+#[path = "zmq_pipeline/workflow.rs"]
+mod workflow;
 
 #[cfg(test)]
 #[path = "zmq_pipeline/tests/mod.rs"]
