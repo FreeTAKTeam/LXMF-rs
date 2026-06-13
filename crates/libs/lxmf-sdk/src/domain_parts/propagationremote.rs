@@ -107,12 +107,36 @@ pub struct PropagationFetchRequest {
     pub transient_id: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, PartialEq)]
 #[non_exhaustive]
 pub struct PropagationRemoteStatusResult {
     pub remote: String,
     #[serde(default)]
     pub status: JsonValue,
+    #[serde(default)]
+    pub status_state: PropagationRemoteStatusState,
+}
+
+#[derive(Deserialize)]
+struct RawPropagationRemoteStatusResult {
+    remote: String,
+    #[serde(default)]
+    status: JsonValue,
+}
+
+impl<'de> Deserialize<'de> for PropagationRemoteStatusResult {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = RawPropagationRemoteStatusResult::deserialize(deserializer)?;
+        let status_state = PropagationRemoteStatusState::from_status(&raw.status);
+        Ok(Self {
+            remote: raw.remote,
+            status: raw.status,
+            status_state,
+        })
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Default)]

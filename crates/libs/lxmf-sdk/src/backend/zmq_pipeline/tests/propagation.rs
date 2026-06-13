@@ -118,7 +118,12 @@ fn propagation_remote_lifecycle_uses_zmq_sdk_envelopes_and_preserves_raw_state()
                         "remote": "remote-a",
                         "status": {
                             "state": "online",
-                            "queue_depth": 3
+                            "queue_depth": 3,
+                            "selected_node": "node-a",
+                            "selected_peer": "peer-a",
+                            "retry_count": 2,
+                            "next_sync_attempt": 1_700_000_900,
+                            "last_sync_error": "previous timeout"
                         }
                     }
                 }
@@ -271,6 +276,13 @@ fn propagation_remote_lifecycle_uses_zmq_sdk_envelopes_and_preserves_raw_state()
 
     assert_eq!(status.remote, "remote-a");
     assert_eq!(status.status["queue_depth"], json!(3));
+    assert_eq!(status.status_state.state.as_deref(), Some("online"));
+    assert_eq!(status.status_state.queue_depth, 3);
+    assert_eq!(status.status_state.selected_node.as_deref(), Some("node-a"));
+    assert_eq!(status.status_state.selected_peer.as_deref(), Some("peer-a"));
+    assert_eq!(status.status_state.retry_count, 2);
+    assert_eq!(status.status_state.next_sync_attempt, Some(1_700_000_900));
+    assert_eq!(status.status_state.last_sync_error.as_deref(), Some("previous timeout"));
     assert_eq!(fetch.result["imported_ids"], json!(["id-a", "id-b"]));
     assert!(fetch.transfer_state.synced);
     assert_eq!(fetch.transfer_state.imported_count, 2);

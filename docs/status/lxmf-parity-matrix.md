@@ -410,6 +410,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   `peer_sync` payloads into typed `peer_sync_state`, so remote propagation sync
   callers can inspect sync status and queue transient IDs without parsing raw
   JSON while still retaining the original daemon payload.
+- `PropagationRemoteStatusResult` now projects remote router status into typed
+  `status_state`, covering lifecycle state, selected node/peer, queue depth,
+  retry count, next sync attempt, and last error while preserving raw status
+  JSON.
 - `PropagationRemoteTransferResult` now projects remote fetch/download result
   and propagation lifecycle payloads into typed `transfer_state`, covering
   sync/postpone status, imported IDs/counts, transferred bytes, progress, and
