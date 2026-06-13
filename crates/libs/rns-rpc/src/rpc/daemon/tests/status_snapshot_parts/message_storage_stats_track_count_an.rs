@@ -237,6 +237,74 @@ fn sdk_envelope_history_list_filters_peer_and_preserves_cursor() {
 }
 
 #[test]
+fn sdk_envelope_history_list_omits_receipts_when_requested() {
+    let daemon = RpcDaemon::test_instance();
+    daemon
+        .accept_inbound(MessageRecord {
+            id: "peer-receipt".to_string(),
+            source: "peer-a".to_string(),
+            destination: "local-destination".to_string(),
+            title: "peer-receipt".to_string(),
+            content: String::new(),
+            timestamp: 1_700_000_103,
+            direction: "in".to_string(),
+            fields: None,
+            receipt_status: Some("delivered".to_string()),
+        })
+        .expect("store peer message");
+
+    let result = daemon
+        .handle_rpc(rpc_request(
+            41,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "app.message.history.list",
+                "kind": "query",
+                "payload": {
+                    "peer_id": "peer-a",
+                    "include_receipts": false,
+                    "limit": 1
+                }
+            }),
+        ))
+        .expect("sdk history result")
+        .result
+        .expect("history result");
+    let payload = &result["response"]["payload"];
+    let messages = payload["messages"].as_array().expect("messages");
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0]["id"].as_str(), Some("peer-receipt"));
+    assert_eq!(messages[0]["receipt_status"], JsonValue::Null);
+}
+
+#[test]
+fn sdk_envelope_history_list_rejects_mismatched_peer_and_conversation_filters() {
+    let daemon = RpcDaemon::test_instance();
+    let response = daemon
+        .handle_rpc(rpc_request(
+            42,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "app.message.history.list",
+                "kind": "query",
+                "payload": {
+                    "peer_id": "peer-a",
+                    "conversation_id": "peer-b",
+                    "limit": 1
+                }
+            }),
+        ))
+        .expect("sdk history response");
+    let error = response.error.expect("expected error");
+    assert_eq!(error.code, "SDK_VALIDATION_INVALID_ARGUMENT");
+    assert!(
+        error.message.contains("peer_id and conversation_id must match"),
+        "unexpected error message: {}",
+        error.message
+    );
+}
+
+#[test]
 fn list_messages_omits_next_cursor_when_exact_limit_is_exhausted() {
     let daemon = RpcDaemon::test_instance();
     for id in ["msg-a", "msg-b"] {
