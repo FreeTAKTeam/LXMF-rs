@@ -16,8 +16,8 @@ use crate::serde::Serialize;
 
 #[cfg(feature = "vrn76-kiss-ble")]
 use btleplug::api::{
-    Central, CharPropFlags, Characteristic, Manager as _, Peripheral as _, ScanFilter,
-    ValueNotification, WriteType,
+    Central, CharPropFlags, Characteristic, DEFAULT_MTU_SIZE, Manager as _, Peripheral as _,
+    ScanFilter, ValueNotification, WriteType,
 };
 
 #[cfg(feature = "vrn76-kiss-ble")]
@@ -139,6 +139,10 @@ pub trait Vrn76KissBleBackend {
     async fn write(&mut self, write: BleWrite) -> Result<(), String>;
 
     async fn next_indication(&mut self) -> Result<Option<Vec<u8>>, String>;
+
+    fn negotiated_mtu(&self) -> Option<u16> {
+        None
+    }
 }
 
 #[cfg(feature = "vrn76-kiss-ble")]
@@ -185,6 +189,7 @@ pub struct NativeVrn76BleBackend {
     write_char: Option<Characteristic>,
     indicate_char: Option<Characteristic>,
     notification_stream: Option<NativeNotificationStream>,
+    negotiated_mtu: Option<u16>,
 }
 
 #[cfg(feature = "vrn76-kiss-ble")]
@@ -198,7 +203,13 @@ impl NativeVrn76BleBackend {
             write_char: None,
             indicate_char: None,
             notification_stream: None,
+            negotiated_mtu: None,
         }
+    }
+
+    #[must_use]
+    pub fn negotiated_mtu(&self) -> Option<u16> {
+        self.negotiated_mtu
     }
 
     pub async fn cleanup(&mut self) -> Result<(), String> {
@@ -240,6 +251,7 @@ impl NativeVrn76BleBackend {
         self.write_char = None;
         self.indicate_char = None;
         self.notification_stream = None;
+        self.negotiated_mtu = None;
     }
 
     async fn select_adapter(settings: &NativeVrn76BleSettings) -> Result<Adapter, String> {
@@ -341,6 +353,10 @@ impl NativeVrn76BleBackend {
 
 #[cfg(feature = "vrn76-kiss-ble")]
 impl Vrn76KissBleBackend for NativeVrn76BleBackend {
+    fn negotiated_mtu(&self) -> Option<u16> {
+        self.negotiated_mtu
+    }
+
     async fn connect(&mut self) -> Result<(), String> {
         self.clear_session_state();
         let adapter = Self::select_adapter(&self.settings).await?;
@@ -366,6 +382,10 @@ impl Vrn76KissBleBackend for NativeVrn76BleBackend {
 
         self.adapter = Some(adapter);
         self.peripheral = Some(peripheral);
+        // Skip DEFAULT_MTU_SIZE (23) — btleplug CoreBluetooth never updates its cached
+        // AtomicU16, so macOS always returns 23 regardless of the actual negotiated MTU.
+        let mtu = self.peripheral.as_ref().expect("just set above").mtu();
+        self.negotiated_mtu = if mtu > DEFAULT_MTU_SIZE { Some(mtu) } else { None };
         self.resolve_characteristics()
     }
 
