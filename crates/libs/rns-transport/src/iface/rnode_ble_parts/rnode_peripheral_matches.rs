@@ -1,33 +1,3 @@
-#[cfg(feature = "rnode-ble")]
-async fn rnode_peripheral_matches(
-    peripheral: &Peripheral,
-    configured_id: &str,
-) -> Result<bool, String> {
-    if native_rnode_identifier_matches(configured_id, &peripheral.id().to_string()) {
-        return Ok(true);
-    }
-    let properties = peripheral
-        .properties()
-        .await
-        .map_err(|err| format!("read peripheral properties: {err}"))?;
-    if let Some(properties) = properties {
-        if native_rnode_identifier_matches(configured_id, &properties.address.to_string()) {
-            return Ok(true);
-        }
-        if let Some(local_name) = properties.local_name {
-            if native_rnode_identifier_matches(configured_id, &local_name) {
-                return Ok(true);
-            }
-        }
-    }
-    Ok(false)
-}
-
-#[cfg(feature = "rnode-ble")]
-fn parse_rnode_uuid(value: &str) -> Uuid {
-    Uuid::parse_str(value).expect("RNode BLE UUID constants must be valid")
-}
-
 pub struct RnodeBleKissRuntime<B> {
     backend: B,
     session: RnodeBleKissSession,
@@ -71,8 +41,7 @@ where
             .map_err(|message| RnodeBleKissError::Backend { operation: "connect", message })?;
         if let Some(mtu) = self.backend.negotiated_mtu() {
             let att_payload = (mtu as usize).saturating_sub(3);
-            self.session.config.max_write_len =
-                att_payload.min(self.session.config.mtu).max(self.session.config.max_write_len);
+            self.session.config.max_write_len = att_payload.min(self.session.config.mtu);
         }
         self.backend.subscribe_notifications().await.map_err(|message| {
             RnodeBleKissError::Backend { operation: "subscribe_notifications", message }
@@ -82,38 +51,6 @@ where
         let writes = self.session.startup_frames();
         self.write_all(writes, "startup_write").await?;
         self.connected = true;
-        Ok(())
-    }
-
-    #[cfg(feature = "rnode-ble")]
-    async fn drain_startup_notifications(&mut self) -> Result<(), RnodeBleKissError> {
-        let deadline = TokioInstant::now() + RNODE_BLE_STARTUP_STABILIZATION_TIMEOUT;
-        let mut drained = 0_usize;
-        loop {
-            let now = TokioInstant::now();
-            if now >= deadline {
-                break;
-            }
-            let quiet_timeout = deadline
-                .saturating_duration_since(now)
-                .min(RNODE_BLE_STARTUP_NOTIFICATION_QUIET_TIMEOUT);
-            match timeout(quiet_timeout, self.backend.next_notification()).await {
-                Ok(Ok(Some(_))) => {
-                    drained += 1;
-                }
-                Ok(Ok(None)) | Err(_) => break,
-                Ok(Err(message)) => {
-                    self.connected = false;
-                    return Err(RnodeBleKissError::Backend {
-                        operation: "drain_startup_notifications",
-                        message,
-                    });
-                }
-            }
-        }
-        if drained > 0 {
-            log::debug!("drained {drained} stale RNode BLE startup notifications");
-        }
         Ok(())
     }
 
@@ -538,13 +475,6 @@ impl Interface for NativeRnodeBleKissInterface {
     fn configured_mtu(&self) -> usize {
         self.config.mtu
     }
-}
-
-#[cfg(feature = "rnode-ble")]
-fn bounded_backoff_next(current: Duration, max: Duration) -> Duration {
-    let current_ms = current.as_millis() as u64;
-    let max_ms = max.as_millis() as u64;
-    Duration::from_millis(current_ms.saturating_mul(2).min(max_ms))
 }
 
 #[derive(Debug, Clone)]
