@@ -60,6 +60,8 @@ pub(crate) struct RnodeBleDaemonConfig {
     pub(crate) startup_response_timeout: Duration,
     pub(crate) reconnect_backoff: Duration,
     pub(crate) max_reconnect_backoff: Duration,
+    #[cfg_attr(not(feature = "rnode-ble"), allow(dead_code))]
+    pub(crate) detection_fallback_timeout: Option<Duration>,
 }
 
 pub(crate) fn build_rnode_ble_config(
@@ -113,6 +115,9 @@ pub(crate) fn build_rnode_ble_config(
         },
         reconnect_backoff: Duration::from_millis(reconnect_backoff_ms),
         max_reconnect_backoff: Duration::from_millis(max_reconnect_backoff_ms),
+        detection_fallback_timeout: iface
+            .detection_fallback_timeout_ms
+            .map(|ms| Duration::from_millis(ms.max(100))),
     })
 }
 
@@ -129,14 +134,18 @@ pub(crate) fn build_native_rnode_ble_interface(
         settings = settings.with_adapter(adapter.to_string());
     }
 
-    NativeRnodeBleKissInterface::new(
+    let mut iface = NativeRnodeBleKissInterface::new(
         iface.name.clone().unwrap_or_else(|| "<unnamed>".to_string()),
         settings,
         config.transport,
     )
     .with_rnode_validation(config.lora, config.startup_response_timeout)
     .with_reconnect_backoff(config.reconnect_backoff)
-    .with_max_reconnect_backoff(config.max_reconnect_backoff)
+    .with_max_reconnect_backoff(config.max_reconnect_backoff);
+    if let Some(timeout) = config.detection_fallback_timeout {
+        iface = iface.with_detection_fallback_timeout(timeout);
+    }
+    iface
 }
 
 pub(crate) fn build_adapter(iface: &InterfaceConfig) -> Result<LoraInterface, String> {

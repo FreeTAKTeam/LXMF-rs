@@ -267,7 +267,7 @@ impl RpcDaemon {
             }
             cumulative_size = next_size;
             let wanted =
-                wanted_ids.as_ref().map_or(true, |ids| ids.wants(entry.transient_id.as_str()));
+                wanted_ids.as_ref().is_none_or(|ids| ids.wants(entry.transient_id.as_str()));
             let transient_id = entry.transient_id.clone();
             propagation_handled = propagation_handled.saturating_add(1);
             propagation_offered_bytes = propagation_offered_bytes.saturating_add(entry.size_bytes);

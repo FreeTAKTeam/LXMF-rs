@@ -82,6 +82,19 @@ impl NativeVrn76KissBleInterface {
                 iface_address,
                 settings.peripheral_id
             );
+            match runtime.negotiated_mtu() {
+                Some(mtu) if mtu < 173 => log::warn!(
+                    "VR-N76 BLE negotiated ATT MTU {} < 173 minimum for LXMF; \
+                     expect incomplete notification payloads iface={}",
+                    mtu,
+                    label
+                ),
+                Some(mtu) => log::info!("VR-N76 BLE negotiated ATT MTU {} iface={}", mtu, label),
+                None => log::debug!(
+                    "VR-N76 BLE negotiated ATT MTU unknown (macOS or non-native backend) iface={}",
+                    label
+                ),
+            }
 
             let mut tx_buffer = vec![0_u8; config.mtu];
             let mut reconnect_needed = false;

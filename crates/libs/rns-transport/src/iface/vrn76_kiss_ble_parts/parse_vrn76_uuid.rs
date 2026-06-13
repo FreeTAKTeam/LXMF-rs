@@ -48,6 +48,11 @@ impl<B> Vrn76KissBleRuntime<B>
 where
     B: Vrn76KissBleBackend,
 {
+    #[must_use]
+    pub fn negotiated_mtu(&self) -> Option<u16> {
+        self.backend.negotiated_mtu()
+    }
+
     pub async fn connect_and_configure(&mut self) -> Result<(), Vrn76KissBleError> {
         self.connected = false;
         self.reset_session_state();
@@ -55,6 +60,13 @@ where
             .connect()
             .await
             .map_err(|message| Vrn76KissBleError::Backend { operation: "connect", message })?;
+        // Cap max_write_len at the actual ATT payload (ATT MTU − 3). The default 512 assumes
+        // a large negotiated MTU; if negotiation produced something smaller, writes would fail
+        // silently via write_startup_commands(). macOS is skipped (negotiated_mtu = None).
+        if let Some(mtu) = self.backend.negotiated_mtu() {
+            let att_payload = (mtu as usize).saturating_sub(3);
+            self.session.config.max_write_len = att_payload.min(self.session.config.mtu);
+        }
         self.backend.subscribe_indications().await.map_err(|message| {
             Vrn76KissBleError::Backend { operation: "subscribe_indications", message }
         })?;

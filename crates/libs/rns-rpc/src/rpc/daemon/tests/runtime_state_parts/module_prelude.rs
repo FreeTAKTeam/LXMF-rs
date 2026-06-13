@@ -207,7 +207,7 @@ fn send_with_bridge_stays_in_sending_until_acknowledged() {
     );
     assert!(
         transitions.iter().all(|entry| {
-            entry["status"].as_str().map_or(true, |status| !status.starts_with("sent:"))
+            entry["status"].as_str().is_none_or(|status| !status.starts_with("sent:"))
         }),
         "bridge-backed sends must not be marked sent before transport acknowledgements arrive"
     );

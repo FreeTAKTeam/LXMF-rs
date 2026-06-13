@@ -280,6 +280,7 @@ fn propagation_remote_fetch_success_clears_source_peer_retry_backoff() {
         let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
         let peer = peers.get_mut(source_peer).expect("source peer record");
         peer.alive = false;
+        peer.last_sync_attempt = 111;
         peer.sync_backoff = 12 * 60;
         peer.next_sync_attempt = now_i64().saturating_add(12 * 60);
     }
@@ -315,6 +316,10 @@ fn propagation_remote_fetch_success_clears_source_peer_retry_backoff() {
         .expect("source peer row");
     assert_eq!(source_row["alive"].as_bool(), Some(true));
     assert_eq!(source_row["rx_bytes"].as_u64(), Some(payload.len() as u64));
+    assert!(
+        source_row["last_sync_attempt"].as_i64().is_some_and(|value| value > 111),
+        "successful remote fetch should refresh source peer sync attempt timestamp"
+    );
     assert_eq!(source_row["sync_backoff"].as_u64(), Some(0));
     assert_eq!(source_row["next_sync_attempt"].as_i64(), Some(0));
     assert_eq!(

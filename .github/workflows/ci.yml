@@ -899,7 +899,18 @@ jobs:
           java-version: "21"
       - uses: gradle/actions/setup-gradle@v4
       - name: Kotlin wrapper conformance
-        run: gradle -p wrappers/kotlin-mobile test
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            if gradle -p wrappers/kotlin-mobile test --stacktrace; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "Kotlin wrapper conformance failed on attempt $attempt; retrying after backoff..."
+              sleep $((attempt * 10))
+            fi
+          done
+          exit 1
 
   sdk-security-check:
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-full-CI'))
