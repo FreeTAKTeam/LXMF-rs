@@ -225,24 +225,6 @@ pub struct PropagationAcknowledgeSyncResult {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[non_exhaustive]
-pub struct PropagationNodeSelectionResult {
-    #[serde(default)]
-    pub peer: Option<String>,
-    #[serde(default)]
-    pub meta: JsonValue,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-#[non_exhaustive]
-pub struct PropagationNodeListResult {
-    #[serde(default)]
-    pub nodes: Vec<JsonValue>,
-    #[serde(default)]
-    pub meta: JsonValue,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-#[non_exhaustive]
 pub struct PropagationStatusResult {
     #[serde(default)]
     pub propagation: JsonValue,

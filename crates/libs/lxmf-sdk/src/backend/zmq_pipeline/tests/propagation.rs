@@ -523,6 +523,15 @@ fn propagation_node_lifecycle_uses_zmq_sdk_envelopes_and_preserves_router_state(
     assert_eq!(selected.meta["selected"], json!(true));
     assert_eq!(listed.nodes[0]["peer"], json!("router-a"));
     assert_eq!(listed.nodes[0]["selected"], json!(true));
+    assert_eq!(listed.node_records.len(), 1);
+    assert_eq!(listed.node_records[0].peer.as_deref(), Some("router-a"));
+    assert_eq!(listed.node_records[0].name.as_deref(), Some("Router A"));
+    assert_eq!(listed.node_records[0].last_seen, Some(1_700_000_000));
+    assert!(listed.node_records[0].selected);
+    assert_eq!(
+        listed.node_records[0].capabilities,
+        vec!["propagation".to_string(), "lxmf".to_string()]
+    );
     assert_eq!(listed.meta["node_count"], json!(1));
 
     let captured = captured.lock().expect("captured requests");

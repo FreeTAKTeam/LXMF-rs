@@ -428,6 +428,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   `propagation_node_set`, and `propagation_node_list`, backed by
   `app.propagation.node.*` envelopes that preserve selected-node and node-list
   metadata for REM/RCH router lifecycle flows.
+- `PropagationNodeListResult` now projects listed router candidates into typed
+  `PropagationNodeRecord` entries, exposing peer, display name, last-seen time,
+  selected flag, and capability strings while retaining the raw node JSON.
 - The same typed propagation branch now covers local propagation status,
   enable/config, delivery policy get/set, and peer maintenance through
   `ZmqPipelineBackendClient` methods and `app.propagation.*` envelopes, keeping

@@ -417,6 +417,9 @@ The project is best described by capability level:
   `propagation_node_set`, and `propagation_node_list`, backed by
   `app.propagation.node.*` envelopes that preserve selected-node and node-list
   metadata without raw RPC.
+- `PropagationNodeListResult` now projects listed router candidates into typed
+  `PropagationNodeRecord` entries, exposing peer, display name, last-seen time,
+  selected flag, and capability strings while retaining the raw node JSON.
 - The typed propagation branch now also exposes local propagation status,
   enable/config, delivery policy get/set, and peer maintenance through
   `ZmqPipelineBackendClient` methods and `app.propagation.*` envelopes, keeping
