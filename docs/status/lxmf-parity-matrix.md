@@ -369,6 +369,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   `ZmqPipelineBackendClient::send_batch` and also supports
   `app.delivery.send_batch` envelope execution, preserving ordered per-message
   acceptance and rejection results without raw RPC envelopes.
+- `BatchSendItem` preserves per-message idempotency keys, TTL, correlation IDs,
+  and SDK extensions in each batch message's `_sdk` field metadata, keeping
+  burst direct-chat retry and restart recovery state on the typed SDK path.
 - The typed ZeroMQ SDK backend and operation registry expose direct-chat
   cancellation through both `ZmqPipelineBackendClient::cancel` and
   `app.delivery.cancel` envelope execution, preserving daemon cancellation

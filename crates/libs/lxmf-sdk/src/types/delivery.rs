@@ -187,6 +187,11 @@ pub struct BatchSendItem {
     pub include_ticket: Option<bool>,
     #[serde(default)]
     pub try_propagation_on_fail: Option<bool>,
+    pub idempotency_key: Option<String>,
+    pub ttl_ms: Option<u64>,
+    pub correlation_id: Option<String>,
+    #[serde(default)]
+    pub extensions: BTreeMap<String, JsonValue>,
 }
 
 impl BatchSendItem {
@@ -199,7 +204,31 @@ impl BatchSendItem {
             stamp_cost: None,
             include_ticket: None,
             try_propagation_on_fail: None,
+            idempotency_key: None,
+            ttl_ms: None,
+            correlation_id: None,
+            extensions: BTreeMap::new(),
         }
+    }
+
+    pub fn with_idempotency_key(mut self, key: impl Into<String>) -> Self {
+        self.idempotency_key = Some(key.into());
+        self
+    }
+
+    pub fn with_ttl_ms(mut self, ttl_ms: u64) -> Self {
+        self.ttl_ms = Some(ttl_ms);
+        self
+    }
+
+    pub fn with_correlation_id(mut self, correlation_id: impl Into<String>) -> Self {
+        self.correlation_id = Some(correlation_id.into());
+        self
+    }
+
+    pub fn with_extension(mut self, key: impl Into<String>, value: JsonValue) -> Self {
+        self.extensions.insert(key.into(), value);
+        self
     }
 
     pub fn with_delivery_method(mut self, method: impl Into<String>) -> Self {

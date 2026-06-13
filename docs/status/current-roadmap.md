@@ -359,6 +359,9 @@ The project is best described by capability level:
   `app.delivery.send_batch` envelope calls to `sdk_send_batch_v2`, preserving
   ordered per-message acceptance and rejection results without raw RPC
   envelopes.
+- `BatchSendItem` now carries per-message idempotency keys, TTL, correlation
+  IDs, and SDK extensions into each batch message's `_sdk` field metadata, so
+  burst direct-chat retries can remain stable across client restarts.
 - The typed ZeroMQ SDK backend and operation registry now expose direct-chat
   cancellation through both `ZmqPipelineBackendClient::cancel` and
   `app.delivery.cancel` envelope execution, preserving daemon cancellation
