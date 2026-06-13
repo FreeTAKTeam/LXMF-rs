@@ -395,3 +395,111 @@ fn propagation_sync_acknowledge_uses_zmq_sdk_envelope_and_preserves_state() {
     );
     server.join().expect("server joined");
 }
+
+#[test]
+fn propagation_node_lifecycle_uses_zmq_sdk_envelopes_and_preserves_router_state() {
+    let command_endpoint = unused_loopback_endpoint();
+    let response_endpoint = unused_loopback_endpoint();
+    let captured = Arc::new(Mutex::new(Vec::new()));
+    let server = spawn_response_sequence_zmq_server(
+        command_endpoint.clone(),
+        vec![
+            json!({
+                "response": {
+                    "operation_id": "app.propagation.node.get",
+                    "kind": "result",
+                    "accepted": true,
+                    "correlation_id": null,
+                    "payload": {
+                        "peer": null,
+                        "meta": {
+                            "queue_depth": 0
+                        }
+                    }
+                }
+            }),
+            json!({
+                "response": {
+                    "operation_id": "app.propagation.node.set",
+                    "kind": "result",
+                    "accepted": true,
+                    "correlation_id": null,
+                    "payload": {
+                        "peer": "router-a",
+                        "meta": {
+                            "selected": true
+                        }
+                    }
+                }
+            }),
+            json!({
+                "response": {
+                    "operation_id": "app.propagation.node.list",
+                    "kind": "result",
+                    "accepted": true,
+                    "correlation_id": null,
+                    "payload": {
+                        "nodes": [
+                            {
+                                "peer": "router-a",
+                                "name": "Router A",
+                                "last_seen": 1700000000,
+                                "capabilities": ["propagation", "lxmf"],
+                                "selected": true
+                            }
+                        ],
+                        "meta": {
+                            "node_count": 1
+                        }
+                    }
+                }
+            }),
+        ],
+        Arc::clone(&captured),
+    );
+    let mut config = ZmqPipelineBackendConfig::local_tcp(command_endpoint, response_endpoint);
+    config.request_timeout = std::time::Duration::from_secs(2);
+    let client = ZmqPipelineBackendClient::new(config).expect("zmq client");
+
+    let initial = client.propagation_node_get().expect("get propagation node");
+    let selected = client
+        .propagation_node_set(crate::PropagationNodeSetRequest {
+            peer: Some("router-a".to_string()),
+        })
+        .expect("set propagation node");
+    let listed = client.propagation_node_list().expect("list propagation nodes");
+
+    assert_eq!(initial.peer, None);
+    assert_eq!(initial.meta["queue_depth"], json!(0));
+    assert_eq!(selected.peer.as_deref(), Some("router-a"));
+    assert_eq!(selected.meta["selected"], json!(true));
+    assert_eq!(listed.nodes[0]["peer"], json!("router-a"));
+    assert_eq!(listed.nodes[0]["selected"], json!(true));
+    assert_eq!(listed.meta["node_count"], json!(1));
+
+    let captured = captured.lock().expect("captured requests");
+    let operation_ids = captured
+        .iter()
+        .map(|request| request.params.as_ref().expect("params")["operation_id"].clone())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        operation_ids,
+        vec![
+            json!("app.propagation.node.get"),
+            json!("app.propagation.node.set"),
+            json!("app.propagation.node.list"),
+        ]
+    );
+    let kinds = captured
+        .iter()
+        .map(|request| request.params.as_ref().expect("params")["kind"].clone())
+        .collect::<Vec<_>>();
+    assert_eq!(kinds, vec![json!("query"), json!("command"), json!("query")]);
+    assert_eq!(captured[0].params.as_ref().expect("params")["payload"], json!({}));
+    assert_eq!(
+        captured[1].params.as_ref().expect("params")["payload"],
+        json!({ "peer": "router-a" })
+    );
+    assert_eq!(captured[2].params.as_ref().expect("params")["payload"], json!({}));
+    server.join().expect("server joined");
+}

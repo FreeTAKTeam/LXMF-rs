@@ -396,6 +396,11 @@ The project is best described by capability level:
   `ZmqPipelineBackendClient::propagation_acknowledge_sync_completion` and
   `app.propagation.acknowledge_sync_completion`, preserving daemon recovery
   state for retry, timeout, and restart flows on the typed ZeroMQ SDK path.
+- The typed propagation branch also exposes outbound propagation router
+  selection and listing as `ZmqPipelineBackendClient::propagation_node_get`,
+  `propagation_node_set`, and `propagation_node_list`, backed by
+  `app.propagation.node.*` envelopes that preserve selected-node and node-list
+  metadata without raw RPC.
 - Locally delivered inbound peer propagation payloads now also store the
   accepted transient and apply source-aware relay fan-out without double
   counting source peer activity, so local delivery does not bypass relay queue

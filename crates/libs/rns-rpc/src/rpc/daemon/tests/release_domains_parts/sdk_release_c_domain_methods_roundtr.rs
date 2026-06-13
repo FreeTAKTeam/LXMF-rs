@@ -61,6 +61,11 @@ fn sdk_release_c_domain_methods_roundtrip() {
     assert!(registry_entries
         .iter()
         .any(|entry| entry["id"] == json!("app.propagation.acknowledge_sync_completion")));
+    assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.propagation.node.get")));
+    assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.propagation.node.set")));
+    assert!(registry_entries
+        .iter()
+        .any(|entry| entry["id"] == json!("app.propagation.node.list")));
 
     let list_before =
         daemon.handle_rpc(rpc_request(120, "sdk_identity_list_v2", json!({}))).expect("list");
@@ -287,6 +292,84 @@ fn sdk_release_c_domain_methods_roundtrip() {
         ack_response["response"]["payload"]["propagation"]["state_name"],
         json!("failed")
     );
+
+    let node_set_envelope = daemon
+        .handle_rpc(rpc_request(
+            1209,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "app.propagation.node.set",
+                "kind": "command",
+                "correlation_id": "propagation-node-set-corr-1",
+                "payload": {
+                    "peer": "router-sdk-prop"
+                },
+            }),
+        ))
+        .expect("set propagation node envelope");
+    assert!(node_set_envelope.error.is_none());
+    let node_set_response = node_set_envelope.result.expect("node set envelope result");
+    assert_eq!(
+        node_set_response["response"]["operation_id"],
+        json!("app.propagation.node.set")
+    );
+    assert_eq!(
+        node_set_response["response"]["correlation_id"],
+        json!("propagation-node-set-corr-1")
+    );
+    assert_eq!(node_set_response["response"]["payload"]["peer"], json!("router-sdk-prop"));
+
+    let node_get_envelope = daemon
+        .handle_rpc(rpc_request(
+            1210,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "app.propagation.node.get",
+                "kind": "query",
+                "correlation_id": "propagation-node-get-corr-1",
+                "payload": {},
+            }),
+        ))
+        .expect("get propagation node envelope");
+    assert!(node_get_envelope.error.is_none());
+    let node_get_response = node_get_envelope.result.expect("node get envelope result");
+    assert_eq!(
+        node_get_response["response"]["operation_id"],
+        json!("app.propagation.node.get")
+    );
+    assert_eq!(
+        node_get_response["response"]["correlation_id"],
+        json!("propagation-node-get-corr-1")
+    );
+    assert_eq!(node_get_response["response"]["payload"]["peer"], json!("router-sdk-prop"));
+
+    let node_list_envelope = daemon
+        .handle_rpc(rpc_request(
+            1211,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "app.propagation.node.list",
+                "kind": "query",
+                "correlation_id": "propagation-node-list-corr-1",
+                "payload": {},
+            }),
+        ))
+        .expect("list propagation nodes envelope");
+    assert!(node_list_envelope.error.is_none());
+    let node_list_response = node_list_envelope.result.expect("node list envelope result");
+    assert_eq!(
+        node_list_response["response"]["operation_id"],
+        json!("app.propagation.node.list")
+    );
+    assert_eq!(
+        node_list_response["response"]["correlation_id"],
+        json!("propagation-node-list-corr-1")
+    );
+    assert!(node_list_response["response"]["payload"]["nodes"]
+        .as_array()
+        .expect("node list")
+        .iter()
+        .any(|node| node["peer"] == json!("router-sdk-prop") && node["selected"] == json!(true)));
 
     let identity_bundle = json!({
         "identity": "node-b",

@@ -50,7 +50,10 @@ impl RpcDaemon {
             | "propagation_remote_download"
             | "propagation_remote_sync"
             | "propagation_remote_unpeer"
-            | "propagation_acknowledge_sync_completion" => parsed.payload,
+            | "propagation_acknowledge_sync_completion"
+            | "get_outbound_propagation_node"
+            | "set_outbound_propagation_node"
+            | "list_propagation_nodes" => parsed.payload,
             "sdk_poll_events_v2" => json!({
                 "cursor": parsed.payload.get("cursor").cloned().unwrap_or(JsonValue::Null),
                 "max": parsed.payload.get("max").cloned().unwrap_or(JsonValue::from(32_u64)),

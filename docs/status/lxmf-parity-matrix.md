@@ -407,6 +407,11 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   `ZmqPipelineBackendClient::propagation_acknowledge_sync_completion` and
   `app.propagation.acknowledge_sync_completion`, keeping retry, timeout, and
   restart recovery state visible through the typed ZeroMQ SDK path.
+- The same typed propagation branch now covers outbound propagation router
+  get/set/list through `ZmqPipelineBackendClient::propagation_node_get`,
+  `propagation_node_set`, and `propagation_node_list`, backed by
+  `app.propagation.node.*` envelopes that preserve selected-node and node-list
+  metadata for REM/RCH router lifecycle flows.
 - Python-style `lxmd` `[lxmf] announce_interval` drives peer/delivery announce
   cadence separately from `[propagation] announce_interval`, which remains the
   propagation-node announce cadence.

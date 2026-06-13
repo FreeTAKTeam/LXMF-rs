@@ -56,5 +56,29 @@ fn propagation_operation_entries() -> Vec<OperationEntry> {
             "Acknowledge a propagation sync completion or failure and expose the resulting recovery state.",
         )
         .with_alias("propagation_acknowledge_sync_completion"),
+        OperationEntry::new(
+            "app.propagation.node.get",
+            "propagation",
+            OperationKind::Query,
+            TransportVariant::LegacyRpc,
+            "Return the selected outbound propagation router node.",
+        )
+        .with_alias("get_outbound_propagation_node"),
+        OperationEntry::new(
+            "app.propagation.node.set",
+            "propagation",
+            OperationKind::Command,
+            TransportVariant::LegacyRpc,
+            "Select or clear the outbound propagation router node.",
+        )
+        .with_alias("set_outbound_propagation_node"),
+        OperationEntry::new(
+            "app.propagation.node.list",
+            "propagation",
+            OperationKind::Query,
+            TransportVariant::LegacyRpc,
+            "List known outbound propagation router nodes and selection state.",
+        )
+        .with_alias("list_propagation_nodes"),
     ]
 }

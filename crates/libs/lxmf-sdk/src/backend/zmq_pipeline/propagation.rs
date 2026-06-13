@@ -1,13 +1,15 @@
 use super::{code, ErrorCategory, SdkError, ZmqPipelineBackendClient};
 use crate::app::{Envelope, EnvelopeResponse};
 use crate::domain::{
-    PropagationAcknowledgeSyncRequest, PropagationAcknowledgeSyncResult,
-    PropagationPeerSyncRequest, PropagationPeerSyncResult, PropagationRemotePeerRequest,
-    PropagationRemoteRequest, PropagationRemoteStatusResult, PropagationRemoteSyncResult,
-    PropagationRemoteTransferResult, PropagationRemoteUnpeerResult,
+    PropagationAcknowledgeSyncRequest, PropagationAcknowledgeSyncResult, PropagationNodeListResult,
+    PropagationNodeSelectionResult, PropagationNodeSetRequest, PropagationPeerSyncRequest,
+    PropagationPeerSyncResult, PropagationRemotePeerRequest, PropagationRemoteRequest,
+    PropagationRemoteStatusResult, PropagationRemoteSyncResult, PropagationRemoteTransferResult,
+    PropagationRemoteUnpeerResult,
 };
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde_json::json;
 
 impl ZmqPipelineBackendClient {
     pub fn propagation_peer_sync(
@@ -67,6 +69,21 @@ impl ZmqPipelineBackendClient {
         req: PropagationAcknowledgeSyncRequest,
     ) -> Result<PropagationAcknowledgeSyncResult, SdkError> {
         self.execute_propagation_envelope("app.propagation.acknowledge_sync_completion", req)
+    }
+
+    pub fn propagation_node_get(&self) -> Result<PropagationNodeSelectionResult, SdkError> {
+        self.execute_propagation_query("app.propagation.node.get", json!({}))
+    }
+
+    pub fn propagation_node_set(
+        &self,
+        req: PropagationNodeSetRequest,
+    ) -> Result<PropagationNodeSelectionResult, SdkError> {
+        self.execute_propagation_envelope("app.propagation.node.set", req)
+    }
+
+    pub fn propagation_node_list(&self) -> Result<PropagationNodeListResult, SdkError> {
+        self.execute_propagation_query("app.propagation.node.list", json!({}))
     }
 
     fn execute_propagation_envelope<T, R>(

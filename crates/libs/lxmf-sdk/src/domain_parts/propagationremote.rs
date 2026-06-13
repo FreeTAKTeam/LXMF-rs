@@ -34,6 +34,13 @@ pub struct PropagationAcknowledgeSyncRequest {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[non_exhaustive]
+pub struct PropagationNodeSetRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub peer: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[non_exhaustive]
 pub struct PropagationRemoteStatusResult {
     pub remote: String,
     #[serde(default)]
@@ -55,6 +62,24 @@ pub struct PropagationRemoteTransferResult {
 pub struct PropagationAcknowledgeSyncResult {
     #[serde(default)]
     pub propagation: JsonValue,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[non_exhaustive]
+pub struct PropagationNodeSelectionResult {
+    #[serde(default)]
+    pub peer: Option<String>,
+    #[serde(default)]
+    pub meta: JsonValue,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[non_exhaustive]
+pub struct PropagationNodeListResult {
+    #[serde(default)]
+    pub nodes: Vec<JsonValue>,
+    #[serde(default)]
+    pub meta: JsonValue,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

@@ -9,6 +9,7 @@ mod batch;
 mod destination;
 mod history;
 mod propagation;
+mod registry;
 mod status;
 mod workflow;
 
@@ -833,42 +834,6 @@ fn cancel_uses_zmq_sdk_method_and_decodes_result() {
     let request = captured.as_ref().expect("zmq request");
     assert_eq!(request.method, "sdk_cancel_message_v2");
     assert_eq!(request.params.as_ref().expect("params")["message_id"], json!("msg-cancel"));
-    server.join().expect("server joined");
-}
-
-#[test]
-fn operation_registry_uses_zmq_sdk_method_for_chat_peer_and_propagation_operations() {
-    let command_endpoint = unused_loopback_endpoint();
-    let response_endpoint = unused_loopback_endpoint();
-    let captured = Arc::new(Mutex::new(None));
-    let server = spawn_single_response_zmq_server(
-        command_endpoint.clone(),
-        json!({ "registry": crate::app::OperationRegistry::built_in() }),
-        Arc::clone(&captured),
-    );
-    let mut config = ZmqPipelineBackendConfig::local_tcp(command_endpoint, response_endpoint);
-    config.request_timeout = std::time::Duration::from_secs(2);
-    let client = ZmqPipelineBackendClient::new(config).expect("zmq client");
-    let registry = client.operation_registry().expect("operation registry");
-
-    assert!(registry.supports("app.message.conversation.list"));
-    assert!(registry.supports("app.message.history.list"));
-    assert!(registry.supports("app.delivery.destination_hash"));
-    assert!(registry.supports("app.delivery.cancel"));
-    assert!(registry.supports("app.peer.connect"));
-    assert!(registry.supports("app.peer.disconnect"));
-    assert!(registry.supports("app.peer.reconnect"));
-    assert!(registry.supports("app.propagation.peer_sync"));
-    assert!(registry.supports("app.propagation.remote_status"));
-    assert!(registry.supports("app.propagation.remote_fetch"));
-    assert!(registry.supports("app.propagation.remote_download"));
-    assert!(registry.supports("app.propagation.remote_sync"));
-    assert!(registry.supports("app.propagation.remote_unpeer"));
-    assert!(registry.supports("app.propagation.acknowledge_sync_completion"));
-    let captured = captured.lock().expect("captured request");
-    let request = captured.as_ref().expect("zmq request");
-    assert_eq!(request.method, "sdk_operation_registry_v2");
-    assert_eq!(request.params, Some(json!({})));
     server.join().expect("server joined");
 }
 
