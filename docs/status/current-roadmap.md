@@ -160,6 +160,10 @@ The project is best described by capability level:
 - Remote peer-sync now uses the stored peer ID case for the bridge call, import
   source accounting, state updates, and response envelope when callers use a
   case-variant peer request.
+- Remote peer-sync bridge results that explicitly report `synced: false` or
+  `postponed: true` now preserve the remote postponement in the peer-sync
+  result/event and keep retry scheduling intact instead of clearing the peer's
+  backoff as if the transfer completed.
 - Failed remote unpeer attempts now mirror existing payload-backed live queue
   marks and restored peer-record queue IDs into active peer record snapshots
   before returning bridge-unavailable or bridge-execution errors, including

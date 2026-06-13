@@ -201,6 +201,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Remote peer-sync uses the stored peer ID case for the bridge call, import
   source accounting, state updates, and response envelope when callers supply a
   case-variant peer request.
+- Remote peer-sync bridge results that explicitly report `synced: false` or
+  `postponed: true` preserve that remote postponement in the peer-sync
+  result/event and keep retry scheduling intact instead of clearing peer
+  backoff as a completed transfer.
 - Failed remote unpeer attempts mirror existing payload-backed queue marks and
   restored peer-record queue IDs into active peer record snapshots before
   returning bridge-unavailable or bridge-execution errors, including
