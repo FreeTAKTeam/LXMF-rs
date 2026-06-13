@@ -70,6 +70,8 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Propagation and paper packing use canonical `lxmf-wire` helpers.
 - Signed messages, fields, attachment aliases, floating timestamps, and
   non-UTF8 title/content bytes retain client-visible fidelity.
+- Documented basic field IDs are exported from `lxmf-wire`, and the typed
+  ZeroMQ SDK send path preserves those keys plus `_lxmf_fields_msgpack_b64`.
 
 ### Delivery and receipts
 

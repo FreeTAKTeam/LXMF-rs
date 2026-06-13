@@ -53,6 +53,9 @@ The project is best described by capability level:
 - Message wire/storage packing, signatures, propagation packing, paper
   encoding, timestamp precision metadata, binary-field preservation, and
   Python-compatible storage containers are implemented.
+- Documented basic LXMF field IDs are exported through `lxmf-wire`, and the
+  typed ZeroMQ SDK send path preserves those field keys plus
+  `_lxmf_fields_msgpack_b64` for REM/RCH payload compatibility.
 - Delivery modes are honored by the daemon; the old claim that requested modes
   are ignored is obsolete.
 - Direct and propagated resource sends support receipt-state separation,
