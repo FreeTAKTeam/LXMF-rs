@@ -407,6 +407,10 @@ The project is best described by capability level:
   and propagation lifecycle payloads into typed `transfer_state`, covering
   sync/postpone status, imported IDs/counts, transferred bytes, progress, and
   last error while retaining the original daemon JSON.
+- `PropagationRemoteUnpeerResult` now projects remote unpeer `messages` and
+  propagation cleanup payloads into a typed `queue` snapshot, so denial and
+  teardown cleanup callers can inspect handled, unhandled, transferred,
+  skipped, rejected, and transfer-limited IDs without parsing raw JSON.
 - The same branch now exposes propagation sync completion/failure
   acknowledgement as
   `ZmqPipelineBackendClient::propagation_acknowledge_sync_completion` and

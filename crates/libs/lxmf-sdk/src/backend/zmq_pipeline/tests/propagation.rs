@@ -216,7 +216,19 @@ fn propagation_remote_lifecycle_uses_zmq_sdk_envelopes_and_preserves_raw_state()
                         "propagation_cleared_bytes": 64,
                         "messages": {
                             "offered": 0,
-                            "unhandled_ids": []
+                            "outgoing": 1,
+                            "incoming": 0,
+                            "unhandled": 1,
+                            "offered_bytes": 0,
+                            "unhandled_bytes": 64,
+                            "handled_ids": ["done-a"],
+                            "unhandled_ids": ["retry-cleaned"]
+                        },
+                        "propagation": {
+                            "transferred_ids": ["done-a"],
+                            "skipped_ids": ["retry-cleaned"],
+                            "rejected_ids": ["denied-a"],
+                            "transfer_limited_ids": []
                         },
                         "result": {
                             "accepted": true
@@ -311,7 +323,15 @@ fn propagation_remote_lifecycle_uses_zmq_sdk_envelopes_and_preserves_raw_state()
     assert_eq!(peer_sync_state.queue.transfer_limited_ids, vec!["retry-a".to_string()]);
     assert!(unpeer.removed);
     assert_eq!(unpeer.propagation_cleared, Some(1));
-    assert_eq!(unpeer.messages["unhandled_ids"], json!([]));
+    assert_eq!(unpeer.messages["unhandled_ids"], json!(["retry-cleaned"]));
+    assert_eq!(unpeer.queue.outgoing, 1);
+    assert_eq!(unpeer.queue.unhandled, 1);
+    assert_eq!(unpeer.queue.unhandled_bytes, 64);
+    assert_eq!(unpeer.queue.handled_ids, vec!["done-a".to_string()]);
+    assert_eq!(unpeer.queue.unhandled_ids, vec!["retry-cleaned".to_string()]);
+    assert_eq!(unpeer.queue.transferred_ids, vec!["done-a".to_string()]);
+    assert_eq!(unpeer.queue.skipped_ids, vec!["retry-cleaned".to_string()]);
+    assert_eq!(unpeer.queue.rejected_ids, vec!["denied-a".to_string()]);
 
     let captured = captured.lock().expect("captured requests");
     let methods = captured.iter().map(|request| request.method.as_str()).collect::<Vec<_>>();

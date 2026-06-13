@@ -12,4 +12,6 @@ include!("domain_parts/propagationremotestatus.rs");
 
 include!("domain_parts/propagationremote.rs");
 
+include!("domain_parts/propagationremoteunpeer.rs");
+
 include!("domain_parts/workflowpeerreadyrequest.rs");

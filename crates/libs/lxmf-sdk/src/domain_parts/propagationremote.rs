@@ -476,21 +476,3 @@ impl<'de> Deserialize<'de> for PropagationRemoteSyncResult {
         })
     }
 }
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-#[non_exhaustive]
-pub struct PropagationRemoteUnpeerResult {
-    pub remote: String,
-    #[serde(default)]
-    pub peer: Option<String>,
-    #[serde(default)]
-    pub removed: bool,
-    #[serde(default)]
-    pub propagation_cleared: Option<u64>,
-    #[serde(default)]
-    pub propagation_cleared_bytes: Option<u64>,
-    #[serde(default)]
-    pub messages: JsonValue,
-    #[serde(default)]
-    pub result: JsonValue,
-}
