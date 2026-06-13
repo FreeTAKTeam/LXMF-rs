@@ -30,6 +30,8 @@ mod batch;
 mod config;
 #[path = "zmq_pipeline/destination.rs"]
 mod destination;
+#[path = "zmq_pipeline/discovery.rs"]
+mod discovery;
 #[path = "zmq_pipeline/history.rs"]
 mod history;
 #[path = "zmq_pipeline/negotiation.rs"]

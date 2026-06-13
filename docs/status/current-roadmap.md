@@ -317,6 +317,12 @@ The project is best described by capability level:
   `ZmqPipelineBackendClient::workflow_peer_ready`, preserving display names,
   callsigns, trust, bootstrap intent, and REM/RCH capability metadata while
   optionally announcing before use, so saved-peer setup has a direct typed path.
+- The typed ZeroMQ SDK backend now exposes
+  `ZmqPipelineBackendClient::peer_directory`, merging saved contacts and
+  announce-derived presence over `sdk_identity_contact_list_v2` and
+  `sdk_identity_presence_list_v2` while preserving display names, callsigns,
+  REM capability flags, RCH announce-slot metadata, online state, and
+  first/last-seen timestamps.
 - The typed ZeroMQ SDK backend now also covers the operation registry and SDK
   envelope execution path, including `app.message.history.list` and
   `app.delivery.destination_hash`, so REM/RCH direct-chat history and runtime

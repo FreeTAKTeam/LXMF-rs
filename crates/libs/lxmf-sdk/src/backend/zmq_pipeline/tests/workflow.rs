@@ -70,3 +70,83 @@ fn workflow_peer_ready_uses_zmq_sdk_method_and_preserves_contact_metadata() {
     assert_eq!(params["extensions"]["source"], json!("rem-rch"));
     server.join().expect("server joined");
 }
+
+#[test]
+fn peer_directory_merges_contacts_and_presence_over_zmq_sdk_methods() {
+    let command_endpoint = unused_loopback_endpoint();
+    let response_endpoint = unused_loopback_endpoint();
+    let captured = Arc::new(Mutex::new(Vec::new()));
+    let server = spawn_response_sequence_zmq_server(
+        command_endpoint.clone(),
+        vec![
+            json!({
+                "contact_list": {
+                    "contacts": [{
+                        "identity": "peer-ready",
+                        "display_name": "RCH Relay",
+                        "trust_level": "trusted",
+                        "bootstrap": true,
+                        "updated_ts_ms": 1700000400,
+                        "metadata": {
+                            "callsign": "RCH-1",
+                            "capabilities": ["rem.direct_chat", "rch.announce_slot"]
+                        },
+                        "extensions": {
+                            "saved": true
+                        }
+                    }],
+                    "next_cursor": null
+                }
+            }),
+            json!({
+                "presence_list": {
+                    "peers": [{
+                        "peer_id": "peer-ready",
+                        "last_seen_ts_ms": 1700000500,
+                        "first_seen_ts_ms": 1700000100,
+                        "seen_count": 4,
+                        "name": "Relay Announce",
+                        "name_source": "announce",
+                        "trust_level": "trusted",
+                        "bootstrap": true,
+                        "extensions": {
+                            "capability_flags": ["rem.direct_chat"],
+                            "announce_slots": ["rch.broadcast"]
+                        }
+                    }],
+                    "next_cursor": null
+                }
+            }),
+        ],
+        Arc::clone(&captured),
+    );
+    let mut config = ZmqPipelineBackendConfig::local_tcp(command_endpoint, response_endpoint);
+    config.request_timeout = std::time::Duration::from_secs(2);
+    let client = ZmqPipelineBackendClient::new(config).expect("zmq client");
+
+    let peers = client.peer_directory(Some(10)).expect("peer directory");
+
+    assert_eq!(peers.len(), 1);
+    let peer = &peers[0];
+    assert_eq!(peer.peer_id, "peer-ready");
+    assert_eq!(peer.display_name.as_deref(), Some("RCH Relay"));
+    assert_eq!(peer.name_source.as_deref(), Some("contact"));
+    assert_eq!(peer.trust_level, Some(crate::TrustLevel::Trusted));
+    assert!(peer.bootstrap);
+    assert!(peer.online);
+    assert_eq!(peer.last_seen_ts_ms, Some(1700000500));
+    assert_eq!(peer.first_seen_ts_ms, Some(1700000100));
+    assert_eq!(peer.seen_count, 4);
+    assert_eq!(peer.metadata["callsign"], json!("RCH-1"));
+    assert_eq!(peer.metadata["capabilities"][1], json!("rch.announce_slot"));
+    assert_eq!(peer.extensions["saved"], json!(true));
+    assert_eq!(peer.extensions["announce_slots"][0], json!("rch.broadcast"));
+
+    let captured = captured.lock().expect("captured requests");
+    assert_eq!(captured.len(), 2);
+    assert_eq!(captured[0].method, "sdk_identity_contact_list_v2");
+    assert_eq!(captured[0].params.as_ref().expect("contact params")["limit"], json!(10));
+    assert_eq!(captured[1].method, "sdk_identity_presence_list_v2");
+    assert_eq!(captured[1].params.as_ref().expect("presence params")["limit"], json!(10));
+    server.join().expect("server joined");
+}

@@ -326,6 +326,11 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   `ZmqPipelineBackendClient::workflow_peer_ready` for saved-peer setup,
   preserving display names, callsigns, trust, bootstrap intent, and REM/RCH
   capability metadata while optionally announcing before use.
+- The typed ZeroMQ SDK backend exposes
+  `ZmqPipelineBackendClient::peer_directory`, merging saved contacts and
+  announce-derived presence over typed ZeroMQ SDK methods while preserving
+  display names, callsigns, REM capability flags, RCH announce-slot metadata,
+  online state, and first/last-seen timestamps.
 - The typed ZeroMQ SDK backend exposes the operation registry and envelope
   execution path, including the `app.message.history.list` and
   `app.delivery.destination_hash` operations used by direct-chat history and
