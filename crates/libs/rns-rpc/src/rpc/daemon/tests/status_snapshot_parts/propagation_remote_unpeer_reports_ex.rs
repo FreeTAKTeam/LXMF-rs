@@ -208,6 +208,10 @@ fn failed_propagation_remote_unpeer_preserves_local_peer_and_queue_state() {
     assert_eq!(row["peer"].as_str(), Some("peer-remote-unpeer-fail"));
     assert_eq!(row["messages"]["unhandled"].as_u64(), Some(1));
     assert_eq!(row["messages"]["unhandled_bytes"].as_u64(), Some(20));
+    assert_eq!(row["sync_backoff"].as_u64(), Some(12 * 60));
+    let last_sync_attempt = row["last_sync_attempt"].as_i64().expect("last sync attempt");
+    assert!(last_sync_attempt > 0);
+    assert_eq!(row["next_sync_attempt"].as_i64(), Some(last_sync_attempt + 12 * 60));
     assert_eq!(
         daemon
             .store

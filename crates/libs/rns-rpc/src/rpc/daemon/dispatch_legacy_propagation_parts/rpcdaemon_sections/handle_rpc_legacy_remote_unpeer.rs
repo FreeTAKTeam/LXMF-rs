@@ -81,6 +81,17 @@ impl RpcDaemon {
                                 error.as_str(),
                             )?;
                         } else {
+                            let timestamp = now_i64();
+                            if let Ok(mut peers) = self.peers.lock() {
+                                if let Some(peer) = peers.get_mut(snapshot_peer.as_str()) {
+                                    peer.last_sync_attempt = timestamp;
+                                    peer.sync_backoff = peer
+                                        .sync_backoff
+                                        .saturating_add(super::init::LXMF_PEER_SYNC_BACKOFF_STEP_SECS);
+                                    peer.next_sync_attempt =
+                                        timestamp.saturating_add(i64::from(peer.sync_backoff));
+                                }
+                            }
                             let _ = self
                                 .record_payload_backed_peer_queue_snapshot(snapshot_peer.as_str());
                             self.publish_failed_remote_peer_sync_event(

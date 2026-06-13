@@ -175,6 +175,10 @@ The project is best described by capability level:
   observer-visible peering failure state aligned with remote sync/fetch/download
   bridge-unavailable failures.
 - Failed remote unpeer bridge-execution errors for active peers now also
+  advance the peer's retry backoff window before refreshing queue snapshots, so
+  failed peering teardown does not leave retryable queue work in an immediate
+  retry loop.
+- Failed remote unpeer bridge-execution errors for active peers now also
   publish the failed peer-sync event after queue snapshot refresh, keeping
   observer-visible peering failure state aligned with remote sync/fetch/download
   failures.
