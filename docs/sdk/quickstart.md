@@ -59,10 +59,11 @@ presence list, identity resolve, contact update/list, identity bootstrap,
 operation registry, envelope execution, and typed durable direct-chat history
 through `ZmqPipelineBackendClient::list_message_history`. Runtime destination
 queries should use `app.delivery.destination_hash` through the SDK envelope
-path instead of constructing raw RPC envelopes. Burst sends should use
-`app.delivery.send_batch` through the same SDK envelope path so ordered
-per-message acceptance and rejection results remain visible without raw RPC
-calls. Direct-chat cancellation can use either `sdk_cancel_message_v2` via
+path instead of constructing raw RPC envelopes. Burst sends can use
+`ZmqPipelineBackendClient::send_batch` for typed ordered per-message
+acceptance and rejection results; operation-driven clients can use
+`app.delivery.send_batch` through SDK envelope execution. Direct-chat
+cancellation can use either `sdk_cancel_message_v2` via
 `ZmqPipelineBackendClient::cancel` or `app.delivery.cancel` through SDK
 envelope execution, preserving `Accepted`, `AlreadyTerminal`, `NotFound`, and
 `TooLateToCancel` results. Delivery status follows negotiated receipt semantics

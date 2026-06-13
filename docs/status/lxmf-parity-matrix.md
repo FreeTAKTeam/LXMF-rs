@@ -326,9 +326,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   mapping `sdk_status_v2` into `DeliverySnapshot`, so direct-chat delivery
   status reports `sent` as terminal only until
   `sdk.capability.receipt_terminality` is negotiated.
-- The typed ZeroMQ SDK envelope path exposes `app.delivery.send_batch` through
-  `sdk_send_batch_v2` and preserves ordered per-message batch results, so
-  REM/RCH burst-send flows do not need raw RPC envelopes.
+- The typed ZeroMQ SDK backend exposes burst sends through
+  `ZmqPipelineBackendClient::send_batch` and also supports
+  `app.delivery.send_batch` envelope execution, preserving ordered per-message
+  acceptance and rejection results without raw RPC envelopes.
 - The typed ZeroMQ SDK backend and operation registry expose direct-chat
   cancellation through both `ZmqPipelineBackendClient::cancel` and
   `app.delivery.cancel` envelope execution, preserving daemon cancellation
