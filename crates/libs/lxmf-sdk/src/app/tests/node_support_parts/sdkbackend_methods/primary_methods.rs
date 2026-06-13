@@ -209,11 +209,11 @@
         if self.paginate_discovery {
             return Ok(match req.cursor.as_deref() {
                 None => crate::domain::PresenceListResult {
-                    peers: vec![bob],
+                    peers: vec![eve.clone()],
                     next_cursor: Some("presence:1".to_owned()),
                 },
                 Some("presence:1") => {
-                    crate::domain::PresenceListResult { peers: vec![eve], next_cursor: None }
+                    crate::domain::PresenceListResult { peers: vec![bob], next_cursor: None }
                 }
                 _ => crate::domain::PresenceListResult { peers: Vec::new(), next_cursor: None },
             });

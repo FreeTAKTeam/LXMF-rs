@@ -70,7 +70,7 @@ impl<B: SdkBackend> Client<B> {
                 PeerDirectoryEntry {
                     peer_id: contact.identity.clone(),
                     display_name: contact.display_name.clone(),
-                    name_source: Some("contact".to_owned()),
+                    name_source: contact.display_name.as_ref().map(|_| "contact".to_owned()),
                     trust_level: Some(contact.trust_level.clone()),
                     bootstrap: contact.bootstrap,
                     online: false,
@@ -166,12 +166,6 @@ impl<B: SdkBackend> Client<B> {
         loop {
             let page = self.contacts(cursor.clone(), limit)?;
             contacts.extend(page.contacts);
-            if let Some(limit) = limit {
-                if contacts.len() >= limit {
-                    contacts.truncate(limit);
-                    break;
-                }
-            }
             match page.next_cursor {
                 Some(next_cursor) if cursor.as_deref() != Some(next_cursor.as_str()) => {
                     cursor = Some(next_cursor);
@@ -190,12 +184,6 @@ impl<B: SdkBackend> Client<B> {
         loop {
             let page = self.presence(cursor.clone(), limit)?;
             peers.extend(page.peers);
-            if let Some(limit) = limit {
-                if peers.len() >= limit {
-                    peers.truncate(limit);
-                    break;
-                }
-            }
             match page.next_cursor {
                 Some(next_cursor) if cursor.as_deref() != Some(next_cursor.as_str()) => {
                     cursor = Some(next_cursor);

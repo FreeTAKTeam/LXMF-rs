@@ -150,3 +150,159 @@ fn peer_directory_merges_contacts_and_presence_over_zmq_sdk_methods() {
     assert_eq!(captured[1].params.as_ref().expect("presence params")["limit"], json!(10));
     server.join().expect("server joined");
 }
+
+#[test]
+fn peer_directory_limit_still_pages_presence_for_returned_contact() {
+    let command_endpoint = unused_loopback_endpoint();
+    let response_endpoint = unused_loopback_endpoint();
+    let captured = Arc::new(Mutex::new(Vec::new()));
+    let server = spawn_response_sequence_zmq_server(
+        command_endpoint.clone(),
+        vec![
+            json!({
+                "contact_list": {
+                    "contacts": [{
+                        "identity": "bob",
+                        "display_name": "Bob",
+                        "trust_level": "trusted",
+                        "bootstrap": true,
+                        "updated_ts_ms": 1700000400,
+                        "metadata": {},
+                        "extensions": {}
+                    }],
+                    "next_cursor": "contact:1"
+                }
+            }),
+            json!({
+                "contact_list": {
+                    "contacts": [{
+                        "identity": "charlie",
+                        "display_name": "Charlie",
+                        "trust_level": "untrusted",
+                        "bootstrap": false,
+                        "updated_ts_ms": 1700000401,
+                        "metadata": {},
+                        "extensions": {}
+                    }],
+                    "next_cursor": null
+                }
+            }),
+            json!({
+                "presence_list": {
+                    "peers": [{
+                        "peer_id": "eve",
+                        "last_seen_ts_ms": 1700000490,
+                        "first_seen_ts_ms": 1700000090,
+                        "seen_count": 1,
+                        "name": "Eve",
+                        "name_source": "announce",
+                        "trust_level": "unknown",
+                        "bootstrap": false,
+                        "extensions": {}
+                    }],
+                    "next_cursor": "presence:1"
+                }
+            }),
+            json!({
+                "presence_list": {
+                    "peers": [{
+                        "peer_id": "bob",
+                        "last_seen_ts_ms": 1700000500,
+                        "first_seen_ts_ms": 1700000100,
+                        "seen_count": 4,
+                        "name": "Bob Relay",
+                        "name_source": "announce",
+                        "trust_level": "trusted",
+                        "bootstrap": true,
+                        "extensions": {}
+                    }],
+                    "next_cursor": null
+                }
+            }),
+        ],
+        Arc::clone(&captured),
+    );
+    let mut config = ZmqPipelineBackendConfig::local_tcp(command_endpoint, response_endpoint);
+    config.request_timeout = std::time::Duration::from_secs(2);
+    let client = ZmqPipelineBackendClient::new(config).expect("zmq client");
+
+    let peers = client.peer_directory(Some(1)).expect("peer directory");
+
+    assert_eq!(peers.len(), 1);
+    let peer = &peers[0];
+    assert_eq!(peer.peer_id, "bob");
+    assert!(peer.online);
+    assert_eq!(peer.last_seen_ts_ms, Some(1700000500));
+    assert_eq!(peer.first_seen_ts_ms, Some(1700000100));
+    assert_eq!(peer.seen_count, 4);
+
+    let captured = captured.lock().expect("captured requests");
+    assert_eq!(captured.len(), 4);
+    assert_eq!(captured[0].method, "sdk_identity_contact_list_v2");
+    assert_eq!(captured[0].params.as_ref().expect("contact params")["limit"], json!(1));
+    assert_eq!(
+        captured[1].params.as_ref().expect("contact page 2 params")["cursor"],
+        json!("contact:1")
+    );
+    assert_eq!(captured[2].method, "sdk_identity_presence_list_v2");
+    assert_eq!(captured[2].params.as_ref().expect("presence params")["limit"], json!(1));
+    assert_eq!(
+        captured[3].params.as_ref().expect("presence page 2 params")["cursor"],
+        json!("presence:1")
+    );
+    server.join().expect("server joined");
+}
+
+#[test]
+fn peer_directory_uses_presence_name_source_when_contact_has_no_name() {
+    let command_endpoint = unused_loopback_endpoint();
+    let response_endpoint = unused_loopback_endpoint();
+    let server = spawn_response_sequence_zmq_server(
+        command_endpoint.clone(),
+        vec![
+            json!({
+                "contact_list": {
+                    "contacts": [{
+                        "identity": "peer-ready",
+                        "display_name": null,
+                        "trust_level": "trusted",
+                        "bootstrap": true,
+                        "updated_ts_ms": 1700000400,
+                        "metadata": {},
+                        "extensions": {}
+                    }],
+                    "next_cursor": null
+                }
+            }),
+            json!({
+                "presence_list": {
+                    "peers": [{
+                        "peer_id": "peer-ready",
+                        "last_seen_ts_ms": 1700000500,
+                        "first_seen_ts_ms": 1700000100,
+                        "seen_count": 4,
+                        "name": "Relay Announce",
+                        "name_source": "announce",
+                        "trust_level": "trusted",
+                        "bootstrap": true,
+                        "extensions": {}
+                    }],
+                    "next_cursor": null
+                }
+            }),
+        ],
+        Arc::new(Mutex::new(Vec::new())),
+    );
+    let mut config = ZmqPipelineBackendConfig::local_tcp(command_endpoint, response_endpoint);
+    config.request_timeout = std::time::Duration::from_secs(2);
+    let client = ZmqPipelineBackendClient::new(config).expect("zmq client");
+
+    let peers = client.peer_directory(Some(10)).expect("peer directory");
+
+    assert_eq!(peers.len(), 1);
+    let peer = &peers[0];
+    assert_eq!(peer.peer_id, "peer-ready");
+    assert_eq!(peer.display_name.as_deref(), Some("Relay Announce"));
+    assert_eq!(peer.name_source.as_deref(), Some("announce"));
+    server.join().expect("server joined");
+}

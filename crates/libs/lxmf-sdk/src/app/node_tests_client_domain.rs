@@ -86,6 +86,20 @@ fn peer_directory_consumes_all_contact_and_presence_pages() {
 }
 
 #[test]
+fn peer_directory_limit_preserves_presence_for_returned_contacts() {
+    let app = Client::new(MockBackend::new_paginated());
+    let peers = app.peer_directory(Some(1)).expect("peer directory");
+
+    assert_eq!(peers.len(), 1);
+    let peer = &peers[0];
+    assert_eq!(peer.peer_id, "bob");
+    assert!(peer.online);
+    assert_eq!(peer.last_seen_ts_ms, Some(200));
+    assert_eq!(peer.first_seen_ts_ms, Some(120));
+    assert_eq!(peer.seen_count, 3);
+}
+
+#[test]
 fn client_restarts_by_recreating_inner_client() {
     let backend = MockBackend::new();
     let app = Client::new(backend);

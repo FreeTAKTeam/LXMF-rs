@@ -12,12 +12,13 @@ impl ZmqPipelineBackendClient {
         let mut entries = BTreeMap::<String, PeerDirectoryEntry>::new();
 
         for contact in self.collect_contact_records(limit)? {
+            let has_display_name = contact.display_name.is_some();
             entries.insert(
                 contact.identity.0.clone(),
                 PeerDirectoryEntry {
                     peer_id: contact.identity.0,
                     display_name: contact.display_name,
-                    name_source: Some("contact".to_owned()),
+                    name_source: has_display_name.then(|| "contact".to_owned()),
                     trust_level: Some(contact.trust_level),
                     bootstrap: contact.bootstrap,
                     online: false,
@@ -87,12 +88,6 @@ impl ZmqPipelineBackendClient {
                 extensions: BTreeMap::new(),
             })?;
             contacts.extend(page.contacts);
-            if let Some(limit) = limit {
-                if contacts.len() >= limit {
-                    contacts.truncate(limit);
-                    break;
-                }
-            }
             match page.next_cursor {
                 Some(next_cursor) if cursor.as_deref() != Some(next_cursor.as_str()) => {
                     cursor = Some(next_cursor);
@@ -118,12 +113,6 @@ impl ZmqPipelineBackendClient {
                 extensions: BTreeMap::new(),
             })?;
             peers.extend(page.peers);
-            if let Some(limit) = limit {
-                if peers.len() >= limit {
-                    peers.truncate(limit);
-                    break;
-                }
-            }
             match page.next_cursor {
                 Some(next_cursor) if cursor.as_deref() != Some(next_cursor.as_str()) => {
                     cursor = Some(next_cursor);
