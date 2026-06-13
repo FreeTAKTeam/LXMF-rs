@@ -377,6 +377,28 @@ fn peer_sync_resource_data_size(payloads: &[Vec<u8>]) -> Result<u64, std::io::Er
     Ok(packed.len() as u64)
 }
 
+fn decode_peer_sync_transfer(
+    entry: &PropagationEntryRecord,
+) -> Result<(JsonValue, Vec<u8>), std::io::Error> {
+    let payload_bytes = hex::decode(entry.payload_hex.as_str()).map_err(|err| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("invalid propagation payload hex: {err}"),
+        )
+    })?;
+    Ok((
+        json!({
+            "transient_id": entry.transient_id,
+            "destination": entry.destination,
+            "payload_hex": entry.payload_hex,
+            "received_at": entry.received_at,
+            "size_bytes": entry.size_bytes,
+            "stamp_value": entry.stamp_value,
+        }),
+        payload_bytes,
+    ))
+}
+
 fn propagation_peer_sync_weight(
     entry: &PropagationEntryRecord,
     now: i64,

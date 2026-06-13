@@ -220,6 +220,10 @@ The project is best described by capability level:
 - Restored Python peer records now update their serialized queue ID snapshot
   when peer sync handles, transfers, or transfer-limits queued offers, reducing
   restart/export drift after live offer-response processing.
+- Peer sync offer acceptance now validates all transfer payload hex before
+  marking any offered payload transferred, handled, or transfer-limited, so a
+  malformed response batch cannot partially mutate live marks or serialized
+  restart/export queue snapshots.
 - Restored Python peer records now parse fractional `propagation_sync_limit`
   values through Python's integer-kilobyte restore path before peer-sync queue
   selection, preventing restored fractional sync limits from transferring work

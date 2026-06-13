@@ -239,6 +239,9 @@ impl RpcDaemon {
         let mut propagation_skipped_ids = Vec::new();
         let mut propagation_messages = Vec::new();
         let mut propagation_resource_payloads = Vec::new();
+        let mut propagation_transfer_limited_marks = Vec::new();
+        let mut propagation_handled_marks = Vec::new();
+        let mut propagation_transfer_marks = Vec::new();
         let selected_response_ids =
             wanted_ids.as_ref().and_then(PeerSyncWantedIds::selected_ids).map(<[_]>::to_vec);
         let mut selected_offer_entries = std::collections::HashMap::new();
@@ -250,10 +253,7 @@ impl RpcDaemon {
                 propagation_transfer_limited_bytes =
                     propagation_transfer_limited_bytes.saturating_add(entry.size_bytes);
                 let transient_id = entry.transient_id;
-                self.store
-                    .mark_peer_transfer_limited_propagation(peer_key, transient_id.as_str())
-                    .map_err(std::io::Error::other)?;
-                self.record_peer_queue_handled(peer_key, transient_id.as_str());
+                propagation_transfer_limited_marks.push(transient_id.clone());
                 propagation_transfer_limited_ids.push(transient_id);
                 continue;
             }
@@ -275,28 +275,18 @@ impl RpcDaemon {
                 if selected_response_ids.is_some() {
                     selected_offer_entries.insert(transient_id.clone(), entry);
                 } else {
-                    let payload_bytes = hex::decode(entry.payload_hex.as_str()).map_err(|err| {
-                        std::io::Error::new(
-                            std::io::ErrorKind::InvalidData,
-                            format!("invalid propagation payload hex: {err}"),
-                        )
-                    })?;
-                    let propagation_message = json!({ "transient_id": entry.transient_id, "destination": entry.destination, "payload_hex": entry.payload_hex, "received_at": entry.received_at, "size_bytes": entry.size_bytes, "stamp_value": entry.stamp_value, });
-                    self.store
-                        .mark_peer_transferred_propagation(peer_key, transient_id.as_str())
-                        .map_err(std::io::Error::other)?;
-                    self.record_peer_queue_handled(peer_key, transient_id.as_str());
+                    let (propagation_message, payload_bytes) = decode_peer_sync_transfer(&entry)?;
+                    propagation_transfer_marks.push((
+                        transient_id.clone(),
+                        propagation_message,
+                        payload_bytes,
+                    ));
                     propagation_transferred = propagation_transferred.saturating_add(1);
                     propagation_bytes = propagation_bytes.saturating_add(entry.size_bytes);
                     propagation_transferred_ids.push(transient_id.clone());
-                    propagation_messages.push(propagation_message);
-                    propagation_resource_payloads.push(payload_bytes);
                 }
             } else {
-                self.store
-                    .mark_peer_handled_propagation(peer_key, transient_id.as_str())
-                    .map_err(std::io::Error::other)?;
-                self.record_peer_queue_handled(peer_key, transient_id.as_str());
+                propagation_handled_marks.push(transient_id.clone());
             }
             propagation_handled_ids.push(transient_id);
         }
@@ -306,13 +296,7 @@ impl RpcDaemon {
                 let Some(entry) = selected_offer_entries.get(wanted_id) else {
                     continue;
                 };
-                let payload_bytes = hex::decode(entry.payload_hex.as_str()).map_err(|err| {
-                    std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        format!("invalid propagation payload hex: {err}"),
-                    )
-                })?;
-                let propagation_message = json!({ "transient_id": entry.transient_id, "destination": entry.destination, "payload_hex": entry.payload_hex, "received_at": entry.received_at, "size_bytes": entry.size_bytes, "stamp_value": entry.stamp_value, });
+                let (propagation_message, payload_bytes) = decode_peer_sync_transfer(entry)?;
                 selected_transfers.push((
                     wanted_id.clone(),
                     entry.size_bytes,
@@ -321,16 +305,35 @@ impl RpcDaemon {
                 ));
             }
             for (wanted_id, size_bytes, propagation_message, payload_bytes) in selected_transfers {
-                self.store
-                    .mark_peer_transferred_propagation(peer_key, wanted_id.as_str())
-                    .map_err(std::io::Error::other)?;
-                self.record_peer_queue_handled(peer_key, wanted_id.as_str());
+                propagation_transfer_marks.push((
+                    wanted_id.clone(),
+                    propagation_message,
+                    payload_bytes,
+                ));
                 propagation_transferred = propagation_transferred.saturating_add(1);
                 propagation_bytes = propagation_bytes.saturating_add(size_bytes);
                 propagation_transferred_ids.push(wanted_id.clone());
-                propagation_messages.push(propagation_message);
-                propagation_resource_payloads.push(payload_bytes);
             }
+        }
+        for transient_id in propagation_transfer_limited_marks {
+            self.store
+                .mark_peer_transfer_limited_propagation(peer_key, transient_id.as_str())
+                .map_err(std::io::Error::other)?;
+            self.record_peer_queue_handled(peer_key, transient_id.as_str());
+        }
+        for transient_id in propagation_handled_marks {
+            self.store
+                .mark_peer_handled_propagation(peer_key, transient_id.as_str())
+                .map_err(std::io::Error::other)?;
+            self.record_peer_queue_handled(peer_key, transient_id.as_str());
+        }
+        for (transient_id, propagation_message, payload_bytes) in propagation_transfer_marks {
+            self.store
+                .mark_peer_transferred_propagation(peer_key, transient_id.as_str())
+                .map_err(std::io::Error::other)?;
+            self.record_peer_queue_handled(peer_key, transient_id.as_str());
+            propagation_messages.push(propagation_message);
+            propagation_resource_payloads.push(payload_bytes);
         }
         let mut propagation_resource_bytes =
             peer_sync_resource_data_size(propagation_resource_payloads.as_slice())?;

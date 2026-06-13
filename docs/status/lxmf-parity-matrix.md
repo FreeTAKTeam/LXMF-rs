@@ -262,6 +262,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   peer snapshot, source-peer handled IDs are preserved for restart/export, and
   offer-response handling keeps IDs in sync when queued messages become handled,
   transferred, or transfer-limited.
+- Peer sync offer acceptance validates all transfer payload hex before marking
+  any offered payload transferred, handled, or transfer-limited, so malformed
+  response batches cannot partially mutate live marks or serialized
+  restart/export queue snapshots.
 - Restored Python peer records parse fractional `propagation_sync_limit` values
   through Python's integer-kilobyte restore path before peer-sync queue
   selection, so restored fractional sync limits leave the same queued work
