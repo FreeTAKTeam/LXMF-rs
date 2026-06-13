@@ -73,6 +73,14 @@ impl RpcDaemon {
                         } else {
                             let _ = self
                                 .record_payload_backed_peer_queue_snapshot(snapshot_peer.as_str());
+                            self.publish_failed_remote_peer_sync_event(
+                                snapshot_peer.as_str(),
+                                remote_id.as_str(),
+                                error.as_str(),
+                                None,
+                                None,
+                                None,
+                            );
                         }
                         return Err(err);
                     }

@@ -171,6 +171,7 @@ fn failed_propagation_remote_unpeer_preserves_local_peer_and_queue_state() {
         .store
         .mark_peer_unhandled_propagation("peer-remote-unpeer-fail", entry.transient_id.as_str())
         .expect("mark unhandled");
+    daemon.event_queue.lock().expect("event_queue mutex poisoned").clear();
 
     let err = daemon
         .handle_rpc(rpc_request(
@@ -213,6 +214,26 @@ fn failed_propagation_remote_unpeer_preserves_local_peer_and_queue_state() {
             .list_peer_unhandled_propagation("peer-remote-unpeer-fail")
             .expect("list unhandled"),
         vec![entry]
+    );
+
+    let event = daemon
+        .event_queue
+        .lock()
+        .expect("event_queue mutex poisoned")
+        .iter()
+        .rev()
+        .find(|event| event.event_type == "peer_sync")
+        .cloned()
+        .expect("failed remote unpeer peer-sync event");
+    assert_eq!(event.payload["peer"].as_str(), Some("peer-remote-unpeer-fail"));
+    assert_eq!(event.payload["remote"].as_str(), Some("remote-node"));
+    assert_eq!(event.payload["remote_sync"].as_bool(), Some(true));
+    assert_eq!(event.payload["synced"].as_bool(), Some(false));
+    assert_eq!(event.payload["state_name"].as_str(), Some("failed"));
+    assert_eq!(event.payload["propagation"]["error"].as_str(), Some("remote unpeer failed"));
+    assert_eq!(
+        event.payload["messages"]["unhandled_ids"].as_array().expect("event unhandled ids"),
+        &[json!("e2".repeat(32))]
     );
 }
 

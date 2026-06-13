@@ -207,6 +207,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   case-insensitive peer requests, so failed peering teardown preserves queued
   retry work across restart/export and marks the propagation lifecycle failed
   instead of leaving stale idle/completed state.
+- Failed remote unpeer bridge-execution errors for active peers publish the
+  failed peer-sync event after queue snapshot refresh, keeping observer-visible
+  peering failure state aligned with remote sync/fetch/download failures.
 - Access-denied remote unpeer failures follow the same local peering break path
   as access-denied remote sync/fetch/download, clearing local peer and
   propagation queue state instead of leaving denied teardown work retryable.
