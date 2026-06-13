@@ -2,7 +2,8 @@ use crate::backend::SdkBackend;
 use crate::capability::{NegotiationRequest, NegotiationResponse};
 use crate::domain::{
     ContactListRequest, ContactListResult, ContactRecord, ContactUpdateRequest,
-    PresenceListRequest, PresenceListResult,
+    IdentityBootstrapRequest, IdentityRef, IdentityResolveRequest, PresenceListRequest,
+    PresenceListResult,
 };
 use crate::error::{code, ErrorCategory, SdkError};
 use crate::event::{EventBatch, EventCursor, SdkEvent, Severity};
@@ -374,6 +375,21 @@ impl SdkBackend for ZmqPipelineBackendClient {
         Self::decode_field_or_root(&result, "presence_list", "identity_presence_list response")
     }
 
+    fn identity_resolve(
+        &self,
+        req: IdentityResolveRequest,
+    ) -> Result<Option<IdentityRef>, SdkError> {
+        let params = serde_json::to_value(req).map_err(|err| {
+            SdkError::new(code::INTERNAL, ErrorCategory::Internal, err.to_string())
+        })?;
+        let result = self.call_rpc("sdk_identity_resolve_v2", Some(params))?;
+        if result.is_null() || result.get("identity").is_some_and(JsonValue::is_null) {
+            return Ok(None);
+        }
+        let value = result.get("identity").cloned().unwrap_or(result);
+        Self::decode_value(value, "identity_resolve response").map(Some)
+    }
+
     fn identity_contact_update(
         &self,
         req: ContactUpdateRequest,
@@ -394,6 +410,14 @@ impl SdkBackend for ZmqPipelineBackendClient {
         })?;
         let result = self.call_rpc("sdk_identity_contact_list_v2", Some(params))?;
         Self::decode_field_or_root(&result, "contact_list", "identity_contact_list response")
+    }
+
+    fn identity_bootstrap(&self, req: IdentityBootstrapRequest) -> Result<ContactRecord, SdkError> {
+        let params = serde_json::to_value(req).map_err(|err| {
+            SdkError::new(code::INTERNAL, ErrorCategory::Internal, err.to_string())
+        })?;
+        let result = self.call_rpc("sdk_identity_bootstrap_v2", Some(params))?;
+        Self::decode_field_or_root(&result, "contact", "identity_bootstrap response")
     }
 
     fn snapshot(&self) -> Result<RuntimeSnapshot, SdkError> {

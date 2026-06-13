@@ -396,6 +396,99 @@ fn identity_contact_list_uses_zmq_sdk_method_and_decodes_response() {
 }
 
 #[test]
+fn identity_resolve_uses_zmq_sdk_method_and_decodes_identity_ref() {
+    let command_endpoint = unused_loopback_endpoint();
+    let response_endpoint = unused_loopback_endpoint();
+    let captured = Arc::new(Mutex::new(None));
+    let server = spawn_single_response_zmq_server(
+        command_endpoint.clone(),
+        json!({ "identity": "peer-destination-hash" }),
+        Arc::clone(&captured),
+    );
+    let mut config = ZmqPipelineBackendConfig::local_tcp(command_endpoint, response_endpoint);
+    config.request_timeout = std::time::Duration::from_secs(2);
+    let client = ZmqPipelineBackendClient::new(config).expect("zmq client");
+
+    let identity = client
+        .identity_resolve(crate::domain::IdentityResolveRequest {
+            hash: "peer-announced-hash".to_owned(),
+            extensions: BTreeMap::from([("requested_by".to_owned(), json!("rem-peer-discovery"))]),
+        })
+        .expect("identity resolve")
+        .expect("resolved identity");
+
+    assert_eq!(identity.0, "peer-destination-hash");
+    let captured = captured.lock().expect("captured request");
+    let request = captured.as_ref().expect("zmq request");
+    assert_eq!(request.method, "sdk_identity_resolve_v2");
+    let params = request.params.as_ref().expect("params");
+    assert_eq!(params["hash"], json!("peer-announced-hash"));
+    assert_eq!(params["extensions"]["requested_by"], json!("rem-peer-discovery"));
+    server.join().expect("server joined");
+}
+
+#[test]
+fn identity_bootstrap_uses_zmq_sdk_method_and_preserves_capability_metadata() {
+    let command_endpoint = unused_loopback_endpoint();
+    let response_endpoint = unused_loopback_endpoint();
+    let captured = Arc::new(Mutex::new(None));
+    let server = spawn_single_response_zmq_server(
+        command_endpoint.clone(),
+        json!({
+            "contact": {
+                "identity": "peer-destination-hash",
+                "display_name": "Field Team One",
+                "trust_level": "trusted",
+                "bootstrap": true,
+                "updated_ts_ms": 1700003000,
+                "metadata": {
+                    "callsign": "FT1",
+                    "rem_capabilities": ["direct_chat", "restart_recovery"],
+                    "rch_announce_slots": ["broadcast", "topics"]
+                },
+                "extensions": { "source": "bootstrap" }
+            }
+        }),
+        Arc::clone(&captured),
+    );
+    let mut config = ZmqPipelineBackendConfig::local_tcp(command_endpoint, response_endpoint);
+    config.request_timeout = std::time::Duration::from_secs(2);
+    let client = ZmqPipelineBackendClient::new(config).expect("zmq client");
+
+    let contact = client
+        .identity_bootstrap(crate::domain::IdentityBootstrapRequest {
+            identity: crate::domain::IdentityRef("peer-destination-hash".to_owned()),
+            auto_sync: true,
+            extensions: BTreeMap::from([(
+                "metadata".to_owned(),
+                json!({
+                    "callsign": "FT1",
+                    "rem_capabilities": ["direct_chat", "restart_recovery"],
+                    "rch_announce_slots": ["broadcast", "topics"]
+                }),
+            )]),
+        })
+        .expect("identity bootstrap");
+
+    assert_eq!(contact.identity.0, "peer-destination-hash");
+    assert_eq!(contact.display_name.as_deref(), Some("Field Team One"));
+    assert_eq!(contact.metadata["callsign"], json!("FT1"));
+    assert_eq!(contact.metadata["rem_capabilities"], json!(["direct_chat", "restart_recovery"]));
+    let captured = captured.lock().expect("captured request");
+    let request = captured.as_ref().expect("zmq request");
+    assert_eq!(request.method, "sdk_identity_bootstrap_v2");
+    let params = request.params.as_ref().expect("params");
+    assert_eq!(params["identity"], json!("peer-destination-hash"));
+    assert_eq!(params["auto_sync"], json!(true));
+    assert_eq!(params["extensions"]["metadata"]["callsign"], json!("FT1"));
+    assert_eq!(
+        params["extensions"]["metadata"]["rch_announce_slots"],
+        json!(["broadcast", "topics"])
+    );
+    server.join().expect("server joined");
+}
+
+#[test]
 fn send_uses_zmq_sdk_method_and_preserves_delivery_options() {
     let command_endpoint = unused_loopback_endpoint();
     let response_endpoint = unused_loopback_endpoint();

@@ -54,9 +54,9 @@ backend rejects remote endpoints without it. `poll_events` remains the authorita
 API even when ZeroMQ event wakeups are enabled.
 
 The typed `ZmqPipelineBackendClient` path covers the core lifecycle and
-delivery methods plus identity announce, presence list, contact update, and
-contact list. Application integrations should use these typed SDK calls instead
-of constructing raw RPC envelopes.
+delivery methods plus identity announce, presence list, identity resolve,
+contact update/list, and identity bootstrap. Application integrations should
+use these typed SDK calls instead of constructing raw RPC envelopes.
 
 Run the example client:
 
