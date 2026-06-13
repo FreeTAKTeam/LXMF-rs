@@ -175,6 +175,9 @@ The project is best described by capability level:
 - Successful remote unpeer now clears stale propagation lifecycle failures and
   error text left by earlier teardown attempts, so status reflects completed
   peer removal instead of a prior failed control operation.
+- Active outbound normal and propagation stamp generation now reports stored
+  generation progress through `get_outbound_progress`, while terminal failed or
+  cancelled stamp states continue to suppress stale progress values.
 - Inbound reticulumd `/pn/peer/sync` and `/pn/peer/unpeer` control commands now
   resolve stored peer IDs case-insensitively before dispatching to daemon RPCs,
   so binary peer-control requests do not report not-found for restored or

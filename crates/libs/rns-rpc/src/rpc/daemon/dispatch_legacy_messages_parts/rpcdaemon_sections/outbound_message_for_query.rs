@@ -49,24 +49,25 @@ impl RpcDaemon {
         let explicit_progress =
             lxmf.and_then(|lxmf| lxmf.get("progress")).and_then(JsonValue::as_f64);
 
-        match stamp_state.as_deref() {
-            Some("failed" | "cancelled") => None,
-            Some("generating") => Some(0.0),
-            _ => match propagation_stamp_state.as_deref() {
-                Some("failed" | "cancelled") => None,
-                Some("generating") => Some(0.0),
-                _ if explicit_progress.is_some() => {
-                    explicit_progress.map(|progress| progress.clamp(0.0, 1.0))
-                }
-                _ if message.receipt_status.as_deref().is_some_and(|status| {
-                    matches!(status.trim().to_ascii_lowercase().as_str(), "queued" | "sending")
-                }) =>
-                {
-                    Some(0.01)
-                }
-                _ => Some(0.0),
-            },
+        if matches!(stamp_state.as_deref(), Some("failed" | "cancelled"))
+            || matches!(propagation_stamp_state.as_deref(), Some("failed" | "cancelled"))
+        {
+            return None;
         }
+        if let Some(progress) = explicit_progress {
+            return Some(progress.clamp(0.0, 1.0));
+        }
+        if matches!(stamp_state.as_deref(), Some("generating"))
+            || matches!(propagation_stamp_state.as_deref(), Some("generating"))
+        {
+            return Some(0.0);
+        }
+        if message.receipt_status.as_deref().is_some_and(|status| {
+            matches!(status.trim().to_ascii_lowercase().as_str(), "queued" | "sending")
+        }) {
+            return Some(0.01);
+        }
+        Some(0.0)
     }
 
     fn outbound_stamp_cost_for_message(message: &MessageRecord) -> Option<u32> {
