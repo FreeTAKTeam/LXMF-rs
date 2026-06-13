@@ -129,3 +129,36 @@ fn status_preserves_retry_attempts_and_reason_code_from_zmq_sdk_response() {
     assert_eq!(request.params.as_ref().expect("params")["message_id"], json!("msg-retry"));
     server.join().expect("server joined");
 }
+
+#[test]
+fn status_rejects_malformed_retry_metadata_from_zmq_sdk_response() {
+    let command_endpoint = unused_loopback_endpoint();
+    let response_endpoint = unused_loopback_endpoint();
+    let server = spawn_single_response_zmq_server(
+        command_endpoint.clone(),
+        json!({
+            "message": {
+                "message_id": "msg-retry-invalid",
+                "receipt_status": "failed: no path",
+                "timestamp": 1710000101,
+                "attempts": "3",
+                "reason_code": 404
+            }
+        }),
+        Arc::new(Mutex::new(None)),
+    );
+    let mut config = ZmqPipelineBackendConfig::local_tcp(command_endpoint, response_endpoint);
+    config.request_timeout = std::time::Duration::from_secs(2);
+    let client = ZmqPipelineBackendClient::new(config).expect("zmq client");
+
+    let err = client
+        .status(MessageId("msg-retry-invalid".to_owned()))
+        .expect_err("malformed retry metadata should fail status decoding");
+
+    assert_eq!(err.category, ErrorCategory::Internal);
+    assert!(
+        err.message.contains("attempts") || err.message.contains("reason_code"),
+        "unexpected error: {err:?}"
+    );
+    server.join().expect("server joined");
+}
