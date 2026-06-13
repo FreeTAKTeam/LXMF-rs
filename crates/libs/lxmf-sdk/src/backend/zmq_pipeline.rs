@@ -1,3 +1,4 @@
+use crate::app::{Envelope, EnvelopeResponse, OperationRegistry};
 use crate::backend::SdkBackend;
 use crate::capability::{NegotiationRequest, NegotiationResponse};
 use crate::domain::{
@@ -19,6 +20,7 @@ use serde_json::{json, Value as JsonValue};
 use sha2::Sha256;
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::RwLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::runtime::Runtime;
 use zeromq::{PullSocket, PushSocket, Socket, SocketRecv, SocketSend, ZmqMessage};
@@ -43,6 +45,7 @@ pub struct ZmqPipelineBackendClient {
     config: ZmqPipelineBackendConfig,
     session_id: String,
     next_request_id: AtomicU64,
+    negotiated_capabilities: RwLock<Vec<String>>,
     runtime: Runtime,
     transport: tokio::sync::Mutex<Option<ZmqPipelineTransport>>,
 }
@@ -61,6 +64,7 @@ impl ZmqPipelineBackendClient {
             config,
             session_id: new_session_id(),
             next_request_id: AtomicU64::new(1),
+            negotiated_capabilities: RwLock::new(Vec::new()),
             runtime,
             transport: tokio::sync::Mutex::new(None),
         })
@@ -72,6 +76,14 @@ impl ZmqPipelineBackendClient {
 
     fn next_request_id(&self) -> u64 {
         self.next_request_id.fetch_add(1, Ordering::Relaxed)
+    }
+
+    fn has_capability(&self, capability_id: &str) -> bool {
+        self.negotiated_capabilities
+            .read()
+            .expect("negotiated_capabilities rwlock poisoned")
+            .iter()
+            .any(|capability| capability == capability_id)
     }
 
     fn call_rpc(&self, method: &str, params: Option<JsonValue>) -> Result<JsonValue, SdkError> {
@@ -219,6 +231,8 @@ impl SdkBackend for ZmqPipelineBackendClient {
                     "rpc response missing effective_limits",
                 )
             })?)?;
+        *self.negotiated_capabilities.write().expect("negotiated_capabilities rwlock poisoned") =
+            effective_capabilities.clone();
         Ok(NegotiationResponse {
             runtime_id: Self::parse_required_string(&result, "runtime_id")?,
             active_contract_version: Self::parse_required_u16(&result, "active_contract_version")?,
@@ -258,14 +272,18 @@ impl SdkBackend for ZmqPipelineBackendClient {
         }
         let state =
             Self::parse_delivery_state(record.get("receipt_status").and_then(JsonValue::as_str));
-        let terminal = matches!(
-            state,
+        let terminal = match state {
+            DeliveryState::Sent => !self.has_capability("sdk.capability.receipt_terminality"),
             DeliveryState::Delivered
-                | DeliveryState::Failed
-                | DeliveryState::Cancelled
-                | DeliveryState::Expired
-                | DeliveryState::Rejected
-        );
+            | DeliveryState::Failed
+            | DeliveryState::Cancelled
+            | DeliveryState::Expired
+            | DeliveryState::Rejected => true,
+            DeliveryState::Queued
+            | DeliveryState::Dispatching
+            | DeliveryState::InFlight
+            | DeliveryState::Unknown => false,
+        };
         let timestamp = record.get("timestamp").and_then(JsonValue::as_i64).unwrap_or(0_i64);
         Ok(Some(DeliverySnapshot {
             message_id: id,
@@ -443,6 +461,19 @@ impl SdkBackend for ZmqPipelineBackendClient {
         })?;
         let result = self.call_rpc("sdk_identity_bootstrap_v2", Some(params))?;
         Self::decode_field_or_root(&result, "contact", "identity_bootstrap response")
+    }
+
+    fn operation_registry(&self) -> Result<OperationRegistry, SdkError> {
+        let result = self.call_rpc("sdk_operation_registry_v2", Some(json!({})))?;
+        Self::decode_field_or_root(&result, "registry", "operation_registry response")
+    }
+
+    fn envelope_execute(&self, envelope: Envelope) -> Result<EnvelopeResponse, SdkError> {
+        let params = serde_json::to_value(envelope).map_err(|err| {
+            SdkError::new(code::INTERNAL, ErrorCategory::Internal, err.to_string())
+        })?;
+        let result = self.call_rpc("sdk_envelope_execute_v2", Some(params))?;
+        Self::decode_field_or_root(&result, "response", "envelope_execute response")
     }
 
     fn snapshot(&self) -> Result<RuntimeSnapshot, SdkError> {
