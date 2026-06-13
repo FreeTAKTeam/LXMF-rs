@@ -22,7 +22,7 @@ rns-embedded-runtime = { path = "../../libs/rns-embedded-runtime", version = "0.
 rns_rpc = { package = "reticulum-rs-rpc", path = "../../libs/rns-rpc", version = "0.3.0" }
 
 [target.'cfg(any(target_os = "android", target_os = "linux", target_os = "macos", target_os = "windows"))'.dependencies]
-btleplug = "0.11.8"
+btleplug = "0.12"
 futures = "0.3.31"
 uuid = "1.16.0"
 tokio = { workspace = true }
