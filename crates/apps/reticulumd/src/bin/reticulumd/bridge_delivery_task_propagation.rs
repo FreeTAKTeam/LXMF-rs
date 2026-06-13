@@ -88,6 +88,9 @@ impl DeliveryTask {
             };
             entries.push((key.to_string(), value));
         }
+        if state != "failed" {
+            entries.push(("propagation_stamp_error".to_string(), JsonValue::Null));
+        }
         let _ = self.daemon.record_message_lxmf_metadata_entries(&self.message_id, entries);
     }
 }

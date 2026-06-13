@@ -248,6 +248,9 @@ The project is best described by capability level:
 - Outbound propagated delivery now resolves selected propagation-node
   `propagation_stamp_cost` case-insensitively, so Python-style hash casing does
   not fall back to the default propagation stamp cost.
+- Normal and propagation stamp retry metadata now clears stale stamp error
+  fields when later work re-enters generating/ready state, so status no longer
+  reports a prior failed attempt after a successful retry.
 - Peer sync queue creation also records newly queued existing propagation IDs in
   the peer record snapshot, so postponed syncs can restart/export with the same
   unhandled queue visible in live status.

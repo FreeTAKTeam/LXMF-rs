@@ -81,6 +81,48 @@ async fn record_propagation_payload_metadata_persists_packed_bytes() {
 }
 
 #[tokio::test]
+async fn propagation_stamp_retry_clears_stale_error_metadata() {
+    let message_id = "propagation-stamp-retry-clears-error";
+    let store = MessagesStore::in_memory().expect("store");
+    store
+        .insert_message(&MessageRecord {
+            id: message_id.to_string(),
+            source: "source".to_string(),
+            destination: "00000000000000000000000000000000".to_string(),
+            title: String::new(),
+            content: String::new(),
+            timestamp: 0,
+            direction: "out".to_string(),
+            fields: Some(json!({
+                "_lxmf": {
+                    "propagation_stamp_error": "previous propagation stamp failure"
+                }
+            })),
+            receipt_status: Some("queued".to_string()),
+        })
+        .expect("insert message");
+    let daemon = Arc::new(RpcDaemon::with_store(store, "propagation-stamp-retry-node".to_string()));
+    let mut task = delivery_task_for_propagation_cost_lookup(daemon.clone());
+    task.message_id = message_id.to_string();
+
+    task.record_propagation_stamp_work_metadata("generating", 5, None);
+
+    let result = daemon
+        .handle_rpc(RpcRequest { id: 79, method: "list_messages".to_string(), params: None })
+        .expect("list messages")
+        .result
+        .expect("result");
+    let message = result["messages"]
+        .as_array()
+        .expect("messages")
+        .iter()
+        .find(|message| message["id"].as_str() == Some(message_id))
+        .expect("message");
+    assert_eq!(message["fields"]["_lxmf"]["propagation_stamp_state"], json!("generating"));
+    assert_eq!(message["fields"]["_lxmf"]["propagation_stamp_error"], JsonValue::Null);
+}
+
+#[tokio::test]
 async fn propagation_target_cost_matches_selected_node_case_insensitively() {
     let daemon = Arc::new(RpcDaemon::test_instance());
     daemon

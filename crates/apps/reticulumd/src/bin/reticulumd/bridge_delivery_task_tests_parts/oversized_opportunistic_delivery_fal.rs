@@ -261,7 +261,12 @@ async fn build_payload_records_normal_stamp_lifecycle_metadata() {
             content: String::new(),
             timestamp: 0,
             direction: "out".to_string(),
-            fields: Some(json!({"app": "value"})),
+            fields: Some(json!({
+                "app": "value",
+                "_lxmf": {
+                    "stamp_error": "previous failed stamp attempt"
+                }
+            })),
             receipt_status: Some("queued".to_string()),
         })
         .expect("insert message");
@@ -323,6 +328,7 @@ async fn build_payload_records_normal_stamp_lifecycle_metadata() {
     assert_eq!(message["fields"]["_lxmf"]["stamp_state"], json!("ready"));
     assert_eq!(message["fields"]["_lxmf"]["stamp_kind"], json!("pow"));
     assert_eq!(message["fields"]["_lxmf"]["stamp_target_cost"], json!(1));
+    assert_eq!(message["fields"]["_lxmf"]["stamp_error"], JsonValue::Null);
 }
 
 #[tokio::test]

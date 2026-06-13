@@ -87,6 +87,8 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Inbound normal and propagation stamps honor configured flexibility.
 - Outbound normal and propagation work records generating, ready, failed, and
   cancelled state.
+- Normal and propagation stamp retry metadata clears stale error fields when
+  later work re-enters generating/ready state.
 - The remaining gap is background queue/worker/retry behavior, not basic stamp
   cryptography or ticket semantics.
 

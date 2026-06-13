@@ -80,6 +80,9 @@ impl DeliveryTask {
             entries
                 .push(("stamp_ticket_source".to_string(), JsonValue::String(ticket.to_string())));
         }
+        if state != "failed" {
+            entries.push(("stamp_error".to_string(), JsonValue::Null));
+        }
         let _ = self.daemon.record_message_lxmf_metadata_entries(&self.message_id, entries);
     }
 }
