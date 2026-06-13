@@ -160,6 +160,55 @@ fn outbound_lxm_progress_ignores_stale_progress_after_terminal_stamp_state() {
 }
 
 #[test]
+fn outbound_lxm_progress_reports_active_stamp_generation_progress() {
+    let daemon = RpcDaemon::test_instance();
+    for (message_id, lxmf, expected_progress) in [
+        (
+            "normal-stamp-generating-with-progress",
+            json!({ "progress": 0.42, "stamp_state": "generating" }),
+            0.42,
+        ),
+        (
+            "propagation-stamp-generating-with-progress",
+            json!({ "progress": 0.73, "propagation_stamp_state": "generating" }),
+            0.73,
+        ),
+        (
+            "normal-stamp-generating-overflow-progress",
+            json!({ "progress": 1.25, "stamp_state": "generating" }),
+            1.0,
+        ),
+    ] {
+        daemon
+            .accept_inbound(MessageRecord {
+                id: message_id.to_string(),
+                source: "src".to_string(),
+                destination: "dst".to_string(),
+                title: "title".to_string(),
+                content: "content".to_string(),
+                timestamp: 1_700_000_000,
+                direction: "out".to_string(),
+                fields: Some(json!({ "_lxmf": lxmf })),
+                receipt_status: Some("sending".to_string()),
+            })
+            .expect("store outbound");
+
+        let progress = daemon
+            .handle_rpc(rpc_request(
+                22,
+                "get_outbound_progress",
+                json!({ "message_id": message_id }),
+            ))
+            .expect("progress")
+            .result
+            .expect("progress result");
+
+        assert_eq!(progress["message_id"], json!(message_id));
+        assert_eq!(progress["progress"].as_f64(), Some(expected_progress));
+    }
+}
+
+#[test]
 fn outbound_lxm_stamp_cost_is_null_when_ticket_stamp_is_used() {
     let daemon = RpcDaemon::test_instance();
     daemon

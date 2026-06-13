@@ -19,8 +19,8 @@ use crate::serde::Serialize;
 
 #[cfg(feature = "rnode-ble")]
 use btleplug::api::{
-    Central, CharPropFlags, Characteristic, Manager as _, Peripheral as _, ScanFilter,
-    ValueNotification, WriteType,
+    Central, CharPropFlags, Characteristic, DEFAULT_MTU_SIZE, Manager as _, Peripheral as _,
+    ScanFilter, ValueNotification, WriteType,
 };
 
 #[cfg(feature = "rnode-ble")]
@@ -147,6 +147,10 @@ pub trait RnodeBleBackend {
     async fn write(&mut self, write: RnodeBleWrite) -> Result<(), String>;
 
     async fn next_notification(&mut self) -> Result<Option<Vec<u8>>, String>;
+
+    fn negotiated_mtu(&self) -> Option<u16> {
+        None
+    }
 }
 
 #[cfg(feature = "rnode-ble")]
@@ -193,6 +197,7 @@ pub struct NativeRnodeBleBackend {
     write_char: Option<Characteristic>,
     notify_char: Option<Characteristic>,
     notification_stream: Option<NativeNotificationStream>,
+    negotiated_mtu: Option<u16>,
 }
 
 #[cfg(feature = "rnode-ble")]
@@ -206,7 +211,13 @@ impl NativeRnodeBleBackend {
             write_char: None,
             notify_char: None,
             notification_stream: None,
+            negotiated_mtu: None,
         }
+    }
+
+    #[must_use]
+    pub fn negotiated_mtu(&self) -> Option<u16> {
+        self.negotiated_mtu
     }
 
     pub async fn cleanup(&mut self) -> Result<(), String> {
@@ -248,6 +259,7 @@ impl NativeRnodeBleBackend {
         self.write_char = None;
         self.notify_char = None;
         self.notification_stream = None;
+        self.negotiated_mtu = None;
     }
 
     async fn select_adapter(settings: &NativeRnodeBleSettings) -> Result<Adapter, String> {
@@ -346,6 +358,10 @@ impl NativeRnodeBleBackend {
 
 #[cfg(feature = "rnode-ble")]
 impl RnodeBleBackend for NativeRnodeBleBackend {
+    fn negotiated_mtu(&self) -> Option<u16> {
+        self.negotiated_mtu
+    }
+
     async fn connect(&mut self) -> Result<(), String> {
         self.clear_session_state();
         let adapter = Self::select_adapter(&self.settings).await?;
@@ -371,6 +387,13 @@ impl RnodeBleBackend for NativeRnodeBleBackend {
 
         self.adapter = Some(adapter);
         self.peripheral = Some(peripheral);
+        let mtu = self.peripheral.as_ref().expect("just set above").mtu();
+        // On macOS, CoreBluetooth never updates its cached AtomicU16, so peripheral.mtu()
+        // always returns DEFAULT_MTU_SIZE (23) regardless of the actual negotiated value.
+        // On all other platforms btleplug reports the real negotiated MTU, including 23
+        // when that is genuinely what was negotiated.
+        self.negotiated_mtu =
+            if cfg!(target_os = "macos") && mtu == DEFAULT_MTU_SIZE { None } else { Some(mtu) };
         self.resolve_characteristics()
     }
 

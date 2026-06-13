@@ -128,6 +128,7 @@ fn unavailable_propagation_remote_unpeer_records_existing_queue_snapshot_like_py
         .store
         .mark_peer_unhandled_propagation(peer, entry.transient_id.as_str())
         .expect("mark unhandled");
+    daemon.event_queue.lock().expect("event_queue mutex poisoned").clear();
 
     let err = daemon
         .handle_rpc(rpc_request(
@@ -169,6 +170,39 @@ fn unavailable_propagation_remote_unpeer_records_existing_queue_snapshot_like_py
         serialized["unhandled_ids"].as_array().expect("serialized unhandled ids"),
         &[json!(entry.transient_id.as_str())]
     );
+
+    let event = daemon
+        .event_queue
+        .lock()
+        .expect("event_queue mutex poisoned")
+        .iter()
+        .rev()
+        .find(|event| event.event_type == "peer_sync")
+        .cloned()
+        .expect("failed peer sync event");
+    assert_eq!(event.payload["peer"].as_str(), Some(peer));
+    assert_eq!(event.payload["remote"].as_str(), Some("remote-node"));
+    assert_eq!(event.payload["remote_sync"].as_bool(), Some(true));
+    assert_eq!(event.payload["synced"].as_bool(), Some(false));
+    assert_eq!(event.payload["state"].as_u64(), Some(0xfe));
+    assert_eq!(event.payload["state_name"].as_str(), Some("failed"));
+    assert_eq!(event.payload["failure_kind"].as_str(), Some("failed"));
+    assert_eq!(
+        event.payload["propagation"]["error"].as_str(),
+        Some("remote control bridge unavailable")
+    );
+    assert_eq!(
+        event.payload["messages"]["unhandled_ids"]
+            .as_array()
+            .expect("event unhandled ids"),
+        &[json!(entry.transient_id.as_str())]
+    );
+    assert_eq!(
+        event.payload["propagation"]["failure_kind"].as_str(),
+        Some("failed")
+    );
+    assert_eq!(event.payload["propagation"]["state"].as_u64(), Some(0xfe));
+    assert_eq!(event.payload["propagation"]["state_name"].as_str(), Some("failed"));
 }
 
 #[test]

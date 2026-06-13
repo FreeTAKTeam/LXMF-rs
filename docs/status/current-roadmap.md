@@ -102,6 +102,9 @@ The project is best described by capability level:
 - Remote fetch/download/sync imports now validate the full returned propagation
   payload batch before mutating the local store or in-memory payload cache, so a
   mixed valid/invalid remote response fails without leaving partial relay state.
+- Remote fetch/download/sync imports now also reject payloads for ignored
+  destinations during batch validation, so remote relay responses cannot bypass
+  local replication policy or queue ignored work to peers.
 - Malformed remote fetch and download imports now mirror existing
   payload-backed live queue marks into active peer record snapshots before
   failing, preserving restart/export retry state for already queued relay work.
@@ -135,6 +138,10 @@ The project is best described by capability level:
 - Successful remote fetch and download now clear stale retry backoff on the
   active source peer when newly accepted payloads prove the source recovered,
   so later maintenance does not keep postponing a healthy replication peer.
+- Successful remote fetch and download now also refresh the active source
+  peer's sync-attempt timestamp while clearing stale backoff, so restart and
+  status views reflect the successful recovery attempt instead of an obsolete
+  failed transfer time.
 - Remote peer-sync backoff postponements now mirror existing payload-backed live
   queue marks into active peer record snapshots before returning, so
   restart/export state preserves queued retry work even when sync is deferred.
@@ -144,8 +151,9 @@ The project is best described by capability level:
   case-insensitive requests, while still avoiding peer creation when the bridge
   is absent.
 - Remote peer-sync bridge-unavailable errors for already known peers now also
-  publish the failed peer-sync event and mark the propagation sync lifecycle
-  failed, keeping queue retry state observable without creating new peers.
+  advance that peer's retry backoff, publish the failed peer-sync event, and
+  mark the propagation sync lifecycle failed, keeping queue retry state
+  observable without creating new peers.
 - Peer sync RPC rows and events now preserve the Python-compatible peer `state`
   namespace while exposing backoff and policy postponement through separate
   scheduling fields; failed attempts continue to use the established error state.
@@ -166,6 +174,18 @@ The project is best described by capability level:
   case-insensitive peer requests, so restart/export state preserves queued retry
   work when peering teardown fails; these failed attempts also mark the
   propagation lifecycle failed instead of leaving stale idle/completed state.
+- Failed remote unpeer bridge-unavailable errors for active peers now also
+  publish the failed peer-sync event after queue snapshot refresh, keeping
+  observer-visible peering failure state aligned with remote sync/fetch/download
+  bridge-unavailable failures.
+- Failed remote unpeer bridge-execution errors for active peers now also
+  advance the peer's retry backoff window before refreshing queue snapshots, so
+  failed peering teardown does not leave retryable queue work in an immediate
+  retry loop.
+- Failed remote unpeer bridge-execution errors for active peers now also
+  publish the failed peer-sync event after queue snapshot refresh, keeping
+  observer-visible peering failure state aligned with remote sync/fetch/download
+  failures.
 - Access-denied remote unpeer failures now follow the same local peering break
   path as access-denied remote sync/fetch/download, clearing local peer and
   propagation queue state instead of leaving denied teardown work retryable.
@@ -175,6 +195,9 @@ The project is best described by capability level:
 - Successful remote unpeer now clears stale propagation lifecycle failures and
   error text left by earlier teardown attempts, so status reflects completed
   peer removal instead of a prior failed control operation.
+- Active outbound normal and propagation stamp generation now reports stored
+  generation progress through `get_outbound_progress`, while terminal failed or
+  cancelled stamp states continue to suppress stale progress values.
 - Inbound reticulumd `/pn/peer/sync` and `/pn/peer/unpeer` control commands now
   resolve stored peer IDs case-insensitively before dispatching to daemon RPCs,
   so binary peer-control requests do not report not-found for restored or
@@ -220,6 +243,10 @@ The project is best described by capability level:
 - Restored Python peer records now update their serialized queue ID snapshot
   when peer sync handles, transfers, or transfer-limits queued offers, reducing
   restart/export drift after live offer-response processing.
+- Peer sync offer acceptance now validates all transfer payload hex before
+  marking any offered payload transferred, handled, or transfer-limited, so a
+  malformed response batch cannot partially mutate live marks or serialized
+  restart/export queue snapshots.
 - Restored Python peer records now parse fractional `propagation_sync_limit`
   values through Python's integer-kilobyte restore path before peer-sync queue
   selection, preventing restored fractional sync limits from transferring work
@@ -248,6 +275,9 @@ The project is best described by capability level:
 - Outbound propagated delivery now resolves selected propagation-node
   `propagation_stamp_cost` case-insensitively, so Python-style hash casing does
   not fall back to the default propagation stamp cost.
+- Normal and propagation stamp retry metadata now clears stale stamp error
+  fields when later work re-enters generating/ready state, so status no longer
+  reports a prior failed attempt after a successful retry.
 - Peer sync queue creation also records newly queued existing propagation IDs in
   the peer record snapshot, so postponed syncs can restart/export with the same
   unhandled queue visible in live status.

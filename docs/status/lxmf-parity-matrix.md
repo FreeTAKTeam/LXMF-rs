@@ -87,6 +87,11 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Inbound normal and propagation stamps honor configured flexibility.
 - Outbound normal and propagation work records generating, ready, failed, and
   cancelled state.
+- Normal and propagation stamp retry metadata clears stale error fields when
+  later work re-enters generating/ready state.
+- Active outbound normal and propagation stamp generation reports stored
+  continuous progress through `get_outbound_progress`; failed or cancelled
+  stamp states still suppress stale progress.
 - The remaining gap is background queue/worker/retry behavior, not basic stamp
   cryptography or ticket semantics.
 
@@ -139,6 +144,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Remote fetch/download/sync imports validate the full returned propagation
   payload batch before mutating the local store or in-memory payload cache, so
   mixed valid/invalid remote responses fail without leaving partial relay state.
+- Remote fetch/download/sync imports reject payloads for ignored destinations
+  during batch validation, so remote relay responses cannot bypass local
+  replication policy or queue ignored work to peers.
 - Selected local peer-sync offer responses validate the full selected
   propagation response payload batch before marking any selected ID transferred,
   so malformed queued payloads cannot partially drain peer retry state.
@@ -184,8 +192,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   case-insensitive requests, without creating new peers when the bridge is
   absent.
 - Remote peer-sync bridge-unavailable errors for already known peers also
-  publish the failed peer-sync event and mark the propagation sync lifecycle
-  failed, keeping queued retry state observable without creating new peers.
+  advance that peer's retry backoff, publish the failed peer-sync event, and
+  mark the propagation sync lifecycle failed, keeping queued retry state
+  observable without creating new peers.
 - Peer sync RPC rows and events preserve the Python-compatible peer `state`
   namespace while exposing backoff and policy postponement through separate
   scheduling fields; failed attempts continue to use the established error state.
@@ -210,6 +219,17 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   case-insensitive peer requests, so failed peering teardown preserves queued
   retry work across restart/export and marks the propagation lifecycle failed
   instead of leaving stale idle/completed state.
+- Failed remote unpeer bridge-unavailable errors for active peers publish the
+  failed peer-sync event after queue snapshot refresh, keeping observer-visible
+  peering failure state aligned with remote sync/fetch/download
+  bridge-unavailable failures.
+- Failed remote unpeer bridge-execution errors for active peers advance the
+  peer's retry backoff window before refreshing queue snapshots, so failed
+  peering teardown does not leave retryable queue work in an immediate retry
+  loop.
+- Failed remote unpeer bridge-execution errors for active peers publish the
+  failed peer-sync event after queue snapshot refresh, keeping observer-visible
+  peering failure state aligned with remote sync/fetch/download failures.
 - Access-denied remote unpeer failures follow the same local peering break path
   as access-denied remote sync/fetch/download, clearing local peer and
   propagation queue state instead of leaving denied teardown work retryable.
@@ -265,6 +285,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   peer snapshot, source-peer handled IDs are preserved for restart/export, and
   offer-response handling keeps IDs in sync when queued messages become handled,
   transferred, or transfer-limited.
+- Peer sync offer acceptance validates all transfer payload hex before marking
+  any offered payload transferred, handled, or transfer-limited, so malformed
+  response batches cannot partially mutate live marks or serialized
+  restart/export queue snapshots.
 - Restored Python peer records parse fractional `propagation_sync_limit` values
   through Python's integer-kilobyte restore path before peer-sync queue
   selection, so restored fractional sync limits leave the same queued work
@@ -417,6 +441,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Successful remote fetch/download imports clear stale retry backoff on an
   active source peer after newly accepted payloads, so recovered propagation
   sources are not left postponed by an earlier failed transfer attempt.
+- Successful remote fetch/download imports also refresh the active source
+  peer's sync-attempt timestamp while clearing stale backoff, so status and
+  restart/export views do not retain an obsolete failed transfer attempt time.
 - Link-based remote propagation downloads classify listed transient IDs before
   payload retrieval, report locally known IDs as `/get` haves, and use the
   purge-only `[nil, haves]` request when every listed ID is already local, so

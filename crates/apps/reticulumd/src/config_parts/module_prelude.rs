@@ -125,6 +125,8 @@ pub struct InterfaceConfig {
     #[serde(default)]
     pub max_reconnect_backoff_ms: Option<u64>,
     #[serde(default)]
+    pub detection_fallback_timeout_ms: Option<u64>,
+    #[serde(default)]
     pub adapter: Option<String>,
     #[serde(default)]
     pub peripheral_id: Option<String>,

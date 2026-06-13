@@ -208,7 +208,7 @@ fn peer_sync_policy_relevance(
     let mut policy_relevant_size = 24usize;
     let policy_wanted_ids = wanted_ids.filter(|ids| !ids.wants_none());
     for entry in pending_propagation.iter().filter(|entry| {
-        policy_wanted_ids.map_or(true, |ids| ids.wants(entry.transient_id.as_str()))
+        policy_wanted_ids.is_none_or(|ids| ids.wants(entry.transient_id.as_str()))
     }) {
         let entry_size = usize::try_from(entry.size_bytes).unwrap_or(usize::MAX);
         let transfer_size = entry_size.saturating_add(16);
@@ -403,6 +403,28 @@ fn peer_sync_resource_data_size(payloads: &[Vec<u8>]) -> Result<u64, std::io::Er
     }
     let packed = rmp_serde::to_vec(&(1.0_f64, payloads)).map_err(std::io::Error::other)?;
     Ok(packed.len() as u64)
+}
+
+fn decode_peer_sync_transfer(
+    entry: &PropagationEntryRecord,
+) -> Result<(JsonValue, Vec<u8>), std::io::Error> {
+    let payload_bytes = hex::decode(entry.payload_hex.as_str()).map_err(|err| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("invalid propagation payload hex: {err}"),
+        )
+    })?;
+    Ok((
+        json!({
+            "transient_id": entry.transient_id,
+            "destination": entry.destination,
+            "payload_hex": entry.payload_hex,
+            "received_at": entry.received_at,
+            "size_bytes": entry.size_bytes,
+            "stamp_value": entry.stamp_value,
+        }),
+        payload_bytes,
+    ))
 }
 
 fn propagation_peer_sync_weight(
