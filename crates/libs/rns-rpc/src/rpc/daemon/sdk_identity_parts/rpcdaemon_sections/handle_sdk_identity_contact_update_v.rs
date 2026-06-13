@@ -317,7 +317,7 @@ impl RpcDaemon {
         let parsed: SdkPeerConnectionV2Params = serde_json::from_value(params)
             .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
         let identity = match Self::normalize_non_empty(parsed.identity.as_str()) {
-            Some(value) => value.to_string(),
+            Some(value) => value,
             None => {
                 return Ok(self.sdk_error_response(
                     request.id,
@@ -347,12 +347,12 @@ impl RpcDaemon {
                 metadata: if metadata.is_empty() {
                     existing.as_ref().map(|current| current.metadata.clone()).unwrap_or_default()
                 } else {
-                    metadata.clone()
+                    metadata
                 },
                 extensions: if extensions.is_empty() {
                     existing.as_ref().map(|current| current.extensions.clone()).unwrap_or_default()
                 } else {
-                    extensions.clone()
+                    extensions
                 },
             };
             contacts.insert(identity.clone(), record.clone());
@@ -368,7 +368,7 @@ impl RpcDaemon {
 
         if connected {
             let _ = self.upsert_peer_with_metadata(PeerUpsertRequest {
-                peer: identity.clone(),
+                peer: identity,
                 timestamp: i64::try_from(now).unwrap_or(i64::MAX),
                 capabilities: contact
                     .metadata
