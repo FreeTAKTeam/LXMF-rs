@@ -128,6 +128,10 @@ The project is best described by capability level:
   returning and mark the propagation sync lifecycle failed, so already queued
   relay work stays restart/export visible without leaving stale lifecycle state
   when no bridge is configured.
+- Remote fetch and download bridge envelopes that return successfully while
+  reporting `postponed` or `synced: false` now preserve the failed transfer
+  lifecycle, source-peer backoff, peer event, and queue snapshot instead of
+  importing an empty result and marking propagation complete.
 - Successful remote fetch and download now also mirror existing payload-backed
   live queue marks into active peer record snapshots after applying imports, so
   restart/export state preserves queued retry work even when the remote
