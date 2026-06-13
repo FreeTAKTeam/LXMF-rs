@@ -421,7 +421,7 @@ fn load_and_validate_manifest(manifest_path: &Path) -> Result<ClientGenerationMa
     if runtime.runtime_type != "docker" && runtime.runtime_type != "local" {
         bail!("unsupported generator_runtime.type {}", runtime.runtime_type);
     }
-    if runtime.runtime_type == "local" && runtime.command.as_deref().map_or(true, str::is_empty) {
+    if runtime.runtime_type == "local" && runtime.command.as_deref().is_none_or(str::is_empty) {
         bail!("generator_runtime.command is required when generator_runtime.type is local");
     }
 

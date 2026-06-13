@@ -87,6 +87,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Inbound normal and propagation stamps honor configured flexibility.
 - Outbound normal and propagation work records generating, ready, failed, and
   cancelled state.
+- Active outbound normal and propagation stamp generation reports stored
+  continuous progress through `get_outbound_progress`; failed or cancelled
+  stamp states still suppress stale progress.
 - The remaining gap is background queue/worker/retry behavior, not basic stamp
   cryptography or ticket semantics.
 
@@ -211,6 +214,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   failed peer-sync event after queue snapshot refresh, keeping observer-visible
   peering failure state aligned with remote sync/fetch/download
   bridge-unavailable failures.
+- Failed remote unpeer bridge-execution errors for active peers publish the
+  failed peer-sync event after queue snapshot refresh, keeping observer-visible
+  peering failure state aligned with remote sync/fetch/download failures.
 - Access-denied remote unpeer failures follow the same local peering break path
   as access-denied remote sync/fetch/download, clearing local peer and
   propagation queue state instead of leaving denied teardown work retryable.
@@ -418,6 +424,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Successful remote fetch/download imports clear stale retry backoff on an
   active source peer after newly accepted payloads, so recovered propagation
   sources are not left postponed by an earlier failed transfer attempt.
+- Successful remote fetch/download imports also refresh the active source
+  peer's sync-attempt timestamp while clearing stale backoff, so status and
+  restart/export views do not retain an obsolete failed transfer attempt time.
 - Link-based remote propagation downloads classify listed transient IDs before
   payload retrieval, report locally known IDs as `/get` haves, and use the
   purge-only `[nil, haves]` request when every listed ID is already local, so

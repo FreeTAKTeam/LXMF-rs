@@ -184,7 +184,7 @@ pub fn validate_event_payload_bounds(
     validate_capabilities(capabilities)?;
     for event in events {
         if matches!(event.kind, MobileBleEventKind::WriteComplete | MobileBleEventKind::Timeout)
-            && !event.operation_id.as_deref().is_some_and(|value| !value.trim().is_empty())
+            && event.operation_id.as_deref().is_none_or(|value| value.trim().is_empty())
         {
             return Err(SdkError::new(
                 code::VALIDATION_INVALID_ARGUMENT,

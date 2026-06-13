@@ -135,6 +135,10 @@ The project is best described by capability level:
 - Successful remote fetch and download now clear stale retry backoff on the
   active source peer when newly accepted payloads prove the source recovered,
   so later maintenance does not keep postponing a healthy replication peer.
+- Successful remote fetch and download now also refresh the active source
+  peer's sync-attempt timestamp while clearing stale backoff, so restart and
+  status views reflect the successful recovery attempt instead of an obsolete
+  failed transfer time.
 - Remote peer-sync backoff postponements now mirror existing payload-backed live
   queue marks into active peer record snapshots before returning, so
   restart/export state preserves queued retry work even when sync is deferred.
@@ -170,6 +174,10 @@ The project is best described by capability level:
   publish the failed peer-sync event after queue snapshot refresh, keeping
   observer-visible peering failure state aligned with remote sync/fetch/download
   bridge-unavailable failures.
+- Failed remote unpeer bridge-execution errors for active peers now also
+  publish the failed peer-sync event after queue snapshot refresh, keeping
+  observer-visible peering failure state aligned with remote sync/fetch/download
+  failures.
 - Access-denied remote unpeer failures now follow the same local peering break
   path as access-denied remote sync/fetch/download, clearing local peer and
   propagation queue state instead of leaving denied teardown work retryable.
@@ -179,6 +187,9 @@ The project is best described by capability level:
 - Successful remote unpeer now clears stale propagation lifecycle failures and
   error text left by earlier teardown attempts, so status reflects completed
   peer removal instead of a prior failed control operation.
+- Active outbound normal and propagation stamp generation now reports stored
+  generation progress through `get_outbound_progress`, while terminal failed or
+  cancelled stamp states continue to suppress stale progress values.
 - Inbound reticulumd `/pn/peer/sync` and `/pn/peer/unpeer` control commands now
   resolve stored peer IDs case-insensitively before dispatching to daemon RPCs,
   so binary peer-control requests do not report not-found for restored or

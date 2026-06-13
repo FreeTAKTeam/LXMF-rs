@@ -246,9 +246,8 @@ fn maybe_handle_query_mode(args: &EffectiveArgs) -> Option<ExitCode> {
                     "timeout_secs": args.timeout_secs,
                 })),
             )
-            .map(|value| {
+            .inspect(|_value| {
                 println!("Sync requested for peer {peer} on remote node {remote}");
-                value
             })
         } else if let Some(peer) = args.unpeer.as_deref() {
             rpc_client::rpc_call(
@@ -261,9 +260,8 @@ fn maybe_handle_query_mode(args: &EffectiveArgs) -> Option<ExitCode> {
                     "timeout_secs": args.timeout_secs,
                 })),
             )
-            .map(|value| {
+            .inspect(|_value| {
                 println!("Broke peering with {peer} on remote node {remote}");
-                value
             })
         } else {
             query::show_remote_status_and_peers(
@@ -276,14 +274,12 @@ fn maybe_handle_query_mode(args: &EffectiveArgs) -> Option<ExitCode> {
             )
         }
     } else if let Some(peer) = args.sync.as_deref() {
-        rpc_client::rpc_call(&rpc_addr, "peer_sync", Some(json!({ "peer": peer }))).map(|value| {
+        rpc_client::rpc_call(&rpc_addr, "peer_sync", Some(json!({ "peer": peer }))).inspect(|_value| {
             println!("Sync requested for peer {peer}");
-            value
         })
     } else if let Some(peer) = args.unpeer.as_deref() {
-        rpc_client::rpc_call(&rpc_addr, "peer_unpeer", Some(json!({ "peer": peer }))).map(|value| {
+        rpc_client::rpc_call(&rpc_addr, "peer_unpeer", Some(json!({ "peer": peer }))).inspect(|_value| {
             println!("Broke peering with {peer}");
-            value
         })
     } else {
         query::show_status_and_peers(&rpc_addr, args.status, args.peers)
