@@ -14,7 +14,7 @@ use crate::types::{
 };
 use hmac::{Hmac, Mac};
 use rns_rpc::e2e_harness::{build_rpc_frame, parse_rpc_frame};
-use rns_rpc::rpc::zmq::{self, ZmqRpcAuthMetadata, ZmqRpcEnvelope, ZmqRpcEnvelopeKind};
+use rns_rpc::rpc::zmq::{self, ZmqRpcAuthMetadata, ZmqRpcEnvelope};
 use rns_rpc::RpcError;
 use serde_json::{json, Value as JsonValue};
 use sha2::Sha256;
@@ -23,23 +23,27 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::RwLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::runtime::Runtime;
-use zeromq::{PullSocket, PushSocket, Socket, SocketRecv, SocketSend, ZmqMessage};
 
 #[path = "zmq_pipeline/config.rs"]
 mod config;
+#[path = "zmq_pipeline/history.rs"]
+mod history;
 #[path = "zmq_pipeline/negotiation.rs"]
 mod negotiation;
 #[path = "zmq_pipeline/parsing.rs"]
 mod parsing;
 #[path = "zmq_pipeline/send.rs"]
 mod send;
+#[path = "zmq_pipeline/transport.rs"]
+mod transport;
 
 #[cfg(test)]
-#[path = "zmq_pipeline/tests.rs"]
+#[path = "zmq_pipeline/tests/mod.rs"]
 mod tests;
 
 pub use config::{ZmqEndpointRole, ZmqPipelineBackendConfig, ZmqPipelineTokenAuth};
 use negotiation::new_session_id;
+use transport::ZmqPipelineTransport;
 
 pub struct ZmqPipelineBackendClient {
     config: ZmqPipelineBackendConfig,
@@ -48,11 +52,6 @@ pub struct ZmqPipelineBackendClient {
     negotiated_capabilities: RwLock<Vec<String>>,
     runtime: Runtime,
     transport: tokio::sync::Mutex<Option<ZmqPipelineTransport>>,
-}
-
-struct ZmqPipelineTransport {
-    command: PushSocket,
-    responses: PullSocket,
 }
 
 impl ZmqPipelineBackendClient {
@@ -115,54 +114,6 @@ impl ZmqPipelineBackendClient {
         Ok(rpc_response.result.unwrap_or(JsonValue::Null))
     }
 
-    async fn send_and_recv(
-        &self,
-        encoded: Vec<u8>,
-        request_id: u64,
-    ) -> Result<ZmqRpcEnvelope, SdkError> {
-        let mut transport = self.transport.lock().await;
-        if transport.is_none() {
-            *transport = Some(ZmqPipelineTransport::connect(&self.config).await?);
-        }
-        let transport = transport
-            .as_mut()
-            .ok_or_else(|| sdk_error(ErrorCategory::Internal, "missing zmq transport"))?;
-
-        transport
-            .command
-            .send(ZmqMessage::from(encoded))
-            .await
-            .map_err(|err| sdk_error(ErrorCategory::Transport, err.to_string()))?;
-
-        let deadline = tokio::time::sleep(self.config.request_timeout);
-        tokio::pin!(deadline);
-        loop {
-            tokio::select! {
-                _ = &mut deadline => {
-                    return Err(SdkError::new(
-                        "SDK_TRANSPORT_ZMQ_TIMEOUT",
-                        ErrorCategory::Timeout,
-                        "zmq rpc request timed out waiting for correlated response",
-                    ));
-                }
-                message = transport.responses.recv() => {
-                    let bytes = Vec::<u8>::try_from(message.map_err(|err| {
-                        sdk_error(ErrorCategory::Transport, err.to_string())
-                    })?)
-                    .map_err(|err| sdk_error(ErrorCategory::Transport, err.to_string()))?;
-                    let envelope = zmq::decode_envelope(&bytes)
-                        .map_err(|err| sdk_error(ErrorCategory::Transport, err.to_string()))?;
-                    if envelope.kind == ZmqRpcEnvelopeKind::Response
-                        && envelope.session_id == self.session_id
-                        && envelope.request_id == request_id
-                    {
-                        return Ok(envelope);
-                    }
-                }
-            }
-        }
-    }
-
     fn auth_metadata_for_request(&self, request_id: u64) -> Option<ZmqRpcAuthMetadata> {
         let auth = self.config.token_auth.as_ref()?;
         let now = SystemTime::now()
@@ -183,17 +134,6 @@ impl ZmqPipelineBackendClient {
             scheme: "bearer".to_string(),
             value: format!("{};sig={}", payload, sig),
         })
-    }
-}
-
-impl ZmqPipelineTransport {
-    async fn connect(config: &ZmqPipelineBackendConfig) -> Result<Self, SdkError> {
-        let mut command = PushSocket::new();
-        apply_role(&mut command, config.command_role, &config.command_endpoint).await?;
-        let mut responses = PullSocket::new();
-        apply_role(&mut responses, config.response_role, &config.response_endpoint).await?;
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        Ok(Self { command, responses })
     }
 }
 
@@ -506,24 +446,6 @@ impl SdkBackend for ZmqPipelineBackendClient {
             accepted: result.get("accepted").and_then(JsonValue::as_bool).unwrap_or(false),
             revision: None,
         })
-    }
-}
-
-async fn apply_role<S>(
-    socket: &mut S,
-    role: ZmqEndpointRole,
-    endpoint: &str,
-) -> Result<(), SdkError>
-where
-    S: Socket,
-{
-    match role {
-        ZmqEndpointRole::Bind => socket.bind(endpoint).await.map(|_| ()).map_err(|err| {
-            sdk_error(ErrorCategory::Transport, format!("zmq bind {} failed: {}", endpoint, err))
-        }),
-        ZmqEndpointRole::Connect => socket.connect(endpoint).await.map_err(|err| {
-            sdk_error(ErrorCategory::Transport, format!("zmq connect {} failed: {}", endpoint, err))
-        }),
     }
 }
 

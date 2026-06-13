@@ -1,7 +1,11 @@
 use super::*;
+use rns_rpc::rpc::zmq::ZmqRpcEnvelopeKind;
 use rns_rpc::rpc::{RpcRequest, RpcResponse};
 use std::net::TcpListener;
 use std::sync::{Arc, Mutex};
+use zeromq::{PullSocket, PushSocket, Socket, SocketRecv, SocketSend, ZmqMessage};
+
+mod history;
 
 #[derive(Debug, Clone, PartialEq)]
 struct CapturedZmqRequest {
