@@ -81,6 +81,7 @@ fn write_human_status(output: &mut dyn Write, status: &Value) -> io::Result<()> 
             status.get("interfaces").and_then(Value::as_array).map_or(0, |rows| rows.len() as u64)
         })
     )?;
+    write_propagation_status(output, status)?;
 
     let Some(interfaces) = status.get("interfaces").and_then(Value::as_array) else {
         return Ok(());
@@ -104,6 +105,56 @@ fn write_human_status(output: &mut dyn Write, status: &Value) -> io::Result<()> 
         writeln!(output, "{name:<24} {kind:<16} {enabled:<8} {endpoint:<22} {runtime}")?;
     }
     Ok(())
+}
+
+fn write_propagation_status(output: &mut dyn Write, status: &Value) -> io::Result<()> {
+    let Some(propagation) = status.get("propagation") else {
+        return Ok(());
+    };
+    let enabled = value_bool(propagation, "enabled");
+    let peers = status
+        .get("peer_count")
+        .and_then(Value::as_u64)
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "-".to_string());
+    let selected = value_str(propagation, "selected_node");
+    let sync = value_u64(propagation, "sync_state");
+    let progress = propagation
+        .get("sync_progress")
+        .and_then(Value::as_f64)
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "-".to_string());
+    let target_cost = value_u64(propagation, "target_cost");
+    let static_only = value_bool(propagation, "from_static_only");
+    writeln!(
+        output,
+        "Propagation: enabled={enabled} peers={peers} selected={selected} sync={sync} progress={progress} target_cost={target_cost} static_only={static_only}"
+    )
+}
+
+fn value_bool(value: &Value, key: &str) -> String {
+    value
+        .get(key)
+        .and_then(Value::as_bool)
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "-".to_string())
+}
+
+fn value_u64(value: &Value, key: &str) -> String {
+    value
+        .get(key)
+        .and_then(Value::as_u64)
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "-".to_string())
+}
+
+fn value_str(value: &Value, key: &str) -> String {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("-")
+        .to_string()
 }
 
 fn interface_endpoint(interface: &Value) -> String {
@@ -164,5 +215,36 @@ mod tests {
         assert!(output.contains("uplink"));
         assert!(output.contains("tcp_server"));
         assert!(output.contains("failed (bind denied)"));
+    }
+
+    #[test]
+    fn human_status_includes_propagation_peer_summary() {
+        let status = json!({
+            "identity_hash": "abc",
+            "running": true,
+            "interface_count": 0,
+            "peer_count": 3,
+            "propagation": {
+                "enabled": true,
+                "selected_node": "feedface",
+                "sync_state": 255,
+                "sync_progress": 0.5,
+                "target_cost": 12,
+                "from_static_only": true
+            },
+            "interfaces": []
+        });
+        let mut output = Vec::new();
+
+        write_human_status(&mut output, &status).expect("write status");
+
+        let output = String::from_utf8(output).expect("utf8");
+        assert!(output.contains("Propagation: enabled=true"));
+        assert!(output.contains("peers=3"));
+        assert!(output.contains("selected=feedface"));
+        assert!(output.contains("sync=255"));
+        assert!(output.contains("progress=0.5"));
+        assert!(output.contains("target_cost=12"));
+        assert!(output.contains("static_only=true"));
     }
 }

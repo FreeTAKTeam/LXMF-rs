@@ -1,0 +1,214 @@
+impl Transport {
+
+    pub async fn close_channel(
+        &self,
+        link_id: &AddressHash,
+    ) -> Result<(), crate::channel::ChannelError> {
+        let link =
+            self.find_any_link(link_id).await.ok_or(crate::channel::ChannelError::LinkNotReady)?;
+        link.lock().await.close_channel();
+        Ok(())
+    }
+
+    pub async fn channel_message_state(
+        &self,
+        link_id: &AddressHash,
+        sequence: u16,
+    ) -> Result<crate::channel::MessageState, crate::channel::ChannelError> {
+        let link =
+            self.find_any_link(link_id).await.ok_or(crate::channel::ChannelError::LinkNotReady)?;
+        let state = link.lock().await.channel_state(sequence);
+        Ok(state)
+    }
+
+    pub async fn send_resource_direct(
+        &self,
+        link_id: &AddressHash,
+        iface: AddressHash,
+        data: Vec<u8>,
+        metadata: Option<Vec<u8>>,
+    ) -> Result<Hash, RnsError> {
+        let link = self.find_in_link(link_id).await.ok_or(RnsError::InvalidArgument)?;
+        let interface_mtu = self.resource_mtu_for_iface(Some(iface)).await;
+        let (resource_hash, packet) = {
+            let mut handler = self.handler.lock().await;
+            let link_guard = link.lock().await;
+            handler.resource_manager.start_send_with_mtu(
+                &link_guard,
+                data,
+                metadata,
+                interface_mtu,
+            )?
+        };
+        let dispatch = self
+            .handler
+            .lock()
+            .await
+            .send(TxMessage { tx_type: TxMessageType::Direct(iface), packet })
+            .await;
+        let sent = dispatch.sent_ifaces > 0;
+        let mut handler = self.handler.lock().await;
+        handler.resource_manager.confirm_outbound_dispatch(resource_hash, sent);
+        let events = handler.resource_manager.drain_events();
+        super::resource_wire::publish_resource_events(&handler, events);
+        if sent {
+            Ok(resource_hash)
+        } else {
+            Err(RnsError::ConnectionError)
+        }
+    }
+
+    pub async fn find_out_link(&self, link_id: &AddressHash) -> Option<Arc<Mutex<Link>>> {
+        let links = {
+            let handler = self.handler.lock().await;
+            handler.out_links.values().cloned().collect::<Vec<_>>()
+        };
+        for link in links {
+            if *link.lock().await.id() == *link_id {
+                return Some(link);
+            }
+        }
+        None
+    }
+
+    pub async fn find_in_link(&self, link_id: &AddressHash) -> Option<Arc<Mutex<Link>>> {
+        self.handler.lock().await.in_links.get(link_id).cloned()
+    }
+
+    pub async fn link(&self, destination: DestinationDesc) -> Arc<Mutex<Link>> {
+        let link = self.handler.lock().await.out_links.get(&destination.address_hash).cloned();
+
+        if let Some(link) = link {
+            let status = link.lock().await.status();
+            if super::diag::enabled() {
+                log::debug!(
+                    "[tp-diag] reuse_out_link destination={} status={:?}",
+                    destination.address_hash,
+                    status
+                );
+            }
+            if status != LinkStatus::Closed {
+                return link;
+            } else {
+                log::warn!("tp({}): link was closed", self.name);
+            }
+        }
+
+        let mut link = Link::new(destination, self.link_out_event_tx.clone());
+
+        let packet = link.request();
+
+        log::debug!(
+            "tp({}): create new link {} for destination {}",
+            self.name,
+            link.id(),
+            destination
+        );
+        if super::diag::enabled() {
+            log::debug!(
+                "[tp-diag] create_out_link destination={} link_id={}",
+                destination.address_hash,
+                link.id()
+            );
+        }
+
+        let link = Arc::new(Mutex::new(link));
+
+        self.handler.lock().await.out_links.insert(destination.address_hash, link.clone());
+
+        self.send_packet(packet).await;
+
+        link
+    }
+
+    pub async fn request_path(
+        &self,
+        destination: &AddressHash,
+        on_iface: Option<AddressHash>,
+        tag: Option<TagBytes>,
+    ) {
+        let packet = {
+            let mut handler = self.handler.lock().await;
+            handler.path_requests.generate(destination, tag)
+        };
+        if super::diag::enabled() {
+            log::debug!(
+                "[tp-diag] path_request_broadcast dst={} on_iface={}",
+                destination,
+                on_iface.map(|iface| iface.to_string()).unwrap_or_else(|| "-".to_string())
+            );
+        }
+        let dispatch = self
+            .iface_manager
+            .lock()
+            .await
+            .send_with_announce_policy(
+                TxMessage { tx_type: TxMessageType::Broadcast(on_iface), packet },
+                None,
+            )
+            .await;
+        if super::diag::enabled() {
+            log::debug!(
+                "[tp-diag] path_request_broadcast_done dst={} matched={} sent={} failed={}",
+                destination,
+                dispatch.matched_ifaces,
+                dispatch.sent_ifaces,
+                dispatch.failed_ifaces
+            );
+        }
+    }
+
+    pub fn out_link_events(&self) -> broadcast::Receiver<LinkEventData> {
+        self.link_out_event_tx.subscribe()
+    }
+
+    pub fn in_link_events(&self) -> broadcast::Receiver<LinkEventData> {
+        self.link_in_event_tx.subscribe()
+    }
+
+    pub fn received_data_events(&self) -> broadcast::Receiver<ReceivedData> {
+        self.received_data_tx.subscribe()
+    }
+
+    pub async fn add_destination(
+        &mut self,
+        identity: PrivateIdentity,
+        name: DestinationName,
+    ) -> Arc<Mutex<SingleInputDestination>> {
+        let destination = SingleInputDestination::new(identity, name);
+        let address_hash = destination.desc.address_hash;
+
+        log::debug!("tp({}): add destination {}", self.name, address_hash);
+
+        let destination = Arc::new(Mutex::new(destination));
+
+        self.handler.lock().await.single_in_destinations.insert(address_hash, destination.clone());
+
+        destination
+    }
+
+    pub async fn has_destination(&self, address: &AddressHash) -> bool {
+        self.handler.lock().await.has_destination(address)
+    }
+
+    pub async fn knows_destination(&self, address: &AddressHash) -> bool {
+        self.handler.lock().await.knows_destination(address)
+    }
+
+    pub async fn has_path(&self, address: &AddressHash) -> bool {
+        self.handler.lock().await.path_table.get(address).is_some()
+    }
+
+    pub async fn destination_identity(&self, address: &AddressHash) -> Option<Identity> {
+        let destination =
+            { self.handler.lock().await.single_out_destinations.get(address).cloned() }?;
+        let destination = destination.lock().await;
+        Some(destination.identity)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn get_handler(&self) -> Arc<Mutex<TransportHandler>> {
+        // direct access to handler for testing purposes
+        self.handler.clone()
+    }
+}

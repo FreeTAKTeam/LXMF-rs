@@ -62,6 +62,7 @@ pub(crate) fn compatibility_notes(
     if effective.python_compat.max_peers.is_some()
         || !effective.python_compat.static_peers.is_empty()
         || effective.python_compat.from_static_only
+        || effective.python_compat.retain_synced_on_node
         || effective.python_compat.message_storage_limit_mb.is_some()
         || effective.python_compat.peering_cost.is_some()
         || effective.python_compat.remote_peering_cost_max.is_some()
@@ -117,6 +118,7 @@ pub(crate) fn apply_python_compat_config(
             "propagation_enable",
             Some(json!({
                 "enabled": args.propagation_node,
+                "auth_required": compat.auth_required,
                 "store_root": args
                     .config_dir
                     .as_ref()
@@ -128,6 +130,7 @@ pub(crate) fn apply_python_compat_config(
                 "static_peers": compat.static_peers,
                 "max_peers": compat.max_peers,
                 "from_static_only": compat.from_static_only,
+                "retain_synced_on_node": compat.retain_synced_on_node,
                 "peering_cost": compat.peering_cost,
                 "remote_peering_cost_max": compat.remote_peering_cost_max,
             })),

@@ -116,7 +116,7 @@ pub(super) async fn handle_announce<'a>(
     let destination_known = handler.has_destination(&packet.destination)
         || handler.knows_destination(&packet.destination);
     if let AnnounceLimitAction::Hold(delay) =
-        handler.announce_limits.check(iface, packet, destination_known)
+        handler.announce_limits.check(iface, packet, source, destination_known)
     {
         log::debug!(
             "tp({}): holding announce for {} for {:?}",
@@ -146,6 +146,7 @@ pub(super) async fn release_held_announces<'a>(handler: MutexGuard<'a, Transport
     for released_announce in released {
         let packet = released_announce.packet;
         let iface = released_announce.iface;
+        let source = released_announce.source;
         let announce = match DestinationAnnounce::validate(&packet) {
             Ok(result) => result,
             Err(err) => {
@@ -158,11 +159,6 @@ pub(super) async fn release_held_announces<'a>(handler: MutexGuard<'a, Transport
             }
         };
 
-        // Held announces predate auto-unicast redirection because we
-        // don't persist the `IfaceSource` across the hold queue.
-        // Replay on the stored iface; if that iface was multicast, the
-        // route won't get the unicast redirect until the next fresh
-        // announce from this peer arrives.
-        handler = process_announce(&packet, handler, iface, IfaceSource::None, announce).await;
+        handler = process_announce(&packet, handler, iface, source, announce).await;
     }
 }

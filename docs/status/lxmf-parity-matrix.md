@@ -76,6 +76,8 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Direct, opportunistic, propagated, and paper modes are distinct.
 - Transport completion remains `sent`; final delivery receipts produce
   `delivered`.
+- Oversized opportunistic peer sends fall back to link/resource delivery, with
+  resource advertisement and outbound tracking coverage.
 - Resource advertisement failure, retry exhaustion, timeout, and explicit
   cancellation reach daemon message state.
 
@@ -94,6 +96,8 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   queue accounting, sync/transfer limits, stamp policy, throttling, candidate
   selection, unreachable culling, low-acceptance rotation, and prioritized
   offers.
+- Python-style propagation `auth_required` configuration is applied to the
+  daemon propagation state and reported with the propagation peer policy.
 - Offer responses support Python boolean and list forms, reject out-of-offer
   IDs, preserve no-transfer liveness, retain cumulative acceptance rates, and
   preserve peers and queues on retryable or otherwise unexpected numeric
@@ -107,6 +111,14 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   and restored queue marks into active peer record snapshots before publishing
   the failed sync event, so local and remote retry/export behavior stays
   aligned.
+- Remote peer-sync failure events expose a structured `failure_kind` on both
+  the top-level event and nested propagation payload, so observers can
+  distinguish throttling, identity, key, data, stamp, not-found, timeout,
+  access-denied, and generic failures while the retry state machine remains
+  unchanged.
+- Retryable remote peer-sync errors keep those queued snapshots but now advance
+  the peer's ordinary sync backoff window, avoiding immediate retry loops after
+  transient propagation-control failures.
 - Payload-backed remote failure snapshots replace stale serialized peer queue
   IDs with live payload-backed marks, so bridge failures do not preserve
   obsolete restart/export work after the underlying payload is gone.
@@ -127,12 +139,30 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Remote fetch/download/sync imports validate the full returned propagation
   payload batch before mutating the local store or in-memory payload cache, so
   mixed valid/invalid remote responses fail without leaving partial relay state.
+- Selected local peer-sync offer responses validate the full selected
+  propagation response payload batch before marking any selected ID transferred,
+  so malformed queued payloads cannot partially drain peer retry state.
 - Malformed remote fetch and download imports mirror existing payload-backed
   queue marks into active peer record snapshots before returning the import
   failure, so already queued relay work remains visible after restart/export.
+- Malformed remote fetch and download imports from an already active source
+  peer update that peer's failure backoff and publish the failed peer-sync
+  event, so invalid post-transfer payloads use the same retry observability as
+  transport-level remote transfer failures.
 - Remote fetch and download bridge failures mirror existing payload-backed
   queue marks into active peer record snapshots before returning the failure,
   so already queued relay work remains visible after restart/export.
+- Remote fetch and download bridge failures from an already active source peer
+  also update that peer's failure backoff and publish the failed peer-sync
+  event, aligning retry scheduling and observability with the preserved queue
+  snapshot.
+- Remote fetch and download access-denied bridge failures follow the remote
+  peer-sync denial path for the source peer, clearing local peering and queued
+  propagation marks instead of preserving denied relay work for retry, while
+  preserving the propagation `no_access` lifecycle state and bridge error text.
+- Access-denied remote transfer cleanup emits peer-unpeer events with the
+  stored peer identifier even when the remote request uses alternate casing,
+  keeping event observability tied to the removed peer record.
 - Remote fetch and download bridge-unavailable errors mirror existing
   payload-backed queue marks into active peer record snapshots before
   returning and mark the propagation sync lifecycle failed, so queued relay work
@@ -153,6 +183,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Remote peer-sync bridge-unavailable errors for already known peers also
   publish the failed peer-sync event and mark the propagation sync lifecycle
   failed, keeping queued retry state observable without creating new peers.
+- Peer sync RPC rows and events preserve the Python-compatible peer `state`
+  namespace while exposing backoff and policy postponement through separate
+  scheduling fields; failed attempts continue to use the established error state.
 - Successful remote peer-sync mirrors existing payload-backed live queue marks
   into active peer record snapshots after applying imports, preserving queued
   retry work across restart/export even when the remote sync succeeds without
@@ -174,13 +207,21 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   case-insensitive peer requests, so failed peering teardown preserves queued
   retry work across restart/export and marks the propagation lifecycle failed
   instead of leaving stale idle/completed state.
+- Access-denied remote unpeer failures follow the same local peering break path
+  as access-denied remote sync/fetch/download, clearing local peer and
+  propagation queue state instead of leaving denied teardown work retryable.
 - Successful remote unpeer uses the stored peer ID case for the bridge call and
   nested bridge result when callers supply a case-variant peer request, keeping
   remote teardown identity aligned with local queue cleanup.
+- Successful remote unpeer clears stale propagation lifecycle failures and
+  error text left by earlier teardown attempts, so peer removal is not reported
+  alongside an obsolete failed control state.
 - Inbound reticulumd `/pn/peer/sync` and `/pn/peer/unpeer` control commands
   resolve stored peer IDs case-insensitively before dispatching to daemon RPCs,
   so binary peer-control requests do not report not-found for restored or
-  configured peers whose status rows preserve a different hex presentation.
+  configured peers whose status rows preserve a different hex presentation;
+  `/pn/peer/sync` also checks hidden unpeered peer records so operator-triggered
+  rejoin paths can reach the daemon reactivation state machine.
 - Payload-backed peer queue snapshot mirroring resolves stored peer IDs
   case-insensitively before reading live queue marks, preserving queued
   restart/export work when callers use Python-style peer case variants.
@@ -249,6 +290,18 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Outbound propagated delivery resolves selected propagation-node
   `propagation_stamp_cost` case-insensitively, so Python-style hash casing does
   not fall back to the default propagation stamp cost.
+- The live Rust/Python remote-relay interop gate now selects a Python `lxmd`
+  propagation destination as the Rust outbound propagation node, covering mixed
+  propagation-node discovery and selection before broader store-and-forward
+  claims are made.
+- The live Rust/Python propagation-control gate now also exercises a
+  Python-origin `/offer` against Rust `reticulumd`, proving partial wanted-ID
+  responses, repeated-offer throttling, and source-peer completed marks across
+  the live link request path.
+- The live Rust/Python propagation-control gate now also splits out a
+  Python-origin `/offer` peer-queue lifecycle case, proving post-sync handled
+  IDs, no retryable missing-ID queue state, and cleared sync backoff after
+  transfer creates the Rust peer row.
 - Duplicate inbound peer propagation payloads still fan out to active relay
   peers while keeping the source peer handled, so a known local payload does
   not bypass relay queue creation.
@@ -270,15 +323,37 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Inbound propagation message-get `haves` handling applies peer admission
   before purging matching local payloads, so rejected peers cannot delete queued
   transfers they are not allowed to acknowledge.
+- The live Rust/Python propagation-control gate now exercises a Python-origin
+  `/get` haves-only request against Rust `reticulumd`, proving the `true`
+  acknowledgement, retained-payload purge, and absence of retryable unhandled
+  peer queue state across the live link request path.
 - Inbound propagation message-get `haves` handling records matched haves as
   received/completed work for the requesting propagation peer after purge, so
   reintroduced payloads are not queued back to peers that already declared
   them.
+- Inbound propagation message-get `haves` handling records stale peer-acknowledged
+  IDs even when local payload rows are already absent, while still honoring
+  `retain_synced_on_node` payload-retention behavior so completed peers are
+  marked without regressing local payload reuse.
+- Inbound propagation message-get `haves` completion is now constrained to
+  locally known payloads or existing peer queue marks, so arbitrary unknown
+  haves cannot pre-complete future propagation work for that peer.
+- Link-based remote propagation downloads wait for the final haves
+  acknowledgement response after imported or duplicate payloads are reported,
+  so node-side rejection or timeout is surfaced instead of reporting a
+  completed download before remote cleanup is confirmed.
+- Link-based propagation-control waits now surface matching resource transfer
+  failure or cancellation immediately, so remote fetch/download callers see the
+  terminal transfer state instead of a generic response timeout.
 - Inbound propagation message-get purge-only requests return the Python-style
   boolean success response after haves are applied, and payload purge cleanup
   preserves completed peer accounting for other peers while removing stale
   unhandled marks, so reintroduced payloads are not offered back to peers that
   already completed them.
+- Propagation nodes honor `retain_synced_on_node` during message-get haves
+  handling: requesting peers are still marked completed, while retained payloads
+  remain stored and queued for peers that have not completed them; retained
+  payload listings now filter IDs already completed by the requesting peer.
 - Inbound propagation message-get requests mark wanted payloads skipped by the
   peer's transfer budget as transfer-limited completed work after peer
   admission, so oversized fetch attempts do not remain retryable queue entries.
@@ -293,12 +368,20 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   wanted-ID list responses after peering-key validation without admitting the
   remote propagation peer or queuing local payloads before a real transfer or
   message-get admission point.
+- Structurally decoded inbound propagation offers with invalid peering keys
+  start the per-peer offer throttle while still avoiding peer admission or
+  queue marks, so repeated bad replication offers share the valid-offer
+  throttle window.
 - Inbound propagation offers validate every offered transient ID before
   applying source-accounting marks, so malformed mixed offers cannot leave
   partial received/completed queue state behind.
 - Inbound propagation offers deduplicate validated offered transient IDs before
   building wanted-ID responses or applying source-accounting marks, so duplicate
   offers cannot request or account the same payload more than once.
+- Capacity-limited but valid inbound propagation offers also start the offer
+  throttle after peering-key and transient-ID validation, so repeated
+  deferred-admission offers return the Python-style throttled response instead
+  of repeatedly probing peer capacity.
 - Remote fetch and download imports mark inactive source peers as received
   before later activation, so source-accounting survives even when the
   propagation node was not yet an active peer record.
@@ -308,10 +391,33 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Remote import batch byte accounting follows the same deduplicated accepted
   IDs, so duplicate payloads in one fetch/download/sync response do not inflate
   transferred byte totals or source peer receive byte counters.
+- Local propagation ingest persists processed transient IDs separately from
+  retained payload entries, so payloads reintroduced after purge or peer
+  acknowledgement can refresh relay state without inflating local received or
+  ingested counters.
+- Propagation-node ingest enforces the configured message-storage byte limit
+  against retained propagation entries, using age, size, and
+  prioritised-destination weighting while pruning stale retryable peer marks.
+- Link-based remote downloads wait for the propagation node's `/get` haves
+  acknowledgement and propagate peer/control errors, so failed remote cleanup is
+  not reported as a completed replication drain.
+- Link-based remote propagation control waits surface authenticated link-close
+  peer/control signals immediately, so denied or closed remote fetch/download/sync
+  requests fail on the signal instead of waiting for the request timeout.
+- Remote fetch/download acknowledgements use canonical propagation transient
+  IDs for stamped payloads, so `/get` haves clear the peer's offered queue entry
+  instead of reporting the stamped payload bytes under a different hash.
 - Repeated remote fetch/download/sync imports increment source peer incoming
   counts and receive bytes only for payload IDs not already marked received
   from that source, while still replaying known payloads into relay queues when
   their live marks were cleared.
+- Successful remote fetch/download imports clear stale retry backoff on an
+  active source peer after newly accepted payloads, so recovered propagation
+  sources are not left postponed by an earlier failed transfer attempt.
+- Link-based remote propagation downloads classify listed transient IDs before
+  payload retrieval, report locally known IDs as `/get` haves, and use the
+  purge-only `[nil, haves]` request when every listed ID is already local, so
+  duplicate payloads are not downloaded just to acknowledge them.
 - Repeated peer-origin propagation ingests also avoid double-counting source
   peer incoming counts and receive bytes for already received payload IDs,
   while still refreshing relay queue marks for peers that need the payload.
@@ -404,6 +510,12 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   peering-key and transient-ID validation, so repeated replication offers from
   the same peer return the throttled response even when the peer changes the
   offered transient-ID set.
+- Propagation ingest rejects payloads for ignored destinations before storing
+  or queueing them, so local replication policy is enforced before relay state
+  is created.
+- Local peer offer-error responses now expose failed peer-sync state fields at
+  both the top-level event/result and nested propagation result while keeping
+  retryable queue marks intact.
 - Inbound propagation distinguishes clients, validated peers, unpeered
   identified senders, and local delivery; source peers are accounted and not
   re-offered their own payloads.
@@ -423,6 +535,12 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - `.github/workflows/python-interop.yml` runs pinned Python reference
   conformance plus live channel, paper, compatibility-matrix, and LXMD
   remote-relay tests.
+- The compatibility matrix includes ignored live `propagation_remote_status_bidir`
+  and `propagation_get_haves_python_to_rust` cases that validate Python
+  discovery of the Rust propagation-control path, Rust-to-Python
+  propagation-node status, and Python-origin haves-only `/get` side effects when
+  the Python harness environment is available, plus
+  `propagation_offer_python_to_rust` for Python-origin offer side effects.
 - Focused daemon/RPC tests cover delivery modes, propagation offers, peer
   maintenance, queue policy, source accounting, stamps, tickets, receipts, and
   cancellation.

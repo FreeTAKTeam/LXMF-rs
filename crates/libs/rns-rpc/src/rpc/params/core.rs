@@ -96,6 +96,8 @@ struct DeliveryPolicyParams {
 struct PropagationEnableParams {
     enabled: bool,
     #[serde(default)]
+    auth_required: Option<bool>,
+    #[serde(default)]
     store_root: Option<String>,
     #[serde(default)]
     target_cost: Option<u32>,
@@ -119,6 +121,8 @@ struct PropagationEnableParams {
     max_peers: Option<u32>,
     #[serde(default)]
     from_static_only: Option<bool>,
+    #[serde(default)]
+    retain_synced_on_node: Option<bool>,
     #[serde(default)]
     peering_cost: Option<u32>,
     #[serde(default)]

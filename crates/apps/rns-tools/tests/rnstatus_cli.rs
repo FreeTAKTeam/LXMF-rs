@@ -24,7 +24,16 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
             result: Some(json!({
                 "identity_hash": "0123456789abcdef0123456789abcdef",
                 "running": true,
+                "peer_count": 2,
                 "interface_count": 1,
+                "propagation": {
+                    "enabled": true,
+                    "selected_node": "cafebabe",
+                    "sync_state": 0,
+                    "sync_progress": 1.0,
+                    "target_cost": 8,
+                    "from_static_only": false
+                },
                 "interfaces": [{
                     "name": "field-uplink",
                     "type": "tcp_server",
@@ -78,7 +87,16 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
             result: Some(json!({
                 "identity_hash": "0123456789abcdef0123456789abcdef",
                 "running": true,
+                "peer_count": 2,
                 "interface_count": 1,
+                "propagation": {
+                    "enabled": true,
+                    "selected_node": "cafebabe",
+                    "sync_state": 0,
+                    "sync_progress": 1.0,
+                    "target_cost": 8,
+                    "from_static_only": false
+                },
                 "interfaces": [{
                     "name": "field-uplink",
                     "type": "tcp_server",
@@ -113,6 +131,9 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
     assert!(stdout.contains("tcp_server"), "stdout: {stdout}");
     assert!(stdout.contains("failed"), "stdout: {stdout}");
     assert!(stdout.contains("bind denied"), "stdout: {stdout}");
+    assert!(stdout.contains("Propagation: enabled=true"), "stdout: {stdout}");
+    assert!(stdout.contains("peers=2"), "stdout: {stdout}");
+    assert!(stdout.contains("selected=cafebabe"), "stdout: {stdout}");
 
     server.join().expect("mock rpc server");
 }

@@ -4,7 +4,9 @@ use reticulum_daemon::inbound_delivery::{
     annotate_inbound_record_stamp_status, decode_inbound_payload, evaluate_inbound_stamp_policy,
     inbound_record_allowed_by_delivery_policy,
 };
+use reticulum_daemon::lxmf_stamps::{validate_propagation_stamp, PROPAGATION_STAMP_SIZE};
 use rns_transport::identity::DecryptIdentity;
+use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum LocalPropagationImportOutcome {
@@ -30,6 +32,14 @@ pub(super) fn rmpv_binary_array(value: &rmpv::Value) -> Result<Vec<Vec<u8>>, std
             )),
         })
         .collect()
+}
+
+pub(super) fn propagation_payload_ack_transient_id(transient_payload: &[u8]) -> Vec<u8> {
+    if validate_propagation_stamp(transient_payload, 1).is_some() {
+        let lxm_data_len = transient_payload.len().saturating_sub(PROPAGATION_STAMP_SIZE);
+        return Sha256::digest(&transient_payload[..lxm_data_len]).to_vec();
+    }
+    Sha256::digest(transient_payload).to_vec()
 }
 
 impl TransportBridge {
@@ -175,6 +185,7 @@ mod tests {
     use lxmf::WireMessage;
     use rand_core::OsRng;
     use reticulum_daemon::lxmf_bridge::build_wire_message_with_options;
+    use reticulum_daemon::lxmf_stamps::generate_propagation_stamp;
     use rns_transport::destination::DestinationName;
     use rns_transport::identity::PrivateIdentity;
     use rns_transport::identity_bridge::{to_core_identity, to_core_private_identity};
@@ -311,5 +322,32 @@ mod tests {
 
         assert_eq!(first, LocalPropagationImportOutcome::Imported);
         assert_eq!(second, LocalPropagationImportOutcome::Duplicate);
+    }
+
+    #[test]
+    fn ack_transient_id_uses_lxm_data_for_stamped_payloads() {
+        let lxm_data = vec![0x42; 160];
+        let transient_id = Sha256::digest(&lxm_data);
+        let stamp = generate_propagation_stamp(
+            transient_id.as_slice().try_into().expect("transient id width"),
+            1,
+        )
+        .expect("propagation stamp");
+        let mut transient_payload = lxm_data.clone();
+        transient_payload.extend_from_slice(stamp.as_slice());
+
+        let ack_id = propagation_payload_ack_transient_id(transient_payload.as_slice());
+
+        assert_eq!(ack_id, transient_id.to_vec());
+        assert_ne!(ack_id, Sha256::digest(transient_payload).to_vec());
+    }
+
+    #[test]
+    fn ack_transient_id_keeps_unstamped_payload_hash() {
+        let transient_payload = b"ack-unstamped-lxm-data".to_vec();
+
+        let ack_id = propagation_payload_ack_transient_id(transient_payload.as_slice());
+
+        assert_eq!(ack_id, Sha256::digest(transient_payload).to_vec());
     }
 }

@@ -7,6 +7,7 @@ use tokio::time::Duration;
 use tokio::time::Instant;
 
 use crate::hash::AddressHash;
+use crate::iface::IfaceSource;
 use crate::packet::{Packet, PacketContext};
 
 pub struct AnnounceRateLimit {
@@ -47,6 +48,7 @@ pub enum AnnounceLimitAction {
 #[derive(Clone, Copy)]
 struct HeldAnnounce {
     packet: Packet,
+    source: IfaceSource,
     held_at: Instant,
 }
 
@@ -143,9 +145,15 @@ impl AnnounceLimitEntry {
     }
 
     #[allow(dead_code)]
-    fn hold(&mut self, packet: &Packet, now: Instant, rate_limit: &AnnounceRateLimit) -> bool {
+    fn hold(
+        &mut self,
+        packet: &Packet,
+        source: IfaceSource,
+        now: Instant,
+        rate_limit: &AnnounceRateLimit,
+    ) -> bool {
         if let Entry::Occupied(mut entry) = self.held_announces.entry(packet.destination) {
-            entry.insert(HeldAnnounce { packet: *packet, held_at: now });
+            entry.insert(HeldAnnounce { packet: *packet, source, held_at: now });
             return true;
         }
 
@@ -166,7 +174,7 @@ impl AnnounceLimitEntry {
         }
 
         self.held_announces
-            .insert(packet.destination, HeldAnnounce { packet: *packet, held_at: now });
+            .insert(packet.destination, HeldAnnounce { packet: *packet, source, held_at: now });
         true
     }
 
@@ -183,7 +191,11 @@ impl AnnounceLimitEntry {
         self.held_release.saturating_duration_since(now)
     }
 
-    fn release_one(&mut self, now: Instant, rate_limit: &AnnounceRateLimit) -> Option<Packet> {
+    fn release_one(
+        &mut self,
+        now: Instant,
+        rate_limit: &AnnounceRateLimit,
+    ) -> Option<(Packet, IfaceSource)> {
         if self.held_announces.is_empty() || self.should_ingress_limit(now, rate_limit) {
             return None;
         }
@@ -196,19 +208,20 @@ impl AnnounceLimitEntry {
             .held_announces
             .iter()
             .min_by_key(|(_, held)| (held.packet.header.hops, held.held_at))
-            .map(|(destination, held)| (*destination, held.packet));
+            .map(|(destination, held)| (*destination, held.packet, held.source));
 
-        let (destination, packet) = selected?;
+        let (destination, packet, source) = selected?;
 
         self.held_announces.remove(&destination);
         self.held_release = now + rate_limit.held_release_interval;
-        Some(packet)
+        Some((packet, source))
     }
 }
 
 pub struct ReleasedAnnounce {
     pub iface: AddressHash,
     pub packet: Packet,
+    pub source: IfaceSource,
 }
 
 pub struct AnnounceLimits {
@@ -230,15 +243,17 @@ impl AnnounceLimits {
         &mut self,
         iface: AddressHash,
         packet: &Packet,
+        source: IfaceSource,
         destination_known: bool,
     ) -> AnnounceLimitAction {
-        self.check_at(iface, packet, destination_known, Instant::now())
+        self.check_at(iface, packet, source, destination_known, Instant::now())
     }
 
     fn check_at(
         &mut self,
         iface: AddressHash,
         packet: &Packet,
+        source: IfaceSource,
         destination_known: bool,
         now: Instant,
     ) -> AnnounceLimitAction {
@@ -254,7 +269,7 @@ impl AnnounceLimits {
         }
 
         if entry.should_ingress_limit(now, &self.rate_limit)
-            && entry.hold(packet, now, &self.rate_limit)
+            && entry.hold(packet, source, now, &self.rate_limit)
         {
             return AnnounceLimitAction::Hold(entry.next_release_delay(now, &self.rate_limit));
         }
@@ -270,8 +285,8 @@ impl AnnounceLimits {
         let mut released = Vec::new();
 
         for (iface, entry) in self.limits.iter_mut() {
-            if let Some(packet) = entry.release_one(now, &self.rate_limit) {
-                released.push(ReleasedAnnounce { iface: *iface, packet });
+            if let Some((packet, source)) = entry.release_one(now, &self.rate_limit) {
+                released.push(ReleasedAnnounce { iface: *iface, packet, source });
             } else {
                 continue;
             }
@@ -315,13 +330,20 @@ mod tests {
         let now = Instant::now();
 
         assert_eq!(
-            limits.check_at(iface_a, &announce_packet(AddressHash::new([1; 16]), 1), false, now),
+            limits.check_at(
+                iface_a,
+                &announce_packet(AddressHash::new([1; 16]), 1),
+                IfaceSource::None,
+                false,
+                now,
+            ),
             AnnounceLimitAction::Allow
         );
         assert!(matches!(
             limits.check_at(
                 iface_a,
                 &announce_packet(AddressHash::new([2; 16]), 1),
+                IfaceSource::None,
                 false,
                 now + Duration::from_millis(5)
             ),
@@ -331,6 +353,7 @@ mod tests {
             limits.check_at(
                 iface_b,
                 &announce_packet(AddressHash::new([3; 16]), 1),
+                IfaceSource::None,
                 false,
                 now + Duration::from_millis(5)
             ),
@@ -345,13 +368,20 @@ mod tests {
         let now = Instant::now();
 
         assert_eq!(
-            limits.check_at(iface, &announce_packet(AddressHash::new([1; 16]), 4), false, now),
+            limits.check_at(
+                iface,
+                &announce_packet(AddressHash::new([1; 16]), 4),
+                IfaceSource::None,
+                false,
+                now,
+            ),
             AnnounceLimitAction::Allow
         );
         assert!(matches!(
             limits.check_at(
                 iface,
                 &announce_packet(AddressHash::new([2; 16]), 3),
+                IfaceSource::None,
                 false,
                 now + Duration::from_millis(5)
             ),
@@ -361,6 +391,7 @@ mod tests {
             limits.check_at(
                 iface,
                 &announce_packet(AddressHash::new([3; 16]), 1),
+                IfaceSource::None,
                 false,
                 now + Duration::from_millis(10)
             ),
@@ -388,13 +419,20 @@ mod tests {
         let now = Instant::now();
 
         assert_eq!(
-            limits.check_at(iface, &announce_packet(AddressHash::new([1; 16]), 4), false, now),
+            limits.check_at(
+                iface,
+                &announce_packet(AddressHash::new([1; 16]), 4),
+                IfaceSource::None,
+                false,
+                now,
+            ),
             AnnounceLimitAction::Allow
         );
         assert!(matches!(
             limits.check_at(
                 iface,
                 &announce_packet(AddressHash::new([2; 16]), 5),
+                IfaceSource::None,
                 false,
                 now + Duration::from_millis(5)
             ),
@@ -404,6 +442,7 @@ mod tests {
             limits.check_at(
                 iface,
                 &announce_packet(AddressHash::new([3; 16]), 1),
+                IfaceSource::None,
                 false,
                 now + Duration::from_millis(10)
             ),

@@ -214,6 +214,8 @@ fn apply_single_toml_config(
     effective.python_compat.autopeer_maxdepth = config.propagation.autopeer_maxdepth.or(Some(6));
     effective.python_compat.max_peers = config.propagation.max_peers;
     effective.python_compat.from_static_only = config.propagation.from_static_only.unwrap_or(false);
+    effective.python_compat.retain_synced_on_node =
+        config.propagation.retain_synced_on_node.unwrap_or(false);
     effective.python_compat.message_storage_limit_mb = config.propagation.message_storage_limit_mb;
     effective.python_compat.peering_cost = config.propagation.peering_cost;
     effective.python_compat.remote_peering_cost_max = config.propagation.remote_peering_cost_max;

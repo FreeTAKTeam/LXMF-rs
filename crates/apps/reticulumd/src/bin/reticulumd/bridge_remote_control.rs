@@ -2,9 +2,10 @@ use super::remote_control_download::propagation_download_request;
 use super::*;
 use reticulum_daemon::lxmf_bridge::rmpv_to_json;
 use rns_rpc::RemoteControlBridge;
-use sha2::{Digest, Sha256};
 
-use super::remote_fetch::{rmpv_binary_array, LocalPropagationImportOutcome};
+use super::remote_fetch::{
+    propagation_payload_ack_transient_id, rmpv_binary_array, LocalPropagationImportOutcome,
+};
 use super::remote_request::remote_control_request;
 
 impl TransportBridge {
@@ -377,7 +378,9 @@ fn propagation_remote_fetch_ack_payload(
                 LocalPropagationImportOutcome::Imported | LocalPropagationImportOutcome::Duplicate
             )
         })
-        .map(|(payload, _outcome)| rmpv::Value::Binary(Sha256::digest(payload).to_vec()))
+        .map(|(payload, _outcome)| {
+            rmpv::Value::Binary(propagation_payload_ack_transient_id(payload))
+        })
         .collect();
     rmpv::Value::Array(vec![rmpv::Value::Nil, rmpv::Value::Array(haves)])
 }
@@ -399,14 +402,14 @@ fn response_to_json(response: &rmpv::Value) -> Result<JsonValue, std::io::Error>
     }
 }
 
-fn response_to_result(response: rmpv::Value) -> Result<rmpv::Value, std::io::Error> {
+pub(super) fn response_to_result(response: rmpv::Value) -> Result<rmpv::Value, std::io::Error> {
     if let Some(error) = response_code_error(&response) {
         return Err(error);
     }
     Ok(response)
 }
 
-fn response_code_error(response: &rmpv::Value) -> Option<std::io::Error> {
+pub(super) fn response_code_error(response: &rmpv::Value) -> Option<std::io::Error> {
     if let Some(code) = response.as_u64().or_else(|| response.as_i64().map(|value| value as u64)) {
         let (kind, message) = match code as u8 {
             0xF0 => (std::io::ErrorKind::PermissionDenied, "propagation node requires identity"),
@@ -425,68 +428,5 @@ fn response_code_error(response: &rmpv::Value) -> Option<std::io::Error> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use sha2::{Digest, Sha256};
-
-    #[test]
-    fn propagation_remote_fetch_summary_reports_transferred_bytes() {
-        let payloads = vec![b"first".to_vec(), b"second-payload".to_vec()];
-
-        let summary = propagation_remote_fetch_summary(7, &payloads, 1, 2, 3);
-
-        assert_eq!(summary["available_count"].as_u64(), Some(7));
-        assert_eq!(summary["fetched_count"].as_u64(), Some(2));
-        assert_eq!(summary["imported_count"].as_u64(), Some(1));
-        assert_eq!(summary["duplicate_count"].as_u64(), Some(2));
-        assert_eq!(summary["rejected_count"].as_u64(), Some(3));
-        assert_eq!(
-            summary["transferred_bytes"].as_u64(),
-            Some(payloads.iter().map(Vec::len).sum::<usize>() as u64)
-        );
-    }
-
-    #[test]
-    fn propagation_control_response_code_maps_peer_errors_like_python() {
-        for (code, kind, message) in [
-            (
-                0xF3_u64,
-                std::io::ErrorKind::PermissionDenied,
-                "propagation peer invalid peering key",
-            ),
-            (0xF5_u64, std::io::ErrorKind::PermissionDenied, "propagation peer invalid stamp"),
-            (0xF6_u64, std::io::ErrorKind::WouldBlock, "propagation peer throttled"),
-            (0xFE_u64, std::io::ErrorKind::TimedOut, "propagation peer timed out"),
-        ] {
-            let err = response_code_error(&rmpv::Value::from(code))
-                .expect("peer response code should map to error");
-
-            assert_eq!(err.kind(), kind);
-            assert_eq!(err.to_string(), message);
-        }
-    }
-
-    #[test]
-    fn propagation_remote_fetch_ack_payload_reports_imported_and_duplicate_haves() {
-        let imported_payload = b"imported remote fetch payload".to_vec();
-        let duplicate_payload = b"duplicate remote fetch payload".to_vec();
-        let rejected_payload = b"rejected remote fetch payload".to_vec();
-
-        let ack = propagation_remote_fetch_ack_payload(&[
-            (&imported_payload, LocalPropagationImportOutcome::Imported),
-            (&duplicate_payload, LocalPropagationImportOutcome::Duplicate),
-            (&rejected_payload, LocalPropagationImportOutcome::Rejected),
-        ]);
-
-        let rmpv::Value::Array(entries) = ack else {
-            panic!("expected /get acknowledgement array");
-        };
-        assert!(entries.first().is_some_and(rmpv::Value::is_nil));
-        let Some(rmpv::Value::Array(haves)) = entries.get(1) else {
-            panic!("expected haves array");
-        };
-        assert_eq!(haves.len(), 2);
-        assert_eq!(haves[0], rmpv::Value::Binary(Sha256::digest(imported_payload).to_vec()));
-        assert_eq!(haves[1], rmpv::Value::Binary(Sha256::digest(duplicate_payload).to_vec()));
-    }
-}
+#[path = "bridge_remote_control_tests.rs"]
+mod tests;
