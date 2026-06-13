@@ -5,11 +5,12 @@ use crate::domain::{
     AttachmentListResult, AttachmentMeta, AttachmentStoreRequest, AttachmentUploadChunkAck,
     AttachmentUploadChunkRequest, AttachmentUploadCommitRequest, AttachmentUploadSession,
     AttachmentUploadStartRequest, ContactListRequest, ContactListResult, ContactRecord,
-    ContactUpdateRequest, IdentityBootstrapRequest, IdentityBundle, IdentityImportRequest,
-    IdentityRef, IdentityResolveRequest, MarkerCreateRequest, MarkerDeleteRequest,
-    MarkerListRequest, MarkerListResult, MarkerRecord, MarkerUpdatePositionRequest,
-    PaperMessageEnvelope, PeerConnectionRequest, PeerConnectionResult, PresenceListRequest,
-    PresenceListResult, RemoteCommandRequest, RemoteCommandResponse, RemoteCommandSession,
+    ContactUpdateRequest, IdentityAnnounceRequest, IdentityAnnounceResult,
+    IdentityBootstrapRequest, IdentityBundle, IdentityImportRequest, IdentityRef,
+    IdentityResolveRequest, MarkerCreateRequest, MarkerDeleteRequest, MarkerListRequest,
+    MarkerListResult, MarkerRecord, MarkerUpdatePositionRequest, PaperMessageEnvelope,
+    PeerConnectionRequest, PeerConnectionResult, PresenceListRequest, PresenceListResult,
+    RemoteCommandRequest, RemoteCommandResponse, RemoteCommandSession,
     RemoteCommandSessionListRequest, RemoteCommandSessionListResult, TelemetryPoint,
     TelemetryQuery, TopicCreateRequest, TopicId, TopicListRequest, TopicListResult,
     TopicPublishRequest, TopicRecord, TopicSubscriptionRequest, VoiceSessionId,
@@ -202,6 +203,13 @@ pub trait SdkBackend: Send + Sync {
     }
 
     fn identity_announce_now(&self) -> Result<Ack, SdkError> {
+        Err(SdkError::capability_disabled("sdk.capability.identity_discovery"))
+    }
+
+    fn identity_announce(
+        &self,
+        _req: IdentityAnnounceRequest,
+    ) -> Result<IdentityAnnounceResult, SdkError> {
         Err(SdkError::capability_disabled("sdk.capability.identity_discovery"))
     }
 

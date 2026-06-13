@@ -3,9 +3,9 @@ use crate::backend::SdkBackend;
 use crate::capability::{NegotiationRequest, NegotiationResponse};
 use crate::domain::{
     ContactListRequest, ContactListResult, ContactRecord, ContactUpdateRequest,
-    IdentityBootstrapRequest, IdentityBundle, IdentityImportRequest, IdentityRef,
-    IdentityResolveRequest, PeerConnectionRequest, PeerConnectionResult, PresenceListRequest,
-    PresenceListResult,
+    IdentityAnnounceRequest, IdentityAnnounceResult, IdentityBootstrapRequest, IdentityBundle,
+    IdentityImportRequest, IdentityRef, IdentityResolveRequest, PeerConnectionRequest,
+    PeerConnectionResult, PresenceListRequest, PresenceListResult,
 };
 use crate::error::{code, ErrorCategory, SdkError};
 use crate::event::{EventBatch, EventCursor, SdkEvent, Severity};
@@ -35,6 +35,8 @@ mod destination;
 mod discovery;
 #[path = "zmq_pipeline/history.rs"]
 mod history;
+#[path = "zmq_pipeline/identity.rs"]
+mod identity;
 #[path = "zmq_pipeline/negotiation.rs"]
 mod negotiation;
 #[path = "zmq_pipeline/parsing.rs"]
@@ -81,11 +83,9 @@ impl ZmqPipelineBackendClient {
     pub fn session_id(&self) -> &str {
         &self.session_id
     }
-
     fn next_request_id(&self) -> u64 {
         self.next_request_id.fetch_add(1, Ordering::Relaxed)
     }
-
     fn has_capability(&self, capability_id: &str) -> bool {
         self.negotiated_capabilities
             .read()
@@ -331,6 +331,13 @@ impl SdkBackend for ZmqPipelineBackendClient {
         Ok(Self::parse_ack(&result))
     }
 
+    fn identity_announce(
+        &self,
+        req: IdentityAnnounceRequest,
+    ) -> Result<IdentityAnnounceResult, SdkError> {
+        ZmqPipelineBackendClient::identity_announce(self, req)
+    }
+
     fn identity_presence_list(
         &self,
         req: PresenceListRequest,
@@ -341,18 +348,15 @@ impl SdkBackend for ZmqPipelineBackendClient {
         let result = self.call_rpc("sdk_identity_presence_list_v2", Some(params))?;
         Self::decode_field_or_root(&result, "presence_list", "identity_presence_list response")
     }
-
     fn identity_list(&self) -> Result<Vec<IdentityBundle>, SdkError> {
         let result = self.call_rpc("sdk_identity_list_v2", Some(json!({})))?;
         Self::decode_field_or_root(&result, "identities", "identity_list response")
     }
-
     fn identity_activate(&self, identity: IdentityRef) -> Result<Ack, SdkError> {
         let result =
             self.call_rpc("sdk_identity_activate_v2", Some(json!({ "identity": identity.0 })))?;
         Ok(Self::parse_ack(&result))
     }
-
     fn identity_import(&self, req: IdentityImportRequest) -> Result<IdentityBundle, SdkError> {
         let params = serde_json::to_value(req).map_err(|err| {
             SdkError::new(code::INTERNAL, ErrorCategory::Internal, err.to_string())
@@ -360,7 +364,6 @@ impl SdkBackend for ZmqPipelineBackendClient {
         let result = self.call_rpc("sdk_identity_import_v2", Some(params))?;
         Self::decode_field_or_root(&result, "identity", "identity_import response")
     }
-
     fn identity_export(&self, identity: IdentityRef) -> Result<IdentityImportRequest, SdkError> {
         let result =
             self.call_rpc("sdk_identity_export_v2", Some(json!({ "identity": identity.0 })))?;
@@ -391,7 +394,6 @@ impl SdkBackend for ZmqPipelineBackendClient {
         let result = self.call_rpc("sdk_identity_contact_update_v2", Some(params))?;
         Self::decode_field_or_root(&result, "contact", "identity_contact_update response")
     }
-
     fn identity_contact_list(
         &self,
         req: ContactListRequest,
@@ -402,7 +404,6 @@ impl SdkBackend for ZmqPipelineBackendClient {
         let result = self.call_rpc("sdk_identity_contact_list_v2", Some(params))?;
         Self::decode_field_or_root(&result, "contact_list", "identity_contact_list response")
     }
-
     fn identity_bootstrap(&self, req: IdentityBootstrapRequest) -> Result<ContactRecord, SdkError> {
         let params = serde_json::to_value(req).map_err(|err| {
             SdkError::new(code::INTERNAL, ErrorCategory::Internal, err.to_string())
@@ -410,7 +411,6 @@ impl SdkBackend for ZmqPipelineBackendClient {
         let result = self.call_rpc("sdk_identity_bootstrap_v2", Some(params))?;
         Self::decode_field_or_root(&result, "contact", "identity_bootstrap response")
     }
-
     fn peer_connect(&self, req: PeerConnectionRequest) -> Result<PeerConnectionResult, SdkError> {
         ZmqPipelineBackendClient::peer_connect(self, req)
     }
