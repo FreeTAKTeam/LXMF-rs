@@ -9,11 +9,12 @@ use crate::domain::{
     ContactUpdateRequest, IdentityBootstrapRequest, IdentityBundle, IdentityImportRequest,
     IdentityRef, IdentityResolveRequest, MarkerCreateRequest, MarkerDeleteRequest,
     MarkerListRequest, MarkerListResult, MarkerRecord, MarkerUpdatePositionRequest,
-    PaperMessageEnvelope, PresenceListRequest, PresenceListResult, RemoteCommandRequest,
-    RemoteCommandResponse, RemoteCommandSession, RemoteCommandSessionListRequest,
-    RemoteCommandSessionListResult, TelemetryPoint, TelemetryQuery, TopicCreateRequest, TopicId,
-    TopicListRequest, TopicListResult, TopicPublishRequest, TopicRecord, TopicSubscriptionRequest,
-    VoiceSessionId, VoiceSessionOpenRequest, VoiceSessionState, VoiceSessionUpdateRequest,
+    PaperMessageEnvelope, PeerConnectionRequest, PeerConnectionResult, PresenceListRequest,
+    PresenceListResult, RemoteCommandRequest, RemoteCommandResponse, RemoteCommandSession,
+    RemoteCommandSessionListRequest, RemoteCommandSessionListResult, TelemetryPoint,
+    TelemetryQuery, TopicCreateRequest, TopicId, TopicListRequest, TopicListResult,
+    TopicPublishRequest, TopicRecord, TopicSubscriptionRequest, VoiceSessionId,
+    VoiceSessionOpenRequest, VoiceSessionState, VoiceSessionUpdateRequest,
 };
 use crate::error::SdkError;
 use crate::event::{EventBatch, EventCursor};
@@ -228,6 +229,26 @@ pub trait LxmfSdkIdentity {
         _req: IdentityBootstrapRequest,
     ) -> Result<ContactRecord, SdkError> {
         Err(SdkError::capability_disabled("sdk.capability.contact_management"))
+    }
+}
+
+pub trait LxmfSdkPeerLifecycle {
+    fn peer_connect(&self, _req: PeerConnectionRequest) -> Result<PeerConnectionResult, SdkError> {
+        Err(SdkError::capability_disabled("sdk.capability.peer_lifecycle"))
+    }
+
+    fn peer_disconnect(
+        &self,
+        _req: PeerConnectionRequest,
+    ) -> Result<PeerConnectionResult, SdkError> {
+        Err(SdkError::capability_disabled("sdk.capability.peer_lifecycle"))
+    }
+
+    fn peer_reconnect(
+        &self,
+        _req: PeerConnectionRequest,
+    ) -> Result<PeerConnectionResult, SdkError> {
+        Err(SdkError::capability_disabled("sdk.capability.peer_lifecycle"))
     }
 }
 

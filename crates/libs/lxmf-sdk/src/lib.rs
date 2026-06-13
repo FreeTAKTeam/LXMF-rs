@@ -19,7 +19,8 @@ pub use api::{LxmfSdk, LxmfSdkAsync, LxmfSdkManualTick};
 // Stability class: experimental (capability-gated extension traits)
 pub use api::{
     LxmfSdkAttachments, LxmfSdkGroupDelivery, LxmfSdkIdentity, LxmfSdkMarkers, LxmfSdkOperations,
-    LxmfSdkPaper, LxmfSdkRemoteCommands, LxmfSdkTelemetry, LxmfSdkTopics, LxmfSdkVoiceSignaling,
+    LxmfSdkPaper, LxmfSdkPeerLifecycle, LxmfSdkRemoteCommands, LxmfSdkTelemetry, LxmfSdkTopics,
+    LxmfSdkVoiceSignaling,
 };
 // Stability class: internal (backend composition surface)
 pub use backend::mobile_ble::{
@@ -60,8 +61,9 @@ pub use domain::{
     ContactRecord, ContactUpdateRequest, GeoPoint, IdentityBootstrapRequest, IdentityBundle,
     IdentityImportRequest, IdentityRef, IdentityResolveRequest, MarkerCreateRequest,
     MarkerDeleteRequest, MarkerId, MarkerListRequest, MarkerListResult, MarkerRecord,
-    MarkerUpdatePositionRequest, PaperMessageEnvelope, PresenceListRequest, PresenceListResult,
-    PresenceRecord, RemoteCommandRequest, RemoteCommandResponse, RemoteCommandSession,
+    MarkerUpdatePositionRequest, PaperMessageEnvelope, PeerConnectionRequest, PeerConnectionResult,
+    PeerConnectionState, PresenceListRequest, PresenceListResult, PresenceRecord,
+    RemoteCommandRequest, RemoteCommandResponse, RemoteCommandSession,
     RemoteCommandSessionListRequest, RemoteCommandSessionListResult, TelemetryPoint,
     TelemetryQuery, TopicCreateRequest, TopicId, TopicListRequest, TopicListResult, TopicPath,
     TopicPublishRequest, TopicRecord, TopicSubscriptionRequest, TrustLevel, VoiceSessionId,

@@ -338,6 +338,12 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   `ZmqPipelineBackendClient::peer_directory_since` plus
   `min_last_seen_ts_ms` filtering on `sdk_identity_presence_list_v2`, allowing
   stale announce rows to be hidden without dropping saved offline contacts.
+- The typed ZeroMQ SDK backend exposes saved-peer lifecycle calls through
+  `ZmqPipelineBackendClient::peer_connect`, `peer_disconnect`, and
+  `peer_reconnect`, preserving identity, display name, correlation ID,
+  callsign, REM capability flags, RCH announce-slot metadata, and extensions
+  over `sdk_peer_connect_v2`, `sdk_peer_disconnect_v2`, and
+  `sdk_peer_reconnect_v2`.
 - The typed ZeroMQ SDK backend exposes the operation registry and envelope
   execution path, including the `app.message.history.list` and
   `app.delivery.destination_hash` operations used by direct-chat history and
