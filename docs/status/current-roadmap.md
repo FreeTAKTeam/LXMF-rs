@@ -341,6 +341,10 @@ The project is best described by capability level:
   `peer_id`/`conversation_id` filters, `include_receipts`, and restart
   pagination cursors through the daemon `app.message.history.list` SDK envelope
   path.
+- `ZmqPipelineBackendClient::list_message_history` now accepts both canonical
+  `id`/`content` records and legacy direct-chat `message_id`/`body` records
+  from `app.message.history.list`, keeping restart-recovered conversation
+  history readable without raw envelope decoding.
 - The typed ZeroMQ SDK backend now exposes the local runtime delivery
   destination through `ZmqPipelineBackendClient::local_delivery_destination_hash`,
   while still routing `app.delivery.destination_hash` through SDK envelope
