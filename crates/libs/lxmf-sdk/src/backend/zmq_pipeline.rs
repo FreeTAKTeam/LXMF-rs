@@ -28,6 +28,8 @@ use tokio::runtime::Runtime;
 mod batch;
 #[path = "zmq_pipeline/config.rs"]
 mod config;
+#[path = "zmq_pipeline/destination.rs"]
+mod destination;
 #[path = "zmq_pipeline/history.rs"]
 mod history;
 #[path = "zmq_pipeline/negotiation.rs"]

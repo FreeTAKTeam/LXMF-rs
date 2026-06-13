@@ -58,8 +58,9 @@ delivery methods plus identity list/activate/import/export, identity announce,
 presence list, identity resolve, contact update/list, identity bootstrap,
 operation registry, envelope execution, and typed durable direct-chat history
 through `ZmqPipelineBackendClient::list_message_history`. Runtime destination
-queries should use `app.delivery.destination_hash` through the SDK envelope
-path instead of constructing raw RPC envelopes. Burst sends can use
+queries can use `ZmqPipelineBackendClient::local_delivery_destination_hash`;
+operation-driven clients can still use `app.delivery.destination_hash` through
+SDK envelope execution. Burst sends can use
 `ZmqPipelineBackendClient::send_batch` for typed ordered per-message
 acceptance and rejection results; operation-driven clients can use
 `app.delivery.send_batch` through SDK envelope execution. Direct-chat

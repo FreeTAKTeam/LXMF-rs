@@ -319,6 +319,11 @@ The project is best described by capability level:
   `ZmqPipelineBackendClient::list_message_history`, preserving message bodies
   with links, receipt status, basic LXMF fields, and restart pagination cursors
   from the daemon `list_messages` store.
+- The typed ZeroMQ SDK backend now exposes the local runtime delivery
+  destination through `ZmqPipelineBackendClient::local_delivery_destination_hash`,
+  while still routing `app.delivery.destination_hash` through SDK envelope
+  execution, so REM/RCH direct-chat source selection does not need raw RPC/HTTP
+  status calls.
 - The typed ZeroMQ SDK backend now tracks negotiated receipt terminality for
   delivery status, so direct-chat status reports match the SDK contract:
   `sent` is terminal until `sdk.capability.receipt_terminality` is negotiated,

@@ -331,6 +331,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   `ZmqPipelineBackendClient::list_message_history`, preserving link-bearing
   message bodies, receipt status, basic LXMF fields, and daemon pagination
   cursors for restart recovery.
+- The typed ZeroMQ SDK backend exposes the local runtime delivery destination
+  through `ZmqPipelineBackendClient::local_delivery_destination_hash` while
+  retaining `app.delivery.destination_hash` envelope execution, so direct-chat
+  source selection can stay on the typed ZeroMQ SDK path.
 - The typed ZeroMQ SDK backend preserves negotiated receipt terminality when
   mapping `sdk_status_v2` into `DeliverySnapshot`, so direct-chat delivery
   status reports `sent` as terminal only until

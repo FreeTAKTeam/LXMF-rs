@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 use zeromq::{PullSocket, PushSocket, Socket, SocketRecv, SocketSend, ZmqMessage};
 
 mod batch;
+mod destination;
 mod history;
 
 #[derive(Debug, Clone, PartialEq)]
