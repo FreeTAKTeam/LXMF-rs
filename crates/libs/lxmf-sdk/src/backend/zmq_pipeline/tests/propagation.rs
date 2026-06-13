@@ -272,7 +272,21 @@ fn propagation_remote_lifecycle_uses_zmq_sdk_envelopes_and_preserves_raw_state()
     assert_eq!(status.remote, "remote-a");
     assert_eq!(status.status["queue_depth"], json!(3));
     assert_eq!(fetch.result["imported_ids"], json!(["id-a", "id-b"]));
+    assert!(fetch.transfer_state.synced);
+    assert_eq!(fetch.transfer_state.imported_count, 2);
+    assert_eq!(fetch.transfer_state.imported_ids, vec!["id-a".to_string(), "id-b".to_string()]);
+    assert_eq!(fetch.transfer_state.transferred_bytes, 128);
+    assert_eq!(fetch.transfer_state.state_name.as_deref(), Some("completed"));
+    assert_eq!(fetch.transfer_state.sync_progress, Some(1.0));
     assert_eq!(download.result["postpone_reason"], json!("timeout"));
+    assert!(!download.transfer_state.synced);
+    assert!(download.transfer_state.postponed);
+    assert_eq!(download.transfer_state.postpone_reason.as_deref(), Some("timeout"));
+    assert_eq!(download.transfer_state.state_name.as_deref(), Some("failed"));
+    assert_eq!(
+        download.transfer_state.last_sync_error.as_deref(),
+        Some("remote download postponed")
+    );
     assert_eq!(download.propagation["last_sync_error"], json!("remote download postponed"));
     assert_eq!(sync.peer.as_deref(), Some("peer-a"));
     assert_eq!(sync.peer_sync["messages"]["unhandled_ids"], json!(["retry-a"]));

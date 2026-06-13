@@ -399,6 +399,10 @@ The project is best described by capability level:
   `peer_sync` payloads into typed `peer_sync_state`, so remote propagation sync
   callers can inspect sync status and queue transient IDs without parsing raw
   JSON while still retaining the original daemon payload.
+- `PropagationRemoteTransferResult` now projects remote fetch/download result
+  and propagation lifecycle payloads into typed `transfer_state`, covering
+  sync/postpone status, imported IDs/counts, transferred bytes, progress, and
+  last error while retaining the original daemon JSON.
 - The same branch now exposes propagation sync completion/failure
   acknowledgement as
   `ZmqPipelineBackendClient::propagation_acknowledge_sync_completion` and

@@ -115,7 +115,46 @@ pub struct PropagationRemoteStatusResult {
     pub status: JsonValue,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Default)]
+#[non_exhaustive]
+pub struct PropagationRemoteTransferState {
+    #[serde(default)]
+    pub synced: bool,
+    #[serde(default)]
+    pub postponed: bool,
+    #[serde(default)]
+    pub postpone_reason: Option<String>,
+    #[serde(default)]
+    pub imported_count: u64,
+    #[serde(default)]
+    pub imported_ids: Vec<String>,
+    #[serde(default)]
+    pub transferred_bytes: u64,
+    #[serde(default)]
+    pub state_name: Option<String>,
+    #[serde(default)]
+    pub sync_progress: Option<f64>,
+    #[serde(default)]
+    pub last_sync_error: Option<String>,
+}
+
+impl PropagationRemoteTransferState {
+    fn from_result_and_propagation(result: &JsonValue, propagation: &JsonValue) -> Self {
+        Self {
+            synced: json_bool(result, "synced").unwrap_or(false),
+            postponed: json_bool(result, "postponed").unwrap_or(false),
+            postpone_reason: json_string(result, "postpone_reason"),
+            imported_count: json_u64(result, "imported_count").unwrap_or(0),
+            imported_ids: remote_transfer_json_string_array(result, "imported_ids"),
+            transferred_bytes: json_u64(result, "transferred_bytes").unwrap_or(0),
+            state_name: json_string(propagation, "state_name"),
+            sync_progress: json_f64(propagation, "sync_progress"),
+            last_sync_error: json_string(propagation, "last_sync_error"),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq)]
 #[non_exhaustive]
 pub struct PropagationRemoteTransferResult {
     pub remote: String,
@@ -123,6 +162,34 @@ pub struct PropagationRemoteTransferResult {
     pub propagation: JsonValue,
     #[serde(default)]
     pub result: JsonValue,
+    #[serde(default)]
+    pub transfer_state: PropagationRemoteTransferState,
+}
+
+#[derive(Deserialize)]
+struct RawPropagationRemoteTransferResult {
+    remote: String,
+    #[serde(default)]
+    propagation: JsonValue,
+    #[serde(default)]
+    result: JsonValue,
+}
+
+impl<'de> Deserialize<'de> for PropagationRemoteTransferResult {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = RawPropagationRemoteTransferResult::deserialize(deserializer)?;
+        let transfer_state =
+            PropagationRemoteTransferState::from_result_and_propagation(&raw.result, &raw.propagation);
+        Ok(Self {
+            remote: raw.remote,
+            propagation: raw.propagation,
+            result: raw.result,
+            transfer_state,
+        })
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -240,6 +307,14 @@ fn json_u64(value: &JsonValue, key: &str) -> Option<u64> {
 
 fn json_string(value: &JsonValue, key: &str) -> Option<String> {
     value.get(key).and_then(JsonValue::as_str).map(ToOwned::to_owned)
+}
+
+fn remote_transfer_json_string_array(value: &JsonValue, key: &str) -> Vec<String> {
+    value
+        .get(key)
+        .and_then(JsonValue::as_array)
+        .map(|items| items.iter().filter_map(JsonValue::as_str).map(ToOwned::to_owned).collect())
+        .unwrap_or_default()
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
