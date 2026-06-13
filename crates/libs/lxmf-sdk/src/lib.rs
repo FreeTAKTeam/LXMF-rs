@@ -69,14 +69,15 @@ pub use domain::{
     PropagationFetchResult, PropagationIngestRequest, PropagationIngestResult,
     PropagationNodeListResult, PropagationNodeSelectionResult, PropagationNodeSetRequest,
     PropagationPeerMaintenanceResult, PropagationPeerSyncRequest, PropagationPeerSyncResult,
-    PropagationRemotePeerRequest, PropagationRemoteRequest, PropagationRemoteStatusResult,
-    PropagationRemoteSyncResult, PropagationRemoteTransferResult, PropagationRemoteUnpeerResult,
-    PropagationStatusResult, RemoteCommandRequest, RemoteCommandResponse, RemoteCommandSession,
-    RemoteCommandSessionListRequest, RemoteCommandSessionListResult, TelemetryPoint,
-    TelemetryQuery, TopicCreateRequest, TopicId, TopicListRequest, TopicListResult, TopicPath,
-    TopicPublishRequest, TopicRecord, TopicSubscriptionRequest, TrustLevel, VoiceSessionId,
-    VoiceSessionOpenRequest, VoiceSessionState, VoiceSessionUpdateRequest,
-    WorkflowPeerReadyRequest, WorkflowPeerReadyResult,
+    PropagationRecoveryStateResult, PropagationRemotePeerRequest, PropagationRemoteRequest,
+    PropagationRemoteStatusResult, PropagationRemoteSyncResult, PropagationRemoteTransferResult,
+    PropagationRemoteUnpeerResult, PropagationStatusResult, RemoteCommandRequest,
+    RemoteCommandResponse, RemoteCommandSession, RemoteCommandSessionListRequest,
+    RemoteCommandSessionListResult, TelemetryPoint, TelemetryQuery, TopicCreateRequest, TopicId,
+    TopicListRequest, TopicListResult, TopicPath, TopicPublishRequest, TopicRecord,
+    TopicSubscriptionRequest, TrustLevel, VoiceSessionId, VoiceSessionOpenRequest,
+    VoiceSessionState, VoiceSessionUpdateRequest, WorkflowPeerReadyRequest,
+    WorkflowPeerReadyResult,
 };
 pub use error::{code as error_code, ErrorCategory, ErrorDetails, SdkError};
 // Stability class: stable

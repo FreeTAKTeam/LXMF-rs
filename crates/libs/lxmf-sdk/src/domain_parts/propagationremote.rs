@@ -159,6 +159,85 @@ pub struct PropagationStatusResult {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[non_exhaustive]
+pub struct PropagationRecoveryStateResult {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub selected_node: Option<String>,
+    #[serde(default)]
+    pub sync_state: u32,
+    #[serde(default)]
+    pub state_name: Option<String>,
+    #[serde(default)]
+    pub sync_progress: Option<f64>,
+    #[serde(default)]
+    pub last_sync_started: Option<i64>,
+    #[serde(default)]
+    pub last_sync_completed: Option<i64>,
+    #[serde(default)]
+    pub last_sync_error: Option<String>,
+    #[serde(default)]
+    pub total_ingested: u64,
+    #[serde(default)]
+    pub last_ingest_count: u64,
+    #[serde(default)]
+    pub client_propagation_messages_received: u64,
+    #[serde(default)]
+    pub client_propagation_messages_served: u64,
+    #[serde(default)]
+    pub propagation: JsonValue,
+}
+
+impl PropagationRecoveryStateResult {
+    pub fn from_propagation(propagation: JsonValue) -> Self {
+        Self {
+            enabled: json_bool(&propagation, "enabled").unwrap_or(false),
+            selected_node: json_string(&propagation, "selected_node"),
+            sync_state: json_u64(&propagation, "sync_state").unwrap_or(0) as u32,
+            state_name: json_string(&propagation, "state_name"),
+            sync_progress: json_f64(&propagation, "sync_progress"),
+            last_sync_started: json_i64(&propagation, "last_sync_started"),
+            last_sync_completed: json_i64(&propagation, "last_sync_completed"),
+            last_sync_error: json_string(&propagation, "last_sync_error"),
+            total_ingested: json_u64(&propagation, "total_ingested").unwrap_or(0),
+            last_ingest_count: json_u64(&propagation, "last_ingest_count").unwrap_or(0),
+            client_propagation_messages_received: json_u64(
+                &propagation,
+                "client_propagation_messages_received",
+            )
+            .unwrap_or(0),
+            client_propagation_messages_served: json_u64(
+                &propagation,
+                "client_propagation_messages_served",
+            )
+            .unwrap_or(0),
+            propagation,
+        }
+    }
+}
+
+fn json_bool(value: &JsonValue, key: &str) -> Option<bool> {
+    value.get(key).and_then(JsonValue::as_bool)
+}
+
+fn json_f64(value: &JsonValue, key: &str) -> Option<f64> {
+    value.get(key).and_then(JsonValue::as_f64)
+}
+
+fn json_i64(value: &JsonValue, key: &str) -> Option<i64> {
+    value.get(key).and_then(JsonValue::as_i64)
+}
+
+fn json_u64(value: &JsonValue, key: &str) -> Option<u64> {
+    value.get(key).and_then(JsonValue::as_u64)
+}
+
+fn json_string(value: &JsonValue, key: &str) -> Option<String> {
+    value.get(key).and_then(JsonValue::as_str).map(ToOwned::to_owned)
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[non_exhaustive]
 pub struct PropagationDeliveryPolicyResult {
     #[serde(default)]
     pub policy: JsonValue,

@@ -6,9 +6,9 @@ use crate::domain::{
     PropagationFetchRequest, PropagationFetchResult, PropagationIngestRequest,
     PropagationIngestResult, PropagationNodeListResult, PropagationNodeSelectionResult,
     PropagationNodeSetRequest, PropagationPeerMaintenanceResult, PropagationPeerSyncRequest,
-    PropagationPeerSyncResult, PropagationRemotePeerRequest, PropagationRemoteRequest,
-    PropagationRemoteStatusResult, PropagationRemoteSyncResult, PropagationRemoteTransferResult,
-    PropagationRemoteUnpeerResult, PropagationStatusResult,
+    PropagationPeerSyncResult, PropagationRecoveryStateResult, PropagationRemotePeerRequest,
+    PropagationRemoteRequest, PropagationRemoteStatusResult, PropagationRemoteSyncResult,
+    PropagationRemoteTransferResult, PropagationRemoteUnpeerResult, PropagationStatusResult,
 };
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -91,6 +91,11 @@ impl ZmqPipelineBackendClient {
 
     pub fn propagation_status(&self) -> Result<PropagationStatusResult, SdkError> {
         self.execute_propagation_query("app.propagation.status", json!({}))
+    }
+
+    pub fn propagation_recovery_state(&self) -> Result<PropagationRecoveryStateResult, SdkError> {
+        let status = self.propagation_status()?;
+        Ok(PropagationRecoveryStateResult::from_propagation(status.propagation))
     }
 
     pub fn propagation_enable(

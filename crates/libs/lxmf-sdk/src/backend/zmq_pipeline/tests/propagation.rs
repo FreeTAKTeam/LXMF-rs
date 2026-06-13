@@ -711,6 +711,77 @@ fn propagation_local_lifecycle_uses_zmq_sdk_envelopes_and_preserves_policy_state
 }
 
 #[test]
+fn propagation_recovery_state_projects_status_for_zmq_sdk_clients() {
+    let command_endpoint = unused_loopback_endpoint();
+    let response_endpoint = unused_loopback_endpoint();
+    let captured = Arc::new(Mutex::new(None));
+    let server = spawn_single_response_zmq_server(
+        command_endpoint.clone(),
+        json!({
+            "response": {
+                "operation_id": "app.propagation.status",
+                "kind": "result",
+                "accepted": true,
+                "correlation_id": null,
+                "payload": {
+                    "propagation": {
+                        "enabled": true,
+                        "selected_node": "router-recovery",
+                        "sync_state": 254,
+                        "state_name": "failed",
+                        "sync_progress": 0.25,
+                        "last_sync_started": 1_700_010_000,
+                        "last_sync_completed": null,
+                        "last_sync_error": "remote sync timed out",
+                        "total_ingested": 7,
+                        "last_ingest_count": 2,
+                        "client_propagation_messages_received": 5,
+                        "client_propagation_messages_served": 3
+                    }
+                }
+            }
+        }),
+        Arc::clone(&captured),
+    );
+    let mut config = ZmqPipelineBackendConfig::local_tcp(command_endpoint, response_endpoint);
+    config.request_timeout = std::time::Duration::from_secs(2);
+    let client = ZmqPipelineBackendClient::new(config).expect("zmq client");
+
+    let state = client.propagation_recovery_state().expect("propagation recovery state");
+
+    assert!(state.enabled);
+    assert_eq!(state.selected_node.as_deref(), Some("router-recovery"));
+    assert_eq!(state.sync_state, 254);
+    assert_eq!(state.state_name.as_deref(), Some("failed"));
+    assert_eq!(state.sync_progress, Some(0.25));
+    assert_eq!(state.last_sync_started, Some(1_700_010_000));
+    assert_eq!(state.last_sync_completed, None);
+    assert_eq!(state.last_sync_error.as_deref(), Some("remote sync timed out"));
+    assert_eq!(state.total_ingested, 7);
+    assert_eq!(state.last_ingest_count, 2);
+    assert_eq!(state.client_propagation_messages_received, 5);
+    assert_eq!(state.client_propagation_messages_served, 3);
+    assert_eq!(state.propagation["sync_state"], json!(254));
+
+    let captured = captured.lock().expect("captured request");
+    let request = captured.as_ref().expect("zmq request");
+    assert_eq!(request.method, "sdk_envelope_execute_v2");
+    assert_eq!(
+        request.params,
+        Some(json!({
+            "operation_id": "app.propagation.status",
+            "kind": "query",
+            "target": null,
+            "correlation_id": null,
+            "timeout_ms": null,
+            "payload": {},
+            "extensions": {}
+        }))
+    );
+    server.join().expect("server joined");
+}
+
+#[test]
 fn propagation_local_payload_ingest_and_fetch_use_zmq_sdk_envelopes() {
     let command_endpoint = unused_loopback_endpoint();
     let response_endpoint = unused_loopback_endpoint();

@@ -411,6 +411,11 @@ The project is best described by capability level:
   `propagation_fetch`, backed by `app.propagation.ingest` and
   `app.propagation.fetch` envelopes that preserve transient IDs, payload bytes,
   duplicate accounting, and durable store recovery through the ZeroMQ SDK path.
+- The typed propagation branch now also exposes
+  `ZmqPipelineBackendClient::propagation_recovery_state`, projecting
+  `app.propagation.status` into structured sync state, selected-node,
+  last-error, timestamp, and local ingest/serve counters while retaining the
+  raw propagation payload for queue recovery diagnostics.
 - Locally delivered inbound peer propagation payloads now also store the
   accepted transient and apply source-aware relay fan-out without double
   counting source peer activity, so local delivery does not bypass relay queue
