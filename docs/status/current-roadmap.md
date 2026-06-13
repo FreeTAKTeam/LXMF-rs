@@ -102,6 +102,9 @@ The project is best described by capability level:
 - Remote fetch/download/sync imports now validate the full returned propagation
   payload batch before mutating the local store or in-memory payload cache, so a
   mixed valid/invalid remote response fails without leaving partial relay state.
+- Remote fetch/download/sync imports now also reject payloads for ignored
+  destinations during batch validation, so remote relay responses cannot bypass
+  local replication policy or queue ignored work to peers.
 - Malformed remote fetch and download imports now mirror existing
   payload-backed live queue marks into active peer record snapshots before
   failing, preserving restart/export retry state for already queued relay work.

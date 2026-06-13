@@ -32,6 +32,12 @@ impl RpcDaemon {
             let Some((payload, payload_hex)) = remote_propagation_message_payload(message)? else {
                 continue;
             };
+            if self.propagation_payload_destination_is_ignored(payload.as_slice()) {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "ignored propagation destination",
+                ));
+            }
             let canonical_transient_id = {
                 let mut hasher = Sha256::new();
                 hasher.update(payload.as_slice());

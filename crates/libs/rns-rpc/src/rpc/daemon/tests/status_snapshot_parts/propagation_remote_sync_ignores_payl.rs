@@ -198,6 +198,75 @@ fn propagation_remote_fetch_imports_payloads_into_local_store() {
 }
 
 #[test]
+fn propagation_remote_fetch_rejects_ignored_destination_without_queueing() {
+    let mut payload = vec![0x44_u8; 16];
+    payload.extend_from_slice(b"remote-fetch-ignored-destination-payload");
+    let payload_hex = hex::encode(&payload);
+    let transient_id = hex::encode(Sha256::digest(&payload));
+    let destination_hex = "44".repeat(16);
+    let daemon = RpcDaemon::test_instance();
+    daemon
+        .handle_rpc(rpc_request(
+            72,
+            "set_delivery_policy",
+            json!({
+                "ignored_destinations": [destination_hex],
+            }),
+        ))
+        .expect("configure ignored destination");
+    daemon
+        .handle_rpc(rpc_request(73, "peer_sync", json!({ "peer": "peer-fetch-ignored-relay" })))
+        .expect("seed relay peer");
+    daemon.set_remote_control_bridge(Arc::new(TestRemoteControlBridge {
+        result: Ok(json!({
+            "available_count": 1,
+            "fetched_count": 1,
+            "messages": [{
+                "transient_id": transient_id,
+                "destination": destination_hex,
+                "payload_hex": payload_hex,
+            }],
+        })),
+    }));
+
+    let err = daemon
+        .handle_rpc(rpc_request(
+            74,
+            "propagation_remote_fetch",
+            json!({
+                "remote": "remote-node",
+            }),
+        ))
+        .expect_err("remote fetch for ignored destination should be rejected");
+    assert!(err.to_string().contains("ignored propagation destination"));
+
+    assert!(
+        daemon
+            .store
+            .get_propagation_entry(transient_id.as_str())
+            .expect("lookup ignored payload")
+            .is_none()
+    );
+    assert!(
+        daemon
+            .store
+            .list_peer_unhandled_propagation("peer-fetch-ignored-relay")
+            .expect("relay queue after ignored import")
+            .is_empty()
+    );
+    let status = daemon
+        .handle_rpc(RpcRequest { id: 75, method: "propagation_status".to_string(), params: None })
+        .expect("propagation status")
+        .result
+        .expect("propagation status result");
+    assert_eq!(status["propagation"]["state_name"].as_str(), Some("failed"));
+    assert_eq!(
+        status["propagation"]["last_sync_error"].as_str(),
+        Some("ignored propagation destination")
+    );
+}
+
+#[test]
 fn propagation_remote_fetch_marks_source_received_and_queues_other_peers() {
     let payload = b"remote-fetch-source-peer-payload";
     let payload_hex = hex::encode(payload);
