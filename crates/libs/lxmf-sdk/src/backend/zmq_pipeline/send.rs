@@ -15,11 +15,7 @@ pub(super) fn send_params(req: SendRequest, message_id: String) -> JsonValue {
         correlation_id,
         extensions,
     } = req;
-    let content = payload
-        .get("content")
-        .and_then(JsonValue::as_str)
-        .map(str::to_owned)
-        .unwrap_or_else(|| payload.to_string());
+    let content = message_content(&payload);
     let title =
         payload.get("title").and_then(JsonValue::as_str).map(str::to_owned).unwrap_or_default();
     let mut fields = match payload {
@@ -80,11 +76,7 @@ fn batch_item_params(item: BatchSendItem) -> JsonValue {
         include_ticket,
         try_propagation_on_fail,
     } = item;
-    let content = payload
-        .get("content")
-        .and_then(JsonValue::as_str)
-        .map(str::to_owned)
-        .unwrap_or_else(|| payload.to_string());
+    let content = message_content(&payload);
     let title =
         payload.get("title").and_then(JsonValue::as_str).map(str::to_owned).unwrap_or_default();
     let fields = match payload {
@@ -102,4 +94,13 @@ fn batch_item_params(item: BatchSendItem) -> JsonValue {
         "include_ticket": include_ticket,
         "try_propagation_on_fail": try_propagation_on_fail,
     })
+}
+
+fn message_content(payload: &JsonValue) -> String {
+    payload
+        .get("content")
+        .or_else(|| payload.get("body"))
+        .and_then(JsonValue::as_str)
+        .map(str::to_owned)
+        .unwrap_or_else(|| payload.to_string())
 }

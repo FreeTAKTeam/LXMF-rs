@@ -72,6 +72,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   non-UTF8 title/content bytes retain client-visible fidelity.
 - Documented basic field IDs are exported from `lxmf-wire`, and the typed
   ZeroMQ SDK send path preserves those keys plus `_lxmf_fields_msgpack_b64`.
+- The typed ZeroMQ SDK send and batch-send paths map payload `body` into the
+  LXMF message content when `content` is absent, while retaining the original
+  `body` field for clients that store or render direct-chat bodies.
 
 ### Delivery and receipts
 

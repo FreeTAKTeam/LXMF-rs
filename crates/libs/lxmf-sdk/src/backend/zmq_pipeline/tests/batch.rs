@@ -45,7 +45,7 @@ fn send_batch_uses_zmq_sdk_method_and_decodes_ordered_results() {
                     "peer-a",
                     json!({
                         "title": "hello a",
-                        "content": "payload a",
+                        "body": "payload a https://example.invalid/a",
                         "FIELD_THREAD": "thread-a"
                     }),
                 )
@@ -84,7 +84,11 @@ fn send_batch_uses_zmq_sdk_method_and_decodes_ordered_results() {
     assert_eq!(params["messages"][0]["id"], json!("batch-msg-1"));
     assert_eq!(params["messages"][0]["destination"], json!("peer-a"));
     assert_eq!(params["messages"][0]["title"], json!("hello a"));
-    assert_eq!(params["messages"][0]["content"], json!("payload a"));
+    assert_eq!(params["messages"][0]["content"], json!("payload a https://example.invalid/a"));
+    assert_eq!(
+        params["messages"][0]["fields"]["body"],
+        json!("payload a https://example.invalid/a")
+    );
     assert_eq!(params["messages"][0]["fields"]["FIELD_THREAD"], json!("thread-a"));
     assert_eq!(params["messages"][0]["method"], json!("direct"));
     assert_eq!(params["messages"][0]["include_ticket"], json!(false));

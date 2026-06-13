@@ -658,7 +658,7 @@ fn send_uses_zmq_sdk_method_and_preserves_delivery_options() {
                 "target-destination",
                 json!({
                     "title": "RCH",
-                    "content": "hello",
+                    "body": "hello https://example.invalid/incident/42",
                     "9": [{
                         "command_type": "checklist.create.online"
                     }]
@@ -679,6 +679,8 @@ fn send_uses_zmq_sdk_method_and_preserves_delivery_options() {
     let params = request.params.as_ref().expect("params");
     assert_eq!(params["source"], json!("source-destination"));
     assert_eq!(params["destination"], json!("target-destination"));
+    assert_eq!(params["content"], json!("hello https://example.invalid/incident/42"));
+    assert_eq!(params["fields"]["body"], json!("hello https://example.invalid/incident/42"));
     assert_eq!(params["method"], json!("direct"));
     assert_eq!(params["try_propagation_on_fail"], json!(true));
     assert_eq!(params["stamp_cost"], json!(16));
