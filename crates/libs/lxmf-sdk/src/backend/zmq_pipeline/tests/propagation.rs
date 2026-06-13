@@ -503,3 +503,209 @@ fn propagation_node_lifecycle_uses_zmq_sdk_envelopes_and_preserves_router_state(
     assert_eq!(captured[2].params.as_ref().expect("params")["payload"], json!({}));
     server.join().expect("server joined");
 }
+
+#[test]
+fn propagation_local_lifecycle_uses_zmq_sdk_envelopes_and_preserves_policy_state() {
+    let command_endpoint = unused_loopback_endpoint();
+    let response_endpoint = unused_loopback_endpoint();
+    let captured = Arc::new(Mutex::new(Vec::new()));
+    let server = spawn_response_sequence_zmq_server(
+        command_endpoint.clone(),
+        vec![
+            json!({
+                "response": {
+                    "operation_id": "app.propagation.status",
+                    "kind": "result",
+                    "accepted": true,
+                    "correlation_id": null,
+                    "payload": {
+                        "propagation": {
+                            "enabled": false,
+                            "sync_state": 0,
+                            "state_name": "idle",
+                            "selected_node": null
+                        }
+                    }
+                }
+            }),
+            json!({
+                "response": {
+                    "operation_id": "app.propagation.enable",
+                    "kind": "result",
+                    "accepted": true,
+                    "correlation_id": null,
+                    "payload": {
+                        "propagation": {
+                            "enabled": true,
+                            "auth_required": true,
+                            "static_peers": ["router-a"],
+                            "sync_limit": 64
+                        }
+                    }
+                }
+            }),
+            json!({
+                "response": {
+                    "operation_id": "app.propagation.delivery_policy.get",
+                    "kind": "result",
+                    "accepted": true,
+                    "correlation_id": null,
+                    "payload": {
+                        "policy": {
+                            "auth_required": true,
+                            "allowed_destinations": ["dest-allow"],
+                            "denied_destinations": ["dest-deny"],
+                            "ignored_destinations": [],
+                            "prioritised_destinations": ["dest-priority"]
+                        }
+                    }
+                }
+            }),
+            json!({
+                "response": {
+                    "operation_id": "app.propagation.delivery_policy.set",
+                    "kind": "result",
+                    "accepted": true,
+                    "correlation_id": null,
+                    "payload": {
+                        "policy": {
+                            "auth_required": false,
+                            "allowed_destinations": ["dest-allow"],
+                            "denied_destinations": ["dest-deny-b"],
+                            "ignored_destinations": ["dest-ignore"],
+                            "prioritised_destinations": ["dest-priority"]
+                        }
+                    }
+                }
+            }),
+            json!({
+                "response": {
+                    "operation_id": "app.propagation.peer_maintenance",
+                    "kind": "result",
+                    "accepted": true,
+                    "correlation_id": null,
+                    "payload": {
+                        "timestamp": 1_700_001_000,
+                        "culled": 1,
+                        "culled_peers": ["peer-stale"],
+                        "rotated": 1,
+                        "rotated_peers": ["peer-slow"],
+                        "synced_peer": "peer-sync",
+                        "peer_sync": {
+                            "peer": "peer-sync",
+                            "postponed": false,
+                            "messages": {
+                                "unhandled_ids": ["msg-a"]
+                            }
+                        },
+                        "max_unreachable_secs": 604800
+                    }
+                }
+            }),
+        ],
+        Arc::clone(&captured),
+    );
+    let mut config = ZmqPipelineBackendConfig::local_tcp(command_endpoint, response_endpoint);
+    config.request_timeout = std::time::Duration::from_secs(2);
+    let client = ZmqPipelineBackendClient::new(config).expect("zmq client");
+
+    let status = client.propagation_status().expect("propagation status");
+    let enabled = client
+        .propagation_enable(crate::PropagationEnableRequest {
+            enabled: true,
+            auth_required: Some(true),
+            store_root: Some("propagation-store".to_string()),
+            target_cost: Some(12),
+            stamp_cost_flexibility: Some(4),
+            message_storage_limit_mb: Some(256),
+            delivery_limit: Some(16),
+            propagation_limit: Some(32),
+            sync_limit: Some(64),
+            autopeer: Some(true),
+            autopeer_maxdepth: Some(2),
+            static_peers: Some(vec!["router-a".to_string()]),
+            max_peers: Some(8),
+            from_static_only: Some(true),
+            retain_synced_on_node: Some(false),
+            peering_cost: Some(10),
+            remote_peering_cost_max: Some(20),
+        })
+        .expect("propagation enable");
+    let policy = client.propagation_delivery_policy_get().expect("delivery policy get");
+    let updated_policy = client
+        .propagation_delivery_policy_set(crate::PropagationDeliveryPolicyRequest {
+            auth_required: Some(false),
+            allowed_destinations: None,
+            denied_destinations: Some(vec!["dest-deny-b".to_string()]),
+            ignored_destinations: Some(vec!["dest-ignore".to_string()]),
+            prioritised_destinations: None,
+        })
+        .expect("delivery policy set");
+    let maintenance = client.propagation_peer_maintenance().expect("peer maintenance");
+
+    assert_eq!(status.propagation["enabled"], json!(false));
+    assert_eq!(enabled.propagation["static_peers"], json!(["router-a"]));
+    assert_eq!(policy.policy["denied_destinations"], json!(["dest-deny"]));
+    assert_eq!(updated_policy.policy["ignored_destinations"], json!(["dest-ignore"]));
+    assert_eq!(maintenance.culled, 1);
+    assert_eq!(maintenance.rotated_peers, vec!["peer-slow".to_string()]);
+    assert_eq!(maintenance.peer_sync["messages"]["unhandled_ids"], json!(["msg-a"]));
+
+    let captured = captured.lock().expect("captured requests");
+    let operation_ids = captured
+        .iter()
+        .map(|request| request.params.as_ref().expect("params")["operation_id"].clone())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        operation_ids,
+        vec![
+            json!("app.propagation.status"),
+            json!("app.propagation.enable"),
+            json!("app.propagation.delivery_policy.get"),
+            json!("app.propagation.delivery_policy.set"),
+            json!("app.propagation.peer_maintenance"),
+        ]
+    );
+    let kinds = captured
+        .iter()
+        .map(|request| request.params.as_ref().expect("params")["kind"].clone())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        kinds,
+        vec![json!("query"), json!("command"), json!("query"), json!("command"), json!("command")]
+    );
+    assert_eq!(captured[0].params.as_ref().expect("params")["payload"], json!({}));
+    assert_eq!(
+        captured[1].params.as_ref().expect("params")["payload"],
+        json!({
+            "enabled": true,
+            "auth_required": true,
+            "store_root": "propagation-store",
+            "target_cost": 12,
+            "stamp_cost_flexibility": 4,
+            "message_storage_limit_mb": 256,
+            "delivery_limit": 16,
+            "propagation_limit": 32,
+            "sync_limit": 64,
+            "autopeer": true,
+            "autopeer_maxdepth": 2,
+            "static_peers": ["router-a"],
+            "max_peers": 8,
+            "from_static_only": true,
+            "retain_synced_on_node": false,
+            "peering_cost": 10,
+            "remote_peering_cost_max": 20
+        })
+    );
+    assert_eq!(captured[2].params.as_ref().expect("params")["payload"], json!({}));
+    assert_eq!(
+        captured[3].params.as_ref().expect("params")["payload"],
+        json!({
+            "auth_required": false,
+            "denied_destinations": ["dest-deny-b"],
+            "ignored_destinations": ["dest-ignore"]
+        })
+    );
+    assert_eq!(captured[4].params.as_ref().expect("params")["payload"], json!({}));
+    server.join().expect("server joined");
+}

@@ -1,11 +1,13 @@
 use super::{code, ErrorCategory, SdkError, ZmqPipelineBackendClient};
 use crate::app::{Envelope, EnvelopeResponse};
 use crate::domain::{
-    PropagationAcknowledgeSyncRequest, PropagationAcknowledgeSyncResult, PropagationNodeListResult,
-    PropagationNodeSelectionResult, PropagationNodeSetRequest, PropagationPeerSyncRequest,
-    PropagationPeerSyncResult, PropagationRemotePeerRequest, PropagationRemoteRequest,
-    PropagationRemoteStatusResult, PropagationRemoteSyncResult, PropagationRemoteTransferResult,
-    PropagationRemoteUnpeerResult,
+    PropagationAcknowledgeSyncRequest, PropagationAcknowledgeSyncResult,
+    PropagationDeliveryPolicyRequest, PropagationDeliveryPolicyResult, PropagationEnableRequest,
+    PropagationNodeListResult, PropagationNodeSelectionResult, PropagationNodeSetRequest,
+    PropagationPeerMaintenanceResult, PropagationPeerSyncRequest, PropagationPeerSyncResult,
+    PropagationRemotePeerRequest, PropagationRemoteRequest, PropagationRemoteStatusResult,
+    PropagationRemoteSyncResult, PropagationRemoteTransferResult, PropagationRemoteUnpeerResult,
+    PropagationStatusResult,
 };
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -84,6 +86,36 @@ impl ZmqPipelineBackendClient {
 
     pub fn propagation_node_list(&self) -> Result<PropagationNodeListResult, SdkError> {
         self.execute_propagation_query("app.propagation.node.list", json!({}))
+    }
+
+    pub fn propagation_status(&self) -> Result<PropagationStatusResult, SdkError> {
+        self.execute_propagation_query("app.propagation.status", json!({}))
+    }
+
+    pub fn propagation_enable(
+        &self,
+        req: PropagationEnableRequest,
+    ) -> Result<PropagationStatusResult, SdkError> {
+        self.execute_propagation_envelope("app.propagation.enable", req)
+    }
+
+    pub fn propagation_delivery_policy_get(
+        &self,
+    ) -> Result<PropagationDeliveryPolicyResult, SdkError> {
+        self.execute_propagation_query("app.propagation.delivery_policy.get", json!({}))
+    }
+
+    pub fn propagation_delivery_policy_set(
+        &self,
+        req: PropagationDeliveryPolicyRequest,
+    ) -> Result<PropagationDeliveryPolicyResult, SdkError> {
+        self.execute_propagation_envelope("app.propagation.delivery_policy.set", req)
+    }
+
+    pub fn propagation_peer_maintenance(
+        &self,
+    ) -> Result<PropagationPeerMaintenanceResult, SdkError> {
+        self.execute_propagation_envelope("app.propagation.peer_maintenance", json!({}))
     }
 
     fn execute_propagation_envelope<T, R>(

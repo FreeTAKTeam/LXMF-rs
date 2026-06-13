@@ -66,6 +66,17 @@ fn sdk_release_c_domain_methods_roundtrip() {
     assert!(registry_entries
         .iter()
         .any(|entry| entry["id"] == json!("app.propagation.node.list")));
+    assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.propagation.status")));
+    assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.propagation.enable")));
+    assert!(registry_entries
+        .iter()
+        .any(|entry| entry["id"] == json!("app.propagation.delivery_policy.get")));
+    assert!(registry_entries
+        .iter()
+        .any(|entry| entry["id"] == json!("app.propagation.delivery_policy.set")));
+    assert!(registry_entries
+        .iter()
+        .any(|entry| entry["id"] == json!("app.propagation.peer_maintenance")));
 
     let list_before =
         daemon.handle_rpc(rpc_request(120, "sdk_identity_list_v2", json!({}))).expect("list");
@@ -370,6 +381,159 @@ fn sdk_release_c_domain_methods_roundtrip() {
         .expect("node list")
         .iter()
         .any(|node| node["peer"] == json!("router-sdk-prop") && node["selected"] == json!(true)));
+
+    let propagation_status_envelope = daemon
+        .handle_rpc(rpc_request(
+            1212,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "app.propagation.status",
+                "kind": "query",
+                "correlation_id": "propagation-status-corr-1",
+                "payload": {},
+            }),
+        ))
+        .expect("propagation status envelope");
+    assert!(propagation_status_envelope.error.is_none());
+    let propagation_status_response =
+        propagation_status_envelope.result.expect("propagation status envelope result");
+    assert_eq!(
+        propagation_status_response["response"]["operation_id"],
+        json!("app.propagation.status")
+    );
+    assert_eq!(
+        propagation_status_response["response"]["correlation_id"],
+        json!("propagation-status-corr-1")
+    );
+    assert_eq!(
+        propagation_status_response["response"]["payload"]["propagation"]["selected_node"],
+        json!("router-sdk-prop")
+    );
+
+    let propagation_enable_envelope = daemon
+        .handle_rpc(rpc_request(
+            1213,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "app.propagation.enable",
+                "kind": "command",
+                "correlation_id": "propagation-enable-corr-1",
+                "payload": {
+                    "enabled": true,
+                    "auth_required": true,
+                    "static_peers": ["router-sdk-prop"],
+                    "sync_limit": 64
+                },
+            }),
+        ))
+        .expect("propagation enable envelope");
+    assert!(propagation_enable_envelope.error.is_none());
+    let propagation_enable_response =
+        propagation_enable_envelope.result.expect("propagation enable envelope result");
+    assert_eq!(
+        propagation_enable_response["response"]["operation_id"],
+        json!("app.propagation.enable")
+    );
+    assert_eq!(
+        propagation_enable_response["response"]["correlation_id"],
+        json!("propagation-enable-corr-1")
+    );
+    assert_eq!(
+        propagation_enable_response["response"]["payload"]["propagation"]["enabled"],
+        json!(true)
+    );
+    assert_eq!(
+        propagation_enable_response["response"]["payload"]["propagation"]["auth_required"],
+        json!(true)
+    );
+
+    let delivery_policy_get_envelope = daemon
+        .handle_rpc(rpc_request(
+            1214,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "app.propagation.delivery_policy.get",
+                "kind": "query",
+                "correlation_id": "delivery-policy-get-corr-1",
+                "payload": {},
+            }),
+        ))
+        .expect("delivery policy get envelope");
+    assert!(delivery_policy_get_envelope.error.is_none());
+    let delivery_policy_get_response =
+        delivery_policy_get_envelope.result.expect("delivery policy get envelope result");
+    assert_eq!(
+        delivery_policy_get_response["response"]["operation_id"],
+        json!("app.propagation.delivery_policy.get")
+    );
+    assert_eq!(
+        delivery_policy_get_response["response"]["payload"]["policy"]["auth_required"],
+        json!(false)
+    );
+
+    let delivery_policy_set_envelope = daemon
+        .handle_rpc(rpc_request(
+            1215,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "app.propagation.delivery_policy.set",
+                "kind": "command",
+                "correlation_id": "delivery-policy-set-corr-1",
+                "payload": {
+                    "auth_required": true,
+                    "denied_destinations": ["denied-sdk"],
+                    "ignored_destinations": ["ignored-sdk"]
+                },
+            }),
+        ))
+        .expect("delivery policy set envelope");
+    assert!(delivery_policy_set_envelope.error.is_none());
+    let delivery_policy_set_response =
+        delivery_policy_set_envelope.result.expect("delivery policy set envelope result");
+    assert_eq!(
+        delivery_policy_set_response["response"]["operation_id"],
+        json!("app.propagation.delivery_policy.set")
+    );
+    assert_eq!(
+        delivery_policy_set_response["response"]["correlation_id"],
+        json!("delivery-policy-set-corr-1")
+    );
+    assert_eq!(
+        delivery_policy_set_response["response"]["payload"]["policy"]["denied_destinations"],
+        json!(["denied-sdk"])
+    );
+    assert_eq!(
+        delivery_policy_set_response["response"]["payload"]["policy"]["ignored_destinations"],
+        json!(["ignored-sdk"])
+    );
+
+    let peer_maintenance_envelope = daemon
+        .handle_rpc(rpc_request(
+            1216,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "app.propagation.peer_maintenance",
+                "kind": "command",
+                "correlation_id": "peer-maintenance-corr-1",
+                "payload": {},
+            }),
+        ))
+        .expect("peer maintenance envelope");
+    assert!(peer_maintenance_envelope.error.is_none());
+    let peer_maintenance_response =
+        peer_maintenance_envelope.result.expect("peer maintenance envelope result");
+    assert_eq!(
+        peer_maintenance_response["response"]["operation_id"],
+        json!("app.propagation.peer_maintenance")
+    );
+    assert_eq!(
+        peer_maintenance_response["response"]["correlation_id"],
+        json!("peer-maintenance-corr-1")
+    );
+    assert!(peer_maintenance_response["response"]["payload"]["culled"].is_number());
+    assert!(peer_maintenance_response["response"]["payload"]["rotated"].is_number());
+    assert!(peer_maintenance_response["response"]["payload"]["peer_sync"].is_object()
+        || peer_maintenance_response["response"]["payload"]["peer_sync"].is_null());
 
     let identity_bundle = json!({
         "identity": "node-b",

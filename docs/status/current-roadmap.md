@@ -401,6 +401,11 @@ The project is best described by capability level:
   `propagation_node_set`, and `propagation_node_list`, backed by
   `app.propagation.node.*` envelopes that preserve selected-node and node-list
   metadata without raw RPC.
+- The typed propagation branch now also exposes local propagation status,
+  enable/config, delivery policy get/set, and peer maintenance through
+  `ZmqPipelineBackendClient` methods and `app.propagation.*` envelopes, keeping
+  daemon policy, stale-peer cleanup, and retry/maintenance state visible without
+  raw RPC.
 - Locally delivered inbound peer propagation payloads now also store the
   accepted transient and apply source-aware relay fan-out without double
   counting source peer activity, so local delivery does not bypass relay queue

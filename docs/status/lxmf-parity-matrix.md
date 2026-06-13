@@ -412,6 +412,11 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   `propagation_node_set`, and `propagation_node_list`, backed by
   `app.propagation.node.*` envelopes that preserve selected-node and node-list
   metadata for REM/RCH router lifecycle flows.
+- The same typed propagation branch now covers local propagation status,
+  enable/config, delivery policy get/set, and peer maintenance through
+  `ZmqPipelineBackendClient` methods and `app.propagation.*` envelopes, keeping
+  policy, stale-peer cleanup, and retry/maintenance state available without raw
+  RPC calls.
 - Python-style `lxmd` `[lxmf] announce_interval` drives peer/delivery announce
   cadence separately from `[propagation] announce_interval`, which remains the
   propagation-node announce cadence.

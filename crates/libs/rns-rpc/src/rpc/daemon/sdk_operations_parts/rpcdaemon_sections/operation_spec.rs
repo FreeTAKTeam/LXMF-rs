@@ -123,7 +123,12 @@ impl RpcDaemon {
             | "propagation_acknowledge_sync_completion"
             | "get_outbound_propagation_node"
             | "set_outbound_propagation_node"
-            | "list_propagation_nodes" => self.handle_rpc_legacy_propagation(RpcRequest {
+            | "list_propagation_nodes"
+            | "propagation_status"
+            | "propagation_enable"
+            | "get_delivery_policy"
+            | "set_delivery_policy"
+            | "propagation_peer_maintenance" => self.handle_rpc_legacy_propagation(RpcRequest {
                 id: request_id,
                 method: method.to_owned(),
                 params: Some(params),

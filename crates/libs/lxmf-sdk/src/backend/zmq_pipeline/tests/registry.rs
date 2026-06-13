@@ -33,6 +33,11 @@ fn operation_registry_uses_zmq_sdk_method_for_chat_peer_and_propagation_operatio
         "app.propagation.node.get",
         "app.propagation.node.set",
         "app.propagation.node.list",
+        "app.propagation.status",
+        "app.propagation.enable",
+        "app.propagation.delivery_policy.get",
+        "app.propagation.delivery_policy.set",
+        "app.propagation.peer_maintenance",
     ] {
         assert!(registry.supports(operation_id), "{operation_id}");
     }

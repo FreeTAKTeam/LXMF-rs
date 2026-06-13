@@ -80,5 +80,45 @@ fn propagation_operation_entries() -> Vec<OperationEntry> {
             "List known outbound propagation router nodes and selection state.",
         )
         .with_alias("list_propagation_nodes"),
+        OperationEntry::new(
+            "app.propagation.status",
+            "propagation",
+            OperationKind::Query,
+            TransportVariant::LegacyRpc,
+            "Return local propagation configuration, counters, sync state, and selected router state.",
+        )
+        .with_alias("propagation_status"),
+        OperationEntry::new(
+            "app.propagation.enable",
+            "propagation",
+            OperationKind::Command,
+            TransportVariant::LegacyRpc,
+            "Enable or update local propagation configuration and return the resulting state.",
+        )
+        .with_alias("propagation_enable"),
+        OperationEntry::new(
+            "app.propagation.delivery_policy.get",
+            "propagation",
+            OperationKind::Query,
+            TransportVariant::LegacyRpc,
+            "Return the local propagation delivery policy.",
+        )
+        .with_alias("get_delivery_policy"),
+        OperationEntry::new(
+            "app.propagation.delivery_policy.set",
+            "propagation",
+            OperationKind::Command,
+            TransportVariant::LegacyRpc,
+            "Update the local propagation delivery policy and return the resulting policy.",
+        )
+        .with_alias("set_delivery_policy"),
+        OperationEntry::new(
+            "app.propagation.peer_maintenance",
+            "propagation",
+            OperationKind::Command,
+            TransportVariant::LegacyRpc,
+            "Cull, rotate, and sync propagation peers while reporting cleanup and retry state.",
+        )
+        .with_alias("propagation_peer_maintenance"),
     ]
 }
