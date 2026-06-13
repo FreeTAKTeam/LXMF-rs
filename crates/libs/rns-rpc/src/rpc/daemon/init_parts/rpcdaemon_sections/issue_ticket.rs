@@ -363,11 +363,13 @@ impl RpcDaemon {
                 record.peer_type.as_deref() != Some("unpeered")
                     && record.peer.eq_ignore_ascii_case(peer)
             }) {
+                let now = now_i64();
                 existing.alive = true;
-                existing.last_seen = now_i64();
+                existing.last_seen = now;
                 existing.incoming = existing.incoming.saturating_add(messages as u64);
                 existing.rx_bytes = existing.rx_bytes.saturating_add(bytes as u64);
                 if clear_backoff {
+                    existing.last_sync_attempt = now;
                     existing.sync_backoff = 0;
                     existing.next_sync_attempt = 0;
                 }

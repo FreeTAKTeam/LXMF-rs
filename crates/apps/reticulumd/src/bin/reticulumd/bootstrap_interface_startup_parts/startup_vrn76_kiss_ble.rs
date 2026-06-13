@@ -124,6 +124,7 @@ async fn startup_lora(
                 startup_response_timeout,
                 reconnect_backoff,
                 max_reconnect_backoff,
+                ..
             } = config;
             let _ = (
                 peripheral_id,

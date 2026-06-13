@@ -267,7 +267,7 @@ impl RpcDaemon {
                 .get_message(message_id.as_str())
                 .map_err(std::io::Error::other)?
                 .and_then(|stored| stored.receipt_status);
-            let should_mark_generated = existing_status.as_deref().map_or(true, |status| {
+            let should_mark_generated = existing_status.as_deref().is_none_or(|status| {
                 let normalized = status.trim().to_ascii_lowercase();
                 !normalized.starts_with("sent") && !Self::is_terminal_receipt_status(status)
             });

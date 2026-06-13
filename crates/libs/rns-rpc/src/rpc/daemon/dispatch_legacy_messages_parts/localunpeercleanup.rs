@@ -208,7 +208,7 @@ fn peer_sync_policy_relevance(
     let mut policy_relevant_size = 24usize;
     let policy_wanted_ids = wanted_ids.filter(|ids| !ids.wants_none());
     for entry in pending_propagation.iter().filter(|entry| {
-        policy_wanted_ids.map_or(true, |ids| ids.wants(entry.transient_id.as_str()))
+        policy_wanted_ids.is_none_or(|ids| ids.wants(entry.transient_id.as_str()))
     }) {
         let entry_size = usize::try_from(entry.size_bytes).unwrap_or(usize::MAX);
         let transfer_size = entry_size.saturating_add(16);
