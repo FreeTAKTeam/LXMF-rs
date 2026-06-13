@@ -34,7 +34,7 @@ sha2.workspace = true
 log.workspace = true
 tracing.workspace = true
 hex.workspace = true
-btleplug = { version = "0.11.8", optional = true }
+btleplug = { version = "0.12", optional = true }
 futures = { version = "0.3.31", optional = true }
 socket2 = { version = "0.5", features = ["all"] }
 tokio = { workspace = true, features = ["full"] }

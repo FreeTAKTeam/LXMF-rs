@@ -58,6 +58,11 @@ where
         self.session.status_with_connection(self.connected)
     }
 
+    #[must_use]
+    pub fn negotiated_mtu(&self) -> Option<u16> {
+        self.backend.negotiated_mtu()
+    }
+
     pub async fn startup(&mut self) -> Result<(), RnodeBleKissError> {
         self.connected = false;
         self.backend
@@ -305,6 +310,20 @@ impl NativeRnodeBleKissInterface {
                 iface_address,
                 settings.peripheral_id
             );
+            // RNODE_LXMF_MIN_ATT_MTU = 173 (170 notification payload bytes + 3 ATT header)
+            match runtime.negotiated_mtu() {
+                Some(mtu) if mtu < 173 => log::warn!(
+                    "RNode BLE negotiated ATT MTU {} < 173 minimum for LXMF; \
+                     expect incomplete notification payloads iface={}",
+                    mtu,
+                    label
+                ),
+                Some(mtu) => log::info!("RNode BLE negotiated ATT MTU {} iface={}", mtu, label),
+                None => log::debug!(
+                    "RNode BLE negotiated ATT MTU unknown (macOS or non-native backend) iface={}",
+                    label
+                ),
+            }
 
             let mut tx_buffer = vec![0_u8; config.mtu];
             let mut reconnect_needed = false;
