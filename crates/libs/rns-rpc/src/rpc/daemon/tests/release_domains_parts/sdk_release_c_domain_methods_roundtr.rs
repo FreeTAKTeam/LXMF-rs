@@ -77,6 +77,8 @@ fn sdk_release_c_domain_methods_roundtrip() {
     assert!(registry_entries
         .iter()
         .any(|entry| entry["id"] == json!("app.propagation.peer_maintenance")));
+    assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.propagation.ingest")));
+    assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.propagation.fetch")));
 
     let list_before =
         daemon.handle_rpc(rpc_request(120, "sdk_identity_list_v2", json!({}))).expect("list");
@@ -534,6 +536,80 @@ fn sdk_release_c_domain_methods_roundtrip() {
     assert!(peer_maintenance_response["response"]["payload"]["rotated"].is_number());
     assert!(peer_maintenance_response["response"]["payload"]["peer_sync"].is_object()
         || peer_maintenance_response["response"]["payload"]["peer_sync"].is_null());
+
+    let propagation_payload = b"sdk-local-propagation-payload";
+    let propagation_payload_hex = hex::encode(propagation_payload);
+    let propagation_transient_id = {
+        use sha2::{Digest, Sha256};
+        hex::encode(Sha256::digest(propagation_payload))
+    };
+    let propagation_ingest_envelope = daemon
+        .handle_rpc(rpc_request(
+            1217,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "app.propagation.ingest",
+                "kind": "command",
+                "correlation_id": "propagation-ingest-corr-1",
+                "payload": {
+                    "payload_hex": propagation_payload_hex
+                },
+            }),
+        ))
+        .expect("propagation ingest envelope");
+    assert!(propagation_ingest_envelope.error.is_none());
+    let propagation_ingest_response =
+        propagation_ingest_envelope.result.expect("propagation ingest envelope result");
+    assert_eq!(
+        propagation_ingest_response["response"]["operation_id"],
+        json!("app.propagation.ingest")
+    );
+    assert_eq!(
+        propagation_ingest_response["response"]["correlation_id"],
+        json!("propagation-ingest-corr-1")
+    );
+    assert_eq!(
+        propagation_ingest_response["response"]["payload"]["transient_id"],
+        json!(propagation_transient_id)
+    );
+    assert_eq!(
+        propagation_ingest_response["response"]["payload"]["ingested_count"],
+        json!(1)
+    );
+
+    let propagation_fetch_envelope = daemon
+        .handle_rpc(rpc_request(
+            1218,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "app.propagation.fetch",
+                "kind": "command",
+                "correlation_id": "propagation-fetch-corr-1",
+                "payload": {
+                    "transient_id": propagation_transient_id
+                },
+            }),
+        ))
+        .expect("propagation fetch envelope");
+    assert!(propagation_fetch_envelope.error.is_none());
+    let propagation_fetch_response =
+        propagation_fetch_envelope.result.expect("propagation fetch envelope result");
+    assert_eq!(
+        propagation_fetch_response["response"]["operation_id"],
+        json!("app.propagation.fetch")
+    );
+    assert_eq!(
+        propagation_fetch_response["response"]["correlation_id"],
+        json!("propagation-fetch-corr-1")
+    );
+    assert_eq!(
+        propagation_fetch_response["response"]["payload"]["payload_hex"],
+        json!(propagation_payload_hex)
+    );
+    assert_eq!(
+        propagation_fetch_response["response"]["payload"]["payload_bytes"],
+        json!(propagation_payload.len())
+    );
 
     let identity_bundle = json!({
         "identity": "node-b",

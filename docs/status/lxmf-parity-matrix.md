@@ -417,6 +417,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   `ZmqPipelineBackendClient` methods and `app.propagation.*` envelopes, keeping
   policy, stale-peer cleanup, and retry/maintenance state available without raw
   RPC calls.
+- The same typed propagation branch now covers local propagation payload ingest
+  and fetch through `ZmqPipelineBackendClient::propagation_ingest` and
+  `propagation_fetch`, preserving transient IDs, payload bytes, duplicate
+  accounting, and durable store recovery for disconnected-client relay flows.
 - Python-style `lxmd` `[lxmf] announce_interval` drives peer/delivery announce
   cadence separately from `[propagation] announce_interval`, which remains the
   propagation-node announce cadence.

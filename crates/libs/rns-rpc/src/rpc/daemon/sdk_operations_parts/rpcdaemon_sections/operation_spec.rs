@@ -128,7 +128,9 @@ impl RpcDaemon {
             | "propagation_enable"
             | "get_delivery_policy"
             | "set_delivery_policy"
-            | "propagation_peer_maintenance" => self.handle_rpc_legacy_propagation(RpcRequest {
+            | "propagation_peer_maintenance"
+            | "propagation_ingest"
+            | "propagation_fetch" => self.handle_rpc_legacy_propagation(RpcRequest {
                 id: request_id,
                 method: method.to_owned(),
                 params: Some(params),

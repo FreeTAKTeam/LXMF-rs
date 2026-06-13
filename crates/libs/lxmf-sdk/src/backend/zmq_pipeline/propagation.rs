@@ -3,11 +3,12 @@ use crate::app::{Envelope, EnvelopeResponse};
 use crate::domain::{
     PropagationAcknowledgeSyncRequest, PropagationAcknowledgeSyncResult,
     PropagationDeliveryPolicyRequest, PropagationDeliveryPolicyResult, PropagationEnableRequest,
-    PropagationNodeListResult, PropagationNodeSelectionResult, PropagationNodeSetRequest,
-    PropagationPeerMaintenanceResult, PropagationPeerSyncRequest, PropagationPeerSyncResult,
-    PropagationRemotePeerRequest, PropagationRemoteRequest, PropagationRemoteStatusResult,
-    PropagationRemoteSyncResult, PropagationRemoteTransferResult, PropagationRemoteUnpeerResult,
-    PropagationStatusResult,
+    PropagationFetchRequest, PropagationFetchResult, PropagationIngestRequest,
+    PropagationIngestResult, PropagationNodeListResult, PropagationNodeSelectionResult,
+    PropagationNodeSetRequest, PropagationPeerMaintenanceResult, PropagationPeerSyncRequest,
+    PropagationPeerSyncResult, PropagationRemotePeerRequest, PropagationRemoteRequest,
+    PropagationRemoteStatusResult, PropagationRemoteSyncResult, PropagationRemoteTransferResult,
+    PropagationRemoteUnpeerResult, PropagationStatusResult,
 };
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -116,6 +117,20 @@ impl ZmqPipelineBackendClient {
         &self,
     ) -> Result<PropagationPeerMaintenanceResult, SdkError> {
         self.execute_propagation_envelope("app.propagation.peer_maintenance", json!({}))
+    }
+
+    pub fn propagation_ingest(
+        &self,
+        req: PropagationIngestRequest,
+    ) -> Result<PropagationIngestResult, SdkError> {
+        self.execute_propagation_envelope("app.propagation.ingest", req)
+    }
+
+    pub fn propagation_fetch(
+        &self,
+        req: PropagationFetchRequest,
+    ) -> Result<PropagationFetchResult, SdkError> {
+        self.execute_propagation_envelope("app.propagation.fetch", req)
     }
 
     fn execute_propagation_envelope<T, R>(

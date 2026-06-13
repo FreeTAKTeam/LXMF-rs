@@ -120,5 +120,21 @@ fn propagation_operation_entries() -> Vec<OperationEntry> {
             "Cull, rotate, and sync propagation peers while reporting cleanup and retry state.",
         )
         .with_alias("propagation_peer_maintenance"),
+        OperationEntry::new(
+            "app.propagation.ingest",
+            "propagation",
+            OperationKind::Command,
+            TransportVariant::LegacyRpc,
+            "Ingest a local propagation payload into durable propagation storage and return queue accounting.",
+        )
+        .with_alias("propagation_ingest"),
+        OperationEntry::new(
+            "app.propagation.fetch",
+            "propagation",
+            OperationKind::Command,
+            TransportVariant::LegacyRpc,
+            "Fetch a local propagation payload from memory or durable propagation storage.",
+        )
+        .with_alias("propagation_fetch"),
     ]
 }

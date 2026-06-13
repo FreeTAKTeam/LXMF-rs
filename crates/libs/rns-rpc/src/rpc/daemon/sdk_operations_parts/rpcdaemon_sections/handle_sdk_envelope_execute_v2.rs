@@ -58,7 +58,9 @@ impl RpcDaemon {
             | "propagation_enable"
             | "get_delivery_policy"
             | "set_delivery_policy"
-            | "propagation_peer_maintenance" => parsed.payload,
+            | "propagation_peer_maintenance"
+            | "propagation_ingest"
+            | "propagation_fetch" => parsed.payload,
             "sdk_poll_events_v2" => json!({
                 "cursor": parsed.payload.get("cursor").cloned().unwrap_or(JsonValue::Null),
                 "max": parsed.payload.get("max").cloned().unwrap_or(JsonValue::from(32_u64)),

@@ -406,6 +406,11 @@ The project is best described by capability level:
   `ZmqPipelineBackendClient` methods and `app.propagation.*` envelopes, keeping
   daemon policy, stale-peer cleanup, and retry/maintenance state visible without
   raw RPC.
+- The typed propagation branch now exposes local propagation payload ingest and
+  fetch as `ZmqPipelineBackendClient::propagation_ingest` and
+  `propagation_fetch`, backed by `app.propagation.ingest` and
+  `app.propagation.fetch` envelopes that preserve transient IDs, payload bytes,
+  duplicate accounting, and durable store recovery through the ZeroMQ SDK path.
 - Locally delivered inbound peer propagation payloads now also store the
   accepted transient and apply source-aware relay fan-out without double
   counting source peer activity, so local delivery does not bypass relay queue

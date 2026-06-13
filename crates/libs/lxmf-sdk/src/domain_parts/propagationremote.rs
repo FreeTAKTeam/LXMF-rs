@@ -94,6 +94,21 @@ pub struct PropagationDeliveryPolicyRequest {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[non_exhaustive]
+pub struct PropagationIngestRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub transient_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payload_hex: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[non_exhaustive]
+pub struct PropagationFetchRequest {
+    pub transient_id: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[non_exhaustive]
 pub struct PropagationRemoteStatusResult {
     pub remote: String,
     #[serde(default)]
@@ -168,6 +183,34 @@ pub struct PropagationPeerMaintenanceResult {
     pub peer_sync: JsonValue,
     #[serde(default)]
     pub max_unreachable_secs: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[non_exhaustive]
+pub struct PropagationIngestResult {
+    #[serde(default)]
+    pub ingested_count: u64,
+    #[serde(default)]
+    pub duplicate_count: u64,
+    #[serde(default)]
+    pub payload_bytes: u64,
+    #[serde(default)]
+    pub transferred_bytes: u64,
+    #[serde(default)]
+    pub transient_id: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[non_exhaustive]
+pub struct PropagationFetchResult {
+    #[serde(default)]
+    pub transient_id: String,
+    #[serde(default)]
+    pub payload_hex: String,
+    #[serde(default)]
+    pub payload_bytes: u64,
+    #[serde(default)]
+    pub transferred_bytes: u64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
