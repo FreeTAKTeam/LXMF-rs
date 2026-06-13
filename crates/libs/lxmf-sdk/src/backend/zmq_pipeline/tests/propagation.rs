@@ -68,6 +68,13 @@ fn propagation_peer_sync_uses_zmq_sdk_envelope_and_preserves_queue_state() {
     assert!(result.postponed);
     assert_eq!(result.postpone_reason.as_deref(), Some("backoff"));
     assert_eq!(result.next_sync_attempt, Some(1_700_000_700));
+    assert_eq!(result.queue.offered, 2);
+    assert_eq!(result.queue.outgoing, 1);
+    assert_eq!(result.queue.unhandled, 1);
+    assert_eq!(result.queue.handled_ids, vec!["aa".to_string()]);
+    assert_eq!(result.queue.unhandled_ids, vec!["bb".to_string()]);
+    assert_eq!(result.queue.transfer_limited_ids, vec!["cc".to_string()]);
+    assert_eq!(result.queue.rejected_ids, Vec::<String>::new());
     assert_eq!(result.messages["unhandled_ids"], json!(["bb"]));
     assert_eq!(result.propagation["transfer_limited_ids"], json!(["cc"]));
     let captured = captured.lock().expect("captured request");

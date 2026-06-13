@@ -12,7 +12,55 @@ pub struct PropagationPeerSyncRequest {
     pub force_sync: bool,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Default)]
+#[non_exhaustive]
+pub struct PropagationPeerQueueSnapshot {
+    #[serde(default)]
+    pub offered: u64,
+    #[serde(default)]
+    pub outgoing: u64,
+    #[serde(default)]
+    pub incoming: u64,
+    #[serde(default)]
+    pub unhandled: u64,
+    #[serde(default)]
+    pub offered_bytes: u64,
+    #[serde(default)]
+    pub unhandled_bytes: u64,
+    #[serde(default)]
+    pub handled_ids: Vec<String>,
+    #[serde(default)]
+    pub unhandled_ids: Vec<String>,
+    #[serde(default)]
+    pub transferred_ids: Vec<String>,
+    #[serde(default)]
+    pub skipped_ids: Vec<String>,
+    #[serde(default)]
+    pub rejected_ids: Vec<String>,
+    #[serde(default)]
+    pub transfer_limited_ids: Vec<String>,
+}
+
+impl PropagationPeerQueueSnapshot {
+    fn from_messages_and_propagation(messages: &JsonValue, propagation: &JsonValue) -> Self {
+        Self {
+            offered: peer_queue_json_u64(messages, "offered").unwrap_or(0),
+            outgoing: peer_queue_json_u64(messages, "outgoing").unwrap_or(0),
+            incoming: peer_queue_json_u64(messages, "incoming").unwrap_or(0),
+            unhandled: peer_queue_json_u64(messages, "unhandled").unwrap_or(0),
+            offered_bytes: peer_queue_json_u64(messages, "offered_bytes").unwrap_or(0),
+            unhandled_bytes: peer_queue_json_u64(messages, "unhandled_bytes").unwrap_or(0),
+            handled_ids: peer_queue_json_string_array(messages, "handled_ids"),
+            unhandled_ids: peer_queue_json_string_array(messages, "unhandled_ids"),
+            transferred_ids: peer_queue_json_string_array(propagation, "transferred_ids"),
+            skipped_ids: peer_queue_json_string_array(propagation, "skipped_ids"),
+            rejected_ids: peer_queue_json_string_array(propagation, "rejected_ids"),
+            transfer_limited_ids: peer_queue_json_string_array(propagation, "transfer_limited_ids"),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq)]
 #[non_exhaustive]
 pub struct PropagationPeerSyncResult {
     pub peer: String,
@@ -40,6 +88,79 @@ pub struct PropagationPeerSyncResult {
     pub messages: JsonValue,
     #[serde(default)]
     pub propagation: JsonValue,
+    #[serde(default)]
+    pub queue: PropagationPeerQueueSnapshot,
+}
+
+#[derive(Deserialize)]
+struct RawPropagationPeerSyncResult {
+    peer: String,
+    #[serde(default)]
+    peer_type: Option<String>,
+    #[serde(default, alias = "type")]
+    status_type: Option<String>,
+    #[serde(default)]
+    synced: bool,
+    #[serde(default)]
+    postponed: bool,
+    #[serde(default)]
+    postpone_reason: Option<String>,
+    #[serde(default)]
+    last_sync_attempt: Option<i64>,
+    #[serde(default)]
+    next_sync_attempt: Option<i64>,
+    #[serde(default)]
+    sync_backoff: Option<u64>,
+    #[serde(default)]
+    transfer_limit: Option<u64>,
+    #[serde(default)]
+    sync_limit: Option<u64>,
+    #[serde(default)]
+    messages: JsonValue,
+    #[serde(default)]
+    propagation: JsonValue,
+}
+
+impl<'de> Deserialize<'de> for PropagationPeerSyncResult {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = RawPropagationPeerSyncResult::deserialize(deserializer)?;
+        let queue =
+            PropagationPeerQueueSnapshot::from_messages_and_propagation(&raw.messages, &raw.propagation);
+        Ok(Self {
+            peer: raw.peer,
+            peer_type: raw.peer_type,
+            status_type: raw.status_type,
+            synced: raw.synced,
+            postponed: raw.postponed,
+            postpone_reason: raw.postpone_reason,
+            last_sync_attempt: raw.last_sync_attempt,
+            next_sync_attempt: raw.next_sync_attempt,
+            sync_backoff: raw.sync_backoff,
+            transfer_limit: raw.transfer_limit,
+            sync_limit: raw.sync_limit,
+            messages: raw.messages,
+            propagation: raw.propagation,
+            queue,
+        })
+    }
+}
+
+fn peer_queue_json_u64(value: &JsonValue, key: &str) -> Option<u64> {
+    value.get(key).and_then(JsonValue::as_u64)
+}
+
+fn peer_queue_json_string_array(value: &JsonValue, key: &str) -> Vec<String> {
+    value
+        .get(key)
+        .and_then(JsonValue::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(JsonValue::as_str)
+        .map(ToOwned::to_owned)
+        .collect()
 }
 
 fn is_false(value: &bool) -> bool {

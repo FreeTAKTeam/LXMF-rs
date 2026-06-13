@@ -397,6 +397,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   `app.propagation.peer_sync` over `sdk_envelope_execute_v2` to the daemon's
   existing `peer_sync` lifecycle while preserving offer, transfer, postponed,
   retry, and persistent queue metadata in the typed response.
+- `PropagationPeerSyncResult` now projects daemon `messages` and `propagation`
+  queue fields into a typed `queue` snapshot, including offered/outgoing/
+  incoming/unhandled counters and handled, unhandled, transferred, skipped,
+  rejected, and transfer-limited transient IDs while retaining raw payloads.
 - The same typed ZeroMQ SDK propagation branch now covers remote router status,
   fetch, download, sync, and unpeer lifecycle calls through registered
   `app.propagation.*` envelopes, preserving daemon propagation, peer-sync,
