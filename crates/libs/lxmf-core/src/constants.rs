@@ -1,4 +1,9 @@
+pub const FIELD_TELEMETRY: u8 = 0x02;
+pub const FIELD_FILE_ATTACHMENTS: u8 = 0x05;
 pub const FIELD_COMMANDS: u8 = 0x09;
+pub const FIELD_TICKET: u8 = 0x0C;
+pub const FIELD_RNR_REFS: u8 = 0x0E;
+pub const FIELD_APP_EXTENSIONS: u8 = 0x10;
 
 pub const DESTINATION_LENGTH: usize = 16;
 pub const SIGNATURE_LENGTH: usize = 64;

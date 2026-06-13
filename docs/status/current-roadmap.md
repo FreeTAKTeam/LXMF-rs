@@ -53,6 +53,9 @@ The project is best described by capability level:
 - Message wire/storage packing, signatures, propagation packing, paper
   encoding, timestamp precision metadata, binary-field preservation, and
   Python-compatible storage containers are implemented.
+- Documented basic LXMF field IDs are exported through `lxmf-wire`, and the
+  typed ZeroMQ SDK send path preserves those field keys plus
+  `_lxmf_fields_msgpack_b64` for REM/RCH payload compatibility.
 - Delivery modes are honored by the daemon; the old claim that requested modes
   are ignored is obsolete.
 - Direct and propagated resource sends support receipt-state separation,
@@ -131,6 +134,10 @@ The project is best described by capability level:
   returning and mark the propagation sync lifecycle failed, so already queued
   relay work stays restart/export visible without leaving stale lifecycle state
   when no bridge is configured.
+- Remote fetch and download bridge envelopes that return successfully while
+  reporting `postponed` or `synced: false` now preserve the failed transfer
+  lifecycle, source-peer backoff, peer event, and queue snapshot instead of
+  importing an empty result and marking propagation complete.
 - Successful remote fetch and download now also mirror existing payload-backed
   live queue marks into active peer record snapshots after applying imports, so
   restart/export state preserves queued retry work even when the remote
@@ -168,6 +175,10 @@ The project is best described by capability level:
 - Remote peer-sync now uses the stored peer ID case for the bridge call, import
   source accounting, state updates, and response envelope when callers use a
   case-variant peer request.
+- Remote peer-sync bridge results that explicitly report `synced: false` or
+  `postponed: true` now preserve the remote postponement in the peer-sync
+  result/event and keep retry scheduling intact instead of clearing the peer's
+  backoff as if the transfer completed.
 - Failed remote unpeer attempts now mirror existing payload-backed live queue
   marks and restored peer-record queue IDs into active peer record snapshots
   before returning bridge-unavailable or bridge-execution errors, including
@@ -284,6 +295,9 @@ The project is best described by capability level:
 - Local peer offer-error responses now publish failed peer-sync state fields at
   both the top-level peer event and nested propagation result while preserving
   the retryable peer queue, improving parity with the peer sync state machine.
+- Ordinary full-offer peer sync now validates the propagation payload batch
+  before marking any queued ID transferred, so a later malformed queued payload
+  cannot partially drain peer retry state.
 - Inbound and remotely imported propagation payloads update active peer record
   snapshots when they queue new unhandled IDs or mark source peers handled,
   keeping restart/export state aligned with live queue fan-out and source

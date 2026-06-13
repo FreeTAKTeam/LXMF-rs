@@ -145,6 +145,69 @@ impl RpcDaemon {
                     transfer_limit_kb,
                 ) {
                     Ok(mut result) => {
+                        let remote_synced = result.get("synced").and_then(JsonValue::as_bool);
+                        let remote_postponed =
+                            result.get("postponed").and_then(JsonValue::as_bool) == Some(true);
+                        if remote_synced == Some(false) || remote_postponed {
+                            let postpone_reason =
+                                result.get("postpone_reason").and_then(JsonValue::as_str);
+                            let error = result
+                                .get("error")
+                                .and_then(JsonValue::as_str)
+                                .unwrap_or("remote sync postponed")
+                                .to_string();
+                            self.update_propagation_sync_state(|state| {
+                                state.sync_state = PR_FAILED;
+                                state.state_name = "failed".to_string();
+                                state.sync_progress = 0.0;
+                                state.last_sync_error = Some(error.clone());
+                            });
+                            if postpone_reason == Some("throttled") {
+                                self.record_throttled_remote_peer_sync(
+                                    peer_key.as_str(),
+                                    remote_id.as_str(),
+                                    error.as_str(),
+                                    transfer_limit,
+                                    sync_limit,
+                                )?;
+                            } else {
+                                self.record_retryable_remote_peer_sync_error(
+                                    peer_key.as_str(),
+                                    remote_id.as_str(),
+                                    error.as_str(),
+                                    transfer_limit,
+                                    sync_limit,
+                                )?;
+                            }
+                            let peer_sync_result = self
+                                .event_queue
+                                .lock()
+                                .expect("event_queue mutex poisoned")
+                                .iter()
+                                .rev()
+                                .find(|event| {
+                                    event.event_type == "peer_sync"
+                                        && event.payload["peer"].as_str() == Some(peer_key.as_str())
+                                })
+                                .map(|event| event.payload.clone())
+                                .unwrap_or(JsonValue::Null);
+                            let propagation = self
+                                .propagation_state
+                                .lock()
+                                .expect("propagation mutex poisoned")
+                                .clone();
+                            return Ok(RpcResponse {
+                                id: request.id,
+                                result: Some(json!({
+                                    "remote": remote_id,
+                                    "peer": peer_key,
+                                    "propagation": propagation,
+                                    "peer_sync": peer_sync_result,
+                                    "result": result,
+                                })),
+                                error: None,
+                            });
+                        }
                         let imported = match self.import_remote_propagation_payloads(&result) {
                             Ok(imported) => imported,
                             Err(err) => {

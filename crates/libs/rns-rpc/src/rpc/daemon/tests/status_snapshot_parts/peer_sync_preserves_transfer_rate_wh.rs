@@ -352,6 +352,82 @@ fn peer_sync_invalid_response_payload_does_not_partially_mark_transferred_like_p
 }
 
 #[test]
+fn peer_sync_invalid_full_offer_payload_does_not_partially_mark_transferred_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    let peer = "peer-invalid-full-offer-payload";
+    daemon
+        .handle_rpc(rpc_request(65, "peer_sync", json!({ "peer": peer })))
+        .expect("initial peer sync");
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let record = peers.get_mut(peer).expect("peer record");
+        record.propagation_stamp_cost = Some(0);
+        record.propagation_transfer_limit = Some(1_000);
+        record.propagation_sync_limit = Some(1_000);
+    }
+
+    let valid = PropagationEntryRecord {
+        transient_id: "a3".repeat(32),
+        destination: "19".repeat(16),
+        payload_hex: "24".repeat(24),
+        received_at: 1_700_000_619,
+        size_bytes: 24,
+        stamp_value: None,
+    };
+    let invalid = PropagationEntryRecord {
+        transient_id: "a4".repeat(32),
+        destination: "19".repeat(16),
+        payload_hex: "not-hex".to_string(),
+        received_at: 1_700_000_620,
+        size_bytes: 200,
+        stamp_value: None,
+    };
+    for entry in [&valid, &invalid] {
+        daemon.store.upsert_propagation_entry(entry).expect("store propagation entry");
+        daemon
+            .store
+            .mark_peer_unhandled_propagation(peer, entry.transient_id.as_str())
+            .expect("mark unhandled");
+        daemon.record_peer_queue_unhandled_id(peer, entry.transient_id.as_str());
+    }
+
+    let err = daemon
+        .handle_rpc(rpc_request(66, "peer_sync", json!({ "peer": peer })))
+        .expect_err("invalid full-offer payload should fail peer sync");
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+    assert!(
+        err.to_string().contains("invalid propagation payload hex"),
+        "unexpected error: {err}"
+    );
+
+    let pending = daemon
+        .store
+        .list_peer_unhandled_propagation(peer)
+        .expect("pending propagation");
+    assert_eq!(pending, vec![valid.clone(), invalid.clone()]);
+    assert!(
+        daemon
+            .store
+            .list_peer_handled_propagation_ids(peer)
+            .expect("handled propagation")
+            .is_empty()
+    );
+    let peers = daemon.peers.lock().expect("peers mutex poisoned");
+    let record = peers.get(peer).expect("peer record");
+    let serialized = serde_json::to_value(record).expect("serialize peer record");
+    assert!(
+        serialized["handled_ids"]
+            .as_array()
+            .expect("serialized handled ids")
+            .is_empty()
+    );
+    assert_eq!(
+        serialized["unhandled_ids"].as_array().expect("serialized unhandled ids"),
+        &[json!(valid.transient_id.as_str()), json!(invalid.transient_id.as_str())]
+    );
+}
+
+#[test]
 fn peer_sync_true_response_invalid_payload_does_not_partially_mark_transferred_like_python() {
     let daemon = RpcDaemon::test_instance();
     let peer = "peer-invalid-true-response-payload";
@@ -365,18 +441,18 @@ fn peer_sync_true_response_invalid_payload_does_not_partially_mark_transferred_l
     }
 
     let valid = PropagationEntryRecord {
-        transient_id: "a3".repeat(32),
+        transient_id: "b3".repeat(32),
         destination: "18".repeat(16),
         payload_hex: "24".repeat(24),
-        received_at: 1_700_000_619,
+        received_at: 1_700_000_621,
         size_bytes: 24,
         stamp_value: None,
     };
     let invalid = PropagationEntryRecord {
-        transient_id: "a4".repeat(32),
+        transient_id: "b4".repeat(32),
         destination: "18".repeat(16),
         payload_hex: "not-hex".to_string(),
-        received_at: 1_700_000_620,
+        received_at: 1_700_000_622,
         size_bytes: 30,
         stamp_value: None,
     };
