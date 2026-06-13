@@ -180,7 +180,15 @@ fn propagation_remote_lifecycle_uses_zmq_sdk_envelopes_and_preserves_raw_state()
                             "peer": "peer-a",
                             "synced": true,
                             "messages": {
+                                "offered": 3,
+                                "outgoing": 2,
+                                "unhandled": 1,
+                                "handled_ids": ["handled-a"],
                                 "unhandled_ids": ["retry-a"]
+                            },
+                            "propagation": {
+                                "transferred_ids": ["handled-a"],
+                                "transfer_limited_ids": ["retry-a"]
                             }
                         },
                         "result": {
@@ -268,6 +276,13 @@ fn propagation_remote_lifecycle_uses_zmq_sdk_envelopes_and_preserves_raw_state()
     assert_eq!(download.propagation["last_sync_error"], json!("remote download postponed"));
     assert_eq!(sync.peer.as_deref(), Some("peer-a"));
     assert_eq!(sync.peer_sync["messages"]["unhandled_ids"], json!(["retry-a"]));
+    let peer_sync_state = sync.peer_sync_state.as_ref().expect("typed peer sync state");
+    assert_eq!(peer_sync_state.peer, "peer-a");
+    assert!(peer_sync_state.synced);
+    assert_eq!(peer_sync_state.queue.offered, 3);
+    assert_eq!(peer_sync_state.queue.handled_ids, vec!["handled-a".to_string()]);
+    assert_eq!(peer_sync_state.queue.unhandled_ids, vec!["retry-a".to_string()]);
+    assert_eq!(peer_sync_state.queue.transfer_limited_ids, vec!["retry-a".to_string()]);
     assert!(unpeer.removed);
     assert_eq!(unpeer.propagation_cleared, Some(1));
     assert_eq!(unpeer.messages["unhandled_ids"], json!([]));

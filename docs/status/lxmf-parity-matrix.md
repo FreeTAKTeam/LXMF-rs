@@ -406,6 +406,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   `app.propagation.*` envelopes, preserving daemon propagation, peer-sync,
   transfer, denial, timeout, and queue-cleanup payloads for REM/RCH clients
   without raw RPC envelopes.
+- `PropagationRemoteSyncResult` now also projects nested remote-sync
+  `peer_sync` payloads into typed `peer_sync_state`, so remote propagation sync
+  callers can inspect sync status and queue transient IDs without parsing raw
+  JSON while still retaining the original daemon payload.
 - The same branch now covers propagation sync completion/failure
   acknowledgement through
   `ZmqPipelineBackendClient::propagation_acknowledge_sync_completion` and

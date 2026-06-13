@@ -298,7 +298,7 @@ pub struct PropagationFetchResult {
     pub transferred_bytes: u64,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, PartialEq)]
 #[non_exhaustive]
 pub struct PropagationRemoteSyncResult {
     pub remote: String,
@@ -309,7 +309,47 @@ pub struct PropagationRemoteSyncResult {
     #[serde(default)]
     pub peer_sync: JsonValue,
     #[serde(default)]
+    pub peer_sync_state: Option<PropagationPeerSyncResult>,
+    #[serde(default)]
     pub result: JsonValue,
+}
+
+#[derive(Deserialize)]
+struct RawPropagationRemoteSyncResult {
+    remote: String,
+    #[serde(default)]
+    peer: Option<String>,
+    #[serde(default)]
+    propagation: JsonValue,
+    #[serde(default)]
+    peer_sync: JsonValue,
+    #[serde(default)]
+    result: JsonValue,
+}
+
+impl<'de> Deserialize<'de> for PropagationRemoteSyncResult {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = RawPropagationRemoteSyncResult::deserialize(deserializer)?;
+        let peer_sync_state = if raw.peer_sync.get("peer").is_some() {
+            Some(
+                serde_json::from_value::<PropagationPeerSyncResult>(raw.peer_sync.clone())
+                    .map_err(serde::de::Error::custom)?,
+            )
+        } else {
+            None
+        };
+        Ok(Self {
+            remote: raw.remote,
+            peer: raw.peer,
+            propagation: raw.propagation,
+            peer_sync: raw.peer_sync,
+            peer_sync_state,
+            result: raw.result,
+        })
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

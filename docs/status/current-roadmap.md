@@ -395,6 +395,10 @@ The project is best described by capability level:
   `ZmqPipelineBackendClient` methods and registered `app.propagation.*`
   envelopes, preserving daemon propagation, peer-sync, transfer, denial,
   timeout, and queue-cleanup payloads without requiring REM/RCH to use raw RPC.
+- `PropagationRemoteSyncResult` now also projects nested remote-sync
+  `peer_sync` payloads into typed `peer_sync_state`, so remote propagation sync
+  callers can inspect sync status and queue transient IDs without parsing raw
+  JSON while still retaining the original daemon payload.
 - The same branch now exposes propagation sync completion/failure
   acknowledgement as
   `ZmqPipelineBackendClient::propagation_acknowledge_sync_completion` and
