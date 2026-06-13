@@ -24,8 +24,12 @@ use std::sync::RwLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::runtime::Runtime;
 
+#[path = "zmq_pipeline/batch.rs"]
+mod batch;
 #[path = "zmq_pipeline/config.rs"]
 mod config;
+#[path = "zmq_pipeline/destination.rs"]
+mod destination;
 #[path = "zmq_pipeline/history.rs"]
 mod history;
 #[path = "zmq_pipeline/negotiation.rs"]

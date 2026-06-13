@@ -10,7 +10,8 @@ pub use config::{
     StoreForwardCapacityPolicy, StoreForwardConfig, StoreForwardEvictionPriority, TokenAuthConfig,
 };
 pub use delivery::{
-    Ack, CancelResult, DeliverySnapshot, DeliveryState, GroupRecipientState, GroupSendOutcome,
+    Ack, BatchSendItem, BatchSendItemError, BatchSendItemResult, BatchSendRequest, BatchSendResult,
+    CancelResult, DeliverySnapshot, DeliveryState, GroupRecipientState, GroupSendOutcome,
     GroupSendRequest, GroupSendResult, MessageId, SendRequest,
 };
 pub use patch::{

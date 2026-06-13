@@ -1,4 +1,4 @@
-use crate::types::SendRequest;
+use crate::types::{BatchSendItem, BatchSendRequest, SendRequest};
 use serde_json::{json, Value as JsonValue};
 
 pub(super) fn send_params(req: SendRequest, message_id: String) -> JsonValue {
@@ -50,6 +50,49 @@ pub(super) fn send_params(req: SendRequest, message_id: String) -> JsonValue {
     json!({
         "id": message_id,
         "source": source,
+        "destination": destination,
+        "title": title,
+        "content": content,
+        "fields": fields,
+        "method": delivery_method,
+        "stamp_cost": stamp_cost,
+        "include_ticket": include_ticket,
+        "try_propagation_on_fail": try_propagation_on_fail,
+    })
+}
+
+pub(super) fn batch_params(req: BatchSendRequest) -> JsonValue {
+    let messages = req.messages.into_iter().map(batch_item_params).collect::<Vec<_>>();
+    json!({
+        "batch_id": req.batch_id,
+        "source": req.source,
+        "messages": messages,
+    })
+}
+
+fn batch_item_params(item: BatchSendItem) -> JsonValue {
+    let BatchSendItem {
+        id,
+        destination,
+        payload,
+        delivery_method,
+        stamp_cost,
+        include_ticket,
+        try_propagation_on_fail,
+    } = item;
+    let content = payload
+        .get("content")
+        .and_then(JsonValue::as_str)
+        .map(str::to_owned)
+        .unwrap_or_else(|| payload.to_string());
+    let title =
+        payload.get("title").and_then(JsonValue::as_str).map(str::to_owned).unwrap_or_default();
+    let fields = match payload {
+        JsonValue::Object(map) => JsonValue::Object(map),
+        other => json!({ "payload": other }),
+    };
+    json!({
+        "id": id,
         "destination": destination,
         "title": title,
         "content": content,

@@ -87,7 +87,8 @@ pub use profiles::{
 };
 // Stability class: stable
 pub use types::{
-    Ack, AuthMode, BindMode, CancelResult, ClientHandle, ConfigPatch, DeliverySnapshot,
+    Ack, AuthMode, BatchSendItem, BatchSendItemError, BatchSendItemResult, BatchSendRequest,
+    BatchSendResult, BindMode, CancelResult, ClientHandle, ConfigPatch, DeliverySnapshot,
     DeliveryState, EventSinkConfig, EventSinkKind, EventSinkPatch, EventStreamConfig,
     GroupRecipientState, GroupSendOutcome, GroupSendRequest, GroupSendResult, MessageId,
     OverflowPolicy, Profile, RedactionConfig, RedactionTransform, RpcBackendConfig,

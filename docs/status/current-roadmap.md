@@ -319,13 +319,20 @@ The project is best described by capability level:
   `ZmqPipelineBackendClient::list_message_history`, preserving message bodies
   with links, receipt status, basic LXMF fields, and restart pagination cursors
   from the daemon `list_messages` store.
+- The typed ZeroMQ SDK backend now exposes the local runtime delivery
+  destination through `ZmqPipelineBackendClient::local_delivery_destination_hash`,
+  while still routing `app.delivery.destination_hash` through SDK envelope
+  execution, so REM/RCH direct-chat source selection does not need raw RPC/HTTP
+  status calls.
 - The typed ZeroMQ SDK backend now tracks negotiated receipt terminality for
   delivery status, so direct-chat status reports match the SDK contract:
   `sent` is terminal until `sdk.capability.receipt_terminality` is negotiated,
   after which `delivered` is the terminal receipt state.
-- The typed ZeroMQ SDK envelope path now routes `app.delivery.send_batch` to
-  `sdk_send_batch_v2` and preserves ordered per-message batch results, giving
-  REM/RCH burst-send flows a ZeroMQ SDK path without raw RPC envelopes.
+- The typed ZeroMQ SDK backend now exposes burst sends through
+  `ZmqPipelineBackendClient::send_batch` and still routes
+  `app.delivery.send_batch` envelope calls to `sdk_send_batch_v2`, preserving
+  ordered per-message acceptance and rejection results without raw RPC
+  envelopes.
 - The typed ZeroMQ SDK backend and operation registry now expose direct-chat
   cancellation through both `ZmqPipelineBackendClient::cancel` and
   `app.delivery.cancel` envelope execution, preserving daemon cancellation
