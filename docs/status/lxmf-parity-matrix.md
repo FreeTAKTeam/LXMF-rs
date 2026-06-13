@@ -308,6 +308,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Live propagation announces retain Python PN metadata on active peer records,
   so announce-derived peer metadata survives into later peering and queue
   restart/export snapshots.
+- The typed ZeroMQ SDK backend exposes identity contact update/list alongside
+  identity announce and presence list, so peer-directory state needed by
+  REM/RCH can stay on the `ZmqPipelineBackendClient` path instead of requiring
+  raw RPC/HTTP contact calls.
 - Python-style `lxmd` `[lxmf] announce_interval` drives peer/delivery announce
   cadence separately from `[propagation] announce_interval`, which remains the
   propagation-node announce cadence.

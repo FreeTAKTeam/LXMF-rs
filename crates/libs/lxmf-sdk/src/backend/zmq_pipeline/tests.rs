@@ -279,6 +279,123 @@ fn identity_presence_list_uses_zmq_sdk_method_and_decodes_response() {
 }
 
 #[test]
+fn identity_contact_update_uses_zmq_sdk_method_and_decodes_response() {
+    let command_endpoint = unused_loopback_endpoint();
+    let response_endpoint = unused_loopback_endpoint();
+    let captured = Arc::new(Mutex::new(None));
+    let server = spawn_single_response_zmq_server(
+        command_endpoint.clone(),
+        json!({
+            "contact": {
+                "identity": "peer-contact",
+                "display_name": "RCH Relay",
+                "trust_level": "trusted",
+                "bootstrap": true,
+                "updated_ts_ms": 3000,
+                "metadata": {
+                    "capabilities": ["rch.announce_slot"],
+                    "callsign": "RCH-1"
+                },
+                "extensions": { "source": "zmq" }
+            }
+        }),
+        Arc::clone(&captured),
+    );
+    let mut config = ZmqPipelineBackendConfig::local_tcp(command_endpoint, response_endpoint);
+    config.request_timeout = std::time::Duration::from_secs(2);
+    let client = ZmqPipelineBackendClient::new(config).expect("zmq client");
+
+    let contact = client
+        .identity_contact_update(crate::domain::ContactUpdateRequest {
+            identity: crate::domain::IdentityRef("peer-contact".to_owned()),
+            display_name: Some("RCH Relay".to_owned()),
+            trust_level: Some(crate::domain::TrustLevel::Trusted),
+            bootstrap: Some(true),
+            metadata: BTreeMap::from([(
+                "callsign".to_owned(),
+                JsonValue::String("RCH-1".to_owned()),
+            )]),
+            extensions: BTreeMap::from([(
+                "source".to_owned(),
+                JsonValue::String("zmq".to_owned()),
+            )]),
+        })
+        .expect("identity contact update");
+
+    assert_eq!(contact.identity.0, "peer-contact");
+    assert_eq!(contact.display_name.as_deref(), Some("RCH Relay"));
+    assert_eq!(contact.trust_level, crate::domain::TrustLevel::Trusted);
+    assert!(contact.bootstrap);
+    assert_eq!(contact.metadata["callsign"], json!("RCH-1"));
+    let captured = captured.lock().expect("captured request");
+    let request = captured.as_ref().expect("zmq request");
+    assert_eq!(request.method, "sdk_identity_contact_update_v2");
+    let params = request.params.as_ref().expect("params");
+    assert_eq!(params["identity"], json!("peer-contact"));
+    assert_eq!(params["display_name"], json!("RCH Relay"));
+    assert_eq!(params["trust_level"], json!("trusted"));
+    assert_eq!(params["bootstrap"], json!(true));
+    assert_eq!(params["metadata"]["callsign"], json!("RCH-1"));
+    assert_eq!(params["extensions"]["source"], json!("zmq"));
+    server.join().expect("server joined");
+}
+
+#[test]
+fn identity_contact_list_uses_zmq_sdk_method_and_decodes_response() {
+    let command_endpoint = unused_loopback_endpoint();
+    let response_endpoint = unused_loopback_endpoint();
+    let captured = Arc::new(Mutex::new(None));
+    let server = spawn_single_response_zmq_server(
+        command_endpoint.clone(),
+        json!({
+            "contact_list": {
+                "contacts": [{
+                    "identity": "peer-contact",
+                    "display_name": "REM Phone",
+                    "trust_level": "trusted",
+                    "bootstrap": false,
+                    "updated_ts_ms": 4000,
+                    "metadata": {
+                        "capabilities": ["rem.peer"],
+                        "callsign": "REM-1"
+                    },
+                    "extensions": { "source": "zmq" }
+                }],
+                "next_cursor": "contact:1"
+            }
+        }),
+        Arc::clone(&captured),
+    );
+    let mut config = ZmqPipelineBackendConfig::local_tcp(command_endpoint, response_endpoint);
+    config.request_timeout = std::time::Duration::from_secs(2);
+    let client = ZmqPipelineBackendClient::new(config).expect("zmq client");
+
+    let result = client
+        .identity_contact_list(crate::domain::ContactListRequest {
+            cursor: Some("contact:0".to_owned()),
+            limit: Some(1),
+            extensions: BTreeMap::from([(
+                "source".to_owned(),
+                JsonValue::String("zmq".to_owned()),
+            )]),
+        })
+        .expect("identity contact list");
+
+    assert_eq!(result.next_cursor.as_deref(), Some("contact:1"));
+    assert_eq!(result.contacts[0].identity.0, "peer-contact");
+    assert_eq!(result.contacts[0].display_name.as_deref(), Some("REM Phone"));
+    assert_eq!(result.contacts[0].metadata["callsign"], json!("REM-1"));
+    let captured = captured.lock().expect("captured request");
+    let request = captured.as_ref().expect("zmq request");
+    assert_eq!(request.method, "sdk_identity_contact_list_v2");
+    let params = request.params.as_ref().expect("params");
+    assert_eq!(params["cursor"], json!("contact:0"));
+    assert_eq!(params["limit"], json!(1));
+    assert_eq!(params["extensions"]["source"], json!("zmq"));
+    server.join().expect("server joined");
+}
+
+#[test]
 fn send_uses_zmq_sdk_method_and_preserves_delivery_options() {
     let command_endpoint = unused_loopback_endpoint();
     let response_endpoint = unused_loopback_endpoint();

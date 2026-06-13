@@ -1,6 +1,9 @@
 use crate::backend::SdkBackend;
 use crate::capability::{NegotiationRequest, NegotiationResponse};
-use crate::domain::{PresenceListRequest, PresenceListResult};
+use crate::domain::{
+    ContactListRequest, ContactListResult, ContactRecord, ContactUpdateRequest,
+    PresenceListRequest, PresenceListResult,
+};
 use crate::error::{code, ErrorCategory, SdkError};
 use crate::event::{EventBatch, EventCursor, SdkEvent, Severity};
 use crate::types::{
@@ -369,6 +372,28 @@ impl SdkBackend for ZmqPipelineBackendClient {
         })?;
         let result = self.call_rpc("sdk_identity_presence_list_v2", Some(params))?;
         Self::decode_field_or_root(&result, "presence_list", "identity_presence_list response")
+    }
+
+    fn identity_contact_update(
+        &self,
+        req: ContactUpdateRequest,
+    ) -> Result<ContactRecord, SdkError> {
+        let params = serde_json::to_value(req).map_err(|err| {
+            SdkError::new(code::INTERNAL, ErrorCategory::Internal, err.to_string())
+        })?;
+        let result = self.call_rpc("sdk_identity_contact_update_v2", Some(params))?;
+        Self::decode_field_or_root(&result, "contact", "identity_contact_update response")
+    }
+
+    fn identity_contact_list(
+        &self,
+        req: ContactListRequest,
+    ) -> Result<ContactListResult, SdkError> {
+        let params = serde_json::to_value(req).map_err(|err| {
+            SdkError::new(code::INTERNAL, ErrorCategory::Internal, err.to_string())
+        })?;
+        let result = self.call_rpc("sdk_identity_contact_list_v2", Some(params))?;
+        Self::decode_field_or_root(&result, "contact_list", "identity_contact_list response")
     }
 
     fn snapshot(&self) -> Result<RuntimeSnapshot, SdkError> {

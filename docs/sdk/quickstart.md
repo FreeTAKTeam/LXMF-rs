@@ -29,9 +29,11 @@ unless remote token auth is already configured in the persisted SDK runtime conf
 mTLS client authentication is configured at startup with `--rpc-tls-client-ca`.
 Use loopback TCP only for local development.
 
-## Experimental ZeroMQ Backend
+## ZeroMQ Backend
 
-The ZeroMQ backend is parallel and opt-in:
+The ZeroMQ backend is parallel and opt-in. It is the preferred SDK transport
+for high-throughput local integrations and the REM/RCH 0.4.0 compatibility
+track:
 
 ```toml
 lxmf-sdk = { path = "crates/libs/lxmf-sdk", features = ["zmq-pipeline-backend"] }
@@ -50,6 +52,11 @@ let client = Client::new(backend);
 Use loopback endpoints for local testing. Remote ZeroMQ endpoints require explicit token auth; the
 backend rejects remote endpoints without it. `poll_events` remains the authoritative event recovery
 API even when ZeroMQ event wakeups are enabled.
+
+The typed `ZmqPipelineBackendClient` path covers the core lifecycle and
+delivery methods plus identity announce, presence list, contact update, and
+contact list. Application integrations should use these typed SDK calls instead
+of constructing raw RPC envelopes.
 
 Run the example client:
 
