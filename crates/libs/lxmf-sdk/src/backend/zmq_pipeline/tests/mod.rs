@@ -8,6 +8,7 @@ use zeromq::{PullSocket, PushSocket, Socket, SocketRecv, SocketSend, ZmqMessage}
 mod batch;
 mod destination;
 mod history;
+mod workflow;
 
 #[derive(Debug, Clone, PartialEq)]
 struct CapturedZmqRequest {
