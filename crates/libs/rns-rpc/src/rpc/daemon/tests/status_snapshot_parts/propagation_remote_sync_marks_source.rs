@@ -376,3 +376,89 @@ fn propagation_remote_sync_imports_binary_peer_sync_payloads_from_msgpack() {
         .expect("local fetch result");
     assert_eq!(fetched["payload_hex"].as_str(), Some(payload_hex.as_str()));
 }
+
+#[test]
+fn propagation_remote_sync_preserves_remote_postponement_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    daemon.set_remote_control_bridge(Arc::new(TestRemoteControlBridge {
+        result: Ok(json!({
+            "synced": false,
+            "postponed": true,
+            "postpone_reason": "throttled",
+            "error": "remote peer throttled",
+        })),
+    }));
+    let peer = "peer-remote-sync-postponed";
+    daemon
+        .handle_rpc(rpc_request(75, "peer_sync", json!({ "peer": peer })))
+        .expect("seed peer");
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let record = peers.get_mut(peer).expect("peer record");
+        record.alive = true;
+        record.sync_backoff = 12 * 60;
+        record.next_sync_attempt = 0;
+        record.acceptance_rate = 0.5;
+    }
+    daemon.event_queue.lock().expect("event_queue mutex poisoned").clear();
+
+    let result = daemon
+        .handle_rpc(rpc_request(
+            76,
+            "propagation_remote_sync",
+            json!({
+                "remote": "remote-node",
+                "peer": peer,
+            }),
+        ))
+        .expect("remote postponed sync should return a peer-sync result")
+        .result
+        .expect("remote sync result");
+
+    let peer_sync = &result["peer_sync"];
+    assert_eq!(peer_sync["synced"].as_bool(), Some(false));
+    assert_eq!(peer_sync["postponed"].as_bool(), Some(true));
+    assert_eq!(peer_sync["postpone_reason"].as_str(), Some("throttled"));
+    assert_eq!(peer_sync["sync_backoff"].as_u64(), Some(12 * 60));
+    let next_sync_attempt =
+        peer_sync["next_sync_attempt"].as_i64().expect("next sync attempt");
+    assert!(next_sync_attempt > 0);
+    assert_eq!(peer_sync["propagation"]["synced"].as_bool(), Some(false));
+    assert_eq!(peer_sync["propagation"]["postponed"].as_bool(), Some(true));
+    assert_eq!(
+        peer_sync["propagation"]["postpone_reason"].as_str(),
+        Some("throttled")
+    );
+
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 77, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    let row = peers["peers"]
+        .as_array()
+        .expect("peer rows")
+        .iter()
+        .find(|row| row["peer"].as_str() == Some(peer))
+        .expect("peer row");
+    assert_eq!(row["sync_backoff"].as_u64(), Some(12 * 60));
+    assert_eq!(row["next_sync_attempt"].as_i64(), Some(next_sync_attempt));
+
+    let event = daemon
+        .event_queue
+        .lock()
+        .expect("event_queue mutex poisoned")
+        .iter()
+        .rev()
+        .find(|event| event.event_type == "peer_sync")
+        .cloned()
+        .expect("remote postponed peer sync event");
+    assert_eq!(event.payload["peer"].as_str(), Some(peer));
+    assert_eq!(event.payload["remote"].as_str(), Some("remote-node"));
+    assert_eq!(event.payload["remote_sync"].as_bool(), Some(true));
+    assert_eq!(event.payload["synced"].as_bool(), Some(false));
+    assert_eq!(event.payload["postponed"].as_bool(), Some(true));
+    assert_eq!(event.payload["postpone_reason"].as_str(), Some("throttled"));
+    assert_eq!(event.payload["sync_backoff"].as_u64(), Some(12 * 60));
+    assert_eq!(event.payload["next_sync_attempt"].as_i64(), Some(next_sync_attempt));
+}

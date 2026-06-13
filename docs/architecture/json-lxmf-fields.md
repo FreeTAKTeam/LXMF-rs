@@ -94,12 +94,15 @@ This matters for canonical LXMF fields such as:
 - ticket: field `0x0C`, JSON key form `"12"`
 
 The canonical field mappings are defined in
-`docs/contracts/payload-contract.md`.
+`docs/contracts/payload-contract.md` and exported from `lxmf-wire` through
+`lxmf_core::constants`.
 
 ## Commands Field Example
 
 `FIELD_COMMANDS` is a real LXMF field in `lxmf-wire`, not a free-form JSON
-label. Its numeric field id is `0x09`.
+label. Its numeric field id is `0x09`. The same constants module also exposes
+the documented telemetry, attachment, ticket, RNR refs, and app-extension field
+IDs.
 
 If callers need explicit command-field control, the canonical API is:
 

@@ -66,7 +66,10 @@ calls. Direct-chat cancellation can use either `sdk_cancel_message_v2` via
 `ZmqPipelineBackendClient::cancel` or `app.delivery.cancel` through SDK
 envelope execution, preserving `Accepted`, `AlreadyTerminal`, `NotFound`, and
 `TooLateToCancel` results. Delivery status follows negotiated receipt semantics
-on the ZeroMQ path: `sent` is terminal until
+on the ZeroMQ path: `app.message.history.list`, `app.delivery.destination_hash`,
+`app.delivery.send_batch`, and `app.delivery.cancel` stay on the SDK envelope
+path instead of raw RPC envelopes. Delivery status follows negotiated receipt
+semantics on the ZeroMQ path: `sent` is terminal until
 `sdk.capability.receipt_terminality` is negotiated, then `delivered` is the
 terminal receipt state.
 

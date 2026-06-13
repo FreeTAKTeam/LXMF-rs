@@ -68,7 +68,10 @@ impl WireFields {
 #[cfg(test)]
 mod tests {
     use super::{CommandEntry, WireFields};
-    use crate::constants::FIELD_COMMANDS;
+    use crate::constants::{
+        FIELD_APP_EXTENSIONS, FIELD_COMMANDS, FIELD_FILE_ATTACHMENTS, FIELD_RNR_REFS,
+        FIELD_TELEMETRY, FIELD_TICKET,
+    };
 
     #[test]
     fn commands_encode_with_integer_field_ids() {
@@ -85,5 +88,33 @@ mod tests {
             panic!("commands array expected")
         };
         assert_eq!(cmds.len(), 2);
+    }
+
+    #[test]
+    fn documented_basic_fields_encode_with_integer_field_ids() {
+        let mut fields = WireFields::new();
+        fields
+            .insert_field(FIELD_TELEMETRY, rmpv::Value::String("telemetry".into()))
+            .insert_field(FIELD_FILE_ATTACHMENTS, rmpv::Value::Array(Vec::new()))
+            .insert_field(FIELD_TICKET, rmpv::Value::Binary(vec![0xAA]))
+            .insert_field(FIELD_RNR_REFS, rmpv::Value::Array(Vec::new()))
+            .insert_field(FIELD_APP_EXTENSIONS, rmpv::Value::Map(Vec::new()));
+
+        let rmpv::Value::Map(entries) = fields.to_rmpv() else { panic!("expected map") };
+        let keys = entries
+            .iter()
+            .map(|(key, _)| key.as_i64().expect("integer field key"))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            keys,
+            vec![
+                FIELD_TELEMETRY as i64,
+                FIELD_FILE_ATTACHMENTS as i64,
+                FIELD_TICKET as i64,
+                FIELD_RNR_REFS as i64,
+                FIELD_APP_EXTENSIONS as i64
+            ]
+        );
     }
 }

@@ -2,7 +2,7 @@
 
 extern crate alloc;
 
-mod constants;
+pub mod constants;
 mod error;
 
 pub mod announce;

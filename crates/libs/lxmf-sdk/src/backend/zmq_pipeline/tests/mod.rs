@@ -684,6 +684,53 @@ fn send_uses_zmq_sdk_method_and_preserves_delivery_options() {
 }
 
 #[test]
+fn send_preserves_documented_lxmf_field_keys_over_zmq_sdk_method() {
+    let command_endpoint = unused_loopback_endpoint();
+    let response_endpoint = unused_loopback_endpoint();
+    let captured = Arc::new(Mutex::new(None));
+    let server = spawn_single_response_zmq_server(
+        command_endpoint.clone(),
+        json!({ "message_id": "sdk-zmq-message-fields" }),
+        Arc::clone(&captured),
+    );
+    let mut config = ZmqPipelineBackendConfig::local_tcp(command_endpoint, response_endpoint);
+    config.request_timeout = std::time::Duration::from_secs(2);
+    let client = ZmqPipelineBackendClient::new(config).expect("zmq client");
+
+    let message_id = client
+        .send(SendRequest::new(
+            "source-destination",
+            "target-destination",
+            json!({
+                "title": "REM/RCH fields",
+                "content": "field preservation",
+                "2": { "lat": 1.25, "lon": 2.5 },
+                "5": [["image.jpg", [1, 2, 3]]],
+                "9": [{ "command_type": "status.request" }],
+                "12": [170, 187],
+                "14": ["ref-a"],
+                "16": { "renderer": "basic" },
+                "_lxmf_fields_msgpack_b64": "gqECoQk="
+            }),
+        ))
+        .expect("send");
+
+    assert_eq!(message_id.0, "sdk-zmq-message-fields");
+    let captured = captured.lock().expect("captured request");
+    let request = captured.as_ref().expect("zmq request");
+    assert_eq!(request.method, "sdk_send_v2");
+    let fields = &request.params.as_ref().expect("params")["fields"];
+    assert_eq!(fields["2"]["lat"], json!(1.25));
+    assert_eq!(fields["5"][0][0], json!("image.jpg"));
+    assert_eq!(fields["9"][0]["command_type"], json!("status.request"));
+    assert_eq!(fields["12"], json!([170, 187]));
+    assert_eq!(fields["14"][0], json!("ref-a"));
+    assert_eq!(fields["16"]["renderer"], json!("basic"));
+    assert_eq!(fields["_lxmf_fields_msgpack_b64"], json!("gqECoQk="));
+    server.join().expect("server joined");
+}
+
+#[test]
 fn cancel_uses_zmq_sdk_method_and_decodes_result() {
     let command_endpoint = unused_loopback_endpoint();
     let response_endpoint = unused_loopback_endpoint();
@@ -1040,7 +1087,6 @@ fn envelope_execute_uses_zmq_sdk_method_and_preserves_batch_send_results() {
     assert_eq!(params["extensions"]["burst_send"], json!(true));
     server.join().expect("server joined");
 }
-
 fn parse_claims(token: &str) -> BTreeMap<String, String> {
     token
         .split(';')

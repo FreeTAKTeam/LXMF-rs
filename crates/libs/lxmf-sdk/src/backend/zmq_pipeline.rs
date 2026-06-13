@@ -372,7 +372,6 @@ impl SdkBackend for ZmqPipelineBackendClient {
         let value = result.get("identity").cloned().unwrap_or(result);
         Self::decode_value(value, "identity_resolve response").map(Some)
     }
-
     fn identity_contact_update(
         &self,
         req: ContactUpdateRequest,
@@ -415,7 +414,6 @@ impl SdkBackend for ZmqPipelineBackendClient {
         let result = self.call_rpc("sdk_envelope_execute_v2", Some(params))?;
         Self::decode_field_or_root(&result, "response", "envelope_execute response")
     }
-
     fn snapshot(&self) -> Result<RuntimeSnapshot, SdkError> {
         let result = self.call_rpc("sdk_snapshot_v2", Some(json!({ "include_counts": true })))?;
         Ok(RuntimeSnapshot {
