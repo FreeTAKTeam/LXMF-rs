@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last reassessed: 2026-06-08
+Last reassessed: 2026-06-13
 
 This file is the repository-level source of truth for parity posture, release
 confidence, and execution order. Detailed row-level status lives in:
@@ -305,6 +305,9 @@ The project is best described by capability level:
   delivery status, so direct-chat status reports match the SDK contract:
   `sent` is terminal until `sdk.capability.receipt_terminality` is negotiated,
   after which `delivered` is the terminal receipt state.
+- The typed ZeroMQ SDK envelope path now routes `app.delivery.send_batch` to
+  `sdk_send_batch_v2` and preserves ordered per-message batch results, giving
+  REM/RCH burst-send flows a ZeroMQ SDK path without raw RPC envelopes.
 - Locally delivered inbound peer propagation payloads now also store the
   accepted transient and apply source-aware relay fan-out without double
   counting source peer activity, so local delivery does not bypass relay queue

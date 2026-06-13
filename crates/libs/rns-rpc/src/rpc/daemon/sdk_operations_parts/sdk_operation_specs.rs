@@ -31,6 +31,16 @@ const SDK_OPERATION_SPECS: &[SdkOperationSpec] = &[
         rpc_method: "sdk_send_v2",
     },
     SdkOperationSpec {
+        id: "app.delivery.send_batch",
+        group: "delivery",
+        kind: "command",
+        transport_variant: "rpc",
+        description: "Queue an ordered batch of outbound messages for delivery.",
+        aliases: &["sdk_send_batch_v2"],
+        required_capabilities: &[],
+        rpc_method: "sdk_send_batch_v2",
+    },
+    SdkOperationSpec {
         id: "app.delivery.status",
         group: "delivery",
         kind: "query",

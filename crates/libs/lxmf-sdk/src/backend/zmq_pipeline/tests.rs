@@ -865,6 +865,100 @@ fn envelope_execute_uses_zmq_sdk_method_and_preserves_direct_chat_history_query(
     server.join().expect("server joined");
 }
 
+#[test]
+fn envelope_execute_uses_zmq_sdk_method_and_preserves_batch_send_results() {
+    let command_endpoint = unused_loopback_endpoint();
+    let response_endpoint = unused_loopback_endpoint();
+    let captured = Arc::new(Mutex::new(None));
+    let server = spawn_single_response_zmq_server(
+        command_endpoint.clone(),
+        json!({
+            "response": {
+                "operation_id": "app.delivery.send_batch",
+                "kind": "result",
+                "accepted": true,
+                "correlation_id": "batch-corr",
+                "payload": {
+                    "batch_id": "batch-zmq-1",
+                    "accepted_count": 2,
+                    "rejected_count": 0,
+                    "results": [
+                        {
+                            "id": "batch-msg-1",
+                            "message_id": "batch-msg-1",
+                            "accepted": true
+                        },
+                        {
+                            "id": "batch-msg-2",
+                            "message_id": "batch-msg-2",
+                            "accepted": true
+                        }
+                    ]
+                },
+                "extensions": {
+                    "burst_send": true
+                }
+            }
+        }),
+        Arc::clone(&captured),
+    );
+    let mut config = ZmqPipelineBackendConfig::local_tcp(command_endpoint, response_endpoint);
+    config.request_timeout = std::time::Duration::from_secs(2);
+    let client = ZmqPipelineBackendClient::new(config).expect("zmq client");
+
+    let response = client
+        .envelope_execute(
+            crate::app::Envelope::command(
+                "app.delivery.send_batch",
+                json!({
+                    "batch_id": "batch-zmq-1",
+                    "source": "source-destination",
+                    "messages": [
+                        {
+                            "id": "batch-msg-1",
+                            "destination": "peer-a",
+                            "title": "hello a",
+                            "content": "payload a"
+                        },
+                        {
+                            "id": "batch-msg-2",
+                            "destination": "peer-b",
+                            "title": "hello b",
+                            "content": "payload b",
+                            "method": "direct",
+                            "include_ticket": false,
+                            "try_propagation_on_fail": true
+                        }
+                    ]
+                }),
+            )
+            .with_correlation_id("batch-corr")
+            .with_extension("burst_send", json!(true)),
+        )
+        .expect("batch send envelope");
+
+    assert_eq!(response.operation_id.as_str(), "app.delivery.send_batch");
+    assert!(response.accepted);
+    assert_eq!(response.correlation_id.as_deref(), Some("batch-corr"));
+    assert_eq!(response.payload["batch_id"], json!("batch-zmq-1"));
+    assert_eq!(response.payload["accepted_count"], json!(2));
+    assert_eq!(response.payload["results"][1]["message_id"], json!("batch-msg-2"));
+    assert_eq!(response.extensions["burst_send"], json!(true));
+    let captured = captured.lock().expect("captured request");
+    let request = captured.as_ref().expect("zmq request");
+    assert_eq!(request.method, "sdk_envelope_execute_v2");
+    let params = request.params.as_ref().expect("params");
+    assert_eq!(params["operation_id"], json!("app.delivery.send_batch"));
+    assert_eq!(params["kind"], json!("command"));
+    assert_eq!(params["correlation_id"], json!("batch-corr"));
+    assert_eq!(params["payload"]["batch_id"], json!("batch-zmq-1"));
+    assert_eq!(params["payload"]["messages"][1]["method"], json!("direct"));
+    assert_eq!(params["payload"]["messages"][1]["include_ticket"], json!(false));
+    assert_eq!(params["payload"]["messages"][1]["try_propagation_on_fail"], json!(true));
+    assert_eq!(params["extensions"]["burst_send"], json!(true));
+    server.join().expect("server joined");
+}
+
 fn parse_claims(token: &str) -> BTreeMap<String, String> {
     token
         .split(';')

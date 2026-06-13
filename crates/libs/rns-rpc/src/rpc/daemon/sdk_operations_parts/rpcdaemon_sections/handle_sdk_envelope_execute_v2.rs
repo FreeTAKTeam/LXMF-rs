@@ -35,6 +35,7 @@ impl RpcDaemon {
 
         let delegated_params = match rpc_method {
             "sdk_send_v2" => parsed.payload,
+            "sdk_send_batch_v2" => parsed.payload,
             "sdk_snapshot_v2" => json!({}),
             "sdk_cursor_hint_v2" => parsed.payload,
             "sdk_status_v2" => json!({
@@ -106,10 +107,9 @@ impl RpcDaemon {
         if let Some(error) = delegated.error {
             return Ok(RpcResponse { id: request.id, result: None, error: Some(error) });
         }
-        let delegated_payload = delegated
-            .result
-            .and_then(|value| value.get("response").cloned())
-            .unwrap_or(JsonValue::Null);
+        let delegated_result = delegated.result.unwrap_or(JsonValue::Null);
+        let delegated_payload =
+            delegated_result.get("response").cloned().unwrap_or(delegated_result);
         let accepted =
             delegated_payload.get("accepted").and_then(JsonValue::as_bool).unwrap_or(true);
         let response_correlation_id = parsed.correlation_id;

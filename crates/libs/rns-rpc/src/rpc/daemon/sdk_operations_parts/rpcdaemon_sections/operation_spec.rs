@@ -104,7 +104,7 @@ impl RpcDaemon {
         params: JsonValue,
     ) -> Result<RpcResponse, std::io::Error> {
         let delegated = match method {
-            "sdk_send_v2" => self.handle_rpc_legacy_messages(RpcRequest {
+            "sdk_send_v2" | "sdk_send_batch_v2" => self.handle_rpc_legacy_messages(RpcRequest {
                 id: request_id,
                 method: method.to_owned(),
                 params: Some(params),
@@ -356,7 +356,7 @@ impl RpcDaemon {
         }
         let raw = delegated.result.unwrap_or(JsonValue::Null);
         let payload = match method {
-            "sdk_send_v2" => raw,
+            "sdk_send_v2" | "sdk_send_batch_v2" => raw,
             "sdk_identity_list_v2" => raw.get("identities").cloned().unwrap_or(JsonValue::Null),
             "sdk_identity_presence_list_v2" => {
                 raw.get("presence_list").cloned().unwrap_or(JsonValue::Null)

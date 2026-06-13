@@ -1,6 +1,6 @@
 # LXMF Parity Matrix
 
-Last reassessed: 2026-06-08
+Last reassessed: 2026-06-13
 
 This is the maintained row-level status for Python LXMF compatibility.
 Repository-level posture and execution order live in
@@ -322,6 +322,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   mapping `sdk_status_v2` into `DeliverySnapshot`, so direct-chat delivery
   status reports `sent` as terminal only until
   `sdk.capability.receipt_terminality` is negotiated.
+- The typed ZeroMQ SDK envelope path exposes `app.delivery.send_batch` through
+  `sdk_send_batch_v2` and preserves ordered per-message batch results, so
+  REM/RCH burst-send flows do not need raw RPC envelopes.
 - Python-style `lxmd` `[lxmf] announce_interval` drives peer/delivery announce
   cadence separately from `[propagation] announce_interval`, which remains the
   propagation-node announce cadence.

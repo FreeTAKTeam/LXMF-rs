@@ -35,6 +35,7 @@ fn sdk_release_c_domain_methods_roundtrip() {
     assert!(registry_entries
         .iter()
         .any(|entry| entry["id"] == json!("app.workflow.mission_update_send")));
+    assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.delivery.send_batch")));
 
     let list_before =
         daemon.handle_rpc(rpc_request(120, "sdk_identity_list_v2", json!({}))).expect("list");
@@ -76,6 +77,54 @@ fn sdk_release_c_domain_methods_roundtrip() {
     let announce_response = announce_envelope.result.expect("announce result");
     assert_eq!(announce_response["response"]["operation_id"], json!("app.identity.announce"));
     assert_eq!(announce_response["response"]["payload"]["accepted"], json!(true));
+
+    let batch_envelope = daemon
+        .handle_rpc(rpc_request(
+            1203,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "app.delivery.send_batch",
+                "kind": "command",
+                "correlation_id": "batch-corr-1",
+                "payload": {
+                    "batch_id": "batch-envelope-1",
+                    "source": "src",
+                    "messages": [
+                        {
+                            "id": "batch-envelope-msg-1",
+                            "destination": "dst-a",
+                            "title": "hello a",
+                            "content": "payload a"
+                        },
+                        {
+                            "id": "batch-envelope-msg-2",
+                            "destination": "dst-b",
+                            "title": "hello b",
+                            "content": "payload b",
+                            "method": "direct",
+                            "include_ticket": false,
+                            "try_propagation_on_fail": true
+                        }
+                    ]
+                },
+            }),
+        ))
+        .expect("batch send envelope");
+    assert!(batch_envelope.error.is_none());
+    let batch_response = batch_envelope.result.expect("batch envelope result");
+    assert_eq!(batch_response["response"]["operation_id"], json!("app.delivery.send_batch"));
+    assert_eq!(batch_response["response"]["correlation_id"], json!("batch-corr-1"));
+    assert_eq!(batch_response["response"]["payload"]["batch_id"], json!("batch-envelope-1"));
+    assert_eq!(batch_response["response"]["payload"]["accepted_count"], json!(2));
+    assert_eq!(batch_response["response"]["payload"]["rejected_count"], json!(0));
+    assert_eq!(
+        batch_response["response"]["payload"]["results"][0]["message_id"],
+        json!("batch-envelope-msg-1")
+    );
+    assert_eq!(
+        batch_response["response"]["payload"]["results"][1]["message_id"],
+        json!("batch-envelope-msg-2")
+    );
 
     let identity_bundle = json!({
         "identity": "node-b",
