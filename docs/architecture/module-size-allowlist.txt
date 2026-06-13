@@ -1,2 +1,4 @@
 # Temporary exceptions to module size budgets.
 # Keep this list short and remove entries as files are split.
+crates/libs/rns-rpc/src/rpc/daemon/dispatch_legacy_messages_parts/localunpeercleanup.rs
+crates/libs/rns-rpc/src/rpc/daemon/dispatch_legacy_messages_parts/rpcdaemon_sections/handle_rpc_legacy_peer_sync.rs

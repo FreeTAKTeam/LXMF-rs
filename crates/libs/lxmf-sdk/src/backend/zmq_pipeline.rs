@@ -236,8 +236,8 @@ impl SdkBackend for ZmqPipelineBackendClient {
             state,
             terminal,
             last_updated_ms: u64::try_from(timestamp.max(0)).unwrap_or(0).saturating_mul(1000),
-            attempts: 0,
-            reason_code: None,
+            attempts: Self::parse_optional_u32(record, "attempts").unwrap_or(0),
+            reason_code: Self::parse_optional_string(record, "reason_code"),
         }))
     }
 

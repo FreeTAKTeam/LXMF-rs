@@ -72,12 +72,10 @@ cancellation can use either `sdk_cancel_message_v2` via
 envelope execution, preserving `Accepted`, `AlreadyTerminal`, `NotFound`, and
 `TooLateToCancel` results. Delivery status follows negotiated receipt semantics
 on the ZeroMQ path: `sent` is terminal until
-on the ZeroMQ path: `app.message.history.list`, `app.delivery.destination_hash`,
-`app.delivery.send_batch`, and `app.delivery.cancel` stay on the SDK envelope
-path instead of raw RPC envelopes. Delivery status follows negotiated receipt
-semantics on the ZeroMQ path: `sent` is terminal until
 `sdk.capability.receipt_terminality` is negotiated, then `delivered` is the
-terminal receipt state.
+terminal receipt state. Status snapshots also preserve daemon-reported
+retry-attempt counts and reason codes so REM/RCH can surface restart/retry
+state without raw RPC status calls.
 
 Run the example client:
 

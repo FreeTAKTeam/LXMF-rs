@@ -343,6 +343,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   mapping `sdk_status_v2` into `DeliverySnapshot`, so direct-chat delivery
   status reports `sent` as terminal only until
   `sdk.capability.receipt_terminality` is negotiated.
+- The typed ZeroMQ SDK backend preserves daemon-reported retry-attempt counts
+  and reason codes when mapping `sdk_status_v2` into `DeliverySnapshot`, so
+  direct-chat restart and retry recovery state remains visible to REM/RCH over
+  `ZmqPipelineBackendClient`.
 - The typed ZeroMQ SDK backend exposes burst sends through
   `ZmqPipelineBackendClient::send_batch` and also supports
   `app.delivery.send_batch` envelope execution, preserving ordered per-message

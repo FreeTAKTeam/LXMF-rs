@@ -33,6 +33,15 @@ impl ZmqPipelineBackendClient {
         })
     }
 
+    pub(super) fn parse_optional_u32(value: &JsonValue, key: &'static str) -> Option<u32> {
+        let raw = value.get(key)?.as_u64()?;
+        u32::try_from(raw).ok()
+    }
+
+    pub(super) fn parse_optional_string(value: &JsonValue, key: &'static str) -> Option<String> {
+        value.get(key).and_then(JsonValue::as_str).map(str::to_owned)
+    }
+
     pub(super) fn parse_optional_string_or_default(
         value: &JsonValue,
         key: &'static str,

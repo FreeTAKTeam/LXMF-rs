@@ -60,6 +60,9 @@ The project is best described by capability level:
   are ignored is obsolete.
 - Direct and propagated resource sends support receipt-state separation,
   timeout/failure propagation, and active resource cancellation.
+- The typed ZeroMQ SDK delivery status path now preserves daemon-reported
+  retry-attempt counts and reason codes in `DeliverySnapshot`, so REM/RCH can
+  inspect retry and recovery state without dropping to raw RPC status calls.
 - Ticket validity, renewal, derivation, persistence, and inbound ticket reuse
   are implemented.
 - Propagation peers have real queue, policy, maintenance, throttling, peering,
