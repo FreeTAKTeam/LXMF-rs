@@ -315,6 +315,14 @@ pub struct PropagationRecoveryStateResult {
     #[serde(default)]
     pub last_sync_error: Option<String>,
     #[serde(default)]
+    pub failure_kind: Option<String>,
+    #[serde(default)]
+    pub timed_out: bool,
+    #[serde(default)]
+    pub access_denied: bool,
+    #[serde(default)]
+    pub next_sync_attempt: Option<i64>,
+    #[serde(default)]
     pub retry_count: u64,
     #[serde(default)]
     pub queue_depth: u64,
@@ -332,6 +340,11 @@ pub struct PropagationRecoveryStateResult {
 
 impl PropagationRecoveryStateResult {
     pub fn from_propagation(propagation: JsonValue) -> Self {
+        let failure_kind = json_string(&propagation, "failure_kind");
+        let timed_out = failure_kind.as_deref() == Some("timeout")
+            || json_string(&propagation, "state_name").as_deref() == Some("timeout");
+        let access_denied = json_bool(&propagation, "access_denied").unwrap_or(false)
+            || matches!(failure_kind.as_deref(), Some("access_denied" | "access-denied" | "no_access"));
         Self {
             enabled: json_bool(&propagation, "enabled").unwrap_or(false),
             selected_node: json_string(&propagation, "selected_node"),
@@ -341,6 +354,10 @@ impl PropagationRecoveryStateResult {
             last_sync_started: json_i64(&propagation, "last_sync_started"),
             last_sync_completed: json_i64(&propagation, "last_sync_completed"),
             last_sync_error: json_string(&propagation, "last_sync_error"),
+            failure_kind,
+            timed_out,
+            access_denied,
+            next_sync_attempt: json_i64(&propagation, "next_sync_attempt"),
             retry_count: json_u64(&propagation, "retry_count").unwrap_or(0),
             queue_depth: json_u64(&propagation, "queue_depth").unwrap_or(0),
             total_ingested: json_u64(&propagation, "total_ingested").unwrap_or(0),

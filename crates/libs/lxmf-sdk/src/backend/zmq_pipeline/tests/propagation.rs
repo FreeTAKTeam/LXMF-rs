@@ -432,6 +432,9 @@ fn propagation_sync_acknowledge_uses_zmq_sdk_envelope_and_preserves_state() {
                         "state_name": "failed",
                         "sync_progress": 0.0,
                         "last_sync_error": "remote sync timed out",
+                        "failure_kind": "timeout",
+                        "next_sync_attempt": 1_700_002_000,
+                        "access_denied": false,
                         "retry_count": 3,
                         "queue_depth": 2
                     }
@@ -458,6 +461,10 @@ fn propagation_sync_acknowledge_uses_zmq_sdk_envelope_and_preserves_state() {
     assert_eq!(result.recovery_state.sync_state, 254);
     assert_eq!(result.recovery_state.state_name.as_deref(), Some("failed"));
     assert_eq!(result.recovery_state.last_sync_error.as_deref(), Some("remote sync timed out"));
+    assert_eq!(result.recovery_state.failure_kind.as_deref(), Some("timeout"));
+    assert!(result.recovery_state.timed_out);
+    assert!(!result.recovery_state.access_denied);
+    assert_eq!(result.recovery_state.next_sync_attempt, Some(1_700_002_000));
     assert_eq!(result.recovery_state.retry_count, 3);
     assert_eq!(result.recovery_state.queue_depth, 2);
     let captured = captured.lock().expect("captured request");
@@ -864,6 +871,9 @@ fn propagation_recovery_state_projects_status_for_zmq_sdk_clients() {
                         "last_sync_started": 1_700_010_000,
                         "last_sync_completed": null,
                         "last_sync_error": "remote sync timed out",
+                        "failure_kind": "timeout",
+                        "next_sync_attempt": 1_700_010_900,
+                        "access_denied": false,
                         "retry_count": 4,
                         "queue_depth": 9,
                         "total_ingested": 7,
@@ -890,6 +900,10 @@ fn propagation_recovery_state_projects_status_for_zmq_sdk_clients() {
     assert_eq!(state.last_sync_started, Some(1_700_010_000));
     assert_eq!(state.last_sync_completed, None);
     assert_eq!(state.last_sync_error.as_deref(), Some("remote sync timed out"));
+    assert_eq!(state.failure_kind.as_deref(), Some("timeout"));
+    assert!(state.timed_out);
+    assert!(!state.access_denied);
+    assert_eq!(state.next_sync_attempt, Some(1_700_010_900));
     assert_eq!(state.retry_count, 4);
     assert_eq!(state.queue_depth, 9);
     assert_eq!(state.total_ingested, 7);

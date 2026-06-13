@@ -435,6 +435,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   their propagation payloads into typed `recovery_state`, so status, enable,
   and acknowledgement callers can inspect sync state, retry counts, queue
   depth, and last error without parsing raw JSON.
+- `PropagationRecoveryStateResult` now also exposes failure kind, timeout and
+  access-denied booleans, and next sync attempt, so local recovery and sync
+  acknowledgement callers can branch on denial/timeout handling without raw
+  propagation JSON.
 - The same typed propagation branch now covers outbound propagation router
   get/set/list through `ZmqPipelineBackendClient::propagation_node_get`,
   `propagation_node_set`, and `propagation_node_list`, backed by
