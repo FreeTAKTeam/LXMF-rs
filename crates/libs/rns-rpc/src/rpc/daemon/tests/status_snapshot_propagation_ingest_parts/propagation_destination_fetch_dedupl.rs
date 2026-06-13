@@ -304,9 +304,9 @@ fn propagation_ingest_prunes_oldest_payload_when_storage_limit_is_exceeded() {
 
     let destination = [0x5a_u8; 16];
     let mut first_payload = destination.to_vec();
-    first_payload.extend(std::iter::repeat(0x11_u8).take(600_000));
+    first_payload.extend(std::iter::repeat_n(0x11_u8, 600_000));
     let mut second_payload = destination.to_vec();
-    second_payload.extend(std::iter::repeat(0x22_u8).take(600_000));
+    second_payload.extend(std::iter::repeat_n(0x22_u8, 600_000));
 
     let first = daemon
         .handle_rpc(rpc_request(
