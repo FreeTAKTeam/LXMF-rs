@@ -357,6 +357,22 @@ fn propagation_remote_sync_missing_bridge_reports_existing_peer_failure_like_pyt
         Some("remote control bridge unavailable")
     );
 
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 99, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    let row = peers["peers"]
+        .as_array()
+        .expect("peer rows")
+        .iter()
+        .find(|row| row["peer"].as_str() == Some(peer))
+        .expect("peer should remain queued for retry");
+    assert_eq!(row["sync_backoff"].as_u64(), Some(12 * 60));
+    let last_sync_attempt = row["last_sync_attempt"].as_i64().expect("last sync attempt");
+    assert!(last_sync_attempt > 0);
+    assert_eq!(row["next_sync_attempt"].as_i64(), Some(last_sync_attempt + 12 * 60));
+
     let event = daemon
         .event_queue
         .lock()
@@ -373,6 +389,12 @@ fn propagation_remote_sync_missing_bridge_reports_existing_peer_failure_like_pyt
     assert_eq!(
         event.payload["propagation"]["error"].as_str(),
         Some("remote control bridge unavailable")
+    );
+    assert_eq!(event.payload["sync_backoff"].as_u64(), Some(12 * 60));
+    assert_eq!(event.payload["last_sync_attempt"].as_i64(), Some(last_sync_attempt));
+    assert_eq!(
+        event.payload["next_sync_attempt"].as_i64(),
+        Some(last_sync_attempt + 12 * 60)
     );
     assert_eq!(
         event.payload["messages"]["unhandled_ids"].as_array().expect("event unhandled ids"),

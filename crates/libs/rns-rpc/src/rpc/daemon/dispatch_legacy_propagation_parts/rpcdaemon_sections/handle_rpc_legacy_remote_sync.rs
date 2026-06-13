@@ -93,15 +93,13 @@ impl RpcDaemon {
                                 state.last_sync_error =
                                     Some("remote control bridge unavailable".to_string());
                             });
-                            self.record_payload_backed_peer_queue_snapshot(record.peer.as_str())?;
-                            self.publish_failed_remote_peer_sync_event(
+                            self.record_retryable_remote_peer_sync_error(
                                 record.peer.as_str(),
                                 remote_id.as_str(),
                                 "remote control bridge unavailable",
                                 transfer_limit,
                                 sync_limit,
-                                None,
-                            );
+                            )?;
                         }
                         return Err(std::io::Error::other("remote control bridge unavailable"));
                     }

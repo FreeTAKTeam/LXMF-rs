@@ -144,8 +144,9 @@ The project is best described by capability level:
   case-insensitive requests, while still avoiding peer creation when the bridge
   is absent.
 - Remote peer-sync bridge-unavailable errors for already known peers now also
-  publish the failed peer-sync event and mark the propagation sync lifecycle
-  failed, keeping queue retry state observable without creating new peers.
+  advance that peer's retry backoff, publish the failed peer-sync event, and
+  mark the propagation sync lifecycle failed, keeping queue retry state
+  observable without creating new peers.
 - Peer sync RPC rows and events now preserve the Python-compatible peer `state`
   namespace while exposing backoff and policy postponement through separate
   scheduling fields; failed attempts continue to use the established error state.
