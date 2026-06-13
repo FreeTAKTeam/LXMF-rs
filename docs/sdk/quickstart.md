@@ -59,7 +59,10 @@ presence list, identity resolve, contact update/list, identity bootstrap,
 operation registry, and envelope execution. Direct-chat history and runtime
 destination queries should use `app.message.history.list` and
 `app.delivery.destination_hash` through the SDK envelope path instead of
-constructing raw RPC envelopes.
+constructing raw RPC envelopes. Delivery status follows negotiated receipt
+semantics on the ZeroMQ path: `sent` is terminal until
+`sdk.capability.receipt_terminality` is negotiated, then `delivered` is the
+terminal receipt state.
 
 Run the example client:
 

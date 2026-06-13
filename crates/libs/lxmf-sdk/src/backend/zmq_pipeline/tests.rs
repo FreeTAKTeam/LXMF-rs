@@ -680,6 +680,99 @@ fn send_uses_zmq_sdk_method_and_preserves_delivery_options() {
 }
 
 #[test]
+fn status_treats_sent_as_terminal_until_receipt_terminality_is_negotiated() {
+    let command_endpoint = unused_loopback_endpoint();
+    let response_endpoint = unused_loopback_endpoint();
+    let captured = Arc::new(Mutex::new(None));
+    let server = spawn_single_response_zmq_server(
+        command_endpoint.clone(),
+        json!({
+            "message": {
+                "message_id": "msg-sent",
+                "receipt_status": "sent",
+                "timestamp": 1710000000
+            }
+        }),
+        Arc::clone(&captured),
+    );
+    let mut config = ZmqPipelineBackendConfig::local_tcp(command_endpoint, response_endpoint);
+    config.request_timeout = std::time::Duration::from_secs(2);
+    let client = ZmqPipelineBackendClient::new(config).expect("zmq client");
+
+    let snapshot =
+        client.status(MessageId("msg-sent".to_owned())).expect("status").expect("message");
+
+    assert_eq!(snapshot.state, DeliveryState::Sent);
+    assert!(snapshot.terminal);
+    let captured = captured.lock().expect("captured request");
+    let request = captured.as_ref().expect("zmq request");
+    assert_eq!(request.method, "sdk_status_v2");
+    assert_eq!(request.params.as_ref().expect("params")["message_id"], json!("msg-sent"));
+    server.join().expect("server joined");
+}
+
+#[test]
+fn status_keeps_sent_nonterminal_after_receipt_terminality_is_negotiated() {
+    let command_endpoint = unused_loopback_endpoint();
+    let response_endpoint = unused_loopback_endpoint();
+    let captured = Arc::new(Mutex::new(Vec::new()));
+    let server = spawn_response_sequence_zmq_server(
+        command_endpoint.clone(),
+        vec![
+            json!({
+                "runtime_id": "runtime-zmq-receipts",
+                "active_contract_version": 2,
+                "effective_capabilities": ["sdk.capability.receipt_terminality"],
+                "effective_limits": {
+                    "max_poll_events": 64,
+                    "max_event_bytes": 32768,
+                    "max_batch_bytes": 1048576,
+                    "max_extension_keys": 32,
+                    "idempotency_ttl_ms": 60000
+                },
+                "contract_release": "v2",
+                "schema_namespace": "sdk.v2"
+            }),
+            json!({
+                "message": {
+                    "message_id": "msg-sent",
+                    "receipt_status": "sent",
+                    "timestamp": 1710000000
+                }
+            }),
+        ],
+        Arc::clone(&captured),
+    );
+    let mut config = ZmqPipelineBackendConfig::local_tcp(command_endpoint, response_endpoint);
+    config.request_timeout = std::time::Duration::from_secs(2);
+    let client = ZmqPipelineBackendClient::new(config).expect("zmq client");
+
+    client
+        .negotiate(crate::capability::NegotiationRequest {
+            supported_contract_versions: vec![2],
+            requested_capabilities: vec!["sdk.capability.receipt_terminality".to_owned()],
+            profile: crate::types::Profile::DesktopLocalRuntime,
+            bind_mode: crate::types::BindMode::LocalOnly,
+            auth_mode: crate::types::AuthMode::LocalTrusted,
+            overflow_policy: crate::types::OverflowPolicy::Reject,
+            block_timeout_ms: None,
+            rpc_backend: None,
+            extensions: Default::default(),
+        })
+        .expect("negotiate");
+    let snapshot =
+        client.status(MessageId("msg-sent".to_owned())).expect("status").expect("message");
+
+    assert_eq!(snapshot.state, DeliveryState::Sent);
+    assert!(!snapshot.terminal);
+    let captured = captured.lock().expect("captured requests");
+    assert_eq!(captured.len(), 2);
+    assert_eq!(captured[0].method, "sdk_negotiate_v2");
+    assert_eq!(captured[1].method, "sdk_status_v2");
+    server.join().expect("server joined");
+}
+
+#[test]
 fn operation_registry_uses_zmq_sdk_method_for_direct_chat_operations() {
     let command_endpoint = unused_loopback_endpoint();
     let response_endpoint = unused_loopback_endpoint();
@@ -825,6 +918,53 @@ fn spawn_single_response_zmq_server(
                 ))
                 .await
                 .expect("send response");
+        });
+    })
+}
+
+fn spawn_response_sequence_zmq_server(
+    command_endpoint: String,
+    responses: Vec<JsonValue>,
+    captured: Arc<Mutex<Vec<CapturedZmqRequest>>>,
+) -> std::thread::JoinHandle<()> {
+    std::thread::spawn(move || {
+        let runtime = tokio::runtime::Runtime::new().expect("test runtime");
+        runtime.block_on(async move {
+            let mut commands = PullSocket::new();
+            commands.bind(command_endpoint.as_str()).await.expect("bind command endpoint");
+            for response in responses {
+                let Some(envelope) = recv_request_envelope(&mut commands).await else {
+                    return;
+                };
+                let request: RpcRequest = rns_rpc::rpc::codec::decode_frame(&envelope.payload)
+                    .expect("decode rpc request");
+                captured
+                    .lock()
+                    .expect("captured requests")
+                    .push(CapturedZmqRequest { method: request.method, params: request.params });
+                let rpc_response =
+                    RpcResponse { id: envelope.request_id, result: Some(response), error: None };
+                let response_payload =
+                    rns_rpc::rpc::codec::encode_frame(&rpc_response).expect("encode rpc response");
+                let response_endpoint = envelope.response_endpoint.expect("response endpoint");
+                let mut responses = PushSocket::new();
+                responses
+                    .connect(response_endpoint.as_str())
+                    .await
+                    .expect("connect response endpoint");
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                responses
+                    .send(ZmqMessage::from(
+                        zmq::encode_envelope(&ZmqRpcEnvelope::response(
+                            envelope.session_id,
+                            envelope.request_id,
+                            response_payload,
+                        ))
+                        .expect("encode zmq response"),
+                    ))
+                    .await
+                    .expect("send response");
+            }
         });
     })
 }
