@@ -80,6 +80,8 @@ include!("status_snapshot_parts/propagation_remote_imports_match_sou.rs");
 
 include!("status_snapshot_parts/propagation_remote_fetch_updates_lif.rs");
 
+include!("status_snapshot_parts/propagation_remote_fetch_postponed_result.rs");
+
 include!("status_snapshot_parts/propagation_remote_download_success_clears_backoff.rs");
 
 include!("status_snapshot_parts/propagation_remote_download_success_queue_snapshot.rs");

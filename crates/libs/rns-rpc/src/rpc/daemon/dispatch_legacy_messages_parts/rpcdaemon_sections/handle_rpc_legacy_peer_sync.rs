@@ -245,6 +245,12 @@ impl RpcDaemon {
         let selected_response_ids =
             wanted_ids.as_ref().and_then(PeerSyncWantedIds::selected_ids).map(<[_]>::to_vec);
         let mut selected_offer_entries = std::collections::HashMap::new();
+        if selected_response_ids.is_none() {
+            validate_peer_sync_full_offer_payloads(
+                pending_propagation.as_slice(), transfer_limit_bytes, sync_limit_bytes,
+                cumulative_size,
+            )?;
+        }
         for entry in pending_propagation {
             let entry_size = usize::try_from(entry.size_bytes).unwrap_or(usize::MAX);
             let transfer_size = entry_size.saturating_add(16);

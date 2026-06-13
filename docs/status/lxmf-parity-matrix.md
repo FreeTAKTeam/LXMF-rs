@@ -70,6 +70,8 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Propagation and paper packing use canonical `lxmf-wire` helpers.
 - Signed messages, fields, attachment aliases, floating timestamps, and
   non-UTF8 title/content bytes retain client-visible fidelity.
+- Documented basic field IDs are exported from `lxmf-wire`, and the typed
+  ZeroMQ SDK send path preserves those keys plus `_lxmf_fields_msgpack_b64`.
 
 ### Delivery and receipts
 
@@ -150,6 +152,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Selected local peer-sync offer responses validate the full selected
   propagation response payload batch before marking any selected ID transferred,
   so malformed queued payloads cannot partially drain peer retry state.
+- Ordinary full-offer peer sync validates the propagation payload batch before
+  marking any queued ID transferred, so a later malformed queued payload cannot
+  partially drain peer retry state.
 - Malformed remote fetch and download imports mirror existing payload-backed
   queue marks into active peer record snapshots before returning the import
   failure, so already queued relay work remains visible after restart/export.
@@ -210,6 +215,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Remote peer-sync uses the stored peer ID case for the bridge call, import
   source accounting, state updates, and response envelope when callers supply a
   case-variant peer request.
+- Remote peer-sync bridge results that explicitly report `synced: false` or
+  `postponed: true` preserve that remote postponement in the peer-sync
+  result/event and keep retry scheduling intact instead of clearing peer
+  backoff as a completed transfer.
 - Failed remote unpeer attempts mirror existing payload-backed queue marks and
   restored peer-record queue IDs into active peer record snapshots before
   returning bridge-unavailable or bridge-execution errors, including
@@ -449,6 +458,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   counts and receive bytes only for payload IDs not already marked received
   from that source, while still replaying known payloads into relay queues when
   their live marks were cleared.
+- Remote fetch/download bridge envelopes that successfully return `postponed`
+  or `synced: false` preserve the failed transfer lifecycle, source-peer
+  backoff, failed peer event, and retryable queue snapshot instead of treating
+  the transfer as an empty completed import.
 - Successful remote fetch/download imports clear stale retry backoff on an
   active source peer after newly accepted payloads, so recovered propagation
   sources are not left postponed by an earlier failed transfer attempt.

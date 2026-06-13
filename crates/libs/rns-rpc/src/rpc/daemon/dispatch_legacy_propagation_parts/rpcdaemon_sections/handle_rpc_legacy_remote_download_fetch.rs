@@ -57,57 +57,82 @@ impl RpcDaemon {
                     parsed.transfer_limit_kb,
                 ) {
                     Ok(mut result) => {
-                        let imported = match self.import_remote_propagation_payloads(&result) {
-                            Ok(imported) => imported,
-                            Err(err) => {
-                                self.update_propagation_sync_state(|state| {
-                                    state.sync_state = PR_FAILED;
-                                    state.state_name = "failed".to_string();
-                                    state.sync_progress = 0.0;
-                                    state.last_sync_error = Some(err.to_string());
-                                });
-                                self.record_failed_remote_import_for_active_source_peer(
-                                    remote_id.as_str(),
-                                    remote_id.as_str(),
-                                    &err,
-                                )?;
-                                for peer in self.active_peer_ids() {
-                                    self.record_payload_backed_peer_queue_snapshot(peer.as_str())?;
-                                }
-                                return Err(err);
+                        if let Some(err) =
+                            remote_transfer_incomplete_error(&result, "remote download postponed")
+                        {
+                            self.update_propagation_sync_state(|state| {
+                                state.sync_state = PR_FAILED;
+                                state.state_name = "failed".to_string();
+                                state.sync_progress = 0.0;
+                                state.last_sync_error = Some(err.to_string());
+                            });
+                            self.record_failed_remote_transfer_for_active_source_peer(
+                                remote_id.as_str(),
+                                remote_id.as_str(),
+                                &err,
+                            )?;
+                            for peer in self.active_peer_ids() {
+                                self.record_payload_backed_peer_queue_snapshot(peer.as_str())?;
                             }
-                        };
-                        if let Some(result) = result.as_object_mut() {
-                            result.insert(
-                                "imported_count".to_string(),
-                                json!(imported.imported_count),
-                            );
-                            result.insert(
-                                "duplicate_count".to_string(),
-                                json!(imported.duplicate_count),
-                            );
-                            result.insert("imported_ids".to_string(), json!(imported.imported_ids));
-                            result.insert(
-                                "transferred_bytes".to_string(),
-                                json!(imported.transferred_bytes),
-                            );
+                            result
+                        } else {
+                            let imported = match self.import_remote_propagation_payloads(&result) {
+                                Ok(imported) => imported,
+                                Err(err) => {
+                                    self.update_propagation_sync_state(|state| {
+                                        state.sync_state = PR_FAILED;
+                                        state.state_name = "failed".to_string();
+                                        state.sync_progress = 0.0;
+                                        state.last_sync_error = Some(err.to_string());
+                                    });
+                                    self.record_failed_remote_import_for_active_source_peer(
+                                        remote_id.as_str(),
+                                        remote_id.as_str(),
+                                        &err,
+                                    )?;
+                                    for peer in self.active_peer_ids() {
+                                        self.record_payload_backed_peer_queue_snapshot(
+                                            peer.as_str(),
+                                        )?;
+                                    }
+                                    return Err(err);
+                                }
+                            };
+                            if let Some(result) = result.as_object_mut() {
+                                result.insert(
+                                    "imported_count".to_string(),
+                                    json!(imported.imported_count),
+                                );
+                                result.insert(
+                                    "duplicate_count".to_string(),
+                                    json!(imported.duplicate_count),
+                                );
+                                result.insert(
+                                    "imported_ids".to_string(),
+                                    json!(imported.imported_ids),
+                                );
+                                result.insert(
+                                    "transferred_bytes".to_string(),
+                                    json!(imported.transferred_bytes),
+                                );
+                            }
+                            self.queue_remote_imports_from_source_for_active_peers(
+                                remote_id.as_str(),
+                                imported.accepted_ids.as_slice(),
+                                imported.transferred_bytes,
+                            )?;
+                            for peer in self.active_peer_ids() {
+                                self.record_payload_backed_peer_queue_snapshot(peer.as_str())?;
+                            }
+                            self.update_propagation_sync_state(|state| {
+                                state.sync_state = PR_COMPLETE;
+                                state.state_name = "completed".to_string();
+                                state.sync_progress = 1.0;
+                                state.last_sync_completed = Some(now_i64());
+                                state.last_sync_error = None;
+                            });
+                            result
                         }
-                        self.queue_remote_imports_from_source_for_active_peers(
-                            remote_id.as_str(),
-                            imported.accepted_ids.as_slice(),
-                            imported.transferred_bytes,
-                        )?;
-                        for peer in self.active_peer_ids() {
-                            self.record_payload_backed_peer_queue_snapshot(peer.as_str())?;
-                        }
-                        self.update_propagation_sync_state(|state| {
-                            state.sync_state = PR_COMPLETE;
-                            state.state_name = "completed".to_string();
-                            state.sync_progress = 1.0;
-                            state.last_sync_completed = Some(now_i64());
-                            state.last_sync_error = None;
-                        });
-                        result
                     }
                     Err(err) => {
                         let sync_state = remote_propagation_failure_state(&err);
@@ -258,6 +283,35 @@ impl RpcDaemon {
                         return Err(err);
                     }
                 };
+                if let Some(err) =
+                    remote_transfer_incomplete_error(&result, "remote fetch postponed")
+                {
+                    self.update_propagation_sync_state(|state| {
+                        state.sync_state = PR_FAILED;
+                        state.state_name = "failed".to_string();
+                        state.sync_progress = 0.0;
+                        state.last_sync_error = Some(err.to_string());
+                    });
+                    self.record_failed_remote_transfer_for_active_source_peer(
+                        remote_id.as_str(),
+                        remote_id.as_str(),
+                        &err,
+                    )?;
+                    for peer in self.active_peer_ids() {
+                        self.record_payload_backed_peer_queue_snapshot(peer.as_str())?;
+                    }
+                    let propagation =
+                        self.propagation_state.lock().expect("propagation mutex poisoned").clone();
+                    return Ok(RpcResponse {
+                        id: request.id,
+                        result: Some(json!({
+                            "remote": remote_id,
+                            "propagation": propagation,
+                            "result": result,
+                        })),
+                        error: None,
+                    });
+                }
                 let imported = match self.import_remote_propagation_payloads(&result) {
                     Ok(imported) => imported,
                     Err(err) => {
