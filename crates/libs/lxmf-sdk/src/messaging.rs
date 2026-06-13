@@ -1,5 +1,6 @@
 use lxmf_core::announce::display_name_from_delivery_app_data;
 use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
 use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet};
 
@@ -134,6 +135,35 @@ pub struct MessageRecord {
     pub sent_at_ms: Option<u64>,
     pub received_at_ms: Option<u64>,
     pub updated_at_ms: u64,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MessageHistoryListRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub before_ts: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MessageHistoryPage {
+    pub messages: Vec<MessageHistoryRecord>,
+    pub next_cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MessageHistoryRecord {
+    pub id: String,
+    pub source: String,
+    pub destination: String,
+    pub title: String,
+    pub content: String,
+    pub timestamp: i64,
+    pub direction: String,
+    pub fields: Option<JsonValue>,
+    pub receipt_status: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

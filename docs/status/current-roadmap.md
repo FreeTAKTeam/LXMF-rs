@@ -301,6 +301,10 @@ The project is best described by capability level:
   `app.delivery.destination_hash`, so REM/RCH direct-chat history and runtime
   delivery-destination lookups can stay on `ZmqPipelineBackendClient` instead
   of constructing raw RPC/HTTP envelopes.
+- The typed ZeroMQ SDK backend now exposes durable direct-chat history through
+  `ZmqPipelineBackendClient::list_message_history`, preserving message bodies
+  with links, receipt status, basic LXMF fields, and restart pagination cursors
+  from the daemon `list_messages` store.
 - The typed ZeroMQ SDK backend now tracks negotiated receipt terminality for
   delivery status, so direct-chat status reports match the SDK contract:
   `sent` is terminal until `sdk.capability.receipt_terminality` is negotiated,

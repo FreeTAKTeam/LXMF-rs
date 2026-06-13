@@ -56,10 +56,10 @@ API even when ZeroMQ event wakeups are enabled.
 The typed `ZmqPipelineBackendClient` path covers the core lifecycle and
 delivery methods plus identity list/activate/import/export, identity announce,
 presence list, identity resolve, contact update/list, identity bootstrap,
-operation registry, and envelope execution. Direct-chat history and runtime
-destination queries should use `app.message.history.list` and
-`app.delivery.destination_hash` through the SDK envelope path instead of
-constructing raw RPC envelopes. Burst sends should use
+operation registry, envelope execution, and typed durable direct-chat history
+through `ZmqPipelineBackendClient::list_message_history`. Runtime destination
+queries should use `app.delivery.destination_hash` through the SDK envelope
+path instead of constructing raw RPC envelopes. Burst sends should use
 `app.delivery.send_batch` through the same SDK envelope path so ordered
 per-message acceptance and rejection results remain visible without raw RPC
 calls. Direct-chat cancellation can use either `sdk_cancel_message_v2` via
