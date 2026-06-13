@@ -172,6 +172,21 @@ impl RpcDaemon {
                 method: method.to_owned(),
                 params: Some(params),
             })?,
+            "sdk_peer_connect_v2" => self.handle_sdk_peer_connect_v2(RpcRequest {
+                id: request_id,
+                method: method.to_owned(),
+                params: Some(params),
+            })?,
+            "sdk_peer_disconnect_v2" => self.handle_sdk_peer_disconnect_v2(RpcRequest {
+                id: request_id,
+                method: method.to_owned(),
+                params: Some(params),
+            })?,
+            "sdk_peer_reconnect_v2" => self.handle_sdk_peer_reconnect_v2(RpcRequest {
+                id: request_id,
+                method: method.to_owned(),
+                params: Some(params),
+            })?,
             "sdk_workflow_peer_ready_v2" => self.handle_sdk_workflow_peer_ready_v2(RpcRequest {
                 id: request_id,
                 method: method.to_owned(),
@@ -371,6 +386,9 @@ impl RpcDaemon {
             }
             "sdk_identity_contact_update_v2" | "sdk_identity_bootstrap_v2" => {
                 raw.get("contact").cloned().unwrap_or(JsonValue::Null)
+            }
+            "sdk_peer_connect_v2" | "sdk_peer_disconnect_v2" | "sdk_peer_reconnect_v2" => {
+                raw.get("peer").cloned().unwrap_or(JsonValue::Null)
             }
             "sdk_workflow_peer_ready_v2"
             | "sdk_workflow_topic_sync_v2"

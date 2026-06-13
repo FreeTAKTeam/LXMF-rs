@@ -137,6 +137,7 @@ impl RpcDaemon {
             "sdk.capability.identity_import_export".to_string(),
             "sdk.capability.identity_hash_resolution".to_string(),
             "sdk.capability.contact_management".to_string(),
+            "sdk.capability.peer_lifecycle".to_string(),
             "sdk.capability.paper_messages".to_string(),
             "sdk.capability.remote_commands".to_string(),
             "sdk.capability.voice_signaling".to_string(),
