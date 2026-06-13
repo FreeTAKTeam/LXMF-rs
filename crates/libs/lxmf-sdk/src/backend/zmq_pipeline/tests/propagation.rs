@@ -733,6 +733,8 @@ fn propagation_recovery_state_projects_status_for_zmq_sdk_clients() {
                         "last_sync_started": 1_700_010_000,
                         "last_sync_completed": null,
                         "last_sync_error": "remote sync timed out",
+                        "retry_count": 4,
+                        "queue_depth": 9,
                         "total_ingested": 7,
                         "last_ingest_count": 2,
                         "client_propagation_messages_received": 5,
@@ -757,6 +759,8 @@ fn propagation_recovery_state_projects_status_for_zmq_sdk_clients() {
     assert_eq!(state.last_sync_started, Some(1_700_010_000));
     assert_eq!(state.last_sync_completed, None);
     assert_eq!(state.last_sync_error.as_deref(), Some("remote sync timed out"));
+    assert_eq!(state.retry_count, 4);
+    assert_eq!(state.queue_depth, 9);
     assert_eq!(state.total_ingested, 7);
     assert_eq!(state.last_ingest_count, 2);
     assert_eq!(state.client_propagation_messages_received, 5);

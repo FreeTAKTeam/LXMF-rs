@@ -424,8 +424,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - The same typed propagation branch now exposes
   `ZmqPipelineBackendClient::propagation_recovery_state`, projecting
   `app.propagation.status` into structured sync state, selected-node,
-  last-error, timestamp, and local ingest/serve counters while keeping the raw
-  propagation payload available for queue diagnostics.
+  last-error, retry count, queue depth, timestamp, and local ingest/serve
+  counters while keeping the raw propagation payload available for queue
+  diagnostics.
 - Python-style `lxmd` `[lxmf] announce_interval` drives peer/delivery announce
   cadence separately from `[propagation] announce_interval`, which remains the
   propagation-node announce cadence.
