@@ -69,6 +69,11 @@ where
             .connect()
             .await
             .map_err(|message| RnodeBleKissError::Backend { operation: "connect", message })?;
+        if let Some(mtu) = self.backend.negotiated_mtu() {
+            let att_payload = (mtu as usize).saturating_sub(3);
+            self.session.config.max_write_len =
+                att_payload.min(self.session.config.mtu).max(self.session.config.max_write_len);
+        }
         self.backend.subscribe_notifications().await.map_err(|message| {
             RnodeBleKissError::Backend { operation: "subscribe_notifications", message }
         })?;
