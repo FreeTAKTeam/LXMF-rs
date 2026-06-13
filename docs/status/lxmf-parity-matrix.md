@@ -418,6 +418,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   and propagation lifecycle payloads into typed `transfer_state`, covering
   sync/postpone status, imported IDs/counts, transferred bytes, progress, and
   last error while retaining the original daemon JSON.
+- `PropagationRemoteTransferState` now also exposes failure kind, timeout and
+  access-denied booleans, retry count, and next sync attempt for remote
+  fetch/download results, so clients can branch on denial and timeout recovery
+  without parsing raw propagation JSON.
 - `PropagationRemoteUnpeerResult` now projects remote unpeer `messages` and
   propagation cleanup payloads into a typed `queue` snapshot, so denial and
   teardown cleanup callers can inspect handled, unhandled, transferred,

@@ -138,7 +138,8 @@ fn propagation_remote_lifecycle_uses_zmq_sdk_envelopes_and_preserves_raw_state()
                         "remote": "remote-a",
                         "propagation": {
                             "state_name": "completed",
-                            "sync_progress": 1.0
+                            "sync_progress": 1.0,
+                            "failure_kind": null
                         },
                         "result": {
                             "synced": true,
@@ -159,12 +160,17 @@ fn propagation_remote_lifecycle_uses_zmq_sdk_envelopes_and_preserves_raw_state()
                         "remote": "remote-a",
                         "propagation": {
                             "state_name": "failed",
-                            "last_sync_error": "remote download postponed"
+                            "last_sync_error": "remote download postponed",
+                            "failure_kind": "timeout",
+                            "retry_count": 5,
+                            "next_sync_attempt": 1_700_001_900,
+                            "access_denied": false
                         },
                         "result": {
                             "synced": false,
                             "postponed": true,
-                            "postpone_reason": "timeout"
+                            "postpone_reason": "timeout",
+                            "failure_kind": "timeout"
                         }
                     }
                 }
@@ -302,11 +308,17 @@ fn propagation_remote_lifecycle_uses_zmq_sdk_envelopes_and_preserves_raw_state()
     assert_eq!(fetch.transfer_state.transferred_bytes, 128);
     assert_eq!(fetch.transfer_state.state_name.as_deref(), Some("completed"));
     assert_eq!(fetch.transfer_state.sync_progress, Some(1.0));
+    assert_eq!(fetch.transfer_state.failure_kind, None);
     assert_eq!(download.result["postpone_reason"], json!("timeout"));
     assert!(!download.transfer_state.synced);
     assert!(download.transfer_state.postponed);
     assert_eq!(download.transfer_state.postpone_reason.as_deref(), Some("timeout"));
     assert_eq!(download.transfer_state.state_name.as_deref(), Some("failed"));
+    assert_eq!(download.transfer_state.failure_kind.as_deref(), Some("timeout"));
+    assert!(download.transfer_state.timed_out);
+    assert!(!download.transfer_state.access_denied);
+    assert_eq!(download.transfer_state.retry_count, 5);
+    assert_eq!(download.transfer_state.next_sync_attempt, Some(1_700_001_900));
     assert_eq!(
         download.transfer_state.last_sync_error.as_deref(),
         Some("remote download postponed")

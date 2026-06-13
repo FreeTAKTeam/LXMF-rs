@@ -160,10 +160,26 @@ pub struct PropagationRemoteTransferState {
     pub sync_progress: Option<f64>,
     #[serde(default)]
     pub last_sync_error: Option<String>,
+    #[serde(default)]
+    pub failure_kind: Option<String>,
+    #[serde(default)]
+    pub timed_out: bool,
+    #[serde(default)]
+    pub access_denied: bool,
+    #[serde(default)]
+    pub retry_count: u64,
+    #[serde(default)]
+    pub next_sync_attempt: Option<i64>,
 }
 
 impl PropagationRemoteTransferState {
     fn from_result_and_propagation(result: &JsonValue, propagation: &JsonValue) -> Self {
+        let failure_kind = json_string(result, "failure_kind").or_else(|| json_string(propagation, "failure_kind"));
+        let timed_out = failure_kind.as_deref() == Some("timeout")
+            || json_string(result, "postpone_reason").as_deref() == Some("timeout")
+            || json_string(propagation, "state_name").as_deref() == Some("timeout");
+        let access_denied = json_bool(propagation, "access_denied").unwrap_or(false)
+            || matches!(failure_kind.as_deref(), Some("access_denied" | "access-denied" | "no_access"));
         Self {
             synced: json_bool(result, "synced").unwrap_or(false),
             postponed: json_bool(result, "postponed").unwrap_or(false),
@@ -174,6 +190,11 @@ impl PropagationRemoteTransferState {
             state_name: json_string(propagation, "state_name"),
             sync_progress: json_f64(propagation, "sync_progress"),
             last_sync_error: json_string(propagation, "last_sync_error"),
+            failure_kind,
+            timed_out,
+            access_denied,
+            retry_count: json_u64(propagation, "retry_count").unwrap_or(0),
+            next_sync_attempt: json_i64(propagation, "next_sync_attempt"),
         }
     }
 }
