@@ -36,6 +36,7 @@ fn sdk_release_c_domain_methods_roundtrip() {
         .iter()
         .any(|entry| entry["id"] == json!("app.workflow.mission_update_send")));
     assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.delivery.send_batch")));
+    assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.delivery.cancel")));
 
     let list_before =
         daemon.handle_rpc(rpc_request(120, "sdk_identity_list_v2", json!({}))).expect("list");
@@ -125,6 +126,39 @@ fn sdk_release_c_domain_methods_roundtrip() {
         batch_response["response"]["payload"]["results"][1]["message_id"],
         json!("batch-envelope-msg-2")
     );
+
+    let cancel_envelope = daemon
+        .handle_rpc(rpc_request(
+            1204,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "app.delivery.cancel",
+                "kind": "command",
+                "correlation_id": "cancel-corr-1",
+                "payload": {
+                    "message_id": "batch-envelope-msg-1"
+                },
+            }),
+        ))
+        .expect("cancel envelope");
+    assert!(cancel_envelope.error.is_none());
+    let cancel_response = cancel_envelope.result.expect("cancel envelope result");
+    assert_eq!(cancel_response["response"]["operation_id"], json!("app.delivery.cancel"));
+    assert_eq!(cancel_response["response"]["correlation_id"], json!("cancel-corr-1"));
+    assert_eq!(cancel_response["response"]["payload"]["message_id"], json!("batch-envelope-msg-1"));
+    assert_eq!(cancel_response["response"]["payload"]["result"], json!("TooLateToCancel"));
+    let cancelled_status = daemon
+        .handle_rpc(rpc_request(
+            1205,
+            "sdk_status_v2",
+            json!({ "message_id": "batch-envelope-msg-1" }),
+        ))
+        .expect("cancelled status");
+    let cancelled_status_result = cancelled_status.result.expect("cancelled status result");
+    assert!(cancelled_status_result["message"]["receipt_status"]
+        .as_str()
+        .expect("receipt status")
+        .starts_with("sent"));
 
     let identity_bundle = json!({
         "identity": "node-b",

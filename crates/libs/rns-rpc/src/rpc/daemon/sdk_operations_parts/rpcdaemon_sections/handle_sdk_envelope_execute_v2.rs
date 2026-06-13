@@ -41,6 +41,9 @@ impl RpcDaemon {
             "sdk_status_v2" => json!({
                 "message_id": parsed.payload.get("message_id").and_then(JsonValue::as_str),
             }),
+            "sdk_cancel_message_v2" => json!({
+                "message_id": parsed.payload.get("message_id").and_then(JsonValue::as_str),
+            }),
             "sdk_poll_events_v2" => json!({
                 "cursor": parsed.payload.get("cursor").cloned().unwrap_or(JsonValue::Null),
                 "max": parsed.payload.get("max").cloned().unwrap_or(JsonValue::from(32_u64)),

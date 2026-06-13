@@ -59,6 +59,14 @@ fn built_in_entries() -> Vec<OperationEntry> {
         )
         .with_alias("sdk_status_v2"),
         OperationEntry::new(
+            "app.delivery.cancel",
+            "delivery",
+            OperationKind::Command,
+            TransportVariant::Rpc,
+            "Cancel a queued outbound message when it has not reached a terminal state.",
+        )
+        .with_alias("sdk_cancel_message_v2"),
+        OperationEntry::new(
             "app.event.poll",
             "events",
             OperationKind::Query,

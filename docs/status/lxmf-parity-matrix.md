@@ -325,6 +325,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - The typed ZeroMQ SDK envelope path exposes `app.delivery.send_batch` through
   `sdk_send_batch_v2` and preserves ordered per-message batch results, so
   REM/RCH burst-send flows do not need raw RPC envelopes.
+- The typed ZeroMQ SDK backend and operation registry expose direct-chat
+  cancellation through both `ZmqPipelineBackendClient::cancel` and
+  `app.delivery.cancel` envelope execution, preserving daemon cancellation
+  outcomes for REM/RCH without raw RPC envelopes.
 - Python-style `lxmd` `[lxmf] announce_interval` drives peer/delivery announce
   cadence separately from `[propagation] announce_interval`, which remains the
   propagation-node announce cadence.

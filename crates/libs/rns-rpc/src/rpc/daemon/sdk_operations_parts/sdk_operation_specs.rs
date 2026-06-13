@@ -51,6 +51,16 @@ const SDK_OPERATION_SPECS: &[SdkOperationSpec] = &[
         rpc_method: "sdk_status_v2",
     },
     SdkOperationSpec {
+        id: "app.delivery.cancel",
+        group: "delivery",
+        kind: "command",
+        transport_variant: "rpc",
+        description: "Cancel a queued outbound message when it has not reached a terminal state.",
+        aliases: &["sdk_cancel_message_v2"],
+        required_capabilities: &[],
+        rpc_method: "sdk_cancel_message_v2",
+    },
+    SdkOperationSpec {
         id: "app.event.poll",
         group: "events",
         kind: "query",

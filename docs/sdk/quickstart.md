@@ -62,8 +62,11 @@ destination queries should use `app.message.history.list` and
 constructing raw RPC envelopes. Burst sends should use
 `app.delivery.send_batch` through the same SDK envelope path so ordered
 per-message acceptance and rejection results remain visible without raw RPC
-calls. Delivery status follows negotiated receipt semantics on the ZeroMQ path:
-`sent` is terminal until
+calls. Direct-chat cancellation can use either `sdk_cancel_message_v2` via
+`ZmqPipelineBackendClient::cancel` or `app.delivery.cancel` through SDK
+envelope execution, preserving `Accepted`, `AlreadyTerminal`, `NotFound`, and
+`TooLateToCancel` results. Delivery status follows negotiated receipt semantics
+on the ZeroMQ path: `sent` is terminal until
 `sdk.capability.receipt_terminality` is negotiated, then `delivered` is the
 terminal receipt state.
 

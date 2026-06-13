@@ -308,6 +308,10 @@ The project is best described by capability level:
 - The typed ZeroMQ SDK envelope path now routes `app.delivery.send_batch` to
   `sdk_send_batch_v2` and preserves ordered per-message batch results, giving
   REM/RCH burst-send flows a ZeroMQ SDK path without raw RPC envelopes.
+- The typed ZeroMQ SDK backend and operation registry now expose direct-chat
+  cancellation through both `ZmqPipelineBackendClient::cancel` and
+  `app.delivery.cancel` envelope execution, preserving daemon cancellation
+  outcomes without raw RPC envelopes.
 - Locally delivered inbound peer propagation payloads now also store the
   accepted transient and apply source-aware relay fan-out without double
   counting source peer activity, so local delivery does not bypass relay queue

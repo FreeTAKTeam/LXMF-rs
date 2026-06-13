@@ -124,6 +124,11 @@ impl RpcDaemon {
                 method: method.to_owned(),
                 params: Some(params),
             })?,
+            "sdk_cancel_message_v2" => self.handle_sdk_cancel_message_v2(RpcRequest {
+                id: request_id,
+                method: method.to_owned(),
+                params: Some(params),
+            })?,
             "sdk_poll_events_v2" => self.handle_sdk_poll_events_v2(RpcRequest {
                 id: request_id,
                 method: method.to_owned(),
