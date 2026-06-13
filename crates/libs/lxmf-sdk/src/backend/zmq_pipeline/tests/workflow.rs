@@ -306,3 +306,66 @@ fn peer_directory_uses_presence_name_source_when_contact_has_no_name() {
     assert_eq!(peer.name_source.as_deref(), Some("announce"));
     server.join().expect("server joined");
 }
+
+#[test]
+fn peer_directory_since_passes_presence_stale_cutoff_over_zmq_sdk_method() {
+    let command_endpoint = unused_loopback_endpoint();
+    let response_endpoint = unused_loopback_endpoint();
+    let captured = Arc::new(Mutex::new(Vec::new()));
+    let server = spawn_response_sequence_zmq_server(
+        command_endpoint.clone(),
+        vec![
+            json!({
+                "contact_list": {
+                    "contacts": [{
+                        "identity": "stale-saved",
+                        "display_name": "Saved Peer",
+                        "trust_level": "trusted",
+                        "bootstrap": true,
+                        "updated_ts_ms": 1700000400,
+                        "metadata": {},
+                        "extensions": {}
+                    }],
+                    "next_cursor": null
+                }
+            }),
+            json!({
+                "presence_list": {
+                    "peers": [{
+                        "peer_id": "fresh-peer",
+                        "last_seen_ts_ms": 1700000800,
+                        "first_seen_ts_ms": 1700000700,
+                        "seen_count": 2,
+                        "name": "Fresh Peer",
+                        "name_source": "announce",
+                        "trust_level": "unknown",
+                        "bootstrap": false,
+                        "extensions": {}
+                    }],
+                    "next_cursor": null
+                }
+            }),
+        ],
+        Arc::clone(&captured),
+    );
+    let mut config = ZmqPipelineBackendConfig::local_tcp(command_endpoint, response_endpoint);
+    config.request_timeout = std::time::Duration::from_secs(2);
+    let client = ZmqPipelineBackendClient::new(config).expect("zmq client");
+
+    let peers = client.peer_directory_since(Some(10), Some(1_700_000_500)).expect("peer directory");
+
+    assert_eq!(peers.len(), 2);
+    let stale_saved = peers.iter().find(|peer| peer.peer_id == "stale-saved").expect("saved peer");
+    assert!(!stale_saved.online);
+    let fresh = peers.iter().find(|peer| peer.peer_id == "fresh-peer").expect("fresh peer");
+    assert!(fresh.online);
+    assert_eq!(fresh.last_seen_ts_ms, Some(1_700_000_800));
+
+    let captured = captured.lock().expect("captured requests");
+    assert_eq!(captured.len(), 2);
+    assert_eq!(captured[1].method, "sdk_identity_presence_list_v2");
+    let params = captured[1].params.as_ref().expect("presence params");
+    assert_eq!(params["limit"], json!(10));
+    assert_eq!(params["min_last_seen_ts_ms"], json!(1_700_000_500));
+    server.join().expect("server joined");
+}

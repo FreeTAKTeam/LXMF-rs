@@ -146,6 +146,15 @@ impl<'a, B: SdkBackend> IdentityDirectory<'a, B> {
         self.client.presence(cursor, limit)
     }
 
+    pub fn presence_since(
+        &self,
+        cursor: Option<String>,
+        limit: Option<usize>,
+        min_last_seen_ts_ms: Option<i64>,
+    ) -> Result<PresencePage, Error> {
+        self.client.presence_since(cursor, limit, min_last_seen_ts_ms)
+    }
+
     pub fn update_contact(&self, update: ContactUpdate) -> Result<Contact, Error> {
         self.client.update_contact(update)
     }
@@ -156,6 +165,14 @@ impl<'a, B: SdkBackend> IdentityDirectory<'a, B> {
 
     pub fn peer_directory(&self, limit: Option<usize>) -> Result<Vec<PeerDirectoryEntry>, Error> {
         self.client.peer_directory(limit)
+    }
+
+    pub fn peer_directory_since(
+        &self,
+        limit: Option<usize>,
+        min_last_seen_ts_ms: Option<i64>,
+    ) -> Result<Vec<PeerDirectoryEntry>, Error> {
+        self.client.peer_directory_since(limit, min_last_seen_ts_ms)
     }
 }
 

@@ -323,6 +323,10 @@ The project is best described by capability level:
   `sdk_identity_presence_list_v2` while preserving display names, callsigns,
   REM capability flags, RCH announce-slot metadata, online state, and
   first/last-seen timestamps.
+- The typed ZeroMQ SDK backend now exposes
+  `ZmqPipelineBackendClient::peer_directory_since` and a
+  `min_last_seen_ts_ms` presence-list filter, so REM/RCH can suppress stale
+  announce rows over the SDK path while keeping saved contacts visible offline.
 - The typed ZeroMQ SDK backend now also covers the operation registry and SDK
   envelope execution path, including `app.message.history.list` and
   `app.delivery.destination_hash`, so REM/RCH direct-chat history and runtime

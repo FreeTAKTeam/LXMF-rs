@@ -246,6 +246,22 @@ fn sdk_release_c_domain_methods_roundtrip() {
                 && row["bootstrap"] == json!(true)
         }));
 
+    let filtered_presence = daemon
+        .handle_rpc(rpc_request(
+            12240,
+            "sdk_identity_presence_list_v2",
+            json!({ "cursor": null, "limit": 10, "min_last_seen_ts_ms": 1_700_000_000 }),
+        ))
+        .expect("filtered presence list");
+    assert!(filtered_presence.error.is_none());
+    assert!(filtered_presence.result.expect("result")["presence_list"]["peers"]
+        .as_array()
+        .expect("filtered presence rows")
+        .iter()
+        .all(|row| row["last_seen_ts_ms"].as_i64().is_some_and(|last_seen| {
+            last_seen >= 1_700_000_000
+        })));
+
     let announce_now = daemon
         .handle_rpc(rpc_request(1225, "sdk_identity_announce_now_v2", json!({})))
         .expect("identity announce now");
@@ -503,4 +519,54 @@ fn sdk_release_c_domain_methods_roundtrip() {
         voice_update_envelope.result.expect("voice update envelope result")["response"]["payload"],
         json!("active")
     );
+}
+
+#[test]
+fn sdk_identity_presence_list_filters_stale_peers_by_last_seen() {
+    let daemon = RpcDaemon::test_instance();
+    let fresh: PeerRecord = serde_json::from_value(json!({
+        "destination_hash": "fresh-peer",
+        "last_seen": 1_700_000_800,
+        "last_heard": 1_700_000_800,
+        "first_seen": 1_700_000_700,
+        "seen_count": 2,
+        "name": "Fresh Peer",
+        "name_source": "announce",
+        "alive": true,
+    }))
+    .expect("fresh peer record");
+    let stale: PeerRecord = serde_json::from_value(json!({
+        "destination_hash": "stale-peer",
+        "last_seen": 1_700_000_100,
+        "last_heard": 1_700_000_100,
+        "first_seen": 1_700_000_000,
+        "seen_count": 1,
+        "name": "Stale Peer",
+        "name_source": "announce",
+        "alive": false,
+    }))
+    .expect("stale peer record");
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        peers.insert(fresh.peer.clone(), fresh);
+        peers.insert(stale.peer.clone(), stale);
+    }
+
+    let response = daemon
+        .handle_rpc(rpc_request(
+            12241,
+            "sdk_identity_presence_list_v2",
+            json!({ "cursor": null, "limit": 10, "min_last_seen_ts_ms": 1_700_000_500 }),
+        ))
+        .expect("filtered presence list");
+    assert!(response.error.is_none());
+    let result = response.result.expect("presence result");
+    let rows = result["presence_list"]["peers"].as_array().expect("presence rows");
+    assert!(rows.iter().any(|row| row["peer_id"] == json!("fresh-peer")));
+    assert!(!rows.iter().any(|row| row["peer_id"] == json!("stale-peer")));
+    assert!(rows
+        .iter()
+        .all(|row| row["last_seen_ts_ms"].as_i64().is_some_and(|last_seen| {
+            last_seen >= 1_700_000_500
+        })));
 }

@@ -218,6 +218,7 @@ fn sdk_conformance_release_bc_domain_methods_work_through_rpc_adapter() {
         .identity_presence_list(PresenceListRequest {
             cursor: None,
             limit: Some(16),
+            min_last_seen_ts_ms: None,
             extensions: BTreeMap::new(),
         })
         .expect("identity_presence_list");

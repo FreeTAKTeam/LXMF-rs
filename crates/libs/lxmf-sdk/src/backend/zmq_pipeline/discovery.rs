@@ -9,6 +9,14 @@ impl ZmqPipelineBackendClient {
         &self,
         limit: Option<usize>,
     ) -> Result<Vec<PeerDirectoryEntry>, SdkError> {
+        self.peer_directory_since(limit, None)
+    }
+
+    pub fn peer_directory_since(
+        &self,
+        limit: Option<usize>,
+        min_last_seen_ts_ms: Option<i64>,
+    ) -> Result<Vec<PeerDirectoryEntry>, SdkError> {
         let mut entries = BTreeMap::<String, PeerDirectoryEntry>::new();
 
         for contact in self.collect_contact_records(limit)? {
@@ -31,7 +39,7 @@ impl ZmqPipelineBackendClient {
             );
         }
 
-        for presence in self.collect_presence_records(limit)? {
+        for presence in self.collect_presence_records(limit, min_last_seen_ts_ms)? {
             let entry =
                 entries.entry(presence.peer_id.clone()).or_insert_with(|| PeerDirectoryEntry {
                     peer_id: presence.peer_id.clone(),
@@ -102,6 +110,7 @@ impl ZmqPipelineBackendClient {
     fn collect_presence_records(
         &self,
         limit: Option<usize>,
+        min_last_seen_ts_ms: Option<i64>,
     ) -> Result<Vec<crate::domain::PresenceRecord>, SdkError> {
         let mut peers = Vec::new();
         let mut cursor = None;
@@ -110,6 +119,7 @@ impl ZmqPipelineBackendClient {
             let page = self.identity_presence_list(PresenceListRequest {
                 cursor: cursor.clone(),
                 limit,
+                min_last_seen_ts_ms,
                 extensions: BTreeMap::new(),
             })?;
             peers.extend(page.peers);

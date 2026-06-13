@@ -411,6 +411,7 @@ fn identity_presence_list_uses_zmq_sdk_method_and_decodes_response() {
         .identity_presence_list(crate::domain::PresenceListRequest {
             cursor: Some("presence:0".to_owned()),
             limit: Some(1),
+            min_last_seen_ts_ms: None,
             extensions: BTreeMap::new(),
         })
         .expect("identity presence list");

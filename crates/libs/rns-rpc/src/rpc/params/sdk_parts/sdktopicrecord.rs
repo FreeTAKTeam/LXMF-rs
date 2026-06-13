@@ -442,6 +442,8 @@ struct SdkIdentityPresenceListV2Params {
     #[serde(default)]
     limit: Option<usize>,
     #[serde(default)]
+    min_last_seen_ts_ms: Option<i64>,
+    #[serde(default)]
     extensions: JsonMap<String, JsonValue>,
 }
 

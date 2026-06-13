@@ -331,6 +331,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   announce-derived presence over typed ZeroMQ SDK methods while preserving
   display names, callsigns, REM capability flags, RCH announce-slot metadata,
   online state, and first/last-seen timestamps.
+- The typed ZeroMQ SDK backend exposes
+  `ZmqPipelineBackendClient::peer_directory_since` plus
+  `min_last_seen_ts_ms` filtering on `sdk_identity_presence_list_v2`, allowing
+  stale announce rows to be hidden without dropping saved offline contacts.
 - The typed ZeroMQ SDK backend exposes the operation registry and envelope
   execution path, including the `app.message.history.list` and
   `app.delivery.destination_hash` operations used by direct-chat history and

@@ -343,6 +343,8 @@ pub struct PresenceListRequest {
     pub cursor: Option<String>,
     pub limit: Option<usize>,
     #[serde(default)]
+    pub min_last_seen_ts_ms: Option<i64>,
+    #[serde(default)]
     pub extensions: BTreeMap<String, JsonValue>,
 }
 

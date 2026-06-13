@@ -106,6 +106,9 @@ impl RpcDaemon {
         let limit = parsed.limit.unwrap_or(100).clamp(1, 500);
         let mut peer_rows =
             self.peers.lock().expect("peers mutex poisoned").values().cloned().collect::<Vec<_>>();
+        if let Some(min_last_seen_ts_ms) = parsed.min_last_seen_ts_ms {
+            peer_rows.retain(|peer| peer.last_seen >= min_last_seen_ts_ms);
+        }
         peer_rows.sort_by(|left, right| {
             right.last_seen.cmp(&left.last_seen).then_with(|| left.peer.cmp(&right.peer))
         });
