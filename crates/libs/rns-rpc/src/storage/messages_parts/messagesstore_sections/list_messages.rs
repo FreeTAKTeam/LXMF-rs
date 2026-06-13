@@ -32,21 +32,7 @@ impl MessagesStore {
                     stmt.query(params![ts, limit as i64])?
                 };
                 while let Some(row) = rows.next()? {
-                    let fields_json: Option<String> = row.get(7)?;
-                    let fields =
-                        fields_json.as_ref().and_then(|value| serde_json::from_str(value).ok());
-                    let receipt_status: Option<String> = row.get(8)?;
-                    records.push(MessageRecord {
-                        id: row.get(0)?,
-                        source: row.get(1)?,
-                        destination: row.get(2)?,
-                        title: row.get(3)?,
-                        content: row.get(4)?,
-                        timestamp: row.get(5)?,
-                        direction: row.get(6)?,
-                        fields,
-                        receipt_status,
-                    });
+                    records.push(message_record_from_row(row)?);
                 }
             } else {
                 let mut stmt = conn.prepare(
@@ -54,21 +40,47 @@ impl MessagesStore {
                 )?;
                 let mut rows = stmt.query(params![limit as i64])?;
                 while let Some(row) = rows.next()? {
-                    let fields_json: Option<String> = row.get(7)?;
-                    let fields =
-                        fields_json.as_ref().and_then(|value| serde_json::from_str(value).ok());
-                    let receipt_status: Option<String> = row.get(8)?;
-                    records.push(MessageRecord {
-                        id: row.get(0)?,
-                        source: row.get(1)?,
-                        destination: row.get(2)?,
-                        title: row.get(3)?,
-                        content: row.get(4)?,
-                        timestamp: row.get(5)?,
-                        direction: row.get(6)?,
-                        fields,
-                        receipt_status,
-                    });
+                    records.push(message_record_from_row(row)?);
+                }
+            }
+            Ok(records)
+        })
+    }
+
+    pub fn list_messages_page_for_peer(
+        &self,
+        limit: usize,
+        before_ts: Option<i64>,
+        before_id: Option<&str>,
+        peer: &str,
+    ) -> rusqlite::Result<Vec<MessageRecord>> {
+        self.with_read_conn(|conn| {
+            let mut records = Vec::new();
+            if let Some(ts) = before_ts {
+                let mut stmt = if before_id.is_some() {
+                    conn.prepare(
+                        "SELECT id, source, destination, title, content, timestamp, direction, fields, receipt_status FROM messages WHERE (LOWER(source) = LOWER(?1) OR LOWER(destination) = LOWER(?1)) AND (timestamp < ?2 OR (timestamp = ?2 AND id < ?3)) ORDER BY timestamp DESC, id DESC LIMIT ?4",
+                    )?
+                } else {
+                    conn.prepare(
+                        "SELECT id, source, destination, title, content, timestamp, direction, fields, receipt_status FROM messages WHERE (LOWER(source) = LOWER(?1) OR LOWER(destination) = LOWER(?1)) AND timestamp < ?2 ORDER BY timestamp DESC, id DESC LIMIT ?3",
+                    )?
+                };
+                let mut rows = if let Some(before_id) = before_id {
+                    stmt.query(params![peer, ts, before_id, limit as i64])?
+                } else {
+                    stmt.query(params![peer, ts, limit as i64])?
+                };
+                while let Some(row) = rows.next()? {
+                    records.push(message_record_from_row(row)?);
+                }
+            } else {
+                let mut stmt = conn.prepare(
+                    "SELECT id, source, destination, title, content, timestamp, direction, fields, receipt_status FROM messages WHERE LOWER(source) = LOWER(?1) OR LOWER(destination) = LOWER(?1) ORDER BY timestamp DESC, id DESC LIMIT ?2",
+                )?;
+                let mut rows = stmt.query(params![peer, limit as i64])?;
+                while let Some(row) = rows.next()? {
+                    records.push(message_record_from_row(row)?);
                 }
             }
             Ok(records)
@@ -80,24 +92,7 @@ impl MessagesStore {
             let mut stmt = conn.prepare(
                 "SELECT id, source, destination, title, content, timestamp, direction, fields, receipt_status FROM messages WHERE id = ?1 LIMIT 1",
             )?;
-            stmt.query_row(params![message_id], |row| {
-                let fields_json: Option<String> = row.get(7)?;
-                let fields =
-                    fields_json.as_ref().and_then(|value| serde_json::from_str(value).ok());
-                let receipt_status: Option<String> = row.get(8)?;
-                Ok(MessageRecord {
-                    id: row.get(0)?,
-                    source: row.get(1)?,
-                    destination: row.get(2)?,
-                    title: row.get(3)?,
-                    content: row.get(4)?,
-                    timestamp: row.get(5)?,
-                    direction: row.get(6)?,
-                    fields,
-                    receipt_status,
-                })
-            })
-            .optional()
+            stmt.query_row(params![message_id], message_record_from_row).optional()
         })
     }
 
@@ -432,4 +427,21 @@ impl MessagesStore {
     pub fn remove_stale_peer_unhandled_propagation(&self, peer: &str) -> rusqlite::Result<usize> {
         self.remove_stale_peer_unhandled_propagation_ids(peer).map(|ids| ids.len())
     }
+}
+
+fn message_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<MessageRecord> {
+    let fields_json: Option<String> = row.get(7)?;
+    let fields = fields_json.as_ref().and_then(|value| serde_json::from_str(value).ok());
+    let receipt_status: Option<String> = row.get(8)?;
+    Ok(MessageRecord {
+        id: row.get(0)?,
+        source: row.get(1)?,
+        destination: row.get(2)?,
+        title: row.get(3)?,
+        content: row.get(4)?,
+        timestamp: row.get(5)?,
+        direction: row.get(6)?,
+        fields,
+        receipt_status,
+    })
 }

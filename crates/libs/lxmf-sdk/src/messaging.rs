@@ -140,6 +140,12 @@ pub struct MessageRecord {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MessageHistoryListRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub peer_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub conversation_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub include_receipts: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub before_ts: Option<i64>,

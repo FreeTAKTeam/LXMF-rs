@@ -90,10 +90,13 @@ impl RpcDaemon {
             "sdk_voice_session_open_v2" => parsed.payload,
             "sdk_voice_session_update_v2" => parsed.payload,
             "sdk_voice_session_close_v2" => parsed.payload,
-            "list_messages" => json!({
-                "limit": parsed.payload.get("limit").cloned().unwrap_or(JsonValue::from(100_u64)),
-                "offset": parsed.payload.get("offset").cloned().unwrap_or(JsonValue::from(0_u64)),
-            }),
+            "list_messages" => {
+                if parsed.payload.is_object() {
+                    parsed.payload
+                } else {
+                    json!({})
+                }
+            }
             "status" => json!({}),
             "sdk_command_invoke_v2" => json!({
                 "command": canonical_id,

@@ -18,11 +18,28 @@ impl RpcDaemon {
                         parse_timestamp_id_cursor(parsed.cursor.as_deref()).unwrap_or((None, None))
                     }
                 };
+                let _include_receipts = parsed.include_receipts.unwrap_or(true);
+                let peer_filter = parsed
+                    .peer_id
+                    .as_deref()
+                    .or(parsed.conversation_id.as_deref())
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty());
                 let page_limit = limit.saturating_add(1);
-                let mut items = self
-                    .store
-                    .list_messages_page(page_limit, before_ts, before_id.as_deref())
-                    .map_err(std::io::Error::other)?;
+                let mut items = if let Some(peer) = peer_filter {
+                    self.store
+                        .list_messages_page_for_peer(
+                            page_limit,
+                            before_ts,
+                            before_id.as_deref(),
+                            peer,
+                        )
+                        .map_err(std::io::Error::other)?
+                } else {
+                    self.store
+                        .list_messages_page(page_limit, before_ts, before_id.as_deref())
+                        .map_err(std::io::Error::other)?
+                };
                 let has_more = items.len() > limit;
                 if has_more {
                     items.truncate(limit);

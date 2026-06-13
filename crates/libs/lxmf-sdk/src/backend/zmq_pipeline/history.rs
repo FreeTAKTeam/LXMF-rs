@@ -1,4 +1,5 @@
 use super::{code, ErrorCategory, SdkError, ZmqPipelineBackendClient};
+use crate::app::{Envelope, EnvelopeResponse};
 use crate::messaging::{MessageHistoryListRequest, MessageHistoryPage};
 
 impl ZmqPipelineBackendClient {
@@ -9,7 +10,13 @@ impl ZmqPipelineBackendClient {
         let params = serde_json::to_value(req).map_err(|err| {
             SdkError::new(code::INTERNAL, ErrorCategory::Internal, err.to_string())
         })?;
-        let result = self.call_rpc("list_messages", Some(params))?;
-        Self::decode_value(result, "message history response")
+        let envelope = Envelope::query("app.message.history.list", params);
+        let params = serde_json::to_value(envelope).map_err(|err| {
+            SdkError::new(code::INTERNAL, ErrorCategory::Internal, err.to_string())
+        })?;
+        let result = self.call_rpc("sdk_envelope_execute_v2", Some(params))?;
+        let response: EnvelopeResponse =
+            Self::decode_field_or_root(&result, "response", "message history envelope response")?;
+        Self::decode_value(response.payload, "message history response")
     }
 }

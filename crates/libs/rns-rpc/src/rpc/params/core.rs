@@ -167,6 +167,12 @@ struct TicketGenerateParams {
 #[derive(Debug, Deserialize, Default)]
 struct ListMessagesParams {
     #[serde(default)]
+    peer_id: Option<String>,
+    #[serde(default)]
+    conversation_id: Option<String>,
+    #[serde(default)]
+    include_receipts: Option<bool>,
+    #[serde(default)]
     limit: Option<usize>,
     #[serde(default)]
     before_ts: Option<i64>,

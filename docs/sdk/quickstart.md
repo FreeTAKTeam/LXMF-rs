@@ -58,7 +58,10 @@ delivery methods plus identity list/activate/import/export, identity announce,
 presence list, identity resolve, contact update/list, identity bootstrap,
 typed peer-ready setup through `ZmqPipelineBackendClient::workflow_peer_ready`,
 operation registry, envelope execution, and typed durable direct-chat history
-through `ZmqPipelineBackendClient::list_message_history`. Peer-ready setup
+through `ZmqPipelineBackendClient::list_message_history`. History requests use
+the `app.message.history.list` SDK envelope path and preserve one-to-one
+`peer_id`/`conversation_id` filters, `include_receipts`, links in message
+bodies, basic LXMF fields, and restart pagination cursors. Peer-ready setup
 preserves display names, callsigns, and capability metadata while optionally
 announcing before use. Runtime destination
 queries can use `ZmqPipelineBackendClient::local_delivery_destination_hash`;

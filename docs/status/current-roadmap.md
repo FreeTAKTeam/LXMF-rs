@@ -324,8 +324,10 @@ The project is best described by capability level:
   of constructing raw RPC/HTTP envelopes.
 - The typed ZeroMQ SDK backend now exposes durable direct-chat history through
   `ZmqPipelineBackendClient::list_message_history`, preserving message bodies
-  with links, receipt status, basic LXMF fields, and restart pagination cursors
-  from the daemon `list_messages` store.
+  with links, receipt status, basic LXMF fields, one-to-one
+  `peer_id`/`conversation_id` filters, `include_receipts`, and restart
+  pagination cursors through the daemon `app.message.history.list` SDK envelope
+  path.
 - The typed ZeroMQ SDK backend now exposes the local runtime delivery
   destination through `ZmqPipelineBackendClient::local_delivery_destination_hash`,
   while still routing `app.delivery.destination_hash` through SDK envelope
