@@ -79,10 +79,10 @@ pub use event::{
 pub use lifecycle::{Lifecycle, SdkMethod};
 #[cfg(feature = "std")]
 pub use messaging::{
-    AnnounceRecord, ConversationRecord, MessageDirection, MessageHistoryListRequest,
-    MessageHistoryPage, MessageHistoryRecord, MessageMethod, MessageRecord, MessageState,
-    MessagingStore, PeerRecord, PeerState, SendMessageRequest, StoredOutboundMessage, SyncPhase,
-    SyncStatus,
+    AnnounceRecord, ConversationListPage, ConversationListRequest, ConversationRecord,
+    MessageDirection, MessageHistoryListRequest, MessageHistoryPage, MessageHistoryRecord,
+    MessageMethod, MessageRecord, MessageState, MessagingStore, PeerRecord, PeerState,
+    SendMessageRequest, StoredOutboundMessage, SyncPhase, SyncStatus,
 };
 pub use profiles::{
     default_effective_limits, default_memory_budget, required_capabilities, supports_capability,

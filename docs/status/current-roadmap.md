@@ -351,6 +351,11 @@ The project is best described by capability level:
   `peer_id`/`conversation_id` filters, `include_receipts`, and restart
   pagination cursors through the daemon `app.message.history.list` SDK envelope
   path.
+- The typed ZeroMQ SDK backend now exposes durable direct-chat conversation
+  summaries through `ZmqPipelineBackendClient::list_conversations`, preserving
+  peer display names, unread counts, last-message previews with links, receipt
+  inclusion intent, and restart pagination cursors through
+  `app.message.conversation.list` on the SDK envelope path.
 - `ZmqPipelineBackendClient::list_message_history` now accepts both canonical
   `id`/`content` records and legacy direct-chat `message_id`/`body` records
   from `app.message.history.list`, keeping restart-recovered conversation

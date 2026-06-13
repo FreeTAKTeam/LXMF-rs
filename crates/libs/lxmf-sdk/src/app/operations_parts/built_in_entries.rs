@@ -424,6 +424,14 @@ fn built_in_entries() -> Vec<OperationEntry> {
         .with_alias("sdk_voice_session_close_v2")
         .with_required_capability("sdk.capability.voice_signaling"),
         OperationEntry::new(
+            "app.message.conversation.list",
+            "messaging",
+            OperationKind::Query,
+            TransportVariant::LegacyRpc,
+            "List durable conversation summaries for app chat flows.",
+        )
+        .with_alias("list_conversations"),
+        OperationEntry::new(
             "app.message.history.list",
             "messaging",
             OperationKind::Query,

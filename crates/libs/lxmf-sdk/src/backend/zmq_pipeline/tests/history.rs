@@ -147,3 +147,82 @@ fn list_message_history_accepts_direct_chat_message_id_and_body_aliases() {
     );
     server.join().expect("server joined");
 }
+
+#[test]
+fn list_conversations_uses_zmq_sdk_envelope_and_preserves_restart_summary() {
+    let command_endpoint = unused_loopback_endpoint();
+    let response_endpoint = unused_loopback_endpoint();
+    let captured = Arc::new(Mutex::new(None));
+    let server = spawn_single_response_zmq_server(
+        command_endpoint.clone(),
+        json!({
+            "response": {
+                "operation_id": "app.message.conversation.list",
+                "kind": "result",
+                "accepted": true,
+                "correlation_id": null,
+                "payload": {
+                    "conversations": [{
+                        "conversation_id": "peer-destination",
+                        "peer_id": "peer-destination",
+                        "peer_display_name": "RCH Relay",
+                        "last_message_preview": "restart recovered https://example.invalid/chat/1",
+                        "last_message_at_ms": 1_700_000_333_000u64,
+                        "unread_count": 2,
+                        "last_message_state": "delivered"
+                    }],
+                    "next_cursor": "1700000333:peer-destination"
+                },
+                "extensions": {
+                    "restart_recovery": true
+                }
+            }
+        }),
+        Arc::clone(&captured),
+    );
+    let mut config = ZmqPipelineBackendConfig::local_tcp(command_endpoint, response_endpoint);
+    config.request_timeout = std::time::Duration::from_secs(2);
+    let client = ZmqPipelineBackendClient::new(config).expect("zmq client");
+
+    let page = client
+        .list_conversations(crate::ConversationListRequest {
+            peer_id: Some("peer-destination".to_string()),
+            include_receipts: Some(true),
+            limit: Some(20),
+            cursor: Some("1700000444:next".to_string()),
+        })
+        .expect("conversation page");
+
+    assert_eq!(page.next_cursor.as_deref(), Some("1700000333:peer-destination"));
+    assert_eq!(page.conversations.len(), 1);
+    let conversation = &page.conversations[0];
+    assert_eq!(conversation.conversation_id, "peer-destination");
+    assert_eq!(conversation.peer_display_name.as_deref(), Some("RCH Relay"));
+    assert_eq!(
+        conversation.last_message_preview.as_deref(),
+        Some("restart recovered https://example.invalid/chat/1")
+    );
+    assert_eq!(conversation.unread_count, 2);
+    assert_eq!(conversation.last_message_state, Some(crate::MessageState::Delivered));
+    let captured = captured.lock().expect("captured request");
+    let request = captured.as_ref().expect("zmq request");
+    assert_eq!(request.method, "sdk_envelope_execute_v2");
+    assert_eq!(
+        request.params,
+        Some(json!({
+            "operation_id": "app.message.conversation.list",
+            "kind": "query",
+            "target": null,
+            "correlation_id": null,
+            "timeout_ms": null,
+            "payload": {
+                "peer_id": "peer-destination",
+                "include_receipts": true,
+                "limit": 20,
+                "cursor": "1700000444:next"
+            },
+            "extensions": {}
+        }))
+    );
+    server.join().expect("server joined");
+}

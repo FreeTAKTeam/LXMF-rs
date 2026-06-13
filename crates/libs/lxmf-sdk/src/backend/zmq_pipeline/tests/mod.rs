@@ -851,6 +851,7 @@ fn operation_registry_uses_zmq_sdk_method_for_direct_chat_operations() {
 
     let registry = client.operation_registry().expect("operation registry");
 
+    assert!(registry.supports("app.message.conversation.list"));
     assert!(registry.supports("app.message.history.list"));
     assert!(registry.supports("app.delivery.destination_hash"));
     assert!(registry.supports("app.delivery.cancel"));
