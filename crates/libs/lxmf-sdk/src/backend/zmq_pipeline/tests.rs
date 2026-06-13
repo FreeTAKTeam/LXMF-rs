@@ -231,6 +231,146 @@ fn identity_announce_now_uses_zmq_sdk_method() {
 }
 
 #[test]
+fn identity_list_uses_zmq_sdk_method_and_decodes_identity_bundles() {
+    let command_endpoint = unused_loopback_endpoint();
+    let response_endpoint = unused_loopback_endpoint();
+    let captured = Arc::new(Mutex::new(None));
+    let server = spawn_single_response_zmq_server(
+        command_endpoint.clone(),
+        json!({
+            "identities": [{
+                "identity": "local-identity",
+                "public_key": "pubkey-base64",
+                "display_name": "Local Operator",
+                "capabilities": ["direct_chat", "identity_discovery"],
+                "extensions": { "source": "zmq" }
+            }]
+        }),
+        Arc::clone(&captured),
+    );
+    let mut config = ZmqPipelineBackendConfig::local_tcp(command_endpoint, response_endpoint);
+    config.request_timeout = std::time::Duration::from_secs(2);
+    let client = ZmqPipelineBackendClient::new(config).expect("zmq client");
+
+    let identities = client.identity_list().expect("identity list");
+
+    assert_eq!(identities.len(), 1);
+    assert_eq!(identities[0].identity.0, "local-identity");
+    assert_eq!(identities[0].display_name.as_deref(), Some("Local Operator"));
+    assert_eq!(identities[0].capabilities, vec!["direct_chat", "identity_discovery"]);
+    assert_eq!(identities[0].extensions["source"], json!("zmq"));
+    let captured = captured.lock().expect("captured request");
+    let request = captured.as_ref().expect("zmq request");
+    assert_eq!(request.method, "sdk_identity_list_v2");
+    assert_eq!(request.params.as_ref().expect("params"), &json!({}));
+    server.join().expect("server joined");
+}
+
+#[test]
+fn identity_activate_uses_zmq_sdk_method() {
+    let command_endpoint = unused_loopback_endpoint();
+    let response_endpoint = unused_loopback_endpoint();
+    let captured = Arc::new(Mutex::new(None));
+    let server = spawn_single_response_zmq_server(
+        command_endpoint.clone(),
+        json!({ "accepted": true, "revision": 7 }),
+        Arc::clone(&captured),
+    );
+    let mut config = ZmqPipelineBackendConfig::local_tcp(command_endpoint, response_endpoint);
+    config.request_timeout = std::time::Duration::from_secs(2);
+    let client = ZmqPipelineBackendClient::new(config).expect("zmq client");
+
+    let ack = client
+        .identity_activate(crate::domain::IdentityRef("local-identity".to_owned()))
+        .expect("identity activate");
+
+    assert!(ack.accepted);
+    assert_eq!(ack.revision, Some(7));
+    let captured = captured.lock().expect("captured request");
+    let request = captured.as_ref().expect("zmq request");
+    assert_eq!(request.method, "sdk_identity_activate_v2");
+    assert_eq!(request.params.as_ref().expect("params")["identity"], json!("local-identity"));
+    server.join().expect("server joined");
+}
+
+#[test]
+fn identity_import_uses_zmq_sdk_method_and_decodes_identity_bundle() {
+    let command_endpoint = unused_loopback_endpoint();
+    let response_endpoint = unused_loopback_endpoint();
+    let captured = Arc::new(Mutex::new(None));
+    let server = spawn_single_response_zmq_server(
+        command_endpoint.clone(),
+        json!({
+            "identity": {
+                "identity": "imported-identity",
+                "public_key": "imported-pubkey",
+                "display_name": "Imported Peer",
+                "capabilities": ["direct_chat"],
+                "extensions": { "source": "import" }
+            }
+        }),
+        Arc::clone(&captured),
+    );
+    let mut config = ZmqPipelineBackendConfig::local_tcp(command_endpoint, response_endpoint);
+    config.request_timeout = std::time::Duration::from_secs(2);
+    let client = ZmqPipelineBackendClient::new(config).expect("zmq client");
+
+    let identity = client
+        .identity_import(crate::domain::IdentityImportRequest {
+            bundle_base64: "aW1wb3J0ZWQ=".to_owned(),
+            passphrase: Some("secret".to_owned()),
+            extensions: BTreeMap::from([("source".to_owned(), json!("rem-recovery"))]),
+        })
+        .expect("identity import");
+
+    assert_eq!(identity.identity.0, "imported-identity");
+    assert_eq!(identity.public_key, "imported-pubkey");
+    assert_eq!(identity.display_name.as_deref(), Some("Imported Peer"));
+    let captured = captured.lock().expect("captured request");
+    let request = captured.as_ref().expect("zmq request");
+    assert_eq!(request.method, "sdk_identity_import_v2");
+    let params = request.params.as_ref().expect("params");
+    assert_eq!(params["bundle_base64"], json!("aW1wb3J0ZWQ="));
+    assert_eq!(params["passphrase"], json!("secret"));
+    assert_eq!(params["extensions"]["source"], json!("rem-recovery"));
+    server.join().expect("server joined");
+}
+
+#[test]
+fn identity_export_uses_zmq_sdk_method_and_decodes_bundle() {
+    let command_endpoint = unused_loopback_endpoint();
+    let response_endpoint = unused_loopback_endpoint();
+    let captured = Arc::new(Mutex::new(None));
+    let server = spawn_single_response_zmq_server(
+        command_endpoint.clone(),
+        json!({
+            "bundle": {
+                "bundle_base64": "ZXhwb3J0ZWQ=",
+                "passphrase": null,
+                "extensions": { "format": "portable" }
+            }
+        }),
+        Arc::clone(&captured),
+    );
+    let mut config = ZmqPipelineBackendConfig::local_tcp(command_endpoint, response_endpoint);
+    config.request_timeout = std::time::Duration::from_secs(2);
+    let client = ZmqPipelineBackendClient::new(config).expect("zmq client");
+
+    let bundle = client
+        .identity_export(crate::domain::IdentityRef("local-identity".to_owned()))
+        .expect("identity export");
+
+    assert_eq!(bundle.bundle_base64, "ZXhwb3J0ZWQ=");
+    assert_eq!(bundle.passphrase, None);
+    assert_eq!(bundle.extensions["format"], json!("portable"));
+    let captured = captured.lock().expect("captured request");
+    let request = captured.as_ref().expect("zmq request");
+    assert_eq!(request.method, "sdk_identity_export_v2");
+    assert_eq!(request.params.as_ref().expect("params")["identity"], json!("local-identity"));
+    server.join().expect("server joined");
+}
+
+#[test]
 fn identity_presence_list_uses_zmq_sdk_method_and_decodes_response() {
     let command_endpoint = unused_loopback_endpoint();
     let response_endpoint = unused_loopback_endpoint();

@@ -2,8 +2,8 @@ use crate::backend::SdkBackend;
 use crate::capability::{NegotiationRequest, NegotiationResponse};
 use crate::domain::{
     ContactListRequest, ContactListResult, ContactRecord, ContactUpdateRequest,
-    IdentityBootstrapRequest, IdentityRef, IdentityResolveRequest, PresenceListRequest,
-    PresenceListResult,
+    IdentityBootstrapRequest, IdentityBundle, IdentityImportRequest, IdentityRef,
+    IdentityResolveRequest, PresenceListRequest, PresenceListResult,
 };
 use crate::error::{code, ErrorCategory, SdkError};
 use crate::event::{EventBatch, EventCursor, SdkEvent, Severity};
@@ -373,6 +373,31 @@ impl SdkBackend for ZmqPipelineBackendClient {
         })?;
         let result = self.call_rpc("sdk_identity_presence_list_v2", Some(params))?;
         Self::decode_field_or_root(&result, "presence_list", "identity_presence_list response")
+    }
+
+    fn identity_list(&self) -> Result<Vec<IdentityBundle>, SdkError> {
+        let result = self.call_rpc("sdk_identity_list_v2", Some(json!({})))?;
+        Self::decode_field_or_root(&result, "identities", "identity_list response")
+    }
+
+    fn identity_activate(&self, identity: IdentityRef) -> Result<Ack, SdkError> {
+        let result =
+            self.call_rpc("sdk_identity_activate_v2", Some(json!({ "identity": identity.0 })))?;
+        Ok(Self::parse_ack(&result))
+    }
+
+    fn identity_import(&self, req: IdentityImportRequest) -> Result<IdentityBundle, SdkError> {
+        let params = serde_json::to_value(req).map_err(|err| {
+            SdkError::new(code::INTERNAL, ErrorCategory::Internal, err.to_string())
+        })?;
+        let result = self.call_rpc("sdk_identity_import_v2", Some(params))?;
+        Self::decode_field_or_root(&result, "identity", "identity_import response")
+    }
+
+    fn identity_export(&self, identity: IdentityRef) -> Result<IdentityImportRequest, SdkError> {
+        let result =
+            self.call_rpc("sdk_identity_export_v2", Some(json!({ "identity": identity.0 })))?;
+        Self::decode_field_or_root(&result, "bundle", "identity_export response")
     }
 
     fn identity_resolve(
