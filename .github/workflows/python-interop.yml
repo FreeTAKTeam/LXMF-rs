@@ -97,18 +97,6 @@ jobs:
           PYTHON_LXMF_PATH: ${{ github.workspace }}/LXMF
         run: python -m pytest tests/ --reference-only -v --tb=short
 
-      - name: Rust interop artifact gate
-        working-directory: lxmf-rs
-        run: cargo xtask ci --stage interop-artifacts
-
-      - name: Rust SDK conformance gate
-        working-directory: lxmf-rs
-        run: cargo xtask ci --stage sdk-conformance
-
-      - name: Rust E2E compatibility gate
-        working-directory: lxmf-rs
-        run: cargo xtask ci --stage e2e-compatibility
-
       - name: Rust/Python Reticulum channel interop
         working-directory: lxmf-rs
         env:

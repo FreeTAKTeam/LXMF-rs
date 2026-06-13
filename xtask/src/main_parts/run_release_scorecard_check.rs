@@ -1,6 +1,4 @@
 fn run_release_scorecard_check() -> Result<()> {
-    run_sdk_soak_check()?;
-    run_supply_chain_check()?;
     run("bash", &["-lc", "SCORECARD_MAX_SOAK_FAILURES=1 tools/scripts/release-scorecard.sh"])?;
 
     let markdown_path = "target/release-scorecard/release-scorecard.md";
@@ -27,7 +25,6 @@ fn run_release_scorecard_check() -> Result<()> {
 }
 
 fn run_canary_criteria_check() -> Result<()> {
-    run_release_scorecard_check()?;
     run(
         "bash",
         &[

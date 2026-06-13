@@ -125,6 +125,7 @@ fn run_release_check() -> Result<()> {
     run_compliance_profile_check()?;
     run_support_policy_check()?;
     run_unsafe_audit_check()?;
+    run_supply_chain_check()?;
     run_release_scorecard_check()?;
     run_canary_criteria_check()?;
     run_extension_registry_check()?;
@@ -135,7 +136,6 @@ fn run_release_check() -> Result<()> {
     run_changelog_migration_check()?;
     run_crypto_agility_check()?;
     run_key_management_check()?;
-    run_supply_chain_check()?;
     run_sdk_fuzz_check()?;
     run_sdk_property_check()?;
     run_sdk_model_check()?;
