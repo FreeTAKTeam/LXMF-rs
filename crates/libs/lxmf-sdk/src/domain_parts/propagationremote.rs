@@ -332,6 +332,8 @@ pub struct PropagationRecoveryStateResult {
     #[serde(default)]
     pub queue_depth: u64,
     #[serde(default)]
+    pub timestamp: Option<i64>,
+    #[serde(default)]
     pub total_ingested: u64,
     #[serde(default)]
     pub last_ingest_count: u64,
@@ -365,6 +367,7 @@ impl PropagationRecoveryStateResult {
             next_sync_attempt: json_i64(&propagation, "next_sync_attempt"),
             retry_count: json_u64(&propagation, "retry_count").unwrap_or(0),
             queue_depth: json_u64(&propagation, "queue_depth").unwrap_or(0),
+            timestamp: json_i64(&propagation, "timestamp"),
             total_ingested: json_u64(&propagation, "total_ingested").unwrap_or(0),
             last_ingest_count: json_u64(&propagation, "last_ingest_count").unwrap_or(0),
             client_propagation_messages_received: json_u64(

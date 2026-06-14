@@ -494,6 +494,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   last-error, retry count, queue depth, timestamp, and local ingest/serve
   counters while keeping the raw propagation payload available for queue
   diagnostics.
+- `PropagationRecoveryStateResult` now also exposes the propagation lifecycle
+  `timestamp`, so restart/recovery status callers can inspect daemon recovery
+  freshness without parsing raw propagation JSON.
 - Python-style `lxmd` `[lxmf] announce_interval` drives peer/delivery announce
   cadence separately from `[propagation] announce_interval`, which remains the
   propagation-node announce cadence.

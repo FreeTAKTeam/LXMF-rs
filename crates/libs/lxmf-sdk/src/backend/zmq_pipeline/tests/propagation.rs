@@ -971,6 +971,7 @@ fn propagation_recovery_state_projects_status_for_zmq_sdk_clients() {
                         "access_denied": false,
                         "retry_count": 4,
                         "queue_depth": 9,
+                        "timestamp": 1_700_010_500,
                         "total_ingested": 7,
                         "last_ingest_count": 2,
                         "client_propagation_messages_received": 5,
@@ -1001,6 +1002,7 @@ fn propagation_recovery_state_projects_status_for_zmq_sdk_clients() {
     assert_eq!(state.next_sync_attempt, Some(1_700_010_900));
     assert_eq!(state.retry_count, 4);
     assert_eq!(state.queue_depth, 9);
+    assert_eq!(state.timestamp, Some(1_700_010_500));
     assert_eq!(state.total_ingested, 7);
     assert_eq!(state.last_ingest_count, 2);
     assert_eq!(state.client_propagation_messages_received, 5);
