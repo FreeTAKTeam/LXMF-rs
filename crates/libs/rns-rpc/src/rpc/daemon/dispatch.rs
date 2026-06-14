@@ -107,6 +107,9 @@ impl RpcDaemon {
             "sdk_identity_contact_update_v2" => self.handle_sdk_identity_contact_update_v2(request),
             "sdk_identity_contact_list_v2" => self.handle_sdk_identity_contact_list_v2(request),
             "sdk_identity_bootstrap_v2" => self.handle_sdk_identity_bootstrap_v2(request),
+            "sdk_peer_connect_v2" => self.handle_sdk_peer_connect_v2(request),
+            "sdk_peer_disconnect_v2" => self.handle_sdk_peer_disconnect_v2(request),
+            "sdk_peer_reconnect_v2" => self.handle_sdk_peer_reconnect_v2(request),
             "sdk_workflow_peer_ready_v2" => self.handle_sdk_workflow_peer_ready_v2(request),
             "sdk_workflow_topic_sync_v2" => self.handle_sdk_workflow_topic_sync_v2(request),
             "sdk_workflow_attachment_report_publish_v2" => {

@@ -306,6 +306,7 @@ fn peer_directory_uses_presence_name_source_when_contact_has_no_name() {
     assert_eq!(peer.name_source.as_deref(), Some("announce"));
     server.join().expect("server joined");
 }
+
 #[test]
 fn peer_directory_since_passes_presence_stale_cutoff_over_zmq_sdk_method() {
     let command_endpoint = unused_loopback_endpoint();
@@ -368,6 +369,7 @@ fn peer_directory_since_passes_presence_stale_cutoff_over_zmq_sdk_method() {
     assert_eq!(params["min_last_seen_ts_ms"], json!(1_700_000_500));
     server.join().expect("server joined");
 }
+
 #[test]
 fn peer_lifecycle_methods_use_zmq_sdk_methods_and_preserve_metadata() {
     let command_endpoint = unused_loopback_endpoint();

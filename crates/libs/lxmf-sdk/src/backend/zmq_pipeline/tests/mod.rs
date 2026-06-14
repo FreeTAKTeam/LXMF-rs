@@ -8,6 +8,9 @@ use zeromq::{PullSocket, PushSocket, Socket, SocketRecv, SocketSend, ZmqMessage}
 mod batch;
 mod destination;
 mod history;
+mod propagation;
+mod propagation_payload;
+mod registry;
 mod status;
 mod workflow;
 
@@ -235,6 +238,80 @@ fn identity_announce_now_uses_zmq_sdk_method() {
         captured.lock().expect("captured request").as_ref().expect("zmq request").method,
         "sdk_identity_announce_now_v2"
     );
+    assert_eq!(
+        captured.lock().expect("captured request").as_ref().expect("zmq request").params,
+        Some(json!({}))
+    );
+    server.join().expect("server joined");
+}
+
+#[test]
+fn identity_announce_preserves_display_and_capability_metadata() {
+    let command_endpoint = unused_loopback_endpoint();
+    let response_endpoint = unused_loopback_endpoint();
+    let captured = Arc::new(Mutex::new(None));
+    let server = spawn_single_response_zmq_server(
+        command_endpoint.clone(),
+        json!({
+            "announce": {
+                "accepted": true,
+                "announce_id": "ann-rem-rch-1",
+                "identity": "local-identity",
+                "display_name": "Field Team One",
+                "capabilities": ["rem.direct_chat", "rem.restart_recovery"],
+                "metadata": {
+                    "callsign": "FT1",
+                    "rem_capability_flags": ["direct_chat", "restart_recovery"],
+                    "rch_announce_slots": ["broadcast", "topics"]
+                },
+                "extensions": {
+                    "source": "zmq"
+                }
+            }
+        }),
+        Arc::clone(&captured),
+    );
+    let mut config = ZmqPipelineBackendConfig::local_tcp(command_endpoint, response_endpoint);
+    config.request_timeout = std::time::Duration::from_secs(2);
+    let client = ZmqPipelineBackendClient::new(config).expect("zmq client");
+
+    let result = client
+        .identity_announce(crate::IdentityAnnounceRequest {
+            identity: Some(crate::IdentityRef("local-identity".to_owned())),
+            display_name: Some("Field Team One".to_owned()),
+            capabilities: vec!["rem.direct_chat".to_owned(), "rem.restart_recovery".to_owned()],
+            metadata: BTreeMap::from([
+                ("callsign".to_owned(), json!("FT1")),
+                ("rem_capability_flags".to_owned(), json!(["direct_chat", "restart_recovery"])),
+                ("rch_announce_slots".to_owned(), json!(["broadcast", "topics"])),
+            ]),
+            extensions: BTreeMap::from([("source".to_owned(), json!("rem-rch"))]),
+        })
+        .expect("identity announce");
+
+    assert!(result.accepted);
+    assert_eq!(result.announce_id.as_ref(), Some(&json!("ann-rem-rch-1")));
+    assert_eq!(
+        result.identity.as_ref().map(|identity| identity.0.as_str()),
+        Some("local-identity")
+    );
+    assert_eq!(result.display_name.as_deref(), Some("Field Team One"));
+    assert_eq!(result.capabilities[0], "rem.direct_chat");
+    assert_eq!(result.metadata["callsign"], json!("FT1"));
+    assert_eq!(result.metadata["rch_announce_slots"], json!(["broadcast", "topics"]));
+    assert_eq!(result.extensions["source"], json!("zmq"));
+
+    let captured = captured.lock().expect("captured request");
+    let request = captured.as_ref().expect("zmq request");
+    assert_eq!(request.method, "sdk_identity_announce_now_v2");
+    let params = request.params.as_ref().expect("params");
+    assert_eq!(params["identity"], json!("local-identity"));
+    assert_eq!(params["display_name"], json!("Field Team One"));
+    assert_eq!(params["capabilities"][1], json!("rem.restart_recovery"));
+    assert_eq!(params["metadata"]["callsign"], json!("FT1"));
+    assert_eq!(params["metadata"]["rem_capability_flags"][0], json!("direct_chat"));
+    assert_eq!(params["metadata"]["rch_announce_slots"][1], json!("topics"));
+    assert_eq!(params["extensions"]["source"], json!("rem-rch"));
     server.join().expect("server joined");
 }
 
@@ -758,35 +835,6 @@ fn cancel_uses_zmq_sdk_method_and_decodes_result() {
     let request = captured.as_ref().expect("zmq request");
     assert_eq!(request.method, "sdk_cancel_message_v2");
     assert_eq!(request.params.as_ref().expect("params")["message_id"], json!("msg-cancel"));
-    server.join().expect("server joined");
-}
-
-#[test]
-fn operation_registry_uses_zmq_sdk_method_for_direct_chat_operations() {
-    let command_endpoint = unused_loopback_endpoint();
-    let response_endpoint = unused_loopback_endpoint();
-    let captured = Arc::new(Mutex::new(None));
-    let server = spawn_single_response_zmq_server(
-        command_endpoint.clone(),
-        json!({ "registry": crate::app::OperationRegistry::built_in() }),
-        Arc::clone(&captured),
-    );
-    let mut config = ZmqPipelineBackendConfig::local_tcp(command_endpoint, response_endpoint);
-    config.request_timeout = std::time::Duration::from_secs(2);
-    let client = ZmqPipelineBackendClient::new(config).expect("zmq client");
-
-    let registry = client.operation_registry().expect("operation registry");
-
-    assert!(registry.supports("app.message.history.list"));
-    assert!(registry.supports("app.delivery.destination_hash"));
-    assert!(registry.supports("app.delivery.cancel"));
-    assert!(registry.supports("app.peer.connect"));
-    assert!(registry.supports("app.peer.disconnect"));
-    assert!(registry.supports("app.peer.reconnect"));
-    let captured = captured.lock().expect("captured request");
-    let request = captured.as_ref().expect("zmq request");
-    assert_eq!(request.method, "sdk_operation_registry_v2");
-    assert_eq!(request.params, Some(json!({})));
     server.join().expect("server joined");
 }
 

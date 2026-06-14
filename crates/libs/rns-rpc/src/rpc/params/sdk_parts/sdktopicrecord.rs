@@ -449,6 +449,20 @@ struct SdkIdentityPresenceListV2Params {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+struct SdkPeerConnectionV2Params {
+    identity: String,
+    #[serde(default)]
+    display_name: Option<String>,
+    #[serde(default)]
+    correlation_id: Option<String>,
+    #[serde(default)]
+    metadata: JsonMap<String, JsonValue>,
+    #[serde(default)]
+    extensions: JsonMap<String, JsonValue>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SdkIdentityActivateV2Params {
     identity: String,
     #[serde(default)]

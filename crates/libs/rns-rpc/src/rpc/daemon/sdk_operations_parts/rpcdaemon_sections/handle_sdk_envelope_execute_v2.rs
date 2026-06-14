@@ -44,6 +44,23 @@ impl RpcDaemon {
             "sdk_cancel_message_v2" => json!({
                 "message_id": parsed.payload.get("message_id").and_then(JsonValue::as_str),
             }),
+            "peer_sync"
+            | "propagation_remote_status"
+            | "propagation_remote_fetch"
+            | "propagation_remote_download"
+            | "propagation_remote_sync"
+            | "propagation_remote_unpeer"
+            | "propagation_acknowledge_sync_completion"
+            | "get_outbound_propagation_node"
+            | "set_outbound_propagation_node"
+            | "list_propagation_nodes"
+            | "propagation_status"
+            | "propagation_enable"
+            | "get_delivery_policy"
+            | "set_delivery_policy"
+            | "propagation_peer_maintenance"
+            | "propagation_ingest"
+            | "propagation_fetch" => parsed.payload,
             "sdk_poll_events_v2" => json!({
                 "cursor": parsed.payload.get("cursor").cloned().unwrap_or(JsonValue::Null),
                 "max": parsed.payload.get("max").cloned().unwrap_or(JsonValue::from(32_u64)),
@@ -54,6 +71,9 @@ impl RpcDaemon {
             "sdk_identity_contact_list_v2" => parsed.payload,
             "sdk_identity_contact_update_v2" => parsed.payload,
             "sdk_identity_bootstrap_v2" => parsed.payload,
+            "sdk_peer_connect_v2" => parsed.payload,
+            "sdk_peer_disconnect_v2" => parsed.payload,
+            "sdk_peer_reconnect_v2" => parsed.payload,
             "sdk_workflow_peer_ready_v2" => parsed.payload,
             "sdk_workflow_topic_sync_v2" => parsed.payload,
             "sdk_workflow_attachment_report_publish_v2" => parsed.payload,
