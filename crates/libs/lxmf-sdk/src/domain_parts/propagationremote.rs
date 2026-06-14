@@ -159,6 +159,10 @@ pub struct PropagationRemoteTransferState {
     #[serde(default)]
     pub sync_progress: Option<f64>,
     #[serde(default)]
+    pub last_sync_started: Option<i64>,
+    #[serde(default)]
+    pub last_sync_completed: Option<i64>,
+    #[serde(default)]
     pub last_sync_error: Option<String>,
     #[serde(default)]
     pub failure_kind: Option<String>,
@@ -189,6 +193,8 @@ impl PropagationRemoteTransferState {
             transferred_bytes: json_u64(result, "transferred_bytes").unwrap_or(0),
             state_name: json_string(propagation, "state_name"),
             sync_progress: json_f64(propagation, "sync_progress"),
+            last_sync_started: json_i64(propagation, "last_sync_started"),
+            last_sync_completed: json_i64(propagation, "last_sync_completed"),
             last_sync_error: json_string(propagation, "last_sync_error"),
             failure_kind,
             timed_out,

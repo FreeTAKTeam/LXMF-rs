@@ -148,6 +148,8 @@ fn propagation_remote_lifecycle_uses_zmq_sdk_envelopes_and_preserves_raw_state()
                         "propagation": {
                             "state_name": "completed",
                             "sync_progress": 1.0,
+                            "last_sync_started": 1_700_001_000,
+                            "last_sync_completed": 1_700_001_120,
                             "transferred_ids": ["id-a"],
                             "skipped_ids": [],
                             "rejected_ids": [],
@@ -174,6 +176,8 @@ fn propagation_remote_lifecycle_uses_zmq_sdk_envelopes_and_preserves_raw_state()
                         "propagation": {
                             "state_name": "failed",
                             "last_sync_error": "remote download postponed",
+                            "last_sync_started": 1_700_001_800,
+                            "last_sync_completed": null,
                             "failure_kind": "timeout",
                             "retry_count": 5,
                             "next_sync_attempt": 1_700_001_900,
@@ -204,6 +208,8 @@ fn propagation_remote_lifecycle_uses_zmq_sdk_envelopes_and_preserves_raw_state()
                         "propagation": {
                             "state_name": "failed",
                             "last_sync_error": "remote sync timed out",
+                            "last_sync_started": 1_700_002_000,
+                            "last_sync_completed": null,
                             "failure_kind": "timeout",
                             "retry_count": 6,
                             "next_sync_attempt": 1_700_002_100,
@@ -258,6 +264,8 @@ fn propagation_remote_lifecycle_uses_zmq_sdk_envelopes_and_preserves_raw_state()
                         "propagation": {
                             "state_name": "failed",
                             "last_sync_error": "remote unpeer denied",
+                            "last_sync_started": 1_700_002_600,
+                            "last_sync_completed": null,
                             "failure_kind": "no_access",
                             "retry_count": 7,
                             "next_sync_attempt": 1700002700,
@@ -345,6 +353,8 @@ fn propagation_remote_lifecycle_uses_zmq_sdk_envelopes_and_preserves_raw_state()
     assert_eq!(fetch.transfer_state.transferred_bytes, 128);
     assert_eq!(fetch.transfer_state.state_name.as_deref(), Some("completed"));
     assert_eq!(fetch.transfer_state.sync_progress, Some(1.0));
+    assert_eq!(fetch.transfer_state.last_sync_started, Some(1_700_001_000));
+    assert_eq!(fetch.transfer_state.last_sync_completed, Some(1_700_001_120));
     assert_eq!(fetch.transfer_state.failure_kind, None);
     assert_eq!(fetch.queue.transferred_ids, vec!["id-a".to_string()]);
     assert_eq!(fetch.queue.skipped_ids, Vec::<String>::new());
@@ -360,6 +370,8 @@ fn propagation_remote_lifecycle_uses_zmq_sdk_envelopes_and_preserves_raw_state()
     assert!(!download.transfer_state.access_denied);
     assert_eq!(download.transfer_state.retry_count, 5);
     assert_eq!(download.transfer_state.next_sync_attempt, Some(1_700_001_900));
+    assert_eq!(download.transfer_state.last_sync_started, Some(1_700_001_800));
+    assert_eq!(download.transfer_state.last_sync_completed, None);
     assert_eq!(
         download.transfer_state.last_sync_error.as_deref(),
         Some("remote download postponed")
@@ -379,6 +391,8 @@ fn propagation_remote_lifecycle_uses_zmq_sdk_envelopes_and_preserves_raw_state()
     assert!(!sync.transfer_state.access_denied);
     assert_eq!(sync.transfer_state.retry_count, 6);
     assert_eq!(sync.transfer_state.next_sync_attempt, Some(1_700_002_100));
+    assert_eq!(sync.transfer_state.last_sync_started, Some(1_700_002_000));
+    assert_eq!(sync.transfer_state.last_sync_completed, None);
     assert_eq!(sync.transfer_state.last_sync_error.as_deref(), Some("remote sync timed out"));
     assert_eq!(sync.peer_sync["messages"]["unhandled_ids"], json!(["retry-a"]));
     let peer_sync_state = sync.peer_sync_state.as_ref().expect("typed peer sync state");
@@ -398,6 +412,8 @@ fn propagation_remote_lifecycle_uses_zmq_sdk_envelopes_and_preserves_raw_state()
     assert!(unpeer.transfer_state.access_denied);
     assert_eq!(unpeer.transfer_state.retry_count, 7);
     assert_eq!(unpeer.transfer_state.next_sync_attempt, Some(1_700_002_700));
+    assert_eq!(unpeer.transfer_state.last_sync_started, Some(1_700_002_600));
+    assert_eq!(unpeer.transfer_state.last_sync_completed, None);
     assert_eq!(unpeer.transfer_state.last_sync_error.as_deref(), Some("remote unpeer denied"));
     assert_eq!(unpeer.messages["unhandled_ids"], json!(["retry-cleaned"]));
     assert_eq!(unpeer.queue.outgoing, 1);

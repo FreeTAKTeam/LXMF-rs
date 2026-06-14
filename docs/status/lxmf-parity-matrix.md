@@ -433,6 +433,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   access-denied booleans, retry count, and next sync attempt for remote
   fetch/download results, so clients can branch on denial and timeout recovery
   without parsing raw propagation JSON.
+- `PropagationRemoteTransferState` now also exposes `last_sync_started` and
+  `last_sync_completed` for remote fetch/download/sync/unpeer lifecycle
+  results, keeping transfer freshness visible without raw propagation JSON.
 - `PropagationRemoteUnpeerResult` now projects remote unpeer `messages` and
   propagation cleanup payloads into a typed `queue` snapshot, so denial and
   teardown cleanup callers can inspect handled, unhandled, transferred,
