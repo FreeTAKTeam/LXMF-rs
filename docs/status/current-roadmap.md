@@ -471,6 +471,10 @@ The project is best described by capability level:
   `recovery_state`, so disconnected-client ingest/fetch callers can inspect
   selected node, sync state, queue depth, and local ingest/serve counters
   without parsing raw propagation JSON.
+- `PropagationDeliveryPolicyResult` now projects delivery policy payloads into
+  typed `policy_state`, so propagation-first clients can inspect auth-required
+  mode plus allowed, denied, ignored, and prioritised destination sets without
+  parsing raw policy JSON.
 - The typed propagation branch now also exposes
   `ZmqPipelineBackendClient::propagation_recovery_state`, projecting
   `app.propagation.status` into structured sync state, selected-node,

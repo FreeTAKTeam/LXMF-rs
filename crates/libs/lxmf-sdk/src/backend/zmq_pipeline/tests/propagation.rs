@@ -842,7 +842,15 @@ fn propagation_local_lifecycle_uses_zmq_sdk_envelopes_and_preserves_policy_state
     assert_eq!(enabled.recovery_state.state_name.as_deref(), Some("syncing"));
     assert_eq!(enabled.recovery_state.queue_depth, 4);
     assert_eq!(policy.policy["denied_destinations"], json!(["dest-deny"]));
+    assert!(policy.policy_state.auth_required);
+    assert_eq!(policy.policy_state.allowed_destinations, vec!["dest-allow".to_string()]);
+    assert_eq!(policy.policy_state.denied_destinations, vec!["dest-deny".to_string()]);
+    assert_eq!(policy.policy_state.ignored_destinations, Vec::<String>::new());
+    assert_eq!(policy.policy_state.prioritised_destinations, vec!["dest-priority".to_string()]);
     assert_eq!(updated_policy.policy["ignored_destinations"], json!(["dest-ignore"]));
+    assert!(!updated_policy.policy_state.auth_required);
+    assert_eq!(updated_policy.policy_state.denied_destinations, vec!["dest-deny-b".to_string()]);
+    assert_eq!(updated_policy.policy_state.ignored_destinations, vec!["dest-ignore".to_string()]);
     assert_eq!(maintenance.culled, 1);
     assert_eq!(maintenance.rotated_peers, vec!["peer-slow".to_string()]);
     assert_eq!(maintenance.peer_sync["messages"]["unhandled_ids"], json!(["msg-a"]));

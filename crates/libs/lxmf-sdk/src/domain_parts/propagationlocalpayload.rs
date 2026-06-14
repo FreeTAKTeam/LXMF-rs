@@ -1,8 +1,60 @@
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Default)]
+#[non_exhaustive]
+pub struct PropagationDeliveryPolicyState {
+    #[serde(default)]
+    pub auth_required: bool,
+    #[serde(default)]
+    pub allowed_destinations: Vec<String>,
+    #[serde(default)]
+    pub denied_destinations: Vec<String>,
+    #[serde(default)]
+    pub ignored_destinations: Vec<String>,
+    #[serde(default)]
+    pub prioritised_destinations: Vec<String>,
+}
+
+impl PropagationDeliveryPolicyState {
+    fn from_policy(policy: &JsonValue) -> Self {
+        Self {
+            auth_required: propagation_policy_json_bool(policy, "auth_required").unwrap_or(false),
+            allowed_destinations: propagation_policy_json_string_array(policy, "allowed_destinations"),
+            denied_destinations: propagation_policy_json_string_array(policy, "denied_destinations"),
+            ignored_destinations: propagation_policy_json_string_array(policy, "ignored_destinations"),
+            prioritised_destinations: propagation_policy_json_string_array(
+                policy,
+                "prioritised_destinations",
+            ),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq)]
 #[non_exhaustive]
 pub struct PropagationDeliveryPolicyResult {
     #[serde(default)]
     pub policy: JsonValue,
+    #[serde(default)]
+    pub policy_state: PropagationDeliveryPolicyState,
+}
+
+#[derive(Deserialize)]
+struct RawPropagationDeliveryPolicyResult {
+    #[serde(default)]
+    policy: JsonValue,
+}
+
+impl<'de> Deserialize<'de> for PropagationDeliveryPolicyResult {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = RawPropagationDeliveryPolicyResult::deserialize(deserializer)?;
+        let policy_state = PropagationDeliveryPolicyState::from_policy(&raw.policy);
+        Ok(Self {
+            policy: raw.policy,
+            policy_state,
+        })
+    }
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
@@ -106,4 +158,16 @@ impl<'de> Deserialize<'de> for PropagationFetchResult {
             recovery_state,
         })
     }
+}
+
+fn propagation_policy_json_bool(value: &JsonValue, key: &str) -> Option<bool> {
+    value.get(key).and_then(JsonValue::as_bool)
+}
+
+fn propagation_policy_json_string_array(value: &JsonValue, key: &str) -> Vec<String> {
+    value
+        .get(key)
+        .and_then(JsonValue::as_array)
+        .map(|items| items.iter().filter_map(JsonValue::as_str).map(ToOwned::to_owned).collect())
+        .unwrap_or_default()
 }
