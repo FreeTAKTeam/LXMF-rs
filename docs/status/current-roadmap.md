@@ -393,6 +393,9 @@ The project is best described by capability level:
 - The typed peer-sync `queue` snapshot now also exposes transferred, skipped,
   rejected, and transfer-limited counters plus their byte totals, so retry and
   sync-limit callers do not need raw propagation JSON for queue accounting.
+- `PropagationPeerSyncResult` now falls back to propagation-level transfer and
+  sync limits and exposes target stamp cost plus stamp cost flexibility, so
+  propagation policy metadata stays typed for REM/RCH clients.
 - `PropagationPeerSyncResult` now also exposes typed failure kind,
   timeout/access-denied classification, and existing retry scheduling fields
   for postponed peer-sync attempts, so offer and queue retry callers do not

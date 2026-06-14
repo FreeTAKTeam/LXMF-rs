@@ -120,6 +120,10 @@ pub struct PropagationPeerSyncResult {
     #[serde(default)]
     pub sync_limit: Option<u64>,
     #[serde(default)]
+    pub target_stamp_cost: Option<u64>,
+    #[serde(default)]
+    pub stamp_cost_flexibility: Option<u64>,
+    #[serde(default)]
     pub messages: JsonValue,
     #[serde(default)]
     pub propagation: JsonValue,
@@ -155,6 +159,10 @@ struct RawPropagationPeerSyncResult {
     #[serde(default)]
     sync_limit: Option<u64>,
     #[serde(default)]
+    target_stamp_cost: Option<u64>,
+    #[serde(default)]
+    stamp_cost_flexibility: Option<u64>,
+    #[serde(default)]
     messages: JsonValue,
     #[serde(default)]
     propagation: JsonValue,
@@ -184,6 +192,18 @@ impl<'de> Deserialize<'de> for PropagationPeerSyncResult {
                 failure_kind.as_deref(),
                 Some("access_denied" | "access-denied" | "no_access")
             );
+        let transfer_limit = raw
+            .transfer_limit
+            .or_else(|| peer_queue_json_u64(&raw.propagation, "transfer_limit"));
+        let sync_limit = raw
+            .sync_limit
+            .or_else(|| peer_queue_json_u64(&raw.propagation, "sync_limit"));
+        let target_stamp_cost = raw
+            .target_stamp_cost
+            .or_else(|| peer_queue_json_u64(&raw.propagation, "target_stamp_cost"));
+        let stamp_cost_flexibility = raw
+            .stamp_cost_flexibility
+            .or_else(|| peer_queue_json_u64(&raw.propagation, "stamp_cost_flexibility"));
         Ok(Self {
             peer: raw.peer,
             peer_type: raw.peer_type,
@@ -197,8 +217,10 @@ impl<'de> Deserialize<'de> for PropagationPeerSyncResult {
             last_sync_attempt: raw.last_sync_attempt,
             next_sync_attempt: raw.next_sync_attempt,
             sync_backoff: raw.sync_backoff,
-            transfer_limit: raw.transfer_limit,
-            sync_limit: raw.sync_limit,
+            transfer_limit,
+            sync_limit,
+            target_stamp_cost,
+            stamp_cost_flexibility,
             messages: raw.messages,
             propagation: raw.propagation,
             queue,

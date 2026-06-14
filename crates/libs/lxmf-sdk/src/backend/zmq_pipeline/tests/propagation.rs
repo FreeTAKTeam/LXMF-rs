@@ -25,8 +25,6 @@ fn propagation_peer_sync_uses_zmq_sdk_envelope_and_preserves_queue_state() {
                     "last_sync_attempt": 1_700_000_100,
                     "next_sync_attempt": 1_700_000_700,
                     "sync_backoff": 600,
-                    "transfer_limit": 42500,
-                    "sync_limit": 84000,
                     "messages": {
                         "offered": 2,
                         "outgoing": 1,
@@ -36,11 +34,10 @@ fn propagation_peer_sync_uses_zmq_sdk_envelope_and_preserves_queue_state() {
                         "unhandled_ids": ["bb"]
                     },
                     "propagation": {
-                        "synced": false,
-                        "postponed": true,
-                        "postpone_reason": "timeout",
-                        "failure_kind": "timeout",
-                        "access_denied": false,
+                        "transfer_limit": 42500,
+                        "sync_limit": 84000,
+                        "target_stamp_cost": 8,
+                        "stamp_cost_flexibility": 2,
                         "offered": 2,
                         "transferred": 1,
                         "skipped": 1,
@@ -83,6 +80,10 @@ fn propagation_peer_sync_uses_zmq_sdk_envelope_and_preserves_queue_state() {
     assert!(result.timed_out);
     assert!(!result.access_denied);
     assert_eq!(result.next_sync_attempt, Some(1_700_000_700));
+    assert_eq!(result.transfer_limit, Some(42_500));
+    assert_eq!(result.sync_limit, Some(84_000));
+    assert_eq!(result.target_stamp_cost, Some(8));
+    assert_eq!(result.stamp_cost_flexibility, Some(2));
     assert_eq!(result.queue.offered, 2);
     assert_eq!(result.queue.outgoing, 1);
     assert_eq!(result.queue.unhandled, 1);
