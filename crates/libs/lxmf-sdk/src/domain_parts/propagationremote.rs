@@ -453,6 +453,8 @@ pub struct PropagationRemoteSyncResult {
     #[serde(default)]
     pub peer_sync_state: Option<PropagationPeerSyncResult>,
     #[serde(default)]
+    pub transfer_state: PropagationRemoteTransferState,
+    #[serde(default)]
     pub result: JsonValue,
 }
 
@@ -483,12 +485,15 @@ impl<'de> Deserialize<'de> for PropagationRemoteSyncResult {
         } else {
             None
         };
+        let transfer_state =
+            PropagationRemoteTransferState::from_result_and_propagation(&raw.result, &raw.propagation);
         Ok(Self {
             remote: raw.remote,
             peer: raw.peer,
             propagation: raw.propagation,
             peer_sync: raw.peer_sync,
             peer_sync_state,
+            transfer_state,
             result: raw.result,
         })
     }

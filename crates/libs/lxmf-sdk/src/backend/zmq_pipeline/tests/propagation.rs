@@ -187,11 +187,16 @@ fn propagation_remote_lifecycle_uses_zmq_sdk_envelopes_and_preserves_raw_state()
                         "remote": "remote-a",
                         "peer": "peer-a",
                         "propagation": {
-                            "state_name": "completed"
+                            "state_name": "failed",
+                            "last_sync_error": "remote sync timed out",
+                            "failure_kind": "timeout",
+                            "retry_count": 6,
+                            "next_sync_attempt": 1_700_002_100,
+                            "access_denied": false
                         },
                         "peer_sync": {
                             "peer": "peer-a",
-                            "synced": true,
+                            "synced": false,
                             "messages": {
                                 "offered": 3,
                                 "outgoing": 2,
@@ -205,7 +210,10 @@ fn propagation_remote_lifecycle_uses_zmq_sdk_envelopes_and_preserves_raw_state()
                             }
                         },
                         "result": {
-                            "synced": true
+                            "synced": false,
+                            "postponed": true,
+                            "postpone_reason": "timeout",
+                            "failure_kind": "timeout"
                         }
                     }
                 }
@@ -330,10 +338,20 @@ fn propagation_remote_lifecycle_uses_zmq_sdk_envelopes_and_preserves_raw_state()
     );
     assert_eq!(download.propagation["last_sync_error"], json!("remote download postponed"));
     assert_eq!(sync.peer.as_deref(), Some("peer-a"));
+    assert!(!sync.transfer_state.synced);
+    assert!(sync.transfer_state.postponed);
+    assert_eq!(sync.transfer_state.postpone_reason.as_deref(), Some("timeout"));
+    assert_eq!(sync.transfer_state.state_name.as_deref(), Some("failed"));
+    assert_eq!(sync.transfer_state.failure_kind.as_deref(), Some("timeout"));
+    assert!(sync.transfer_state.timed_out);
+    assert!(!sync.transfer_state.access_denied);
+    assert_eq!(sync.transfer_state.retry_count, 6);
+    assert_eq!(sync.transfer_state.next_sync_attempt, Some(1_700_002_100));
+    assert_eq!(sync.transfer_state.last_sync_error.as_deref(), Some("remote sync timed out"));
     assert_eq!(sync.peer_sync["messages"]["unhandled_ids"], json!(["retry-a"]));
     let peer_sync_state = sync.peer_sync_state.as_ref().expect("typed peer sync state");
     assert_eq!(peer_sync_state.peer, "peer-a");
-    assert!(peer_sync_state.synced);
+    assert!(!peer_sync_state.synced);
     assert_eq!(peer_sync_state.queue.offered, 3);
     assert_eq!(peer_sync_state.queue.handled_ids, vec!["handled-a".to_string()]);
     assert_eq!(peer_sync_state.queue.unhandled_ids, vec!["retry-a".to_string()]);
