@@ -236,7 +236,11 @@ fn propagation_remote_lifecycle_uses_zmq_sdk_envelopes_and_preserves_raw_state()
                             "failure_kind": "timeout",
                             "retry_count": 6,
                             "next_sync_attempt": 1_700_002_100,
-                            "access_denied": false
+                            "access_denied": false,
+                            "transferred_ids": ["sync-done"],
+                            "skipped_ids": ["sync-skipped"],
+                            "rejected_ids": ["sync-rejected"],
+                            "transfer_limited_ids": ["sync-limited"]
                         },
                         "peer_sync": {
                             "peer": "peer-a",
@@ -435,6 +439,10 @@ fn propagation_remote_lifecycle_uses_zmq_sdk_envelopes_and_preserves_raw_state()
     assert_eq!(peer_sync_state.queue.handled_ids, vec!["handled-a".to_string()]);
     assert_eq!(peer_sync_state.queue.unhandled_ids, vec!["retry-a".to_string()]);
     assert_eq!(peer_sync_state.queue.transfer_limited_ids, vec!["retry-a".to_string()]);
+    assert_eq!(sync.queue.transferred_ids, vec!["sync-done".to_string()]);
+    assert_eq!(sync.queue.skipped_ids, vec!["sync-skipped".to_string()]);
+    assert_eq!(sync.queue.rejected_ids, vec!["sync-rejected".to_string()]);
+    assert_eq!(sync.queue.transfer_limited_ids, vec!["sync-limited".to_string()]);
     assert!(!unpeer.removed);
     assert_eq!(unpeer.propagation_cleared, Some(1));
     assert!(!unpeer.transfer_state.synced);

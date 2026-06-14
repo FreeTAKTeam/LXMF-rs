@@ -337,6 +337,8 @@ pub struct PropagationRemoteSyncResult {
     #[serde(default)]
     pub transfer_state: PropagationRemoteTransferState,
     #[serde(default)]
+    pub queue: PropagationPeerQueueSnapshot,
+    #[serde(default)]
     pub result: JsonValue,
 }
 
@@ -369,6 +371,9 @@ impl<'de> Deserialize<'de> for PropagationRemoteSyncResult {
         };
         let transfer_state =
             PropagationRemoteTransferState::from_result_and_propagation(&raw.result, &raw.propagation);
+        let empty_messages = JsonValue::Null;
+        let queue_messages = raw.peer_sync.get("messages").unwrap_or(&empty_messages);
+        let queue = PropagationPeerQueueSnapshot::from_messages_and_propagation(queue_messages, &raw.propagation);
         Ok(Self {
             remote: raw.remote,
             peer: raw.peer,
@@ -376,6 +381,7 @@ impl<'de> Deserialize<'de> for PropagationRemoteSyncResult {
             peer_sync: raw.peer_sync,
             peer_sync_state,
             transfer_state,
+            queue,
             result: raw.result,
         })
     }
