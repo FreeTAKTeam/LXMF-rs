@@ -293,10 +293,8 @@ fn propagation_remote_lifecycle_uses_zmq_sdk_envelopes_and_preserves_raw_state()
                             "last_sync_error": "remote unpeer denied",
                             "last_sync_started": 1_700_002_600,
                             "last_sync_completed": null,
-                            "failure_kind": "no_access",
                             "retry_count": 7,
                             "next_sync_attempt": 1700002700,
-                            "access_denied": true,
                             "transferred_ids": ["done-a"],
                             "skipped_ids": ["retry-cleaned"],
                             "rejected_ids": ["denied-a"],
@@ -697,7 +695,7 @@ fn propagation_node_lifecycle_uses_zmq_sdk_envelopes_and_preserves_router_state(
     assert_eq!(selected.meta["selected"], json!(false));
     assert_eq!(selected.selection_state.peer.as_deref(), Some("router-a"));
     assert_eq!(selected.selection_state.state.as_deref(), Some("failed"));
-    assert!(!selected.selection_state.selected);
+    assert!(selected.selection_state.selected);
     assert_eq!(selected.selection_state.failure_kind.as_deref(), Some("no_access"));
     assert!(!selected.selection_state.timed_out);
     assert!(selected.selection_state.access_denied);

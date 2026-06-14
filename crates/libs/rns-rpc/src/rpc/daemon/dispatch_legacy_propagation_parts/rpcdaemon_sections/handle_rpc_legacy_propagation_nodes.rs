@@ -118,6 +118,7 @@ impl RpcDaemon {
                         "payload_bytes": payload_bytes,
                         "transferred_bytes": payload_bytes,
                         "transient_id": transient_id,
+                        "propagation": state,
                     })),
                     error: None,
                 })
@@ -149,7 +150,7 @@ impl RpcDaemon {
                     })?;
                 let payload_bytes =
                     hex::decode(payload.as_str()).map(|bytes| bytes.len()).unwrap_or(0);
-                {
+                let state = {
                     let mut guard =
                         self.propagation_state.lock().expect("propagation mutex poisoned");
                     guard.client_propagation_messages_served =
@@ -157,9 +158,10 @@ impl RpcDaemon {
                     let state = guard.clone();
                     drop(guard);
                     self.update_daemon_status_snapshot(|snapshot| {
-                        snapshot.propagation = state;
+                        snapshot.propagation = state.clone();
                     });
-                }
+                    state
+                };
 
                 Ok(RpcResponse {
                     id: request.id,
@@ -168,6 +170,7 @@ impl RpcDaemon {
                         "payload_hex": payload,
                         "payload_bytes": payload_bytes,
                         "transferred_bytes": payload_bytes,
+                        "propagation": state,
                     })),
                     error: None,
                 })

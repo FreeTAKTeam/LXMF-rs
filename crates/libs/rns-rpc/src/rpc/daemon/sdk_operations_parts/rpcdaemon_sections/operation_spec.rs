@@ -116,10 +116,6 @@ impl RpcDaemon {
                 params: Some(params),
             })?,
             "propagation_remote_status"
-            | "propagation_remote_fetch"
-            | "propagation_remote_download"
-            | "propagation_remote_sync"
-            | "propagation_remote_unpeer"
             | "propagation_acknowledge_sync_completion"
             | "get_outbound_propagation_node"
             | "set_outbound_propagation_node"
@@ -135,6 +131,22 @@ impl RpcDaemon {
                 method: method.to_owned(),
                 params: Some(params),
             })?,
+            "propagation_remote_fetch"
+            | "propagation_remote_download"
+            | "propagation_remote_sync"
+            | "propagation_remote_unpeer" => {
+                match self.handle_rpc_legacy_propagation(RpcRequest {
+                    id: request_id,
+                    method: method.to_owned(),
+                    params: Some(params.clone()),
+                }) {
+                    Ok(response) => response,
+                    Err(err) if err.kind() != std::io::ErrorKind::InvalidInput => {
+                        self.propagation_remote_failure_response(request_id, method, &params, &err)
+                    }
+                    Err(err) => return Err(err),
+                }
+            }
             "sdk_snapshot_v2" => self.handle_sdk_snapshot_v2(RpcRequest {
                 id: request_id,
                 method: method.to_owned(),
@@ -470,4 +482,5 @@ impl RpcDaemon {
             error: None,
         })
     }
+
 }

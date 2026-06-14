@@ -35,10 +35,11 @@ impl PropagationNodeSelectionState {
                 failure_kind.as_deref(),
                 Some("access_denied" | "access-denied" | "no_access")
             );
+        let selected = peer.is_some() || propagation_node_json_bool(meta, "selected").unwrap_or(false);
         Self {
             peer,
             state,
-            selected: propagation_node_json_bool(meta, "selected").unwrap_or(false),
+            selected,
             failure_kind,
             timed_out,
             access_denied,

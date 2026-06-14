@@ -77,10 +77,17 @@ pub struct PropagationRecoveryStateResult {
 
 impl PropagationRecoveryStateResult {
     pub fn from_propagation(propagation: JsonValue) -> Self {
-        let failure_kind = json_string(&propagation, "failure_kind");
-        let timed_out = failure_kind.as_deref() == Some("timeout")
-            || json_string(&propagation, "state_name").as_deref() == Some("timeout");
+        let state_name = json_string(&propagation, "state_name");
+        let sync_state = json_u64(&propagation, "sync_state").unwrap_or(0) as u32;
+        let failure_kind = json_string(&propagation, "failure_kind").or_else(|| match state_name.as_deref() {
+            Some("no_access") => Some("no_access".to_string()),
+            Some("timeout") => Some("timeout".to_string()),
+            _ => None,
+        });
+        let timed_out = failure_kind.as_deref() == Some("timeout") || state_name.as_deref() == Some("timeout");
         let access_denied = json_bool(&propagation, "access_denied").unwrap_or(false)
+            || state_name.as_deref() == Some("no_access")
+            || sync_state == 0xf4
             || matches!(
                 failure_kind.as_deref(),
                 Some("access_denied" | "access-denied" | "no_access")
@@ -88,8 +95,8 @@ impl PropagationRecoveryStateResult {
         Self {
             enabled: json_bool(&propagation, "enabled").unwrap_or(false),
             selected_node: json_string(&propagation, "selected_node"),
-            sync_state: json_u64(&propagation, "sync_state").unwrap_or(0) as u32,
-            state_name: json_string(&propagation, "state_name"),
+            sync_state,
+            state_name,
             sync_progress: json_f64(&propagation, "sync_progress"),
             last_sync_started: json_i64(&propagation, "last_sync_started"),
             last_sync_completed: json_i64(&propagation, "last_sync_completed"),
