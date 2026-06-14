@@ -1,7 +1,7 @@
 # LXMF-rs v0.4.0 Release Notes
 
 Date: 2026-06-14
-Release commit: pending release tag
+Release ref: `v0.4.0`
 
 This is the ZeroMQ SDK integration release for REM 1.1.1 and RCH pre-3.0
 Rust consumers. It promotes the typed `lxmf-sdk` ZeroMQ path through
