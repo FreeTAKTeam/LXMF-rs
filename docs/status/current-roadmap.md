@@ -438,6 +438,11 @@ The project is best described by capability level:
   through `selected_node` and `selected_peer` for remote fetch/download/sync/
   unpeer lifecycle results, keeping peer/router selection visible without raw
   propagation JSON.
+- Remote fetch/download/sync/unpeer SDK envelopes now convert denied, timed
+  out, and retryable bridge failures into typed result payloads with daemon
+  propagation recovery state, so REM/RCH clients can stay on
+  `ZmqPipelineBackendClient` for failure recovery instead of dropping to raw
+  RPC errors.
 - `PropagationRemoteUnpeerResult` now projects remote unpeer `messages` and
   propagation cleanup payloads into a typed `queue` snapshot, so denial and
   teardown cleanup callers can inspect handled, unhandled, transferred,
