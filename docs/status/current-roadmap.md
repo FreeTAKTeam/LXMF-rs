@@ -466,6 +466,11 @@ The project is best described by capability level:
   `propagation_fetch`, backed by `app.propagation.ingest` and
   `app.propagation.fetch` envelopes that preserve transient IDs, payload bytes,
   duplicate accounting, and durable store recovery through the ZeroMQ SDK path.
+- `PropagationIngestResult` and `PropagationFetchResult` now also preserve
+  daemon propagation lifecycle payloads and project them into typed
+  `recovery_state`, so disconnected-client ingest/fetch callers can inspect
+  selected node, sync state, queue depth, and local ingest/serve counters
+  without parsing raw propagation JSON.
 - The typed propagation branch now also exposes
   `ZmqPipelineBackendClient::propagation_recovery_state`, projecting
   `app.propagation.status` into structured sync state, selected-node,

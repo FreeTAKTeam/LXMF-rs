@@ -1020,7 +1020,16 @@ fn propagation_local_payload_ingest_and_fetch_use_zmq_sdk_envelopes() {
                         "duplicate_count": 0,
                         "payload_bytes": 18,
                         "transferred_bytes": 18,
-                        "transient_id": "transient-sdk-ingest"
+                        "transient_id": "transient-sdk-ingest",
+                        "propagation": {
+                            "enabled": true,
+                            "selected_node": "router-ingest",
+                            "sync_state": 1,
+                            "state_name": "queued",
+                            "queue_depth": 5,
+                            "total_ingested": 11,
+                            "last_ingest_count": 1
+                        }
                     }
                 }
             }),
@@ -1034,7 +1043,15 @@ fn propagation_local_payload_ingest_and_fetch_use_zmq_sdk_envelopes() {
                         "transient_id": "transient-sdk-ingest",
                         "payload_hex": "70726f7061676174696f6e2d7061796c6f6164",
                         "payload_bytes": 18,
-                        "transferred_bytes": 18
+                        "transferred_bytes": 18,
+                        "propagation": {
+                            "enabled": true,
+                            "selected_node": "router-fetch",
+                            "sync_state": 2,
+                            "state_name": "serving",
+                            "queue_depth": 4,
+                            "client_propagation_messages_served": 1
+                        }
                     }
                 }
             }),
@@ -1061,9 +1078,22 @@ fn propagation_local_payload_ingest_and_fetch_use_zmq_sdk_envelopes() {
     assert_eq!(ingested.duplicate_count, 0);
     assert_eq!(ingested.payload_bytes, 18);
     assert_eq!(ingested.transient_id, "transient-sdk-ingest");
+    assert_eq!(ingested.propagation["selected_node"], json!("router-ingest"));
+    assert_eq!(ingested.recovery_state.selected_node.as_deref(), Some("router-ingest"));
+    assert_eq!(ingested.recovery_state.sync_state, 1);
+    assert_eq!(ingested.recovery_state.state_name.as_deref(), Some("queued"));
+    assert_eq!(ingested.recovery_state.queue_depth, 5);
+    assert_eq!(ingested.recovery_state.total_ingested, 11);
+    assert_eq!(ingested.recovery_state.last_ingest_count, 1);
     assert_eq!(fetched.transient_id, "transient-sdk-ingest");
     assert_eq!(fetched.payload_hex, "70726f7061676174696f6e2d7061796c6f6164");
     assert_eq!(fetched.transferred_bytes, 18);
+    assert_eq!(fetched.propagation["selected_node"], json!("router-fetch"));
+    assert_eq!(fetched.recovery_state.selected_node.as_deref(), Some("router-fetch"));
+    assert_eq!(fetched.recovery_state.sync_state, 2);
+    assert_eq!(fetched.recovery_state.state_name.as_deref(), Some("serving"));
+    assert_eq!(fetched.recovery_state.queue_depth, 4);
+    assert_eq!(fetched.recovery_state.client_propagation_messages_served, 1);
 
     let captured = captured.lock().expect("captured requests");
     let operation_ids = captured

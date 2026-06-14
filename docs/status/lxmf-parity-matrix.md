@@ -476,6 +476,11 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   and fetch through `ZmqPipelineBackendClient::propagation_ingest` and
   `propagation_fetch`, preserving transient IDs, payload bytes, duplicate
   accounting, and durable store recovery for disconnected-client relay flows.
+- `PropagationIngestResult` and `PropagationFetchResult` now also preserve
+  daemon propagation lifecycle payloads and project them into typed
+  `recovery_state`, so disconnected-client ingest/fetch callers can inspect
+  selected node, sync state, queue depth, and local ingest/serve counters
+  without parsing raw propagation JSON.
 - The same typed propagation branch now exposes
   `ZmqPipelineBackendClient::propagation_recovery_state`, projecting
   `app.propagation.status` into structured sync state, selected-node,

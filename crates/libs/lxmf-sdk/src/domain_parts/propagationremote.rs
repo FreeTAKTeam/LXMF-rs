@@ -405,41 +405,6 @@ fn remote_transfer_json_string_array(value: &JsonValue, key: &str) -> Vec<String
         .unwrap_or_default()
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-#[non_exhaustive]
-pub struct PropagationDeliveryPolicyResult {
-    #[serde(default)]
-    pub policy: JsonValue,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-#[non_exhaustive]
-pub struct PropagationIngestResult {
-    #[serde(default)]
-    pub ingested_count: u64,
-    #[serde(default)]
-    pub duplicate_count: u64,
-    #[serde(default)]
-    pub payload_bytes: u64,
-    #[serde(default)]
-    pub transferred_bytes: u64,
-    #[serde(default)]
-    pub transient_id: String,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-#[non_exhaustive]
-pub struct PropagationFetchResult {
-    #[serde(default)]
-    pub transient_id: String,
-    #[serde(default)]
-    pub payload_hex: String,
-    #[serde(default)]
-    pub payload_bytes: u64,
-    #[serde(default)]
-    pub transferred_bytes: u64,
-}
-
 #[derive(Clone, Debug, Serialize, PartialEq)]
 #[non_exhaustive]
 pub struct PropagationRemoteSyncResult {
