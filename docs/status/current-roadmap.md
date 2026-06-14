@@ -394,6 +394,9 @@ The project is best described by capability level:
   timeout/access-denied classification, and existing retry scheduling fields
   for postponed peer-sync attempts, so offer and queue retry callers do not
   need raw propagation JSON for common failure branching.
+- `PropagationPeerSyncResult` now also falls back to propagation-level
+  `postponed` and `postpone_reason` fields when the peer-sync envelope omits
+  top-level values, keeping remote nested peer-sync retry state fully typed.
 - The same ZeroMQ SDK propagation branch now exposes remote router status,
   fetch, download, sync, and unpeer lifecycle calls through typed
   `ZmqPipelineBackendClient` methods and registered `app.propagation.*`

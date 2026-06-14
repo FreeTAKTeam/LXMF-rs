@@ -139,13 +139,16 @@ impl<'de> Deserialize<'de> for PropagationPeerSyncResult {
         let raw = RawPropagationPeerSyncResult::deserialize(deserializer)?;
         let queue =
             PropagationPeerQueueSnapshot::from_messages_and_propagation(&raw.messages, &raw.propagation);
+        let postponed =
+            raw.postponed || peer_queue_json_bool(&raw.propagation, "postponed").unwrap_or(false);
+        let postpone_reason = raw
+            .postpone_reason
+            .or_else(|| peer_queue_json_string(&raw.propagation, "postpone_reason"));
         let failure_kind = raw
             .failure_kind
             .or_else(|| peer_queue_json_string(&raw.propagation, "failure_kind"));
         let timed_out = failure_kind.as_deref() == Some("timeout")
-            || raw.postpone_reason.as_deref() == Some("timeout")
-            || peer_queue_json_string(&raw.propagation, "postpone_reason").as_deref()
-                == Some("timeout");
+            || postpone_reason.as_deref() == Some("timeout");
         let access_denied = raw.access_denied.unwrap_or(false)
             || peer_queue_json_bool(&raw.propagation, "access_denied").unwrap_or(false)
             || matches!(
@@ -157,8 +160,8 @@ impl<'de> Deserialize<'de> for PropagationPeerSyncResult {
             peer_type: raw.peer_type,
             status_type: raw.status_type,
             synced: raw.synced,
-            postponed: raw.postponed,
-            postpone_reason: raw.postpone_reason,
+            postponed,
+            postpone_reason,
             failure_kind,
             timed_out,
             access_denied,

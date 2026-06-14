@@ -405,6 +405,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   timeout/access-denied classification, and existing retry scheduling fields
   for postponed peer-sync attempts, so offer and queue retry callers do not
   need raw propagation JSON for common failure branching.
+- `PropagationPeerSyncResult` now also falls back to propagation-level
+  `postponed` and `postpone_reason` fields when the peer-sync envelope omits
+  top-level values, keeping remote nested peer-sync retry state fully typed.
 - The same typed ZeroMQ SDK propagation branch now covers remote router status,
   fetch, download, sync, and unpeer lifecycle calls through registered
   `app.propagation.*` envelopes, preserving daemon propagation, peer-sync,

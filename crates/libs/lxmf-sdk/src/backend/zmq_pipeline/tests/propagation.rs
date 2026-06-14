@@ -232,6 +232,8 @@ fn propagation_remote_lifecycle_uses_zmq_sdk_envelopes_and_preserves_raw_state()
                                 "unhandled_ids": ["retry-a"]
                             },
                             "propagation": {
+                                "postponed": true,
+                                "postpone_reason": "backoff",
                                 "transferred_ids": ["handled-a"],
                                 "transfer_limited_ids": ["retry-a"]
                             }
@@ -412,6 +414,8 @@ fn propagation_remote_lifecycle_uses_zmq_sdk_envelopes_and_preserves_raw_state()
     let peer_sync_state = sync.peer_sync_state.as_ref().expect("typed peer sync state");
     assert_eq!(peer_sync_state.peer, "peer-a");
     assert!(!peer_sync_state.synced);
+    assert!(peer_sync_state.postponed);
+    assert_eq!(peer_sync_state.postpone_reason.as_deref(), Some("backoff"));
     assert_eq!(peer_sync_state.queue.offered, 3);
     assert_eq!(peer_sync_state.queue.handled_ids, vec!["handled-a".to_string()]);
     assert_eq!(peer_sync_state.queue.unhandled_ids, vec!["retry-a".to_string()]);
