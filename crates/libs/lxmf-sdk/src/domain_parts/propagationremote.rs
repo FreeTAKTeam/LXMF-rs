@@ -336,6 +336,14 @@ pub struct PropagationRecoveryStateResult {
     #[serde(default)]
     pub auth_required: bool,
     #[serde(default)]
+    pub store_root: Option<String>,
+    #[serde(default)]
+    pub target_cost: Option<u64>,
+    #[serde(default)]
+    pub message_storage_limit_mb: Option<u64>,
+    #[serde(default)]
+    pub propagation_limit: Option<u64>,
+    #[serde(default)]
     pub static_peers: Vec<String>,
     #[serde(default)]
     pub sync_limit: Option<u64>,
@@ -375,6 +383,10 @@ impl PropagationRecoveryStateResult {
             queue_depth: json_u64(&propagation, "queue_depth").unwrap_or(0),
             timestamp: json_i64(&propagation, "timestamp"),
             auth_required: json_bool(&propagation, "auth_required").unwrap_or(false),
+            store_root: json_string(&propagation, "store_root"),
+            target_cost: json_u64(&propagation, "target_cost"),
+            message_storage_limit_mb: json_u64(&propagation, "message_storage_limit_mb"),
+            propagation_limit: json_u64(&propagation, "propagation_limit"),
             static_peers: remote_transfer_json_string_array(&propagation, "static_peers"),
             sync_limit: json_u64(&propagation, "sync_limit"),
             total_ingested: json_u64(&propagation, "total_ingested").unwrap_or(0),

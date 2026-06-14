@@ -449,6 +449,10 @@ The project is best described by capability level:
 - `PropagationRecoveryStateResult` now also exposes local propagation config
   fields for `auth_required`, `static_peers`, and `sync_limit`, so status and
   enable/config callers can verify recovery policy without raw propagation JSON.
+- `PropagationRecoveryStateResult` now also exposes propagation storage and
+  transfer-limit config for `store_root`, `target_cost`,
+  `message_storage_limit_mb`, and `propagation_limit`, keeping durable queue
+  policy visible on the typed ZeroMQ SDK path.
 - The typed propagation branch also exposes outbound propagation router
   selection and listing as `ZmqPipelineBackendClient::propagation_node_get`,
   `propagation_node_set`, and `propagation_node_list`, backed by

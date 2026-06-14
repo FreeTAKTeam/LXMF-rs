@@ -731,6 +731,10 @@ fn propagation_local_lifecycle_uses_zmq_sdk_envelopes_and_preserves_policy_state
                             "state_name": "syncing",
                             "queue_depth": 4,
                             "auth_required": true,
+                            "store_root": "propagation-store",
+                            "target_cost": 12,
+                            "message_storage_limit_mb": 256,
+                            "propagation_limit": 32,
                             "static_peers": ["router-a"],
                             "sync_limit": 64
                         }
@@ -858,6 +862,10 @@ fn propagation_local_lifecycle_uses_zmq_sdk_envelopes_and_preserves_policy_state
     assert_eq!(enabled.recovery_state.state_name.as_deref(), Some("syncing"));
     assert_eq!(enabled.recovery_state.queue_depth, 4);
     assert!(enabled.recovery_state.auth_required);
+    assert_eq!(enabled.recovery_state.store_root.as_deref(), Some("propagation-store"));
+    assert_eq!(enabled.recovery_state.target_cost, Some(12));
+    assert_eq!(enabled.recovery_state.message_storage_limit_mb, Some(256));
+    assert_eq!(enabled.recovery_state.propagation_limit, Some(32));
     assert_eq!(enabled.recovery_state.static_peers, vec!["router-a".to_string()]);
     assert_eq!(enabled.recovery_state.sync_limit, Some(64));
     assert_eq!(policy.policy["denied_destinations"], json!(["dest-deny"]));

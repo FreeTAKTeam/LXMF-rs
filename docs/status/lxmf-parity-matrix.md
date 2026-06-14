@@ -500,6 +500,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - `PropagationRecoveryStateResult` now also exposes local propagation config
   fields for `auth_required`, `static_peers`, and `sync_limit`, so status and
   enable/config callers can verify recovery policy without raw propagation JSON.
+- `PropagationRecoveryStateResult` now also exposes propagation storage and
+  transfer-limit config for `store_root`, `target_cost`,
+  `message_storage_limit_mb`, and `propagation_limit`, keeping durable queue
+  policy visible on the typed ZeroMQ SDK path.
 - Python-style `lxmd` `[lxmf] announce_interval` drives peer/delivery announce
   cadence separately from `[propagation] announce_interval`, which remains the
   propagation-node announce cadence.
