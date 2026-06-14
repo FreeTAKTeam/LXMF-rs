@@ -431,6 +431,14 @@ struct SdkIdentityListV2Params {
 #[serde(deny_unknown_fields)]
 struct SdkIdentityAnnounceNowV2Params {
     #[serde(default)]
+    identity: Option<String>,
+    #[serde(default)]
+    display_name: Option<String>,
+    #[serde(default)]
+    capabilities: Vec<String>,
+    #[serde(default)]
+    metadata: JsonMap<String, JsonValue>,
+    #[serde(default)]
     extensions: JsonMap<String, JsonValue>,
 }
 

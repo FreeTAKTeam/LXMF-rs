@@ -316,6 +316,11 @@ The project is best described by capability level:
   identity bootstrap, so REM/RCH peer discovery, identity recovery, and
   saved-peer setup can use `ZmqPipelineBackendClient` instead of falling back
   to raw RPC/HTTP identity/contact calls.
+- The typed ZeroMQ SDK backend now also exposes
+  `ZmqPipelineBackendClient::identity_announce` for capability-rich announces,
+  preserving local identity, display name, callsign, REM capability flags, RCH
+  announce-slot metadata, and extensions over `sdk_identity_announce_now_v2`
+  while keeping the no-argument `identity_announce_now` compatibility path.
 - The typed ZeroMQ SDK backend now exposes
   `ZmqPipelineBackendClient::workflow_peer_ready`, preserving display names,
   callsigns, trust, bootstrap intent, and REM/RCH capability metadata while

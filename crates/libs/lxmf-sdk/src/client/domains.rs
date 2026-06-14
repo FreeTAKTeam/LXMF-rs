@@ -160,6 +160,13 @@ impl<B: SdkBackend> LxmfSdkIdentity for Client<B> {
         self.backend.identity_announce_now()
     }
 
+    fn identity_announce(
+        &self,
+        req: crate::domain::IdentityAnnounceRequest,
+    ) -> Result<crate::domain::IdentityAnnounceResult, SdkError> {
+        self.backend.identity_announce(req)
+    }
+
     fn identity_presence_list(
         &self,
         req: crate::domain::PresenceListRequest,

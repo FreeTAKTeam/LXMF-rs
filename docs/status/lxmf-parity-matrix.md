@@ -326,6 +326,11 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   saved-peer setup needed by REM/RCH can stay on the `ZmqPipelineBackendClient`
   path instead of requiring raw RPC/HTTP identity/contact calls.
 - The typed ZeroMQ SDK backend exposes
+  `ZmqPipelineBackendClient::identity_announce` for capability-rich announces,
+  preserving local identity, display name, callsign, REM capability flags, RCH
+  announce-slot metadata, and extensions over `sdk_identity_announce_now_v2`
+  while retaining `identity_announce_now` for empty compatibility announces.
+- The typed ZeroMQ SDK backend exposes
   `ZmqPipelineBackendClient::workflow_peer_ready` for saved-peer setup,
   preserving display names, callsigns, trust, bootstrap intent, and REM/RCH
   capability metadata while optionally announcing before use.
