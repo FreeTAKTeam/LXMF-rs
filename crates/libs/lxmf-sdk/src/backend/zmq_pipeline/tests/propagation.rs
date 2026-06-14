@@ -234,7 +234,7 @@ fn propagation_remote_lifecycle_uses_zmq_sdk_envelopes_and_preserves_raw_state()
                     "payload": {
                         "remote": "remote-a",
                         "peer": "peer-a",
-                        "removed": true,
+                        "removed": false,
                         "propagation_cleared": 1,
                         "propagation_cleared_bytes": 64,
                         "messages": {
@@ -248,13 +248,22 @@ fn propagation_remote_lifecycle_uses_zmq_sdk_envelopes_and_preserves_raw_state()
                             "unhandled_ids": ["retry-cleaned"]
                         },
                         "propagation": {
+                            "state_name": "failed",
+                            "last_sync_error": "remote unpeer denied",
+                            "failure_kind": "no_access",
+                            "retry_count": 7,
+                            "next_sync_attempt": 1700002700,
+                            "access_denied": true,
                             "transferred_ids": ["done-a"],
                             "skipped_ids": ["retry-cleaned"],
                             "rejected_ids": ["denied-a"],
                             "transfer_limited_ids": []
                         },
                         "result": {
-                            "accepted": true
+                            "accepted": false,
+                            "synced": false,
+                            "postponed": false,
+                            "failure_kind": "no_access"
                         }
                     }
                 }
@@ -363,8 +372,17 @@ fn propagation_remote_lifecycle_uses_zmq_sdk_envelopes_and_preserves_raw_state()
     assert_eq!(peer_sync_state.queue.handled_ids, vec!["handled-a".to_string()]);
     assert_eq!(peer_sync_state.queue.unhandled_ids, vec!["retry-a".to_string()]);
     assert_eq!(peer_sync_state.queue.transfer_limited_ids, vec!["retry-a".to_string()]);
-    assert!(unpeer.removed);
+    assert!(!unpeer.removed);
     assert_eq!(unpeer.propagation_cleared, Some(1));
+    assert!(!unpeer.transfer_state.synced);
+    assert!(!unpeer.transfer_state.postponed);
+    assert_eq!(unpeer.transfer_state.state_name.as_deref(), Some("failed"));
+    assert_eq!(unpeer.transfer_state.failure_kind.as_deref(), Some("no_access"));
+    assert!(!unpeer.transfer_state.timed_out);
+    assert!(unpeer.transfer_state.access_denied);
+    assert_eq!(unpeer.transfer_state.retry_count, 7);
+    assert_eq!(unpeer.transfer_state.next_sync_attempt, Some(1_700_002_700));
+    assert_eq!(unpeer.transfer_state.last_sync_error.as_deref(), Some("remote unpeer denied"));
     assert_eq!(unpeer.messages["unhandled_ids"], json!(["retry-cleaned"]));
     assert_eq!(unpeer.queue.outgoing, 1);
     assert_eq!(unpeer.queue.unhandled, 1);

@@ -173,7 +173,7 @@ pub struct PropagationRemoteTransferState {
 }
 
 impl PropagationRemoteTransferState {
-    fn from_result_and_propagation(result: &JsonValue, propagation: &JsonValue) -> Self {
+    pub(crate) fn from_result_and_propagation(result: &JsonValue, propagation: &JsonValue) -> Self {
         let failure_kind = json_string(result, "failure_kind").or_else(|| json_string(propagation, "failure_kind"));
         let timed_out = failure_kind.as_deref() == Some("timeout")
             || json_string(result, "postpone_reason").as_deref() == Some("timeout")

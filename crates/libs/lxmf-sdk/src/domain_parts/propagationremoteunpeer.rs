@@ -17,6 +17,8 @@ pub struct PropagationRemoteUnpeerResult {
     #[serde(default)]
     pub result: JsonValue,
     #[serde(default)]
+    pub transfer_state: PropagationRemoteTransferState,
+    #[serde(default)]
     pub queue: PropagationPeerQueueSnapshot,
 }
 
@@ -47,6 +49,8 @@ impl<'de> Deserialize<'de> for PropagationRemoteUnpeerResult {
         let raw = RawPropagationRemoteUnpeerResult::deserialize(deserializer)?;
         let queue =
             PropagationPeerQueueSnapshot::from_messages_and_propagation(&raw.messages, &raw.propagation);
+        let transfer_state =
+            PropagationRemoteTransferState::from_result_and_propagation(&raw.result, &raw.propagation);
         Ok(Self {
             remote: raw.remote,
             peer: raw.peer,
@@ -56,6 +60,7 @@ impl<'de> Deserialize<'de> for PropagationRemoteUnpeerResult {
             propagation: raw.propagation,
             messages: raw.messages,
             result: raw.result,
+            transfer_state,
             queue,
         })
     }
