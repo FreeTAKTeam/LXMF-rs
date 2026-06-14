@@ -2,8 +2,8 @@
   "version": 1,
   "spec_hash": "9fecb139e1ef7686ebd7f33caca39fac42eea951aa44ae7af67bc0360f34f61f",
   "target_hashes": {
-    "go": "d4cd47819e1230c78e32664b2b677754e9020d224f0cfb711a442851f421817d",
-    "javascript": "a3f73ebb3de3ba7c759e6b9368d952c1e390de72bbbcfda921eba08a96964978",
-    "python": "bf51b5fb12e2e91ba38154eec470fcd59e6fa067326523e9c855b6132776e1c3"
+    "go": "87863403fff9a1b0a52ea7f9e578be6c8dbea8c6de45c3d00eb6d568b2883c22",
+    "javascript": "74c758d9a439fcee5e70b3665b4161497f04dc17b7eb5672836fdf09bada4122",
+    "python": "52bc292d5ba171ca94aabdc5e54ba97726cdb5f057bc903426a09a2d3cb86279"
   }
 }
