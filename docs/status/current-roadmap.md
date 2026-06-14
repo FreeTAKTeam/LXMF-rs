@@ -415,6 +415,9 @@ The project is best described by capability level:
   and propagation lifecycle payloads into typed `transfer_state`, covering
   sync/postpone status, imported IDs/counts, transferred bytes, progress, and
   last error while retaining the original daemon JSON.
+- `PropagationRemoteTransferResult` now also projects remote fetch/download
+  propagation queue IDs into typed `queue`, so transferred, skipped, rejected,
+  and transfer-limited transient IDs are visible without raw propagation JSON.
 - `PropagationRemoteTransferState` now also exposes failure kind, timeout and
   access-denied booleans, retry count, and next sync attempt for remote
   fetch/download results, so clients can branch on denial and timeout recovery

@@ -209,6 +209,8 @@ pub struct PropagationRemoteTransferResult {
     pub result: JsonValue,
     #[serde(default)]
     pub transfer_state: PropagationRemoteTransferState,
+    #[serde(default)]
+    pub queue: PropagationPeerQueueSnapshot,
 }
 
 #[derive(Deserialize)]
@@ -226,6 +228,8 @@ impl<'de> Deserialize<'de> for PropagationRemoteTransferResult {
         D: serde::Deserializer<'de>,
     {
         let raw = RawPropagationRemoteTransferResult::deserialize(deserializer)?;
+        let queue =
+            PropagationPeerQueueSnapshot::from_messages_and_propagation(&JsonValue::Null, &raw.propagation);
         let transfer_state =
             PropagationRemoteTransferState::from_result_and_propagation(&raw.result, &raw.propagation);
         Ok(Self {
@@ -233,6 +237,7 @@ impl<'de> Deserialize<'de> for PropagationRemoteTransferResult {
             propagation: raw.propagation,
             result: raw.result,
             transfer_state,
+            queue,
         })
     }
 }
