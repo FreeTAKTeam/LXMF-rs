@@ -91,7 +91,8 @@ fn run_supply_chain_check() -> Result<()> {
 
     let mut artifacts = Vec::with_capacity(RELEASE_BINARIES.len());
     for name in RELEASE_BINARIES {
-        let path = Path::new("target/release").join(name);
+        let binary_name = executable_name(name);
+        let path = Path::new("target/release").join(&binary_name);
         if !path.exists() {
             bail!("release artifact missing: {}", path.display());
         }
