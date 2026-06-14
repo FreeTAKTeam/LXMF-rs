@@ -401,8 +401,8 @@ The project is best described by capability level:
   JSON while still retaining the original daemon payload.
 - `PropagationRemoteStatusResult` now projects remote router status into typed
   `status_state`, covering lifecycle state, selected node/peer, queue depth,
-  retry count, next sync attempt, and last error while preserving raw status
-  JSON.
+  failure kind, timeout/access-denied classification, retry count, next sync
+  attempt, and last error while preserving raw status JSON.
 - `PropagationRemoteTransferResult` now projects remote fetch/download result
   and propagation lifecycle payloads into typed `transfer_state`, covering
   sync/postpone status, imported IDs/counts, transferred bytes, progress, and

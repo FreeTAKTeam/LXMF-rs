@@ -121,6 +121,8 @@ fn propagation_remote_lifecycle_uses_zmq_sdk_envelopes_and_preserves_raw_state()
                             "queue_depth": 3,
                             "selected_node": "node-a",
                             "selected_peer": "peer-a",
+                            "failure_kind": "no_access",
+                            "access_denied": true,
                             "retry_count": 2,
                             "next_sync_attempt": 1_700_000_900,
                             "last_sync_error": "previous timeout"
@@ -298,6 +300,9 @@ fn propagation_remote_lifecycle_uses_zmq_sdk_envelopes_and_preserves_raw_state()
     assert_eq!(status.status_state.queue_depth, 3);
     assert_eq!(status.status_state.selected_node.as_deref(), Some("node-a"));
     assert_eq!(status.status_state.selected_peer.as_deref(), Some("peer-a"));
+    assert_eq!(status.status_state.failure_kind.as_deref(), Some("no_access"));
+    assert!(!status.status_state.timed_out);
+    assert!(status.status_state.access_denied);
     assert_eq!(status.status_state.retry_count, 2);
     assert_eq!(status.status_state.next_sync_attempt, Some(1_700_000_900));
     assert_eq!(status.status_state.last_sync_error.as_deref(), Some("previous timeout"));
