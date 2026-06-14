@@ -446,6 +446,9 @@ The project is best described by capability level:
 - `PropagationRecoveryStateResult` now also exposes the propagation lifecycle
   `timestamp`, so restart/recovery status callers can inspect daemon recovery
   freshness without parsing raw propagation JSON.
+- `PropagationRecoveryStateResult` now also exposes local propagation config
+  fields for `auth_required`, `static_peers`, and `sync_limit`, so status and
+  enable/config callers can verify recovery policy without raw propagation JSON.
 - The typed propagation branch also exposes outbound propagation router
   selection and listing as `ZmqPipelineBackendClient::propagation_node_get`,
   `propagation_node_set`, and `propagation_node_list`, backed by

@@ -334,6 +334,12 @@ pub struct PropagationRecoveryStateResult {
     #[serde(default)]
     pub timestamp: Option<i64>,
     #[serde(default)]
+    pub auth_required: bool,
+    #[serde(default)]
+    pub static_peers: Vec<String>,
+    #[serde(default)]
+    pub sync_limit: Option<u64>,
+    #[serde(default)]
     pub total_ingested: u64,
     #[serde(default)]
     pub last_ingest_count: u64,
@@ -368,6 +374,9 @@ impl PropagationRecoveryStateResult {
             retry_count: json_u64(&propagation, "retry_count").unwrap_or(0),
             queue_depth: json_u64(&propagation, "queue_depth").unwrap_or(0),
             timestamp: json_i64(&propagation, "timestamp"),
+            auth_required: json_bool(&propagation, "auth_required").unwrap_or(false),
+            static_peers: remote_transfer_json_string_array(&propagation, "static_peers"),
+            sync_limit: json_u64(&propagation, "sync_limit"),
             total_ingested: json_u64(&propagation, "total_ingested").unwrap_or(0),
             last_ingest_count: json_u64(&propagation, "last_ingest_count").unwrap_or(0),
             client_propagation_messages_received: json_u64(

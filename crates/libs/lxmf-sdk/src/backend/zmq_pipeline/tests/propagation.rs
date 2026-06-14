@@ -857,6 +857,9 @@ fn propagation_local_lifecycle_uses_zmq_sdk_envelopes_and_preserves_policy_state
     assert_eq!(enabled.recovery_state.sync_state, 1);
     assert_eq!(enabled.recovery_state.state_name.as_deref(), Some("syncing"));
     assert_eq!(enabled.recovery_state.queue_depth, 4);
+    assert!(enabled.recovery_state.auth_required);
+    assert_eq!(enabled.recovery_state.static_peers, vec!["router-a".to_string()]);
+    assert_eq!(enabled.recovery_state.sync_limit, Some(64));
     assert_eq!(policy.policy["denied_destinations"], json!(["dest-deny"]));
     assert!(policy.policy_state.auth_required);
     assert_eq!(policy.policy_state.allowed_destinations, vec!["dest-allow".to_string()]);
