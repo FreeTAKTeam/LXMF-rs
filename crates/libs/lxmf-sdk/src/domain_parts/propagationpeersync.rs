@@ -28,6 +28,22 @@ pub struct PropagationPeerQueueSnapshot {
     #[serde(default)]
     pub unhandled_bytes: u64,
     #[serde(default)]
+    pub transferred: u64,
+    #[serde(default)]
+    pub skipped: u64,
+    #[serde(default)]
+    pub rejected: u64,
+    #[serde(default)]
+    pub transfer_limited: u64,
+    #[serde(default)]
+    pub transferred_bytes: u64,
+    #[serde(default)]
+    pub skipped_bytes: u64,
+    #[serde(default)]
+    pub rejected_bytes: u64,
+    #[serde(default)]
+    pub transfer_limited_bytes: u64,
+    #[serde(default)]
     pub handled_ids: Vec<String>,
     #[serde(default)]
     pub unhandled_ids: Vec<String>,
@@ -50,6 +66,19 @@ impl PropagationPeerQueueSnapshot {
             unhandled: peer_queue_json_u64(messages, "unhandled").unwrap_or(0),
             offered_bytes: peer_queue_json_u64(messages, "offered_bytes").unwrap_or(0),
             unhandled_bytes: peer_queue_json_u64(messages, "unhandled_bytes").unwrap_or(0),
+            transferred: peer_queue_json_u64(propagation, "transferred").unwrap_or(0),
+            skipped: peer_queue_json_u64(propagation, "skipped")
+                .or_else(|| peer_queue_json_u64(propagation, "remaining"))
+                .unwrap_or(0),
+            rejected: peer_queue_json_u64(propagation, "rejected").unwrap_or(0),
+            transfer_limited: peer_queue_json_u64(propagation, "transfer_limited").unwrap_or(0),
+            transferred_bytes: peer_queue_json_u64(propagation, "bytes").unwrap_or(0),
+            skipped_bytes: peer_queue_json_u64(propagation, "skipped_bytes")
+                .or_else(|| peer_queue_json_u64(propagation, "remaining_bytes"))
+                .unwrap_or(0),
+            rejected_bytes: peer_queue_json_u64(propagation, "rejected_bytes").unwrap_or(0),
+            transfer_limited_bytes: peer_queue_json_u64(propagation, "transfer_limited_bytes")
+                .unwrap_or(0),
             handled_ids: peer_queue_json_string_array(messages, "handled_ids"),
             unhandled_ids: peer_queue_json_string_array(messages, "unhandled_ids"),
             transferred_ids: peer_queue_json_string_array(propagation, "transferred_ids"),

@@ -42,6 +42,14 @@ fn propagation_peer_sync_uses_zmq_sdk_envelope_and_preserves_queue_state() {
                         "failure_kind": "timeout",
                         "access_denied": false,
                         "offered": 2,
+                        "transferred": 1,
+                        "skipped": 1,
+                        "rejected": 0,
+                        "transfer_limited": 1,
+                        "bytes": 512,
+                        "remaining_bytes": 128,
+                        "rejected_bytes": 0,
+                        "transfer_limited_bytes": 64,
                         "handled_ids": ["aa"],
                         "unhandled_ids": ["bb"],
                         "transfer_limited_ids": ["cc"],
@@ -78,6 +86,14 @@ fn propagation_peer_sync_uses_zmq_sdk_envelope_and_preserves_queue_state() {
     assert_eq!(result.queue.offered, 2);
     assert_eq!(result.queue.outgoing, 1);
     assert_eq!(result.queue.unhandled, 1);
+    assert_eq!(result.queue.transferred, 1);
+    assert_eq!(result.queue.skipped, 1);
+    assert_eq!(result.queue.rejected, 0);
+    assert_eq!(result.queue.transfer_limited, 1);
+    assert_eq!(result.queue.transferred_bytes, 512);
+    assert_eq!(result.queue.skipped_bytes, 128);
+    assert_eq!(result.queue.rejected_bytes, 0);
+    assert_eq!(result.queue.transfer_limited_bytes, 64);
     assert_eq!(result.queue.handled_ids, vec!["aa".to_string()]);
     assert_eq!(result.queue.unhandled_ids, vec!["bb".to_string()]);
     assert_eq!(result.queue.transfer_limited_ids, vec!["cc".to_string()]);
