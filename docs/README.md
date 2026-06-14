@@ -50,6 +50,7 @@ are kept in Git history instead of the live documentation tree.
 - `docs/PerformancesComparison.html`: retained performance comparison snapshot;
   use the benchmarking runbook for current measurements
 - `docs/runbooks/release-readiness.md`: release gate checklist
+- `docs/release-notes-v0.4.0.md`: current project release notes
 - `docs/runbooks/reticulumd-operational-deployment.md`: daemon deployment,
   probes, shutdown, and service manager examples
 - `docs/runbooks/crates-io-publish-plan.md`: crates.io naming, versioning, and publish order

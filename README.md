@@ -3,37 +3,41 @@
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/FreeTAKTeam/LXMF-rs)
 
 Rust monorepo for LXMF and Reticulum with strict library/app boundaries and
-enterprise quality gates. The `0.3.0` line is a usable sub-1.0
+enterprise quality gates. The `0.4.0` line is a usable sub-1.0
 daemon/product release with strong core protocol coverage, published crates,
-and GitHub daemon bundles; it is not a complete drop-in replacement for every
-Python Reticulum/LXMF behavior.
+GitHub daemon bundles, and a typed ZeroMQ SDK integration foundation for
+REM/RCH clients; it is not a complete drop-in replacement for every Python
+Reticulum/LXMF behavior.
 
 ## Start Here
 
 - Contributor workflow: `CONTRIBUTING.md`
 - Current status and execution order: `docs/status/current-roadmap.md`
-- Release notes: `docs/release-notes-v0.3.0.md`
+- Release notes: `docs/release-notes-v0.4.0.md`
 - Docs map and retention rules: `docs/README.md`
 - SDK guide: `docs/sdk/README.md`
 - Support policy: `docs/contracts/support-policy.md`
 
 ## Release Status
 
-Current release train: `0.3.0`.
+Current release train: `0.4.0`.
 
-Use `docs/release-notes-v0.3.0.md` for the release summary and
+Use `docs/release-notes-v0.4.0.md` for the release summary and
 `docs/runbooks/release-readiness.md` for the release gate record. The
 repository-level parity source of truth remains
 `docs/status/current-roadmap.md`; the detailed parity supplements are
 `docs/status/reticulum-parity-matrix.md` and
 `docs/status/lxmf-parity-matrix.md`.
 
-The `0.3.0` release scope covers the Rust libraries, SDK entry points, `lxmd`,
+The `0.4.0` release scope covers the Rust libraries, SDK entry points, `lxmd`,
 `reticulumd`, and `rns-tools`, plus host-native GitHub bundles for daemon
-deployment. Propagation interoperability and operational substitutability are
-usable but still partial. External-client compatibility claims for Sideband,
-MeshChatX, Columba, or other third-party clients require separate interop gate
-evidence.
+deployment. Its main release-train addition is the typed
+`ZmqPipelineBackendClient` path needed by REM/RCH for field preservation, peer
+discovery/capability metadata, durable direct chat, and propagation-first
+delivery/recovery. Propagation interoperability and operational
+substitutability are usable but still partial. External-client compatibility
+claims for Sideband, MeshChatX, Columba, or other third-party clients require
+separate interop gate evidence.
 
 ## Workspace Layout
 
@@ -158,7 +162,7 @@ cargo run -p xtask -- architecture-checks
 cargo run -p xtask -- sdk-docs-check
 cargo run -p xtask -- sdk-migration-check
 cargo xtask release-check
-cargo xtask package-daemon-bundle --version 0.3.0
+cargo xtask package-daemon-bundle --version 0.4.0
 cargo xtask api-diff
 cargo xtask python-impl-bench-compare
 cargo xtask python-impl-bench-compare --profile report
@@ -170,7 +174,7 @@ For fast local iteration on one binary, prefer narrow commands:
 ```bash
 make check-bin PKG=lxmf-cli BIN=lxmd
 make run-bin PKG=rns-tools BIN=rnsd ARGS="--help"
-make package-daemon-bundle VERSION=0.3.0
+make package-daemon-bundle VERSION=0.4.0
 make python-lxmd-smoke
 ```
 
@@ -356,9 +360,9 @@ Release artifacts are published on the GitHub releases page:
 
 [https://github.com/FreeTAKTeam/LXMF-rs/releases](https://github.com/FreeTAKTeam/LXMF-rs/releases)
 
-For `v0.3.0`, use the release at:
+For `v0.4.0`, use the release at:
 
-[https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.3.0](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.3.0)
+[https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.4.0](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.4.0)
 
 1. Open the release page and download the package and matching `.sha256` file
    for your platform.
@@ -366,19 +370,19 @@ For `v0.3.0`, use the release at:
 2. Linux/macOS
 
 ```bash
-sha256sum -c lxmd-daemon-v0.3.0-linux-x64.tar.gz.sha256
-tar -xzf lxmd-daemon-v0.3.0-linux-x64.tar.gz
+sha256sum -c lxmd-daemon-v0.4.0-linux-x64.tar.gz.sha256
+tar -xzf lxmd-daemon-v0.4.0-linux-x64.tar.gz
 
-sha256sum -c lxmd-daemon-v0.3.0-macos-arm64.tar.gz.sha256
-tar -xzf lxmd-daemon-v0.3.0-macos-arm64.tar.gz
+sha256sum -c lxmd-daemon-v0.4.0-macos-arm64.tar.gz.sha256
+tar -xzf lxmd-daemon-v0.4.0-macos-arm64.tar.gz
 ```
 
 3. Windows
 
 ```powershell
-Get-FileHash .\lxmd-daemon-v0.3.0-windows-x64.zip -Algorithm SHA256
-Get-Content .\lxmd-daemon-v0.3.0-windows-x64.zip.sha256
-Expand-Archive .\lxmd-daemon-v0.3.0-windows-x64.zip .
+Get-FileHash .\lxmd-daemon-v0.4.0-windows-x64.zip -Algorithm SHA256
+Get-Content .\lxmd-daemon-v0.4.0-windows-x64.zip.sha256
+Expand-Archive .\lxmd-daemon-v0.4.0-windows-x64.zip .
 ```
 
 4. Run directly for validation
