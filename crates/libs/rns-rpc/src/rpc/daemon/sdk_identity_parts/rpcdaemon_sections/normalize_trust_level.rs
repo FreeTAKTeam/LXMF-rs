@@ -56,7 +56,6 @@ impl RpcDaemon {
         let params = request.params.unwrap_or_else(|| JsonValue::Object(JsonMap::new()));
         let parsed: SdkIdentityAnnounceNowV2Params = serde_json::from_value(params)
             .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
-        let _ = parsed.extensions.len();
         if let Some(bridge) = &self.announce_bridge {
             let _ = bridge.announce_now();
         }
@@ -66,12 +65,26 @@ impl RpcDaemon {
             payload: json!({
                 "timestamp": timestamp,
                 "announce_id": request.id,
+                "identity": parsed.identity,
+                "display_name": parsed.display_name,
+                "capabilities": parsed.capabilities,
+                "metadata": parsed.metadata,
+                "extensions": parsed.extensions,
             }),
         };
+        let result = event.payload.clone();
         self.publish_event(event);
         Ok(RpcResponse {
             id: request.id,
-            result: Some(json!({ "accepted": true, "announce_id": request.id })),
+            result: Some(json!({
+                "accepted": true,
+                "announce_id": request.id,
+                "identity": result["identity"].clone(),
+                "display_name": result["display_name"].clone(),
+                "capabilities": result["capabilities"].clone(),
+                "metadata": result["metadata"].clone(),
+                "extensions": result["extensions"].clone(),
+            })),
             error: None,
         })
     }

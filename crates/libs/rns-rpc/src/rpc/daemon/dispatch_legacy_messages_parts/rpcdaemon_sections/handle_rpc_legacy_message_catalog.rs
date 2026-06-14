@@ -74,6 +74,115 @@ impl RpcDaemon {
                     error: None,
                 })
             }
+            "list_conversations" => {
+                let parsed = request
+                    .params
+                    .map(serde_json::from_value::<ListMessagesParams>)
+                    .transpose()
+                    .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?
+                    .unwrap_or_default();
+                let limit = parsed.limit.unwrap_or(100).clamp(1, 5000);
+                let (before_ts, before_id) = match parsed.before_ts {
+                    Some(timestamp) => (Some(timestamp), None),
+                    None => {
+                        parse_timestamp_id_cursor(parsed.cursor.as_deref()).unwrap_or((None, None))
+                    }
+                };
+                let include_receipts = parsed.include_receipts.unwrap_or(true);
+                let peer_id =
+                    parsed.peer_id.as_deref().map(str::trim).filter(|value| !value.is_empty());
+                let conversation_id = parsed
+                    .conversation_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty());
+                if let (Some(peer_id), Some(conversation_id)) = (peer_id, conversation_id) {
+                    if !peer_id.eq_ignore_ascii_case(conversation_id) {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::InvalidInput,
+                            "peer_id and conversation_id must match when both are set",
+                        ));
+                    }
+                }
+                let peer_filter = peer_id.or(conversation_id);
+                let records = if let Some(peer) = peer_filter {
+                    self.store
+                        .list_messages_page_for_peer(5000, before_ts, before_id.as_deref(), peer)
+                        .map_err(std::io::Error::other)?
+                } else {
+                    self.store
+                        .list_messages_page(5000, before_ts, before_id.as_deref())
+                        .map_err(std::io::Error::other)?
+                };
+                let mut summaries = std::collections::BTreeMap::<String, JsonValue>::new();
+                let mut unread_counts = std::collections::BTreeMap::<String, u64>::new();
+                for record in records {
+                    let outbound = matches!(
+                        record.direction.to_ascii_lowercase().as_str(),
+                        "out" | "outbound"
+                    );
+                    let peer = if outbound { &record.destination } else { &record.source };
+                    let peer = peer.trim();
+                    if peer.is_empty() {
+                        continue;
+                    }
+                    if !outbound {
+                        *unread_counts.entry(peer.to_owned()).or_default() += 1;
+                    }
+                    summaries.entry(peer.to_owned()).or_insert_with(|| {
+                        let preview = record.content.trim();
+                        let state = if include_receipts {
+                            record
+                                .receipt_status
+                                .clone()
+                                .map(JsonValue::String)
+                                .unwrap_or(JsonValue::Null)
+                        } else {
+                            JsonValue::Null
+                        };
+                        json!({
+                            "conversation_id": peer,
+                            "peer_id": peer,
+                            "peer_destination_hex": peer,
+                            "peer_display_name": JsonValue::Null,
+                            "last_message_preview": preview,
+                            "last_message_at_ms": record.timestamp,
+                            "last_message_state": state,
+                        })
+                    });
+                }
+                let mut conversations = summaries
+                    .into_iter()
+                    .map(|(peer, mut summary)| {
+                        summary["unread_count"] =
+                            JsonValue::from(unread_counts.remove(&peer).unwrap_or_default());
+                        summary
+                    })
+                    .collect::<Vec<_>>();
+                conversations.sort_by(|a, b| {
+                    b["last_message_at_ms"]
+                        .as_i64()
+                        .cmp(&a["last_message_at_ms"].as_i64())
+                        .then_with(|| {
+                            a["conversation_id"]
+                                .as_str()
+                                .unwrap_or_default()
+                                .cmp(b["conversation_id"].as_str().unwrap_or_default())
+                        })
+                });
+                if conversations.len() > limit {
+                    conversations.truncate(limit);
+                }
+                Ok(RpcResponse {
+                    id: request.id,
+                    result: Some(json!({
+                        "conversations": conversations,
+                        "next_cursor": JsonValue::Null,
+                        "meta": self.response_meta(),
+                    })),
+                    error: None,
+                })
+            }
             "sdk_poll_events_v2" => self.handle_sdk_poll_events_v2(request),
             "list_announces" => {
                 let parsed = request
