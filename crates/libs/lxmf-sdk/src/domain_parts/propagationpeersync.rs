@@ -75,6 +75,12 @@ pub struct PropagationPeerSyncResult {
     #[serde(default)]
     pub postpone_reason: Option<String>,
     #[serde(default)]
+    pub failure_kind: Option<String>,
+    #[serde(default)]
+    pub timed_out: bool,
+    #[serde(default)]
+    pub access_denied: bool,
+    #[serde(default)]
     pub last_sync_attempt: Option<i64>,
     #[serde(default)]
     pub next_sync_attempt: Option<i64>,
@@ -106,6 +112,10 @@ struct RawPropagationPeerSyncResult {
     #[serde(default)]
     postpone_reason: Option<String>,
     #[serde(default)]
+    failure_kind: Option<String>,
+    #[serde(default)]
+    access_denied: Option<bool>,
+    #[serde(default)]
     last_sync_attempt: Option<i64>,
     #[serde(default)]
     next_sync_attempt: Option<i64>,
@@ -129,6 +139,19 @@ impl<'de> Deserialize<'de> for PropagationPeerSyncResult {
         let raw = RawPropagationPeerSyncResult::deserialize(deserializer)?;
         let queue =
             PropagationPeerQueueSnapshot::from_messages_and_propagation(&raw.messages, &raw.propagation);
+        let failure_kind = raw
+            .failure_kind
+            .or_else(|| peer_queue_json_string(&raw.propagation, "failure_kind"));
+        let timed_out = failure_kind.as_deref() == Some("timeout")
+            || raw.postpone_reason.as_deref() == Some("timeout")
+            || peer_queue_json_string(&raw.propagation, "postpone_reason").as_deref()
+                == Some("timeout");
+        let access_denied = raw.access_denied.unwrap_or(false)
+            || peer_queue_json_bool(&raw.propagation, "access_denied").unwrap_or(false)
+            || matches!(
+                failure_kind.as_deref(),
+                Some("access_denied" | "access-denied" | "no_access")
+            );
         Ok(Self {
             peer: raw.peer,
             peer_type: raw.peer_type,
@@ -136,6 +159,9 @@ impl<'de> Deserialize<'de> for PropagationPeerSyncResult {
             synced: raw.synced,
             postponed: raw.postponed,
             postpone_reason: raw.postpone_reason,
+            failure_kind,
+            timed_out,
+            access_denied,
             last_sync_attempt: raw.last_sync_attempt,
             next_sync_attempt: raw.next_sync_attempt,
             sync_backoff: raw.sync_backoff,
@@ -146,6 +172,14 @@ impl<'de> Deserialize<'de> for PropagationPeerSyncResult {
             queue,
         })
     }
+}
+
+fn peer_queue_json_bool(value: &JsonValue, key: &str) -> Option<bool> {
+    value.get(key).and_then(JsonValue::as_bool)
+}
+
+fn peer_queue_json_string(value: &JsonValue, key: &str) -> Option<String> {
+    value.get(key).and_then(JsonValue::as_str).map(ToOwned::to_owned)
 }
 
 fn peer_queue_json_u64(value: &JsonValue, key: &str) -> Option<u64> {

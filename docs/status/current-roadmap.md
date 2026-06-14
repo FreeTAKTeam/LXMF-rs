@@ -390,6 +390,10 @@ The project is best described by capability level:
   queue fields into a typed `queue` snapshot, including offered/outgoing/
   incoming/unhandled counters and handled, unhandled, transferred, skipped,
   rejected, and transfer-limited transient IDs while retaining raw payloads.
+- `PropagationPeerSyncResult` now also exposes typed failure kind,
+  timeout/access-denied classification, and existing retry scheduling fields
+  for postponed peer-sync attempts, so offer and queue retry callers do not
+  need raw propagation JSON for common failure branching.
 - The same ZeroMQ SDK propagation branch now exposes remote router status,
   fetch, download, sync, and unpeer lifecycle calls through typed
   `ZmqPipelineBackendClient` methods and registered `app.propagation.*`

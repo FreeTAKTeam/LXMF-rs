@@ -19,7 +19,9 @@ fn propagation_peer_sync_uses_zmq_sdk_envelope_and_preserves_queue_state() {
                     "type": "discovered",
                     "synced": false,
                     "postponed": true,
-                    "postpone_reason": "backoff",
+                    "postpone_reason": "timeout",
+                    "failure_kind": "timeout",
+                    "access_denied": false,
                     "last_sync_attempt": 1_700_000_100,
                     "next_sync_attempt": 1_700_000_700,
                     "sync_backoff": 600,
@@ -36,7 +38,9 @@ fn propagation_peer_sync_uses_zmq_sdk_envelope_and_preserves_queue_state() {
                     "propagation": {
                         "synced": false,
                         "postponed": true,
-                        "postpone_reason": "backoff",
+                        "postpone_reason": "timeout",
+                        "failure_kind": "timeout",
+                        "access_denied": false,
                         "offered": 2,
                         "handled_ids": ["aa"],
                         "unhandled_ids": ["bb"],
@@ -66,7 +70,10 @@ fn propagation_peer_sync_uses_zmq_sdk_envelope_and_preserves_queue_state() {
     assert_eq!(result.peer_type.as_deref(), Some("manual"));
     assert!(!result.synced);
     assert!(result.postponed);
-    assert_eq!(result.postpone_reason.as_deref(), Some("backoff"));
+    assert_eq!(result.postpone_reason.as_deref(), Some("timeout"));
+    assert_eq!(result.failure_kind.as_deref(), Some("timeout"));
+    assert!(result.timed_out);
+    assert!(!result.access_denied);
     assert_eq!(result.next_sync_attempt, Some(1_700_000_700));
     assert_eq!(result.queue.offered, 2);
     assert_eq!(result.queue.outgoing, 1);
