@@ -9,6 +9,7 @@ mod batch;
 mod destination;
 mod history;
 mod propagation;
+mod propagation_payload;
 mod registry;
 mod status;
 mod workflow;

@@ -157,6 +157,10 @@ pub struct PropagationRemoteTransferState {
     #[serde(default)]
     pub state_name: Option<String>,
     #[serde(default)]
+    pub selected_node: Option<String>,
+    #[serde(default)]
+    pub selected_peer: Option<String>,
+    #[serde(default)]
     pub sync_progress: Option<f64>,
     #[serde(default)]
     pub last_sync_started: Option<i64>,
@@ -192,6 +196,8 @@ impl PropagationRemoteTransferState {
             imported_ids: remote_transfer_json_string_array(result, "imported_ids"),
             transferred_bytes: json_u64(result, "transferred_bytes").unwrap_or(0),
             state_name: json_string(propagation, "state_name"),
+            selected_node: json_string(propagation, "selected_node"),
+            selected_peer: json_string(propagation, "selected_peer"),
             sync_progress: json_f64(propagation, "sync_progress"),
             last_sync_started: json_i64(propagation, "last_sync_started"),
             last_sync_completed: json_i64(propagation, "last_sync_completed"),

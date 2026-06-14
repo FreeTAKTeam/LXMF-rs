@@ -436,6 +436,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - `PropagationRemoteTransferState` now also exposes `last_sync_started` and
   `last_sync_completed` for remote fetch/download/sync/unpeer lifecycle
   results, keeping transfer freshness visible without raw propagation JSON.
+- `PropagationRemoteTransferState` now also exposes selected router context
+  through `selected_node` and `selected_peer` for remote fetch/download/sync/
+  unpeer lifecycle results, keeping peer/router selection visible without raw
+  propagation JSON.
 - `PropagationRemoteUnpeerResult` now projects remote unpeer `messages` and
   propagation cleanup payloads into a typed `queue` snapshot, so denial and
   teardown cleanup callers can inspect handled, unhandled, transferred,
