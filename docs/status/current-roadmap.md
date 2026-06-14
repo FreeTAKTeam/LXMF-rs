@@ -448,6 +448,10 @@ The project is best described by capability level:
 - `PropagationNodeListResult` now projects listed router candidates into typed
   `PropagationNodeRecord` entries, exposing peer, display name, last-seen time,
   selected flag, and capability strings while retaining the raw node JSON.
+- `PropagationNodeSelectionResult` now projects node get/set `meta` into typed
+  `selection_state`, exposing selected peer, selection flag, queue depth,
+  failure kind, timeout/access-denied classification, retry scheduling, and
+  last error without parsing raw router metadata.
 - The typed propagation branch now also exposes local propagation status,
   enable/config, delivery policy get/set, and peer maintenance through
   `ZmqPipelineBackendClient` methods and `app.propagation.*` envelopes, keeping

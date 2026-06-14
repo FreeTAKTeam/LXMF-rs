@@ -553,7 +553,9 @@ fn propagation_node_lifecycle_uses_zmq_sdk_envelopes_and_preserves_router_state(
                     "payload": {
                         "peer": null,
                         "meta": {
-                            "queue_depth": 0
+                            "state_name": "idle",
+                            "queue_depth": 0,
+                            "retry_count": 0
                         }
                     }
                 }
@@ -567,7 +569,14 @@ fn propagation_node_lifecycle_uses_zmq_sdk_envelopes_and_preserves_router_state(
                     "payload": {
                         "peer": "router-a",
                         "meta": {
-                            "selected": true
+                            "selected": false,
+                            "state_name": "failed",
+                            "failure_kind": "no_access",
+                            "access_denied": true,
+                            "queue_depth": 3,
+                            "retry_count": 2,
+                            "next_sync_attempt": 1700000600,
+                            "last_sync_error": "router denied"
                         }
                     }
                 }
@@ -611,8 +620,22 @@ fn propagation_node_lifecycle_uses_zmq_sdk_envelopes_and_preserves_router_state(
 
     assert_eq!(initial.peer, None);
     assert_eq!(initial.meta["queue_depth"], json!(0));
+    assert_eq!(initial.selection_state.peer, None);
+    assert_eq!(initial.selection_state.state.as_deref(), Some("idle"));
+    assert!(!initial.selection_state.selected);
+    assert_eq!(initial.selection_state.queue_depth, 0);
     assert_eq!(selected.peer.as_deref(), Some("router-a"));
-    assert_eq!(selected.meta["selected"], json!(true));
+    assert_eq!(selected.meta["selected"], json!(false));
+    assert_eq!(selected.selection_state.peer.as_deref(), Some("router-a"));
+    assert_eq!(selected.selection_state.state.as_deref(), Some("failed"));
+    assert!(!selected.selection_state.selected);
+    assert_eq!(selected.selection_state.failure_kind.as_deref(), Some("no_access"));
+    assert!(!selected.selection_state.timed_out);
+    assert!(selected.selection_state.access_denied);
+    assert_eq!(selected.selection_state.queue_depth, 3);
+    assert_eq!(selected.selection_state.retry_count, 2);
+    assert_eq!(selected.selection_state.next_sync_attempt, Some(1_700_000_600));
+    assert_eq!(selected.selection_state.last_sync_error.as_deref(), Some("router denied"));
     assert_eq!(listed.nodes[0]["peer"], json!("router-a"));
     assert_eq!(listed.nodes[0]["selected"], json!(true));
     assert_eq!(listed.node_records.len(), 1);
