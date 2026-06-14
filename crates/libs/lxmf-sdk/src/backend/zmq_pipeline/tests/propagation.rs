@@ -733,10 +733,19 @@ fn propagation_local_lifecycle_uses_zmq_sdk_envelopes_and_preserves_policy_state
                             "auth_required": true,
                             "store_root": "propagation-store",
                             "target_cost": 12,
+                            "stamp_cost_flexibility": 4,
                             "message_storage_limit_mb": 256,
+                            "delivery_limit": 16,
                             "propagation_limit": 32,
+                            "autopeer": true,
+                            "autopeer_maxdepth": 2,
                             "static_peers": ["router-a"],
-                            "sync_limit": 64
+                            "sync_limit": 64,
+                            "max_peers": 8,
+                            "from_static_only": true,
+                            "retain_synced_on_node": false,
+                            "peering_cost": 10,
+                            "remote_peering_cost_max": 20
                         }
                     }
                 }
@@ -864,10 +873,19 @@ fn propagation_local_lifecycle_uses_zmq_sdk_envelopes_and_preserves_policy_state
     assert!(enabled.recovery_state.auth_required);
     assert_eq!(enabled.recovery_state.store_root.as_deref(), Some("propagation-store"));
     assert_eq!(enabled.recovery_state.target_cost, Some(12));
+    assert_eq!(enabled.recovery_state.stamp_cost_flexibility, Some(4));
     assert_eq!(enabled.recovery_state.message_storage_limit_mb, Some(256));
+    assert_eq!(enabled.recovery_state.delivery_limit, Some(16));
     assert_eq!(enabled.recovery_state.propagation_limit, Some(32));
+    assert_eq!(enabled.recovery_state.autopeer, Some(true));
+    assert_eq!(enabled.recovery_state.autopeer_maxdepth, Some(2));
     assert_eq!(enabled.recovery_state.static_peers, vec!["router-a".to_string()]);
     assert_eq!(enabled.recovery_state.sync_limit, Some(64));
+    assert_eq!(enabled.recovery_state.max_peers, Some(8));
+    assert_eq!(enabled.recovery_state.from_static_only, Some(true));
+    assert_eq!(enabled.recovery_state.retain_synced_on_node, Some(false));
+    assert_eq!(enabled.recovery_state.peering_cost, Some(10));
+    assert_eq!(enabled.recovery_state.remote_peering_cost_max, Some(20));
     assert_eq!(policy.policy["denied_destinations"], json!(["dest-deny"]));
     assert!(policy.policy_state.auth_required);
     assert_eq!(policy.policy_state.allowed_destinations, vec!["dest-allow".to_string()]);

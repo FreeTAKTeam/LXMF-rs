@@ -504,6 +504,11 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   transfer-limit config for `store_root`, `target_cost`,
   `message_storage_limit_mb`, and `propagation_limit`, keeping durable queue
   policy visible on the typed ZeroMQ SDK path.
+- `PropagationRecoveryStateResult` now also exposes the remaining propagation
+  enable/status config for `stamp_cost_flexibility`, `delivery_limit`,
+  `autopeer`, `autopeer_maxdepth`, `max_peers`, `from_static_only`,
+  `retain_synced_on_node`, `peering_cost`, and `remote_peering_cost_max`, so
+  router/peering policy is visible through the typed ZeroMQ SDK path.
 - Python-style `lxmd` `[lxmf] announce_interval` drives peer/delivery announce
   cadence separately from `[propagation] announce_interval`, which remains the
   propagation-node announce cadence.
