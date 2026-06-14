@@ -305,6 +305,65 @@ fn sdk_envelope_history_list_rejects_mismatched_peer_and_conversation_filters() 
 }
 
 #[test]
+fn sdk_envelope_conversation_list_returns_message_summaries() {
+    let daemon = RpcDaemon::test_instance();
+    daemon
+        .accept_inbound(MessageRecord {
+            id: "conversation-old".to_string(),
+            source: "peer-a".to_string(),
+            destination: "local".to_string(),
+            title: "old".to_string(),
+            content: "older message".to_string(),
+            timestamp: 1_700_000_100,
+            direction: "in".to_string(),
+            fields: None,
+            receipt_status: Some("received".to_string()),
+        })
+        .expect("store old message");
+    daemon
+        .accept_inbound(MessageRecord {
+            id: "conversation-new".to_string(),
+            source: "peer-a".to_string(),
+            destination: "local".to_string(),
+            title: "new".to_string(),
+            content: "restart recovered https://example.invalid/chat/1".to_string(),
+            timestamp: 1_700_000_200,
+            direction: "in".to_string(),
+            fields: None,
+            receipt_status: Some("delivered".to_string()),
+        })
+        .expect("store new message");
+
+    let response = daemon
+        .handle_rpc(rpc_request(
+            39,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "app.message.conversation.list",
+                "kind": "query",
+                "payload": {
+                    "peer_id": "peer-a",
+                    "include_receipts": true,
+                    "limit": 20
+                }
+            }),
+        ))
+        .expect("conversation list envelope");
+
+    assert!(response.error.is_none());
+    let result = response.result.expect("conversation result");
+    let payload = &result["response"]["payload"];
+    assert_eq!(payload["conversations"][0]["conversation_id"], json!("peer-a"));
+    assert_eq!(
+        payload["conversations"][0]["last_message_preview"],
+        json!("restart recovered https://example.invalid/chat/1")
+    );
+    assert_eq!(payload["conversations"][0]["last_message_at_ms"], json!(1_700_000_200_i64));
+    assert_eq!(payload["conversations"][0]["unread_count"], json!(2));
+    assert_eq!(payload["conversations"][0]["last_message_state"], json!("delivered"));
+}
+
+#[test]
 fn list_messages_omits_next_cursor_when_exact_limit_is_exhausted() {
     let daemon = RpcDaemon::test_instance();
     for id in ["msg-a", "msg-b"] {

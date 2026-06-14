@@ -360,6 +360,11 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   `peer_id`/`conversation_id` filters, `include_receipts`, and daemon
   pagination cursors for restart recovery through the
   `app.message.history.list` SDK envelope path.
+- The typed ZeroMQ SDK backend exposes durable direct-chat conversation
+  summaries through `ZmqPipelineBackendClient::list_conversations`, preserving
+  peer display names, unread counts, last-message previews with links, receipt
+  inclusion intent, and restart pagination cursors through
+  `app.message.conversation.list` on the SDK envelope path.
 - `ZmqPipelineBackendClient::list_message_history` accepts canonical
   `id`/`content` history rows and legacy direct-chat `message_id`/`body` rows,
   so recovered history remains typed even when the daemon returns the older app

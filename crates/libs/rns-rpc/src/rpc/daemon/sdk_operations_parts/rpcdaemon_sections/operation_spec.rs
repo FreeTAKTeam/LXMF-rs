@@ -343,7 +343,7 @@ impl RpcDaemon {
                 method: method.to_owned(),
                 params: Some(params),
             })?,
-            "list_messages" => self.handle_rpc_legacy_messages(RpcRequest {
+            "list_messages" | "list_conversations" => self.handle_rpc_legacy_messages(RpcRequest {
                 id: request_id,
                 method: method.to_owned(),
                 params: Some(params),

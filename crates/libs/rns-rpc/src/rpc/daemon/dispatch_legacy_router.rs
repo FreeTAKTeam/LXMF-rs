@@ -7,6 +7,7 @@ impl RpcDaemon {
     ) -> Result<RpcResponse, std::io::Error> {
         match request.method.as_str() {
             "list_messages"
+            | "list_conversations"
             | "sdk_poll_events_v2"
             | "list_announces"
             | "list_peers"

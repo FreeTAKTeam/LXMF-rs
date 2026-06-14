@@ -93,7 +93,7 @@ impl RpcDaemon {
             "sdk_voice_session_open_v2" => parsed.payload,
             "sdk_voice_session_update_v2" => parsed.payload,
             "sdk_voice_session_close_v2" => parsed.payload,
-            "list_messages" => {
+            "list_messages" | "list_conversations" => {
                 if parsed.payload.is_object() {
                     parsed.payload
                 } else {
