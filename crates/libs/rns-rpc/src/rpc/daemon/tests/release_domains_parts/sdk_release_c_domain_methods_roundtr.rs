@@ -623,3 +623,38 @@ fn sdk_peer_lifecycle_methods_roundtrip_through_daemon_dispatch() {
     assert_eq!(reconnected_peer["state"], json!("reconnected"));
     assert_eq!(reconnected_peer["connected"], json!(true));
 }
+
+#[test]
+fn sdk_identity_announce_now_accepts_rich_metadata() {
+    let daemon = RpcDaemon::test_instance();
+
+    let response = daemon
+        .handle_rpc(rpc_request(
+            1226,
+            "sdk_identity_announce_now_v2",
+            json!({
+                "identity": "local-identity",
+                "display_name": "Field Team One",
+                "capabilities": ["rem.direct_chat", "rem.restart_recovery"],
+                "metadata": {
+                    "callsign": "FT1",
+                    "rem_capability_flags": ["direct_chat", "restart_recovery"],
+                    "rch_announce_slots": ["broadcast", "topics"]
+                },
+                "extensions": {
+                    "source": "rem-rch"
+                }
+            }),
+        ))
+        .expect("identity announce now");
+
+    assert!(response.error.is_none());
+    let result = response.result.expect("result");
+    assert_eq!(result["accepted"], json!(true));
+    assert_eq!(result["identity"], json!("local-identity"));
+    assert_eq!(result["display_name"], json!("Field Team One"));
+    assert_eq!(result["capabilities"][1], json!("rem.restart_recovery"));
+    assert_eq!(result["metadata"]["callsign"], json!("FT1"));
+    assert_eq!(result["metadata"]["rch_announce_slots"][1], json!("topics"));
+    assert_eq!(result["extensions"]["source"], json!("rem-rch"));
+}
