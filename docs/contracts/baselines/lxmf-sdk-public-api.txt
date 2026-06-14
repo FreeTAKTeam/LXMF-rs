@@ -204,7 +204,9 @@ pub fn lxmf_sdk::app::Client<B>::bootstrap_identity(&self, request: lxmf_sdk::ap
 pub fn lxmf_sdk::app::Client<B>::contacts(&self, cursor: core::option::Option<alloc::string::String>, limit: core::option::Option<usize>) -> core::result::Result<lxmf_sdk::app::ContactPage, lxmf_sdk::app::Error>
 pub fn lxmf_sdk::app::Client<B>::identities(&self) -> core::result::Result<alloc::vec::Vec<lxmf_sdk::app::Identity>, lxmf_sdk::app::Error>
 pub fn lxmf_sdk::app::Client<B>::peer_directory(&self, limit: core::option::Option<usize>) -> core::result::Result<alloc::vec::Vec<lxmf_sdk::app::PeerDirectoryEntry>, lxmf_sdk::app::Error>
+pub fn lxmf_sdk::app::Client<B>::peer_directory_since(&self, limit: core::option::Option<usize>, min_last_seen_ts_ms: core::option::Option<i64>) -> core::result::Result<alloc::vec::Vec<lxmf_sdk::app::PeerDirectoryEntry>, lxmf_sdk::app::Error>
 pub fn lxmf_sdk::app::Client<B>::presence(&self, cursor: core::option::Option<alloc::string::String>, limit: core::option::Option<usize>) -> core::result::Result<lxmf_sdk::app::PresencePage, lxmf_sdk::app::Error>
+pub fn lxmf_sdk::app::Client<B>::presence_since(&self, cursor: core::option::Option<alloc::string::String>, limit: core::option::Option<usize>, min_last_seen_ts_ms: core::option::Option<i64>) -> core::result::Result<lxmf_sdk::app::PresencePage, lxmf_sdk::app::Error>
 pub fn lxmf_sdk::app::Client<B>::update_contact(&self, update: lxmf_sdk::app::ContactUpdate) -> core::result::Result<lxmf_sdk::app::Contact, lxmf_sdk::app::Error>
 impl<B: lxmf_sdk::SdkBackend> lxmf_sdk::app::Client<B>
 pub fn lxmf_sdk::app::Client<B>::attachments(&self) -> lxmf_sdk::app::Attachments<'_, B>
@@ -416,7 +418,9 @@ pub fn lxmf_sdk::app::IdentityDirectory<'a, B>::bootstrap(&self, request: lxmf_s
 pub fn lxmf_sdk::app::IdentityDirectory<'a, B>::contacts(&self, cursor: core::option::Option<alloc::string::String>, limit: core::option::Option<usize>) -> core::result::Result<lxmf_sdk::app::ContactPage, lxmf_sdk::app::Error>
 pub fn lxmf_sdk::app::IdentityDirectory<'a, B>::list(&self) -> core::result::Result<alloc::vec::Vec<lxmf_sdk::app::Identity>, lxmf_sdk::app::Error>
 pub fn lxmf_sdk::app::IdentityDirectory<'a, B>::peer_directory(&self, limit: core::option::Option<usize>) -> core::result::Result<alloc::vec::Vec<lxmf_sdk::app::PeerDirectoryEntry>, lxmf_sdk::app::Error>
+pub fn lxmf_sdk::app::IdentityDirectory<'a, B>::peer_directory_since(&self, limit: core::option::Option<usize>, min_last_seen_ts_ms: core::option::Option<i64>) -> core::result::Result<alloc::vec::Vec<lxmf_sdk::app::PeerDirectoryEntry>, lxmf_sdk::app::Error>
 pub fn lxmf_sdk::app::IdentityDirectory<'a, B>::presence(&self, cursor: core::option::Option<alloc::string::String>, limit: core::option::Option<usize>) -> core::result::Result<lxmf_sdk::app::PresencePage, lxmf_sdk::app::Error>
+pub fn lxmf_sdk::app::IdentityDirectory<'a, B>::presence_since(&self, cursor: core::option::Option<alloc::string::String>, limit: core::option::Option<usize>, min_last_seen_ts_ms: core::option::Option<i64>) -> core::result::Result<lxmf_sdk::app::PresencePage, lxmf_sdk::app::Error>
 pub fn lxmf_sdk::app::IdentityDirectory<'a, B>::update_contact(&self, update: lxmf_sdk::app::ContactUpdate) -> core::result::Result<lxmf_sdk::app::Contact, lxmf_sdk::app::Error>
 pub struct lxmf_sdk::app::Messages<'a, B: lxmf_sdk::SdkBackend>
 impl<'a, B: lxmf_sdk::SdkBackend> lxmf_sdk::app::Messages<'a, B>
@@ -632,6 +636,12 @@ pub fn lxmf_sdk::capability::effective_capabilities_for_profile(profile: lxmf_sd
 pub fn lxmf_sdk::capability::negotiate_contract_version(client_supported: &[u16], backend_supported: &[u16]) -> core::option::Option<u16>
 pub fn lxmf_sdk::capability::negotiate_plugins(requested_plugin_ids: &[alloc::string::String], available_plugins: &[lxmf_sdk::capability::PluginDescriptor], effective_capabilities: &[alloc::string::String]) -> alloc::vec::Vec<alloc::string::String>
 pub mod lxmf_sdk::domain
+pub enum lxmf_sdk::domain::PeerConnectionState
+pub lxmf_sdk::domain::PeerConnectionState::Connected
+pub lxmf_sdk::domain::PeerConnectionState::Disconnected
+pub lxmf_sdk::domain::PeerConnectionState::Failed
+pub lxmf_sdk::domain::PeerConnectionState::Reconnected
+pub lxmf_sdk::domain::PeerConnectionState::Unknown
 pub enum lxmf_sdk::domain::RemoteCommandState
 pub lxmf_sdk::domain::RemoteCommandState::Completed
 pub lxmf_sdk::domain::RemoteCommandState::Dispatched
@@ -749,6 +759,20 @@ pub struct lxmf_sdk::domain::GeoPoint
 pub lxmf_sdk::domain::GeoPoint::alt_m: core::option::Option<f64>
 pub lxmf_sdk::domain::GeoPoint::lat: f64
 pub lxmf_sdk::domain::GeoPoint::lon: f64
+pub struct lxmf_sdk::domain::IdentityAnnounceRequest
+pub lxmf_sdk::domain::IdentityAnnounceRequest::capabilities: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::domain::IdentityAnnounceRequest::display_name: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::IdentityAnnounceRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::IdentityAnnounceRequest::identity: core::option::Option<lxmf_sdk::domain::IdentityRef>
+pub lxmf_sdk::domain::IdentityAnnounceRequest::metadata: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub struct lxmf_sdk::domain::IdentityAnnounceResult
+pub lxmf_sdk::domain::IdentityAnnounceResult::accepted: bool
+pub lxmf_sdk::domain::IdentityAnnounceResult::announce_id: core::option::Option<serde_json::value::Value>
+pub lxmf_sdk::domain::IdentityAnnounceResult::capabilities: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::domain::IdentityAnnounceResult::display_name: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::IdentityAnnounceResult::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::IdentityAnnounceResult::identity: core::option::Option<lxmf_sdk::domain::IdentityRef>
+pub lxmf_sdk::domain::IdentityAnnounceResult::metadata: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
 pub struct lxmf_sdk::domain::IdentityBootstrapRequest
 pub lxmf_sdk::domain::IdentityBootstrapRequest::auto_sync: bool
 pub lxmf_sdk::domain::IdentityBootstrapRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
@@ -807,10 +831,25 @@ pub lxmf_sdk::domain::PaperMessageEnvelope::destination_hint: core::option::Opti
 pub lxmf_sdk::domain::PaperMessageEnvelope::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
 pub lxmf_sdk::domain::PaperMessageEnvelope::transient_id: core::option::Option<alloc::string::String>
 pub lxmf_sdk::domain::PaperMessageEnvelope::uri: alloc::string::String
+pub struct lxmf_sdk::domain::PeerConnectionRequest
+pub lxmf_sdk::domain::PeerConnectionRequest::correlation_id: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PeerConnectionRequest::display_name: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PeerConnectionRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::PeerConnectionRequest::identity: lxmf_sdk::domain::IdentityRef
+pub lxmf_sdk::domain::PeerConnectionRequest::metadata: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub struct lxmf_sdk::domain::PeerConnectionResult
+pub lxmf_sdk::domain::PeerConnectionResult::connected: bool
+pub lxmf_sdk::domain::PeerConnectionResult::display_name: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PeerConnectionResult::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::PeerConnectionResult::identity: lxmf_sdk::domain::IdentityRef
+pub lxmf_sdk::domain::PeerConnectionResult::metadata: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::PeerConnectionResult::state: lxmf_sdk::domain::PeerConnectionState
+pub lxmf_sdk::domain::PeerConnectionResult::updated_ts_ms: u64
 pub struct lxmf_sdk::domain::PresenceListRequest
 pub lxmf_sdk::domain::PresenceListRequest::cursor: core::option::Option<alloc::string::String>
 pub lxmf_sdk::domain::PresenceListRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
 pub lxmf_sdk::domain::PresenceListRequest::limit: core::option::Option<usize>
+pub lxmf_sdk::domain::PresenceListRequest::min_last_seen_ts_ms: core::option::Option<i64>
 pub struct lxmf_sdk::domain::PresenceListResult
 pub lxmf_sdk::domain::PresenceListResult::next_cursor: core::option::Option<alloc::string::String>
 pub lxmf_sdk::domain::PresenceListResult::peers: alloc::vec::Vec<lxmf_sdk::domain::PresenceRecord>
@@ -828,6 +867,288 @@ pub lxmf_sdk::domain::PresenceRecord::seen_count: u64
 pub lxmf_sdk::domain::PresenceRecord::trust_level: core::option::Option<lxmf_sdk::domain::TrustLevel>
 impl core::convert::From<lxmf_sdk::domain::PresenceRecord> for lxmf_sdk::app::Presence
 pub fn lxmf_sdk::app::Presence::from(value: lxmf_sdk::domain::PresenceRecord) -> Self
+#[non_exhaustive] pub struct lxmf_sdk::domain::PropagationAcknowledgeSyncRequest
+pub lxmf_sdk::domain::PropagationAcknowledgeSyncRequest::failure_state: core::option::Option<u32>
+pub lxmf_sdk::domain::PropagationAcknowledgeSyncRequest::reset_state: bool
+#[non_exhaustive] pub struct lxmf_sdk::domain::PropagationAcknowledgeSyncResult
+pub lxmf_sdk::domain::PropagationAcknowledgeSyncResult::propagation: serde_json::value::Value
+pub lxmf_sdk::domain::PropagationAcknowledgeSyncResult::recovery_state: lxmf_sdk::domain::PropagationRecoveryStateResult
+impl<'de> serde_core::de::Deserialize<'de> for lxmf_sdk::domain::PropagationAcknowledgeSyncResult
+pub fn lxmf_sdk::domain::PropagationAcknowledgeSyncResult::deserialize<D>(deserializer: D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error> where D: serde_core::de::Deserializer<'de>
+#[non_exhaustive] pub struct lxmf_sdk::domain::PropagationDeliveryPolicyRequest
+pub lxmf_sdk::domain::PropagationDeliveryPolicyRequest::allowed_destinations: core::option::Option<alloc::vec::Vec<alloc::string::String>>
+pub lxmf_sdk::domain::PropagationDeliveryPolicyRequest::auth_required: core::option::Option<bool>
+pub lxmf_sdk::domain::PropagationDeliveryPolicyRequest::denied_destinations: core::option::Option<alloc::vec::Vec<alloc::string::String>>
+pub lxmf_sdk::domain::PropagationDeliveryPolicyRequest::ignored_destinations: core::option::Option<alloc::vec::Vec<alloc::string::String>>
+pub lxmf_sdk::domain::PropagationDeliveryPolicyRequest::prioritised_destinations: core::option::Option<alloc::vec::Vec<alloc::string::String>>
+#[non_exhaustive] pub struct lxmf_sdk::domain::PropagationDeliveryPolicyResult
+pub lxmf_sdk::domain::PropagationDeliveryPolicyResult::policy: serde_json::value::Value
+pub lxmf_sdk::domain::PropagationDeliveryPolicyResult::policy_state: lxmf_sdk::domain::PropagationDeliveryPolicyState
+impl<'de> serde_core::de::Deserialize<'de> for lxmf_sdk::domain::PropagationDeliveryPolicyResult
+pub fn lxmf_sdk::domain::PropagationDeliveryPolicyResult::deserialize<D>(deserializer: D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error> where D: serde_core::de::Deserializer<'de>
+#[non_exhaustive] pub struct lxmf_sdk::domain::PropagationDeliveryPolicyState
+pub lxmf_sdk::domain::PropagationDeliveryPolicyState::allowed_destinations: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::domain::PropagationDeliveryPolicyState::auth_required: bool
+pub lxmf_sdk::domain::PropagationDeliveryPolicyState::denied_destinations: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::domain::PropagationDeliveryPolicyState::ignored_destinations: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::domain::PropagationDeliveryPolicyState::prioritised_destinations: alloc::vec::Vec<alloc::string::String>
+#[non_exhaustive] pub struct lxmf_sdk::domain::PropagationEnableRequest
+pub lxmf_sdk::domain::PropagationEnableRequest::auth_required: core::option::Option<bool>
+pub lxmf_sdk::domain::PropagationEnableRequest::autopeer: core::option::Option<bool>
+pub lxmf_sdk::domain::PropagationEnableRequest::autopeer_maxdepth: core::option::Option<u32>
+pub lxmf_sdk::domain::PropagationEnableRequest::delivery_limit: core::option::Option<u32>
+pub lxmf_sdk::domain::PropagationEnableRequest::enabled: bool
+pub lxmf_sdk::domain::PropagationEnableRequest::from_static_only: core::option::Option<bool>
+pub lxmf_sdk::domain::PropagationEnableRequest::max_peers: core::option::Option<u32>
+pub lxmf_sdk::domain::PropagationEnableRequest::message_storage_limit_mb: core::option::Option<u64>
+pub lxmf_sdk::domain::PropagationEnableRequest::peering_cost: core::option::Option<u32>
+pub lxmf_sdk::domain::PropagationEnableRequest::propagation_limit: core::option::Option<u32>
+pub lxmf_sdk::domain::PropagationEnableRequest::remote_peering_cost_max: core::option::Option<u32>
+pub lxmf_sdk::domain::PropagationEnableRequest::retain_synced_on_node: core::option::Option<bool>
+pub lxmf_sdk::domain::PropagationEnableRequest::stamp_cost_flexibility: core::option::Option<u32>
+pub lxmf_sdk::domain::PropagationEnableRequest::static_peers: core::option::Option<alloc::vec::Vec<alloc::string::String>>
+pub lxmf_sdk::domain::PropagationEnableRequest::store_root: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PropagationEnableRequest::sync_limit: core::option::Option<u32>
+pub lxmf_sdk::domain::PropagationEnableRequest::target_cost: core::option::Option<u32>
+#[non_exhaustive] pub struct lxmf_sdk::domain::PropagationFetchRequest
+pub lxmf_sdk::domain::PropagationFetchRequest::transient_id: alloc::string::String
+#[non_exhaustive] pub struct lxmf_sdk::domain::PropagationFetchResult
+pub lxmf_sdk::domain::PropagationFetchResult::payload_bytes: u64
+pub lxmf_sdk::domain::PropagationFetchResult::payload_hex: alloc::string::String
+pub lxmf_sdk::domain::PropagationFetchResult::propagation: serde_json::value::Value
+pub lxmf_sdk::domain::PropagationFetchResult::recovery_state: lxmf_sdk::domain::PropagationRecoveryStateResult
+pub lxmf_sdk::domain::PropagationFetchResult::transferred_bytes: u64
+pub lxmf_sdk::domain::PropagationFetchResult::transient_id: alloc::string::String
+impl<'de> serde_core::de::Deserialize<'de> for lxmf_sdk::domain::PropagationFetchResult
+pub fn lxmf_sdk::domain::PropagationFetchResult::deserialize<D>(deserializer: D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error> where D: serde_core::de::Deserializer<'de>
+#[non_exhaustive] pub struct lxmf_sdk::domain::PropagationIngestRequest
+pub lxmf_sdk::domain::PropagationIngestRequest::payload_hex: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PropagationIngestRequest::transient_id: core::option::Option<alloc::string::String>
+#[non_exhaustive] pub struct lxmf_sdk::domain::PropagationIngestResult
+pub lxmf_sdk::domain::PropagationIngestResult::duplicate_count: u64
+pub lxmf_sdk::domain::PropagationIngestResult::ingested_count: u64
+pub lxmf_sdk::domain::PropagationIngestResult::payload_bytes: u64
+pub lxmf_sdk::domain::PropagationIngestResult::propagation: serde_json::value::Value
+pub lxmf_sdk::domain::PropagationIngestResult::recovery_state: lxmf_sdk::domain::PropagationRecoveryStateResult
+pub lxmf_sdk::domain::PropagationIngestResult::transferred_bytes: u64
+pub lxmf_sdk::domain::PropagationIngestResult::transient_id: alloc::string::String
+impl<'de> serde_core::de::Deserialize<'de> for lxmf_sdk::domain::PropagationIngestResult
+pub fn lxmf_sdk::domain::PropagationIngestResult::deserialize<D>(deserializer: D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error> where D: serde_core::de::Deserializer<'de>
+#[non_exhaustive] pub struct lxmf_sdk::domain::PropagationNodeListResult
+pub lxmf_sdk::domain::PropagationNodeListResult::meta: serde_json::value::Value
+pub lxmf_sdk::domain::PropagationNodeListResult::node_records: alloc::vec::Vec<lxmf_sdk::domain::PropagationNodeRecord>
+pub lxmf_sdk::domain::PropagationNodeListResult::nodes: alloc::vec::Vec<serde_json::value::Value>
+impl<'de> serde_core::de::Deserialize<'de> for lxmf_sdk::domain::PropagationNodeListResult
+pub fn lxmf_sdk::domain::PropagationNodeListResult::deserialize<D>(deserializer: D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error> where D: serde_core::de::Deserializer<'de>
+#[non_exhaustive] pub struct lxmf_sdk::domain::PropagationNodeRecord
+pub lxmf_sdk::domain::PropagationNodeRecord::capabilities: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::domain::PropagationNodeRecord::last_seen: core::option::Option<i64>
+pub lxmf_sdk::domain::PropagationNodeRecord::name: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PropagationNodeRecord::peer: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PropagationNodeRecord::selected: bool
+#[non_exhaustive] pub struct lxmf_sdk::domain::PropagationNodeSelectionResult
+pub lxmf_sdk::domain::PropagationNodeSelectionResult::meta: serde_json::value::Value
+pub lxmf_sdk::domain::PropagationNodeSelectionResult::peer: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PropagationNodeSelectionResult::selection_state: lxmf_sdk::domain::PropagationNodeSelectionState
+impl<'de> serde_core::de::Deserialize<'de> for lxmf_sdk::domain::PropagationNodeSelectionResult
+pub fn lxmf_sdk::domain::PropagationNodeSelectionResult::deserialize<D>(deserializer: D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error> where D: serde_core::de::Deserializer<'de>
+#[non_exhaustive] pub struct lxmf_sdk::domain::PropagationNodeSelectionState
+pub lxmf_sdk::domain::PropagationNodeSelectionState::access_denied: bool
+pub lxmf_sdk::domain::PropagationNodeSelectionState::failure_kind: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PropagationNodeSelectionState::last_sync_error: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PropagationNodeSelectionState::next_sync_attempt: core::option::Option<i64>
+pub lxmf_sdk::domain::PropagationNodeSelectionState::peer: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PropagationNodeSelectionState::queue_depth: u64
+pub lxmf_sdk::domain::PropagationNodeSelectionState::retry_count: u64
+pub lxmf_sdk::domain::PropagationNodeSelectionState::selected: bool
+pub lxmf_sdk::domain::PropagationNodeSelectionState::state: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PropagationNodeSelectionState::timed_out: bool
+#[non_exhaustive] pub struct lxmf_sdk::domain::PropagationNodeSetRequest
+pub lxmf_sdk::domain::PropagationNodeSetRequest::peer: core::option::Option<alloc::string::String>
+#[non_exhaustive] pub struct lxmf_sdk::domain::PropagationPeerMaintenanceResult
+pub lxmf_sdk::domain::PropagationPeerMaintenanceResult::culled: u64
+pub lxmf_sdk::domain::PropagationPeerMaintenanceResult::culled_peers: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::domain::PropagationPeerMaintenanceResult::max_unreachable_secs: u64
+pub lxmf_sdk::domain::PropagationPeerMaintenanceResult::peer_sync: serde_json::value::Value
+pub lxmf_sdk::domain::PropagationPeerMaintenanceResult::peer_sync_state: core::option::Option<lxmf_sdk::domain::PropagationPeerSyncResult>
+pub lxmf_sdk::domain::PropagationPeerMaintenanceResult::rotated: u64
+pub lxmf_sdk::domain::PropagationPeerMaintenanceResult::rotated_peers: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::domain::PropagationPeerMaintenanceResult::synced_peer: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PropagationPeerMaintenanceResult::timestamp: i64
+impl<'de> serde_core::de::Deserialize<'de> for lxmf_sdk::domain::PropagationPeerMaintenanceResult
+pub fn lxmf_sdk::domain::PropagationPeerMaintenanceResult::deserialize<D>(deserializer: D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error> where D: serde_core::de::Deserializer<'de>
+#[non_exhaustive] pub struct lxmf_sdk::domain::PropagationPeerQueueSnapshot
+pub lxmf_sdk::domain::PropagationPeerQueueSnapshot::handled_ids: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::domain::PropagationPeerQueueSnapshot::incoming: u64
+pub lxmf_sdk::domain::PropagationPeerQueueSnapshot::offered: u64
+pub lxmf_sdk::domain::PropagationPeerQueueSnapshot::offered_bytes: u64
+pub lxmf_sdk::domain::PropagationPeerQueueSnapshot::outgoing: u64
+pub lxmf_sdk::domain::PropagationPeerQueueSnapshot::rejected: u64
+pub lxmf_sdk::domain::PropagationPeerQueueSnapshot::rejected_bytes: u64
+pub lxmf_sdk::domain::PropagationPeerQueueSnapshot::rejected_ids: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::domain::PropagationPeerQueueSnapshot::skipped: u64
+pub lxmf_sdk::domain::PropagationPeerQueueSnapshot::skipped_bytes: u64
+pub lxmf_sdk::domain::PropagationPeerQueueSnapshot::skipped_ids: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::domain::PropagationPeerQueueSnapshot::transfer_limited: u64
+pub lxmf_sdk::domain::PropagationPeerQueueSnapshot::transfer_limited_bytes: u64
+pub lxmf_sdk::domain::PropagationPeerQueueSnapshot::transfer_limited_ids: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::domain::PropagationPeerQueueSnapshot::transferred: u64
+pub lxmf_sdk::domain::PropagationPeerQueueSnapshot::transferred_bytes: u64
+pub lxmf_sdk::domain::PropagationPeerQueueSnapshot::transferred_ids: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::domain::PropagationPeerQueueSnapshot::unhandled: u64
+pub lxmf_sdk::domain::PropagationPeerQueueSnapshot::unhandled_bytes: u64
+pub lxmf_sdk::domain::PropagationPeerQueueSnapshot::unhandled_ids: alloc::vec::Vec<alloc::string::String>
+#[non_exhaustive] pub struct lxmf_sdk::domain::PropagationPeerSyncRequest
+pub lxmf_sdk::domain::PropagationPeerSyncRequest::force_sync: bool
+pub lxmf_sdk::domain::PropagationPeerSyncRequest::maintenance_claimed: bool
+pub lxmf_sdk::domain::PropagationPeerSyncRequest::peer: alloc::string::String
+pub lxmf_sdk::domain::PropagationPeerSyncRequest::transfer_limit_kb: core::option::Option<f64>
+pub lxmf_sdk::domain::PropagationPeerSyncRequest::wanted_ids: core::option::Option<serde_json::value::Value>
+#[non_exhaustive] pub struct lxmf_sdk::domain::PropagationPeerSyncResult
+pub lxmf_sdk::domain::PropagationPeerSyncResult::access_denied: bool
+pub lxmf_sdk::domain::PropagationPeerSyncResult::failure_kind: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PropagationPeerSyncResult::last_sync_attempt: core::option::Option<i64>
+pub lxmf_sdk::domain::PropagationPeerSyncResult::messages: serde_json::value::Value
+pub lxmf_sdk::domain::PropagationPeerSyncResult::next_sync_attempt: core::option::Option<i64>
+pub lxmf_sdk::domain::PropagationPeerSyncResult::peer: alloc::string::String
+pub lxmf_sdk::domain::PropagationPeerSyncResult::peer_type: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PropagationPeerSyncResult::postpone_reason: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PropagationPeerSyncResult::postponed: bool
+pub lxmf_sdk::domain::PropagationPeerSyncResult::propagation: serde_json::value::Value
+pub lxmf_sdk::domain::PropagationPeerSyncResult::queue: lxmf_sdk::domain::PropagationPeerQueueSnapshot
+pub lxmf_sdk::domain::PropagationPeerSyncResult::stamp_cost_flexibility: core::option::Option<u64>
+pub lxmf_sdk::domain::PropagationPeerSyncResult::status_type: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PropagationPeerSyncResult::sync_backoff: core::option::Option<u64>
+pub lxmf_sdk::domain::PropagationPeerSyncResult::sync_limit: core::option::Option<u64>
+pub lxmf_sdk::domain::PropagationPeerSyncResult::synced: bool
+pub lxmf_sdk::domain::PropagationPeerSyncResult::target_stamp_cost: core::option::Option<u64>
+pub lxmf_sdk::domain::PropagationPeerSyncResult::timed_out: bool
+pub lxmf_sdk::domain::PropagationPeerSyncResult::transfer_limit: core::option::Option<u64>
+impl<'de> serde_core::de::Deserialize<'de> for lxmf_sdk::domain::PropagationPeerSyncResult
+pub fn lxmf_sdk::domain::PropagationPeerSyncResult::deserialize<D>(deserializer: D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error> where D: serde_core::de::Deserializer<'de>
+#[non_exhaustive] pub struct lxmf_sdk::domain::PropagationRecoveryStateResult
+pub lxmf_sdk::domain::PropagationRecoveryStateResult::access_denied: bool
+pub lxmf_sdk::domain::PropagationRecoveryStateResult::auth_required: bool
+pub lxmf_sdk::domain::PropagationRecoveryStateResult::autopeer: core::option::Option<bool>
+pub lxmf_sdk::domain::PropagationRecoveryStateResult::autopeer_maxdepth: core::option::Option<u64>
+pub lxmf_sdk::domain::PropagationRecoveryStateResult::client_propagation_messages_received: u64
+pub lxmf_sdk::domain::PropagationRecoveryStateResult::client_propagation_messages_served: u64
+pub lxmf_sdk::domain::PropagationRecoveryStateResult::delivery_limit: core::option::Option<u64>
+pub lxmf_sdk::domain::PropagationRecoveryStateResult::enabled: bool
+pub lxmf_sdk::domain::PropagationRecoveryStateResult::failure_kind: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PropagationRecoveryStateResult::from_static_only: core::option::Option<bool>
+pub lxmf_sdk::domain::PropagationRecoveryStateResult::last_ingest_count: u64
+pub lxmf_sdk::domain::PropagationRecoveryStateResult::last_sync_completed: core::option::Option<i64>
+pub lxmf_sdk::domain::PropagationRecoveryStateResult::last_sync_error: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PropagationRecoveryStateResult::last_sync_started: core::option::Option<i64>
+pub lxmf_sdk::domain::PropagationRecoveryStateResult::max_peers: core::option::Option<u64>
+pub lxmf_sdk::domain::PropagationRecoveryStateResult::message_storage_limit_mb: core::option::Option<u64>
+pub lxmf_sdk::domain::PropagationRecoveryStateResult::next_sync_attempt: core::option::Option<i64>
+pub lxmf_sdk::domain::PropagationRecoveryStateResult::peering_cost: core::option::Option<u64>
+pub lxmf_sdk::domain::PropagationRecoveryStateResult::propagation: serde_json::value::Value
+pub lxmf_sdk::domain::PropagationRecoveryStateResult::propagation_limit: core::option::Option<u64>
+pub lxmf_sdk::domain::PropagationRecoveryStateResult::queue_depth: u64
+pub lxmf_sdk::domain::PropagationRecoveryStateResult::remote_peering_cost_max: core::option::Option<u64>
+pub lxmf_sdk::domain::PropagationRecoveryStateResult::retain_synced_on_node: core::option::Option<bool>
+pub lxmf_sdk::domain::PropagationRecoveryStateResult::retry_count: u64
+pub lxmf_sdk::domain::PropagationRecoveryStateResult::selected_node: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PropagationRecoveryStateResult::stamp_cost_flexibility: core::option::Option<u64>
+pub lxmf_sdk::domain::PropagationRecoveryStateResult::state_name: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PropagationRecoveryStateResult::static_peers: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::domain::PropagationRecoveryStateResult::store_root: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PropagationRecoveryStateResult::sync_limit: core::option::Option<u64>
+pub lxmf_sdk::domain::PropagationRecoveryStateResult::sync_progress: core::option::Option<f64>
+pub lxmf_sdk::domain::PropagationRecoveryStateResult::sync_state: u32
+pub lxmf_sdk::domain::PropagationRecoveryStateResult::target_cost: core::option::Option<u64>
+pub lxmf_sdk::domain::PropagationRecoveryStateResult::timed_out: bool
+pub lxmf_sdk::domain::PropagationRecoveryStateResult::timestamp: core::option::Option<i64>
+pub lxmf_sdk::domain::PropagationRecoveryStateResult::total_ingested: u64
+impl lxmf_sdk::domain::PropagationRecoveryStateResult
+pub fn lxmf_sdk::domain::PropagationRecoveryStateResult::from_propagation(propagation: serde_json::value::Value) -> Self
+#[non_exhaustive] pub struct lxmf_sdk::domain::PropagationRemotePeerRequest
+pub lxmf_sdk::domain::PropagationRemotePeerRequest::identity_private_key_hex: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PropagationRemotePeerRequest::peer: alloc::string::String
+pub lxmf_sdk::domain::PropagationRemotePeerRequest::remote: alloc::string::String
+pub lxmf_sdk::domain::PropagationRemotePeerRequest::timeout_secs: core::option::Option<f64>
+pub lxmf_sdk::domain::PropagationRemotePeerRequest::transfer_limit_kb: core::option::Option<f64>
+#[non_exhaustive] pub struct lxmf_sdk::domain::PropagationRemoteRequest
+pub lxmf_sdk::domain::PropagationRemoteRequest::identity_private_key_hex: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PropagationRemoteRequest::remote: alloc::string::String
+pub lxmf_sdk::domain::PropagationRemoteRequest::timeout_secs: core::option::Option<f64>
+pub lxmf_sdk::domain::PropagationRemoteRequest::transfer_limit_kb: core::option::Option<f64>
+#[non_exhaustive] pub struct lxmf_sdk::domain::PropagationRemoteStatusResult
+pub lxmf_sdk::domain::PropagationRemoteStatusResult::remote: alloc::string::String
+pub lxmf_sdk::domain::PropagationRemoteStatusResult::status: serde_json::value::Value
+pub lxmf_sdk::domain::PropagationRemoteStatusResult::status_state: lxmf_sdk::domain::PropagationRemoteStatusState
+impl<'de> serde_core::de::Deserialize<'de> for lxmf_sdk::domain::PropagationRemoteStatusResult
+pub fn lxmf_sdk::domain::PropagationRemoteStatusResult::deserialize<D>(deserializer: D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error> where D: serde_core::de::Deserializer<'de>
+#[non_exhaustive] pub struct lxmf_sdk::domain::PropagationRemoteStatusState
+pub lxmf_sdk::domain::PropagationRemoteStatusState::access_denied: bool
+pub lxmf_sdk::domain::PropagationRemoteStatusState::failure_kind: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PropagationRemoteStatusState::last_sync_error: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PropagationRemoteStatusState::next_sync_attempt: core::option::Option<i64>
+pub lxmf_sdk::domain::PropagationRemoteStatusState::queue_depth: u64
+pub lxmf_sdk::domain::PropagationRemoteStatusState::retry_count: u64
+pub lxmf_sdk::domain::PropagationRemoteStatusState::selected_node: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PropagationRemoteStatusState::selected_peer: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PropagationRemoteStatusState::state: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PropagationRemoteStatusState::timed_out: bool
+#[non_exhaustive] pub struct lxmf_sdk::domain::PropagationRemoteSyncResult
+pub lxmf_sdk::domain::PropagationRemoteSyncResult::peer: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PropagationRemoteSyncResult::peer_sync: serde_json::value::Value
+pub lxmf_sdk::domain::PropagationRemoteSyncResult::peer_sync_state: core::option::Option<lxmf_sdk::domain::PropagationPeerSyncResult>
+pub lxmf_sdk::domain::PropagationRemoteSyncResult::propagation: serde_json::value::Value
+pub lxmf_sdk::domain::PropagationRemoteSyncResult::queue: lxmf_sdk::domain::PropagationPeerQueueSnapshot
+pub lxmf_sdk::domain::PropagationRemoteSyncResult::remote: alloc::string::String
+pub lxmf_sdk::domain::PropagationRemoteSyncResult::result: serde_json::value::Value
+pub lxmf_sdk::domain::PropagationRemoteSyncResult::transfer_state: lxmf_sdk::domain::PropagationRemoteTransferState
+impl<'de> serde_core::de::Deserialize<'de> for lxmf_sdk::domain::PropagationRemoteSyncResult
+pub fn lxmf_sdk::domain::PropagationRemoteSyncResult::deserialize<D>(deserializer: D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error> where D: serde_core::de::Deserializer<'de>
+#[non_exhaustive] pub struct lxmf_sdk::domain::PropagationRemoteTransferResult
+pub lxmf_sdk::domain::PropagationRemoteTransferResult::propagation: serde_json::value::Value
+pub lxmf_sdk::domain::PropagationRemoteTransferResult::queue: lxmf_sdk::domain::PropagationPeerQueueSnapshot
+pub lxmf_sdk::domain::PropagationRemoteTransferResult::remote: alloc::string::String
+pub lxmf_sdk::domain::PropagationRemoteTransferResult::result: serde_json::value::Value
+pub lxmf_sdk::domain::PropagationRemoteTransferResult::transfer_state: lxmf_sdk::domain::PropagationRemoteTransferState
+impl<'de> serde_core::de::Deserialize<'de> for lxmf_sdk::domain::PropagationRemoteTransferResult
+pub fn lxmf_sdk::domain::PropagationRemoteTransferResult::deserialize<D>(deserializer: D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error> where D: serde_core::de::Deserializer<'de>
+#[non_exhaustive] pub struct lxmf_sdk::domain::PropagationRemoteTransferState
+pub lxmf_sdk::domain::PropagationRemoteTransferState::access_denied: bool
+pub lxmf_sdk::domain::PropagationRemoteTransferState::failure_kind: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PropagationRemoteTransferState::imported_count: u64
+pub lxmf_sdk::domain::PropagationRemoteTransferState::imported_ids: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::domain::PropagationRemoteTransferState::last_sync_completed: core::option::Option<i64>
+pub lxmf_sdk::domain::PropagationRemoteTransferState::last_sync_error: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PropagationRemoteTransferState::last_sync_started: core::option::Option<i64>
+pub lxmf_sdk::domain::PropagationRemoteTransferState::next_sync_attempt: core::option::Option<i64>
+pub lxmf_sdk::domain::PropagationRemoteTransferState::postpone_reason: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PropagationRemoteTransferState::postponed: bool
+pub lxmf_sdk::domain::PropagationRemoteTransferState::retry_count: u64
+pub lxmf_sdk::domain::PropagationRemoteTransferState::selected_node: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PropagationRemoteTransferState::selected_peer: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PropagationRemoteTransferState::state_name: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PropagationRemoteTransferState::sync_progress: core::option::Option<f64>
+pub lxmf_sdk::domain::PropagationRemoteTransferState::synced: bool
+pub lxmf_sdk::domain::PropagationRemoteTransferState::timed_out: bool
+pub lxmf_sdk::domain::PropagationRemoteTransferState::transferred_bytes: u64
+#[non_exhaustive] pub struct lxmf_sdk::domain::PropagationRemoteUnpeerResult
+pub lxmf_sdk::domain::PropagationRemoteUnpeerResult::messages: serde_json::value::Value
+pub lxmf_sdk::domain::PropagationRemoteUnpeerResult::peer: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::PropagationRemoteUnpeerResult::propagation: serde_json::value::Value
+pub lxmf_sdk::domain::PropagationRemoteUnpeerResult::propagation_cleared: core::option::Option<u64>
+pub lxmf_sdk::domain::PropagationRemoteUnpeerResult::propagation_cleared_bytes: core::option::Option<u64>
+pub lxmf_sdk::domain::PropagationRemoteUnpeerResult::queue: lxmf_sdk::domain::PropagationPeerQueueSnapshot
+pub lxmf_sdk::domain::PropagationRemoteUnpeerResult::remote: alloc::string::String
+pub lxmf_sdk::domain::PropagationRemoteUnpeerResult::removed: bool
+pub lxmf_sdk::domain::PropagationRemoteUnpeerResult::result: serde_json::value::Value
+pub lxmf_sdk::domain::PropagationRemoteUnpeerResult::transfer_state: lxmf_sdk::domain::PropagationRemoteTransferState
+impl<'de> serde_core::de::Deserialize<'de> for lxmf_sdk::domain::PropagationRemoteUnpeerResult
+pub fn lxmf_sdk::domain::PropagationRemoteUnpeerResult::deserialize<D>(deserializer: D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error> where D: serde_core::de::Deserializer<'de>
+#[non_exhaustive] pub struct lxmf_sdk::domain::PropagationStatusResult
+pub lxmf_sdk::domain::PropagationStatusResult::propagation: serde_json::value::Value
+pub lxmf_sdk::domain::PropagationStatusResult::recovery_state: lxmf_sdk::domain::PropagationRecoveryStateResult
+impl<'de> serde_core::de::Deserialize<'de> for lxmf_sdk::domain::PropagationStatusResult
+pub fn lxmf_sdk::domain::PropagationStatusResult::deserialize<D>(deserializer: D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error> where D: serde_core::de::Deserializer<'de>
 pub struct lxmf_sdk::domain::RemoteCommandRequest
 pub lxmf_sdk::domain::RemoteCommandRequest::command: alloc::string::String
 pub lxmf_sdk::domain::RemoteCommandRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
@@ -1086,6 +1407,14 @@ pub lxmf_sdk::messaging::AnnounceRecord::interface_hex: alloc::string::String
 pub lxmf_sdk::messaging::AnnounceRecord::received_at_ms: u64
 impl lxmf_sdk::messaging::AnnounceRecord
 pub fn lxmf_sdk::messaging::AnnounceRecord::from_raw(destination_hex: impl core::convert::Into<alloc::string::String>, identity_hex: impl core::convert::Into<alloc::string::String>, destination_kind: impl core::convert::Into<alloc::string::String>, app_data: &[u8], hops: u8, interface_hex: impl core::convert::Into<alloc::string::String>, received_at_ms: u64) -> Self
+pub struct lxmf_sdk::messaging::ConversationListPage
+pub lxmf_sdk::messaging::ConversationListPage::conversations: alloc::vec::Vec<lxmf_sdk::ConversationRecord>
+pub lxmf_sdk::messaging::ConversationListPage::next_cursor: core::option::Option<alloc::string::String>
+pub struct lxmf_sdk::messaging::ConversationListRequest
+pub lxmf_sdk::messaging::ConversationListRequest::cursor: core::option::Option<alloc::string::String>
+pub lxmf_sdk::messaging::ConversationListRequest::include_receipts: core::option::Option<bool>
+pub lxmf_sdk::messaging::ConversationListRequest::limit: core::option::Option<usize>
+pub lxmf_sdk::messaging::ConversationListRequest::peer_id: core::option::Option<alloc::string::String>
 pub struct lxmf_sdk::messaging::ConversationRecord
 pub lxmf_sdk::messaging::ConversationRecord::conversation_id: alloc::string::String
 pub lxmf_sdk::messaging::ConversationRecord::last_message_at_ms: u64
@@ -1094,6 +1423,26 @@ pub lxmf_sdk::messaging::ConversationRecord::last_message_state: core::option::O
 pub lxmf_sdk::messaging::ConversationRecord::peer_destination_hex: alloc::string::String
 pub lxmf_sdk::messaging::ConversationRecord::peer_display_name: core::option::Option<alloc::string::String>
 pub lxmf_sdk::messaging::ConversationRecord::unread_count: u32
+pub struct lxmf_sdk::messaging::MessageHistoryListRequest
+pub lxmf_sdk::messaging::MessageHistoryListRequest::before_ts: core::option::Option<i64>
+pub lxmf_sdk::messaging::MessageHistoryListRequest::conversation_id: core::option::Option<alloc::string::String>
+pub lxmf_sdk::messaging::MessageHistoryListRequest::cursor: core::option::Option<alloc::string::String>
+pub lxmf_sdk::messaging::MessageHistoryListRequest::include_receipts: core::option::Option<bool>
+pub lxmf_sdk::messaging::MessageHistoryListRequest::limit: core::option::Option<usize>
+pub lxmf_sdk::messaging::MessageHistoryListRequest::peer_id: core::option::Option<alloc::string::String>
+pub struct lxmf_sdk::messaging::MessageHistoryPage
+pub lxmf_sdk::messaging::MessageHistoryPage::messages: alloc::vec::Vec<lxmf_sdk::messaging::MessageHistoryRecord>
+pub lxmf_sdk::messaging::MessageHistoryPage::next_cursor: core::option::Option<alloc::string::String>
+pub struct lxmf_sdk::messaging::MessageHistoryRecord
+pub lxmf_sdk::messaging::MessageHistoryRecord::content: alloc::string::String
+pub lxmf_sdk::messaging::MessageHistoryRecord::destination: alloc::string::String
+pub lxmf_sdk::messaging::MessageHistoryRecord::direction: alloc::string::String
+pub lxmf_sdk::messaging::MessageHistoryRecord::fields: core::option::Option<serde_json::value::Value>
+pub lxmf_sdk::messaging::MessageHistoryRecord::id: alloc::string::String
+pub lxmf_sdk::messaging::MessageHistoryRecord::receipt_status: core::option::Option<alloc::string::String>
+pub lxmf_sdk::messaging::MessageHistoryRecord::source: alloc::string::String
+pub lxmf_sdk::messaging::MessageHistoryRecord::timestamp: i64
+pub lxmf_sdk::messaging::MessageHistoryRecord::title: alloc::string::String
 pub struct lxmf_sdk::messaging::MessageRecord
 pub lxmf_sdk::messaging::MessageRecord::body_utf8: alloc::string::String
 pub lxmf_sdk::messaging::MessageRecord::conversation_id: alloc::string::String
@@ -1113,7 +1462,7 @@ impl lxmf_sdk::messaging::MessagingStore
 pub fn lxmf_sdk::messaging::MessagingStore::conversation_id_for(destination_hex: &str) -> alloc::string::String
 pub fn lxmf_sdk::messaging::MessagingStore::get_message(&self, message_id_hex: &str) -> core::option::Option<lxmf_sdk::messaging::MessageRecord>
 pub fn lxmf_sdk::messaging::MessagingStore::list_announces(&self) -> alloc::vec::Vec<lxmf_sdk::messaging::AnnounceRecord>
-pub fn lxmf_sdk::messaging::MessagingStore::list_conversations<'a, I>(&self, connected_destinations: I) -> alloc::vec::Vec<lxmf_sdk::messaging::ConversationRecord> where I: core::iter::traits::collect::IntoIterator<Item = &'a str>
+pub fn lxmf_sdk::messaging::MessagingStore::list_conversations<'a, I>(&self, connected_destinations: I) -> alloc::vec::Vec<lxmf_sdk::ConversationRecord> where I: core::iter::traits::collect::IntoIterator<Item = &'a str>
 pub fn lxmf_sdk::messaging::MessagingStore::list_messages(&self, conversation_id: core::option::Option<&str>) -> alloc::vec::Vec<lxmf_sdk::messaging::MessageRecord>
 pub fn lxmf_sdk::messaging::MessagingStore::list_peers<'a, I>(&self, connected_destinations: I) -> alloc::vec::Vec<lxmf_sdk::messaging::PeerRecord> where I: core::iter::traits::collect::IntoIterator<Item = &'a str>
 pub fn lxmf_sdk::messaging::MessagingStore::outbound(&self, message_id_hex: &str) -> core::option::Option<lxmf_sdk::messaging::StoredOutboundMessage>
@@ -1231,6 +1580,47 @@ pub lxmf_sdk::types::StoreForwardEvictionPriority::TerminalFirst
 #[non_exhaustive] pub struct lxmf_sdk::types::Ack
 pub lxmf_sdk::types::Ack::accepted: bool
 pub lxmf_sdk::types::Ack::revision: core::option::Option<u64>
+#[non_exhaustive] pub struct lxmf_sdk::types::BatchSendItem
+pub lxmf_sdk::types::BatchSendItem::correlation_id: core::option::Option<alloc::string::String>
+pub lxmf_sdk::types::BatchSendItem::delivery_method: core::option::Option<alloc::string::String>
+pub lxmf_sdk::types::BatchSendItem::destination: alloc::string::String
+pub lxmf_sdk::types::BatchSendItem::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::types::BatchSendItem::id: alloc::string::String
+pub lxmf_sdk::types::BatchSendItem::idempotency_key: core::option::Option<alloc::string::String>
+pub lxmf_sdk::types::BatchSendItem::include_ticket: core::option::Option<bool>
+pub lxmf_sdk::types::BatchSendItem::payload: serde_json::value::Value
+pub lxmf_sdk::types::BatchSendItem::stamp_cost: core::option::Option<u32>
+pub lxmf_sdk::types::BatchSendItem::try_propagation_on_fail: core::option::Option<bool>
+pub lxmf_sdk::types::BatchSendItem::ttl_ms: core::option::Option<u64>
+impl lxmf_sdk::BatchSendItem
+pub fn lxmf_sdk::BatchSendItem::new(id: impl core::convert::Into<alloc::string::String>, destination: impl core::convert::Into<alloc::string::String>, payload: serde_json::value::Value) -> Self
+pub fn lxmf_sdk::BatchSendItem::with_correlation_id(self, correlation_id: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn lxmf_sdk::BatchSendItem::with_delivery_method(self, method: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn lxmf_sdk::BatchSendItem::with_extension(self, key: impl core::convert::Into<alloc::string::String>, value: serde_json::value::Value) -> Self
+pub fn lxmf_sdk::BatchSendItem::with_idempotency_key(self, key: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn lxmf_sdk::BatchSendItem::with_include_ticket(self, include_ticket: bool) -> Self
+pub fn lxmf_sdk::BatchSendItem::with_stamp_cost(self, stamp_cost: u32) -> Self
+pub fn lxmf_sdk::BatchSendItem::with_try_propagation_on_fail(self, try_propagation_on_fail: bool) -> Self
+pub fn lxmf_sdk::BatchSendItem::with_ttl_ms(self, ttl_ms: u64) -> Self
+#[non_exhaustive] pub struct lxmf_sdk::types::BatchSendItemError
+pub lxmf_sdk::types::BatchSendItemError::category: core::option::Option<alloc::string::String>
+pub lxmf_sdk::types::BatchSendItemError::code: alloc::string::String
+pub lxmf_sdk::types::BatchSendItemError::message: alloc::string::String
+pub lxmf_sdk::types::BatchSendItemError::retryable: bool
+#[non_exhaustive] pub struct lxmf_sdk::types::BatchSendItemResult
+pub lxmf_sdk::types::BatchSendItemResult::accepted: bool
+pub lxmf_sdk::types::BatchSendItemResult::error: core::option::Option<lxmf_sdk::BatchSendItemError>
+pub lxmf_sdk::types::BatchSendItemResult::id: alloc::string::String
+pub lxmf_sdk::types::BatchSendItemResult::message_id: core::option::Option<alloc::string::String>
+#[non_exhaustive] pub struct lxmf_sdk::types::BatchSendRequest
+pub lxmf_sdk::types::BatchSendRequest::batch_id: alloc::string::String
+pub lxmf_sdk::types::BatchSendRequest::messages: alloc::vec::Vec<lxmf_sdk::BatchSendItem>
+pub lxmf_sdk::types::BatchSendRequest::source: alloc::string::String
+#[non_exhaustive] pub struct lxmf_sdk::types::BatchSendResult
+pub lxmf_sdk::types::BatchSendResult::accepted_count: usize
+pub lxmf_sdk::types::BatchSendResult::batch_id: alloc::string::String
+pub lxmf_sdk::types::BatchSendResult::rejected_count: usize
+pub lxmf_sdk::types::BatchSendResult::results: alloc::vec::Vec<lxmf_sdk::BatchSendItemResult>
 #[non_exhaustive] pub struct lxmf_sdk::types::ClientHandle
 pub lxmf_sdk::types::ClientHandle::active_contract_version: u16
 pub lxmf_sdk::types::ClientHandle::effective_capabilities: alloc::vec::Vec<alloc::string::String>
@@ -1537,6 +1927,12 @@ pub lxmf_sdk::MobileBleEventKind::WriteComplete
 pub lxmf_sdk::OverflowPolicy::Block
 pub lxmf_sdk::OverflowPolicy::DropOldest
 pub lxmf_sdk::OverflowPolicy::Reject
+pub enum lxmf_sdk::PeerConnectionState
+pub lxmf_sdk::PeerConnectionState::Connected
+pub lxmf_sdk::PeerConnectionState::Disconnected
+pub lxmf_sdk::PeerConnectionState::Failed
+pub lxmf_sdk::PeerConnectionState::Reconnected
+pub lxmf_sdk::PeerConnectionState::Unknown
 pub enum lxmf_sdk::PeerState
 pub lxmf_sdk::PeerState::Connected
 pub lxmf_sdk::PeerState::Connecting
@@ -1705,6 +2101,47 @@ pub lxmf_sdk::AttachmentUploadStartRequest::extensions: alloc::collections::btre
 pub lxmf_sdk::AttachmentUploadStartRequest::name: alloc::string::String
 pub lxmf_sdk::AttachmentUploadStartRequest::topic_ids: alloc::vec::Vec<lxmf_sdk::domain::TopicId>
 pub lxmf_sdk::AttachmentUploadStartRequest::total_size: u64
+#[non_exhaustive] pub struct lxmf_sdk::BatchSendItem
+pub lxmf_sdk::BatchSendItem::correlation_id: core::option::Option<alloc::string::String>
+pub lxmf_sdk::BatchSendItem::delivery_method: core::option::Option<alloc::string::String>
+pub lxmf_sdk::BatchSendItem::destination: alloc::string::String
+pub lxmf_sdk::BatchSendItem::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::BatchSendItem::id: alloc::string::String
+pub lxmf_sdk::BatchSendItem::idempotency_key: core::option::Option<alloc::string::String>
+pub lxmf_sdk::BatchSendItem::include_ticket: core::option::Option<bool>
+pub lxmf_sdk::BatchSendItem::payload: serde_json::value::Value
+pub lxmf_sdk::BatchSendItem::stamp_cost: core::option::Option<u32>
+pub lxmf_sdk::BatchSendItem::try_propagation_on_fail: core::option::Option<bool>
+pub lxmf_sdk::BatchSendItem::ttl_ms: core::option::Option<u64>
+impl lxmf_sdk::BatchSendItem
+pub fn lxmf_sdk::BatchSendItem::new(id: impl core::convert::Into<alloc::string::String>, destination: impl core::convert::Into<alloc::string::String>, payload: serde_json::value::Value) -> Self
+pub fn lxmf_sdk::BatchSendItem::with_correlation_id(self, correlation_id: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn lxmf_sdk::BatchSendItem::with_delivery_method(self, method: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn lxmf_sdk::BatchSendItem::with_extension(self, key: impl core::convert::Into<alloc::string::String>, value: serde_json::value::Value) -> Self
+pub fn lxmf_sdk::BatchSendItem::with_idempotency_key(self, key: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn lxmf_sdk::BatchSendItem::with_include_ticket(self, include_ticket: bool) -> Self
+pub fn lxmf_sdk::BatchSendItem::with_stamp_cost(self, stamp_cost: u32) -> Self
+pub fn lxmf_sdk::BatchSendItem::with_try_propagation_on_fail(self, try_propagation_on_fail: bool) -> Self
+pub fn lxmf_sdk::BatchSendItem::with_ttl_ms(self, ttl_ms: u64) -> Self
+#[non_exhaustive] pub struct lxmf_sdk::BatchSendItemError
+pub lxmf_sdk::BatchSendItemError::category: core::option::Option<alloc::string::String>
+pub lxmf_sdk::BatchSendItemError::code: alloc::string::String
+pub lxmf_sdk::BatchSendItemError::message: alloc::string::String
+pub lxmf_sdk::BatchSendItemError::retryable: bool
+#[non_exhaustive] pub struct lxmf_sdk::BatchSendItemResult
+pub lxmf_sdk::BatchSendItemResult::accepted: bool
+pub lxmf_sdk::BatchSendItemResult::error: core::option::Option<lxmf_sdk::BatchSendItemError>
+pub lxmf_sdk::BatchSendItemResult::id: alloc::string::String
+pub lxmf_sdk::BatchSendItemResult::message_id: core::option::Option<alloc::string::String>
+#[non_exhaustive] pub struct lxmf_sdk::BatchSendRequest
+pub lxmf_sdk::BatchSendRequest::batch_id: alloc::string::String
+pub lxmf_sdk::BatchSendRequest::messages: alloc::vec::Vec<lxmf_sdk::BatchSendItem>
+pub lxmf_sdk::BatchSendRequest::source: alloc::string::String
+#[non_exhaustive] pub struct lxmf_sdk::BatchSendResult
+pub lxmf_sdk::BatchSendResult::accepted_count: usize
+pub lxmf_sdk::BatchSendResult::batch_id: alloc::string::String
+pub lxmf_sdk::BatchSendResult::rejected_count: usize
+pub lxmf_sdk::BatchSendResult::results: alloc::vec::Vec<lxmf_sdk::BatchSendItemResult>
 #[non_exhaustive] pub struct lxmf_sdk::CapabilityDescriptor
 pub lxmf_sdk::CapabilityDescriptor::deprecated_after_contract: core::option::Option<alloc::string::String>
 pub lxmf_sdk::CapabilityDescriptor::id: alloc::string::String
@@ -1745,6 +2182,7 @@ impl<B: lxmf_sdk::SdkBackend> lxmf_sdk::LxmfSdkGroupDelivery for lxmf_sdk::Clien
 pub fn lxmf_sdk::Client<B>::send_group(&self, req: lxmf_sdk::GroupSendRequest) -> core::result::Result<lxmf_sdk::GroupSendResult, lxmf_sdk::SdkError>
 impl<B: lxmf_sdk::SdkBackend> lxmf_sdk::LxmfSdkIdentity for lxmf_sdk::Client<B>
 pub fn lxmf_sdk::Client<B>::identity_activate(&self, identity: lxmf_sdk::domain::IdentityRef) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::identity_announce(&self, req: lxmf_sdk::domain::IdentityAnnounceRequest) -> core::result::Result<lxmf_sdk::domain::IdentityAnnounceResult, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::Client<B>::identity_announce_now(&self) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::Client<B>::identity_bootstrap(&self, req: lxmf_sdk::domain::IdentityBootstrapRequest) -> core::result::Result<lxmf_sdk::domain::ContactRecord, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::Client<B>::identity_contact_list(&self, req: lxmf_sdk::domain::ContactListRequest) -> core::result::Result<lxmf_sdk::domain::ContactListResult, lxmf_sdk::SdkError>
@@ -1767,6 +2205,10 @@ pub fn lxmf_sdk::Client<B>::operation_registry(&self) -> core::result::Result<lx
 impl<B: lxmf_sdk::SdkBackend> lxmf_sdk::LxmfSdkPaper for lxmf_sdk::Client<B>
 pub fn lxmf_sdk::Client<B>::paper_decode(&self, envelope: lxmf_sdk::domain::PaperMessageEnvelope) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::Client<B>::paper_encode(&self, message_id: lxmf_sdk::MessageId) -> core::result::Result<lxmf_sdk::domain::PaperMessageEnvelope, lxmf_sdk::SdkError>
+impl<B: lxmf_sdk::SdkBackend> lxmf_sdk::LxmfSdkPeerLifecycle for lxmf_sdk::Client<B>
+pub fn lxmf_sdk::Client<B>::peer_connect(&self, req: lxmf_sdk::domain::PeerConnectionRequest) -> core::result::Result<lxmf_sdk::domain::PeerConnectionResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::peer_disconnect(&self, req: lxmf_sdk::domain::PeerConnectionRequest) -> core::result::Result<lxmf_sdk::domain::PeerConnectionResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::peer_reconnect(&self, req: lxmf_sdk::domain::PeerConnectionRequest) -> core::result::Result<lxmf_sdk::domain::PeerConnectionResult, lxmf_sdk::SdkError>
 impl<B: lxmf_sdk::SdkBackend> lxmf_sdk::LxmfSdkRemoteCommands for lxmf_sdk::Client<B>
 pub fn lxmf_sdk::Client<B>::command_invoke(&self, req: lxmf_sdk::domain::RemoteCommandRequest) -> core::result::Result<lxmf_sdk::domain::RemoteCommandResponse, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::Client<B>::command_reply(&self, correlation_id: alloc::string::String, reply: lxmf_sdk::domain::RemoteCommandResponse) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
@@ -1843,6 +2285,14 @@ pub lxmf_sdk::ContactUpdateRequest::metadata: alloc::collections::btree::map::BT
 pub lxmf_sdk::ContactUpdateRequest::trust_level: core::option::Option<lxmf_sdk::domain::TrustLevel>
 impl core::convert::From<lxmf_sdk::app::ContactUpdate> for lxmf_sdk::domain::ContactUpdateRequest
 pub fn lxmf_sdk::domain::ContactUpdateRequest::from(value: lxmf_sdk::app::ContactUpdate) -> Self
+pub struct lxmf_sdk::ConversationListPage
+pub lxmf_sdk::ConversationListPage::conversations: alloc::vec::Vec<lxmf_sdk::ConversationRecord>
+pub lxmf_sdk::ConversationListPage::next_cursor: core::option::Option<alloc::string::String>
+pub struct lxmf_sdk::ConversationListRequest
+pub lxmf_sdk::ConversationListRequest::cursor: core::option::Option<alloc::string::String>
+pub lxmf_sdk::ConversationListRequest::include_receipts: core::option::Option<bool>
+pub lxmf_sdk::ConversationListRequest::limit: core::option::Option<usize>
+pub lxmf_sdk::ConversationListRequest::peer_id: core::option::Option<alloc::string::String>
 pub struct lxmf_sdk::ConversationRecord
 pub lxmf_sdk::ConversationRecord::conversation_id: alloc::string::String
 pub lxmf_sdk::ConversationRecord::last_message_at_ms: u64
@@ -1922,6 +2372,20 @@ pub lxmf_sdk::GroupSendResult::accepted_count: usize
 pub lxmf_sdk::GroupSendResult::deferred_count: usize
 pub lxmf_sdk::GroupSendResult::failed_count: usize
 pub lxmf_sdk::GroupSendResult::outcomes: alloc::vec::Vec<lxmf_sdk::GroupSendOutcome>
+pub struct lxmf_sdk::IdentityAnnounceRequest
+pub lxmf_sdk::IdentityAnnounceRequest::capabilities: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::IdentityAnnounceRequest::display_name: core::option::Option<alloc::string::String>
+pub lxmf_sdk::IdentityAnnounceRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::IdentityAnnounceRequest::identity: core::option::Option<lxmf_sdk::domain::IdentityRef>
+pub lxmf_sdk::IdentityAnnounceRequest::metadata: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub struct lxmf_sdk::IdentityAnnounceResult
+pub lxmf_sdk::IdentityAnnounceResult::accepted: bool
+pub lxmf_sdk::IdentityAnnounceResult::announce_id: core::option::Option<serde_json::value::Value>
+pub lxmf_sdk::IdentityAnnounceResult::capabilities: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::IdentityAnnounceResult::display_name: core::option::Option<alloc::string::String>
+pub lxmf_sdk::IdentityAnnounceResult::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::IdentityAnnounceResult::identity: core::option::Option<lxmf_sdk::domain::IdentityRef>
+pub lxmf_sdk::IdentityAnnounceResult::metadata: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
 pub struct lxmf_sdk::IdentityBootstrapRequest
 pub lxmf_sdk::IdentityBootstrapRequest::auto_sync: bool
 pub lxmf_sdk::IdentityBootstrapRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
@@ -1992,6 +2456,26 @@ pub struct lxmf_sdk::MemoryBudget
 pub lxmf_sdk::MemoryBudget::max_attachment_spool_bytes: usize
 pub lxmf_sdk::MemoryBudget::max_event_queue_bytes: usize
 pub lxmf_sdk::MemoryBudget::max_heap_bytes: usize
+pub struct lxmf_sdk::MessageHistoryListRequest
+pub lxmf_sdk::MessageHistoryListRequest::before_ts: core::option::Option<i64>
+pub lxmf_sdk::MessageHistoryListRequest::conversation_id: core::option::Option<alloc::string::String>
+pub lxmf_sdk::MessageHistoryListRequest::cursor: core::option::Option<alloc::string::String>
+pub lxmf_sdk::MessageHistoryListRequest::include_receipts: core::option::Option<bool>
+pub lxmf_sdk::MessageHistoryListRequest::limit: core::option::Option<usize>
+pub lxmf_sdk::MessageHistoryListRequest::peer_id: core::option::Option<alloc::string::String>
+pub struct lxmf_sdk::MessageHistoryPage
+pub lxmf_sdk::MessageHistoryPage::messages: alloc::vec::Vec<lxmf_sdk::messaging::MessageHistoryRecord>
+pub lxmf_sdk::MessageHistoryPage::next_cursor: core::option::Option<alloc::string::String>
+pub struct lxmf_sdk::MessageHistoryRecord
+pub lxmf_sdk::MessageHistoryRecord::content: alloc::string::String
+pub lxmf_sdk::MessageHistoryRecord::destination: alloc::string::String
+pub lxmf_sdk::MessageHistoryRecord::direction: alloc::string::String
+pub lxmf_sdk::MessageHistoryRecord::fields: core::option::Option<serde_json::value::Value>
+pub lxmf_sdk::MessageHistoryRecord::id: alloc::string::String
+pub lxmf_sdk::MessageHistoryRecord::receipt_status: core::option::Option<alloc::string::String>
+pub lxmf_sdk::MessageHistoryRecord::source: alloc::string::String
+pub lxmf_sdk::MessageHistoryRecord::timestamp: i64
+pub lxmf_sdk::MessageHistoryRecord::title: alloc::string::String
 pub struct lxmf_sdk::MessageId(pub alloc::string::String)
 impl core::convert::From<&str> for lxmf_sdk::MessageId
 pub fn lxmf_sdk::MessageId::from(value: &str) -> Self
@@ -2018,7 +2502,7 @@ impl lxmf_sdk::messaging::MessagingStore
 pub fn lxmf_sdk::messaging::MessagingStore::conversation_id_for(destination_hex: &str) -> alloc::string::String
 pub fn lxmf_sdk::messaging::MessagingStore::get_message(&self, message_id_hex: &str) -> core::option::Option<lxmf_sdk::messaging::MessageRecord>
 pub fn lxmf_sdk::messaging::MessagingStore::list_announces(&self) -> alloc::vec::Vec<lxmf_sdk::messaging::AnnounceRecord>
-pub fn lxmf_sdk::messaging::MessagingStore::list_conversations<'a, I>(&self, connected_destinations: I) -> alloc::vec::Vec<lxmf_sdk::messaging::ConversationRecord> where I: core::iter::traits::collect::IntoIterator<Item = &'a str>
+pub fn lxmf_sdk::messaging::MessagingStore::list_conversations<'a, I>(&self, connected_destinations: I) -> alloc::vec::Vec<lxmf_sdk::ConversationRecord> where I: core::iter::traits::collect::IntoIterator<Item = &'a str>
 pub fn lxmf_sdk::messaging::MessagingStore::list_messages(&self, conversation_id: core::option::Option<&str>) -> alloc::vec::Vec<lxmf_sdk::messaging::MessageRecord>
 pub fn lxmf_sdk::messaging::MessagingStore::list_peers<'a, I>(&self, connected_destinations: I) -> alloc::vec::Vec<lxmf_sdk::messaging::PeerRecord> where I: core::iter::traits::collect::IntoIterator<Item = &'a str>
 pub fn lxmf_sdk::messaging::MessagingStore::outbound(&self, message_id_hex: &str) -> core::option::Option<lxmf_sdk::messaging::StoredOutboundMessage>
@@ -2103,6 +2587,20 @@ pub lxmf_sdk::ParityReference::python_reticulum_version: core::option::Option<al
 pub lxmf_sdk::ParityReference::reticulum_conformance_ref: alloc::string::String
 impl core::default::Default for lxmf_sdk::capability::ParityReference
 pub fn lxmf_sdk::capability::ParityReference::default() -> Self
+pub struct lxmf_sdk::PeerConnectionRequest
+pub lxmf_sdk::PeerConnectionRequest::correlation_id: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PeerConnectionRequest::display_name: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PeerConnectionRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::PeerConnectionRequest::identity: lxmf_sdk::domain::IdentityRef
+pub lxmf_sdk::PeerConnectionRequest::metadata: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub struct lxmf_sdk::PeerConnectionResult
+pub lxmf_sdk::PeerConnectionResult::connected: bool
+pub lxmf_sdk::PeerConnectionResult::display_name: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PeerConnectionResult::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::PeerConnectionResult::identity: lxmf_sdk::domain::IdentityRef
+pub lxmf_sdk::PeerConnectionResult::metadata: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::PeerConnectionResult::state: lxmf_sdk::domain::PeerConnectionState
+pub lxmf_sdk::PeerConnectionResult::updated_ts_ms: u64
 pub struct lxmf_sdk::PeerRecord
 pub lxmf_sdk::PeerRecord::announce_last_seen_at_ms: core::option::Option<u64>
 pub lxmf_sdk::PeerRecord::app_data: core::option::Option<alloc::string::String>
@@ -2123,6 +2621,7 @@ pub struct lxmf_sdk::PresenceListRequest
 pub lxmf_sdk::PresenceListRequest::cursor: core::option::Option<alloc::string::String>
 pub lxmf_sdk::PresenceListRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
 pub lxmf_sdk::PresenceListRequest::limit: core::option::Option<usize>
+pub lxmf_sdk::PresenceListRequest::min_last_seen_ts_ms: core::option::Option<i64>
 pub struct lxmf_sdk::PresenceListResult
 pub lxmf_sdk::PresenceListResult::next_cursor: core::option::Option<alloc::string::String>
 pub lxmf_sdk::PresenceListResult::peers: alloc::vec::Vec<lxmf_sdk::domain::PresenceRecord>
@@ -2140,6 +2639,267 @@ pub lxmf_sdk::PresenceRecord::seen_count: u64
 pub lxmf_sdk::PresenceRecord::trust_level: core::option::Option<lxmf_sdk::domain::TrustLevel>
 impl core::convert::From<lxmf_sdk::domain::PresenceRecord> for lxmf_sdk::app::Presence
 pub fn lxmf_sdk::app::Presence::from(value: lxmf_sdk::domain::PresenceRecord) -> Self
+#[non_exhaustive] pub struct lxmf_sdk::PropagationAcknowledgeSyncRequest
+pub lxmf_sdk::PropagationAcknowledgeSyncRequest::failure_state: core::option::Option<u32>
+pub lxmf_sdk::PropagationAcknowledgeSyncRequest::reset_state: bool
+#[non_exhaustive] pub struct lxmf_sdk::PropagationAcknowledgeSyncResult
+pub lxmf_sdk::PropagationAcknowledgeSyncResult::propagation: serde_json::value::Value
+pub lxmf_sdk::PropagationAcknowledgeSyncResult::recovery_state: lxmf_sdk::domain::PropagationRecoveryStateResult
+impl<'de> serde_core::de::Deserialize<'de> for lxmf_sdk::domain::PropagationAcknowledgeSyncResult
+pub fn lxmf_sdk::domain::PropagationAcknowledgeSyncResult::deserialize<D>(deserializer: D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error> where D: serde_core::de::Deserializer<'de>
+#[non_exhaustive] pub struct lxmf_sdk::PropagationDeliveryPolicyRequest
+pub lxmf_sdk::PropagationDeliveryPolicyRequest::allowed_destinations: core::option::Option<alloc::vec::Vec<alloc::string::String>>
+pub lxmf_sdk::PropagationDeliveryPolicyRequest::auth_required: core::option::Option<bool>
+pub lxmf_sdk::PropagationDeliveryPolicyRequest::denied_destinations: core::option::Option<alloc::vec::Vec<alloc::string::String>>
+pub lxmf_sdk::PropagationDeliveryPolicyRequest::ignored_destinations: core::option::Option<alloc::vec::Vec<alloc::string::String>>
+pub lxmf_sdk::PropagationDeliveryPolicyRequest::prioritised_destinations: core::option::Option<alloc::vec::Vec<alloc::string::String>>
+#[non_exhaustive] pub struct lxmf_sdk::PropagationDeliveryPolicyResult
+pub lxmf_sdk::PropagationDeliveryPolicyResult::policy: serde_json::value::Value
+pub lxmf_sdk::PropagationDeliveryPolicyResult::policy_state: lxmf_sdk::domain::PropagationDeliveryPolicyState
+impl<'de> serde_core::de::Deserialize<'de> for lxmf_sdk::domain::PropagationDeliveryPolicyResult
+pub fn lxmf_sdk::domain::PropagationDeliveryPolicyResult::deserialize<D>(deserializer: D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error> where D: serde_core::de::Deserializer<'de>
+#[non_exhaustive] pub struct lxmf_sdk::PropagationDeliveryPolicyState
+pub lxmf_sdk::PropagationDeliveryPolicyState::allowed_destinations: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::PropagationDeliveryPolicyState::auth_required: bool
+pub lxmf_sdk::PropagationDeliveryPolicyState::denied_destinations: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::PropagationDeliveryPolicyState::ignored_destinations: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::PropagationDeliveryPolicyState::prioritised_destinations: alloc::vec::Vec<alloc::string::String>
+#[non_exhaustive] pub struct lxmf_sdk::PropagationEnableRequest
+pub lxmf_sdk::PropagationEnableRequest::auth_required: core::option::Option<bool>
+pub lxmf_sdk::PropagationEnableRequest::autopeer: core::option::Option<bool>
+pub lxmf_sdk::PropagationEnableRequest::autopeer_maxdepth: core::option::Option<u32>
+pub lxmf_sdk::PropagationEnableRequest::delivery_limit: core::option::Option<u32>
+pub lxmf_sdk::PropagationEnableRequest::enabled: bool
+pub lxmf_sdk::PropagationEnableRequest::from_static_only: core::option::Option<bool>
+pub lxmf_sdk::PropagationEnableRequest::max_peers: core::option::Option<u32>
+pub lxmf_sdk::PropagationEnableRequest::message_storage_limit_mb: core::option::Option<u64>
+pub lxmf_sdk::PropagationEnableRequest::peering_cost: core::option::Option<u32>
+pub lxmf_sdk::PropagationEnableRequest::propagation_limit: core::option::Option<u32>
+pub lxmf_sdk::PropagationEnableRequest::remote_peering_cost_max: core::option::Option<u32>
+pub lxmf_sdk::PropagationEnableRequest::retain_synced_on_node: core::option::Option<bool>
+pub lxmf_sdk::PropagationEnableRequest::stamp_cost_flexibility: core::option::Option<u32>
+pub lxmf_sdk::PropagationEnableRequest::static_peers: core::option::Option<alloc::vec::Vec<alloc::string::String>>
+pub lxmf_sdk::PropagationEnableRequest::store_root: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PropagationEnableRequest::sync_limit: core::option::Option<u32>
+pub lxmf_sdk::PropagationEnableRequest::target_cost: core::option::Option<u32>
+#[non_exhaustive] pub struct lxmf_sdk::PropagationFetchRequest
+pub lxmf_sdk::PropagationFetchRequest::transient_id: alloc::string::String
+#[non_exhaustive] pub struct lxmf_sdk::PropagationFetchResult
+pub lxmf_sdk::PropagationFetchResult::payload_bytes: u64
+pub lxmf_sdk::PropagationFetchResult::payload_hex: alloc::string::String
+pub lxmf_sdk::PropagationFetchResult::propagation: serde_json::value::Value
+pub lxmf_sdk::PropagationFetchResult::recovery_state: lxmf_sdk::domain::PropagationRecoveryStateResult
+pub lxmf_sdk::PropagationFetchResult::transferred_bytes: u64
+pub lxmf_sdk::PropagationFetchResult::transient_id: alloc::string::String
+impl<'de> serde_core::de::Deserialize<'de> for lxmf_sdk::domain::PropagationFetchResult
+pub fn lxmf_sdk::domain::PropagationFetchResult::deserialize<D>(deserializer: D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error> where D: serde_core::de::Deserializer<'de>
+#[non_exhaustive] pub struct lxmf_sdk::PropagationIngestRequest
+pub lxmf_sdk::PropagationIngestRequest::payload_hex: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PropagationIngestRequest::transient_id: core::option::Option<alloc::string::String>
+#[non_exhaustive] pub struct lxmf_sdk::PropagationIngestResult
+pub lxmf_sdk::PropagationIngestResult::duplicate_count: u64
+pub lxmf_sdk::PropagationIngestResult::ingested_count: u64
+pub lxmf_sdk::PropagationIngestResult::payload_bytes: u64
+pub lxmf_sdk::PropagationIngestResult::propagation: serde_json::value::Value
+pub lxmf_sdk::PropagationIngestResult::recovery_state: lxmf_sdk::domain::PropagationRecoveryStateResult
+pub lxmf_sdk::PropagationIngestResult::transferred_bytes: u64
+pub lxmf_sdk::PropagationIngestResult::transient_id: alloc::string::String
+impl<'de> serde_core::de::Deserialize<'de> for lxmf_sdk::domain::PropagationIngestResult
+pub fn lxmf_sdk::domain::PropagationIngestResult::deserialize<D>(deserializer: D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error> where D: serde_core::de::Deserializer<'de>
+#[non_exhaustive] pub struct lxmf_sdk::PropagationNodeListResult
+pub lxmf_sdk::PropagationNodeListResult::meta: serde_json::value::Value
+pub lxmf_sdk::PropagationNodeListResult::node_records: alloc::vec::Vec<lxmf_sdk::domain::PropagationNodeRecord>
+pub lxmf_sdk::PropagationNodeListResult::nodes: alloc::vec::Vec<serde_json::value::Value>
+impl<'de> serde_core::de::Deserialize<'de> for lxmf_sdk::domain::PropagationNodeListResult
+pub fn lxmf_sdk::domain::PropagationNodeListResult::deserialize<D>(deserializer: D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error> where D: serde_core::de::Deserializer<'de>
+#[non_exhaustive] pub struct lxmf_sdk::PropagationNodeRecord
+pub lxmf_sdk::PropagationNodeRecord::capabilities: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::PropagationNodeRecord::last_seen: core::option::Option<i64>
+pub lxmf_sdk::PropagationNodeRecord::name: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PropagationNodeRecord::peer: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PropagationNodeRecord::selected: bool
+#[non_exhaustive] pub struct lxmf_sdk::PropagationNodeSelectionResult
+pub lxmf_sdk::PropagationNodeSelectionResult::meta: serde_json::value::Value
+pub lxmf_sdk::PropagationNodeSelectionResult::peer: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PropagationNodeSelectionResult::selection_state: lxmf_sdk::domain::PropagationNodeSelectionState
+impl<'de> serde_core::de::Deserialize<'de> for lxmf_sdk::domain::PropagationNodeSelectionResult
+pub fn lxmf_sdk::domain::PropagationNodeSelectionResult::deserialize<D>(deserializer: D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error> where D: serde_core::de::Deserializer<'de>
+#[non_exhaustive] pub struct lxmf_sdk::PropagationNodeSelectionState
+pub lxmf_sdk::PropagationNodeSelectionState::access_denied: bool
+pub lxmf_sdk::PropagationNodeSelectionState::failure_kind: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PropagationNodeSelectionState::last_sync_error: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PropagationNodeSelectionState::next_sync_attempt: core::option::Option<i64>
+pub lxmf_sdk::PropagationNodeSelectionState::peer: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PropagationNodeSelectionState::queue_depth: u64
+pub lxmf_sdk::PropagationNodeSelectionState::retry_count: u64
+pub lxmf_sdk::PropagationNodeSelectionState::selected: bool
+pub lxmf_sdk::PropagationNodeSelectionState::state: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PropagationNodeSelectionState::timed_out: bool
+#[non_exhaustive] pub struct lxmf_sdk::PropagationNodeSetRequest
+pub lxmf_sdk::PropagationNodeSetRequest::peer: core::option::Option<alloc::string::String>
+#[non_exhaustive] pub struct lxmf_sdk::PropagationPeerMaintenanceResult
+pub lxmf_sdk::PropagationPeerMaintenanceResult::culled: u64
+pub lxmf_sdk::PropagationPeerMaintenanceResult::culled_peers: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::PropagationPeerMaintenanceResult::max_unreachable_secs: u64
+pub lxmf_sdk::PropagationPeerMaintenanceResult::peer_sync: serde_json::value::Value
+pub lxmf_sdk::PropagationPeerMaintenanceResult::peer_sync_state: core::option::Option<lxmf_sdk::domain::PropagationPeerSyncResult>
+pub lxmf_sdk::PropagationPeerMaintenanceResult::rotated: u64
+pub lxmf_sdk::PropagationPeerMaintenanceResult::rotated_peers: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::PropagationPeerMaintenanceResult::synced_peer: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PropagationPeerMaintenanceResult::timestamp: i64
+impl<'de> serde_core::de::Deserialize<'de> for lxmf_sdk::domain::PropagationPeerMaintenanceResult
+pub fn lxmf_sdk::domain::PropagationPeerMaintenanceResult::deserialize<D>(deserializer: D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error> where D: serde_core::de::Deserializer<'de>
+#[non_exhaustive] pub struct lxmf_sdk::PropagationPeerSyncRequest
+pub lxmf_sdk::PropagationPeerSyncRequest::force_sync: bool
+pub lxmf_sdk::PropagationPeerSyncRequest::maintenance_claimed: bool
+pub lxmf_sdk::PropagationPeerSyncRequest::peer: alloc::string::String
+pub lxmf_sdk::PropagationPeerSyncRequest::transfer_limit_kb: core::option::Option<f64>
+pub lxmf_sdk::PropagationPeerSyncRequest::wanted_ids: core::option::Option<serde_json::value::Value>
+#[non_exhaustive] pub struct lxmf_sdk::PropagationPeerSyncResult
+pub lxmf_sdk::PropagationPeerSyncResult::access_denied: bool
+pub lxmf_sdk::PropagationPeerSyncResult::failure_kind: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PropagationPeerSyncResult::last_sync_attempt: core::option::Option<i64>
+pub lxmf_sdk::PropagationPeerSyncResult::messages: serde_json::value::Value
+pub lxmf_sdk::PropagationPeerSyncResult::next_sync_attempt: core::option::Option<i64>
+pub lxmf_sdk::PropagationPeerSyncResult::peer: alloc::string::String
+pub lxmf_sdk::PropagationPeerSyncResult::peer_type: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PropagationPeerSyncResult::postpone_reason: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PropagationPeerSyncResult::postponed: bool
+pub lxmf_sdk::PropagationPeerSyncResult::propagation: serde_json::value::Value
+pub lxmf_sdk::PropagationPeerSyncResult::queue: lxmf_sdk::domain::PropagationPeerQueueSnapshot
+pub lxmf_sdk::PropagationPeerSyncResult::stamp_cost_flexibility: core::option::Option<u64>
+pub lxmf_sdk::PropagationPeerSyncResult::status_type: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PropagationPeerSyncResult::sync_backoff: core::option::Option<u64>
+pub lxmf_sdk::PropagationPeerSyncResult::sync_limit: core::option::Option<u64>
+pub lxmf_sdk::PropagationPeerSyncResult::synced: bool
+pub lxmf_sdk::PropagationPeerSyncResult::target_stamp_cost: core::option::Option<u64>
+pub lxmf_sdk::PropagationPeerSyncResult::timed_out: bool
+pub lxmf_sdk::PropagationPeerSyncResult::transfer_limit: core::option::Option<u64>
+impl<'de> serde_core::de::Deserialize<'de> for lxmf_sdk::domain::PropagationPeerSyncResult
+pub fn lxmf_sdk::domain::PropagationPeerSyncResult::deserialize<D>(deserializer: D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error> where D: serde_core::de::Deserializer<'de>
+#[non_exhaustive] pub struct lxmf_sdk::PropagationRecoveryStateResult
+pub lxmf_sdk::PropagationRecoveryStateResult::access_denied: bool
+pub lxmf_sdk::PropagationRecoveryStateResult::auth_required: bool
+pub lxmf_sdk::PropagationRecoveryStateResult::autopeer: core::option::Option<bool>
+pub lxmf_sdk::PropagationRecoveryStateResult::autopeer_maxdepth: core::option::Option<u64>
+pub lxmf_sdk::PropagationRecoveryStateResult::client_propagation_messages_received: u64
+pub lxmf_sdk::PropagationRecoveryStateResult::client_propagation_messages_served: u64
+pub lxmf_sdk::PropagationRecoveryStateResult::delivery_limit: core::option::Option<u64>
+pub lxmf_sdk::PropagationRecoveryStateResult::enabled: bool
+pub lxmf_sdk::PropagationRecoveryStateResult::failure_kind: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PropagationRecoveryStateResult::from_static_only: core::option::Option<bool>
+pub lxmf_sdk::PropagationRecoveryStateResult::last_ingest_count: u64
+pub lxmf_sdk::PropagationRecoveryStateResult::last_sync_completed: core::option::Option<i64>
+pub lxmf_sdk::PropagationRecoveryStateResult::last_sync_error: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PropagationRecoveryStateResult::last_sync_started: core::option::Option<i64>
+pub lxmf_sdk::PropagationRecoveryStateResult::max_peers: core::option::Option<u64>
+pub lxmf_sdk::PropagationRecoveryStateResult::message_storage_limit_mb: core::option::Option<u64>
+pub lxmf_sdk::PropagationRecoveryStateResult::next_sync_attempt: core::option::Option<i64>
+pub lxmf_sdk::PropagationRecoveryStateResult::peering_cost: core::option::Option<u64>
+pub lxmf_sdk::PropagationRecoveryStateResult::propagation: serde_json::value::Value
+pub lxmf_sdk::PropagationRecoveryStateResult::propagation_limit: core::option::Option<u64>
+pub lxmf_sdk::PropagationRecoveryStateResult::queue_depth: u64
+pub lxmf_sdk::PropagationRecoveryStateResult::remote_peering_cost_max: core::option::Option<u64>
+pub lxmf_sdk::PropagationRecoveryStateResult::retain_synced_on_node: core::option::Option<bool>
+pub lxmf_sdk::PropagationRecoveryStateResult::retry_count: u64
+pub lxmf_sdk::PropagationRecoveryStateResult::selected_node: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PropagationRecoveryStateResult::stamp_cost_flexibility: core::option::Option<u64>
+pub lxmf_sdk::PropagationRecoveryStateResult::state_name: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PropagationRecoveryStateResult::static_peers: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::PropagationRecoveryStateResult::store_root: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PropagationRecoveryStateResult::sync_limit: core::option::Option<u64>
+pub lxmf_sdk::PropagationRecoveryStateResult::sync_progress: core::option::Option<f64>
+pub lxmf_sdk::PropagationRecoveryStateResult::sync_state: u32
+pub lxmf_sdk::PropagationRecoveryStateResult::target_cost: core::option::Option<u64>
+pub lxmf_sdk::PropagationRecoveryStateResult::timed_out: bool
+pub lxmf_sdk::PropagationRecoveryStateResult::timestamp: core::option::Option<i64>
+pub lxmf_sdk::PropagationRecoveryStateResult::total_ingested: u64
+impl lxmf_sdk::domain::PropagationRecoveryStateResult
+pub fn lxmf_sdk::domain::PropagationRecoveryStateResult::from_propagation(propagation: serde_json::value::Value) -> Self
+#[non_exhaustive] pub struct lxmf_sdk::PropagationRemotePeerRequest
+pub lxmf_sdk::PropagationRemotePeerRequest::identity_private_key_hex: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PropagationRemotePeerRequest::peer: alloc::string::String
+pub lxmf_sdk::PropagationRemotePeerRequest::remote: alloc::string::String
+pub lxmf_sdk::PropagationRemotePeerRequest::timeout_secs: core::option::Option<f64>
+pub lxmf_sdk::PropagationRemotePeerRequest::transfer_limit_kb: core::option::Option<f64>
+#[non_exhaustive] pub struct lxmf_sdk::PropagationRemoteRequest
+pub lxmf_sdk::PropagationRemoteRequest::identity_private_key_hex: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PropagationRemoteRequest::remote: alloc::string::String
+pub lxmf_sdk::PropagationRemoteRequest::timeout_secs: core::option::Option<f64>
+pub lxmf_sdk::PropagationRemoteRequest::transfer_limit_kb: core::option::Option<f64>
+#[non_exhaustive] pub struct lxmf_sdk::PropagationRemoteStatusResult
+pub lxmf_sdk::PropagationRemoteStatusResult::remote: alloc::string::String
+pub lxmf_sdk::PropagationRemoteStatusResult::status: serde_json::value::Value
+pub lxmf_sdk::PropagationRemoteStatusResult::status_state: lxmf_sdk::domain::PropagationRemoteStatusState
+impl<'de> serde_core::de::Deserialize<'de> for lxmf_sdk::domain::PropagationRemoteStatusResult
+pub fn lxmf_sdk::domain::PropagationRemoteStatusResult::deserialize<D>(deserializer: D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error> where D: serde_core::de::Deserializer<'de>
+#[non_exhaustive] pub struct lxmf_sdk::PropagationRemoteStatusState
+pub lxmf_sdk::PropagationRemoteStatusState::access_denied: bool
+pub lxmf_sdk::PropagationRemoteStatusState::failure_kind: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PropagationRemoteStatusState::last_sync_error: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PropagationRemoteStatusState::next_sync_attempt: core::option::Option<i64>
+pub lxmf_sdk::PropagationRemoteStatusState::queue_depth: u64
+pub lxmf_sdk::PropagationRemoteStatusState::retry_count: u64
+pub lxmf_sdk::PropagationRemoteStatusState::selected_node: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PropagationRemoteStatusState::selected_peer: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PropagationRemoteStatusState::state: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PropagationRemoteStatusState::timed_out: bool
+#[non_exhaustive] pub struct lxmf_sdk::PropagationRemoteSyncResult
+pub lxmf_sdk::PropagationRemoteSyncResult::peer: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PropagationRemoteSyncResult::peer_sync: serde_json::value::Value
+pub lxmf_sdk::PropagationRemoteSyncResult::peer_sync_state: core::option::Option<lxmf_sdk::domain::PropagationPeerSyncResult>
+pub lxmf_sdk::PropagationRemoteSyncResult::propagation: serde_json::value::Value
+pub lxmf_sdk::PropagationRemoteSyncResult::queue: lxmf_sdk::domain::PropagationPeerQueueSnapshot
+pub lxmf_sdk::PropagationRemoteSyncResult::remote: alloc::string::String
+pub lxmf_sdk::PropagationRemoteSyncResult::result: serde_json::value::Value
+pub lxmf_sdk::PropagationRemoteSyncResult::transfer_state: lxmf_sdk::domain::PropagationRemoteTransferState
+impl<'de> serde_core::de::Deserialize<'de> for lxmf_sdk::domain::PropagationRemoteSyncResult
+pub fn lxmf_sdk::domain::PropagationRemoteSyncResult::deserialize<D>(deserializer: D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error> where D: serde_core::de::Deserializer<'de>
+#[non_exhaustive] pub struct lxmf_sdk::PropagationRemoteTransferResult
+pub lxmf_sdk::PropagationRemoteTransferResult::propagation: serde_json::value::Value
+pub lxmf_sdk::PropagationRemoteTransferResult::queue: lxmf_sdk::domain::PropagationPeerQueueSnapshot
+pub lxmf_sdk::PropagationRemoteTransferResult::remote: alloc::string::String
+pub lxmf_sdk::PropagationRemoteTransferResult::result: serde_json::value::Value
+pub lxmf_sdk::PropagationRemoteTransferResult::transfer_state: lxmf_sdk::domain::PropagationRemoteTransferState
+impl<'de> serde_core::de::Deserialize<'de> for lxmf_sdk::domain::PropagationRemoteTransferResult
+pub fn lxmf_sdk::domain::PropagationRemoteTransferResult::deserialize<D>(deserializer: D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error> where D: serde_core::de::Deserializer<'de>
+#[non_exhaustive] pub struct lxmf_sdk::PropagationRemoteTransferState
+pub lxmf_sdk::PropagationRemoteTransferState::access_denied: bool
+pub lxmf_sdk::PropagationRemoteTransferState::failure_kind: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PropagationRemoteTransferState::imported_count: u64
+pub lxmf_sdk::PropagationRemoteTransferState::imported_ids: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::PropagationRemoteTransferState::last_sync_completed: core::option::Option<i64>
+pub lxmf_sdk::PropagationRemoteTransferState::last_sync_error: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PropagationRemoteTransferState::last_sync_started: core::option::Option<i64>
+pub lxmf_sdk::PropagationRemoteTransferState::next_sync_attempt: core::option::Option<i64>
+pub lxmf_sdk::PropagationRemoteTransferState::postpone_reason: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PropagationRemoteTransferState::postponed: bool
+pub lxmf_sdk::PropagationRemoteTransferState::retry_count: u64
+pub lxmf_sdk::PropagationRemoteTransferState::selected_node: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PropagationRemoteTransferState::selected_peer: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PropagationRemoteTransferState::state_name: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PropagationRemoteTransferState::sync_progress: core::option::Option<f64>
+pub lxmf_sdk::PropagationRemoteTransferState::synced: bool
+pub lxmf_sdk::PropagationRemoteTransferState::timed_out: bool
+pub lxmf_sdk::PropagationRemoteTransferState::transferred_bytes: u64
+#[non_exhaustive] pub struct lxmf_sdk::PropagationRemoteUnpeerResult
+pub lxmf_sdk::PropagationRemoteUnpeerResult::messages: serde_json::value::Value
+pub lxmf_sdk::PropagationRemoteUnpeerResult::peer: core::option::Option<alloc::string::String>
+pub lxmf_sdk::PropagationRemoteUnpeerResult::propagation: serde_json::value::Value
+pub lxmf_sdk::PropagationRemoteUnpeerResult::propagation_cleared: core::option::Option<u64>
+pub lxmf_sdk::PropagationRemoteUnpeerResult::propagation_cleared_bytes: core::option::Option<u64>
+pub lxmf_sdk::PropagationRemoteUnpeerResult::queue: lxmf_sdk::domain::PropagationPeerQueueSnapshot
+pub lxmf_sdk::PropagationRemoteUnpeerResult::remote: alloc::string::String
+pub lxmf_sdk::PropagationRemoteUnpeerResult::removed: bool
+pub lxmf_sdk::PropagationRemoteUnpeerResult::result: serde_json::value::Value
+pub lxmf_sdk::PropagationRemoteUnpeerResult::transfer_state: lxmf_sdk::domain::PropagationRemoteTransferState
+impl<'de> serde_core::de::Deserialize<'de> for lxmf_sdk::domain::PropagationRemoteUnpeerResult
+pub fn lxmf_sdk::domain::PropagationRemoteUnpeerResult::deserialize<D>(deserializer: D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error> where D: serde_core::de::Deserializer<'de>
+#[non_exhaustive] pub struct lxmf_sdk::PropagationStatusResult
+pub lxmf_sdk::PropagationStatusResult::propagation: serde_json::value::Value
+pub lxmf_sdk::PropagationStatusResult::recovery_state: lxmf_sdk::domain::PropagationRecoveryStateResult
+impl<'de> serde_core::de::Deserialize<'de> for lxmf_sdk::domain::PropagationStatusResult
+pub fn lxmf_sdk::domain::PropagationStatusResult::deserialize<D>(deserializer: D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error> where D: serde_core::de::Deserializer<'de>
 #[non_exhaustive] pub struct lxmf_sdk::RedactionConfig
 pub lxmf_sdk::RedactionConfig::break_glass_allowed: bool
 pub lxmf_sdk::RedactionConfig::break_glass_ttl_ms: core::option::Option<u64>
@@ -2445,6 +3205,19 @@ pub struct lxmf_sdk::VoiceSessionUpdateRequest
 pub lxmf_sdk::VoiceSessionUpdateRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
 pub lxmf_sdk::VoiceSessionUpdateRequest::session_id: lxmf_sdk::domain::VoiceSessionId
 pub lxmf_sdk::VoiceSessionUpdateRequest::state: lxmf_sdk::domain::VoiceSessionState
+pub struct lxmf_sdk::WorkflowPeerReadyRequest
+pub lxmf_sdk::WorkflowPeerReadyRequest::announce: core::option::Option<bool>
+pub lxmf_sdk::WorkflowPeerReadyRequest::bootstrap: core::option::Option<bool>
+pub lxmf_sdk::WorkflowPeerReadyRequest::display_name: core::option::Option<alloc::string::String>
+pub lxmf_sdk::WorkflowPeerReadyRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::WorkflowPeerReadyRequest::identity: lxmf_sdk::domain::IdentityRef
+pub lxmf_sdk::WorkflowPeerReadyRequest::metadata: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::WorkflowPeerReadyRequest::trust_level: core::option::Option<lxmf_sdk::domain::TrustLevel>
+pub struct lxmf_sdk::WorkflowPeerReadyResult
+pub lxmf_sdk::WorkflowPeerReadyResult::announced: bool
+pub lxmf_sdk::WorkflowPeerReadyResult::contact: lxmf_sdk::domain::ContactRecord
+pub lxmf_sdk::WorkflowPeerReadyResult::identity: lxmf_sdk::domain::IdentityRef
+pub lxmf_sdk::WorkflowPeerReadyResult::was_created: bool
 pub const lxmf_sdk::CONTRACT_RELEASE: &str
 pub const lxmf_sdk::SCHEMA_NAMESPACE: &str
 pub const lxmf_sdk::SDK_VERSION: &str
@@ -2500,6 +3273,7 @@ impl<B: lxmf_sdk::SdkBackend> lxmf_sdk::LxmfSdkGroupDelivery for lxmf_sdk::Clien
 pub fn lxmf_sdk::Client<B>::send_group(&self, req: lxmf_sdk::GroupSendRequest) -> core::result::Result<lxmf_sdk::GroupSendResult, lxmf_sdk::SdkError>
 pub trait lxmf_sdk::LxmfSdkIdentity
 pub fn lxmf_sdk::LxmfSdkIdentity::identity_activate(&self, _identity: lxmf_sdk::domain::IdentityRef) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdkIdentity::identity_announce(&self, _req: lxmf_sdk::domain::IdentityAnnounceRequest) -> core::result::Result<lxmf_sdk::domain::IdentityAnnounceResult, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::LxmfSdkIdentity::identity_announce_now(&self) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::LxmfSdkIdentity::identity_bootstrap(&self, _req: lxmf_sdk::domain::IdentityBootstrapRequest) -> core::result::Result<lxmf_sdk::domain::ContactRecord, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::LxmfSdkIdentity::identity_contact_list(&self, _req: lxmf_sdk::domain::ContactListRequest) -> core::result::Result<lxmf_sdk::domain::ContactListResult, lxmf_sdk::SdkError>
@@ -2511,6 +3285,7 @@ pub fn lxmf_sdk::LxmfSdkIdentity::identity_presence_list(&self, _req: lxmf_sdk::
 pub fn lxmf_sdk::LxmfSdkIdentity::identity_resolve(&self, _req: lxmf_sdk::domain::IdentityResolveRequest) -> core::result::Result<core::option::Option<lxmf_sdk::domain::IdentityRef>, lxmf_sdk::SdkError>
 impl<B: lxmf_sdk::SdkBackend> lxmf_sdk::LxmfSdkIdentity for lxmf_sdk::Client<B>
 pub fn lxmf_sdk::Client<B>::identity_activate(&self, identity: lxmf_sdk::domain::IdentityRef) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::identity_announce(&self, req: lxmf_sdk::domain::IdentityAnnounceRequest) -> core::result::Result<lxmf_sdk::domain::IdentityAnnounceResult, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::Client<B>::identity_announce_now(&self) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::Client<B>::identity_bootstrap(&self, req: lxmf_sdk::domain::IdentityBootstrapRequest) -> core::result::Result<lxmf_sdk::domain::ContactRecord, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::Client<B>::identity_contact_list(&self, req: lxmf_sdk::domain::ContactListRequest) -> core::result::Result<lxmf_sdk::domain::ContactListResult, lxmf_sdk::SdkError>
@@ -2546,6 +3321,14 @@ pub fn lxmf_sdk::LxmfSdkPaper::paper_encode(&self, _message_id: lxmf_sdk::Messag
 impl<B: lxmf_sdk::SdkBackend> lxmf_sdk::LxmfSdkPaper for lxmf_sdk::Client<B>
 pub fn lxmf_sdk::Client<B>::paper_decode(&self, envelope: lxmf_sdk::domain::PaperMessageEnvelope) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::Client<B>::paper_encode(&self, message_id: lxmf_sdk::MessageId) -> core::result::Result<lxmf_sdk::domain::PaperMessageEnvelope, lxmf_sdk::SdkError>
+pub trait lxmf_sdk::LxmfSdkPeerLifecycle
+pub fn lxmf_sdk::LxmfSdkPeerLifecycle::peer_connect(&self, _req: lxmf_sdk::domain::PeerConnectionRequest) -> core::result::Result<lxmf_sdk::domain::PeerConnectionResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdkPeerLifecycle::peer_disconnect(&self, _req: lxmf_sdk::domain::PeerConnectionRequest) -> core::result::Result<lxmf_sdk::domain::PeerConnectionResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdkPeerLifecycle::peer_reconnect(&self, _req: lxmf_sdk::domain::PeerConnectionRequest) -> core::result::Result<lxmf_sdk::domain::PeerConnectionResult, lxmf_sdk::SdkError>
+impl<B: lxmf_sdk::SdkBackend> lxmf_sdk::LxmfSdkPeerLifecycle for lxmf_sdk::Client<B>
+pub fn lxmf_sdk::Client<B>::peer_connect(&self, req: lxmf_sdk::domain::PeerConnectionRequest) -> core::result::Result<lxmf_sdk::domain::PeerConnectionResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::peer_disconnect(&self, req: lxmf_sdk::domain::PeerConnectionRequest) -> core::result::Result<lxmf_sdk::domain::PeerConnectionResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::peer_reconnect(&self, req: lxmf_sdk::domain::PeerConnectionRequest) -> core::result::Result<lxmf_sdk::domain::PeerConnectionResult, lxmf_sdk::SdkError>
 pub trait lxmf_sdk::LxmfSdkRemoteCommands
 pub fn lxmf_sdk::LxmfSdkRemoteCommands::command_invoke(&self, _req: lxmf_sdk::domain::RemoteCommandRequest) -> core::result::Result<lxmf_sdk::domain::RemoteCommandResponse, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::LxmfSdkRemoteCommands::command_reply(&self, _correlation_id: alloc::string::String, _reply: lxmf_sdk::domain::RemoteCommandResponse) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
@@ -2611,6 +3394,7 @@ pub fn lxmf_sdk::SdkBackend::command_session_list(&self, _req: lxmf_sdk::domain:
 pub fn lxmf_sdk::SdkBackend::configure(&self, expected_revision: u64, patch: lxmf_sdk::ConfigPatch) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::SdkBackend::envelope_execute(&self, _envelope: lxmf_sdk::app::Envelope) -> core::result::Result<lxmf_sdk::app::EnvelopeResponse, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::SdkBackend::identity_activate(&self, _identity: lxmf_sdk::domain::IdentityRef) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::identity_announce(&self, _req: lxmf_sdk::domain::IdentityAnnounceRequest) -> core::result::Result<lxmf_sdk::domain::IdentityAnnounceResult, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::SdkBackend::identity_announce_now(&self) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::SdkBackend::identity_bootstrap(&self, _req: lxmf_sdk::domain::IdentityBootstrapRequest) -> core::result::Result<lxmf_sdk::domain::ContactRecord, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::SdkBackend::identity_contact_list(&self, _req: lxmf_sdk::domain::ContactListRequest) -> core::result::Result<lxmf_sdk::domain::ContactListResult, lxmf_sdk::SdkError>
@@ -2628,6 +3412,9 @@ pub fn lxmf_sdk::SdkBackend::negotiate(&self, req: lxmf_sdk::capability::Negotia
 pub fn lxmf_sdk::SdkBackend::operation_registry(&self) -> core::result::Result<lxmf_sdk::app::OperationRegistry, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::SdkBackend::paper_decode(&self, _envelope: lxmf_sdk::domain::PaperMessageEnvelope) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::SdkBackend::paper_encode(&self, _message_id: lxmf_sdk::MessageId) -> core::result::Result<lxmf_sdk::domain::PaperMessageEnvelope, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::peer_connect(&self, _req: lxmf_sdk::domain::PeerConnectionRequest) -> core::result::Result<lxmf_sdk::domain::PeerConnectionResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::peer_disconnect(&self, _req: lxmf_sdk::domain::PeerConnectionRequest) -> core::result::Result<lxmf_sdk::domain::PeerConnectionResult, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::peer_reconnect(&self, _req: lxmf_sdk::domain::PeerConnectionRequest) -> core::result::Result<lxmf_sdk::domain::PeerConnectionResult, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::SdkBackend::poll_events(&self, cursor: core::option::Option<lxmf_sdk::event::EventCursor>, max: usize) -> core::result::Result<lxmf_sdk::event::EventBatch, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::SdkBackend::send(&self, req: lxmf_sdk::SendRequest) -> core::result::Result<lxmf_sdk::MessageId, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::SdkBackend::shutdown(&self, mode: lxmf_sdk::ShutdownMode) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
