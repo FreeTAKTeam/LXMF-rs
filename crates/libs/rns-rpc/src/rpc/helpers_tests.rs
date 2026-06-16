@@ -72,11 +72,12 @@ fn parses_rch_capabilities_from_msgpack_third_slot() {
 
 #[test]
 fn parses_rch_capabilities_from_cbor_third_slot() {
-    let capability_payload = serde_cbor::to_vec(&serde_json::json!({
+    let mut capability_payload = Vec::new();
+    ciborium::ser::into_writer(&serde_json::json!({
         "app": "rch",
         "schema": 1,
         "caps": ["telemetry_relay", "tak_bridge"],
-    }))
+    }), &mut capability_payload)
     .expect("encode cbor capability payload");
     let announce = rmp_serde::to_vec_named(&rmpv::Value::Array(vec![
         rmpv::Value::String("Reticulum Community Hub".into()),

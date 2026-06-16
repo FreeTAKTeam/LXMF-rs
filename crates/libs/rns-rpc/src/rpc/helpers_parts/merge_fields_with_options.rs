@@ -144,7 +144,7 @@ fn parse_rch_capability_payload(payload: &[u8]) -> Vec<String> {
         return Vec::new();
     }
 
-    if let Ok(value) = serde_cbor::from_slice::<JsonValue>(payload) {
+    if let Ok(value) = ciborium::de::from_reader::<JsonValue, _>(payload) {
         let capabilities = extract_rch_capabilities_from_json_value(&value);
         if !capabilities.is_empty() {
             return capabilities;
