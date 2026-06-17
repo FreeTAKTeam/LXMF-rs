@@ -366,6 +366,7 @@ impl RpcBackendClient {
             .strip_prefix("http://")
             .or_else(|| endpoint.strip_prefix("https://"))
             .or_else(|| endpoint.strip_prefix("tls://"))
+            .or_else(|| endpoint.strip_prefix("tcp://"))
             .unwrap_or(endpoint);
         let authority = without_scheme.split('/').next().unwrap_or(without_scheme).trim();
         if authority.is_empty() {

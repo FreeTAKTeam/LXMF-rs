@@ -79,6 +79,17 @@
         request.lines().find_map(|line| line.strip_prefix(prefix.as_str()).map(str::trim))
     }
 
+    #[test]
+    fn rpc_endpoint_accepts_tcp_scheme_for_http_rpc_compatibility() {
+        let endpoint = RpcBackendClient::parse_endpoint("tcp://127.0.0.1:37428/rpc")
+            .expect("tcp scheme should be accepted");
+
+        match endpoint {
+            RpcEndpoint::Tcp(authority) => assert_eq!(authority, "127.0.0.1:37428"),
+            RpcEndpoint::Unix(_) => panic!("tcp scheme must not parse as unix endpoint"),
+        }
+    }
+
     #[cfg(feature = "sdk-async")]
     #[tokio::test]
     async fn call_rpc_async_uses_async_http_post_transport() {
