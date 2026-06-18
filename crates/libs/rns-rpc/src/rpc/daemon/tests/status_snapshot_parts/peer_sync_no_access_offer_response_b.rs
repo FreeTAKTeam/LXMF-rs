@@ -236,10 +236,18 @@ fn peer_sync_no_identity_offer_response_preserves_peer_for_immediate_retry_like_
     assert_eq!(result["peer"].as_str(), Some("peer-local-needs-id"));
     assert_eq!(result["synced"].as_bool(), Some(false));
     assert_eq!(result["reason"].as_str(), Some("identity_required"));
+    assert_eq!(result["failure_kind"].as_str(), Some("no_identity"));
+    assert_eq!(result["propagation"]["failure_kind"].as_str(), Some("no_identity"));
     assert_eq!(result["offer_response"].as_u64(), Some(0xf0));
     assert_eq!(result["alive"].as_bool(), Some(true));
-    assert_eq!(result["sync_backoff"].as_u64(), Some(0));
-    assert_eq!(result["next_sync_attempt"].as_i64(), Some(0));
+    assert_eq!(result["sync_backoff"].as_u64(), Some(12 * 60));
+    let result_last_sync_attempt =
+        result["last_sync_attempt"].as_i64().expect("result last sync attempt");
+    assert!(result_last_sync_attempt > 0);
+    assert_eq!(
+        result["next_sync_attempt"].as_i64(),
+        Some(result_last_sync_attempt + 12 * 60)
+    );
     assert_eq!(result["acceptance_rate"].as_f64(), Some(0.8));
     assert_eq!(result["propagation"]["handled"].as_u64(), Some(0));
     assert_eq!(result["propagation"]["postponed"].as_bool(), Some(false));
@@ -273,8 +281,8 @@ fn peer_sync_no_identity_offer_response_preserves_peer_for_immediate_retry_like_
     let last_sync_attempt = row["last_sync_attempt"].as_i64().expect("last sync attempt");
     assert!(last_sync_attempt > 0);
     assert_eq!(row["alive"].as_bool(), Some(true));
-    assert_eq!(row["sync_backoff"].as_u64(), Some(0));
-    assert_eq!(row["next_sync_attempt"].as_i64(), Some(0));
+    assert_eq!(row["sync_backoff"].as_u64(), Some(12 * 60));
+    assert_eq!(row["next_sync_attempt"].as_i64(), Some(last_sync_attempt + 12 * 60));
 
     let events = daemon.event_queue.lock().expect("event_queue mutex poisoned");
     assert!(
@@ -290,21 +298,113 @@ fn peer_sync_no_identity_offer_response_preserves_peer_for_immediate_retry_like_
     assert_eq!(event.payload["peer"].as_str(), Some("peer-local-needs-id"));
     assert_eq!(event.payload["synced"].as_bool(), Some(false));
     assert_eq!(event.payload["reason"].as_str(), Some("identity_required"));
+    assert_eq!(event.payload["failure_kind"].as_str(), Some("no_identity"));
+    assert_eq!(event.payload["propagation"]["failure_kind"].as_str(), Some("no_identity"));
     assert_eq!(event.payload["offer_response"].as_u64(), Some(0xf0));
     assert_eq!(event.payload["alive"].as_bool(), Some(true));
-    assert_eq!(event.payload["sync_backoff"].as_u64(), Some(0));
-    assert_eq!(event.payload["next_sync_attempt"].as_i64(), Some(0));
+    assert_eq!(event.payload["sync_backoff"].as_u64(), Some(12 * 60));
+    assert_eq!(
+        event.payload["next_sync_attempt"].as_i64(),
+        Some(last_sync_attempt + 12 * 60)
+    );
+}
+
+#[test]
+fn peer_sync_retryable_offer_response_advances_backoff_and_reports_failure_kind_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    let peer = "peer-local-offer-error-backoff";
+    daemon
+        .handle_rpc(rpc_request(52, "peer_sync", json!({ "peer": peer })))
+        .expect("initial peer sync");
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let record = peers.get_mut(peer).expect("peer record");
+        record.alive = true;
+        record.sync_backoff = 0;
+        record.next_sync_attempt = 0;
+        record.acceptance_rate = 0.55;
+    }
+    let pending = PropagationEntryRecord {
+        transient_id: "bf".repeat(32),
+        destination: "12".repeat(16),
+        payload_hex: "12".repeat(24),
+        received_at: 1_700_000_620,
+        size_bytes: 24,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&pending).expect("store propagation entry");
+    daemon
+        .store
+        .mark_peer_unhandled_propagation(peer, pending.transient_id.as_str())
+        .expect("mark unhandled");
+    daemon.event_queue.lock().expect("event_queue mutex poisoned").clear();
+
+    let result = daemon
+        .handle_rpc(rpc_request(
+            55,
+            "peer_sync",
+            json!({
+                "peer": peer,
+                "wanted_ids": 0xf5,
+            }),
+        ))
+        .expect("invalid-stamp response should preserve peer queue for retry")
+        .result
+        .expect("peer sync result");
+
+    assert_eq!(result["reason"].as_str(), Some("invalid_stamp"));
+    assert_eq!(result["failure_kind"].as_str(), Some("invalid_stamp"));
+    assert_eq!(result["propagation"]["failure_kind"].as_str(), Some("invalid_stamp"));
+    assert_eq!(result["sync_backoff"].as_u64(), Some(12 * 60));
+    let last_sync_attempt = result["last_sync_attempt"].as_i64().expect("last sync attempt");
+    assert!(last_sync_attempt > 0);
+    assert_eq!(result["next_sync_attempt"].as_i64(), Some(last_sync_attempt + 12 * 60));
+    assert_eq!(
+        daemon
+            .store
+            .list_peer_unhandled_propagation(peer)
+            .expect("pending propagation"),
+        vec![pending.clone()]
+    );
+    assert!(
+        daemon
+            .store
+            .list_peer_handled_propagation_ids(peer)
+            .expect("handled ids")
+            .is_empty()
+    );
+
+    let event = daemon
+        .event_queue
+        .lock()
+        .expect("event_queue mutex poisoned")
+        .iter()
+        .rev()
+        .find(|event| event.event_type == "peer_sync")
+        .cloned()
+        .expect("retryable peer sync event");
+    assert_eq!(event.payload["failure_kind"].as_str(), Some("invalid_stamp"));
+    assert_eq!(event.payload["propagation"]["failure_kind"].as_str(), Some("invalid_stamp"));
+    assert_eq!(event.payload["sync_backoff"].as_u64(), Some(12 * 60));
+    assert_eq!(
+        event.payload["next_sync_attempt"].as_i64(),
+        Some(last_sync_attempt + 12 * 60)
+    );
+    assert_eq!(
+        event.payload["messages"]["unhandled_ids"].as_array().expect("event unhandled ids"),
+        &[json!(pending.transient_id.as_str())]
+    );
 }
 
 #[test]
 fn peer_sync_retryable_offer_responses_preserve_peer_queue_like_python() {
-    for (suffix, offer_response, reason) in [
-        ("invalid-key", 0xf3, "invalid_key"),
-        ("invalid-data", 0xf4, "invalid_data"),
-        ("invalid-stamp", 0xf5, "invalid_stamp"),
-        ("unknown", 0xf2, "peer_offer_error"),
-        ("not-found", 0xfd, "not_found"),
-        ("timeout", 0xfe, "timeout"),
+    for (suffix, offer_response, reason, failure_kind) in [
+        ("invalid-key", 0xf3, "invalid_key", "invalid_key"),
+        ("invalid-data", 0xf4, "invalid_data", "invalid_data"),
+        ("invalid-stamp", 0xf5, "invalid_stamp", "invalid_stamp"),
+        ("unknown", 0xf2, "peer_offer_error", "failed"),
+        ("not-found", 0xfd, "not_found", "not_found"),
+        ("timeout", 0xfe, "timeout", "timeout"),
     ] {
         let daemon = RpcDaemon::test_instance();
         let peer_id = format!("peer-local-{suffix}");
@@ -352,10 +452,18 @@ fn peer_sync_retryable_offer_responses_preserve_peer_queue_like_python() {
         assert_eq!(result["state"].as_u64(), Some(0xfe));
         assert_eq!(result["state_name"].as_str(), Some("failed"));
         assert_eq!(result["reason"].as_str(), Some(reason));
+        assert_eq!(result["failure_kind"].as_str(), Some(failure_kind));
+        assert_eq!(result["propagation"]["failure_kind"].as_str(), Some(failure_kind));
         assert_eq!(result["offer_response"].as_u64(), Some(offer_response));
         assert_eq!(result["alive"].as_bool(), Some(true));
-        assert_eq!(result["sync_backoff"].as_u64(), Some(0));
-        assert_eq!(result["next_sync_attempt"].as_i64(), Some(0));
+        assert_eq!(result["sync_backoff"].as_u64(), Some(12 * 60));
+        let result_last_sync_attempt =
+            result["last_sync_attempt"].as_i64().expect("result last sync attempt");
+        assert!(result_last_sync_attempt > 0);
+        assert_eq!(
+            result["next_sync_attempt"].as_i64(),
+            Some(result_last_sync_attempt + 12 * 60)
+        );
         assert_eq!(result["acceptance_rate"].as_f64(), Some(0.6));
         assert_eq!(result["propagation"]["handled"].as_u64(), Some(0));
         assert_eq!(result["propagation"]["postponed"].as_bool(), Some(false));
@@ -391,8 +499,8 @@ fn peer_sync_retryable_offer_responses_preserve_peer_queue_like_python() {
         let last_sync_attempt = row["last_sync_attempt"].as_i64().expect("last sync attempt");
         assert!(last_sync_attempt > 0);
         assert_eq!(row["alive"].as_bool(), Some(true));
-        assert_eq!(row["sync_backoff"].as_u64(), Some(0));
-        assert_eq!(row["next_sync_attempt"].as_i64(), Some(0));
+        assert_eq!(row["sync_backoff"].as_u64(), Some(12 * 60));
+        assert_eq!(row["next_sync_attempt"].as_i64(), Some(last_sync_attempt + 12 * 60));
 
         let events = daemon.event_queue.lock().expect("event_queue mutex poisoned");
         assert!(
@@ -410,10 +518,15 @@ fn peer_sync_retryable_offer_responses_preserve_peer_queue_like_python() {
         assert_eq!(event.payload["state"].as_u64(), Some(0xfe));
         assert_eq!(event.payload["state_name"].as_str(), Some("failed"));
         assert_eq!(event.payload["reason"].as_str(), Some(reason));
+        assert_eq!(event.payload["failure_kind"].as_str(), Some(failure_kind));
+        assert_eq!(event.payload["propagation"]["failure_kind"].as_str(), Some(failure_kind));
         assert_eq!(event.payload["offer_response"].as_u64(), Some(offer_response));
         assert_eq!(event.payload["alive"].as_bool(), Some(true));
-        assert_eq!(event.payload["sync_backoff"].as_u64(), Some(0));
-        assert_eq!(event.payload["next_sync_attempt"].as_i64(), Some(0));
+        assert_eq!(event.payload["sync_backoff"].as_u64(), Some(12 * 60));
+        assert_eq!(
+            event.payload["next_sync_attempt"].as_i64(),
+            Some(last_sync_attempt + 12 * 60)
+        );
         assert_eq!(event.payload["propagation"]["state"].as_u64(), Some(0xfe));
         assert_eq!(event.payload["propagation"]["state_name"].as_str(), Some("failed"));
     }

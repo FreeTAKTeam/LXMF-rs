@@ -64,7 +64,10 @@ impl RpcDaemon {
                     let mut peers = self.peers.lock().expect("peers mutex poisoned");
                     if let Some(peer) = peers.get_mut(record.peer.as_str()) {
                         peer.last_sync_attempt = timestamp;
-                        peer.next_sync_attempt = 0;
+                        peer.sync_backoff =
+                            peer.sync_backoff.saturating_add(LXMF_PEER_SYNC_BACKOFF_STEP_SECS);
+                        peer.next_sync_attempt =
+                            timestamp.saturating_add(i64::from(peer.sync_backoff));
                     }
                 }
                 Ok(self.local_peer_offer_error_response(

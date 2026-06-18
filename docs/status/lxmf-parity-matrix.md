@@ -782,6 +782,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Local peer offer-error responses now expose failed peer-sync state fields at
   both the top-level event/result and nested propagation result while keeping
   retryable queue marks intact.
+- Retryable local peer offer-error responses now advance the ordinary peer
+  sync backoff window and expose structured `failure_kind` fields at both the
+  top-level event/result and nested propagation result while preserving queued
+  work for retry.
 - Inbound propagation distinguishes clients, validated peers, unpeered
   identified senders, and local delivery; source peers are accounted and not
   re-offered their own payloads.

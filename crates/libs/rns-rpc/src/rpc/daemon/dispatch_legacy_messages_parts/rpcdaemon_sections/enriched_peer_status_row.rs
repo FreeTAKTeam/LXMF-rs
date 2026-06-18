@@ -300,6 +300,7 @@ impl RpcDaemon {
         let peer_type_value = peer.peer_type.clone();
         let peer_status_type =
             if self.is_static_peer(peer.peer.as_str()) { "static" } else { "discovered" };
+        let failure_kind = local_retryable_peer_offer_failure_kind(offer_response);
         let propagation_sync = json!({
             "synced": false,
             "postponed": false,
@@ -377,8 +378,22 @@ impl RpcDaemon {
         });
         payload["state"] = json!(PEER_SYNC_STATE_FAILED);
         payload["state_name"] = json!("failed");
+        payload["failure_kind"] = json!(failure_kind);
+        payload["propagation"]["failure_kind"] = json!(failure_kind);
         self.publish_event(RpcEvent { event_type: "peer_sync".into(), payload: payload.clone() });
 
         RpcResponse { id: request_id, result: Some(payload), error: None }
+    }
+}
+
+fn local_retryable_peer_offer_failure_kind(offer_error: u8) -> &'static str {
+    match offer_error {
+        LXMF_PEER_ERROR_NO_IDENTITY => "no_identity",
+        LXMF_PEER_ERROR_INVALID_KEY => "invalid_key",
+        LXMF_PEER_ERROR_INVALID_DATA => "invalid_data",
+        LXMF_PEER_ERROR_INVALID_STAMP => "invalid_stamp",
+        LXMF_PEER_ERROR_NOT_FOUND => "not_found",
+        LXMF_PEER_ERROR_TIMEOUT => "timeout",
+        _ => "failed",
     }
 }
