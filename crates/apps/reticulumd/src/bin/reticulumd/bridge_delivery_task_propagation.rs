@@ -3,25 +3,34 @@ use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
 
 impl DeliveryTask {
-    pub(super) fn propagation_target_cost(&self, propagation_node_hex: &str) -> Option<u32> {
-        let response = self
-            .daemon
-            .handle_rpc(RpcRequest { id: 0, method: "list_peers".to_string(), params: None })
-            .ok()?
-            .result?;
-        response
-            .get("peers")
-            .and_then(|value| value.as_array())
-            .and_then(|rows| {
-                rows.iter().find(|row| {
-                    row.get("peer")
-                        .and_then(|value| value.as_str())
-                        .is_some_and(|peer| peer.eq_ignore_ascii_case(propagation_node_hex))
-                })
-            })
-            .and_then(|row| row.get("propagation_stamp_cost"))
-            .and_then(|value| value.as_u64())
-            .and_then(|value| u32::try_from(value).ok())
+    pub(super) async fn propagation_target_cost_reference_style(
+        &self,
+        propagation_node_hex: &str,
+        propagation_hash: AddressHash,
+    ) -> (Option<u32>, &'static str) {
+        let (_peer, cost, source) =
+            self.daemon.outbound_propagation_cost_lookup(Some(propagation_node_hex));
+        if cost.is_some() {
+            return (cost, source);
+        }
+
+        self.transport.request_path(&propagation_hash, None, None).await;
+        log_delivery_trace(
+            &self.message_id,
+            propagation_node_hex,
+            "propagation_target_cost",
+            "path-requested",
+        );
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(12);
+        while tokio::time::Instant::now() < deadline {
+            let (_peer, cost, _source) =
+                self.daemon.outbound_propagation_cost_lookup(Some(propagation_node_hex));
+            if cost.is_some() {
+                return (cost, "path_request");
+            }
+            tokio::time::sleep(Duration::from_millis(250)).await;
+        }
+        (None, "unavailable")
     }
 
     pub(super) fn record_propagation_payload_metadata(
@@ -56,6 +65,42 @@ impl DeliveryTask {
                 ),
             ],
         );
+    }
+
+    pub(super) fn selected_propagation_node_is_local(&self, propagation_node_hex: &str) -> bool {
+        self.daemon
+            .local_propagation_hash()
+            .is_some_and(|local_hash| local_hash.eq_ignore_ascii_case(propagation_node_hex))
+    }
+
+    pub(super) fn store_local_propagation_payload(
+        &self,
+        propagation_node_hex: &str,
+        payload: &propagation::PropagationPayload,
+    ) -> Result<(), std::io::Error> {
+        log_delivery_trace(
+            &self.message_id,
+            propagation_node_hex,
+            "propagation",
+            "local propagation node selected",
+        );
+        let response = self.daemon.handle_rpc(RpcRequest {
+            id: 0,
+            method: "propagation_ingest".to_string(),
+            params: Some(json!({
+                "payload_hex": hex::encode(payload.bytes.as_slice()),
+            })),
+        })?;
+        if let Some(error) = response.error {
+            return Err(std::io::Error::other(error.message));
+        }
+        log_delivery_trace(
+            &self.message_id,
+            propagation_node_hex,
+            "propagation",
+            "propagation stored locally",
+        );
+        Ok(())
     }
 
     pub(super) fn record_propagation_stamp_work_metadata(

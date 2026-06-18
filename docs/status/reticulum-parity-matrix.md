@@ -20,7 +20,7 @@ Workspace paths are used for navigation. Published package names are
 
 | Python surface | Rust surface | Status | Implemented baseline | Residual gap |
 | --- | --- | --- | --- | --- |
-| `RNS/Reticulum.py` | `crates/libs/rns-transport`, `crates/apps/reticulumd` | partial | Deployable daemon, configuration, persistence, RPC, graceful shutdown, and multiple live interfaces. | Python runtime/config mutation and interface breadth remain wider. |
+| `RNS/Reticulum.py` | `crates/libs/rns-transport`, `crates/apps/reticulumd` | partial | Deployable daemon, configuration, propagation-node activation, persistence, RPC, graceful shutdown, and multiple live interfaces. | Python runtime/config mutation and interface breadth remain wider. |
 | `RNS/Identity.py` | `crates/libs/rns-core` | done | Identity material, hashing, signing, encryption, recall, and key conversion. | No confirmed parity blocker. |
 | `RNS/Destination.py` | `crates/libs/rns-core`, `crates/libs/rns-transport` | done | Destination hashing, descriptors, announces, proof validation, ratchets, and known-key stability checks. | No confirmed parity blocker. |
 | `RNS/Packet.py` | `crates/libs/rns-core`, `crates/libs/rns-transport` | done | Framing, serialization, contexts, proofs, receipts, Python-default link proof context, and header semantics. | No confirmed parity blocker. |

@@ -4,12 +4,13 @@ use reticulum_daemon::announce_names::{
     normalize_capabilities, normalize_display_name, PropagationNodeAnnounceConfig,
 };
 
-use reticulum_daemon::config::{DaemonConfig, InterfaceConfig};
+use reticulum_daemon::config::{DaemonConfig, InterfaceConfig, PropagationNodeConfig};
 
 use reticulum_daemon::identity_store::load_or_create_identity;
 
 use rns_rpc::{
     AnnounceBridge, InterfaceRecord, MessagesStore, OutboundBridge, RemoteControlBridge, RpcDaemon,
+    RpcRequest,
 };
 
 use rns_transport::destination::SingleInputDestination;
@@ -18,7 +19,7 @@ use rns_transport::hash::AddressHash;
 
 use rns_transport::transport::Transport;
 
-use serde_json::{Map as JsonMap, Value as JsonValue};
+use serde_json::{json, Map as JsonMap, Value as JsonValue};
 
 use std::collections::{HashMap, HashSet};
 
@@ -131,12 +132,31 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     let receipt_map: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
     let outbound_resource_map: OutboundResourceMap = Arc::new(Mutex::new(HashMap::new()));
     let (receipt_tx, receipt_rx) = channel(RECEIPT_EVENT_QUEUE_CAPACITY);
-    let propagation_control_enabled = env_flag("LXMD_PROPAGATION_NODE");
+    let propagation_node_config = daemon_config.as_ref().and_then(|config| {
+        config.propagation_node.as_ref()
+    });
+    let propagation_control_enabled =
+        env_flag("LXMD_PROPAGATION_NODE")
+            || propagation_node_config.and_then(|config| config.enabled).unwrap_or(false);
     let configured_control_identities = parse_hex_list_env("LXMD_CONTROL_ALLOWED");
-    let peer_announce_at_start = env_flag("LXMD_PEER_ANNOUNCE_AT_START");
-    let node_announce_at_start = env_flag("LXMD_NODE_ANNOUNCE_AT_START");
-    let peer_announce_interval_secs = env_u64("LXMD_PEER_ANNOUNCE_INTERVAL_SECS");
-    let node_announce_interval_secs = env_u64("LXMD_NODE_ANNOUNCE_INTERVAL_SECS");
+    let peer_announce_at_start = env_flag("LXMD_PEER_ANNOUNCE_AT_START")
+        || propagation_node_config
+            .and_then(|config| config.peer_announce_at_start)
+            .unwrap_or(false);
+    let node_announce_at_start = env_flag("LXMD_NODE_ANNOUNCE_AT_START")
+        || propagation_node_config
+            .and_then(|config| config.node_announce_at_start)
+            .unwrap_or(false);
+    let peer_announce_interval_secs = env_u64("LXMD_PEER_ANNOUNCE_INTERVAL_SECS")
+        .or_else(|| propagation_node_config.and_then(|config| config.peer_announce_interval_secs));
+    let node_announce_interval_secs = env_u64("LXMD_NODE_ANNOUNCE_INTERVAL_SECS")
+        .or_else(|| propagation_node_config.and_then(|config| config.node_announce_interval_secs));
+    let propagation_announce_config = propagation_announce_config_from_config(
+        propagation_control_enabled,
+        propagation_node_config,
+    );
+    let propagation_announce_app_data =
+        encode_propagation_node_app_data(local_display_name.as_deref(), propagation_announce_config);
 
     let startup = start_transport_and_interfaces(TransportStartupInput {
         args: &args,
@@ -145,6 +165,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         reticulum_storage_path: reticulum_storage_path.as_path(),
         local_display_name: local_display_name.as_deref(),
         local_announce_capabilities: &local_announce_capabilities,
+        propagation_announce_app_data: propagation_announce_app_data.clone(),
         configured_interfaces,
         receipt_map: receipt_map.clone(),
         receipt_tx: receipt_tx.clone(),
@@ -212,7 +233,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     let bridge: Option<Arc<TransportBridge>> =
         transport.as_ref().zip(announce_destination.as_ref()).map(|(transport, destination)| {
             let propagation_app_data =
-                encode_propagation_node_app_data(local_display_name.as_deref());
+                propagation_announce_app_data.clone();
             Arc::new(TransportBridge::new(
                 transport.clone(),
                 identity.clone(),
@@ -260,8 +281,13 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         daemon.set_remote_control_bridge(bridge.clone() as Arc<dyn RemoteControlBridge>);
     }
     daemon.set_delivery_destination_hash(delivery_destination_hash_hex);
+    daemon.set_propagation_destination_hash(propagation_destination_hash_hex.clone());
     daemon.replace_interfaces(configured_interfaces);
-    daemon.set_propagation_state(transport.is_some(), None, 0);
+    if propagation_control_enabled {
+        apply_startup_propagation_config(daemon.as_ref(), propagation_node_config);
+    } else {
+        daemon.set_propagation_state(false, None, 0);
+    }
 
     // Make the local delivery destination visible on startup when configured.
     if peer_announce_at_start {
@@ -283,7 +309,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                 transport.as_ref().zip(propagation_destination.as_ref())
             {
                 let propagation_app_data =
-                    encode_propagation_node_app_data(local_display_name.as_deref());
+                    propagation_announce_app_data.clone();
                 transport.send_announce(destination, propagation_app_data.as_deref()).await;
             }
             if let Some((transport, destination)) =
@@ -302,7 +328,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                     transport.as_ref().zip(propagation_destination.as_ref())
                 {
                     let propagation_app_data =
-                        encode_propagation_node_app_data(local_display_name.as_deref());
+                        propagation_announce_app_data.clone();
                     spawn_destination_announce_scheduler(
                         transport.clone(),
                         destination.clone(),

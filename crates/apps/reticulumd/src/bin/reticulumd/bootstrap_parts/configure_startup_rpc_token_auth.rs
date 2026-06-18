@@ -175,6 +175,47 @@ fn env_u64(key: &str) -> Option<u64> {
         .filter(|value| *value > 0)
 }
 
+fn propagation_announce_config_from_config(
+    enabled: bool,
+    config: Option<&PropagationNodeConfig>,
+) -> PropagationNodeAnnounceConfig {
+    let defaults = PropagationNodeAnnounceConfig::default();
+    PropagationNodeAnnounceConfig {
+        enabled,
+        timebase: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64,
+        transfer_limit_kb: config
+            .and_then(|config| config.transfer_limit_kb)
+            .unwrap_or(defaults.transfer_limit_kb),
+        sync_limit_kb: config
+            .and_then(|config| config.sync_limit_kb)
+            .unwrap_or(defaults.sync_limit_kb),
+        stamp_cost: config.and_then(|config| config.stamp_cost).unwrap_or(defaults.stamp_cost),
+        stamp_cost_flexibility: config
+            .and_then(|config| config.stamp_cost_flexibility)
+            .unwrap_or(defaults.stamp_cost_flexibility),
+        peering_cost: config.and_then(|config| config.peering_cost).unwrap_or(defaults.peering_cost),
+    }
+}
+
+fn apply_startup_propagation_config(daemon: &RpcDaemon, config: Option<&PropagationNodeConfig>) {
+    let announce = propagation_announce_config_from_config(true, config);
+    let _ = daemon.handle_rpc(RpcRequest {
+        id: 0,
+        method: "propagation_enable".to_string(),
+        params: Some(json!({
+            "enabled": true,
+            "target_cost": announce.stamp_cost,
+            "stamp_cost_flexibility": announce.stamp_cost_flexibility,
+            "propagation_limit": announce.transfer_limit_kb,
+            "sync_limit": announce.sync_limit_kb,
+            "peering_cost": announce.peering_cost,
+        })),
+    });
+}
+
 fn spawn_destination_announce_scheduler(
     transport: Arc<Transport>,
     destination: Arc<tokio::sync::Mutex<SingleInputDestination>>,
@@ -210,7 +251,14 @@ fn spawn_bridge_propagation_announce_scheduler(bridge: Arc<TransportBridge>, int
     });
 }
 
-fn encode_propagation_node_app_data(display_name: Option<&str>) -> Option<Vec<u8>> {
+fn encode_propagation_node_app_data(
+    display_name: Option<&str>,
+    config: PropagationNodeAnnounceConfig,
+) -> Option<Vec<u8>> {
+    encode_python_propagation_node_app_data(display_name, config)
+}
+
+fn encode_default_propagation_node_app_data(display_name: Option<&str>) -> Option<Vec<u8>> {
     encode_python_propagation_node_app_data(
         display_name,
         PropagationNodeAnnounceConfig {

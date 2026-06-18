@@ -545,6 +545,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Outbound propagated delivery resolves selected propagation-node
   `propagation_stamp_cost` case-insensitively, so Python-style hash casing does
   not fall back to the default propagation stamp cost.
+- Direct `reticulumd` propagation-node config activates Python-shaped
+  propagation/control destinations, exposes outbound propagation cost lookup,
+  and stores self-selected propagated payloads locally instead of trying to
+  activate a link to itself.
 - The live Rust/Python remote-relay interop gate now selects a Python `lxmd`
   propagation destination as the Rust outbound propagation node, covering mixed
   propagation-node discovery and selection before broader store-and-forward

@@ -90,6 +90,89 @@ fn selected_propagation_node_matches_existing_peer_case_insensitively_like_pytho
 }
 
 #[test]
+fn outbound_propagation_cost_reads_selected_node_app_data_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    daemon
+        .handle_rpc(rpc_request(
+            91,
+            "propagation_enable",
+            json!({
+                "enabled": true,
+                "autopeer": true,
+            }),
+        ))
+        .expect("enable propagation");
+    let peer = "aabbccddeeff00112233445566778899";
+    let app_data = rmp_serde::to_vec_named(&rmpv::Value::Array(vec![
+        rmpv::Value::Boolean(false),
+        rmpv::Value::from(1_700_000_701i64),
+        rmpv::Value::Boolean(true),
+        rmpv::Value::from(256),
+        rmpv::Value::from(2048),
+        rmpv::Value::Array(vec![rmpv::Value::from(27), rmpv::Value::from(5), rmpv::Value::from(11)]),
+        rmpv::Value::Map(Vec::new()),
+    ]))
+    .expect("encode propagation app data");
+    daemon
+        .handle_rpc(rpc_request(
+            92,
+            "announce_received",
+            json!({
+                "peer": peer,
+                "timestamp": 1_700_000_701i64,
+                "app_data_hex": hex::encode(app_data),
+                "aspect": "lxmf.propagation",
+                "hops": 1,
+            }),
+        ))
+        .expect("propagation announce");
+    daemon
+        .handle_rpc(rpc_request(93, "set_outbound_propagation_node", json!({ "peer": peer })))
+        .expect("select propagation node");
+
+    let result = daemon
+        .handle_rpc(RpcRequest {
+            id: 94,
+            method: "get_outbound_propagation_cost".to_string(),
+            params: None,
+        })
+        .expect("get outbound propagation cost")
+        .result
+        .expect("cost result");
+
+    assert_eq!(result["peer"].as_str(), Some(peer));
+    assert_eq!(result["target_cost"].as_u64(), Some(27));
+    assert_eq!(result["source"].as_str(), Some("cached_announce"));
+}
+
+#[test]
+fn outbound_propagation_cost_reports_unavailable_without_silent_default() {
+    let daemon = RpcDaemon::test_instance();
+    let missing_peer = "11223344556677889900aabbccddeeff";
+    daemon
+        .handle_rpc(rpc_request(
+            95,
+            "set_outbound_propagation_node",
+            json!({ "peer": missing_peer }),
+        ))
+        .expect("select propagation node");
+
+    let result = daemon
+        .handle_rpc(RpcRequest {
+            id: 96,
+            method: "get_outbound_propagation_cost".to_string(),
+            params: None,
+        })
+        .expect("get unavailable outbound propagation cost")
+        .result
+        .expect("cost result");
+
+    assert_eq!(result["peer"].as_str(), Some(missing_peer));
+    assert_eq!(result["target_cost"], JsonValue::Null);
+    assert_eq!(result["source"].as_str(), Some("unavailable"));
+}
+
+#[test]
 fn rejected_selected_propagation_node_does_not_update_selection() {
     let daemon = RpcDaemon::test_instance();
     daemon

@@ -1,4 +1,4 @@
-use super::{encode_propagation_node_app_data, pretty_daemon_line};
+use super::{encode_default_propagation_node_app_data, pretty_daemon_line};
 use reticulum_daemon::announce_names::encode_delivery_announce_app_data_with_capabilities;
 use rns_transport::destination::{DestinationName, SingleInputDestination};
 use rns_transport::identity::PrivateIdentity;
@@ -20,6 +20,7 @@ pub(super) async fn register_transport_destinations(
     transport_identity: PrivateIdentity,
     local_display_name: Option<&str>,
     local_announce_capabilities: &[String],
+    propagation_announce_app_data: Option<Vec<u8>>,
     propagation_control_enabled: bool,
 ) -> RegisteredTransportDestinations {
     let delivery = transport
@@ -56,7 +57,9 @@ pub(super) async fn register_transport_destinations(
         transport
             .set_destination_announce_app_data(
                 &propagation_destination,
-                encode_propagation_node_app_data(local_display_name),
+                propagation_announce_app_data
+                    .clone()
+                    .or_else(|| encode_default_propagation_node_app_data(local_display_name)),
             )
             .await;
         propagation = Some(propagation_destination);

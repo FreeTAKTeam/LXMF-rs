@@ -162,6 +162,145 @@ async fn propagation_target_cost_matches_selected_node_case_insensitively() {
     assert!(announce.error.is_none(), "unexpected announce error: {announce:?}");
 
     let task = delivery_task_for_propagation_cost_lookup(daemon);
+    let propagation_hash =
+        AddressHash::new(parse_destination_hash_required(peer).expect("peer hash"));
+    let (cost, source) = task
+        .propagation_target_cost_reference_style(&peer.to_ascii_uppercase(), propagation_hash)
+        .await;
 
-    assert_eq!(task.propagation_target_cost(&peer.to_ascii_uppercase()), Some(23));
+    assert_eq!(cost, Some(23));
+    assert_eq!(source, "cached_announce");
+}
+
+#[tokio::test]
+async fn self_selected_propagation_node_stores_locally_without_link_activation() {
+    let message_id = "self-selected-propagation-node";
+    let store = MessagesStore::in_memory().expect("store");
+    store
+        .insert_message(&MessageRecord {
+            id: message_id.to_string(),
+            source: "source".to_string(),
+            destination: "00000000000000000000000000000000".to_string(),
+            title: String::new(),
+            content: String::new(),
+            timestamp: 0,
+            direction: "out".to_string(),
+            fields: None,
+            receipt_status: Some("queued".to_string()),
+        })
+        .expect("insert message");
+    let daemon = Arc::new(RpcDaemon::with_store(store, "self-propagation-node".to_string()));
+    let local_propagation_hash = hex::encode([0x77u8; 16]);
+    daemon.set_propagation_destination_hash(Some(local_propagation_hash.clone()));
+    daemon
+        .handle_rpc(RpcRequest {
+            id: 801,
+            method: "propagation_enable".to_string(),
+            params: Some(json!({
+                "enabled": true,
+                "target_cost": 0,
+                "autopeer": true,
+            })),
+        })
+        .expect("enable propagation");
+    let app_data = rmp_serde::to_vec_named(&rmpv::Value::Array(vec![
+        rmpv::Value::Boolean(false),
+        rmpv::Value::from(1_700_000_803i64),
+        rmpv::Value::Boolean(true),
+        rmpv::Value::from(256),
+        rmpv::Value::from(2048),
+        rmpv::Value::Array(vec![rmpv::Value::from(0), rmpv::Value::from(0), rmpv::Value::from(0)]),
+        rmpv::Value::Map(Vec::new()),
+    ]))
+    .expect("encode app data");
+    daemon
+        .handle_rpc(RpcRequest {
+            id: 802,
+            method: "announce_received".to_string(),
+            params: Some(json!({
+                "peer": local_propagation_hash,
+                "timestamp": 1_700_000_803i64,
+                "app_data_hex": hex::encode(app_data),
+                "aspect": "lxmf.propagation",
+                "hops": 0,
+            })),
+        })
+        .expect("local propagation announce");
+    daemon
+        .handle_rpc(RpcRequest {
+            id: 803,
+            method: "set_outbound_propagation_node".to_string(),
+            params: Some(json!({ "peer": local_propagation_hash.clone() })),
+        })
+        .expect("select local propagation node");
+
+    let signer = PrivateIdentity::new_from_name("self-selected-propagation-node");
+    let transport_identity = rns_transport::identity_bridge::to_transport_private_identity(&signer);
+    let transport = Arc::new(Transport::new(TransportConfig::new(
+        "self-selected-propagation-node",
+        &transport_identity,
+        true,
+    )));
+    let mut channel = transport
+        .iface_manager()
+        .lock()
+        .await
+        .new_channel_with_role(8, rns_transport::iface::IfaceRole::Unicast);
+    let remote_signer = rns_transport::identity::PrivateIdentity::new_from_rand(OsRng);
+    let remote_identity = *remote_signer.as_identity();
+    let mut destination = [0u8; 16];
+    destination.copy_from_slice(remote_identity.address_hash.as_slice());
+    let (receipt_tx, mut receipt_rx) = tokio::sync::mpsc::channel(16);
+    let task = DeliveryTask {
+        daemon: daemon.clone(),
+        transport,
+        peer_crypto: Arc::new(Mutex::new(HashMap::new())),
+        outbound_propagation_identities: Arc::new(Mutex::new(HashMap::new())),
+        receipt_map: Arc::new(Mutex::new(HashMap::new())),
+        outbound_resource_map: Arc::new(Mutex::new(HashMap::new())),
+        outbound_propagation_link: Arc::new(tokio::sync::Mutex::new(None)),
+        receipt_tx,
+        message_id: message_id.to_string(),
+        source_hash: [1u8; 16],
+        destination,
+        destination_hash: remote_identity.address_hash,
+        destination_hex: hex::encode(destination),
+        title: String::new(),
+        content: "local propagation store".to_string(),
+        fields: None,
+        signer,
+        stamp_cost: None,
+        outbound_ticket: None,
+        include_ticket: None,
+        peer_identity: Some(remote_identity),
+        propagation_node_identity: Some(*transport_identity.as_identity()),
+        requested_method: RequestedDeliveryMethod::Propagated,
+        try_propagation_on_fail: false,
+        propagation_node_hex: Some(local_propagation_hash.clone()),
+    };
+
+    let task_handle = tokio::spawn(task.run());
+    let receipt = tokio::time::timeout(Duration::from_secs(1), receipt_rx.recv())
+        .await
+        .expect("receipt")
+        .expect("receipt event");
+    assert_eq!(receipt.status, "sent: propagated resource");
+    task_handle.await.expect("delivery task join");
+    while let Ok(Some(packet)) =
+        tokio::time::timeout(Duration::from_millis(150), channel.tx_channel.recv()).await
+    {
+        assert_ne!(
+            packet.packet.header.packet_type,
+            PacketType::LinkRequest,
+            "local propagation storage must not emit a link request"
+        );
+    }
+
+    let status = daemon
+        .handle_rpc(RpcRequest { id: 804, method: "propagation_status".to_string(), params: None })
+        .expect("propagation status")
+        .result
+        .expect("status result");
+    assert_eq!(status["propagation"]["last_ingest_count"].as_u64(), Some(1));
+    assert_eq!(status["propagation"]["selected_node"].as_str(), Some(local_propagation_hash.as_str()));
 }

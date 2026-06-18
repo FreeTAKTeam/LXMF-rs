@@ -14,6 +14,7 @@ use std::path::Path;
 pub struct DaemonConfig {
     pub display_name: Option<String>,
     pub announce_capabilities: Vec<String>,
+    pub propagation_node: Option<PropagationNodeConfig>,
     pub interfaces: Vec<InterfaceConfig>,
 }
 
@@ -23,6 +24,8 @@ struct DaemonConfigRaw {
     display_name: Option<String>,
     #[serde(default)]
     announce_capabilities: Vec<String>,
+    #[serde(default)]
+    propagation_node: Option<PropagationNodeConfig>,
     #[serde(default, deserialize_with = "deserialize_interfaces")]
     interfaces: Vec<InterfaceConfig>,
 }
@@ -43,9 +46,34 @@ impl<'de> Deserialize<'de> for DaemonConfig {
         Ok(Self {
             display_name: raw.display_name,
             announce_capabilities: raw.announce_capabilities,
+            propagation_node: raw.propagation_node,
             interfaces,
         })
     }
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct PropagationNodeConfig {
+    #[serde(default)]
+    pub enabled: Option<bool>,
+    #[serde(default)]
+    pub node_announce_at_start: Option<bool>,
+    #[serde(default)]
+    pub node_announce_interval_secs: Option<u64>,
+    #[serde(default)]
+    pub peer_announce_at_start: Option<bool>,
+    #[serde(default)]
+    pub peer_announce_interval_secs: Option<u64>,
+    #[serde(default)]
+    pub transfer_limit_kb: Option<u32>,
+    #[serde(default)]
+    pub sync_limit_kb: Option<u32>,
+    #[serde(default)]
+    pub stamp_cost: Option<u32>,
+    #[serde(default)]
+    pub stamp_cost_flexibility: Option<u32>,
+    #[serde(default)]
+    pub peering_cost: Option<u32>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -221,5 +249,44 @@ impl DaemonConfig {
                 Some((host, port))
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_direct_propagation_node_config_for_sideband_parity() {
+        let config = DaemonConfig::from_toml(
+            r#"
+display_name = "Rust node"
+
+[propagation_node]
+enabled = true
+node_announce_at_start = true
+node_announce_interval_secs = 2
+peer_announce_at_start = true
+peer_announce_interval_secs = 3
+transfer_limit_kb = 512
+sync_limit_kb = 4096
+stamp_cost = 19
+stamp_cost_flexibility = 4
+peering_cost = 21
+"#,
+        )
+        .expect("parse config");
+
+        let propagation_node = config.propagation_node.expect("propagation node config");
+        assert_eq!(propagation_node.enabled, Some(true));
+        assert_eq!(propagation_node.node_announce_at_start, Some(true));
+        assert_eq!(propagation_node.node_announce_interval_secs, Some(2));
+        assert_eq!(propagation_node.peer_announce_at_start, Some(true));
+        assert_eq!(propagation_node.peer_announce_interval_secs, Some(3));
+        assert_eq!(propagation_node.transfer_limit_kb, Some(512));
+        assert_eq!(propagation_node.sync_limit_kb, Some(4096));
+        assert_eq!(propagation_node.stamp_cost, Some(19));
+        assert_eq!(propagation_node.stamp_cost_flexibility, Some(4));
+        assert_eq!(propagation_node.peering_cost, Some(21));
     }
 }

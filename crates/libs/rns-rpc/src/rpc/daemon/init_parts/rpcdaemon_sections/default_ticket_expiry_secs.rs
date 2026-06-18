@@ -280,6 +280,7 @@ impl RpcDaemon {
             store,
             identity_hash,
             delivery_destination_hash: Mutex::new(None),
+            propagation_destination_hash: Mutex::new(None),
             events,
             sdk_events,
             event_queue: Mutex::new(VecDeque::new()),
