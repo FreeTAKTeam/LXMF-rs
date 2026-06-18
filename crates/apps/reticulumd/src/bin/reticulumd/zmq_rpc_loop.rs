@@ -2,6 +2,7 @@
 
 use rns_rpc::rpc::zmq::{self, ZmqRpcEnvelope, ZmqRpcEnvelopeKind};
 use rns_rpc::{RpcDaemon, RpcError, RpcResponse};
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::io;
 use std::sync::Arc;
@@ -82,18 +83,23 @@ struct ZmqOutboundResponse {
 }
 
 async fn send_zmq_response(
-    responses: &mut HashMap<String, PushSocket>,
+    _responses: &mut HashMap<String, PushSocket>,
     response: ZmqOutboundResponse,
 ) -> io::Result<()> {
-    if !responses.contains_key(&response.endpoint) {
-        let mut socket = PushSocket::new();
-        socket.connect(response.endpoint.as_str()).await.map_err(zmq_io_error)?;
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        responses.insert(response.endpoint.clone(), socket);
-    }
-    let socket = responses
-        .get_mut(&response.endpoint)
-        .ok_or_else(|| io::Error::other("missing zmq response socket"))?;
+    let connect_endpoint = zmq_response_connect_endpoint(response.endpoint.as_str());
+    let mut socket = PushSocket::new();
+    log::debug!(
+        "[daemon] zmq rpc response connect advertised_endpoint={} connect_endpoint={}",
+        response.endpoint,
+        connect_endpoint
+    );
+    socket.connect(connect_endpoint.as_ref()).await.map_err(|err| {
+        io::Error::other(format!(
+            "zmq response connect advertised_endpoint={} connect_endpoint={} failed: {err}",
+            response.endpoint, connect_endpoint
+        ))
+    })?;
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     let encoded = zmq::encode_envelope(&response.envelope)?;
     socket.send(ZmqMessage::from(encoded)).await.map_err(zmq_io_error)
 }
@@ -120,7 +126,10 @@ fn handle_zmq_command_message(
         Ok(envelope) => envelope,
         Err(_) => return None,
     };
-    let response_endpoint = envelope.response_endpoint.clone()?;
+    let response_endpoint = match envelope.response_endpoint.clone() {
+        Some(endpoint) => endpoint,
+        None => return None,
+    };
     let response_endpoint_is_local = is_local_zmq_endpoint(response_endpoint.as_str());
     if let Err(error) = authorize_zmq_envelope(
         daemon,
@@ -252,6 +261,13 @@ fn is_local_zmq_endpoint(endpoint: &str) -> bool {
         || endpoint.starts_with("tcp://127.")
         || endpoint.starts_with("tcp://localhost:")
         || endpoint.starts_with("tcp://[::1]:")
+}
+
+fn zmq_response_connect_endpoint(endpoint: &str) -> Cow<'_, str> {
+    if let Some(port) = endpoint.strip_prefix("tcp://localhost:") {
+        return Cow::Owned(format!("tcp://127.0.0.1:{port}"));
+    }
+    Cow::Borrowed(endpoint)
 }
 
 fn zmq_io_error(err: impl std::fmt::Display) -> io::Error {
@@ -395,6 +411,18 @@ mod tests {
         assert!(is_recoverable_zmq_transport_error(&aborted));
         assert!(is_recoverable_zmq_transport_error(&reset));
         assert!(!is_recoverable_zmq_transport_error(&invalid));
+    }
+
+    #[test]
+    fn response_connect_endpoint_normalizes_localhost_to_numeric_loopback() {
+        assert_eq!(
+            zmq_response_connect_endpoint("tcp://localhost:9101").as_ref(),
+            "tcp://127.0.0.1:9101"
+        );
+        assert_eq!(
+            zmq_response_connect_endpoint("tcp://127.0.0.1:9101").as_ref(),
+            "tcp://127.0.0.1:9101"
+        );
     }
 
     fn token_auth_daemon() -> RpcDaemon {
