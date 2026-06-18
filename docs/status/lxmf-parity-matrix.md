@@ -1,6 +1,6 @@
 # LXMF Parity Matrix
 
-Last reassessed: 2026-06-13
+Last reassessed: 2026-06-18
 
 This is the maintained row-level status for Python LXMF compatibility.
 Repository-level posture and execution order live in
@@ -22,7 +22,7 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 | --- | --- | --- | --- | --- |
 | `LXMF/LXMF.py` | `crates/libs/lxmf-core` | partial | Constants, payload fields, message identity, inbound decoding, and wire helpers. | The complete convenience/module surface is not mirrored. |
 | `LXMF/LXMessage.py` | `crates/libs/lxmf-core` | done | Wire, storage, propagation, paper, signatures, message IDs, binary fidelity, and timestamp precision metadata. | No confirmed base-message blocker. |
-| `LXMF/LXMPeer.py` | `crates/libs/rns-rpc`, `crates/apps/reticulumd` | partial | Persistent peers, queue marks, offer selection, policy gates, peering keys, throttling, maintenance, source accounting, cumulative acceptance, serialized restored queue snapshots, and boolean/list/numeric offer responses. | Complete transfer/retry/restart lifecycle and broad live peer interop remain. |
+| `LXMF/LXMPeer.py` | `crates/libs/rns-rpc`, `crates/apps/reticulumd` | done | Persistent peers, queue marks, offer selection, policy gates, peering keys, throttling, maintenance, source accounting, cumulative acceptance, serialized restored queue snapshots, boolean/list/numeric offer responses, transfer/retry/restart recovery, and unpeer cleanup. | No confirmed `LXMPeer.py` blocker in the pinned Python-only coverage. |
 | `LXMF/LXMRouter.py` | `crates/libs/rns-rpc`, `crates/apps/reticulumd` | partial | Outbound modes, selected propagation nodes, direct/propagated resources, cancellation, fetch/download/sync RPCs, receipts, persistence, and status. | Full Python queue, retry, propagation-node, and command side effects remain. |
 | `LXMF/Handlers.py` | `crates/apps/reticulumd`, `crates/libs/rns-rpc` | partial | Delivery, announce, propagation app-data, receipt, and inbound bridge handling. | Some router-coupled side effects and negative/drop observability remain narrower. |
 | `LXMF/LXStamper.py` | `crates/libs/lxmf-core`, `crates/libs/rns-rpc`, `crates/apps/reticulumd` | partial | Validation, generation, ticket-derived stamps, cancellation-aware task work, and lifecycle metadata. | Python-style deferred worker queue, retry ownership, and continuous progress remain. |
@@ -45,10 +45,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - PARITY_ITEM id=ticket.validity_with_grace status=done
 - PARITY_ITEM id=ticket.renewal_window status=done
 - PARITY_ITEM id=ticket.derived_stamp status=done
-- PARITY_ITEM id=peer.serialize_roundtrip status=partial
-- PARITY_ITEM id=peer.queue_accounting status=partial
-- PARITY_ITEM id=peer.acceptance_rate status=partial
-- PARITY_ITEM id=peer.peering_key status=partial
+- PARITY_ITEM id=peer.serialize_roundtrip status=done
+- PARITY_ITEM id=peer.queue_accounting status=done
+- PARITY_ITEM id=peer.acceptance_rate status=done
+- PARITY_ITEM id=peer.peering_key status=done
 - PARITY_ITEM id=router.outbound_queue status=partial
 - PARITY_ITEM id=router.handle_outbound_policy status=partial
 - PARITY_ITEM id=router.adapter_transport status=partial
@@ -797,16 +797,15 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Inbound propagation distinguishes clients, validated peers, unpeered
   identified senders, and local delivery; source peers are accounted and not
   re-offered their own payloads.
-- These behaviors materially narrow the gap, but complete Python peer transfer,
-  restart recovery, and router queue lifecycle remain unproven.
+- These behaviors close the pinned Python-only `LXMPeer.py` lifecycle row.
+  Broader `LXMRouter.py` propagation queue lifecycle remains partial.
 
 ## Highest-Priority Gaps
 
-1. Complete peer transfer, retry, restart, and persistent queue lifecycle.
-2. Complete propagation-node fetch/download/sync and router side effects.
-3. Add deferred stamp queue ownership and retry semantics.
-4. Expand live bidirectional Python interop for propagation and peer rows.
-5. Validate external clients before making client-specific claims.
+1. Complete propagation-node fetch/download/sync and router side effects.
+2. Add deferred stamp queue ownership and retry semantics.
+3. Expand live bidirectional Python interop for remaining propagation/router rows.
+4. Validate external clients before making client-specific claims.
 
 ## Evidence
 
