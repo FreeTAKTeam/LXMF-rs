@@ -2,6 +2,7 @@ pub struct RpcDaemon {
     store: Arc<MessagesStore>,
     identity_hash: String,
     delivery_destination_hash: Mutex<Option<String>>,
+    propagation_destination_hash: Mutex<Option<String>>,
     events: broadcast::Sender<RpcEvent>,
     sdk_events: broadcast::Sender<SequencedRpcEvent>,
     event_queue: Mutex<VecDeque<RpcEvent>>,

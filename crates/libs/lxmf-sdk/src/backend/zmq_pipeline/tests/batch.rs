@@ -89,24 +89,15 @@ fn send_batch_uses_zmq_sdk_method_and_decodes_ordered_results() {
     assert_eq!(params["messages"][0]["destination"], json!("peer-a"));
     assert_eq!(params["messages"][0]["title"], json!("hello a"));
     assert_eq!(params["messages"][0]["content"], json!("payload a https://example.invalid/a"));
-    assert_eq!(
-        params["messages"][0]["fields"]["body"],
-        json!("payload a https://example.invalid/a")
-    );
     assert_eq!(params["messages"][0]["fields"]["FIELD_THREAD"], json!("thread-a"));
-    assert_eq!(
-        params["messages"][0]["fields"]["_sdk"]["idempotency_key"],
-        json!("batch-msg-1-send-once")
-    );
-    assert_eq!(params["messages"][0]["fields"]["_sdk"]["ttl_ms"], json!(30_000));
-    assert_eq!(
-        params["messages"][0]["fields"]["_sdk"]["correlation_id"],
-        json!("batch-msg-1-corr")
-    );
-    assert_eq!(params["messages"][0]["fields"]["_sdk"]["extensions"]["burst_slot"], json!(0));
+    assert_eq!(params["messages"][0]["fields"].get("body"), None);
+    assert_eq!(params["messages"][0]["fields"].get("title"), None);
+    assert_eq!(params["messages"][0]["fields"].get("_sdk"), None);
     assert_eq!(params["messages"][0]["method"], json!("direct"));
     assert_eq!(params["messages"][0]["include_ticket"], json!(false));
     assert_eq!(params["messages"][1]["fields"]["FIELD_GROUP"], json!("group-b"));
+    assert_eq!(params["messages"][1]["fields"].get("content"), None);
+    assert_eq!(params["messages"][1]["fields"].get("title"), None);
     assert_eq!(params["messages"][1]["try_propagation_on_fail"], json!(true));
     assert_eq!(params["messages"][1]["stamp_cost"], json!(12));
     server.join().expect("server joined");

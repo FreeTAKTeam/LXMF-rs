@@ -46,6 +46,7 @@ pub(super) struct TransportStartupInput<'a> {
     pub(super) reticulum_storage_path: &'a std::path::Path,
     pub(super) local_display_name: Option<&'a str>,
     pub(super) local_announce_capabilities: &'a [String],
+    pub(super) propagation_announce_app_data: Option<Vec<u8>>,
     pub(super) configured_interfaces: Vec<InterfaceRecord>,
     pub(super) receipt_map: Arc<Mutex<HashMap<String, String>>>,
     pub(super) receipt_tx:
@@ -64,6 +65,7 @@ pub(super) async fn start_transport_and_interfaces(
         reticulum_storage_path,
         local_display_name,
         local_announce_capabilities,
+        propagation_announce_app_data,
         mut configured_interfaces,
         receipt_map,
         receipt_tx,
@@ -189,6 +191,7 @@ pub(super) async fn start_transport_and_interfaces(
             transport_identity.clone(),
             local_display_name,
             local_announce_capabilities,
+            propagation_announce_app_data,
             propagation_control_enabled,
             propagation_announce_config,
         )

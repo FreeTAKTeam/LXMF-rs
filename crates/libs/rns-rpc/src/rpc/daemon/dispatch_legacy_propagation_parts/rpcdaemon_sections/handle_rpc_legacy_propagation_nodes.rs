@@ -190,6 +190,25 @@ impl RpcDaemon {
                     error: None,
                 })
             }
+            "get_outbound_propagation_cost" => {
+                let parsed = request
+                    .params
+                    .map(serde_json::from_value::<SetOutboundPropagationNodeParams>)
+                    .transpose()
+                    .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
+                let (peer, target_cost, source) =
+                    self.outbound_propagation_cost_lookup(parsed.as_ref().and_then(|value| value.peer.as_deref()));
+                Ok(RpcResponse {
+                    id: request.id,
+                    result: Some(json!({
+                        "peer": peer,
+                        "target_cost": target_cost,
+                        "source": source,
+                        "meta": self.response_meta(),
+                    })),
+                    error: None,
+                })
+            }
             "set_outbound_propagation_node" => {
                 let parsed = request
                     .params

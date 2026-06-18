@@ -21,6 +21,7 @@ pub(super) async fn register_transport_destinations(
     transport_identity: PrivateIdentity,
     local_display_name: Option<&str>,
     local_announce_capabilities: &[String],
+    propagation_announce_app_data: Option<Vec<u8>>,
     propagation_control_enabled: bool,
     propagation_announce_config: PropagationNodeAnnounceConfig,
 ) -> RegisteredTransportDestinations {
@@ -58,7 +59,12 @@ pub(super) async fn register_transport_destinations(
         transport
             .set_destination_announce_app_data(
                 &propagation_destination,
-                encode_propagation_node_app_data(local_display_name, propagation_announce_config),
+                propagation_announce_app_data.clone().or_else(|| {
+                    encode_propagation_node_app_data(
+                        local_display_name,
+                        propagation_announce_config,
+                    )
+                }),
             )
             .await;
         propagation = Some(propagation_destination);

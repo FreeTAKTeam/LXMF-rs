@@ -80,6 +80,16 @@ const PROPAGATION_SDK_OPERATION_SPECS: &[SdkOperationSpec] = &[
         rpc_method: "get_outbound_propagation_node",
     },
     SdkOperationSpec {
+        id: "app.propagation.node.cost",
+        group: "propagation",
+        kind: "query",
+        transport_variant: "legacy_rpc",
+        description: "Return the cached outbound propagation router stamp cost, or unavailable when no announce app-data has been learned.",
+        aliases: &["get_outbound_propagation_cost"],
+        required_capabilities: &[],
+        rpc_method: "get_outbound_propagation_cost",
+    },
+    SdkOperationSpec {
         id: "app.propagation.node.set",
         group: "propagation",
         kind: "command",

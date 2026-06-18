@@ -260,10 +260,10 @@ impl RpcBackendClient {
             stamp_cost,
             include_ticket,
             try_propagation_on_fail,
-            idempotency_key,
-            ttl_ms,
-            correlation_id,
-            extensions,
+            idempotency_key: _,
+            ttl_ms: _,
+            correlation_id: _,
+            extensions: _,
         } = req;
         let rpc_message_id = format!("sdk-{}", self.next_request_id());
         let content = payload
@@ -273,30 +273,7 @@ impl RpcBackendClient {
             .unwrap_or_else(|| payload.to_string());
         let title =
             payload.get("title").and_then(JsonValue::as_str).map(str::to_owned).unwrap_or_default();
-
-        let mut fields = match payload {
-            JsonValue::Object(map) => JsonValue::Object(map),
-            other => json!({ "payload": other }),
-        };
-        if let JsonValue::Object(map) = &mut fields {
-            let mut sdk_meta = JsonMap::new();
-            if let Some(idempotency_key) = idempotency_key {
-                sdk_meta.insert("idempotency_key".to_string(), JsonValue::String(idempotency_key));
-            }
-            if let Some(ttl_ms) = ttl_ms {
-                sdk_meta.insert("ttl_ms".to_string(), JsonValue::from(ttl_ms));
-            }
-            if let Some(correlation_id) = correlation_id {
-                sdk_meta.insert("correlation_id".to_string(), JsonValue::String(correlation_id));
-            }
-            if !extensions.is_empty() {
-                let extension_map = extensions.into_iter().collect::<JsonMap<String, JsonValue>>();
-                sdk_meta.insert("extensions".to_string(), JsonValue::Object(extension_map));
-            }
-            if !sdk_meta.is_empty() {
-                map.insert("_sdk".to_string(), JsonValue::Object(sdk_meta));
-            }
-        }
+        let fields = lxmf_wire_fields_from_payload(payload);
 
         json!({
             "id": rpc_message_id,

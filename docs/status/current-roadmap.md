@@ -63,6 +63,10 @@ The project is best described by capability level:
   are ignored is obsolete.
 - Direct and propagated resource sends support receipt-state separation,
   timeout/failure propagation, and active resource cancellation.
+- Link sends now register packet/resource receipt tracking before handoff and
+  accept Python-style link proofs with default packet context, so Python
+  delivery receipts can advance daemon-originated sends from `sent:*` to
+  `delivered` while preserving resource completion status.
 - The typed ZeroMQ SDK delivery status path now preserves daemon-reported
   retry-attempt counts and reason codes in `DeliverySnapshot`, so REM/RCH can
   inspect retry and recovery state without dropping to raw RPC status calls.
@@ -292,6 +296,10 @@ The project is best described by capability level:
 - Outbound propagated delivery now resolves selected propagation-node
   `propagation_stamp_cost` case-insensitively, so Python-style hash casing does
   not fall back to the default propagation stamp cost.
+- Direct `reticulumd` `[propagation_node]` config now activates the
+  Python-shaped propagation/control destinations, advertises configured stamp
+  costs, exposes outbound propagation cost lookup, and stores self-selected
+  propagated payloads locally instead of linking to its own node.
 - Normal and propagation stamp retry metadata now clears stale stamp error
   fields when later work re-enters generating/ready state, so status no longer
   reports a prior failed attempt after a successful retry.

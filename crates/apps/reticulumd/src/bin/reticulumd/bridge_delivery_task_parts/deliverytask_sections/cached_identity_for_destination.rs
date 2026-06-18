@@ -136,14 +136,15 @@ impl DeliveryTask {
             "propagation",
             "looking up propagation stamp cost",
         );
-        let target_cost = self
-            .propagation_target_cost(propagation_node_hex.as_str())
-            .unwrap_or(propagation::DEFAULT_PROPAGATION_STAMP_COST);
+        let (target_cost, cost_source) = self
+            .propagation_target_cost_reference_style(propagation_node_hex.as_str(), propagation_hash)
+            .await;
+        let target_cost = target_cost.unwrap_or(propagation::DEFAULT_PROPAGATION_STAMP_COST);
         log_delivery_trace(
             &self.message_id,
             &self.destination_hex,
             "propagation",
-            format!("using propagation stamp cost={target_cost}").as_str(),
+            format!("using propagation stamp cost={target_cost} source={cost_source}").as_str(),
         );
         log_delivery_trace(
             &self.message_id,
@@ -189,6 +190,26 @@ impl DeliveryTask {
             Some(propagation_payload.stamp_value.to_string()),
         );
         self.record_propagation_payload_metadata(&propagation_payload, target_cost);
+        if self.selected_propagation_node_is_local(propagation_node_hex.as_str()) {
+            match self.store_local_propagation_payload(
+                propagation_node_hex.as_str(),
+                &propagation_payload,
+            ) {
+                Ok(()) => {
+                    let _ = self.receipt_tx.try_send(ReceiptEvent {
+                        message_id: self.message_id,
+                        status: "sent: propagated resource".to_string(),
+                    });
+                }
+                Err(err) => {
+                    let _ = self.receipt_tx.try_send(ReceiptEvent {
+                        message_id: self.message_id,
+                        status: format!("failed: {err}"),
+                    });
+                }
+            }
+            return;
+        }
         let payload = propagation_payload.bytes;
         log_delivery_trace(
             &self.message_id,

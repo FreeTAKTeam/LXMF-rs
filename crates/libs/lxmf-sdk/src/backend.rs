@@ -25,6 +25,7 @@ use crate::types::{
     ShutdownMode, TickBudget, TickResult,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::{Map as JsonMap, Value as JsonValue};
 #[cfg(feature = "sdk-async")]
 use std::future::Future;
 #[cfg(feature = "sdk-async")]
@@ -33,6 +34,39 @@ use std::pin::Pin;
 use tokio_stream::Stream;
 
 const CAP_KEY_MANAGEMENT: &str = "sdk.capability.key_management";
+const LXMF_RAW_FIELDS_KEY: &str = "_lxmf_fields_msgpack_b64";
+
+fn lxmf_wire_fields_from_payload(payload: JsonValue) -> JsonValue {
+    let JsonValue::Object(mut map) = payload else {
+        return JsonValue::Null;
+    };
+
+    if let Some(JsonValue::Object(fields)) = map.remove("fields") {
+        return non_empty_fields(fields);
+    }
+
+    let fields = map
+        .into_iter()
+        .filter(|(key, _)| !is_reserved_payload_field_key(key))
+        .collect::<JsonMap<String, JsonValue>>();
+    non_empty_fields(fields)
+}
+
+fn is_reserved_payload_field_key(key: &str) -> bool {
+    key != LXMF_RAW_FIELDS_KEY
+        && matches!(
+            key,
+            "title" | "content" | "body" | "payload" | "_lxmf" | "_sdk" | "_fields_raw"
+        )
+}
+
+fn non_empty_fields(fields: JsonMap<String, JsonValue>) -> JsonValue {
+    if fields.is_empty() {
+        JsonValue::Null
+    } else {
+        JsonValue::Object(fields)
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]

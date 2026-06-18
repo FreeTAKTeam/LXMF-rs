@@ -757,13 +757,14 @@ fn send_uses_zmq_sdk_method_and_preserves_delivery_options() {
     assert_eq!(params["source"], json!("source-destination"));
     assert_eq!(params["destination"], json!("target-destination"));
     assert_eq!(params["content"], json!("hello https://example.invalid/incident/42"));
-    assert_eq!(params["fields"]["body"], json!("hello https://example.invalid/incident/42"));
     assert_eq!(params["method"], json!("direct"));
     assert_eq!(params["try_propagation_on_fail"], json!(true));
     assert_eq!(params["stamp_cost"], json!(16));
     assert_eq!(params["include_ticket"], json!(true));
     assert_eq!(params["fields"]["9"][0]["command_type"], json!("checklist.create.online"));
-    assert_eq!(params["fields"]["_sdk"]["correlation_id"], json!("corr-1"));
+    assert_eq!(params["fields"].get("body"), None);
+    assert_eq!(params["fields"].get("title"), None);
+    assert_eq!(params["fields"].get("_sdk"), None);
     server.join().expect("server joined");
 }
 
@@ -811,6 +812,8 @@ fn send_preserves_documented_lxmf_field_keys_over_zmq_sdk_method() {
     assert_eq!(fields["14"][0], json!("ref-a"));
     assert_eq!(fields["16"]["renderer"], json!("basic"));
     assert_eq!(fields["_lxmf_fields_msgpack_b64"], json!("gqECoQk="));
+    assert_eq!(fields.get("title"), None);
+    assert_eq!(fields.get("content"), None);
     server.join().expect("server joined");
 }
 

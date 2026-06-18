@@ -58,14 +58,13 @@ pub struct PropagationNodeConfig {
     pub enabled: Option<bool>,
     #[serde(default)]
     pub control_allowed: Vec<String>,
+    pub node_announce_at_start: Option<bool>,
+    #[serde(default)]
+    pub node_announce_interval_secs: Option<u64>,
     #[serde(default)]
     pub peer_announce_at_start: Option<bool>,
     #[serde(default)]
     pub peer_announce_interval_secs: Option<u64>,
-    #[serde(default)]
-    pub node_announce_at_start: Option<bool>,
-    #[serde(default)]
-    pub node_announce_interval_secs: Option<u64>,
     #[serde(default)]
     pub transfer_limit_kb: Option<u32>,
     #[serde(default)]

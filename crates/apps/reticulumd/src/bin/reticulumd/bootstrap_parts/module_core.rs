@@ -135,6 +135,9 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     let propagation_control_enabled = propagation_node_config.enabled;
     let configured_control_identities =
         propagation_node_config.allowed_control_identities.clone();
+    let propagation_announce_config = propagation_node_config.announce_config;
+    let propagation_announce_app_data =
+        encode_propagation_node_app_data(local_display_name.as_deref(), propagation_announce_config);
 
     let startup = start_transport_and_interfaces(TransportStartupInput {
         args: &args,
@@ -143,6 +146,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         reticulum_storage_path: reticulum_storage_path.as_path(),
         local_display_name: local_display_name.as_deref(),
         local_announce_capabilities: &local_announce_capabilities,
+        propagation_announce_app_data: propagation_announce_app_data.clone(),
         configured_interfaces,
         receipt_map: receipt_map.clone(),
         receipt_tx: receipt_tx.clone(),
@@ -210,10 +214,8 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
 
     let bridge: Option<Arc<TransportBridge>> =
         transport.as_ref().zip(announce_destination.as_ref()).map(|(transport, destination)| {
-            let propagation_app_data = encode_propagation_node_app_data(
-                local_display_name.as_deref(),
-                propagation_node_config.announce_config,
-            );
+            let propagation_app_data =
+                propagation_announce_app_data.clone();
             Arc::new(TransportBridge::new(
                 transport.clone(),
                 identity.clone(),
@@ -261,6 +263,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         daemon.set_remote_control_bridge(bridge.clone() as Arc<dyn RemoteControlBridge>);
     }
     daemon.set_delivery_destination_hash(delivery_destination_hash_hex);
+    daemon.set_propagation_destination_hash(propagation_destination_hash_hex.clone());
     daemon.replace_interfaces(configured_interfaces);
     daemon.set_propagation_state(transport.is_some(), None, 0);
     daemon.configure_propagation_node(
@@ -296,10 +299,8 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
             if let Some((transport, destination)) =
                 transport.as_ref().zip(propagation_destination.as_ref())
             {
-                let propagation_app_data = encode_propagation_node_app_data(
-                    local_display_name.as_deref(),
-                    propagation_node_config.announce_config,
-                );
+                let propagation_app_data =
+                    propagation_announce_app_data.clone();
                 transport.send_announce(destination, propagation_app_data.as_deref()).await;
             }
             if let Some((transport, destination)) =
@@ -317,10 +318,8 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                 if let Some((transport, destination)) =
                     transport.as_ref().zip(propagation_destination.as_ref())
                 {
-                    let propagation_app_data = encode_propagation_node_app_data(
-                        local_display_name.as_deref(),
-                        propagation_node_config.announce_config,
-                    );
+                    let propagation_app_data =
+                        propagation_announce_app_data.clone();
                     spawn_destination_announce_scheduler(
                         transport.clone(),
                         destination.clone(),

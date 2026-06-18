@@ -50,18 +50,20 @@ impl RpcDaemon {
         delivery_status_lock: &Arc<Mutex<()>>,
         command: OutboundDeliveryCommand,
     ) {
-        if let Err(err) = bridge.deliver(&command.record, &command.options) {
+        let mut record = command.record;
+        record.fields = outbound_wire_fields(record.fields);
+        if let Err(err) = bridge.deliver(&record, &command.options) {
             let status = format!("failed: {err}");
             let resolved_status = {
                 let _status_guard =
                     delivery_status_lock.lock().expect("delivery_status_lock mutex poisoned");
                 store
-                    .resolve_receipt_status(command.record.id.as_str(), status.as_str())
+                    .resolve_receipt_status(record.id.as_str(), status.as_str())
                     .unwrap_or_else(|_| Some(status.clone()))
                     .unwrap_or_else(|| status.clone())
             };
             if resolved_status == status {
-                Self::append_delivery_trace_to(delivery_traces, command.record.id.as_str(), status);
+                Self::append_delivery_trace_to(delivery_traces, record.id.as_str(), status);
             }
         }
     }
@@ -471,6 +473,7 @@ impl RpcDaemon {
             "propagation_enable",
             "propagation_ingest",
             "propagation_fetch",
+            "get_outbound_propagation_cost",
             "get_outbound_propagation_node",
             "set_outbound_propagation_node",
             "list_propagation_nodes",

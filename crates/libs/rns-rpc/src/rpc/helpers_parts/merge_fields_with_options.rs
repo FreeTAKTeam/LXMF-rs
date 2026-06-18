@@ -42,6 +42,25 @@ fn merge_fields_with_options(
     Some(JsonValue::Object(root))
 }
 
+fn outbound_wire_fields(fields: Option<JsonValue>) -> Option<JsonValue> {
+    let Some(JsonValue::Object(map)) = fields else {
+        return None;
+    };
+
+    let wire = map
+        .into_iter()
+        .filter(|(key, _)| !is_private_outbound_field_key(key))
+        .collect::<JsonMap<String, JsonValue>>();
+    (!wire.is_empty()).then_some(JsonValue::Object(wire))
+}
+
+fn is_private_outbound_field_key(key: &str) -> bool {
+    matches!(
+        key,
+        "_lxmf" | "_sdk" | "_fields_raw" | "title" | "content" | "body" | "payload"
+    )
+}
+
 fn now_i64() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

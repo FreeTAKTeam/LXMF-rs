@@ -11,6 +11,7 @@ impl RpcDaemon {
             | "propagation_enable" => self.handle_rpc_legacy_propagation_policy(request),
             "propagation_ingest"
             | "propagation_fetch"
+            | "get_outbound_propagation_cost"
             | "get_outbound_propagation_node"
             | "set_outbound_propagation_node"
             | "list_propagation_nodes"

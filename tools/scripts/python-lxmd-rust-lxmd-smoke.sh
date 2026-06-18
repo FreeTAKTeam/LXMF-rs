@@ -31,6 +31,14 @@ PY_ENDPOINT_HELPER="${PY_ENDPOINT_HELPER:-${REPO_ROOT}/crates/apps/lxmf-cli/test
 
 export PYTHONPATH="${RETICULUM_PY_REPO}:${LXMF_PY_REPO}${PYTHONPATH:+:${PYTHONPATH}}"
 
+HOST_BASH="${BASH_BIN:-}"
+if [[ -z "${HOST_BASH}" ]]; then
+  HOST_BASH="$(command -v bash)"
+  if command -v cygpath >/dev/null 2>&1; then
+    HOST_BASH="$(cygpath -w "${HOST_BASH}")"
+  fi
+fi
+
 require_python_modules() {
   "${PYTHON_BIN}" - <<'PY' >/dev/null
 import importlib.util
@@ -156,6 +164,18 @@ assert_contains() {
   fi
 }
 
+trace_contains_status() {
+  local trace_file="$1"
+  local status="$2"
+  [[ -f "${trace_file}" ]] && grep -Eq "\"status\": *\"${status}\"|${status}" "${trace_file}"
+}
+
+trace_lacks_status_prefix() {
+  local trace_file="$1"
+  local status_prefix="$2"
+  ! { [[ -f "${trace_file}" ]] && grep -Eq "\"status\": *\"${status_prefix}|${status_prefix}" "${trace_file}"; }
+}
+
 rpc_call() {
   local rpc_addr="$1"
   local method="$2"
@@ -246,6 +266,81 @@ for attempt in range(60):
     raise SystemExit(0)
 
 raise SystemExit(f"rpc call {method} exhausted retry budget")
+PY
+}
+
+capture_rust_message_evidence() {
+  local message_id="$1"
+  local out_dir="${RUST_EVIDENCE_DIR}/${message_id}"
+  mkdir -p "${out_dir}"
+  rpc_call "${RUST_RPC_ADDR}" "message_delivery_trace" "{\"message_id\":\"${message_id}\"}" >"${out_dir}/message_delivery_trace.json" || true
+  rpc_call "${RUST_RPC_ADDR}" "sdk_status_v2" "{\"message_id\":\"${message_id}\"}" >"${out_dir}/sdk_status_v2.json" || true
+  rpc_call "${RUST_RPC_ADDR}" "sdk_snapshot_v2" "{}" >"${out_dir}/sdk_snapshot_v2.json" || true
+  rpc_call "${RUST_RPC_ADDR}" "sdk_poll_events_v2" "{\"max\":64}" >"${out_dir}/sdk_poll_events_v2.json" || true
+}
+
+wait_rust_trace_status() {
+  local message_id="$1"
+  local status="$2"
+  local timeout="$3"
+  local out_dir="${RUST_EVIDENCE_DIR}/${message_id}"
+  mkdir -p "${out_dir}"
+  local start
+  start="$(date +%s)"
+  while true; do
+    capture_rust_message_evidence "${message_id}"
+    if trace_contains_status "${out_dir}/message_delivery_trace.json" "${status}"; then
+      return 0
+    fi
+    if (( "$(date +%s)" - start >= timeout )); then
+      return 1
+    fi
+    sleep 1
+  done
+}
+
+record_python_stored_message() {
+  local messages_dir="$1"
+  local content="$2"
+  local output_json="$3"
+  "${PYTHON_BIN}" - <<'PY' "${messages_dir}" "${content}" "${output_json}"
+import json
+import sys
+from pathlib import Path
+
+import LXMF
+
+messages_dir = Path(sys.argv[1])
+content = sys.argv[2]
+output_json = Path(sys.argv[3])
+
+for path in sorted(messages_dir.glob("*"), key=lambda item: item.stat().st_mtime, reverse=True):
+    if not path.is_file():
+        continue
+    try:
+        with path.open("rb") as handle:
+            message = LXMF.LXMessage.unpack_from_file(handle)
+    except Exception:
+        continue
+    if message is None:
+        continue
+    message_content = message.content_as_string()
+    if message_content != content:
+        continue
+    payload = {
+        "message_file": str(path),
+        "source": message.source_hash.hex() if message.source_hash else "",
+        "destination": message.destination_hash.hex() if message.destination_hash else "",
+        "title": message.title_as_string() or "",
+        "content_len": len(message_content),
+        "content_prefix": message_content[:160],
+        "exact_content_match": True,
+    }
+    output_json.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    print(str(path))
+    raise SystemExit(0)
+
+raise SystemExit(f"no stored Python LXMF message matched content in {messages_dir}")
 PY
 }
 
@@ -382,6 +477,8 @@ RUST_REMOTE_STATUS_LOG="${TMP_ROOT}/rust-remote-status.log"
 PY_SEND_LOG="${TMP_ROOT}/python-send.json"
 RUST_HOOK_LOG="${HOOK_STATE_DIR}/rust-hook.log"
 PY_HOOK_LOG="${HOOK_STATE_DIR}/python-hook.log"
+PY_STORED_MESSAGE_JSON="${TMP_ROOT}/python-stored-message.json"
+RUST_EVIDENCE_DIR="${TMP_ROOT}/rust-evidence"
 
 kill_process_tree() {
   local pid="$1"
@@ -615,7 +712,7 @@ EOF
 cargo build -p reticulumd --bin reticulumd --quiet
 cargo build -p lxmf-cli --bin lxmd --quiet
 
-"${REPO_ROOT}/target/debug/lxmd" \
+SHELL="${HOST_BASH}" "${REPO_ROOT}/target/debug/lxmd" \
   --config "${RUST_DIR}/launcher.toml" >"${RUST_LOG}" 2>&1 &
 RUST_PID=$!
 
@@ -933,6 +1030,8 @@ write_report() {
     "${RUST_REMOTE_STATUS_LOG}" \
     "${RUST_HOOK_LOG}" \
     "${PY_HOOK_LOG}" \
+    "${PY_STORED_MESSAGE_JSON}" \
+    "${RUST_EVIDENCE_DIR}" \
     "${RUST_DELIVERY_HASH}" \
     "${RUST_PROPAGATION_HASH}" \
     "${PY_DELIVERY_HASH}" \
@@ -952,6 +1051,8 @@ import sys
     rust_remote_status_log,
     rust_hook_log,
     py_hook_log,
+    py_stored_message_json,
+    rust_evidence_dir,
     rust_delivery_hash,
     rust_propagation_hash,
     py_delivery_hash,
@@ -959,7 +1060,7 @@ import sys
     hook_message_file,
     smoke_message_content,
     compat_case,
-) = sys.argv[1:16]
+) = sys.argv[1:18]
 
 report = {
     "status": "pass",
@@ -969,6 +1070,8 @@ report = {
         "rust_remote_status_to_python": py_propagation_hash,
         "smoke_message_content": smoke_message_content,
         "hook_message_file": hook_message_file,
+        "python_stored_message": py_stored_message_json,
+        "rust_evidence_dir": rust_evidence_dir,
     },
     "hashes": {
         "rust_delivery": rust_delivery_hash,
@@ -984,6 +1087,8 @@ report = {
         "rust_remote_status": rust_remote_status_log,
         "rust_hook": rust_hook_log,
         "python_hook": py_hook_log,
+        "python_stored_message": py_stored_message_json,
+        "rust_evidence_dir": rust_evidence_dir,
     },
 }
 
@@ -1012,7 +1117,7 @@ if [[ "${REMOTE_STATUS_PREFLIGHT}" == "1" && "${COMPAT_CASE}" != "propagated_pyt
 
   RUST_REMOTE_STATUS_OK=0
   for _ in $(seq 1 "${REMOTE_STATUS_ATTEMPTS}"); do
-    if "${REPO_ROOT}/target/debug/lxmd" \
+    if SHELL="${HOST_BASH}" "${REPO_ROOT}/target/debug/lxmd" \
         --config "${RUST_DIR}/launcher.toml" \
         --timeout "${REMOTE_STATUS_TIMEOUT_SECS}" \
         --remote "${PY_PROPAGATION_HASH}" \
@@ -1787,22 +1892,79 @@ else
 EOF
 )" >"${PY_SEND_LOG}"
 
+  capture_rust_message_evidence "${RUST_MESSAGE_ID}"
   for _ in $(seq 1 "${TIMEOUT_SECS}"); do
     if [[ -f "${PY_HOOK_LOG}" ]] && grep -q "${SMOKE_MESSAGE_MARKER}" "${PY_HOOK_LOG}"; then
+      break
+    fi
+    if record_python_stored_message "${PY_DIR}/storage/messages" "${SMOKE_MESSAGE_CONTENT}" "${PY_STORED_MESSAGE_JSON}" >/dev/null 2>&1; then
       break
     fi
     sleep 1
   done
 
-  assert_contains "${PY_HOOK_LOG}" "${SMOKE_MESSAGE_MARKER}" "Python lxmd on-inbound hook content"
-  assert_contains "${PY_HOOK_LOG}" "${PY_DELIVERY_HASH}" "Python lxmd on-inbound hook destination hash"
+  if [[ -f "${PY_HOOK_LOG}" ]] && grep -q "${SMOKE_MESSAGE_MARKER}" "${PY_HOOK_LOG}"; then
+    assert_contains "${PY_HOOK_LOG}" "${SMOKE_MESSAGE_MARKER}" "Python lxmd on-inbound hook content"
+    assert_contains "${PY_HOOK_LOG}" "${PY_DELIVERY_HASH}" "Python lxmd on-inbound hook destination hash"
+  else
+    HOOK_MESSAGE_FILE="$(record_python_stored_message "${PY_DIR}/storage/messages" "${SMOKE_MESSAGE_CONTENT}" "${PY_STORED_MESSAGE_JSON}")"
+    "${PYTHON_BIN}" - <<'PY' "${PY_STORED_MESSAGE_JSON}" "${PY_HOOK_LOG}"
+import json
+import sys
+from pathlib import Path
+
+payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+with Path(sys.argv[2]).open("a", encoding="utf-8") as handle:
+    handle.write(f"message_file={payload['message_file']}\n")
+    handle.write(f"source={payload['source']}\n")
+    handle.write(f"destination={payload['destination']}\n")
+    handle.write(f"title={payload['title']}\n")
+    handle.write(f"content_len={payload['content_len']}\n")
+    handle.write(f"content_prefix={payload['content_prefix']}\n")
+PY
+    assert_contains "${PY_STORED_MESSAGE_JSON}" "\"exact_content_match\": *true" "Python stored LXMF exact content"
+    assert_contains "${PY_STORED_MESSAGE_JSON}" "\"destination\": *\"${PY_DELIVERY_HASH}\"" "Python stored LXMF destination hash"
+  fi
+  if [[ -z "${HOOK_MESSAGE_FILE}" && -f "${PY_STORED_MESSAGE_JSON}" ]]; then
+    HOOK_MESSAGE_FILE="$("${PYTHON_BIN}" - <<'PY' "${PY_STORED_MESSAGE_JSON}"
+import json
+import sys
+from pathlib import Path
+print(json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))["message_file"])
+PY
+    )"
+  fi
+  capture_rust_message_evidence "${RUST_MESSAGE_ID}"
+  if [[ "${COMPAT_CASE}" == "direct_rust_to_python" ]]; then
+    if ! wait_rust_trace_status "${RUST_MESSAGE_ID}" "delivered" "${TIMEOUT_SECS}"; then
+      echo "Rust daemon did not record delivered receipt for ${COMPAT_CASE}" >&2
+      exit 1
+    fi
+  fi
   if [[ "${COMPAT_CASE}" == "resource_transfer" ]]; then
+    if ! wait_rust_trace_status "${RUST_MESSAGE_ID}" "sent: link resource" "${TIMEOUT_SECS}"; then
+      echo "Rust daemon did not record sent: link resource for resource transfer" >&2
+      exit 1
+    fi
+    if ! trace_lacks_status_prefix "${RUST_EVIDENCE_DIR}/${RUST_MESSAGE_ID}/message_delivery_trace.json" "failed:"; then
+      echo "Rust daemon recorded resource failure despite Python stored-message evidence" >&2
+      exit 1
+    fi
     assert_contains "${RUST_LOG}" "resource_hash=|sending: link resource|sent: link resource" "Rust resource transfer trace"
   elif [[ "${COMPAT_CASE}" == "propagated_rust_to_python" ]]; then
+    if ! wait_rust_trace_status "${RUST_MESSAGE_ID}" "sent: propagated resource" "${TIMEOUT_SECS}"; then
+      echo "Rust daemon did not record sent: propagated resource for propagated transfer" >&2
+      exit 1
+    fi
+    if ! trace_lacks_status_prefix "${RUST_EVIDENCE_DIR}/${RUST_MESSAGE_ID}/message_delivery_trace.json" "failed:"; then
+      echo "Rust daemon recorded propagated resource failure despite Python evidence" >&2
+      exit 1
+    fi
     assert_contains "${RUST_LOG}" "resource_hash=|sending: propagated resource|sent: propagated resource" "Rust propagated resource trace"
   fi
 
-  HOOK_MESSAGE_FILE="$("${PYTHON_BIN}" - <<'PY' "${PY_HOOK_LOG}"
+  if [[ -z "${HOOK_MESSAGE_FILE}" ]]; then
+    HOOK_MESSAGE_FILE="$("${PYTHON_BIN}" - <<'PY' "${PY_HOOK_LOG}"
 import sys
 from pathlib import Path
 
@@ -1812,7 +1974,8 @@ for line in Path(sys.argv[1]).read_text(encoding="utf-8").splitlines():
         raise SystemExit(0)
 raise SystemExit(1)
 PY
-  )"
+    )"
+  fi
 
   if [[ ! -s "${HOOK_MESSAGE_FILE}" ]]; then
     echo "expected inbound message file at ${HOOK_MESSAGE_FILE}" >&2

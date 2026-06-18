@@ -53,7 +53,7 @@ pub(crate) fn validate_link_packet_proof(
 ) -> Result<Hash, RnsError> {
     if packet.header.packet_type != PacketType::Proof
         || packet.header.destination_type != DestinationType::Link
-        || packet.context != PacketContext::LinkProof
+        || !matches!(packet.context, PacketContext::LinkProof | PacketContext::None)
     {
         return Err(RnsError::PacketError);
     }
