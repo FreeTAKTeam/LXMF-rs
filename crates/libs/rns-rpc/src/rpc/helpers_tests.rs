@@ -39,6 +39,45 @@ fn merge_fields_with_options_preserves_non_object_lxmf_metadata() {
 }
 
 #[test]
+fn outbound_wire_fields_strip_private_metadata_and_preserve_lxmf_numeric_fields() {
+    let fields = json!({
+        "title": "HIL Poco",
+        "content": "host-to-poco",
+        "body": "host-to-poco",
+        "payload": { "raw": true },
+        "_sdk": { "correlation_id": "corr-1" },
+        "_lxmf": { "method": "direct" },
+        "_fields_raw": "legacy",
+        "9": [{ "command_type": "status.request" }],
+        "12": [170, 187],
+    });
+
+    let wire = outbound_wire_fields(Some(fields)).expect("wire fields");
+
+    assert_eq!(wire["9"][0]["command_type"], json!("status.request"));
+    assert_eq!(wire["12"], json!([170, 187]));
+    assert_eq!(wire.get("title"), None);
+    assert_eq!(wire.get("content"), None);
+    assert_eq!(wire.get("body"), None);
+    assert_eq!(wire.get("payload"), None);
+    assert_eq!(wire.get("_sdk"), None);
+    assert_eq!(wire.get("_lxmf"), None);
+    assert_eq!(wire.get("_fields_raw"), None);
+}
+
+#[test]
+fn outbound_wire_fields_returns_none_when_only_private_metadata_remains() {
+    let fields = json!({
+        "title": "HIL Poco",
+        "content": "host-to-poco",
+        "_sdk": { "correlation_id": "corr-1" },
+        "_lxmf": { "method": "direct" },
+    });
+
+    assert_eq!(outbound_wire_fields(Some(fields)), None);
+}
+
+#[test]
 fn parses_capabilities_from_utf8_json_app_data() {
     let hex = hex::encode(r#"{"capabilities":["propagation","telemetry_relay"]}"#);
     let capabilities = parse_capabilities_from_app_data_hex(Some(hex.as_str()));
