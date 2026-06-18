@@ -181,3 +181,101 @@ fn list_peers_prunes_missing_restored_snapshot_ids_like_python() {
     assert_eq!(record.restored_handled_ids, vec![handled.transient_id]);
     assert_eq!(record.restored_unhandled_ids, vec![unhandled.transient_id]);
 }
+
+#[test]
+fn restart_reloads_serialized_restored_queue_snapshot_before_list_peers() {
+    let daemon = RpcDaemon::test_instance();
+    let peer = "peer-restart-serialized-reload";
+    let handled = PropagationEntryRecord {
+        transient_id: "a7".repeat(32),
+        destination: "37".repeat(16),
+        payload_hex: "37".repeat(26),
+        received_at: 1_700_000_965,
+        size_bytes: 26,
+        stamp_value: None,
+    };
+    let unhandled = PropagationEntryRecord {
+        transient_id: "a8".repeat(32),
+        destination: "38".repeat(16),
+        payload_hex: "38".repeat(30),
+        received_at: 1_700_000_966,
+        size_bytes: 30,
+        stamp_value: None,
+    };
+    daemon.store.upsert_propagation_entry(&handled).expect("store handled entry");
+    daemon.store.upsert_propagation_entry(&unhandled).expect("store unhandled entry");
+
+    let snapshot: PeerRecord = serde_json::from_value(json!({
+        "destination_hash": peer,
+        "last_heard": 1_700_000_967,
+        "alive": true,
+        "handled_ids": [format!(" {} ", handled.transient_id.to_ascii_uppercase())],
+        "unhandled_ids": [
+            "a9".repeat(32),
+            unhandled.transient_id.to_ascii_uppercase(),
+            handled.transient_id.clone(),
+            unhandled.transient_id.clone(),
+        ],
+    }))
+    .expect("deserialize peer snapshot");
+    let serialized = serde_json::to_value(&snapshot).expect("serialize peer snapshot");
+    assert_eq!(
+        serialized["handled_ids"].as_array().expect("serialized handled ids"),
+        &[json!(handled.transient_id.as_str())]
+    );
+    assert_eq!(
+        serialized["unhandled_ids"].as_array().expect("serialized unhandled ids"),
+        &[
+            json!("a9".repeat(32)),
+            json!(unhandled.transient_id.as_str()),
+            json!(handled.transient_id.as_str()),
+            json!(unhandled.transient_id.as_str()),
+        ]
+    );
+
+    let reloaded: PeerRecord =
+        serde_json::from_value(serialized).expect("reload serialized peer snapshot");
+    daemon
+        .peers
+        .lock()
+        .expect("peers mutex poisoned")
+        .insert(peer.to_string(), reloaded);
+
+    let peers = daemon
+        .handle_rpc(RpcRequest { id: 104, method: "list_peers".to_string(), params: None })
+        .expect("list peers")
+        .result
+        .expect("list peers result");
+    let row = peers["peers"]
+        .as_array()
+        .expect("peer rows")
+        .iter()
+        .find(|row| row["peer"].as_str() == Some(peer))
+        .expect("reloaded peer row");
+
+    assert_eq!(row["messages"]["offered"].as_u64(), Some(1));
+    assert_eq!(row["messages"]["offered_bytes"].as_u64(), Some(26));
+    assert_eq!(row["messages"]["unhandled"].as_u64(), Some(1));
+    assert_eq!(row["messages"]["unhandled_bytes"].as_u64(), Some(30));
+    assert_eq!(
+        row["messages"]["handled_ids"].as_array().expect("message handled ids"),
+        &[json!(handled.transient_id.as_str())]
+    );
+    assert_eq!(
+        row["messages"]["unhandled_ids"].as_array().expect("message unhandled ids"),
+        &[json!(unhandled.transient_id.as_str())]
+    );
+    assert_eq!(
+        daemon.store.list_peer_handled_propagation_ids(peer).expect("live handled ids"),
+        vec![handled.transient_id.clone()]
+    );
+    assert_eq!(
+        daemon.store.list_peer_unhandled_propagation_ids(peer).expect("live unhandled ids"),
+        vec![unhandled.transient_id.clone()]
+    );
+
+    let peers = daemon.peers.lock().expect("peers mutex poisoned");
+    let record = peers.get(peer).expect("stored peer");
+    assert_eq!(record.restored_handled_ids, vec![handled.transient_id]);
+    assert_eq!(record.restored_unhandled_ids, vec![unhandled.transient_id]);
+}
