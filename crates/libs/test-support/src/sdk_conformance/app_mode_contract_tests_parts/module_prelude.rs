@@ -301,11 +301,11 @@ fn sdk_wrapper_parity_release_gate_is_wired_for_ci_and_releases() {
         assert!(seen.contains(scenario), "wrapper registry missing scenario {scenario}");
     }
 
-    let ci = read_workspace_text(".github/workflows/ci.yml");
+    let ci = read_workspace_text(".github/workflows/ci-full.yml");
     assert!(
         ci.contains("SDK wrapper parity gate")
             && ci.contains("cargo test -p test-support sdk_wrapper_parity_release_gate"),
-        "pull-request CI must run the SDK wrapper parity gate"
+        "full CI must run the SDK wrapper parity gate"
     );
 
     let release = read_workspace_text(".github/workflows/release-bundles.yml");
@@ -337,12 +337,12 @@ fn sdk_kotlin_wrapper_has_executable_gradle_conformance_harness() {
         assert!(build.contains(required), "Kotlin wrapper build missing {required}");
     }
 
-    let ci = read_workspace_text(".github/workflows/ci.yml");
+    let ci = read_workspace_text(".github/workflows/ci-full.yml");
     assert!(
         ci.contains("kotlin-wrapper-conformance")
             && ci.contains("gradle/actions/setup-gradle@v4")
             && ci.contains("gradle -p wrappers/kotlin-mobile test"),
-        "CI must execute the Kotlin wrapper conformance tests"
+        "full CI must execute the Kotlin wrapper conformance tests"
     );
 }
 

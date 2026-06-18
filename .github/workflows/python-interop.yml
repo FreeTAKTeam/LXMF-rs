@@ -20,7 +20,11 @@ env:
 
 jobs:
   python-reference-interop:
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-full-CI'))
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+      (contains(github.event.pull_request.labels.*.name, 'run-full-CI') ||
+      contains(github.event.pull_request.labels.*.name, 'run-peer-lifecycle-CI')))
     name: Validate PR against pinned Python reference
     runs-on: ubuntu-latest
     timeout-minutes: 45
