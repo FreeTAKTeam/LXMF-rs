@@ -81,8 +81,14 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Direct, opportunistic, propagated, and paper modes are distinct.
 - Transport completion remains `sent`; final delivery receipts produce
   `delivered`.
+- Rust-originated link sends register packet/resource hashes before handoff and
+  accept Python reference link proofs that use the default context, preserving
+  final delivery receipt correlation after `sent:*`.
 - Oversized opportunistic peer sends fall back to link/resource delivery, with
   resource advertisement and outbound tracking coverage.
+- The Rust/Python smoke harness now treats Python-stored LXMF payloads as
+  authoritative inbound evidence when hooks are unavailable, and hard-checks
+  direct `delivered`, `sent: link resource`, and `sent: propagated resource`.
 - Resource advertisement failure, retry exhaustion, timeout, and explicit
   cancellation reach daemon message state.
 

@@ -68,6 +68,16 @@ pub async fn send_on_link(
     link: &Arc<tokio::sync::Mutex<Link>>,
     payload: &[u8],
 ) -> io::Result<LinkSendResult> {
+    send_on_link_observed(transport, link, payload, |_| {}, |_| {}).await
+}
+
+pub async fn send_on_link_observed(
+    transport: &Transport,
+    link: &Arc<tokio::sync::Mutex<Link>>,
+    payload: &[u8],
+    mut observe_packet: impl FnMut(&Packet),
+    mut observe_resource: impl FnMut(crate::hash::Hash),
+) -> io::Result<LinkSendResult> {
     let link_id = *link.lock().await.id();
 
     let packet = {
@@ -77,6 +87,7 @@ pub async fn send_on_link(
 
     match packet {
         Ok(packet) => {
+            observe_packet(&packet);
             let outcome = transport.send_link_packet_on_bound_iface(link, packet).await;
             if !send_outcome_is_sent(outcome) {
                 return Err(io::Error::other(format!(
@@ -88,7 +99,9 @@ pub async fn send_on_link(
         }
         Err(RnsError::OutOfMemory | RnsError::InvalidArgument) => {
             let resource_hash = transport
-                .send_resource(&link_id, payload.to_vec(), None)
+                .send_resource_observed(&link_id, payload.to_vec(), None, |resource_hash| {
+                    observe_resource(resource_hash);
+                })
                 .await
                 .map_err(|err| io::Error::other(format!("link resource not sent: {err:?}")))?;
             Ok(LinkSendResult::Resource(resource_hash))
@@ -141,6 +154,11 @@ pub async fn await_link_activation(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::destination::{DestinationDesc, DestinationName};
+    use crate::identity::PrivateIdentity;
+    use crate::iface::IfaceRole;
+    use crate::transport::TransportConfig;
+    use rand_core::OsRng;
 
     #[test]
     fn send_outcome_status_maps_success() {
@@ -163,5 +181,53 @@ mod tests {
             send_outcome_status("opportunistic", SendPacketOutcome::DroppedNoRoute),
             "failed: opportunistic no route"
         );
+    }
+
+    #[tokio::test]
+    async fn observed_link_packet_send_exposes_packet_hash_before_return() {
+        let local_identity = PrivateIdentity::new_from_rand(OsRng);
+        let transport =
+            Transport::new(TransportConfig::new("observed-link-send", &local_identity, true));
+        let mut channel =
+            transport.iface_manager().lock().await.new_channel_with_role(8, IfaceRole::Unicast);
+        let iface = *channel.address();
+
+        let remote_signer = PrivateIdentity::new_from_rand(OsRng);
+        let remote_identity = *remote_signer.as_identity();
+        let destination = DestinationDesc {
+            identity: remote_identity,
+            address_hash: remote_identity.address_hash,
+            name: DestinationName::new("lxmf", "delivery"),
+        };
+        let link = transport.link(destination).await;
+        let request = channel.tx_channel.recv().await.expect("link request");
+        let (tx, _) = tokio::sync::broadcast::channel(4);
+        let mut inbound = Link::new_from_request(
+            &request.packet,
+            remote_signer.sign_key().clone(),
+            destination,
+            tx,
+        )
+        .expect("link request should parse");
+        assert!(matches!(
+            link.lock().await.handle_packet(&inbound.prove(), iface),
+            crate::destination::link::LinkHandleResult::Activated
+        ));
+
+        let mut observed_hash = None;
+        let result = send_on_link_observed(
+            &transport,
+            &link,
+            b"small observed payload",
+            |packet| observed_hash = Some(packet.hash()),
+            |_resource_hash| {},
+        )
+        .await
+        .expect("send on link");
+
+        let LinkSendResult::Packet(packet) = result else {
+            panic!("small payload should use link packet representation");
+        };
+        assert_eq!(observed_hash, Some(packet.hash()));
     }
 }

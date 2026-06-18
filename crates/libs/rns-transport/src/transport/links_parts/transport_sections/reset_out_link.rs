@@ -246,6 +246,16 @@ impl Transport {
         data: Vec<u8>,
         metadata: Option<Vec<u8>>,
     ) -> Result<Hash, RnsError> {
+        self.send_resource_observed(link_id, data, metadata, |_| {}).await
+    }
+
+    pub async fn send_resource_observed(
+        &self,
+        link_id: &AddressHash,
+        data: Vec<u8>,
+        metadata: Option<Vec<u8>>,
+        observe_resource: impl FnOnce(Hash),
+    ) -> Result<Hash, RnsError> {
         let link = self.find_any_link(link_id).await.ok_or(RnsError::InvalidArgument)?;
         let iface = {
             let link_guard = link.lock().await;
@@ -260,6 +270,7 @@ impl Transport {
             metadata,
             interface_mtu,
         )?;
+        observe_resource(resource_hash);
         drop(link_guard);
         drop(handler);
         let outcome = self.send_link_packet_on_bound_iface(&link, packet).await;

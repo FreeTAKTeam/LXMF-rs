@@ -34,7 +34,7 @@ pub(super) async fn validated_receipt_hash(
     }
 
     if packet.header.destination_type == DestinationType::Link
-        && packet.context == PacketContext::LinkProof
+        && matches!(packet.context, PacketContext::LinkProof | PacketContext::None)
     {
         let mut link = handler
             .in_links

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -44,6 +45,34 @@ SMOKE_SCRIPT_CASES = {
 }
 
 
+def resolve_bash() -> str | None:
+    configured = os.environ.get("BASH_BIN")
+    if configured:
+        return configured
+
+    candidates: list[str] = []
+    found = shutil.which("bash")
+    if found:
+        candidates.append(found)
+
+    if os.name == "nt":
+        candidates.extend(
+            [
+                r"C:\Program Files\Git\bin\bash.exe",
+                r"C:\Program Files\Git\usr\bin\bash.exe",
+            ]
+        )
+
+    for candidate in candidates:
+        candidate_path = Path(candidate)
+        if candidate_path.name.lower() == "bash.exe" and "windows\\system32" in str(candidate_path).lower():
+            continue
+        if candidate_path.is_file() or shutil.which(candidate):
+            return str(candidate_path)
+
+    return None
+
+
 def main() -> int:
     supported_cases = ", ".join(sorted(SUPPORTED_CASES))
     if len(sys.argv) != 2:
@@ -73,14 +102,22 @@ def main() -> int:
     if not smoke_script.is_file():
         print(f"missing smoke script: {smoke_script}", file=sys.stderr)
         return 2
+    bash = resolve_bash()
+    if not bash:
+        print(
+            "missing usable bash. Set BASH_BIN or install Git Bash before running this harness.",
+            file=sys.stderr,
+        )
+        return 2
 
     env = os.environ.copy()
     env["COMPAT_CASE"] = case_id
     env.setdefault("LXMF_PYTHON_BIN", sys.executable)
     env.setdefault("PYTHON_BIN", env["LXMF_PYTHON_BIN"])
+    env.setdefault("BASH_BIN", bash)
 
     result = subprocess.run(
-        ["bash", str(smoke_script)],
+        [bash, str(smoke_script)],
         cwd=repo_root,
         env=env,
         check=False,

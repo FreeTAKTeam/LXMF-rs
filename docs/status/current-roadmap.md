@@ -63,6 +63,10 @@ The project is best described by capability level:
   are ignored is obsolete.
 - Direct and propagated resource sends support receipt-state separation,
   timeout/failure propagation, and active resource cancellation.
+- Link sends now register packet/resource receipt tracking before handoff and
+  accept Python-style link proofs with default packet context, so Python
+  delivery receipts can advance daemon-originated sends from `sent:*` to
+  `delivered` while preserving resource completion status.
 - The typed ZeroMQ SDK delivery status path now preserves daemon-reported
   retry-attempt counts and reason codes in `DeliverySnapshot`, so REM/RCH can
   inspect retry and recovery state without dropping to raw RPC status calls.

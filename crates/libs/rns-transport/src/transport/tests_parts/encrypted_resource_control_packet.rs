@@ -144,6 +144,48 @@ async fn handle_inbound_for_test_accepts_valid_destination_proof() {
 }
 
 #[tokio::test]
+async fn handle_inbound_for_test_accepts_python_style_link_proof_with_none_context() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let config = TransportConfig::new("test", &local_identity, true);
+    let mut transport = Transport::new(config);
+    let handler = transport.get_handler();
+
+    let signer = PrivateIdentity::new_from_rand(OsRng);
+    let identity = *signer.as_identity();
+    let destination = DestinationDesc {
+        identity,
+        address_hash: identity.address_hash,
+        name: DestinationName::new("lxmf", "delivery"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(4);
+    let mut outbound = Link::new(destination, tx.clone());
+    let request = outbound.request();
+    let mut inbound =
+        Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+            .expect("link request should parse");
+    let iface = AddressHash::new_from_rand(OsRng);
+    assert!(matches!(
+        outbound.handle_packet(&inbound.prove(), iface),
+        LinkHandleResult::Activated
+    ));
+
+    let packet = outbound.data_packet(b"python proof context").expect("link packet");
+    let mut proof = match inbound.handle_packet(&packet, iface) {
+        LinkHandleResult::Proof(proof) => proof,
+        _ => panic!("link packet should generate proof"),
+    };
+    proof.context = PacketContext::None;
+    handler.lock().await.out_links.insert(destination.address_hash, Arc::new(Mutex::new(outbound)));
+
+    let count = Arc::new(AtomicUsize::new(0));
+    transport.set_receipt_handler(Box::new(CountingReceiptHandler { count: count.clone() })).await;
+
+    transport.handle_inbound_for_test(proof).await;
+
+    assert_eq!(count.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
 async fn routed_link_request_proof_requires_matching_iface_and_signature() {
     let local_identity = PrivateIdentity::new_from_rand(OsRng);
     let mut config = TransportConfig::new("test", &local_identity, true);

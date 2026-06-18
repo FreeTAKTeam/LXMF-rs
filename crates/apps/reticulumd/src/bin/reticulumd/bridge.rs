@@ -50,7 +50,7 @@ use rns_core::identity::PrivateIdentity;
 use rns_rpc::{RpcDaemon, RpcRequest};
 use rns_transport::delivery::await_link_activation;
 use rns_transport::delivery::{
-    send_on_link, send_outcome_is_sent, send_outcome_status, LinkSendResult,
+    send_on_link_observed, send_outcome_is_sent, send_outcome_status, LinkSendResult,
 };
 use rns_transport::destination::{
     link::{Link, LinkStatus},
