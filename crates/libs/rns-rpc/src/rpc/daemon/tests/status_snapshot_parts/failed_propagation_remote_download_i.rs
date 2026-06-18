@@ -87,6 +87,8 @@ fn failed_propagation_remote_download_import_updates_source_peer_backoff_like_py
     assert_eq!(event.payload["synced"].as_bool(), Some(false));
     assert_eq!(event.payload["alive"].as_bool(), Some(false));
     assert_eq!(event.payload["sync_backoff"].as_u64(), Some(12 * 60));
+    assert_eq!(event.payload["failure_kind"].as_str(), Some("invalid_data"));
+    assert_eq!(event.payload["propagation"]["failure_kind"].as_str(), Some("invalid_data"));
     assert!(event.payload["propagation"]["error"]
         .as_str()
         .is_some_and(|value| value.contains("invalid remote propagation payload hex")));
@@ -249,6 +251,8 @@ fn failed_propagation_remote_fetch_import_updates_source_peer_backoff_like_pytho
     assert_eq!(event.payload["synced"].as_bool(), Some(false));
     assert_eq!(event.payload["alive"].as_bool(), Some(false));
     assert_eq!(event.payload["sync_backoff"].as_u64(), Some(12 * 60));
+    assert_eq!(event.payload["failure_kind"].as_str(), Some("invalid_data"));
+    assert_eq!(event.payload["propagation"]["failure_kind"].as_str(), Some("invalid_data"));
     assert!(event.payload["propagation"]["error"]
         .as_str()
         .is_some_and(|value| value.contains("invalid remote propagation payload hex")));
@@ -397,6 +401,8 @@ fn failed_propagation_remote_fetch_updates_source_peer_backoff_like_python() {
     assert_eq!(event.payload["synced"].as_bool(), Some(false));
     assert_eq!(event.payload["alive"].as_bool(), Some(false));
     assert_eq!(event.payload["sync_backoff"].as_u64(), Some(12 * 60));
+    assert_eq!(event.payload["failure_kind"].as_str(), Some("failed"));
+    assert_eq!(event.payload["propagation"]["failure_kind"].as_str(), Some("failed"));
     assert_eq!(
         event.payload["propagation"]["error"].as_str(),
         Some("remote fetch failed")
