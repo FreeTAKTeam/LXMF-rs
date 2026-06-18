@@ -126,10 +126,7 @@ fn handle_zmq_command_message(
         Ok(envelope) => envelope,
         Err(_) => return None,
     };
-    let response_endpoint = match envelope.response_endpoint.clone() {
-        Some(endpoint) => endpoint,
-        None => return None,
-    };
+    let response_endpoint = envelope.response_endpoint.clone()?;
     let response_endpoint_is_local = is_local_zmq_endpoint(response_endpoint.as_str());
     if let Err(error) = authorize_zmq_envelope(
         daemon,
