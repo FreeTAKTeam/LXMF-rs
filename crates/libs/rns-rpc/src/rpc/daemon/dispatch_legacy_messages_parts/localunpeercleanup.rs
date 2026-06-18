@@ -315,6 +315,7 @@ fn canonical_peer_sync_wanted_ids(
         )
     })?;
     let mut canonical = Vec::with_capacity(wanted_ids.len());
+    let mut seen_canonical = std::collections::HashSet::with_capacity(wanted_ids.len());
     for wanted_id in wanted_ids {
         let wanted_id = wanted_id.as_str().ok_or_else(|| {
             std::io::Error::new(
@@ -329,7 +330,10 @@ fn canonical_peer_sync_wanted_ids(
                 "wanted_ids must contain 32-byte transient ids",
             ));
         }
-        canonical.push(wanted_id.to_ascii_lowercase());
+        let wanted_id = wanted_id.to_ascii_lowercase();
+        if seen_canonical.insert(wanted_id.clone()) {
+            canonical.push(wanted_id);
+        }
     }
     Ok((Some(PeerSyncWantedIds::Selected(canonical)), None))
 }

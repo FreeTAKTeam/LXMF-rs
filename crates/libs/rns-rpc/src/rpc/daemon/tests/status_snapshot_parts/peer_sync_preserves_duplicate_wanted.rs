@@ -1,5 +1,5 @@
 #[test]
-fn peer_sync_preserves_duplicate_wanted_ids_like_python() {
+fn peer_sync_deduplicates_duplicate_wanted_ids_before_transfer_accounting() {
     let (daemon, peer) = ready_propagation_peer_daemon(0xae);
     let wanted = PropagationEntryRecord {
         transient_id: "af".repeat(32),
@@ -27,30 +27,27 @@ fn peer_sync_preserves_duplicate_wanted_ids_like_python() {
         .expect("peer sync")
         .result
         .expect("peer sync result");
-    let expected_resource_bytes = rmp_serde::to_vec(&(1.0_f64, vec![
-        vec![0x14; 24],
-        vec![0x14; 24],
-    ]))
-    .expect("pack duplicate wanted resource")
-    .len();
+    let expected_resource_bytes = rmp_serde::to_vec(&(1.0_f64, vec![vec![0x14; 24]]))
+        .expect("pack deduplicated wanted resource")
+        .len();
 
     assert_eq!(result["propagation"]["offered"].as_u64(), Some(1));
     assert_eq!(result["propagation"]["handled"].as_u64(), Some(1));
-    assert_eq!(result["propagation"]["transferred"].as_u64(), Some(2));
-    assert_eq!(result["propagation"]["bytes"].as_u64(), Some(48));
+    assert_eq!(result["propagation"]["transferred"].as_u64(), Some(1));
+    assert_eq!(result["propagation"]["bytes"].as_u64(), Some(24));
     assert_eq!(result["messages"]["offered"].as_u64(), Some(1));
-    assert_eq!(result["messages"]["outgoing"].as_u64(), Some(2));
-    assert_eq!(result["acceptance_rate"].as_f64(), Some(2.0));
+    assert_eq!(result["messages"]["outgoing"].as_u64(), Some(1));
+    assert_eq!(result["acceptance_rate"].as_f64(), Some(1.0));
     assert_eq!(result["tx_bytes"].as_u64(), Some(expected_resource_bytes as u64));
     assert_eq!(
         result["propagation"]["transferred_ids"]
             .as_array()
             .expect("transferred ids"),
-        &[json!(wanted.transient_id.as_str()), json!(wanted.transient_id.as_str())]
+        &[json!(wanted.transient_id.as_str())]
     );
     assert_eq!(
         result["propagation"]["messages"].as_array().expect("transferred messages").len(),
-        2
+        1
     );
 
     let event = daemon
@@ -62,14 +59,14 @@ fn peer_sync_preserves_duplicate_wanted_ids_like_python() {
         .find(|event| event.event_type == "peer_sync")
         .cloned()
         .expect("peer sync event");
-    assert_eq!(event.payload["propagation"]["transferred"].as_u64(), Some(2));
-    assert_eq!(event.payload["messages"]["outgoing"].as_u64(), Some(2));
-    assert_eq!(event.payload["acceptance_rate"].as_f64(), Some(2.0));
+    assert_eq!(event.payload["propagation"]["transferred"].as_u64(), Some(1));
+    assert_eq!(event.payload["messages"]["outgoing"].as_u64(), Some(1));
+    assert_eq!(event.payload["acceptance_rate"].as_f64(), Some(1.0));
     assert_eq!(
         event.payload["propagation"]["transferred_ids"]
             .as_array()
             .expect("event transferred ids"),
-        &[json!(wanted.transient_id.as_str()), json!(wanted.transient_id.as_str())]
+        &[json!(wanted.transient_id.as_str())]
     );
     let peers = daemon
         .handle_rpc(RpcRequest { id: 57, method: "list_peers".to_string(), params: None })
@@ -83,10 +80,10 @@ fn peer_sync_preserves_duplicate_wanted_ids_like_python() {
         .find(|row| row["peer"].as_str() == Some(peer.as_str()))
         .expect("peer row");
     assert_eq!(row["messages"]["offered"].as_u64(), Some(1));
-    assert_eq!(row["messages"]["outgoing"].as_u64(), Some(2));
+    assert_eq!(row["messages"]["outgoing"].as_u64(), Some(1));
     assert_eq!(row["offered"].as_u64(), Some(1));
-    assert_eq!(row["outgoing"].as_u64(), Some(2));
-    assert_eq!(row["acceptance_rate"].as_f64(), Some(2.0));
+    assert_eq!(row["outgoing"].as_u64(), Some(1));
+    assert_eq!(row["acceptance_rate"].as_f64(), Some(1.0));
 }
 
 #[test]

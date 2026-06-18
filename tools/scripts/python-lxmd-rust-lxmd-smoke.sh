@@ -1433,7 +1433,7 @@ PY
   exit 0
 fi
 
-if [[ "${COMPAT_CASE}" == "propagation_offer_python_to_rust" || "${COMPAT_CASE}" == "propagation_offer_queue_python_to_rust" ]]; then
+if [[ "${COMPAT_CASE}" == "propagation_offer_python_to_rust" || "${COMPAT_CASE}" == "propagation_offer_queue_python_to_rust" || "${COMPAT_CASE}" == "propagation_offer_full_lifecycle_python_to_rust" ]]; then
   rpc_call "${RUST_RPC_ADDR}" "announce_now" "null" >/dev/null
   if ! wait_for_python_remote_control "${RUST_PROPAGATION_HASH}" "${REMOTE_CONTROL_PATH_TIMEOUT_SECS}"; then
     echo "Python lxmd did not learn Rust propagation control path" >&2
@@ -1547,7 +1547,10 @@ peering_key, peering_value = LXMF.LXStamper.generate_stamp(
     expand_rounds=LXMF.LXStamper.WORKBLOCK_EXPAND_ROUNDS_PEERING,
 )
 
-offer = [peering_key, [known, missing]]
+offered_ids = [known, missing]
+if compat_case == "propagation_offer_full_lifecycle_python_to_rust":
+    offered_ids.append(missing)
+offer = [peering_key, offered_ids]
 receipt = link.request("/offer", data=offer, response_callback=None, failed_callback=None)
 deadline = time.time() + timeout_secs
 while time.time() < deadline:
@@ -1585,6 +1588,7 @@ print(json.dumps({
     "missing_transient": missing.hex(),
     "first_response": [item.hex() if isinstance(item, bytes) else item for item in first_response],
     "second_response": second_response,
+    "offered_ids": [item.hex() for item in offered_ids],
     "peering_key_value": peering_value,
 }))
 PY
@@ -1610,11 +1614,11 @@ PY
   fi
   PEER_SYNC_RESULT="$(rpc_call "${RUST_RPC_ADDR}" "peer_sync" "{\"peer\":\"${SOURCE_PROPAGATION_HASH}\",\"force_sync\":true}")"
   PEER_ROW="$(rpc_call "${RUST_RPC_ADDR}" "list_peers" "null")"
-  "${PYTHON_BIN}" - <<'PY' "${PEER_ROW}" "${PEER_SYNC_RESULT}" "${SOURCE_PROPAGATION_HASH}" "${KNOWN_TRANSIENT}" "${MISSING_TRANSIENT}"
+  "${PYTHON_BIN}" - <<'PY' "${PEER_ROW}" "${PEER_SYNC_RESULT}" "${SOURCE_PROPAGATION_HASH}" "${KNOWN_TRANSIENT}" "${MISSING_TRANSIENT}" "${OFFER_RESULT}"
 import json
 import sys
 
-peers_raw, sync_raw, peer_hash, known, missing = sys.argv[1:6]
+peers_raw, sync_raw, peer_hash, known, missing, offer_raw = sys.argv[1:7]
 rows = json.loads(peers_raw)["peers"]
 row = next((row for row in rows if row.get("peer") == peer_hash), None)
 assert row is not None, rows
@@ -1626,6 +1630,9 @@ assert row["last_sync_attempt"] > 0, row
 assert row["sync_backoff"] == 0, row
 assert row["next_sync_attempt"] == 0, row
 sync = json.loads(sync_raw)
+offer = json.loads(offer_raw)
+if offer["case"] == "propagation_offer_full_lifecycle_python_to_rust":
+    assert offer["offered_ids"].count(missing) == 2, offer
 assert sync["synced"] is True, sync
 assert sync["propagation"]["synced"] is True, sync
 PY
