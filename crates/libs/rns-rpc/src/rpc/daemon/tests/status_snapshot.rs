@@ -30,6 +30,8 @@ include!("status_snapshot_parts/peer_sync_postpones_stamped_offers_u.rs");
 
 include!("status_snapshot_parts/peer_sync_updates_restored_peer_reco.rs");
 
+include!("status_snapshot_parts/peer_restart_replay_parity.rs");
+
 include!("status_snapshot_parts/repeated_skipped_peer_sync_retries_w.rs");
 
 include!("status_snapshot_parts/peer_sync_preserves_duplicate_wanted.rs");

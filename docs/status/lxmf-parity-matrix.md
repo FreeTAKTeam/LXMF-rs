@@ -751,6 +751,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   `destination_hash`, handled, and unhandled IDs, prunes serialized IDs whose
   payloads are absent, and canonicalizes/deduplicates surviving IDs, so stale
   or repeated Python snapshot entries are not exported again after replay.
+- Restart-visible peer rows replay restored handled and unhandled snapshots
+  before reporting queue counters and ID lists, so payload-backed unhandled
+  work survives reload, completed work stays handled, and missing payload IDs
+  are pruned before `list_peers` exposes peer state.
 - Transfer-limit decisions made before peering-key handling update active peer
   record snapshots as completed queue work, so restart/export state reflects
   the live transfer-limited mark.

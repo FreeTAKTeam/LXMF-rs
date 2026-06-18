@@ -112,6 +112,17 @@ impl RpcDaemon {
                 })
             }
             "list_peers" => {
+                let peers = self
+                    .peers
+                    .lock()
+                    .expect("peers mutex poisoned")
+                    .values()
+                    .filter(|record| !record.peer.trim().is_empty())
+                    .cloned()
+                    .collect::<Vec<_>>();
+                for peer in &peers {
+                    self.restore_peer_record_queue_marks(peer)?;
+                }
                 let mut peers = self
                     .peers
                     .lock()
