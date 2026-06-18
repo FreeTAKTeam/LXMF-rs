@@ -95,10 +95,6 @@ jobs:
       SDK_API_BREAK_TOOLCHAIN: nightly-2026-02-15
     steps:
       - uses: actions/checkout@v4
-      - name: Install Linux BLE build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y pkg-config libdbus-1-dev
       - uses: dtolnay/rust-toolchain@stable
       - name: Install pinned nightly toolchain (for cargo-public-api)
         run: rustup toolchain install nightly-2026-02-15 --profile minimal
@@ -127,10 +123,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install Linux BLE build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y pkg-config libdbus-1-dev
       - uses: dtolnay/rust-toolchain@stable
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
