@@ -73,8 +73,8 @@ fn python_compat_propagation_offer_queue_python_to_rust() {
 
 #[test]
 #[ignore = "requires live Python compatibility harness environment"]
-fn python_compat_propagation_offer_full_lifecycle_python_to_rust() {
-    run_case("propagation_offer_full_lifecycle_python_to_rust");
+fn python_compat_propagation_offer_duplicate_wanted_source_completed_python_to_rust() {
+    run_case("propagation_offer_duplicate_wanted_source_completed_python_to_rust");
 }
 
 #[test]

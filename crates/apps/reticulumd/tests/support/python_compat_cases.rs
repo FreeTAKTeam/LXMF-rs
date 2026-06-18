@@ -76,9 +76,9 @@ const COMPATIBILITY_CASES: [CompatibilityCase; 17] = [
         description: "Python-origin propagation offers exercise Rust peer queue lifecycle state",
     },
     CompatibilityCase {
-        id: "propagation_offer_full_lifecycle_python_to_rust",
+        id: "propagation_offer_duplicate_wanted_source_completed_python_to_rust",
         mode: CompatibilityMode::PropagationControl,
-        description: "Python-origin propagation offers exercise Rust full offer and transfer lifecycle state",
+        description: "Python-origin propagation offers exercise Rust duplicate wanted-ID and source-completed state",
     },
     CompatibilityCase {
         id: "link_liveness_rust_to_python",
@@ -127,7 +127,7 @@ pub(crate) fn assert_required_modes_covered() {
     assert_case_present("propagation_get_haves_python_to_rust");
     assert_case_present("propagation_offer_python_to_rust");
     assert_case_present("propagation_offer_queue_python_to_rust");
-    assert_case_present("propagation_offer_full_lifecycle_python_to_rust");
+    assert_case_present("propagation_offer_duplicate_wanted_source_completed_python_to_rust");
     assert_case_present("link_liveness_rust_to_python");
     assert_case_present("link_liveness_python_to_rust");
     assert_case_present("link_teardown_rust_to_python");

@@ -1433,7 +1433,7 @@ PY
   exit 0
 fi
 
-if [[ "${COMPAT_CASE}" == "propagation_offer_python_to_rust" || "${COMPAT_CASE}" == "propagation_offer_queue_python_to_rust" || "${COMPAT_CASE}" == "propagation_offer_full_lifecycle_python_to_rust" ]]; then
+if [[ "${COMPAT_CASE}" == "propagation_offer_python_to_rust" || "${COMPAT_CASE}" == "propagation_offer_queue_python_to_rust" || "${COMPAT_CASE}" == "propagation_offer_duplicate_wanted_source_completed_python_to_rust" ]]; then
   rpc_call "${RUST_RPC_ADDR}" "announce_now" "null" >/dev/null
   if ! wait_for_python_remote_control "${RUST_PROPAGATION_HASH}" "${REMOTE_CONTROL_PATH_TIMEOUT_SECS}"; then
     echo "Python lxmd did not learn Rust propagation control path" >&2
@@ -1548,7 +1548,7 @@ peering_key, peering_value = LXMF.LXStamper.generate_stamp(
 )
 
 offered_ids = [known, missing]
-if compat_case == "propagation_offer_full_lifecycle_python_to_rust":
+if compat_case == "propagation_offer_duplicate_wanted_source_completed_python_to_rust":
     offered_ids.append(missing)
 offer = [peering_key, offered_ids]
 receipt = link.request("/offer", data=offer, response_callback=None, failed_callback=None)
@@ -1631,7 +1631,7 @@ assert row["sync_backoff"] == 0, row
 assert row["next_sync_attempt"] == 0, row
 sync = json.loads(sync_raw)
 offer = json.loads(offer_raw)
-if offer["case"] == "propagation_offer_full_lifecycle_python_to_rust":
+if offer["case"] == "propagation_offer_duplicate_wanted_source_completed_python_to_rust":
     assert offer["offered_ids"].count(missing) == 2, offer
 assert sync["synced"] is True, sync
 assert sync["propagation"]["synced"] is True, sync
