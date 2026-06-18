@@ -183,6 +183,7 @@ fn filters_enabled_tcp_clients() {
     let cfg = DaemonConfig {
         display_name: None,
         announce_capabilities: Vec::new(),
+        propagation_node: None,
         interfaces: vec![
             InterfaceConfig {
                 kind: "tcp_client".into(),
@@ -211,6 +212,7 @@ fn filters_enabled_tcp_servers_with_default_host() {
     let cfg = DaemonConfig {
         display_name: None,
         announce_capabilities: Vec::new(),
+        propagation_node: None,
         interfaces: vec![
             InterfaceConfig {
                 kind: "tcp_server".into(),

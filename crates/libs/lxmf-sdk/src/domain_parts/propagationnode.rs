@@ -23,6 +23,60 @@ pub struct PropagationNodeSelectionState {
     pub last_sync_error: Option<String>,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[non_exhaustive]
+pub struct PropagationNodeConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub peer_announce_at_start: bool,
+    #[serde(default)]
+    pub peer_announce_interval_secs: Option<u64>,
+    #[serde(default)]
+    pub node_announce_at_start: bool,
+    #[serde(default)]
+    pub node_announce_interval_secs: Option<u64>,
+    #[serde(default = "default_propagation_node_transfer_limit_kb")]
+    pub transfer_limit_kb: u32,
+    #[serde(default = "default_propagation_node_sync_limit_kb")]
+    pub sync_limit_kb: u32,
+    #[serde(default = "default_propagation_node_stamp_cost")]
+    pub stamp_cost: u32,
+    #[serde(default = "default_propagation_node_stamp_cost_flexibility")]
+    pub stamp_cost_flexibility: u32,
+    #[serde(default = "default_propagation_node_peering_cost")]
+    pub peering_cost: u32,
+    #[serde(default)]
+    pub control_allowed: Vec<String>,
+}
+
+impl Default for PropagationNodeConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            peer_announce_at_start: false,
+            peer_announce_interval_secs: None,
+            node_announce_at_start: false,
+            node_announce_interval_secs: None,
+            transfer_limit_kb: default_propagation_node_transfer_limit_kb(),
+            sync_limit_kb: default_propagation_node_sync_limit_kb(),
+            stamp_cost: default_propagation_node_stamp_cost(),
+            stamp_cost_flexibility: default_propagation_node_stamp_cost_flexibility(),
+            peering_cost: default_propagation_node_peering_cost(),
+            control_allowed: Vec::new(),
+        }
+    }
+}
+
+impl PropagationNodeConfig {
+    fn from_meta(meta: &JsonValue) -> Self {
+        meta.get("propagation_node")
+            .cloned()
+            .and_then(|value| serde_json::from_value(value).ok())
+            .unwrap_or_default()
+    }
+}
+
 impl PropagationNodeSelectionState {
     fn from_peer_and_meta(peer: Option<String>, meta: &JsonValue) -> Self {
         let state = propagation_node_json_string(meta, "state")
@@ -60,6 +114,8 @@ pub struct PropagationNodeSelectionResult {
     pub meta: JsonValue,
     #[serde(default)]
     pub selection_state: PropagationNodeSelectionState,
+    #[serde(default)]
+    pub node_config: PropagationNodeConfig,
 }
 
 #[derive(Deserialize)]
@@ -77,12 +133,34 @@ impl<'de> Deserialize<'de> for PropagationNodeSelectionResult {
     {
         let raw = RawPropagationNodeSelectionResult::deserialize(deserializer)?;
         let selection_state = PropagationNodeSelectionState::from_peer_and_meta(raw.peer.clone(), &raw.meta);
+        let node_config = PropagationNodeConfig::from_meta(&raw.meta);
         Ok(Self {
             peer: raw.peer,
             meta: raw.meta,
             selection_state,
+            node_config,
         })
     }
+}
+
+fn default_propagation_node_transfer_limit_kb() -> u32 {
+    256
+}
+
+fn default_propagation_node_sync_limit_kb() -> u32 {
+    10240
+}
+
+fn default_propagation_node_stamp_cost() -> u32 {
+    16
+}
+
+fn default_propagation_node_stamp_cost_flexibility() -> u32 {
+    3
+}
+
+fn default_propagation_node_peering_cost() -> u32 {
+    18
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Default)]
@@ -168,4 +246,48 @@ fn propagation_node_json_string_array(value: &JsonValue, key: &str) -> Vec<Strin
         .and_then(JsonValue::as_array)
         .map(|items| items.iter().filter_map(JsonValue::as_str).map(ToOwned::to_owned).collect())
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod propagation_node_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn node_get_exposes_propagation_node_config_from_meta() {
+        let result: PropagationNodeSelectionResult = serde_json::from_value(json!({
+            "peer": null,
+            "meta": {
+                "propagation_node": {
+                    "enabled": true,
+                    "peer_announce_at_start": true,
+                    "peer_announce_interval_secs": 120,
+                    "node_announce_at_start": true,
+                    "node_announce_interval_secs": 300,
+                    "transfer_limit_kb": 512,
+                    "sync_limit_kb": 20480,
+                    "stamp_cost": 21,
+                    "stamp_cost_flexibility": 4,
+                    "peering_cost": 23,
+                    "control_allowed": ["00112233445566778899aabbccddeeff"]
+                }
+            }
+        }))
+        .expect("decode node selection");
+
+        assert!(result.node_config.enabled);
+        assert!(result.node_config.peer_announce_at_start);
+        assert_eq!(result.node_config.peer_announce_interval_secs, Some(120));
+        assert!(result.node_config.node_announce_at_start);
+        assert_eq!(result.node_config.node_announce_interval_secs, Some(300));
+        assert_eq!(result.node_config.transfer_limit_kb, 512);
+        assert_eq!(result.node_config.sync_limit_kb, 20480);
+        assert_eq!(result.node_config.stamp_cost, 21);
+        assert_eq!(result.node_config.stamp_cost_flexibility, 4);
+        assert_eq!(result.node_config.peering_cost, 23);
+        assert_eq!(
+            result.node_config.control_allowed,
+            vec!["00112233445566778899aabbccddeeff".to_string()]
+        );
+    }
 }

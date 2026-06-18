@@ -9,3 +9,5 @@ include!("tests_parts/bootstrap_best_effort_marks_vrn76_ki.rs");
 include!("tests_parts/bootstrap_reports_auto_interface_as.rs");
 
 include!("tests_parts/bootstrap_strict_mode_panics_on_lora.rs");
+
+include!("tests_parts/propagation_node_toml_config.rs");

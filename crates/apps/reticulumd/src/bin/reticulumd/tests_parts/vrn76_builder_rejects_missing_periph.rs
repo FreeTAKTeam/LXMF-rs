@@ -211,6 +211,7 @@ fn select_tcp_server_bind_uses_single_enabled_interface_when_transport_not_set()
     let config = reticulum_daemon::config::DaemonConfig {
         display_name: None,
         announce_capabilities: Vec::new(),
+        propagation_node: None,
         interfaces: vec![InterfaceConfig {
             kind: "tcp_server".to_string(),
             enabled: Some(true),
@@ -231,6 +232,7 @@ fn select_tcp_server_bind_prefers_transport_override() {
     let config = reticulum_daemon::config::DaemonConfig {
         display_name: None,
         announce_capabilities: Vec::new(),
+        propagation_node: None,
         interfaces: vec![
             InterfaceConfig {
                 kind: "tcp_server".to_string(),
@@ -260,6 +262,7 @@ fn select_tcp_server_bind_rejects_multiple_enabled_servers_without_override() {
     let config = reticulum_daemon::config::DaemonConfig {
         display_name: None,
         announce_capabilities: Vec::new(),
+        propagation_node: None,
         interfaces: vec![
             InterfaceConfig {
                 kind: "tcp_server".to_string(),

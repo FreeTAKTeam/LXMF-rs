@@ -3,12 +3,26 @@ use super::*;
 impl RpcDaemon {
     pub(super) fn response_meta(&self) -> JsonValue {
         let profile = self.sdk_profile.lock().expect("sdk_profile mutex poisoned").clone();
+        let propagation = self.current_propagation_state();
         json!({
             "contract_version": format!("v{}", self.active_contract_version()),
             "profile": profile,
             "sdk_version": SDK_VERSION,
             "python_reference": python_reference_meta(),
             "rpc_endpoint": JsonValue::Null,
+            "propagation_node": {
+                "enabled": propagation.propagation_node_enabled,
+                "peer_announce_at_start": propagation.peer_announce_at_start,
+                "peer_announce_interval_secs": propagation.peer_announce_interval_secs,
+                "node_announce_at_start": propagation.node_announce_at_start,
+                "node_announce_interval_secs": propagation.node_announce_interval_secs,
+                "transfer_limit_kb": propagation.propagation_limit,
+                "sync_limit_kb": propagation.sync_limit,
+                "stamp_cost": if propagation.target_cost > 0 { propagation.target_cost } else { 16 },
+                "stamp_cost_flexibility": propagation.stamp_cost_flexibility,
+                "peering_cost": propagation.peering_cost.unwrap_or(18),
+                "control_allowed": propagation.control_allowed,
+            },
         })
     }
 

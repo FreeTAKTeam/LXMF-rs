@@ -934,6 +934,22 @@ pub lxmf_sdk::domain::PropagationIngestResult::transferred_bytes: u64
 pub lxmf_sdk::domain::PropagationIngestResult::transient_id: alloc::string::String
 impl<'de> serde_core::de::Deserialize<'de> for lxmf_sdk::domain::PropagationIngestResult
 pub fn lxmf_sdk::domain::PropagationIngestResult::deserialize<D>(deserializer: D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error> where D: serde_core::de::Deserializer<'de>
+#[non_exhaustive] pub struct lxmf_sdk::domain::PropagationNodeConfig
+pub lxmf_sdk::domain::PropagationNodeConfig::enabled: bool
+pub lxmf_sdk::domain::PropagationNodeConfig::peer_announce_at_start: bool
+pub lxmf_sdk::domain::PropagationNodeConfig::peer_announce_interval_secs: core::option::Option<u64>
+pub lxmf_sdk::domain::PropagationNodeConfig::node_announce_at_start: bool
+pub lxmf_sdk::domain::PropagationNodeConfig::node_announce_interval_secs: core::option::Option<u64>
+pub lxmf_sdk::domain::PropagationNodeConfig::transfer_limit_kb: u32
+pub lxmf_sdk::domain::PropagationNodeConfig::sync_limit_kb: u32
+pub lxmf_sdk::domain::PropagationNodeConfig::stamp_cost: u32
+pub lxmf_sdk::domain::PropagationNodeConfig::stamp_cost_flexibility: u32
+pub lxmf_sdk::domain::PropagationNodeConfig::peering_cost: u32
+pub lxmf_sdk::domain::PropagationNodeConfig::control_allowed: alloc::vec::Vec<alloc::string::String>
+impl core::default::Default for lxmf_sdk::domain::PropagationNodeConfig
+pub fn lxmf_sdk::domain::PropagationNodeConfig::default() -> Self
+impl<'de> serde_core::de::Deserialize<'de> for lxmf_sdk::domain::PropagationNodeConfig
+pub fn lxmf_sdk::domain::PropagationNodeConfig::deserialize<D>(deserializer: D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error> where D: serde_core::de::Deserializer<'de>
 #[non_exhaustive] pub struct lxmf_sdk::domain::PropagationNodeListResult
 pub lxmf_sdk::domain::PropagationNodeListResult::meta: serde_json::value::Value
 pub lxmf_sdk::domain::PropagationNodeListResult::node_records: alloc::vec::Vec<lxmf_sdk::domain::PropagationNodeRecord>
@@ -948,6 +964,7 @@ pub lxmf_sdk::domain::PropagationNodeRecord::peer: core::option::Option<alloc::s
 pub lxmf_sdk::domain::PropagationNodeRecord::selected: bool
 #[non_exhaustive] pub struct lxmf_sdk::domain::PropagationNodeSelectionResult
 pub lxmf_sdk::domain::PropagationNodeSelectionResult::meta: serde_json::value::Value
+pub lxmf_sdk::domain::PropagationNodeSelectionResult::node_config: lxmf_sdk::domain::PropagationNodeConfig
 pub lxmf_sdk::domain::PropagationNodeSelectionResult::peer: core::option::Option<alloc::string::String>
 pub lxmf_sdk::domain::PropagationNodeSelectionResult::selection_state: lxmf_sdk::domain::PropagationNodeSelectionState
 impl<'de> serde_core::de::Deserialize<'de> for lxmf_sdk::domain::PropagationNodeSelectionResult
@@ -2706,6 +2723,22 @@ pub lxmf_sdk::PropagationIngestResult::transferred_bytes: u64
 pub lxmf_sdk::PropagationIngestResult::transient_id: alloc::string::String
 impl<'de> serde_core::de::Deserialize<'de> for lxmf_sdk::domain::PropagationIngestResult
 pub fn lxmf_sdk::domain::PropagationIngestResult::deserialize<D>(deserializer: D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error> where D: serde_core::de::Deserializer<'de>
+#[non_exhaustive] pub struct lxmf_sdk::PropagationNodeConfig
+pub lxmf_sdk::PropagationNodeConfig::enabled: bool
+pub lxmf_sdk::PropagationNodeConfig::peer_announce_at_start: bool
+pub lxmf_sdk::PropagationNodeConfig::peer_announce_interval_secs: core::option::Option<u64>
+pub lxmf_sdk::PropagationNodeConfig::node_announce_at_start: bool
+pub lxmf_sdk::PropagationNodeConfig::node_announce_interval_secs: core::option::Option<u64>
+pub lxmf_sdk::PropagationNodeConfig::transfer_limit_kb: u32
+pub lxmf_sdk::PropagationNodeConfig::sync_limit_kb: u32
+pub lxmf_sdk::PropagationNodeConfig::stamp_cost: u32
+pub lxmf_sdk::PropagationNodeConfig::stamp_cost_flexibility: u32
+pub lxmf_sdk::PropagationNodeConfig::peering_cost: u32
+pub lxmf_sdk::PropagationNodeConfig::control_allowed: alloc::vec::Vec<alloc::string::String>
+impl core::default::Default for lxmf_sdk::domain::PropagationNodeConfig
+pub fn lxmf_sdk::domain::PropagationNodeConfig::default() -> Self
+impl<'de> serde_core::de::Deserialize<'de> for lxmf_sdk::domain::PropagationNodeConfig
+pub fn lxmf_sdk::domain::PropagationNodeConfig::deserialize<D>(deserializer: D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error> where D: serde_core::de::Deserializer<'de>
 #[non_exhaustive] pub struct lxmf_sdk::PropagationNodeListResult
 pub lxmf_sdk::PropagationNodeListResult::meta: serde_json::value::Value
 pub lxmf_sdk::PropagationNodeListResult::node_records: alloc::vec::Vec<lxmf_sdk::domain::PropagationNodeRecord>
@@ -2720,6 +2753,7 @@ pub lxmf_sdk::PropagationNodeRecord::peer: core::option::Option<alloc::string::S
 pub lxmf_sdk::PropagationNodeRecord::selected: bool
 #[non_exhaustive] pub struct lxmf_sdk::PropagationNodeSelectionResult
 pub lxmf_sdk::PropagationNodeSelectionResult::meta: serde_json::value::Value
+pub lxmf_sdk::PropagationNodeSelectionResult::node_config: lxmf_sdk::domain::PropagationNodeConfig
 pub lxmf_sdk::PropagationNodeSelectionResult::peer: core::option::Option<alloc::string::String>
 pub lxmf_sdk::PropagationNodeSelectionResult::selection_state: lxmf_sdk::domain::PropagationNodeSelectionState
 impl<'de> serde_core::de::Deserialize<'de> for lxmf_sdk::domain::PropagationNodeSelectionResult

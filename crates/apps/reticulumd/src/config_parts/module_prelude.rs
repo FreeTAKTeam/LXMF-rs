@@ -14,6 +14,7 @@ use std::path::Path;
 pub struct DaemonConfig {
     pub display_name: Option<String>,
     pub announce_capabilities: Vec<String>,
+    pub propagation_node: Option<PropagationNodeConfig>,
     pub interfaces: Vec<InterfaceConfig>,
 }
 
@@ -23,6 +24,8 @@ struct DaemonConfigRaw {
     display_name: Option<String>,
     #[serde(default)]
     announce_capabilities: Vec<String>,
+    #[serde(default)]
+    propagation_node: Option<PropagationNodeConfig>,
     #[serde(default, deserialize_with = "deserialize_interfaces")]
     interfaces: Vec<InterfaceConfig>,
 }
@@ -43,9 +46,36 @@ impl<'de> Deserialize<'de> for DaemonConfig {
         Ok(Self {
             display_name: raw.display_name,
             announce_capabilities: raw.announce_capabilities,
+            propagation_node: raw.propagation_node,
             interfaces,
         })
     }
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct PropagationNodeConfig {
+    #[serde(default)]
+    pub enabled: Option<bool>,
+    #[serde(default)]
+    pub control_allowed: Vec<String>,
+    #[serde(default)]
+    pub peer_announce_at_start: Option<bool>,
+    #[serde(default)]
+    pub peer_announce_interval_secs: Option<u64>,
+    #[serde(default)]
+    pub node_announce_at_start: Option<bool>,
+    #[serde(default)]
+    pub node_announce_interval_secs: Option<u64>,
+    #[serde(default)]
+    pub transfer_limit_kb: Option<u32>,
+    #[serde(default)]
+    pub sync_limit_kb: Option<u32>,
+    #[serde(default)]
+    pub stamp_cost: Option<u32>,
+    #[serde(default)]
+    pub stamp_cost_flexibility: Option<u32>,
+    #[serde(default)]
+    pub peering_cost: Option<u32>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]

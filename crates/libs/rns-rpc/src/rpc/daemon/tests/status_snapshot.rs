@@ -66,6 +66,8 @@ include!("status_snapshot_parts/propagation_remote_status_trims_remo.rs");
 
 include!("status_snapshot_parts/remotecontrolbridge.rs");
 
+include!("status_snapshot_parts/propagation_node_meta_exposes_config.rs");
+
 include!("status_snapshot_parts/selected_propagation_node_matches_ex.rs");
 
 include!("status_snapshot_parts/propagation_remote_sync_respects_pee.rs");

@@ -14,3 +14,16 @@ idempotency_ttl_ms = 43200000
 enabled = true
 sensitive_transform = "hash"
 break_glass_allowed = false
+
+[propagation_node]
+enabled = false
+control_allowed = []
+peer_announce_at_start = false
+peer_announce_interval_secs = 300
+node_announce_at_start = false
+node_announce_interval_secs = 300
+transfer_limit_kb = 256
+sync_limit_kb = 10240
+stamp_cost = 16
+stamp_cost_flexibility = 3
+peering_cost = 18

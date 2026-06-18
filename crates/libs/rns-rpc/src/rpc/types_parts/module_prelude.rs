@@ -187,6 +187,8 @@ pub struct DeliveryPolicy {
 pub struct PropagationState {
     pub enabled: bool,
     #[serde(default)]
+    pub propagation_node_enabled: bool,
+    #[serde(default)]
     pub auth_required: bool,
     pub store_root: Option<String>,
     pub target_cost: u32,
@@ -216,6 +218,16 @@ pub struct PropagationState {
     pub peering_cost: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub remote_peering_cost_max: Option<u32>,
+    #[serde(default)]
+    pub peer_announce_at_start: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub peer_announce_interval_secs: Option<u64>,
+    #[serde(default)]
+    pub node_announce_at_start: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub node_announce_interval_secs: Option<u64>,
+    #[serde(default)]
+    pub control_allowed: Vec<String>,
     pub total_ingested: usize,
     pub last_ingest_count: usize,
     pub sync_state: u32,
@@ -241,6 +253,7 @@ impl Default for PropagationState {
     fn default() -> Self {
         Self {
             enabled: false,
+            propagation_node_enabled: false,
             auth_required: false,
             store_root: None,
             target_cost: 0,
@@ -257,6 +270,11 @@ impl Default for PropagationState {
             retain_synced_on_node: false,
             peering_cost: None,
             remote_peering_cost_max: None,
+            peer_announce_at_start: false,
+            peer_announce_interval_secs: None,
+            node_announce_at_start: false,
+            node_announce_interval_secs: None,
+            control_allowed: Vec::new(),
             total_ingested: 0,
             last_ingest_count: 0,
             sync_state: 0,

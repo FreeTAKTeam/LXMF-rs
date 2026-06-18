@@ -130,15 +130,6 @@ pub(super) fn mark_interface_startup_status(
     });
 }
 
-fn env_flag(key: &str) -> bool {
-    std::env::var(key)
-        .ok()
-        .map(|value| {
-            matches!(value.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on")
-        })
-        .unwrap_or(false)
-}
-
 fn parse_hex_list_env(key: &str) -> Vec<String> {
     std::env::var(key)
         .ok()
@@ -210,7 +201,10 @@ fn spawn_bridge_propagation_announce_scheduler(bridge: Arc<TransportBridge>, int
     });
 }
 
-fn encode_propagation_node_app_data(display_name: Option<&str>) -> Option<Vec<u8>> {
+fn encode_propagation_node_app_data(
+    display_name: Option<&str>,
+    config: PropagationNodeAnnounceConfig,
+) -> Option<Vec<u8>> {
     encode_python_propagation_node_app_data(
         display_name,
         PropagationNodeAnnounceConfig {
@@ -218,7 +212,7 @@ fn encode_propagation_node_app_data(display_name: Option<&str>) -> Option<Vec<u8
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs() as i64,
-            ..PropagationNodeAnnounceConfig::default()
+            ..config
         },
     )
 }

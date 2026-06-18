@@ -131,12 +131,10 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     let receipt_map: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
     let outbound_resource_map: OutboundResourceMap = Arc::new(Mutex::new(HashMap::new()));
     let (receipt_tx, receipt_rx) = channel(RECEIPT_EVENT_QUEUE_CAPACITY);
-    let propagation_control_enabled = env_flag("LXMD_PROPAGATION_NODE");
-    let configured_control_identities = parse_hex_list_env("LXMD_CONTROL_ALLOWED");
-    let peer_announce_at_start = env_flag("LXMD_PEER_ANNOUNCE_AT_START");
-    let node_announce_at_start = env_flag("LXMD_NODE_ANNOUNCE_AT_START");
-    let peer_announce_interval_secs = env_u64("LXMD_PEER_ANNOUNCE_INTERVAL_SECS");
-    let node_announce_interval_secs = env_u64("LXMD_NODE_ANNOUNCE_INTERVAL_SECS");
+    let propagation_node_config = resolve_propagation_node_config(daemon_config.as_ref());
+    let propagation_control_enabled = propagation_node_config.enabled;
+    let configured_control_identities =
+        propagation_node_config.allowed_control_identities.clone();
 
     let startup = start_transport_and_interfaces(TransportStartupInput {
         args: &args,
@@ -149,6 +147,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         receipt_map: receipt_map.clone(),
         receipt_tx: receipt_tx.clone(),
         propagation_control_enabled,
+        propagation_announce_config: propagation_node_config.announce_config,
     })
     .await;
 
@@ -211,8 +210,10 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
 
     let bridge: Option<Arc<TransportBridge>> =
         transport.as_ref().zip(announce_destination.as_ref()).map(|(transport, destination)| {
-            let propagation_app_data =
-                encode_propagation_node_app_data(local_display_name.as_deref());
+            let propagation_app_data = encode_propagation_node_app_data(
+                local_display_name.as_deref(),
+                propagation_node_config.announce_config,
+            );
             Arc::new(TransportBridge::new(
                 transport.clone(),
                 identity.clone(),
@@ -262,28 +263,43 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     daemon.set_delivery_destination_hash(delivery_destination_hash_hex);
     daemon.replace_interfaces(configured_interfaces);
     daemon.set_propagation_state(transport.is_some(), None, 0);
+    daemon.configure_propagation_node(
+        propagation_node_config.enabled,
+        propagation_node_config.peer_announce_at_start,
+        propagation_node_config.peer_announce_interval_secs,
+        propagation_node_config.node_announce_at_start,
+        propagation_node_config.node_announce_interval_secs,
+        propagation_node_config.announce_config.transfer_limit_kb,
+        propagation_node_config.announce_config.sync_limit_kb,
+        propagation_node_config.announce_config.stamp_cost,
+        propagation_node_config.announce_config.stamp_cost_flexibility,
+        propagation_node_config.announce_config.peering_cost,
+        propagation_node_config.allowed_control_identities.clone(),
+    );
 
     // Make the local delivery destination visible on startup when configured.
-    if peer_announce_at_start {
+    if propagation_node_config.peer_announce_at_start {
         if let Some(bridge) = bridge.as_ref() {
             let _ = bridge.announce_now();
         }
     }
-    if let Some(interval_secs) = peer_announce_interval_secs {
+    if let Some(interval_secs) = propagation_node_config.peer_announce_interval_secs {
         if let Some(bridge) = bridge.as_ref() {
             spawn_bridge_announce_scheduler(bridge.clone(), interval_secs);
         }
     }
 
-    if propagation_control_enabled && node_announce_at_start {
+    if propagation_control_enabled && propagation_node_config.node_announce_at_start {
         if let Some(bridge) = bridge.as_ref() {
             let _ = bridge.announce_propagation_now();
         } else {
             if let Some((transport, destination)) =
                 transport.as_ref().zip(propagation_destination.as_ref())
             {
-                let propagation_app_data =
-                    encode_propagation_node_app_data(local_display_name.as_deref());
+                let propagation_app_data = encode_propagation_node_app_data(
+                    local_display_name.as_deref(),
+                    propagation_node_config.announce_config,
+                );
                 transport.send_announce(destination, propagation_app_data.as_deref()).await;
             }
             if let Some((transport, destination)) =
@@ -293,7 +309,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
             }
         }
     }
-    if let Some(interval_secs) = node_announce_interval_secs {
+    if let Some(interval_secs) = propagation_node_config.node_announce_interval_secs {
         if propagation_control_enabled {
             if let Some(bridge) = bridge.as_ref() {
                 spawn_bridge_propagation_announce_scheduler(bridge.clone(), interval_secs);
@@ -301,8 +317,10 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                 if let Some((transport, destination)) =
                     transport.as_ref().zip(propagation_destination.as_ref())
                 {
-                    let propagation_app_data =
-                        encode_propagation_node_app_data(local_display_name.as_deref());
+                    let propagation_app_data = encode_propagation_node_app_data(
+                        local_display_name.as_deref(),
+                        propagation_node_config.announce_config,
+                    );
                     spawn_destination_announce_scheduler(
                         transport.clone(),
                         destination.clone(),

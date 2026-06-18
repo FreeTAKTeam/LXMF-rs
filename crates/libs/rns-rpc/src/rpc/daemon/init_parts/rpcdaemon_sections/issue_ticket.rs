@@ -253,6 +253,7 @@ impl RpcDaemon {
     ) {
         let mut guard = self.propagation_state.lock().expect("propagation mutex poisoned");
         guard.enabled = enabled;
+        guard.propagation_node_enabled = enabled;
         guard.store_root = store_root;
         guard.target_cost = target_cost;
         let state = guard.clone();
