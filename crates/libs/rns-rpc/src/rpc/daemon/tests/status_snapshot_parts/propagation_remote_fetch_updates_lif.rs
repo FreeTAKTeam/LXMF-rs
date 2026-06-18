@@ -381,3 +381,51 @@ fn propagation_remote_download_marks_source_received_and_queues_other_peers() {
     assert_eq!(relay_pending.len(), 1);
     assert_eq!(relay_pending[0].transient_id, transient_id);
 }
+
+#[test]
+fn propagation_remote_download_marks_inactive_source_received_for_later_activation_like_python() {
+    let payload = b"remote-download-inactive-source-payload";
+    let payload_hex = hex::encode(payload);
+    let transient_id = hex::encode(Sha256::digest(payload));
+    let source_peer = "remote-download-late-source";
+    let daemon = RpcDaemon::test_instance();
+    daemon.set_remote_control_bridge(Arc::new(TestRemoteControlBridge {
+        result: Ok(json!({
+            "downloaded_count": 1,
+            "messages": [{
+                "transient_id": transient_id,
+                "payload_hex": payload_hex,
+            }],
+        })),
+    }));
+
+    daemon
+        .handle_rpc(rpc_request(
+            82,
+            "propagation_remote_download",
+            json!({ "remote": source_peer }),
+        ))
+        .expect("remote download from inactive source");
+
+    assert_eq!(
+        daemon
+            .store
+            .list_peer_handled_propagation_ids(source_peer)
+            .expect("inactive source handled ids"),
+        vec![transient_id.clone()],
+        "inactive source should be marked received before later peer activation"
+    );
+
+    let sync = daemon
+        .handle_rpc(rpc_request(83, "peer_sync", json!({ "peer": source_peer })))
+        .expect("activate source peer")
+        .result
+        .expect("peer sync result");
+    assert_eq!(sync["propagation"]["transferred"].as_u64(), Some(0));
+    assert!(sync["propagation"]["messages"].as_array().expect("transferred messages").is_empty());
+    assert_eq!(sync["messages"]["incoming"].as_u64(), Some(1));
+    assert_eq!(
+        sync["messages"]["handled_ids"].as_array().expect("handled ids"),
+        &[json!(transient_id.as_str())]
+    );
+}
