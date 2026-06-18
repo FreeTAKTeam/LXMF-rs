@@ -412,3 +412,5 @@ fn propagation_remote_fetch_preserves_transfer_limited_peer_queue_mark_like_pyth
         vec![transient_id]
     );
 }
+
+include!("propagation_remote_import_success_matrix.rs");
