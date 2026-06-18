@@ -46,6 +46,8 @@ include!("status_snapshot_parts/peer_sync_retryable_offer_response_r.rs");
 
 include!("status_snapshot_parts/peer_sync_persists_counters_after_pr.rs");
 
+include!("status_snapshot_parts/peer_source_accounting_parity.rs");
+
 include!("status_snapshot_parts/persistent_peer_sync_continues_after.rs");
 
 include!("status_snapshot_parts/persistent_peer_sync_reports_last_ba.rs");
