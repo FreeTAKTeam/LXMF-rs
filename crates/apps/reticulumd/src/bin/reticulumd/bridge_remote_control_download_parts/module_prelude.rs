@@ -261,6 +261,15 @@ fn propagation_download_summary_json(
     rejected: usize,
 ) -> JsonValue {
     let transferred_bytes = payloads.iter().map(Vec::len).sum::<usize>();
+    let messages = payloads
+        .iter()
+        .map(|payload| {
+            json!({
+                "transient_id": hex::encode(propagation_payload_ack_transient_id(payload)),
+                "payload_hex": hex::encode(payload),
+            })
+        })
+        .collect::<Vec<_>>();
     json!({
         "available_count": available,
         "downloaded_count": downloaded,
@@ -270,6 +279,7 @@ fn propagation_download_summary_json(
         "downloaded": downloaded,
         "duplicates": duplicates,
         "rejected": rejected,
+        "messages": messages,
         "transferred_bytes": transferred_bytes,
     })
 }

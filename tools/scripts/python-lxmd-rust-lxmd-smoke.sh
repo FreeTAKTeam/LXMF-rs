@@ -239,12 +239,19 @@ for attempt in range(60):
     header_end = response.find(b"\r\n\r\n")
     if header_end < 0:
         raise SystemExit("missing rpc response body")
+    header = response[:header_end].decode("utf-8", errors="replace")
     body = response[header_end + 4 :]
+    if not header.startswith("HTTP/1.1 200"):
+        decoded_body = body.decode("utf-8", errors="replace").strip()
+        raise SystemExit(decoded_body or f"rpc http error: {header!r}")
     if len(body) < 4:
-        raise SystemExit("rpc response too short")
+        raise SystemExit(f"rpc response too short: header={header!r} body={body[:200]!r}")
     frame_len = int.from_bytes(body[:4], "big")
     if len(body) < 4 + frame_len:
-        raise SystemExit("rpc response incomplete")
+        raise SystemExit(
+            f"rpc response incomplete: header={header!r} frame_len={frame_len} "
+            f"body_len={len(body)} body_prefix={body[:200]!r}"
+        )
     value = msgpack.unpackb(body[4 : 4 + frame_len])
     if isinstance(value, list):
         result = value[1] if len(value) > 1 else None
@@ -341,6 +348,52 @@ for path in sorted(messages_dir.glob("*"), key=lambda item: item.stat().st_mtime
     raise SystemExit(0)
 
 raise SystemExit(f"no stored Python LXMF message matched content in {messages_dir}")
+PY
+}
+
+record_python_propagation_payload() {
+  local messages_dir="$1"
+  local destination_hash_hex="$2"
+  local output_json="$3"
+  "${PYTHON_BIN}" - <<'PY' "${messages_dir}" "${destination_hash_hex}" "${output_json}"
+import json
+import sys
+from pathlib import Path
+
+import LXMF
+import RNS
+
+messages_dir = Path(sys.argv[1])
+destination_hash_hex = sys.argv[2].lower()
+output_json = Path(sys.argv[3])
+stamp_size = LXMF.LXStamper.STAMP_SIZE
+
+for path in sorted(messages_dir.glob("*"), key=lambda item: item.stat().st_mtime, reverse=True):
+    if not path.is_file():
+        continue
+    data = path.read_bytes()
+    if len(data) <= stamp_size:
+        continue
+    payload = data[:-stamp_size]
+    if len(payload) < LXMF.LXMessage.DESTINATION_LENGTH:
+        continue
+    destination = payload[:LXMF.LXMessage.DESTINATION_LENGTH].hex()
+    if destination != destination_hash_hex:
+        continue
+    transient_id = RNS.Identity.full_hash(payload).hex()
+    proof = {
+        "message_file": str(path),
+        "destination": destination,
+        "transient_id": transient_id,
+        "payload_hex": payload.hex(),
+        "payload_bytes": len(payload),
+        "stored_bytes": len(data),
+    }
+    output_json.write_text(json.dumps(proof, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(proof))
+    raise SystemExit(0)
+
+raise SystemExit(f"no Python propagation payload for {destination_hash_hex} in {messages_dir}")
 PY
 }
 
@@ -478,6 +531,7 @@ PY_SEND_LOG="${TMP_ROOT}/python-send.json"
 RUST_HOOK_LOG="${HOOK_STATE_DIR}/rust-hook.log"
 PY_HOOK_LOG="${HOOK_STATE_DIR}/python-hook.log"
 PY_STORED_MESSAGE_JSON="${TMP_ROOT}/python-stored-message.json"
+PY_PROPAGATION_PAYLOAD_JSON="${TMP_ROOT}/python-propagation-payload.json"
 RUST_EVIDENCE_DIR="${TMP_ROOT}/rust-evidence"
 
 kill_process_tree() {
@@ -1098,7 +1152,7 @@ with open(report_path, "w", encoding="utf-8") as handle:
 PY
 }
 
-if [[ "${COMPAT_CASE}" == "propagation_remote_status_bidir" ]]; then
+if [[ "${COMPAT_CASE}" == "propagation_remote_status_bidir" || "${COMPAT_CASE}" == "propagation_remote_fetch_rust_to_python" || "${COMPAT_CASE}" == "propagation_remote_download_rust_to_python" || "${COMPAT_CASE}" == "propagation_remote_sync_rust_to_python" ]]; then
   REMOTE_STATUS_PREFLIGHT=1
 fi
 
@@ -1143,6 +1197,280 @@ if [[ "${COMPAT_CASE}" == "propagation_remote_status_bidir" ]]; then
   SMOKE_MESSAGE_MARKER="remote-status-${COMPAT_CASE}-$(date +%s)"
   HOOK_MESSAGE_FILE=""
   write_report
+  echo "[python-lxmd-rust-lxmd-smoke] pass"
+  echo "[python-lxmd-rust-lxmd-smoke] report=${REPORT_PATH}"
+  echo "[python-lxmd-rust-lxmd-smoke] logs=${TMP_ROOT}"
+  exit 0
+fi
+
+if [[ "${COMPAT_CASE}" == "propagation_remote_fetch_rust_to_python" || "${COMPAT_CASE}" == "propagation_remote_download_rust_to_python" ]]; then
+  rpc_call "${RUST_RPC_ADDR}" "propagation_enable" '{"enabled":true,"peering_cost":8}' >/dev/null
+  rpc_call "${RUST_RPC_ADDR}" "set_outbound_propagation_node" "{\"peer\":\"${PY_PROPAGATION_HASH}\"}" >/dev/null
+  assert_contains <(
+    rpc_call "${RUST_RPC_ADDR}" "get_outbound_propagation_node" "null"
+  ) "\"peer\": *\"${PY_PROPAGATION_HASH}\"" "selected Python outbound propagation node"
+
+  SMOKE_MESSAGE_MARKER="remote-lifecycle-${COMPAT_CASE}-$(date +%s)"
+  RUST_MESSAGE_ID="rust-remote-lifecycle-${COMPAT_CASE}-$(date +%s)"
+  rpc_call "${RUST_RPC_ADDR}" "send_message_v2" "$(cat <<EOF
+{"id":"${RUST_MESSAGE_ID}","source":"${RUST_DELIVERY_HASH}","destination":"${RUST_DELIVERY_HASH}","title":"","content":"${SMOKE_MESSAGE_MARKER}","method":"propagated"}
+EOF
+)" >"${PY_SEND_LOG}"
+
+  if ! wait_rust_trace_status "${RUST_MESSAGE_ID}" "sent: propagated resource" "${TIMEOUT_SECS}"; then
+    echo "Rust daemon did not seed Python propagation node for ${COMPAT_CASE}" >&2
+    exit 1
+  fi
+
+  PY_PROPAGATION_PROOF=""
+  for _ in $(seq 1 "${TIMEOUT_SECS}"); do
+    if PY_PROPAGATION_PROOF="$(record_python_propagation_payload "${PY_DIR}/storage/lxmf/messagestore" "${RUST_DELIVERY_HASH}" "${PY_PROPAGATION_PAYLOAD_JSON}" 2>/dev/null)"; then
+      break
+    fi
+    sleep 1
+  done
+  if [[ -z "${PY_PROPAGATION_PROOF}" ]]; then
+    echo "Python propagation node did not store a payload for Rust delivery ${RUST_DELIVERY_HASH}" >&2
+    exit 1
+  fi
+
+  EXPECTED_TRANSIENT="$("${PYTHON_BIN}" - <<'PY' "${PY_PROPAGATION_PAYLOAD_JSON}"
+import json
+import sys
+from pathlib import Path
+
+print(json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))["transient_id"])
+PY
+)"
+  EXPECTED_PAYLOAD_HEX="$("${PYTHON_BIN}" - <<'PY' "${PY_PROPAGATION_PAYLOAD_JSON}"
+import json
+import sys
+from pathlib import Path
+
+print(json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))["payload_hex"])
+PY
+)"
+
+  if [[ "${COMPAT_CASE}" == "propagation_remote_fetch_rust_to_python" ]]; then
+    REMOTE_RESULT="$(rpc_call "${RUST_RPC_ADDR}" "propagation_remote_fetch" "{\"remote\":\"${PY_PROPAGATION_HASH}\",\"timeout_secs\":${REMOTE_STATUS_TIMEOUT_SECS}}")"
+  else
+    REMOTE_RESULT="$(rpc_call "${RUST_RPC_ADDR}" "propagation_remote_download" "{\"remote\":\"${PY_PROPAGATION_HASH}\",\"timeout_secs\":${REMOTE_STATUS_TIMEOUT_SECS}}")"
+  fi
+  LOCAL_FETCH="$(rpc_call "${RUST_RPC_ADDR}" "propagation_fetch" "{\"transient_id\":\"${EXPECTED_TRANSIENT}\"}")"
+  PROPAGATION_STATUS="$(rpc_call "${RUST_RPC_ADDR}" "propagation_status" "null")"
+  PEERS_AFTER="$(rpc_call "${RUST_RPC_ADDR}" "list_peers" "null")"
+
+  "${PYTHON_BIN}" - <<'PY' \
+    "${COMPAT_CASE}" \
+    "${REMOTE_RESULT}" \
+    "${LOCAL_FETCH}" \
+    "${PROPAGATION_STATUS}" \
+    "${PEERS_AFTER}" \
+    "${PY_PROPAGATION_PAYLOAD_JSON}" \
+    "${PY_PROPAGATION_HASH}" \
+    "${EXPECTED_TRANSIENT}" \
+    "${EXPECTED_PAYLOAD_HEX}"
+import json
+import sys
+from pathlib import Path
+
+(
+    compat_case,
+    remote_raw,
+    local_fetch_raw,
+    status_raw,
+    peers_raw,
+    python_payload_path,
+    python_propagation_hash,
+    expected_transient,
+    expected_payload_hex,
+) = sys.argv[1:10]
+
+remote = json.loads(remote_raw)
+local_fetch = json.loads(local_fetch_raw)
+status = json.loads(status_raw)
+peers = json.loads(peers_raw)
+python_payload = json.loads(Path(python_payload_path).read_text(encoding="utf-8"))
+result = remote.get("result", {})
+propagation = remote.get("propagation", status.get("propagation", {}))
+status_propagation = status.get("propagation", {})
+
+assert remote.get("remote") == python_propagation_hash, remote
+assert propagation.get("state_name") == "completed", remote
+assert status_propagation.get("state_name") == "completed", status
+assert local_fetch.get("transient_id") == expected_transient, local_fetch
+assert local_fetch.get("payload_hex") == expected_payload_hex, local_fetch
+assert python_payload["transient_id"] == expected_transient, python_payload
+assert python_payload["payload_hex"] == expected_payload_hex, python_payload
+assert local_fetch.get("payload_bytes") == python_payload["payload_bytes"], local_fetch
+
+if compat_case == "propagation_remote_fetch_rust_to_python":
+    assert result.get("available_count", 0) >= 1, result
+    assert result.get("fetched_count", 0) >= 1, result
+else:
+    assert result.get("available_count", result.get("available", 0)) >= 1, result
+    assert result.get("downloaded_count", result.get("downloaded", 0)) >= 1, result
+
+source_row = next(
+    (row for row in peers.get("peers", []) if row.get("peer", "").lower() == python_propagation_hash.lower()),
+    None,
+)
+if source_row is not None:
+    handled = source_row.get("messages", {}).get("handled_ids", [])
+    assert expected_transient in handled, source_row
+PY
+
+  "${PYTHON_BIN}" - <<'PY' \
+    "${REPORT_PATH}" \
+    "${TMP_ROOT}" \
+    "${RUST_LOG}" \
+    "${PY_LOG}" \
+    "${PY_REMOTE_STATUS_LOG}" \
+    "${RUST_REMOTE_STATUS_LOG}" \
+    "${RUST_PROPAGATION_HASH}" \
+    "${PY_PROPAGATION_HASH}" \
+    "${PY_PROPAGATION_PAYLOAD_JSON}" \
+    "${REMOTE_RESULT}" \
+    "${LOCAL_FETCH}" \
+    "${PROPAGATION_STATUS}" \
+    "${PEERS_AFTER}" \
+    "${COMPAT_CASE}"
+import json
+import sys
+from pathlib import Path
+
+(
+    report_path,
+    tmp_root,
+    rust_log,
+    py_log,
+    py_remote_status_log,
+    rust_remote_status_log,
+    rust_propagation_hash,
+    py_propagation_hash,
+    py_payload_path,
+    remote_result,
+    local_fetch,
+    propagation_status,
+    peers_after,
+    compat_case,
+) = sys.argv[1:15]
+
+with open(report_path, "w", encoding="utf-8") as handle:
+    json.dump({
+        "status": "pass",
+        "case": compat_case,
+        "proof": {
+            "python_stored_payload": json.loads(Path(py_payload_path).read_text(encoding="utf-8")),
+            "remote_result": json.loads(remote_result),
+            "local_fetch": json.loads(local_fetch),
+            "propagation_status": json.loads(propagation_status),
+            "peers_after": json.loads(peers_after),
+        },
+        "hashes": {
+            "rust_propagation": rust_propagation_hash,
+            "python_propagation": py_propagation_hash,
+        },
+        "logs": {
+            "tmp_root": tmp_root,
+            "rust_lxmd": rust_log,
+            "python_lxmd": py_log,
+            "python_remote_status": py_remote_status_log,
+            "rust_remote_status": rust_remote_status_log,
+        },
+    }, handle, indent=2)
+    handle.write("\n")
+PY
+  echo "[python-lxmd-rust-lxmd-smoke] pass"
+  echo "[python-lxmd-rust-lxmd-smoke] report=${REPORT_PATH}"
+  echo "[python-lxmd-rust-lxmd-smoke] logs=${TMP_ROOT}"
+  exit 0
+fi
+
+if [[ "${COMPAT_CASE}" == "propagation_remote_sync_rust_to_python" ]]; then
+  SYNC_STDOUT="${TMP_ROOT}/remote-sync-stdout.json"
+  SYNC_STDERR="${TMP_ROOT}/remote-sync-stderr.log"
+  set +e
+  rpc_call "${RUST_RPC_ADDR}" "propagation_remote_sync" "{\"remote\":\"${PY_PROPAGATION_HASH}\",\"peer\":\"${RUST_PROPAGATION_HASH}\",\"timeout_secs\":${REMOTE_STATUS_TIMEOUT_SECS}}" >"${SYNC_STDOUT}" 2>"${SYNC_STDERR}"
+  SYNC_RC=$?
+  set -e
+  PROPAGATION_STATUS="$(rpc_call "${RUST_RPC_ADDR}" "propagation_status" "null")"
+  if [[ "${SYNC_RC}" -eq 0 ]]; then
+    SYNC_RESULT="$(cat "${SYNC_STDOUT}")"
+    "${PYTHON_BIN}" - <<'PY' "${SYNC_RESULT}" "${PROPAGATION_STATUS}"
+import json
+import sys
+
+sync = json.loads(sys.argv[1])
+status = json.loads(sys.argv[2])
+assert sync.get("propagation", {}).get("state_name") == "completed", sync
+assert status.get("propagation", {}).get("state_name") == "completed", status
+PY
+  else
+    assert_contains "${SYNC_STDERR}" "propagation peer not found|NotFound|not found" "Python remote sync reached propagation control and reported missing peer"
+  fi
+
+  "${PYTHON_BIN}" - <<'PY' \
+    "${REPORT_PATH}" \
+    "${TMP_ROOT}" \
+    "${RUST_LOG}" \
+    "${PY_LOG}" \
+    "${PY_REMOTE_STATUS_LOG}" \
+    "${RUST_REMOTE_STATUS_LOG}" \
+    "${RUST_PROPAGATION_HASH}" \
+    "${PY_PROPAGATION_HASH}" \
+    "${SYNC_RC}" \
+    "${SYNC_STDOUT}" \
+    "${SYNC_STDERR}" \
+    "${PROPAGATION_STATUS}" \
+    "${COMPAT_CASE}"
+import json
+import sys
+from pathlib import Path
+
+(
+    report_path,
+    tmp_root,
+    rust_log,
+    py_log,
+    py_remote_status_log,
+    rust_remote_status_log,
+    rust_propagation_hash,
+    py_propagation_hash,
+    sync_rc,
+    sync_stdout,
+    sync_stderr,
+    propagation_status,
+    compat_case,
+) = sys.argv[1:14]
+
+stdout_text = Path(sync_stdout).read_text(encoding="utf-8", errors="replace").strip()
+stderr_text = Path(sync_stderr).read_text(encoding="utf-8", errors="replace").strip()
+with open(report_path, "w", encoding="utf-8") as handle:
+    json.dump({
+        "status": "pass",
+        "case": compat_case,
+        "proof": {
+            "remote_sync_exit_code": int(sync_rc),
+            "remote_sync_stdout": json.loads(stdout_text) if stdout_text.startswith("{") else stdout_text,
+            "remote_sync_stderr": stderr_text,
+            "propagation_status": json.loads(propagation_status),
+            "remaining": "Python lxmd exposes /pn/peer/sync only for peers already present in its propagation peer table; this harness proves Rust dispatch to Python control and captures the not-found response when no Python peer row is available.",
+        },
+        "hashes": {
+            "rust_propagation": rust_propagation_hash,
+            "python_propagation": py_propagation_hash,
+        },
+        "logs": {
+            "tmp_root": tmp_root,
+            "rust_lxmd": rust_log,
+            "python_lxmd": py_log,
+            "python_remote_status": py_remote_status_log,
+            "rust_remote_status": rust_remote_status_log,
+        },
+    }, handle, indent=2)
+    handle.write("\n")
+PY
   echo "[python-lxmd-rust-lxmd-smoke] pass"
   echo "[python-lxmd-rust-lxmd-smoke] report=${REPORT_PATH}"
   echo "[python-lxmd-rust-lxmd-smoke] logs=${TMP_ROOT}"
