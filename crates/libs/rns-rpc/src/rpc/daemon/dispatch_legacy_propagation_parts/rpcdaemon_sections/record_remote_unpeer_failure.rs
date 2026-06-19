@@ -219,6 +219,24 @@ impl RpcDaemon {
         remote: &str,
         error: &std::io::Error,
     ) -> Result<bool, std::io::Error> {
+        if is_retryable_remote_peer_sync_error(error) {
+            let source_peer_key = self
+                .active_peer_ids()
+                .into_iter()
+                .find(|peer| peer.eq_ignore_ascii_case(source_peer));
+            let Some(source_peer_key) = source_peer_key else {
+                return Ok(false);
+            };
+            self.record_retryable_remote_peer_sync_error(
+                source_peer_key.as_str(),
+                remote,
+                error.to_string().as_str(),
+                None,
+                None,
+            )?;
+            return Ok(true);
+        }
+
         if !is_remote_transfer_attempt_error(error) {
             return Ok(false);
         }

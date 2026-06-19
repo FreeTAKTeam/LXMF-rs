@@ -105,6 +105,11 @@ fn is_retryable_remote_peer_sync_error(err: &std::io::Error) -> bool {
             | (std::io::ErrorKind::InvalidData, "unexpected propagation control response")
             | (std::io::ErrorKind::NotFound, "propagation peer not found")
             | (std::io::ErrorKind::TimedOut, "propagation peer timed out")
+            | (std::io::ErrorKind::BrokenPipe, "propagation link closed")
+            | (std::io::ErrorKind::ConnectionAborted, "propagation link closed")
+            | (std::io::ErrorKind::ConnectionReset, "propagation link closed")
+            | (std::io::ErrorKind::NotConnected, "propagation link closed")
+            | (std::io::ErrorKind::UnexpectedEof, "propagation link closed")
     )
 }
 
@@ -123,7 +128,9 @@ fn remote_peer_sync_failure_kind(error: &str, postpone_reason: Option<&str>) -> 
             "invalid_data"
         }
         "propagation peer not found" => "not_found",
-        "propagation peer timed out" | "remote sync failed" => "timeout",
+        "propagation peer timed out" | "propagation link closed" | "remote sync failed" => {
+            "timeout"
+        }
         "propagation node denied access" => "no_access",
         _ => "failed",
     }
