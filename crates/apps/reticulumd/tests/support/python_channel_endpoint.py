@@ -314,6 +314,12 @@ class ChannelClient:
         if self.payload_kind == "buffer":
             self.buffer.write(message_data.encode("utf-8"))
             self.buffer.flush()
+        elif self.payload_kind == "channel-sequence":
+            time.sleep(1.0)
+            channel = active_link.get_channel()
+            for index in range(3):
+                channel.send(MessageTest(f"python-seq-{index}", f"hello-rust-{index}"))
+                time.sleep(0.25)
         elif self.payload_kind == "channel":
             active_link.get_channel().send(MessageTest(message_id, message_data))
         while True:
@@ -330,6 +336,13 @@ class ChannelClient:
                     self.payload_kind == "channel"
                     and reply["id"] == message_id
                     and reply["data"] == f"reply:{message_data}"
+                ):
+                    print(json.dumps({"received": reply}), flush=True)
+                    return 0
+                if (
+                    self.payload_kind == "channel-sequence"
+                    and reply["id"] == "sequence-ack"
+                    and reply["data"] == "reply:sequence-ok"
                 ):
                     print(json.dumps({"received": reply}), flush=True)
                     return 0
@@ -406,6 +419,7 @@ def main() -> int:
             "large-request",
             "file-response",
             "identify",
+            "channel-sequence",
         ),
         default="channel",
     )

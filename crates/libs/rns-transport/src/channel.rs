@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::time::Duration;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -104,10 +105,12 @@ pub(crate) fn validate_typed_message_type<M: TypedMessage>() -> Result<(), Chann
 pub struct Channel<O: ChannelOutlet> {
     outlet: O,
     next_sequence: u16,
+    next_rx_sequence: u16,
     next_handler_id: u64,
     handlers: HashMap<u16, Vec<RegisteredHandler>>,
     pending: HashMap<u16, Envelope>,
     states: HashMap<u16, MessageState>,
+    rx_ring: HashMap<u16, Envelope>,
 }
 
 impl<O: ChannelOutlet> Channel<O> {
@@ -115,10 +118,12 @@ impl<O: ChannelOutlet> Channel<O> {
         Self {
             outlet,
             next_sequence: 0,
+            next_rx_sequence: 0,
             next_handler_id: 0,
             handlers: HashMap::new(),
             pending: HashMap::new(),
             states: HashMap::new(),
+            rx_ring: HashMap::new(),
         }
     }
 
@@ -204,15 +209,34 @@ impl<O: ChannelOutlet> Channel<O> {
 
     pub fn receive(&mut self, raw: &[u8]) -> Result<bool, ChannelError> {
         let envelope = Envelope::unpack(raw)?;
-        let Some(handlers) = self.handlers.get_mut(&envelope.msg_type) else {
-            return Err(ChannelError::NoHandler);
-        };
-        for registered in handlers {
-            if (registered.handler)(envelope.clone()) {
-                return Ok(true);
-            }
+        let distance = envelope.sequence.wrapping_sub(self.next_rx_sequence);
+        if distance >= 0x8000 || distance >= 48 {
+            return Ok(false);
         }
-        Ok(false)
+        if self.rx_ring.insert(envelope.sequence, envelope).is_some() {
+            return Ok(false);
+        }
+
+        let mut accepted = true;
+        while let Some(envelope) = self.rx_ring.remove(&self.next_rx_sequence) {
+            self.next_rx_sequence = self.next_rx_sequence.wrapping_add(1);
+            let Some(handlers) = self.handlers.get_mut(&envelope.msg_type) else {
+                return Err(ChannelError::NoHandler);
+            };
+            let mut handled = false;
+            for registered in handlers {
+                match catch_unwind(AssertUnwindSafe(|| (registered.handler)(envelope.clone()))) {
+                    Ok(true) => {
+                        handled = true;
+                        break;
+                    }
+                    Ok(false) => {}
+                    Err(_) => {}
+                }
+            }
+            accepted &= handled;
+        }
+        Ok(accepted)
     }
 
     pub fn mark_delivered(&mut self, sequence: u16) {
@@ -241,6 +265,8 @@ impl<O: ChannelOutlet> Channel<O> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::panic::{catch_unwind, AssertUnwindSafe};
+    use std::sync::{Arc, Mutex};
 
     struct MockOutlet;
 
@@ -314,5 +340,68 @@ mod tests {
         let _handler_id = channel
             .register_typed_handler::<SystemTypedMessage, _>(|_message| true)
             .expect("system message types should register");
+    }
+
+    #[test]
+    fn receive_buffers_out_of_order_messages_until_contiguous() {
+        let mut channel = Channel::new(MockOutlet);
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let seen_clone = seen.clone();
+        channel.register_handler(0x1234, move |envelope| {
+            seen_clone.lock().expect("lock").push((envelope.sequence, envelope.payload));
+            true
+        });
+
+        let first = Envelope { msg_type: 0x1234, sequence: 0, payload: b"first".to_vec() };
+        let second = Envelope { msg_type: 0x1234, sequence: 1, payload: b"second".to_vec() };
+
+        assert!(channel.receive(&second.pack()).expect("buffer future sequence"));
+        assert!(seen.lock().expect("lock").is_empty());
+
+        assert!(channel.receive(&first.pack()).expect("release contiguous"));
+        let seen = seen.lock().expect("lock");
+        assert_eq!(seen.as_slice(), &[(0, b"first".to_vec()), (1, b"second".to_vec())]);
+    }
+
+    #[test]
+    fn receive_rejects_duplicate_old_and_outside_window_messages() {
+        let mut channel = Channel::new(MockOutlet);
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let seen_clone = seen.clone();
+        channel.register_handler(0x1234, move |envelope| {
+            seen_clone.lock().expect("lock").push(envelope.sequence);
+            true
+        });
+
+        let first = Envelope { msg_type: 0x1234, sequence: 0, payload: b"first".to_vec() };
+        let duplicate_first = first.clone();
+        let far_future = Envelope { msg_type: 0x1234, sequence: 49, payload: b"future".to_vec() };
+        let old = Envelope { msg_type: 0x1234, sequence: u16::MAX, payload: b"old".to_vec() };
+
+        assert!(channel.receive(&first.pack()).expect("first"));
+        assert!(!channel.receive(&duplicate_first.pack()).expect("duplicate"));
+        assert!(!channel.receive(&far_future.pack()).expect("outside window"));
+        assert!(!channel.receive(&old.pack()).expect("old sequence"));
+
+        assert_eq!(seen.lock().expect("lock").as_slice(), &[0]);
+    }
+
+    #[test]
+    fn receive_contains_handler_panics_and_continues_to_later_handlers() {
+        let mut channel = Channel::new(MockOutlet);
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        channel.register_handler(0x1234, |_| -> bool { panic!("boom") });
+        let seen_clone = seen.clone();
+        channel.register_handler(0x1234, move |envelope| {
+            seen_clone.lock().expect("lock").push(envelope.sequence);
+            true
+        });
+
+        let first = Envelope { msg_type: 0x1234, sequence: 0, payload: b"first".to_vec() };
+        let result = catch_unwind(AssertUnwindSafe(|| channel.receive(&first.pack())));
+
+        assert!(result.is_ok(), "handler panic should not unwind channel receive");
+        assert_eq!(result.unwrap().expect("receive"), true);
+        assert_eq!(seen.lock().expect("lock").as_slice(), &[0]);
     }
 }

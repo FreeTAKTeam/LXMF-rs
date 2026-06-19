@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use std::io::{Read, Write};
 
@@ -118,7 +118,7 @@ impl TypedMessage for StreamDataMessage {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ReadyCallbackId(u64);
 
 impl ReadyCallbackId {
@@ -134,7 +134,7 @@ struct ReaderState {
     buffer: Vec<u8>,
     eof: bool,
     next_callback_id: u64,
-    callbacks: HashMap<ReadyCallbackId, ReadyCallback>,
+    callbacks: BTreeMap<ReadyCallbackId, ReadyCallback>,
 }
 
 fn dispatch_ready_callbacks(callbacks: Vec<ReadyCallback>, ready: usize) {

@@ -161,6 +161,43 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn raw_channel_reader_ready_callbacks_run_in_registration_order() {
+        let transport = test_transport();
+        let (outbound, mut inbound, iface, channel) = linked_channel(&transport).await;
+        let reader = RawChannelReader::attach(27, channel).await.expect("reader");
+
+        let calls = Arc::new(StdMutex::new(Vec::new()));
+        let (tx, rx) = mpsc::channel();
+
+        for label in ["first", "second", "third"] {
+            let calls = calls.clone();
+            let tx = tx.clone();
+            reader.add_ready_callback(move |count| {
+                calls.lock().expect("lock").push((label, count));
+                tx.send(label).expect("callback signal");
+            });
+        }
+        drop(tx);
+
+        let message =
+            StreamDataMessage::new(27, b"ordered".to_vec(), false, false).expect("message");
+        let (_sequence, packet) = inbound
+            .send_channel_message(StreamDataMessage::MSG_TYPE, message.encode())
+            .expect("channel message");
+
+        let result = outbound.lock().await.handle_packet(&packet, iface);
+        assert!(matches!(result, LinkHandleResult::Proof(_)));
+
+        for _ in 0..3 {
+            rx.recv_timeout(Duration::from_secs(1)).expect("ready callback");
+        }
+        assert_eq!(
+            calls.lock().expect("lock").as_slice(),
+            &[("first", 7), ("second", 7), ("third", 7)]
+        );
+    }
+
+    #[tokio::test]
     async fn raw_channel_reader_close_unregisters_handler() {
         let transport = test_transport();
         let (outbound, mut inbound, iface, channel) = linked_channel(&transport).await;

@@ -1,6 +1,6 @@
 # Reticulum Parity Matrix
 
-Last reassessed: 2026-06-07
+Last reassessed: 2026-06-19
 
 This is the maintained row-level status for Python Reticulum compatibility.
 Repository-level posture and execution order live in
@@ -27,7 +27,7 @@ Workspace paths are used for navigation. Published package names are
 | `RNS/Transport.py` | `crates/libs/rns-transport`, `crates/apps/reticulumd` | partial | Path and announce handling, link routing, resources, receipts, interface-aware sending, pacing, and duplicate suppression. | Remaining announce/path edge policy and full runtime behavior require live parity evidence. |
 | `RNS/Link.py` | `crates/libs/rns-transport` | done | Establishment, proof validation, bound-interface enforcement, RTT-derived liveness, protocol close, and cleanup. | Continue live regression coverage; no confirmed blocker. |
 | `RNS/Resource.py` | `crates/libs/rns-transport` | done | Bounded receive allocation, advertisement validation, retries, adaptive fragment scheduling, timeout/failure events, cancellation, and cleanup. | Split/segmented resources remain intentionally unsupported and rejected. |
-| `RNS/Channel.py` | `crates/libs/rns-transport` | partial | Channel packet handling, retry scheduling, buffering, and live Rust/Python channel tests. | Full Python sequential-delivery and callback behavior is not yet demonstrated. |
+| `RNS/Channel.py` | `crates/libs/rns-transport` | done | Channel packet handling, retry scheduling, buffering, ordered receive delivery, callback ordering/short-circuit/panic containment, delivery-on-proof, timeout retry, exhaustion cleanup, and live Rust/Python channel sequence tests. | No confirmed channel parity blocker. |
 | `RNS/Buffer.py` | `crates/libs/rns-core`, `crates/libs/rns-transport` | done | Packet buffers, readers/writers, and callback baseline. | No confirmed parity blocker. |
 | `RNS/Interfaces/*` | `crates/libs/rns-transport`, `crates/apps/reticulumd` | partial | TCP client/server, UDP, serial, KISS, AutoInterface, LoRa/RNode, feature-gated RNode BLE, and VR-N76 KISS-over-BLE. | AX.25, Backbone, I2P, Local, Pipe, Weave, full RNode management, and prepared-host hardware evidence remain. |
 | `RNS/Discovery.py` | `crates/libs/rns-transport`, `crates/apps/reticulumd` | partial | Announce/path discovery plus live AutoInterface discovery and peer runtime. | Public bootstrap/discovery breadth remains narrower than Python. |
@@ -63,17 +63,16 @@ instead of silently loading as inert unknown interface entries.
 
 ## Highest-Priority Gaps
 
-1. Prove complete channel ordering and callback behavior.
-2. Close remaining announce/path/discovery edge-policy differences.
-3. Complete resolver/bootstrap behavior.
-4. Capture prepared-host BLE/RNode lifecycle evidence.
-5. Decide and document support policy for missing interface families.
-6. Implement real utility equivalents only where product demand justifies them.
+1. Close remaining announce/path/discovery edge-policy differences.
+2. Complete resolver/bootstrap behavior.
+3. Capture prepared-host BLE/RNode lifecycle evidence.
+4. Decide and document support policy for missing interface families.
+5. Implement real utility equivalents only where product demand justifies them.
 
 ## Evidence
 
 - Workspace unit and integration tests cover core, transport, daemon, serial,
-  BLE, LoRa, AutoInterface, link, and resource behavior.
+  BLE, LoRa, AutoInterface, link, channel, buffer, and resource behavior.
 - `.github/workflows/python-interop.yml` runs pinned live Python channel and
   LXMF compatibility scenarios.
 - Nightly mesh, soak, and embedded HIL workflows provide additional operational

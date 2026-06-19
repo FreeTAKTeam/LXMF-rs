@@ -153,6 +153,116 @@ async fn python_to_rust_channel_roundtrip() {
 
 #[tokio::test]
 #[ignore = "requires local Python Reticulum checkout"]
+async fn python_to_rust_channel_sequence_callbacks_are_ordered() {
+    let _interop_guard = python_interop_guard().await;
+    let paths = python_channel_interop_paths();
+
+    let server_port = free_tcp_port();
+    let temp = tempfile::tempdir().expect("tempdir");
+    let py_config_dir = temp.path().join("python-rns-channel-sequence-client");
+    fs::create_dir_all(&py_config_dir).expect("python config dir");
+    write_python_client_config(&py_config_dir, server_port);
+
+    let rust_identity = PrivateIdentity::new_from_rand(OsRng);
+    let rust_identity = to_transport_private_identity(&rust_identity);
+    let mut config =
+        TransportConfig::new("python-channel-sequence-interop-rust-server", &rust_identity, true);
+    config.set_path_request_timeout_secs(2);
+    let mut transport = Transport::new(config);
+    let iface_manager = transport.iface_manager();
+    transport
+        .iface_manager()
+        .lock()
+        .await
+        .spawn(TcpServer::new(format!("127.0.0.1:{server_port}"), iface_manager), TcpServer::spawn);
+    wait_for_port(server_port, Duration::from_secs(5)).await;
+
+    let destination = transport
+        .add_destination(rust_identity.clone(), DestinationName::new("test", "channel"))
+        .await;
+    let destination_hash = {
+        let destination = destination.lock().await;
+        hex::encode(destination.desc.address_hash.as_slice())
+    };
+
+    let child = paths.spawn_channel_client(&py_config_dir, &destination_hash, "channel-sequence");
+    let mut guard = ChildGuard { child: Some(child) };
+
+    let mut in_events = transport.in_link_events();
+    let link_id = wait_for_in_link_active_with_announces(
+        &transport,
+        &destination,
+        &mut in_events,
+        Duration::from_secs(8),
+    )
+    .await;
+    sleep(Duration::from_millis(50)).await;
+
+    let channel = transport.channel(link_id);
+    let seen = Arc::new(StdMutex::new(Vec::<(String, String)>::new()));
+    let seen_clone = seen.clone();
+    channel
+        .register_handler(MSG_TYPE, move |envelope| {
+            if let Ok(decoded) = rmp_serde::from_slice::<(String, String)>(&envelope.payload) {
+                seen_clone.lock().expect("seen lock").push(decoded);
+                true
+            } else {
+                false
+            }
+        })
+        .await
+        .expect("register channel handler");
+
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(8);
+    loop {
+        let ready = {
+            let seen = seen.lock().expect("seen lock");
+            seen.len() == 3
+        };
+        if ready {
+            break;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "timed out waiting for Python channel sequence"
+        );
+        sleep(Duration::from_millis(50)).await;
+    }
+    assert_eq!(
+        seen.lock().expect("seen lock").as_slice(),
+        &[
+            (String::from("python-seq-0"), String::from("hello-rust-0")),
+            (String::from("python-seq-1"), String::from("hello-rust-1")),
+            (String::from("python-seq-2"), String::from("hello-rust-2")),
+        ]
+    );
+
+    let payload =
+        rmp_serde::to_vec(&(String::from("sequence-ack"), String::from("reply:sequence-ok")))
+            .expect("encode channel ack");
+    channel.send(MSG_TYPE, payload).await.expect("send channel ack");
+
+    let child = guard.child.take().expect("python child");
+    let output = tokio::task::spawn_blocking(move || child.wait_with_output())
+        .await
+        .expect("join python client")
+        .expect("wait for python client");
+    if !output.status.success() {
+        panic!(
+            "python channel sequence client failed\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("\"sequence-ack\""),
+        "python client did not report sequence ack: {stdout}"
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires local Python Reticulum checkout"]
 async fn python_to_rust_link_data_roundtrip() {
     let _interop_guard = python_interop_guard().await;
     let paths = python_channel_interop_paths();
