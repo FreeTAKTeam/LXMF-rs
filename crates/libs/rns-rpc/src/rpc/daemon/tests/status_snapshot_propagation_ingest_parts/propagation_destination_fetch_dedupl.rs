@@ -32,6 +32,25 @@ fn propagation_destination_fetch_deduplicates_repeated_wanted_ids_like_python() 
 }
 
 #[test]
+fn propagation_ingest_accepts_reference_cost_16_stamp() {
+    use sha2::{Digest, Sha256};
+
+    let daemon = RpcDaemon::test_instance();
+    let destination = [0xa2_u8; 16];
+    let mut lxm_data = destination.to_vec();
+    lxm_data.extend(std::iter::repeat_n(0x42_u8, 180));
+    let transient_id = hex::encode(Sha256::digest(&lxm_data));
+    let payload = stamped_propagation_payload(&lxm_data, 16);
+
+    let result = daemon
+        .ingest_propagation_payload_bytes_at_cost(&payload, Some(&transient_id), 16)
+        .expect("cost-16 reference propagation stamp should ingest");
+
+    assert_eq!(result, transient_id);
+    assert!(daemon.has_propagation_payload(&result));
+}
+
+#[test]
 fn propagation_ingest_rejects_ignored_destination_before_queueing() {
     use sha2::{Digest, Sha256};
 
@@ -386,8 +405,7 @@ fn stamped_propagation_payload(lxm_data: &[u8], target_cost: u32) -> Vec<u8> {
     for round in 0..PROPAGATION_STAMP_ROUNDS {
         let mut salt_data = Vec::with_capacity(transient_id.len() + 8);
         salt_data.extend_from_slice(transient_id.as_slice());
-        let packed =
-            rmp_serde::to_vec(&(round as u32)).expect("msgpack encode propagation stamp round");
+        let packed = rmp_serde::to_vec(&round).expect("msgpack encode propagation stamp round");
         salt_data.extend_from_slice(&packed);
         let salt_hash = Sha256::digest(&salt_data);
         let hk = Hkdf::<Sha256>::new(Some(salt_hash.as_slice()), transient_id.as_slice());

@@ -185,8 +185,7 @@
         for round in 0..PROPAGATION_STAMP_ROUNDS {
             let mut salt_data = Vec::with_capacity(transient_id.len() + 8);
             salt_data.extend_from_slice(transient_id.as_slice());
-            let packed =
-                rmp_serde::to_vec(&(round as u32)).expect("msgpack encode propagation stamp round");
+            let packed = rmp_serde::to_vec(&round).expect("msgpack encode propagation stamp round");
             salt_data.extend_from_slice(&packed);
             let salt_hash = Sha256::digest(&salt_data);
             let hk = Hkdf::<Sha256>::new(Some(salt_hash.as_slice()), transient_id.as_slice());

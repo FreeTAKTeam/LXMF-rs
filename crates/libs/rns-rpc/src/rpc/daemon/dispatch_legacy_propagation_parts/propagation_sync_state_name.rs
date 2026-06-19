@@ -277,8 +277,7 @@ pub(super) fn propagation_stamp_workblock(material: &[u8]) -> Vec<u8> {
     for round in 0..PROPAGATION_STAMP_WORKBLOCK_ROUNDS {
         let mut salt_data = Vec::with_capacity(material.len() + 8);
         salt_data.extend_from_slice(material);
-        let packed =
-            rmp_serde::to_vec(&(round as u32)).expect("msgpack encode propagation stamp round");
+        let packed = rmp_serde::to_vec(&round).expect("msgpack encode propagation stamp round");
         salt_data.extend_from_slice(&packed);
         let salt_hash = Sha256::digest(&salt_data);
         let hk = hkdf::Hkdf::<Sha256>::new(Some(salt_hash.as_slice()), material);
