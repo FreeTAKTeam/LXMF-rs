@@ -357,12 +357,22 @@ fn propagation_remote_fetch_summary(
     rejected_count: usize,
 ) -> JsonValue {
     let transferred_bytes = payloads.iter().map(Vec::len).sum::<usize>();
+    let messages = payloads
+        .iter()
+        .map(|payload| {
+            json!({
+                "transient_id": hex::encode(propagation_payload_ack_transient_id(payload)),
+                "payload_hex": hex::encode(payload),
+            })
+        })
+        .collect::<Vec<_>>();
     json!({
         "available_count": available_count,
         "fetched_count": payloads.len(),
         "imported_count": imported_count,
         "duplicate_count": duplicate_count,
         "rejected_count": rejected_count,
+        "messages": messages,
         "transferred_bytes": transferred_bytes,
     })
 }

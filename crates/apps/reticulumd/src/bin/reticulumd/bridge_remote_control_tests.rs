@@ -17,6 +17,12 @@ fn propagation_remote_fetch_summary_reports_transferred_bytes() {
         summary["transferred_bytes"].as_u64(),
         Some(payloads.iter().map(Vec::len).sum::<usize>() as u64)
     );
+    let messages = summary["messages"].as_array().expect("messages");
+    assert_eq!(messages.len(), 2);
+    let expected_payload_hex = hex::encode(&payloads[0]);
+    let expected_transient_id = hex::encode(Sha256::digest(&payloads[0]));
+    assert_eq!(messages[0]["payload_hex"].as_str(), Some(expected_payload_hex.as_str()));
+    assert_eq!(messages[0]["transient_id"].as_str(), Some(expected_transient_id.as_str()));
 }
 
 #[test]

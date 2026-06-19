@@ -24,7 +24,7 @@ struct CompatibilityCase {
     description: &'static str,
 }
 
-const COMPATIBILITY_CASES: [CompatibilityCase; 17] = [
+const COMPATIBILITY_CASES: [CompatibilityCase; 20] = [
     CompatibilityCase {
         id: "direct_rust_to_python",
         mode: CompatibilityMode::Direct,
@@ -59,6 +59,21 @@ const COMPATIBILITY_CASES: [CompatibilityCase; 17] = [
         id: "propagation_remote_status_bidir",
         mode: CompatibilityMode::PropagationControl,
         description: "Python can resolve Rust propagation control and Rust can query Python propagation status",
+    },
+    CompatibilityCase {
+        id: "propagation_remote_fetch_rust_to_python",
+        mode: CompatibilityMode::PropagationControl,
+        description: "Rust remote fetch can import Python propagation-node payloads",
+    },
+    CompatibilityCase {
+        id: "propagation_remote_download_rust_to_python",
+        mode: CompatibilityMode::PropagationControl,
+        description: "Rust remote download can import Python propagation-node payloads",
+    },
+    CompatibilityCase {
+        id: "propagation_remote_sync_rust_to_python",
+        mode: CompatibilityMode::PropagationControl,
+        description: "Rust remote sync can trigger a seeded Python LXMRouter peer sync transfer",
     },
     CompatibilityCase {
         id: "propagation_get_haves_python_to_rust",
@@ -114,7 +129,7 @@ const COMPATIBILITY_CASES: [CompatibilityCase; 17] = [
 
 pub(crate) fn assert_required_modes_covered() {
     assert!(
-        COMPATIBILITY_CASES.len() >= 17,
+        COMPATIBILITY_CASES.len() >= 20,
         "matrix should cover the documented required scenarios"
     );
     assert_case_present("direct_rust_to_python");
@@ -124,6 +139,9 @@ pub(crate) fn assert_required_modes_covered() {
     assert_case_present("propagated_rust_to_python");
     assert_case_present("propagated_python_to_rust");
     assert_case_present("propagation_remote_status_bidir");
+    assert_case_present("propagation_remote_fetch_rust_to_python");
+    assert_case_present("propagation_remote_download_rust_to_python");
+    assert_case_present("propagation_remote_sync_rust_to_python");
     assert_case_present("propagation_get_haves_python_to_rust");
     assert_case_present("propagation_offer_python_to_rust");
     assert_case_present("propagation_offer_queue_python_to_rust");
