@@ -108,7 +108,7 @@ impl ResourceManager {
         for (hash, sender) in self.outgoing.iter_mut() {
             match sender.poll(now, self.retry_interval) {
                 OutboundResourcePoll::Send(packet) => {
-                    packets.push((sender.link_id, *packet));
+                    packets.push((sender.link_id, (*packet).clone()));
                 }
                 OutboundResourcePoll::Failed => {
                     self.events.push(ResourceEvent {

@@ -45,7 +45,7 @@ pub enum AnnounceLimitAction {
     Hold(Duration),
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct HeldAnnounce {
     packet: Packet,
     source: IfaceSource,
@@ -153,7 +153,7 @@ impl AnnounceLimitEntry {
         rate_limit: &AnnounceRateLimit,
     ) -> bool {
         if let Entry::Occupied(mut entry) = self.held_announces.entry(packet.destination) {
-            entry.insert(HeldAnnounce { packet: *packet, source, held_at: now });
+            entry.insert(HeldAnnounce { packet: packet.clone(), source, held_at: now });
             return true;
         }
 
@@ -173,8 +173,10 @@ impl AnnounceLimitEntry {
             }
         }
 
-        self.held_announces
-            .insert(packet.destination, HeldAnnounce { packet: *packet, source, held_at: now });
+        self.held_announces.insert(
+            packet.destination,
+            HeldAnnounce { packet: packet.clone(), source, held_at: now },
+        );
         true
     }
 
@@ -208,7 +210,7 @@ impl AnnounceLimitEntry {
             .held_announces
             .iter()
             .min_by_key(|(_, held)| (held.packet.header.hops, held.held_at))
-            .map(|(destination, held)| (*destination, held.packet, held.source));
+            .map(|(destination, held)| (*destination, held.packet.clone(), held.source));
 
         let (destination, packet, source) = selected?;
 

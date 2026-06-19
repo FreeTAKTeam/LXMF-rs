@@ -4,7 +4,7 @@ pub enum TxMessageType {
     Direct(AddressHash),
 }
 
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct TxMessage {
     pub tx_type: TxMessageType,
     pub packet: Packet,
@@ -97,7 +97,7 @@ pub enum IfaceRole {
     VirtualUnicast,
 }
 
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct RxMessage {
     pub address: AddressHash,
     pub packet: Packet,
@@ -161,7 +161,7 @@ struct LocalInterface {
     announce_cap_percent: u64,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 struct QueuedAnnounce {
     message: TxMessage,
     queued_at: Instant,

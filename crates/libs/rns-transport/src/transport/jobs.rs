@@ -208,7 +208,7 @@ pub(super) async fn manage_transport(
                         break;
                     },
                     Some(message) = rx_receiver.recv() => {
-                        let _ = iface_messages_tx.send(message);
+                        let _ = iface_messages_tx.send(message.clone());
 
                         let packet = message.packet;
 

@@ -49,7 +49,7 @@ pub struct TcpClient {
 }
 
 impl TcpClient {
-    pub const DEFAULT_MTU: usize = 2048;
+    pub const DEFAULT_MTU: usize = 262_144;
 
     pub fn new<T: Into<String>>(addr: T) -> Self {
         Self { addr: addr.into(), stream: None, mtu: Self::DEFAULT_MTU }
@@ -328,6 +328,7 @@ mod tests {
     #[test]
     fn tcp_client_default_and_configured_mtu_are_exposed() {
         assert_eq!(TcpClient::new("rmap.world:4242").mtu_value(), TcpClient::DEFAULT_MTU);
+        assert_eq!(TcpClient::DEFAULT_MTU, 262_144);
         assert_eq!(TcpClient::new("rmap.world:4242").with_mtu(4096).mtu_value(), 4096);
         assert_eq!(TcpClient::new("rmap.world:4242").with_mtu(64).mtu_value(), 256);
     }

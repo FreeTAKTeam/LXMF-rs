@@ -2,7 +2,7 @@ use super::diag;
 use super::*;
 use crate::packet::{DestinationType, Header, HeaderType, PacketType, PropagationType};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct RouteDecision {
     pub packet: Packet,
     pub next_iface: Option<AddressHash>,
@@ -16,7 +16,7 @@ pub(super) fn route_inbound_packet(
     let lookup = lookup.unwrap_or(original_packet.destination);
 
     let Some(entry) = path_table.get(&lookup) else {
-        return RouteDecision { packet: *original_packet, next_iface: None };
+        return RouteDecision { packet: original_packet.clone(), next_iface: None };
     };
 
     let is_direct_hop = entry.hops <= 1 && entry.received_from == lookup;
@@ -35,7 +35,7 @@ pub(super) fn route_inbound_packet(
             destination: original_packet.destination,
             transport: None,
             context: original_packet.context,
-            data: original_packet.data,
+            data: original_packet.data.clone(),
         }
     } else {
         Packet {
@@ -52,7 +52,7 @@ pub(super) fn route_inbound_packet(
             destination: original_packet.destination,
             transport: Some(entry.received_from),
             context: original_packet.context,
-            data: original_packet.data,
+            data: original_packet.data.clone(),
         }
     };
 
@@ -64,25 +64,25 @@ pub(super) fn route_outbound_packet(
     original_packet: &Packet,
 ) -> RouteDecision {
     if original_packet.header.header_type == HeaderType::Type2 {
-        return RouteDecision { packet: *original_packet, next_iface: None };
+        return RouteDecision { packet: original_packet.clone(), next_iface: None };
     }
 
     if original_packet.header.packet_type == PacketType::Announce {
-        return RouteDecision { packet: *original_packet, next_iface: None };
+        return RouteDecision { packet: original_packet.clone(), next_iface: None };
     }
 
     if original_packet.header.destination_type == DestinationType::Plain
         || original_packet.header.destination_type == DestinationType::Group
     {
-        return RouteDecision { packet: *original_packet, next_iface: None };
+        return RouteDecision { packet: original_packet.clone(), next_iface: None };
     }
 
     let Some(entry) = path_table.get(&original_packet.destination) else {
-        return RouteDecision { packet: *original_packet, next_iface: None };
+        return RouteDecision { packet: original_packet.clone(), next_iface: None };
     };
 
     if entry.hops <= 1 && entry.received_from == original_packet.destination {
-        return RouteDecision { packet: *original_packet, next_iface: Some(entry.iface) };
+        return RouteDecision { packet: original_packet.clone(), next_iface: Some(entry.iface) };
     }
 
     RouteDecision {
@@ -100,7 +100,7 @@ pub(super) fn route_outbound_packet(
             destination: original_packet.destination,
             transport: Some(entry.received_from),
             context: original_packet.context,
-            data: original_packet.data,
+            data: original_packet.data.clone(),
         },
         next_iface: Some(entry.iface),
     }

@@ -185,7 +185,7 @@ mod tests {
         let packet = announce_packet();
         let trace = mgr
             .send_with_announce_policy(
-                TxMessage { tx_type: TxMessageType::Broadcast(None), packet },
+                TxMessage { tx_type: TxMessageType::Broadcast(None), packet: packet.clone() },
                 Some(AnnounceBroadcastPolicy {
                     local_destination: false,
                     next_hop_iface_mode: Some(InterfaceMode::Full),
@@ -236,7 +236,7 @@ mod tests {
         let packet = announce_packet();
         let trace = mgr
             .send_with_announce_policy(
-                TxMessage { tx_type: TxMessageType::Broadcast(None), packet },
+                TxMessage { tx_type: TxMessageType::Broadcast(None), packet: packet.clone() },
                 Some(AnnounceBroadcastPolicy {
                     local_destination: false,
                     next_hop_iface_mode: Some(InterfaceMode::Boundary),
@@ -256,7 +256,7 @@ mod tests {
         let packet = announce_packet();
         let trace = mgr
             .send_with_announce_policy(
-                TxMessage { tx_type: TxMessageType::Broadcast(None), packet },
+                TxMessage { tx_type: TxMessageType::Broadcast(None), packet: packet.clone() },
                 Some(AnnounceBroadcastPolicy {
                     local_destination: true,
                     next_hop_iface_mode: None,
@@ -276,7 +276,7 @@ mod tests {
         let packet = announce_packet();
         let trace = mgr
             .send_with_announce_policy(
-                TxMessage { tx_type: TxMessageType::Broadcast(None), packet },
+                TxMessage { tx_type: TxMessageType::Broadcast(None), packet: packet.clone() },
                 Some(AnnounceBroadcastPolicy {
                     local_destination: false,
                     next_hop_iface_mode: Some(InterfaceMode::Roaming),
@@ -296,7 +296,7 @@ mod tests {
         let packet = announce_packet();
         let trace = mgr
             .send_with_announce_policy(
-                TxMessage { tx_type: TxMessageType::Broadcast(None), packet },
+                TxMessage { tx_type: TxMessageType::Broadcast(None), packet: packet.clone() },
                 Some(AnnounceBroadcastPolicy {
                     local_destination: false,
                     next_hop_iface_mode: Some(InterfaceMode::Boundary),
@@ -316,7 +316,7 @@ mod tests {
         let first = announce_packet_with(1, b"first-destination", 1);
         let trace = mgr
             .send_with_announce_policy(
-                TxMessage { tx_type: TxMessageType::Broadcast(None), packet: first },
+                TxMessage { tx_type: TxMessageType::Broadcast(None), packet: first.clone() },
                 Some(AnnounceBroadcastPolicy {
                     local_destination: false,
                     next_hop_iface_mode: Some(InterfaceMode::Full),
@@ -339,7 +339,7 @@ mod tests {
             .await;
         let nearer_trace = mgr
             .send_with_announce_policy(
-                TxMessage { tx_type: TxMessageType::Broadcast(None), packet: nearer },
+                TxMessage { tx_type: TxMessageType::Broadcast(None), packet: nearer.clone() },
                 Some(AnnounceBroadcastPolicy {
                     local_destination: false,
                     next_hop_iface_mode: Some(InterfaceMode::Full),

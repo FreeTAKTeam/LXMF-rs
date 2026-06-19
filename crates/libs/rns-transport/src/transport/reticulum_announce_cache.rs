@@ -36,7 +36,8 @@ impl ReticulumAnnounceCache {
         let Ok(announce) = DestinationAnnounce::validate(&packet) else {
             return Ok(None);
         };
-        Ok(Some(CachedAnnounce { packet, destination: announce.destination }))
+        let destination = announce.destination;
+        Ok(Some(CachedAnnounce { packet, destination }))
     }
 
     async fn read_packet(&self, packet_hash: Hash) -> io::Result<Option<Packet>> {

@@ -79,7 +79,7 @@ const CHANNEL_WINDOW_FLEXIBILITY: u8 = 4;
 #[allow(dead_code)]
 const CHANNEL_MAX_TRIES: u8 = 5;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 struct PendingChannelPacket {
     sequence: u16,
     #[allow(dead_code)]

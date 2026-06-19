@@ -161,21 +161,17 @@ impl Transport {
         };
         let packet = decision.packet;
         let maybe_iface = decision.next_iface;
+        let destination = packet.destination;
 
         if let Some(iface) = maybe_iface {
             self.send_direct(iface, packet).await;
             log::trace!("Sent outbound packet to {}", iface);
-        }
-        if maybe_iface.is_none() {
+        } else {
             let handler = self.handler.lock().await;
             if handler.config.broadcast {
                 handler.send(TxMessage { tx_type: TxMessageType::Broadcast(None), packet }).await;
             } else {
-                log::trace!(
-                    "tp({}): no route for outbound packet dst={}",
-                    self.name,
-                    packet.destination
-                );
+                log::trace!("tp({}): no route for outbound packet dst={}", self.name, destination);
             }
         }
     }

@@ -160,7 +160,7 @@ impl ResourceSender {
     }
 
     fn advertisement_packet(&self) -> Packet {
-        self.advertisement_packet
+        self.advertisement_packet.clone()
     }
 
     fn mark_advertised(&mut self, retry_limit: u8) {
@@ -240,7 +240,7 @@ impl ResourceSender {
                     {
                         self.sent_parts[index] = true;
                         sent_any = true;
-                        packets.push(scratch_packet);
+                        packets.push(scratch_packet.clone());
                     } else {
                         self.status = ResourceStatus::Failed;
                         return;

@@ -146,6 +146,49 @@ fn outbound_propagation_cost_reads_selected_node_app_data_like_python() {
 }
 
 #[test]
+fn outbound_propagation_cost_accepts_destination_hash_alias() {
+    let daemon = RpcDaemon::test_instance();
+    let peer = "d4555d7a11368e3d0f568b013286c142";
+    let app_data = rmp_serde::to_vec_named(&rmpv::Value::Array(vec![
+        rmpv::Value::Boolean(false),
+        rmpv::Value::from(1_700_000_702i64),
+        rmpv::Value::Boolean(true),
+        rmpv::Value::from(256),
+        rmpv::Value::from(10240),
+        rmpv::Value::Array(vec![rmpv::Value::from(8), rmpv::Value::from(3), rmpv::Value::from(8)]),
+        rmpv::Value::Map(Vec::new()),
+    ]))
+    .expect("encode propagation app data");
+    daemon
+        .handle_rpc(rpc_request(
+            97,
+            "announce_received",
+            json!({
+                "peer": peer,
+                "timestamp": 1_700_000_702i64,
+                "app_data_hex": hex::encode(app_data),
+                "aspect": "lxmf.propagation",
+                "hops": 1,
+            }),
+        ))
+        .expect("propagation announce");
+
+    let result = daemon
+        .handle_rpc(rpc_request(
+            98,
+            "get_outbound_propagation_cost",
+            json!({ "destination_hash": peer }),
+        ))
+        .expect("get outbound propagation cost")
+        .result
+        .expect("cost result");
+
+    assert_eq!(result["peer"].as_str(), Some(peer));
+    assert_eq!(result["target_cost"].as_u64(), Some(8));
+    assert_eq!(result["source"].as_str(), Some("cached_announce"));
+}
+
+#[test]
 fn outbound_propagation_cost_reports_unavailable_without_silent_default() {
     let daemon = RpcDaemon::test_instance();
     let missing_peer = "11223344556677889900aabbccddeeff";

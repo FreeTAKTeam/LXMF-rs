@@ -192,7 +192,7 @@ struct ListAnnouncesParams {
 
 #[derive(Debug, Deserialize)]
 struct SetOutboundPropagationNodeParams {
-    #[serde(default)]
+    #[serde(default, alias = "destination_hash", alias = "destination", alias = "hash")]
     peer: Option<String>,
 }
 

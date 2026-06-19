@@ -129,9 +129,9 @@ async fn drop_duplicates() {
         destination,
         ..Default::default()
     };
-    let duplicate: Packet = data_packet;
+    let duplicate: Packet = data_packet.clone();
 
-    let mut different_packet = data_packet;
+    let mut different_packet = data_packet.clone();
     different_packet.data = PacketDataBuffer::new_from_slice(b"bar");
 
     assert!(handler.lock().await.filter_duplicate_packets(&data_packet).await);

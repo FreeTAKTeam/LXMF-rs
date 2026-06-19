@@ -144,6 +144,126 @@ async fn handle_inbound_for_test_accepts_valid_destination_proof() {
 }
 
 #[tokio::test]
+async fn routed_destination_proof_forwards_back_to_packet_source() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let config = TransportConfig::new("test", &local_identity, true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+    let mut source_iface = transport.iface_manager.lock().await.new_channel(8);
+    let mut recipient_iface = transport.iface_manager.lock().await.new_channel(8);
+
+    let recipient_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut recipient_destination =
+        SingleInputDestination::new(recipient_identity, DestinationName::new("lxmf", "delivery"));
+    let announce = recipient_destination.announce(OsRng, None).expect("valid announce packet");
+    handle_announce(
+        &announce,
+        handler.lock().await,
+        recipient_iface.address,
+        crate::iface::IfaceSource::None,
+    )
+    .await;
+
+    let original_packet = Packet {
+        header: Header { packet_type: PacketType::Data, ..Default::default() },
+        destination: announce.destination,
+        context: PacketContext::None,
+        data: PacketDataBuffer::new_from_slice(b"opportunistic lxmf body"),
+        ..Default::default()
+    };
+
+    assert!(handler.lock().await.filter_duplicate_packets(&original_packet).await);
+    handle_data(&original_packet, source_iface.address, handler.lock().await).await;
+    let forwarded = timeout(Duration::from_millis(200), recipient_iface.tx_channel.recv())
+        .await
+        .expect("data should be forwarded to recipient iface")
+        .expect("tx channel open");
+    assert_eq!(forwarded.tx_type, TxMessageType::Direct(recipient_iface.address));
+
+    let packet_hash = original_packet.hash().to_bytes();
+    let signature = recipient_destination.identity.sign(&packet_hash).to_bytes();
+    let mut data = PacketDataBuffer::new();
+    data.safe_write(&packet_hash);
+    data.safe_write(&signature);
+    let proof = Packet {
+        header: Header { packet_type: PacketType::Proof, ..Default::default() },
+        destination: announce.destination,
+        context: PacketContext::None,
+        data,
+        ..Default::default()
+    };
+
+    handle_proof(proof, handler, recipient_iface.address).await;
+
+    let sent = timeout(Duration::from_millis(200), source_iface.tx_channel.recv())
+        .await
+        .expect("destination proof should be forwarded back to packet source")
+        .expect("tx channel open");
+    assert_eq!(sent.tx_type, TxMessageType::Direct(source_iface.address));
+    assert_eq!(sent.packet.header.packet_type, PacketType::Proof);
+    assert_eq!(sent.packet.destination, announce.destination);
+}
+
+#[tokio::test]
+async fn routed_implicit_destination_proof_forwards_back_to_packet_source() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let config = TransportConfig::new("test", &local_identity, true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+    let mut source_iface = transport.iface_manager.lock().await.new_channel(8);
+    let mut recipient_iface = transport.iface_manager.lock().await.new_channel(8);
+
+    let recipient_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut recipient_destination =
+        SingleInputDestination::new(recipient_identity, DestinationName::new("lxmf", "delivery"));
+    let announce = recipient_destination.announce(OsRng, None).expect("valid announce packet");
+    handle_announce(
+        &announce,
+        handler.lock().await,
+        recipient_iface.address,
+        crate::iface::IfaceSource::None,
+    )
+    .await;
+
+    let original_packet = Packet {
+        header: Header { packet_type: PacketType::Data, ..Default::default() },
+        destination: announce.destination,
+        context: PacketContext::None,
+        data: PacketDataBuffer::new_from_slice(b"sideband implicit lxmf body"),
+        ..Default::default()
+    };
+
+    assert!(handler.lock().await.filter_duplicate_packets(&original_packet).await);
+    handle_data(&original_packet, source_iface.address, handler.lock().await).await;
+    let forwarded = timeout(Duration::from_millis(200), recipient_iface.tx_channel.recv())
+        .await
+        .expect("data should be forwarded to recipient iface")
+        .expect("tx channel open");
+    assert_eq!(forwarded.tx_type, TxMessageType::Direct(recipient_iface.address));
+
+    let packet_hash = original_packet.hash();
+    let signature = recipient_destination.identity.sign(packet_hash.as_slice()).to_bytes();
+    let proof = Packet {
+        header: Header { packet_type: PacketType::Proof, ..Default::default() },
+        destination: AddressHash::new_from_hash(&packet_hash),
+        context: PacketContext::None,
+        data: PacketDataBuffer::new_from_slice(&signature),
+        ..Default::default()
+    };
+
+    handle_proof(proof, handler, recipient_iface.address).await;
+
+    let sent = timeout(Duration::from_millis(200), source_iface.tx_channel.recv())
+        .await
+        .expect("implicit destination proof should be forwarded back to packet source")
+        .expect("tx channel open");
+    assert_eq!(sent.tx_type, TxMessageType::Direct(source_iface.address));
+    assert_eq!(sent.packet.header.packet_type, PacketType::Proof);
+    assert_eq!(sent.packet.destination, AddressHash::new_from_hash(&packet_hash));
+    assert_eq!(sent.packet.data.as_slice(), signature.as_slice());
+}
+
+#[tokio::test]
 async fn handle_inbound_for_test_accepts_python_style_link_proof_with_none_context() {
     let local_identity = PrivateIdentity::new_from_rand(OsRng);
     let config = TransportConfig::new("test", &local_identity, true);
@@ -397,6 +517,10 @@ async fn routed_link_resource_proof_forwards_back_to_link_requester() {
     )
     .expect("link from request");
     let link_request_proof = inbound.prove();
+    assert!(matches!(
+        outbound_link.handle_packet(&link_request_proof, next_hop_iface),
+        LinkHandleResult::Activated
+    ));
 
     {
         let mut guard = handler.lock().await;
@@ -436,4 +560,59 @@ async fn routed_link_resource_proof_forwards_back_to_link_requester() {
     assert_eq!(sent.packet.destination, *outbound_link.id());
     assert_eq!(sent.packet.header.packet_type, PacketType::Proof);
     assert_eq!(sent.packet.context, PacketContext::ResourceProof);
+}
+
+#[tokio::test]
+async fn routed_link_packet_proof_forwards_back_to_link_requester() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let config = TransportConfig::new("test", &local_identity, true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+    let mut requester_iface = transport.iface_manager.lock().await.new_channel(8);
+    let received_from = requester_iface.address;
+
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let remote_destination =
+        SingleInputDestination::new(remote_identity, DestinationName::new("lxmf", "delivery"));
+
+    let next_hop = AddressHash::new_from_slice(&[2u8; 16]);
+    let next_hop_iface = AddressHash::new_from_slice(&[3u8; 16]);
+
+    let (tx, _) = tokio::sync::broadcast::channel(4);
+    let mut outbound_link = Link::new(remote_destination.desc, tx.clone());
+    let request = outbound_link.request();
+    let mut inbound = Link::new_from_request(
+        &request,
+        remote_destination.sign_key().clone(),
+        remote_destination.desc,
+        tx,
+    )
+    .expect("link from request");
+    let link_request_proof = inbound.prove();
+
+    {
+        let mut guard = handler.lock().await;
+        guard.link_table.add(
+            &request,
+            request.destination,
+            received_from,
+            next_hop,
+            next_hop_iface,
+        );
+        assert!(guard.link_table.handle_proof(&link_request_proof).is_some());
+    }
+
+    let data_packet = outbound_link.data_packet(b"needs receipt proof").expect("data packet");
+    let packet_proof = inbound.prove_packet(&data_packet);
+
+    handle_proof(packet_proof, handler, next_hop_iface).await;
+
+    let sent = timeout(Duration::from_millis(200), requester_iface.tx_channel.recv())
+        .await
+        .expect("packet proof should be forwarded back to requester iface")
+        .expect("tx channel open");
+    assert_eq!(sent.tx_type, TxMessageType::Direct(received_from));
+    assert_eq!(sent.packet.destination, *outbound_link.id());
+    assert_eq!(sent.packet.header.packet_type, PacketType::Proof);
+    assert!(matches!(sent.packet.context, PacketContext::None | PacketContext::LinkProof));
 }

@@ -25,6 +25,21 @@ fn validate_destination_receipt_proof(
     Ok(Hash::new(hash))
 }
 
+fn validate_destination_receipt_signature(
+    identity: &Identity,
+    receipt_hash: &Hash,
+    signature_bytes: &[u8],
+) -> Result<Hash, RnsError> {
+    if signature_bytes.len() < SIGNATURE_LENGTH {
+        return Err(RnsError::PacketError);
+    }
+    let signature = Signature::from_slice(&signature_bytes[..SIGNATURE_LENGTH])
+        .map_err(|_| RnsError::CryptoError)?;
+    identity.verify(receipt_hash.as_slice(), &signature)?;
+
+    Ok(*receipt_hash)
+}
+
 pub(super) async fn validated_receipt_hash(
     packet: &Packet,
     handler: &TransportHandler,
@@ -56,6 +71,39 @@ pub(super) async fn validated_receipt_hash(
             }
         }
         return None;
+    }
+
+    if packet.data.len() == SIGNATURE_LENGTH {
+        let proof_context = {
+            let packet_cache = handler.packet_cache.lock().await;
+            packet_cache.proof_context_for_destination(&packet.destination)
+        };
+        if let Some((receipt_hash, proved_destination, _)) = proof_context {
+            if let Some(destination) =
+                handler.single_out_destinations.get(&proved_destination).cloned()
+            {
+                let destination = destination.lock().await;
+                if let Ok(hash) = validate_destination_receipt_signature(
+                    &destination.identity,
+                    &receipt_hash,
+                    packet.data.as_slice(),
+                ) {
+                    return Some(hash.to_bytes());
+                }
+            }
+            if let Some(destination) =
+                handler.single_in_destinations.get(&proved_destination).cloned()
+            {
+                let destination = destination.lock().await;
+                if let Ok(hash) = validate_destination_receipt_signature(
+                    destination.identity.as_identity(),
+                    &receipt_hash,
+                    packet.data.as_slice(),
+                ) {
+                    return Some(hash.to_bytes());
+                }
+            }
+        }
     }
 
     if let Some(destination) = handler.single_out_destinations.get(&packet.destination).cloned() {
@@ -173,6 +221,40 @@ pub(super) async fn handle_proof(
 
     let mut handler = handler.lock().await;
 
+    if packet.header.destination_type != DestinationType::Link {
+        let source_iface = {
+            let packet_cache = handler.packet_cache.lock().await;
+            if packet.data.len() == SIGNATURE_LENGTH {
+                packet_cache
+                    .source_iface_for_proof_destination(&packet.destination)
+                    .map(|(_, source_iface)| source_iface)
+            } else if packet.data.len() >= HASH_SIZE {
+                let mut proof_hash = [0u8; HASH_SIZE];
+                proof_hash.copy_from_slice(&packet.data.as_slice()[..HASH_SIZE]);
+                packet_cache.source_iface_for_hash(&Hash::new(proof_hash))
+            } else {
+                None
+            }
+        };
+        if let Some(source_iface) = source_iface {
+            if source_iface != iface {
+                if diag::enabled() {
+                    log::debug!(
+                        "[tp-diag] destination_proof_reverse_forward node={} proof_dst={} source_iface={} ingress_iface={}",
+                        handler.config.name,
+                        packet.destination,
+                        source_iface,
+                        iface
+                    );
+                }
+                handler
+                    .send(TxMessage { tx_type: TxMessageType::Direct(source_iface), packet })
+                    .await;
+                return;
+            }
+        }
+    }
+
     let mut rtt_messages = Vec::new();
     for link in handler.out_links.values() {
         let mut link = link.lock().await;
@@ -268,6 +350,7 @@ pub(super) async fn handle_data<'a>(
     iface: AddressHash,
     mut handler: MutexGuard<'a, TransportHandler>,
 ) {
+    handler.packet_cache.lock().await.note_source(packet, iface);
     let mut data_handled = false;
 
     if packet.header.destination_type == DestinationType::Link {

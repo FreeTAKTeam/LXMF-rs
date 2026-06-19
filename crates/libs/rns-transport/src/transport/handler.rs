@@ -152,7 +152,7 @@ impl TransportHandler {
     }
 
     pub(super) async fn send(&self, message: TxMessage) -> TxDispatchTrace {
-        let packet = message.packet;
+        let packet = message.packet.clone();
         self.packet_cache.lock().await.update(&packet);
         let announce_policy = if packet.header.packet_type == PacketType::Announce
             && matches!(message.tx_type, TxMessageType::Broadcast(_))

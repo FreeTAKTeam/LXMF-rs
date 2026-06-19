@@ -353,7 +353,7 @@ impl AutoInterfaceTransportBridge {
             TxMessageType::Broadcast(_) => {
                 let routes = self.outbound_routes.lock().await.clone();
                 for (iface, _) in routes {
-                    self.send_to_route(iface, message.packet).await;
+                    self.send_to_route(iface, message.packet.clone()).await;
                 }
             }
         }

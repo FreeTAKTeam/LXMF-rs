@@ -151,7 +151,7 @@ fn packet_for_resource_manager(packet: &Packet, link: &mut Link) -> Option<Packe
             | PacketContext::ResourceReceiverCancel
     );
     if !needs_decrypt {
-        return Some(*packet);
+        return Some(packet.clone());
     }
 
     let mut buffer = PacketDataBuffer::new();
@@ -171,7 +171,7 @@ fn packet_for_resource_manager(packet: &Packet, link: &mut Link) -> Option<Packe
         }
     };
     buffer.resize(plain_len);
-    let mut plain_packet = *packet;
+    let mut plain_packet = packet.clone();
     plain_packet.data = buffer;
     Some(plain_packet)
 }

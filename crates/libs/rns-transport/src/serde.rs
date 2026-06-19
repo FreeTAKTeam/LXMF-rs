@@ -1,8 +1,8 @@
 use crate::{
-    buffer::{InputBuffer, OutputBuffer, StaticBuffer},
+    buffer::{InputBuffer, OutputBuffer},
     error::RnsError,
     hash::AddressHash,
-    packet::{Header, HeaderType, Packet, PacketContext, PACKET_MDU},
+    packet::{Header, HeaderType, Packet, PacketContext, PacketDataBuffer, PACKET_DATA_MAX},
 };
 
 pub trait Serialize {
@@ -88,11 +88,11 @@ impl Packet {
             destination,
             transport,
             context,
-            data: StaticBuffer::new(),
+            data: PacketDataBuffer::new(),
         };
 
         let remaining = buffer.bytes_left();
-        if remaining > PACKET_MDU {
+        if remaining > PACKET_DATA_MAX {
             return Err(RnsError::OutOfMemory);
         }
         buffer.read(packet.data.accuire_buf(remaining))?;
@@ -106,11 +106,11 @@ mod tests {
     use rand_core::OsRng;
 
     use crate::{
-        buffer::{InputBuffer, OutputBuffer, StaticBuffer},
+        buffer::{InputBuffer, OutputBuffer},
         hash::AddressHash,
         packet::{
             ContextFlag, DestinationType, Header, HeaderType, IfacFlag, Packet, PacketContext,
-            PacketType, PropagationType,
+            PacketDataBuffer, PacketType, PropagationType, PACKET_DATA_MAX, PACKET_MDU,
         },
     };
 
@@ -136,7 +136,7 @@ mod tests {
             destination: AddressHash::new_from_rand(OsRng),
             transport: None,
             context: PacketContext::None,
-            data: StaticBuffer::new(),
+            data: PacketDataBuffer::new(),
         };
 
         packet.serialize(&mut buffer).expect("serialized packet");
@@ -164,7 +164,7 @@ mod tests {
             destination: AddressHash::new_from_rand(OsRng),
             transport: None,
             context: PacketContext::None,
-            data: StaticBuffer::new(),
+            data: PacketDataBuffer::new(),
         };
 
         packet.data.safe_write(b"Hello, world!");
@@ -180,5 +180,61 @@ mod tests {
         assert_eq!(packet.transport, new_packet.transport);
         assert_eq!(packet.context, new_packet.context);
         assert_eq!(packet.data.as_slice(), new_packet.data.as_slice());
+    }
+
+    #[test]
+    fn deserialize_allows_large_tcp_resource_packet_data() {
+        let payload_len = PACKET_MDU + 128;
+        let packet = Packet {
+            header: Header {
+                ifac_flag: IfacFlag::Open,
+                header_type: HeaderType::Type1,
+                context_flag: ContextFlag::Set,
+                propagation_type: PropagationType::Broadcast,
+                destination_type: DestinationType::Link,
+                packet_type: PacketType::Data,
+                hops: 0,
+            },
+            ifac: None,
+            destination: AddressHash::new([0x42; crate::hash::ADDRESS_HASH_SIZE]),
+            transport: None,
+            context: PacketContext::Resource,
+            data: PacketDataBuffer::new_from_slice(&vec![0xA5; payload_len]),
+        };
+
+        let mut wire = vec![0u8; payload_len + 64];
+        let mut output = OutputBuffer::new(&mut wire);
+        packet.serialize(&mut output).expect("serialize large resource packet");
+
+        let mut input = InputBuffer::new(output.as_slice());
+        let decoded = Packet::deserialize(&mut input).expect("deserialize large resource packet");
+
+        assert_eq!(decoded.context, PacketContext::Resource);
+        assert_eq!(decoded.data.len(), payload_len);
+        assert!(decoded.data.as_slice().iter().all(|byte| *byte == 0xA5));
+    }
+
+    #[test]
+    fn deserialize_rejects_packet_data_beyond_tcp_cap() {
+        let mut wire = Vec::with_capacity(PACKET_DATA_MAX + 64);
+        wire.push(
+            Header {
+                ifac_flag: IfacFlag::Open,
+                header_type: HeaderType::Type1,
+                context_flag: ContextFlag::Set,
+                propagation_type: PropagationType::Broadcast,
+                destination_type: DestinationType::Link,
+                packet_type: PacketType::Data,
+                hops: 0,
+            }
+            .to_meta(),
+        );
+        wire.push(0);
+        wire.extend_from_slice(&[0x24; crate::hash::ADDRESS_HASH_SIZE]);
+        wire.push(PacketContext::Resource as u8);
+        wire.resize(wire.len() + PACKET_DATA_MAX + 1, 0x11);
+
+        let mut input = InputBuffer::new(&wire);
+        assert!(Packet::deserialize(&mut input).is_err());
     }
 }

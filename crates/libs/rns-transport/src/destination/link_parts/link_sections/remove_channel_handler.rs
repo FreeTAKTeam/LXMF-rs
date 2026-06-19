@@ -44,14 +44,14 @@ impl Link {
             packet.hash(),
             PendingChannelPacket {
                 sequence,
-                packet,
+                packet: packet.clone(),
                 tries: 1,
                 next_retry_at: Instant::now()
                     + Self::channel_retry_timeout_for(self.rtt, 1, self.channel_pending.len() + 1),
             },
         );
         self.channel_states.insert(sequence, ChannelMessageState::Sent);
-        Ok((sequence, packet))
+        Ok((sequence, packet.clone()))
     }
 
     pub fn channel_state(&self, sequence: u16) -> ChannelMessageState {
@@ -109,7 +109,7 @@ impl Link {
                 let tries = pending.tries;
                 let retry_timeout = Self::channel_retry_timeout_for(rtt, tries, outstanding);
                 pending.next_retry_at = now + retry_timeout;
-                resend_packets.push(pending.packet);
+                resend_packets.push(pending.packet.clone());
             }
         }
 

@@ -44,7 +44,7 @@ impl AnnounceEntry {
             destination: self.packet.destination,
             transport: Some(*transport_id),
             context: self.packet.context,
-            data: self.packet.data,
+            data: self.packet.data.clone(),
         };
 
         let tx_type = match self.response_to_iface {
@@ -149,7 +149,7 @@ impl AnnounceTable {
         let hops = announce.header.hops;
 
         let entry = AnnounceEntry {
-            packet: *announce,
+            packet: announce.clone(),
             timeout: now + retry_window(),
             received_from,
             retries: 0,
@@ -198,7 +198,7 @@ impl AnnounceTable {
         self.map
             .get(destination)
             .or_else(|| self.responses.get(destination))
-            .map(|entry| entry.packet)
+            .map(|entry| entry.packet.clone())
             .or_else(|| self.cache.get(destination).map(|entry| entry.packet))
     }
 

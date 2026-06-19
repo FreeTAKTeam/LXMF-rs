@@ -1,8 +1,8 @@
 use core::fmt;
 
+use alloc::vec::Vec;
 use sha2::Digest;
 
-use crate::buffer::StaticBuffer;
 use crate::crypt::fernet::{FERNET_MAX_PADDING_SIZE, FERNET_OVERHEAD_SIZE};
 use crate::error::RnsError;
 use crate::hash::AddressHash;
@@ -14,6 +14,7 @@ use crate::hash::ADDRESS_HASH_SIZE;
 pub const PACKET_MDU: usize = 464usize;
 pub const LXMF_MAX_PAYLOAD: usize = PACKET_MDU - FERNET_OVERHEAD_SIZE - FERNET_MAX_PADDING_SIZE;
 pub const PACKET_IFAC_MAX_LENGTH: usize = 64usize;
+pub const PACKET_DATA_MAX: usize = 262_144usize;
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum IfacFlag {
@@ -236,7 +237,91 @@ impl fmt::Display for Header {
     }
 }
 
-pub type PacketDataBuffer = StaticBuffer<PACKET_MDU>;
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct PacketDataBuffer {
+    buffer: Vec<u8>,
+}
+
+impl PacketDataBuffer {
+    pub fn new() -> Self {
+        Self { buffer: Vec::new() }
+    }
+
+    pub fn new_from_slice(data: &[u8]) -> Self {
+        let mut buffer = Self::new();
+        buffer.safe_write(data);
+        buffer
+    }
+
+    pub fn reset(&mut self) {
+        self.buffer.clear();
+    }
+
+    pub fn resize(&mut self, len: usize) {
+        self.buffer.resize(len.min(PACKET_DATA_MAX), 0);
+    }
+
+    pub fn len(&self) -> usize {
+        self.buffer.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.buffer.is_empty()
+    }
+
+    pub fn chain_write(&mut self, data: &[u8]) -> Result<&mut Self, RnsError> {
+        self.write(data)?;
+        Ok(self)
+    }
+
+    pub fn finalize(self) -> Self {
+        self
+    }
+
+    pub fn safe_write(&mut self, data: &[u8]) -> usize {
+        let available = PACKET_DATA_MAX.saturating_sub(self.buffer.len());
+        let write_len = data.len().min(available);
+        self.buffer.extend_from_slice(&data[..write_len]);
+        write_len
+    }
+
+    pub fn chain_safe_write(&mut self, data: &[u8]) -> &mut Self {
+        self.safe_write(data);
+        self
+    }
+
+    pub fn write(&mut self, data: &[u8]) -> Result<usize, RnsError> {
+        if self.buffer.len().saturating_add(data.len()) > PACKET_DATA_MAX {
+            return Err(RnsError::OutOfMemory);
+        }
+        self.buffer.extend_from_slice(data);
+        Ok(data.len())
+    }
+
+    pub fn as_slice(&self) -> &[u8] {
+        &self.buffer
+    }
+
+    pub fn as_mut_slice(&mut self) -> &mut [u8] {
+        &mut self.buffer
+    }
+
+    pub fn accuire_buf(&mut self, len: usize) -> &mut [u8] {
+        self.buffer.resize(len.min(PACKET_DATA_MAX), 0);
+        &mut self.buffer
+    }
+
+    pub fn accuire_buf_max(&mut self) -> &mut [u8] {
+        self.buffer.resize(PACKET_DATA_MAX, 0);
+        &mut self.buffer
+    }
+}
+
+impl Default for PacketDataBuffer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub struct PacketIfac {
@@ -256,7 +341,7 @@ impl PacketIfac {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Packet {
     pub header: Header,
     pub ifac: Option<PacketIfac>,
@@ -307,6 +392,9 @@ impl Packet {
         let context = PacketContext::from(bytes[idx]);
         idx += 1;
 
+        if bytes.len() - idx > PACKET_DATA_MAX {
+            return Err(RnsError::OutOfMemory);
+        }
         let data = PacketDataBuffer::new_from_slice(&bytes[idx..]);
 
         Ok(Self { header, ifac: None, destination, transport, context, data })
@@ -345,7 +433,8 @@ impl Packet {
     pub fn fragment_for_lxmf(data: &[u8]) -> Result<Vec<Packet>, RnsError> {
         let mut out = Vec::new();
         for chunk in data.chunks(Self::LXMF_MAX_PAYLOAD) {
-            let packet = Packet { data: StaticBuffer::new_from_slice(chunk), ..Default::default() };
+            let packet =
+                Packet { data: PacketDataBuffer::new_from_slice(chunk), ..Default::default() };
             out.push(packet);
         }
         Ok(out)

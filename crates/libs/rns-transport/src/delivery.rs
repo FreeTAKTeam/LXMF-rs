@@ -88,7 +88,7 @@ pub async fn send_on_link_observed(
     match packet {
         Ok(packet) => {
             observe_packet(&packet);
-            let outcome = transport.send_link_packet_on_bound_iface(link, packet).await;
+            let outcome = transport.send_link_packet_on_bound_iface(link, packet.clone()).await;
             if !send_outcome_is_sent(outcome) {
                 return Err(io::Error::other(format!(
                     "link packet not sent: {}",

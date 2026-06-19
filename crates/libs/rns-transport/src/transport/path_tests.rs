@@ -3,8 +3,7 @@ mod tests {
     use super::*;
     use std::time::Instant;
 
-    use crate::buffer::StaticBuffer;
-    use crate::packet::{ContextFlag, IfacFlag};
+    use crate::packet::{ContextFlag, IfacFlag, PacketDataBuffer};
 
     fn path_table_with_route(
         destination: AddressHash,
@@ -46,7 +45,7 @@ mod tests {
             destination,
             transport,
             context: crate::packet::PacketContext::None,
-            data: StaticBuffer::new(),
+            data: PacketDataBuffer::new(),
         }
     }
 

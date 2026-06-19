@@ -183,7 +183,7 @@ impl Destination<PrivateIdentity, Input, Single> {
 
         if let Some(tag) = tag {
             if let Some((_, cached)) = self.path_responses.get(tag) {
-                return Ok(*cached);
+                return Ok(cached.clone());
             }
         }
 
@@ -193,7 +193,7 @@ impl Destination<PrivateIdentity, Input, Single> {
         if let Some(tag) = tag {
             let expires_at = now + std::time::Duration::from_secs(PATH_RESPONSE_TAG_WINDOW);
             let tag = tag.to_vec();
-            self.path_responses.insert(tag.clone(), (expires_at, announce));
+            self.path_responses.insert(tag.clone(), (expires_at, announce.clone()));
             self.path_response_queue.push_back((tag, expires_at));
             self.prune_path_responses(now);
         }
