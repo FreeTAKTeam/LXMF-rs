@@ -24,7 +24,7 @@ The project is best described by capability level:
 | --- | --- | --- |
 | Wire compatible | achieved | Core Reticulum packet/identity primitives and LXMF message encodings are implemented and tested. |
 | Direct-message interoperable | achieved | Selected bidirectional Rust/Python direct, link, channel, paper, and daemon paths are exercised in CI. |
-| Propagation interoperable | partial | Propagated delivery and complete Python-only `LXMPeer.py` lifecycle coverage exist, but the complete Python router lifecycle is not yet reproduced. |
+| Propagation interoperable | achieved | Propagated delivery, complete Python-only `LXMPeer.py` lifecycle coverage, and Python-reference propagation router fetch/download/sync lifecycle coverage are implemented and tested. |
 | Operationally substitutable | partial | `reticulumd` is deployable and supports several production interfaces, but runtime, interface, and utility breadth remains narrower than Python. |
 | Full Python surface parity | not achieved | Remaining gaps are tracked in the two parity matrices. |
 
@@ -742,39 +742,30 @@ The project is best described by capability level:
 These are blockers to a broad "Python replacement" claim, not blockers to using
 the implemented subset.
 
-1. **Propagation router lifecycle**
-   - Complete remaining router fetch, download, synchronization, and
-     propagation-node side effects across success, denial, timeout, identity,
-     and restart paths.
-   - Close remaining `LXMRouter` side effects and persistent queue semantics.
-2. **Deferred stamp lifecycle**
+1. **Deferred stamp lifecycle**
    - Add Python-style background work ownership, queueing, retry, cancellation,
      and progress behavior for expensive normal and propagation stamps.
-3. **Interop breadth**
-   - Add bidirectional live Python cases for every claimed delivery mode and
-     newly completed router row.
-   - Propagation remote-status/control now has dispatchable compatibility cases
-     for Python control-path discovery, Rust-to-Python remote status, and
-     Python-origin `/get` haves acknowledgement and `/offer` side effects;
-     broader router row coverage still needs additional live scenarios.
+2. **Interop breadth**
+   - Propagation router lifecycle now has dispatchable Python-reference cases
+     for remote status, Rust-to-Python fetch/download/sync, Python-origin
+     `/get` haves acknowledgement, and Python-origin `/offer` side effects.
    - Capture release evidence for Sideband, MeshChatX, and Columba before making
      client-specific compatibility claims.
-4. **Reticulum behavioral breadth**
+3. **Reticulum behavioral breadth**
    - Finish channel ordering, resolver/bootstrap, announce/path edge behavior,
      and runtime mutation parity.
-5. **Operational breadth**
+4. **Operational breadth**
    - Add prepared-host hardware evidence for BLE/RNode paths.
    - Implement or explicitly defer missing Python interface families and
      utility commands.
 
 ## Active Execution Order
 
-1. Finish propagation router state machines.
-2. Finish deferred stamp worker and retry lifecycle.
-3. Expand pinned Rust/Python interoperability gates with each completed row.
-4. Close RNS channel, discovery, resolver, and transport-policy gaps.
-5. Collect hardware, soak, and external-client release evidence.
-6. Expand interface and utility breadth after protocol behavior stabilizes.
+1. Finish deferred stamp worker and retry lifecycle.
+2. Expand pinned Rust/Python interoperability gates with each completed row.
+3. Close RNS channel, discovery, resolver, and transport-policy gaps.
+4. Collect hardware, soak, and external-client release evidence.
+5. Expand interface and utility breadth after protocol behavior stabilizes.
 
 ## Verification Baseline
 

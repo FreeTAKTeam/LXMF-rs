@@ -32,26 +32,54 @@ impl RpcDaemon {
             let Some((payload, payload_hex)) = remote_propagation_message_payload(message)? else {
                 continue;
             };
-            if self.propagation_payload_destination_is_ignored(payload.as_slice()) {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::PermissionDenied,
-                    "ignored propagation destination",
-                ));
-            }
-            let canonical_transient_id = {
+            let raw_transient_id = {
                 let mut hasher = Sha256::new();
                 hasher.update(payload.as_slice());
                 encode_hex(hasher.finalize())
             };
-            let transient_id = message
+            let provided_transient_id = message
                 .get("transient_id")
                 .and_then(JsonValue::as_str)
-                .map(normalize_propagation_transient_key)
-                .unwrap_or_else(|| canonical_transient_id.clone());
-            if transient_id != canonical_transient_id {
-                return Err(std::io::Error::new(
+                .map(normalize_propagation_transient_key);
+            let (transient_id, normalized_payload_hex, normalized_payload_len) =
+                match provided_transient_id {
+                    Some(transient_id) if transient_id == raw_transient_id => {
+                        (transient_id, payload_hex.trim().to_ascii_lowercase(), payload.len())
+                    }
+                    Some(transient_id) => {
+                        let normalized = normalize_propagation_payload_bytes(payload.as_slice(), 0);
+                        match normalized {
+                            Ok((canonical_transient_id, normalized_payload))
+                                if transient_id == hex::encode(canonical_transient_id) =>
+                            {
+                                (
+                                    transient_id,
+                                    hex::encode(normalized_payload),
+                                    normalized_payload.len(),
+                                )
+                            }
+                            _ => {
+                                return Err(std::io::Error::new(
+                                    std::io::ErrorKind::InvalidInput,
+                                    "transient_id does not match propagation payload",
+                                ));
+                            }
+                        }
+                    }
+                    None => {
+                        (raw_transient_id, payload_hex.trim().to_ascii_lowercase(), payload.len())
+                    }
+                };
+            let normalized_payload = hex::decode(normalized_payload_hex.as_str()).map_err(|err| {
+                std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
-                    "transient_id does not match propagation payload",
+                    format!("invalid remote propagation payload hex: {err}"),
+                )
+            })?;
+            if self.propagation_payload_destination_is_ignored(normalized_payload.as_slice()) {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "ignored propagation destination",
                 ));
             }
             let destination = message
@@ -60,8 +88,8 @@ impl RpcDaemon {
                 .map(|value| value.trim().to_ascii_lowercase())
                 .filter(|value| !value.is_empty())
                 .unwrap_or_else(|| {
-                    if payload.len() >= 16 {
-                        hex::encode(&payload[..16])
+                    if normalized_payload.len() >= 16 {
+                        hex::encode(&normalized_payload[..16])
                     } else {
                         String::new()
                     }
@@ -75,9 +103,9 @@ impl RpcDaemon {
             let record = PropagationEntryRecord {
                 transient_id: transient_id.clone(),
                 destination,
-                payload_hex: payload_hex.trim().to_ascii_lowercase(),
+                payload_hex: normalized_payload_hex,
                 received_at,
-                size_bytes: payload.len() as u64,
+                size_bytes: normalized_payload_len as u64,
                 stamp_value,
             };
             let already_known_store = self
@@ -92,7 +120,7 @@ impl RpcDaemon {
             let already_accepted =
                 accepted_ids.iter().any(|id| id.eq_ignore_ascii_case(transient_id.as_str()));
             if !already_accepted {
-                transferred_bytes = transferred_bytes.saturating_add(payload.len());
+                transferred_bytes = transferred_bytes.saturating_add(normalized_payload_len);
                 accepted_ids.push(transient_id.clone());
             }
             if already_known_store || already_processed || already_accepted {

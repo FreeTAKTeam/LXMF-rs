@@ -7,14 +7,14 @@ mod tests {
     use rns_transport::destination::DestinationName;
     use rns_transport::identity::PrivateIdentity;
     use rns_transport::identity_bridge::{to_core_identity, to_core_private_identity};
-    use sha2::Digest;
     use tokio::sync::Mutex as TokioMutex;
 
     #[test]
     fn propagation_download_summary_reports_transferred_bytes() {
         let payloads = vec![b"downloaded".to_vec(), b"payload-two".to_vec()];
+        let transient_ids = vec![vec![0x33; 32], vec![0x44; 32]];
 
-        let summary = propagation_download_summary_json(5, &payloads, 1, 1, 2);
+        let summary = propagation_download_summary_json(5, &payloads, &transient_ids, 1, 1, 2);
 
         assert_eq!(summary["available_count"].as_u64(), Some(5));
         assert_eq!(summary["downloaded_count"].as_u64(), Some(1));
@@ -31,9 +31,22 @@ mod tests {
         let messages = summary["messages"].as_array().expect("messages");
         assert_eq!(messages.len(), 2);
         let expected_payload_hex = hex::encode(&payloads[0]);
-        let expected_transient_id = hex::encode(sha2::Sha256::digest(&payloads[0]));
+        let expected_transient_id = hex::encode(&transient_ids[0]);
         assert_eq!(messages[0]["payload_hex"].as_str(), Some(expected_payload_hex.as_str()));
         assert_eq!(messages[0]["transient_id"].as_str(), Some(expected_transient_id.as_str()));
+    }
+
+    #[test]
+    fn propagation_download_summary_preserves_advertised_transient_id() {
+        let payloads = vec![vec![0x42; 272]];
+        let advertised_id = vec![0x19; 32];
+
+        let summary =
+            propagation_download_summary_json(1, &payloads, &[advertised_id.clone()], 1, 0, 0);
+        let messages = summary["messages"].as_array().expect("messages");
+
+        assert_eq!(messages[0]["transient_id"].as_str(), Some(hex::encode(advertised_id).as_str()));
+        assert_eq!(messages[0]["payload_hex"].as_str(), Some(hex::encode(&payloads[0]).as_str()));
     }
 
     #[test]

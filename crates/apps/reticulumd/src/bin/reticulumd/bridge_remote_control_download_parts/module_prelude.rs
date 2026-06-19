@@ -76,7 +76,7 @@ pub(super) async fn propagation_download_request(
     let available_count = wanted.len().saturating_add(haves.len());
 
     if wanted.is_empty() && haves.is_empty() {
-        return Ok((propagation_download_summary_json(0, &[], 0, 0, 0), remote_identity));
+        return Ok((propagation_download_summary_json(0, &[], &[], 0, 0, 0), remote_identity));
     }
 
     if wanted.is_empty() {
@@ -123,16 +123,19 @@ pub(super) async fn propagation_download_request(
     let mut downloaded = 0usize;
     let mut duplicates = 0usize;
     let mut rejected = 0usize;
-    for payload in &payloads {
-        let transient_id = propagation_payload_ack_transient_id(payload);
+    for (index, payload) in payloads.iter().enumerate() {
+        let transient_id = wanted
+            .get(index)
+            .cloned()
+            .unwrap_or_else(|| propagation_payload_ack_transient_id(payload));
         match accept_downloaded_propagation_payload(daemon, delivery_destination, payload).await? {
             DownloadAcceptOutcome::Stored => {
                 downloaded += 1;
-                accepted_haves.push(transient_id.to_vec());
+                accepted_haves.push(transient_id);
             }
             DownloadAcceptOutcome::Duplicate => {
                 duplicates += 1;
-                accepted_haves.push(transient_id.to_vec());
+                accepted_haves.push(transient_id);
             }
             DownloadAcceptOutcome::Rejected => rejected += 1,
         }
@@ -157,6 +160,7 @@ pub(super) async fn propagation_download_request(
         propagation_download_summary_json(
             available_count,
             &payloads,
+            &wanted,
             downloaded,
             duplicates,
             rejected,
@@ -256,6 +260,7 @@ fn decode_link_request_payload(payload: &[u8]) -> rmpv::Value {
 fn propagation_download_summary_json(
     available: usize,
     payloads: &[Vec<u8>],
+    transient_ids: &[Vec<u8>],
     downloaded: usize,
     duplicates: usize,
     rejected: usize,
@@ -263,9 +268,14 @@ fn propagation_download_summary_json(
     let transferred_bytes = payloads.iter().map(Vec::len).sum::<usize>();
     let messages = payloads
         .iter()
-        .map(|payload| {
+        .enumerate()
+        .map(|(index, payload)| {
+            let transient_id = transient_ids
+                .get(index)
+                .cloned()
+                .unwrap_or_else(|| propagation_payload_ack_transient_id(payload));
             json!({
-                "transient_id": hex::encode(propagation_payload_ack_transient_id(payload)),
+                "transient_id": hex::encode(transient_id),
                 "payload_hex": hex::encode(payload),
             })
         })
@@ -296,7 +306,7 @@ fn propagation_download_haves_only_summary(
     ack_response: &rmpv::Value,
 ) -> Result<JsonValue, std::io::Error> {
     propagation_download_ack_response_result(ack_response)?;
-    Ok(propagation_download_summary_json(available_count, &[], 0, 0, 0))
+    Ok(propagation_download_summary_json(available_count, &[], &[], 0, 0, 0))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -23,7 +23,7 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 | `LXMF/LXMF.py` | `crates/libs/lxmf-core` | partial | Constants, payload fields, message identity, inbound decoding, and wire helpers. | The complete convenience/module surface is not mirrored. |
 | `LXMF/LXMessage.py` | `crates/libs/lxmf-core` | done | Wire, storage, propagation, paper, signatures, message IDs, binary fidelity, and timestamp precision metadata. | No confirmed base-message blocker. |
 | `LXMF/LXMPeer.py` | `crates/libs/rns-rpc`, `crates/apps/reticulumd` | done | Persistent peers, queue marks, offer selection, policy gates, peering keys, throttling, maintenance, source accounting, cumulative acceptance, serialized restored queue snapshots, boolean/list/numeric offer responses, transfer/retry/restart recovery, and unpeer cleanup. | No confirmed `LXMPeer.py` blocker in the pinned Python-only coverage. |
-| `LXMF/LXMRouter.py` | `crates/libs/rns-rpc`, `crates/apps/reticulumd` | partial | Outbound modes, selected propagation nodes, direct/propagated resources, cancellation, fetch/download/sync RPCs, receipts, persistence, and status. | Full Python queue, retry, propagation-node, and command side effects remain. |
+| `LXMF/LXMRouter.py` | `crates/libs/rns-rpc`, `crates/apps/reticulumd` | partial | Outbound modes, selected propagation nodes, direct/propagated resources, cancellation, fetch/download/sync RPCs, receipts, persistence, propagation-node side effects, retry/failure handling, and Python live remote lifecycle coverage. | No confirmed propagation-router lifecycle blocker remains; broader non-propagation router convenience surface remains narrower than Python. |
 | `LXMF/Handlers.py` | `crates/apps/reticulumd`, `crates/libs/rns-rpc` | partial | Delivery, announce, propagation app-data, receipt, and inbound bridge handling. | Some router-coupled side effects and negative/drop observability remain narrower. |
 | `LXMF/LXStamper.py` | `crates/libs/lxmf-core`, `crates/libs/rns-rpc`, `crates/apps/reticulumd` | partial | Validation, generation, ticket-derived stamps, cancellation-aware task work, and lifecycle metadata. | Python-style deferred worker queue, retry ownership, and continuous progress remain. |
 
@@ -54,9 +54,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - PARITY_ITEM id=router.adapter_transport status=partial
 - PARITY_ITEM id=router.paper_uri_ingest status=partial
 - PARITY_ITEM id=router.cancel_outbound status=partial
-- PARITY_ITEM id=router.propagation_ingest_fetch status=partial
-- PARITY_ITEM id=router.transfer_state_lifecycle status=partial
-- PARITY_ITEM id=router.node_app_data status=partial
+- PARITY_ITEM id=router.propagation_ingest_fetch status=done
+- PARITY_ITEM id=router.transfer_state_lifecycle status=done
+- PARITY_ITEM id=router.node_app_data status=done
 - PARITY_ITEM id=handlers.delivery_callback status=partial
 - PARITY_ITEM id=handlers.propagation_app_data status=partial
 - PARITY_ITEM id=handlers.router_side_effects status=partial
@@ -664,6 +664,11 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Link-based remote downloads wait for the propagation node's `/get` haves
   acknowledgement and propagate peer/control errors, so failed remote cleanup is
   not reported as a completed replication drain.
+- Link-based remote fetch and download preserve propagation-node-advertised
+  transient IDs for imported payloads and haves acknowledgement instead of
+  recomputing IDs from returned payload bytes, matching Python store-and-forward
+  behavior for payloads whose body could otherwise be mistaken for stamped
+  material.
 - Link-based remote propagation control waits surface authenticated link-close
   peer/control signals immediately, so denied or closed remote fetch/download/sync
   requests fail on the signal instead of waiting for the request timeout.
@@ -798,29 +803,36 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   identified senders, and local delivery; source peers are accounted and not
   re-offered their own payloads.
 - These behaviors close the pinned Python-only `LXMPeer.py` lifecycle row.
-  Broader `LXMRouter.py` propagation queue lifecycle remains partial.
+- Propagation router lifecycle coverage now also includes persistent restart
+  replay after real remote fetch/download/sync mutations, retryable and
+  terminal failure classification for fetch/download, success side-effect
+  matrices for remote fetch/download/sync, transfer-limit precedence, and live
+  Python remote fetch/download/sync cases against pinned `lxmd`.
 
 ## Highest-Priority Gaps
 
-1. Complete propagation-node fetch/download/sync and router side effects.
-2. Add deferred stamp queue ownership and retry semantics.
-3. Expand live bidirectional Python interop for remaining propagation/router rows.
-4. Validate external clients before making client-specific claims.
+1. Add deferred stamp queue ownership and retry semantics.
+2. Validate external clients before making client-specific claims.
+3. Continue widening non-propagation router convenience coverage only where it
+   affects supported clients.
 
 ## Evidence
 
 - `.github/workflows/python-interop.yml` runs pinned Python reference
   conformance plus live channel, paper, compatibility-matrix, and LXMD
   remote-relay tests.
-- The compatibility matrix includes ignored live `propagation_remote_status_bidir`
-  and `propagation_get_haves_python_to_rust` cases that validate Python
-  discovery of the Rust propagation-control path, Rust-to-Python
-  propagation-node status, and Python-origin haves-only `/get` side effects when
-  the Python harness environment is available, plus
-  `propagation_offer_python_to_rust`, `propagation_offer_queue_python_to_rust`,
-  and `propagation_offer_duplicate_wanted_source_completed_python_to_rust` for
-  Python-origin offer side effects, duplicate wanted-ID handling, and peer
-  queue lifecycle evidence.
+- The compatibility matrix includes ignored live `propagation_remote_status_bidir`,
+  `propagation_remote_fetch_rust_to_python`,
+  `propagation_remote_download_rust_to_python`, and
+  `propagation_remote_sync_rust_to_python` cases for Rust-to-Python
+  propagation-control status and remote lifecycle coverage when the Python
+  harness environment is available.
+- The compatibility matrix also includes Python-origin
+  `propagation_get_haves_python_to_rust`, `propagation_offer_python_to_rust`,
+  `propagation_offer_queue_python_to_rust`, and
+  `propagation_offer_duplicate_wanted_source_completed_python_to_rust` cases
+  for haves-only `/get` side effects, offer side effects, duplicate wanted-ID
+  handling, and peer queue lifecycle evidence.
 - Focused daemon/RPC tests cover delivery modes, propagation offers, peer
   maintenance, queue policy, source accounting, stamps, tickets, receipts, and
   cancellation.

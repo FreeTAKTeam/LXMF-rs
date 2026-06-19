@@ -5,8 +5,9 @@ use sha2::{Digest, Sha256};
 #[test]
 fn propagation_remote_fetch_summary_reports_transferred_bytes() {
     let payloads = vec![b"first".to_vec(), b"second-payload".to_vec()];
+    let transient_ids = vec![vec![0x11; 32], vec![0x22; 32]];
 
-    let summary = propagation_remote_fetch_summary(7, &payloads, 1, 2, 3);
+    let summary = propagation_remote_fetch_summary(7, &payloads, &transient_ids, 1, 2, 3);
 
     assert_eq!(summary["available_count"].as_u64(), Some(7));
     assert_eq!(summary["fetched_count"].as_u64(), Some(2));
@@ -20,9 +21,21 @@ fn propagation_remote_fetch_summary_reports_transferred_bytes() {
     let messages = summary["messages"].as_array().expect("messages");
     assert_eq!(messages.len(), 2);
     let expected_payload_hex = hex::encode(&payloads[0]);
-    let expected_transient_id = hex::encode(Sha256::digest(&payloads[0]));
+    let expected_transient_id = hex::encode(&transient_ids[0]);
     assert_eq!(messages[0]["payload_hex"].as_str(), Some(expected_payload_hex.as_str()));
     assert_eq!(messages[0]["transient_id"].as_str(), Some(expected_transient_id.as_str()));
+}
+
+#[test]
+fn propagation_remote_fetch_summary_preserves_advertised_transient_id() {
+    let payloads = vec![vec![0x42; 272]];
+    let advertised_id = vec![0x19; 32];
+
+    let summary = propagation_remote_fetch_summary(1, &payloads, &[advertised_id.clone()], 1, 0, 0);
+    let messages = summary["messages"].as_array().expect("messages");
+
+    assert_eq!(messages[0]["transient_id"].as_str(), Some(hex::encode(advertised_id).as_str()));
+    assert_eq!(messages[0]["payload_hex"].as_str(), Some(hex::encode(&payloads[0]).as_str()));
 }
 
 #[test]

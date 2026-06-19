@@ -83,6 +83,51 @@ fn propagation_remote_fetch_derives_missing_transient_id_from_payload_bytes() {
 }
 
 #[test]
+fn propagation_remote_fetch_accepts_stamped_payload_with_canonical_transient_id() {
+    let lxm_data = vec![0x42_u8; 113];
+    let mut stamped_payload = lxm_data.clone();
+    stamped_payload.extend_from_slice(&[0x77_u8; 32]);
+    let payload_hex = hex::encode(stamped_payload);
+    let transient_id = hex::encode(Sha256::digest(lxm_data.as_slice()));
+    let daemon = RpcDaemon::test_instance();
+    daemon.set_remote_control_bridge(Arc::new(TestRemoteControlBridge {
+        result: Ok(json!({
+            "available_count": 1,
+            "fetched_count": 1,
+            "imported_count": 1,
+            "messages": [{
+                "transient_id": transient_id,
+                "payload_hex": payload_hex,
+            }],
+        })),
+    }));
+
+    daemon
+        .handle_rpc(rpc_request(
+            76,
+            "propagation_remote_fetch",
+            json!({
+                "remote": "remote-node",
+            }),
+        ))
+        .expect("remote fetch");
+
+    daemon.propagation_payloads.lock().expect("propagation payload mutex poisoned").clear();
+    let fetched = daemon
+        .handle_rpc(rpc_request(
+            77,
+            "propagation_fetch",
+            json!({
+                "transient_id": transient_id,
+            }),
+        ))
+        .expect("local fetch after remote import")
+        .result
+        .expect("local fetch result");
+    assert_eq!(fetched["payload_hex"].as_str(), Some(hex::encode(lxm_data).as_str()));
+}
+
+#[test]
 fn propagation_remote_fetch_rejects_mismatched_transient_id() {
     let payload_hex = hex::encode(b"remote-payload-with-mismatched-id");
     let daemon = RpcDaemon::test_instance();

@@ -192,7 +192,7 @@ impl RemoteControlBridge for TransportBridge {
         )?;
         let transient_ids = rmpv_binary_array(&available)?;
         if transient_ids.is_empty() {
-            return Ok(propagation_remote_fetch_summary(0, &[], 0, 0, 0));
+            return Ok(propagation_remote_fetch_summary(0, &[], &[], 0, 0, 0));
         }
 
         let fetched = self.run_remote_control_raw(
@@ -256,6 +256,7 @@ impl RemoteControlBridge for TransportBridge {
         Ok(propagation_remote_fetch_summary(
             transient_ids.len(),
             &payloads,
+            &transient_ids,
             imported_count,
             duplicate_count,
             rejected_count,
@@ -352,6 +353,7 @@ impl RemoteControlBridge for TransportBridge {
 fn propagation_remote_fetch_summary(
     available_count: usize,
     payloads: &[Vec<u8>],
+    transient_ids: &[Vec<u8>],
     imported_count: usize,
     duplicate_count: usize,
     rejected_count: usize,
@@ -359,9 +361,14 @@ fn propagation_remote_fetch_summary(
     let transferred_bytes = payloads.iter().map(Vec::len).sum::<usize>();
     let messages = payloads
         .iter()
-        .map(|payload| {
+        .enumerate()
+        .map(|(index, payload)| {
+            let transient_id = transient_ids
+                .get(index)
+                .cloned()
+                .unwrap_or_else(|| propagation_payload_ack_transient_id(payload));
             json!({
-                "transient_id": hex::encode(propagation_payload_ack_transient_id(payload)),
+                "transient_id": hex::encode(transient_id),
                 "payload_hex": hex::encode(payload),
             })
         })
