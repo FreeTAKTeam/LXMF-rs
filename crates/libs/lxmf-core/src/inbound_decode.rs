@@ -60,7 +60,10 @@ fn wire_message_id_hex(candidate: &[u8]) -> Option<String> {
     destination.copy_from_slice(&candidate[..16]);
     let mut source = [0u8; 16];
     source.copy_from_slice(&candidate[16..32]);
-    let payload_value = rmp_serde::from_slice::<rmpv::Value>(&candidate[HEADER_LEN..]).ok()?;
+    let payload_value = match rmp_serde::from_slice::<rmpv::Value>(&candidate[HEADER_LEN..]) {
+        Ok(value) => value,
+        Err(_) => return None,
+    };
     let rmpv::Value::Array(items) = payload_value else {
         return None;
     };
@@ -76,7 +79,8 @@ fn payload_without_stamp_bytes(items: &[rmpv::Value]) -> Option<Vec<u8>> {
     if trimmed.len() == 5 {
         trimmed.pop();
     }
-    rmp_serde::to_vec(&rmpv::Value::Array(trimmed)).ok()
+    let encoded = rmp_serde::to_vec(&rmpv::Value::Array(trimmed));
+    encoded.ok()
 }
 
 fn compute_message_id_hex(

@@ -116,7 +116,7 @@ impl DeliveryTask {
         let Some(identity) = identity else {
             let detail = destination_hex.unwrap_or(self.destination_hex.as_str());
             log_delivery_trace(&self.message_id, detail, stage, "not found");
-            let _ = self.receipt_tx.try_send(ReceiptEvent {
+            emit_receipt_event(&self.receipt_tx, ReceiptEvent {
                 message_id: self.message_id.clone(),
                 status: failure_status.to_string(),
             });

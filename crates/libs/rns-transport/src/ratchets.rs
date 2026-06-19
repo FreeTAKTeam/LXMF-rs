@@ -108,8 +108,21 @@ impl RatchetStore {
 
     fn load_record(&self, destination: &AddressHash) -> Option<RatchetRecord> {
         let path = self.path_for(destination);
-        let data = fs::read(path).ok()?;
-        rmp_serde::from_slice::<RatchetRecord>(&data).ok()
+        let data = match fs::read(&path) {
+            Ok(data) => data,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return None,
+            Err(err) => {
+                log::warn!("failed to read ratchet file {}: {err}", path.display());
+                return None;
+            }
+        };
+        match rmp_serde::from_slice::<RatchetRecord>(&data) {
+            Ok(record) => Some(record),
+            Err(err) => {
+                log::warn!("failed to decode ratchet file {}: {err}", path.display());
+                None
+            }
+        }
     }
 
     fn remove_record(&self, destination: &AddressHash) {

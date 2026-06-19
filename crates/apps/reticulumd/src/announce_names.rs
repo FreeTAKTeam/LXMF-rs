@@ -29,10 +29,10 @@ pub fn encode_delivery_announce_app_data_with_capabilities(
             (rmpv::Value::from("schema"), rmpv::Value::from(1)),
             (rmpv::Value::from("caps"), caps),
         ]);
-        peer_data.push(rmpv::Value::Binary(rmp_serde::to_vec(&payload).ok()?));
+        peer_data.push(rmpv::Value::Binary(encode_msgpack(&payload, "delivery capabilities")?));
     }
     let peer_data = rmpv::Value::Array(peer_data);
-    rmp_serde::to_vec(&peer_data).ok()
+    encode_msgpack(&peer_data, "delivery announce")
 }
 
 pub fn normalize_capabilities(capabilities: &[String]) -> Vec<String> {
@@ -102,7 +102,7 @@ pub fn encode_propagation_node_app_data(
         ]),
         rmpv::Value::Map(metadata),
     ]);
-    rmp_serde::to_vec(&announce_data).ok()
+    encode_msgpack(&announce_data, "propagation announce")
 }
 
 pub fn normalize_display_name(value: &str) -> Option<String> {
@@ -140,7 +140,7 @@ pub fn parse_peer_name_from_app_data(app_data: &[u8]) -> Option<(String, &'stati
         return Some((name, "pn_meta"));
     }
 
-    let text = std::str::from_utf8(app_data).ok()?;
+    let text = decode_utf8(app_data, "announce app_data utf8 fallback")?;
     let name = normalize_display_name(text)?;
     Some((name, "app_data_utf8"))
 }
@@ -169,7 +169,7 @@ pub fn pn_stamp_cost_from_app_data(data: &[u8]) -> Option<u32> {
 }
 
 pub fn delivery_stamp_cost_from_app_data(data: &[u8]) -> Option<u32> {
-    let decoded = rmp_serde::from_slice::<rmpv::Value>(data).ok()?;
+    let decoded = decode_msgpack::<rmpv::Value>(data, "delivery stamp cost")?;
     let entries = match decoded {
         rmpv::Value::Array(entries) => entries,
         _ => return None,
@@ -195,7 +195,7 @@ fn display_name_from_app_data(data: &[u8]) -> Option<String> {
     }
 
     if is_msgpack_array_prefix(data[0]) {
-        let decoded: rmpv::Value = rmp_serde::from_slice(data).ok()?;
+        let decoded: rmpv::Value = decode_msgpack(data, "delivery display name")?;
         let entries = match decoded {
             rmpv::Value::Array(entries) => entries,
             _ => return None,
@@ -204,19 +204,19 @@ fn display_name_from_app_data(data: &[u8]) -> Option<String> {
         let first = entries.first()?;
         match first {
             rmpv::Value::Nil => None,
-            rmpv::Value::Binary(bytes) => String::from_utf8(bytes.clone()).ok(),
+            rmpv::Value::Binary(bytes) => decode_utf8_owned(bytes.clone(), "delivery display name"),
             rmpv::Value::String(text) => text.as_str().map(|value| value.to_string()),
             _ => None,
         }
     } else {
-        std::str::from_utf8(data).ok().map(|value| value.to_string())
+        decode_utf8(data, "delivery display name fallback").map(|value| value.to_string())
     }
 }
 
 fn pn_name_from_app_data(data: &[u8]) -> Option<String> {
     const PN_META_NAME: u8 = 0x01;
 
-    let decoded = rmp_serde::from_slice::<rmpv::Value>(data).ok()?;
+    let decoded = decode_msgpack::<rmpv::Value>(data, "propagation metadata name")?;
     let entries = match decoded {
         rmpv::Value::Array(entries) => entries,
         _ => return None,
@@ -254,7 +254,7 @@ fn keys_match(candidate: &rmpv::Value, expected: &rmpv::Value) -> bool {
             })
         }
         (rmpv::Value::Binary(candidate), rmpv::Value::String(expected)) => {
-            std::str::from_utf8(candidate).ok().is_some_and(|candidate| {
+            decode_utf8(candidate, "propagation metadata key").is_some_and(|candidate| {
                 candidate.eq_ignore_ascii_case(expected.as_str().unwrap_or_default().trim())
             })
         }
@@ -270,7 +270,7 @@ fn keys_match(candidate: &rmpv::Value, expected: &rmpv::Value) -> bool {
 
 fn string_like_value_to_string(value: &rmpv::Value) -> Option<String> {
     match value {
-        rmpv::Value::Binary(bytes) => String::from_utf8(bytes.clone()).ok(),
+        rmpv::Value::Binary(bytes) => decode_utf8_owned(bytes.clone(), "string-like msgpack value"),
         rmpv::Value::String(text) => text.as_str().map(|s| s.to_string()),
         rmpv::Value::Integer(value) => value.as_i64().map(|value| value.to_string()),
         rmpv::Value::F64(value) => {
@@ -297,7 +297,7 @@ fn parse_announce_cost_from_app_data(data: &[u8], index: usize) -> Option<u32> {
         return None;
     }
 
-    let decoded = rmp_serde::from_slice::<rmpv::Value>(data).ok()?;
+    let decoded = decode_msgpack::<rmpv::Value>(data, "propagation announce costs")?;
     let entries = match decoded {
         rmpv::Value::Array(entries) => entries,
         _ => return None,
@@ -327,9 +327,8 @@ fn parse_announce_cost_from_map(costs: &[(rmpv::Value, rmpv::Value)], index: usi
 fn cost_map_key_text(key: &rmpv::Value) -> Option<String> {
     match key {
         rmpv::Value::String(text) => text.as_str().map(|key| key.trim().to_ascii_lowercase()),
-        rmpv::Value::Binary(bytes) => {
-            String::from_utf8(bytes.clone()).ok().map(|key| key.trim().to_ascii_lowercase())
-        }
+        rmpv::Value::Binary(bytes) => decode_utf8_owned(bytes.clone(), "cost map key")
+            .map(|key| key.trim().to_ascii_lowercase()),
         rmpv::Value::Integer(value) => value
             .as_u64()
             .map(|key| key.to_string())
@@ -347,7 +346,7 @@ fn rmp_value_to_u32(value: &rmpv::Value) -> Option<u32> {
             rmpv::Value::F64(value) => parse_f64_to_u32(*value),
             rmpv::Value::F32(value) => parse_f64_to_u32(f64::from(*value)),
             rmpv::Value::Boolean(value) => Some(u32::from(*value)),
-            rmpv::Value::Binary(bytes) => parse_text_to_u32(std::str::from_utf8(bytes).ok()?),
+            rmpv::Value::Binary(bytes) => parse_text_to_u32(decode_utf8(bytes, "cost value")?),
             rmpv::Value::String(text) => parse_text_to_u32(text.as_str()?),
             _ => None,
         })
@@ -362,6 +361,33 @@ fn parse_f64_to_u32(value: f64) -> Option<u32> {
 
 fn parse_text_to_u32(value: &str) -> Option<u32> {
     value.trim().parse::<u32>().ok()
+}
+
+fn encode_msgpack(value: &rmpv::Value, context: &str) -> Option<Vec<u8>> {
+    let encoded = rmp_serde::to_vec(value)
+        .inspect_err(|err| log::warn!("[daemon] failed to encode {context}: {err}"));
+    encoded.ok()
+}
+
+fn decode_msgpack<T>(data: &[u8], context: &str) -> Option<T>
+where
+    T: serde::de::DeserializeOwned,
+{
+    let decoded = rmp_serde::from_slice(data)
+        .inspect_err(|err| log::warn!("[daemon] failed to decode {context}: {err}"));
+    decoded.ok()
+}
+
+fn decode_utf8<'a>(data: &'a [u8], context: &str) -> Option<&'a str> {
+    let text = std::str::from_utf8(data)
+        .inspect_err(|err| log::warn!("[daemon] invalid UTF-8 in {context}: {err}"));
+    text.ok()
+}
+
+fn decode_utf8_owned(data: Vec<u8>, context: &str) -> Option<String> {
+    let text = String::from_utf8(data)
+        .inspect_err(|err| log::warn!("[daemon] invalid UTF-8 in {context}: {err}"));
+    text.ok()
 }
 
 #[cfg(test)]

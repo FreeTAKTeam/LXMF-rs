@@ -30,7 +30,11 @@ impl ReceiptHandler for ReceiptBridge {
     fn on_receipt(&self, receipt: &DeliveryReceipt) {
         let message_id = lookup_receipt_message_id(&self.map, receipt);
         if let Some(message_id) = message_id {
-            let _ = self.tx.try_send(ReceiptEvent { message_id, status: "delivered".into() });
+            if let Err(err) =
+                self.tx.try_send(ReceiptEvent { message_id, status: "delivered".into() })
+            {
+                log::warn!("[daemon] dropped delivery receipt event: {err}");
+            }
         }
     }
 }

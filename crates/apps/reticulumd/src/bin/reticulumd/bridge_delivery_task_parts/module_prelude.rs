@@ -58,3 +58,12 @@ pub(super) struct PropagationPreparationContext {
     pub(super) propagation_hash: AddressHash,
     pub(super) target_cost: u32,
 }
+
+pub(crate) fn emit_receipt_event(
+    receipt_tx: &tokio::sync::mpsc::Sender<ReceiptEvent>,
+    event: ReceiptEvent,
+) {
+    if let Err(err) = receipt_tx.try_send(event) {
+        log::warn!("[daemon] dropped receipt event: {err}");
+    }
+}

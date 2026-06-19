@@ -447,7 +447,9 @@ impl DerivedKey {
     pub fn new(shared_key: &SharedSecret, salt: Option<&[u8]>) -> Self {
         let mut key = [0u8; DERIVED_KEY_LENGTH];
 
-        let _ = Hkdf::<Sha256>::new(salt, shared_key.as_bytes()).expand(&[], &mut key[..]);
+        Hkdf::<Sha256>::new(salt, shared_key.as_bytes())
+            .expand(&[], &mut key[..])
+            .expect("HKDF expand into fixed Reticulum derived key length");
 
         Self { key }
     }

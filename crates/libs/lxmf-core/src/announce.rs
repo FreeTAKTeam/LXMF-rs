@@ -58,7 +58,7 @@ pub fn encode_delivery_display_name_app_data(display_name: &str) -> Option<Vec<u
     let normalized = normalize_display_name(display_name)?;
     let peer_data =
         rmpv::Value::Array(vec![rmpv::Value::Binary(normalized.into_bytes()), rmpv::Value::Nil]);
-    rmp_serde::to_vec(&peer_data).ok()
+    encode_msgpack(&peer_data)
 }
 
 pub fn display_name_from_delivery_app_data(data: &[u8]) -> Option<String> {
@@ -66,13 +66,13 @@ pub fn display_name_from_delivery_app_data(data: &[u8]) -> Option<String> {
         return None;
     }
 
-    let decoded: rmpv::Value = rmp_serde::from_slice(data).ok()?;
+    let decoded: rmpv::Value = decode_msgpack(data)?;
     match decoded {
         rmpv::Value::Array(values) => {
             let first = values.first()?;
             match first {
                 rmpv::Value::Binary(bytes) => {
-                    let raw = String::from_utf8(bytes.clone()).ok()?;
+                    let raw = decode_utf8_owned(bytes.clone())?;
                     normalize_display_name(raw.as_str())
                 }
                 rmpv::Value::String(value) => normalize_display_name(value.as_str()?),
@@ -80,12 +80,30 @@ pub fn display_name_from_delivery_app_data(data: &[u8]) -> Option<String> {
             }
         }
         rmpv::Value::Binary(bytes) => {
-            let raw = String::from_utf8(bytes).ok()?;
+            let raw = decode_utf8_owned(bytes)?;
             normalize_display_name(raw.as_str())
         }
         rmpv::Value::String(value) => normalize_display_name(value.as_str()?),
         _ => None,
     }
+}
+
+fn encode_msgpack(value: &rmpv::Value) -> Option<Vec<u8>> {
+    let encoded = rmp_serde::to_vec(value);
+    encoded.ok()
+}
+
+fn decode_msgpack<T>(data: &[u8]) -> Option<T>
+where
+    T: serde::de::DeserializeOwned,
+{
+    let decoded = rmp_serde::from_slice(data);
+    decoded.ok()
+}
+
+fn decode_utf8_owned(data: Vec<u8>) -> Option<String> {
+    let text = String::from_utf8(data);
+    text.ok()
 }
 
 #[cfg(test)]

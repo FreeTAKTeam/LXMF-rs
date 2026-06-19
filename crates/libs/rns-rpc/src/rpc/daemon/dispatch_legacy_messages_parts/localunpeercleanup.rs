@@ -465,12 +465,19 @@ fn generate_peering_key_value(material: &[u8], target_cost: u32) -> Option<u32> 
     for n in 0..PEERING_WORKBLOCK_EXPAND_ROUNDS {
         let mut salt_data = Vec::with_capacity(material.len() + 8);
         salt_data.extend_from_slice(material);
-        let packed = rmp_serde::to_vec(&n).ok()?;
+        let packed = match rmp_serde::to_vec(&n) {
+            Ok(packed) => packed,
+            Err(err) => {
+                log::warn!("[rpc] failed to encode propagation peering key nonce: {err}");
+                return None;
+            }
+        };
         salt_data.extend_from_slice(&packed);
         let salt_hash = Sha256::digest(&salt_data);
         let hk = Hkdf::<Sha256>::new(Some(salt_hash.as_slice()), material);
         let mut okm = [0u8; 256];
-        hk.expand(&[], &mut okm).ok()?;
+        hk.expand(&[], &mut okm)
+            .expect("HKDF expand propagation peering key workblock");
         workblock.extend_from_slice(&okm);
     }
 

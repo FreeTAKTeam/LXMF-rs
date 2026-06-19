@@ -65,7 +65,7 @@ impl DeliveryTask {
     }
 
     pub(super) fn fail_payload_build(&self, err: std::io::Error) {
-        let _ = self.receipt_tx.try_send(ReceiptEvent {
+        emit_receipt_event(&self.receipt_tx, ReceiptEvent {
             message_id: self.message_id.clone(),
             status: format!("failed: {err}"),
         });
@@ -105,7 +105,7 @@ impl DeliveryTask {
             Err(err) if self.try_propagation_on_fail && self.propagation_node_hex.is_some() => {
                 let detail = format!("direct failed err={err}; trying propagated");
                 log_delivery_trace(&self.message_id, &self.destination_hex, "link", &detail);
-                let _ = self.receipt_tx.try_send(ReceiptEvent {
+                emit_receipt_event(&self.receipt_tx, ReceiptEvent {
                     message_id: self.message_id.clone(),
                     status: format!("link failed: {err}; trying propagated"),
                 });
@@ -114,7 +114,7 @@ impl DeliveryTask {
             Err(err) => {
                 let detail = format!("direct failed err={err}");
                 log_delivery_trace(&self.message_id, &self.destination_hex, "link", &detail);
-                let _ = self.receipt_tx.try_send(ReceiptEvent {
+                emit_receipt_event(&self.receipt_tx, ReceiptEvent {
                     message_id: self.message_id,
                     status: format!("failed: {err}"),
                 });
@@ -141,7 +141,7 @@ impl DeliveryTask {
             let _stamp_permit = match stamp_limit.clone().acquire_owned().await {
                 Ok(permit) => permit,
                 Err(_) => {
-                    let _ = self.receipt_tx.try_send(ReceiptEvent {
+                    emit_receipt_event(&self.receipt_tx, ReceiptEvent {
                         message_id: self.message_id,
                         status: "failed: stamp worker stopped".to_string(),
                     });
@@ -191,7 +191,7 @@ impl DeliveryTask {
                         context.target_cost,
                         Some(err.to_string()),
                     );
-                    let _ = self.receipt_tx.try_send(ReceiptEvent {
+                    emit_receipt_event(&self.receipt_tx, ReceiptEvent {
                         message_id: self.message_id,
                         status: format!("failed: {err}"),
                     });
@@ -225,13 +225,13 @@ impl DeliveryTask {
                 &prepared.payload,
             ) {
                 Ok(()) => {
-                    let _ = self.receipt_tx.try_send(ReceiptEvent {
+                    emit_receipt_event(&self.receipt_tx, ReceiptEvent {
                         message_id: self.message_id,
                         status: "sent: propagated resource".to_string(),
                     });
                 }
                 Err(err) => {
-                    let _ = self.receipt_tx.try_send(ReceiptEvent {
+                    emit_receipt_event(&self.receipt_tx, ReceiptEvent {
                         message_id: self.message_id,
                         status: format!("failed: {err}"),
                     });
@@ -270,7 +270,7 @@ impl DeliveryTask {
         {
             Ok(link) => link,
             Err(err) => {
-                let _ = self.receipt_tx.try_send(ReceiptEvent {
+                emit_receipt_event(&self.receipt_tx, ReceiptEvent {
                     message_id: self.message_id,
                     status: format!("failed: {err}"),
                 });
@@ -303,7 +303,7 @@ impl DeliveryTask {
         {
             let detail = format!("propagated failed err={err}");
             log_delivery_trace(&self.message_id, &self.destination_hex, "propagation", &detail);
-            let _ = self.receipt_tx.try_send(ReceiptEvent {
+            emit_receipt_event(&self.receipt_tx, ReceiptEvent {
                 message_id: self.message_id,
                 status: format!("failed: {err}"),
             });
@@ -363,7 +363,7 @@ impl DeliveryTask {
                     "opportunistic",
                     &format!("encrypt failed: {err:?}"),
                 );
-                let _ = self.receipt_tx.try_send(ReceiptEvent {
+                emit_receipt_event(&self.receipt_tx, ReceiptEvent {
                     message_id: self.message_id,
                     status: "failed: opportunistic encrypt failed".to_string(),
                 });
@@ -404,7 +404,7 @@ impl DeliveryTask {
                 map.remove(&packet_hash);
             }
         }
-        let _ = self.receipt_tx.try_send(ReceiptEvent {
+        emit_receipt_event(&self.receipt_tx, ReceiptEvent {
             message_id: self.message_id,
             status: send_outcome_status("opportunistic", outcome),
         });
@@ -450,7 +450,7 @@ impl DeliveryTask {
                 "opportunistic-link",
                 &format!("fallback failed err={err}"),
             );
-            let _ = self.receipt_tx.try_send(ReceiptEvent {
+            emit_receipt_event(&self.receipt_tx, ReceiptEvent {
                 message_id: self.message_id,
                 status: format!("failed: {err}"),
             });

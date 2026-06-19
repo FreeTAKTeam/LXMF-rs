@@ -282,11 +282,13 @@ impl UdpInterface {
                                                     iface_address, attributed_iface, in_addr, packet
                                                 );
                                             }
-                                            let _ = rx_channel.send(RxMessage {
+                                            if let Err(err) = rx_channel.send(RxMessage {
                                                 address: attributed_iface,
                                                 packet,
                                                 source: IfaceSource::Udp(in_addr),
-                                            }).await;
+                                            }).await {
+                                                log::warn!("udp_interface RX queue closed: {err}");
+                                            }
                                         } else {
                                             log::warn!("couldn't decode packet");
                                         }

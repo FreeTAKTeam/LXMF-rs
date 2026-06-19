@@ -296,7 +296,9 @@ async fn handle_connection<S>(
         }
     };
     emit_rpc_access_log(peer_addr, &request_meta, &response, elapsed_ms, error_text.as_deref());
-    let _ = stream.write_all(&response).await;
+    if let Err(err) = stream.write_all(&response).await {
+        log::warn!("[daemon-rpc] failed to write RPC response: {err}");
+    }
     let _ = stream.shutdown().await;
 }
 
@@ -318,7 +320,9 @@ async fn handle_event_stream<S>(
     ) {
         let response = http::build_rpc_error_response(0, error)
             .unwrap_or_else(|err| http::build_error_response(&format!("rpc auth error: {err}")));
-        let _ = stream.write_all(&response).await;
+        if let Err(err) = stream.write_all(&response).await {
+            log::warn!("[daemon-rpc] failed to write RPC auth error response: {err}");
+        }
         let _ = stream.shutdown().await;
         return;
     }
@@ -331,7 +335,11 @@ async fn handle_event_stream<S>(
             let response = http::build_rpc_error_response(0, *err).unwrap_or_else(|encode_err| {
                 http::build_error_response(&format!("event stream error: {encode_err}"))
             });
-            let _ = stream.write_all(&response).await;
+            if let Err(write_err) = stream.write_all(&response).await {
+                log::warn!(
+                    "[daemon-rpc] failed to write event stream error response: {write_err}"
+                );
+            }
             let _ = stream.shutdown().await;
             return;
         }

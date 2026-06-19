@@ -416,7 +416,8 @@ fn decode_columba_meta_text(text: &str) -> Option<JsonValue> {
 }
 
 fn decode_columba_meta_bytes(bytes: &[u8], options: RmpvToJsonOptions) -> Option<JsonValue> {
-    let text = core::str::from_utf8(bytes).ok();
+    let text = core::str::from_utf8(bytes);
+    let text = text.ok();
     if let Some(text) = text {
         if let Ok(json) = serde_json::from_str::<JsonValue>(text) {
             return Some(json);
@@ -441,7 +442,10 @@ fn decode_msgpack_value_from_bytes(bytes: &[u8]) -> Option<Value> {
 
 #[cfg(not(feature = "std"))]
 fn decode_msgpack_value_from_bytes(bytes: &[u8]) -> Option<Value> {
-    rmp_serde::from_slice(bytes).ok()
+    match rmp_serde::from_slice(bytes) {
+        Ok(decoded) => Some(decoded),
+        Err(_) => None,
+    }
 }
 
 #[cfg(feature = "std")]
@@ -453,5 +457,8 @@ fn decode_msgpack_value_from_bytes_exact(bytes: &[u8]) -> Option<Value> {
 
 #[cfg(not(feature = "std"))]
 fn decode_msgpack_value_from_bytes_exact(bytes: &[u8]) -> Option<Value> {
-    rmp_serde::from_slice(bytes).ok()
+    match rmp_serde::from_slice(bytes) {
+        Ok(decoded) => Some(decoded),
+        Err(_) => None,
+    }
 }

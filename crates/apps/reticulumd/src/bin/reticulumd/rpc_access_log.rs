@@ -94,7 +94,7 @@ pub(super) fn emit_rpc_access_log(
 }
 
 fn parse_http_request_line(headers: &[u8]) -> Option<(&str, &str)> {
-    let text = std::str::from_utf8(headers).ok()?;
+    let text = decode_utf8(headers, "RPC request headers")?;
     let line = text.lines().next()?;
     let mut parts = line.split_whitespace();
     let method = parts.next()?;
@@ -103,12 +103,22 @@ fn parse_http_request_line(headers: &[u8]) -> Option<(&str, &str)> {
 }
 
 fn parse_status_code(response: &[u8]) -> Option<u16> {
-    let text = std::str::from_utf8(response).ok()?;
+    let text = decode_utf8(response, "RPC response status")?;
     let line = text.lines().next()?;
     let mut parts = line.split_whitespace();
     let _http_version = parts.next()?;
     let code = parts.next()?;
     code.parse::<u16>().ok()
+}
+
+fn decode_utf8<'a>(data: &'a [u8], context: &str) -> Option<&'a str> {
+    match std::str::from_utf8(data) {
+        Ok(text) => Some(text),
+        Err(err) => {
+            log::warn!("[daemon-rpc] invalid UTF-8 in {context}: {err}");
+            None
+        }
+    }
 }
 
 fn pretty_console_logs_enabled() -> bool {

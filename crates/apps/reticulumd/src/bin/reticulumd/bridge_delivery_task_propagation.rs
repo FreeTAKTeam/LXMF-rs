@@ -1,4 +1,4 @@
-use super::delivery_task::PropagationPreparationContext;
+use super::delivery_task::{emit_receipt_event, PropagationPreparationContext};
 use super::*;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
@@ -18,20 +18,26 @@ impl DeliveryTask {
             "recipient identity ready",
         );
         let Some(propagation_node_hex) = self.propagation_node_hex.clone() else {
-            let _ = self.receipt_tx.try_send(ReceiptEvent {
-                message_id: self.message_id.clone(),
-                status: "failed: no outbound propagation node selected".to_string(),
-            });
+            emit_receipt_event(
+                &self.receipt_tx,
+                ReceiptEvent {
+                    message_id: self.message_id.clone(),
+                    status: "failed: no outbound propagation node selected".to_string(),
+                },
+            );
             return None;
         };
 
         let propagation_hash = match parse_destination_hash_required(&propagation_node_hex) {
             Ok(hash) => AddressHash::new(hash),
             Err(err) => {
-                let _ = self.receipt_tx.try_send(ReceiptEvent {
-                    message_id: self.message_id.clone(),
-                    status: format!("failed: {err}"),
-                });
+                emit_receipt_event(
+                    &self.receipt_tx,
+                    ReceiptEvent {
+                        message_id: self.message_id.clone(),
+                        status: format!("failed: {err}"),
+                    },
+                );
                 return None;
             }
         };

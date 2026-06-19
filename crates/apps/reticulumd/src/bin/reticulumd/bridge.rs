@@ -10,6 +10,7 @@ mod delivery_method;
 mod delivery_scheduler;
 #[path = "bridge_delivery_task.rs"]
 mod delivery_task;
+pub(crate) use delivery_task::emit_receipt_event;
 #[path = "bridge_delivery_task_cancel.rs"]
 mod delivery_task_cancel;
 #[path = "bridge_delivery_task_payload.rs"]

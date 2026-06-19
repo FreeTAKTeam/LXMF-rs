@@ -303,7 +303,10 @@ fn parse_transfer_limit_bytes(value: &rmpv::Value) -> Option<usize> {
         rmpv::Value::F32(value) => Some((*value).into()),
         rmpv::Value::Integer(value) => value.as_f64(),
         rmpv::Value::String(value) => value.as_str()?.trim().parse::<f64>().ok(),
-        rmpv::Value::Binary(value) => std::str::from_utf8(value).ok()?.trim().parse::<f64>().ok(),
+        rmpv::Value::Binary(value) => decode_utf8(value, "propagation transfer limit")?
+            .trim()
+            .parse::<f64>()
+            .ok(),
         rmpv::Value::Boolean(value) => Some(f64::from(*value as u8)),
         _ => None,
     }?;
@@ -311,6 +314,16 @@ fn parse_transfer_limit_bytes(value: &rmpv::Value) -> Option<usize> {
         None
     } else {
         Some((limit.max(0.0) * 1000.0) as usize)
+    }
+}
+
+fn decode_utf8<'a>(data: &'a [u8], context: &str) -> Option<&'a str> {
+    match std::str::from_utf8(data) {
+        Ok(text) => Some(text),
+        Err(err) => {
+            log::warn!("[daemon-control] invalid UTF-8 in {context}: {err}");
+            None
+        }
     }
 }
 

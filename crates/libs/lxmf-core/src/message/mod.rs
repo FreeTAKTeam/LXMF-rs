@@ -74,7 +74,8 @@ impl Message {
     }
 
     pub fn title_as_string(&self) -> Option<String> {
-        String::from_utf8(self.title.clone()).ok()
+        let title = String::from_utf8(self.title.clone());
+        title.ok()
     }
 
     pub fn set_content_from_string(&mut self, content: &str) {
@@ -94,7 +95,8 @@ impl Message {
     }
 
     pub fn content_as_string(&self) -> Option<String> {
-        String::from_utf8(self.content.clone()).ok()
+        let content = String::from_utf8(self.content.clone());
+        content.ok()
     }
 
     pub fn from_wire(bytes: &[u8]) -> Result<Self, LxmfError> {

@@ -1,5 +1,4 @@
 use super::*;
-
 pub(super) fn handle_peer_command(
     daemon: &RpcDaemon,
     path_hash: [u8; 16],
@@ -36,7 +35,6 @@ pub(super) fn handle_peer_command(
         .map(ControlResponse::Value)
         .or(Some(ControlResponse::Code(error_invalid_data)))
 }
-
 fn peer_request_from_data(data: Option<rmpv::Value>) -> Option<(String, Option<f64>)> {
     match data {
         Some(rmpv::Value::Binary(bytes)) if bytes.len() == 16 => Some((hex::encode(bytes), None)),
@@ -54,14 +52,17 @@ fn peer_request_from_data(data: Option<rmpv::Value>) -> Option<(String, Option<f
         _ => None,
     }
 }
-
 fn transfer_limit_kb_from_value(value: &rmpv::Value) -> Option<Option<f64>> {
     let limit = match value {
         rmpv::Value::F64(value) => Some(*value),
         rmpv::Value::F32(value) => Some((*value).into()),
         rmpv::Value::Integer(value) => value.as_f64(),
         rmpv::Value::String(value) => value.as_str()?.trim().parse::<f64>().ok(),
-        rmpv::Value::Binary(value) => std::str::from_utf8(value).ok()?.trim().parse::<f64>().ok(),
+        rmpv::Value::Binary(value) => std::str::from_utf8(value)
+            .inspect_err(|err| {
+                log::warn!("[daemon-control] invalid UTF-8 in peer transfer limit: {err}")
+            })
+            .map_or(None, |text| text.trim().parse::<f64>().ok()),
         rmpv::Value::Boolean(value) => Some(f64::from(*value as u8)),
         _ => None,
     }?;
@@ -73,7 +74,6 @@ fn transfer_limit_kb_from_value(value: &rmpv::Value) -> Option<Option<f64>> {
         Some(Some(limit.max(0.0)))
     }
 }
-
 fn peer_exists(daemon: &RpcDaemon, peer_hex: &str, include_unpeered: bool) -> bool {
     if include_unpeered && daemon.peer_record_exists(peer_hex, true) {
         return true;

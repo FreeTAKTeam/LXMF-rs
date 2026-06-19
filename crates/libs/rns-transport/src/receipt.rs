@@ -7,7 +7,13 @@ pub fn resolve_receipt_message_id(
     receipt: &DeliveryReceipt,
 ) -> Option<String> {
     let key = hex::encode(receipt.message_id);
-    map.lock().ok().and_then(|mut guard| guard.remove(&key))
+    match map.lock() {
+        Ok(mut guard) => guard.remove(&key),
+        Err(err) => {
+            log::warn!("failed to lock receipt map for resolve: {err}");
+            None
+        }
+    }
 }
 
 pub fn lookup_receipt_message_id(
@@ -15,7 +21,13 @@ pub fn lookup_receipt_message_id(
     receipt: &DeliveryReceipt,
 ) -> Option<String> {
     let key = hex::encode(receipt.message_id);
-    map.lock().ok().and_then(|guard| guard.get(&key).cloned())
+    match map.lock() {
+        Ok(guard) => guard.get(&key).cloned(),
+        Err(err) => {
+            log::warn!("failed to lock receipt map for lookup: {err}");
+            None
+        }
+    }
 }
 
 pub fn track_receipt_mapping(

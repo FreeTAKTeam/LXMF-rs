@@ -34,8 +34,8 @@ pub fn summarize_wire_message(
 ) -> Result<InterchangeMessageSummary, lxmf::LxmfError> {
     let packed = wire.pack()?;
     let message = Message::from_wire(&packed)?;
-    let title_utf8 = String::from_utf8(message.title.clone()).ok();
-    let content_utf8 = String::from_utf8(message.content.clone()).ok();
+    let title_utf8 = decode_utf8_owned(message.title.clone(), "paper interchange title");
+    let content_utf8 = decode_utf8_owned(message.content.clone(), "paper interchange content");
     let fields = message.fields.as_ref().and_then(rmpv_to_json);
 
     Ok(InterchangeMessageSummary {
@@ -50,6 +50,16 @@ pub fn summarize_wire_message(
         fields,
         stamp_base64: message.stamp.as_ref().map(|stamp| BASE64_STANDARD.encode(stamp)),
     })
+}
+
+fn decode_utf8_owned(data: Vec<u8>, context: &str) -> Option<String> {
+    match String::from_utf8(data) {
+        Ok(text) => Some(text),
+        Err(err) => {
+            log::warn!("[daemon] invalid UTF-8 in {context}: {err}");
+            None
+        }
+    }
 }
 
 #[cfg(test)]

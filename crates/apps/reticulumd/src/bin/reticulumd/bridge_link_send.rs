@@ -203,20 +203,26 @@ impl DeliveryTask {
                     format!("packet_hash={packet_hash}")
                 };
                 log_delivery_trace(&self.message_id, &self.destination_hex, trace_stage, &detail);
-                let _ = self.receipt_tx.try_send(ReceiptEvent {
-                    message_id: self.message_id.clone(),
-                    status: statuses.packet.to_string(),
-                });
+                emit_receipt_event(
+                    &self.receipt_tx,
+                    ReceiptEvent {
+                        message_id: self.message_id.clone(),
+                        status: statuses.packet.to_string(),
+                    },
+                );
                 Ok(())
             }
             Ok(LinkSendResult::Resource(resource_hash)) => {
                 let resource_hash_hex = hex::encode(resource_hash.as_slice());
                 let detail = format!("resource_hash={resource_hash_hex}");
                 log_delivery_trace(&self.message_id, &self.destination_hex, trace_stage, &detail);
-                let _ = self.receipt_tx.try_send(ReceiptEvent {
-                    message_id: self.message_id.clone(),
-                    status: statuses.resource.to_string(),
-                });
+                emit_receipt_event(
+                    &self.receipt_tx,
+                    ReceiptEvent {
+                        message_id: self.message_id.clone(),
+                        status: statuses.resource.to_string(),
+                    },
+                );
                 Ok(())
             }
             Err(err) => {
@@ -265,10 +271,13 @@ impl DeliveryTask {
                 destination_desc.address_hash
             );
             log_delivery_trace(&self.message_id, &self.destination_hex, trace_stage, &detail);
-            let _ = self.receipt_tx.try_send(ReceiptEvent {
-                message_id: self.message_id.clone(),
-                status: statuses.resource.to_string(),
-            });
+            emit_receipt_event(
+                &self.receipt_tx,
+                ReceiptEvent {
+                    message_id: self.message_id.clone(),
+                    status: statuses.resource.to_string(),
+                },
+            );
             spawn_propagation_resource_signal_monitor(
                 propagation_signal_rx,
                 link_id,
@@ -329,10 +338,13 @@ impl DeliveryTask {
                     }
                 }
                 self.daemon.record_outbound_peer_sent(activity_peer, payload.len());
-                let _ = self.receipt_tx.try_send(ReceiptEvent {
-                    message_id: self.message_id.clone(),
-                    status: statuses.packet.to_string(),
-                });
+                emit_receipt_event(
+                    &self.receipt_tx,
+                    ReceiptEvent {
+                        message_id: self.message_id.clone(),
+                        status: statuses.packet.to_string(),
+                    },
+                );
                 Ok(())
             }
             Ok(LinkSendResult::Resource(resource_hash)) => {
@@ -345,10 +357,13 @@ impl DeliveryTask {
                     destination_desc.address_hash
                 );
                 log_delivery_trace(&self.message_id, &self.destination_hex, trace_stage, &detail);
-                let _ = self.receipt_tx.try_send(ReceiptEvent {
-                    message_id: self.message_id.clone(),
-                    status: statuses.resource.to_string(),
-                });
+                emit_receipt_event(
+                    &self.receipt_tx,
+                    ReceiptEvent {
+                        message_id: self.message_id.clone(),
+                        status: statuses.resource.to_string(),
+                    },
+                );
                 Ok(())
             }
             Err(err) => Err(err),
@@ -383,9 +398,12 @@ fn spawn_propagation_resource_signal_monitor(
             &outbound_resource_map,
             &message_id,
         );
-        let _ = receipt_tx.try_send(ReceiptEvent {
-            message_id,
-            status: "failed: propagation node rejected message: invalid stamp".to_string(),
-        });
+        emit_receipt_event(
+            &receipt_tx,
+            ReceiptEvent {
+                message_id,
+                status: "failed: propagation node rejected message: invalid stamp".to_string(),
+            },
+        );
     });
 }

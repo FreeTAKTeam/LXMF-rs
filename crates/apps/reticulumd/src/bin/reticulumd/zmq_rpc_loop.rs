@@ -160,7 +160,7 @@ fn handle_zmq_command_message(
                 result: None,
                 error: Some(RpcError::new("SDK_INTERNAL", err.to_string())),
             };
-            rns_rpc::rpc::codec::encode_frame(&response).unwrap_or_default()
+            encode_rpc_response_frame(&response)
         });
     Some(ZmqOutboundResponse {
         endpoint: response_endpoint,
@@ -205,11 +205,7 @@ fn authorize_zmq_envelope(
 
 fn rpc_error_envelope(session_id: String, request_id: u64, error: RpcError) -> ZmqRpcEnvelope {
     let response = RpcResponse { id: request_id, result: None, error: Some(error) };
-    ZmqRpcEnvelope::response(
-        session_id,
-        request_id,
-        rns_rpc::rpc::codec::encode_frame(&response).unwrap_or_default(),
-    )
+    ZmqRpcEnvelope::response(session_id, request_id, encode_rpc_response_frame(&response))
 }
 
 fn error_envelope(
@@ -223,11 +219,12 @@ fn error_envelope(
         result: None,
         error: Some(RpcError::new(code, message.into())),
     };
-    ZmqRpcEnvelope::response(
-        session_id.into(),
-        request_id,
-        rns_rpc::rpc::codec::encode_frame(&response).unwrap_or_default(),
-    )
+    ZmqRpcEnvelope::response(session_id.into(), request_id, encode_rpc_response_frame(&response))
+}
+
+fn encode_rpc_response_frame(response: &RpcResponse) -> Vec<u8> {
+    rns_rpc::rpc::codec::encode_frame(response)
+        .expect("RPC response frame serialization for ZMQ error response")
 }
 
 fn validate_zmq_loop_config(config: &ZmqRpcLoopConfig, daemon: &RpcDaemon) -> io::Result<()> {

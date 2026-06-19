@@ -2,3 +2,6 @@
 # Keep this list short and remove entries as files are split.
 crates/libs/rns-rpc/src/rpc/daemon/dispatch_legacy_messages_parts/localunpeercleanup.rs
 crates/libs/rns-rpc/src/rpc/daemon/dispatch_legacy_messages_parts/rpcdaemon_sections/handle_rpc_legacy_peer_sync.rs
+# Baseline SDK backend exceptions present before issue #369 cleanup; split backend state/tests.
+crates/libs/lxmf-sdk/src/backend/zmq_pipeline.rs
+crates/libs/lxmf-sdk/src/backend/zmq_pipeline/tests/mod.rs

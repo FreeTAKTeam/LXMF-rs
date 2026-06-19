@@ -314,7 +314,8 @@ fn percent_decode(value: &str) -> Option<String> {
             }
         }
     }
-    String::from_utf8(out).ok()
+    let decoded = String::from_utf8(out);
+    decoded.ok()
 }
 
 fn decode_hex(input: u8) -> Option<u8> {

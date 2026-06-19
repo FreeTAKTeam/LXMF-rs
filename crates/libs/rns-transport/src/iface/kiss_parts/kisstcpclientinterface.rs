@@ -314,7 +314,9 @@ pub async fn run_kiss_stream<IO>(
                                     match frame {
                                         KissFrame::Data(payload) => {
                                             if let Some(data_rx_tx) = &options.data_rx_tx {
-                                                let _ = data_rx_tx.try_send(());
+                                                if let Err(err) = data_rx_tx.try_send(()) {
+                                                    log::warn!("KISS data notification dropped: {err}");
+                                                }
                                             }
                                             if let Ok(packet) = Packet::deserialize(&mut InputBuffer::new(&payload)) {
                                                 let _ = rx_channel
@@ -342,7 +344,13 @@ pub async fn run_kiss_stream<IO>(
                                         }
                                         KissFrame::Command(KissCommand::Unknown(command, payload)) => {
                                             if let Some(command_tx) = &options.command_tx {
-                                                let _ = command_tx.try_send(KissCommandFrame { command, payload });
+                                                if let Err(err) =
+                                                    command_tx.try_send(KissCommandFrame { command, payload })
+                                                {
+                                                    log::warn!(
+                                                        "KISS command notification dropped: {err}"
+                                                    );
+                                                }
                                             }
                                         }
                                     }

@@ -159,7 +159,9 @@ impl BleGattInterface {
                                     let mut output = OutputBuffer::new(&mut hdlc_rx_buffer);
                                     if Hdlc::decode(frame, &mut output).is_ok() {
                                         if let Ok(packet) = Packet::deserialize(&mut InputBuffer::new(output.as_slice())) {
-                                            let _ = rx_channel.send(RxMessage { address: iface_address, packet, source: IfaceSource::None }).await;
+                                            if let Err(err) = rx_channel.send(RxMessage { address: iface_address, packet, source: IfaceSource::None }).await {
+                                                log::warn!("BLE RX queue closed iface={} err={err}", label);
+                                            }
                                         }
                                     }
                                     frame_buffer.drain(..=end);

@@ -27,7 +27,13 @@ pub(super) fn take_outbound_resource_tracking(
     outbound_resource_map: &OutboundResourceMap,
     resource_hash_hex: &str,
 ) -> Option<OutboundResourceTracking> {
-    outbound_resource_map.lock().ok().and_then(|mut guard| guard.remove(resource_hash_hex))
+    match outbound_resource_map.lock() {
+        Ok(mut guard) => guard.remove(resource_hash_hex),
+        Err(err) => {
+            log::warn!("[daemon] failed to lock outbound resource map: {err}");
+            None
+        }
+    }
 }
 
 pub(super) fn prune_outbound_resource_mappings_for_message(

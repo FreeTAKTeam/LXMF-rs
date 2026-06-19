@@ -64,8 +64,15 @@ pub(super) fn spawn_control_worker(
                     let Some(request_id) = payload.request_id() else {
                         continue;
                     };
-                    let remote_identity =
-                        identified.lock().ok().and_then(|guard| guard.get(&event.id).cloned());
+                    let remote_identity = match identified.lock() {
+                        Ok(guard) => guard.get(&event.id).cloned(),
+                        Err(err) => {
+                            log::warn!(
+                                "[daemon-control] failed to lock identified peer map: {err}"
+                            );
+                            None
+                        }
+                    };
                     let response = handle_control_request(
                         daemon.as_ref(),
                         &control,
@@ -199,7 +206,13 @@ fn control_identity_allowed(control: &PropagationControlContext, remote_hash: &s
 }
 
 fn parse_control_request_payload(payload: &[u8]) -> Option<([u8; 16], Option<rmpv::Value>)> {
-    let value = rmp_serde::from_slice::<rmpv::Value>(payload).ok()?;
+    let value = match rmp_serde::from_slice::<rmpv::Value>(payload) {
+        Ok(value) => value,
+        Err(err) => {
+            log::warn!("[daemon-control] failed to decode control request payload: {err}");
+            return None;
+        }
+    };
     let rmpv::Value::Array(entries) = value else {
         return None;
     };

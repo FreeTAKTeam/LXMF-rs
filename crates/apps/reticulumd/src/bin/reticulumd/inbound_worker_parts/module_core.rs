@@ -1,5 +1,7 @@
 use reticulum_daemon::receipt_bridge::ReceiptEvent;
 
+use crate::bridge::emit_receipt_event;
+
 use rns_rpc::{RpcDaemon, RpcRequest};
 
 use rns_transport::destination::link::{Link, LinkEvent};
@@ -158,7 +160,7 @@ fn handle_outbound_resource_completion(
         take_outbound_resource_tracking(outbound_resource_map, resource_hash_hex.as_str())
     {
         daemon.record_outbound_peer_sent(&tracking.peer, tracking.bytes);
-        let _ = receipt_tx.try_send(ReceiptEvent {
+        emit_receipt_event(receipt_tx, ReceiptEvent {
             message_id: tracking.message_id,
             status: tracking.sent_status,
         });
@@ -176,7 +178,7 @@ fn handle_outbound_resource_failure(
         take_outbound_resource_tracking(outbound_resource_map, resource_hash_hex.as_str())
     {
         daemon.record_outbound_peer_activity(&tracking.peer, tracking.bytes, false);
-        let _ = receipt_tx.try_send(ReceiptEvent {
+        emit_receipt_event(receipt_tx, ReceiptEvent {
             message_id: tracking.message_id,
             status: "failed: resource transfer timed out".to_string(),
         });

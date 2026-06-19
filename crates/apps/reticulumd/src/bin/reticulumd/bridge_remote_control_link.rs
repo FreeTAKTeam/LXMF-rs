@@ -276,7 +276,10 @@ fn link_close_signal_error(
     if event.context != Some(PacketContext::LinkClose) {
         return None;
     }
-    let value = rmp_serde::from_slice::<rmpv::Value>(event.data.as_slice()).ok()?;
+    let value = rmp_serde::from_slice::<rmpv::Value>(event.data.as_slice()).inspect_err(|err| {
+        log::warn!("[daemon-control] failed to decode link close signal: {err}")
+    });
+    let value = value.ok()?;
     let rmpv::Value::Array(entries) = value else {
         return Some(std::io::Error::new(
             std::io::ErrorKind::ConnectionAborted,
@@ -299,7 +302,10 @@ fn link_close_signal_error(
 }
 
 fn parse_link_response_frame(bytes: &[u8]) -> Option<([u8; 16], rmpv::Value)> {
-    let value = rmp_serde::from_slice::<rmpv::Value>(bytes).ok()?;
+    let value = rmp_serde::from_slice::<rmpv::Value>(bytes).inspect_err(|err| {
+        log::warn!("[daemon-control] failed to decode link response frame: {err}")
+    });
+    let value = value.ok()?;
     let rmpv::Value::Array(entries) = value else {
         return None;
     };

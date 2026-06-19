@@ -129,7 +129,10 @@ fn http_body(response: &[u8]) -> Option<&[u8]> {
 
 fn http_status_code(response: &[u8]) -> Option<u16> {
     let header_end = response.windows(2).position(|window| window == b"\r\n")?;
-    let status_line = std::str::from_utf8(&response[..header_end]).ok()?;
+    let status_line = match std::str::from_utf8(&response[..header_end]) {
+        Ok(value) => value,
+        Err(_) => return None,
+    };
     let mut parts = status_line.split_whitespace();
     let _http = parts.next()?;
     parts.next()?.parse::<u16>().ok()

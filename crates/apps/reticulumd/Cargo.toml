@@ -56,6 +56,10 @@ path = "src/bin/reticulumd/main.rs"
 name = "lxm-interchange"
 path = "src/bin/lxm-interchange.rs"
 
+[[test]]
+name = "code_quality_issue_369"
+path = "tests/code_quality_issue_369.rs"
+
 [target.'cfg(any(target_os = "android", target_os = "linux", target_os = "macos", target_os = "windows"))'.dependencies]
 btleplug = "0.12"
 futures = "0.3.31"

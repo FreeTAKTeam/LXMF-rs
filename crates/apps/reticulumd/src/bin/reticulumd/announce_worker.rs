@@ -23,7 +23,9 @@ pub(super) fn spawn_announce_worker(
             if let Ok(event) = rx.recv().await {
                 ingest_announce_event(daemon_announce.as_ref(), event, peer_crypto.as_ref()).await;
                 if let Some(tx) = persist_tx.as_ref() {
-                    let _ = tx.try_send(());
+                    if let Err(err) = tx.try_send(()) {
+                        log::warn!("[daemon] dropped path-table persistence trigger: {err}");
+                    }
                 }
             }
         }
