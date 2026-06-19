@@ -28,8 +28,14 @@ pub(super) async fn remote_control_request(
         DestinationName::new("lxmf", "propagation.control")
     };
     let destination = SingleOutputDestination::new(remote_identity, destination_name);
-    let link =
-        open_refreshed_remote_link(transport, &remote_hash, destination.desc, timeout).await?;
+    transport.request_path(&destination.desc.address_hash, None, None).await;
+    let link = open_refreshed_remote_link(
+        transport,
+        &destination.desc.address_hash,
+        destination.desc,
+        timeout,
+    )
+    .await?;
     let link_id = *link.lock().await.id();
 
     let identify_payload = build_link_identify_payload(request_identity, &link_id);

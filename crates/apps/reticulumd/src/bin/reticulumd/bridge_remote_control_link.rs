@@ -337,6 +337,27 @@ mod tests {
     use rns_transport::resource::{ResourceEvent, ResourceEventKind};
     use rns_transport::transport::{ReceivedData, ReceivedPayloadMode};
 
+    #[test]
+    fn build_link_request_payload_encodes_peer_sync_data_as_msgpack_binary() {
+        let peer_hash = vec![0xab; 16];
+        let payload =
+            build_link_request_payload("/pn/peer/sync", rmpv::Value::Binary(peer_hash.clone()))
+                .expect("encode peer sync request");
+
+        assert_eq!(payload.first(), Some(&0x93), "request frame must be a 3-item array");
+        assert_eq!(
+            payload.get(10..12),
+            Some(&[0xc4, 0x10][..]),
+            "path hash must be MessagePack bin8 bytes"
+        );
+        assert_eq!(
+            payload.get(28..30),
+            Some(&[0xc4, 0x10][..]),
+            "peer sync data must be MessagePack bin8 bytes for Python LXMF"
+        );
+        assert_eq!(payload.get(30..46), Some(peer_hash.as_slice()));
+    }
+
     async fn resource_terminal_error(kind: ResourceEventKind) -> std::io::Error {
         let (_data_tx, mut data_rx) = tokio::sync::broadcast::channel(4);
         let (resource_tx, mut resource_rx) = tokio::sync::broadcast::channel(4);

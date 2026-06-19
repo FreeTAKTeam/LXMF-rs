@@ -139,6 +139,13 @@ pub(super) fn remote_peer_value(peer: &str) -> Result<rmpv::Value, std::io::Erro
     Ok(rmpv::Value::Binary(peer_hash.to_vec()))
 }
 
+fn remote_peer_sync_request_value(
+    peer: &str,
+    _transfer_limit_kb: Option<f64>,
+) -> Result<rmpv::Value, std::io::Error> {
+    remote_peer_value(peer)
+}
+
 impl RemoteControlBridge for TransportBridge {
     fn propagation_remote_status(
         &self,
@@ -163,16 +170,12 @@ impl RemoteControlBridge for TransportBridge {
         timeout_secs: f64,
         transfer_limit_kb: Option<f64>,
     ) -> Result<JsonValue, std::io::Error> {
-        let peer_value = remote_peer_value(peer)?;
-        let request = transfer_limit_kb
-            .map(|limit| rmpv::Value::Array(vec![peer_value.clone(), rmpv::Value::F64(limit)]))
-            .unwrap_or(peer_value);
         self.run_remote_control(
             remote,
             identity_private_key_hex,
             timeout_secs,
             "/pn/peer/sync",
-            request,
+            remote_peer_sync_request_value(peer, transfer_limit_kb)?,
         )
     }
 

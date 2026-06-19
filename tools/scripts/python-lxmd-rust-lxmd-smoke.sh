@@ -18,6 +18,7 @@ REMOTE_CONTROL_PATH_TIMEOUT_SECS="${REMOTE_CONTROL_PATH_TIMEOUT_SECS:-120}"
 REMOTE_CONTROL_SETTLE_SECS="${REMOTE_CONTROL_SETTLE_SECS:-2}"
 REMOTE_STATUS_PREFLIGHT="${REMOTE_STATUS_PREFLIGHT:-0}"
 COMPAT_CASE="${COMPAT_CASE:-direct_python_to_rust}"
+PROPAGATION_PEERING_COST="${PROPAGATION_PEERING_COST:-8}"
 
 RUST_RPC_ADDR="${RUST_RPC_ADDR:-127.0.0.1:$((42430 + ($$ % 1000)))}"
 RUST_TRANSPORT_ADDR="${RUST_TRANSPORT_ADDR:-127.0.0.1:$((37430 + ($$ % 1000)))}"
@@ -29,7 +30,12 @@ PY_INSTANCE_CONTROL_PORT="${PY_INSTANCE_CONTROL_PORT:-$((PY_SHARED_INSTANCE_PORT
 PY_ENDPOINT_CONTROL_PORT="${PY_ENDPOINT_CONTROL_PORT:-$((PY_INSTANCE_CONTROL_PORT + 10))}"
 PY_ENDPOINT_HELPER="${PY_ENDPOINT_HELPER:-${REPO_ROOT}/crates/apps/lxmf-cli/tests/support/python_lxmf_endpoint.py}"
 
-export PYTHONPATH="${RETICULUM_PY_REPO}:${LXMF_PY_REPO}${PYTHONPATH:+:${PYTHONPATH}}"
+PYTHON_PATHSEP="$("${PYTHON_BIN}" - <<'PY'
+import os
+print(os.pathsep)
+PY
+)"
+export PYTHONPATH="${RETICULUM_PY_REPO}${PYTHON_PATHSEP}${LXMF_PY_REPO}${PYTHONPATH:+${PYTHON_PATHSEP}${PYTHONPATH}}"
 
 HOST_BASH="${BASH_BIN:-}"
 if [[ -z "${HOST_BASH}" ]]; then
@@ -547,7 +553,8 @@ seed_python_sync_peer() {
     "${PY_DIR}/storage" \
     "${RUST_PROPAGATION_HASH}" \
     "${expected_transient}" \
-    "${out_json}"
+    "${out_json}" \
+    "${PROPAGATION_PEERING_COST}"
 import json
 import sys
 import time
@@ -555,19 +562,28 @@ from pathlib import Path
 
 import LXMF
 import RNS
-import msgpack
+import RNS.vendor.umsgpack as msgpack
 
-rns_config, identity_path, storage_root, peer_hash_hex, transient_hex, out_path = sys.argv[1:7]
+(
+    rns_config,
+    identity_path,
+    storage_root,
+    peer_hash_hex,
+    transient_hex,
+    out_path,
+    peering_cost_text,
+) = sys.argv[1:8]
 peer_hash = bytes.fromhex(peer_hash_hex)
 transient_id = bytes.fromhex(transient_hex)
 out_path = Path(out_path)
+peering_cost = int(peering_cost_text)
 
 RNS.Reticulum(configdir=rns_config, loglevel=0)
 identity = RNS.Identity.from_file(identity_path)
 if identity is None:
     raise SystemExit(f"failed to load Python lxmd identity from {identity_path}")
 
-router = LXMF.LXMRouter(identity=identity, storagepath=storage_root, autopeer=True, autopeer_maxdepth=6, peering_cost=8, max_peering_cost=8)
+router = LXMF.LXMRouter(identity=identity, storagepath=storage_root, autopeer=True, autopeer_maxdepth=6, peering_cost=peering_cost, max_peering_cost=peering_cost)
 router.enable_propagation()
 
 if transient_id not in router.propagation_entries:
@@ -583,12 +599,19 @@ if peer_identity is None:
 if peer_identity is None:
     raise SystemExit(f"Python could not recall Rust propagation identity {peer_hash_hex}")
 
-router.peer(peer_hash, int(time.time()), 256, 1024 * 1024, 0, 0, 8, {"source": "python-compat-harness"})
+router.peer(peer_hash, int(time.time()), 256, 1024 * 1024, 0, 0, peering_cost, {"source": "python-compat-harness"})
 peer = router.peers.get(peer_hash)
 if peer is None:
     raise SystemExit(f"Python did not create peer row for {peer_hash_hex}")
 
-if not peer.generate_peering_key():
+original_stamp_time = LXMF.LXStamper.time.time
+LXMF.LXStamper.time.time = time.perf_counter
+try:
+    peering_key_ready = peer.generate_peering_key()
+finally:
+    LXMF.LXStamper.time.time = original_stamp_time
+
+if not peering_key_ready:
     raise SystemExit(f"Python could not generate peering key for {peer_hash_hex}")
 
 peer.add_unhandled_message(transient_id)
@@ -768,6 +791,7 @@ propagation_stamp_cost_target = 0
 propagation_stamp_cost_flexibility = 0
 autopeer = yes
 autopeer_maxdepth = 6
+peering_cost = ${PROPAGATION_PEERING_COST}
 control_allowed = ${PY_CONTROL_IDENTITY_HASH}
 
 [lxmf]
@@ -1142,6 +1166,7 @@ propagation_stamp_cost_target = 0
 propagation_stamp_cost_flexibility = 0
 autopeer = yes
 autopeer_maxdepth = 6
+peering_cost = ${PROPAGATION_PEERING_COST}
 control_allowed = ${RUST_CONTROL_IDENTITY_HASH}
 
 [lxmf]
@@ -1292,7 +1317,7 @@ if [[ "${COMPAT_CASE}" == "propagation_remote_status_bidir" ]]; then
 fi
 
 if [[ "${COMPAT_CASE}" == "propagation_remote_fetch_rust_to_python" || "${COMPAT_CASE}" == "propagation_remote_download_rust_to_python" ]]; then
-  rpc_call "${RUST_RPC_ADDR}" "propagation_enable" '{"enabled":true,"peering_cost":8}' >/dev/null
+  rpc_call "${RUST_RPC_ADDR}" "propagation_enable" "{\"enabled\":true,\"peering_cost\":${PROPAGATION_PEERING_COST}}" >/dev/null
   rpc_call "${RUST_RPC_ADDR}" "set_outbound_propagation_node" "{\"peer\":\"${PY_PROPAGATION_HASH}\"}" >/dev/null
   assert_contains <(
     rpc_call "${RUST_RPC_ADDR}" "get_outbound_propagation_node" "null"
@@ -1476,7 +1501,7 @@ PY
 fi
 
 if [[ "${COMPAT_CASE}" == "propagation_remote_sync_rust_to_python" ]]; then
-  rpc_call "${RUST_RPC_ADDR}" "propagation_enable" '{"enabled":true,"peering_cost":8}' >/dev/null
+  rpc_call "${RUST_RPC_ADDR}" "propagation_enable" "{\"enabled\":true,\"peering_cost\":${PROPAGATION_PEERING_COST}}" >/dev/null
   rpc_call "${RUST_RPC_ADDR}" "set_outbound_propagation_node" "{\"peer\":\"${PY_PROPAGATION_HASH}\"}" >/dev/null
 
   SMOKE_MESSAGE_MARKER="remote-lifecycle-${COMPAT_CASE}-$(date +%s)"
@@ -1989,7 +2014,7 @@ if [[ "${COMPAT_CASE}" == "propagation_offer_python_to_rust" || "${COMPAT_CASE}"
     exit 1
   fi
 
-  rpc_call "${RUST_RPC_ADDR}" "propagation_enable" '{"enabled":true,"peering_cost":8}' >/dev/null
+  rpc_call "${RUST_RPC_ADDR}" "propagation_enable" "{\"enabled\":true,\"peering_cost\":${PROPAGATION_PEERING_COST}}" >/dev/null
   KNOWN_PAYLOAD_HEX="$("${PYTHON_BIN}" - <<'PY' "${RUST_DELIVERY_HASH}"
 import sys
 
@@ -2022,7 +2047,8 @@ PY
     "${RUST_CONTROL_IDENTITY_HASH}" \
     "${KNOWN_TRANSIENT}" \
     "${MISSING_TRANSIENT}" \
-    "${TIMEOUT_SECS}" >"${PY_SEND_LOG}"
+    "${TIMEOUT_SECS}" \
+    "${PROPAGATION_PEERING_COST}" >"${PY_SEND_LOG}"
 import json
 import sys
 import time
@@ -2031,8 +2057,19 @@ from pathlib import Path
 import RNS
 import LXMF
 
-compat_case, rns_config, storage_dir, propagation_hash_hex, rust_identity_hash_hex, known_hex, missing_hex, timeout_secs = sys.argv[1:9]
+(
+    compat_case,
+    rns_config,
+    storage_dir,
+    propagation_hash_hex,
+    rust_identity_hash_hex,
+    known_hex,
+    missing_hex,
+    timeout_secs,
+    peering_cost_text,
+) = sys.argv[1:10]
 timeout_secs = max(float(timeout_secs), 1.0)
+peering_cost = int(peering_cost_text)
 storage = Path(storage_dir)
 storage.mkdir(parents=True, exist_ok=True)
 
@@ -2090,11 +2127,16 @@ else:
 
 link.identify(identity)
 peering_id = rust_identity_hash + identity.hash
-peering_key, peering_value = LXMF.LXStamper.generate_stamp(
-    peering_id,
-    8,
-    expand_rounds=LXMF.LXStamper.WORKBLOCK_EXPAND_ROUNDS_PEERING,
-)
+original_stamp_time = LXMF.LXStamper.time.time
+LXMF.LXStamper.time.time = time.perf_counter
+try:
+    peering_key, peering_value = LXMF.LXStamper.generate_stamp(
+        peering_id,
+        peering_cost,
+        expand_rounds=LXMF.LXStamper.WORKBLOCK_EXPAND_ROUNDS_PEERING,
+    )
+finally:
+    LXMF.LXStamper.time.time = original_stamp_time
 
 offered_ids = [known, missing]
 if compat_case == "propagation_offer_duplicate_wanted_source_completed_python_to_rust":

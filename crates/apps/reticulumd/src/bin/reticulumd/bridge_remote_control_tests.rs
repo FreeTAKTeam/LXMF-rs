@@ -62,6 +62,15 @@ fn propagation_control_response_code_maps_peer_errors_like_python() {
 }
 
 #[test]
+fn propagation_remote_sync_request_keeps_python_binary_peer_shape_with_transfer_limit() {
+    let peer = "00112233445566778899aabbccddeeff";
+    let request =
+        remote_peer_sync_request_value(peer, Some(42.5)).expect("peer sync request value");
+
+    assert_eq!(request, rmpv::Value::Binary(hex::decode(peer).expect("peer hex")));
+}
+
+#[test]
 fn propagation_remote_fetch_ack_payload_reports_imported_and_duplicate_haves() {
     let imported_payload = b"imported remote fetch payload".to_vec();
     let duplicate_lxm_data = vec![0x51; 160];
