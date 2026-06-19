@@ -1587,6 +1587,7 @@ PY
     exit 1
   fi
 
+  rpc_call "${RUST_RPC_ADDR}" "announce_now" "null" >/dev/null
   if ! wait_for_python_remote_control "${RUST_PROPAGATION_HASH}" "${REMOTE_CONTROL_PATH_TIMEOUT_SECS}"; then
     echo "Restarted Python lxmd did not learn Rust propagation control path" >&2
     exit 1

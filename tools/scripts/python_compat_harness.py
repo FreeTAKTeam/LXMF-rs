@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os
 import shutil
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -81,6 +82,52 @@ def resolve_bash() -> str | None:
     return None
 
 
+def case_timeout_seconds() -> float:
+    raw = os.environ.get("LXMF_PY_COMPAT_CASE_TIMEOUT_SECS", "420")
+    try:
+        timeout = float(raw)
+    except ValueError:
+        print(
+            f"invalid LXMF_PY_COMPAT_CASE_TIMEOUT_SECS={raw!r}; expected seconds",
+            file=sys.stderr,
+        )
+        return 420.0
+    if timeout <= 0:
+        print(
+            f"invalid LXMF_PY_COMPAT_CASE_TIMEOUT_SECS={raw!r}; using 420 seconds",
+            file=sys.stderr,
+        )
+        return 420.0
+    return timeout
+
+
+def terminate_process_tree(process: subprocess.Popen[bytes]) -> None:
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return
+
+    try:
+        os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+    except ProcessLookupError:
+        return
+
+
+def kill_process_tree(process: subprocess.Popen[bytes]) -> None:
+    if os.name == "nt":
+        terminate_process_tree(process)
+        return
+
+    try:
+        os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+    except ProcessLookupError:
+        return
+
+
 def main() -> int:
     supported_cases = ", ".join(sorted(SUPPORTED_CASES))
     if len(sys.argv) != 2:
@@ -124,13 +171,33 @@ def main() -> int:
     env.setdefault("PYTHON_BIN", env["LXMF_PYTHON_BIN"])
     env.setdefault("BASH_BIN", bash)
 
-    result = subprocess.run(
+    creationflags = 0
+    if os.name == "nt":
+        creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+
+    process = subprocess.Popen(
         [bash, str(smoke_script)],
         cwd=repo_root,
         env=env,
-        check=False,
+        start_new_session=os.name != "nt",
+        creationflags=creationflags,
     )
-    return result.returncode
+    timeout = case_timeout_seconds()
+    try:
+        return process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        print(
+            f"compatibility case {case_id!r} timed out after {timeout:g} seconds",
+            file=sys.stderr,
+            flush=True,
+        )
+        terminate_process_tree(process)
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            kill_process_tree(process)
+            process.wait()
+        return 124
 
 
 if __name__ == "__main__":
