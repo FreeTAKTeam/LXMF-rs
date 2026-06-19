@@ -1,6 +1,6 @@
 # LXMF Parity Matrix
 
-Last reassessed: 2026-06-18
+Last reassessed: 2026-06-19
 
 This is the maintained row-level status for Python LXMF compatibility.
 Repository-level posture and execution order live in
@@ -25,7 +25,7 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 | `LXMF/LXMPeer.py` | `crates/libs/rns-rpc`, `crates/apps/reticulumd` | done | Persistent peers, queue marks, offer selection, policy gates, peering keys, throttling, maintenance, source accounting, cumulative acceptance, serialized restored queue snapshots, boolean/list/numeric offer responses, transfer/retry/restart recovery, and unpeer cleanup. | No confirmed `LXMPeer.py` blocker in the pinned Python-only coverage. |
 | `LXMF/LXMRouter.py` | `crates/libs/rns-rpc`, `crates/apps/reticulumd` | partial | Outbound modes, selected propagation nodes, direct/propagated resources, cancellation, fetch/download/sync RPCs, receipts, persistence, propagation-node side effects, retry/failure handling, and Python live remote lifecycle coverage. | No confirmed propagation-router lifecycle blocker remains; broader non-propagation router convenience surface remains narrower than Python. |
 | `LXMF/Handlers.py` | `crates/apps/reticulumd`, `crates/libs/rns-rpc` | partial | Delivery, announce, propagation app-data, receipt, and inbound bridge handling. | Some router-coupled side effects and negative/drop observability remain narrower. |
-| `LXMF/LXStamper.py` | `crates/libs/lxmf-core`, `crates/libs/rns-rpc`, `crates/apps/reticulumd` | partial | Validation, generation, ticket-derived stamps, cancellation-aware task work, and lifecycle metadata. | Python-style deferred worker queue, retry ownership, and continuous progress remain. |
+| `LXMF/LXStamper.py` | `crates/libs/lxmf-core`, `crates/libs/rns-rpc`, `crates/apps/reticulumd` | done | Validation, generation, ticket-derived stamps, cancellation-aware task work, background deferred worker queue ownership, retry state, cancellation, propagation-stamp pre-handoff preparation, and progress metadata. | No confirmed deferred-stamp lifecycle blocker. |
 
 ## Method Checklist
 
@@ -38,10 +38,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - PARITY_ITEM id=message.file_unpack_helpers status=done
 - PARITY_ITEM id=message.signature_verify status=done
 - PARITY_ITEM id=message.object_accessors status=done
-- PARITY_ITEM id=stamper.validate_pn_stamp status=partial
-- PARITY_ITEM id=stamper.generate_stamp status=partial
-- PARITY_ITEM id=stamper.cancel_work status=partial
-- PARITY_ITEM id=stamper.outbound_progress_queries status=partial
+- PARITY_ITEM id=stamper.validate_pn_stamp status=done
+- PARITY_ITEM id=stamper.generate_stamp status=done
+- PARITY_ITEM id=stamper.cancel_work status=done
+- PARITY_ITEM id=stamper.outbound_progress_queries status=done
 - PARITY_ITEM id=ticket.validity_with_grace status=done
 - PARITY_ITEM id=ticket.renewal_window status=done
 - PARITY_ITEM id=ticket.derived_stamp status=done
@@ -103,8 +103,12 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Active outbound normal and propagation stamp generation reports stored
   continuous progress through `get_outbound_progress`; failed or cancelled
   stamp states still suppress stale progress.
-- The remaining gap is background queue/worker/retry behavior, not basic stamp
-  cryptography or ticket semantics.
+- Expensive normal and requested propagated sends now enter a background
+  deferred-stamp worker before delivery handoff. The worker exposes queue and
+  in-flight ownership in `delivery_pipeline`, serializes stamp generation,
+  retries failed generation attempts with retry metadata, accepts cancellation
+  while stamp work is active, and prebuilds propagation resource payloads before
+  delivery/link semaphores are acquired.
 
 ### Peers and propagation
 
@@ -811,9 +815,8 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 
 ## Highest-Priority Gaps
 
-1. Add deferred stamp queue ownership and retry semantics.
-2. Validate external clients before making client-specific claims.
-3. Continue widening non-propagation router convenience coverage only where it
+1. Validate external clients before making client-specific claims.
+2. Continue widening non-propagation router convenience coverage only where it
    affects supported clients.
 
 ## Evidence
@@ -836,5 +839,8 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - Focused daemon/RPC tests cover delivery modes, propagation offers, peer
   maintenance, queue policy, source accounting, stamps, tickets, receipts, and
   cancellation.
+- Focused daemon bridge tests cover deferred normal-stamp queue ownership,
+  cancellation, retry metadata, and propagation-stamp preparation before
+  delivery handoff.
 - `interop.python_live_gate` means the configured scenarios run successfully;
   it does not imply every partial row is complete.

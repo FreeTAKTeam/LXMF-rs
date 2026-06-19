@@ -39,3 +39,22 @@ pub(super) struct DeliveryTask {
     pub(super) try_propagation_on_fail: bool,
     pub(super) propagation_node_hex: Option<String>,
 }
+
+pub(super) struct PreparedDeliveryPayload {
+    pub(super) lxmf_payload: Vec<u8>,
+    pub(super) propagation: Option<PreparedPropagationPayload>,
+}
+
+pub(super) struct PreparedPropagationPayload {
+    pub(super) propagation_node_hex: String,
+    pub(super) propagation_hash: AddressHash,
+    pub(super) target_cost: u32,
+    pub(super) payload: propagation::PropagationPayload,
+}
+
+pub(super) struct PropagationPreparationContext {
+    pub(super) destination_identity: Identity,
+    pub(super) propagation_node_hex: String,
+    pub(super) propagation_hash: AddressHash,
+    pub(super) target_cost: u32,
+}

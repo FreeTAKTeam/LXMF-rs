@@ -1,8 +1,73 @@
+use super::delivery_task::PropagationPreparationContext;
 use super::*;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
 
 impl DeliveryTask {
+    pub(super) async fn propagation_preparation_context(
+        &self,
+    ) -> Option<PropagationPreparationContext> {
+        let destination_identity = self.resolve_destination_identity().await?;
+        if self.abort_if_cancelled("propagation") {
+            return None;
+        }
+        log_delivery_trace(
+            &self.message_id,
+            &self.destination_hex,
+            "propagation",
+            "recipient identity ready",
+        );
+        let Some(propagation_node_hex) = self.propagation_node_hex.clone() else {
+            let _ = self.receipt_tx.try_send(ReceiptEvent {
+                message_id: self.message_id.clone(),
+                status: "failed: no outbound propagation node selected".to_string(),
+            });
+            return None;
+        };
+
+        let propagation_hash = match parse_destination_hash_required(&propagation_node_hex) {
+            Ok(hash) => AddressHash::new(hash),
+            Err(err) => {
+                let _ = self.receipt_tx.try_send(ReceiptEvent {
+                    message_id: self.message_id.clone(),
+                    status: format!("failed: {err}"),
+                });
+                return None;
+            }
+        };
+        log_delivery_trace(
+            &self.message_id,
+            &self.destination_hex,
+            "propagation",
+            "selected propagation node parsed",
+        );
+        log_delivery_trace(
+            &self.message_id,
+            &self.destination_hex,
+            "propagation",
+            "looking up propagation stamp cost",
+        );
+        let (target_cost, cost_source) = self
+            .propagation_target_cost_reference_style(
+                propagation_node_hex.as_str(),
+                propagation_hash,
+            )
+            .await;
+        let target_cost = target_cost.unwrap_or(propagation::DEFAULT_PROPAGATION_STAMP_COST);
+        log_delivery_trace(
+            &self.message_id,
+            &self.destination_hex,
+            "propagation",
+            format!("using propagation stamp cost={target_cost} source={cost_source}").as_str(),
+        );
+        Some(PropagationPreparationContext {
+            destination_identity,
+            propagation_node_hex,
+            propagation_hash,
+            target_cost,
+        })
+    }
+
     pub(super) async fn propagation_target_cost_reference_style(
         &self,
         propagation_node_hex: &str,
@@ -137,5 +202,55 @@ impl DeliveryTask {
             entries.push(("propagation_stamp_error".to_string(), JsonValue::Null));
         }
         let _ = self.daemon.record_message_lxmf_metadata_entries(&self.message_id, entries);
+    }
+
+    pub(super) fn record_propagation_stamp_attempt_metadata(&self, target_cost: u32, attempt: u32) {
+        let _ = self.daemon.record_message_lxmf_metadata_entries(
+            &self.message_id,
+            [
+                (
+                    "propagation_stamp_state".to_string(),
+                    JsonValue::String("generating".to_string()),
+                ),
+                (
+                    "propagation_target_cost".to_string(),
+                    JsonValue::Number(serde_json::Number::from(target_cost)),
+                ),
+                (
+                    "propagation_stamp_attempts".to_string(),
+                    JsonValue::Number(serde_json::Number::from(attempt)),
+                ),
+                ("propagation_stamp_error".to_string(), JsonValue::Null),
+                ("progress".to_string(), JsonValue::Number(0.into())),
+            ],
+        );
+    }
+
+    pub(super) fn record_propagation_stamp_retry_metadata(
+        &self,
+        target_cost: u32,
+        attempt: u32,
+        error: String,
+    ) {
+        let _ = self.daemon.record_message_lxmf_metadata_entries(
+            &self.message_id,
+            [
+                ("propagation_stamp_state".to_string(), JsonValue::String("queued".to_string())),
+                (
+                    "propagation_target_cost".to_string(),
+                    JsonValue::Number(serde_json::Number::from(target_cost)),
+                ),
+                (
+                    "propagation_stamp_attempts".to_string(),
+                    JsonValue::Number(serde_json::Number::from(attempt)),
+                ),
+                ("propagation_stamp_error".to_string(), JsonValue::String(error)),
+                (
+                    "propagation_stamp_next_retry_at".to_string(),
+                    JsonValue::Number(serde_json::Number::from(now_secs_i64() + 1)),
+                ),
+                ("progress".to_string(), JsonValue::Number(0.into())),
+            ],
+        );
     }
 }

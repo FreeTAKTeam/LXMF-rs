@@ -50,6 +50,99 @@ impl DeliveryTask {
         result
     }
 
+    pub(super) fn requires_deferred_stamp_work(&self) -> bool {
+        self.requires_normal_deferred_stamp_work()
+            || self.requested_method == RequestedDeliveryMethod::Propagated
+    }
+
+    pub(super) fn requires_normal_deferred_stamp_work(&self) -> bool {
+        self.normal_stamp_work().is_some()
+    }
+
+    pub(super) fn record_deferred_stamp_queued_metadata(&self) {
+        if let Some(work) = self.normal_stamp_work() {
+            let mut entries = self.stamp_work_entries("queued", work);
+            entries.push(("stamp_attempts".to_string(), JsonValue::Number(0.into())));
+            entries.push(("progress".to_string(), JsonValue::Number(0.into())));
+            let _ = self.daemon.record_message_lxmf_metadata_entries(&self.message_id, entries);
+        }
+        if self.requested_method == RequestedDeliveryMethod::Propagated {
+            let _ = self.daemon.record_message_lxmf_metadata_entries(
+                &self.message_id,
+                [
+                    (
+                        "propagation_stamp_state".to_string(),
+                        JsonValue::String("queued".to_string()),
+                    ),
+                    ("propagation_stamp_attempts".to_string(), JsonValue::Number(0.into())),
+                    ("progress".to_string(), JsonValue::Number(0.into())),
+                    ("propagation_stamp_error".to_string(), JsonValue::Null),
+                ],
+            );
+        }
+    }
+
+    pub(super) fn record_deferred_stamp_attempt_metadata(&self, attempt: u32) {
+        if let Some(work) = self.normal_stamp_work() {
+            let mut entries = self.stamp_work_entries("generating", work);
+            entries.push((
+                "stamp_attempts".to_string(),
+                JsonValue::Number(serde_json::Number::from(attempt)),
+            ));
+            entries.push(("progress".to_string(), JsonValue::Number(0.into())));
+            let _ = self.daemon.record_message_lxmf_metadata_entries(&self.message_id, entries);
+        }
+    }
+
+    pub(super) fn record_deferred_stamp_retry_metadata(&self, attempt: u32, error: String) {
+        if let Some(work) = self.normal_stamp_work() {
+            let mut entries = self.stamp_work_entries("queued", work);
+            entries.push((
+                "stamp_attempts".to_string(),
+                JsonValue::Number(serde_json::Number::from(attempt)),
+            ));
+            entries.push(("stamp_error".to_string(), JsonValue::String(error)));
+            entries.push((
+                "stamp_next_retry_at".to_string(),
+                JsonValue::Number(serde_json::Number::from(now_secs_i64() + 1)),
+            ));
+            entries.push(("progress".to_string(), JsonValue::Number(0.into())));
+            let _ = self.daemon.record_message_lxmf_metadata_entries(&self.message_id, entries);
+        }
+    }
+
+    pub(super) fn record_deferred_stamp_failed_metadata(&self, attempt: u32, error: String) {
+        if let Some(work) = self.normal_stamp_work() {
+            let mut entries = self.stamp_work_entries("failed", work);
+            entries.push((
+                "stamp_attempts".to_string(),
+                JsonValue::Number(serde_json::Number::from(attempt)),
+            ));
+            entries.push(("stamp_error".to_string(), JsonValue::String(error)));
+            let _ = self.daemon.record_message_lxmf_metadata_entries(&self.message_id, entries);
+        }
+    }
+
+    pub(super) fn record_deferred_stamp_cancelled_metadata(&self) {
+        if let Some(work) = self.normal_stamp_work() {
+            let mut entries = self.stamp_work_entries("cancelled", work);
+            entries.push(("stamp_error".to_string(), JsonValue::Null));
+            let _ = self.daemon.record_message_lxmf_metadata_entries(&self.message_id, entries);
+        }
+        if self.requested_method == RequestedDeliveryMethod::Propagated {
+            let _ = self.daemon.record_message_lxmf_metadata_entries(
+                &self.message_id,
+                [
+                    (
+                        "propagation_stamp_state".to_string(),
+                        JsonValue::String("cancelled".to_string()),
+                    ),
+                    ("propagation_stamp_error".to_string(), JsonValue::Null),
+                ],
+            );
+        }
+    }
+
     fn normal_stamp_work(&self) -> Option<StampWorkMetadata<'_>> {
         if let Some(ticket) = self.outbound_ticket.as_ref() {
             return Some(StampWorkMetadata {
@@ -66,6 +159,15 @@ impl DeliveryTask {
     }
 
     fn record_stamp_work_metadata(&self, state: &str, work: StampWorkMetadata<'_>) {
+        let entries = self.stamp_work_entries(state, work);
+        let _ = self.daemon.record_message_lxmf_metadata_entries(&self.message_id, entries);
+    }
+
+    fn stamp_work_entries(
+        &self,
+        state: &str,
+        work: StampWorkMetadata<'_>,
+    ) -> Vec<(String, JsonValue)> {
         let mut entries = vec![
             ("stamp_state".to_string(), JsonValue::String(state.to_string())),
             ("stamp_kind".to_string(), JsonValue::String(work.kind.to_string())),
@@ -83,7 +185,7 @@ impl DeliveryTask {
         if state != "failed" {
             entries.push(("stamp_error".to_string(), JsonValue::Null));
         }
-        let _ = self.daemon.record_message_lxmf_metadata_entries(&self.message_id, entries);
+        entries
     }
 }
 

@@ -1,5 +1,7 @@
 include!("tests_parts/module_prelude.rs");
 
+include!("tests_parts/transport_bridge_reports_deferred_stamp_queue.rs");
+
 include!("tests_parts/propagation_link_cache_reuses_same_s.rs");
 
 include!("tests_parts/vrn76_builder_rejects_missing_periph.rs");

@@ -105,7 +105,26 @@ async fn propagation_stamp_retry_clears_stale_error_metadata() {
     let mut task = delivery_task_for_propagation_cost_lookup(daemon.clone());
     task.message_id = message_id.to_string();
 
-    task.record_propagation_stamp_work_metadata("generating", 5, None);
+    task.record_propagation_stamp_retry_metadata(5, 1, "transient propagation stamp failure".into());
+    let retry_result = daemon
+        .handle_rpc(RpcRequest { id: 78, method: "list_messages".to_string(), params: None })
+        .expect("list messages")
+        .result
+        .expect("result");
+    let retry_message = retry_result["messages"]
+        .as_array()
+        .expect("messages")
+        .iter()
+        .find(|message| message["id"].as_str() == Some(message_id))
+        .expect("message");
+    assert_eq!(retry_message["fields"]["_lxmf"]["propagation_stamp_state"], json!("queued"));
+    assert_eq!(retry_message["fields"]["_lxmf"]["propagation_stamp_attempts"], json!(1));
+    assert_eq!(
+        retry_message["fields"]["_lxmf"]["propagation_stamp_error"],
+        json!("transient propagation stamp failure")
+    );
+
+    task.record_propagation_stamp_attempt_metadata(5, 2);
 
     let result = daemon
         .handle_rpc(RpcRequest { id: 79, method: "list_messages".to_string(), params: None })
@@ -119,6 +138,7 @@ async fn propagation_stamp_retry_clears_stale_error_metadata() {
         .find(|message| message["id"].as_str() == Some(message_id))
         .expect("message");
     assert_eq!(message["fields"]["_lxmf"]["propagation_stamp_state"], json!("generating"));
+    assert_eq!(message["fields"]["_lxmf"]["propagation_stamp_attempts"], json!(2));
     assert_eq!(message["fields"]["_lxmf"]["propagation_stamp_error"], JsonValue::Null);
 }
 
