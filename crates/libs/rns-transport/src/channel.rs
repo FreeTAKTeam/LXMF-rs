@@ -401,7 +401,7 @@ mod tests {
         let result = catch_unwind(AssertUnwindSafe(|| channel.receive(&first.pack())));
 
         assert!(result.is_ok(), "handler panic should not unwind channel receive");
-        assert_eq!(result.unwrap().expect("receive"), true);
+        assert!(result.unwrap().expect("receive"));
         assert_eq!(seen.lock().expect("lock").as_slice(), &[0]);
     }
 }
