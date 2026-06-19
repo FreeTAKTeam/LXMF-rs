@@ -277,11 +277,15 @@ impl DeliveryTask {
                 return;
             }
         };
+        let (link_id, link_status) = {
+            let guard = propagation_link.lock().await;
+            (*guard.id(), guard.status())
+        };
         log_delivery_trace(
             &self.message_id,
             &self.destination_hex,
             "propagation",
-            "propagation link ready",
+            format!("propagation link ready link={link_id} status={link_status:?}").as_str(),
         );
         if self.abort_if_cancelled("propagation") {
             return;

@@ -234,7 +234,38 @@ impl DeliveryTask {
         payload: &[u8],
         statuses: LinkModeStatuses,
     ) -> Result<(), std::io::Error> {
-        await_link_activation(self.transport.as_ref(), &link, Duration::from_secs(20)).await?;
+        let (activation_link_id, activation_status) = {
+            let guard = link.lock().await;
+            (*guard.id(), guard.status())
+        };
+        log_delivery_trace(
+            &self.message_id,
+            &self.destination_hex,
+            trace_stage,
+            format!(
+                "waiting for link activation link={activation_link_id} status={activation_status:?}"
+            )
+            .as_str(),
+        );
+        if let Err(err) =
+            await_link_activation(self.transport.as_ref(), &link, Duration::from_secs(20)).await
+        {
+            log_delivery_trace(
+                &self.message_id,
+                &self.destination_hex,
+                trace_stage,
+                format!("link activation wait failed link={activation_link_id} err={err}").as_str(),
+            );
+            return Err(err);
+        }
+        let active_status = link.lock().await.status();
+        log_delivery_trace(
+            &self.message_id,
+            &self.destination_hex,
+            trace_stage,
+            format!("link activation ready link={activation_link_id} status={active_status:?}")
+                .as_str(),
+        );
         if self.abort_if_cancelled(trace_stage) {
             return Ok(());
         }
