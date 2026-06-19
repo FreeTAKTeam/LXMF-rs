@@ -321,6 +321,21 @@ impl DeliveryTask {
         // without the destination prefix. Receivers prepend the
         // packet destination hash before unpacking.
         let opportunistic_payload = opportunistic_payload(&payload, &self.destination);
+        if opportunistic_payload.len() > rns_transport::packet::PACKET_MDU {
+            log_delivery_trace(
+                &self.message_id,
+                &self.destination_hex,
+                "opportunistic",
+                "payload too large for single packet",
+            );
+            self.run_opportunistic_link_fallback(
+                payload,
+                identity,
+                "payload too large for single packet",
+            )
+            .await;
+            return;
+        }
         let mut data = PacketDataBuffer::new();
         if data.write(opportunistic_payload).is_err() {
             log_delivery_trace(

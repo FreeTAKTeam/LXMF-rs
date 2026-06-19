@@ -75,6 +75,9 @@ impl Link {
             let cipher_text = self.encrypt(data, packet_data.accuire_buf_max())?;
             cipher_text.len()
         };
+        if cipher_text_len > crate::packet::PACKET_MDU {
+            return Err(RnsError::OutOfMemory);
+        }
         packet_data.resize(cipher_text_len);
         Ok(())
     }

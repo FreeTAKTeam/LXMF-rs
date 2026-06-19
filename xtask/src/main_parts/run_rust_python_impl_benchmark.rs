@@ -284,7 +284,7 @@ fn rust_active_link_pair() -> Result<(Link, Link, Vec<u8>)> {
 }
 
 fn rust_decrypt_resource_packet(link: &Link, packet: &Packet) -> Result<Packet> {
-    let mut plain_packet = *packet;
+    let mut plain_packet = packet.clone();
     let mut buffer = PacketDataBuffer::new();
     let plain_len = {
         let plaintext = link

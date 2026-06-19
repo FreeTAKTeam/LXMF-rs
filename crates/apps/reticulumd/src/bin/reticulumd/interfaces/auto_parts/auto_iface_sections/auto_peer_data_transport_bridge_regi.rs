@@ -87,7 +87,7 @@
             .await
             .send(TxMessage {
                 tx_type: TxMessageType::Direct(rx_message.address),
-                packet: outbound_packet,
+                packet: outbound_packet.clone(),
             })
             .await;
         let mut outbound_payload = [0u8; 512];
