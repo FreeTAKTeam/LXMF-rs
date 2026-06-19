@@ -3,9 +3,9 @@
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/FreeTAKTeam/LXMF-rs)
 
 Rust monorepo for LXMF and Reticulum with strict library/app boundaries and
-enterprise quality gates. The `0.4.0` line is a usable sub-1.0
+enterprise quality gates. The `0.5.0` line is a usable sub-1.0
 daemon/product release with strong core protocol coverage, published crates,
-GitHub daemon bundles, and a typed ZeroMQ SDK integration foundation for
+GitHub tool bundles, and a typed ZeroMQ SDK integration foundation for
 REM/RCH clients; it is not a complete drop-in replacement for every Python
 Reticulum/LXMF behavior.
 
@@ -13,31 +13,30 @@ Reticulum/LXMF behavior.
 
 - Contributor workflow: `CONTRIBUTING.md`
 - Current status and execution order: `docs/status/current-roadmap.md`
-- Release notes: `docs/release-notes-v0.4.0.md`
+- Release notes: `docs/release-notes-v0.5.0.md`
 - Docs map and retention rules: `docs/README.md`
 - SDK guide: `docs/sdk/README.md`
 - Support policy: `docs/contracts/support-policy.md`
 
 ## Release Status
 
-Current release train: `0.4.0`.
+Current release train: `0.5.0`.
 
-Use `docs/release-notes-v0.4.0.md` for the release summary and
+Use `docs/release-notes-v0.5.0.md` for the release summary and
 `docs/runbooks/release-readiness.md` for the release gate record. The
 repository-level parity source of truth remains
 `docs/status/current-roadmap.md`; the detailed parity supplements are
 `docs/status/reticulum-parity-matrix.md` and
 `docs/status/lxmf-parity-matrix.md`.
 
-The `0.4.0` release scope covers the Rust libraries, SDK entry points, `lxmd`,
-`reticulumd`, and `rns-tools`, plus host-native GitHub bundles for daemon
-deployment. Its main release-train addition is the typed
-`ZmqPipelineBackendClient` path needed by REM/RCH for field preservation, peer
-discovery/capability metadata, durable direct chat, and propagation-first
-delivery/recovery. Propagation interoperability and operational
-substitutability are usable but still partial. External-client compatibility
-claims for Sideband, MeshChatX, Columba, or other third-party clients require
-separate interop gate evidence.
+The `0.5.0` release scope covers the Rust libraries, SDK entry points, `lxmd`,
+`reticulumd`, and `rns-tools`, plus host-native GitHub bundles for all
+implemented user-facing tools. Its main release-train addition is the
+communication parity milestone across propagation router lifecycle, peer
+lifecycle, deferred stamp lifecycle, and RNS Channel ordered delivery/callback
+behavior. Operational substitutability is usable but still partial.
+External-client compatibility claims for Sideband, MeshChatX, Columba, or other
+third-party clients require separate interop gate evidence.
 
 ## Workspace Layout
 
@@ -162,7 +161,7 @@ cargo run -p xtask -- architecture-checks
 cargo run -p xtask -- sdk-docs-check
 cargo run -p xtask -- sdk-migration-check
 cargo xtask release-check
-cargo xtask package-daemon-bundle --version 0.4.0
+cargo xtask package-daemon-bundle --version 0.5.0
 cargo xtask api-diff
 cargo xtask python-impl-bench-compare
 cargo xtask python-impl-bench-compare --profile report
@@ -174,7 +173,7 @@ For fast local iteration on one binary, prefer narrow commands:
 ```bash
 make check-bin PKG=lxmf-cli BIN=lxmd
 make run-bin PKG=rns-tools BIN=rnsd ARGS="--help"
-make package-daemon-bundle VERSION=0.4.0
+make package-daemon-bundle VERSION=0.5.0
 make python-lxmd-smoke
 ```
 
@@ -183,7 +182,8 @@ make python-lxmd-smoke
 - `lxmf-cli`
 - `lxmd`
 - `reticulumd`
-- `rnsd`, `rnx`
+- `lxm-interchange`
+- `rnsd`, `rnstatus-rs`, `rnx`
 
 Run examples:
 
@@ -256,9 +256,9 @@ project does not currently ship signed/notarized binaries. If that happens,
 remove the quarantine attribute after extracting the archive:
 
 ```bash
-xattr -dr com.apple.quarantine /path/to/lxmd-daemon-<version>-macos-arm64
-chmod +x /path/to/lxmd-daemon-<version>-macos-arm64/lxmd
-chmod +x /path/to/lxmd-daemon-<version>-macos-arm64/reticulumd
+xattr -dr com.apple.quarantine /path/to/lxmf-rs-tools-<version>-macos-arm64
+chmod +x /path/to/lxmf-rs-tools-<version>-macos-arm64/lxmd
+chmod +x /path/to/lxmf-rs-tools-<version>-macos-arm64/reticulumd
 ```
 
 ## Embedded Node FFI
@@ -360,9 +360,9 @@ Release artifacts are published on the GitHub releases page:
 
 [https://github.com/FreeTAKTeam/LXMF-rs/releases](https://github.com/FreeTAKTeam/LXMF-rs/releases)
 
-For `v0.4.0`, use the release at:
+For `v0.5.0`, use the release at:
 
-[https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.4.0](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.4.0)
+[https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.5.0](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.5.0)
 
 1. Open the release page and download the package and matching `.sha256` file
    for your platform.
@@ -370,19 +370,19 @@ For `v0.4.0`, use the release at:
 2. Linux/macOS
 
 ```bash
-sha256sum -c lxmd-daemon-v0.4.0-linux-x64.tar.gz.sha256
-tar -xzf lxmd-daemon-v0.4.0-linux-x64.tar.gz
+sha256sum -c lxmf-rs-tools-v0.5.0-linux-x64.tar.gz.sha256
+tar -xzf lxmf-rs-tools-v0.5.0-linux-x64.tar.gz
 
-sha256sum -c lxmd-daemon-v0.4.0-macos-arm64.tar.gz.sha256
-tar -xzf lxmd-daemon-v0.4.0-macos-arm64.tar.gz
+sha256sum -c lxmf-rs-tools-v0.5.0-macos-arm64.tar.gz.sha256
+tar -xzf lxmf-rs-tools-v0.5.0-macos-arm64.tar.gz
 ```
 
 3. Windows
 
 ```powershell
-Get-FileHash .\lxmd-daemon-v0.4.0-windows-x64.zip -Algorithm SHA256
-Get-Content .\lxmd-daemon-v0.4.0-windows-x64.zip.sha256
-Expand-Archive .\lxmd-daemon-v0.4.0-windows-x64.zip .
+Get-FileHash .\lxmf-rs-tools-v0.5.0-windows-x64.zip -Algorithm SHA256
+Get-Content .\lxmf-rs-tools-v0.5.0-windows-x64.zip.sha256
+Expand-Archive .\lxmf-rs-tools-v0.5.0-windows-x64.zip .
 ```
 
 4. Run directly for validation

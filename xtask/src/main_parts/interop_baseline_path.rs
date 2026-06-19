@@ -127,8 +127,16 @@ const REPRODUCIBLE_BUILD_REPORT_PATH: &str =
 
 const RELEASE_BUNDLE_OUTPUT_DIR: &str = "target/release-bundles";
 
-const DAEMON_RELEASE_BINARIES: &[(&str, &str)] =
-    &[("lxmf-cli", "lxmd"), ("reticulumd", "reticulumd")];
+const DAEMON_RELEASE_BINARIES: &[(&str, &str)] = &[
+    ("lxmf-cli", "lxmd"),
+    ("lxmf-cli", "lxmf"),
+    ("lxmf-cli", "lxmf-cli"),
+    ("reticulumd", "reticulumd"),
+    ("reticulumd", "lxm-interchange"),
+    ("rns-tools", "rnsd"),
+    ("rns-tools", "rnstatus-rs"),
+    ("rns-tools", "rnx"),
+];
 
 const CARGO_AUDIT_IGNORE_ADVISORIES: &[&str] =
     &["RUSTSEC-2024-0421", "RUSTSEC-2024-0436", "RUSTSEC-2026-0009", "RUSTSEC-2025-0134"];
@@ -159,7 +167,16 @@ const CANARY_CRITERIA_REPORT_JSON_PATH: &str =
 const GENERATED_MIGRATION_NOTES_PATH: &str =
     "target/release-readiness/generated-migration-notes.md";
 
-const RELEASE_BINARIES: &[&str] = &["lxmf-cli", "reticulumd", "rnsd", "rnx"];
+const RELEASE_BINARIES: &[&str] = &[
+    "lxmd",
+    "lxmf",
+    "lxmf-cli",
+    "reticulumd",
+    "lxm-interchange",
+    "rnsd",
+    "rnstatus-rs",
+    "rnx",
+];
 
 const GOVERNANCE_REQUIRED_CODEOWNER_PATHS: &[&str] = &[
     "/SECURITY.md",

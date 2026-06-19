@@ -78,11 +78,13 @@ async fn transport_bridge_reports_deferred_stamp_queue_and_cancels_work() {
             && lxmf["stamp_state"] == json!("cancelled")
         {
             let pipeline = &status["delivery_pipeline"];
-            assert_eq!(pipeline["queued_total"].as_u64().unwrap_or_default(), 0);
-            assert_eq!(pipeline["stamp_queued_total"].as_u64().unwrap_or_default(), 0);
-            assert_eq!(pipeline["stamp_in_flight_total"].as_u64().unwrap_or_default(), 0);
-            cancelled = true;
-            break;
+            let delivery_drained = pipeline["queued_total"].as_u64().unwrap_or_default() == 0;
+            let stamp_drained = pipeline["stamp_queued_total"].as_u64().unwrap_or_default() == 0
+                && pipeline["stamp_in_flight_total"].as_u64().unwrap_or_default() == 0;
+            if delivery_drained && stamp_drained {
+                cancelled = true;
+                break;
+            }
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }

@@ -223,8 +223,27 @@ fn command_program(cmd: &str) -> String {
                 return override_path;
             }
         }
+        if let Some(git_bash) = default_git_bash() {
+            return git_bash;
+        }
     }
     cmd.to_string()
+}
+
+#[cfg(windows)]
+fn default_git_bash() -> Option<String> {
+    [
+        r"C:\Program Files\Git\bin\bash.exe",
+        r"C:\Program Files\Git\usr\bin\bash.exe",
+    ]
+    .into_iter()
+    .find(|candidate| Path::new(candidate).exists())
+    .map(str::to_string)
+}
+
+#[cfg(not(windows))]
+fn default_git_bash() -> Option<String> {
+    None
 }
 
 fn run_publish_crates(wave: PublishWave, dry_run: bool, allow_dirty: bool) -> Result<()> {

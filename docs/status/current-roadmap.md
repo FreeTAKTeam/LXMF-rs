@@ -754,13 +754,9 @@ the implemented subset.
      `/get` haves acknowledgement, and Python-origin `/offer` side effects.
    - Capture release evidence for Sideband, MeshChatX, and Columba before making
      client-specific compatibility claims.
-3. **Reticulum behavioral breadth**
+2. **Reticulum behavioral breadth**
    - Finish resolver/bootstrap, announce/path edge behavior, and runtime
      mutation parity.
-4. **Operational breadth**
-2. **Reticulum behavioral breadth**
-   - Finish channel ordering, resolver/bootstrap, announce/path edge behavior,
-     and runtime mutation parity.
 3. **Operational breadth**
    - Add prepared-host hardware evidence for BLE/RNode paths.
    - Implement or explicitly defer missing Python interface families and
@@ -768,13 +764,8 @@ the implemented subset.
 
 ## Active Execution Order
 
-1. Finish deferred stamp worker and retry lifecycle.
-2. Expand pinned Rust/Python interoperability gates with each completed row.
-3. Close RNS discovery, resolver, and transport-policy gaps.
-4. Collect hardware, soak, and external-client release evidence.
-5. Expand interface and utility breadth after protocol behavior stabilizes.
 1. Expand pinned Rust/Python interoperability gates with each completed row.
-2. Close RNS channel, discovery, resolver, and transport-policy gaps.
+2. Close RNS discovery, resolver, and transport-policy gaps.
 3. Collect hardware, soak, and external-client release evidence.
 4. Expand interface and utility breadth after protocol behavior stabilizes.
 

@@ -2,14 +2,20 @@
 
 ## Download
 
-- Linux x64: `lxmd-daemon-<version>-linux-x64.tar.gz`
-- macOS Apple Silicon: `lxmd-daemon-<version>-macos-arm64.tar.gz`
-- Windows x64: `lxmd-daemon-<version>-windows-x64.zip`
+- Linux x64: `lxmf-rs-tools-<version>-linux-x64.tar.gz`
+- macOS Apple Silicon: `lxmf-rs-tools-<version>-macos-arm64.tar.gz`
+- Windows x64: `lxmf-rs-tools-<version>-windows-x64.zip`
 
 ## Included
 
 - `lxmd`
+- `lxmf`
+- `lxmf-cli`
 - `reticulumd`
+- `lxm-interchange`
+- `rnsd`
+- `rnstatus-rs`
+- `rnx`
 - `lxmd.example.config`
 - `README.md`
 - checksums
@@ -36,16 +42,16 @@ The macOS bundle is not currently code-signed or notarized. If Gatekeeper blocks
 the binaries after download, remove the quarantine attribute:
 
 ```bash
-xattr -dr com.apple.quarantine /path/to/lxmd-daemon-<version>-macos-arm64
-chmod +x /path/to/lxmd-daemon-<version>-macos-arm64/lxmd
-chmod +x /path/to/lxmd-daemon-<version>-macos-arm64/reticulumd
+xattr -dr com.apple.quarantine /path/to/lxmf-rs-tools-<version>-macos-arm64
+chmod +x /path/to/lxmf-rs-tools-<version>-macos-arm64/lxmd
+chmod +x /path/to/lxmf-rs-tools-<version>-macos-arm64/reticulumd
 ```
 
 ## Notes
 
 - Replace `<version>` with the tagged release version.
-- Keep this release page focused on the daemon bundle unless there is a
-  user-facing reason to call out additional binaries.
+- Keep this release page focused on the GitHub tool bundles unless there is a
+  user-facing reason to call out individual crate internals.
 
 ## crates.io
 

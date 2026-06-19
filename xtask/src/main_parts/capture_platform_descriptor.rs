@@ -138,7 +138,7 @@ fn run_reproducible_build_check() -> Result<()> {
 
 fn run_package_daemon_bundle(version: Option<String>) -> Result<()> {
     let version = release_version_label(version)?;
-    let bundle_stem = format!("lxmd-daemon-{version}-{}", release_platform_label());
+    let bundle_stem = format!("lxmf-rs-tools-{version}-{}", release_platform_label());
     let output_dir = Path::new(RELEASE_BUNDLE_OUTPUT_DIR);
     fs::create_dir_all(output_dir).with_context(|| format!("create {}", output_dir.display()))?;
 

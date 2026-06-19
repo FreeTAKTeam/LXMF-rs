@@ -32,7 +32,7 @@ Use loopback TCP only for local development.
 ## ZeroMQ Backend
 
 The ZeroMQ backend is parallel and opt-in. It is the preferred SDK transport
-for high-throughput local integrations and the REM/RCH 0.4.0 compatibility
+for high-throughput local integrations and the REM/RCH 0.5.0 compatibility
 track:
 
 ```toml
