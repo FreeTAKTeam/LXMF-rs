@@ -217,8 +217,10 @@ impl<O: ChannelOutlet> Channel<O> {
             return Ok(false);
         }
 
+        let mut dispatched = false;
         let mut accepted = true;
         while let Some(envelope) = self.rx_ring.remove(&self.next_rx_sequence) {
+            dispatched = true;
             self.next_rx_sequence = self.next_rx_sequence.wrapping_add(1);
             let Some(handlers) = self.handlers.get_mut(&envelope.msg_type) else {
                 return Err(ChannelError::NoHandler);
@@ -236,7 +238,7 @@ impl<O: ChannelOutlet> Channel<O> {
             }
             accepted &= handled;
         }
-        Ok(accepted)
+        Ok(dispatched && accepted)
     }
 
     pub fn mark_delivered(&mut self, sequence: u16) {
@@ -355,7 +357,7 @@ mod tests {
         let first = Envelope { msg_type: 0x1234, sequence: 0, payload: b"first".to_vec() };
         let second = Envelope { msg_type: 0x1234, sequence: 1, payload: b"second".to_vec() };
 
-        assert!(channel.receive(&second.pack()).expect("buffer future sequence"));
+        assert!(!channel.receive(&second.pack()).expect("buffer future sequence"));
         assert!(seen.lock().expect("lock").is_empty());
 
         assert!(channel.receive(&first.pack()).expect("release contiguous"));
