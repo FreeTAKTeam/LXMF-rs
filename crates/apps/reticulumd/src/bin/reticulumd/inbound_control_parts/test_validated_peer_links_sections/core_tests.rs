@@ -103,6 +103,32 @@
     }
 
     #[test]
+    fn resource_carried_get_request_uses_control_dispatch() {
+        let daemon = ready_propagation_daemon();
+        let remote_private =
+            rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let remote_identity = *remote_private.as_identity();
+        let payload = control_request(
+            "/get",
+            rmpv::Value::Array(vec![rmpv::Value::Nil, rmpv::Value::Nil]),
+        );
+
+        let response = resource_control_response(
+            &daemon,
+            &test_control_context(),
+            &test_link_id(),
+            payload.as_slice(),
+            Some(&remote_identity),
+            true,
+        );
+
+        let ControlResponse::Rmpv(rmpv::Value::Array(entries)) = response else {
+            panic!("expected propagation /get response array");
+        };
+        assert!(entries.is_empty());
+    }
+
+    #[test]
     fn stats_request_returns_status_when_propagation_node_is_enabled() {
         let daemon = RpcDaemon::test_instance();
         daemon

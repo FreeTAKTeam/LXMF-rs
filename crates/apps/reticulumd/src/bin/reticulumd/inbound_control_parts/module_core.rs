@@ -195,6 +195,60 @@ fn handle_control_request(
     ControlResponse::Code(ERROR_INVALID_DATA)
 }
 
+fn resource_control_response(
+    daemon: &RpcDaemon,
+    control: &PropagationControlContext,
+    link_id: &AddressHash,
+    payload: &[u8],
+    remote_identity: Option<&Identity>,
+    propagation_destination: bool,
+) -> ControlResponse {
+    handle_control_request(
+        daemon,
+        control,
+        link_id,
+        payload,
+        remote_identity,
+        propagation_destination,
+    )
+}
+
+pub(super) async fn handle_resource_control_request(
+    daemon: &RpcDaemon,
+    transport: &Transport,
+    control: &PropagationControlContext,
+    link_id: &AddressHash,
+    payload: &[u8],
+    request_id: [u8; 16],
+    propagation_destination: bool,
+) -> Result<(), std::io::Error> {
+    let remote_identity = remote_identity_for_resource_link(transport, link_id).await;
+    let response = resource_control_response(
+        daemon,
+        control,
+        link_id,
+        payload,
+        remote_identity.as_ref(),
+        propagation_destination,
+    );
+    response::send_control_response(transport, link_id, request_id, response).await
+}
+
+async fn remote_identity_for_resource_link(
+    transport: &Transport,
+    link_id: &AddressHash,
+) -> Option<Identity> {
+    if let Some(link) = transport.find_in_link(link_id).await {
+        let guard = link.lock().await;
+        return Some(*guard.peer_identity());
+    }
+    if let Some(link) = transport.find_out_link(link_id).await {
+        let guard = link.lock().await;
+        return Some(*guard.peer_identity());
+    }
+    None
+}
+
 fn control_identity_allowed(control: &PropagationControlContext, remote_hash: &str) -> bool {
     if control.allowed_control_identities.is_empty() {
         return true;

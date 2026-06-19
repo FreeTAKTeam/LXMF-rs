@@ -64,6 +64,40 @@ pub(super) fn spawn_inbound_worker(
                                     .await;
                                 }
                                 InboundLxmfDestination::Propagation => {
+                                    if complete.is_request {
+                                        match resource_request_id(&complete.request_id) {
+                                            Some(request_id) => {
+                                                if let Err(error) =
+                                                    control::handle_resource_control_request(
+                                                        daemon.as_ref(),
+                                                        transport.as_ref(),
+                                                        &resource_control,
+                                                        &event.link_id,
+                                                        &complete.data,
+                                                        request_id,
+                                                        true,
+                                                    )
+                                                    .await
+                                                {
+                                                    log::error!(
+                                                        "[daemon-control] failed to handle propagation resource request link={} error={}",
+                                                        event.link_id,
+                                                        error
+                                                    );
+                                                }
+                                            }
+                                            None => {
+                                                log::warn!(
+                                                    "[daemon-control] ignoring propagation resource request with invalid request id link={}",
+                                                    event.link_id
+                                                );
+                                            }
+                                        }
+                                        continue;
+                                    }
+                                    if complete.is_response {
+                                        continue;
+                                    }
                                     let remote_peer = remote_propagation_peer_for_link(
                                         transport.as_ref(),
                                         &event.link_id,
@@ -123,6 +157,16 @@ pub(super) fn spawn_inbound_worker(
             }
         }
     });
+}
+
+fn resource_request_id(request_id: &Option<Vec<u8>>) -> Option<[u8; 16]> {
+    let bytes = request_id.as_ref()?;
+    if bytes.len() != 16 {
+        return None;
+    }
+    let mut out = [0u8; 16];
+    out.copy_from_slice(bytes.as_slice());
+    Some(out)
 }
 
 async fn remote_propagation_peer_for_link(
@@ -223,6 +267,13 @@ fn spawn_packet_inbound_worker(
                         }
                         continue;
                     };
+
+                    if routing::should_skip_resolved_control_payload(
+                        resolved_destination,
+                        event.context,
+                    ) {
+                        continue;
+                    }
 
                     delivery_events::log_resolved_packet(
                         &raw_destination_hex,
