@@ -390,3 +390,5 @@ fn failed_propagation_remote_download_updates_source_peer_backoff_like_python() 
         Some("remote download failed")
     );
 }
+
+include!("propagation_remote_transfer_limit_matrix.rs");
