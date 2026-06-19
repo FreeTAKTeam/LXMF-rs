@@ -219,6 +219,12 @@ The project is best described by capability level:
 - Active outbound normal and propagation stamp generation now reports stored
   generation progress through `get_outbound_progress`, while terminal failed or
   cancelled stamp states continue to suppress stale progress values.
+- Deferred normal and requested propagated sends now run expensive stamp work
+  in the outbound background worker before delivery handoff. The worker exposes
+  queued and in-flight stamp ownership through `delivery_pipeline`, serializes
+  normal and propagation stamp generation, records retry/cancellation metadata,
+  and prepares propagated resource payloads before link/resource delivery
+  semaphores are acquired.
 - Inbound reticulumd `/pn/peer/sync` and `/pn/peer/unpeer` control commands now
   resolve stored peer IDs case-insensitively before dispatching to daemon RPCs,
   so binary peer-control requests do not report not-found for restored or
@@ -742,10 +748,7 @@ The project is best described by capability level:
 These are blockers to a broad "Python replacement" claim, not blockers to using
 the implemented subset.
 
-1. **Deferred stamp lifecycle**
-   - Add Python-style background work ownership, queueing, retry, cancellation,
-     and progress behavior for expensive normal and propagation stamps.
-2. **Interop breadth**
+1. **Interop breadth**
    - Propagation router lifecycle now has dispatchable Python-reference cases
      for remote status, Rust-to-Python fetch/download/sync, Python-origin
      `/get` haves acknowledgement, and Python-origin `/offer` side effects.
@@ -755,6 +758,10 @@ the implemented subset.
    - Finish resolver/bootstrap, announce/path edge behavior, and runtime
      mutation parity.
 4. **Operational breadth**
+2. **Reticulum behavioral breadth**
+   - Finish channel ordering, resolver/bootstrap, announce/path edge behavior,
+     and runtime mutation parity.
+3. **Operational breadth**
    - Add prepared-host hardware evidence for BLE/RNode paths.
    - Implement or explicitly defer missing Python interface families and
      utility commands.
@@ -766,6 +773,10 @@ the implemented subset.
 3. Close RNS discovery, resolver, and transport-policy gaps.
 4. Collect hardware, soak, and external-client release evidence.
 5. Expand interface and utility breadth after protocol behavior stabilizes.
+1. Expand pinned Rust/Python interoperability gates with each completed row.
+2. Close RNS channel, discovery, resolver, and transport-policy gaps.
+3. Collect hardware, soak, and external-client release evidence.
+4. Expand interface and utility breadth after protocol behavior stabilizes.
 
 ## Verification Baseline
 
