@@ -57,7 +57,7 @@ fn resource_request_fixture() -> (Link, Vec<u8>, ResourceRequest) {
 }
 
 fn decrypt_resource_packet(link: &Link, packet: &Packet) -> Packet {
-    let mut plain_packet = *packet;
+    let mut plain_packet = packet.clone();
     let mut buffer = PacketDataBuffer::new();
     let plain_len = {
         let plaintext = link
