@@ -30,6 +30,8 @@ fn scheduler_metrics_track_deferred_stamp_worker_ownership() {
     metrics.record_stamp_completed_for_peer("peer-a");
     metrics.record_stamp_started_for_peer("peer-a");
     metrics.record_stamp_completed_for_peer("peer-a");
+    metrics.record_stamp_queued_for_peer("peer-a");
+    metrics.record_stamp_unqueued_for_peer("peer-a");
 
     let snapshot = metrics.snapshot();
     assert_eq!(snapshot.stamp_queued_current, 0);

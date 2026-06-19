@@ -138,6 +138,13 @@ impl DeliverySchedulerMetrics {
         });
     }
 
+    pub(super) fn record_stamp_unqueued_for_peer(&self, peer: &str) {
+        self.stamp_queued_current.fetch_sub(1, Ordering::Relaxed);
+        self.update_peer(peer, |counters| {
+            counters.stamp_queued = counters.stamp_queued.saturating_sub(1);
+        });
+    }
+
     pub(super) fn record_stamp_retry_for_peer(&self, peer: &str) {
         self.stamp_retried_total.fetch_add(1, Ordering::Relaxed);
         self.stamp_queued_current.fetch_add(1, Ordering::Relaxed);
@@ -360,8 +367,9 @@ async fn prepare_lxmf_payload(
     let attempts = if normal_stamp_work { 2 } else { 1 };
     for attempt in 1..=attempts {
         let _stamp_permit = if normal_stamp_work {
+            let permit = stamp_limit.clone().acquire_owned().await.ok()?;
             metrics.record_stamp_started_for_peer(peer);
-            Some(stamp_limit.clone().acquire_owned().await.ok()?)
+            Some(permit)
         } else {
             None
         };
@@ -400,7 +408,10 @@ async fn prepare_propagation_payload(
     metrics: &Arc<DeliverySchedulerMetrics>,
     peer: &str,
 ) -> Option<PreparedPropagationPayload> {
-    let context = task.propagation_preparation_context().await?;
+    let Some(context) = task.propagation_preparation_context().await else {
+        metrics.record_stamp_unqueued_for_peer(peer);
+        return None;
+    };
     log_delivery_trace(
         &task.message_id,
         &task.destination_hex,
@@ -409,10 +420,8 @@ async fn prepare_propagation_payload(
     );
     task.record_propagation_stamp_work_metadata("queued", context.target_cost, None);
     for attempt in 1..=2u32 {
-        let _stamp_permit = {
-            metrics.record_stamp_started_for_peer(peer);
-            stamp_limit.clone().acquire_owned().await.ok()?
-        };
+        let _stamp_permit = stamp_limit.clone().acquire_owned().await.ok()?;
+        metrics.record_stamp_started_for_peer(peer);
         task.record_propagation_stamp_attempt_metadata(context.target_cost, attempt);
         if task.abort_if_cancelled("propagation") {
             task.record_propagation_stamp_work_metadata("cancelled", context.target_cost, None);
