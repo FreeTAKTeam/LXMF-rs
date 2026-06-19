@@ -519,6 +519,31 @@ raise SystemExit(f"timed out waiting for Python remote control path to {destinat
 PY
 }
 
+wait_for_python_destination_path() {
+  local destination_hash="$1"
+  local timeout_secs="${2:-${TIMEOUT_SECS}}"
+  "${PYTHON_BIN}" - <<'PY' "${PY_RNS_DIR}" "${destination_hash}" "${timeout_secs}"
+import sys
+import time
+
+import RNS
+
+rns_config, destination_hash_hex, timeout_secs = sys.argv[1:4]
+timeout_secs = max(float(timeout_secs), 1.0)
+destination_hash = bytes.fromhex(destination_hash_hex)
+
+RNS.Reticulum(configdir=rns_config, loglevel=0)
+deadline = time.time() + timeout_secs
+while time.time() < deadline:
+    if RNS.Transport.has_path(destination_hash):
+        raise SystemExit(0)
+    RNS.Transport.request_path(destination_hash)
+    time.sleep(0.5)
+
+raise SystemExit(f"timed out waiting for Python path to {destination_hash_hex}")
+PY
+}
+
 start_python_lxmd() {
   local redirect="${1:->}"
   if [[ "${redirect}" == ">>" ]]; then
@@ -1564,6 +1589,10 @@ PY
 
   if ! wait_for_python_remote_control "${RUST_PROPAGATION_HASH}" "${REMOTE_CONTROL_PATH_TIMEOUT_SECS}"; then
     echo "Restarted Python lxmd did not learn Rust propagation control path" >&2
+    exit 1
+  fi
+  if ! wait_for_python_destination_path "${RUST_PROPAGATION_HASH}" "${REMOTE_CONTROL_PATH_TIMEOUT_SECS}"; then
+    echo "Restarted Python lxmd did not learn Rust propagation path" >&2
     exit 1
   fi
   if ! wait_for_rust_peer "${PY_PROPAGATION_HASH}"; then
