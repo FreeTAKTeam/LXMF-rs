@@ -73,7 +73,7 @@ const COMPATIBILITY_CASES: [CompatibilityCase; 20] = [
     CompatibilityCase {
         id: "propagation_remote_sync_rust_to_python",
         mode: CompatibilityMode::PropagationControl,
-        description: "Rust remote sync can dispatch against Python propagation-control lifecycle",
+        description: "Rust remote sync can trigger a seeded Python LXMRouter peer sync transfer",
     },
     CompatibilityCase {
         id: "propagation_get_haves_python_to_rust",
