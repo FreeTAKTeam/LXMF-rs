@@ -42,7 +42,7 @@ mod tests {
         let advertised_id = vec![0x19; 32];
 
         let summary =
-            propagation_download_summary_json(1, &payloads, &[advertised_id.clone()], 1, 0, 0);
+            propagation_download_summary_json(1, &payloads, std::slice::from_ref(&advertised_id), 1, 0, 0);
         let messages = summary["messages"].as_array().expect("messages");
 
         assert_eq!(messages[0]["transient_id"].as_str(), Some(hex::encode(advertised_id).as_str()));

@@ -31,7 +31,14 @@ fn propagation_remote_fetch_summary_preserves_advertised_transient_id() {
     let payloads = vec![vec![0x42; 272]];
     let advertised_id = vec![0x19; 32];
 
-    let summary = propagation_remote_fetch_summary(1, &payloads, &[advertised_id.clone()], 1, 0, 0);
+    let summary = propagation_remote_fetch_summary(
+        1,
+        &payloads,
+        std::slice::from_ref(&advertised_id),
+        1,
+        0,
+        0,
+    );
     let messages = summary["messages"].as_array().expect("messages");
 
     assert_eq!(messages[0]["transient_id"].as_str(), Some(hex::encode(advertised_id).as_str()));
