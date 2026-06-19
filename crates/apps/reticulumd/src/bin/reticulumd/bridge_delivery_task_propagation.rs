@@ -149,21 +149,29 @@ impl DeliveryTask {
             "propagation",
             "local propagation node selected",
         );
-        let response = self.daemon.handle_rpc(RpcRequest {
-            id: 0,
-            method: "propagation_ingest".to_string(),
-            params: Some(json!({
-                "payload_hex": hex::encode(payload.bytes.as_slice()),
-            })),
-        })?;
-        if let Some(error) = response.error {
-            return Err(std::io::Error::other(error.message));
+        let (_timestamp, messages): (f64, Vec<Vec<u8>>) =
+            rmp_serde::from_slice(payload.bytes.as_slice()).map_err(|err| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("invalid local propagation envelope: {err}"),
+                )
+            })?;
+        let accepted_stamp_cost = self.daemon.propagation_min_accepted_stamp_cost();
+        for message in messages.iter() {
+            let transient_id = self
+                .daemon
+                .canonical_propagation_payload_bytes_at_cost(message, accepted_stamp_cost)?;
+            self.daemon.ingest_propagation_payload_bytes_at_cost(
+                message,
+                Some(transient_id.as_str()),
+                accepted_stamp_cost,
+            )?;
         }
         log_delivery_trace(
             &self.message_id,
             propagation_node_hex,
             "propagation",
-            "propagation stored locally",
+            format!("propagation stored locally messages={}", messages.len()).as_str(),
         );
         Ok(())
     }

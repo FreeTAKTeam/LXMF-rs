@@ -47,7 +47,9 @@ use super::outbound_resources::{
 };
 use reticulum_daemon::receipt_bridge::{track_receipt_mapping, ReceiptEvent};
 use rns_core::identity::PrivateIdentity;
-use rns_rpc::{RpcDaemon, RpcRequest};
+use rns_rpc::RpcDaemon;
+#[cfg(test)]
+use rns_rpc::RpcRequest;
 use rns_transport::delivery::await_link_activation;
 use rns_transport::delivery::{
     send_on_link_observed, send_outcome_is_sent, send_outcome_status, LinkSendResult,

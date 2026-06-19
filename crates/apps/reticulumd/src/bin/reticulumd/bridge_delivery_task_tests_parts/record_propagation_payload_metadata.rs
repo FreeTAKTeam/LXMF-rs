@@ -218,7 +218,8 @@ async fn self_selected_propagation_node_stores_locally_without_link_activation()
             method: "propagation_enable".to_string(),
             params: Some(json!({
                 "enabled": true,
-                "target_cost": 0,
+                "target_cost": 1,
+                "stamp_cost_flexibility": 0,
                 "autopeer": true,
             })),
         })
@@ -229,7 +230,7 @@ async fn self_selected_propagation_node_stores_locally_without_link_activation()
         rmpv::Value::Boolean(true),
         rmpv::Value::from(256),
         rmpv::Value::from(2048),
-        rmpv::Value::Array(vec![rmpv::Value::from(0), rmpv::Value::from(0), rmpv::Value::from(0)]),
+        rmpv::Value::Array(vec![rmpv::Value::from(1), rmpv::Value::from(0), rmpv::Value::from(0)]),
         rmpv::Value::Map(Vec::new()),
     ]))
     .expect("encode app data");

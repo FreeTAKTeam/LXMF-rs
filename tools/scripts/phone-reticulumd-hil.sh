@@ -43,6 +43,7 @@ Environment:
   LARGE_BYTES                default 4096
   PHONE_PEER_WAIT_SECS       default 180
   MANUAL_WAIT_SECS           default 120
+  PHONE_HIL_IDENTITY_PATH    default target/phone-hil/reticulumd.identity
   KEEP_DAEMON                default 0
 EOF
 }
@@ -60,6 +61,7 @@ ARTIFACT_ROOT="${LOG_DIR:-${REPO_ROOT}/target/phone-hil/${RUN_ID}}"
 REPORT_PATH="${REPORT_PATH:-${ARTIFACT_ROOT}/report.json}"
 RESULTS_JSONL="${ARTIFACT_ROOT}/results.jsonl"
 DB_PATH="${ARTIFACT_ROOT}/reticulum.db"
+IDENTITY_PATH="${PHONE_HIL_IDENTITY_PATH:-${REPO_ROOT}/target/phone-hil/reticulumd.identity}"
 RETICULUMD_LOG="${ARTIFACT_ROOT}/reticulumd.log"
 CONFIG_PATH="${ARTIFACT_ROOT}/reticulumd-phone-hil.toml"
 ADB_DEVICES_LOG="${ARTIFACT_ROOT}/adb-devices.txt"
@@ -202,6 +204,7 @@ write_report() {
     "${COLUMBA_HASH}" \
     "${ADB_DEVICES_LOG}" \
     "${RETICULUMD_LOG}" \
+    "${IDENTITY_PATH}" \
     "${SIDE_BAND_LOGCAT}" \
     "${COLUMBA_LOGCAT}" <<'PY'
 import json
@@ -225,9 +228,10 @@ import sys
     columba_hash,
     adb_devices_log,
     reticulumd_log,
+    identity_path,
     sideband_logcat,
     columba_logcat,
-) = sys.argv[1:19]
+) = sys.argv[1:20]
 
 tests = []
 if os.path.exists(results_path):
@@ -257,6 +261,7 @@ payload = {
         "delivery_hash": daemon_hash or None,
         "propagation_hash": daemon_propagation_hash or None,
         "log": reticulumd_log,
+        "identity": identity_path,
     },
     "artifacts": {
         "adb_devices": adb_devices_log,
@@ -337,10 +342,11 @@ run_capture() {
   local out="$2"
   shift 2
   log_cmd "$*"
-  if "$@" >"${out}" 2>&1; then
+  "$@" >"${out}" 2>&1
+  local status=$?
+  if [[ "${status}" -eq 0 ]]; then
     return 0
   fi
-  local status=$?
   record_result "${label}" "fail" "command exited with ${status}" "log=${out}"
   return "${status}"
 }
@@ -696,12 +702,14 @@ configure_adb_reverse() {
 
 start_daemon() {
   write_config
+  mkdir -p "$(dirname "${IDENTITY_PATH}")"
   (
     RETICULUMD_DIAGNOSTICS=1 \
       LXMD_DELIVERY_PER_PEER_IN_FLIGHT="${PER_PEER_IN_FLIGHT}" \
       "${REPO_ROOT}/target/debug/reticulumd" \
       --rpc "${RPC_ADDR}" \
       --db "${DB_PATH}" \
+      --identity "${IDENTITY_PATH}" \
       --transport "${TRANSPORT_ADDR}" \
       --announce-interval-secs 2 \
       --config "${CONFIG_PATH}" >"${RETICULUMD_LOG}" 2>&1
@@ -722,6 +730,7 @@ start_daemon() {
   record_result "reticulumd_start" "pass" "reticulumd started with diagnostics and propagation enabled" \
     "log=${RETICULUMD_LOG}" \
     "config=${CONFIG_PATH}" \
+    "identity=${IDENTITY_PATH}" \
     "delivery_hash=${DAEMON_HASH}" \
     "propagation_hash=${DAEMON_PROPAGATION_HASH}"
 }
@@ -752,12 +761,12 @@ discover_phone_hashes() {
   while true; do
     rpc_call "list_peers" "{}" "${peers_path}" || true
     local discovered
-    discovered="$("${PYTHON_BIN}" - "${peers_path}" "${DAEMON_HASH}" <<'PY'
+    discovered="$("${PYTHON_BIN}" - "${peers_path}" "${DAEMON_HASH}" "${DAEMON_PROPAGATION_HASH}" <<'PY'
 import json
 import sys
 
-path, daemon_hash = sys.argv[1:3]
-daemon_hash = daemon_hash.lower()
+path, *daemon_hashes = sys.argv[1:]
+excluded_hashes = {value.lower() for value in daemon_hashes if len(value) == 32}
 try:
     with open(path, "r", encoding="utf-8") as handle:
         payload = json.load(handle)
@@ -785,7 +794,7 @@ for peer in peers:
         if not isinstance(value, str):
             continue
         value = value.lower()
-        if len(value) == 32 and value != daemon_hash and value not in seen:
+        if len(value) == 32 and value not in excluded_hashes and value not in seen:
             seen.append(value)
             ranked.append((distance_rank, last_seen_rank, value))
 direct = [value for distance, _, value in sorted(ranked) if distance <= 1]
@@ -1157,12 +1166,12 @@ PY
   rpc_call "propagation_status" "{}" "${dir}/propagation_status.after-set.json" || true
   local propagated_id
   propagated_id="$(send_daemon_message "daemon-to-s8-propagated" "${SIDE_BAND_HASH}" "phone-hil propagated to S8 ${RUN_ID}" "propagated")" || true
-  if wait_trace_contains "daemon-to-s8-propagated" "${propagated_id}" "propagated|failed" 90; then
-    record_result "propagation_node_delivery_attempt" "pass" "propagated delivery produced inspectable terminal or handoff state" \
+  if wait_trace_contains "daemon-to-s8-propagated" "${propagated_id}" "sent: propagated resource" 90; then
+    record_result "propagation_node_delivery_attempt" "pass" "propagated delivery reached local propagation storage handoff" \
       "trace=${ARTIFACT_ROOT}/daemon-to-s8-propagated/message_delivery_trace.json" \
       "status=${dir}/propagation_status.after-set.json"
   else
-    record_result "propagation_node_delivery_attempt" "fail" "propagated delivery did not produce inspectable state" \
+    record_result "propagation_node_delivery_attempt" "fail" "propagated delivery did not reach local propagation storage handoff" \
       "trace=${ARTIFACT_ROOT}/daemon-to-s8-propagated/message_delivery_trace.json" \
       "status=${dir}/propagation_status.after-set.json"
   fi
