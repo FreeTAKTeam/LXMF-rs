@@ -76,11 +76,16 @@ impl OutboundBridge for TransportBridge {
         let propagation_node_hex = daemon.outbound_propagation_node();
         let propagation_node_identity = if requested_method == RequestedDeliveryMethod::Propagated {
             propagation_node_hex.as_deref().and_then(|node_hex| {
-                self.outbound_propagation_identities
-                    .lock()
-                    .ok()
-                    .and_then(|guard| guard.get(node_hex).cloned())
-                    .or_else(|| {
+                let cached = match self.outbound_propagation_identities.lock() {
+                    Ok(guard) => guard.get(node_hex).cloned(),
+                    Err(err) => {
+                        log::warn!(
+                            "[daemon] failed to read propagation identity cache for {node_hex}: {err}"
+                        );
+                        None
+                    }
+                };
+                cached.or_else(|| {
                         let hash = parse_destination_hash_required(node_hex).ok()?;
                         let hash = AddressHash::new(hash);
                         let identity = resolve_destination_identity_blocking(

@@ -297,8 +297,13 @@ impl Transport {
     }
 
     pub fn emit_receipt_for_test(&self, receipt: DeliveryReceipt) {
-        let receipt_handler =
-            self.handler.try_lock().ok().and_then(|handler| handler.receipt_handler.clone());
+        let receipt_handler = match self.handler.try_lock() {
+            Ok(handler) => handler.receipt_handler.clone(),
+            Err(err) => {
+                log::warn!("[transport] failed to read receipt handler for test receipt: {err}");
+                None
+            }
+        };
 
         if let Some(handler) = receipt_handler {
             handler.on_receipt(&receipt);

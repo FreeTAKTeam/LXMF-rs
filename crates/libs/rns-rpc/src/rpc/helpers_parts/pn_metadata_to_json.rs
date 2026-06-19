@@ -88,7 +88,10 @@ fn parse_delivery_stamp_cost_from_app_data_hex(app_data_hex: Option<&str>) -> Op
     let app_data = hex::decode(raw_hex).ok()?;
     let value = match rmp_serde::from_slice::<MsgPackValue>(&app_data) {
         Ok(value) => value,
-        Err(_) => return None,
+        Err(err) => {
+            log::debug!("failed to decode delivery app_data for stamp cost: {err}");
+            return None;
+        }
     };
     let entries = value.as_array()?;
     entries.get(1).and_then(parse_fuzzy_u32).filter(|cost| (1..255).contains(cost))

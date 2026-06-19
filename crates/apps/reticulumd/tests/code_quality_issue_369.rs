@@ -11,6 +11,9 @@ fn production_code_does_not_silently_discard_issue_369_failures() {
         }
         let source = fs::read_to_string(path).expect("read Rust source");
         let display = path.strip_prefix(&root).unwrap_or(path).display();
+        for line_no in multiline_lock_ok_lines(&source) {
+            findings.push(format!("{display}:{line_no}: mutex lock poison is discarded"));
+        }
         for (line, text) in source.lines().enumerate() {
             let line_no = line + 1;
             if text.contains(".lock().ok()") {
@@ -62,6 +65,31 @@ fn production_code_does_not_silently_discard_issue_369_failures() {
         "issue #369 silent failure patterns remain:\n{}",
         findings.join("\n")
     );
+}
+
+fn multiline_lock_ok_lines(source: &str) -> Vec<usize> {
+    let mut findings = Vec::new();
+    let mut pending_lock_line = None;
+    for (index, text) in source.lines().enumerate() {
+        let line_no = index + 1;
+        if text.contains(".lock()") || text.contains(".try_lock()") {
+            if !text.contains(".expect(") && !text.contains(".ok()") {
+                pending_lock_line = Some(line_no);
+            }
+            continue;
+        }
+        if let Some(lock_line) = pending_lock_line {
+            if text.contains(".ok()") {
+                findings.push(lock_line);
+                pending_lock_line = None;
+                continue;
+            }
+            if text.contains(';') || text.contains(".expect(") || text.contains("match ") {
+                pending_lock_line = None;
+            }
+        }
+    }
+    findings
 }
 
 fn workspace_root() -> PathBuf {

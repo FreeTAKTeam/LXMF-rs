@@ -69,11 +69,17 @@ pub(super) fn spawn_inbound_worker(
                                         &event.link_id,
                                     )
                                     .await;
-                                    let peer_link_validated = resource_control
-                                        .validated_peer_links
-                                        .lock()
-                                        .ok()
-                                        .is_some_and(|guard| guard.contains(&event.link_id));
+                                    let peer_link_validated =
+                                        match resource_control.validated_peer_links.lock() {
+                                            Ok(guard) => guard.contains(&event.link_id),
+                                            Err(err) => {
+                                                log::warn!(
+                                                    "[daemon-rx] failed to read validated peer links for link={}: {err}",
+                                                    hex::encode(event.link_id.as_slice())
+                                                );
+                                                false
+                                            }
+                                        };
                                     if let Err(error) =
                                         propagation::ingest_propagation_resource_from_peer(
                                             daemon.as_ref(),

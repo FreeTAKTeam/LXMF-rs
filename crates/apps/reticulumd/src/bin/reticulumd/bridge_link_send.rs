@@ -45,11 +45,16 @@ pub(super) fn spawn_tracked_resource_cancel_monitor(monitor: ResourceCancelMonit
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         for _ in 0..(30 * 60 * 4) {
             interval.tick().await;
-            let still_tracked = monitor
-                .outbound_resource_map
-                .lock()
-                .ok()
-                .is_some_and(|guard| guard.contains_key(&resource_hash_hex));
+            let still_tracked = match monitor.outbound_resource_map.lock() {
+                Ok(guard) => guard.contains_key(&resource_hash_hex),
+                Err(err) => {
+                    log::warn!(
+                        "[daemon] failed to read outbound resource map for cancel monitor message_id={} hash={resource_hash_hex}: {err}",
+                        monitor.message_id
+                    );
+                    false
+                }
+            };
             if !still_tracked {
                 return;
             }

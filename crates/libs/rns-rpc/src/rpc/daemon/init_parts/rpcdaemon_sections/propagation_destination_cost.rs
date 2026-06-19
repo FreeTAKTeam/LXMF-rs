@@ -26,17 +26,19 @@ impl RpcDaemon {
         let Some(peer) = selected else {
             return (None, None, "unavailable");
         };
-        let cost = self
-            .peers
-            .lock()
-            .ok()
-            .and_then(|guard| {
+        let cost = match self.peers.lock() {
+            Ok(guard) => {
                 guard
                     .values()
                     .find(|record| record.peer.eq_ignore_ascii_case(peer.as_str()))
                     .and_then(|record| record.propagation_stamp_cost)
-            })
-            .or_else(|| self.store.latest_announce_stamp_cost_for(peer.as_str()).ok().flatten());
+            }
+            Err(err) => {
+                log::warn!("[rpc-daemon] failed to read peer cost cache for {peer}: {err}");
+                None
+            }
+        }
+        .or_else(|| self.store.latest_announce_stamp_cost_for(peer.as_str()).ok().flatten());
         let source = if cost.is_some() { "cached_announce" } else { "unavailable" };
         (Some(peer), cost, source)
     }

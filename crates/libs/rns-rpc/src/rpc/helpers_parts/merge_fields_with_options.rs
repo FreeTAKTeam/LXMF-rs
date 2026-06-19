@@ -148,7 +148,10 @@ fn parse_capabilities_from_app_data_hex(app_data_hex: Option<&str>) -> Vec<Strin
 fn parse_rch_capabilities_from_lxmf_announce(app_data: &[u8]) -> Option<Vec<String>> {
     let value = match rmp_serde::from_slice::<MsgPackValue>(app_data) {
         Ok(value) => value,
-        Err(_) => return None,
+        Err(err) => {
+            log::debug!("failed to decode LXMF announce app_data for capabilities: {err}");
+            return None;
+        }
     };
     let entries = value.as_array()?;
     let capability_payload = match entries.get(2) {
@@ -428,7 +431,10 @@ fn parse_propagation_timebase_from_app_data_hex(app_data_hex: Option<&str>) -> O
     let app_data = hex::decode(raw_hex).ok()?;
     let value = match rmp_serde::from_slice::<MsgPackValue>(&app_data) {
         Ok(value) => value,
-        Err(_) => return None,
+        Err(err) => {
+            log::debug!("failed to decode propagation app_data for timebase: {err}");
+            return None;
+        }
     };
     let entries = value.as_array()?;
     entries.get(1).and_then(parse_fuzzy_i64)
@@ -439,7 +445,10 @@ fn parse_propagation_enabled_from_app_data_hex(app_data_hex: Option<&str>) -> Op
     let app_data = hex::decode(raw_hex).ok()?;
     let value = match rmp_serde::from_slice::<MsgPackValue>(&app_data) {
         Ok(value) => value,
-        Err(_) => return None,
+        Err(err) => {
+            log::debug!("failed to decode propagation app_data for enabled flag: {err}");
+            return None;
+        }
     };
     let entries = value.as_array()?;
     if entries.len() < 6 {
@@ -469,7 +478,10 @@ fn parse_peer_name_from_app_data_hex(app_data_hex: Option<&str>) -> Option<(Stri
     let app_data = hex::decode(raw_hex).ok()?;
     let value = match rmp_serde::from_slice::<MsgPackValue>(&app_data) {
         Ok(value) => value,
-        Err(_) => return None,
+        Err(err) => {
+            log::debug!("failed to decode app_data for peer name: {err}");
+            return None;
+        }
     };
     let entries = value.as_array()?;
 
@@ -481,8 +493,8 @@ fn parse_peer_name_from_app_data_hex(app_data_hex: Option<&str>) -> Option<(Stri
     }
     None
 }
-
 fn decode_utf8_field(bytes: &[u8]) -> Option<&str> {
-    let decoded = std::str::from_utf8(bytes);
+    let decoded = std::str::from_utf8(bytes)
+        .inspect_err(|err| log::debug!("invalid UTF-8 in app_data field: {err}"));
     decoded.ok()
 }

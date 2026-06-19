@@ -214,12 +214,14 @@ impl RemoteControlBridge for TransportBridge {
             ]),
         )?;
         let payloads = rmpv_binary_array(&fetched)?;
-        let daemon = self
-            .daemon
-            .lock()
-            .ok()
-            .and_then(|guard| guard.clone())
-            .ok_or_else(|| std::io::Error::other("daemon unavailable"))?;
+        let daemon = match self.daemon.lock() {
+            Ok(guard) => guard.clone(),
+            Err(err) => {
+                log::warn!("[daemon-control] failed to read daemon for remote fetch: {err}");
+                None
+            }
+        }
+        .ok_or_else(|| std::io::Error::other("daemon unavailable"))?;
 
         let mut imported_count = 0usize;
         let mut duplicate_count = 0usize;
@@ -296,12 +298,14 @@ impl RemoteControlBridge for TransportBridge {
         let timeout = Duration::from_secs_f64(timeout_secs.max(0.1));
         let transport = self.transport.clone();
         let identity_cache = self.outbound_propagation_identities.clone();
-        let daemon = self
-            .daemon
-            .lock()
-            .ok()
-            .and_then(|guard| guard.clone())
-            .ok_or_else(|| std::io::Error::other("rpc daemon unavailable"))?;
+        let daemon = match self.daemon.lock() {
+            Ok(guard) => guard.clone(),
+            Err(err) => {
+                log::warn!("[daemon-control] failed to read daemon for remote download: {err}");
+                None
+            }
+        }
+        .ok_or_else(|| std::io::Error::other("rpc daemon unavailable"))?;
         let delivery_destination = self.announce_destination.clone();
 
         std::thread::spawn(move || {

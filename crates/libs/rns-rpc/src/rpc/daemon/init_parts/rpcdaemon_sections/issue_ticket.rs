@@ -298,14 +298,16 @@ impl RpcDaemon {
         let stats = self.store.peer_message_stats(peer).map_err(std::io::Error::other)?;
         let propagation =
             self.store.peer_propagation_message_stats(peer).map_err(std::io::Error::other)?;
-        let (record_offered, record_outgoing, record_incoming) = self
-            .peers
-            .lock()
-            .ok()
-            .and_then(|guard| {
+        let (record_offered, record_outgoing, record_incoming) = match self.peers.lock() {
+            Ok(guard) => {
                 guard.get(peer).map(|record| (record.offered, record.outgoing, record.incoming))
-            })
-            .unwrap_or((0, 0, 0));
+            }
+            Err(err) => {
+                log::warn!("[rpc-daemon] failed to read peer message stats cache for {peer}: {err}");
+                None
+            }
+        }
+        .unwrap_or((0, 0, 0));
         Ok((
             stats.outgoing.saturating_add(record_outgoing.max(propagation.outgoing)),
             stats.incoming.saturating_add(record_incoming.max(propagation.incoming)),

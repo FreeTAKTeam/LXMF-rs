@@ -17,10 +17,15 @@ impl DeliveryTask {
         let cached_identity = self
             .propagation_node_identity
             .or_else(|| {
-                self.outbound_propagation_identities
-                    .lock()
-                    .ok()
-                    .and_then(|guard| guard.get(propagation_node_hex).cloned())
+                match self.outbound_propagation_identities.lock() {
+                    Ok(guard) => guard.get(propagation_node_hex).cloned(),
+                    Err(err) => {
+                        log::warn!(
+                            "[daemon] failed to read propagation identity cache for {propagation_node_hex}: {err}"
+                        );
+                        None
+                    }
+                }
             })
             .or_else(|| {
                 resolve_destination_identity_blocking(
