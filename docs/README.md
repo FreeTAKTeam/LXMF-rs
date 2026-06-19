@@ -50,6 +50,8 @@ are kept in Git history instead of the live documentation tree.
 - `docs/PerformancesComparison.html`: retained performance comparison snapshot;
   use the benchmarking runbook for current measurements
 - `docs/runbooks/release-readiness.md`: release gate checklist
+- `docs/runbooks/logging-and-diagnostics.md`: operator logging knobs and
+  contributor failure-visibility rules
 - `docs/release-notes-v0.5.0.md`: current project release notes
 - `docs/runbooks/reticulumd-operational-deployment.md`: daemon deployment,
   probes, shutdown, and service manager examples

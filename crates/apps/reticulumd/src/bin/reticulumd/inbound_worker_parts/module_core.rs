@@ -118,6 +118,16 @@ pub(super) fn spawn_inbound_worker(
                             resource_hash_hex.as_str(),
                         );
                     }
+                    ResourceEventKind::InboundFailed(failure) => {
+                        log::warn!(
+                            "[daemon-rx] inbound resource failed link={} hash={} reason={} received={}/{}",
+                            event.link_id,
+                            event.hash,
+                            failure.reason,
+                            failure.progress.received_parts,
+                            failure.progress.total_parts
+                        );
+                    }
                     ResourceEventKind::Progress(_) => {}
                 }
             }

@@ -120,13 +120,30 @@ fn handle_zmq_command_message(
 ) -> Option<ZmqOutboundResponse> {
     let bytes = match Vec::<u8>::try_from(message) {
         Ok(bytes) => bytes,
-        Err(_) => return None,
+        Err(err) => {
+            log::warn!(
+                "[daemon] zmq rpc command rejected reason=message_conversion_failed err={err}"
+            );
+            return None;
+        }
     };
     let envelope = match zmq::decode_envelope(&bytes) {
         Ok(envelope) => envelope,
-        Err(_) => return None,
+        Err(err) => {
+            log::warn!("[daemon] zmq rpc command rejected reason=envelope_decode_failed err={err}");
+            return None;
+        }
     };
-    let response_endpoint = envelope.response_endpoint.clone()?;
+    let response_endpoint = match envelope.response_endpoint.clone() {
+        Some(endpoint) => endpoint,
+        None => {
+            log::warn!(
+                "[daemon] zmq rpc command rejected request_id={} reason=missing_response_endpoint",
+                envelope.request_id
+            );
+            return None;
+        }
+    };
     let response_endpoint_is_local = is_local_zmq_endpoint(response_endpoint.as_str());
     if let Err(error) = authorize_zmq_envelope(
         daemon,
@@ -140,6 +157,11 @@ fn handle_zmq_command_message(
                 envelope: rpc_error_envelope(envelope.session_id, envelope.request_id, error),
             });
         }
+        log::warn!(
+            "[daemon] zmq rpc command rejected request_id={} code={} reason=remote_response_auth_failed",
+            envelope.request_id,
+            error.code
+        );
         return None;
     }
     if envelope.kind != ZmqRpcEnvelopeKind::Request {

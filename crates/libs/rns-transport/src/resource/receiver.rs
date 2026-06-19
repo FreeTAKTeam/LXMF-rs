@@ -44,7 +44,7 @@ struct ResourcePayload {
 enum PartOutcome {
     NoMatch,
     Incomplete,
-    Failed,
+    Failed(&'static str),
     Complete(Packet, ResourcePayload),
 }
 
@@ -189,8 +189,7 @@ impl ResourceReceiver {
 
     fn handle_part(&mut self, part: &[u8], link: &Link) -> PartOutcome {
         if self.split {
-            self.status = ResourceStatus::Failed;
-            return PartOutcome::Failed;
+            return self.fail("split_resource_unsupported");
         }
 
         let hash = map_hash(part, &self.random_hash);
@@ -226,8 +225,7 @@ impl ResourceReceiver {
                 let decrypted = match link.decrypt(&stream, &mut out) {
                     Ok(value) => value,
                     Err(_) => {
-                        self.status = ResourceStatus::Failed;
-                        return PartOutcome::Failed;
+                        return self.fail("decrypt_failed");
                     }
                 };
                 decrypted.to_vec()
@@ -249,13 +247,11 @@ impl ResourceReceiver {
                 ) {
                     Ok(decompressed) => decompressed,
                     Err(()) => {
-                        self.status = ResourceStatus::Failed;
-                        return PartOutcome::Failed;
+                        return self.fail("decompress_failed");
                     }
                 };
                 if decompressed.len() > max_decompressed_size {
-                    self.status = ResourceStatus::Failed;
-                    return PartOutcome::Failed;
+                    return self.fail("decompressed_size_exceeded");
                 }
                 payload = decompressed;
             }
@@ -265,8 +261,7 @@ impl ResourceReceiver {
                     | ((payload[1] as usize) << 8)
                     | payload[2] as usize;
                 if size > METADATA_MAX_SIZE {
-                    self.status = ResourceStatus::Failed;
-                    return PartOutcome::Failed;
+                    return self.fail("metadata_size_exceeded");
                 }
                 if payload.len() >= 3 + size {
                     let meta = payload[3..3 + size].to_vec();
@@ -285,8 +280,7 @@ impl ResourceReceiver {
             let computed = match copy_hash(&hasher.finalize()) {
                 Ok(hash) => Hash::new(hash),
                 Err(_) => {
-                    self.status = ResourceStatus::Failed;
-                    return PartOutcome::Failed;
+                    return self.fail("resource_hash_copy_failed");
                 }
             };
 
@@ -297,8 +291,7 @@ impl ResourceReceiver {
                 let proof = match copy_hash(&proof_hasher.finalize()) {
                     Ok(hash) => Hash::new(hash),
                     Err(_) => {
-                        self.status = ResourceStatus::Failed;
-                        return PartOutcome::Failed;
+                        return self.fail("proof_hash_copy_failed");
                     }
                 };
                 let proof_payload = ResourceProof { resource_hash: self.resource_hash, proof };
@@ -312,8 +305,7 @@ impl ResourceReceiver {
                     Ok(packet) => packet,
                     Err(_) => {
                         log::warn!("failed to build proof packet");
-                        self.status = ResourceStatus::Failed;
-                        return PartOutcome::Failed;
+                        return self.fail("proof_packet_build_failed");
                     }
                 };
                 return PartOutcome::Complete(
@@ -327,12 +319,16 @@ impl ResourceReceiver {
                     },
                 );
             } else {
-                self.status = ResourceStatus::Failed;
-                return PartOutcome::Failed;
+                return self.fail("resource_hash_mismatch");
             }
         }
 
         PartOutcome::Incomplete
+    }
+
+    fn fail(&mut self, reason: &'static str) -> PartOutcome {
+        self.status = ResourceStatus::Failed;
+        PartOutcome::Failed(reason)
     }
 
     fn is_active(&self) -> bool {

@@ -92,11 +92,20 @@ impl ResourceManager {
                 }
             }
             if receiver.retry_count >= self.retry_limit {
-                failed.push(*hash);
+                failed.push((*hash, receiver.link_id, receiver.progress()));
             }
         }
-        for hash in failed {
+        for (hash, link_id, progress) in failed {
+            log::warn!("resource transfer failed link={link_id} hash={hash} reason=retry_limit_exhausted");
             self.incoming.remove(&hash);
+            self.events.push(ResourceEvent {
+                hash,
+                link_id,
+                kind: ResourceEventKind::InboundFailed(ResourceFailure {
+                    reason: "retry_limit_exhausted".to_string(),
+                    progress,
+                }),
+            });
         }
         requests
     }
@@ -308,13 +317,13 @@ impl ResourceManager {
         let mut proof_packet: Option<Packet> = None;
         let mut request_packet: Option<Packet> = None;
         let mut payload: Option<ResourcePayload> = None;
-        let mut failed: Option<Hash> = None;
+        let mut failed: Option<(Hash, AddressHash, ResourceProgress, &'static str)> = None;
         for (hash, receiver) in self.incoming.iter_mut() {
             let before_received = receiver.received;
             match receiver.handle_part(packet.data.as_slice(), link) {
                 PartOutcome::NoMatch => continue,
-                PartOutcome::Failed => {
-                    failed = Some(*hash);
+                PartOutcome::Failed(reason) => {
+                    failed = Some((*hash, receiver.link_id, receiver.progress(), reason));
                     break;
                 }
                 PartOutcome::Complete(packet, data_payload) => {
@@ -378,8 +387,17 @@ impl ResourceManager {
                 }
             }
         }
-        if let Some(hash) = failed {
+        if let Some((hash, link_id, progress, reason)) = failed {
+            log::warn!("resource transfer failed link={link_id} hash={hash} reason={reason}");
             self.incoming.remove(&hash);
+            self.events.push(ResourceEvent {
+                hash,
+                link_id,
+                kind: ResourceEventKind::InboundFailed(ResourceFailure {
+                    reason: reason.to_string(),
+                    progress,
+                }),
+            });
             // Reset so the inter-resource gap doesn't skew the arrival EWMA.
             // TODO: a better approach is to schedule a delayed reset — wait
             // arrival_interval * 2, and only reset if no new part has arrived by

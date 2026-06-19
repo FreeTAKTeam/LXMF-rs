@@ -1,5 +1,5 @@
 use rns_rpc::rpc::codec;
-use rns_rpc::{http, RpcRequest};
+use rns_rpc::{http, RpcRequest, RpcResponse};
 use serde_json::json;
 use std::io::IsTerminal;
 use std::net::SocketAddr;
@@ -61,6 +61,10 @@ pub(super) fn emit_rpc_access_log(
     error_text: Option<&str>,
 ) {
     let status_code = parse_status_code(response).unwrap_or(0);
+    let rpc_error = parse_rpc_response_error(response);
+    let effective_error = error_text
+        .map(str::to_string)
+        .or_else(|| rpc_error.as_ref().map(|(_, message)| message.clone()));
     if pretty_console_logs_enabled() {
         log::info!(
             "{} {} {} {} {}{}{}",
@@ -73,10 +77,15 @@ pub(super) fn emit_rpc_access_log(
                 .as_ref()
                 .map(|method| format!(" {}", pretty_secondary(&format!("rpc={method}"))))
                 .unwrap_or_default(),
-            error_text.map(|error| format!(" {}", pretty_error(error))).unwrap_or_default()
+            effective_error
+                .as_deref()
+                .map(|error| format!(" {}", pretty_error(error)))
+                .unwrap_or_default()
         );
         return;
     }
+    let (rpc_error_code, rpc_error_message) =
+        rpc_error.map_or((None, None), |(code, message)| (Some(code), Some(message)));
     let payload = json!({
         "event": "rpc_request",
         "peer": peer_addr.to_string(),
@@ -86,9 +95,11 @@ pub(super) fn emit_rpc_access_log(
         "rpc_request_id": meta.rpc_request_id,
         "trace_ref": meta.trace_ref,
         "status_code": status_code,
+        "rpc_error_code": rpc_error_code,
+        "rpc_error_message": rpc_error_message,
         "elapsed_ms": elapsed_ms,
-        "ok": error_text.is_none(),
-        "error": error_text,
+        "ok": (200..=299).contains(&status_code) && effective_error.is_none(),
+        "error": effective_error,
     });
     log::info!("{}", payload);
 }
@@ -109,6 +120,23 @@ fn parse_status_code(response: &[u8]) -> Option<u16> {
     let _http_version = parts.next()?;
     let code = parts.next()?;
     code.parse::<u16>().ok()
+}
+
+fn parse_rpc_response_error(response: &[u8]) -> Option<(String, String)> {
+    let header_end = http::find_header_end(response)?;
+    let headers = &response[..header_end];
+    let content_length = http::parse_content_length(headers)?;
+    if content_length > codec::MAX_FRAME_PAYLOAD_LEN + 4 {
+        return None;
+    }
+    let body_start = header_end.checked_add(4)?;
+    let body_end = body_start.checked_add(content_length)?;
+    if response.len() < body_end {
+        return None;
+    }
+    let rpc_response = codec::decode_frame::<RpcResponse>(&response[body_start..body_end]).ok()?;
+    let error = rpc_response.error?;
+    Some((error.code, error.message))
 }
 
 fn decode_utf8<'a>(data: &'a [u8], context: &str) -> Option<&'a str> {
@@ -258,5 +286,23 @@ mod tests {
     fn parse_status_code_extracts_numeric_status() {
         let response = b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
         assert_eq!(parse_status_code(response), Some(200));
+    }
+
+    #[test]
+    fn parse_rpc_response_error_extracts_json_rpc_error_from_http_ok() {
+        let rpc_body = codec::encode_frame(&RpcResponse {
+            id: 44,
+            result: None,
+            error: Some(rns_rpc::RpcError::new("SDK_INTERNAL", "boom")),
+        })
+        .expect("encode rpc body");
+        let response = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", rpc_body.len());
+        let mut raw = response.into_bytes();
+        raw.extend_from_slice(&rpc_body);
+
+        assert_eq!(
+            parse_rpc_response_error(&raw),
+            Some(("SDK_INTERNAL".to_string(), "boom".to_string()))
+        );
     }
 }

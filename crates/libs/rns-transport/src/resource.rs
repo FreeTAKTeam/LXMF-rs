@@ -156,10 +156,18 @@ pub struct ResourceEvent {
     pub kind: ResourceEventKind,
 }
 
+/// Resource transfer event emitted by `ResourceManager`.
+///
+/// Downstream consumers should include a catch-all match arm. New terminal
+/// variants may be added when previously silent failure classes become
+/// operator-visible.
 #[derive(Debug, Clone)]
 pub enum ResourceEventKind {
     Progress(ResourceProgress),
     Complete(ResourceComplete),
+    /// Inbound transfer failed before completion. This variant was added for
+    /// issue #369 diagnostics and is an intentional public event surface change.
+    InboundFailed(ResourceFailure),
     OutboundComplete,
     OutboundFailed,
     OutboundCancelled,
@@ -171,6 +179,12 @@ pub struct ResourceProgress {
     pub total_bytes: u64,
     pub received_parts: usize,
     pub total_parts: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct ResourceFailure {
+    pub reason: String,
+    pub progress: ResourceProgress,
 }
 
 #[derive(Debug, Clone)]

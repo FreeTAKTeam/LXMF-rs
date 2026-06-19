@@ -315,6 +315,53 @@ mod tests {
         let responses = manager.handle_packet(&part_packet, &mut link);
         assert!(responses.is_empty());
         assert!(manager.incoming.is_empty());
+        let events = manager.drain_events();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].hash, resource_hash);
+        assert_eq!(events[0].link_id, *link.id());
+        let ResourceEventKind::InboundFailed(failure) = &events[0].kind else {
+            panic!("expected inbound failure event");
+        };
+        assert_eq!(failure.reason, "decompress_failed");
+        assert_eq!(failure.progress.received_parts, 1);
+    }
+
+    #[test]
+    fn resource_receiver_reports_failure_reason() {
+        let signer = PrivateIdentity::new_from_rand(OsRng);
+        let identity = *signer.as_identity();
+        let destination = DestinationDesc {
+            identity,
+            address_hash: identity.address_hash,
+            name: DestinationName::new("lxmf", "resource"),
+        };
+        let (tx, _) = tokio::sync::broadcast::channel(1);
+        let mut link = Link::new(destination, tx);
+        link.request();
+
+        let part = b"not-bzip";
+        let random_hash = [5u8; RANDOM_HASH_SIZE];
+        let mut hashmap = Vec::with_capacity(MAPHASH_LEN);
+        hashmap.extend_from_slice(&map_hash(part, &random_hash));
+        let adv = ResourceAdvertisement {
+            transfer_size: part.len() as u64,
+            data_size: part.len() as u64,
+            parts: 1,
+            hash: Hash::new_from_slice(&[8u8; 32]),
+            random_hash,
+            original_hash: Hash::new_from_slice(&[8u8; 32]),
+            segment_index: 1,
+            total_segments: 1,
+            request_id: None,
+            flags: FLAG_COMPRESSED,
+            hashmap,
+        };
+        let mut receiver = ResourceReceiver::new(&adv, *link.id()).expect("resource receiver");
+
+        assert!(matches!(
+            receiver.handle_part(part, &link),
+            PartOutcome::Failed("decompress_failed")
+        ));
     }
 
     #[test]
@@ -371,6 +418,7 @@ mod tests {
     }
 
     include!("tests_mtu.rs");
+    include!("tests_retry_failures.rs");
     include!("tests_timeouts.rs");
     include!("tests_timeouts_lifecycle.rs");
 

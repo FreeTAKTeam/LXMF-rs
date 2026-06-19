@@ -5,3 +5,5 @@ crates/libs/rns-rpc/src/rpc/daemon/dispatch_legacy_messages_parts/rpcdaemon_sect
 # Baseline SDK backend exceptions present before issue #369 cleanup; split backend state/tests.
 crates/libs/lxmf-sdk/src/backend/zmq_pipeline.rs
 crates/libs/lxmf-sdk/src/backend/zmq_pipeline/tests/mod.rs
+# Baseline transport test helper exception present before issue #369 cleanup; split shared packet helpers.
+crates/libs/rns-transport/src/transport/tests_parts/encrypted_resource_control_packet.rs

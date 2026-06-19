@@ -31,6 +31,9 @@ replacement parity. The maintained parity source of truth remains
 
 - Closed the propagation router lifecycle gate with live Python-reference
   remote lifecycle coverage.
+- Added issue #369 diagnostics for previously silent inbound resource failures,
+  malformed ratchet records, malformed ZMQ/RPC ingress, and JSON-RPC errors
+  returned inside HTTP 200 responses.
 - Closed the peer lifecycle parity gate across restart replay, offers,
   transfer limits, retry/failure classes, unpeer cleanup, haves, and source
   accounting.
@@ -57,6 +60,14 @@ blanket workspace version:
 - `reticulum-rs-core`: `0.2.0`
 - `reticulum-rs-transport`: `0.2.0`
 - app/tool crates remain unpublished and are distributed through GitHub bundles
+
+## API Notes
+
+- `reticulum-rs-transport` now emits
+  `ResourceEventKind::InboundFailed(ResourceFailure)` when inbound resource
+  transfer failure or retry exhaustion is terminal. Downstream exhaustive
+  matches on `ResourceEventKind` should add this variant or include a catch-all
+  arm.
 
 ## Validation Record
 
