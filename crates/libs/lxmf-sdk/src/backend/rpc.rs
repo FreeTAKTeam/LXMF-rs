@@ -48,12 +48,15 @@ mod transport;
 
 pub struct RpcBackendClient {
     endpoint: String,
+    client_instance_id: String,
     next_request_id: AtomicU64,
     negotiated_capabilities: RwLock<Vec<String>>,
     negotiated_limits: RwLock<Option<EffectiveLimits>>,
     manual_tick_cursor: RwLock<Option<EventCursor>>,
     session_auth: RwLock<SessionAuth>,
 }
+
+static NEXT_CLIENT_INSTANCE_ID: AtomicU64 = AtomicU64::new(1);
 
 enum SessionAuth {
     LocalTrusted,
@@ -81,6 +84,7 @@ impl RpcBackendClient {
     pub fn new(endpoint: impl Into<String>) -> Self {
         Self {
             endpoint: endpoint.into(),
+            client_instance_id: new_client_instance_id(),
             next_request_id: AtomicU64::new(1),
             negotiated_capabilities: RwLock::new(Vec::new()),
             negotiated_limits: RwLock::new(None),
@@ -91,6 +95,10 @@ impl RpcBackendClient {
 
     fn next_request_id(&self) -> u64 {
         self.next_request_id.fetch_add(1, Ordering::Relaxed)
+    }
+
+    fn next_message_id(&self) -> String {
+        format!("sdk-{}-{}", self.client_instance_id, self.next_request_id())
     }
 
     fn now_seconds() -> u64 {
@@ -113,6 +121,15 @@ impl RpcBackendClient {
             .map(|limits| limits.max_poll_events.max(1))
             .unwrap_or(256)
     }
+}
+
+fn new_client_instance_id() -> String {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    let serial = NEXT_CLIENT_INSTANCE_ID.fetch_add(1, Ordering::Relaxed);
+    format!("{:032x}-{:x}-{:x}", now, std::process::id(), serial)
 }
 
 impl SdkBackend for RpcBackendClient {

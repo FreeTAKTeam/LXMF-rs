@@ -265,7 +265,7 @@ impl RpcBackendClient {
             correlation_id: _,
             extensions: _,
         } = req;
-        let rpc_message_id = format!("sdk-{}", self.next_request_id());
+        let rpc_message_id = self.next_message_id();
         let content = payload
             .get("content")
             .and_then(JsonValue::as_str)

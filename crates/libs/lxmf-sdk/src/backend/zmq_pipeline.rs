@@ -88,6 +88,9 @@ impl ZmqPipelineBackendClient {
     fn next_request_id(&self) -> u64 {
         self.next_request_id.fetch_add(1, Ordering::Relaxed)
     }
+    fn next_message_id(&self) -> String {
+        format!("sdk-zmq-{}-{}", self.session_id, self.next_request_id())
+    }
     fn has_capability(&self, capability_id: &str) -> bool {
         self.negotiated_capabilities
             .read()
@@ -201,10 +204,8 @@ impl SdkBackend for ZmqPipelineBackendClient {
     }
 
     fn send(&self, req: SendRequest) -> Result<MessageId, SdkError> {
-        let value = self.call_rpc(
-            "sdk_send_v2",
-            Some(send::send_params(req, format!("sdk-zmq-{}", self.next_request_id()))),
-        )?;
+        let value =
+            self.call_rpc("sdk_send_v2", Some(send::send_params(req, self.next_message_id())))?;
         Ok(MessageId(Self::parse_required_string(&value, "message_id")?))
     }
 

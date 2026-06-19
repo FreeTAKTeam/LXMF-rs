@@ -769,6 +769,74 @@ fn send_uses_zmq_sdk_method_and_preserves_delivery_options() {
 }
 
 #[test]
+fn send_message_ids_do_not_collide_across_fresh_zmq_clients() {
+    let first_command_endpoint = unused_loopback_endpoint();
+    let first_response_endpoint = unused_loopback_endpoint();
+    let first_captured = Arc::new(Mutex::new(None));
+    let first_server = spawn_single_response_zmq_server(
+        first_command_endpoint.clone(),
+        json!({ "message_id": "first" }),
+        Arc::clone(&first_captured),
+    );
+    let mut first_config =
+        ZmqPipelineBackendConfig::local_tcp(first_command_endpoint, first_response_endpoint);
+    first_config.request_timeout = std::time::Duration::from_secs(2);
+    let first_client = ZmqPipelineBackendClient::new(first_config).expect("first zmq client");
+
+    first_client
+        .send(SendRequest::new(
+            "source-destination",
+            "first-target",
+            json!({ "title": "RCH", "content": "first" }),
+        ))
+        .expect("first send");
+
+    let second_command_endpoint = unused_loopback_endpoint();
+    let second_response_endpoint = unused_loopback_endpoint();
+    let second_captured = Arc::new(Mutex::new(None));
+    let second_server = spawn_single_response_zmq_server(
+        second_command_endpoint.clone(),
+        json!({ "message_id": "second" }),
+        Arc::clone(&second_captured),
+    );
+    let mut second_config =
+        ZmqPipelineBackendConfig::local_tcp(second_command_endpoint, second_response_endpoint);
+    second_config.request_timeout = std::time::Duration::from_secs(2);
+    let second_client = ZmqPipelineBackendClient::new(second_config).expect("second zmq client");
+
+    second_client
+        .send(SendRequest::new(
+            "source-destination",
+            "second-target",
+            json!({ "title": "RCH", "content": "second" }),
+        ))
+        .expect("second send");
+
+    let first_id = first_captured
+        .lock()
+        .expect("first captured")
+        .as_ref()
+        .expect("first request")
+        .params
+        .as_ref()
+        .expect("first params")["id"]
+        .clone();
+    let second_id = second_captured
+        .lock()
+        .expect("second captured")
+        .as_ref()
+        .expect("second request")
+        .params
+        .as_ref()
+        .expect("second params")["id"]
+        .clone();
+
+    assert_ne!(first_id, second_id);
+    first_server.join().expect("first server joined");
+    second_server.join().expect("second server joined");
+}
+
+#[test]
 fn send_preserves_documented_lxmf_field_keys_over_zmq_sdk_method() {
     let command_endpoint = unused_loopback_endpoint();
     let response_endpoint = unused_loopback_endpoint();

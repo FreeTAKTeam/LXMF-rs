@@ -128,6 +128,24 @@ mod tests {
     }
 
     #[test]
+    fn send_params_message_ids_do_not_collide_across_fresh_clients() {
+        let first_backend = RpcBackendClient::new("127.0.0.1:65530");
+        let second_backend = RpcBackendClient::new("127.0.0.1:65530");
+        let first = first_backend.send_params(SendRequest::new(
+            "source-destination",
+            "first-target",
+            json!({ "title": "ops", "content": "first" }),
+        ));
+        let second = second_backend.send_params(SendRequest::new(
+            "source-destination",
+            "second-target",
+            json!({ "title": "ops", "content": "second" }),
+        ));
+
+        assert_ne!(first["id"], second["id"]);
+    }
+
+    #[test]
     fn manual_tick_loop_is_deterministic_for_fixed_budget() {
         let expected_batches = vec![
             test_batch(1, 2, "cursor-1"),
