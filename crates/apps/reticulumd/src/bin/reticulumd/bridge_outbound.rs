@@ -77,7 +77,10 @@ impl OutboundBridge for TransportBridge {
 
         let requested_method = RequestedDeliveryMethod::parse(options.method.as_deref())?;
         let propagation_node_hex = daemon.outbound_propagation_node();
-        let propagation_node_identity = if requested_method == RequestedDeliveryMethod::Propagated {
+        let propagation_node_identity = if requested_method == RequestedDeliveryMethod::Propagated
+            || (requested_method == RequestedDeliveryMethod::Direct
+                && options.try_propagation_on_fail)
+        {
             propagation_node_hex.as_deref().and_then(|node_hex| {
                 let cached = match self.outbound_propagation_identities.lock() {
                     Ok(guard) => guard.get(node_hex).cloned(),

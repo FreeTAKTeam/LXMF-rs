@@ -152,6 +152,48 @@
     }
 
     #[test]
+    fn clear_announces_also_clears_persisted_identity_keys() {
+        let store = MessagesStore::in_memory().expect("in-memory store");
+        store
+            .insert_announce(&AnnounceRecord {
+                id: "ann-identity-clear".to_string(),
+                peer: "aa".repeat(16),
+                timestamp: 1_781_964_554,
+                name: None,
+                name_source: None,
+                first_seen: 1_781_964_554,
+                seen_count: 1,
+                app_data_hex: None,
+                capabilities: Vec::new(),
+                rssi: None,
+                snr: None,
+                q: None,
+                stamp_cost: None,
+                stamp_cost_flexibility: None,
+                peering_cost: None,
+            })
+            .expect("record announce");
+        store
+            .upsert_announce_identity(
+                "AA".repeat(16).as_str(),
+                "BB".repeat(32).as_str(),
+                "CC".repeat(32).as_str(),
+                1_781_964_554,
+            )
+            .expect("upsert announce identity");
+
+        store.clear_announces().expect("clear announces");
+
+        assert!(store.list_announces(10, None, None).expect("announces").is_empty());
+        assert_eq!(
+            store
+                .announce_identity_keys("aa".repeat(16).as_str())
+                .expect("load announce identity"),
+            None
+        );
+    }
+
+    #[test]
     fn inbound_tickets_keep_multiple_generated_tickets_per_destination() {
         let store = MessagesStore::in_memory().expect("in-memory store");
         store.upsert_ticket("peer", "22", 200).expect("insert first ticket");

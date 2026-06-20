@@ -227,6 +227,7 @@ impl MessagesStore {
     pub fn clear_announces(&self) -> rusqlite::Result<()> {
         self.with_write_conn(|conn| {
             conn.execute("DELETE FROM announces", [])?;
+            conn.execute("DELETE FROM announce_identities", [])?;
             Ok(())
         })
     }
