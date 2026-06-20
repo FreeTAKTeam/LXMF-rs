@@ -1,7 +1,6 @@
 use response::ControlResponse;
 
-use std::collections::HashMap;
-
+#[cfg(test)]
 use std::sync::Mutex;
 
 pub(super) fn spawn_control_worker(
@@ -11,7 +10,6 @@ pub(super) fn spawn_control_worker(
 ) {
     tokio::spawn(async move {
         let mut rx = transport.in_link_events();
-        let identified = Arc::new(Mutex::new(HashMap::<AddressHash, Identity>::new()));
         loop {
             let Ok(event) = rx.recv().await else {
                 break;
@@ -55,7 +53,7 @@ pub(super) fn spawn_control_worker(
                     if let Some(identity) =
                         parse_link_identify_payload(payload.as_slice(), &event.id)
                     {
-                        if let Ok(mut guard) = identified.lock() {
+                        if let Ok(mut guard) = control.identified_peer_links.lock() {
                             guard.insert(event.id, identity);
                         }
                     }
@@ -64,7 +62,7 @@ pub(super) fn spawn_control_worker(
                     let Some(request_id) = payload.request_id() else {
                         continue;
                     };
-                    let remote_identity = match identified.lock() {
+                    let remote_identity = match control.identified_peer_links.lock() {
                         Ok(guard) => guard.get(&event.id).cloned(),
                         Err(err) => {
                             log::warn!(
@@ -105,6 +103,9 @@ pub(super) fn spawn_control_worker(
 
 fn clear_validated_peer_link(control: &PropagationControlContext, link_id: &AddressHash) {
     if let Ok(mut guard) = control.validated_peer_links.lock() {
+        guard.remove(link_id);
+    }
+    if let Ok(mut guard) = control.identified_peer_links.lock() {
         guard.remove(link_id);
     }
 }
@@ -222,7 +223,7 @@ pub(super) async fn handle_resource_control_request(
     request_id: [u8; 16],
     propagation_destination: bool,
 ) -> Result<(), std::io::Error> {
-    let remote_identity = remote_identity_for_resource_link(transport, link_id).await;
+    let remote_identity = remote_identity_for_resource_link(control, transport, link_id).await;
     let response = resource_control_response(
         daemon,
         control,
@@ -235,12 +236,19 @@ pub(super) async fn handle_resource_control_request(
 }
 
 async fn remote_identity_for_resource_link(
+    control: &PropagationControlContext,
     transport: &Transport,
     link_id: &AddressHash,
 ) -> Option<Identity> {
-    if let Some(link) = transport.find_in_link(link_id).await {
-        let guard = link.lock().await;
-        return Some(*guard.peer_identity());
+    match control.identified_peer_links.lock() {
+        Ok(guard) => {
+            if let Some(identity) = guard.get(link_id) {
+                return Some(*identity);
+            }
+        }
+        Err(err) => {
+            log::warn!("[daemon-control] failed to lock identified peer map: {err}");
+        }
     }
     if let Some(link) = transport.find_out_link(link_id).await {
         let guard = link.lock().await;

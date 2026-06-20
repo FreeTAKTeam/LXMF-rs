@@ -16,6 +16,8 @@ use rns_transport::destination::SingleInputDestination;
 
 use rns_transport::hash::AddressHash;
 
+use rns_transport::identity::Identity;
+
 use rns_transport::transport::Transport;
 
 use serde_json::{Map as JsonMap, Value as JsonValue};
@@ -64,6 +66,7 @@ pub(super) struct PropagationControlContext {
         Option<Arc<tokio::sync::Mutex<rns_transport::destination::SingleInputDestination>>>,
     pub(super) allowed_control_identities: Vec<String>,
     pub(super) validated_peer_links: Arc<Mutex<HashSet<AddressHash>>>,
+    pub(super) identified_peer_links: Arc<Mutex<HashMap<AddressHash, Identity>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -366,6 +369,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                 delivery_destination: announce_destination.clone(),
                 allowed_control_identities: configured_control_identities,
                 validated_peer_links: Arc::new(Mutex::new(HashSet::new())),
+                identified_peer_links: Arc::new(Mutex::new(HashMap::new())),
             },
             receipt_tx.clone(),
             outbound_resource_map,
