@@ -60,12 +60,18 @@ impl ResourceReceiver {
     ) -> Result<Self, RnsError> {
         let now = Instant::now();
         let resource_mdu = resource_packet_mdu_for_mtu(interface_mtu)?;
-        let hashmap_segment_len = resource_hashmap_segment_len_for_mtu(interface_mtu)?;
+        let local_hashmap_segment_len = resource_hashmap_segment_len_for_mtu(interface_mtu)?;
         let max_parts = max_advertised_parts(adv.transfer_size, resource_mdu)?;
         if adv.parts == 0 || u64::from(adv.parts) > max_parts {
             return Err(RnsError::InvalidArgument);
         }
         let total_parts = adv.parts as usize;
+        let advertised_hashes = adv.hashmap.len() / MAPHASH_LEN;
+        let hashmap_segment_len = if advertised_hashes > 0 && advertised_hashes < total_parts {
+            advertised_hashes
+        } else {
+            local_hashmap_segment_len
+        };
         let mut receiver = Self {
             resource_hash: adv.hash,
             link_id,

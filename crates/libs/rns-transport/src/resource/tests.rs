@@ -213,6 +213,51 @@ mod tests {
     }
 
     #[test]
+    fn resource_receiver_uses_advertised_hashmap_stride_for_updates() {
+        let random_hash = [3u8; RANDOM_HASH_SIZE];
+        let parts = [
+            b"part-00".as_slice(),
+            b"part-01".as_slice(),
+            b"part-02".as_slice(),
+            b"part-03".as_slice(),
+        ];
+        let map_hashes: Vec<[u8; MAPHASH_LEN]> =
+            parts.iter().map(|part| map_hash(part, &random_hash)).collect();
+        let mut first_segment = Vec::with_capacity(MAPHASH_LEN * 2);
+        first_segment.extend_from_slice(&map_hashes[0]);
+        first_segment.extend_from_slice(&map_hashes[1]);
+        let mut second_segment = Vec::with_capacity(MAPHASH_LEN * 2);
+        second_segment.extend_from_slice(&map_hashes[2]);
+        second_segment.extend_from_slice(&map_hashes[3]);
+        let adv = ResourceAdvertisement {
+            transfer_size: parts.iter().map(|part| part.len() as u64).sum(),
+            data_size: parts.iter().map(|part| part.len() as u64).sum(),
+            parts: parts.len() as u32,
+            hash: Hash::new_from_slice(&[9u8; 32]),
+            random_hash,
+            original_hash: Hash::new_from_slice(&[9u8; 32]),
+            segment_index: 1,
+            total_segments: 2,
+            request_id: None,
+            flags: 0,
+            hashmap: first_segment,
+        };
+
+        let mut receiver =
+            ResourceReceiver::new(&adv, AddressHash::new_from_slice(&[4u8; ADDRESS_HASH_SIZE]))
+                .expect("receiver accepts smaller advertised hashmap segment");
+        assert_eq!(receiver.hashmap_segment_len, 2);
+
+        receiver.handle_hash_update(&ResourceHashUpdate {
+            resource_hash: adv.hash,
+            segment: 1,
+            hashmap: second_segment,
+        });
+
+        assert_eq!(receiver.hashmap, map_hashes.into_iter().map(Some).collect::<Vec<_>>());
+    }
+
+    #[test]
     fn resource_completion_preserves_request_response_metadata() {
         let signer = PrivateIdentity::new_from_rand(OsRng);
         let identity = *signer.as_identity();
