@@ -402,19 +402,62 @@ mod tests {
     }
 
     #[test]
-    fn resource_receiver_bounds_part_count_by_transfer_size_and_mdu() {
+    fn resource_receiver_accepts_sender_with_smaller_effective_sdu() {
+        let signer = PrivateIdentity::new_from_rand(OsRng);
+        let identity = *signer.as_identity();
+        let destination = DestinationDesc {
+            identity,
+            address_hash: identity.address_hash,
+            name: DestinationName::new("lxmf", "resource"),
+        };
+        let (tx, _) = tokio::sync::broadcast::channel(1);
+        let mut link = Link::new(destination, tx);
+        link.request();
+
+        let advertised_parts = 16;
+        let adv = ResourceAdvertisement {
+            transfer_size: PACKET_MDU as u64 + 1,
+            data_size: PACKET_MDU as u64 + 1,
+            parts: advertised_parts,
+            hash: Hash::new_from_slice(&[4u8; 32]),
+            random_hash: [0u8; RANDOM_HASH_SIZE],
+            original_hash: Hash::new_from_slice(&[4u8; 32]),
+            segment_index: 1,
+            total_segments: 1,
+            request_id: None,
+            flags: 0,
+            hashmap: vec![0u8; MAPHASH_LEN * advertised_parts as usize],
+        };
+
+        let packet =
+            resource_packet(PacketContext::ResourceAdvrtisement, &adv.pack().expect("advertisement"), *link.id());
+
+        let mut manager = ResourceManager::new_with_config(Duration::from_secs(1), 1);
+        let responses = manager.handle_packet(&packet, &mut link);
+
+        assert_eq!(responses.len(), 1);
+        assert_eq!(manager.incoming.len(), 1);
+    }
+
+    #[test]
+    fn resource_receiver_bounds_part_count_by_transfer_size_and_global_cap() {
         assert_eq!(max_advertised_parts(1, PACKET_MDU).expect("one byte transfer"), 1);
         assert_eq!(
             max_advertised_parts(PACKET_MDU as u64, PACKET_MDU).expect("one packet transfer"),
-            1
+            PACKET_MDU as u64
         );
         assert_eq!(
             max_advertised_parts(PACKET_MDU as u64 + 1, PACKET_MDU)
-                .expect("two packet transfer"),
-            2
+                .expect("larger transfer"),
+            PACKET_MDU as u64 + 1
         );
         assert!(max_advertised_parts(0, PACKET_MDU).is_err());
         assert!(max_advertised_parts(MAX_INBOUND_RESOURCE_TRANSFER_SIZE + 1, PACKET_MDU).is_err());
+        assert_eq!(
+            max_advertised_parts(MAX_INBOUND_RESOURCE_TRANSFER_SIZE, PACKET_MDU)
+                .expect("maximum transfer"),
+            MAX_INBOUND_RESOURCE_PARTS
+        );
     }
 
     include!("tests_mtu.rs");

@@ -190,9 +190,11 @@ impl ResourceManager {
             return;
         };
         resource_diag(&format!(
-            "advertisement link={} hash={} parts={} flags=0x{:02x} request={} response={} metadata={} compressed={} encrypted={}",
+            "advertisement link={} hash={} transfer_size={} data_size={} parts={} flags=0x{:02x} request={} response={} metadata={} compressed={} encrypted={}",
             link.id(),
             advertisement.hash,
+            advertisement.transfer_size,
+            advertisement.data_size,
             advertisement.parts,
             advertisement.flags,
             advertisement.is_request(),
