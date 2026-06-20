@@ -163,31 +163,15 @@ impl DeliveryTask {
                 )
             })?;
         let accepted_stamp_cost = self.daemon.propagation_min_accepted_stamp_cost();
-        let mut transient_ids = Vec::with_capacity(messages.len());
         for message in messages.iter() {
             let transient_id = self
                 .daemon
                 .canonical_propagation_payload_bytes_at_cost(message, accepted_stamp_cost)?;
-            let transient_id = self.daemon.ingest_client_propagation_payload_bytes_at_cost(
+            self.daemon.ingest_client_propagation_payload_bytes_at_cost(
                 message,
                 Some(transient_id.as_str()),
                 accepted_stamp_cost,
             )?;
-            transient_ids.push(transient_id);
-        }
-        if !transient_ids.is_empty() {
-            let daemon = Arc::clone(&self.daemon);
-            tokio::task::spawn_blocking(move || {
-                for transient_id in transient_ids {
-                    if let Err(err) = daemon
-                        .queue_stored_propagation_entry_for_active_peers(transient_id.as_str())
-                    {
-                        log::warn!(
-                            "[daemon] failed to queue local propagation payload for peers: {err}"
-                        );
-                    }
-                }
-            });
         }
         log_delivery_trace(
             &self.message_id,

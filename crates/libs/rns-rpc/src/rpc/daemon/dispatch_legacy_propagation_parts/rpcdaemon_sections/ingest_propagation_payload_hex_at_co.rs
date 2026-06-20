@@ -144,13 +144,6 @@ impl RpcDaemon {
         Ok(transient_id)
     }
 
-    pub fn queue_stored_propagation_entry_for_active_peers(
-        &self,
-        transient_id: &str,
-    ) -> Result<(), std::io::Error> {
-        self.queue_propagation_entry_for_active_peers(transient_id)
-    }
-
     fn propagation_payload_destination_is_ignored(&self, payload: &[u8]) -> bool {
         if payload.len() < 16 {
             return false;
