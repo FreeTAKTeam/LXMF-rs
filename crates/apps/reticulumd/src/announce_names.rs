@@ -1,11 +1,13 @@
-pub fn encode_delivery_display_name_app_data(display_name: &str) -> Option<Vec<u8>> {
+pub use lxmf::announce::AnnounceEncodeError;
+
+pub fn encode_delivery_display_name_app_data(display_name: &str) -> Result<Vec<u8>, AnnounceEncodeError> {
     encode_delivery_announce_app_data(display_name, None)
 }
 
 pub fn encode_delivery_announce_app_data(
     display_name: &str,
     stamp_cost: Option<u32>,
-) -> Option<Vec<u8>> {
+) -> Result<Vec<u8>, AnnounceEncodeError> {
     encode_delivery_announce_app_data_with_capabilities(display_name, stamp_cost, &[])
 }
 
@@ -13,8 +15,8 @@ pub fn encode_delivery_announce_app_data_with_capabilities(
     display_name: &str,
     stamp_cost: Option<u32>,
     capabilities: &[String],
-) -> Option<Vec<u8>> {
-    let normalized = normalize_display_name(display_name)?;
+) -> Result<Vec<u8>, AnnounceEncodeError> {
+    let normalized = normalize_display_name(display_name).ok_or(AnnounceEncodeError::InvalidDisplayName)?;
     let stamp_cost = stamp_cost
         .filter(|cost| *cost > 0 && *cost < 255)
         .map(rmpv::Value::from)
@@ -32,7 +34,7 @@ pub fn encode_delivery_announce_app_data_with_capabilities(
         peer_data.push(rmpv::Value::Binary(encode_msgpack(&payload, "delivery capabilities")?));
     }
     let peer_data = rmpv::Value::Array(peer_data);
-    encode_msgpack(&peer_data, "delivery announce")
+    Ok(encode_msgpack(&peer_data, "delivery announce")?)
 }
 
 pub fn normalize_capabilities(capabilities: &[String]) -> Vec<String> {
@@ -84,7 +86,7 @@ impl Default for PropagationNodeAnnounceConfig {
 pub fn encode_propagation_node_app_data(
     display_name: Option<&str>,
     config: PropagationNodeAnnounceConfig,
-) -> Option<Vec<u8>> {
+) -> Result<Vec<u8>, rmp_serde::encode::Error> {
     let mut metadata = Vec::new();
     if let Some(name) = display_name.and_then(normalize_display_name) {
         metadata.push((rmpv::Value::from(1_i64), rmpv::Value::Binary(name.into_bytes())));
@@ -363,10 +365,9 @@ fn parse_text_to_u32(value: &str) -> Option<u32> {
     value.trim().parse::<u32>().ok()
 }
 
-fn encode_msgpack(value: &rmpv::Value, context: &str) -> Option<Vec<u8>> {
-    let encoded = rmp_serde::to_vec(value)
-        .inspect_err(|err| log::warn!("[daemon] failed to encode {context}: {err}"));
-    encoded.ok()
+fn encode_msgpack(value: &rmpv::Value, context: &str) -> Result<Vec<u8>, rmp_serde::encode::Error> {
+    rmp_serde::to_vec(value)
+        .inspect_err(|err| log::warn!("[daemon] failed to encode {context}: {err}"))
 }
 
 fn decode_msgpack<T>(data: &[u8], context: &str) -> Option<T>

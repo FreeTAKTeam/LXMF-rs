@@ -204,7 +204,7 @@ fn spawn_bridge_propagation_announce_scheduler(bridge: Arc<TransportBridge>, int
 fn encode_propagation_node_app_data(
     display_name: Option<&str>,
     config: PropagationNodeAnnounceConfig,
-) -> Option<Vec<u8>> {
+) -> Result<Vec<u8>, rmp_serde::encode::Error> {
     encode_python_propagation_node_app_data(
         display_name,
         PropagationNodeAnnounceConfig {

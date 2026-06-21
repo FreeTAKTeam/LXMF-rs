@@ -12,12 +12,15 @@ impl TransportBridge {
         let Some((display_name, _)) = parse_peer_name_from_app_data(app_data.as_slice()) else {
             return Some(app_data);
         };
-        encode_delivery_announce_app_data_with_capabilities(
+        Some(encode_delivery_announce_app_data_with_capabilities(
             display_name.as_str(),
             self.current_inbound_stamp_cost(),
             &self.announce_capabilities,
         )
-        .or(Some(app_data))
+        .unwrap_or_else(|e| {
+            log::warn!("[daemon] failed to encode delivery announce app data: {e}");
+            app_data
+        }))
     }
 
     fn current_inbound_stamp_cost(&self) -> Option<u32> {
@@ -48,7 +51,7 @@ impl TransportBridge {
             }
         };
         let state = daemon.current_propagation_state();
-        encode_python_propagation_node_app_data(
+        Some(encode_python_propagation_node_app_data(
             display_name.as_deref(),
             PropagationNodeAnnounceConfig {
                 enabled: state.enabled,
@@ -66,7 +69,10 @@ impl TransportBridge {
                     .unwrap_or_else(|| PropagationNodeAnnounceConfig::default().peering_cost),
             },
         )
-        .or(Some(fallback))
+        .unwrap_or_else(|e| {
+            log::warn!("[daemon] failed to encode propagation announce app data: {e}");
+            fallback
+        }))
     }
 
     #[cfg(test)]

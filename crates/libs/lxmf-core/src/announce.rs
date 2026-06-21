@@ -12,6 +12,37 @@ pub struct AnnounceSlot {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AnnounceParseError(&'static str);
 
+#[derive(Debug)]
+pub enum AnnounceEncodeError {
+    InvalidDisplayName,
+    Encode(rmp_serde::encode::Error),
+}
+
+impl fmt::Display for AnnounceEncodeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidDisplayName => f.write_str("display name is empty or contains control characters"),
+            Self::Encode(err) => write!(f, "msgpack encode error: {err}"),
+        }
+    }
+}
+
+impl From<rmp_serde::encode::Error> for AnnounceEncodeError {
+    fn from(err: rmp_serde::encode::Error) -> Self {
+        Self::Encode(err)
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for AnnounceEncodeError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Encode(err) => Some(err),
+            Self::InvalidDisplayName => None,
+        }
+    }
+}
+
 impl fmt::Display for AnnounceParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.0)
@@ -54,11 +85,11 @@ pub fn normalize_display_name(value: &str) -> Option<String> {
     }
 }
 
-pub fn encode_delivery_display_name_app_data(display_name: &str) -> Option<Vec<u8>> {
-    let normalized = normalize_display_name(display_name)?;
+pub fn encode_delivery_display_name_app_data(display_name: &str) -> Result<Vec<u8>, AnnounceEncodeError> {
+    let normalized = normalize_display_name(display_name).ok_or(AnnounceEncodeError::InvalidDisplayName)?;
     let peer_data =
         rmpv::Value::Array(vec![rmpv::Value::Binary(normalized.into_bytes()), rmpv::Value::Nil]);
-    encode_msgpack(&peer_data)
+    Ok(encode_msgpack(&peer_data)?)
 }
 
 pub fn display_name_from_delivery_app_data(data: &[u8]) -> Option<String> {
@@ -88,9 +119,8 @@ pub fn display_name_from_delivery_app_data(data: &[u8]) -> Option<String> {
     }
 }
 
-fn encode_msgpack(value: &rmpv::Value) -> Option<Vec<u8>> {
-    let encoded = rmp_serde::to_vec(value);
-    encoded.ok()
+fn encode_msgpack(value: &rmpv::Value) -> Result<Vec<u8>, rmp_serde::encode::Error> {
+    rmp_serde::to_vec(value)
 }
 
 fn decode_msgpack<T>(data: &[u8]) -> Option<T>

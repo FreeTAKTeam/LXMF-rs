@@ -137,7 +137,9 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         propagation_node_config.allowed_control_identities.clone();
     let propagation_announce_config = propagation_node_config.announce_config;
     let propagation_announce_app_data =
-        encode_propagation_node_app_data(local_display_name.as_deref(), propagation_announce_config);
+        encode_propagation_node_app_data(local_display_name.as_deref(), propagation_announce_config)
+            .inspect_err(|e| log::warn!("[daemon] failed to encode propagation announce app data: {e}"))
+            .ok();
 
     let startup = start_transport_and_interfaces(TransportStartupInput {
         args: &args,
@@ -227,6 +229,8 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                         None,
                         &local_announce_capabilities,
                     )
+                    .inspect_err(|e| log::warn!("[daemon] failed to encode delivery announce app data: {e}"))
+                    .ok()
                 }),
                 local_announce_capabilities.clone(),
                 propagation_destination.clone(),

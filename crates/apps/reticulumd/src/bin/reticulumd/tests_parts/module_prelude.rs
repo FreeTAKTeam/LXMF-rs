@@ -283,7 +283,8 @@ async fn test_transport_bridge_fixture_with_peer(
         encode_propagation_node_app_data(
             Some("Bridge Node"),
             PropagationNodeAnnounceConfig::default(),
-        ),
+        )
+        .ok(),
         None,
         peer_crypto,
         receipt_map,

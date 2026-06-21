@@ -39,6 +39,8 @@ pub(super) async fn register_transport_destinations(
                     None,
                     local_announce_capabilities,
                 )
+                .inspect_err(|e| log::warn!("[daemon] failed to encode delivery announce app data: {e}"))
+                .ok()
             }),
         )
         .await;
@@ -64,6 +66,8 @@ pub(super) async fn register_transport_destinations(
                         local_display_name,
                         propagation_announce_config,
                     )
+                    .inspect_err(|e| log::warn!("[daemon] failed to encode propagation announce app data: {e}"))
+                    .ok()
                 }),
             )
             .await;

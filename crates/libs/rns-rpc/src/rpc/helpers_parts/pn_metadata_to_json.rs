@@ -258,13 +258,15 @@ fn msgpack_key_to_string(key: &MsgPackValue) -> Option<String> {
 }
 
 fn decode_utf8(bytes: &[u8]) -> Option<&str> {
-    let decoded = std::str::from_utf8(bytes);
-    decoded.ok()
+    std::str::from_utf8(bytes)
+        .inspect_err(|err| log::debug!("[daemon] invalid UTF-8 in peer metadata: {err}"))
+        .ok()
 }
 
 fn decode_utf8_owned(bytes: Vec<u8>) -> Option<String> {
-    let decoded = String::from_utf8(bytes);
-    decoded.ok()
+    String::from_utf8(bytes)
+        .inspect_err(|err| log::debug!("[daemon] invalid UTF-8 in peer metadata: {err}"))
+        .ok()
 }
 
 fn encode_hex(bytes: impl AsRef<[u8]>) -> String {
