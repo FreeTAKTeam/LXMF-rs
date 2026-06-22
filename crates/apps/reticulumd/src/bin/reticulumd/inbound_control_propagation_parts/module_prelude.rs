@@ -2,6 +2,8 @@ use super::*;
 
 use reticulum_daemon::lxmf_stamps::validate_peering_key;
 
+use reticulum_daemon::text::decode_utf8;
+
 use rns_transport::destination::DestinationName;
 
 use sha2::Digest;
@@ -303,7 +305,8 @@ fn parse_transfer_limit_bytes(value: &rmpv::Value) -> Option<usize> {
         rmpv::Value::F32(value) => Some((*value).into()),
         rmpv::Value::Integer(value) => value.as_f64(),
         rmpv::Value::String(value) => value.as_str()?.trim().parse::<f64>().ok(),
-        rmpv::Value::Binary(value) => decode_utf8(value, "propagation transfer limit")?
+        rmpv::Value::Binary(value) => decode_utf8(value, "propagation transfer limit")
+            .ok()?
             .trim()
             .parse::<f64>()
             .ok(),
@@ -314,16 +317,6 @@ fn parse_transfer_limit_bytes(value: &rmpv::Value) -> Option<usize> {
         None
     } else {
         Some((limit.max(0.0) * 1000.0) as usize)
-    }
-}
-
-fn decode_utf8<'a>(data: &'a [u8], context: &str) -> Option<&'a str> {
-    match std::str::from_utf8(data) {
-        Ok(text) => Some(text),
-        Err(err) => {
-            log::warn!("[daemon-control] invalid UTF-8 in {context}: {err}");
-            None
-        }
     }
 }
 

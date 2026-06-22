@@ -1,5 +1,7 @@
 pub use lxmf::announce::AnnounceEncodeError;
 
+use crate::text::{decode_utf8, decode_utf8_owned};
+
 pub fn encode_delivery_display_name_app_data(display_name: &str) -> Result<Vec<u8>, AnnounceEncodeError> {
     encode_delivery_announce_app_data(display_name, None)
 }
@@ -142,7 +144,7 @@ pub fn parse_peer_name_from_app_data(app_data: &[u8]) -> Option<(String, &'stati
         return Some((name, "pn_meta"));
     }
 
-    let text = decode_utf8(app_data, "announce app_data utf8 fallback")?;
+    let text = decode_utf8(app_data, "announce app_data utf8 fallback").ok()?;
     let name = normalize_display_name(text)?;
     Some((name, "app_data_utf8"))
 }
@@ -206,12 +208,14 @@ fn display_name_from_app_data(data: &[u8]) -> Option<String> {
         let first = entries.first()?;
         match first {
             rmpv::Value::Nil => None,
-            rmpv::Value::Binary(bytes) => decode_utf8_owned(bytes.clone(), "delivery display name"),
+            rmpv::Value::Binary(bytes) => {
+                decode_utf8_owned(bytes.clone(), "delivery display name").ok()
+            }
             rmpv::Value::String(text) => text.as_str().map(|value| value.to_string()),
             _ => None,
         }
     } else {
-        decode_utf8(data, "delivery display name fallback").map(|value| value.to_string())
+        decode_utf8(data, "delivery display name fallback").ok().map(|value| value.to_string())
     }
 }
 
@@ -256,7 +260,7 @@ fn keys_match(candidate: &rmpv::Value, expected: &rmpv::Value) -> bool {
             })
         }
         (rmpv::Value::Binary(candidate), rmpv::Value::String(expected)) => {
-            decode_utf8(candidate, "propagation metadata key").is_some_and(|candidate| {
+            decode_utf8(candidate, "propagation metadata key").is_ok_and(|candidate| {
                 candidate.eq_ignore_ascii_case(expected.as_str().unwrap_or_default().trim())
             })
         }
@@ -272,7 +276,9 @@ fn keys_match(candidate: &rmpv::Value, expected: &rmpv::Value) -> bool {
 
 fn string_like_value_to_string(value: &rmpv::Value) -> Option<String> {
     match value {
-        rmpv::Value::Binary(bytes) => decode_utf8_owned(bytes.clone(), "string-like msgpack value"),
+        rmpv::Value::Binary(bytes) => {
+            decode_utf8_owned(bytes.clone(), "string-like msgpack value").ok()
+        }
         rmpv::Value::String(text) => text.as_str().map(|s| s.to_string()),
         rmpv::Value::Integer(value) => value.as_i64().map(|value| value.to_string()),
         rmpv::Value::F64(value) => {
@@ -330,6 +336,7 @@ fn cost_map_key_text(key: &rmpv::Value) -> Option<String> {
     match key {
         rmpv::Value::String(text) => text.as_str().map(|key| key.trim().to_ascii_lowercase()),
         rmpv::Value::Binary(bytes) => decode_utf8_owned(bytes.clone(), "cost map key")
+            .ok()
             .map(|key| key.trim().to_ascii_lowercase()),
         rmpv::Value::Integer(value) => value
             .as_u64()
@@ -348,7 +355,7 @@ fn rmp_value_to_u32(value: &rmpv::Value) -> Option<u32> {
             rmpv::Value::F64(value) => parse_f64_to_u32(*value),
             rmpv::Value::F32(value) => parse_f64_to_u32(f64::from(*value)),
             rmpv::Value::Boolean(value) => Some(u32::from(*value)),
-            rmpv::Value::Binary(bytes) => parse_text_to_u32(decode_utf8(bytes, "cost value")?),
+            rmpv::Value::Binary(bytes) => parse_text_to_u32(decode_utf8(bytes, "cost value").ok()?),
             rmpv::Value::String(text) => parse_text_to_u32(text.as_str()?),
             _ => None,
         })
@@ -377,18 +384,6 @@ where
     let decoded = rmp_serde::from_slice(data)
         .inspect_err(|err| log::warn!("[daemon] failed to decode {context}: {err}"));
     decoded.ok()
-}
-
-fn decode_utf8<'a>(data: &'a [u8], context: &str) -> Option<&'a str> {
-    let text = std::str::from_utf8(data)
-        .inspect_err(|err| log::warn!("[daemon] invalid UTF-8 in {context}: {err}"));
-    text.ok()
-}
-
-fn decode_utf8_owned(data: Vec<u8>, context: &str) -> Option<String> {
-    let text = String::from_utf8(data)
-        .inspect_err(|err| log::warn!("[daemon] invalid UTF-8 in {context}: {err}"));
-    text.ok()
 }
 
 #[cfg(test)]

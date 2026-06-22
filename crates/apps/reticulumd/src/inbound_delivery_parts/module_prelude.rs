@@ -16,6 +16,8 @@ use crate::lxmf_bridge::rmpv_to_json;
 
 use crate::lxmf_stamps::{invalid_stamp_value, validate_stamp};
 
+use crate::text::decode_utf8_owned;
+
 pub fn decode_inbound_payload(
     destination: [u8; 16],
     payload: &[u8],
@@ -118,8 +120,8 @@ fn merge_inbound_lxmf_metadata(
     fields: Option<JsonValue>,
     message: &lxmf::inbound_decode::DecodedInboundMessage,
 ) -> Option<JsonValue> {
-    let title_utf8 = decode_utf8_owned(message.title.clone(), "inbound title");
-    let content_utf8 = decode_utf8_owned(message.content.clone(), "inbound content");
+    let title_utf8 = decode_utf8_owned(message.title.clone(), "inbound title").ok();
+    let content_utf8 = decode_utf8_owned(message.content.clone(), "inbound content").ok();
     let needs_metadata =
         title_utf8.is_none() || content_utf8.is_none() || message.timestamp_f64.fract() != 0.0;
     if !needs_metadata {
@@ -243,15 +245,5 @@ fn inbound_mode_label(mode: InboundPayloadMode) -> &'static str {
     match mode {
         InboundPayloadMode::FullWire => "full_wire",
         InboundPayloadMode::DestinationStripped => "destination_stripped",
-    }
-}
-
-fn decode_utf8_owned(data: Vec<u8>, context: &str) -> Option<String> {
-    match String::from_utf8(data) {
-        Ok(text) => Some(text),
-        Err(err) => {
-            log::warn!("[daemon-rx] invalid UTF-8 in {context}: {err}");
-            None
-        }
     }
 }

@@ -21,8 +21,15 @@ box → commit). Stop on red; never commit a broken tree.
 - [x] **S0** Finish in-flight encode work: share one `AnnounceEncodeError`
   (de-dup lxmf-core vs reticulumd). (pn_metadata `decode_utf8*` → `Result` folded
   into S1/S4 where the shared helper lands.)
-- [ ] **S1** Pattern **A** — shared `decode_utf8`/`decode_utf8_owned -> Result`,
-  delete the ~8 copies, update callers.
+- [x] **S1** Pattern **A** — `decode_utf8`/`decode_utf8_owned -> Result`,
+  deleted the copies, updated callers. (committed)
+  - No single cross-crate helper is possible (rns-rpc depends on `lxmf-reference`,
+    not lxmf-core; no shared foundation crate), so consolidated **per crate**:
+    new `reticulumd::text` (6 copies → 1, keeps `context` + warn log); rns-rpc
+    shared `decode_utf8`/`_owned` in the `include!`d helpers module (3 → 1, keeps
+    debug log); lxmf-core `announce::decode_utf8_owned` → `Result`.
+  - Callers still returning `Option` use `.ok()` / `.is_ok_and()` for now; these
+    interim `.ok()`s are removed as each caller is converted in S2–S5.
 - [ ] **S2** Pattern **B** (lxmf-core) — `decode_msgpack<T>`, `rmpv_to_json*`,
   `decode_*` and `decode_msgpack_value*` in `wire_fields_parts` + `inbound_decode.rs`.
 - [ ] **S3** Pattern **B/C** (reticulumd) — `announce_names.rs` decode/parse cluster.

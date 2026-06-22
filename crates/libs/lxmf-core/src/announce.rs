@@ -1,4 +1,4 @@
-use alloc::string::String;
+use alloc::string::{FromUtf8Error, String};
 use alloc::vec;
 use alloc::vec::Vec;
 use core::fmt;
@@ -103,7 +103,7 @@ pub fn display_name_from_delivery_app_data(data: &[u8]) -> Option<String> {
             let first = values.first()?;
             match first {
                 rmpv::Value::Binary(bytes) => {
-                    let raw = decode_utf8_owned(bytes.clone())?;
+                    let raw = decode_utf8_owned(bytes.clone()).ok()?;
                     normalize_display_name(raw.as_str())
                 }
                 rmpv::Value::String(value) => normalize_display_name(value.as_str()?),
@@ -111,7 +111,7 @@ pub fn display_name_from_delivery_app_data(data: &[u8]) -> Option<String> {
             }
         }
         rmpv::Value::Binary(bytes) => {
-            let raw = decode_utf8_owned(bytes)?;
+            let raw = decode_utf8_owned(bytes).ok()?;
             normalize_display_name(raw.as_str())
         }
         rmpv::Value::String(value) => normalize_display_name(value.as_str()?),
@@ -131,9 +131,8 @@ where
     decoded.ok()
 }
 
-fn decode_utf8_owned(data: Vec<u8>) -> Option<String> {
-    let text = String::from_utf8(data);
-    text.ok()
+fn decode_utf8_owned(data: Vec<u8>) -> Result<String, FromUtf8Error> {
+    String::from_utf8(data)
 }
 
 #[cfg(test)]

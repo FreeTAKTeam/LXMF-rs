@@ -7,3 +7,4 @@ pub mod lxmf_stamps;
 pub mod paper_interchange;
 pub mod receipt_bridge;
 pub mod rns_crypto;
+pub mod text;

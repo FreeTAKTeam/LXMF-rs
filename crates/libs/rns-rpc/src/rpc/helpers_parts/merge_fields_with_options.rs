@@ -236,7 +236,7 @@ fn parse_bool_capability_flag(value: &MsgPackValue) -> bool {
             .is_some_and(|value| value == 1),
         MsgPackValue::F64(value) => *value == 1.0,
         MsgPackValue::F32(value) => f64::from(*value) == 1.0,
-        MsgPackValue::Binary(text) => parse_fuzzy_bool(decode_utf8_field(text)),
+        MsgPackValue::Binary(text) => parse_fuzzy_bool(decode_utf8(text, "app_data field").ok()),
         MsgPackValue::String(text) => parse_fuzzy_bool(text.as_str()),
         _ => false,
     }
@@ -285,7 +285,9 @@ fn parse_fuzzy_u32(value: &MsgPackValue) -> Option<u32> {
         MsgPackValue::F64(value) => parse_f64_to_u32(*value),
         MsgPackValue::F32(value) => parse_f64_to_u32(f64::from(*value)),
         MsgPackValue::Boolean(value) => Some(u32::from(*value)),
-        MsgPackValue::Binary(bytes) => parse_text_to_u32(decode_utf8_field(bytes)?),
+        MsgPackValue::Binary(bytes) => {
+            parse_text_to_u32(decode_utf8(bytes, "app_data field").ok()?)
+        }
         MsgPackValue::String(text) => parse_text_to_u32(text.as_str()?),
         _ => None,
     }
@@ -300,7 +302,9 @@ fn parse_fuzzy_nonnegative_f64(value: &MsgPackValue) -> Option<f64> {
         MsgPackValue::F64(value) => *value,
         MsgPackValue::F32(value) => f64::from(*value),
         MsgPackValue::Boolean(value) => f64::from(u8::from(*value)),
-        MsgPackValue::Binary(bytes) => decode_utf8_field(bytes)?.trim().parse().ok()?,
+        MsgPackValue::Binary(bytes) => {
+            decode_utf8(bytes, "app_data field").ok()?.trim().parse().ok()?
+        }
         MsgPackValue::String(text) => text.as_str()?.trim().parse().ok()?,
         _ => return None,
     };
@@ -337,7 +341,7 @@ fn parse_fuzzy_i64(value: &MsgPackValue) -> Option<i64> {
         }
         MsgPackValue::Boolean(value) => Some(if *value { 1 } else { 0 }),
         MsgPackValue::Binary(bytes) => {
-            decode_utf8_field(bytes)?.trim().parse::<i64>().ok()
+            decode_utf8(bytes, "app_data field").ok()?.trim().parse::<i64>().ok()
         }
         MsgPackValue::String(text) => text.as_str()?.trim().parse::<i64>().ok(),
         _ => None,
@@ -492,9 +496,4 @@ fn parse_peer_name_from_app_data_hex(app_data_hex: Option<&str>) -> Option<(Stri
         return Some((name, "delivery_app_data"));
     }
     None
-}
-fn decode_utf8_field(bytes: &[u8]) -> Option<&str> {
-    let decoded = std::str::from_utf8(bytes)
-        .inspect_err(|err| log::debug!("invalid UTF-8 in app_data field: {err}"));
-    decoded.ok()
 }

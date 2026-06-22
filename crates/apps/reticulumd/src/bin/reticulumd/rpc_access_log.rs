@@ -1,3 +1,4 @@
+use reticulum_daemon::text::decode_utf8;
 use rns_rpc::rpc::codec;
 use rns_rpc::{http, RpcRequest, RpcResponse};
 use serde_json::json;
@@ -105,7 +106,7 @@ pub(super) fn emit_rpc_access_log(
 }
 
 fn parse_http_request_line(headers: &[u8]) -> Option<(&str, &str)> {
-    let text = decode_utf8(headers, "RPC request headers")?;
+    let text = decode_utf8(headers, "RPC request headers").ok()?;
     let line = text.lines().next()?;
     let mut parts = line.split_whitespace();
     let method = parts.next()?;
@@ -114,7 +115,7 @@ fn parse_http_request_line(headers: &[u8]) -> Option<(&str, &str)> {
 }
 
 fn parse_status_code(response: &[u8]) -> Option<u16> {
-    let text = decode_utf8(response, "RPC response status")?;
+    let text = decode_utf8(response, "RPC response status").ok()?;
     let line = text.lines().next()?;
     let mut parts = line.split_whitespace();
     let _http_version = parts.next()?;
@@ -137,16 +138,6 @@ fn parse_rpc_response_error(response: &[u8]) -> Option<(String, String)> {
     let rpc_response = codec::decode_frame::<RpcResponse>(&response[body_start..body_end]).ok()?;
     let error = rpc_response.error?;
     Some((error.code, error.message))
-}
-
-fn decode_utf8<'a>(data: &'a [u8], context: &str) -> Option<&'a str> {
-    match std::str::from_utf8(data) {
-        Ok(text) => Some(text),
-        Err(err) => {
-            log::warn!("[daemon-rpc] invalid UTF-8 in {context}: {err}");
-            None
-        }
-    }
 }
 
 fn pretty_console_logs_enabled() -> bool {

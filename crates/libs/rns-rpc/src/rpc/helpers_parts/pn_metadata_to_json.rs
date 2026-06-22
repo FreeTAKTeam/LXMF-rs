@@ -22,7 +22,7 @@ fn pn_metadata_key_to_string(key: &MsgPackValue) -> Option<String> {
     match key {
         MsgPackValue::Integer(value) => value.as_u64().map(|value| value.to_string()),
         MsgPackValue::String(text) => text.as_str().map(str::to_string),
-        MsgPackValue::Binary(bytes) => decode_utf8_owned(bytes.clone()),
+        MsgPackValue::Binary(bytes) => decode_utf8_owned(bytes.clone(), "peer metadata").ok(),
         _ => None,
     }
 }
@@ -38,7 +38,9 @@ fn pn_metadata_value_to_json(value: &MsgPackValue) -> Option<JsonValue> {
         MsgPackValue::F32(value) => Some(json!(f64::from(*value))),
         MsgPackValue::F64(value) => Some(json!(value)),
         MsgPackValue::String(text) => text.as_str().map(JsonValue::from),
-        MsgPackValue::Binary(bytes) => decode_utf8_owned(bytes.clone()).map(JsonValue::from),
+        MsgPackValue::Binary(bytes) => {
+            decode_utf8_owned(bytes.clone(), "peer metadata").ok().map(JsonValue::from)
+        }
         _ => None,
     }
 }
@@ -63,16 +65,15 @@ fn is_pn_name_metadata_key(key: &MsgPackValue) -> bool {
         MsgPackValue::String(text) => text
             .as_str()
             .is_some_and(|value| matches!(value.trim(), "name" | "n" | "display_name")),
-        MsgPackValue::Binary(bytes) => {
-            decode_utf8(bytes).is_some_and(|value| matches!(value.trim(), "name" | "n" | "display_name"))
-        }
+        MsgPackValue::Binary(bytes) => decode_utf8(bytes, "peer metadata")
+            .is_ok_and(|value| matches!(value.trim(), "name" | "n" | "display_name")),
         _ => false,
     }
 }
 
 fn msgpack_value_to_clean_name(value: &MsgPackValue) -> Option<String> {
     let name = match value {
-        MsgPackValue::Binary(bytes) => decode_utf8_owned(bytes.clone())?,
+        MsgPackValue::Binary(bytes) => decode_utf8_owned(bytes.clone(), "peer metadata").ok()?,
         MsgPackValue::String(text) => text.as_str()?.to_string(),
         _ => return None,
     };
@@ -170,7 +171,7 @@ fn is_capability_key(key: &MsgPackValue) -> bool {
 fn capability_value_to_string(value: &MsgPackValue) -> Option<String> {
     match value {
         MsgPackValue::String(text) => text.as_str().map(str::to_string),
-        MsgPackValue::Binary(bytes) => decode_utf8_owned(bytes.clone()),
+        MsgPackValue::Binary(bytes) => decode_utf8_owned(bytes.clone(), "peer metadata").ok(),
         _ => None,
     }
 }
@@ -252,21 +253,24 @@ fn parse_capabilities_from_tagged_text(text: &str) -> Vec<String> {
 fn msgpack_key_to_string(key: &MsgPackValue) -> Option<String> {
     match key {
         MsgPackValue::String(key) => key.as_str().map(|key| key.trim().to_ascii_lowercase()),
-        MsgPackValue::Binary(key) => decode_utf8_owned(key.clone()).map(|key| key.trim().to_ascii_lowercase()),
+        MsgPackValue::Binary(key) => decode_utf8_owned(key.clone(), "peer metadata")
+            .ok()
+            .map(|key| key.trim().to_ascii_lowercase()),
         _ => None,
     }
 }
 
-fn decode_utf8(bytes: &[u8]) -> Option<&str> {
+fn decode_utf8<'a>(bytes: &'a [u8], context: &str) -> Result<&'a str, std::str::Utf8Error> {
     std::str::from_utf8(bytes)
-        .inspect_err(|err| log::debug!("[daemon] invalid UTF-8 in peer metadata: {err}"))
-        .ok()
+        .inspect_err(|err| log::debug!("[daemon] invalid UTF-8 in {context}: {err}"))
 }
 
-fn decode_utf8_owned(bytes: Vec<u8>) -> Option<String> {
+fn decode_utf8_owned(
+    bytes: Vec<u8>,
+    context: &str,
+) -> Result<String, std::string::FromUtf8Error> {
     String::from_utf8(bytes)
-        .inspect_err(|err| log::debug!("[daemon] invalid UTF-8 in peer metadata: {err}"))
-        .ok()
+        .inspect_err(|err| log::debug!("[daemon] invalid UTF-8 in {context}: {err}"))
 }
 
 fn encode_hex(bytes: impl AsRef<[u8]>) -> String {
