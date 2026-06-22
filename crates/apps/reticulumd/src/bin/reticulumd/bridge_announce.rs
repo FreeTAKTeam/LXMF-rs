@@ -9,7 +9,16 @@ use rns_rpc::AnnounceBridge;
 impl TransportBridge {
     fn current_delivery_announce_app_data(&self) -> Option<Vec<u8>> {
         let app_data = self.announce_app_data.clone()?;
-        let Some((display_name, _)) = parse_peer_name_from_app_data(app_data.as_slice()) else {
+        if app_data.is_empty() {
+            return Some(app_data);
+        }
+        let Some((display_name, _)) = (match parse_peer_name_from_app_data(app_data.as_slice()) {
+            Ok(opt) => opt,
+            Err(e) => {
+                log::warn!("[daemon] failed to parse peer name from delivery app data: {e}");
+                None
+            }
+        }) else {
             return Some(app_data);
         };
         Some(encode_delivery_announce_app_data_with_capabilities(
@@ -37,7 +46,17 @@ impl TransportBridge {
 
     fn current_propagation_announce_app_data(&self) -> Option<Vec<u8>> {
         let fallback = self.propagation_announce_app_data.clone()?;
-        let display_name = parse_peer_name_from_app_data(fallback.as_slice()).map(|(name, _)| name);
+        let display_name = if fallback.is_empty() {
+            None
+        } else {
+            match parse_peer_name_from_app_data(fallback.as_slice()) {
+                Ok(opt) => opt.map(|(name, _)| name),
+                Err(e) => {
+                    log::warn!("[daemon] failed to parse peer name from propagation app data: {e}");
+                    None
+                }
+            }
+        };
         let daemon = match self.daemon.lock() {
             Ok(daemon) => {
                 let Some(daemon) = daemon.clone() else {

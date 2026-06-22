@@ -329,9 +329,9 @@ async fn transport_bridge_regenerates_propagation_app_data_from_daemon_state() {
 
     assert_eq!(entries.get(3).and_then(rmpv::Value::as_u64), Some(333));
     assert_eq!(entries.get(4).and_then(rmpv::Value::as_u64), Some(999));
-    assert_eq!(pn_stamp_cost_from_app_data(app_data.as_slice()), Some(22));
-    assert_eq!(pn_stamp_cost_flexibility_from_app_data(app_data.as_slice()), Some(6));
-    assert_eq!(pn_peering_cost_from_app_data(app_data.as_slice()), Some(17));
+    assert_eq!(pn_stamp_cost_from_app_data(app_data.as_slice()).expect("ok"), 22);
+    assert_eq!(pn_stamp_cost_flexibility_from_app_data(app_data.as_slice()).expect("ok"), 6);
+    assert_eq!(pn_peering_cost_from_app_data(app_data.as_slice()).expect("ok"), 17);
 }
 
 #[tokio::test]

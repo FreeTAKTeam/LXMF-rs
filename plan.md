@@ -42,7 +42,12 @@ box → commit). Stop on red; never commit a broken tree.
   (Pattern C, same file). columba meta keeps its always-succeeding preservation
   fallback (R-typed but infallible by design). `display_name_from_delivery_app_data`
   → `Result<Option<String>, AnnounceDecodeError>`; sdk bridge `TODO(S8)`.
-- [ ] **S3** Pattern **B/C** (reticulumd) — `announce_names.rs` decode/parse cluster.
+- [x] **S3** Pattern **B/C** (reticulumd) — `announce_names.rs` decode/parse cluster.
+  All decode/parse helpers return `Result`. Early exits return `Err`, not `Ok(None)`;
+  the only `Ok(None)` paths are genuine absence (Nil protocol marker, cost out of
+  range). Callers in `announce_ingest.rs` and `bridge_announce.rs` pre-check
+  `is_empty()` and use explicit `match` + `log::warn!`/`log::debug!`; no `.ok()`
+  bridges. `announce_stamp_cost` promoted to `Result<Option<u32>>` (propagates `?`).
 - [ ] **S4** Pattern **B/C** (rns-rpc) — `pn_metadata_to_json`, `merge_fields_with_options`,
   `parse_python_int_*`, `module_support`, `http_parts` parsers.
 - [ ] **S5** Pattern **C** (reticulumd bin) — `rpc_access_log.rs`, `announce_ingest.rs`.

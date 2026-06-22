@@ -1,6 +1,46 @@
 pub use lxmf::announce::AnnounceEncodeError;
 
 use crate::text::{decode_utf8, decode_utf8_owned};
+use core::fmt;
+
+#[derive(Debug)]
+pub enum AnnounceNamesDecodeError {
+    Msgpack(rmp_serde::decode::Error),
+    Utf8(std::string::FromUtf8Error),
+    Malformed(&'static str),
+}
+
+impl fmt::Display for AnnounceNamesDecodeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Msgpack(err) => write!(f, "msgpack decode error: {err}"),
+            Self::Utf8(err) => write!(f, "invalid UTF-8: {err}"),
+            Self::Malformed(msg) => write!(f, "malformed announce data: {msg}"),
+        }
+    }
+}
+
+impl std::error::Error for AnnounceNamesDecodeError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Msgpack(err) => Some(err),
+            Self::Utf8(err) => Some(err),
+            Self::Malformed(_) => None,
+        }
+    }
+}
+
+impl From<rmp_serde::decode::Error> for AnnounceNamesDecodeError {
+    fn from(err: rmp_serde::decode::Error) -> Self {
+        Self::Msgpack(err)
+    }
+}
+
+impl From<std::string::FromUtf8Error> for AnnounceNamesDecodeError {
+    fn from(err: std::string::FromUtf8Error) -> Self {
+        Self::Utf8(err)
+    }
+}
 
 pub fn encode_delivery_display_name_app_data(display_name: &str) -> Result<Vec<u8>, AnnounceEncodeError> {
     encode_delivery_announce_app_data(display_name, None)
@@ -125,28 +165,33 @@ pub fn normalize_display_name(value: &str) -> Option<String> {
     }
 }
 
-pub fn parse_peer_name_from_app_data(app_data: &[u8]) -> Option<(String, &'static str)> {
+/// S: `Ok(None)` = no name present; `Err` = parse failure.
+/// Falls through delivery → PN → raw-UTF-8, catching `Err` from each R helper
+/// rather than propagating, so that all three paths are attempted.
+pub fn parse_peer_name_from_app_data(
+    app_data: &[u8],
+) -> Result<Option<(String, &'static str)>, AnnounceNamesDecodeError> {
     if app_data.is_empty() {
-        return None;
+        return Err(AnnounceNamesDecodeError::Malformed("empty announce app_data"));
     }
 
     if is_msgpack_array_prefix(app_data[0]) {
-        if let Some(name) =
-            display_name_from_app_data(app_data).and_then(|value| normalize_display_name(&value))
-        {
-            return Some((name, "delivery_app_data"));
+        if let Ok(name) = display_name_from_app_data(app_data) {
+            if let Some(name) = normalize_display_name(&name) {
+                return Ok(Some((name, "delivery_app_data")));
+            }
         }
     }
 
-    if let Some(name) =
-        pn_name_from_app_data(app_data).and_then(|value| normalize_display_name(&value))
-    {
-        return Some((name, "pn_meta"));
+    if let Ok(name) = pn_name_from_app_data(app_data) {
+        if let Some(name) = normalize_display_name(&name) {
+            return Ok(Some((name, "pn_meta")));
+        }
     }
 
-    let text = decode_utf8(app_data, "announce app_data utf8 fallback").ok()?;
-    let name = normalize_display_name(text)?;
-    Some((name, "app_data_utf8"))
+    let text = decode_utf8(app_data, "announce app_data utf8 fallback")
+        .map_err(|_| AnnounceNamesDecodeError::Malformed("non-UTF-8 raw announce app_data"))?;
+    Ok(normalize_display_name(text).map(|name| (name, "app_data_utf8")))
 }
 
 pub fn lxmf_aspect_from_name_hash(name_hash: &[u8]) -> Option<String> {
@@ -168,69 +213,94 @@ pub fn lxmf_aspect_from_name_hash(name_hash: &[u8]) -> Option<String> {
     None
 }
 
-pub fn pn_stamp_cost_from_app_data(data: &[u8]) -> Option<u32> {
-    parse_announce_cost_from_app_data(data, 0)
+/// R: `Ok(u32)` = stamp cost present; `Err` = decode failure or cost absent.
+pub fn pn_stamp_cost_from_app_data(data: &[u8]) -> Result<u32, AnnounceNamesDecodeError> {
+    parse_announce_cost_from_app_data(data, 0)?
+        .ok_or(AnnounceNamesDecodeError::Malformed("PN stamp cost not present in announce data"))
 }
 
-pub fn delivery_stamp_cost_from_app_data(data: &[u8]) -> Option<u32> {
+/// S: `Ok(Some(u32))` = cost present; `Ok(None)` = cost field absent or Nil; `Err` = decode failure.
+pub fn delivery_stamp_cost_from_app_data(
+    data: &[u8],
+) -> Result<Option<u32>, AnnounceNamesDecodeError> {
     let decoded = decode_msgpack::<rmpv::Value>(data, "delivery stamp cost")?;
     let entries = match decoded {
         rmpv::Value::Array(entries) => entries,
-        _ => return None,
+        _ => return Err(AnnounceNamesDecodeError::Malformed("delivery stamp cost data is not an array")),
     };
-    entries.get(1).and_then(rmp_value_to_u32).filter(|cost| (1..255).contains(cost))
+    let Some(cost_value) = entries.get(1) else {
+        return Err(AnnounceNamesDecodeError::Malformed("no stamp cost slot in delivery app_data array"));
+    };
+    // Nil is the explicit "no cost" marker in the delivery format.
+    if matches!(cost_value, rmpv::Value::Nil) {
+        return Ok(None);
+    }
+    let cost = rmp_value_to_u32(cost_value)?;
+    Ok((1..255).contains(&cost).then_some(cost))
 }
 
-pub fn pn_stamp_cost_flexibility_from_app_data(data: &[u8]) -> Option<u32> {
-    parse_announce_cost_from_app_data(data, 1)
+/// R: `Ok(u32)` = flexibility present; `Err` = decode failure or field absent.
+pub fn pn_stamp_cost_flexibility_from_app_data(data: &[u8]) -> Result<u32, AnnounceNamesDecodeError> {
+    parse_announce_cost_from_app_data(data, 1)?
+        .ok_or(AnnounceNamesDecodeError::Malformed(
+            "PN stamp cost flexibility not present in announce data",
+        ))
 }
 
-pub fn pn_peering_cost_from_app_data(data: &[u8]) -> Option<u32> {
-    parse_announce_cost_from_app_data(data, 2)
+/// R: `Ok(u32)` = peering cost present; `Err` = decode failure or field absent.
+pub fn pn_peering_cost_from_app_data(data: &[u8]) -> Result<u32, AnnounceNamesDecodeError> {
+    parse_announce_cost_from_app_data(data, 2)?
+        .ok_or(AnnounceNamesDecodeError::Malformed("PN peering cost not present in announce data"))
 }
 
 fn is_msgpack_array_prefix(byte: u8) -> bool {
     (0x90..=0x9f).contains(&byte) || byte == 0xdc || byte == 0xdd
 }
 
-fn display_name_from_app_data(data: &[u8]) -> Option<String> {
+/// R: `Ok(String)` = name decoded; `Err` = any failure (decode, wrong type, Nil, etc.).
+fn display_name_from_app_data(data: &[u8]) -> Result<String, AnnounceNamesDecodeError> {
     if data.is_empty() {
-        return None;
+        return Err(AnnounceNamesDecodeError::Malformed("empty delivery display name data"));
     }
 
-    if is_msgpack_array_prefix(data[0]) {
-        let decoded: rmpv::Value = decode_msgpack(data, "delivery display name")?;
-        let entries = match decoded {
-            rmpv::Value::Array(entries) => entries,
-            _ => return None,
-        };
+    let decoded: rmpv::Value = decode_msgpack(data, "delivery display name")?;
+    let entries = match decoded {
+        rmpv::Value::Array(entries) => entries,
+        _ => return Err(AnnounceNamesDecodeError::Malformed("delivery display name is not an array")),
+    };
 
-        let first = entries.first()?;
-        match first {
-            rmpv::Value::Nil => None,
-            rmpv::Value::Binary(bytes) => {
-                decode_utf8_owned(bytes.clone(), "delivery display name").ok()
-            }
-            rmpv::Value::String(text) => text.as_str().map(|value| value.to_string()),
-            _ => None,
+    let Some(first) = entries.first() else {
+        return Err(AnnounceNamesDecodeError::Malformed("no first element in delivery display name array"));
+    };
+    match first {
+        rmpv::Value::Nil => Err(AnnounceNamesDecodeError::Malformed("nil delivery display name")),
+        rmpv::Value::Binary(bytes) => {
+            decode_utf8_owned(bytes.clone(), "delivery display name")
+                .map_err(AnnounceNamesDecodeError::Utf8)
         }
-    } else {
-        decode_utf8(data, "delivery display name fallback").ok().map(|value| value.to_string())
+        rmpv::Value::String(text) => text
+            .as_str()
+            .map(|value| value.to_string())
+            .ok_or(AnnounceNamesDecodeError::Malformed("non-UTF-8 delivery display name string")),
+        _ => Err(AnnounceNamesDecodeError::Malformed("unexpected type for delivery display name")),
     }
 }
 
-fn pn_name_from_app_data(data: &[u8]) -> Option<String> {
+/// R: `Ok(String)` = PN name decoded; `Err` = any failure (decode, missing field, wrong type, etc.).
+fn pn_name_from_app_data(data: &[u8]) -> Result<String, AnnounceNamesDecodeError> {
     const PN_META_NAME: u8 = 0x01;
 
     let decoded = decode_msgpack::<rmpv::Value>(data, "propagation metadata name")?;
     let entries = match decoded {
         rmpv::Value::Array(entries) => entries,
-        _ => return None,
+        _ => return Err(AnnounceNamesDecodeError::Malformed("PN metadata is not an array")),
     };
 
-    let metadata = entries.get(6)?;
+    let Some(metadata) = entries.get(6) else {
+        return Err(AnnounceNamesDecodeError::Malformed("no metadata element in PN announce"));
+    };
     let rmpv::Value::Map(entries) = metadata else {
-        return None;
+        return Err(AnnounceNamesDecodeError::Malformed("PN metadata element is not a map"));
     };
 
     let name_keys = [
@@ -246,7 +316,7 @@ fn pn_name_from_app_data(data: &[u8]) -> Option<String> {
         }
     }
 
-    None
+    Err(AnnounceNamesDecodeError::Malformed("name key not found in PN metadata"))
 }
 
 fn keys_match(candidate: &rmpv::Value, expected: &rmpv::Value) -> bool {
@@ -274,102 +344,146 @@ fn keys_match(candidate: &rmpv::Value, expected: &rmpv::Value) -> bool {
     }
 }
 
-fn string_like_value_to_string(value: &rmpv::Value) -> Option<String> {
+/// R: `Ok(String)` = convertible; `Err` = unsupported type or non-UTF-8.
+fn string_like_value_to_string(value: &rmpv::Value) -> Result<String, AnnounceNamesDecodeError> {
     match value {
         rmpv::Value::Binary(bytes) => {
-            decode_utf8_owned(bytes.clone(), "string-like msgpack value").ok()
+            decode_utf8_owned(bytes.clone(), "string-like msgpack value")
+                .map_err(AnnounceNamesDecodeError::Utf8)
         }
-        rmpv::Value::String(text) => text.as_str().map(|s| s.to_string()),
-        rmpv::Value::Integer(value) => value.as_i64().map(|value| value.to_string()),
+        rmpv::Value::String(text) => text
+            .as_str()
+            .map(|s| s.to_string())
+            .ok_or(AnnounceNamesDecodeError::Malformed("non-UTF-8 msgpack string")),
+        rmpv::Value::Integer(value) => value
+            .as_i64()
+            .map(|v| v.to_string())
+            .ok_or(AnnounceNamesDecodeError::Malformed("integer value out of i64 range")),
         rmpv::Value::F64(value) => {
             if value.fract() == 0.0 {
-                Some(format!("{value:.0}"))
+                Ok(format!("{value:.0}"))
             } else {
-                None
+                Err(AnnounceNamesDecodeError::Malformed("f64 with fractional part not usable as string name"))
             }
         }
         rmpv::Value::F32(value) => {
             let value = f64::from(*value);
             if value.fract() == 0.0 {
-                Some(format!("{value:.0}"))
+                Ok(format!("{value:.0}"))
             } else {
-                None
+                Err(AnnounceNamesDecodeError::Malformed("f32 with fractional part not usable as string name"))
             }
         }
-        _ => None,
+        _ => Err(AnnounceNamesDecodeError::Malformed("unsupported type for string-like value")),
     }
 }
 
-fn parse_announce_cost_from_app_data(data: &[u8], index: usize) -> Option<u32> {
+/// S: `Ok(Some(u32))` = cost present; `Ok(None)` = cost entry absent; `Err` = decode or coercion failure.
+fn parse_announce_cost_from_app_data(
+    data: &[u8],
+    index: usize,
+) -> Result<Option<u32>, AnnounceNamesDecodeError> {
     if index > 2 {
-        return None;
+        return Err(AnnounceNamesDecodeError::Malformed("cost index out of range"));
     }
 
     let decoded = decode_msgpack::<rmpv::Value>(data, "propagation announce costs")?;
     let entries = match decoded {
         rmpv::Value::Array(entries) => entries,
-        _ => return None,
+        _ => return Err(AnnounceNamesDecodeError::Malformed("PN announce data is not an array")),
     };
 
-    match entries.get(5)? {
-        rmpv::Value::Array(costs) => costs.get(index).and_then(rmp_value_to_u32),
+    let Some(cost_entry) = entries.get(5) else {
+        return Err(AnnounceNamesDecodeError::Malformed("no costs element in PN announce data"));
+    };
+
+    match cost_entry {
+        rmpv::Value::Array(costs) => costs.get(index).map(rmp_value_to_u32).transpose(),
         rmpv::Value::Map(costs) => parse_announce_cost_from_map(costs, index),
-        _ => None,
+        _ => Err(AnnounceNamesDecodeError::Malformed("unexpected type for PN announce costs")),
     }
 }
 
-fn parse_announce_cost_from_map(costs: &[(rmpv::Value, rmpv::Value)], index: usize) -> Option<u32> {
+fn parse_announce_cost_from_map(
+    costs: &[(rmpv::Value, rmpv::Value)],
+    index: usize,
+) -> Result<Option<u32>, AnnounceNamesDecodeError> {
     let target_key = match index {
         0 => ["stamp_cost", "0"],
         1 => ["stamp_cost_flexibility", "1"],
         2 => ["peering_cost", "2"],
-        _ => return None,
+        _ => return Err(AnnounceNamesDecodeError::Malformed("cost index out of range")),
     };
 
-    costs.iter().find_map(|(key, value)| {
-        let cost_key = cost_map_key_text(key)?;
-        target_key.contains(&cost_key.as_str()).then(|| rmp_value_to_u32(value)).flatten()
-    })
+    for (key, value) in costs {
+        let Ok(cost_key) = cost_map_key_text(key) else {
+            continue;
+        };
+        if target_key.contains(&cost_key.as_str()) {
+            return rmp_value_to_u32(value).map(Some);
+        }
+    }
+    Ok(None)
 }
 
-fn cost_map_key_text(key: &rmpv::Value) -> Option<String> {
+/// R: `Ok(String)` = key text extracted; `Err` = unsupported key type.
+fn cost_map_key_text(key: &rmpv::Value) -> Result<String, AnnounceNamesDecodeError> {
     match key {
-        rmpv::Value::String(text) => text.as_str().map(|key| key.trim().to_ascii_lowercase()),
-        rmpv::Value::Binary(bytes) => decode_utf8_owned(bytes.clone(), "cost map key")
-            .ok()
-            .map(|key| key.trim().to_ascii_lowercase()),
+        rmpv::Value::String(text) => Ok(text
+            .as_str()
+            .ok_or(AnnounceNamesDecodeError::Malformed("non-UTF-8 cost map key"))?
+            .trim()
+            .to_ascii_lowercase()),
+        rmpv::Value::Binary(bytes) => Ok(decode_utf8_owned(bytes.clone(), "cost map key")
+            .map_err(AnnounceNamesDecodeError::Utf8)?
+            .trim()
+            .to_ascii_lowercase()),
         rmpv::Value::Integer(value) => value
             .as_u64()
             .map(|key| key.to_string())
-            .or_else(|| value.as_i64().map(|key| key.to_string())),
-        _ => None,
+            .or_else(|| value.as_i64().map(|key| key.to_string()))
+            .ok_or(AnnounceNamesDecodeError::Malformed("integer cost map key out of i64/u64 range")),
+        _ => Err(AnnounceNamesDecodeError::Malformed("unsupported type for cost map key")),
     }
 }
 
-fn rmp_value_to_u32(value: &rmpv::Value) -> Option<u32> {
-    value
-        .as_u64()
-        .and_then(|value| u32::try_from(value).ok())
-        .or_else(|| value.as_i64().and_then(|value| u32::try_from(value).ok()))
-        .or_else(|| match value {
-            rmpv::Value::F64(value) => parse_f64_to_u32(*value),
-            rmpv::Value::F32(value) => parse_f64_to_u32(f64::from(*value)),
-            rmpv::Value::Boolean(value) => Some(u32::from(*value)),
-            rmpv::Value::Binary(bytes) => parse_text_to_u32(decode_utf8(bytes, "cost value").ok()?),
-            rmpv::Value::String(text) => parse_text_to_u32(text.as_str()?),
-            _ => None,
-        })
+/// R: `Ok(u32)` = coercion succeeded; `Err` = type not representable as u32.
+fn rmp_value_to_u32(value: &rmpv::Value) -> Result<u32, AnnounceNamesDecodeError> {
+    if let Some(u) = value.as_u64().and_then(|v| u32::try_from(v).ok()) {
+        return Ok(u);
+    }
+    if let Some(u) = value.as_i64().and_then(|v| u32::try_from(v).ok()) {
+        return Ok(u);
+    }
+    match value {
+        rmpv::Value::F64(v) => parse_f64_to_u32(*v),
+        rmpv::Value::F32(v) => parse_f64_to_u32(f64::from(*v)),
+        rmpv::Value::Boolean(v) => Ok(u32::from(*v)),
+        rmpv::Value::Binary(bytes) => {
+            let text = decode_utf8(bytes, "cost value")
+                .map_err(|_| AnnounceNamesDecodeError::Malformed("non-UTF-8 binary cost value"))?;
+            parse_text_to_u32(text)
+        }
+        rmpv::Value::String(text) => parse_text_to_u32(
+            text.as_str()
+                .ok_or(AnnounceNamesDecodeError::Malformed("non-UTF-8 msgpack string cost value"))?,
+        ),
+        _ => Err(AnnounceNamesDecodeError::Malformed("unsupported type for u32 cost value")),
+    }
 }
 
-fn parse_f64_to_u32(value: f64) -> Option<u32> {
+fn parse_f64_to_u32(value: f64) -> Result<u32, AnnounceNamesDecodeError> {
     if !value.is_finite() || value < 0.0 || value.fract() != 0.0 || value > u32::MAX as f64 {
-        return None;
+        return Err(AnnounceNamesDecodeError::Malformed("f64 value out of range or non-integer for u32"));
     }
-    Some(value as u32)
+    Ok(value as u32)
 }
 
-fn parse_text_to_u32(value: &str) -> Option<u32> {
-    value.trim().parse::<u32>().ok()
+fn parse_text_to_u32(value: &str) -> Result<u32, AnnounceNamesDecodeError> {
+    value
+        .trim()
+        .parse::<u32>()
+        .map_err(|_| AnnounceNamesDecodeError::Malformed("failed to parse text as u32"))
 }
 
 fn encode_msgpack(value: &rmpv::Value, context: &str) -> Result<Vec<u8>, rmp_serde::encode::Error> {
@@ -377,13 +491,13 @@ fn encode_msgpack(value: &rmpv::Value, context: &str) -> Result<Vec<u8>, rmp_ser
         .inspect_err(|err| log::warn!("[daemon] failed to encode {context}: {err}"))
 }
 
-fn decode_msgpack<T>(data: &[u8], context: &str) -> Option<T>
+fn decode_msgpack<T>(data: &[u8], context: &str) -> Result<T, AnnounceNamesDecodeError>
 where
     T: serde::de::DeserializeOwned,
 {
-    let decoded = rmp_serde::from_slice(data)
-        .inspect_err(|err| log::warn!("[daemon] failed to decode {context}: {err}"));
-    decoded.ok()
+    rmp_serde::from_slice(data)
+        .inspect_err(|err| log::warn!("[daemon] failed to decode {context}: {err}"))
+        .map_err(AnnounceNamesDecodeError::Msgpack)
 }
 
 #[cfg(test)]
@@ -398,8 +512,8 @@ mod tests {
         ]))
         .expect("encode app data");
 
-        assert_eq!(delivery_stamp_cost_from_app_data(app_data.as_slice()), Some(19));
-        assert_eq!(pn_stamp_cost_from_app_data(app_data.as_slice()), None);
+        assert_eq!(delivery_stamp_cost_from_app_data(app_data.as_slice()).expect("ok"), Some(19));
+        assert!(pn_stamp_cost_from_app_data(app_data.as_slice()).is_err());
     }
 
     #[test]
@@ -411,7 +525,7 @@ mod tests {
             ]))
             .expect("encode app data");
 
-            assert_eq!(delivery_stamp_cost_from_app_data(app_data.as_slice()), None);
+            assert_eq!(delivery_stamp_cost_from_app_data(app_data.as_slice()).expect("ok"), None);
         }
     }
 
@@ -421,14 +535,14 @@ mod tests {
             encode_delivery_announce_app_data("Peer Name", Some(21)).expect("encode app data");
 
         assert_eq!(
-            parse_peer_name_from_app_data(app_data.as_slice()),
+            parse_peer_name_from_app_data(app_data.as_slice()).expect("ok"),
             Some(("Peer Name".to_string(), "delivery_app_data"))
         );
-        assert_eq!(delivery_stamp_cost_from_app_data(app_data.as_slice()), Some(21));
+        assert_eq!(delivery_stamp_cost_from_app_data(app_data.as_slice()).expect("ok"), Some(21));
 
         let app_data_without_cost =
             encode_delivery_announce_app_data("Peer Name", Some(255)).expect("encode app data");
-        assert_eq!(delivery_stamp_cost_from_app_data(app_data_without_cost.as_slice()), None);
+        assert_eq!(delivery_stamp_cost_from_app_data(app_data_without_cost.as_slice()).expect("ok"), None);
     }
 
     #[test]
@@ -441,10 +555,10 @@ mod tests {
         .expect("encode app data");
 
         assert_eq!(
-            parse_peer_name_from_app_data(app_data.as_slice()),
+            parse_peer_name_from_app_data(app_data.as_slice()).expect("ok"),
             Some(("RCH Rust".to_string(), "delivery_app_data"))
         );
-        assert_eq!(delivery_stamp_cost_from_app_data(app_data.as_slice()), Some(17));
+        assert_eq!(delivery_stamp_cost_from_app_data(app_data.as_slice()).expect("ok"), Some(17));
         let rmpv::Value::Array(entries) =
             rmp_serde::from_slice::<rmpv::Value>(app_data.as_slice()).expect("decode app data")
         else {
@@ -483,11 +597,11 @@ mod tests {
         .expect("encode propagation app data");
 
         assert_eq!(
-            parse_peer_name_from_app_data(app_data.as_slice()),
+            parse_peer_name_from_app_data(app_data.as_slice()).expect("ok"),
             Some(("Peer Node".to_string(), "pn_meta"))
         );
-        assert_eq!(pn_stamp_cost_from_app_data(app_data.as_slice()), Some(21));
-        assert_eq!(pn_stamp_cost_flexibility_from_app_data(app_data.as_slice()), Some(5));
-        assert_eq!(pn_peering_cost_from_app_data(app_data.as_slice()), Some(13));
+        assert_eq!(pn_stamp_cost_from_app_data(app_data.as_slice()).expect("ok"), 21);
+        assert_eq!(pn_stamp_cost_flexibility_from_app_data(app_data.as_slice()).expect("ok"), 5);
+        assert_eq!(pn_peering_cost_from_app_data(app_data.as_slice()).expect("ok"), 13);
     }
 }
