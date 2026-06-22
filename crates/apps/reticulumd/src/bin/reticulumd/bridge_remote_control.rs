@@ -413,17 +413,12 @@ fn response_to_json(response: &rmpv::Value) -> Result<JsonValue, std::io::Error>
     if let Some(error) = response_code_error(response) {
         return Err(error);
     }
-    if let Some(json) = rmpv_to_json(response) {
-        return Ok(json);
-    }
-    match response {
-        rmpv::Value::Boolean(value) => Ok(json!(value)),
-        rmpv::Value::Nil => Ok(JsonValue::Null),
-        _ => Err(std::io::Error::new(
+    rmpv_to_json(response).map_err(|err| {
+        std::io::Error::new(
             std::io::ErrorKind::InvalidData,
-            "unsupported propagation control response payload",
-        )),
-    }
+            format!("unsupported propagation control response payload: {err}"),
+        )
+    })
 }
 
 pub(super) fn response_to_result(response: rmpv::Value) -> Result<rmpv::Value, std::io::Error> {

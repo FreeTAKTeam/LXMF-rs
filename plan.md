@@ -30,8 +30,18 @@ box → commit). Stop on red; never commit a broken tree.
     debug log); lxmf-core `announce::decode_utf8_owned` → `Result`.
   - Callers still returning `Option` use `.ok()` / `.is_ok_and()` for now; these
     interim `.ok()`s are removed as each caller is converted in S2–S5.
-- [ ] **S2** Pattern **B** (lxmf-core) — `decode_msgpack<T>`, `rmpv_to_json*`,
+- [x] **S2** Pattern **B** (lxmf-core) — `decode_msgpack<T>`, `rmpv_to_json*`,
   `decode_*` and `decode_msgpack_value*` in `wire_fields_parts` + `inbound_decode.rs`.
+  (committed) Followed the plan's literal **R**: the client/telemetry/sideband
+  decoders + `decode_msgpack_value*` now return `Result` and a malformed/odd-typed
+  client field is a hard error (no raw fallback). Per that decision, rewrote
+  `rmpv_to_json_preserves_nonbinary_telemetry_payload_as_string` →
+  `rmpv_to_json_errors_on_nondecodable_telemetry_payload`. `wire_message_id_hex`
+  is now `Result<String>` (a too-short payload fails the inbound decode; the
+  destination-hash id fallback is removed). Also folded in `decode_hex_attachment_data`
+  (Pattern C, same file). columba meta keeps its always-succeeding preservation
+  fallback (R-typed but infallible by design). `display_name_from_delivery_app_data`
+  → `Result<Option<String>, AnnounceDecodeError>`; sdk bridge `TODO(S8)`.
 - [ ] **S3** Pattern **B/C** (reticulumd) — `announce_names.rs` decode/parse cluster.
 - [ ] **S4** Pattern **B/C** (rns-rpc) — `pn_metadata_to_json`, `merge_fields_with_options`,
   `parse_python_int_*`, `module_support`, `http_parts` parsers.

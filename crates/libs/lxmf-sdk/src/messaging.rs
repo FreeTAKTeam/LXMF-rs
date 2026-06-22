@@ -472,7 +472,8 @@ fn announce_display_name_from_raw_app_data(
     app_data: &[u8],
 ) -> Option<String> {
     if destination_kind == DESTINATION_KIND_LXMF_DELIVERY {
-        display_name_from_delivery_app_data(app_data)
+        // TODO(S8): surface the decode error instead of defaulting to None.
+        display_name_from_delivery_app_data(app_data).unwrap_or_default()
     } else {
         None
     }

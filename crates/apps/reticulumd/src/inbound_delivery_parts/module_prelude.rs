@@ -101,8 +101,8 @@ fn decode_inbound_payload_mode(
     mode: InboundPayloadMode,
 ) -> Result<MessageRecord, lxmf::LxmfError> {
     let message = decode_inbound_message(destination, payload, mode)?;
-    let fields =
-        merge_inbound_lxmf_metadata(message.fields.as_ref().and_then(rmpv_to_json), &message);
+    let json_fields = message.fields.as_ref().map(rmpv_to_json).transpose()?;
+    let fields = merge_inbound_lxmf_metadata(json_fields, &message);
     Ok(MessageRecord {
         id: message.id,
         source: hex::encode(message.source),

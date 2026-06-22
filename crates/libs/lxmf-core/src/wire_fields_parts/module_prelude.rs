@@ -24,7 +24,7 @@ const FIELD_ATTACHMENTS_PUBLIC_KEY: &str = "attachments";
 
 const FIELD_ATTACHMENTS_LEGACY_FILES_KEY: &str = "files";
 
-type ClientFieldDecoder = fn(&Value, RmpvToJsonOptions) -> Option<JsonValue>;
+type ClientFieldDecoder = fn(&Value, RmpvToJsonOptions) -> Result<JsonValue, LxmfError>;
 
 const CLIENT_FIELD_DECODERS: [(&str, ClientFieldDecoder); 3] = [
     ("2", decode_client_sideband_location),
@@ -100,11 +100,14 @@ pub fn json_to_rmpv(value: &JsonValue) -> Result<Value, LxmfError> {
     json_to_rmpv_lossless(&normalized)
 }
 
-pub fn rmpv_to_json(value: &Value) -> Option<JsonValue> {
+pub fn rmpv_to_json(value: &Value) -> Result<JsonValue, LxmfError> {
     rmpv_to_json_with_options(value, RmpvToJsonOptions::default())
 }
 
-pub fn rmpv_to_json_with_options(value: &Value, options: RmpvToJsonOptions) -> Option<JsonValue> {
+pub fn rmpv_to_json_with_options(
+    value: &Value,
+    options: RmpvToJsonOptions,
+) -> Result<JsonValue, LxmfError> {
     rmpv_to_json_with_options_inner(value, options)
 }
 
@@ -173,17 +176,22 @@ fn normalize_attachment_data(value: &JsonValue) -> Result<JsonValue, LxmfError> 
     ))
 }
 
-fn decode_hex_attachment_data(text: &str) -> Option<Vec<u8>> {
+fn decode_hex_attachment_data(text: &str) -> Result<Vec<u8>, LxmfError> {
     if text.len() % 2 != 0 || !text.chars().all(|ch| ch.is_ascii_hexdigit()) {
-        return None;
+        return Err(LxmfError::Encode(
+            "attachment hex data has odd length or non-hex characters".to_string(),
+        ));
     }
     let mut bytes = Vec::with_capacity(text.len() / 2);
     let mut index = 0;
     while index < text.len() {
-        bytes.push(u8::from_str_radix(&text[index..index + 2], 16).ok()?);
+        bytes.push(
+            u8::from_str_radix(&text[index..index + 2], 16)
+                .map_err(|err| LxmfError::Encode(format!("invalid hex attachment data: {err}")))?,
+        );
         index += 2;
     }
-    Some(bytes)
+    Ok(bytes)
 }
 
 fn decode_attachment_text_data(text: &str) -> Result<Vec<u8>, LxmfError> {
@@ -193,9 +201,7 @@ fn decode_attachment_text_data(text: &str) -> Result<Vec<u8>, LxmfError> {
     }
 
     if let Some(payload) = text.strip_prefix("hex:").or_else(|| text.strip_prefix("HEX:")) {
-        return decode_hex_attachment_data(payload.trim()).ok_or_else(|| {
-            LxmfError::Encode("invalid hex attachment data after hex: prefix".to_string())
-        });
+        return decode_hex_attachment_data(payload.trim());
     }
 
     if let Some(payload) = text.strip_prefix("base64:").or_else(|| text.strip_prefix("BASE64:")) {
@@ -271,43 +277,59 @@ fn parse_canonical_numeric_key(key: &str) -> Option<i64> {
     key.parse::<i64>().ok()
 }
 
-fn rmpv_to_json_with_options_inner(value: &Value, options: RmpvToJsonOptions) -> Option<JsonValue> {
+fn rmpv_to_json_with_options_inner(
+    value: &Value,
+    options: RmpvToJsonOptions,
+) -> Result<JsonValue, LxmfError> {
     match value {
-        Value::Nil => Some(JsonValue::Null),
-        Value::Boolean(v) => Some(JsonValue::Bool(*v)),
+        Value::Nil => Ok(JsonValue::Null),
+        Value::Boolean(v) => Ok(JsonValue::Bool(*v)),
         Value::Integer(v) => v
             .as_i64()
             .map(|i| JsonValue::Number(i.into()))
-            .or_else(|| v.as_u64().map(|u| JsonValue::Number(u.into()))),
-        Value::F32(v) => serde_json::Number::from_f64(f64::from(*v)).map(JsonValue::Number),
-        Value::F64(v) => serde_json::Number::from_f64(*v).map(JsonValue::Number),
-        Value::String(s) => s.as_str().map(|v| JsonValue::String(v.to_string())),
+            .or_else(|| v.as_u64().map(|u| JsonValue::Number(u.into())))
+            .ok_or_else(|| LxmfError::Decode("msgpack integer out of JSON range".to_string())),
+        Value::F32(v) => serde_json::Number::from_f64(f64::from(*v))
+            .map(JsonValue::Number)
+            .ok_or_else(|| LxmfError::Decode("non-finite f32 cannot be represented as JSON".to_string())),
+        Value::F64(v) => serde_json::Number::from_f64(*v)
+            .map(JsonValue::Number)
+            .ok_or_else(|| LxmfError::Decode("non-finite f64 cannot be represented as JSON".to_string())),
+        Value::String(s) => s
+            .as_str()
+            .map(|v| JsonValue::String(v.to_string()))
+            .ok_or_else(|| LxmfError::Decode("msgpack string is not valid UTF-8".to_string())),
         Value::Binary(bytes) => {
-            Some(JsonValue::Array(bytes.iter().map(|b| JsonValue::Number((*b).into())).collect()))
+            Ok(JsonValue::Array(bytes.iter().map(|b| JsonValue::Number((*b).into())).collect()))
         }
         Value::Array(items) => {
             let mut out = Vec::with_capacity(items.len());
             for item in items {
                 out.push(rmpv_to_json_with_options_inner(item, options)?);
             }
-            Some(JsonValue::Array(out))
+            Ok(JsonValue::Array(out))
         }
         Value::Map(entries) => {
             let mut object = JsonMap::new();
             for (key, value) in entries {
                 let key_str = match key {
-                    Value::String(text) => text.as_str().map(|v| v.to_string()),
+                    Value::String(text) => text.as_str().map(|v| v.to_string()).ok_or_else(|| {
+                        LxmfError::Decode("msgpack map key is not valid UTF-8".to_string())
+                    })?,
                     Value::Integer(int) => int
                         .as_i64()
                         .map(|v| v.to_string())
-                        .or_else(|| int.as_u64().map(|v| v.to_string())),
-                    other => Some(format!("{other:?}")),
-                }?;
+                        .or_else(|| int.as_u64().map(|v| v.to_string()))
+                        .ok_or_else(|| {
+                            LxmfError::Decode("msgpack map key integer out of range".to_string())
+                        })?,
+                    other => format!("{other:?}"),
+                };
 
                 if let Some(decoded) =
                     decode_client_specific_field(key_str.as_str(), value, options)
                 {
-                    object.insert(key_str, decoded);
+                    object.insert(key_str, decoded?);
                     continue;
                 }
 
@@ -317,9 +339,9 @@ fn rmpv_to_json_with_options_inner(value: &Value, options: RmpvToJsonOptions) ->
             if options.enrich_app_extensions {
                 enrich_app_extension_fields(&mut object);
             }
-            Some(JsonValue::Object(object))
+            Ok(JsonValue::Object(object))
         }
-        _ => None,
+        _ => Err(LxmfError::Decode("unsupported msgpack value for JSON conversion".to_string())),
     }
 }
 
@@ -327,64 +349,102 @@ fn decode_client_specific_field(
     field_key: &str,
     value: &Value,
     options: RmpvToJsonOptions,
-) -> Option<JsonValue> {
+) -> Option<Result<JsonValue, LxmfError>> {
     CLIENT_FIELD_DECODERS
         .iter()
         .find_map(|(target_key, decoder)| {
             (*target_key == field_key).then(|| decoder(value, options))
         })
-        .flatten()
 }
 
 fn decode_client_sideband_location(
     value: &Value,
     _options: RmpvToJsonOptions,
-) -> Option<JsonValue> {
+) -> Result<JsonValue, LxmfError> {
     match value {
         Value::Binary(bytes) => decode_sideband_location_telemetry(bytes),
         Value::String(text) => decode_sideband_location_telemetry(text.as_bytes()),
-        _ => None,
+        _ => Err(LxmfError::Decode("sideband location field is not binary or string".to_string())),
     }
 }
 
-fn decode_client_telemetry_stream(value: &Value, options: RmpvToJsonOptions) -> Option<JsonValue> {
+fn decode_client_telemetry_stream(
+    value: &Value,
+    options: RmpvToJsonOptions,
+) -> Result<JsonValue, LxmfError> {
     match value {
         Value::Binary(bytes) => decode_telemetry_stream(bytes, options),
         Value::String(text) => decode_telemetry_stream(text.as_bytes(), options),
-        _ => None,
+        _ => Err(LxmfError::Decode("telemetry stream field is not binary or string".to_string())),
     }
 }
 
-fn decode_client_columba_meta(value: &Value, options: RmpvToJsonOptions) -> Option<JsonValue> {
+fn decode_client_columba_meta(
+    value: &Value,
+    options: RmpvToJsonOptions,
+) -> Result<JsonValue, LxmfError> {
     match value {
-        Value::String(text) => text.as_str().and_then(decode_columba_meta_text),
+        Value::String(text) => {
+            let text = text.as_str().ok_or_else(|| {
+                LxmfError::Decode("columba meta string is not valid UTF-8".to_string())
+            })?;
+            decode_columba_meta_text(text)
+                .ok_or_else(|| LxmfError::Decode("columba meta text decode failed".to_string()))
+        }
         Value::Binary(bytes) => decode_columba_meta_bytes(bytes, options),
-        _ => None,
+        _ => Err(LxmfError::Decode("columba meta field is not string or binary".to_string())),
     }
 }
 
-fn decode_sideband_location_telemetry(packed: &[u8]) -> Option<JsonValue> {
+fn sideband_location_i32(items: &[Value], idx: usize) -> Result<i32, LxmfError> {
+    let value = items.get(idx).ok_or_else(|| {
+        LxmfError::Decode("sideband telemetry location element missing".to_string())
+    })?;
+    decode_i32_be(value)
+        .ok_or_else(|| LxmfError::Decode("sideband telemetry location element is not i32".to_string()))
+}
+
+fn sideband_location_u32(items: &[Value], idx: usize) -> Result<u32, LxmfError> {
+    let value = items.get(idx).ok_or_else(|| {
+        LxmfError::Decode("sideband telemetry location element missing".to_string())
+    })?;
+    decode_u32_be(value)
+        .ok_or_else(|| LxmfError::Decode("sideband telemetry location element is not u32".to_string()))
+}
+
+fn sideband_location_u16(items: &[Value], idx: usize) -> Result<u16, LxmfError> {
+    let value = items.get(idx).ok_or_else(|| {
+        LxmfError::Decode("sideband telemetry location element missing".to_string())
+    })?;
+    decode_u16_be(value)
+        .ok_or_else(|| LxmfError::Decode("sideband telemetry location element is not u16".to_string()))
+}
+
+fn decode_sideband_location_telemetry(packed: &[u8]) -> Result<JsonValue, LxmfError> {
     let decoded = decode_msgpack_value_from_bytes(packed)?;
     let Value::Map(map) = decoded else {
-        return None;
+        return Err(LxmfError::Decode("sideband telemetry payload is not a map".to_string()));
     };
     let location = map
         .iter()
         .find(|(key, _)| key.as_i64() == Some(0x02) || key.as_u64() == Some(0x02))
-        .map(|(_, value)| value)?;
+        .map(|(_, value)| value)
+        .ok_or_else(|| LxmfError::Decode("sideband telemetry missing location field".to_string()))?;
     let Value::Array(items) = location else {
-        return None;
+        return Err(LxmfError::Decode("sideband telemetry location is not an array".to_string()));
     };
     if items.len() < 7 {
-        return None;
+        return Err(LxmfError::Decode(
+            "sideband telemetry location has too few elements".to_string(),
+        ));
     }
 
-    let lat = decode_i32_be(items.first()?)? as f64 / 1e6;
-    let lon = decode_i32_be(items.get(1)?)? as f64 / 1e6;
-    let alt = decode_i32_be(items.get(2)?)? as f64 / 1e2;
-    let speed = decode_u32_be(items.get(3)?)? as f64 / 1e2;
-    let bearing = decode_i32_be(items.get(4)?)? as f64 / 1e2;
-    let accuracy = decode_u16_be(items.get(5)?)? as f64 / 1e2;
+    let lat = sideband_location_i32(items, 0)? as f64 / 1e6;
+    let lon = sideband_location_i32(items, 1)? as f64 / 1e6;
+    let alt = sideband_location_i32(items, 2)? as f64 / 1e2;
+    let speed = sideband_location_u32(items, 3)? as f64 / 1e2;
+    let bearing = sideband_location_i32(items, 4)? as f64 / 1e2;
+    let accuracy = sideband_location_u16(items, 5)? as f64 / 1e2;
     let updated = items.get(6).and_then(|value| {
         value.as_i64().or_else(|| value.as_u64().and_then(|raw| i64::try_from(raw).ok()))
     });
@@ -399,10 +459,13 @@ fn decode_sideband_location_telemetry(packed: &[u8]) -> Option<JsonValue> {
     if let Some(updated) = updated {
         out.insert("updated".to_string(), JsonValue::from(updated));
     }
-    Some(JsonValue::Object(out))
+    Ok(JsonValue::Object(out))
 }
 
-fn decode_telemetry_stream(packed: &[u8], options: RmpvToJsonOptions) -> Option<JsonValue> {
+fn decode_telemetry_stream(
+    packed: &[u8],
+    options: RmpvToJsonOptions,
+) -> Result<JsonValue, LxmfError> {
     let decoded = decode_msgpack_value_from_bytes(packed)?;
     rmpv_to_json_with_options_inner(&decoded, options)
 }
@@ -415,50 +478,58 @@ fn decode_columba_meta_text(text: &str) -> Option<JsonValue> {
     }
 }
 
-fn decode_columba_meta_bytes(bytes: &[u8], options: RmpvToJsonOptions) -> Option<JsonValue> {
-    let text = core::str::from_utf8(bytes);
-    let text = text.ok();
-    if let Some(text) = text {
+fn decode_columba_meta_bytes(
+    bytes: &[u8],
+    options: RmpvToJsonOptions,
+) -> Result<JsonValue, LxmfError> {
+    // Columba metadata is preserved best-effort: try JSON, then exact msgpack,
+    // then fall back to the raw string / binary representation (always succeeds).
+    if let Ok(text) = core::str::from_utf8(bytes) {
         if let Ok(json) = serde_json::from_str::<JsonValue>(text) {
-            return Some(json);
+            return Ok(json);
         }
     }
 
-    if let Some(decoded) = decode_msgpack_value_from_bytes_exact(bytes) {
-        if let Some(decoded) = rmpv_to_json_with_options_inner(&decoded, options) {
-            return Some(decoded);
+    if let Ok(decoded) = decode_msgpack_value_from_bytes_exact(bytes) {
+        if let Ok(decoded) = rmpv_to_json_with_options_inner(&decoded, options) {
+            return Ok(decoded);
         }
     }
 
-    text.map(|value| JsonValue::String(value.to_string()))
-        .or_else(|| rmpv_to_json_with_options_inner(&Value::Binary(bytes.to_vec()), options))
+    if let Ok(text) = core::str::from_utf8(bytes) {
+        return Ok(JsonValue::String(text.to_string()));
+    }
+
+    rmpv_to_json_with_options_inner(&Value::Binary(bytes.to_vec()), options)
 }
 
 #[cfg(feature = "std")]
-fn decode_msgpack_value_from_bytes(bytes: &[u8]) -> Option<Value> {
+fn decode_msgpack_value_from_bytes(bytes: &[u8]) -> Result<Value, LxmfError> {
     let mut cursor = std::io::Cursor::new(bytes);
-    rmpv::decode::read_value(&mut cursor).ok()
+    rmpv::decode::read_value(&mut cursor)
+        .map_err(|err| LxmfError::Decode(format!("msgpack value decode failed: {err}")))
 }
 
 #[cfg(not(feature = "std"))]
-fn decode_msgpack_value_from_bytes(bytes: &[u8]) -> Option<Value> {
-    match rmp_serde::from_slice(bytes) {
-        Ok(decoded) => Some(decoded),
-        Err(_) => None,
-    }
+fn decode_msgpack_value_from_bytes(bytes: &[u8]) -> Result<Value, LxmfError> {
+    rmp_serde::from_slice(bytes)
+        .map_err(|err| LxmfError::Decode(format!("msgpack value decode failed: {err}")))
 }
 
 #[cfg(feature = "std")]
-fn decode_msgpack_value_from_bytes_exact(bytes: &[u8]) -> Option<Value> {
+fn decode_msgpack_value_from_bytes_exact(bytes: &[u8]) -> Result<Value, LxmfError> {
     let mut cursor = std::io::Cursor::new(bytes);
-    let decoded = rmpv::decode::read_value(&mut cursor).ok()?;
-    (usize::try_from(cursor.position()).ok() == Some(bytes.len())).then_some(decoded)
+    let decoded = rmpv::decode::read_value(&mut cursor)
+        .map_err(|err| LxmfError::Decode(format!("msgpack value decode failed: {err}")))?;
+    if usize::try_from(cursor.position()).ok() == Some(bytes.len()) {
+        Ok(decoded)
+    } else {
+        Err(LxmfError::Decode("msgpack value had trailing bytes".to_string()))
+    }
 }
 
 #[cfg(not(feature = "std"))]
-fn decode_msgpack_value_from_bytes_exact(bytes: &[u8]) -> Option<Value> {
-    match rmp_serde::from_slice(bytes) {
-        Ok(decoded) => Some(decoded),
-        Err(_) => None,
-    }
+fn decode_msgpack_value_from_bytes_exact(bytes: &[u8]) -> Result<Value, LxmfError> {
+    rmp_serde::from_slice(bytes)
+        .map_err(|err| LxmfError::Decode(format!("msgpack value decode failed: {err}")))
 }

@@ -1,5 +1,6 @@
 use crate::message::Message;
 use crate::LxmfError;
+use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -38,7 +39,7 @@ pub fn decode_inbound_message(
     let message = Message::from_wire(&wire)?;
     let source = message.source_hash.unwrap_or([0u8; 16]);
     let destination = message.destination_hash.unwrap_or(fallback_destination);
-    let id = wire_message_id_hex(&wire).unwrap_or_else(|| hex::encode(destination));
+    let id = wire_message_id_hex(&wire)?;
     Ok(DecodedInboundMessage {
         id,
         source,
@@ -50,37 +51,39 @@ pub fn decode_inbound_message(
     })
 }
 
-fn wire_message_id_hex(candidate: &[u8]) -> Option<String> {
+fn wire_message_id_hex(candidate: &[u8]) -> Result<String, LxmfError> {
     const SIGNATURE_LEN: usize = 64;
     const HEADER_LEN: usize = 16 + 16 + SIGNATURE_LEN;
     if candidate.len() <= HEADER_LEN {
-        return None;
+        return Err(LxmfError::Decode(
+            "inbound message id payload is shorter than the wire header".to_string(),
+        ));
     }
     let mut destination = [0u8; 16];
     destination.copy_from_slice(&candidate[..16]);
     let mut source = [0u8; 16];
     source.copy_from_slice(&candidate[16..32]);
-    let payload_value = match rmp_serde::from_slice::<rmpv::Value>(&candidate[HEADER_LEN..]) {
-        Ok(value) => value,
-        Err(_) => return None,
-    };
+    let payload_value = rmp_serde::from_slice::<rmpv::Value>(&candidate[HEADER_LEN..])
+        .map_err(|err| LxmfError::Decode(format!("inbound message id payload decode failed: {err}")))?;
     let rmpv::Value::Array(items) = payload_value else {
-        return None;
+        return Err(LxmfError::Decode("inbound message id payload is not an array".to_string()));
     };
     let payload_without_stamp = payload_without_stamp_bytes(&items)?;
-    Some(compute_message_id_hex(destination, source, &payload_without_stamp))
+    Ok(compute_message_id_hex(destination, source, &payload_without_stamp))
 }
 
-fn payload_without_stamp_bytes(items: &[rmpv::Value]) -> Option<Vec<u8>> {
+fn payload_without_stamp_bytes(items: &[rmpv::Value]) -> Result<Vec<u8>, LxmfError> {
     if items.len() < 4 || items.len() > 5 {
-        return None;
+        return Err(LxmfError::Decode(
+            "inbound message id payload has an unexpected element count".to_string(),
+        ));
     }
     let mut trimmed = items.to_vec();
     if trimmed.len() == 5 {
         trimmed.pop();
     }
-    let encoded = rmp_serde::to_vec(&rmpv::Value::Array(trimmed));
-    encoded.ok()
+    rmp_serde::to_vec(&rmpv::Value::Array(trimmed))
+        .map_err(|err| LxmfError::Encode(format!("inbound message id payload re-encode failed: {err}")))
 }
 
 fn compute_message_id_hex(

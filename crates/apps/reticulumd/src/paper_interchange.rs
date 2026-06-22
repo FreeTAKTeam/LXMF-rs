@@ -38,7 +38,7 @@ pub fn summarize_wire_message(
     let title_utf8 = decode_utf8_owned(message.title.clone(), "paper interchange title").ok();
     let content_utf8 =
         decode_utf8_owned(message.content.clone(), "paper interchange content").ok();
-    let fields = message.fields.as_ref().and_then(rmpv_to_json);
+    let fields = message.fields.as_ref().map(rmpv_to_json).transpose()?;
 
     Ok(InterchangeMessageSummary {
         message_id: hex::encode(wire.message_id()),

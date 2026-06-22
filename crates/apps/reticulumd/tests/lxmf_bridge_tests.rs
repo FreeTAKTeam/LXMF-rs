@@ -21,7 +21,7 @@ fn wire_roundtrip_preserves_content_title_fields() {
     assert_eq!(message.title_as_string().as_deref(), Some("Hello"));
     assert_eq!(message.content_as_string().as_deref(), Some("World"));
 
-    let roundtrip = message.fields.and_then(|value| rmpv_to_json(&value));
+    let roundtrip = message.fields.and_then(|value| rmpv_to_json(&value).ok());
     assert_eq!(roundtrip, Some(fields));
 }
 
@@ -71,14 +71,15 @@ fn rmpv_to_json_decodes_telemetry_stream_from_string_payload() {
 }
 
 #[test]
-fn rmpv_to_json_preserves_nonbinary_telemetry_payload_as_string() {
+fn rmpv_to_json_errors_on_nondecodable_telemetry_payload() {
     let fields = rmpv::Value::Map(vec![(
         rmpv::Value::Integer(3_i64.into()),
         rmpv::Value::String("\u{0100}".into()),
     )]);
 
-    let output = rmpv_to_json(&fields).expect("to json");
-    assert_eq!(output["3"], serde_json::json!("\u{0100}"));
+    // A telemetry field (key "3") whose payload is not a decodable telemetry
+    // stream is now a hard decode error instead of being preserved as a string.
+    assert!(rmpv_to_json(&fields).is_err());
 }
 
 #[test]
@@ -137,7 +138,7 @@ fn build_wire_message_accepts_canonical_attachment_objects() {
         .expect("wire");
     let message = decode_wire_message(&wire).expect("decode");
 
-    let fields = message.fields.and_then(|value| rmpv_to_json(&value)).expect("fields");
+    let fields = message.fields.and_then(|value| rmpv_to_json(&value).ok()).expect("fields");
     assert_eq!(fields["5"], serde_json::json!([["legacy.txt", [3]], ["payload.bin", [9, 8, 7]]]));
     assert!(fields.get("attachments").is_none());
 }
@@ -166,7 +167,7 @@ fn build_wire_message_normalizes_hex_and_base64_attachment_data() {
         .expect("wire");
     let message = decode_wire_message(&wire).expect("decode");
 
-    let fields = message.fields.and_then(|value| rmpv_to_json(&value)).expect("fields");
+    let fields = message.fields.and_then(|value| rmpv_to_json(&value).ok()).expect("fields");
     assert_eq!(fields["5"], serde_json::json!([["hex.bin", [10, 11, 12]], ["b64.bin", [1, 2, 3]]]));
 }
 
@@ -344,7 +345,7 @@ fn build_wire_message_accepts_legacy_files_alias() {
     let wire = build_wire_message(source, destination, "title", "content", Some(fields), &identity)
         .expect("legacy files alias should normalize");
     let message = decode_wire_message(&wire).expect("decode");
-    let fields = message.fields.and_then(|value| rmpv_to_json(&value)).expect("fields");
+    let fields = message.fields.and_then(|value| rmpv_to_json(&value).ok()).expect("fields");
     assert_eq!(fields["5"], serde_json::json!([["good.bin", [1, 2, 3]]]));
 }
 
@@ -364,7 +365,7 @@ fn build_wire_message_accepts_public_numeric_attachment_key() {
     let wire = build_wire_message(source, destination, "title", "content", Some(fields), &identity)
         .expect("raw numeric key should pass through");
     let message = decode_wire_message(&wire).expect("decode");
-    let fields = message.fields.and_then(|value| rmpv_to_json(&value)).expect("fields");
+    let fields = message.fields.and_then(|value| rmpv_to_json(&value).ok()).expect("fields");
     assert_eq!(fields["5"], serde_json::json!([["bad.bin", [1, 2, 3]]]));
 }
 

@@ -321,7 +321,8 @@ fn python_attachment_fields_decode_in_rust() {
     let made = run_python_paper_helper(temp.path(), &["make-field-wire"]);
     let wire = hex::decode(made["wire_hex"].as_str().expect("wire hex")).expect("wire hex");
     let message = decode_wire_message(&wire).expect("decode Python field wire");
-    let fields = message.fields.as_ref().and_then(rmpv_to_json).expect("fields to json");
+    let fields =
+        message.fields.as_ref().and_then(|value| rmpv_to_json(value).ok()).expect("fields to json");
 
     assert_eq!(message.title_as_string().as_deref(), Some("python field title"));
     assert_eq!(message.content_as_string().as_deref(), Some("python field body"));
