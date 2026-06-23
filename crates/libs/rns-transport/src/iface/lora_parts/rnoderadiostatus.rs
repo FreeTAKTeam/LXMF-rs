@@ -300,8 +300,10 @@ impl LoraConfig {
     }
 
     #[must_use]
-    pub fn for_region(region: &str) -> Option<Self> {
-        let frequency_hz = match region.trim().to_ascii_uppercase().as_str() {
+    pub fn for_region(region: &str) -> Result<Option<Self>, &'static str> {
+        let trimmed = region.trim().to_ascii_uppercase();
+        let frequency_hz = match trimmed.as_str() {
+            "" => return Ok(None),
             "EU868" => 868_000_000,
             "US915" => 915_000_000,
             "AU915" => 915_000_000,
@@ -309,9 +311,9 @@ impl LoraConfig {
             "IN865" => 865_000_000,
             "KR920" => 920_000_000,
             "RU864" => 864_000_000,
-            _ => return None,
+            _ => return Err("unknown LoRa region"),
         };
-        Some(Self { frequency_hz, ..Self::us915_default() })
+        Ok(Some(Self { frequency_hz, ..Self::us915_default() }))
     }
 
     pub fn validate(self) -> Result<(), String> {

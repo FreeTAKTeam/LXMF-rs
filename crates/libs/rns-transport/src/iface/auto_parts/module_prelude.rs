@@ -429,14 +429,15 @@ pub enum AutoDiscoveryScope {
 }
 
 impl AutoDiscoveryScope {
-    pub fn parse(value: &str) -> Option<Self> {
+    pub fn parse(value: &str) -> Result<Option<Self>, &'static str> {
         match value.trim().to_ascii_lowercase().as_str() {
-            "link" => Some(Self::Link),
-            "admin" => Some(Self::Admin),
-            "site" => Some(Self::Site),
-            "organisation" | "organization" => Some(Self::Organisation),
-            "global" => Some(Self::Global),
-            _ => None,
+            "" => Ok(None),
+            "link" => Ok(Some(Self::Link)),
+            "admin" => Ok(Some(Self::Admin)),
+            "site" => Ok(Some(Self::Site)),
+            "organisation" | "organization" => Ok(Some(Self::Organisation)),
+            "global" => Ok(Some(Self::Global)),
+            _ => Err("unknown auto discovery scope"),
         }
     }
 

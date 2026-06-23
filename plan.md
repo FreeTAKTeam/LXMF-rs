@@ -142,7 +142,14 @@ box → commit). Stop on red; never commit a broken tree.
   to `&'static str`. `resolve_destination_identity` → S: propagates `resolve_identity` Result
   via `?`, Ok(None) for cancelled; callers (propagation_preparation_context, run_direct,
   run_opportunistic) match and log Err.
-- [ ] **S13** Pattern **M** — string→enum parsers (split empty vs unknown).
+- [x] **S13** Pattern **M** — string→enum parsers (split empty vs unknown).
+  `InterfaceMode::parse`, `AutoDiscoveryScope::parse`, `MulticastAddressType::parse`,
+  `LoraConfig::for_region`, `normalize_trust_level`, `normalize_voice_state`,
+  `parse_python_bool` → S (`Result<Option<T>, &'static str>`): `""` → Ok(None), valid
+  value → Ok(Some(T)), non-empty unknown → Err("..."). `category_for_code` SKIP (no-match
+  is genuine absence). Callers that treat both absent and unknown as "use default / return
+  None" use `.ok().flatten()`; callers that need to error on unknown use explicit match with
+  `Ok(None) | Err(_) => error`. Tests updated to Ok(Some(...)) / is_err().
 - [ ] **S14** Pattern **L** — enum-variant accessors (convert where caller expects variant).
 - [ ] **S15** **E** plain-`T`/`.expect()` cases + invariant SPLITs.
 - [ ] **S16** Pattern **O** pure pipes + BORDERLINE — after decision.

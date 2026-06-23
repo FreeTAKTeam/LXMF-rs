@@ -125,15 +125,15 @@ mod tests {
 
     #[test]
     fn interface_mode_parse_matches_python_aliases() {
-        assert_eq!(InterfaceMode::parse("full"), Some(InterfaceMode::Full));
-        assert_eq!(InterfaceMode::parse("accesspoint"), Some(InterfaceMode::AccessPoint));
-        assert_eq!(InterfaceMode::parse("ap"), Some(InterfaceMode::AccessPoint));
-        assert_eq!(InterfaceMode::parse("pointtopoint"), Some(InterfaceMode::PointToPoint));
-        assert_eq!(InterfaceMode::parse("ptp"), Some(InterfaceMode::PointToPoint));
-        assert_eq!(InterfaceMode::parse("roaming"), Some(InterfaceMode::Roaming));
-        assert_eq!(InterfaceMode::parse("boundary"), Some(InterfaceMode::Boundary));
-        assert_eq!(InterfaceMode::parse("gw"), Some(InterfaceMode::Gateway));
-        assert_eq!(InterfaceMode::parse("unknown"), None);
+        assert_eq!(InterfaceMode::parse("full"), Ok(Some(InterfaceMode::Full)));
+        assert_eq!(InterfaceMode::parse("accesspoint"), Ok(Some(InterfaceMode::AccessPoint)));
+        assert_eq!(InterfaceMode::parse("ap"), Ok(Some(InterfaceMode::AccessPoint)));
+        assert_eq!(InterfaceMode::parse("pointtopoint"), Ok(Some(InterfaceMode::PointToPoint)));
+        assert_eq!(InterfaceMode::parse("ptp"), Ok(Some(InterfaceMode::PointToPoint)));
+        assert_eq!(InterfaceMode::parse("roaming"), Ok(Some(InterfaceMode::Roaming)));
+        assert_eq!(InterfaceMode::parse("boundary"), Ok(Some(InterfaceMode::Boundary)));
+        assert_eq!(InterfaceMode::parse("gw"), Ok(Some(InterfaceMode::Gateway)));
+        assert!(InterfaceMode::parse("unknown").is_err());
     }
 
     #[test]

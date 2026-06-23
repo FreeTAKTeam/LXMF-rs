@@ -5,11 +5,12 @@ pub enum MulticastAddressType {
 }
 
 impl MulticastAddressType {
-    pub fn parse(value: &str) -> Option<Self> {
+    pub fn parse(value: &str) -> Result<Option<Self>, &'static str> {
         match value.trim().to_ascii_lowercase().as_str() {
-            "permanent" => Some(Self::Permanent),
-            "temporary" => Some(Self::Temporary),
-            _ => None,
+            "" => Ok(None),
+            "permanent" => Ok(Some(Self::Permanent)),
+            "temporary" => Ok(Some(Self::Temporary)),
+            _ => Err("unknown multicast address type"),
         }
     }
 

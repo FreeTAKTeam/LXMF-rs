@@ -66,10 +66,14 @@ fn auto_config(iface: &InterfaceConfig) -> Result<AutoInterfaceConfig, String> {
         discovery_scope: AutoDiscoveryScope::parse(
             iface.discovery_scope.as_deref().unwrap_or("link"),
         )
+        .ok()
+        .flatten()
         .ok_or_else(|| "auto discovery_scope was not normalized".to_string())?,
         multicast_address_type: MulticastAddressType::parse(
             iface.multicast_address_type.as_deref().unwrap_or("temporary"),
         )
+        .ok()
+        .flatten()
         .ok_or_else(|| "auto multicast_address_type was not normalized".to_string())?,
         discovery_port: iface.discovery_port.unwrap_or(29_716),
         data_port: iface.data_port.unwrap_or(42_671),

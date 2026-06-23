@@ -30,8 +30,8 @@ impl RpcDaemon {
         let display_name = parsed.display_name.as_deref().and_then(Self::normalize_non_empty);
         let trust_level = if let Some(level) = parsed.trust_level.as_deref() {
             match Self::normalize_trust_level(level) {
-                Some(value) => Some(value),
-                None => {
+                Ok(Some(value)) => Some(value),
+                Ok(None) | Err(_) => {
                     return Ok(self.sdk_error_response(
                         request.id,
                         "SDK_VALIDATION_INVALID_ARGUMENT",

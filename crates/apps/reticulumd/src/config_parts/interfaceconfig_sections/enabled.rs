@@ -255,11 +255,14 @@ impl InterfaceConfig {
         let Some((field, value)) = self.interface_mode_raw() else {
             return Ok(rns_transport::iface::InterfaceMode::Full);
         };
-        rns_transport::iface::InterfaceMode::parse(value).ok_or_else(|| {
-            format!(
-                "{field} must be one of full, access_point, accesspoint, ap, pointtopoint, ptp, roaming, boundary, gateway, gw"
-            )
-        })
+        rns_transport::iface::InterfaceMode::parse(value)
+            .ok()
+            .flatten()
+            .ok_or_else(|| {
+                format!(
+                    "{field} must be one of full, access_point, accesspoint, ap, pointtopoint, ptp, roaming, boundary, gateway, gw"
+                )
+            })
     }
 
     fn interface_mode_raw(&self) -> Option<(&'static str, &str)> {
@@ -279,10 +282,14 @@ impl InterfaceConfig {
         }
         let scope = rns_transport::iface::auto::AutoDiscoveryScope::parse(
             self.discovery_scope.as_deref()?,
-        )?;
+        )
+        .ok()
+        .flatten()?;
         let address_type = rns_transport::iface::auto::MulticastAddressType::parse(
             self.multicast_address_type.as_deref()?,
-        )?;
+        )
+        .ok()
+        .flatten()?;
         Some(rns_transport::iface::auto::multicast_discovery_address(
             self.group_id.as_deref()?.as_bytes(),
             scope,

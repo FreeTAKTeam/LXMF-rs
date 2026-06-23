@@ -115,16 +115,17 @@ impl RpcDaemon {
         Some(trimmed.to_string())
     }
 
-    pub(super) fn normalize_voice_state(value: &str) -> Option<&'static str> {
+    pub(super) fn normalize_voice_state(value: &str) -> Result<Option<&'static str>, &'static str> {
         let normalized = value.trim().to_ascii_lowercase();
         match normalized.as_str() {
-            "new" => Some("new"),
-            "ringing" => Some("ringing"),
-            "active" => Some("active"),
-            "holding" => Some("holding"),
-            "closed" => Some("closed"),
-            "failed" => Some("failed"),
-            _ => None,
+            "" => Ok(None),
+            "new" => Ok(Some("new")),
+            "ringing" => Ok(Some("ringing")),
+            "active" => Ok(Some("active")),
+            "holding" => Ok(Some("holding")),
+            "closed" => Ok(Some("closed")),
+            "failed" => Ok(Some("failed")),
+            _ => Err("unknown voice state"),
         }
     }
 

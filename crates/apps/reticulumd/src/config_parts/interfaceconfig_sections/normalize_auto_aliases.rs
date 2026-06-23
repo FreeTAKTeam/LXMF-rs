@@ -356,6 +356,8 @@ impl InterfaceConfig {
         if rns_transport::iface::auto::AutoDiscoveryScope::parse(
             self.discovery_scope.as_deref().unwrap_or_default(),
         )
+        .ok()
+        .flatten()
         .is_none()
         {
             return Err(format!(
@@ -365,6 +367,8 @@ impl InterfaceConfig {
         if rns_transport::iface::auto::MulticastAddressType::parse(
             self.multicast_address_type.as_deref().unwrap_or_default(),
         )
+        .ok()
+        .flatten()
         .is_none()
         {
             return Err(format!(

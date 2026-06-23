@@ -75,12 +75,15 @@ impl RpcDaemon {
                 ))
             }
         };
-        let Some(next_state) = Self::normalize_voice_state(parsed.state.as_str()) else {
-            return Ok(self.sdk_error_response(
-                request.id,
-                "SDK_VALIDATION_INVALID_ARGUMENT",
-                "voice state is invalid",
-            ));
+        let next_state = match Self::normalize_voice_state(parsed.state.as_str()) {
+            Ok(Some(state)) => state,
+            Ok(None) | Err(_) => {
+                return Ok(self.sdk_error_response(
+                    request.id,
+                    "SDK_VALIDATION_INVALID_ARGUMENT",
+                    "voice state is invalid",
+                ))
+            }
         };
         {
             let mut sessions =

@@ -1,12 +1,13 @@
 impl RpcDaemon {
 
-    pub(super) fn normalize_trust_level(value: &str) -> Option<String> {
+    pub(super) fn normalize_trust_level(value: &str) -> Result<Option<String>, &'static str> {
         match value.trim().to_ascii_lowercase().as_str() {
-            "unknown" => Some("unknown".to_string()),
-            "untrusted" => Some("untrusted".to_string()),
-            "trusted" => Some("trusted".to_string()),
-            "blocked" => Some("blocked".to_string()),
-            _ => None,
+            "" => Ok(None),
+            "unknown" => Ok(Some("unknown".to_string())),
+            "untrusted" => Ok(Some("untrusted".to_string())),
+            "trusted" => Ok(Some("trusted".to_string())),
+            "blocked" => Ok(Some("blocked".to_string())),
+            _ => Err("unknown trust level"),
         }
     }
 

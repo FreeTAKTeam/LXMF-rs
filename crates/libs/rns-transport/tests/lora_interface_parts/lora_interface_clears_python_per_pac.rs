@@ -426,7 +426,13 @@ fn lora_config_rejects_invalid_radio_parameters() {
 
 #[test]
 fn lora_region_defaults_select_expected_frequency() {
-    assert_eq!(LoraConfig::for_region("US915").expect("US915").frequency_hz, 915_000_000);
-    assert_eq!(LoraConfig::for_region("EU868").expect("EU868").frequency_hz, 868_000_000);
-    assert!(LoraConfig::for_region("MARS1").is_none());
+    assert_eq!(
+        LoraConfig::for_region("US915").expect("US915 result").expect("US915 config").frequency_hz,
+        915_000_000
+    );
+    assert_eq!(
+        LoraConfig::for_region("EU868").expect("EU868 result").expect("EU868 config").frequency_hz,
+        868_000_000
+    );
+    assert!(LoraConfig::for_region("MARS1").is_err());
 }

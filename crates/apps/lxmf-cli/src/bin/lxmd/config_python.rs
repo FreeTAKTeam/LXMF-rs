@@ -37,7 +37,7 @@ pub(crate) fn apply_python_config_file(
         }
         effective.python_compat.peer_announce_at_start = lxmf
             .get("announce_at_start")
-            .and_then(|value| parse_python_bool(value))
+            .and_then(|value| parse_python_bool(value).ok().flatten())
             .unwrap_or(false);
         effective.python_compat.peer_announce_interval_min =
             lxmf.get("announce_interval").and_then(|value| value.parse::<u64>().ok());
@@ -45,16 +45,16 @@ pub(crate) fn apply_python_config_file(
 
     if let Some(propagation) = sections.get("propagation") {
         if let Some(enabled) =
-            propagation.get("enable_node").and_then(|value| parse_python_bool(value))
+            propagation.get("enable_node").and_then(|value| parse_python_bool(value).ok().flatten())
         {
             effective.propagation_node = enabled;
         }
         effective.python_compat.auth_required = propagation
             .get("auth_required")
-            .and_then(|value| parse_python_bool(value))
+            .and_then(|value| parse_python_bool(value).ok().flatten())
             .unwrap_or(false);
         effective.python_compat.autopeer =
-            propagation.get("autopeer").and_then(|value| parse_python_bool(value)).unwrap_or(true);
+            propagation.get("autopeer").and_then(|value| parse_python_bool(value).ok().flatten()).unwrap_or(true);
         effective.python_compat.autopeer_maxdepth =
             propagation.get("autopeer_maxdepth").and_then(|value| value.parse::<u32>().ok());
         effective.python_compat.node_name = propagation
@@ -95,16 +95,16 @@ pub(crate) fn apply_python_config_file(
             propagation.get("remote_peering_cost_max").and_then(|value| value.parse::<u32>().ok());
         effective.python_compat.from_static_only = propagation
             .get("from_static_only")
-            .and_then(|value| parse_python_bool(value))
+            .and_then(|value| parse_python_bool(value).ok().flatten())
             .unwrap_or(false);
         effective.python_compat.retain_synced_on_node = propagation
             .get("retain_synced_on_node")
             .or_else(|| propagation.get("retain_node_lxms"))
-            .and_then(|value| parse_python_bool(value))
+            .and_then(|value| parse_python_bool(value).ok().flatten())
             .unwrap_or(false);
         effective.python_compat.node_announce_at_start = propagation
             .get("announce_at_start")
-            .and_then(|value| parse_python_bool(value))
+            .and_then(|value| parse_python_bool(value).ok().flatten())
             .unwrap_or(false);
         effective.python_compat.node_announce_interval_min =
             propagation.get("announce_interval").and_then(|value| value.parse::<u64>().ok());
@@ -228,7 +228,7 @@ pub(crate) fn parse_python_reticulum_interfaces(input: &str) -> Vec<crate::Singl
         let value = strip_inline_comment(value).trim();
         match key.as_str() {
             "type" => current.iface_type = Some(value.to_string()),
-            "enabled" => current.enabled = parse_python_bool(value),
+            "enabled" => current.enabled = parse_python_bool(value).ok().flatten(),
             "target_host" | "host" => current.host = Some(value.to_string()),
             "target_port" | "listen_port" | "port" => {
                 current.port = value.parse::<u16>().ok();
@@ -255,11 +255,12 @@ fn strip_inline_comment(value: &str) -> &str {
     value.split(" #").next().unwrap_or(value)
 }
 
-fn parse_python_bool(value: &str) -> Option<bool> {
+fn parse_python_bool(value: &str) -> Result<Option<bool>, &'static str> {
     match value.trim().to_ascii_lowercase().as_str() {
-        "yes" | "true" | "1" => Some(true),
-        "no" | "false" | "0" => Some(false),
-        _ => None,
+        "" => Ok(None),
+        "yes" | "true" | "1" => Ok(Some(true)),
+        "no" | "false" | "0" => Ok(Some(false)),
+        _ => Err("unknown boolean value"),
     }
 }
 

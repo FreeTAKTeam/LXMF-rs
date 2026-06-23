@@ -30,17 +30,18 @@ pub enum InterfaceMode {
 }
 
 impl InterfaceMode {
-    pub fn parse(value: &str) -> Option<Self> {
+    pub fn parse(value: &str) -> Result<Option<Self>, &'static str> {
         match value.trim().to_ascii_lowercase().as_str() {
-            "full" => Some(Self::Full),
+            "" => Ok(None),
+            "full" => Ok(Some(Self::Full)),
             "pointtopoint" | "point_to_point" | "point-to-point" | "ptp" => {
-                Some(Self::PointToPoint)
+                Ok(Some(Self::PointToPoint))
             }
-            "access_point" | "accesspoint" | "access-point" | "ap" => Some(Self::AccessPoint),
-            "roaming" => Some(Self::Roaming),
-            "boundary" => Some(Self::Boundary),
-            "gateway" | "gw" => Some(Self::Gateway),
-            _ => None,
+            "access_point" | "accesspoint" | "access-point" | "ap" => Ok(Some(Self::AccessPoint)),
+            "roaming" => Ok(Some(Self::Roaming)),
+            "boundary" => Ok(Some(Self::Boundary)),
+            "gateway" | "gw" => Ok(Some(Self::Gateway)),
+            _ => Err("unknown interface mode"),
         }
     }
 
