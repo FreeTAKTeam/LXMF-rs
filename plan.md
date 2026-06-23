@@ -76,7 +76,7 @@ box → commit). Stop on red; never commit a broken tree.
   `announce_stamp_cost` already R (done in S3); `transfer_limit_kb_from_value` → S
   (`Ok(None)` = positive-infinity no-limit, `Ok(Some(f))` = finite limit, `Err` = parse
   failure; caller in `peer_request_from_data` logs and returns `None` on Err).
-  Tests updated. Gaps fixed in commits 2bcedee and 48ac4eb (approx).
+  Tests updated. Gaps fixed in commits 2bcedee (rpc_access_log.rs) and 41749e1 (inbound_control_peer.rs).
 - [x] **S6** Pattern **D** — env-var readers (`env_u64`/`env_bool`/`env_usize`).
   `env_bool`/`env_u64`/`env_usize` → `Result<Option<T>, &'static str>`: `Ok(None)` when
   unset, `Err` when set-but-invalid, `Ok(Some(v))` when valid. Callers use
