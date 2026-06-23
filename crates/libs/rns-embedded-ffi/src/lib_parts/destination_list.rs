@@ -1,9 +1,12 @@
-fn destination_list(ptr: *const u8, count: usize) -> Option<alloc::vec::Vec<[u8; 16]>> {
+fn destination_list(
+    ptr: *const u8,
+    count: usize,
+) -> Result<alloc::vec::Vec<[u8; 16]>, &'static str> {
     if count == 0 {
-        return Some(alloc::vec::Vec::new());
+        return Ok(alloc::vec::Vec::new());
     }
     if ptr.is_null() {
-        return None;
+        return Err("null destination pointer with non-zero count");
     }
     // SAFETY: `ptr` is validated non-null above and the byte count is derived
     // from the caller-provided destination count with fixed 16-byte entries.
@@ -14,7 +17,7 @@ fn destination_list(ptr: *const u8, count: usize) -> Option<alloc::vec::Vec<[u8;
         destination.copy_from_slice(chunk);
         out.push(destination);
     }
-    Some(out)
+    Ok(out)
 }
 
 fn v1_node_config(config: &RnsEmbeddedV1NodeConfig) -> Result<NodeConfig, NodeError> {

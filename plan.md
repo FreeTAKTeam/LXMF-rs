@@ -101,7 +101,11 @@ box → commit). Stop on red; never commit a broken tree.
   `.unwrap_or_else(|err| { log::warn!(...); None })`, test helper uses `.ok().flatten()`);
   `parse_link_identify_payload` → `Result<Identity, &'static str>` (R; caller now logs
   the error variant instead of silently ignoring).
-- [ ] **S10** Pattern **F** — FFI null-pointer wrappers.
+- [x] **S10** Pattern **F** — FFI null-pointer wrappers.
+  `destination_list` → `Result<Vec<[u8;16]>, &'static str>` (null+non-zero-count → Err);
+  `v1_node_mut` → `Result<&mut RnsEmbeddedV1Node, &'static str>`;
+  `v1_subscription_mut` → `Result<&mut RnsEmbeddedEventSubscription, &'static str>`.
+  All 9 call sites updated from `let Some(x) = f() else { return ... }` to `match`.
 - [ ] **S11** Pattern **I** — LoRa/BLE encode-frame builders.
 - [ ] **S12** Pattern **J/K** — control/zmq decode + timeouts.
 - [ ] **S13** Pattern **M** — string→enum parsers (split empty vs unknown).

@@ -109,8 +109,9 @@ pub extern "C" fn rns_embedded_v1_node_start(
     out_node_error: *mut RnsEmbeddedV1NodeError,
 ) -> RnsEmbeddedStatus {
     ffi_v1_node_error_boundary(out_node_error, || {
-        let Some(node) = v1_node_mut(node) else {
-            return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidHandle);
+        let node = match v1_node_mut(node) {
+            Ok(n) => n,
+            Err(_) => return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidHandle),
         };
         if config.is_null() {
             return set_v1_pointer_error(
@@ -138,8 +139,9 @@ pub extern "C" fn rns_embedded_v1_node_stop(
     out_node_error: *mut RnsEmbeddedV1NodeError,
 ) -> RnsEmbeddedStatus {
     ffi_v1_node_error_boundary(out_node_error, || {
-        let Some(node) = v1_node_mut(node) else {
-            return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidHandle);
+        let node = match v1_node_mut(node) {
+            Ok(n) => n,
+            Err(_) => return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidHandle),
         };
         match node.node.stop() {
             Ok(()) => clear_v1_node_error(out_node_error),
@@ -155,8 +157,9 @@ pub extern "C" fn rns_embedded_v1_node_restart(
     out_node_error: *mut RnsEmbeddedV1NodeError,
 ) -> RnsEmbeddedStatus {
     ffi_v1_node_error_boundary(out_node_error, || {
-        let Some(node) = v1_node_mut(node) else {
-            return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidHandle);
+        let node = match v1_node_mut(node) {
+            Ok(n) => n,
+            Err(_) => return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidHandle),
         };
         if config.is_null() {
             return set_v1_pointer_error(
@@ -184,8 +187,9 @@ pub extern "C" fn rns_embedded_v1_node_get_status(
     out_status: *mut RnsEmbeddedV1NodeStatus,
 ) -> RnsEmbeddedStatus {
     ffi_status_boundary(|| {
-        let Some(node) = v1_node_mut(node) else {
-            return RnsEmbeddedStatus::InvalidArgument;
+        let node = match v1_node_mut(node) {
+            Ok(n) => n,
+            Err(_) => return RnsEmbeddedStatus::InvalidArgument,
         };
         if out_status.is_null() {
             return RnsEmbeddedStatus::InvalidArgument;
@@ -210,8 +214,9 @@ pub extern "C" fn rns_embedded_v1_node_send(
     out_node_error: *mut RnsEmbeddedV1NodeError,
 ) -> RnsEmbeddedStatus {
     ffi_v1_node_error_boundary(out_node_error, || {
-        let Some(node) = v1_node_mut(node) else {
-            return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidHandle);
+        let node = match v1_node_mut(node) {
+            Ok(n) => n,
+            Err(_) => return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidHandle),
         };
         if destination_ptr.is_null() || out_receipt.is_null() {
             return set_v1_pointer_error(
@@ -255,8 +260,9 @@ pub extern "C" fn rns_embedded_v1_node_broadcast(
     out_node_error: *mut RnsEmbeddedV1NodeError,
 ) -> RnsEmbeddedStatus {
     ffi_v1_node_error_boundary(out_node_error, || {
-        let Some(node) = v1_node_mut(node) else {
-            return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidHandle);
+        let node = match v1_node_mut(node) {
+            Ok(n) => n,
+            Err(_) => return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidHandle),
         };
         if out_receipt.is_null() {
             return set_v1_pointer_error(
@@ -271,8 +277,8 @@ pub extern "C" fn rns_embedded_v1_node_broadcast(
             );
         };
         let destinations = match destination_list(destinations_ptr, destination_count) {
-            Some(destinations) => destinations,
-            None => {
+            Ok(destinations) => destinations,
+            Err(_) => {
                 return set_v1_pointer_error(
                     out_node_error,
                     RnsEmbeddedV1NodeErrorCode::InvalidPointer,
@@ -300,8 +306,9 @@ pub extern "C" fn rns_embedded_v1_node_set_log_level(
     out_node_error: *mut RnsEmbeddedV1NodeError,
 ) -> RnsEmbeddedStatus {
     ffi_v1_node_error_boundary(out_node_error, || {
-        let Some(node) = v1_node_mut(node) else {
-            return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidHandle);
+        let node = match v1_node_mut(node) {
+            Ok(n) => n,
+            Err(_) => return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidHandle),
         };
         match node.node.set_log_level(map_v1_log_level(level)) {
             Ok(()) => clear_v1_node_error(out_node_error),
@@ -317,8 +324,9 @@ pub extern "C" fn rns_embedded_v1_node_subscribe_events(
     out_node_error: *mut RnsEmbeddedV1NodeError,
 ) -> RnsEmbeddedStatus {
     ffi_v1_node_error_boundary(out_node_error, || {
-        let Some(node) = v1_node_mut(node) else {
-            return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidHandle);
+        let node = match v1_node_mut(node) {
+            Ok(n) => n,
+            Err(_) => return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidHandle),
         };
         if out_subscription.is_null() {
             return set_v1_pointer_error(
@@ -350,8 +358,9 @@ pub extern "C" fn rns_embedded_v1_subscription_next(
     out_node_error: *mut RnsEmbeddedV1NodeError,
 ) -> RnsEmbeddedStatus {
     ffi_v1_node_error_boundary(out_node_error, || {
-        let Some(subscription) = v1_subscription_mut(subscription) else {
-            return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidHandle);
+        let subscription = match v1_subscription_mut(subscription) {
+            Ok(s) => s,
+            Err(_) => return set_v1_pointer_error(out_node_error, RnsEmbeddedV1NodeErrorCode::InvalidHandle),
         };
         if out_poll_result.is_null() || out_event.is_null() {
             return set_v1_pointer_error(
@@ -405,24 +414,24 @@ fn node_mut<'a>(node: *mut RnsEmbeddedNode) -> Option<&'a mut RnsEmbeddedNode> {
     Some(unsafe { &mut *node })
 }
 
-fn v1_node_mut<'a>(node: *mut RnsEmbeddedV1Node) -> Option<&'a mut RnsEmbeddedV1Node> {
+fn v1_node_mut<'a>(node: *mut RnsEmbeddedV1Node) -> Result<&'a mut RnsEmbeddedV1Node, &'static str> {
     if node.is_null() {
-        return None;
+        return Err("null node pointer");
     }
     // SAFETY: callers pass handles allocated by this crate and this helper only
     // creates a temporary exclusive borrow for the duration of the FFI call.
-    Some(unsafe { &mut *node })
+    Ok(unsafe { &mut *node })
 }
 
 fn v1_subscription_mut<'a>(
     subscription: *mut RnsEmbeddedEventSubscription,
-) -> Option<&'a mut RnsEmbeddedEventSubscription> {
+) -> Result<&'a mut RnsEmbeddedEventSubscription, &'static str> {
     if subscription.is_null() {
-        return None;
+        return Err("null subscription pointer");
     }
     // SAFETY: callers pass handles allocated by this crate and this helper only
     // creates a temporary exclusive borrow for the duration of the FFI call.
-    Some(unsafe { &mut *subscription })
+    Ok(unsafe { &mut *subscription })
 }
 
 fn byte_slice<'a>(ptr: *const u8, len: usize) -> Option<&'a [u8]> {
