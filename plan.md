@@ -69,11 +69,14 @@ box → commit). Stop on red; never commit a broken tree.
   - [x] **S4d** `pn_metadata_to_json.rs` — `pn_metadata_to_json` S,
     `pn_metadata_key_to_string` S, `pn_metadata_value_to_json` R,
     `parse_pn_metadata_name` S, `extract_capabilities_from_msgpack` S.
-- [x] **S5** Pattern **C** (reticulumd bin) — `rpc_access_log.rs`, `announce_ingest.rs`.
+- [x] **S5** Pattern **C** (reticulumd bin) — `rpc_access_log.rs`, `announce_ingest.rs`,
+  `inbound_control_peer.rs`.
   `parse_http_request_line` → R; `parse_status_code` → R; `parse_rpc_response_error` → S
-  (genuine absence: `rpc_response.error` field; all other None paths are parse errors).
-  Callers updated; tests updated (`Some(200)` → `Ok(200)`, `Some(...)` → `Ok(Some(...))`).
-  Gap fixed in commit 2bcedee.
+  (genuine absence: `rpc_response.error` field; all other None paths are parse errors);
+  `announce_stamp_cost` already R (done in S3); `transfer_limit_kb_from_value` → S
+  (`Ok(None)` = positive-infinity no-limit, `Ok(Some(f))` = finite limit, `Err` = parse
+  failure; caller in `peer_request_from_data` logs and returns `None` on Err).
+  Tests updated. Gaps fixed in commits 2bcedee and 48ac4eb (approx).
 - [x] **S6** Pattern **D** — env-var readers (`env_u64`/`env_bool`/`env_usize`).
   `env_bool`/`env_u64`/`env_usize` → `Result<Option<T>, &'static str>`: `Ok(None)` when
   unset, `Err` when set-but-invalid, `Ok(Some(v))` when valid. Callers use

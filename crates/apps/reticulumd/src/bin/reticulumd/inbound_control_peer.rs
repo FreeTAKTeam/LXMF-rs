@@ -44,7 +44,13 @@ fn peer_request_from_data(data: Option<rmpv::Value>) -> Option<(String, Option<f
                 _ => return None,
             };
             let transfer_limit_kb = match entries.get(1) {
-                Some(value) => transfer_limit_kb_from_value(value)?,
+                Some(value) => match transfer_limit_kb_from_value(value) {
+                    Ok(limit) => limit,
+                    Err(err) => {
+                        log::warn!("[daemon-control] invalid peer transfer limit: {err}");
+                        return None;
+                    }
+                },
                 None => None,
             };
             Some((peer, transfer_limit_kb))
@@ -52,26 +58,31 @@ fn peer_request_from_data(data: Option<rmpv::Value>) -> Option<(String, Option<f
         _ => None,
     }
 }
-fn transfer_limit_kb_from_value(value: &rmpv::Value) -> Option<Option<f64>> {
+fn transfer_limit_kb_from_value(value: &rmpv::Value) -> Result<Option<f64>, &'static str> {
     let limit = match value {
-        rmpv::Value::F64(value) => Some(*value),
-        rmpv::Value::F32(value) => Some((*value).into()),
-        rmpv::Value::Integer(value) => value.as_f64(),
-        rmpv::Value::String(value) => value.as_str()?.trim().parse::<f64>().ok(),
+        rmpv::Value::F64(value) => *value,
+        rmpv::Value::F32(value) => (*value).into(),
+        rmpv::Value::Integer(value) => value.as_f64().ok_or("integer out of f64 range")?,
+        rmpv::Value::String(value) => value
+            .as_str()
+            .ok_or("invalid UTF-8 in string transfer limit")?
+            .trim()
+            .parse::<f64>()
+            .map_err(|_| "invalid f64 in string transfer limit")?,
         rmpv::Value::Binary(value) => std::str::from_utf8(value)
-            .inspect_err(|err| {
-                log::warn!("[daemon-control] invalid UTF-8 in peer transfer limit: {err}")
-            })
-            .map_or(None, |text| text.trim().parse::<f64>().ok()),
-        rmpv::Value::Boolean(value) => Some(f64::from(*value as u8)),
-        _ => None,
-    }?;
+            .map_err(|_| "invalid UTF-8 in binary transfer limit")?
+            .trim()
+            .parse::<f64>()
+            .map_err(|_| "invalid f64 in binary transfer limit")?,
+        rmpv::Value::Boolean(value) => f64::from(*value as u8),
+        _ => return Err("unsupported transfer limit type"),
+    };
     if limit.is_nan() {
-        None
+        Err("NaN transfer limit")
     } else if limit.is_infinite() && limit.is_sign_positive() {
-        Some(None)
+        Ok(None)
     } else {
-        Some(Some(limit.max(0.0)))
+        Ok(Some(limit.max(0.0)))
     }
 }
 fn peer_exists(daemon: &RpcDaemon, peer_hex: &str, include_unpeered: bool) -> bool {
