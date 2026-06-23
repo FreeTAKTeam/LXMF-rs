@@ -104,7 +104,13 @@ impl RpcError {
     pub fn new(code: impl Into<String>, message: impl Into<String>) -> Self {
         let code = code.into();
         let message = message.into();
-        let category = Self::category_for_code(code.as_str());
+        let category = match Self::category_for_code(code.as_str()) {
+            Ok(category) => category,
+            Err(reason) => {
+                log::debug!("rpc error code {code} has no known category: {reason}");
+                None
+            }
+        };
         let retryable =
             category.as_deref().is_some_and(|value| value == "Transport" || value == "Timeout");
         let is_user_actionable = category.as_deref().is_some_and(|value| {
@@ -124,41 +130,44 @@ impl RpcError {
         }
     }
 
-    fn category_for_code(code: &str) -> Option<String> {
+    fn category_for_code(code: &str) -> Result<Option<String>, &'static str> {
+        if code.trim().is_empty() {
+            return Ok(None);
+        }
         if code.contains("_VALIDATION_") {
-            return Some("Validation".to_string());
+            return Ok(Some("Validation".to_string()));
         }
         if code.contains("_CAPABILITY_") {
-            return Some("Capability".to_string());
+            return Ok(Some("Capability".to_string()));
         }
         if code.contains("_CONFIG_") {
-            return Some("Config".to_string());
+            return Ok(Some("Config".to_string()));
         }
         if code.contains("_POLICY_") {
-            return Some("Policy".to_string());
+            return Ok(Some("Policy".to_string()));
         }
         if code.contains("_TRANSPORT_") {
-            return Some("Transport".to_string());
+            return Ok(Some("Transport".to_string()));
         }
         if code.contains("_STORAGE_") {
-            return Some("Storage".to_string());
+            return Ok(Some("Storage".to_string()));
         }
         if code.contains("_CRYPTO_") {
-            return Some("Crypto".to_string());
+            return Ok(Some("Crypto".to_string()));
         }
         if code.contains("_TIMEOUT_") {
-            return Some("Timeout".to_string());
+            return Ok(Some("Timeout".to_string()));
         }
         if code.contains("_RUNTIME_") {
-            return Some("Runtime".to_string());
+            return Ok(Some("Runtime".to_string()));
         }
         if code.contains("_SECURITY_") {
-            return Some("Security".to_string());
+            return Ok(Some("Security".to_string()));
         }
         if code.contains("INTERNAL") {
-            return Some("Internal".to_string());
+            return Ok(Some("Internal".to_string()));
         }
-        None
+        Err("error code matches no known category")
     }
 }
 
