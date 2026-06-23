@@ -84,7 +84,13 @@ box → commit). Stop on red; never commit a broken tree.
   `parse_error_category` → R (`Result<ErrorCategory, &'static str>`);
   `parse_control_request_payload` → R (`Result<([u8;16], Option<rmpv::Value>), String>`; was missed in S3).
   `ensure_peer_iface` deferred: uses tokio async mutex (no poison), error type unclear.
-- [ ] **S8** Pattern **N** — JSON accessors (`lxmf-sdk/domain_parts/*`, `app/events.rs`).
+- [x] **S8** Pattern **N** — JSON accessors (`lxmf-sdk/domain_parts/*`, `app/events.rs`).
+  All `json_*` / `peer_queue_json_*` / `propagation_node_json_*` / `remote_status_json_*` /
+  `remote_transfer_json_*` / `propagation_policy_json_*` helpers converted to
+  `Result<Option<T>, &'static str>` (S shape). `payload_state` / `receipt_state` /
+  `payload_peer_id` in `events.rs` likewise. `json_u32` in `outbound_message_for_query.rs`.
+  `propagationremote.rs` (not in canonical catalog but shares helpers via `include!`) also updated.
+  Callers use `.ok().flatten()` silently (lxmf-sdk has no log dep).
 - [ ] **S9** Pattern **G** — crypto/decrypt/verify (`resource_wire`, `wire`, `tunnels`,
   `parse_link_identify_payload`).
 - [ ] **S10** Pattern **F** — FFI null-pointer wrappers.

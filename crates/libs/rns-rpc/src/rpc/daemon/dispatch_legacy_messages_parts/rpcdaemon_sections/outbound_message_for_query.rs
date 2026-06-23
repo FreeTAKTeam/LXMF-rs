@@ -87,8 +87,8 @@ impl RpcDaemon {
         {
             return None;
         }
-        Self::json_u32(lxmf.get("stamp_cost"))
-            .or_else(|| Self::json_u32(lxmf.get("stamp_target_cost")))
+        Self::json_u32(lxmf.get("stamp_cost")).ok().flatten()
+            .or_else(|| Self::json_u32(lxmf.get("stamp_target_cost")).ok().flatten())
     }
 
     fn outbound_propagation_stamp_cost_for_message(message: &MessageRecord) -> Option<u32> {
@@ -102,8 +102,8 @@ impl RpcDaemon {
         if Self::lxmf_state_is_terminal(lxmf, "propagation_stamp_state") {
             return None;
         }
-        Self::json_u32(lxmf.get("propagation_target_cost"))
-            .or_else(|| Self::json_u32(lxmf.get("propagation_stamp_target_cost")))
+        Self::json_u32(lxmf.get("propagation_target_cost")).ok().flatten()
+            .or_else(|| Self::json_u32(lxmf.get("propagation_stamp_target_cost")).ok().flatten())
     }
 
     fn lxmf_state_is_terminal(lxmf: &serde_json::Map<String, JsonValue>, state_key: &str) -> bool {
@@ -137,20 +137,21 @@ impl RpcDaemon {
         Some(lxmf)
     }
 
-    fn json_u32(value: Option<&JsonValue>) -> Option<u32> {
-        match value? {
+    fn json_u32(value: Option<&JsonValue>) -> Result<Option<u32>, &'static str> {
+        let Some(v) = value else { return Ok(None) };
+        match v {
             JsonValue::Number(number) => {
-                number.as_u64().and_then(|value| u32::try_from(value).ok()).or_else(|| {
-                    let value = number.as_f64()?;
-                    (value.is_finite()
-                        && value.fract() == 0.0
-                        && value >= 0.0
-                        && value <= f64::from(u32::MAX))
-                    .then_some(value as u32)
-                })
+                let parsed = number.as_u64().and_then(|n| u32::try_from(n).ok()).or_else(|| {
+                    let f = number.as_f64()?;
+                    (f.is_finite() && f.fract() == 0.0 && f >= 0.0 && f <= f64::from(u32::MAX))
+                        .then_some(f as u32)
+                });
+                parsed.map(Some).ok_or("number is out of u32 range")
             }
-            JsonValue::String(value) => Self::string_u32(value),
-            _ => None,
+            JsonValue::String(s) => {
+                Self::string_u32(s).map(Some).ok_or("string is not a valid u32")
+            }
+            _ => Err("value is not a number or string"),
         }
     }
 

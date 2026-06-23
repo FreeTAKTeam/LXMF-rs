@@ -182,41 +182,41 @@ pub struct PropagationRemoteTransferState {
 
 impl PropagationRemoteTransferState {
     pub(crate) fn from_result_and_propagation(result: &JsonValue, propagation: &JsonValue) -> Self {
-        let state_name = json_string(propagation, "state_name");
-        let sync_state = json_u64(propagation, "sync_state").unwrap_or(0) as u32;
-        let failure_kind = json_string(result, "failure_kind")
-            .or_else(|| json_string(propagation, "failure_kind"))
+        let state_name = json_string(propagation, "state_name").ok().flatten();
+        let sync_state = json_u64(propagation, "sync_state").ok().flatten().unwrap_or(0) as u32;
+        let failure_kind = json_string(result, "failure_kind").ok().flatten()
+            .or_else(|| json_string(propagation, "failure_kind").ok().flatten())
             .or_else(|| match state_name.as_deref() {
                 Some("no_access") => Some("no_access".to_string()),
                 Some("timeout") => Some("timeout".to_string()),
                 _ => None,
             });
         let timed_out = failure_kind.as_deref() == Some("timeout")
-            || json_string(result, "postpone_reason").as_deref() == Some("timeout")
+            || json_string(result, "postpone_reason").ok().flatten().as_deref() == Some("timeout")
             || state_name.as_deref() == Some("timeout");
-        let access_denied = json_bool(propagation, "access_denied").unwrap_or(false)
+        let access_denied = json_bool(propagation, "access_denied").ok().flatten().unwrap_or(false)
             || state_name.as_deref() == Some("no_access")
             || sync_state == 0xf4
             || matches!(failure_kind.as_deref(), Some("access_denied" | "access-denied" | "no_access"));
         Self {
-            synced: json_bool(result, "synced").unwrap_or(false),
-            postponed: json_bool(result, "postponed").unwrap_or(false),
-            postpone_reason: json_string(result, "postpone_reason"),
-            imported_count: json_u64(result, "imported_count").unwrap_or(0),
+            synced: json_bool(result, "synced").ok().flatten().unwrap_or(false),
+            postponed: json_bool(result, "postponed").ok().flatten().unwrap_or(false),
+            postpone_reason: json_string(result, "postpone_reason").ok().flatten(),
+            imported_count: json_u64(result, "imported_count").ok().flatten().unwrap_or(0),
             imported_ids: remote_transfer_json_string_array(result, "imported_ids"),
-            transferred_bytes: json_u64(result, "transferred_bytes").unwrap_or(0),
+            transferred_bytes: json_u64(result, "transferred_bytes").ok().flatten().unwrap_or(0),
             state_name,
-            selected_node: json_string(propagation, "selected_node"),
-            selected_peer: json_string(propagation, "selected_peer"),
-            sync_progress: json_f64(propagation, "sync_progress"),
-            last_sync_started: json_i64(propagation, "last_sync_started"),
-            last_sync_completed: json_i64(propagation, "last_sync_completed"),
-            last_sync_error: json_string(propagation, "last_sync_error"),
+            selected_node: json_string(propagation, "selected_node").ok().flatten(),
+            selected_peer: json_string(propagation, "selected_peer").ok().flatten(),
+            sync_progress: json_f64(propagation, "sync_progress").ok().flatten(),
+            last_sync_started: json_i64(propagation, "last_sync_started").ok().flatten(),
+            last_sync_completed: json_i64(propagation, "last_sync_completed").ok().flatten(),
+            last_sync_error: json_string(propagation, "last_sync_error").ok().flatten(),
             failure_kind,
             timed_out,
             access_denied,
-            retry_count: json_u64(propagation, "retry_count").unwrap_or(0),
-            next_sync_attempt: json_i64(propagation, "next_sync_attempt"),
+            retry_count: json_u64(propagation, "retry_count").ok().flatten().unwrap_or(0),
+            next_sync_attempt: json_i64(propagation, "next_sync_attempt").ok().flatten(),
         }
     }
 }

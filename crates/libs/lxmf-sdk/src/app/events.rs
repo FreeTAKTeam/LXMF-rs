@@ -137,17 +137,20 @@ pub struct EventBatch {
 }
 
 #[cfg(feature = "sdk-async")]
-fn payload_state(payload: &JsonValue, key: &str) -> Option<String> {
-    payload.get(key).and_then(JsonValue::as_str).map(|value| value.trim().to_ascii_lowercase())
+fn payload_state(payload: &JsonValue, key: &str) -> Result<Option<String>, &'static str> {
+    match payload.get(key) {
+        None => Ok(None),
+        Some(v) => v.as_str().ok_or("payload field is not a string")
+            .map(|s| Some(s.trim().to_ascii_lowercase())),
+    }
 }
 
 #[cfg(feature = "sdk-async")]
-fn receipt_state(payload: &JsonValue) -> Option<String> {
-    let status = payload
-        .get("message")
-        .and_then(|message| message.get("receipt_status"))
-        .and_then(JsonValue::as_str)?;
-    Some(status.split(':').next().unwrap_or(status).trim().to_ascii_lowercase())
+fn receipt_state(payload: &JsonValue) -> Result<Option<String>, &'static str> {
+    let Some(message) = payload.get("message") else { return Ok(None) };
+    let Some(status_val) = message.get("receipt_status") else { return Ok(None) };
+    let status = status_val.as_str().ok_or("receipt_status is not a string")?;
+    Ok(Some(status.split(':').next().unwrap_or(status).trim().to_ascii_lowercase()))
 }
 
 #[cfg(feature = "sdk-async")]
@@ -164,19 +167,24 @@ fn map_delivery_state(state: &str) -> EventKind {
 }
 
 #[cfg(feature = "sdk-async")]
-fn payload_peer_id(payload: &JsonValue) -> Option<String> {
-    ["peer", "peer_id", "identity", "target"]
-        .into_iter()
-        .find_map(|key| payload.get(key).and_then(JsonValue::as_str))
-        .map(ToOwned::to_owned)
+fn payload_peer_id(payload: &JsonValue) -> Result<Option<String>, &'static str> {
+    for key in ["peer", "peer_id", "identity", "target"] {
+        match payload.get(key) {
+            None => continue,
+            Some(v) => {
+                return v.as_str().ok_or("peer id field is not a string").map(|s| Some(s.to_owned()));
+            }
+        }
+    }
+    Ok(None)
 }
 
 #[cfg(feature = "sdk-async")]
 pub fn map_sdk_event(event: SdkEvent, profile_id: &str) -> Event {
     let kind = match event.event_type.as_str() {
         "RuntimeStateChanged" => {
-            let from = payload_state(&event.payload, "from");
-            let to = payload_state(&event.payload, "to");
+            let from = payload_state(&event.payload, "from").ok().flatten();
+            let to = payload_state(&event.payload, "to").ok().flatten();
             match to.as_deref() {
                 Some("running") if matches!(from.as_deref(), Some("failed")) => {
                     EventKind::RuntimeRecovered
@@ -189,8 +197,8 @@ pub fn map_sdk_event(event: SdkEvent, profile_id: &str) -> Event {
             }
         }
         "DeliveryStateTransition" => {
-            let state = payload_state(&event.payload, "to")
-                .or_else(|| payload_state(&event.payload, "state"))
+            let state = payload_state(&event.payload, "to").ok().flatten()
+                .or_else(|| payload_state(&event.payload, "state").ok().flatten())
                 .unwrap_or_else(|| "unknown".to_owned());
             map_delivery_state(state.as_str())
         }
@@ -228,7 +236,7 @@ pub fn map_sdk_event(event: SdkEvent, profile_id: &str) -> Event {
         "sdk_security_rate_limited" => EventKind::SecurityActionRequired,
         "runtime_shutdown_requested" => EventKind::RuntimeStopped,
         "outbound" => map_delivery_state(
-            receipt_state(&event.payload).unwrap_or_else(|| "unknown".to_owned()).as_str(),
+            receipt_state(&event.payload).ok().flatten().unwrap_or_else(|| "unknown".to_owned()).as_str(),
         ),
         "ErrorRaised" => {
             if matches!(event.severity, RawSeverity::Critical | RawSeverity::Error) {
@@ -249,7 +257,7 @@ pub fn map_sdk_event(event: SdkEvent, profile_id: &str) -> Event {
             severity: event.severity.into(),
             operation_id: event.operation_id,
             message_id: event.message_id,
-            peer_id: event.peer_id.or_else(|| payload_peer_id(&event.payload)),
+            peer_id: event.peer_id.or_else(|| payload_peer_id(&event.payload).ok().flatten()),
             correlation_id: event.correlation_id,
             profile_id: profile_id.to_owned(),
         },

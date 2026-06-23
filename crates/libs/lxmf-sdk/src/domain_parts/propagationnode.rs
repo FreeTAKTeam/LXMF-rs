@@ -79,17 +79,17 @@ impl PropagationNodeConfig {
 
 impl PropagationNodeSelectionState {
     fn from_peer_and_meta(peer: Option<String>, meta: &JsonValue) -> Self {
-        let state = propagation_node_json_string(meta, "state")
-            .or_else(|| propagation_node_json_string(meta, "state_name"));
-        let failure_kind = propagation_node_json_string(meta, "failure_kind");
+        let state = propagation_node_json_string(meta, "state").ok().flatten()
+            .or_else(|| propagation_node_json_string(meta, "state_name").ok().flatten());
+        let failure_kind = propagation_node_json_string(meta, "failure_kind").ok().flatten();
         let timed_out = failure_kind.as_deref() == Some("timeout")
             || state.as_deref() == Some("timeout");
-        let access_denied = propagation_node_json_bool(meta, "access_denied").unwrap_or(false)
+        let access_denied = propagation_node_json_bool(meta, "access_denied").ok().flatten().unwrap_or(false)
             || matches!(
                 failure_kind.as_deref(),
                 Some("access_denied" | "access-denied" | "no_access")
             );
-        let selected = peer.is_some() || propagation_node_json_bool(meta, "selected").unwrap_or(false);
+        let selected = peer.is_some() || propagation_node_json_bool(meta, "selected").ok().flatten().unwrap_or(false);
         Self {
             peer,
             state,
@@ -97,10 +97,10 @@ impl PropagationNodeSelectionState {
             failure_kind,
             timed_out,
             access_denied,
-            queue_depth: propagation_node_json_u64(meta, "queue_depth").unwrap_or(0),
-            retry_count: propagation_node_json_u64(meta, "retry_count").unwrap_or(0),
-            next_sync_attempt: propagation_node_json_i64(meta, "next_sync_attempt"),
-            last_sync_error: propagation_node_json_string(meta, "last_sync_error"),
+            queue_depth: propagation_node_json_u64(meta, "queue_depth").ok().flatten().unwrap_or(0),
+            retry_count: propagation_node_json_u64(meta, "retry_count").ok().flatten().unwrap_or(0),
+            next_sync_attempt: propagation_node_json_i64(meta, "next_sync_attempt").ok().flatten(),
+            last_sync_error: propagation_node_json_string(meta, "last_sync_error").ok().flatten(),
         }
     }
 }
@@ -181,10 +181,10 @@ pub struct PropagationNodeRecord {
 impl PropagationNodeRecord {
     fn from_node(node: &JsonValue) -> Self {
         Self {
-            peer: propagation_node_json_string(node, "peer"),
-            name: propagation_node_json_string(node, "name"),
-            last_seen: propagation_node_json_i64(node, "last_seen"),
-            selected: propagation_node_json_bool(node, "selected").unwrap_or(false),
+            peer: propagation_node_json_string(node, "peer").ok().flatten(),
+            name: propagation_node_json_string(node, "name").ok().flatten(),
+            last_seen: propagation_node_json_i64(node, "last_seen").ok().flatten(),
+            selected: propagation_node_json_bool(node, "selected").ok().flatten().unwrap_or(false),
             capabilities: propagation_node_json_string_array(node, "capabilities"),
         }
     }
@@ -224,20 +224,32 @@ impl<'de> Deserialize<'de> for PropagationNodeListResult {
     }
 }
 
-fn propagation_node_json_bool(value: &JsonValue, key: &str) -> Option<bool> {
-    value.get(key).and_then(JsonValue::as_bool)
+fn propagation_node_json_bool(value: &JsonValue, key: &str) -> Result<Option<bool>, &'static str> {
+    match value.get(key) {
+        None => Ok(None),
+        Some(v) => v.as_bool().ok_or("field is not a bool").map(Some),
+    }
 }
 
-fn propagation_node_json_i64(value: &JsonValue, key: &str) -> Option<i64> {
-    value.get(key).and_then(JsonValue::as_i64)
+fn propagation_node_json_i64(value: &JsonValue, key: &str) -> Result<Option<i64>, &'static str> {
+    match value.get(key) {
+        None => Ok(None),
+        Some(v) => v.as_i64().ok_or("field is not an integer").map(Some),
+    }
 }
 
-fn propagation_node_json_u64(value: &JsonValue, key: &str) -> Option<u64> {
-    value.get(key).and_then(JsonValue::as_u64)
+fn propagation_node_json_u64(value: &JsonValue, key: &str) -> Result<Option<u64>, &'static str> {
+    match value.get(key) {
+        None => Ok(None),
+        Some(v) => v.as_u64().ok_or("field is not an unsigned integer").map(Some),
+    }
 }
 
-fn propagation_node_json_string(value: &JsonValue, key: &str) -> Option<String> {
-    value.get(key).and_then(JsonValue::as_str).map(ToOwned::to_owned)
+fn propagation_node_json_string(value: &JsonValue, key: &str) -> Result<Option<String>, &'static str> {
+    match value.get(key) {
+        None => Ok(None),
+        Some(v) => v.as_str().ok_or("field is not a string").map(|s| Some(s.to_owned())),
+    }
 }
 
 fn propagation_node_json_string_array(value: &JsonValue, key: &str) -> Vec<String> {

@@ -16,7 +16,7 @@ pub struct PropagationDeliveryPolicyState {
 impl PropagationDeliveryPolicyState {
     fn from_policy(policy: &JsonValue) -> Self {
         Self {
-            auth_required: propagation_policy_json_bool(policy, "auth_required").unwrap_or(false),
+            auth_required: propagation_policy_json_bool(policy, "auth_required").ok().flatten().unwrap_or(false),
             allowed_destinations: propagation_policy_json_string_array(policy, "allowed_destinations"),
             denied_destinations: propagation_policy_json_string_array(policy, "denied_destinations"),
             ignored_destinations: propagation_policy_json_string_array(policy, "ignored_destinations"),
@@ -160,8 +160,11 @@ impl<'de> Deserialize<'de> for PropagationFetchResult {
     }
 }
 
-fn propagation_policy_json_bool(value: &JsonValue, key: &str) -> Option<bool> {
-    value.get(key).and_then(JsonValue::as_bool)
+fn propagation_policy_json_bool(value: &JsonValue, key: &str) -> Result<Option<bool>, &'static str> {
+    match value.get(key) {
+        None => Ok(None),
+        Some(v) => v.as_bool().ok_or("field is not a bool").map(Some),
+    }
 }
 
 fn propagation_policy_json_string_array(value: &JsonValue, key: &str) -> Vec<String> {
