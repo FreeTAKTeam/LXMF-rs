@@ -32,12 +32,24 @@ impl DeliverySchedulerConfig {
         let defaults = Self::default();
         Self {
             queue_capacity: env_usize("LXMD_DELIVERY_QUEUE_CAPACITY")
+                .unwrap_or_else(|err| {
+                    log::warn!("[daemon] invalid env var LXMD_DELIVERY_QUEUE_CAPACITY: {err}");
+                    None
+                })
                 .unwrap_or(defaults.queue_capacity)
                 .max(1),
             global_concurrency: env_usize("LXMD_DELIVERY_GLOBAL_CONCURRENCY")
+                .unwrap_or_else(|err| {
+                    log::warn!("[daemon] invalid env var LXMD_DELIVERY_GLOBAL_CONCURRENCY: {err}");
+                    None
+                })
                 .unwrap_or(defaults.global_concurrency)
                 .max(1),
             per_peer_in_flight: env_usize("LXMD_DELIVERY_PER_PEER_IN_FLIGHT")
+                .unwrap_or_else(|err| {
+                    log::warn!("[daemon] invalid env var LXMD_DELIVERY_PER_PEER_IN_FLIGHT: {err}");
+                    None
+                })
                 .unwrap_or(defaults.per_peer_in_flight)
                 .max(1),
         }
@@ -486,8 +498,12 @@ async fn prepare_propagation_payload(
     None
 }
 
-fn env_usize(name: &str) -> Option<usize> {
-    std::env::var(name).ok().and_then(|value| value.trim().parse::<usize>().ok())
+fn env_usize(name: &str) -> Result<Option<usize>, &'static str> {
+    let value = match std::env::var(name) {
+        Ok(v) => v,
+        Err(_) => return Ok(None),
+    };
+    value.trim().parse::<usize>().map(Some).map_err(|_| "invalid usize value")
 }
 
 #[cfg(test)]

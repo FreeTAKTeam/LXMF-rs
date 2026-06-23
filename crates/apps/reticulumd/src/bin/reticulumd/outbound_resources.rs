@@ -26,13 +26,10 @@ pub(super) fn track_outbound_resource(
 pub(super) fn take_outbound_resource_tracking(
     outbound_resource_map: &OutboundResourceMap,
     resource_hash_hex: &str,
-) -> Option<OutboundResourceTracking> {
+) -> Result<OutboundResourceTracking, &'static str> {
     match outbound_resource_map.lock() {
-        Ok(mut guard) => guard.remove(resource_hash_hex),
-        Err(err) => {
-            log::warn!("[daemon] failed to lock outbound resource map: {err}");
-            None
-        }
+        Ok(mut guard) => guard.remove(resource_hash_hex).ok_or("resource not tracked"),
+        Err(_) => Err("outbound resource map lock poisoned"),
     }
 }
 
@@ -85,7 +82,7 @@ mod tests {
         assert_eq!(tracking.sent_status, OUTBOUND_RESOURCE_SENT_STATUS);
 
         prune_outbound_resource_mappings_for_message(&map, "msg-2");
-        assert!(take_outbound_resource_tracking(&map, "res-2").is_none());
+        assert!(take_outbound_resource_tracking(&map, "res-2").is_err());
     }
 
     #[test]

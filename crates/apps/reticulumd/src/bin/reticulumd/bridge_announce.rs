@@ -23,7 +23,10 @@ impl TransportBridge {
         };
         Some(encode_delivery_announce_app_data_with_capabilities(
             display_name.as_str(),
-            self.current_inbound_stamp_cost(),
+            self.current_inbound_stamp_cost().unwrap_or_else(|err| {
+                log::warn!("[daemon] failed to read daemon state for delivery announce: {err}");
+                None
+            }),
             &self.announce_capabilities,
         )
         .unwrap_or_else(|e| {
@@ -32,16 +35,16 @@ impl TransportBridge {
         }))
     }
 
-    fn current_inbound_stamp_cost(&self) -> Option<u32> {
+    fn current_inbound_stamp_cost(&self) -> Result<Option<u32>, &'static str> {
         let daemon = match self.daemon.lock() {
-            Ok(daemon) => daemon.clone()?,
-            Err(err) => {
-                log::warn!("[daemon] failed to read daemon state for delivery announce: {err}");
-                return None;
-            }
+            Ok(daemon) => daemon.clone(),
+            Err(_) => return Err("daemon state lock poisoned"),
+        };
+        let Some(daemon) = daemon else {
+            return Ok(None);
         };
         let target_cost = daemon.current_stamp_policy().target_cost;
-        (target_cost > 0 && target_cost < 255).then_some(target_cost)
+        Ok((target_cost > 0 && target_cost < 255).then_some(target_cost))
     }
 
     fn current_propagation_announce_app_data(&self) -> Option<Vec<u8>> {

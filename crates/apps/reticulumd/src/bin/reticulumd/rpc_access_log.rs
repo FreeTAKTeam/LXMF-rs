@@ -20,7 +20,7 @@ pub(super) fn parse_request_log_meta(request: &[u8]) -> RpcRequestLogMeta {
         return meta;
     };
     let headers = &request[..header_end];
-    let Some((http_method, path)) = parse_http_request_line(headers) else {
+    let Ok((http_method, path)) = parse_http_request_line(headers) else {
         return meta;
     };
     meta.http_method = http_method.to_string();
@@ -62,7 +62,7 @@ pub(super) fn emit_rpc_access_log(
     error_text: Option<&str>,
 ) {
     let status_code = parse_status_code(response).unwrap_or(0);
-    let rpc_error = parse_rpc_response_error(response);
+    let rpc_error = parse_rpc_response_error(response).ok().flatten();
     let effective_error = error_text
         .map(str::to_string)
         .or_else(|| rpc_error.as_ref().map(|(_, message)| message.clone()));
@@ -105,39 +105,42 @@ pub(super) fn emit_rpc_access_log(
     log::info!("{}", payload);
 }
 
-fn parse_http_request_line(headers: &[u8]) -> Option<(&str, &str)> {
-    let text = decode_utf8(headers, "RPC request headers").ok()?;
-    let line = text.lines().next()?;
+fn parse_http_request_line(headers: &[u8]) -> Result<(&str, &str), &'static str> {
+    let text =
+        decode_utf8(headers, "RPC request headers").map_err(|_| "invalid UTF-8 in request headers")?;
+    let line = text.lines().next().ok_or("no HTTP request line")?;
     let mut parts = line.split_whitespace();
-    let method = parts.next()?;
-    let path = parts.next()?;
-    Some((method, path))
+    let method = parts.next().ok_or("no HTTP method")?;
+    let path = parts.next().ok_or("no HTTP path")?;
+    Ok((method, path))
 }
 
-fn parse_status_code(response: &[u8]) -> Option<u16> {
-    let text = decode_utf8(response, "RPC response status").ok()?;
-    let line = text.lines().next()?;
+fn parse_status_code(response: &[u8]) -> Result<u16, &'static str> {
+    let text =
+        decode_utf8(response, "RPC response status").map_err(|_| "invalid UTF-8 in response")?;
+    let line = text.lines().next().ok_or("no response status line")?;
     let mut parts = line.split_whitespace();
-    let _http_version = parts.next()?;
-    let code = parts.next()?;
-    code.parse::<u16>().ok()
+    let _http_version = parts.next().ok_or("no HTTP version")?;
+    let code = parts.next().ok_or("no status code")?;
+    code.parse::<u16>().map_err(|_| "invalid status code")
 }
 
-fn parse_rpc_response_error(response: &[u8]) -> Option<(String, String)> {
-    let header_end = http::find_header_end(response)?;
+fn parse_rpc_response_error(response: &[u8]) -> Result<Option<(String, String)>, &'static str> {
+    let header_end = http::find_header_end(response).ok_or("no header end in response")?;
     let headers = &response[..header_end];
-    let content_length = http::parse_content_length(headers).ok()?;
+    let content_length =
+        http::parse_content_length(headers).map_err(|_| "invalid content-length in response")?;
     if content_length > codec::MAX_FRAME_PAYLOAD_LEN + 4 {
-        return None;
+        return Err("response body exceeds frame limit");
     }
-    let body_start = header_end.checked_add(4)?;
-    let body_end = body_start.checked_add(content_length)?;
+    let body_start = header_end.checked_add(4).ok_or("body start overflow")?;
+    let body_end = body_start.checked_add(content_length).ok_or("body end overflow")?;
     if response.len() < body_end {
-        return None;
+        return Err("response body truncated");
     }
-    let rpc_response = codec::decode_frame::<RpcResponse>(&response[body_start..body_end]).ok()?;
-    let error = rpc_response.error?;
-    Some((error.code, error.message))
+    let rpc_response = codec::decode_frame::<RpcResponse>(&response[body_start..body_end])
+        .map_err(|_| "failed to decode RPC response body")?;
+    Ok(rpc_response.error.map(|e| (e.code, e.message)))
 }
 
 fn pretty_console_logs_enabled() -> bool {
@@ -276,7 +279,7 @@ mod tests {
     #[test]
     fn parse_status_code_extracts_numeric_status() {
         let response = b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
-        assert_eq!(parse_status_code(response), Some(200));
+        assert_eq!(parse_status_code(response), Ok(200));
     }
 
     #[test]
@@ -293,7 +296,7 @@ mod tests {
 
         assert_eq!(
             parse_rpc_response_error(&raw),
-            Some(("SDK_INTERNAL".to_string(), "boom".to_string()))
+            Ok(Some(("SDK_INTERNAL".to_string(), "boom".to_string())))
         );
     }
 }

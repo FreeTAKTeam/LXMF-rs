@@ -23,19 +23,39 @@ fn resolve_propagation_node_config(
 
     ResolvedPropagationNodeConfig {
         enabled: env_bool("LXMD_PROPAGATION_NODE")
+            .unwrap_or_else(|err| {
+                log::warn!("[daemon] invalid env var LXMD_PROPAGATION_NODE: {err}");
+                None
+            })
             .or_else(|| toml.and_then(|config| config.enabled))
             .unwrap_or(false),
         allowed_control_identities,
         peer_announce_at_start: env_bool("LXMD_PEER_ANNOUNCE_AT_START")
+            .unwrap_or_else(|err| {
+                log::warn!("[daemon] invalid env var LXMD_PEER_ANNOUNCE_AT_START: {err}");
+                None
+            })
             .or_else(|| toml.and_then(|config| config.peer_announce_at_start))
             .unwrap_or(false),
         peer_announce_interval_secs: env_u64("LXMD_PEER_ANNOUNCE_INTERVAL_SECS")
+            .unwrap_or_else(|err| {
+                log::warn!("[daemon] invalid env var LXMD_PEER_ANNOUNCE_INTERVAL_SECS: {err}");
+                None
+            })
             .or_else(|| toml.and_then(|config| config.peer_announce_interval_secs))
             .filter(|value| *value > 0),
         node_announce_at_start: env_bool("LXMD_NODE_ANNOUNCE_AT_START")
+            .unwrap_or_else(|err| {
+                log::warn!("[daemon] invalid env var LXMD_NODE_ANNOUNCE_AT_START: {err}");
+                None
+            })
             .or_else(|| toml.and_then(|config| config.node_announce_at_start))
             .unwrap_or(false),
         node_announce_interval_secs: env_u64("LXMD_NODE_ANNOUNCE_INTERVAL_SECS")
+            .unwrap_or_else(|err| {
+                log::warn!("[daemon] invalid env var LXMD_NODE_ANNOUNCE_INTERVAL_SECS: {err}");
+                None
+            })
             .or_else(|| toml.and_then(|config| config.node_announce_interval_secs))
             .filter(|value| *value > 0),
         announce_config: PropagationNodeAnnounceConfig {
@@ -63,10 +83,14 @@ fn resolve_propagation_node_config(
     }
 }
 
-fn env_bool(key: &str) -> Option<bool> {
-    std::env::var(key).ok().and_then(|value| match value.trim().to_ascii_lowercase().as_str() {
-        "1" | "true" | "yes" | "on" => Some(true),
-        "0" | "false" | "no" | "off" => Some(false),
-        _ => None,
-    })
+fn env_bool(key: &str) -> Result<Option<bool>, &'static str> {
+    let value = match std::env::var(key) {
+        Ok(v) => v,
+        Err(_) => return Ok(None),
+    };
+    match value.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "on" => Ok(Some(true)),
+        "0" | "false" | "no" | "off" => Ok(Some(false)),
+        _ => Err("unrecognised boolean value"),
+    }
 }

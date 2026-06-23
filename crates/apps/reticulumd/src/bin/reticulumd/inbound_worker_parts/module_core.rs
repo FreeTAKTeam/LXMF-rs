@@ -172,14 +172,17 @@ fn handle_outbound_resource_completion(
     resource_hash: &Hash,
 ) {
     let resource_hash_hex = hex::encode(resource_hash.as_slice());
-    if let Some(tracking) =
-        take_outbound_resource_tracking(outbound_resource_map, resource_hash_hex.as_str())
-    {
-        daemon.record_outbound_peer_sent(&tracking.peer, tracking.bytes);
-        emit_receipt_event(receipt_tx, ReceiptEvent {
-            message_id: tracking.message_id,
-            status: tracking.sent_status,
-        });
+    match take_outbound_resource_tracking(outbound_resource_map, resource_hash_hex.as_str()) {
+        Ok(tracking) => {
+            daemon.record_outbound_peer_sent(&tracking.peer, tracking.bytes);
+            emit_receipt_event(receipt_tx, ReceiptEvent {
+                message_id: tracking.message_id,
+                status: tracking.sent_status,
+            });
+        }
+        Err(err) => {
+            log::warn!("[daemon-rx] outbound resource completion without tracking hash={}: {err}", resource_hash_hex);
+        }
     }
 }
 
@@ -190,14 +193,17 @@ fn handle_outbound_resource_failure(
     resource_hash: &Hash,
 ) {
     let resource_hash_hex = hex::encode(resource_hash.as_slice());
-    if let Some(tracking) =
-        take_outbound_resource_tracking(outbound_resource_map, resource_hash_hex.as_str())
-    {
-        daemon.record_outbound_peer_activity(&tracking.peer, tracking.bytes, false);
-        emit_receipt_event(receipt_tx, ReceiptEvent {
-            message_id: tracking.message_id,
-            status: "failed: resource transfer timed out".to_string(),
-        });
+    match take_outbound_resource_tracking(outbound_resource_map, resource_hash_hex.as_str()) {
+        Ok(tracking) => {
+            daemon.record_outbound_peer_activity(&tracking.peer, tracking.bytes, false);
+            emit_receipt_event(receipt_tx, ReceiptEvent {
+                message_id: tracking.message_id,
+                status: "failed: resource transfer timed out".to_string(),
+            });
+        }
+        Err(err) => {
+            log::warn!("[daemon-rx] outbound resource failure without tracking hash={}: {err}", resource_hash_hex);
+        }
     }
 }
 

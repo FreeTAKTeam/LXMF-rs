@@ -110,7 +110,7 @@
             &map,
             resource_hash_hex.as_str()
         )
-        .is_none());
+        .is_err());
         let event = rx.try_recv().expect("failed receipt event");
         assert_eq!(event.message_id, "resource-timeout-message");
         assert_eq!(event.status, "failed: resource transfer timed out");
