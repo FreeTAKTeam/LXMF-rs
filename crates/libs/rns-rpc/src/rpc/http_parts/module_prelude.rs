@@ -55,8 +55,7 @@ pub fn handle_http_request_with_transport_auth(
         let parsed_headers = parse_headers(headers);
         let peer_ip = peer_addr.map(|addr| addr.ip().to_string());
         let body_start = header_end + HEADER_END.len();
-        let (method, path) = parse_request_line(headers)
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid request line"))?;
+        let (method, path) = parse_request_line(headers)?;
         let (path_only, query) = split_path_and_query(path.as_str());
         daemon.metrics_record_http_request(method.as_str(), path_only);
         match (method.as_str(), path_only) {
@@ -139,9 +138,7 @@ pub fn handle_http_request_with_transport_auth(
                 Ok(build_response(StatusCode::Ok, &body))
             }
             ("POST", "/rpc") => {
-                let content_length = parse_content_length(headers).ok_or_else(|| {
-                    io::Error::new(io::ErrorKind::InvalidInput, "missing content-length")
-                })?;
+                let content_length = parse_content_length(headers)?;
                 if content_length > codec::MAX_FRAME_PAYLOAD_LEN + 4 {
                     return Err(io::Error::new(io::ErrorKind::InvalidData, "body too large"));
                 }
@@ -211,23 +208,28 @@ fn validate_header_block(headers: &[u8]) -> io::Result<()> {
     Ok(())
 }
 
-pub fn parse_content_length(headers: &[u8]) -> Option<usize> {
+/// R: `Err` = no Content-Length header, a malformed value, or conflicting headers.
+/// (No caller treats a missing header as a valid outcome, so absence is a failure.)
+pub fn parse_content_length(headers: &[u8]) -> io::Result<usize> {
     let text = String::from_utf8_lossy(headers);
     let mut parsed = None;
     for line in text.lines() {
         let lower = line.to_ascii_lowercase();
         if let Some(rest) = lower.strip_prefix("content-length:") {
             let value = rest.trim();
-            let Ok(length) = value.parse::<usize>() else {
-                return None;
-            };
+            let length = value.parse::<usize>().map_err(|_| {
+                io::Error::new(io::ErrorKind::InvalidData, "invalid content-length value")
+            })?;
             if parsed.is_some_and(|existing| existing != length) {
-                return None;
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "conflicting content-length headers",
+                ));
             }
             parsed = Some(length);
         }
     }
-    parsed
+    parsed.ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "missing content-length"))
 }
 
 pub fn request_method_path_headers(request: &[u8]) -> io::Result<HttpRequestParts> {
@@ -235,8 +237,7 @@ pub fn request_method_path_headers(request: &[u8]) -> io::Result<HttpRequestPart
     let headers = &request[..header_end];
     validate_header_block(headers)?;
     let parsed_headers = parse_headers(headers);
-    let (method, path) = parse_request_line(headers)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid request line"))?;
+    let (method, path) = parse_request_line(headers)?;
     let (path_only, _) = split_path_and_query(path.as_str());
     Ok((method, path_only.to_owned(), parsed_headers))
 }
@@ -251,14 +252,16 @@ pub fn streaming_event_response_header() -> Vec<u8> {
     response
 }
 
-fn parse_request_line(headers: &[u8]) -> Option<(String, String)> {
+/// R: `Err` = no request line or missing method/path (always an invalid request).
+fn parse_request_line(headers: &[u8]) -> io::Result<(String, String)> {
+    let invalid = || io::Error::new(io::ErrorKind::InvalidInput, "invalid request line");
     let text = String::from_utf8_lossy(headers);
     let mut lines = text.lines();
-    let line = lines.next()?;
+    let line = lines.next().ok_or_else(invalid)?;
     let mut parts = line.split_whitespace();
-    let method = parts.next()?.to_string();
-    let path = parts.next()?.to_string();
-    Some((method, path))
+    let method = parts.next().ok_or_else(invalid)?.to_string();
+    let path = parts.next().ok_or_else(invalid)?.to_string();
+    Ok((method, path))
 }
 
 fn parse_headers(headers: &[u8]) -> HttpHeaderList {
@@ -286,13 +289,19 @@ fn query_param(query: &str, key: &str) -> Option<String> {
         }
         let (name, value) = pair.split_once('=').unwrap_or((pair, ""));
         if name == key {
-            return percent_decode(value).or_else(|| Some(value.to_string()));
+            return Some(percent_decode(value).unwrap_or_else(|err| {
+                log::debug!("invalid percent-encoding in query param {key}: {err}");
+                value.to_string()
+            }));
         }
     }
     None
 }
 
-fn percent_decode(value: &str) -> Option<String> {
+/// R: `Err` = a complete `%XY` escape with invalid hex digits, or non-UTF-8 result.
+/// (A truncated trailing `%`/`%X` is kept literally, matching prior behaviour.)
+fn percent_decode(value: &str) -> io::Result<String> {
+    let invalid = || io::Error::new(io::ErrorKind::InvalidInput, "invalid percent-encoding");
     let bytes = value.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut idx = 0;
@@ -303,8 +312,8 @@ fn percent_decode(value: &str) -> Option<String> {
                 idx += 1;
             }
             b'%' if idx + 2 < bytes.len() => {
-                let hi = decode_hex(bytes[idx + 1])?;
-                let lo = decode_hex(bytes[idx + 2])?;
+                let hi = decode_hex(bytes[idx + 1]).ok_or_else(invalid)?;
+                let lo = decode_hex(bytes[idx + 2]).ok_or_else(invalid)?;
                 out.push((hi << 4) | lo);
                 idx += 3;
             }
@@ -314,8 +323,7 @@ fn percent_decode(value: &str) -> Option<String> {
             }
         }
     }
-    let decoded = String::from_utf8(out);
-    decoded.ok()
+    String::from_utf8(out).map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
 }
 
 fn decode_hex(input: u8) -> Option<u8> {

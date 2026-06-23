@@ -51,8 +51,7 @@ pub fn parse_http_response_body(response: &[u8]) -> io::Result<Vec<u8>> {
     let body_start = header_end
         .checked_add(b"\r\n\r\n".len())
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "response too large"))?;
-    let content_length = crate::rpc::http::parse_content_length(headers)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing content length"))?;
+    let content_length = crate::rpc::http::parse_content_length(headers)?;
     if content_length > crate::rpc::codec::MAX_FRAME_PAYLOAD_LEN + 4 {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "body too large"));
     }
@@ -193,6 +192,6 @@ mod tests {
             .expect_err("conflicting content-length headers should fail");
 
         assert_eq!(err.kind(), io::ErrorKind::InvalidData);
-        assert!(err.to_string().contains("missing content length"));
+        assert!(err.to_string().contains("conflicting content-length headers"));
     }
 }

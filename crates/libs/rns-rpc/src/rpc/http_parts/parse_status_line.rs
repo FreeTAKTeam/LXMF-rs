@@ -148,10 +148,14 @@ mod tests {
 
     #[test]
     fn parse_content_length_rejects_invalid_or_conflicting_values() {
-        assert_eq!(parse_content_length(b"Content-Length: 12\r\n"), Some(12));
-        assert_eq!(parse_content_length(b"Content-Length: 12\r\ncontent-length: 12\r\n"), Some(12));
-        assert_eq!(parse_content_length(b"Content-Length: nope\r\n"), None);
-        assert_eq!(parse_content_length(b"Content-Length: 12\r\nContent-Length: 13\r\n"), None);
+        assert_eq!(parse_content_length(b"Content-Length: 12\r\n").expect("ok"), 12);
+        assert_eq!(
+            parse_content_length(b"Content-Length: 12\r\ncontent-length: 12\r\n").expect("ok"),
+            12
+        );
+        assert!(parse_content_length(b"Content-Length: nope\r\n").is_err());
+        assert!(parse_content_length(b"Content-Length: 12\r\nContent-Length: 13\r\n").is_err());
+        assert!(parse_content_length(b"Host: localhost\r\n").is_err());
     }
 
     #[test]
@@ -166,8 +170,8 @@ mod tests {
         )
         .expect_err("conflicting content-length should fail");
 
-        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
-        assert!(err.to_string().contains("missing content-length"));
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert!(err.to_string().contains("conflicting content-length headers"));
     }
 
     #[test]

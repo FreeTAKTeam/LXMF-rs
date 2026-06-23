@@ -49,7 +49,26 @@ box → commit). Stop on red; never commit a broken tree.
   `is_empty()` and use explicit `match` + `log::warn!`/`log::debug!`; no `.ok()`
   bridges. `announce_stamp_cost` promoted to `Result<Option<u32>>` (propagates `?`).
 - [ ] **S4** Pattern **B/C** (rns-rpc) — `pn_metadata_to_json`, `merge_fields_with_options`,
-  `parse_python_int_*`, `module_support`, `http_parts` parsers.
+  `parse_python_int_*`, `module_support`, `http_parts` parsers. Blast radius spans
+  serde deserializers + the msgpack/json coercion graph, so split into file-scoped
+  sub-commits:
+  - [x] **S4a** `http_parts/module_prelude.rs` — all three R per catalog:
+    `parse_content_length` (R: `io::Result<usize>`; absence centralised as
+    `InvalidInput` "missing content-length" since no caller treats a missing
+    header as valid), `parse_request_line` (R: `io::Result<(String,String)>`),
+    `percent_decode` (R: decode failure surfaces; query_param caller logs+falls
+    back to raw). Conflicting Content-Length now surfaces as `InvalidData`
+    "conflicting content-length headers" instead of collapsing to the generic
+    "missing content-length"; two tests updated to assert the sharper diagnostic.
+  - [ ] **S4b** `types_parts` (`parse_python_int_u64.rs` + `module_support.rs`) —
+    `parse_python_int_u64`/`_u32`/`_u8` R, `parse_json_u32` S, `parse_peer_*_bytes`
+    helpers; update the `PeerRecord` deserializer call sites.
+  - [ ] **S4c** `merge_fields_with_options.rs` — `parse_text_to_u32`/`parse_f64_to_u32`/
+    `parse_fuzzy_*` R, `outbound_wire_fields` S, `parse_*_from_app_data_hex` R,
+    `parse_rch_capabilities_from_lxmf_announce` R, `decode_utf8_field` (A).
+  - [ ] **S4d** `pn_metadata_to_json.rs` — `pn_metadata_to_json` S,
+    `pn_metadata_key_to_string` S, `pn_metadata_value_to_json` R,
+    `parse_pn_metadata_name` S, `extract_capabilities_from_msgpack` S.
 - [ ] **S5** Pattern **C** (reticulumd bin) — `rpc_access_log.rs`, `announce_ingest.rs`.
 - [ ] **S6** Pattern **D** — env-var readers (`env_u64`/`env_bool`/`env_usize`).
 - [ ] **S7** Pattern **E/H** — lock-poison + file IO (`receipt.rs`, `ratchets.rs`,
