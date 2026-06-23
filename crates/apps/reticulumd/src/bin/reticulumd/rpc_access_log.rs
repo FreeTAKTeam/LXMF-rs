@@ -29,7 +29,7 @@ pub(super) fn parse_request_log_meta(request: &[u8]) -> RpcRequestLogMeta {
     if http_method != "POST" || path != "/rpc" {
         return meta;
     }
-    let Some(content_length) = http::parse_content_length(headers) else {
+    let Ok(content_length) = http::parse_content_length(headers) else {
         return meta;
     };
     if content_length > codec::MAX_FRAME_PAYLOAD_LEN + 4 {
@@ -126,7 +126,7 @@ fn parse_status_code(response: &[u8]) -> Option<u16> {
 fn parse_rpc_response_error(response: &[u8]) -> Option<(String, String)> {
     let header_end = http::find_header_end(response)?;
     let headers = &response[..header_end];
-    let content_length = http::parse_content_length(headers)?;
+    let content_length = http::parse_content_length(headers).ok()?;
     if content_length > codec::MAX_FRAME_PAYLOAD_LEN + 4 {
         return None;
     }

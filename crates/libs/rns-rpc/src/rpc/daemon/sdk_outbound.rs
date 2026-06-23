@@ -51,7 +51,10 @@ impl RpcDaemon {
         command: OutboundDeliveryCommand,
     ) {
         let mut record = command.record;
-        record.fields = outbound_wire_fields(record.fields);
+        record.fields = outbound_wire_fields(record.fields)
+            .inspect_err(|err| log::warn!("[daemon] invalid outbound fields format: {err}"))
+            .ok()
+            .flatten();
         if let Err(err) = bridge.deliver(&record, &command.options) {
             let status = format!("failed: {err}");
             let resolved_status = {

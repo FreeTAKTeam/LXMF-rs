@@ -52,7 +52,7 @@ fn outbound_wire_fields_strip_private_metadata_and_preserve_lxmf_numeric_fields(
         "12": [170, 187],
     });
 
-    let wire = outbound_wire_fields(Some(fields)).expect("wire fields");
+    let wire = outbound_wire_fields(Some(fields)).expect("no error").expect("wire fields");
 
     assert_eq!(wire["9"][0]["command_type"], json!("status.request"));
     assert_eq!(wire["12"], json!([170, 187]));
@@ -74,7 +74,7 @@ fn outbound_wire_fields_returns_none_when_only_private_metadata_remains() {
         "_lxmf": { "method": "direct" },
     });
 
-    assert_eq!(outbound_wire_fields(Some(fields)), None);
+    assert_eq!(outbound_wire_fields(Some(fields)).expect("no error"), None);
 }
 
 #[test]
@@ -138,7 +138,7 @@ fn parses_delivery_stamp_cost_from_python_peer_data_slot() {
 
     assert_eq!(
         parse_delivery_stamp_cost_from_app_data_hex(Some(hex::encode(app_data).as_str())),
-        Some(23)
+        Ok(Some(23))
     );
 }
 
@@ -152,7 +152,8 @@ fn rejects_python_invalid_delivery_stamp_costs_from_peer_data() {
         .expect("encode app data");
 
         assert_eq!(
-            parse_delivery_stamp_cost_from_app_data_hex(Some(hex::encode(app_data).as_str())),
+            parse_delivery_stamp_cost_from_app_data_hex(Some(hex::encode(app_data).as_str()))
+                .expect("valid stamp cost encoding"),
             None
         );
     }

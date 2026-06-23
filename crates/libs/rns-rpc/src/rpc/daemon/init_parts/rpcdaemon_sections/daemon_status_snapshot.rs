@@ -220,12 +220,35 @@ impl RpcDaemon {
         let stamp_cost_flexibility = stamp_cost_flexibility.flatten();
         let peering_cost = peering_cost.flatten();
         let (propagation_transfer_limit, propagation_sync_limit) =
-            parse_propagation_limits_from_app_data_hex(app_data_hex.as_deref());
+            parse_propagation_limits_from_app_data_hex(app_data_hex.as_deref())
+                .unwrap_or_else(|err| {
+                    log::warn!("[daemon] failed to decode propagation limits from app_data: {err}");
+                    (None, None)
+                });
         let propagation_enabled =
-            parse_propagation_enabled_from_app_data_hex(app_data_hex.as_deref());
+            parse_propagation_enabled_from_app_data_hex(app_data_hex.as_deref())
+                .unwrap_or_else(|err| {
+                    log::warn!(
+                        "[daemon] failed to decode propagation enabled from app_data: {err}"
+                    );
+                    None
+                });
         let peering_timebase =
-            parse_propagation_timebase_from_app_data_hex(app_data_hex.as_deref());
-        let metadata = parse_propagation_metadata_from_app_data_hex(app_data_hex.as_deref());
+            parse_propagation_timebase_from_app_data_hex(app_data_hex.as_deref())
+                .unwrap_or_else(|err| {
+                    log::warn!(
+                        "[daemon] failed to decode peering timebase from app_data: {err}"
+                    );
+                    None
+                });
+        let metadata =
+            parse_propagation_metadata_from_app_data_hex(app_data_hex.as_deref())
+                .unwrap_or_else(|err| {
+                    log::warn!(
+                        "[daemon] failed to decode propagation metadata from app_data: {err}"
+                    );
+                    JsonValue::Null
+                });
         let propagation_peer_state = PeerPropagationState {
             transfer_limit: propagation_transfer_limit,
             sync_limit: propagation_sync_limit,

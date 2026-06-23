@@ -153,10 +153,20 @@ impl RpcDaemon {
                     parsed_propagation_stamp_cost,
                     parsed_stamp_cost_flexibility,
                     parsed_peering_cost,
-                ) = parse_announce_costs_from_app_data_hex(parsed.app_data_hex.as_deref());
+                ) = parse_announce_costs_from_app_data_hex(parsed.app_data_hex.as_deref())
+                    .unwrap_or_else(|err| {
+                        log::warn!("[daemon] failed to decode announce costs from app_data: {err}");
+                        (None, None, None)
+                    });
                 let parsed_delivery_stamp_cost = is_lxmf_delivery_aspect(aspect.as_deref())
                     .then(|| {
                         parse_delivery_stamp_cost_from_app_data_hex(parsed.app_data_hex.as_deref())
+                            .unwrap_or_else(|err| {
+                                log::warn!(
+                                    "[daemon] failed to decode delivery stamp cost from app_data: {err}"
+                                );
+                                None
+                            })
                     })
                     .flatten();
                 let stamp_cost = parsed
@@ -168,6 +178,12 @@ impl RpcDaemon {
                 let peering_cost = parsed.peering_cost.or(parsed_peering_cost);
                 let (name, name_source) = if parsed.name.is_none() && parsed.name_source.is_none() {
                     parse_peer_name_from_app_data_hex(parsed.app_data_hex.as_deref())
+                        .unwrap_or_else(|err| {
+                            log::warn!(
+                                "[daemon] failed to parse peer name from app_data: {err}"
+                            );
+                            None
+                        })
                         .map(|(name, source)| (Some(name), Some(source.to_string())))
                         .unwrap_or((parsed.name, parsed.name_source))
                 } else {

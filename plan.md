@@ -48,7 +48,7 @@ box → commit). Stop on red; never commit a broken tree.
   range). Callers in `announce_ingest.rs` and `bridge_announce.rs` pre-check
   `is_empty()` and use explicit `match` + `log::warn!`/`log::debug!`; no `.ok()`
   bridges. `announce_stamp_cost` promoted to `Result<Option<u32>>` (propagates `?`).
-- [ ] **S4** Pattern **B/C** (rns-rpc) — `pn_metadata_to_json`, `merge_fields_with_options`,
+- [x] **S4** Pattern **B/C** (rns-rpc) — `pn_metadata_to_json`, `merge_fields_with_options`,
   `parse_python_int_*`, `module_support`, `http_parts` parsers. Blast radius spans
   serde deserializers + the msgpack/json coercion graph, so split into file-scoped
   sub-commits:
@@ -60,13 +60,13 @@ box → commit). Stop on red; never commit a broken tree.
     back to raw). Conflicting Content-Length now surfaces as `InvalidData`
     "conflicting content-length headers" instead of collapsing to the generic
     "missing content-length"; two tests updated to assert the sharper diagnostic.
-  - [ ] **S4b** `types_parts` (`parse_python_int_u64.rs` + `module_support.rs`) —
+  - [x] **S4b** `types_parts` (`parse_python_int_u64.rs` + `module_support.rs`) —
     `parse_python_int_u64`/`_u32`/`_u8` R, `parse_json_u32` S, `parse_peer_*_bytes`
     helpers; update the `PeerRecord` deserializer call sites.
-  - [ ] **S4c** `merge_fields_with_options.rs` — `parse_text_to_u32`/`parse_f64_to_u32`/
+  - [x] **S4c** `merge_fields_with_options.rs` — `parse_text_to_u32`/`parse_f64_to_u32`/
     `parse_fuzzy_*` R, `outbound_wire_fields` S, `parse_*_from_app_data_hex` R,
     `parse_rch_capabilities_from_lxmf_announce` R, `decode_utf8_field` (A).
-  - [ ] **S4d** `pn_metadata_to_json.rs` — `pn_metadata_to_json` S,
+  - [x] **S4d** `pn_metadata_to_json.rs` — `pn_metadata_to_json` S,
     `pn_metadata_key_to_string` S, `pn_metadata_value_to_json` R,
     `parse_pn_metadata_name` S, `extract_capabilities_from_msgpack` S.
 - [ ] **S5** Pattern **C** (reticulumd bin) — `rpc_access_log.rs`, `announce_ingest.rs`.

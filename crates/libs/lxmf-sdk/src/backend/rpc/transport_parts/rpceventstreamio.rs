@@ -397,7 +397,7 @@ async fn read_event_stream_rejection_error<S>(
 where
     S: AsyncRead + Unpin + ?Sized,
 {
-    let Some(content_length) = http::parse_content_length(header) else {
+    let Ok(content_length) = http::parse_content_length(header) else {
         return Ok(None);
     };
     if content_length == 0 {

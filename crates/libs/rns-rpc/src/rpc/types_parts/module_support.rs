@@ -38,26 +38,40 @@ impl<'de> Deserialize<'de> for PeerRecord {
             .map_err(serde::de::Error::custom)?
             .unwrap_or_default();
         let sync_transfer_rate = wire.sync_transfer_rate.or(wire.str).unwrap_or_default();
-        let offered = wire.offered.as_ref().and_then(parse_python_int_u64).unwrap_or_default();
+        let offered = wire
+            .offered
+            .as_ref()
+            .map(parse_python_int_u64)
+            .transpose()
+            .map_err(serde::de::Error::custom)?
+            .unwrap_or_default();
         let outgoing = wire
             .outgoing
             .as_ref()
-            .and_then(parse_python_int_u64)
+            .map(parse_python_int_u64)
+            .transpose()
+            .map_err(serde::de::Error::custom)?
             .unwrap_or_default();
         let incoming = wire
             .incoming
             .as_ref()
-            .and_then(parse_python_int_u64)
+            .map(parse_python_int_u64)
+            .transpose()
+            .map_err(serde::de::Error::custom)?
             .unwrap_or_default();
         let rx_bytes = wire
             .rx_bytes
             .as_ref()
-            .and_then(parse_python_int_u64)
+            .map(parse_python_int_u64)
+            .transpose()
+            .map_err(serde::de::Error::custom)?
             .unwrap_or_default();
         let tx_bytes = wire
             .tx_bytes
             .as_ref()
-            .and_then(parse_python_int_u64)
+            .map(parse_python_int_u64)
+            .transpose()
+            .map_err(serde::de::Error::custom)?
             .unwrap_or_default();
         let acceptance_rate = wire.acceptance_rate.unwrap_or_else(|| {
             if offered == 0 {
@@ -108,25 +122,35 @@ impl<'de> Deserialize<'de> for PeerRecord {
             sync_strategy: wire
                 .sync_strategy
                 .as_ref()
-                .and_then(parse_python_int_u8)
+                .map(parse_python_int_u8)
+                .transpose()
+                .map_err(serde::de::Error::custom)?
                 .unwrap_or_else(default_peer_sync_strategy),
             propagation_transfer_limit: transfer_limit,
             propagation_sync_limit: sync_limit,
             propagation_stamp_cost: wire
                 .propagation_stamp_cost
                 .as_ref()
-                .and_then(parse_python_int_u32)
-                .or_else(|| wire.target_stamp_cost.as_ref().and_then(parse_python_int_u32)),
+                .map(|v| parse_python_int_u32(v).ok())
+                .flatten()
+                .or_else(|| {
+                    wire.target_stamp_cost
+                        .as_ref()
+                        .map(|v| parse_python_int_u32(v).ok())
+                        .flatten()
+                }),
             propagation_stamp_cost_flexibility: wire
                 .propagation_stamp_cost_flexibility
                 .as_ref()
-                .and_then(parse_python_int_u32)
+                .map(|v| parse_python_int_u32(v).ok())
+                .flatten()
                 .or_else(|| {
                     wire.stamp_cost_flexibility
                         .as_ref()
-                        .and_then(parse_python_int_u32)
+                        .map(|v| parse_python_int_u32(v).ok())
+                        .flatten()
                 }),
-            peering_cost: wire.peering_cost.as_ref().and_then(parse_python_int_u32),
+            peering_cost: wire.peering_cost.as_ref().map(|v| parse_python_int_u32(v).ok()).flatten(),
             peering_key_stamp,
             peering_key_value,
             restored_handled_ids: wire
@@ -267,7 +291,11 @@ impl<'de> Deserialize<'de> for PythonPeeringKey {
                 let value = sequence.next_element::<JsonValue>()?;
                 Ok(PythonPeeringKey {
                     stamp,
-                    value: value.as_ref().and_then(parse_json_u32),
+                    value: value
+                        .as_ref()
+                        .map(|v| parse_json_u32(v).map_err(serde::de::Error::custom))
+                        .transpose()?
+                        .flatten(),
                 })
             }
         }
@@ -352,7 +380,7 @@ fn parse_peer_limit_bytes(
     primary_is_python_kb: bool,
 ) -> Option<u32> {
     if let Some(alias) = alias {
-        let alias_bytes = parse_json_u32(alias)?;
+        let alias_bytes = parse_json_u32(alias).ok().flatten()?;
         if primary_is_python_kb {
             if let Some(primary) = primary {
                 let Some(primary_kb) = parse_json_f64(primary) else {
@@ -362,7 +390,7 @@ fn parse_peer_limit_bytes(
                     return Some(alias_bytes);
                 }
                 if primary_kb == 0.0 && alias_bytes > 0 {
-                    return parse_json_u32(primary);
+                    return parse_json_u32(primary).ok().flatten();
                 }
                 return Some(alias_bytes);
             }
@@ -371,7 +399,7 @@ fn parse_peer_limit_bytes(
     } else if primary_is_python_kb {
         parse_json_f64(primary?).and_then(kilobytes_to_bytes)
     } else {
-        parse_json_u32(primary?)
+        parse_json_u32(primary?).ok().flatten()
     }
 }
 
@@ -381,25 +409,32 @@ fn parse_peer_sync_limit_bytes(
     primary_is_python_kb: bool,
 ) -> Option<u32> {
     if let Some(alias) = alias {
-        parse_json_u32(alias)
+        parse_json_u32(alias).ok().flatten()
     } else if primary_is_python_kb {
         parse_python_sync_limit_bytes(primary?)
     } else {
-        parse_json_u32(primary?)
+        parse_json_u32(primary?).ok().flatten()
     }
 }
 
-fn parse_json_u32(value: &JsonValue) -> Option<u32> {
-    if let Some(value) = value.as_u64() {
-        u32::try_from(value).ok()
-    } else if let Some(value) = value.as_i64() {
-        u32::try_from(value.max(0)).ok()
-    } else {
-        parse_json_f64(value).and_then(|value| {
-            let bytes = value.max(0.0).floor();
-            (bytes.is_finite() && bytes <= f64::from(u32::MAX)).then_some(bytes as u32)
-        })
+fn parse_json_u32(value: &JsonValue) -> Result<Option<u32>, &'static str> {
+    if value.is_null() {
+        return Ok(None);
     }
+    if let Some(value) = value.as_u64() {
+        return u32::try_from(value).map(Some).map_err(|_| "value out of u32 range");
+    }
+    if let Some(value) = value.as_i64() {
+        return u32::try_from(value.max(0)).map(Some).map_err(|_| "value out of u32 range");
+    }
+    if let Some(value) = parse_json_f64(value) {
+        let bytes = value.max(0.0).floor();
+        if bytes.is_finite() && bytes <= f64::from(u32::MAX) {
+            return Ok(Some(bytes as u32));
+        }
+        return Err("float value out of u32 range");
+    }
+    Err("not a number")
 }
 
 fn parse_json_f64(value: &JsonValue) -> Option<f64> {
@@ -412,23 +447,28 @@ fn kilobytes_to_bytes(value: f64) -> Option<u32> {
 }
 
 fn parse_python_sync_limit_bytes(value: &JsonValue) -> Option<u32> {
-    let kilobytes = f64::from(parse_python_int_u32(value)?);
+    let kilobytes = f64::from(parse_python_int_u32(value).ok()?);
     kilobytes_to_bytes(kilobytes)
 }
 
-fn parse_python_int_u32(value: &JsonValue) -> Option<u32> {
+fn parse_python_int_u32(value: &JsonValue) -> Result<u32, &'static str> {
     if let Some(value) = value.as_u64() {
-        u32::try_from(value).ok()
+        u32::try_from(value).map_err(|_| "value out of u32 range")
     } else if let Some(value) = value.as_i64() {
-        u32::try_from(value.max(0)).ok()
+        u32::try_from(value.max(0)).map_err(|_| "value out of u32 range")
     } else if let Some(value) = value.as_f64() {
         let value = value.max(0.0).trunc();
-        (value.is_finite() && value <= f64::from(u32::MAX)).then_some(value as u32)
+        if value.is_finite() && value <= f64::from(u32::MAX) {
+            Ok(value as u32)
+        } else {
+            Err("float value out of u32 range")
+        }
     } else if let Some(value) = value.as_bool() {
-        Some(u32::from(value))
+        Ok(u32::from(value))
     } else if let Some(value) = value.as_str() {
-        u32::try_from(value.trim().parse::<i64>().ok()?.max(0)).ok()
+        let parsed = value.trim().parse::<i64>().map_err(|_| "invalid integer string")?;
+        u32::try_from(parsed.max(0)).map_err(|_| "value out of u32 range")
     } else {
-        None
+        Err("unsupported JSON type for integer")
     }
 }

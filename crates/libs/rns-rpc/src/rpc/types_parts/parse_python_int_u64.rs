@@ -1,22 +1,27 @@
-fn parse_python_int_u64(value: &JsonValue) -> Option<u64> {
+fn parse_python_int_u64(value: &JsonValue) -> Result<u64, &'static str> {
     if let Some(value) = value.as_u64() {
-        Some(value)
+        Ok(value)
     } else if let Some(value) = value.as_i64() {
-        u64::try_from(value.max(0)).ok()
+        Ok(u64::try_from(value.max(0)).unwrap_or(0))
     } else if let Some(value) = value.as_f64() {
         let value = value.max(0.0).trunc();
-        (value.is_finite() && value <= u64::MAX as f64).then_some(value as u64)
+        if value.is_finite() && value <= u64::MAX as f64 {
+            Ok(value as u64)
+        } else {
+            Err("float value out of u64 range")
+        }
     } else if let Some(value) = value.as_bool() {
-        Some(u64::from(value))
+        Ok(u64::from(value))
     } else if let Some(value) = value.as_str() {
-        u64::try_from(value.trim().parse::<i64>().ok()?.max(0)).ok()
+        let parsed = value.trim().parse::<i64>().map_err(|_| "invalid integer string")?;
+        Ok(u64::try_from(parsed.max(0)).unwrap_or(0))
     } else {
-        None
+        Err("unsupported JSON type for integer")
     }
 }
 
-fn parse_python_int_u8(value: &JsonValue) -> Option<u8> {
-    u8::try_from(parse_python_int_u32(value)?).ok()
+fn parse_python_int_u8(value: &JsonValue) -> Result<u8, &'static str> {
+    u8::try_from(parse_python_int_u32(value)?).map_err(|_| "value out of u8 range")
 }
 
 fn parse_python_timestamp_i64(value: &JsonValue) -> Result<i64, &'static str> {

@@ -1,53 +1,71 @@
-fn pn_metadata_to_json(value: &MsgPackValue) -> Option<JsonValue> {
+fn pn_metadata_to_json(value: &MsgPackValue) -> Result<Option<JsonValue>, &'static str> {
+    if matches!(value, MsgPackValue::Nil) {
+        return Ok(None);
+    }
     let MsgPackValue::Map(entries) = value else {
-        return None;
+        return Err("metadata is not a msgpack map");
     };
     let mut metadata = JsonMap::new();
     for (key, value) in entries {
-        let Some(key) = pn_metadata_key_to_string(key) else {
-            continue;
-        };
-        let Some(value) = pn_metadata_value_to_json(value) else {
-            continue;
-        };
-        metadata.insert(key, value);
+        match pn_metadata_key_to_string(key)? {
+            None => continue,
+            Some(key) => {
+                let json_value = pn_metadata_value_to_json(value)?;
+                metadata.insert(key, json_value);
+            }
+        }
     }
-    Some(JsonValue::Object(metadata))
+    Ok(Some(JsonValue::Object(metadata)))
 }
 
-fn pn_metadata_key_to_string(key: &MsgPackValue) -> Option<String> {
+fn pn_metadata_key_to_string(key: &MsgPackValue) -> Result<Option<String>, &'static str> {
     if is_pn_name_metadata_key(key) {
-        return Some("name".to_string());
+        return Ok(Some("name".to_string()));
     }
     match key {
-        MsgPackValue::Integer(value) => value.as_u64().map(|value| value.to_string()),
-        MsgPackValue::String(text) => text.as_str().map(str::to_string),
-        MsgPackValue::Binary(bytes) => decode_utf8_owned(bytes.clone(), "peer metadata").ok(),
-        _ => None,
-    }
-}
-
-fn pn_metadata_value_to_json(value: &MsgPackValue) -> Option<JsonValue> {
-    match value {
-        MsgPackValue::Nil => Some(JsonValue::Null),
-        MsgPackValue::Boolean(value) => Some(json!(value)),
-        MsgPackValue::Integer(value) => value
-            .as_i64()
-            .map(JsonValue::from)
-            .or_else(|| value.as_u64().map(JsonValue::from)),
-        MsgPackValue::F32(value) => Some(json!(f64::from(*value))),
-        MsgPackValue::F64(value) => Some(json!(value)),
-        MsgPackValue::String(text) => text.as_str().map(JsonValue::from),
-        MsgPackValue::Binary(bytes) => {
-            decode_utf8_owned(bytes.clone(), "peer metadata").ok().map(JsonValue::from)
+        MsgPackValue::Integer(value) => Ok(value.as_u64().map(|value| value.to_string())),
+        MsgPackValue::String(text) => {
+            text.as_str()
+                .ok_or("non-UTF-8 msgpack string in metadata key")
+                .map(|s| Some(s.to_string()))
         }
-        _ => None,
+        MsgPackValue::Binary(bytes) => {
+            decode_utf8_owned(bytes.clone(), "peer metadata")
+                .map(Some)
+                .map_err(|_| "non-UTF-8 binary metadata key")
+        }
+        _ => Ok(None),
     }
 }
 
-fn parse_pn_metadata_name(value: &MsgPackValue) -> Option<String> {
+fn pn_metadata_value_to_json(value: &MsgPackValue) -> Result<JsonValue, &'static str> {
+    match value {
+        MsgPackValue::Nil => Ok(JsonValue::Null),
+        MsgPackValue::Boolean(value) => Ok(json!(value)),
+        MsgPackValue::Integer(value) => {
+            if let Some(i) = value.as_i64() {
+                Ok(JsonValue::from(i))
+            } else if let Some(u) = value.as_u64() {
+                Ok(JsonValue::from(u))
+            } else {
+                Err("integer out of i64/u64 range in metadata value")
+            }
+        }
+        MsgPackValue::F32(value) => Ok(json!(f64::from(*value))),
+        MsgPackValue::F64(value) => Ok(json!(value)),
+        MsgPackValue::String(text) => {
+            text.as_str().ok_or("non-UTF-8 msgpack string in metadata value").map(JsonValue::from)
+        }
+        MsgPackValue::Binary(bytes) => decode_utf8_owned(bytes.clone(), "peer metadata")
+            .map(JsonValue::from)
+            .map_err(|_| "non-UTF-8 binary metadata value"),
+        _ => Err("unsupported msgpack value type in metadata"),
+    }
+}
+
+fn parse_pn_metadata_name(value: &MsgPackValue) -> Result<Option<String>, &'static str> {
     let MsgPackValue::Map(entries) = value else {
-        return None;
+        return Ok(None);
     };
 
     for (key, value) in entries {
@@ -55,7 +73,7 @@ fn parse_pn_metadata_name(value: &MsgPackValue) -> Option<String> {
             return msgpack_value_to_clean_name(value);
         }
     }
-    None
+    Ok(None)
 }
 
 fn is_pn_name_metadata_key(key: &MsgPackValue) -> bool {
@@ -71,31 +89,42 @@ fn is_pn_name_metadata_key(key: &MsgPackValue) -> bool {
     }
 }
 
-fn msgpack_value_to_clean_name(value: &MsgPackValue) -> Option<String> {
+fn msgpack_value_to_clean_name(value: &MsgPackValue) -> Result<Option<String>, &'static str> {
     let name = match value {
-        MsgPackValue::Binary(bytes) => decode_utf8_owned(bytes.clone(), "peer metadata").ok()?,
-        MsgPackValue::String(text) => text.as_str()?.to_string(),
-        _ => return None,
+        MsgPackValue::Binary(bytes) => {
+            decode_utf8_owned(bytes.clone(), "peer metadata").map_err(|_| "non-UTF-8 peer name")?
+        }
+        MsgPackValue::String(text) => {
+            text.as_str().ok_or("non-UTF-8 msgpack string in peer name")?.to_string()
+        }
+        _ => return Ok(None),
     };
-    let name = clean_optional_text(Some(name))?;
+    let Some(name) = clean_optional_text(Some(name)) else {
+        return Ok(None);
+    };
     if name.chars().any(char::is_control) {
-        return None;
+        return Ok(None);
     }
-    first_n_chars(name.as_str(), 64).or(Some(name))
+    Ok(first_n_chars(name.as_str(), 64).or(Some(name)))
 }
 
-fn parse_delivery_stamp_cost_from_app_data_hex(app_data_hex: Option<&str>) -> Option<u32> {
-    let raw_hex = app_data_hex.map(str::trim).filter(|value| !value.is_empty())?;
-    let app_data = hex::decode(raw_hex).ok()?;
-    let value = match rmp_serde::from_slice::<MsgPackValue>(&app_data) {
-        Ok(value) => value,
-        Err(err) => {
-            log::debug!("failed to decode delivery app_data for stamp cost: {err}");
-            return None;
-        }
+fn parse_delivery_stamp_cost_from_app_data_hex(
+    app_data_hex: Option<&str>,
+) -> Result<Option<u32>, &'static str> {
+    let Some(raw_hex) = app_data_hex.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(None);
     };
-    let entries = value.as_array()?;
-    entries.get(1).and_then(parse_fuzzy_u32).filter(|cost| (1..255).contains(cost))
+    let app_data = hex::decode(raw_hex).map_err(|_| "invalid hex in delivery app_data")?;
+    let value = rmp_serde::from_slice::<MsgPackValue>(&app_data)
+        .map_err(|_| "malformed msgpack in delivery app_data")?;
+    let Some(entries) = value.as_array() else {
+        return Ok(None);
+    };
+    Ok(entries
+        .get(1)
+        .map(parse_fuzzy_u32)
+        .transpose()?
+        .filter(|cost| (1..255).contains(cost)))
 }
 
 fn is_lxmf_delivery_aspect(aspect: Option<&str>) -> bool {
@@ -146,22 +175,24 @@ fn json_ticket_to_hex(value: &JsonValue) -> Option<String> {
     (bytes.len() == 16).then(|| hex::encode(bytes))
 }
 
-fn extract_capabilities_from_msgpack(value: &MsgPackValue) -> Option<Vec<String>> {
+fn extract_capabilities_from_msgpack(value: &MsgPackValue) -> Result<Option<Vec<String>>, &'static str> {
     if let MsgPackValue::Array(entries) = value {
-        return Some(normalize_capabilities(
+        return Ok(Some(normalize_capabilities(
             entries.iter().filter_map(capability_value_to_string).collect(),
-        ));
+        )));
     }
-
     let MsgPackValue::Map(entries) = value else {
-        return None;
+        return Ok(None);
     };
-    entries.iter().find_map(|(key, value)| {
+    for (key, value) in entries {
         if is_capability_key(key) {
-            return extract_capabilities_from_msgpack(value);
+            let result = extract_capabilities_from_msgpack(value)?;
+            if result.is_some() {
+                return Ok(result);
+            }
         }
-        None
-    })
+    }
+    Ok(None)
 }
 
 fn is_capability_key(key: &MsgPackValue) -> bool {
