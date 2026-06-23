@@ -271,14 +271,13 @@ impl RpcDaemon {
             Arc::clone(&delivery_traces),
             Arc::clone(&delivery_status_lock),
         );
-        let event_sink_tx = Self::spawn_event_sink_worker(
-            !event_sink_bridges.is_empty(),
-            Arc::clone(&sdk_metrics),
-        )
-        .unwrap_or_else(|err| {
-            log::error!("[daemon] failed to spawn event sink worker: {err}");
+        let event_sink_tx = if !event_sink_bridges.is_empty() {
+            Self::spawn_event_sink_worker(Arc::clone(&sdk_metrics))
+                .inspect_err(|err| log::error!("[daemon] failed to spawn event sink worker: {err}"))
+                .ok()
+        } else {
             None
-        });
+        };
         let mut sdk_identities = HashMap::new();
         sdk_identities
             .insert(identity_hash.clone(), Self::default_sdk_identity(identity_hash.as_str()));

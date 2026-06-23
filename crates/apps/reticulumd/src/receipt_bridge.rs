@@ -30,17 +30,16 @@ impl ReceiptHandler for ReceiptBridge {
     fn on_receipt(&self, receipt: &DeliveryReceipt) {
         let message_id = match lookup_receipt_message_id(&self.map, receipt) {
             Ok(id) => id,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return,
             Err(err) => {
-                log::warn!("[daemon] receipt map lock error: {err}");
+                log::warn!("[daemon] receipt map error: {err}");
                 return;
             }
         };
-        if let Some(message_id) = message_id {
-            if let Err(err) =
-                self.tx.try_send(ReceiptEvent { message_id, status: "delivered".into() })
-            {
-                log::warn!("[daemon] dropped delivery receipt event: {err}");
-            }
+        if let Err(err) =
+            self.tx.try_send(ReceiptEvent { message_id, status: "delivered".into() })
+        {
+            log::warn!("[daemon] dropped delivery receipt event: {err}");
         }
     }
 }

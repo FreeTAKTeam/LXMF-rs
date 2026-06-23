@@ -4,12 +4,8 @@ const EVENT_SINK_QUEUE_CAPACITY: usize = 1024;
 
 impl RpcDaemon {
     pub(super) fn spawn_event_sink_worker(
-        enabled: bool,
         metrics: Arc<Mutex<RpcMetrics>>,
-    ) -> std::io::Result<Option<mpsc::SyncSender<EventSinkCommand>>> {
-        if !enabled {
-            return Ok(None);
-        }
+    ) -> std::io::Result<mpsc::SyncSender<EventSinkCommand>> {
         let (tx, rx) = mpsc::sync_channel::<EventSinkCommand>(EVENT_SINK_QUEUE_CAPACITY);
         std::thread::Builder::new()
             .name("rpc-event-sink-worker".to_string())
@@ -45,7 +41,7 @@ impl RpcDaemon {
                     }
                 }
             })?;
-        Ok(Some(tx))
+        Ok(tx)
     }
 
     pub(super) fn sdk_event_sink_enabled(&self) -> bool {
