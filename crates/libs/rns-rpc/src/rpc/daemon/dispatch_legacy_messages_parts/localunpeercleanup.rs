@@ -116,7 +116,13 @@ pub(super) fn peer_peering_key_value(peer: &PeerRecord, local_identity_hash: &st
     let mut material = Vec::with_capacity(remote_hash.len() + local_hash.len());
     material.extend_from_slice(remote_hash.as_slice());
     material.extend_from_slice(local_hash.as_slice());
-    generate_peering_key_value(material.as_slice(), peering_cost)
+    match generate_peering_key_value(material.as_slice(), peering_cost) {
+        Ok(value) => Some(value),
+        Err(err) => {
+            log::warn!("[rpc] peering key generation failed peer={}: {err}", peer.peer);
+            None
+        }
+    }
 }
 
 pub(super) fn peer_peering_key_status(peer: &PeerRecord, peering_key: Option<u32>) -> &'static str {
@@ -456,7 +462,7 @@ fn decode_truncated_hash(value: &str) -> Option<Vec<u8>> {
     (bytes.len() == 16).then_some(bytes)
 }
 
-fn generate_peering_key_value(material: &[u8], target_cost: u32) -> Option<u32> {
+fn generate_peering_key_value(material: &[u8], target_cost: u32) -> Result<u32, &'static str> {
     use hkdf::Hkdf;
 
     const PEERING_WORKBLOCK_EXPAND_ROUNDS: usize = 25;
@@ -465,13 +471,8 @@ fn generate_peering_key_value(material: &[u8], target_cost: u32) -> Option<u32> 
     for n in 0..PEERING_WORKBLOCK_EXPAND_ROUNDS {
         let mut salt_data = Vec::with_capacity(material.len() + 8);
         salt_data.extend_from_slice(material);
-        let packed = match rmp_serde::to_vec(&n) {
-            Ok(packed) => packed,
-            Err(err) => {
-                log::warn!("[rpc] failed to encode propagation peering key nonce: {err}");
-                return None;
-            }
-        };
+        let packed =
+            rmp_serde::to_vec(&n).map_err(|_| "failed to encode peering key workblock nonce")?;
         salt_data.extend_from_slice(&packed);
         let salt_hash = Sha256::digest(&salt_data);
         let hk = Hkdf::<Sha256>::new(Some(salt_hash.as_slice()), material);
@@ -488,11 +489,11 @@ fn generate_peering_key_value(material: &[u8], target_cost: u32) -> Option<u32> 
         let stamp = nonce.to_le_bytes();
         let value = stamp_value_with_prefix(&workblock_hasher, &stamp);
         if value >= target_cost {
-            return Some(value);
+            return Ok(value);
         }
         nonce = nonce.wrapping_add(1);
         if nonce == 0 {
-            return None;
+            return Err("peering key nonce space exhausted");
         }
     }
 }

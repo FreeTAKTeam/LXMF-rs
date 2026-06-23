@@ -265,11 +265,11 @@ fn rnode_ble_session_writes_python_rnode_id_beacon_payload() {
 
     assert_eq!(
         session.id_beacon_write(),
-        Some(RnodeBleWrite {
+        Ok(Some(RnodeBleWrite {
             characteristic_uuid: RNODE_BLE_WRITE_CHARACTERISTIC_UUID,
             with_response: false,
             payload: encode_data_frame(b"MYCALL-0"),
-        })
+        }))
     );
 }
 

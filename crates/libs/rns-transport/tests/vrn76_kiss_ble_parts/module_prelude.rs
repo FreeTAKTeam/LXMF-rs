@@ -170,11 +170,11 @@ fn vrn76_session_writes_python_kiss_id_beacon_payload() {
 
     assert_eq!(
         session.id_beacon_write(),
-        Some(BleWrite {
+        Ok(Some(BleWrite {
             characteristic_uuid: VRN76_WRITE_CHARACTERISTIC_UUID,
             with_response: true,
             payload: encode_benshi_ht_send_data(&encode_data_frame(&expected_payload)),
-        })
+        }))
     );
 }
 

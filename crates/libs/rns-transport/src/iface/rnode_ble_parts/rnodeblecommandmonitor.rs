@@ -187,10 +187,15 @@ impl RnodeBleKissSession {
     }
 
     #[must_use]
-    pub fn id_beacon_write(&self) -> Option<RnodeBleWrite> {
-        self.config.kiss.id_beacon.as_ref().and_then(|beacon| {
-            self.kiss_writes(encode_data_frame(&beacon.payload())).into_iter().next()
-        })
+    pub fn id_beacon_write(&self) -> Result<Option<RnodeBleWrite>, &'static str> {
+        let Some(beacon) = self.config.kiss.id_beacon.as_ref() else {
+            return Ok(None);
+        };
+        self.kiss_writes(encode_data_frame(&beacon.payload()))
+            .into_iter()
+            .next()
+            .ok_or("id beacon produced no BLE writes")
+            .map(Some)
     }
 
     #[must_use]
