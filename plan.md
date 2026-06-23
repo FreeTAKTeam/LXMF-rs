@@ -70,9 +70,15 @@ box → commit). Stop on red; never commit a broken tree.
     `pn_metadata_key_to_string` S, `pn_metadata_value_to_json` R,
     `parse_pn_metadata_name` S, `extract_capabilities_from_msgpack` S.
 - [x] **S5** Pattern **C** (reticulumd bin) — `rpc_access_log.rs`, `announce_ingest.rs`.
-  All `[✓you]` in the per-pattern catalog — already done in S1/S3. No new code needed.
+  `parse_http_request_line` → R; `parse_status_code` → R; `parse_rpc_response_error` → S
+  (genuine absence: `rpc_response.error` field; all other None paths are parse errors).
+  Callers updated; tests updated (`Some(200)` → `Ok(200)`, `Some(...)` → `Ok(Some(...))`).
+  Gap fixed in commit 2bcedee.
 - [x] **S6** Pattern **D** — env-var readers (`env_u64`/`env_bool`/`env_usize`).
-  All `[✓you]` in the per-pattern catalog — already done in prior work. No new code needed.
+  `env_bool`/`env_u64`/`env_usize` → `Result<Option<T>, &'static str>`: `Ok(None)` when
+  unset, `Err` when set-but-invalid, `Ok(Some(v))` when valid. Callers use
+  `.unwrap_or_else(|err| { log::warn!(...); None })` to maintain `Option<T>` in struct fields.
+  Gap fixed in commit 2bcedee.
 - [x] **S7** Pattern **E/H** — lock-poison + file IO (`receipt.rs`, `ratchets.rs`,
   `outbound_resources.rs`, `current_limits`, `sdk_token_auth_config`, `load_private_key`).
   `resolve/lookup_receipt_message_id` → R (`io::Result<String>`; not-found is `Err(NotFound)`);
@@ -83,6 +89,11 @@ box → commit). Stop on red; never commit a broken tree.
   `auth_metadata_for_request` → S (`Result<Option<...>, SystemTimeError>`);
   `parse_error_category` → R (`Result<ErrorCategory, &'static str>`);
   `parse_control_request_payload` → R (`Result<([u8;16], Option<rmpv::Value>), String>`; was missed in S3).
+  `current_inbound_stamp_cost` → S (`Result<Option<u32>, &'static str>`; lock-poison → Err,
+  daemon absent → Ok(None), cost out-of-range → Ok(None)); caller logs on Err.
+  `take_outbound_resource_tracking` → R (`Result<OutboundResourceTracking, &'static str>`;
+  lock-poison → Err, not-found → Err "resource not tracked"); completion/failure callers
+  log on Err; tests `.is_none()` → `.is_err()`. Gap fixed in commit 2bcedee.
   `ensure_peer_iface` deferred: uses tokio async mutex (no poison), error type unclear.
 - [x] **S8** Pattern **N** — JSON accessors (`lxmf-sdk/domain_parts/*`, `app/events.rs`).
   All `json_*` / `peer_queue_json_*` / `propagation_node_json_*` / `remote_status_json_*` /
