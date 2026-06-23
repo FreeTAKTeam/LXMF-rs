@@ -152,7 +152,19 @@ box → commit). Stop on red; never commit a broken tree.
   `Ok(None) | Err(_) => error`. `category_for_code` caller `RpcError::new` stays infallible:
   it `match`es and `log::debug!`s the previously-silent "no known category" drop, then falls
   back to `None`. Tests updated to Ok(Some(...)) / is_err().
-- [ ] **S14** Pattern **L** — enum-variant accessors (convert where caller expects variant).
+- [x] **S14** Pattern **L** — enum-variant accessors → S (`Result<Option<T>, &'static str>`).
+  `mtls_auth` (EventStreamRequestAuth) and `mtls_for_session_auth` (SessionAuth): Mtls variant
+  → Ok(Some(MtlsRequestAuth)); LocalTrusted/Token → Ok(None) (genuine "not an mTLS session");
+  Mtls with empty/whitespace `ca_bundle_path` → Err (real invariant — mTLS needs a CA bundle).
+  All callers (rpceventstreamio stream-open, call_rpc/_async, negotiate/_async) thread the Err
+  as `SdkError::new(code::VALIDATION_INVALID_ARGUMENT, Validation, reason)?`; test asserts the
+  empty-ca_bundle Err path. `into_bytes` (PythonPeeringKeyStamp) → Ok(Some)/Ok(None) for
+  bytes/nil; `selected_ids` (PeerSyncWantedIds) → Ok(None) for All, Ok(Some) for Selected —
+  neither has a malformed variant so no Err is constructed today, but the S signature threads
+  the error channel through callers (deserializer via `serde::de::Error::custom`; peer-sync
+  validation/response via `io::Error`) so a future failure surfaces instead of collapsing to
+  None. LoRa `baud_rate` / `activity_probe` remain KEEP per plan (variant legitimately lacks
+  field).
 - [ ] **S15** **E** plain-`T`/`.expect()` cases + invariant SPLITs.
 - [ ] **S16** Pattern **O** pure pipes + BORDERLINE — after decision.
 

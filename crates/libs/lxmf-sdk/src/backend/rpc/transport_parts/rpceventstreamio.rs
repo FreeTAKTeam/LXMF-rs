@@ -159,16 +159,19 @@ impl EventStreamRequestAuth {
         }
     }
 
-    fn mtls_auth(&self) -> Option<MtlsRequestAuth> {
+    fn mtls_auth(&self) -> Result<Option<MtlsRequestAuth>, &'static str> {
         match self {
+            Self::Mtls { ca_bundle_path, .. } if ca_bundle_path.trim().is_empty() => {
+                Err("mTLS event-stream auth is missing its ca_bundle_path")
+            }
             Self::Mtls { ca_bundle_path, client_cert_path, client_key_path } => {
-                Some(MtlsRequestAuth {
+                Ok(Some(MtlsRequestAuth {
                     ca_bundle_path: ca_bundle_path.clone(),
                     client_cert_path: client_cert_path.clone(),
                     client_key_path: client_key_path.clone(),
-                })
+                }))
             }
-            Self::LocalTrusted | Self::Token { .. } => None,
+            Self::LocalTrusted | Self::Token { .. } => Ok(None),
         }
     }
 }
@@ -251,7 +254,9 @@ async fn connect_rpc_http_event_stream(
         &headers,
     );
     RpcBackendClient::zeroize_header_values(&mut headers);
-    let mtls_auth = auth.mtls_auth();
+    let mtls_auth = auth.mtls_auth().map_err(|reason| {
+        SdkError::new(code::VALIDATION_INVALID_ARGUMENT, ErrorCategory::Validation, reason)
+    })?;
     let result = match endpoint {
         RpcEndpoint::Tcp(authority) => {
             connect_tcp_rpc_http_event_stream(authority, request.as_slice(), mtls_auth.as_ref())

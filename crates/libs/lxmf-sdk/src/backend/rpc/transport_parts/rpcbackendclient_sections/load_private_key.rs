@@ -336,16 +336,21 @@ impl RpcBackendClient {
         }
     }
 
-    pub(super) fn mtls_for_session_auth(auth: &SessionAuth) -> Option<MtlsRequestAuth> {
+    pub(super) fn mtls_for_session_auth(
+        auth: &SessionAuth,
+    ) -> Result<Option<MtlsRequestAuth>, &'static str> {
         match auth {
+            SessionAuth::Mtls { ca_bundle_path, .. } if ca_bundle_path.trim().is_empty() => {
+                Err("mTLS session auth is missing its ca_bundle_path")
+            }
             SessionAuth::Mtls { ca_bundle_path, client_cert_path, client_key_path } => {
-                Some(MtlsRequestAuth {
+                Ok(Some(MtlsRequestAuth {
                     ca_bundle_path: ca_bundle_path.clone(),
                     client_cert_path: client_cert_path.clone(),
                     client_key_path: client_key_path.clone(),
-                })
+                }))
             }
-            SessionAuth::LocalTrusted | SessionAuth::Token { .. } => None,
+            SessionAuth::LocalTrusted | SessionAuth::Token { .. } => Ok(None),
         }
     }
 

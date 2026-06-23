@@ -242,8 +242,13 @@ impl RpcDaemon {
         let mut propagation_transfer_limited_marks = Vec::new();
         let mut propagation_handled_marks = Vec::new();
         let mut propagation_transfer_marks = Vec::new();
-        let selected_response_ids =
-            wanted_ids.as_ref().and_then(PeerSyncWantedIds::selected_ids).map(<[_]>::to_vec);
+        let selected_response_ids = match wanted_ids.as_ref() {
+            Some(wanted) => wanted
+                .selected_ids()
+                .map_err(|reason| std::io::Error::new(std::io::ErrorKind::InvalidInput, reason))?
+                .map(<[_]>::to_vec),
+            None => None,
+        };
         let mut selected_offer_entries = std::collections::HashMap::new();
         if selected_response_ids.is_none() {
             validate_peer_sync_full_offer_payloads(

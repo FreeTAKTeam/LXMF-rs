@@ -419,18 +419,29 @@
             client_cert_path: Some("/tmp/client.pem".to_string()),
             client_key_path: Some("/tmp/client.key".to_string()),
         };
-        let extracted =
-            RpcBackendClient::mtls_for_session_auth(&mtls_auth).expect("mtls config expected");
+        let extracted = RpcBackendClient::mtls_for_session_auth(&mtls_auth)
+            .expect("mtls config result")
+            .expect("mtls config expected");
         assert_eq!(extracted.ca_bundle_path, "/tmp/ca.pem");
         assert_eq!(extracted.client_cert_path.as_deref(), Some("/tmp/client.pem"));
         assert_eq!(extracted.client_key_path.as_deref(), Some("/tmp/client.key"));
 
-        assert!(RpcBackendClient::mtls_for_session_auth(&SessionAuth::LocalTrusted).is_none());
+        assert!(RpcBackendClient::mtls_for_session_auth(&SessionAuth::LocalTrusted)
+            .expect("local-trusted result")
+            .is_none());
         assert!(RpcBackendClient::mtls_for_session_auth(&SessionAuth::Token {
             issuer: "issuer".to_string(),
             audience: "audience".to_string(),
             shared_secret: Zeroizing::new("secret".to_string()),
             ttl_secs: 60,
         })
+        .expect("token result")
         .is_none());
+
+        assert!(RpcBackendClient::mtls_for_session_auth(&SessionAuth::Mtls {
+            ca_bundle_path: "   ".to_string(),
+            client_cert_path: None,
+            client_key_path: None,
+        })
+        .is_err());
     }
