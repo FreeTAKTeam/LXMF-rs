@@ -120,8 +120,28 @@ box → commit). Stop on red; never commit a broken tree.
   `v1_node_mut` → `Result<&mut RnsEmbeddedV1Node, &'static str>`;
   `v1_subscription_mut` → `Result<&mut RnsEmbeddedEventSubscription, &'static str>`.
   All 9 call sites updated from `let Some(x) = f() else { return ... }` to `match`.
-- [ ] **S11** Pattern **I** — LoRa/BLE encode-frame builders.
-- [ ] **S12** Pattern **J/K** — control/zmq decode + timeouts.
+- [x] **S11** Pattern **I** — LoRa/BLE encode-frame builders.
+  `id_beacon_write` (rnode_ble + vrn76_kiss_ble) → S (`Result<Option<T>, &'static str>`):
+  Ok(None) = beacon not configured, Ok(Some(w)) = write produced, Err = no write despite
+  beacon present. `generate_peering_key_value` → R (`Result<u32, &'static str>`): msgpack
+  encode failure → Err, nonce exhausted → Err; caller `peer_peering_key_value` logs+returns
+  None. `display_image_frames`: `u8::try_from(line).ok()?` → `.expect()` (always in range
+  0..=255 due to `.take(256)` — dead-code None path). lora_parts display-frame builders
+  (222,227,232,241) KEEP: `encode_command_frame` is infallible, sole None = display absent.
+- [x] **S12** Pattern **J/K** — control/zmq decode + timeouts.
+  `handle_zmq_command_message` → R (`Result<ZmqOutboundResponse, &'static str>`): decode/protocol
+  failures log inline and return Err; local-auth-error and success return Ok. Caller uses
+  `if let Ok(response)`. `parse_transfer_limit_bytes` → S: positive-infinity → Ok(None) (no
+  limit), parse errors (NaN, wrong type, bad string) → Err, valid → Ok(Some(bytes)); caller
+  logs Err and falls back to None. `wait_for_propagation_signal` → R (`Result<u8, &'static str>`):
+  timeout → Err("timeout"), signal out-of-range → Err, received → Ok; callers use `if let Ok`
+  / `let Ok ... else { return }`. `resolve_destination_identity_blocking` → S: runtime-build
+  failure → Err, thread-panic → Err, not-found-within-timeout → Ok(None), found → Ok(Some);
+  callers log Err and treat as None. `resolve_identity` → S: cancellation → Ok(None),
+  identity-not-found after 12 s deadline → Err(failure_status); failure_status param tightened
+  to `&'static str`. `resolve_destination_identity` → S: propagates `resolve_identity` Result
+  via `?`, Ok(None) for cancelled; callers (propagation_preparation_context, run_direct,
+  run_opportunistic) match and log Err.
 - [ ] **S13** Pattern **M** — string→enum parsers (split empty vs unknown).
 - [ ] **S14** Pattern **L** — enum-variant accessors (convert where caller expects variant).
 - [ ] **S15** **E** plain-`T`/`.expect()` cases + invariant SPLITs.

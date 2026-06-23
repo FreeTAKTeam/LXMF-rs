@@ -352,7 +352,7 @@ impl DeliveryTask {
                 let detail = format!("packet_hash={packet_hash}");
                 log_delivery_trace(&self.message_id, &self.destination_hex, trace_stage, &detail);
                 if let Some(ref mut signal_rx) = propagation_signal_rx {
-                    if let Some(signal) = propagation::wait_for_propagation_signal(
+                    if let Ok(signal) = propagation::wait_for_propagation_signal(
                         signal_rx,
                         link_id,
                         Duration::from_millis(1500),
@@ -416,7 +416,7 @@ fn spawn_propagation_resource_signal_monitor(
     receipt_tx: tokio::sync::mpsc::Sender<ReceiptEvent>,
 ) {
     tokio::spawn(async move {
-        let Some(signal) = propagation::wait_for_propagation_signal(
+        let Ok(signal) = propagation::wait_for_propagation_signal(
             &mut signal_rx,
             link_id,
             Duration::from_secs(30),

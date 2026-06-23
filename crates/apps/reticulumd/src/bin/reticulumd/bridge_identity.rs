@@ -12,10 +12,13 @@ pub(super) fn resolve_destination_identity_blocking(
     transport: Arc<Transport>,
     destination_hash: AddressHash,
     timeout: Duration,
-) -> Option<Identity> {
+) -> Result<Option<Identity>, &'static str> {
     std::thread::spawn(move || {
-        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
-        runtime.block_on(async move {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|_| "failed to build tokio runtime")?;
+        Ok(runtime.block_on(async move {
             let mut identity = transport.destination_identity(&destination_hash).await;
             if identity.is_none() {
                 transport.request_path(&destination_hash, None, None).await;
@@ -26,11 +29,10 @@ pub(super) fn resolve_destination_identity_blocking(
                 }
             }
             identity
-        })
+        }))
     })
     .join()
-    .ok()
-    .flatten()
+    .unwrap_or(Err("identity resolver thread panicked"))
 }
 
 pub(super) fn cached_identity_for_destination(

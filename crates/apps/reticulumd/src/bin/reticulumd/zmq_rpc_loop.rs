@@ -57,13 +57,11 @@ pub(super) async fn run_zmq_rpc_loop_until(
                     let Ok(_permit) = rpc_permits.acquire_owned().await else {
                         return;
                     };
-                    let response =
-                        handle_zmq_command_message(
-                            daemon.as_ref(),
-                            message,
-                            command_endpoint_requires_auth,
-                    );
-                    if let Some(response) = response {
+                    if let Ok(response) = handle_zmq_command_message(
+                        daemon.as_ref(),
+                        message,
+                        command_endpoint_requires_auth,
+                    ) {
                         if response_tx.send(response).await.is_err() {
                             log::warn!("[daemon] zmq rpc response writer stopped");
                         }
@@ -117,21 +115,21 @@ fn handle_zmq_command_message(
     daemon: &RpcDaemon,
     message: ZmqMessage,
     command_endpoint_requires_auth: bool,
-) -> Option<ZmqOutboundResponse> {
+) -> Result<ZmqOutboundResponse, &'static str> {
     let bytes = match Vec::<u8>::try_from(message) {
         Ok(bytes) => bytes,
         Err(err) => {
             log::warn!(
                 "[daemon] zmq rpc command rejected reason=message_conversion_failed err={err}"
             );
-            return None;
+            return Err("message conversion failed");
         }
     };
     let envelope = match zmq::decode_envelope(&bytes) {
         Ok(envelope) => envelope,
         Err(err) => {
             log::warn!("[daemon] zmq rpc command rejected reason=envelope_decode_failed err={err}");
-            return None;
+            return Err("envelope decode failed");
         }
     };
     let response_endpoint = match envelope.response_endpoint.clone() {
@@ -141,7 +139,7 @@ fn handle_zmq_command_message(
                 "[daemon] zmq rpc command rejected request_id={} reason=missing_response_endpoint",
                 envelope.request_id
             );
-            return None;
+            return Err("missing response endpoint");
         }
     };
     let response_endpoint_is_local = is_local_zmq_endpoint(response_endpoint.as_str());
@@ -152,7 +150,7 @@ fn handle_zmq_command_message(
         response_endpoint_is_local,
     ) {
         if response_endpoint_is_local {
-            return Some(ZmqOutboundResponse {
+            return Ok(ZmqOutboundResponse {
                 endpoint: response_endpoint,
                 envelope: rpc_error_envelope(envelope.session_id, envelope.request_id, error),
             });
@@ -162,10 +160,10 @@ fn handle_zmq_command_message(
             envelope.request_id,
             error.code
         );
-        return None;
+        return Err("remote auth failed");
     }
     if envelope.kind != ZmqRpcEnvelopeKind::Request {
-        return Some(ZmqOutboundResponse {
+        return Ok(ZmqOutboundResponse {
             endpoint: response_endpoint,
             envelope: error_envelope(
                 envelope.session_id,
@@ -184,7 +182,7 @@ fn handle_zmq_command_message(
             };
             encode_rpc_response_frame(&response)
         });
-    Some(ZmqOutboundResponse {
+    Ok(ZmqOutboundResponse {
         endpoint: response_endpoint,
         envelope: ZmqRpcEnvelope::response(
             envelope.session_id,

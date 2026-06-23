@@ -105,15 +105,15 @@ pub(crate) async fn wait_for_propagation_signal(
     rx: &mut tokio::sync::broadcast::Receiver<rns_transport::transport::ReceivedData>,
     link_id: AddressHash,
     timeout: Duration,
-) -> Option<u8> {
+) -> Result<u8, &'static str> {
     let deadline = tokio::time::Instant::now() + timeout;
     loop {
         let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
         if remaining.is_zero() {
-            return None;
+            return Err("timeout");
         }
         let Ok(result) = tokio::time::timeout(remaining, rx.recv()).await else {
-            return None;
+            return Err("timeout");
         };
         let Ok(event) = result else {
             continue;
@@ -133,7 +133,7 @@ pub(crate) async fn wait_for_propagation_signal(
         let Some(signal) = items.first().and_then(|entry| entry.as_u64()) else {
             continue;
         };
-        return u8::try_from(signal).ok();
+        return u8::try_from(signal).map_err(|_| "signal value out of range");
     }
 }
 

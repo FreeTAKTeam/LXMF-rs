@@ -7,7 +7,17 @@ impl DeliveryTask {
     pub(super) async fn propagation_preparation_context(
         &self,
     ) -> Option<PropagationPreparationContext> {
-        let destination_identity = self.resolve_destination_identity().await?;
+        let destination_identity = match self.resolve_destination_identity().await {
+            Ok(Some(identity)) => identity,
+            Ok(None) => return None,
+            Err(err) => {
+                log::warn!(
+                    "[daemon] {} resolve destination identity failed: {err}",
+                    self.message_id
+                );
+                return None;
+            }
+        };
         if self.abort_if_cancelled("propagation") {
             return None;
         }

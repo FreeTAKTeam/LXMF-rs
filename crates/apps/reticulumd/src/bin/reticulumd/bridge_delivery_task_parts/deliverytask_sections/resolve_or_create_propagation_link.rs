@@ -28,13 +28,19 @@ impl DeliveryTask {
                 }
             })
             .or_else(|| {
-                resolve_destination_identity_blocking(
+                match resolve_destination_identity_blocking(
                     self.transport.clone(),
                     propagation_hash,
                     Duration::from_secs(12),
-                )
+                ) {
+                    Ok(identity) => identity,
+                    Err(err) => {
+                        log::warn!("[daemon] identity resolver for propagation node: {err}");
+                        None
+                    }
+                }
             });
-        let Some(propagation_identity) = self
+        let propagation_identity = match self
             .resolve_identity(
                 Some(propagation_node_hex),
                 propagation_hash,
@@ -43,11 +49,17 @@ impl DeliveryTask {
                 "failed: propagation node not announced",
             )
             .await
-        else {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                "propagation node not announced",
-            ));
+        {
+            Ok(Some(identity)) => identity,
+            Ok(None) => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Interrupted,
+                    "delivery cancelled",
+                ))
+            }
+            Err(msg) => {
+                return Err(std::io::Error::new(std::io::ErrorKind::NotFound, msg))
+            }
         };
         if let Ok(mut guard) = self.outbound_propagation_identities.lock() {
             guard.insert(propagation_node_hex.to_string(), propagation_identity);
@@ -73,8 +85,8 @@ impl DeliveryTask {
         destination_hash: AddressHash,
         cached: Option<Identity>,
         stage: &str,
-        failure_status: &str,
-    ) -> Option<Identity> {
+        failure_status: &'static str,
+    ) -> Result<Option<Identity>, &'static str> {
         let mut identity =
             cached.or_else(|| self.cached_identity_for_destination(destination_hash));
         if identity.is_some() {
@@ -95,7 +107,7 @@ impl DeliveryTask {
             let deadline = tokio::time::Instant::now() + Duration::from_secs(12);
             while tokio::time::Instant::now() < deadline {
                 if self.abort_if_cancelled(stage) {
-                    return None;
+                    return Ok(None);
                 }
                 if let Some(found) = self.transport.destination_identity(&destination_hash).await {
                     identity = Some(found);
@@ -125,11 +137,11 @@ impl DeliveryTask {
                 message_id: self.message_id.clone(),
                 status: failure_status.to_string(),
             });
-            return None;
+            return Err(failure_status);
         };
 
         let detail = destination_hex.unwrap_or(self.destination_hex.as_str());
         log_delivery_trace(&self.message_id, detail, stage, "resolved");
-        Some(identity)
+        Ok(Some(identity))
     }
 }

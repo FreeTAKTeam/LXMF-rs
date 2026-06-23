@@ -135,7 +135,16 @@ pub(super) fn handle_message_get_request(
     if retryable_wants.is_empty() {
         return ControlResponse::Rmpv(rmpv::Value::Array(Vec::new()));
     }
-    let transfer_limit_bytes = entries.get(2).and_then(parse_transfer_limit_bytes);
+    let transfer_limit_bytes = match entries.get(2) {
+        None => None,
+        Some(value) => match parse_transfer_limit_bytes(value) {
+            Ok(limit) => limit,
+            Err(err) => {
+                log::warn!("[daemon] propagation transfer limit parse error: {err}");
+                None
+            }
+        }
+    };
     let preview = daemon.preview_propagation_payloads_for_destination_with_ids(
         &remote_delivery_hash,
         &retryable_wants,
@@ -299,25 +308,34 @@ fn binary_id_list(values: &[rmpv::Value]) -> Vec<Vec<u8>> {
         .collect()
 }
 
-fn parse_transfer_limit_bytes(value: &rmpv::Value) -> Option<usize> {
-    let limit = match value {
-        rmpv::Value::F64(value) => Some(*value),
-        rmpv::Value::F32(value) => Some((*value).into()),
-        rmpv::Value::Integer(value) => value.as_f64(),
-        rmpv::Value::String(value) => value.as_str()?.trim().parse::<f64>().ok(),
-        rmpv::Value::Binary(value) => decode_utf8(value, "propagation transfer limit")
-            .ok()?
+fn parse_transfer_limit_bytes(value: &rmpv::Value) -> Result<Option<usize>, &'static str> {
+    let limit: f64 = match value {
+        rmpv::Value::F64(value) => *value,
+        rmpv::Value::F32(value) => f64::from(*value),
+        rmpv::Value::Integer(value) => {
+            value.as_f64().ok_or("transfer limit integer out of f64 range")?
+        }
+        rmpv::Value::String(value) => value
+            .as_str()
+            .ok_or("transfer limit string not valid UTF-8")?
             .trim()
             .parse::<f64>()
-            .ok(),
-        rmpv::Value::Boolean(value) => Some(f64::from(*value as u8)),
-        _ => None,
-    }?;
-    if limit.is_nan() || limit.is_infinite() && limit.is_sign_positive() {
-        None
-    } else {
-        Some((limit.max(0.0) * 1000.0) as usize)
+            .map_err(|_| "transfer limit not a valid float")?,
+        rmpv::Value::Binary(value) => decode_utf8(value, "propagation transfer limit")
+            .map_err(|_| "transfer limit bytes not valid UTF-8")?
+            .trim()
+            .parse::<f64>()
+            .map_err(|_| "transfer limit not a valid float")?,
+        rmpv::Value::Boolean(value) => f64::from(*value as u8),
+        _ => return Err("unsupported value type for transfer limit"),
+    };
+    if limit.is_nan() {
+        return Err("transfer limit is NaN");
     }
+    if limit.is_infinite() && limit.is_sign_positive() {
+        return Ok(None);
+    }
+    Ok(Some((limit.max(0.0) * 1000.0) as usize))
 }
 
 fn delivery_destination_hash_for_identity(identity: &Identity) -> [u8; 16] {

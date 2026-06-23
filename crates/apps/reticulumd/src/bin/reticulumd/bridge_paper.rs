@@ -22,6 +22,10 @@ pub(super) fn encode_paper(
                 AddressHash::new(destination),
                 Duration::from_secs(12),
             )
+            .unwrap_or_else(|err| {
+                log::warn!("[daemon] identity resolver for paper delivery: {err}");
+                None
+            })
         });
     let Some(destination_identity) = destination_identity else {
         return Ok(None);

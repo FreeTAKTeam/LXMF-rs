@@ -238,7 +238,7 @@ async fn propagation_signal_waiter_detects_invalid_stamp_rejection() {
 
     assert_eq!(
         wait_for_propagation_signal(&mut rx, link_id, Duration::from_millis(200)).await,
-        Some(0xf5)
+        Ok(0xf5)
     );
 }
 
