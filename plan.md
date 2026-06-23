@@ -69,10 +69,20 @@ box → commit). Stop on red; never commit a broken tree.
   - [x] **S4d** `pn_metadata_to_json.rs` — `pn_metadata_to_json` S,
     `pn_metadata_key_to_string` S, `pn_metadata_value_to_json` R,
     `parse_pn_metadata_name` S, `extract_capabilities_from_msgpack` S.
-- [ ] **S5** Pattern **C** (reticulumd bin) — `rpc_access_log.rs`, `announce_ingest.rs`.
-- [ ] **S6** Pattern **D** — env-var readers (`env_u64`/`env_bool`/`env_usize`).
-- [ ] **S7** Pattern **E/H** — lock-poison + file IO (`receipt.rs`, `ratchets.rs`,
+- [x] **S5** Pattern **C** (reticulumd bin) — `rpc_access_log.rs`, `announce_ingest.rs`.
+  All `[✓you]` in the per-pattern catalog — already done in S1/S3. No new code needed.
+- [x] **S6** Pattern **D** — env-var readers (`env_u64`/`env_bool`/`env_usize`).
+  All `[✓you]` in the per-pattern catalog — already done in prior work. No new code needed.
+- [x] **S7** Pattern **E/H** — lock-poison + file IO (`receipt.rs`, `ratchets.rs`,
   `outbound_resources.rs`, `current_limits`, `sdk_token_auth_config`, `load_private_key`).
+  `resolve/lookup_receipt_message_id` → S (`io::Result<Option<String>>`); `load_record` → S
+  (`io::Result<Option<RatchetRecord>>`); `sdk_token_auth_config` → R (`io::Result<(...)>`);
+  `spawn_event_sink_worker` → S (`io::Result<Option<SyncSender>>`);
+  `sdk_event_sink_allowed_kinds` → S (`io::Result<Option<HashSet<String>>>`);
+  `current_limits` → S (`io::Result<Option<EffectiveLimits>>`);
+  `auth_metadata_for_request` → S (`Result<Option<...>, SystemTimeError>`);
+  `parse_error_category` → R (`Result<ErrorCategory, &'static str>`).
+  `ensure_peer_iface` deferred: uses tokio async mutex (no poison), error type unclear.
 - [ ] **S8** Pattern **N** — JSON accessors (`lxmf-sdk/domain_parts/*`, `app/events.rs`).
 - [ ] **S9** Pattern **G** — crypto/decrypt/verify (`resource_wire`, `wire`, `tunnels`,
   `parse_link_identify_payload`).

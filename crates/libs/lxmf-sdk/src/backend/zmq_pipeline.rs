@@ -103,12 +103,13 @@ impl ZmqPipelineBackendClient {
         let request_id = self.next_request_id();
         let payload = build_rpc_frame(request_id, method, params)
             .map_err(|err| sdk_error(ErrorCategory::Internal, err.to_string()))?;
+        let auth = self.auth_metadata_for_request(request_id).ok().flatten();
         let envelope = ZmqRpcEnvelope::request(
             self.session_id.clone(),
             request_id,
             self.config.response_endpoint.clone(),
             payload,
-            self.auth_metadata_for_request(request_id),
+            auth,
         );
         let encoded = zmq::encode_envelope(&envelope)
             .map_err(|err| sdk_error(ErrorCategory::Transport, err.to_string()))?;
@@ -128,12 +129,14 @@ impl ZmqPipelineBackendClient {
         Ok(rpc_response.result.unwrap_or(JsonValue::Null))
     }
 
-    fn auth_metadata_for_request(&self, request_id: u64) -> Option<ZmqRpcAuthMetadata> {
-        let auth = self.config.token_auth.as_ref()?;
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|duration| duration.as_secs())
-            .unwrap_or(0);
+    fn auth_metadata_for_request(
+        &self,
+        request_id: u64,
+    ) -> Result<Option<ZmqRpcAuthMetadata>, std::time::SystemTimeError> {
+        let Some(auth) = self.config.token_auth.as_ref() else {
+            return Ok(None);
+        };
+        let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
         let payload = format!(
             "iss={};aud={};jti={}-{};sub=sdk-client;iat={};exp={}",
             auth.issuer,
@@ -144,10 +147,10 @@ impl ZmqPipelineBackendClient {
             now.saturating_add(auth.ttl_secs.max(1)),
         );
         let sig = token_signature(auth.shared_secret.as_str(), payload.as_str());
-        Some(ZmqRpcAuthMetadata {
+        Ok(Some(ZmqRpcAuthMetadata {
             scheme: "bearer".to_string(),
             value: format!("{};sig={}", payload, sig),
-        })
+        }))
     }
 }
 

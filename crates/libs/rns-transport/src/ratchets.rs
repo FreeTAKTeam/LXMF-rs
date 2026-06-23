@@ -62,7 +62,10 @@ impl RatchetStore {
             self.remove_record(destination);
         }
 
-        let record = self.load_record(destination)?;
+        let record = self.load_record(destination).unwrap_or_else(|err| {
+            log::warn!("failed to load ratchet record for {}: {err}", destination.to_hex_string());
+            None
+        })?;
         if now > record.received + RATCHET_EXPIRY_SECS {
             self.cache.remove(destination);
             self.remove_record(destination);
@@ -112,23 +115,16 @@ impl RatchetStore {
         Ok(())
     }
 
-    fn load_record(&self, destination: &AddressHash) -> Option<RatchetRecord> {
+    fn load_record(&self, destination: &AddressHash) -> std::io::Result<Option<RatchetRecord>> {
         let path = self.path_for(destination);
         let data = match fs::read(&path) {
             Ok(data) => data,
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return None,
-            Err(err) => {
-                log::warn!("failed to read ratchet file {}: {err}", path.display());
-                return None;
-            }
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(err) => return Err(err),
         };
-        match rmp_serde::from_slice::<RatchetRecord>(&data) {
-            Ok(record) => Some(record),
-            Err(err) => {
-                log::warn!("failed to decode ratchet file {}: {err}", path.display());
-                None
-            }
-        }
+        rmp_serde::from_slice::<RatchetRecord>(&data)
+            .map(Some)
+            .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err))
     }
 
     fn remove_record(&self, destination: &AddressHash) {

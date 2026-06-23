@@ -28,7 +28,13 @@ impl ReceiptBridge {
 
 impl ReceiptHandler for ReceiptBridge {
     fn on_receipt(&self, receipt: &DeliveryReceipt) {
-        let message_id = lookup_receipt_message_id(&self.map, receipt);
+        let message_id = match lookup_receipt_message_id(&self.map, receipt) {
+            Ok(id) => id,
+            Err(err) => {
+                log::warn!("[daemon] receipt map lock error: {err}");
+                return;
+            }
+        };
         if let Some(message_id) = message_id {
             if let Err(err) =
                 self.tx.try_send(ReceiptEvent { message_id, status: "delivered".into() })

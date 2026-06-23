@@ -5,29 +5,19 @@ use std::sync::{Arc, Mutex};
 pub fn resolve_receipt_message_id(
     map: &Arc<Mutex<HashMap<String, String>>>,
     receipt: &DeliveryReceipt,
-) -> Option<String> {
+) -> std::io::Result<Option<String>> {
     let key = hex::encode(receipt.message_id);
-    match map.lock() {
-        Ok(mut guard) => guard.remove(&key),
-        Err(err) => {
-            log::warn!("failed to lock receipt map for resolve: {err}");
-            None
-        }
-    }
+    let mut guard = map.lock().map_err(|e| std::io::Error::other(e.to_string()))?;
+    Ok(guard.remove(&key))
 }
 
 pub fn lookup_receipt_message_id(
     map: &Arc<Mutex<HashMap<String, String>>>,
     receipt: &DeliveryReceipt,
-) -> Option<String> {
+) -> std::io::Result<Option<String>> {
     let key = hex::encode(receipt.message_id);
-    match map.lock() {
-        Ok(guard) => guard.get(&key).cloned(),
-        Err(err) => {
-            log::warn!("failed to lock receipt map for lookup: {err}");
-            None
-        }
-    }
+    let guard = map.lock().map_err(|e| std::io::Error::other(e.to_string()))?;
+    Ok(guard.get(&key).cloned())
 }
 
 pub fn track_receipt_mapping(

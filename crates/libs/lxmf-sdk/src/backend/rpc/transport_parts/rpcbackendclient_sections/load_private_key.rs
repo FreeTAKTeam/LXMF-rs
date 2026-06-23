@@ -113,7 +113,7 @@ impl RpcBackendClient {
         let category = error
             .category
             .as_deref()
-            .and_then(Self::parse_error_category)
+            .and_then(|c| Self::parse_error_category(c).ok())
             .unwrap_or_else(|| Self::map_category(machine_code.as_str()));
         let mut sdk_error = SdkError::new(machine_code, category, error.message);
         if let Some(retryable) = error.retryable {
@@ -172,20 +172,20 @@ impl RpcBackendClient {
         ErrorCategory::Internal
     }
 
-    fn parse_error_category(raw: &str) -> Option<ErrorCategory> {
+    fn parse_error_category(raw: &str) -> Result<ErrorCategory, &'static str> {
         match raw.trim().to_ascii_lowercase().as_str() {
-            "validation" => Some(ErrorCategory::Validation),
-            "capability" => Some(ErrorCategory::Capability),
-            "config" => Some(ErrorCategory::Config),
-            "policy" => Some(ErrorCategory::Policy),
-            "transport" => Some(ErrorCategory::Transport),
-            "storage" => Some(ErrorCategory::Storage),
-            "crypto" => Some(ErrorCategory::Crypto),
-            "timeout" => Some(ErrorCategory::Timeout),
-            "runtime" => Some(ErrorCategory::Runtime),
-            "security" => Some(ErrorCategory::Security),
-            "internal" => Some(ErrorCategory::Internal),
-            _ => None,
+            "validation" => Ok(ErrorCategory::Validation),
+            "capability" => Ok(ErrorCategory::Capability),
+            "config" => Ok(ErrorCategory::Config),
+            "policy" => Ok(ErrorCategory::Policy),
+            "transport" => Ok(ErrorCategory::Transport),
+            "storage" => Ok(ErrorCategory::Storage),
+            "crypto" => Ok(ErrorCategory::Crypto),
+            "timeout" => Ok(ErrorCategory::Timeout),
+            "runtime" => Ok(ErrorCategory::Runtime),
+            "security" => Ok(ErrorCategory::Security),
+            "internal" => Ok(ErrorCategory::Internal),
+            _ => Err("unknown error category"),
         }
     }
 

@@ -70,7 +70,7 @@ fn token_auth_metadata_matches_daemon_bearer_claim_shape() {
     });
     let client = ZmqPipelineBackendClient::new(config).expect("zmq client");
 
-    let auth = client.auth_metadata_for_request(7).expect("auth metadata");
+    let auth = client.auth_metadata_for_request(7).expect("system time ok").expect("auth metadata");
     let claims = parse_claims(&auth.value);
     let signed_payload = format!(
         "iss={};aud={};jti={};sub={};iat={};exp={}",

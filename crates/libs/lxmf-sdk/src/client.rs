@@ -125,12 +125,13 @@ impl<B: SdkBackend> Client<B> {
         Ok(hasher.finish())
     }
 
-    fn current_limits(&self) -> Option<crate::capability::EffectiveLimits> {
-        self.handle
+    fn current_limits(&self) -> std::io::Result<Option<crate::capability::EffectiveLimits>> {
+        Ok(self
+            .handle
             .lock()
-            .expect("client handle mutex poisoned")
+            .map_err(|e| std::io::Error::other(e.to_string()))?
             .as_ref()
-            .map(|handle| handle.effective_limits.clone())
+            .map(|handle| handle.effective_limits.clone()))
     }
 
     fn as_client_handle(negotiation: NegotiationResponse) -> ClientHandle {
@@ -226,8 +227,12 @@ impl<B: SdkBackend> LxmfSdk for Client<B> {
             return self.backend.send(req);
         };
 
-        let ttl_ms =
-            self.current_limits().map(|limits| limits.idempotency_ttl_ms).unwrap_or(86_400_000);
+        let ttl_ms = self
+            .current_limits()
+            .ok()
+            .flatten()
+            .map(|limits| limits.idempotency_ttl_ms)
+            .unwrap_or(86_400_000);
         let now = Instant::now();
         let cache_key = (req.source.clone(), req.destination.clone(), idempotency_key);
         let payload_hash = Self::payload_hash(&req.payload)?;
@@ -301,7 +306,7 @@ impl<B: SdkBackend> LxmfSdk for Client<B> {
             )
             .with_user_actionable(true));
         }
-        if let Some(limits) = self.current_limits() {
+        if let Some(limits) = self.current_limits().ok().flatten() {
             if max > limits.max_poll_events {
                 return Err(SdkError::new(
                     code::VALIDATION_MAX_POLL_EVENTS_EXCEEDED,

@@ -88,8 +88,12 @@ impl<B: SdkBackendAsyncOps> Client<B> {
             return self.backend.send_async(req).await;
         };
 
-        let ttl_ms =
-            self.current_limits().map(|limits| limits.idempotency_ttl_ms).unwrap_or(86_400_000);
+        let ttl_ms = self
+            .current_limits()
+            .ok()
+            .flatten()
+            .map(|limits| limits.idempotency_ttl_ms)
+            .unwrap_or(86_400_000);
         let now = Instant::now();
         let cache_key = (req.source.clone(), req.destination.clone(), idempotency_key);
         let payload_hash = Self::payload_hash(&req.payload)?;
