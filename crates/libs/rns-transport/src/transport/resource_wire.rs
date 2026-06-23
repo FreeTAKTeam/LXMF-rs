@@ -82,8 +82,8 @@ pub(super) async fn handle_link_resource_packet<'a>(
         );
     }
     let packet_for_manager = match packet_for_resource_manager(packet, &mut link) {
-        Some(packet) => packet,
-        None => return true,
+        Ok(packet) => packet,
+        Err(_) => return true,
     };
     let response_iface = link.ingress_iface().unwrap_or(iface);
     let interface_mtu = handler
@@ -141,7 +141,7 @@ async fn link_for_resource_packet(
     link
 }
 
-fn packet_for_resource_manager(packet: &Packet, link: &mut Link) -> Option<Packet> {
+fn packet_for_resource_manager(packet: &Packet, link: &mut Link) -> Result<Packet, RnsError> {
     let needs_decrypt = matches!(
         packet.context,
         PacketContext::ResourceAdvrtisement
@@ -151,7 +151,7 @@ fn packet_for_resource_manager(packet: &Packet, link: &mut Link) -> Option<Packe
             | PacketContext::ResourceReceiverCancel
     );
     if !needs_decrypt {
-        return Some(packet.clone());
+        return Ok(packet.clone());
     }
 
     let mut buffer = PacketDataBuffer::new();
@@ -167,13 +167,13 @@ fn packet_for_resource_manager(packet: &Packet, link: &mut Link) -> Option<Packe
                 );
             }
             log::warn!("failed to decrypt packet: {:?}", err);
-            return None;
+            return Err(RnsError::CryptoError);
         }
     };
     buffer.resize(plain_len);
     let mut plain_packet = packet.clone();
     plain_packet.data = buffer;
-    Some(plain_packet)
+    Ok(plain_packet)
 }
 
 pub(super) fn publish_resource_events(handler: &TransportHandler, events: Vec<ResourceEvent>) {

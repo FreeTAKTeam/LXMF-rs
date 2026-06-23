@@ -43,9 +43,9 @@ fn validate_destination_receipt_signature(
 pub(super) async fn validated_receipt_hash(
     packet: &Packet,
     handler: &TransportHandler,
-) -> Option<[u8; HASH_SIZE]> {
+) -> Result<Option<[u8; HASH_SIZE]>, RnsError> {
     if packet.header.packet_type != PacketType::Proof {
-        return None;
+        return Ok(None);
     }
 
     if packet.header.destination_type == DestinationType::Link
@@ -66,11 +66,12 @@ pub(super) async fn validated_receipt_hash(
         }
         if let Some(link) = link {
             let link = link.lock().await;
-            if let Ok(hash) = link.validate_packet_proof(packet) {
-                return Some(hash.to_bytes());
-            }
+            return match link.validate_packet_proof(packet) {
+                Ok(hash) => Ok(Some(hash.to_bytes())),
+                Err(_) => Err(RnsError::CryptoError),
+            };
         }
-        return None;
+        return Ok(None);
     }
 
     if packet.data.len() == SIGNATURE_LENGTH {
@@ -79,49 +80,58 @@ pub(super) async fn validated_receipt_hash(
             packet_cache.proof_context_for_destination(&packet.destination)
         };
         if let Some((receipt_hash, proved_destination, _)) = proof_context {
+            let mut destination_checked = false;
             if let Some(destination) =
                 handler.single_out_destinations.get(&proved_destination).cloned()
             {
+                destination_checked = true;
                 let destination = destination.lock().await;
                 if let Ok(hash) = validate_destination_receipt_signature(
                     &destination.identity,
                     &receipt_hash,
                     packet.data.as_slice(),
                 ) {
-                    return Some(hash.to_bytes());
+                    return Ok(Some(hash.to_bytes()));
                 }
             }
             if let Some(destination) =
                 handler.single_in_destinations.get(&proved_destination).cloned()
             {
+                destination_checked = true;
                 let destination = destination.lock().await;
                 if let Ok(hash) = validate_destination_receipt_signature(
                     destination.identity.as_identity(),
                     &receipt_hash,
                     packet.data.as_slice(),
                 ) {
-                    return Some(hash.to_bytes());
+                    return Ok(Some(hash.to_bytes()));
                 }
+            }
+            if destination_checked {
+                return Err(RnsError::CryptoError);
             }
         }
     }
 
+    let mut found_destination = false;
     if let Some(destination) = handler.single_out_destinations.get(&packet.destination).cloned() {
+        found_destination = true;
         let destination = destination.lock().await;
         if let Ok(hash) = validate_destination_receipt_proof(&destination.identity, packet) {
-            return Some(hash.to_bytes());
+            return Ok(Some(hash.to_bytes()));
         }
     }
     if let Some(destination) = handler.single_in_destinations.get(&packet.destination).cloned() {
+        found_destination = true;
         let destination = destination.lock().await;
         if let Ok(hash) =
             validate_destination_receipt_proof(destination.identity.as_identity(), packet)
         {
-            return Some(hash.to_bytes());
+            return Ok(Some(hash.to_bytes()));
         }
     }
 
-    None
+    if found_destination { Err(RnsError::CryptoError) } else { Ok(None) }
 }
 
 async fn should_forward_link_request_proof(
@@ -206,6 +216,10 @@ pub(super) async fn handle_proof(
         let handler = handler.lock().await;
         validated_receipt_hash(&packet, &handler).await
     };
+    let receipt_hash = receipt_hash.unwrap_or_else(|err| {
+        log::warn!("[tp] proof crypto validation failed dst={}: {:?}", packet.destination, err);
+        None
+    });
     if let Some(receipt_hash) = receipt_hash {
         let receipt = DeliveryReceipt::new(receipt_hash);
         let receipt_handler = {

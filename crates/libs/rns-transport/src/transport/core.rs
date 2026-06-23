@@ -315,6 +315,8 @@ impl Transport {
             let handler = self.handler.lock().await;
             let receipt = super::wire::validated_receipt_hash(&packet, &handler)
                 .await
+                .ok()
+                .flatten()
                 .map(DeliveryReceipt::new);
             let receipt_handler = handler.receipt_handler.clone();
             (receipt, receipt_handler)

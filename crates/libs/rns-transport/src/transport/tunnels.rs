@@ -306,9 +306,12 @@ pub(super) async fn handle_tunnel_synthesize_packet<'a>(
     handler: &mut MutexGuard<'a, TransportHandler>,
     iface: AddressHash,
 ) {
-    let Some(tunnel_id) = validate_tunnel_synthesize(packet.data.as_slice()) else {
-        log::debug!("tp({}): ignoring invalid tunnel synth packet", handler.config.name);
-        return;
+    let tunnel_id = match validate_tunnel_synthesize(packet.data.as_slice()) {
+        Ok(id) => id,
+        Err(err) => {
+            log::debug!("tp({}): ignoring invalid tunnel synth packet: {:?}", handler.config.name, err);
+            return;
+        }
     };
 
     let restore_paths = handler.tunnel_table.handle_tunnel(tunnel_id, iface, Instant::now());
@@ -334,10 +337,10 @@ pub(super) async fn handle_tunnel_synthesize_packet<'a>(
     );
 }
 
-fn validate_tunnel_synthesize(data: &[u8]) -> Option<Hash> {
+fn validate_tunnel_synthesize(data: &[u8]) -> Result<Hash, RnsError> {
     let expected_len = PUBLIC_KEY_LENGTH * 2 + HASH_SIZE + ADDRESS_HASH_SIZE + SIGNATURE_LENGTH;
     if data.len() != expected_len {
-        return None;
+        return Err(RnsError::PacketError);
     }
 
     let public_identity = &data[..PUBLIC_KEY_LENGTH * 2];
@@ -350,10 +353,11 @@ fn validate_tunnel_synthesize(data: &[u8]) -> Option<Hash> {
         &public_identity[PUBLIC_KEY_LENGTH..PUBLIC_KEY_LENGTH * 2],
     );
     let signed_data = &data[..signature_start];
-    let signature = Signature::from_slice(&data[signature_start..]).ok()?;
-    identity.verify(signed_data, &signature).ok()?;
+    let signature =
+        Signature::from_slice(&data[signature_start..]).map_err(|_| RnsError::CryptoError)?;
+    identity.verify(signed_data, &signature).map_err(|_| RnsError::IncorrectSignature)?;
 
-    Some(Hash::new_from_slice(&data[..random_hash_start]))
+    Ok(Hash::new_from_slice(&data[..random_hash_start]))
 }
 
 fn optional_hash_value(hash: Option<Hash>) -> RmpValue {

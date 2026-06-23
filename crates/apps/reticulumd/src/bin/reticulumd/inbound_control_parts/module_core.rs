@@ -52,11 +52,18 @@ pub(super) fn spawn_control_worker(
             }
             match payload.context() {
                 PacketContext::LinkIdentify => {
-                    if let Some(identity) =
-                        parse_link_identify_payload(payload.as_slice(), &event.id)
-                    {
-                        if let Ok(mut guard) = identified.lock() {
-                            guard.insert(event.id, identity);
+                    match parse_link_identify_payload(payload.as_slice(), &event.id) {
+                        Ok(identity) => {
+                            if let Ok(mut guard) = identified.lock() {
+                                guard.insert(event.id, identity);
+                            }
+                        }
+                        Err(err) => {
+                            log::warn!(
+                                "[daemon-control] invalid link identify payload link={} err={}",
+                                event.id,
+                                err
+                            );
                         }
                     }
                 }
@@ -109,17 +116,21 @@ fn clear_validated_peer_link(control: &PropagationControlContext, link_id: &Addr
     }
 }
 
-fn parse_link_identify_payload(payload: &[u8], link_id: &AddressHash) -> Option<Identity> {
+fn parse_link_identify_payload(
+    payload: &[u8],
+    link_id: &AddressHash,
+) -> Result<Identity, &'static str> {
     if payload.len() < 32 + 32 + 64 {
-        return None;
+        return Err("payload too short");
     }
     let identity = Identity::new_from_slices(&payload[..32], &payload[32..64]);
-    let signature = ed25519_dalek::Signature::from_slice(&payload[64..128]).ok()?;
+    let signature = ed25519_dalek::Signature::from_slice(&payload[64..128])
+        .map_err(|_| "invalid signature bytes")?;
     let mut signed = Vec::with_capacity(16 + 64);
     signed.extend_from_slice(link_id.as_slice());
     signed.extend_from_slice(&payload[..64]);
-    identity.verify(&signed, &signature).ok()?;
-    Some(identity)
+    identity.verify(&signed, &signature).map_err(|_| "signature verification failed")?;
+    Ok(identity)
 }
 
 fn handle_control_request(

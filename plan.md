@@ -91,8 +91,16 @@ box → commit). Stop on red; never commit a broken tree.
   `payload_peer_id` in `events.rs` likewise. `json_u32` in `outbound_message_for_query.rs`.
   `propagationremote.rs` (not in canonical catalog but shares helpers via `include!`) also updated.
   Callers use `.ok().flatten()` silently (lxmf-sdk has no log dep).
-- [ ] **S9** Pattern **G** — crypto/decrypt/verify (`resource_wire`, `wire`, `tunnels`,
+- [x] **S9** Pattern **G** — crypto/decrypt/verify (`resource_wire`, `wire`, `tunnels`,
   `parse_link_identify_payload`).
+  `packet_for_resource_manager` → `Result<Packet, RnsError>` (R; decrypt failure was already
+  logged + None, now Err); `validate_tunnel_synthesize` → `Result<Hash, RnsError>` (R;
+  bad-len → PacketError, bad-sig → IncorrectSignature; test `.is_none()` → `.is_err()`);
+  `validated_receipt_hash` → `Result<Option<[u8;HASH_SIZE]>, RnsError>` (S; no-link/no-dest
+  → Ok(None), verify failure → Err(CryptoError); callers: handle_proof uses
+  `.unwrap_or_else(|err| { log::warn!(...); None })`, test helper uses `.ok().flatten()`);
+  `parse_link_identify_payload` → `Result<Identity, &'static str>` (R; caller now logs
+  the error variant instead of silently ignoring).
 - [ ] **S10** Pattern **F** — FFI null-pointer wrappers.
 - [ ] **S11** Pattern **I** — LoRa/BLE encode-frame builders.
 - [ ] **S12** Pattern **J/K** — control/zmq decode + timeouts.

@@ -25,7 +25,7 @@ mod tests {
         let last = packet.data.len() - 1;
         packet.data.as_mut_slice()[last] ^= 0x01;
 
-        assert!(validate_tunnel_synthesize(packet.data.as_slice()).is_none());
+        assert!(validate_tunnel_synthesize(packet.data.as_slice()).is_err());
     }
 
     #[test]
