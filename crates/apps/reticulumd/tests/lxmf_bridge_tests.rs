@@ -71,15 +71,28 @@ fn rmpv_to_json_decodes_telemetry_stream_from_string_payload() {
 }
 
 #[test]
-fn rmpv_to_json_errors_on_nondecodable_telemetry_payload() {
+fn rmpv_to_json_preserves_nondecodable_telemetry_payload_as_generic() {
     let fields = rmpv::Value::Map(vec![(
         rmpv::Value::Integer(3_i64.into()),
         rmpv::Value::String("\u{0100}".into()),
     )]);
 
-    // A telemetry field (key "3") whose payload is not a decodable telemetry
-    // stream is now a hard decode error instead of being preserved as a string.
-    assert!(rmpv_to_json(&fields).is_err());
+    // A field whose key ("3") matches the telemetry decoder but whose value is not a
+    // decodable telemetry stream is not in that format; rather than rejecting the whole
+    // message we fall back to the generic representation, preserving the value.
+    let output = rmpv_to_json(&fields).expect("to json");
+    assert_eq!(output["3"], serde_json::json!("\u{0100}"));
+}
+
+#[test]
+fn rmpv_to_json_preserves_generic_value_sharing_client_field_key() {
+    // Key "2" matches the Sideband-location decoder, but an integer value is plainly not
+    // that format. It must fall back to generic conversion, not reject the whole message.
+    let fields =
+        rmpv::Value::Map(vec![(rmpv::Value::Integer(2_i64.into()), rmpv::Value::Integer(1.into()))]);
+
+    let output = rmpv_to_json(&fields).expect("to json");
+    assert_eq!(output["2"], serde_json::json!(1));
 }
 
 #[test]

@@ -309,7 +309,7 @@ fn parse_fuzzy_u32(value: &MsgPackValue) -> Result<u32, &'static str> {
         MsgPackValue::Integer(value) => value
             .as_u64()
             .and_then(|value| u32::try_from(value).ok())
-            .or_else(|| value.as_i64().and_then(|value| u32::try_from(value.max(0)).ok()))
+            .or_else(|| value.as_i64().and_then(|value| u32::try_from(value).ok()))
             .or_else(|| value.as_f64().and_then(|f| parse_f64_to_u32(f).ok()))
             .ok_or("integer out of u32 range"),
         MsgPackValue::F64(value) => parse_f64_to_u32(*value),

@@ -158,3 +158,17 @@ fn rejects_python_invalid_delivery_stamp_costs_from_peer_data() {
         );
     }
 }
+
+#[test]
+fn parse_fuzzy_u32_rejects_negative_integer() {
+    // A negative advertised cost must be rejected, not clamped to 0 (which would be stored
+    // as a real zero cost and confuse None-vs-Some(0) policy checks).
+    assert!(parse_fuzzy_u32(&MsgPackValue::Integer((-1_i64).into())).is_err());
+    assert!(parse_fuzzy_u32(&MsgPackValue::Integer(i64::MIN.into())).is_err());
+}
+
+#[test]
+fn parse_fuzzy_u32_accepts_nonnegative_integer() {
+    assert_eq!(parse_fuzzy_u32(&MsgPackValue::Integer(0_i64.into())).expect("zero"), 0);
+    assert_eq!(parse_fuzzy_u32(&MsgPackValue::Integer(42_i64.into())).expect("value"), 42);
+}

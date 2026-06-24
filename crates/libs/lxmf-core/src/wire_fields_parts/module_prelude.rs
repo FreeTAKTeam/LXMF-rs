@@ -326,13 +326,16 @@ fn rmpv_to_json_with_options_inner(
                     other => format!("{other:?}"),
                 };
 
-                if let Some(decoded) =
+                if let Some(Ok(decoded)) =
                     decode_client_specific_field(key_str.as_str(), value, options)
                 {
-                    object.insert(key_str, decoded?);
+                    object.insert(key_str, decoded);
                     continue;
                 }
-
+                // The key matched a client-specific decoder but the value is not in that
+                // format (e.g. a generic value that merely shares the key, like `{2: 1}`).
+                // Fall back to the generic representation rather than rejecting the whole
+                // message — the value is preserved, just not specially decoded.
                 object.insert(key_str, rmpv_to_json_with_options_inner(value, options)?);
             }
 

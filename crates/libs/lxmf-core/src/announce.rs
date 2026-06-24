@@ -147,11 +147,11 @@ pub fn display_name_from_delivery_app_data(
             Some(rmpv::Value::Binary(bytes)) => {
                 normalize_display_name(decode_utf8_owned(bytes)?.as_str())
             }
-            Some(rmpv::Value::String(value)) => value.as_str().and_then(normalize_display_name),
+            Some(rmpv::Value::String(value)) => normalize_display_name(decode_utf8_owned(value.into_bytes())?.as_str()),
             _ => None,
         },
         rmpv::Value::Binary(bytes) => normalize_display_name(decode_utf8_owned(bytes)?.as_str()),
-        rmpv::Value::String(value) => value.as_str().and_then(normalize_display_name),
+        rmpv::Value::String(value) => normalize_display_name(decode_utf8_owned(value.into_bytes())?.as_str()),
         _ => None,
     };
     Ok(name)
@@ -188,5 +188,14 @@ mod tests {
     #[test]
     fn normalize_display_name_rejects_control_bytes() {
         assert!(normalize_display_name("Alice\nRouter").is_none());
+    }
+
+    #[test]
+    fn display_name_from_invalid_utf8_string_surfaces_error() {
+        // A msgpack `str` (fixstr len 2, 0xa2) carrying invalid UTF-8 bytes must surface a
+        // decode error, not collapse into Ok(None) (which a caller can't distinguish from a
+        // genuine absent name).
+        let data = [0xa2_u8, 0xff, 0xfe];
+        assert!(display_name_from_delivery_app_data(&data).is_err());
     }
 }
