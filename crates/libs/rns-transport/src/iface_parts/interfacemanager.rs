@@ -286,6 +286,12 @@ impl InterfaceManager {
         match iface.tx_send.try_send(message) {
             Ok(()) => true,
             Err(mpsc::error::TrySendError::Full(message)) => {
+                if matches!(tx_type, TxMessageType::Broadcast(_)) {
+                    if tx_diag_enabled() {
+                        log::warn!("tx queue full dropping broadcast on {} for {:?}", iface.address, tx_type);
+                    }
+                    return false;
+                }
                 match tokio::time::timeout(
                     Duration::from_millis(IFACE_TX_ENQUEUE_TIMEOUT_MS),
                     iface.tx_send.send(message),

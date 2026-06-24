@@ -44,6 +44,7 @@
                 delivery_destination: None,
                 allowed_control_identities: Vec::new(),
                 validated_peer_links: test_validated_peer_links(),
+                identified_peer_links: Arc::new(Mutex::new(std::collections::HashMap::new())),
             },
         );
 
@@ -114,6 +115,7 @@
                 delivery_destination: None,
                 allowed_control_identities: Vec::new(),
                 validated_peer_links: test_validated_peer_links(),
+                identified_peer_links: Arc::new(Mutex::new(std::collections::HashMap::new())),
             },
         );
 
@@ -156,6 +158,7 @@
                 delivery_destination: None,
                 allowed_control_identities: Vec::new(),
                 validated_peer_links: test_validated_peer_links(),
+                identified_peer_links: Arc::new(Mutex::new(std::collections::HashMap::new())),
             },
         );
 
@@ -197,6 +200,7 @@
                 delivery_destination: None,
                 allowed_control_identities: Vec::new(),
                 validated_peer_links: test_validated_peer_links(),
+                identified_peer_links: Arc::new(Mutex::new(std::collections::HashMap::new())),
             },
         );
 
@@ -240,6 +244,7 @@
                 delivery_destination: None,
                 allowed_control_identities: Vec::new(),
                 validated_peer_links: test_validated_peer_links(),
+                identified_peer_links: Arc::new(Mutex::new(std::collections::HashMap::new())),
             },
         );
 
@@ -287,6 +292,7 @@
                 delivery_destination: None,
                 allowed_control_identities: Vec::new(),
                 validated_peer_links: test_validated_peer_links(),
+                identified_peer_links: Arc::new(Mutex::new(std::collections::HashMap::new())),
             },
         );
 
@@ -355,6 +361,7 @@
                 delivery_destination: None,
                 allowed_control_identities: Vec::new(),
                 validated_peer_links: test_validated_peer_links(),
+                identified_peer_links: Arc::new(Mutex::new(std::collections::HashMap::new())),
             },
         );
 
@@ -407,6 +414,7 @@
                 delivery_destination: None,
                 allowed_control_identities: Vec::new(),
                 validated_peer_links: test_validated_peer_links(),
+                identified_peer_links: Arc::new(Mutex::new(std::collections::HashMap::new())),
             },
         );
 

@@ -90,6 +90,17 @@ pub(super) fn should_skip_control_payload(
     )
 }
 
+pub(super) fn should_skip_resolved_control_payload(
+    destination: InboundLxmfDestination,
+    context: Option<PacketContext>,
+) -> bool {
+    matches!(destination, InboundLxmfDestination::Propagation)
+        && matches!(
+            context,
+            Some(PacketContext::Request | PacketContext::Response | PacketContext::LinkIdentify)
+        )
+}
+
 fn lxmf_destination_from_desc(destination: &DestinationDesc) -> Option<InboundLxmfDestination> {
     if is_lxmf_delivery_destination(destination) {
         return Some(InboundLxmfDestination::Delivery(destination_hash(&destination.address_hash)));
@@ -116,10 +127,14 @@ fn is_lxmf_propagation_link_destination(destination: &DestinationDesc) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_lxmf_delivery_destination, is_lxmf_propagation_link_destination};
+    use super::{
+        is_lxmf_delivery_destination, is_lxmf_propagation_link_destination,
+        should_skip_resolved_control_payload, InboundLxmfDestination,
+    };
     use rand_core::OsRng;
     use rns_transport::destination::{DestinationDesc, DestinationName};
     use rns_transport::identity::PrivateIdentity;
+    use rns_transport::packet::PacketContext;
 
     #[test]
     fn lxmf_delivery_destination_is_accepted_for_resource_decode() {
@@ -155,5 +170,17 @@ mod tests {
         };
 
         assert!(is_lxmf_propagation_link_destination(&destination));
+    }
+
+    #[test]
+    fn propagation_link_control_context_is_skipped_from_payload_ingest() {
+        assert!(should_skip_resolved_control_payload(
+            InboundLxmfDestination::Propagation,
+            Some(PacketContext::LinkIdentify)
+        ));
+        assert!(should_skip_resolved_control_payload(
+            InboundLxmfDestination::Propagation,
+            Some(PacketContext::Request)
+        ));
     }
 }

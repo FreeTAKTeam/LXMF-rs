@@ -62,6 +62,44 @@ impl MessagesStore {
         })
     }
 
+    pub fn upsert_announce_identity(
+        &self,
+        peer: &str,
+        public_key_hex: &str,
+        verifying_key_hex: &str,
+        updated_at: i64,
+    ) -> rusqlite::Result<()> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.outbound_write_tx
+            .send(OutboundWriteCommand::UpsertAnnounceIdentity {
+                peer: normalize_peer_key(peer),
+                public_key_hex: normalize_hex_key(public_key_hex),
+                verifying_key_hex: normalize_hex_key(verifying_key_hex),
+                updated_at,
+                reply: reply_tx,
+            })
+            .map_err(|err| rusqlite::Error::ToSqlConversionFailure(Box::new(err)))?;
+        reply_rx.recv().map_err(|err| rusqlite::Error::ToSqlConversionFailure(Box::new(err)))?
+    }
+
+    pub fn announce_identity_keys(
+        &self,
+        peer: &str,
+    ) -> rusqlite::Result<Option<(String, String)>> {
+        let peer = normalize_peer_key(peer);
+        self.with_read_conn(|conn| {
+            conn.query_row(
+                "SELECT public_key_hex, verifying_key_hex
+                 FROM announce_identities
+                 WHERE peer = ?1
+                 LIMIT 1",
+                params![peer],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+        })
+    }
+
     pub fn latest_announce_stamp_cost_for(&self, peer: &str) -> rusqlite::Result<Option<u32>> {
         self.with_read_conn(|conn| {
             conn.query_row(
@@ -189,6 +227,7 @@ impl MessagesStore {
     pub fn clear_announces(&self) -> rusqlite::Result<()> {
         self.with_write_conn(|conn| {
             conn.execute("DELETE FROM announces", [])?;
+            conn.execute("DELETE FROM announce_identities", [])?;
             Ok(())
         })
     }
@@ -285,6 +324,12 @@ impl MessagesStore {
                     stamp_cost INTEGER,
                     stamp_cost_flexibility INTEGER,
                     peering_cost INTEGER
+                );
+                CREATE TABLE IF NOT EXISTS announce_identities (
+                    peer TEXT PRIMARY KEY,
+                    public_key_hex TEXT NOT NULL,
+                    verifying_key_hex TEXT NOT NULL,
+                    updated_at INTEGER NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS sdk_domain_state (
                     domain TEXT PRIMARY KEY,

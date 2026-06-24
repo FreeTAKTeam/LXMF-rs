@@ -96,6 +96,54 @@ impl RpcDaemon {
         self.ingest_propagation_payload_hex_at_cost(payload_hex.as_str(), transient_id, stamp_cost)
     }
 
+    pub fn ingest_client_propagation_payload_bytes_at_cost(
+        &self,
+        payload: &[u8],
+        transient_id: Option<&str>,
+        stamp_cost: u32,
+    ) -> Result<String, std::io::Error> {
+        let (canonical_transient_id, normalized_payload) =
+            normalize_propagation_payload_bytes(payload, stamp_cost)?;
+        let canonical_transient_id = hex::encode(canonical_transient_id);
+        if let Some(provided_transient_id) = transient_id {
+            if !provided_transient_id.eq_ignore_ascii_case(canonical_transient_id.as_str()) {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "transient_id does not match propagation payload",
+                ));
+            }
+        }
+        let transient_id =
+            transient_id.map(normalize_propagation_transient_key).unwrap_or(canonical_transient_id);
+        if self.propagation_payload_destination_is_ignored(normalized_payload) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "ignored propagation destination",
+            ));
+        }
+        let already_known = self
+            .store
+            .get_propagation_entry(transient_id.as_str())
+            .map_err(std::io::Error::other)?
+            .is_some()
+            || self
+                .store
+                .local_propagation_processed_mark_exists(transient_id.as_str())
+                .map_err(std::io::Error::other)?;
+        let payload_hex = hex::encode(normalized_payload);
+        self.store_propagation_payload_hex(transient_id.as_str(), payload_hex.as_str())?;
+        self.propagation_payloads
+            .lock()
+            .expect("propagation payload mutex poisoned")
+            .insert(transient_id.clone(), payload_hex);
+        self.store
+            .mark_local_propagation_processed(transient_id.as_str())
+            .map_err(std::io::Error::other)?;
+        self.prune_propagation_payloads_to_storage_limit()?;
+        self.note_client_propagation_messages_received(usize::from(!already_known));
+        Ok(transient_id)
+    }
+
     fn propagation_payload_destination_is_ignored(&self, payload: &[u8]) -> bool {
         if payload.len() < 16 {
             return false;

@@ -69,6 +69,7 @@
             delivery_destination: None,
             allowed_control_identities: Vec::new(),
             validated_peer_links: test_validated_peer_links(),
+            identified_peer_links: Arc::new(Mutex::new(std::collections::HashMap::new())),
         };
 
         let link_id = test_link_id();
@@ -154,6 +155,7 @@
             delivery_destination: None,
             allowed_control_identities: Vec::new(),
             validated_peer_links: test_validated_peer_links(),
+            identified_peer_links: Arc::new(Mutex::new(std::collections::HashMap::new())),
         };
 
         let link_id = test_link_id();
@@ -230,6 +232,7 @@
             delivery_destination: None,
             allowed_control_identities: Vec::new(),
             validated_peer_links: test_validated_peer_links(),
+            identified_peer_links: Arc::new(Mutex::new(std::collections::HashMap::new())),
         };
 
         let link_id = test_link_id();
@@ -326,6 +329,7 @@
             delivery_destination: None,
             allowed_control_identities: Vec::new(),
             validated_peer_links: test_validated_peer_links(),
+            identified_peer_links: Arc::new(Mutex::new(std::collections::HashMap::new())),
         };
 
         let response = handle_offer_request(
@@ -377,6 +381,7 @@
             delivery_destination: None,
             allowed_control_identities: Vec::new(),
             validated_peer_links: test_validated_peer_links(),
+            identified_peer_links: Arc::new(Mutex::new(std::collections::HashMap::new())),
         };
 
         let first = handle_offer_request(

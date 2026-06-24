@@ -1,5 +1,24 @@
 impl RpcDaemon {
 
+    pub fn record_announce_identity(
+        &self,
+        peer: &str,
+        public_key_hex: &str,
+        verifying_key_hex: &str,
+        updated_at: i64,
+    ) -> Result<(), std::io::Error> {
+        self.store
+            .upsert_announce_identity(peer, public_key_hex, verifying_key_hex, updated_at)
+            .map_err(std::io::Error::other)
+    }
+
+    pub fn announce_identity_keys(
+        &self,
+        peer: &str,
+    ) -> Result<Option<(String, String)>, std::io::Error> {
+        self.store.announce_identity_keys(peer).map_err(std::io::Error::other)
+    }
+
     pub(super) fn daemon_status_snapshot(&self) -> DaemonStatusSnapshot {
         self.daemon_status_snapshot.read().expect("daemon_status_snapshot rwlock poisoned").clone()
     }

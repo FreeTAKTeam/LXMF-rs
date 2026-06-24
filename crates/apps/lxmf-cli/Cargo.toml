@@ -1,11 +1,11 @@
 [package]
 name = "lxmf-cli"
-version = "0.1.0"
+version = "0.5.1"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-publish = false
+description = "Command-line LXMF client tools for the LXMF-rs SDK and daemon workflows."
 
 [[bin]]
 name = "lxmf"

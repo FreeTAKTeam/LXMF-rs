@@ -6,8 +6,8 @@ application concerns into separate workspace crates.
 
 ## 1. Goals
 
-- Keep GitHub releases as the binary distribution path.
-- Publish only reusable library crates to crates.io.
+- Keep GitHub releases as the primary binary bundle distribution path.
+- Publish public library crates and installable command crates to crates.io.
 - Preserve short Rust import ergonomics even when crates.io package names must
   change.
 - Use owned umbrella crates for discoverability:
@@ -37,6 +37,15 @@ Use a two-tier public model:
   - `reticulum-rs-core`
   - `reticulum-rs-transport`
   - `reticulum-rs-rpc`
+  - `lxmf-embedded-mini`
+  - `rns-embedded-core`
+  - `rns-embedded-runtime`
+  - `rns-embedded-ffi`
+  - `rns-embedded-mininode`
+- Command crates:
+  - `lxmf-cli`
+  - `reticulumd`
+  - `rns-tools`
 
 The public package name does not need to match the local dependency alias or
 the Rust import path. Preserve local ergonomics with dependency aliasing.
@@ -45,9 +54,9 @@ Example:
 
 ```toml
 [dependencies]
-lxmf-core = { package = "lxmf-wire", version = "0.2.0" }
-rns-core = { package = "reticulum-rs-core", version = "0.2.0" }
-rns-rpc = { package = "reticulum-rs-rpc", version = "0.3.0" }
+lxmf-core = { package = "lxmf-wire", version = "<release-version>" }
+rns-core = { package = "reticulum-rs-core", version = "<release-version>" }
+rns-rpc = { package = "reticulum-rs-rpc", version = "<release-version>" }
 ```
 
 For crates whose package names change, keep the Rust crate names stable with
@@ -60,40 +69,46 @@ not have to rewrite `use` paths just to complete the package rename.
 
 | Current workspace package | crates.io package | Rust crate name | Version target | Publish |
 | --- | --- | --- | --- | --- |
-| `lxmf-reference` | `lxmf-reference` | `lxmf_reference` | `0.1.0` | yes |
-| `lxmf-core` | `lxmf-wire` | `lxmf_core` | `0.2.0` | yes |
-| `lxmf-sdk` | `lxmf-sdk` | `lxmf_sdk` | `0.2.1` | yes |
-| `rns-core` | `reticulum-rs-core` | `rns_core` | `0.2.0` | yes |
-| `rns-transport` | `reticulum-rs-transport` | `rns_transport` | `0.2.0` | yes |
-| `rns-rpc` | `reticulum-rs-rpc` | `rns_rpc` | `0.3.0` | yes |
+| `lxmf-reference` | `lxmf-reference` | `lxmf_reference` | GitHub release version | yes |
+| `lxmf-core` | `lxmf-wire` | `lxmf_core` | GitHub release version | yes |
+| `lxmf-sdk` | `lxmf-sdk` | `lxmf_sdk` | GitHub release version | yes |
+| `rns-core` | `reticulum-rs-core` | `rns_core` | GitHub release version | yes |
+| `rns-transport` | `reticulum-rs-transport` | `rns_transport` | GitHub release version | yes |
+| `rns-rpc` | `reticulum-rs-rpc` | `rns_rpc` | GitHub release version | yes |
 
 ### Wave 1.5: Facades after components exist
 
 | New facade package | Role | Version target | Publish |
 | --- | --- | --- | --- |
-| `lxmf` | curated high-level facade over `lxmf-sdk` and selected wire types | `0.3.0` | yes |
-| `reticulum-rs` | curated facade over core, with optional transport/RPC features | `0.2.0` | yes |
+| `lxmf` | curated high-level facade over `lxmf-sdk` and selected wire types | GitHub release version | yes |
+| `reticulum-rs` | curated facade over core, with optional transport/RPC features | GitHub release version | yes |
 
-### Wave 2: Embedded family once support policy is explicit
+### Wave 2: Embedded family
 
 | Current workspace package | crates.io package | Version target | Publish |
 | --- | --- | --- | --- |
-| `rns-embedded-core` | `reticulum-rs-embedded-core` | `0.2.0` | later |
-| `rns-embedded-runtime` | `reticulum-rs-embedded-runtime` | `0.2.0` | later |
-| `rns-embedded-ffi` | `reticulum-rs-embedded-ffi` | `0.2.0` | later |
-| `rns-embedded-mininode` | `reticulum-rs-embedded-mininode` | `0.2.0` | later |
+| `lxmf-embedded-mini` | `lxmf-embedded-mini` | GitHub release version | yes |
+| `rns-embedded-core` | `rns-embedded-core` | GitHub release version | yes |
+| `rns-embedded-runtime` | `rns-embedded-runtime` | GitHub release version | yes |
+| `rns-embedded-ffi` | `rns-embedded-ffi` | GitHub release version | yes |
+| `rns-embedded-mininode` | `rns-embedded-mininode` | GitHub release version | yes |
+
+### Wave 3: Command crates
+
+| Current workspace package | crates.io package | Version target | Publish |
+| --- | --- | --- | --- |
+| `lxmf-cli` | `lxmf-cli` | GitHub release version | yes |
+| `reticulumd` | `reticulumd` | GitHub release version | yes |
+| `rns-tools` | `rns-tools` | GitHub release version | yes |
 
 ## 5. Do Not Publish
 
 Keep these unpublished:
 
-- `crates/apps/lxmf-cli`
-- `crates/apps/reticulumd`
-- `crates/apps/rns-tools`
 - `crates/libs/test-support`
 - `xtask`
 
-These are distributed through GitHub releases, used only for local tooling, or
+These are used only for local tooling, test support, or release engineering and
 are not intended to carry a public support commitment.
 
 Retired migration-era crates such as `crates/internal/*`, `lxmf-router`, and
@@ -102,17 +117,16 @@ revived, they need a fresh support-policy decision before publication.
 
 ## 6. Versioning Policy
 
-- Do not apply one blanket version to every existing published crate.
-- New component package names may start at `0.2.0`.
-- `lxmf-reference` starts at `0.1.0` and changes only when pinned compatibility
-  metadata changes.
-- `reticulum-rs-rpc` moved to `0.3.0` when the gRPC/protobuf surface was removed from the public crate.
-- Already-published umbrella crates must continue forward monotonically from
-  their crates.io history:
-  - `lxmf`: next planned breaking line `0.3.0`
-  - `reticulum-rs`: next planned breaking line `0.2.0`
-- Keep Wave 1 component crates on a coordinated version line at first to reduce
-  release-management overhead.
+- Public crates use the same version number as the GitHub release that
+  publishes them.
+- Before creating a GitHub release, bump every public crate listed in this
+  runbook to the release version.
+- Also bump the root `[workspace.dependencies]` versions for those crates so
+  local path dependencies and published dependency metadata stay aligned.
+- The automated crates.io workflow rejects a release when any public crate
+  version differs from the GitHub release tag after removing the leading `v`.
+- Existing crates.io histories remain valid, but future releases move all public
+  crates forward together on the GitHub release version line.
 
 ## 7. Required Manifest Work
 
@@ -145,11 +159,16 @@ Primary files that must be updated together:
 - `crates/libs/rns-core/Cargo.toml`
 - `crates/libs/rns-transport/Cargo.toml`
 - `crates/libs/rns-rpc/Cargo.toml`
-- `crates/apps/reticulumd/Cargo.toml`
-- `crates/apps/rns-tools/Cargo.toml`
+- `crates/libs/lxmf-embedded-mini/Cargo.toml`
+- `crates/libs/rns-embedded-core/Cargo.toml`
 - `crates/libs/rns-embedded-mininode/Cargo.toml`
 - `crates/libs/rns-embedded-runtime/Cargo.toml`
 - `crates/libs/rns-embedded-ffi/Cargo.toml`
+- `crates/libs/lxmf/Cargo.toml`
+- `crates/libs/reticulum-rs/Cargo.toml`
+- `crates/apps/lxmf-cli/Cargo.toml`
+- `crates/apps/reticulumd/Cargo.toml`
+- `crates/apps/rns-tools/Cargo.toml`
 - `crates/libs/test-support/Cargo.toml`
 
 Supporting tooling and policy references that are package-name sensitive:
@@ -170,19 +189,31 @@ Recommended order:
 1. `lxmf-reference`
 2. `reticulum-rs-core`
 3. `lxmf-wire`
-4. `reticulum-rs-transport`
-5. `reticulum-rs-rpc`
-6. `lxmf-sdk`
-7. `reticulum-rs`
-8. `lxmf`
+4. `rns-embedded-core`
+5. `rns-embedded-runtime`
+6. `rns-embedded-ffi`
+7. `reticulum-rs-transport`
+8. `reticulum-rs-rpc`
+9. `lxmf-sdk`
+10. `rns-embedded-mininode`
+11. `lxmf-embedded-mini`
+12. `reticulum-rs`
+13. `lxmf`
+14. `lxmf-cli`
+15. `reticulumd`
+16. `rns-tools`
 Reason:
 
 - `reticulum-rs-rpc` and `lxmf-sdk` share pinned compatibility metadata through
   `lxmf-reference`
 - `lxmf-wire` depends on `reticulum-rs-core`
+- `rns-embedded-runtime` depends on `rns-embedded-core`
+- `rns-embedded-ffi` depends on `rns-embedded-core` and `rns-embedded-runtime`
 - `reticulum-rs-transport` depends on `reticulum-rs-core`
 - `lxmf-sdk` depends on `reticulum-rs-rpc`
+- `rns-embedded-mininode` depends on `lxmf-wire` and `reticulum-rs-core`
 - facade crates should only publish after the underlying components are live
+- command crates publish last after their library dependencies are live
 
 ## 10. Pre-Publish Checklist
 
@@ -214,6 +245,7 @@ cargo xtask release-check
 If a crates.io publish wave ships alongside a daemon or product release:
 
 - publish from the same commit or short-lived release branch used for the GitHub release
+- use the same version number as the GitHub release tag
 - list exact crate versions in the GitHub release notes
 - keep migration notes and compatibility statements shared between the GitHub and crates.io release records
 

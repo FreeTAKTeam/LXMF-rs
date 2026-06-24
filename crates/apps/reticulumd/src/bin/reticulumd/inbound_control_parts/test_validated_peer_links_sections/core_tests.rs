@@ -25,6 +25,7 @@
             delivery_destination: None,
             allowed_control_identities: Vec::new(),
             validated_peer_links: test_validated_peer_links(),
+            identified_peer_links: Arc::new(Mutex::new(std::collections::HashMap::new())),
         }
     }
 
@@ -100,6 +101,32 @@
         );
 
         assert!(matches!(response, ControlResponse::Value(Value::Null)));
+    }
+
+    #[test]
+    fn resource_carried_get_request_uses_control_dispatch() {
+        let daemon = ready_propagation_daemon();
+        let remote_private =
+            rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let remote_identity = *remote_private.as_identity();
+        let payload = control_request(
+            "/get",
+            rmpv::Value::Array(vec![rmpv::Value::Nil, rmpv::Value::Nil]),
+        );
+
+        let response = resource_control_response(
+            &daemon,
+            &test_control_context(),
+            &test_link_id(),
+            payload.as_slice(),
+            Some(&remote_identity),
+            true,
+        );
+
+        let ControlResponse::Rmpv(rmpv::Value::Array(entries)) = response else {
+            panic!("expected propagation /get response array");
+        };
+        assert!(entries.is_empty());
     }
 
     #[test]
@@ -189,6 +216,7 @@
             delivery_destination: None,
             allowed_control_identities: vec!["not-the-remote".to_string()],
             validated_peer_links: test_validated_peer_links(),
+            identified_peer_links: Arc::new(Mutex::new(std::collections::HashMap::new())),
         };
         let response = handle_control_request(
             &daemon,
@@ -245,6 +273,7 @@
                 delivery_destination: None,
                 allowed_control_identities: Vec::new(),
                 validated_peer_links: test_validated_peer_links(),
+                identified_peer_links: Arc::new(Mutex::new(std::collections::HashMap::new())),
             },
         );
 
@@ -265,6 +294,7 @@
                 delivery_destination: None,
                 allowed_control_identities: Vec::new(),
                 validated_peer_links: test_validated_peer_links(),
+                identified_peer_links: Arc::new(Mutex::new(std::collections::HashMap::new())),
             },
         );
 
@@ -300,6 +330,7 @@
                 delivery_destination: None,
                 allowed_control_identities: Vec::new(),
                 validated_peer_links: test_validated_peer_links(),
+                identified_peer_links: Arc::new(Mutex::new(std::collections::HashMap::new())),
             },
         );
 
@@ -332,6 +363,7 @@
                 delivery_destination: None,
                 allowed_control_identities: Vec::new(),
                 validated_peer_links: test_validated_peer_links(),
+                identified_peer_links: Arc::new(Mutex::new(std::collections::HashMap::new())),
             },
         );
 
@@ -360,6 +392,7 @@
                 delivery_destination: None,
                 allowed_control_identities: Vec::new(),
                 validated_peer_links: test_validated_peer_links(),
+                identified_peer_links: Arc::new(Mutex::new(std::collections::HashMap::new())),
             },
         );
 
@@ -407,6 +440,7 @@
                 delivery_destination: None,
                 allowed_control_identities: Vec::new(),
                 validated_peer_links: test_validated_peer_links(),
+                identified_peer_links: Arc::new(Mutex::new(std::collections::HashMap::new())),
             },
         );
 

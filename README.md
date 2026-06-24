@@ -3,7 +3,7 @@
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/FreeTAKTeam/LXMF-rs)
 
 Rust monorepo for LXMF and Reticulum with strict library/app boundaries and
-enterprise quality gates. The `0.5.0` line is a usable sub-1.0
+enterprise quality gates. The `0.5.x` line is a usable sub-1.0
 daemon/product release with strong core protocol coverage, published crates,
 GitHub tool bundles, and a typed ZeroMQ SDK integration foundation for
 REM/RCH clients; it is not a complete drop-in replacement for every Python
@@ -13,23 +13,23 @@ Reticulum/LXMF behavior.
 
 - Contributor workflow: `CONTRIBUTING.md`
 - Current status and execution order: `docs/status/current-roadmap.md`
-- Release notes: `docs/release-notes-v0.5.0.md`
+- Release notes: `docs/release-notes-v0.5.1.md`
 - Docs map and retention rules: `docs/README.md`
 - SDK guide: `docs/sdk/README.md`
 - Support policy: `docs/contracts/support-policy.md`
 
 ## Release Status
 
-Current release train: `0.5.0`.
+Current release train: `0.5.1`.
 
-Use `docs/release-notes-v0.5.0.md` for the release summary and
+Use `docs/release-notes-v0.5.1.md` for the release summary and
 `docs/runbooks/release-readiness.md` for the release gate record. The
 repository-level parity source of truth remains
 `docs/status/current-roadmap.md`; the detailed parity supplements are
 `docs/status/reticulum-parity-matrix.md` and
 `docs/status/lxmf-parity-matrix.md`.
 
-The `0.5.0` release scope covers the Rust libraries, SDK entry points, `lxmd`,
+The `0.5.x` release scope covers the Rust libraries, SDK entry points, `lxmd`,
 `reticulumd`, and `rns-tools`, plus host-native GitHub bundles for all
 implemented user-facing tools. Its main release-train addition is the
 communication parity milestone across propagation router lifecycle, peer
@@ -97,10 +97,18 @@ Published crates.io entry points:
 - `lxmf`
 - `lxmf-sdk`
 - `lxmf-wire`
+- `lxmf-embedded-mini`
 - `reticulum-rs`
 - `reticulum-rs-core`
 - `reticulum-rs-transport`
 - `reticulum-rs-rpc`
+- `rns-embedded-core`
+- `rns-embedded-runtime`
+- `rns-embedded-ffi`
+- `rns-embedded-mininode`
+- `lxmf-cli`
+- `reticulumd`
+- `rns-tools`
 
 ## Published Crates
 
@@ -116,6 +124,20 @@ Component crates:
 - [`reticulum-rs-core`](https://crates.io/crates/reticulum-rs-core) ![Crates.io Version](https://img.shields.io/crates/v/reticulum-rs-core) ([docs.rs](https://docs.rs/reticulum-rs-core)): core Reticulum cryptographic and packet primitives.
 - [`reticulum-rs-transport`](https://crates.io/crates/reticulum-rs-transport) ![Crates.io Version](https://img.shields.io/crates/v/reticulum-rs-transport) ([docs.rs](https://docs.rs/reticulum-rs-transport)): transport, interface, receipt, and resource layers.
 - [`reticulum-rs-rpc`](https://crates.io/crates/reticulum-rs-rpc) ![Crates.io Version](https://img.shields.io/crates/v/reticulum-rs-rpc) ([docs.rs](https://docs.rs/reticulum-rs-rpc)): JSON-RPC request, response, event, and daemon bridge contracts.
+
+Embedded crates:
+
+- [`lxmf-embedded-mini`](https://crates.io/crates/lxmf-embedded-mini) ![Crates.io Version](https://img.shields.io/crates/v/lxmf-embedded-mini) ([docs.rs](https://docs.rs/lxmf-embedded-mini)): no-alloc mini LXMF runtime for embedded targets.
+- [`rns-embedded-core`](https://crates.io/crates/rns-embedded-core) ![Crates.io Version](https://img.shields.io/crates/v/rns-embedded-core) ([docs.rs](https://docs.rs/rns-embedded-core)): embedded-friendly Reticulum core primitives.
+- [`rns-embedded-runtime`](https://crates.io/crates/rns-embedded-runtime) ![Crates.io Version](https://img.shields.io/crates/v/rns-embedded-runtime) ([docs.rs](https://docs.rs/rns-embedded-runtime)): runtime support for embedded Reticulum targets.
+- [`rns-embedded-ffi`](https://crates.io/crates/rns-embedded-ffi) ![Crates.io Version](https://img.shields.io/crates/v/rns-embedded-ffi) ([docs.rs](https://docs.rs/rns-embedded-ffi)): FFI and static-library surface for embedded runtimes.
+- [`rns-embedded-mininode`](https://crates.io/crates/rns-embedded-mininode) ![Crates.io Version](https://img.shields.io/crates/v/rns-embedded-mininode) ([docs.rs](https://docs.rs/rns-embedded-mininode)): minimal embedded Reticulum node helpers.
+
+Command crates:
+
+- [`lxmf-cli`](https://crates.io/crates/lxmf-cli) ![Crates.io Version](https://img.shields.io/crates/v/lxmf-cli): command-line LXMF client tools.
+- [`reticulumd`](https://crates.io/crates/reticulumd) ![Crates.io Version](https://img.shields.io/crates/v/reticulumd): Reticulum daemon and interchange binaries.
+- [`rns-tools`](https://crates.io/crates/rns-tools) ![Crates.io Version](https://img.shields.io/crates/v/rns-tools): Reticulum diagnostic and embedded tooling binaries.
 
 ## Active Applications
 
@@ -161,7 +183,7 @@ cargo run -p xtask -- architecture-checks
 cargo run -p xtask -- sdk-docs-check
 cargo run -p xtask -- sdk-migration-check
 cargo xtask release-check
-cargo xtask package-daemon-bundle --version 0.5.0
+cargo xtask package-daemon-bundle --version 0.5.1
 cargo xtask api-diff
 cargo xtask python-impl-bench-compare
 cargo xtask python-impl-bench-compare --profile report
@@ -173,7 +195,7 @@ For fast local iteration on one binary, prefer narrow commands:
 ```bash
 make check-bin PKG=lxmf-cli BIN=lxmd
 make run-bin PKG=rns-tools BIN=rnsd ARGS="--help"
-make package-daemon-bundle VERSION=0.5.0
+make package-daemon-bundle VERSION=0.5.1
 make python-lxmd-smoke
 ```
 
@@ -221,16 +243,16 @@ workspace directory names:
 
 ```toml
 [dependencies]
-lxmf = "0.3.0"
-reticulum-rs = "0.2.0"
+lxmf = "0.5.1"
+reticulum-rs = "0.5.1"
 ```
 
 Or depend on the component crates directly:
 
 ```toml
 [dependencies]
-lxmf-sdk = "0.2.1"
-reticulum-rs-rpc = "0.3.0"
+lxmf-sdk = "0.5.1"
+reticulum-rs-rpc = "0.5.1"
 ```
 
 ## SDK Guide
@@ -361,9 +383,9 @@ Release artifacts are published on the GitHub releases page:
 
 [https://github.com/FreeTAKTeam/LXMF-rs/releases](https://github.com/FreeTAKTeam/LXMF-rs/releases)
 
-For `v0.5.0`, use the release at:
+For `v0.5.1`, use the release at:
 
-[https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.5.0](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.5.0)
+[https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.5.1](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.5.1)
 
 1. Open the release page and download the package and matching `.sha256` file
    for your platform.
@@ -371,19 +393,19 @@ For `v0.5.0`, use the release at:
 2. Linux/macOS
 
 ```bash
-sha256sum -c lxmf-rs-tools-v0.5.0-linux-x64.tar.gz.sha256
-tar -xzf lxmf-rs-tools-v0.5.0-linux-x64.tar.gz
+sha256sum -c lxmf-rs-tools-v0.5.1-linux-x64.tar.gz.sha256
+tar -xzf lxmf-rs-tools-v0.5.1-linux-x64.tar.gz
 
-sha256sum -c lxmf-rs-tools-v0.5.0-macos-arm64.tar.gz.sha256
-tar -xzf lxmf-rs-tools-v0.5.0-macos-arm64.tar.gz
+sha256sum -c lxmf-rs-tools-v0.5.1-macos-arm64.tar.gz.sha256
+tar -xzf lxmf-rs-tools-v0.5.1-macos-arm64.tar.gz
 ```
 
 3. Windows
 
 ```powershell
-Get-FileHash .\lxmf-rs-tools-v0.5.0-windows-x64.zip -Algorithm SHA256
-Get-Content .\lxmf-rs-tools-v0.5.0-windows-x64.zip.sha256
-Expand-Archive .\lxmf-rs-tools-v0.5.0-windows-x64.zip .
+Get-FileHash .\lxmf-rs-tools-v0.5.1-windows-x64.zip -Algorithm SHA256
+Get-Content .\lxmf-rs-tools-v0.5.1-windows-x64.zip.sha256
+Expand-Archive .\lxmf-rs-tools-v0.5.1-windows-x64.zip .
 ```
 
 4. Run directly for validation
@@ -413,4 +435,4 @@ If you are using Linux and the Linux daemon guide above, point `--config` at the
 
 ## License
 
-EPL
+Eclipse Public License 2.0 (`EPL-2.0`). See [LICENSE](LICENSE).

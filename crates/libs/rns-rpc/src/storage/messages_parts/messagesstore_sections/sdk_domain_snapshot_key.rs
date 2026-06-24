@@ -127,6 +127,21 @@ impl MessagesStore {
                                 fields_json.as_deref(),
                             ));
                         }
+                        OutboundWriteCommand::UpsertAnnounceIdentity {
+                            peer,
+                            public_key_hex,
+                            verifying_key_hex,
+                            updated_at,
+                            reply,
+                        } => {
+                            let _ = reply.send(Self::upsert_announce_identity_direct(
+                                write_state.as_ref(),
+                                peer.as_str(),
+                                public_key_hex.as_str(),
+                                verifying_key_hex.as_str(),
+                                updated_at,
+                            ));
+                        }
                         OutboundWriteCommand::InsertAnnounce { record, reply } => {
                             let _ = reply
                                 .send(Self::insert_announce_direct(write_state.as_ref(), &record));
@@ -372,6 +387,28 @@ impl MessagesStore {
                     record.stamp_cost_flexibility,
                     record.peering_cost,
                 ],
+            )?;
+            Ok(())
+        })
+    }
+
+    fn upsert_announce_identity_direct(
+        write_state: &WriteState,
+        peer: &str,
+        public_key_hex: &str,
+        verifying_key_hex: &str,
+        updated_at: i64,
+    ) -> rusqlite::Result<()> {
+        Self::write_lock_and_run(write_state, |conn| {
+            conn.execute(
+                "INSERT INTO announce_identities
+                    (peer, public_key_hex, verifying_key_hex, updated_at)
+                 VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT(peer) DO UPDATE SET
+                    public_key_hex = excluded.public_key_hex,
+                    verifying_key_hex = excluded.verifying_key_hex,
+                    updated_at = excluded.updated_at",
+                params![peer, public_key_hex, verifying_key_hex, updated_at],
             )?;
             Ok(())
         })

@@ -9,16 +9,19 @@ use reticulum_daemon::config::{DaemonConfig, InterfaceConfig};
 use reticulum_daemon::identity_store::load_or_create_identity;
 
 use rns_rpc::{
-    AnnounceBridge, InterfaceRecord, MessagesStore, OutboundBridge, RemoteControlBridge, RpcDaemon,
+    AnnounceBridge, InterfaceRecord, MessagesStore, OutboundBridge, RemoteControlBridge,
+    RpcDaemon, RpcRequest,
 };
 
 use rns_transport::destination::SingleInputDestination;
 
 use rns_transport::hash::AddressHash;
 
+use rns_transport::identity::Identity;
+
 use rns_transport::transport::Transport;
 
-use serde_json::{Map as JsonMap, Value as JsonValue};
+use serde_json::{json, Map as JsonMap, Value as JsonValue};
 
 use std::collections::{HashMap, HashSet};
 
@@ -64,6 +67,7 @@ pub(super) struct PropagationControlContext {
         Option<Arc<tokio::sync::Mutex<rns_transport::destination::SingleInputDestination>>>,
     pub(super) allowed_control_identities: Vec<String>,
     pub(super) validated_peer_links: Arc<Mutex<HashSet<AddressHash>>>,
+    pub(super) identified_peer_links: Arc<Mutex<HashMap<AddressHash, Identity>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -283,6 +287,15 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         propagation_node_config.announce_config.peering_cost,
         propagation_node_config.allowed_control_identities.clone(),
     );
+    if propagation_node_config.enabled {
+        if let Some(peer) = propagation_destination_hash_hex.as_deref() {
+            let _ = daemon.handle_rpc(RpcRequest {
+                id: 0,
+                method: "set_outbound_propagation_node".to_string(),
+                params: Some(json!({ "peer": peer })),
+            });
+        }
+    }
 
     // Make the local delivery destination visible on startup when configured.
     if propagation_node_config.peer_announce_at_start {
@@ -370,6 +383,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                 delivery_destination: announce_destination.clone(),
                 allowed_control_identities: configured_control_identities,
                 validated_peer_links: Arc::new(Mutex::new(HashSet::new())),
+                identified_peer_links: Arc::new(Mutex::new(HashMap::new())),
             },
             receipt_tx.clone(),
             outbound_resource_map,

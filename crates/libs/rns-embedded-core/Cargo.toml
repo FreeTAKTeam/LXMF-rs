@@ -1,10 +1,11 @@
 [package]
 name = "rns-embedded-core"
-version = "0.1.0"
+version = "0.5.1"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "Embedded-friendly Reticulum core primitives for no-std and constrained runtimes."
 
 [dependencies]
 serde = { workspace = true, features = ["derive"], optional = true }

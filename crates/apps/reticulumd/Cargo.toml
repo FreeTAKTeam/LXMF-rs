@@ -1,20 +1,20 @@
 [package]
 name = "reticulumd"
-version = "0.1.0"
+version = "0.5.1"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-publish = false
+description = "Reticulum daemon and interchange binaries for LXMF-rs deployments."
 
 [lib]
 name = "reticulum_daemon"
 
 [dependencies]
-rns_transport = { package = "reticulum-rs-transport", path = "../../libs/rns-transport", version = "0.2.0" }
-rns_rpc = { package = "reticulum-rs-rpc", path = "../../libs/rns-rpc", version = "0.3.0" }
-lxmf = { package = "lxmf-wire", path = "../../libs/lxmf-core", version = "0.2.0", default-features = false, features = ["std"] }
-rns_core = { package = "reticulum-rs-core", path = "../../libs/rns-core", version = "0.2.0" }
+rns_transport = { package = "reticulum-rs-transport", path = "../../libs/rns-transport", version = "0.5.1" }
+rns_rpc = { package = "reticulum-rs-rpc", path = "../../libs/rns-rpc", version = "0.5.1" }
+lxmf = { package = "lxmf-wire", path = "../../libs/lxmf-core", version = "0.5.1", default-features = false, features = ["std"] }
+rns_core = { package = "reticulum-rs-core", path = "../../libs/rns-core", version = "0.5.1" }
 base64 = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 rand_core = { workspace = true, features = ["getrandom"] }

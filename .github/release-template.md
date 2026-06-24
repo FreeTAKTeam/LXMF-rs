@@ -56,5 +56,5 @@ chmod +x /path/to/lxmf-rs-tools-<version>-macos-arm64/reticulumd
 ## crates.io
 
 - If this release train also ships library crates, list them here with exact versions.
-- GitHub release versions and crates.io package versions do not need to match 1:1.
+- GitHub release versions and crates.io package versions must match.
 - When both ship together, they should point to the same release train and migration notes.

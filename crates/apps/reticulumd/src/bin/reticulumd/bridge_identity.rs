@@ -1,4 +1,5 @@
 use super::PeerCrypto;
+use rns_rpc::RpcDaemon;
 use rns_transport::destination::{DestinationName, SingleOutputDestination};
 use rns_transport::hash::AddressHash;
 use rns_transport::identity::Identity;
@@ -69,6 +70,41 @@ pub(super) fn cached_identity_for_destination(
     })
 }
 
+pub(super) fn persisted_identity_for_destination(
+    daemon: &RpcDaemon,
+    destination_hash: AddressHash,
+) -> Option<Identity> {
+    let destination_hex = hex::encode(destination_hash.as_slice());
+    let (public_key_hex, verifying_key_hex) =
+        daemon.announce_identity_keys(destination_hex.as_str()).ok().flatten()?;
+    let identity = identity_from_key_hex(public_key_hex.as_str(), verifying_key_hex.as_str())?;
+    identity_matches_destination(identity, destination_hash).then_some(identity)
+}
+
+fn identity_from_key_hex(public_key_hex: &str, verifying_key_hex: &str) -> Option<Identity> {
+    let public_key = hex::decode(public_key_hex).ok()?;
+    let verifying_key = hex::decode(verifying_key_hex).ok()?;
+    if public_key.len() != rns_transport::identity::PUBLIC_KEY_LENGTH
+        || verifying_key.len() != rns_transport::identity::PUBLIC_KEY_LENGTH
+    {
+        return None;
+    }
+    Some(Identity::new_from_slices(public_key.as_slice(), verifying_key.as_slice()))
+}
+
+fn identity_matches_destination(identity: Identity, destination_hash: AddressHash) -> bool {
+    const DESTINATION_NAMES: [(&str, &str); 4] = [
+        ("lxmf", "delivery"),
+        ("lxmf", "propagation"),
+        ("lxmf", "propagation.control"),
+        ("r3akt", "emergency"),
+    ];
+    DESTINATION_NAMES.iter().any(|(app, aspect)| {
+        SingleOutputDestination::new(identity, DestinationName::new(app, aspect)).desc.address_hash
+            == destination_hash
+    })
+}
+
 fn push_unique_identity(candidates: &mut Vec<Identity>, candidate: Option<Identity>) {
     let Some(candidate) = candidate else {
         return;
@@ -79,5 +115,57 @@ fn push_unique_identity(candidates: &mut Vec<Identity>, candidate: Option<Identi
     });
     if !already_present {
         candidates.push(candidate);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rns_rpc::{MessagesStore, RpcDaemon};
+
+    #[test]
+    fn persisted_identity_matches_lxmf_delivery_destination_after_restart() {
+        let store = MessagesStore::in_memory().expect("store");
+        let daemon = RpcDaemon::with_store(store, "test-node".to_string());
+        let remote = rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let delivery_hash = SingleOutputDestination::new(
+            *remote.as_identity(),
+            DestinationName::new("lxmf", "delivery"),
+        )
+        .desc
+        .address_hash;
+        let delivery_hex = hex::encode(delivery_hash.as_slice());
+        daemon
+            .record_announce_identity(
+                delivery_hex.as_str(),
+                hex::encode(remote.as_identity().public_key_bytes()).as_str(),
+                hex::encode(remote.as_identity().verifying_key_bytes()).as_str(),
+                1_781_964_554,
+            )
+            .expect("record announce identity");
+
+        let restored =
+            persisted_identity_for_destination(&daemon, delivery_hash).expect("restored identity");
+
+        assert_eq!(restored.public_key_bytes(), remote.as_identity().public_key_bytes());
+        assert_eq!(restored.verifying_key_bytes(), remote.as_identity().verifying_key_bytes());
+    }
+
+    #[test]
+    fn persisted_identity_rejects_mismatched_destination_hash() {
+        let store = MessagesStore::in_memory().expect("store");
+        let daemon = RpcDaemon::with_store(store, "test-node".to_string());
+        let remote = rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let wrong_hash = AddressHash::new([0x42; 16]);
+        daemon
+            .record_announce_identity(
+                hex::encode(wrong_hash.as_slice()).as_str(),
+                hex::encode(remote.as_identity().public_key_bytes()).as_str(),
+                hex::encode(remote.as_identity().verifying_key_bytes()).as_str(),
+                1_781_964_554,
+            )
+            .expect("record announce identity");
+
+        assert!(persisted_identity_for_destination(&daemon, wrong_hash).is_none());
     }
 }

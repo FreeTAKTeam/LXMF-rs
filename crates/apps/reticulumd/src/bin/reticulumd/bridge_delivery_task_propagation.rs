@@ -177,7 +177,7 @@ impl DeliveryTask {
             let transient_id = self
                 .daemon
                 .canonical_propagation_payload_bytes_at_cost(message, accepted_stamp_cost)?;
-            self.daemon.ingest_propagation_payload_bytes_at_cost(
+            self.daemon.ingest_client_propagation_payload_bytes_at_cost(
                 message,
                 Some(transient_id.as_str()),
                 accepted_stamp_cost,

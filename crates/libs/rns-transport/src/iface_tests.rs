@@ -228,6 +228,34 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn saturated_broadcast_queue_returns_without_enqueue_timeout() {
+        let mut mgr = InterfaceManager::new(16);
+        let mut rx = mgr.new_channel(1).tx_channel;
+        let iface = mgr.ifaces[0].address;
+        let first = Packet::default();
+        let second = Packet::default();
+
+        let fill =
+            mgr.send(TxMessage { tx_type: TxMessageType::Direct(iface), packet: first }).await;
+        assert_eq!(fill.sent_ifaces, 1);
+
+        let started = Instant::now();
+        let trace = mgr
+            .send(TxMessage { tx_type: TxMessageType::Broadcast(None), packet: second })
+            .await;
+
+        assert!(
+            started.elapsed() < Duration::from_millis(50),
+            "broadcast dispatch must not wait for the enqueue timeout on saturated queues"
+        );
+        assert_eq!(trace.matched_ifaces, 1);
+        assert_eq!(trace.sent_ifaces, 0);
+        assert_eq!(trace.failed_ifaces, 1);
+        assert!(rx.try_recv().is_ok());
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
     async fn roaming_blocks_remote_announce_without_allowed_next_hop() {
         let mut mgr = InterfaceManager::new(16);
         let mut rx = mgr

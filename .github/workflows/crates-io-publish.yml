@@ -1,0 +1,184 @@
+name: Publish crates.io
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref, tag, or SHA to publish from
+        required: true
+        type: string
+      version:
+        description: Release version the crates must match, with or without a leading v
+        required: true
+        type: string
+      dry_run:
+        description: Validate package contents without publishing
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: crates-io-publish-${{ github.event.release.tag_name || inputs.version }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  publish:
+    name: Publish public crates
+    runs-on: ubuntu-latest
+    environment: crates-io
+    steps:
+      - name: Checkout release ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.ref }}
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libdbus-1-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Publish crates in dependency order
+        shell: bash
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+          RELEASE_VERSION: ${{ github.event.release.tag_name || inputs.version }}
+        run: |
+          set -euo pipefail
+
+          manifests=(
+            "crates/libs/lxmf-reference/Cargo.toml"
+            "crates/libs/rns-core/Cargo.toml"
+            "crates/libs/lxmf-core/Cargo.toml"
+            "crates/libs/rns-embedded-core/Cargo.toml"
+            "crates/libs/rns-embedded-runtime/Cargo.toml"
+            "crates/libs/rns-embedded-ffi/Cargo.toml"
+            "crates/libs/rns-transport/Cargo.toml"
+            "crates/libs/rns-rpc/Cargo.toml"
+            "crates/libs/lxmf-sdk/Cargo.toml"
+            "crates/libs/rns-embedded-mininode/Cargo.toml"
+            "crates/libs/lxmf-embedded-mini/Cargo.toml"
+            "crates/libs/reticulum-rs/Cargo.toml"
+            "crates/libs/lxmf/Cargo.toml"
+            "crates/apps/lxmf-cli/Cargo.toml"
+            "crates/apps/reticulumd/Cargo.toml"
+            "crates/apps/rns-tools/Cargo.toml"
+          )
+
+          crate_field() {
+            local manifest="$1"
+            local field="$2"
+            cargo metadata --no-deps --format-version 1 --manifest-path "$manifest" \
+              | jq -r --arg manifest "$manifest" --arg field "$field" '
+                .packages[]
+                | select((.manifest_path | gsub("\\\\"; "/")) | endswith($manifest))
+                | .[$field]
+              '
+          }
+
+          crate_version_exists() {
+            local package="$1"
+            local version="$2"
+            local status
+            status="$(curl --silent --output /dev/null --write-out "%{http_code}" \
+              --header "User-Agent: FreeTAKTeam-LXMF-rs-release-publish" \
+              "https://crates.io/api/v1/crates/${package}/${version}")"
+            [[ "$status" == "200" ]]
+          }
+
+          expected_version="${RELEASE_VERSION#v}"
+
+          if [[ ! "$expected_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z]+)?$ ]]; then
+            echo "::error::Release version must be a semver version, with or without a leading v: ${RELEASE_VERSION}"
+            exit 1
+          fi
+
+          mismatches=()
+          for manifest in "${manifests[@]}"; do
+            package="$(crate_field "$manifest" name)"
+            version="$(crate_field "$manifest" version)"
+
+            if [[ "$version" != "$expected_version" ]]; then
+              mismatches+=("${package} has ${version}, expected ${expected_version}")
+            fi
+          done
+
+          if (( ${#mismatches[@]} > 0 )); then
+            printf '%s\n' "${mismatches[@]}"
+            echo "::error::Bump all public crate versions to ${expected_version} before publishing the GitHub release."
+            exit 1
+          fi
+
+          dependency_mismatches=()
+          for manifest in "${manifests[@]}"; do
+            package="$(crate_field "$manifest" name)"
+            while IFS= read -r mismatch; do
+              dependency_mismatches+=("${package}: ${mismatch}")
+            done < <(
+              cargo metadata --no-deps --format-version 1 --manifest-path "$manifest" \
+                | jq -r --arg manifest "$manifest" --arg expected "^${expected_version}" '
+                  .packages[]
+                  | select((.manifest_path | gsub("\\\\"; "/")) | endswith($manifest))
+                  | .dependencies[]
+                  | select(.source == null and .req != "*" and .req != $expected)
+                  | "\(.name) has version requirement \(.req), expected \($expected)"
+                '
+            )
+          done
+
+          if (( ${#dependency_mismatches[@]} > 0 )); then
+            printf '%s\n' "${dependency_mismatches[@]}"
+            echo "::error::Bump public workspace dependency version requirements to ${expected_version} before publishing."
+            exit 1
+          fi
+
+          wait_for_crate_version() {
+            local package="$1"
+            local version="$2"
+
+            for _ in {1..20}; do
+              if crate_version_exists "$package" "$version"; then
+                return 0
+              fi
+              sleep 15
+            done
+
+            echo "::error::Timed out waiting for ${package} ${version} to appear on crates.io"
+            return 1
+          }
+
+          for manifest in "${manifests[@]}"; do
+            package="$(crate_field "$manifest" name)"
+            version="$(crate_field "$manifest" version)"
+
+            if [[ "$DRY_RUN" == "true" ]]; then
+              echo "Dry-running ${package} ${version}"
+              cargo package --list --locked --manifest-path "$manifest"
+              continue
+            fi
+
+            if [[ -z "${CARGO_REGISTRY_TOKEN:-}" ]]; then
+              echo "::error::CARGO_REGISTRY_TOKEN repository secret is required for crates.io publishing"
+              exit 1
+            fi
+
+            if crate_version_exists "$package" "$version"; then
+              echo "${package} ${version} already exists on crates.io; skipping"
+              continue
+            fi
+
+            echo "Publishing ${package} ${version}"
+            cargo publish --locked --manifest-path "$manifest"
+            wait_for_crate_version "$package" "$version"
+          done

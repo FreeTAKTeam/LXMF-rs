@@ -34,7 +34,7 @@ pub(super) async fn send_control_response(
             Ok(())
         }
         LinkResponsePacket::Resource(payload) => transport
-            .send_resource_direct(link_id, ingress_iface, payload, None)
+            .send_response_resource(link_id, request_id.to_vec(), payload, None)
             .await
             .map(|_| ())
             .map_err(|err| std::io::Error::other(format!("{err:?}"))),

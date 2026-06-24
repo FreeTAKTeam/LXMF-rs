@@ -74,6 +74,13 @@ enum OutboundWriteCommand {
         fields_json: Option<String>,
         reply: mpsc::Sender<rusqlite::Result<()>>,
     },
+    UpsertAnnounceIdentity {
+        peer: String,
+        public_key_hex: String,
+        verifying_key_hex: String,
+        updated_at: i64,
+        reply: mpsc::Sender<rusqlite::Result<()>>,
+    },
     InsertAnnounce {
         record: AnnounceRecord,
         reply: mpsc::Sender<rusqlite::Result<()>>,

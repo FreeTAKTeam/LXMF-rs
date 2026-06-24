@@ -108,6 +108,62 @@ interfaces = [
 }
 
 #[test]
+fn bootstrap_selects_local_propagation_node_when_enabled_by_config() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let config_path = temp.path().join("daemon.toml");
+    fs::write(
+        &config_path,
+        r#"
+[propagation_node]
+enabled = true
+node_announce_at_start = false
+peer_announce_at_start = false
+stamp_cost = 16
+stamp_cost_flexibility = 3
+peering_cost = 18
+"#,
+    )
+    .expect("write config");
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let context = runtime.block_on(async {
+        bootstrap::bootstrap(test_args(
+            db_path.clone(),
+            Some(config_path.clone()),
+            Some("127.0.0.1:0".to_string()),
+            false,
+        ))
+        .await
+    });
+
+    let selected = context
+        .daemon
+        .handle_rpc(RpcRequest {
+            id: 1,
+            method: "get_outbound_propagation_node".to_string(),
+            params: None,
+        })
+        .expect("get selected propagation node")
+        .result
+        .expect("selected node result");
+    let peer = selected
+        .get("peer")
+        .and_then(|value| value.as_str())
+        .expect("config-enabled local propagation node should be selected");
+
+    let status = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 2, method: "propagation_status".to_string(), params: None })
+        .expect("propagation status")
+        .result
+        .expect("status result");
+    assert_eq!(status["propagation"]["selected_node"].as_str(), Some(peer));
+    assert_eq!(status["propagation"]["propagation_node_enabled"].as_bool(), Some(true));
+}
+
+#[test]
 fn bootstrap_strict_mode_rejects_unbindable_udp_interface() {
     let runtime =
         tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");

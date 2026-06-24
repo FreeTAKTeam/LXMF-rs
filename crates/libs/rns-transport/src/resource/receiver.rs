@@ -60,12 +60,18 @@ impl ResourceReceiver {
     ) -> Result<Self, RnsError> {
         let now = Instant::now();
         let resource_mdu = resource_packet_mdu_for_mtu(interface_mtu)?;
-        let hashmap_segment_len = resource_hashmap_segment_len_for_mtu(interface_mtu)?;
+        let local_hashmap_segment_len = resource_hashmap_segment_len_for_mtu(interface_mtu)?;
         let max_parts = max_advertised_parts(adv.transfer_size, resource_mdu)?;
         if adv.parts == 0 || u64::from(adv.parts) > max_parts {
             return Err(RnsError::InvalidArgument);
         }
         let total_parts = adv.parts as usize;
+        let advertised_hashes = adv.hashmap.len() / MAPHASH_LEN;
+        let hashmap_segment_len = if advertised_hashes > 0 && advertised_hashes < total_parts {
+            advertised_hashes
+        } else {
+            local_hashmap_segment_len
+        };
         let mut receiver = Self {
             resource_hash: adv.hash,
             link_id,
@@ -378,12 +384,14 @@ fn max_decompressed_resource_size(advertised_data_size: u64) -> usize {
         .min(AUTO_COMPRESS_MAX_SIZE)
 }
 
-fn max_advertised_parts(transfer_size: u64, resource_mdu: usize) -> Result<u64, RnsError> {
+fn max_advertised_parts(transfer_size: u64, _resource_mdu: usize) -> Result<u64, RnsError> {
     if transfer_size == 0 || transfer_size > MAX_INBOUND_RESOURCE_TRANSFER_SIZE {
         return Err(RnsError::InvalidArgument);
     }
-    let packet_mdu = resource_mdu as u64;
-    Ok(transfer_size.div_ceil(packet_mdu).max(1))
+    // Python Reticulum derives its part count from the sender link SDU. A peer
+    // with a smaller effective SDU can advertise more parts than Rust's local
+    // resource MDU lower bound, so bound allocation without rejecting that case.
+    Ok(transfer_size.min(MAX_INBOUND_RESOURCE_PARTS))
 }
 
 fn decompress_resource_payload(payload: &[u8], max_size: usize) -> Result<Vec<u8>, ()> {

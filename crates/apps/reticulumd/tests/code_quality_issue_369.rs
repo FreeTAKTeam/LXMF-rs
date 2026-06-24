@@ -6,11 +6,12 @@ fn production_code_does_not_silently_discard_issue_369_failures() {
     let root = workspace_root();
     let mut findings = Vec::new();
     visit_rs_files(&root.join("crates"), &mut |path| {
-        if !is_production_source(path) {
+        let display = path.strip_prefix(&root).unwrap_or(path);
+        if !is_production_source(display) {
             return;
         }
         let source = fs::read_to_string(path).expect("read Rust source");
-        let display = path.strip_prefix(&root).unwrap_or(path).display();
+        let display = display.display();
         for line_no in multiline_lock_ok_lines(&source) {
             findings.push(format!("{display}:{line_no}: mutex lock poison is discarded"));
         }
@@ -111,7 +112,7 @@ fn visit_rs_files(dir: &Path, f: &mut impl FnMut(&Path)) {
 fn is_production_source(path: &Path) -> bool {
     let text = path.to_string_lossy().replace('\\', "/");
     text.contains("/src/")
-        && !text.contains("/crates/libs/test-support/")
+        && !text.contains("crates/libs/test-support/")
         && !text.contains("/src/tests")
         && !text.contains("/tests_parts/")
 }

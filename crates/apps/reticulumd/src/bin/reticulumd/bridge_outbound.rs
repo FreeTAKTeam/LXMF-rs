@@ -36,15 +36,18 @@ impl OutboundBridge for TransportBridge {
         options: &OutboundDeliveryOptions,
     ) -> Result<(), std::io::Error> {
         let destination = parse_destination_hash_required(&record.destination)?;
-        let peer_info =
-            self.peer_crypto.lock().expect("peer map").get(&record.destination).copied();
-        let peer_identity = peer_info.map(|info| info.identity);
         let daemon = self
             .daemon
             .lock()
             .expect("transport bridge daemon mutex poisoned")
             .clone()
             .ok_or_else(|| std::io::Error::other("daemon bridge unavailable"))?;
+        let peer_identity = outbound_peer_identity(
+            daemon.as_ref(),
+            &self.peer_crypto,
+            record.destination.as_str(),
+            destination,
+        );
 
         let include_ticket = if options.include_ticket {
             daemon
@@ -74,7 +77,10 @@ impl OutboundBridge for TransportBridge {
 
         let requested_method = RequestedDeliveryMethod::parse(options.method.as_deref())?;
         let propagation_node_hex = daemon.outbound_propagation_node();
-        let propagation_node_identity = if requested_method == RequestedDeliveryMethod::Propagated {
+        let propagation_node_identity = if requested_method == RequestedDeliveryMethod::Propagated
+            || (requested_method == RequestedDeliveryMethod::Direct
+                && options.try_propagation_on_fail)
+        {
             propagation_node_hex.as_deref().and_then(|node_hex| {
                 let cached = match self.outbound_propagation_identities.lock() {
                     Ok(guard) => guard.get(node_hex).cloned(),
@@ -88,6 +94,14 @@ impl OutboundBridge for TransportBridge {
                 cached.or_else(|| {
                     let hash = parse_destination_hash_required(node_hex).ok()?;
                     let hash = AddressHash::new(hash);
+                    if let Some(identity) =
+                        identity_resolver::persisted_identity_for_destination(daemon.as_ref(), hash)
+                    {
+                        if let Ok(mut guard) = self.outbound_propagation_identities.lock() {
+                            guard.insert(node_hex.to_string(), identity);
+                        }
+                        return Some(identity);
+                    }
                     let identity = match resolve_destination_identity_blocking(
                         self.transport.clone(),
                         hash,
@@ -153,5 +167,63 @@ impl OutboundBridge for TransportBridge {
 
     fn delivery_pipeline_status(&self) -> Option<serde_json::Value> {
         Some(self.delivery_scheduler.status_json())
+    }
+}
+
+fn outbound_peer_identity(
+    daemon: &RpcDaemon,
+    peer_crypto: &Mutex<HashMap<String, PeerCrypto>>,
+    destination_hex: &str,
+    destination: [u8; 16],
+) -> Option<Identity> {
+    peer_crypto
+        .lock()
+        .expect("peer map")
+        .get(destination_hex)
+        .copied()
+        .map(|info| info.identity)
+        .or_else(|| {
+            identity_resolver::persisted_identity_for_destination(
+                daemon,
+                AddressHash::new(destination),
+            )
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rns_rpc::MessagesStore;
+
+    #[test]
+    fn outbound_peer_identity_uses_persisted_announce_identity_when_live_cache_is_empty() {
+        let store = MessagesStore::in_memory().expect("store");
+        let daemon = RpcDaemon::with_store(store, "test-node".to_string());
+        let remote = rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let delivery_hash = SingleOutputDestination::new(
+            *remote.as_identity(),
+            DestinationName::new("lxmf", "delivery"),
+        )
+        .desc
+        .address_hash;
+        let mut destination = [0u8; 16];
+        destination.copy_from_slice(delivery_hash.as_slice());
+        let destination_hex = hex::encode(destination);
+        daemon
+            .record_announce_identity(
+                destination_hex.as_str(),
+                hex::encode(remote.as_identity().public_key_bytes()).as_str(),
+                hex::encode(remote.as_identity().verifying_key_bytes()).as_str(),
+                1_781_964_554,
+            )
+            .expect("record announce identity");
+        let peer_crypto = Mutex::new(HashMap::new());
+
+        let identity =
+            outbound_peer_identity(&daemon, &peer_crypto, destination_hex.as_str(), destination)
+                .expect("persisted identity");
+
+        assert_eq!(identity.public_key_bytes(), remote.as_identity().public_key_bytes());
+        assert_eq!(identity.verifying_key_bytes(), remote.as_identity().verifying_key_bytes());
     }
 }
