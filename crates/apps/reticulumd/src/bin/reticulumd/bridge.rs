@@ -1,6 +1,5 @@
 use super::bridge_helpers::{
-    diagnostics_enabled, log_delivery_trace, opportunistic_payload, payload_preview,
-    send_trace_detail,
+    log_delivery_trace, opportunistic_payload, payload_preview, send_trace_detail,
 };
 #[path = "bridge_announce.rs"]
 mod announce;

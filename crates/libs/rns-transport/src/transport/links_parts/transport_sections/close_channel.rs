@@ -80,13 +80,11 @@ impl Transport {
 
         if let Some(link) = link {
             let status = link.lock().await.status();
-            if super::diag::enabled() {
-                log::debug!(
-                    "[tp-diag] reuse_out_link destination={} status={:?}",
-                    destination.address_hash,
-                    status
-                );
-            }
+            log::debug!(
+                "[tp-diag] reuse_out_link destination={} status={:?}",
+                destination.address_hash,
+                status
+            );
             if status != LinkStatus::Closed {
                 return link;
             } else {
@@ -104,13 +102,11 @@ impl Transport {
             link.id(),
             destination
         );
-        if super::diag::enabled() {
-            log::debug!(
-                "[tp-diag] create_out_link destination={} link_id={}",
-                destination.address_hash,
-                link.id()
-            );
-        }
+        log::debug!(
+            "[tp-diag] create_out_link destination={} link_id={}",
+            destination.address_hash,
+            link.id()
+        );
 
         let link = Arc::new(Mutex::new(link));
 
@@ -131,13 +127,11 @@ impl Transport {
             let mut handler = self.handler.lock().await;
             handler.path_requests.generate(destination, tag)
         };
-        if super::diag::enabled() {
-            log::debug!(
-                "[tp-diag] path_request_broadcast dst={} on_iface={}",
-                destination,
-                on_iface.map(|iface| iface.to_string()).unwrap_or_else(|| "-".to_string())
-            );
-        }
+        log::debug!(
+            "[tp-diag] path_request_broadcast dst={} on_iface={}",
+            destination,
+            on_iface.map(|iface| iface.to_string()).unwrap_or_else(|| "-".to_string())
+        );
         let dispatch = self
             .iface_manager
             .lock()
@@ -147,15 +141,13 @@ impl Transport {
                 None,
             )
             .await;
-        if super::diag::enabled() {
-            log::debug!(
-                "[tp-diag] path_request_broadcast_done dst={} matched={} sent={} failed={}",
-                destination,
-                dispatch.matched_ifaces,
-                dispatch.sent_ifaces,
-                dispatch.failed_ifaces
-            );
-        }
+        log::debug!(
+            "[tp-diag] path_request_broadcast_done dst={} matched={} sent={} failed={}",
+            destination,
+            dispatch.matched_ifaces,
+            dispatch.sent_ifaces,
+            dispatch.failed_ifaces
+        );
     }
 
     pub fn out_link_events(&self) -> broadcast::Receiver<LinkEventData> {

@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::sync::OnceLock;
 
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
@@ -20,22 +19,6 @@ use super::{Interface, InterfaceContext};
 
 // TCP packet tracing is kept off by default and gated by diagnostics env flags.
 const PACKET_TRACE: bool = false;
-
-fn tx_diag_enabled() -> bool {
-    static ENABLED: OnceLock<bool> = OnceLock::new();
-    *ENABLED.get_or_init(|| {
-        std::env::var("RETICULUMD_DIAGNOSTICS")
-            .or_else(|_| std::env::var("RETICULUM_TRANSPORT_DIAGNOSTICS"))
-            .ok()
-            .map(|value| {
-                matches!(
-                    value.trim().to_ascii_lowercase().as_str(),
-                    "1" | "true" | "yes" | "on" | "debug"
-                )
-            })
-            .unwrap_or(false)
-    })
-}
 
 fn tcp_wire_buffer_capacity(mtu: usize) -> usize {
     // Worst-case HDLC expansion doubles bytes (all escaped) plus frame delimiters.
@@ -175,16 +158,14 @@ impl TcpClient {
                                                         if PACKET_TRACE {
                                                             log::trace!("rx << ({}) {}", iface_address, packet);
                                                         }
-                                                        if tx_diag_enabled() {
-                                                            log::debug!(
-                                                                "[tp-diag] tcp_client rx_packet iface={} type={:?} dst={} ctx={:02x} hops={}",
-                                                                iface_address,
-                                                                packet.header.packet_type,
-                                                                packet.destination,
-                                                                packet.context as u8,
-                                                                packet.header.hops
-                                                            );
-                                                        }
+                                                        log::debug!(
+                                                            "[tp-diag] tcp_client rx_packet iface={} type={:?} dst={} ctx={:02x} hops={}",
+                                                            iface_address,
+                                                            packet.header.packet_type,
+                                                            packet.destination,
+                                                            packet.context as u8,
+                                                            packet.header.hops
+                                                        );
                                                         let _ = rx_channel
                                                             .send(RxMessage {
                                                                 address: iface_address,
@@ -254,9 +235,7 @@ impl TcpClient {
                                 if PACKET_TRACE {
                                     log::trace!("tx >> ({}) {}", iface_address, packet);
                                 }
-                                if tx_diag_enabled() {
-                                    log::debug!("[tp-diag] tcp_client tx_dequeue iface={} {}", iface_address, packet);
-                                }
+                                log::debug!("[tp-diag] tcp_client tx_dequeue iface={} {}", iface_address, packet);
                                 let mut output = OutputBuffer::new(&mut tx_buffer);
                                 if packet.serialize(&mut output).is_ok() {
                                     let mut hdlc_output = OutputBuffer::new(&mut hdlc_tx_buffer[..]);
@@ -271,14 +250,12 @@ impl TcpClient {
                                             stop.cancel();
                                             break;
                                         }
-                                        if tx_diag_enabled() {
-                                            log::debug!(
-                                                "[tp-diag] tcp_client tx_write_ok iface={} wire_len={} raw_len={}",
-                                                iface_address,
-                                                hdlc_output.as_slice().len(),
-                                                output.as_slice().len()
-                                            );
-                                        }
+                                        log::debug!(
+                                            "[tp-diag] tcp_client tx_write_ok iface={} wire_len={} raw_len={}",
+                                            iface_address,
+                                            hdlc_output.as_slice().len(),
+                                            output.as_slice().len()
+                                        );
                                     } else {
                                         log::warn!(
                                             "[tp-diag] hdlc_encode failed iface={} raw_len={}",

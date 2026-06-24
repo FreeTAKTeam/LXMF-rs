@@ -186,11 +186,11 @@ impl ResourceManager {
         interface_mtu: usize,
     ) {
         let Ok(advertisement) = ResourceAdvertisement::unpack(packet.data.as_slice()) else {
-            resource_diag("reject_advertisement unpack_failed");
+            log::debug!("[resource-diag] reject_advertisement unpack_failed");
             return;
         };
-        resource_diag(&format!(
-            "advertisement link={} hash={} transfer_size={} data_size={} parts={} flags=0x{:02x} request={} response={} metadata={} compressed={} encrypted={}",
+        log::debug!(
+            "[resource-diag] advertisement link={} hash={} transfer_size={} data_size={} parts={} flags=0x{:02x} request={} response={} metadata={} compressed={} encrypted={}",
             link.id(),
             advertisement.hash,
             advertisement.transfer_size,
@@ -202,18 +202,19 @@ impl ResourceManager {
             (advertisement.flags & FLAG_METADATA) == FLAG_METADATA,
             advertisement.compressed(),
             advertisement.encrypted()
-        ));
+        );
         if (advertisement.flags & FLAG_SPLIT) == FLAG_SPLIT {
             log::warn!(
                 "rejecting unsupported advertisement flags (split={})",
                 (advertisement.flags & FLAG_SPLIT) == FLAG_SPLIT
             );
-            resource_diag("reject_advertisement split");
+            log::debug!("[resource-diag] reject_advertisement split");
             return;
         }
         let resource_hash = advertisement.hash;
         if self.incoming.get(&resource_hash).is_some_and(|receiver| receiver.is_active()) {
-            resource_diag(&format!("advertisement_duplicate hash={resource_hash}"));
+            log::debug!("[resource-diag] advertisement_duplicate hash={resource_hash}");
+            log::debug!("resource inbound: duplicate advertisement for active receiver hash={}", resource_hash);
             return;
         }
         let receiver = if interface_mtu == DEFAULT_RESOURCE_INTERFACE_MTU {
@@ -223,18 +224,18 @@ impl ResourceManager {
         };
         let Ok(mut receiver) = receiver else {
             log::warn!("rejecting unreasonable advertisement");
-            resource_diag("reject_advertisement unreasonable");
+            log::debug!("[resource-diag] reject_advertisement unreasonable");
             return;
         };
         let adv_now = Instant::now();
         let rtt = self.link_stats.entry(*link.id()).or_insert_with(LinkStats::new).rtt;
         let request = receiver.build_request(adv_now, rtt);
-        resource_diag(&format!(
-            "request_parts hash={} requested={} exhausted={}",
+        log::debug!(
+            "[resource-diag] request_parts hash={} requested={} exhausted={}",
             resource_hash,
             request.requested_hashes.len(),
             request.hashmap_exhausted
-        ));
+        );
         receiver.mark_request();
         self.incoming.insert(resource_hash, receiver);
         match build_link_packet(
@@ -257,25 +258,25 @@ impl ResourceManager {
         responses: &mut Vec<Packet>,
     ) {
         let Ok(request) = ResourceRequest::decode(packet.data.as_slice()) else {
-            resource_diag(&format!("request_decode_failed link={}", link.id()));
+            log::debug!("[resource-diag] request_decode_failed link={}", link.id());
             return;
         };
-        resource_diag(&format!(
-            "request_received link={} hash={} requested={} exhausted={} sender_present={}",
+        log::debug!(
+            "[resource-diag] request_received link={} hash={} requested={} exhausted={} sender_present={}",
             link.id(),
             request.resource_hash,
             request.requested_hashes.len(),
             request.hashmap_exhausted,
             self.outgoing.contains_key(&request.resource_hash)
-        ));
+        );
         if let Some(sender) = self.outgoing.get_mut(&request.resource_hash) {
             sender.handle_request_into(&request, link, responses);
-            resource_diag(&format!(
-                "request_responses link={} hash={} responses={}",
+            log::debug!(
+                "[resource-diag] request_responses link={} hash={} responses={}",
                 link.id(),
                 request.resource_hash,
                 responses.len()
-            ));
+            );
         }
     }
 
@@ -329,12 +330,12 @@ impl ResourceManager {
                     break;
                 }
                 PartOutcome::Complete(packet, data_payload) => {
-                    resource_diag(&format!(
-                        "complete hash={} len={} metadata={}",
+                    log::debug!(
+                        "[resource-diag] complete hash={} len={} metadata={}",
                         hash,
                         data_payload.data.len(),
                         data_payload.metadata.as_ref().map(|data| data.len()).unwrap_or(0)
-                    ));
+                    );
                     completed = Some(*hash);
                     proof_packet = Some(packet);
                     payload = Some(data_payload);
@@ -353,14 +354,14 @@ impl ResourceManager {
 
                     if receiver.received > before_received {
                         stats.record_arrival(now);
-                        resource_diag(&format!(
-                            "progress hash={} received={}/{} bytes={}/{}",
+                        log::debug!(
+                            "[resource-diag] progress hash={} received={}/{} bytes={}/{}",
                             hash,
                             receiver.received,
                             receiver.parts.len(),
                             receiver.received_bytes,
                             receiver.total_bytes
-                        ));
+                        );
                         self.events.push(ResourceEvent {
                             hash: *hash,
                             link_id: receiver.link_id,
@@ -469,10 +470,3 @@ impl Default for ResourceManager {
     }
 }
 
-fn resource_diag(message: &str) {
-    if std::env::var("RETICULUMD_DIAGNOSTICS").ok().is_some_and(|value| {
-        matches!(value.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on" | "debug")
-    }) {
-        log::debug!("[resource-diag] {message}");
-    }
-}

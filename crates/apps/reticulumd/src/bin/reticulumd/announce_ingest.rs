@@ -1,5 +1,4 @@
 use super::bridge::PeerCrypto;
-use super::bridge_helpers::diagnostics_enabled;
 use reticulum_daemon::announce_names::{
     delivery_stamp_cost_from_app_data, lxmf_aspect_from_name_hash, parse_peer_name_from_app_data,
     pn_peering_cost_from_app_data, pn_stamp_cost_flexibility_from_app_data,
@@ -33,12 +32,10 @@ pub(super) async fn ingest_announce_event(
     };
     let _ratchet = event.ratchet;
     peer_crypto.lock().expect("peer map").insert(peer.clone(), PeerCrypto { identity });
-    if diagnostics_enabled() {
-        if let Some(name) = peer_name.as_ref() {
-            log::debug!("[daemon] rx announce peer={} name={}", peer, name);
-        } else {
-            log::debug!("[daemon] rx announce peer={}", peer);
-        }
+    if let Some(name) = peer_name.as_ref() {
+        log::debug!("[daemon] rx announce peer={} name={}", peer, name);
+    } else {
+        log::debug!("[daemon] rx announce peer={}", peer);
     }
     let timestamp = now_epoch_secs_i64();
     let app_data = event.app_data.as_slice();

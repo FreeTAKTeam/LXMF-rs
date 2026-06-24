@@ -17,9 +17,11 @@ Set `LXMF_LOG_PRETTY=1` for local terminal sessions where compact human-readable
 RPC access logs are more useful than JSON-shaped log lines. Keep service units
 on structured logs so journald and collectors can index fields.
 
-Set `RETICULUMD_DIAGNOSTICS=1` only during focused transport, resource, or
-interop debugging. It enables extra diagnostic lines in hot paths and may add
-noise on busy nodes.
+Raise `RUST_LOG=reticulumd=trace,reticulum_rs_transport=trace` only during
+focused transport, resource, or interop debugging. The hot-path delivery,
+transport (`[tp-diag]`), and resource (`[resource-diag]`) diagnostics are
+emitted at `debug`/`trace` on those module targets and may add noise on busy
+nodes, so keep them off by default.
 
 ## What Logs Must Include
 

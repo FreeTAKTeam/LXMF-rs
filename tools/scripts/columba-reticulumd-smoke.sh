@@ -12,7 +12,7 @@ DAEMON_TO_COLUMBA_CONTENT="${DAEMON_TO_COLUMBA_CONTENT:-hello-from-reticulumd}"
 COLUMBA_TO_DAEMON_CONTENT="${COLUMBA_TO_DAEMON_CONTENT:-reply-from-columba}"
 LOG_DIR="${LOG_DIR:-${REPO_ROOT}/target/interop/columba-reticulumd}"
 REPORT_PATH="${REPORT_PATH:-${LOG_DIR}/report.json}"
-RETICULUMD_DIAGNOSTICS="${RETICULUMD_DIAGNOSTICS:-0}"
+RUST_LOG="${RUST_LOG:-info}"
 
 if [[ ! -d "${COLUMBA_ROOT}" ]]; then
   echo "Columba repo not found at ${COLUMBA_ROOT}" >&2
@@ -58,7 +58,7 @@ cargo build -p reticulumd --bin reticulumd --quiet
 cargo build -p lxmf-cli --bin lxmf-cli --quiet
 
 (
-  RETICULUMD_DIAGNOSTICS="${RETICULUMD_DIAGNOSTICS}" \
+  RUST_LOG="${RUST_LOG}" \
     "${REPO_ROOT}/target/debug/reticulumd" \
     --rpc "${RPC_ADDR}" \
     --db "${RET_DB}" \

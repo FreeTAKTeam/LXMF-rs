@@ -14,7 +14,7 @@ DAEMON_TO_MESH_CONTENT="${DAEMON_TO_MESH_CONTENT:-hello-from-reticulumd}"
 MESH_TO_DAEMON_CONTENT="${MESH_TO_DAEMON_CONTENT:-reply-from-meshchatx}"
 LOG_DIR="${LOG_DIR:-${REPO_ROOT}/target/interop/meshchatx-reticulumd}"
 REPORT_PATH="${REPORT_PATH:-${LOG_DIR}/report.json}"
-RETICULUMD_DIAGNOSTICS="${RETICULUMD_DIAGNOSTICS:-0}"
+RUST_LOG="${RUST_LOG:-info}"
 
 if [[ ! -d "${MESHCHATX_ROOT}" ]]; then
   echo "MeshChatX repo not found at ${MESHCHATX_ROOT}" >&2
@@ -89,7 +89,7 @@ cargo build -p reticulumd --bin reticulumd --quiet
 cargo build -p lxmf-cli --bin lxmf-cli --quiet
 
 (
-  RETICULUMD_DIAGNOSTICS="${RETICULUMD_DIAGNOSTICS}" \
+  RUST_LOG="${RUST_LOG}" \
     "${REPO_ROOT}/target/debug/reticulumd" \
     --rpc "${RPC_ADDR}" \
     --db "${RET_DB}" \

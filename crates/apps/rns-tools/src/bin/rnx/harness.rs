@@ -64,7 +64,7 @@ pub(crate) fn spawn_daemon_with_optional_transport(
         cmd.env("LXMD_PROPAGATION_NODE", "1");
     }
     if diagnostics {
-        cmd.env("RETICULUMD_DIAGNOSTICS", "1");
+        cmd.env("RUST_LOG", "reticulumd=trace,reticulum_rs_transport=trace");
     }
     cmd.stdout(Stdio::piped());
     cmd.stderr(if diagnostics || stderr_passthrough_enabled() {

@@ -217,7 +217,7 @@ fn bootstrap_strict_mode_panics_when_transport_is_disabled_for_enabled_interface
         &config_path,
         r#"
 interfaces = [
-  { type = "serial", enabled = true, name = "serial-main", device = "/dev/ttyUSB0", baud_rate = 115200 }
+  { type = "serial", enabled = true, name = "serial-main", device = "__definitely_not_a_device__", baud_rate = 115200 }
 ]
 "#,
     )

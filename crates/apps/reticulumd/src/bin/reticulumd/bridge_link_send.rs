@@ -144,14 +144,12 @@ impl DeliveryTask {
         if self.abort_if_cancelled(trace_stage) {
             return Ok(());
         }
-        if diagnostics_enabled() {
-            log_delivery_trace(
-                &self.message_id,
-                &self.destination_hex,
-                trace_stage,
-                "opening or reusing link",
-            );
-        }
+        log_delivery_trace(
+            &self.message_id,
+            &self.destination_hex,
+            trace_stage,
+            "opening or reusing link",
+        );
         let link = self.transport.link(destination_desc).await;
         let link_id = *link.lock().await.id();
         let result =
@@ -181,7 +179,7 @@ impl DeliveryTask {
                 }
                 Err(err) => Err(err),
             };
-        if diagnostics_enabled() {
+        if log::log_enabled!(log::Level::Trace) {
             let payload_starts_with_dst =
                 payload.len() >= 16 && payload[..16] == self.destination[..];
             let detail = format!(
@@ -197,7 +195,7 @@ impl DeliveryTask {
             Ok(LinkSendResult::Packet(packet)) => {
                 self.daemon.record_outbound_peer_sent(activity_peer, payload.len());
                 let packet_hash = hex::encode(packet.hash().to_bytes());
-                let detail = if diagnostics_enabled() {
+                let detail = if log::log_enabled!(log::Level::Trace) {
                     format!(
                         "packet_hash={} packet_data_len={} packet_data_prefix={}",
                         packet_hash,

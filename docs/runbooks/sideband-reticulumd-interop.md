@@ -37,7 +37,7 @@ Useful overrides:
 ```bash
 SIDEBAND_ROOT=/path/to/Sideband \
 REPORT_PATH=target/interop/sideband-report.json \
-RETICULUMD_DIAGNOSTICS=1 \
+RUST_LOG="reticulumd=trace,reticulum_rs_transport=trace" \
 ./tools/scripts/sideband-reticulumd-smoke.sh
 ```
 

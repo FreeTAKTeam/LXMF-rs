@@ -38,7 +38,7 @@ Useful overrides:
 ```bash
 MESHCHATX_ROOT=/path/to/MeshChatX \
 REPORT_PATH=target/interop/meshchatx-report.json \
-RETICULUMD_DIAGNOSTICS=1 \
+RUST_LOG="reticulumd=trace,reticulum_rs_transport=trace" \
 ./tools/scripts/meshchatx-reticulumd-smoke.sh
 ```
 

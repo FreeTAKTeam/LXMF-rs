@@ -1,4 +1,4 @@
-use crate::bridge_helpers::{diagnostics_enabled, payload_preview};
+use crate::bridge_helpers::payload_preview;
 use lxmf::{inbound_decode::InboundPayloadMode, WireMessage};
 use reticulum_daemon::inbound_delivery::{
     annotate_inbound_record_stamp_status, decode_inbound_payload,
@@ -26,9 +26,7 @@ pub(super) async fn accept_delivery_resource(
     ) {
         Ok(status) => status,
         Err(error) => {
-            if diagnostics_enabled() {
-                log::warn!("[daemon-rx] dropping inbound resource due to stamp policy: {}", error);
-            }
+            log::warn!("[daemon-rx] dropping inbound resource due to stamp policy: {}", error);
             return;
         }
     };
@@ -61,7 +59,7 @@ pub(super) async fn accept_delivery_packet(
     payload_mode: ReceivedPayloadMode,
 ) {
     let payload_mode = inbound_payload_mode(payload_mode);
-    let record = if diagnostics_enabled() {
+    let record = if log::log_enabled!(log::Level::Debug) {
         let (record, diagnostics) =
             decode_inbound_payload_with_diagnostics(destination, data, payload_mode);
         if let Some(ref decoded) = record {
@@ -89,13 +87,11 @@ pub(super) async fn accept_delivery_packet(
         match evaluate_inbound_stamp_policy(daemon, destination, data, payload_mode) {
             Ok(status) => Some(status),
             Err(_) => {
-                if diagnostics_enabled() {
-                    log::warn!(
-                        "[daemon-rx] dropping inbound payload due to stamp policy: raw_dst={} resolved_dst={}",
-                        raw_destination_hex,
-                        hex::encode(destination)
-                    );
-                }
+                log::warn!(
+                    "[daemon-rx] dropping inbound payload due to stamp policy: raw_dst={} resolved_dst={}",
+                    raw_destination_hex,
+                    hex::encode(destination)
+                );
                 return;
             }
         }
@@ -131,17 +127,15 @@ pub(super) fn log_resolved_packet(
     ratchet_used: bool,
     data: &[u8],
 ) {
-    if diagnostics_enabled() {
-        log::debug!(
-            "[daemon-rx] dst={} resolved={:?} mode={:?} len={} ratchet_used={} data_prefix={}",
-            raw_destination_hex,
-            resolved_destination,
-            payload_mode,
-            data.len(),
-            ratchet_used,
-            payload_preview(data, 16)
-        );
-    }
+    log::debug!(
+        "[daemon-rx] dst={} resolved={:?} mode={:?} len={} ratchet_used={} data_prefix={}",
+        raw_destination_hex,
+        resolved_destination,
+        payload_mode,
+        data.len(),
+        ratchet_used,
+        payload_preview(data, 16)
+    );
 }
 
 fn inbound_payload_mode(mode: ReceivedPayloadMode) -> InboundPayloadMode {

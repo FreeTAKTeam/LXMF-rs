@@ -1,6 +1,5 @@
 use rns_transport::delivery::strip_destination_prefix as shared_strip_destination_prefix;
 use rns_transport::transport::SendPacketTrace;
-use std::sync::OnceLock;
 
 pub(crate) fn opportunistic_payload<'a>(payload: &'a [u8], destination: &[u8; 16]) -> &'a [u8] {
     shared_strip_destination_prefix(payload, destination)
@@ -17,23 +16,7 @@ pub(crate) fn delivery_trace_line(
 
 pub(crate) fn log_delivery_trace(message_id: &str, destination: &str, stage: &str, detail: &str) {
     let line = delivery_trace_line(message_id, destination, stage, detail);
-    println!("{line}");
     log::trace!("{line}");
-}
-
-pub(crate) fn diagnostics_enabled() -> bool {
-    static ENABLED: OnceLock<bool> = OnceLock::new();
-    *ENABLED.get_or_init(|| {
-        std::env::var("RETICULUMD_DIAGNOSTICS")
-            .ok()
-            .map(|value| {
-                matches!(
-                    value.trim().to_ascii_lowercase().as_str(),
-                    "1" | "true" | "yes" | "on" | "debug"
-                )
-            })
-            .unwrap_or(false)
-    })
 }
 
 #[cfg(test)]

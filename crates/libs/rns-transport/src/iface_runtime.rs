@@ -1,5 +1,3 @@
-use std::sync::OnceLock;
-
 use crate::packet::PacketType;
 
 const DEFAULT_IFACE_TX_QUEUE_CAPACITY: usize = 128;
@@ -10,22 +8,6 @@ const DEFAULT_IFACE_MTU: usize =
     crate::packet::PACKET_MDU + 2 + 1 + crate::hash::ADDRESS_HASH_SIZE * 2 + 1;
 const MAX_QUEUED_ANNOUNCES_PER_IFACE: usize = 16_384;
 const QUEUED_ANNOUNCE_LIFE: Duration = Duration::from_secs(60 * 60 * 24);
-
-fn tx_diag_enabled() -> bool {
-    static ENABLED: OnceLock<bool> = OnceLock::new();
-    *ENABLED.get_or_init(|| {
-        std::env::var("RETICULUMD_DIAGNOSTICS")
-            .or_else(|_| std::env::var("RETICULUM_TRANSPORT_DIAGNOSTICS"))
-            .ok()
-            .map(|value| {
-                matches!(
-                    value.trim().to_ascii_lowercase().as_str(),
-                    "1" | "true" | "yes" | "on" | "debug"
-                )
-            })
-            .unwrap_or(false)
-    })
-}
 
 fn allows_announce_broadcast(
     packet: &Packet,

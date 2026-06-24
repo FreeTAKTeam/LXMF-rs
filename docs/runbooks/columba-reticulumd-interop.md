@@ -37,7 +37,7 @@ Useful overrides:
 ```bash
 COLUMBA_ROOT=/path/to/columba \
 REPORT_PATH=target/interop/columba-report.json \
-RETICULUMD_DIAGNOSTICS=1 \
+RUST_LOG="reticulumd=trace,reticulum_rs_transport=trace" \
 ./tools/scripts/columba-reticulumd-smoke.sh
 ```
 

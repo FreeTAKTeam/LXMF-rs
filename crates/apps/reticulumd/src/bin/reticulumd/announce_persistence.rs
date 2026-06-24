@@ -1,4 +1,3 @@
-use super::bridge_helpers::diagnostics_enabled;
 use rns_transport::transport::Transport;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -18,9 +17,7 @@ pub(super) fn spawn_path_table_persistence_worker(
             sleep(RETICULUM_PATH_TABLE_SAVE_DEBOUNCE).await;
             while rx.try_recv().is_ok() {}
             if let Err(err) = transport.save_reticulum_path_table(&path).await {
-                if diagnostics_enabled() {
-                    log::error!("[daemon] failed to persist Reticulum path table: {err}");
-                }
+                log::error!("[daemon] failed to persist Reticulum path table: {err}");
             }
         }
     });

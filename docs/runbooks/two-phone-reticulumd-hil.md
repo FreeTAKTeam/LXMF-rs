@@ -73,7 +73,7 @@ bash tools/scripts/phone-reticulumd-hil.sh --interactive
    ADB.
 2. Builds `reticulumd` and `lxmf-cli`.
 3. Starts phone logcat capture, configures ADB reverse, and starts `reticulumd`
-   with `RETICULUMD_DIAGNOSTICS=1`, TCP transport, and propagation-node config.
+   with `RUST_LOG=reticulumd=trace,reticulum_rs_transport=trace`, TCP transport, and propagation-node config.
 4. Captures the daemon delivery and propagation destination hashes from
    `reticulumd.log`. Use the propagation hash, not the delivery hash, when
    setting Sideband's propagation node.

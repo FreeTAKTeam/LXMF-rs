@@ -1,4 +1,3 @@
-use super::diag;
 use super::*;
 
 pub(super) fn is_link_resource_packet(packet: &Packet) -> bool {
@@ -41,14 +40,12 @@ pub(super) async fn handle_resource_proof(
     } else if let Some((packet, target_iface)) =
         handler.link_table.handle_reverse_link_packet(&packet, iface)
     {
-        if diag::enabled() {
-            log::debug!(
-                "[tp-diag] resource_proof_reverse_forward node={} link={} iface={}",
-                handler.config.name,
-                packet.destination,
-                target_iface
-            );
-        }
+        log::debug!(
+            "[tp-diag] resource_proof_reverse_forward node={} link={} iface={}",
+            handler.config.name,
+            packet.destination,
+            target_iface
+        );
         handler.send(TxMessage { tx_type: TxMessageType::Direct(target_iface), packet }).await;
     }
 }
@@ -60,27 +57,23 @@ pub(super) async fn handle_link_resource_packet<'a>(
 ) -> bool {
     let link = link_for_resource_packet(handler, packet).await;
     let Some(link) = link else {
-        if diag::enabled() {
-            log::debug!(
-                "[resource-diag] wire_resource_no_link node={} link={} ctx={:02x}",
-                handler.config.name,
-                packet.destination,
-                packet.context as u8
-            );
-        }
+        log::debug!(
+            "[resource-diag] wire_resource_no_link node={} link={} ctx={:02x}",
+            handler.config.name,
+            packet.destination,
+            packet.context as u8
+        );
         return false;
     };
 
     let mut link = link.lock().await;
-    if diag::enabled() {
-        log::debug!(
-            "[resource-diag] wire_resource_packet node={} link={} ctx={:02x} has_ingress={}",
-            handler.config.name,
-            packet.destination,
-            packet.context as u8,
-            link.ingress_iface().is_some()
-        );
-    }
+    log::debug!(
+        "[resource-diag] wire_resource_packet node={} link={} ctx={:02x} has_ingress={}",
+        handler.config.name,
+        packet.destination,
+        packet.context as u8,
+        link.ingress_iface().is_some()
+    );
     let packet_for_manager = match packet_for_resource_manager(packet, &mut link) {
         Ok(packet) => packet,
         Err(_) => return true,
@@ -100,7 +93,7 @@ pub(super) async fn handle_link_resource_packet<'a>(
         interface_mtu,
     );
     let events = handler.resource_manager.drain_events();
-    if diag::enabled() && !responses.is_empty() {
+    if !responses.is_empty() {
         log::debug!(
             "[resource-diag] wire_resource_responses node={} link={} ctx={:02x} responses={} iface={}",
             handler.config.name,
@@ -158,14 +151,12 @@ fn packet_for_resource_manager(packet: &Packet, link: &mut Link) -> Result<Packe
     let plain_len = match link.decrypt(packet.data.as_slice(), buffer.accuire_buf_max()) {
         Ok(plain) => plain.len(),
         Err(err) => {
-            if diag::enabled() {
-                log::debug!(
-                    "[resource-diag] wire_resource_decrypt_failed link={} ctx={:02x} err={:?}",
-                    packet.destination,
-                    packet.context as u8,
-                    err
-                );
-            }
+            log::debug!(
+                "[resource-diag] wire_resource_decrypt_failed link={} ctx={:02x} err={:?}",
+                packet.destination,
+                packet.context as u8,
+                err
+            );
             log::warn!("failed to decrypt packet: {:?}", err);
             return Err(RnsError::CryptoError);
         }

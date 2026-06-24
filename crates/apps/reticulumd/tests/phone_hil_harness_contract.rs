@@ -19,7 +19,7 @@ fn two_phone_hil_harness_preserves_required_field_test_contract() {
         "SIDE_BAND_REVERSE_PORT",
         "PIXEL_REVERSE_PORT",
         "AUTO_DISCOVER_PHONE_HASHES",
-        "RETICULUMD_DIAGNOSTICS=1",
+        "RUST_LOG=\"reticulumd=trace,reticulum_rs_transport=trace\"",
         "propagation destination hash=",
         "DAEMON_PROPAGATION_HASH",
         "get_outbound_propagation_cost",

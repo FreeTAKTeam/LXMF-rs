@@ -704,7 +704,7 @@ start_daemon() {
   write_config
   mkdir -p "$(dirname "${IDENTITY_PATH}")"
   (
-    RETICULUMD_DIAGNOSTICS=1 \
+    RUST_LOG="reticulumd=trace,reticulum_rs_transport=trace" \
       LXMD_DELIVERY_PER_PEER_IN_FLIGHT="${PER_PEER_IN_FLIGHT}" \
       "${REPO_ROOT}/target/debug/reticulumd" \
       --rpc "${RPC_ADDR}" \

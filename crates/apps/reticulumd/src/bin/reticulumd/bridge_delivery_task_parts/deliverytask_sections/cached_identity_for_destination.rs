@@ -419,7 +419,7 @@ impl DeliveryTask {
         packet.data = encrypted_data;
         let packet_hash = hex::encode(packet.hash().to_bytes());
         track_receipt_mapping(&self.receipt_map, &packet_hash, &self.message_id);
-        if diagnostics_enabled() {
+        if log::log_enabled!(log::Level::Trace) {
             let detail = format!(
                 "sending packet_hash={} payload_len={} payload_prefix={}",
                 packet_hash,

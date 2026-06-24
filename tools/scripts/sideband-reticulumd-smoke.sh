@@ -12,7 +12,7 @@ DAEMON_TO_SIDEBAND_CONTENT="${DAEMON_TO_SIDEBAND_CONTENT:-hello-from-reticulumd}
 SIDEBAND_TO_DAEMON_CONTENT="${SIDEBAND_TO_DAEMON_CONTENT:-reply-from-sideband}"
 LOG_DIR="${LOG_DIR:-${REPO_ROOT}/target/interop/sideband-reticulumd}"
 REPORT_PATH="${REPORT_PATH:-${LOG_DIR}/report.json}"
-RETICULUMD_DIAGNOSTICS="${RETICULUMD_DIAGNOSTICS:-0}"
+RUST_LOG="${RUST_LOG:-info}"
 
 if [[ ! -d "${SIDEBAND_ROOT}" ]]; then
   echo "Sideband repo not found at ${SIDEBAND_ROOT}" >&2
@@ -76,7 +76,7 @@ cargo build -p reticulumd --bin reticulumd --quiet
 cargo build -p lxmf-cli --bin lxmf-cli --quiet
 
 (
-  RETICULUMD_DIAGNOSTICS="${RETICULUMD_DIAGNOSTICS}" \
+  RUST_LOG="${RUST_LOG}" \
     "${REPO_ROOT}/target/debug/reticulumd" \
     --rpc "${RPC_ADDR}" \
     --db "${RET_DB}" \
