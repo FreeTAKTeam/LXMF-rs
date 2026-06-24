@@ -7,40 +7,38 @@ impl RpcDaemon {
         metrics: Arc<Mutex<RpcMetrics>>,
     ) -> std::io::Result<mpsc::SyncSender<EventSinkCommand>> {
         let (tx, rx) = mpsc::sync_channel::<EventSinkCommand>(EVENT_SINK_QUEUE_CAPACITY);
-        std::thread::Builder::new()
-            .name("rpc-event-sink-worker".to_string())
-            .spawn(move || {
-                while let Ok(command) = rx.recv() {
-                    match command {
-                        EventSinkCommand::Publish { sink, sink_kind, envelope } => {
-                            let result = sink.publish(&envelope);
-                            let mut metrics = metrics.lock().expect("sdk_metrics mutex poisoned");
-                            match result {
-                                Ok(()) => {
-                                    metrics.sdk_event_sink_publish_total =
-                                        metrics.sdk_event_sink_publish_total.saturating_add(1);
-                                    Self::metrics_increment(
-                                        &mut metrics.sdk_event_sink_publish_by_kind,
-                                        sink_kind.as_str(),
-                                    );
-                                }
-                                Err(_) => {
-                                    metrics.sdk_event_sink_error_total =
-                                        metrics.sdk_event_sink_error_total.saturating_add(1);
-                                    Self::metrics_increment(
-                                        &mut metrics.sdk_event_sink_errors_by_kind,
-                                        sink_kind.as_str(),
-                                    );
-                                }
+        std::thread::Builder::new().name("rpc-event-sink-worker".to_string()).spawn(move || {
+            while let Ok(command) = rx.recv() {
+                match command {
+                    EventSinkCommand::Publish { sink, sink_kind, envelope } => {
+                        let result = sink.publish(&envelope);
+                        let mut metrics = metrics.lock().expect("sdk_metrics mutex poisoned");
+                        match result {
+                            Ok(()) => {
+                                metrics.sdk_event_sink_publish_total =
+                                    metrics.sdk_event_sink_publish_total.saturating_add(1);
+                                Self::metrics_increment(
+                                    &mut metrics.sdk_event_sink_publish_by_kind,
+                                    sink_kind.as_str(),
+                                );
+                            }
+                            Err(_) => {
+                                metrics.sdk_event_sink_error_total =
+                                    metrics.sdk_event_sink_error_total.saturating_add(1);
+                                Self::metrics_increment(
+                                    &mut metrics.sdk_event_sink_errors_by_kind,
+                                    sink_kind.as_str(),
+                                );
                             }
                         }
-                        #[cfg(test)]
-                        EventSinkCommand::Flush { reply } => {
-                            let _ = reply.send(());
-                        }
+                    }
+                    #[cfg(test)]
+                    EventSinkCommand::Flush { reply } => {
+                        let _ = reply.send(());
                     }
                 }
-            })?;
+            }
+        })?;
         Ok(tx)
     }
 
@@ -66,13 +64,9 @@ impl RpcDaemon {
             .unwrap_or(65_536)
     }
 
-    pub(super) fn sdk_event_sink_allowed_kinds(
-        &self,
-    ) -> std::io::Result<Option<HashSet<String>>> {
-        let config = self
-            .sdk_runtime_config
-            .lock()
-            .map_err(|e| std::io::Error::other(e.to_string()))?;
+    pub(super) fn sdk_event_sink_allowed_kinds(&self) -> std::io::Result<Option<HashSet<String>>> {
+        let config =
+            self.sdk_runtime_config.lock().map_err(|e| std::io::Error::other(e.to_string()))?;
         let Some(kinds) = config
             .get("event_sink")
             .and_then(|value| value.get("allow_kinds"))

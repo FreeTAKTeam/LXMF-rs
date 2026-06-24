@@ -1,10 +1,9 @@
 use super::bridge::PeerCrypto;
 use super::bridge_helpers::diagnostics_enabled;
 use reticulum_daemon::announce_names::{
-    delivery_stamp_cost_from_app_data, lxmf_aspect_from_name_hash,
-    AnnounceNamesDecodeError, parse_peer_name_from_app_data,
+    delivery_stamp_cost_from_app_data, lxmf_aspect_from_name_hash, parse_peer_name_from_app_data,
     pn_peering_cost_from_app_data, pn_stamp_cost_flexibility_from_app_data,
-    pn_stamp_cost_from_app_data,
+    pn_stamp_cost_from_app_data, AnnounceNamesDecodeError,
 };
 use rns_rpc::RpcDaemon;
 use rns_transport::time::now_epoch_secs_i64;
@@ -113,7 +112,10 @@ mod tests {
         let app_data =
             encode_delivery_announce_app_data("peer", Some(19)).expect("delivery app data");
 
-        assert_eq!(announce_stamp_cost(Some("lxmf.delivery"), app_data.as_slice()).expect("ok"), Some(19));
+        assert_eq!(
+            announce_stamp_cost(Some("lxmf.delivery"), app_data.as_slice()).expect("ok"),
+            Some(19)
+        );
     }
 
     #[test]
@@ -129,7 +131,10 @@ mod tests {
         )
         .expect("propagation app data");
 
-        assert_eq!(announce_stamp_cost(Some("lxmf.propagation"), app_data.as_slice()).expect("ok"), Some(21));
+        assert_eq!(
+            announce_stamp_cost(Some("lxmf.propagation"), app_data.as_slice()).expect("ok"),
+            Some(21)
+        );
         assert_eq!(announce_stamp_cost(None, app_data.as_slice()).expect("ok"), Some(21));
     }
 }

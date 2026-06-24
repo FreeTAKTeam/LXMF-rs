@@ -36,8 +36,7 @@ impl ReceiptHandler for ReceiptBridge {
                 return;
             }
         };
-        if let Err(err) =
-            self.tx.try_send(ReceiptEvent { message_id, status: "delivered".into() })
+        if let Err(err) = self.tx.try_send(ReceiptEvent { message_id, status: "delivered".into() })
         {
             log::warn!("[daemon] dropped delivery receipt event: {err}");
         }

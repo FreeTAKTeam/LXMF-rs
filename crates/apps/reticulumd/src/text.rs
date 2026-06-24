@@ -6,10 +6,7 @@
 //! progress; once every caller propagates, the logging here can be dropped.
 
 /// Decode a byte slice as UTF-8, logging (with `context`) on failure.
-pub fn decode_utf8<'a>(
-    data: &'a [u8],
-    context: &str,
-) -> Result<&'a str, std::str::Utf8Error> {
+pub fn decode_utf8<'a>(data: &'a [u8], context: &str) -> Result<&'a str, std::str::Utf8Error> {
     std::str::from_utf8(data)
         .inspect_err(|err| log::warn!("[daemon] invalid UTF-8 in {context}: {err}"))
 }

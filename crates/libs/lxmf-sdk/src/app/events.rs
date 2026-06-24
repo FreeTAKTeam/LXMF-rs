@@ -140,7 +140,9 @@ pub struct EventBatch {
 fn payload_state(payload: &JsonValue, key: &str) -> Result<Option<String>, &'static str> {
     match payload.get(key) {
         None => Ok(None),
-        Some(v) => v.as_str().ok_or("payload field is not a string")
+        Some(v) => v
+            .as_str()
+            .ok_or("payload field is not a string")
             .map(|s| Some(s.trim().to_ascii_lowercase())),
     }
 }
@@ -172,7 +174,10 @@ fn payload_peer_id(payload: &JsonValue) -> Result<Option<String>, &'static str> 
         match payload.get(key) {
             None => continue,
             Some(v) => {
-                return v.as_str().ok_or("peer id field is not a string").map(|s| Some(s.to_owned()));
+                return v
+                    .as_str()
+                    .ok_or("peer id field is not a string")
+                    .map(|s| Some(s.to_owned()));
             }
         }
     }
@@ -197,7 +202,9 @@ pub fn map_sdk_event(event: SdkEvent, profile_id: &str) -> Event {
             }
         }
         "DeliveryStateTransition" => {
-            let state = payload_state(&event.payload, "to").ok().flatten()
+            let state = payload_state(&event.payload, "to")
+                .ok()
+                .flatten()
                 .or_else(|| payload_state(&event.payload, "state").ok().flatten())
                 .unwrap_or_else(|| "unknown".to_owned());
             map_delivery_state(state.as_str())
@@ -236,7 +243,11 @@ pub fn map_sdk_event(event: SdkEvent, profile_id: &str) -> Event {
         "sdk_security_rate_limited" => EventKind::SecurityActionRequired,
         "runtime_shutdown_requested" => EventKind::RuntimeStopped,
         "outbound" => map_delivery_state(
-            receipt_state(&event.payload).ok().flatten().unwrap_or_else(|| "unknown".to_owned()).as_str(),
+            receipt_state(&event.payload)
+                .ok()
+                .flatten()
+                .unwrap_or_else(|| "unknown".to_owned())
+                .as_str(),
         ),
         "ErrorRaised" => {
             if matches!(event.severity, RawSeverity::Critical | RawSeverity::Error) {

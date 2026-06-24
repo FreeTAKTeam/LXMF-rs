@@ -21,7 +21,9 @@ pub enum AnnounceEncodeError {
 impl fmt::Display for AnnounceEncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InvalidDisplayName => f.write_str("display name is empty or contains control characters"),
+            Self::InvalidDisplayName => {
+                f.write_str("display name is empty or contains control characters")
+            }
             Self::Encode(err) => write!(f, "msgpack encode error: {err}"),
         }
     }
@@ -122,8 +124,11 @@ pub fn normalize_display_name(value: &str) -> Option<String> {
     }
 }
 
-pub fn encode_delivery_display_name_app_data(display_name: &str) -> Result<Vec<u8>, AnnounceEncodeError> {
-    let normalized = normalize_display_name(display_name).ok_or(AnnounceEncodeError::InvalidDisplayName)?;
+pub fn encode_delivery_display_name_app_data(
+    display_name: &str,
+) -> Result<Vec<u8>, AnnounceEncodeError> {
+    let normalized =
+        normalize_display_name(display_name).ok_or(AnnounceEncodeError::InvalidDisplayName)?;
     let peer_data =
         rmpv::Value::Array(vec![rmpv::Value::Binary(normalized.into_bytes()), rmpv::Value::Nil]);
     Ok(encode_msgpack(&peer_data)?)
@@ -174,8 +179,9 @@ mod tests {
     #[test]
     fn encode_and_decode_delivery_display_name_round_trip() {
         let encoded = encode_delivery_display_name_app_data("Alice Router").expect("encoded");
-        let decoded =
-            display_name_from_delivery_app_data(encoded.as_slice()).expect("decoded").expect("name");
+        let decoded = display_name_from_delivery_app_data(encoded.as_slice())
+            .expect("decoded")
+            .expect("name");
         assert_eq!(decoded, "Alice Router");
     }
 

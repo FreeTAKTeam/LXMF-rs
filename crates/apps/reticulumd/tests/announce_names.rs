@@ -6,7 +6,8 @@ use rmpv::Value;
 #[test]
 fn parse_peer_name_prefers_pn_metadata() {
     let app_data = encode_pn_announcement_app_data("Alice PN");
-    let parsed = parse_peer_name_from_app_data(&app_data).expect("name from pn metadata").expect("some");
+    let parsed =
+        parse_peer_name_from_app_data(&app_data).expect("name from pn metadata").expect("some");
     assert_eq!(parsed.0, "Alice PN");
     assert_eq!(parsed.1, "pn_meta");
 }
@@ -28,7 +29,8 @@ fn encode_pn_announcement_app_data(name: &str) -> Vec<u8> {
 
 #[test]
 fn parse_peer_name_falls_back_to_utf8_payload() {
-    let parsed = parse_peer_name_from_app_data(b"  Bob UTF8  ").expect("name from utf8").expect("some");
+    let parsed =
+        parse_peer_name_from_app_data(b"  Bob UTF8  ").expect("name from utf8").expect("some");
     assert_eq!(parsed.0, "Bob UTF8");
     assert_eq!(parsed.1, "app_data_utf8");
 }
@@ -40,7 +42,9 @@ fn parse_peer_name_reads_delivery_msgpack_app_data() {
         Value::from(9),
     ]))
     .expect("pack delivery app data");
-    let parsed = parse_peer_name_from_app_data(&app_data).expect("name from delivery app data").expect("some");
+    let parsed = parse_peer_name_from_app_data(&app_data)
+        .expect("name from delivery app data")
+        .expect("some");
     assert_eq!(parsed.0, "Alice Delivery");
     assert_eq!(parsed.1, "delivery_app_data");
 }

@@ -53,8 +53,10 @@ pub(crate) fn apply_python_config_file(
             .get("auth_required")
             .and_then(|value| parse_python_bool(value).ok().flatten())
             .unwrap_or(false);
-        effective.python_compat.autopeer =
-            propagation.get("autopeer").and_then(|value| parse_python_bool(value).ok().flatten()).unwrap_or(true);
+        effective.python_compat.autopeer = propagation
+            .get("autopeer")
+            .and_then(|value| parse_python_bool(value).ok().flatten())
+            .unwrap_or(true);
         effective.python_compat.autopeer_maxdepth =
             propagation.get("autopeer_maxdepth").and_then(|value| value.parse::<u32>().ok());
         effective.python_compat.node_name = propagation

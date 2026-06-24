@@ -106,8 +106,8 @@ pub(super) fn emit_rpc_access_log(
 }
 
 fn parse_http_request_line(headers: &[u8]) -> Result<(&str, &str), &'static str> {
-    let text =
-        decode_utf8(headers, "RPC request headers").map_err(|_| "invalid UTF-8 in request headers")?;
+    let text = decode_utf8(headers, "RPC request headers")
+        .map_err(|_| "invalid UTF-8 in request headers")?;
     let line = text.lines().next().ok_or("no HTTP request line")?;
     let mut parts = line.split_whitespace();
     let method = parts.next().ok_or("no HTTP method")?;

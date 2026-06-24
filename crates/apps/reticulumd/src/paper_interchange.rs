@@ -36,8 +36,7 @@ pub fn summarize_wire_message(
     let packed = wire.pack()?;
     let message = Message::from_wire(&packed)?;
     let title_utf8 = decode_utf8_owned(message.title.clone(), "paper interchange title").ok();
-    let content_utf8 =
-        decode_utf8_owned(message.content.clone(), "paper interchange content").ok();
+    let content_utf8 = decode_utf8_owned(message.content.clone(), "paper interchange content").ok();
     let fields = message.fields.as_ref().map(rmpv_to_json).transpose()?;
 
     Ok(InterchangeMessageSummary {

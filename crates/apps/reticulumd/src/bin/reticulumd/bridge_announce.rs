@@ -21,18 +21,20 @@ impl TransportBridge {
         }) else {
             return Some(app_data);
         };
-        Some(encode_delivery_announce_app_data_with_capabilities(
-            display_name.as_str(),
-            self.current_inbound_stamp_cost().unwrap_or_else(|err| {
-                log::warn!("[daemon] failed to read daemon state for delivery announce: {err}");
-                None
+        Some(
+            encode_delivery_announce_app_data_with_capabilities(
+                display_name.as_str(),
+                self.current_inbound_stamp_cost().unwrap_or_else(|err| {
+                    log::warn!("[daemon] failed to read daemon state for delivery announce: {err}");
+                    None
+                }),
+                &self.announce_capabilities,
+            )
+            .unwrap_or_else(|e| {
+                log::warn!("[daemon] failed to encode delivery announce app data: {e}");
+                app_data
             }),
-            &self.announce_capabilities,
         )
-        .unwrap_or_else(|e| {
-            log::warn!("[daemon] failed to encode delivery announce app data: {e}");
-            app_data
-        }))
     }
 
     fn current_inbound_stamp_cost(&self) -> Result<Option<u32>, &'static str> {
@@ -73,28 +75,30 @@ impl TransportBridge {
             }
         };
         let state = daemon.current_propagation_state();
-        Some(encode_python_propagation_node_app_data(
-            display_name.as_deref(),
-            PropagationNodeAnnounceConfig {
-                enabled: state.enabled,
-                timebase: now_secs_i64(),
-                transfer_limit_kb: state.propagation_limit,
-                sync_limit_kb: state.sync_limit,
-                stamp_cost: if state.target_cost > 0 {
-                    state.target_cost
-                } else {
-                    PropagationNodeAnnounceConfig::default().stamp_cost
+        Some(
+            encode_python_propagation_node_app_data(
+                display_name.as_deref(),
+                PropagationNodeAnnounceConfig {
+                    enabled: state.enabled,
+                    timebase: now_secs_i64(),
+                    transfer_limit_kb: state.propagation_limit,
+                    sync_limit_kb: state.sync_limit,
+                    stamp_cost: if state.target_cost > 0 {
+                        state.target_cost
+                    } else {
+                        PropagationNodeAnnounceConfig::default().stamp_cost
+                    },
+                    stamp_cost_flexibility: state.stamp_cost_flexibility,
+                    peering_cost: state
+                        .peering_cost
+                        .unwrap_or_else(|| PropagationNodeAnnounceConfig::default().peering_cost),
                 },
-                stamp_cost_flexibility: state.stamp_cost_flexibility,
-                peering_cost: state
-                    .peering_cost
-                    .unwrap_or_else(|| PropagationNodeAnnounceConfig::default().peering_cost),
-            },
+            )
+            .unwrap_or_else(|e| {
+                log::warn!("[daemon] failed to encode propagation announce app data: {e}");
+                fallback
+            }),
         )
-        .unwrap_or_else(|e| {
-            log::warn!("[daemon] failed to encode propagation announce app data: {e}");
-            fallback
-        }))
     }
 
     #[cfg(test)]

@@ -131,7 +131,11 @@ pub(super) async fn validated_receipt_hash(
         }
     }
 
-    if found_destination { Err(RnsError::CryptoError) } else { Ok(None) }
+    if found_destination {
+        Err(RnsError::CryptoError)
+    } else {
+        Ok(None)
+    }
 }
 
 async fn should_forward_link_request_proof(

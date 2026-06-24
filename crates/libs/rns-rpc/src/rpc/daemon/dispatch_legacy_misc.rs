@@ -179,9 +179,7 @@ impl RpcDaemon {
                 let (name, name_source) = if parsed.name.is_none() && parsed.name_source.is_none() {
                     parse_peer_name_from_app_data_hex(parsed.app_data_hex.as_deref())
                         .unwrap_or_else(|err| {
-                            log::warn!(
-                                "[daemon] failed to parse peer name from app_data: {err}"
-                            );
+                            log::warn!("[daemon] failed to parse peer name from app_data: {err}");
                             None
                         })
                         .map(|(name, source)| (Some(name), Some(source.to_string())))

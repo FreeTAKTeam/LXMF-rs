@@ -63,8 +63,10 @@ fn wire_message_id_hex(candidate: &[u8]) -> Result<String, LxmfError> {
     destination.copy_from_slice(&candidate[..16]);
     let mut source = [0u8; 16];
     source.copy_from_slice(&candidate[16..32]);
-    let payload_value = rmp_serde::from_slice::<rmpv::Value>(&candidate[HEADER_LEN..])
-        .map_err(|err| LxmfError::Decode(format!("inbound message id payload decode failed: {err}")))?;
+    let payload_value =
+        rmp_serde::from_slice::<rmpv::Value>(&candidate[HEADER_LEN..]).map_err(|err| {
+            LxmfError::Decode(format!("inbound message id payload decode failed: {err}"))
+        })?;
     let rmpv::Value::Array(items) = payload_value else {
         return Err(LxmfError::Decode("inbound message id payload is not an array".to_string()));
     };
@@ -82,8 +84,9 @@ fn payload_without_stamp_bytes(items: &[rmpv::Value]) -> Result<Vec<u8>, LxmfErr
     if trimmed.len() == 5 {
         trimmed.pop();
     }
-    rmp_serde::to_vec(&rmpv::Value::Array(trimmed))
-        .map_err(|err| LxmfError::Encode(format!("inbound message id payload re-encode failed: {err}")))
+    rmp_serde::to_vec(&rmpv::Value::Array(trimmed)).map_err(|err| {
+        LxmfError::Encode(format!("inbound message id payload re-encode failed: {err}"))
+    })
 }
 
 fn compute_message_id_hex(

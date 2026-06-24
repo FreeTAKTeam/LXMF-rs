@@ -24,14 +24,10 @@ impl RpcDaemon {
     pub(super) fn sdk_token_auth_config(
         &self,
     ) -> std::io::Result<(String, String, u64, u64, zeroize::Zeroizing<String>)> {
-        let config_guard = self
-            .sdk_runtime_config
-            .lock()
-            .map_err(|e| std::io::Error::other(e.to_string()))?;
-        let token_auth = config_guard
-            .get("rpc_backend")
-            .and_then(|v| v.get("token_auth"))
-            .ok_or_else(|| {
+        let config_guard =
+            self.sdk_runtime_config.lock().map_err(|e| std::io::Error::other(e.to_string()))?;
+        let token_auth =
+            config_guard.get("rpc_backend").and_then(|v| v.get("token_auth")).ok_or_else(|| {
                 std::io::Error::new(std::io::ErrorKind::NotFound, "token auth config missing")
             })?;
         let issuer = token_auth
@@ -48,10 +44,8 @@ impl RpcDaemon {
                 std::io::Error::new(std::io::ErrorKind::InvalidData, "token auth audience missing")
             })?
             .to_string();
-        let jti_ttl_ms = token_auth
-            .get("jti_cache_ttl_ms")
-            .and_then(JsonValue::as_u64)
-            .ok_or_else(|| {
+        let jti_ttl_ms =
+            token_auth.get("jti_cache_ttl_ms").and_then(JsonValue::as_u64).ok_or_else(|| {
                 std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
                     "token auth jti_cache_ttl_ms missing",

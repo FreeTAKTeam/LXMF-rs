@@ -309,7 +309,11 @@ pub(super) async fn handle_tunnel_synthesize_packet<'a>(
     let tunnel_id = match validate_tunnel_synthesize(packet.data.as_slice()) {
         Ok(id) => id,
         Err(err) => {
-            log::debug!("tp({}): ignoring invalid tunnel synth packet: {:?}", handler.config.name, err);
+            log::debug!(
+                "tp({}): ignoring invalid tunnel synth packet: {:?}",
+                handler.config.name,
+                err
+            );
             return;
         }
     };
