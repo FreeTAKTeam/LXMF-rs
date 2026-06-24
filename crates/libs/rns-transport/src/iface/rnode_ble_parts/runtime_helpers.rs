@@ -34,9 +34,7 @@ async fn rnode_peripheral_matches(
                 return Ok(true);
             }
         }
-        if allow_service_uuid_match
-            && properties.services.iter().any(|service| *service == service_uuid)
-        {
+        if allow_service_uuid_match && properties.services.contains(&service_uuid) {
             log::warn!(
                 "RNode BLE fallback matched advertised service without configured identifier"
             );
