@@ -147,11 +147,15 @@ pub fn display_name_from_delivery_app_data(
             Some(rmpv::Value::Binary(bytes)) => {
                 normalize_display_name(decode_utf8_owned(bytes)?.as_str())
             }
-            Some(rmpv::Value::String(value)) => normalize_display_name(decode_utf8_owned(value.into_bytes())?.as_str()),
+            Some(rmpv::Value::String(value)) => {
+                normalize_display_name(decode_utf8_owned(value.into_bytes())?.as_str())
+            }
             _ => None,
         },
         rmpv::Value::Binary(bytes) => normalize_display_name(decode_utf8_owned(bytes)?.as_str()),
-        rmpv::Value::String(value) => normalize_display_name(decode_utf8_owned(value.into_bytes())?.as_str()),
+        rmpv::Value::String(value) => {
+            normalize_display_name(decode_utf8_owned(value.into_bytes())?.as_str())
+        }
         _ => None,
     };
     Ok(name)
