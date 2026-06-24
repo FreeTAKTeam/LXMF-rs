@@ -167,6 +167,8 @@ fn build_lora_config(args: &ProbeArgs) -> Result<Option<LoraConfig>, String> {
     }
     let base = match args.region.as_deref() {
         Some(r) => LoraConfig::for_region(r)
+            .ok()
+            .flatten()
             .ok_or_else(|| format!("unknown region '{r}'; try EU868, US915, AU915, AS923"))?,
         None => LoraConfig::us915_default(),
     };
