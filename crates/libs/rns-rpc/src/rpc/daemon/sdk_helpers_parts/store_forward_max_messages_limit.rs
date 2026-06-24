@@ -12,7 +12,7 @@ pub(super) struct SdkStoreForwardPolicy {
 
 use super::*;
 
-pub(super) const SDK_VERSION: &str = "0.2.1";
+pub(super) const SDK_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub(super) fn python_reference_meta() -> JsonValue {
     json!({
