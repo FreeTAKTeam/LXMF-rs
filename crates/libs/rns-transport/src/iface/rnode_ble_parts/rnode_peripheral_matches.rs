@@ -304,7 +304,7 @@ impl NativeRnodeBleKissInterface {
                                 );
                                 reconnect_needed = true;
                             } else if let Some(mon) = command_monitor.as_mut() {
-                                mon.reset_startup_deadline(startup_response_timeout);
+                                mon.accept_degraded_startup();
                             }
                         }
                     }
