@@ -26,15 +26,11 @@ impl RpcBackendClient {
         Ok((processed_items, cursor))
     }
 
-    fn recommended_tick_delay_ms(
-        budget: &TickBudget,
-        processed_items: usize,
-        yielded: bool,
-    ) -> Option<u64> {
+    fn recommended_tick_delay_ms(budget: &TickBudget, processed_items: usize, yielded: bool) -> u64 {
         if yielded || processed_items > 0 {
-            Some(0)
+            0
         } else {
-            Some(budget.max_duration_ms.unwrap_or(Self::DEFAULT_IDLE_TICK_DELAY_MS))
+            budget.max_duration_ms.unwrap_or(Self::DEFAULT_IDLE_TICK_DELAY_MS)
         }
     }
 

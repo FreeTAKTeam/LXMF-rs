@@ -271,7 +271,11 @@ impl RpcBackendClient {
         let yielded = processed_items >= budget.max_work_items;
         let next_recommended_delay_ms =
             Self::recommended_tick_delay_ms(&budget, processed_items, yielded);
-        Ok(TickResult { processed_items, yielded, next_recommended_delay_ms })
+        Ok(TickResult {
+            processed_items,
+            yielded,
+            next_recommended_delay_ms: Some(next_recommended_delay_ms),
+        })
     }
 
     #[cfg(feature = "sdk-async")]

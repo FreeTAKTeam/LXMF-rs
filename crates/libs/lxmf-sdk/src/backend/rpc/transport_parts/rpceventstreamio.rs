@@ -43,7 +43,18 @@ async fn run_rpc_http_event_stream(
     mut cursor: Option<EventCursor>,
     tx: mpsc::Sender<Result<SdkEvent, SdkError>>,
 ) {
-    let mut last_delivered = cursor.as_ref().and_then(EventStreamPosition::from_cursor);
+    let mut last_delivered = match cursor.as_ref().map(EventStreamPosition::from_cursor) {
+        Some(Ok(position)) => Some(position),
+        Some(Err(reason)) => {
+            // A malformed resume cursor is a hard failure: silently restarting the stream
+            // from scratch could replay or skip events. Surface it to the consumer.
+            let _ = tx
+                .send(Err(SdkError::new(code::INTERNAL, ErrorCategory::Internal, reason)))
+                .await;
+            return;
+        }
+        None => None,
+    };
     let mut had_connected_stream = false;
     loop {
         let parsed_endpoint = match RpcBackendClient::parse_endpoint(&endpoint) {
@@ -185,14 +196,16 @@ struct EventStreamPosition {
 
 #[cfg(feature = "sdk-async")]
 impl EventStreamPosition {
-    fn from_cursor(cursor: &EventCursor) -> Option<Self> {
-        let body = cursor.0.strip_prefix("v2:")?;
-        let (runtime_id, rest) = body.split_once(':')?;
-        let (stream_id, seq_no) = rest.rsplit_once(':')?;
-        Some(Self {
+    fn from_cursor(cursor: &EventCursor) -> Result<Self, &'static str> {
+        let body = cursor.0.strip_prefix("v2:").ok_or("event cursor is missing the v2: prefix")?;
+        let (runtime_id, rest) =
+            body.split_once(':').ok_or("event cursor is missing the runtime/stream separator")?;
+        let (stream_id, seq_no) =
+            rest.rsplit_once(':').ok_or("event cursor is missing the stream/seq separator")?;
+        Ok(Self {
             runtime_id: runtime_id.to_string(),
             stream_id: stream_id.to_string(),
-            seq_no: seq_no.parse().ok()?,
+            seq_no: seq_no.parse().map_err(|_| "event cursor sequence is not a valid u64")?,
         })
     }
 

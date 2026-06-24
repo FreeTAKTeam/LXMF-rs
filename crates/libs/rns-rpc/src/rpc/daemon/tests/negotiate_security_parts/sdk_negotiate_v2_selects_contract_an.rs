@@ -352,8 +352,7 @@
         let exp = iat.saturating_add(60);
         let payload =
             format!("iss=test-issuer;aud=test-audience;jti=token-1;sub=cli;iat={iat};exp={exp}");
-        let signature =
-            RpcDaemon::token_signature("test-secret", payload.as_str()).expect("token signature");
+        let signature = RpcDaemon::token_signature("test-secret", payload.as_str());
         let token = format!("{payload};sig={signature}");
         let headers = vec![("authorization".to_string(), format!("Bearer {token}"))];
         daemon.authorize_http_request(&headers, Some("10.5.6.7")).expect("first token should pass");
@@ -398,8 +397,7 @@
             now.saturating_sub(120),
             now.saturating_sub(60)
         );
-        let expired_sig = RpcDaemon::token_signature("test-secret", expired_payload.as_str())
-            .expect("token signature");
+        let expired_sig = RpcDaemon::token_signature("test-secret", expired_payload.as_str());
         let expired_headers = vec![(
             "authorization".to_string(),
             format!("Bearer {expired_payload};sig={expired_sig}"),

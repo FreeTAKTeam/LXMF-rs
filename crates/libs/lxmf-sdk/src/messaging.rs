@@ -1,4 +1,4 @@
-use lxmf_core::announce::display_name_from_delivery_app_data;
+use lxmf_core::announce::{display_name_from_delivery_app_data, AnnounceDecodeError};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::cmp::Reverse;
@@ -94,8 +94,13 @@ impl AnnounceRecord {
         received_at_ms: u64,
     ) -> Self {
         let destination_kind = destination_kind.into();
+        // `from_raw` is an infallible constructor and lxmf-sdk has no logging facility, so a
+        // decode failure is downgraded to "no display name" here (matching the S8 convention).
+        // The helper now returns the error so log-capable callers can surface it.
         let display_name =
-            announce_display_name_from_raw_app_data(destination_kind.as_str(), app_data);
+            announce_display_name_from_raw_app_data(destination_kind.as_str(), app_data)
+                .ok()
+                .flatten();
         let app_data = normalize_announce_app_data(app_data);
 
         Self {
@@ -409,7 +414,7 @@ impl MessagingStore {
                         peer_destination_hex: record.destination_hex.clone(),
                         peer_display_name: peer_map
                             .get(&record.destination_hex)
-                            .and_then(peer_display_name_for),
+                            .map(peer_display_name_for),
                         last_message_preview: None,
                         last_message_at_ms: 0,
                         unread_count: 0,
@@ -422,7 +427,7 @@ impl MessagingStore {
             if event_time >= entry.last_message_at_ms {
                 entry.peer_destination_hex = record.destination_hex.clone();
                 entry.peer_display_name =
-                    peer_map.get(&record.destination_hex).and_then(peer_display_name_for);
+                    peer_map.get(&record.destination_hex).map(peer_display_name_for);
                 entry.last_message_preview = message_preview(record.body_utf8.as_str());
                 entry.last_message_at_ms = event_time;
                 entry.last_message_state = Some(record.state);
@@ -470,12 +475,14 @@ fn normalize_announce_app_data(app_data: &[u8]) -> String {
 fn announce_display_name_from_raw_app_data(
     destination_kind: &str,
     app_data: &[u8],
-) -> Option<String> {
+) -> Result<Option<String>, AnnounceDecodeError> {
     if destination_kind == DESTINATION_KIND_LXMF_DELIVERY {
-        // TODO(S8): surface the decode error instead of defaulting to None.
-        display_name_from_delivery_app_data(app_data).unwrap_or_default()
+        // LXMF delivery: a malformed app_data is a real decode failure (Err), distinct from
+        // a well-formed announce that simply carries no display name (Ok(None)).
+        display_name_from_delivery_app_data(app_data)
     } else {
-        None
+        // Non-LXMF destination kinds have no display-name concept: genuine absence.
+        Ok(None)
     }
 }
 
@@ -487,11 +494,12 @@ fn message_preview(body_utf8: &str) -> Option<String> {
     Some(trimmed.chars().take(80).collect())
 }
 
-fn peer_display_name_for(peer: &PeerRecord) -> Option<String> {
+fn peer_display_name_for(peer: &PeerRecord) -> String {
+    // `destination_hex` is always set, so a display name is always produced — plain `T`.
     peer.display_name
         .clone()
         .or_else(|| peer.identity_hex.clone())
-        .or_else(|| Some(peer.destination_hex.clone()))
+        .unwrap_or_else(|| peer.destination_hex.clone())
 }
 
 #[cfg(test)]

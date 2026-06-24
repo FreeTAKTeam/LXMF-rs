@@ -112,11 +112,11 @@ impl RpcDaemon {
         Some(claims)
     }
 
-    pub(super) fn token_signature(secret: &str, payload: &str) -> Option<String> {
+    pub(super) fn token_signature(secret: &str, payload: &str) -> String {
         let mut mac = hmac::Hmac::<sha2::Sha256>::new_from_slice(secret.as_bytes())
             .expect("HMAC key length is valid for HMAC-SHA256");
         mac.update(payload.as_bytes());
-        Some(hex::encode(mac.finalize().into_bytes()))
+        hex::encode(mac.finalize().into_bytes())
     }
 
     pub(super) fn is_loopback_source(source: &str) -> bool {

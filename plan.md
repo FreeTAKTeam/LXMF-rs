@@ -165,7 +165,35 @@ box → commit). Stop on red; never commit a broken tree.
   validation/response via `io::Error`) so a future failure surfaces instead of collapsing to
   None. LoRa `baud_rate` / `activity_probe` remain KEEP per plan (variant legitimately lacks
   field).
-- [ ] **S15** **E** plain-`T`/`.expect()` cases + invariant SPLITs.
+- [x] **S15** **E** plain-`T`/`.expect()` cases + cross-crate invariant SPLITs.
+  **E (None impossible → plain `T`):** `decode_columba_meta_text` → `JsonValue` (JSON-or-raw,
+  always succeeds; caller wraps in `Ok`); `token_signature` (rns-rpc) → `String` (HMAC
+  infallible; caller drops `.ok_or_else()?`, tests drop `.expect()`); `recommended_tick_delay_ms`
+  → `u64` (both arms returned `Some`; caller wraps the `TickResult.next_recommended_delay_ms`
+  Option field with `Some`, tests drop `Some(..)`); `peer_display_name_for` → `String`
+  (`destination_hex` always set; callers `.and_then` → `.map`). `delivery_pipeline_status` is a
+  **trait** method whose `None` default is genuine absence (a daemon with no pipeline bridge →
+  JSON `null`) and the reticulumd impl already always returns `Some` — no error is dropped, so
+  no change (converting the trait to plain `T` would wrongly erase the legitimate no-pipeline
+  case).
+  **Cross-crate invariant SPLITs:** `compute_stream_gap` → S: `dropped_count == 0` → Ok(None)
+  (no gap), `dropped_count > 0` with no `oldest_seq` → Err (bookkeeping invariant), else
+  Ok(Some); caller (rns-rpc has log) `log::warn!`s the Err and treats as no-gap; tests updated.
+  `EventStreamPosition::from_cursor` → R (`Result<Self, &'static str>`): each malformed segment
+  (missing `v2:` prefix / separators / non-u64 seq) is a distinct Err; the stream worker
+  surfaces a malformed resume cursor to the consumer via `tx.send(Err(SdkError…INTERNAL))` and
+  returns instead of silently restarting from scratch. `announce_display_name_from_raw_app_data`
+  → S (`Result<Option<String>, AnnounceDecodeError>`): non-LXMF kind → Ok(None) (no display-name
+  concept), LXMF decode failure → Err, well-formed-but-nameless → Ok(None); the swallow moved
+  out of the helper to the `from_raw` call site, which downgrades via `.ok().flatten()` (lxmf-sdk
+  has no log + infallible constructor, per the S8 convention) — the helper is now honest so
+  log-capable callers can surface it. `stop_driver_locked` → S
+  (`Result<Option<JoinHandle>, &'static str>`): no driver → Ok(None); driver present → signal
+  stop and return `Ok(handle.take())`. The double-stop test (`config.rs:77` `stop().expect("stop
+  twice")`) proves "driver present but handle already taken" is a **legitimate** state, not an
+  error, so no Err is constructed today (like S14 `into_bytes`/`selected_ids`); the S signature
+  threads the error channel through the caller (`map_err(|_| NodeError::InternalError)?`) while
+  preserving session cleanup.
 - [ ] **S16** Pattern **O** pure pipes + BORDERLINE — after decision.
 
 ## Notes / decisions log

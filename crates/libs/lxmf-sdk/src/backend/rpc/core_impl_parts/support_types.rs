@@ -197,15 +197,12 @@ mod tests {
     #[test]
     fn tick_delay_is_deterministic_for_work_and_idle_paths() {
         let budget = TickBudget::new(16).with_max_duration_ms(40);
-        assert_eq!(RpcBackendClient::recommended_tick_delay_ms(&budget, 0, false), Some(40));
-        assert_eq!(RpcBackendClient::recommended_tick_delay_ms(&budget, 1, false), Some(0));
-        assert_eq!(RpcBackendClient::recommended_tick_delay_ms(&budget, 16, true), Some(0));
+        assert_eq!(RpcBackendClient::recommended_tick_delay_ms(&budget, 0, false), 40);
+        assert_eq!(RpcBackendClient::recommended_tick_delay_ms(&budget, 1, false), 0);
+        assert_eq!(RpcBackendClient::recommended_tick_delay_ms(&budget, 16, true), 0);
 
         let default_budget = TickBudget::new(4);
-        assert_eq!(
-            RpcBackendClient::recommended_tick_delay_ms(&default_budget, 0, false),
-            Some(25)
-        );
+        assert_eq!(RpcBackendClient::recommended_tick_delay_ms(&default_budget, 0, false), 25);
     }
 
     #[test]

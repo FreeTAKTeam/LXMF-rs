@@ -24,14 +24,17 @@ pub(super) fn cursor_is_expired(cursor_seq: Option<u64>, oldest_seq: Option<u64>
 pub(super) fn compute_stream_gap(
     dropped_count: u64,
     oldest_seq: Option<u64>,
-) -> Option<StreamGapMeta> {
+) -> Result<Option<StreamGapMeta>, &'static str> {
     if dropped_count == 0 {
-        return None;
+        return Ok(None);
     }
-    let observed_seq_no = oldest_seq?;
+    // dropped_count > 0 means events were evicted, so the retained window must have an
+    // oldest sequence; a missing one is an internal bookkeeping invariant violation.
+    let observed_seq_no =
+        oldest_seq.ok_or("dropped events recorded but no oldest sequence is retained")?;
     let expected_seq_no = observed_seq_no.saturating_sub(dropped_count);
     let gap_seq_no = observed_seq_no.saturating_sub(1);
-    Some(StreamGapMeta { gap_seq_no, expected_seq_no, observed_seq_no, dropped_count })
+    Ok(Some(StreamGapMeta { gap_seq_no, expected_seq_no, observed_seq_no, dropped_count }))
 }
 
 pub(super) fn parse_timestamp_id_cursor(
@@ -131,7 +134,9 @@ mod cursor_utils_tests {
     fn stream_gap_meta_preserves_expected_observed_invariant() {
         for dropped in [1_u64, 2, 5, 64, 512] {
             for oldest in [dropped, dropped + 1, dropped + 32, dropped + 1000] {
-                let gap = compute_stream_gap(dropped, Some(oldest)).expect("gap meta");
+                let gap = compute_stream_gap(dropped, Some(oldest))
+                    .expect("gap result")
+                    .expect("gap meta");
                 assert_eq!(
                     gap.expected_seq_no.saturating_add(gap.dropped_count),
                     gap.observed_seq_no,
@@ -144,10 +149,13 @@ mod cursor_utils_tests {
                 );
             }
         }
-        assert!(compute_stream_gap(0, Some(10)).is_none(), "no drops must not produce gap meta");
         assert!(
-            compute_stream_gap(3, None).is_none(),
-            "missing observed sequence must not produce gap meta"
+            compute_stream_gap(0, Some(10)).expect("no-drop result").is_none(),
+            "no drops must not produce gap meta"
+        );
+        assert!(
+            compute_stream_gap(3, None).is_err(),
+            "dropped events without an oldest sequence must surface an error"
         );
     }
 }

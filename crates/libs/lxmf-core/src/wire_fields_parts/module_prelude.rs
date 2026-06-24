@@ -388,8 +388,7 @@ fn decode_client_columba_meta(
             let text = text.as_str().ok_or_else(|| {
                 LxmfError::Decode("columba meta string is not valid UTF-8".to_string())
             })?;
-            decode_columba_meta_text(text)
-                .ok_or_else(|| LxmfError::Decode("columba meta text decode failed".to_string()))
+            Ok(decode_columba_meta_text(text))
         }
         Value::Binary(bytes) => decode_columba_meta_bytes(bytes, options),
         _ => Err(LxmfError::Decode("columba meta field is not string or binary".to_string())),
@@ -470,12 +469,10 @@ fn decode_telemetry_stream(
     rmpv_to_json_with_options_inner(&decoded, options)
 }
 
-fn decode_columba_meta_text(text: &str) -> Option<JsonValue> {
-    if let Ok(json) = serde_json::from_str::<JsonValue>(text) {
-        Some(json)
-    } else {
-        Some(JsonValue::String(text.to_string()))
-    }
+fn decode_columba_meta_text(text: &str) -> JsonValue {
+    // Best-effort preservation: parse as JSON, otherwise keep the raw string.
+    // Never fails — every input yields a value, so this is plain `T`, not `Option`.
+    serde_json::from_str::<JsonValue>(text).unwrap_or_else(|_| JsonValue::String(text.to_string()))
 }
 
 fn decode_columba_meta_bytes(

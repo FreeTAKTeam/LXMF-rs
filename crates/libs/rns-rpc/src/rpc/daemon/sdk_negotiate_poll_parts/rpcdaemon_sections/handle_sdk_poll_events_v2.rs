@@ -114,7 +114,14 @@ impl RpcDaemon {
             };
 
         if parsed.cursor.is_none() && event_rows.len() < parsed.max {
-            if let Some(gap_meta) = compute_stream_gap(dropped_count, oldest_seq) {
+            let gap_meta = match compute_stream_gap(dropped_count, oldest_seq) {
+                Ok(gap_meta) => gap_meta,
+                Err(reason) => {
+                    log::warn!("sdk poll: stream gap computation skipped: {reason}");
+                    None
+                }
+            };
+            if let Some(gap_meta) = gap_meta {
                 let gap_row = json!({
                         "event_id": format!("gap-{}", gap_meta.gap_seq_no),
                     "runtime_id": self.identity_hash,
