@@ -186,7 +186,6 @@ impl RnodeBleKissSession {
         writes
     }
 
-    #[must_use]
     pub fn id_beacon_write(&self) -> Result<Option<RnodeBleWrite>, &'static str> {
         let Some(beacon) = self.config.kiss.id_beacon.as_ref() else {
             return Ok(None);

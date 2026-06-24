@@ -400,9 +400,12 @@ fn parse_fuzzy_i64(value: &MsgPackValue) -> Result<i64, &'static str> {
     }
 }
 
+/// Announce costs parsed from app_data: `(stamp_cost, stamp_cost_flexibility, peering_cost)`.
+type AnnounceCosts = (Option<u32>, Option<u32>, Option<u32>);
+
 fn parse_announce_costs_from_app_data_hex(
     app_data_hex: Option<&str>,
-) -> Result<(Option<u32>, Option<u32>, Option<u32>), &'static str> {
+) -> Result<AnnounceCosts, &'static str> {
     let Some(raw_hex) = app_data_hex.map(str::trim).filter(|value| !value.is_empty()) else {
         return Ok((None, None, None));
     };

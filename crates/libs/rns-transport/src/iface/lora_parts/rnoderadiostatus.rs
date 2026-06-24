@@ -299,7 +299,6 @@ impl LoraConfig {
         }
     }
 
-    #[must_use]
     pub fn for_region(region: &str) -> Result<Option<Self>, &'static str> {
         let trimmed = region.trim().to_ascii_uppercase();
         let frequency_hz = match trimmed.as_str() {

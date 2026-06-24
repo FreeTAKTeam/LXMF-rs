@@ -131,26 +131,22 @@ impl<'de> Deserialize<'de> for PeerRecord {
             propagation_stamp_cost: wire
                 .propagation_stamp_cost
                 .as_ref()
-                .map(|v| parse_python_int_u32(v).ok())
-                .flatten()
+                .and_then(|v| parse_python_int_u32(v).ok())
                 .or_else(|| {
                     wire.target_stamp_cost
                         .as_ref()
-                        .map(|v| parse_python_int_u32(v).ok())
-                        .flatten()
+                        .and_then(|v| parse_python_int_u32(v).ok())
                 }),
             propagation_stamp_cost_flexibility: wire
                 .propagation_stamp_cost_flexibility
                 .as_ref()
-                .map(|v| parse_python_int_u32(v).ok())
-                .flatten()
+                .and_then(|v| parse_python_int_u32(v).ok())
                 .or_else(|| {
                     wire.stamp_cost_flexibility
                         .as_ref()
-                        .map(|v| parse_python_int_u32(v).ok())
-                        .flatten()
+                        .and_then(|v| parse_python_int_u32(v).ok())
                 }),
-            peering_cost: wire.peering_cost.as_ref().map(|v| parse_python_int_u32(v).ok()).flatten(),
+            peering_cost: wire.peering_cost.as_ref().and_then(|v| parse_python_int_u32(v).ok()),
             peering_key_stamp,
             peering_key_value,
             restored_handled_ids: wire
