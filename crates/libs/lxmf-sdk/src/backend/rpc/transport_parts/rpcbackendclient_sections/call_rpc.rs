@@ -7,10 +7,7 @@ impl RpcBackendClient {
     ) -> Result<JsonValue, SdkError> {
         let (headers, mtls_auth) = {
             let auth_guard = self.session_auth.read().expect("session_auth rwlock poisoned");
-            let mtls_auth = Self::mtls_for_session_auth(&auth_guard).map_err(|reason| {
-                SdkError::new(code::VALIDATION_INVALID_ARGUMENT, ErrorCategory::Validation, reason)
-            })?;
-            (self.headers_for_session_auth(&auth_guard), mtls_auth)
+            (self.headers_for_session_auth(&auth_guard), Self::mtls_for_session_auth(&auth_guard))
         };
         self.call_rpc_with_headers(method, params, mtls_auth.as_ref(), headers)
     }
@@ -74,10 +71,7 @@ impl RpcBackendClient {
     ) -> Result<JsonValue, SdkError> {
         let (headers, mtls_auth) = {
             let auth_guard = self.session_auth.read().expect("session_auth rwlock poisoned");
-            let mtls_auth = Self::mtls_for_session_auth(&auth_guard).map_err(|reason| {
-                SdkError::new(code::VALIDATION_INVALID_ARGUMENT, ErrorCategory::Validation, reason)
-            })?;
-            (self.headers_for_session_auth(&auth_guard), mtls_auth)
+            (self.headers_for_session_auth(&auth_guard), Self::mtls_for_session_auth(&auth_guard))
         };
         self.call_rpc_async_with_headers(method, params, mtls_auth.as_ref(), headers).await
     }

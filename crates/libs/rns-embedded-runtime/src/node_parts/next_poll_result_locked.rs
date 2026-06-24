@@ -210,18 +210,14 @@ fn driver_tick(inner: &Arc<StdNodeInner>, epoch: u64) -> bool {
 }
 
 #[cfg(feature = "std")]
-fn stop_driver_locked(state: &mut NodeState) -> Result<Option<JoinHandle<()>>, &'static str> {
-    let Some(driver) = state.driver.as_mut() else {
-        // No driver running: genuine absence — nothing was signalled and nothing to join.
-        return Ok(None);
-    };
-    // A driver is present: signal it to stop, then hand back its join handle if we still hold
-    // one. A `None` handle here is a legitimate state (handle not yet stored mid-start, or
-    // already taken by a prior stop — see the double-stop path), not a failure. The S signature
-    // threads an error channel so a future failing producer can surface it instead of folding
-    // it into the no-driver `Ok(None)` branch; there is no malformed state to report today.
+fn stop_driver_locked(state: &mut NodeState) -> Option<JoinHandle<()>> {
+    // Both `None` outcomes are genuine absence, not failure: no driver running, or a driver
+    // present whose join handle we no longer hold (not yet stored mid-start, or already taken
+    // by a prior stop — the double-stop path is a supported, tested flow). There is no error to
+    // surface, so this stays a plain `Option` (KEEP).
+    let driver = state.driver.as_mut()?;
     driver.stop_requested = true;
-    Ok(driver.handle.take())
+    driver.handle.take()
 }
 
 #[cfg(feature = "std")]

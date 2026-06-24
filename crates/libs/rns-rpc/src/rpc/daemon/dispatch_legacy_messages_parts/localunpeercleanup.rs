@@ -285,10 +285,10 @@ impl PeerSyncWantedIds {
         matches!(self, Self::Selected(_))
     }
 
-    fn selected_ids(&self) -> Result<Option<&[String]>, &'static str> {
+    fn selected_ids(&self) -> Option<&[String]> {
         match self {
-            Self::All => Ok(None),
-            Self::Selected(ids) => Ok(Some(ids.as_slice())),
+            Self::All => None,
+            Self::Selected(ids) => Some(ids.as_slice()),
         }
     }
 }
@@ -350,13 +350,7 @@ fn validate_peer_sync_wanted_ids_in_offer(
     transfer_limit_bytes: Option<usize>,
     sync_limit_bytes: Option<usize>,
 ) -> Result<(), std::io::Error> {
-    let selected = match wanted_ids {
-        Some(wanted) => wanted
-            .selected_ids()
-            .map_err(|reason| std::io::Error::new(std::io::ErrorKind::InvalidInput, reason))?,
-        None => None,
-    };
-    let Some(wanted_ids) = selected else {
+    let Some(wanted_ids) = wanted_ids.and_then(PeerSyncWantedIds::selected_ids) else {
         return Ok(());
     };
     let mut offerable_ids = std::collections::HashSet::with_capacity(pending_propagation.len());

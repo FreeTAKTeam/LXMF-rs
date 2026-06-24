@@ -57,7 +57,7 @@ impl EmbeddedNode {
     pub fn stop(&self) -> Result<(), NodeError> {
         #[cfg(feature = "std")]
         let handle = self.with_state(|state| {
-            let handle = stop_driver_locked(state).map_err(|_| NodeError::InternalError)?;
+            let handle = stop_driver_locked(state);
             if state.session.is_some() {
                 state.session = None;
                 signal_stopped(state);

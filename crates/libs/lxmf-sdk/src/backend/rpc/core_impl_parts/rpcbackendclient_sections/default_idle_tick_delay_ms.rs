@@ -40,9 +40,7 @@ impl RpcBackendClient {
     ) -> Result<NegotiationResponse, SdkError> {
         let session_auth = self.session_auth_from_request(&req)?;
         let headers = self.headers_for_session_auth(&session_auth);
-        let mtls_auth = Self::mtls_for_session_auth(&session_auth).map_err(|reason| {
-            SdkError::new(code::VALIDATION_INVALID_ARGUMENT, ErrorCategory::Validation, reason)
-        })?;
+        let mtls_auth = Self::mtls_for_session_auth(&session_auth);
         let rpc_backend = req.rpc_backend.as_ref().map(|config| {
             json!({
                 "listen_addr": config.listen_addr,
@@ -148,9 +146,7 @@ impl RpcBackendClient {
     ) -> Result<NegotiationResponse, SdkError> {
         let session_auth = self.session_auth_from_request(&req)?;
         let headers = self.headers_for_session_auth(&session_auth);
-        let mtls_auth = Self::mtls_for_session_auth(&session_auth).map_err(|reason| {
-            SdkError::new(code::VALIDATION_INVALID_ARGUMENT, ErrorCategory::Validation, reason)
-        })?;
+        let mtls_auth = Self::mtls_for_session_auth(&session_auth);
         let rpc_backend = req.rpc_backend.as_ref().map(|config| {
             json!({
                 "listen_addr": config.listen_addr,

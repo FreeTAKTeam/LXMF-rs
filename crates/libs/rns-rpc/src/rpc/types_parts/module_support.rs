@@ -285,10 +285,9 @@ impl<'de> Deserialize<'de> for PythonPeeringKey {
             where
                 A: serde::de::SeqAccess<'de>,
             {
-                let stamp = match sequence.next_element::<PythonPeeringKeyStamp>()? {
-                    Some(stamp) => stamp.into_bytes().map_err(serde::de::Error::custom)?,
-                    None => None,
-                };
+                let stamp = sequence
+                    .next_element::<PythonPeeringKeyStamp>()?
+                    .and_then(PythonPeeringKeyStamp::into_bytes);
                 let value = sequence.next_element::<JsonValue>()?;
                 Ok(PythonPeeringKey {
                     stamp,
@@ -308,8 +307,8 @@ impl<'de> Deserialize<'de> for PythonPeeringKey {
 struct PythonPeeringKeyStamp(Option<Vec<u8>>);
 
 impl PythonPeeringKeyStamp {
-    fn into_bytes(self) -> Result<Option<Vec<u8>>, &'static str> {
-        Ok(self.0)
+    fn into_bytes(self) -> Option<Vec<u8>> {
+        self.0
     }
 }
 
