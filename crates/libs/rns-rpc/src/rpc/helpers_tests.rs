@@ -160,6 +160,22 @@ fn rejects_python_invalid_delivery_stamp_costs_from_peer_data() {
 }
 
 #[test]
+fn treats_nil_delivery_stamp_cost_as_absent_not_malformed() {
+    // A no-cost announce encodes Nil in the stamp-cost slot; this must decode as Ok(None),
+    // not Err (which the legacy announce path logs as a spurious decode failure).
+    let app_data = rmp_serde::to_vec_named(&MsgPackValue::Array(vec![
+        MsgPackValue::Binary(b"Peer Name".to_vec()),
+        MsgPackValue::Nil,
+    ]))
+    .expect("encode app data");
+
+    assert_eq!(
+        parse_delivery_stamp_cost_from_app_data_hex(Some(hex::encode(app_data).as_str())),
+        Ok(None)
+    );
+}
+
+#[test]
 fn parse_fuzzy_u32_rejects_negative_integer() {
     // A negative advertised cost must be rejected, not clamped to 0 (which would be stored
     // as a real zero cost and confuse None-vs-Some(0) policy checks).

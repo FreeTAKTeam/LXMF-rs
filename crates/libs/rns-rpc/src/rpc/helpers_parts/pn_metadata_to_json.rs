@@ -120,8 +120,12 @@ fn parse_delivery_stamp_cost_from_app_data_hex(
     let Some(entries) = value.as_array() else {
         return Ok(None);
     };
+    // A no-cost announce encodes `Nil` in the stamp-cost slot; treat that (and an absent
+    // slot) as legitimate absence rather than a malformed value that would be logged as a
+    // decode failure.
     Ok(entries
         .get(1)
+        .filter(|value| !matches!(value, MsgPackValue::Nil))
         .map(parse_fuzzy_u32)
         .transpose()?
         .filter(|cost| (1..255).contains(cost)))
