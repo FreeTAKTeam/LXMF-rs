@@ -672,7 +672,10 @@ PY_SENDER_DIR="${TMP_ROOT}/python-sender"
 PY_SENDER_RNS_DIR="${TMP_ROOT}/python-sender-rns"
 HOOK_STATE_DIR="${TMP_ROOT}/hook-state"
 
-RUST_LOG="${TMP_ROOT}/rust-lxmd.log"
+RUST_LXMD_LOG="${TMP_ROOT}/rust-lxmd.log"
+# Delivery/resource traces are emitted at trace level; enable them for the rust
+# node so the resource-transfer assertions below can find them (overridable).
+RUST_LOG="${RUST_LOG:-reticulumd=trace,reticulum_rs_transport=trace}"
 PY_LOG="${TMP_ROOT}/python-lxmd.log"
 PY_REMOTE_STATUS_LOG="${TMP_ROOT}/python-remote-status.log"
 RUST_REMOTE_STATUS_LOG="${TMP_ROOT}/rust-remote-status.log"
@@ -916,11 +919,11 @@ EOF
 cargo build -p reticulumd --bin reticulumd --quiet
 cargo build -p lxmf-cli --bin lxmd --quiet
 
-SHELL="${HOST_BASH}" "${REPO_ROOT}/target/debug/lxmd" \
-  --config "${RUST_DIR}/launcher.toml" >"${RUST_LOG}" 2>&1 &
+RUST_LOG="${RUST_LOG}" SHELL="${HOST_BASH}" "${REPO_ROOT}/target/debug/lxmd" \
+  --config "${RUST_DIR}/launcher.toml" >"${RUST_LXMD_LOG}" 2>&1 &
 RUST_PID=$!
 
-if ! wait_for_file_pattern "${RUST_LOG}" "listening on http://|delivery destination hash=" "${TIMEOUT_SECS}"; then
+if ! wait_for_file_pattern "${RUST_LXMD_LOG}" "listening on http://|delivery destination hash=" "${TIMEOUT_SECS}"; then
   echo "Rust lxmd did not become ready" >&2
   exit 1
 fi
@@ -1078,7 +1081,7 @@ reason = closed.get("teardown_reason") or {}
 assert reason.get("name") == "initiator_closed", closed
 assert closed["initiator"] is True, closed
 PY
-      if ! wait_for_file_pattern "${RUST_LOG}" "link: close" "${TIMEOUT_SECS}"; then
+      if ! wait_for_file_pattern "${RUST_LXMD_LOG}" "link: close" "${TIMEOUT_SECS}"; then
         echo "Rust did not log link close after Python teardown" >&2
         exit 1
       fi
@@ -1099,7 +1102,7 @@ reason = closed.get("teardown_reason") or {}
 assert reason.get("name") == "initiator_closed", closed
 assert closed["initiator"] is False, closed
 PY
-      if ! wait_for_file_pattern "${RUST_LOG}" "link: close" "${TIMEOUT_SECS}"; then
+      if ! wait_for_file_pattern "${RUST_LXMD_LOG}" "link: close" "${TIMEOUT_SECS}"; then
         echo "Rust did not log link close after watchdog teardown" >&2
         exit 1
       fi
@@ -1109,7 +1112,7 @@ PY
   "${PYTHON_BIN}" - <<'PY' \
     "${REPORT_PATH}" \
     "${TMP_ROOT}" \
-    "${RUST_LOG}" \
+    "${RUST_LXMD_LOG}" \
     "${PY_LOG}" \
     "${PY_REMOTE_STATUS_LOG}" \
     "${RUST_REMOTE_STATUS_LOG}" \
@@ -1216,7 +1219,7 @@ write_report() {
   "${PYTHON_BIN}" - <<'PY' \
     "${REPORT_PATH}" \
     "${TMP_ROOT}" \
-    "${RUST_LOG}" \
+    "${RUST_LXMD_LOG}" \
     "${PY_LOG}" \
     "${PY_REMOTE_STATUS_LOG}" \
     "${RUST_REMOTE_STATUS_LOG}" \
@@ -1461,7 +1464,7 @@ PY
   "${PYTHON_BIN}" - <<'PY' \
     "${REPORT_PATH}" \
     "${TMP_ROOT}" \
-    "${RUST_LOG}" \
+    "${RUST_LXMD_LOG}" \
     "${PY_LOG}" \
     "${PY_REMOTE_STATUS_LOG}" \
     "${RUST_REMOTE_STATUS_LOG}" \
@@ -1682,7 +1685,7 @@ PY
   "${PYTHON_BIN}" - <<'PY' \
     "${REPORT_PATH}" \
     "${TMP_ROOT}" \
-    "${RUST_LOG}" \
+    "${RUST_LXMD_LOG}" \
     "${PY_LOG}" \
     "${PY_REMOTE_STATUS_LOG}" \
     "${RUST_REMOTE_STATUS_LOG}" \
@@ -1985,7 +1988,7 @@ PY
   "${PYTHON_BIN}" - <<'PY' \
     "${REPORT_PATH}" \
     "${TMP_ROOT}" \
-    "${RUST_LOG}" \
+    "${RUST_LXMD_LOG}" \
     "${PY_LOG}" \
     "${PY_REMOTE_STATUS_LOG}" \
     "${RUST_REMOTE_STATUS_LOG}" \
@@ -2261,7 +2264,7 @@ PY
   "${PYTHON_BIN}" - <<'PY' \
     "${REPORT_PATH}" \
     "${TMP_ROOT}" \
-    "${RUST_LOG}" \
+    "${RUST_LXMD_LOG}" \
     "${PY_LOG}" \
     "${PY_REMOTE_STATUS_LOG}" \
     "${RUST_REMOTE_STATUS_LOG}" \
@@ -2578,7 +2581,7 @@ PY
       echo "Rust daemon recorded resource failure despite Python stored-message evidence" >&2
       exit 1
     fi
-    assert_contains "${RUST_LOG}" "resource_hash=|sending: link resource|sent: link resource" "Rust resource transfer trace"
+    assert_contains "${RUST_LXMD_LOG}" "resource_hash=|sending: link resource|sent: link resource" "Rust resource transfer trace"
   elif [[ "${COMPAT_CASE}" == "propagated_rust_to_python" ]]; then
     if ! wait_rust_trace_status "${RUST_MESSAGE_ID}" "sent: propagated resource" "${TIMEOUT_SECS}"; then
       echo "Rust daemon did not record sent: propagated resource for propagated transfer" >&2
@@ -2588,7 +2591,7 @@ PY
       echo "Rust daemon recorded propagated resource failure despite Python evidence" >&2
       exit 1
     fi
-    assert_contains "${RUST_LOG}" "resource_hash=|sending: propagated resource|sent: propagated resource" "Rust propagated resource trace"
+    assert_contains "${RUST_LXMD_LOG}" "resource_hash=|sending: propagated resource|sent: propagated resource" "Rust propagated resource trace"
   fi
 
   if [[ -z "${HOOK_MESSAGE_FILE}" ]]; then
