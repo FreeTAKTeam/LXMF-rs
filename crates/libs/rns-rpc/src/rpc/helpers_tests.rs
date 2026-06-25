@@ -172,3 +172,39 @@ fn parse_fuzzy_u32_accepts_nonnegative_integer() {
     assert_eq!(parse_fuzzy_u32(&MsgPackValue::Integer(0_i64.into())).expect("zero"), 0);
     assert_eq!(parse_fuzzy_u32(&MsgPackValue::Integer(42_i64.into())).expect("value"), 42);
 }
+
+#[test]
+fn parse_propagation_limits_keep_transfer_when_sync_slot_malformed() {
+    // index 3 = transfer limit (valid), index 4 = sync limit (malformed). A bad sync slot
+    // must not erase the valid transfer limit (the caller collapses any Err to (None, None)).
+    let announce = rmp_serde::to_vec_named(&rmpv::Value::Array(vec![
+        rmpv::Value::Nil,
+        rmpv::Value::Nil,
+        rmpv::Value::Nil,
+        rmpv::Value::F64(50.0),
+        rmpv::Value::String("not-a-number".into()),
+    ]))
+    .expect("encode announce");
+    let (transfer, sync) =
+        parse_propagation_limits_from_app_data_hex(Some(hex::encode(announce).as_str()))
+            .expect("structural decode succeeds");
+    assert_eq!(transfer, Some(50_000));
+    assert_eq!(sync, None);
+}
+
+#[test]
+fn parse_propagation_enabled_preserved_for_minimal_array() {
+    // A minimal `[flag, timebase, enabled]` announce still carries the enabled flag at
+    // index 2; it must not be discarded for lacking later cost/metadata slots.
+    let announce = rmp_serde::to_vec_named(&rmpv::Value::Array(vec![
+        rmpv::Value::Boolean(true),
+        rmpv::Value::from(0),
+        rmpv::Value::Boolean(true),
+    ]))
+    .expect("encode announce");
+    assert_eq!(
+        parse_propagation_enabled_from_app_data_hex(Some(hex::encode(announce).as_str()))
+            .expect("decode succeeds"),
+        Some(true)
+    );
+}

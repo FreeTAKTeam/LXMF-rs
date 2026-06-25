@@ -461,28 +461,31 @@ fn parse_propagation_limits_from_app_data_hex(
         return Ok((None, None));
     };
 
-    let transfer_limit_bytes = entries
-        .get(3)
-        .map(parse_fuzzy_nonnegative_f64)
-        .transpose()?
-        .and_then(|limit| {
-            let bytes = limit * 1000.0;
-            (bytes.is_finite() && bytes <= u32::MAX as f64).then_some(bytes as u32)
-        });
-    let sync_raw = entries
-        .get(4)
-        .map(parse_fuzzy_nonnegative_f64)
-        .transpose()?
-        .and_then(|limit| {
-            let bytes = limit * 1000.0;
-            (bytes.is_finite() && bytes <= u32::MAX as f64).then_some(bytes as u32)
-        });
+    // Parse each limit slot independently: a malformed sibling slot must not erase a
+    // valid value (the caller collapses any Err into `(None, None)`). A per-slot parse
+    // failure is logged and treated as absent; structural failures above still propagate.
+    let transfer_limit_bytes = parse_propagation_limit_slot(entries.get(3), "transfer");
+    let sync_raw = parse_propagation_limit_slot(entries.get(4), "sync");
     let sync_limit_bytes = match (transfer_limit_bytes, sync_raw) {
         (Some(transfer), Some(sync)) if sync < transfer => Some(transfer),
         (_, sync) => sync,
     };
 
     Ok((transfer_limit_bytes, sync_limit_bytes))
+}
+
+fn parse_propagation_limit_slot(slot: Option<&MsgPackValue>, label: &str) -> Option<u32> {
+    let raw = slot?;
+    match parse_fuzzy_nonnegative_f64(raw) {
+        Ok(limit) => {
+            let bytes = limit * 1000.0;
+            (bytes.is_finite() && bytes <= u32::MAX as f64).then_some(bytes as u32)
+        }
+        Err(err) => {
+            log::warn!("[daemon] ignoring malformed propagation {label} limit: {err}");
+            None
+        }
+    }
 }
 
 fn parse_propagation_timebase_from_app_data_hex(
@@ -512,7 +515,9 @@ fn parse_propagation_enabled_from_app_data_hex(
     let Some(entries) = value.as_array() else {
         return Ok(None);
     };
-    if entries.len() < 6 {
+    // The enabled flag lives at index 2 (`[flag, timebase, enabled, ...]`); gate on that
+    // slot rather than a later cost slot so minimal announces keep their flag.
+    if entries.len() < 3 {
         return Ok(None);
     }
     Ok(entries.get(2).map(parse_bool_capability_flag))
