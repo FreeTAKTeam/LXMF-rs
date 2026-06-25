@@ -127,6 +127,16 @@ fn rnode_ble_command_monitor_rejects_missing_startup_responses_after_deadline() 
 }
 
 #[test]
+fn rnode_ble_command_monitor_keeps_degraded_fallback_session() {
+    let config = LoraConfig::us915_default();
+    let mut monitor = RnodeBleCommandMonitor::new(config, Duration::ZERO);
+
+    monitor.accept_degraded_startup();
+
+    monitor.validate_startup_deadline().expect("fallback startup remains connected");
+}
+
+#[test]
 fn rnode_ble_command_monitor_rejects_fatal_hardware_errors() {
     let config = LoraConfig::us915_default();
     let mut monitor = RnodeBleCommandMonitor::new(config, Duration::from_secs(1));
@@ -149,9 +159,11 @@ fn native_rnode_ble_settings_use_profile_defaults() {
         RNODE_BLE_SCAN_TIMEOUT,
     };
 
-    let settings = NativeRnodeBleSettings::for_peripheral("RNode 1234");
+    let settings =
+        NativeRnodeBleSettings::for_peripheral("RNode 1234").with_peripheral_alias("RNode Backup");
 
     assert_eq!(settings.peripheral_id, "RNode 1234");
+    assert_eq!(settings.peripheral_aliases, vec!["RNode Backup".to_string()]);
     assert_eq!(settings.service_uuid.to_string(), RNODE_BLE_SERVICE_UUID.to_ascii_lowercase());
     assert_eq!(
         settings.write_uuid.to_string(),

@@ -23,8 +23,14 @@ use btleplug::api::{
     ScanFilter, ValueNotification, WriteType,
 };
 
+#[cfg(all(feature = "rnode-ble", target_os = "android"))]
+use btleplug::api::BDAddr;
+
 #[cfg(feature = "rnode-ble")]
 use btleplug::platform::{Adapter, Manager, Peripheral};
+
+#[cfg(all(feature = "rnode-ble", target_os = "android"))]
+use btleplug::platform::PeripheralId;
 
 #[cfg(feature = "rnode-ble")]
 use futures::{stream::Stream, StreamExt};
@@ -158,6 +164,7 @@ pub trait RnodeBleBackend {
 pub struct NativeRnodeBleSettings {
     pub adapter: Option<String>,
     pub peripheral_id: String,
+    pub peripheral_aliases: Vec<String>,
     pub service_uuid: Uuid,
     pub write_uuid: Uuid,
     pub notify_uuid: Uuid,
@@ -173,6 +180,7 @@ impl NativeRnodeBleSettings {
         Self {
             adapter: None,
             peripheral_id: peripheral_id.into(),
+            peripheral_aliases: Vec::new(),
             service_uuid: parse_rnode_uuid(RNODE_BLE_SERVICE_UUID),
             write_uuid: parse_rnode_uuid(RNODE_BLE_WRITE_CHARACTERISTIC_UUID),
             notify_uuid: parse_rnode_uuid(RNODE_BLE_TX_CHARACTERISTIC_UUID),
@@ -185,6 +193,20 @@ impl NativeRnodeBleSettings {
     #[must_use]
     pub fn with_adapter(mut self, adapter: impl Into<String>) -> Self {
         self.adapter = Some(adapter.into());
+        self
+    }
+
+    #[must_use]
+    pub fn with_peripheral_alias(mut self, alias: impl Into<String>) -> Self {
+        let alias = alias.into();
+        if !alias.trim().is_empty()
+            && !self.peripheral_aliases.iter().any(|existing| {
+                native_rnode_identifier_matches(existing, &alias)
+                    || native_rnode_identifier_matches(&self.peripheral_id, &alias)
+            })
+        {
+            self.peripheral_aliases.push(alias);
+        }
         self
     }
 }
@@ -290,9 +312,14 @@ impl NativeRnodeBleBackend {
     async fn scan_for_peripheral(
         adapter: &Adapter,
         settings: &NativeRnodeBleSettings,
+        allow_service_uuid_match: bool,
     ) -> Result<Peripheral, String> {
         adapter
-            .start_scan(ScanFilter::default())
+            .start_scan(if allow_service_uuid_match {
+                ScanFilter { services: vec![settings.service_uuid] }
+            } else {
+                ScanFilter::default()
+            })
             .await
             .map_err(|err| format!("start BLE scan: {err}"))?;
         let deadline = tokio::time::Instant::now() + settings.scan_timeout;
@@ -300,11 +327,21 @@ impl NativeRnodeBleBackend {
             for peripheral in
                 adapter.peripherals().await.map_err(|err| format!("list peripherals: {err}"))?
             {
-                if rnode_peripheral_matches(&peripheral, &settings.peripheral_id).await? {
+                if rnode_peripheral_matches(
+                    &peripheral,
+                    &settings.peripheral_id,
+                    &settings.peripheral_aliases,
+                    settings.service_uuid,
+                    allow_service_uuid_match,
+                )
+                .await?
+                {
+                    Self::stop_scan_after_selection(adapter).await;
                     return Ok(peripheral);
                 }
             }
             if tokio::time::Instant::now() >= deadline {
+                Self::stop_scan_after_selection(adapter).await;
                 return Err(format!(
                     "scan timeout waiting for RNode BLE peripheral_id={}",
                     settings.peripheral_id
@@ -312,6 +349,48 @@ impl NativeRnodeBleBackend {
             }
             sleep(Duration::from_millis(200)).await;
         }
+    }
+
+    async fn stop_scan_after_selection(adapter: &Adapter) {
+        if let Err(err) = adapter.stop_scan().await {
+            log::debug!("RNode BLE stop scan after selection failed err={err}");
+        }
+    }
+
+    #[cfg(target_os = "android")]
+    async fn configured_peripheral(
+        adapter: &Adapter,
+        settings: &NativeRnodeBleSettings,
+    ) -> Result<Option<Peripheral>, String> {
+        let Ok(address) = settings.peripheral_id.parse::<BDAddr>() else {
+            return Ok(None);
+        };
+        let peripheral_id = PeripheralId::from(address);
+        match adapter.add_peripheral(&peripheral_id).await {
+            Ok(peripheral) => {
+                log::info!(
+                    "RNode BLE using configured Android paired peripheral_id={}",
+                    settings.peripheral_id
+                );
+                Ok(Some(peripheral))
+            }
+            Err(err) => {
+                log::warn!(
+                    "RNode BLE configured Android peripheral unavailable peripheral_id={} err={}",
+                    settings.peripheral_id,
+                    err
+                );
+                Ok(None)
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "android"))]
+    async fn configured_peripheral(
+        _adapter: &Adapter,
+        _settings: &NativeRnodeBleSettings,
+    ) -> Result<Option<Peripheral>, String> {
+        Ok(None)
     }
 
     fn resolve_characteristics(&mut self) -> Result<(), String> {
@@ -354,6 +433,30 @@ impl NativeRnodeBleBackend {
         self.notify_char = Some(notify_char);
         Ok(())
     }
+
+    async fn connect_selected_peripheral(
+        peripheral: &Peripheral,
+        connect_timeout: Duration,
+    ) -> Result<(), String> {
+        timeout(connect_timeout, async {
+            let connected = peripheral
+                .is_connected()
+                .await
+                .map_err(|err| format!("read BLE connection state: {err}"))?;
+            if !connected {
+                peripheral
+                    .connect()
+                    .await
+                    .map_err(|err| format!("connect peripheral: {err}"))?;
+            }
+            peripheral
+                .discover_services()
+                .await
+                .map_err(|err| format!("discover GATT services: {err}"))
+        })
+        .await
+        .map_err(|_| format!("connect timeout after {} ms", connect_timeout.as_millis()))?
+    }
 }
 
 #[cfg(feature = "rnode-ble")]
@@ -365,25 +468,52 @@ impl RnodeBleBackend for NativeRnodeBleBackend {
     async fn connect(&mut self) -> Result<(), String> {
         self.clear_session_state();
         let adapter = Self::select_adapter(&self.settings).await?;
-        let peripheral = Self::scan_for_peripheral(&adapter, &self.settings).await?;
-
-        timeout(self.settings.connect_timeout, async {
-            let connected = peripheral
-                .is_connected()
-                .await
-                .map_err(|err| format!("read BLE connection state: {err}"))?;
-            if !connected {
-                peripheral.connect().await.map_err(|err| format!("connect peripheral: {err}"))?;
+        let peripheral = match Self::configured_peripheral(&adapter, &self.settings).await? {
+            Some(peripheral) => {
+                match Self::connect_selected_peripheral(&peripheral, self.settings.connect_timeout)
+                    .await
+                {
+                    Ok(()) => peripheral,
+                    Err(configured_err) => {
+                        log::warn!(
+                            "RNode BLE configured Android peripheral connect failed peripheral_id={} err={}; falling back to BLE scan",
+                            self.settings.peripheral_id,
+                            configured_err
+                        );
+                        if let Err(err) = peripheral.disconnect().await {
+                            log::debug!(
+                                "RNode BLE configured Android peripheral cleanup failed peripheral_id={} err={}",
+                                self.settings.peripheral_id,
+                                err
+                            );
+                        }
+                        let scanned = Self::scan_for_peripheral(
+                            &adapter,
+                            &self.settings,
+                            false,
+                        )
+                        .await
+                        .map_err(|scan_err| {
+                            format!("{configured_err}; fallback scan failed: {scan_err}")
+                        })?;
+                        Self::connect_selected_peripheral(&scanned, self.settings.connect_timeout)
+                            .await
+                            .map_err(|scan_err| {
+                                format!(
+                                    "{configured_err}; fallback scanned peripheral connect failed: {scan_err}"
+                                )
+                            })?;
+                        scanned
+                    }
+                }
             }
-            peripheral
-                .discover_services()
-                .await
-                .map_err(|err| format!("discover GATT services: {err}"))
-        })
-        .await
-        .map_err(|_| {
-            format!("connect timeout after {} ms", self.settings.connect_timeout.as_millis())
-        })??;
+            None => {
+                let scanned =
+                    Self::scan_for_peripheral(&adapter, &self.settings, false).await?;
+                Self::connect_selected_peripheral(&scanned, self.settings.connect_timeout).await?;
+                scanned
+            }
+        };
 
         self.adapter = Some(adapter);
         self.peripheral = Some(peripheral);

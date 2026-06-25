@@ -63,6 +63,10 @@ impl RnodeBleCommandMonitor {
         self.startup_deadline = Some(Instant::now() + timeout);
     }
 
+    pub fn accept_degraded_startup(&mut self) {
+        self.startup_deadline = None;
+    }
+
     #[must_use]
     pub fn online(&self) -> bool {
         self.lora.online()
