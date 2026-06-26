@@ -24,7 +24,7 @@ impl InterfaceConfig {
         Ok(())
     }
 
-    fn normalize_serial_aliases(&mut self, index: usize) -> Result<(), String> {
+    fn normalize_serial_aliases(&mut self, index: usize, original_kind: &str) -> Result<(), String> {
         if self.baud_rate.is_none() {
             self.baud_rate = self
                 .take_u64_alias_for_kind("speed", index, "serial")?
@@ -33,7 +33,8 @@ impl InterfaceConfig {
                         format!("interfaces[{index}].speed must fit in u32 for serial")
                     })
                 })
-                .transpose()?;
+                .transpose()?
+                .or_else(|| (original_kind == "SerialInterface").then_some(9_600));
         } else {
             let _ = self.take_u64_alias_for_kind("speed", index, "serial")?;
         }

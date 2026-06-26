@@ -84,6 +84,8 @@ pub struct InterfaceConfig {
     #[serde(default)]
     pub enabled: Option<bool>,
     #[serde(default)]
+    pub interface_enabled: Option<bool>,
+    #[serde(default)]
     pub interface_mode: Option<String>,
     #[serde(default)]
     pub mode: Option<String>,
@@ -235,7 +237,7 @@ impl DaemonConfig {
     pub fn enabled_tcp_clients(&self) -> Vec<&InterfaceConfig> {
         self.interfaces
             .iter()
-            .filter(|iface| iface.enabled.unwrap_or(false) && iface.kind == "tcp_client")
+            .filter(|iface| iface.enabled() && iface.kind == "tcp_client")
             .collect()
     }
 
@@ -253,7 +255,7 @@ impl DaemonConfig {
     pub fn enabled_tcp_servers(&self) -> Vec<&InterfaceConfig> {
         self.interfaces
             .iter()
-            .filter(|iface| iface.enabled.unwrap_or(false) && iface.kind == "tcp_server")
+            .filter(|iface| iface.enabled() && iface.kind == "tcp_server")
             .collect()
     }
 

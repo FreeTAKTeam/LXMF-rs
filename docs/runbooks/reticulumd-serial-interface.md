@@ -33,9 +33,11 @@ interfaces = [
 ```
 
 Reticulum-style serial configs are also accepted for migration. `type =
-"SerialInterface"` normalizes to `serial`; `port` maps to `device`, `speed`
-maps to `baud_rate`, `databits` maps to `data_bits`, and `stopbits` maps to
-`stop_bits`:
+"SerialInterface"` normalizes to `serial`; `interface_enabled` is accepted as
+an alias for enabling the interface, `port` maps to `device`, `speed` maps to
+`baud_rate`, `databits` maps to `data_bits`, and `stopbits` maps to
+`stop_bits`. If `speed`/`baud_rate` is omitted on a `SerialInterface` config,
+the Python default of `9600` is used.
 
 ```toml
 interfaces = [

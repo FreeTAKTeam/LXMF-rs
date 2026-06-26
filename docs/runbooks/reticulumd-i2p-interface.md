@@ -92,6 +92,9 @@ status consumers can observe peer connection, stale, reconnecting, timeout,
 and counter changes without restarting the daemon.
 Closed incoming peer rows are retained only as a bounded recent history, so
 repeated transient inbound sessions cannot grow runtime status indefinitely.
+When the parent I2P interface stops, configured and accepted virtual peer
+children are removed from the interface manager, their route entries are
+cleared, and runtime peer rows are marked `closed`.
 
 Current states are `configured`, `connecting`, `connected`, `listening`,
 `reconnecting`, `stale`, and `closed`.

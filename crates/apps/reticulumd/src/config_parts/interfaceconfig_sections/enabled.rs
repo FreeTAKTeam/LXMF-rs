@@ -1,7 +1,7 @@
 impl InterfaceConfig {
 
     pub fn enabled(&self) -> bool {
-        self.enabled.unwrap_or(false)
+        self.enabled.unwrap_or(false) || self.interface_enabled.unwrap_or(false)
     }
 
     pub fn outgoing(&self) -> bool {
@@ -417,7 +417,7 @@ impl InterfaceConfig {
             self.normalize_auto_aliases(index)?;
         }
         if self.kind == "serial" {
-            self.normalize_serial_aliases(index)?;
+            self.normalize_serial_aliases(index, original_kind)?;
         }
         if self.kind == "weave" {
             self.normalize_weave_aliases(index)?;

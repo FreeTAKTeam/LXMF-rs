@@ -263,6 +263,17 @@ impl I2pRuntimeStatus {
         self.prune_closed_incoming_peers();
     }
 
+    pub fn mark_iface_closed(&mut self, iface: AddressHash) {
+        let incoming_key = format!("incoming:{iface}");
+        if self.peers.contains_key(&incoming_key) {
+            self.mark_incoming_closed(iface);
+            return;
+        }
+        for peer in self.peers.values_mut().filter(|peer| peer.iface == Some(iface)) {
+            peer.state = I2pTunnelState::Closed;
+        }
+    }
+
     pub fn mark_accept_listening(&mut self) {
         self.accept_state = I2pTunnelState::Listening;
         self.last_accept_error = None;
@@ -613,6 +624,7 @@ impl I2pInterface {
         }
 
         iface_stop.cancel();
+        cleanup_i2p_peer_routes(&iface_manager, &peer_routes, &runtime_status).await;
     }
 }
 
@@ -698,6 +710,33 @@ async fn run_i2p_peer_loop(
         .await;
         let _ = status_task.await;
         log::info!("I2P SAM stream disconnected peer={} iface={}", peer, iface_address);
+    }
+}
+
+async fn cleanup_i2p_peer_routes(
+    iface_manager: &Arc<tokio::sync::Mutex<InterfaceManager>>,
+    peer_routes: &Arc<
+        tokio::sync::Mutex<BTreeMap<AddressHash, tokio::sync::mpsc::Sender<TxMessage>>>,
+    >,
+    runtime_status: &Arc<std::sync::Mutex<I2pRuntimeStatus>>,
+) {
+    let ifaces = {
+        let mut routes = peer_routes.lock().await;
+        let ifaces = routes.keys().copied().collect::<Vec<_>>();
+        routes.clear();
+        ifaces
+    };
+
+    if ifaces.is_empty() {
+        return;
+    }
+
+    for iface in &ifaces {
+        let _ = iface_manager.lock().await.stop_interface(*iface);
+    }
+    let mut status = runtime_status.lock().expect("i2p runtime status mutex poisoned");
+    for iface in ifaces {
+        status.mark_iface_closed(iface);
     }
 }
 
@@ -1273,13 +1312,17 @@ fn sam_session_id(iface_address: AddressHash) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        accept_sam_stream, base32_no_pad_lower, connectable_session_destination_with_identity,
-        create_sam_session, i2p_b32_from_private_destination, i2p_new_format_key_stem,
-        i2p_old_format_key_stem, i2p_private_key_new_format_path, i2p_private_key_old_format_path,
+        accept_sam_stream, base32_no_pad_lower, cleanup_i2p_peer_routes,
+        connectable_session_destination_with_identity, create_sam_session,
+        i2p_b32_from_private_destination, i2p_new_format_key_stem, i2p_old_format_key_stem,
+        i2p_private_key_new_format_path, i2p_private_key_old_format_path,
         i2p_private_key_path_with_identity, open_sam_stream, HdlcStreamEvent, I2pInterface,
         I2pRuntimeStatus, I2pTunnelState, I2P_CERT_LEN_OFFSET, I2P_DEST_PREFIX_LEN,
         I2P_MAX_CLOSED_INCOMING_PEERS,
     };
+    use std::collections::BTreeMap;
+    use std::sync::Arc;
+
     use base64::Engine;
     use sha2::Digest;
     use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
@@ -1384,6 +1427,55 @@ mod tests {
         assert!(!peer_rows.iter().any(|row| row["peer"].as_str() == Some("closed-0")));
         assert!(!peer_rows.iter().any(|row| row["peer"].as_str() == Some("closed-3")));
         assert!(peer_rows.iter().any(|row| row["peer"].as_str() == Some("closed-4")));
+    }
+
+    #[tokio::test]
+    async fn i2p_parent_shutdown_cleans_registered_virtual_peer_ifaces() {
+        let iface_manager =
+            Arc::new(tokio::sync::Mutex::new(crate::iface::InterfaceManager::new(8)));
+        let parent_iface = {
+            let mut manager = iface_manager.lock().await;
+            manager.new_channel_with_role(8, crate::iface::IfaceRole::Multicast).address
+        };
+        let outbound_iface = iface_manager
+            .lock()
+            .await
+            .register_virtual_iface(parent_iface, crate::iface::IfaceRole::VirtualUnicast)
+            .expect("outbound virtual iface");
+        let incoming_iface = iface_manager
+            .lock()
+            .await
+            .register_virtual_iface(parent_iface, crate::iface::IfaceRole::VirtualUnicast)
+            .expect("incoming virtual iface");
+        let (outbound_tx, _outbound_rx) = tokio::sync::mpsc::channel(1);
+        let (incoming_tx, _incoming_rx) = tokio::sync::mpsc::channel(1);
+        let peer_routes = Arc::new(tokio::sync::Mutex::new(BTreeMap::from([
+            (outbound_iface, outbound_tx),
+            (incoming_iface, incoming_tx),
+        ])));
+        let peers = vec!["configured-peer.b32.i2p".to_string()];
+        let runtime_status = Arc::new(std::sync::Mutex::new(I2pRuntimeStatus::new(
+            "127.0.0.1:7656".to_string(),
+            true,
+            &peers,
+        )));
+        {
+            let mut status = runtime_status.lock().expect("i2p runtime status");
+            status.mark_outbound_connected(&peers[0], outbound_iface);
+            status.mark_incoming_connected("incoming-destination", incoming_iface);
+        }
+
+        cleanup_i2p_peer_routes(&iface_manager, &peer_routes, &runtime_status).await;
+
+        assert!(peer_routes.lock().await.is_empty());
+        let manager = iface_manager.lock().await;
+        assert_eq!(manager.role(&outbound_iface), None);
+        assert_eq!(manager.role(&incoming_iface), None);
+        drop(manager);
+        let status = runtime_status.lock().expect("i2p runtime status");
+        assert_eq!(status.peers[&peers[0]].state, I2pTunnelState::Closed);
+        let incoming_key = format!("incoming:{incoming_iface}");
+        assert_eq!(status.peers[&incoming_key].state, I2pTunnelState::Closed);
     }
 
     #[tokio::test]

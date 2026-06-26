@@ -26,6 +26,22 @@ interfaces = [
 }
 
 #[test]
+fn parses_reticulum_interface_enabled_alias() {
+    let input = r#"
+interfaces = [
+  { type = "TCPClientInterface", interface_enabled = true, name = "python-tcp-client", target_host = "rmap.world", target_port = 4242 },
+  { type = "TCPClientInterface", enabled = false, interface_enabled = false, name = "disabled", target_host = "example.org", target_port = 4242 }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse interface_enabled alias");
+
+    assert!(cfg.interfaces[0].enabled());
+    assert!(!cfg.interfaces[1].enabled());
+    assert_eq!(cfg.enabled_tcp_clients().len(), 1);
+    assert_eq!(cfg.tcp_client_endpoints(), vec![("rmap.world".to_string(), 4242)]);
+}
+
+#[test]
 fn parses_reticulum_tcp_client_interface_aliases() {
     let input = r#"
 interfaces = [
@@ -672,6 +688,23 @@ interfaces = [
     assert_eq!(settings["data_bits"], 7);
     assert_eq!(settings["parity"], "N");
     assert_eq!(settings["stop_bits"], 2);
+}
+
+#[test]
+fn parses_reticulum_serial_interface_default_speed() {
+    let input = r#"
+interfaces = [
+  { type = "SerialInterface", interface_enabled = true, name = "python-serial", port = "/dev/ttyUSB0" }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse Python SerialInterface default speed");
+    let iface = &cfg.interfaces[0];
+
+    assert!(iface.enabled());
+    assert_eq!(iface.kind, "serial");
+    assert_eq!(iface.device.as_deref(), Some("/dev/ttyUSB0"));
+    assert_eq!(iface.baud_rate, Some(9600));
+    assert_eq!(iface.settings_json().expect("settings")["baud_rate"], 9600);
 }
 
 #[test]

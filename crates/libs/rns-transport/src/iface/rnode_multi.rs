@@ -295,6 +295,21 @@ impl RNodeMultiInterface {
 
         update_rnode_multi_runtime_state(&runtime_status, "stopped", None);
         iface_stop.cancel();
+        cleanup_rnode_multi_virtual_ifaces(&iface_manager, &vport_map).await;
+    }
+}
+
+async fn cleanup_rnode_multi_virtual_ifaces(
+    iface_manager: &Arc<tokio::sync::Mutex<InterfaceManager>>,
+    vport_map: &BTreeMap<AddressHash, u8>,
+) {
+    if vport_map.is_empty() {
+        return;
+    }
+
+    let mut manager = iface_manager.lock().await;
+    for iface in vport_map.keys() {
+        let _ = manager.stop_interface(*iface);
     }
 }
 
@@ -1138,7 +1153,7 @@ mod tests {
     use crate::buffer::OutputBuffer;
     use crate::hash::AddressHash;
     use crate::iface::lora::{CMD_SF, CMD_STAT_CHTM, CMD_STAT_PHYPRM, CMD_STAT_RSSI, CMD_STAT_SNR};
-    use crate::iface::{TxMessage, TxMessageType};
+    use crate::iface::{IfaceRole, InterfaceManager, TxMessage, TxMessageType};
     use crate::kiss::decode_frames;
     use crate::packet::Packet;
     use crate::serde::Serialize;
@@ -1182,6 +1197,32 @@ mod tests {
         status.accept_command(CMD_MCU, &[0x01]).expect("mcu");
         status.accept_command(CMD_INTERFACES, &[0, 0x11, 1, 0x21]).expect("interfaces");
         status
+    }
+
+    #[tokio::test]
+    async fn rnode_multi_parent_shutdown_cleans_registered_virtual_vport_ifaces() {
+        let iface_manager = Arc::new(tokio::sync::Mutex::new(InterfaceManager::new(8)));
+        let parent_iface = {
+            let mut manager = iface_manager.lock().await;
+            manager.new_channel_with_role(8, IfaceRole::Multicast).address
+        };
+        let first_child = iface_manager
+            .lock()
+            .await
+            .register_virtual_iface(parent_iface, IfaceRole::VirtualUnicast)
+            .expect("first child iface");
+        let second_child = iface_manager
+            .lock()
+            .await
+            .register_virtual_iface(parent_iface, IfaceRole::VirtualUnicast)
+            .expect("second child iface");
+        let vport_map = BTreeMap::from([(first_child, 2), (second_child, 3)]);
+
+        cleanup_rnode_multi_virtual_ifaces(&iface_manager, &vport_map).await;
+
+        let manager = iface_manager.lock().await;
+        assert_eq!(manager.role(&first_child), None);
+        assert_eq!(manager.role(&second_child), None);
     }
 
     #[test]

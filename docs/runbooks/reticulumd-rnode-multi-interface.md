@@ -142,12 +142,14 @@ Shutdown iterates each child vport and writes:
 3. RNode leave-host for that selected vport.
 
 The shutdown sequence is best-effort; the stream is flushed before the shared
-serial session closes.
+serial session closes. When the parent RNodeMulti interface stops, configured
+virtual vport children are also stopped and removed from the interface manager
+so stale child routes do not remain after parent shutdown.
 
 ## Known Gaps
 
-- `I2PInterface` has a separate in-progress outbound SAM peer slice;
-  connectable/server tunnel parity is not complete.
+- `I2PInterface` has a separate in-progress SAM peer/connectable slice;
+  prepared-host production evidence is not complete.
 - `WeaveInterface` has a separate in-progress WDCL/HDLC endpoint slice; full
   display/stat and hardware parity is not complete.
 - Selected-vport radio command/status bookkeeping, an initial exported
