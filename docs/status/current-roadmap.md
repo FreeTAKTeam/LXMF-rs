@@ -71,7 +71,9 @@ The project is best described by capability level:
   responses to the matching child status record, and daemon/RPC snapshots
   refresh the `_runtime.rnode_multi.radio_status` schema from the
   transport-side runtime handle, including stream/probe state and last error
-  reporting for absent or failing hardware.
+  reporting for absent or failing hardware. Display-capable ESP32/NRF52
+  devices get Python-style external-framebuffer disable during teardown before
+  per-vport radio-off and leave-host payload `0xff` frames.
 - Ordinary serial/TCP and feature-gated BLE RNodeInterface status now refreshes
   the transport-side RNode probe/radio state into daemon/RPC
   `_runtime.lora.rnode_status`; compact `rnstatus-rs` output summarizes

@@ -19,6 +19,9 @@ production-complete RNodeMulti parity claim.
 - Startup probes: baseline validation now covers hardware detect, firmware
   version `>= 1.74`, platform, MCU, `CMD_INTERFACES` discovery, and configured
   vports reported by the device
+- Display-aware teardown: ESP32 and NRF52 platforms detected during startup
+  probe get Python-style external-framebuffer disable before per-vport
+  shutdown frames
 - Runtime status: selected-vport command responses update per-vport radio
   status bookkeeping in the transport runtime; the same status payload reports
   stream/probe state and the last open/probe/init/read error
@@ -200,9 +203,11 @@ directory.
 
 Shutdown iterates each child vport and writes:
 
-1. KISS `CMD_SEL_INT` with the child vport.
-2. Radio-state-off for that selected vport.
-3. RNode leave-host for that selected vport.
+1. For display-capable ESP32/NRF52 devices detected during startup probe,
+   external-framebuffer disable.
+2. KISS `CMD_SEL_INT` with the child vport.
+3. Radio-state-off for that selected vport.
+4. RNode leave-host payload `0xff` for that selected vport.
 
 The shutdown sequence is best-effort; the stream is flushed before the shared
 serial session closes. When the parent RNodeMulti interface stops, configured

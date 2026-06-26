@@ -100,10 +100,12 @@ placeholders:
   `CMD_INTERFACES` discovery, hardware-reported configured vports, and
   selected-vport radio command/status bookkeeping. Parent-level Python
   `id_callsign`/`id_interval` settings fan out raw callsign ID beacons on
-  outgoing subinterfaces after first traffic. Daemon/RPC snapshots refresh over
-  the `radio_status` runtime metadata schema, including stream/probe state and
-  last-error reporting, with an opt-in prepared-host smoke harness for serial
-  or TCP RNodeMulti devices.
+  outgoing subinterfaces after first traffic. Display-capable ESP32/NRF52
+  devices get Python-style external-framebuffer disable during teardown before
+  per-vport radio-off and leave-host payload `0xff` frames. Daemon/RPC
+  snapshots refresh over the `radio_status` runtime metadata schema, including
+  stream/probe state and last-error reporting, with an opt-in prepared-host
+  smoke harness for serial or TCP RNodeMulti devices.
 - Shared serial Weave baseline with WDCL over HDLC framing, discovery
   handshake response, endpoint event learning, virtual peer child interfaces,
   inbound endpoint packet routing, direct endpoint command writes,
@@ -150,10 +152,12 @@ shared serial/TCP vport routing slice exists and startup validates detect,
 firmware `>= 1.74`, platform, MCU, `CMD_INTERFACES`, and hardware-reported
 configured vports. Selected-vport radio status bookkeeping and live daemon/RPC
 `radio_status` refresh exist, including stream/probe state and last-error
-reporting, and `rnstatus-rs` renders a compact human summary of that state.
-An opt-in prepared-host smoke harness now records serial/TCP RNodeMulti
-evidence under `target/rnode-multi-hil/`. Full prepared-host hardware
-validation across devices and broader production parity are still pending.
+reporting, display-capable teardown disables the external framebuffer before
+per-vport radio-off/leave frames, and `rnstatus-rs` renders a compact human
+summary of that state. An opt-in prepared-host smoke harness now records
+serial/TCP RNodeMulti evidence under `target/rnode-multi-hil/`. Full
+prepared-host hardware validation across devices and broader production parity
+are still pending.
 `WeaveInterface` is also tracked as an in-progress family: WDCL/HDLC endpoint
 packet routing, target-scoped display-frame capture, CPU/task/memory stat
 parsing, daemon/RPC status refresh, and compact `rnstatus-rs` human summaries

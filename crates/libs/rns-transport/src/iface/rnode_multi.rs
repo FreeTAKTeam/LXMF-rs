@@ -11,14 +11,14 @@ use tokio_util::sync::CancellationToken;
 use crate::buffer::{InputBuffer, OutputBuffer};
 use crate::hash::AddressHash;
 use crate::iface::kiss::{KissIdBeaconConfig, KISS_READ_FRAME_TIMEOUT};
-use crate::kiss::{encode_command_frame, KissCommand, KissFrame, KissStreamDecoder, FEND};
+use crate::kiss::{encode_command_frame, KissCommand, KissFrame, KissStreamDecoder};
 use crate::packet::Packet;
 use crate::serde::Serialize;
 
 use super::lora::{
-    LoraConfig, RNodeRadioStatus, CMD_DETECT, CMD_FW_VERSION, CMD_LEAVE, CMD_MCU, CMD_PLATFORM,
-    CMD_RADIO_STATE, CMD_STAT_CHTM, CMD_STAT_PHYPRM, DETECT_REQ, DETECT_RESP, RADIO_STATE_OFF,
-    RADIO_STATE_ON,
+    LoraConfig, RNodeRadioStatus, CMD_DETECT, CMD_FB_EXT, CMD_FW_VERSION, CMD_LEAVE, CMD_MCU,
+    CMD_PLATFORM, CMD_RADIO_STATE, CMD_STAT_CHTM, CMD_STAT_PHYPRM, DETECT_REQ, DETECT_RESP,
+    PLATFORM_ESP32, PLATFORM_NRF52, RADIO_STATE_OFF, RADIO_STATE_ON,
 };
 use super::{
     IfaceRole, IfaceSource, Interface, InterfaceContext, InterfaceManager, RxMessage, TxMessage,
@@ -749,6 +749,11 @@ impl RNodeMultiProbeStatus {
             .collect::<Vec<_>>()
             .join(",")
     }
+
+    #[must_use]
+    pub fn has_display(&self) -> bool {
+        matches!(self.platform, Some(PLATFORM_ESP32 | PLATFORM_NRF52))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -783,6 +788,7 @@ pub(crate) async fn run_rnode_multi_stream<IO>(
 {
     let mut decoder = KissStreamDecoder::new(options.mtu.max(256));
     let mut read_buffer = vec![0_u8; options.mtu.max(256)];
+    let mut display_capable = false;
     {
         let mut status =
             options.runtime_status.lock().expect("rnode multi runtime status mutex poisoned");
@@ -801,15 +807,18 @@ pub(crate) async fn run_rnode_multi_stream<IO>(
         )
         .await
         {
-            Ok(status) => log::info!(
-                "RNodeMulti startup probe accepted iface={} device={} firmware={:?} platform={:?} mcu={:?} interfaces={}",
-                options.parent_iface,
-                options.device,
-                status.firmware_version,
-                status.platform,
-                status.mcu,
-                status.interface_summary()
-            ),
+            Ok(status) => {
+                display_capable = status.has_display();
+                log::info!(
+                    "RNodeMulti startup probe accepted iface={} device={} firmware={:?} platform={:?} mcu={:?} interfaces={}",
+                    options.parent_iface,
+                    options.device,
+                    status.firmware_version,
+                    status.platform,
+                    status.mcu,
+                    status.interface_summary()
+                );
+            }
             Err(err) => {
                 log::warn!(
                     "RNodeMulti startup probe failed iface={} device={} err={}",
@@ -940,6 +949,9 @@ pub(crate) async fn run_rnode_multi_stream<IO>(
         }
     }
 
+    if display_capable {
+        let _ = stream.write_all(&rnode_multi_external_framebuffer_frame(false)).await;
+    }
     for frame in &options.shutdown_frames {
         let _ = stream.write_all(frame).await;
     }
@@ -1144,9 +1156,13 @@ fn rnode_multi_shutdown_frames(subinterfaces: &[RNodeMultiSubInterfaceConfig]) -
     for subinterface in subinterfaces {
         frames.push(encode_command_frame(CMD_SEL_INT, &[subinterface.vport]));
         frames.push(encode_command_frame(CMD_RADIO_STATE, &[RADIO_STATE_OFF]));
-        frames.push(encode_command_frame(CMD_LEAVE, &[FEND]));
+        frames.push(encode_command_frame(CMD_LEAVE, &[0xff]));
     }
     frames
+}
+
+fn rnode_multi_external_framebuffer_frame(enable: bool) -> Vec<u8> {
+    encode_command_frame(CMD_FB_EXT, &[u8::from(enable)])
 }
 
 fn rnode_multi_data_command_vport(command: u8) -> Option<u8> {
@@ -1317,6 +1333,35 @@ mod tests {
     }
 
     #[test]
+    fn rnode_multi_probe_status_detects_display_capable_platforms() {
+        let mut status = accepted_probe_status();
+
+        status.platform = Some(PLATFORM_ESP32);
+        assert!(status.has_display());
+        status.platform = Some(PLATFORM_NRF52);
+        assert!(status.has_display());
+        status.platform = Some(crate::iface::lora::PLATFORM_AVR);
+        assert!(!status.has_display());
+    }
+
+    #[test]
+    fn rnode_multi_shutdown_frames_use_python_leave_payload() {
+        let frames = rnode_multi_shutdown_frames(
+            &test_options(AddressHash::new([0x05; 16]), 4).subinterfaces,
+        );
+        let decoded = decode_frames(&frames.concat(), 512).expect("decode shutdown frames");
+
+        assert_eq!(
+            decoded,
+            vec![
+                KissFrame::Command(KissCommand::Unknown(CMD_SEL_INT, vec![4])),
+                KissFrame::Command(KissCommand::Unknown(CMD_RADIO_STATE, vec![RADIO_STATE_OFF])),
+                KissFrame::Command(KissCommand::Unknown(CMD_LEAVE, vec![0xff])),
+            ]
+        );
+    }
+
+    #[test]
     fn rnode_multi_runtime_status_routes_radio_commands_to_selected_vport() {
         let mut status = RNodeMultiRuntimeStatus::from_subinterfaces(
             &test_options(AddressHash::new([0x04; 16]), 2).subinterfaces,
@@ -1424,6 +1469,66 @@ mod tests {
 
         let frames = decode_frames(&bytes[..n], 512).expect("decode initial frame");
         assert_eq!(frames, vec![KissFrame::Command(KissCommand::Unknown(CMD_SEL_INT, vec![1]))]);
+    }
+
+    #[tokio::test]
+    async fn rnode_multi_stream_disables_external_framebuffer_before_display_shutdown() {
+        let child = AddressHash::new([0x06; 16]);
+        let (stream, mut peer) = duplex(4096);
+        let (rx_tx, rx_rx) = tokio::sync::mpsc::channel(4);
+        drop(rx_rx);
+        let (_tx_tx, tx_rx) = tokio::sync::mpsc::channel(4);
+        let cancel = CancellationToken::new();
+        let mut options = test_options(child, 1);
+        options.startup_probe = Some(RNodeMultiStartupProbe {
+            frames: rnode_multi_probe_frames(),
+            required_vports: vec![1],
+            timeout: Duration::from_millis(500),
+        });
+        options.shutdown_frames = rnode_multi_shutdown_frames(&options.subinterfaces);
+        let task = tokio::spawn(run_rnode_multi_stream(
+            stream,
+            options,
+            cancel.clone(),
+            CancellationToken::new(),
+            rx_tx,
+            Arc::new(tokio::sync::Mutex::new(tx_rx)),
+        ));
+
+        let mut bytes = vec![0_u8; 512];
+        let _ = peer.read(&mut bytes).await.expect("read probe frames");
+        peer.write_all(&encode_command_frame(CMD_DETECT, &[DETECT_RESP]))
+            .await
+            .expect("write detect");
+        peer.write_all(&encode_command_frame(CMD_FW_VERSION, &[1, 74]))
+            .await
+            .expect("write firmware");
+        peer.write_all(&encode_command_frame(CMD_PLATFORM, &[PLATFORM_ESP32]))
+            .await
+            .expect("write platform");
+        peer.write_all(&encode_command_frame(CMD_MCU, &[0x01])).await.expect("write mcu");
+        peer.write_all(&encode_command_frame(CMD_INTERFACES, &[1, 0x11]))
+            .await
+            .expect("write interfaces");
+
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        cancel.cancel();
+        let n = tokio::time::timeout(Duration::from_secs(1), peer.read(&mut bytes))
+            .await
+            .expect("shutdown frame timeout")
+            .expect("read shutdown frames");
+        task.await.expect("stream task");
+
+        let decoded = decode_frames(&bytes[..n], 512).expect("decode shutdown frames");
+        assert_eq!(
+            decoded,
+            vec![
+                KissFrame::Command(KissCommand::Unknown(CMD_FB_EXT, vec![0])),
+                KissFrame::Command(KissCommand::Unknown(CMD_SEL_INT, vec![1])),
+                KissFrame::Command(KissCommand::Unknown(CMD_RADIO_STATE, vec![RADIO_STATE_OFF])),
+                KissFrame::Command(KissCommand::Unknown(CMD_LEAVE, vec![0xff])),
+            ]
+        );
     }
 
     #[tokio::test]
