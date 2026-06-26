@@ -43,8 +43,9 @@ placeholders:
 
 - TCP client and server, including Python-style `fixed_mtu` handling where
   `0` keeps the default TCP MTU and non-zero values below the Reticulum MTU of
-  500 bytes are rejected, plus KISS-framed client modes. Python-style
-  `i2p_tunneled` TCP clients and TCP server accepted streams use
+  500 bytes are rejected, plus KISS-framed client modes. TCP server and
+  Backbone listener sockets set Python-style `SO_REUSEADDR` before bind.
+  Python-style `i2p_tunneled` TCP clients and TCP server accepted streams use
   the Reticulum I2P socket profile (`TCP_NODELAY`, keepalive enabled, and on
   Linux/Android 45-second user timeout, 10-second keepalive idle, 9-second
   keepalive interval, and 5 probes), and `tcp_server` status settings preserve

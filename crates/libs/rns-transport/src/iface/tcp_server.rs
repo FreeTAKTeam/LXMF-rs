@@ -1,7 +1,9 @@
 use alloc::string::String;
 use std::io;
+use std::net::SocketAddr;
 use std::sync::Arc;
 
+use socket2::{Domain, Protocol, Socket, Type};
 use tokio::net::{lookup_host, TcpListener};
 
 use crate::error::RnsError;
@@ -203,14 +205,10 @@ impl Interface for TcpServer {
 }
 
 async fn bind_tcp_listener(addr: String, prefer_ipv6: bool) -> io::Result<TcpListener> {
-    if !prefer_ipv6 {
-        return TcpListener::bind(addr).await;
-    }
-
-    let addrs = prefer_ipv6_socket_addrs(lookup_host(addr.as_str()).await?, true);
+    let addrs = prefer_ipv6_socket_addrs(lookup_host(addr.as_str()).await?, prefer_ipv6);
     let mut last_err = None;
     for addr in addrs {
-        match TcpListener::bind(addr).await {
+        match bind_tcp_socket(addr) {
             Ok(listener) => return Ok(listener),
             Err(err) => last_err = Some(err),
         }
@@ -220,12 +218,23 @@ async fn bind_tcp_listener(addr: String, prefer_ipv6: bool) -> io::Result<TcpLis
     }))
 }
 
+fn bind_tcp_socket(addr: SocketAddr) -> io::Result<TcpListener> {
+    let domain = if addr.is_ipv6() { Domain::IPV6 } else { Domain::IPV4 };
+    let socket = Socket::new(domain, Type::STREAM, Some(Protocol::TCP))?;
+    socket.set_reuse_address(true)?;
+    socket.bind(&addr.into())?;
+    socket.listen(1024)?;
+    socket.set_nonblocking(true)?;
+    let std_listener: std::net::TcpListener = socket.into();
+    TcpListener::from_std(std_listener)
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
-    use super::{backbone_hdlc_watchdog, TcpClient, TcpServer, TcpSocketTuning};
+    use super::{backbone_hdlc_watchdog, bind_tcp_listener, TcpClient, TcpServer, TcpSocketTuning};
     use crate::iface::InterfaceManager;
     use tokio::net::{TcpListener, TcpStream};
 
@@ -293,5 +302,35 @@ mod tests {
         assert_eq!(backbone.mtu_value(), 1_048_576);
         assert_eq!(backbone.socket_tuning().nodelay, Some(true));
         assert!(backbone.hdlc_liveness_enabled());
+    }
+
+    #[tokio::test]
+    async fn tcp_listener_sets_reuse_address_for_ipv4() {
+        let listener =
+            bind_tcp_listener("127.0.0.1:0".to_string(), false).await.expect("bind listener");
+        let std_listener = listener.into_std().expect("std listener");
+        let socket: socket2::Socket = std_listener.into();
+
+        assert!(socket.reuse_address().expect("reuse_address"));
+    }
+
+    #[tokio::test]
+    async fn tcp_listener_sets_reuse_address_for_ipv6() {
+        let listener = match bind_tcp_listener("[::1]:0".to_string(), true).await {
+            Ok(listener) => listener,
+            Err(err)
+                if matches!(
+                    err.kind(),
+                    std::io::ErrorKind::AddrNotAvailable | std::io::ErrorKind::Unsupported
+                ) =>
+            {
+                return;
+            }
+            Err(err) => panic!("bind IPv6 listener: {err}"),
+        };
+        let std_listener = listener.into_std().expect("std listener");
+        let socket: socket2::Socket = std_listener.into();
+
+        assert!(socket.reuse_address().expect("reuse_address"));
     }
 }
