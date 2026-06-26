@@ -115,9 +115,17 @@ pub(super) async fn handle_announce<'a>(
 
     let destination_known = handler.has_destination(&packet.destination)
         || handler.knows_destination(&packet.destination);
-    if let AnnounceLimitAction::Hold(delay) =
-        handler.announce_limits.check(iface, packet, source, destination_known)
-    {
+    let shared_config = {
+        let manager = handler.iface_manager.lock().await;
+        manager.shared_config(&iface).cloned().unwrap_or_default()
+    };
+    if let AnnounceLimitAction::Hold(delay) = handler.announce_limits.check_with_shared_config(
+        iface,
+        packet,
+        source,
+        destination_known,
+        &shared_config,
+    ) {
         log::debug!(
             "tp({}): holding announce for {} for {:?}",
             handler.config.name,

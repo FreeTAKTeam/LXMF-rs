@@ -468,3 +468,69 @@ async fn unknown_announces_are_held_per_interface_and_released_by_lowest_hops() 
         assert_eq!(released_next.hops, 3);
     }
 }
+
+#[tokio::test]
+async fn ingress_control_false_bypasses_unknown_announce_holding() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let config = TransportConfig::new("test", &local_identity, true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+    let mut announce_rx = transport.recv_announces().await;
+
+    handler.lock().await.announce_limits = AnnounceLimits::with_rate_limit(AnnounceRateLimit {
+        incoming_freq_samples: 3,
+        max_held_announces: 8,
+        new_time: Duration::from_secs(3600),
+        burst_freq_new: 0.1,
+        burst_freq: 0.1,
+        burst_hold: Duration::from_millis(20),
+        burst_penalty: Duration::from_millis(20),
+        held_release_interval: Duration::from_millis(10),
+    });
+
+    let iface = {
+        let manager = transport.iface_manager();
+        let mut manager = manager.lock().await;
+        let iface = *manager.new_channel(8).address();
+        manager.set_shared_config(
+            iface,
+            crate::iface::InterfaceSharedConfig {
+                ingress_control: Some(false),
+                ..Default::default()
+            },
+        );
+        iface
+    };
+
+    let mut first_destination = SingleInputDestination::new(
+        PrivateIdentity::new_from_rand(OsRng),
+        DestinationName::new("lxmf", "delivery"),
+    );
+    let first_announce = first_destination.announce(OsRng, None).expect("first announce");
+    handle_announce(&first_announce, handler.lock().await, iface, crate::iface::IfaceSource::None)
+        .await;
+    timeout(Duration::from_millis(200), announce_rx.recv())
+        .await
+        .expect("first announce should emit")
+        .expect("broadcast receive");
+
+    tokio::time::sleep(Duration::from_millis(1)).await;
+
+    let mut second_destination = SingleInputDestination::new(
+        PrivateIdentity::new_from_rand(OsRng),
+        DestinationName::new("lxmf", "delivery"),
+    );
+    let second_announce = second_destination.announce(OsRng, None).expect("second announce");
+    handle_announce(
+        &second_announce,
+        handler.lock().await,
+        iface,
+        crate::iface::IfaceSource::None,
+    )
+    .await;
+
+    timeout(Duration::from_millis(200), announce_rx.recv())
+        .await
+        .expect("second announce should bypass limiter and emit")
+        .expect("broadcast receive");
+}
