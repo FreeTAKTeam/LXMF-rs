@@ -71,6 +71,9 @@ interfaces = [
 Keep `vport` assignments stable across restarts. The runtime maps each child
 virtual interface address to its configured vport; changing child order or
 vport values changes direct-routing behavior.
+Child tables default to enabled. For Python-style Reticulum compatibility,
+`enabled = false` disables a child when `interface_enabled` is absent; when
+both fields are present, `interface_enabled` takes precedence.
 
 ## Startup Behavior
 

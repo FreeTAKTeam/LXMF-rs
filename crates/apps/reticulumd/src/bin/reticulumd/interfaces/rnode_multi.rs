@@ -59,7 +59,7 @@ pub(crate) fn build_subinterfaces(
         let Some(table) = value.as_table() else {
             return Err(format!("rnode_multi.{name} must be a subinterface table"));
         };
-        if !table_bool(table, "interface_enabled", true)? {
+        if !table_enabled(table)? {
             continue;
         }
         let vport = table_u8(table, "vport")?;
@@ -116,6 +116,14 @@ fn table_bool(table: &toml::value::Table, key: &str, default: bool) -> Result<bo
     table.get(key).map_or(Ok(default), |value| {
         value.as_bool().ok_or_else(|| format!("{key} must be a boolean"))
     })
+}
+
+fn table_enabled(table: &toml::value::Table) -> Result<bool, String> {
+    if table.contains_key("interface_enabled") {
+        table_bool(table, "interface_enabled", true)
+    } else {
+        table_bool(table, "enabled", true)
+    }
 }
 
 fn table_string(table: &toml::value::Table, key: &str) -> Option<String> {

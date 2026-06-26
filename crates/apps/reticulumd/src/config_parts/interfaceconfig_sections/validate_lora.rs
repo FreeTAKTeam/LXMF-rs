@@ -229,8 +229,7 @@ impl InterfaceConfig {
                     "interfaces[{index}].{name} must be a subinterface table for rnode_multi"
                 ));
             };
-            let interface_enabled =
-                rnode_multi_table_bool(table, "interface_enabled", true, index, name)?;
+            let interface_enabled = rnode_multi_table_enabled(table, index, name)?;
             if !interface_enabled {
                 continue;
             }
@@ -366,6 +365,18 @@ fn rnode_multi_table_bool(
             format!("interfaces[{index}].{name}.{key} must be a boolean for rnode_multi")
         })
     })
+}
+
+fn rnode_multi_table_enabled(
+    table: &toml::value::Table,
+    index: usize,
+    name: &str,
+) -> Result<bool, String> {
+    if table.contains_key("interface_enabled") {
+        rnode_multi_table_bool(table, "interface_enabled", true, index, name)
+    } else {
+        rnode_multi_table_bool(table, "enabled", true, index, name)
+    }
 }
 
 fn rnode_multi_required_u8(

@@ -78,8 +78,9 @@ placeholders:
   serial, TCP/Wi-Fi, or BLE RNode devices.
 - Shared serial/TCP RNodeMulti baseline with nested vport subinterfaces,
   `CMD_SEL_INT` KISS vport selection, direct routing to virtual child
-  interfaces, broadcast fanout only to outgoing children, and startup probe
-  validation for detect, firmware `>= 1.74`, platform, MCU,
+  interfaces, Python-style child enabled/interface-enabled handling, broadcast
+  fanout only to outgoing children, and startup probe validation for detect,
+  firmware `>= 1.74`, platform, MCU,
   `CMD_INTERFACES` discovery, hardware-reported configured vports, and
   selected-vport radio command/status bookkeeping. Parent-level Python
   `id_callsign`/`id_interval` settings fan out raw callsign ID beacons on

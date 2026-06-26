@@ -570,7 +570,7 @@ interfaces = [
 fn parses_python_rnode_multi_child_enabled_semantics_and_negative_txpower() {
     let input = r#"
 interfaces = [
-  { type = "RNodeMultiInterface", interface_enabled = true, name = "rnode-multi", port = "/dev/ttyACM0", radio0 = { enabled = false, vport = 0, frequency = 915000000, bandwidth = 125000, spreadingfactor = 9, codingrate = 5, txpower = -9 }, radio1 = { interface_enabled = false, vport = 1, frequency = 920000000, bandwidth = 125000, spreadingfactor = 10, codingrate = 5, txpower = 14 } }
+  { type = "RNodeMultiInterface", interface_enabled = true, name = "rnode-multi", port = "/dev/ttyACM0", radio0 = { enabled = false, vport = 0, frequency = 915000000, bandwidth = 125000, spreadingfactor = 9, codingrate = 5, txpower = -9 }, radio1 = { enabled = true, vport = 1, frequency = 920000000, bandwidth = 125000, spreadingfactor = 10, codingrate = 5, txpower = 14 } }
 ]
 "#;
     let cfg = DaemonConfig::from_toml(input)
@@ -582,8 +582,8 @@ interfaces = [
     let subinterfaces =
         settings["subinterfaces"].as_array().expect("subinterfaces array");
     assert_eq!(subinterfaces.len(), 1);
-    assert_eq!(subinterfaces[0]["vport"], 0);
-    assert_eq!(subinterfaces[0]["tx_power_dbm"], -9);
+    assert_eq!(subinterfaces[0]["vport"], 1);
+    assert_eq!(subinterfaces[0]["tx_power_dbm"], 14);
 }
 
 #[test]

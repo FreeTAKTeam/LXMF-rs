@@ -176,6 +176,7 @@ fn rnode_multi_subinterfaces_settings_json(iface: &InterfaceConfig) -> Option<Js
         };
         let interface_enabled = table
             .get("interface_enabled")
+            .or_else(|| table.get("enabled"))
             .and_then(toml::Value::as_bool)
             .unwrap_or(true);
         if !interface_enabled {

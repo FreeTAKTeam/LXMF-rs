@@ -169,6 +169,7 @@ fn rnode_multi_builder_uses_interface_enabled_for_child_radios() {
                 toml::Value::Table(
                     [
                         ("enabled".to_string(), toml::Value::Boolean(false)),
+                        ("interface_enabled".to_string(), toml::Value::Boolean(true)),
                         ("vport".to_string(), toml::Value::Integer(2)),
                         ("frequency".to_string(), toml::Value::Integer(915_000_000)),
                         ("bandwidth".to_string(), toml::Value::Integer(125_000)),
@@ -185,6 +186,7 @@ fn rnode_multi_builder_uses_interface_enabled_for_child_radios() {
                 toml::Value::Table(
                     [
                         ("interface_enabled".to_string(), toml::Value::Boolean(false)),
+                        ("enabled".to_string(), toml::Value::Boolean(true)),
                         ("vport".to_string(), toml::Value::Integer(3)),
                         ("frequency".to_string(), toml::Value::Integer(920_000_000)),
                         ("bandwidth".to_string(), toml::Value::Integer(125_000)),
@@ -210,6 +212,62 @@ fn rnode_multi_builder_uses_interface_enabled_for_child_radios() {
     assert_eq!(adapter.subinterfaces().len(), 1);
     assert_eq!(adapter.subinterfaces()[0].vport, 2);
     assert_eq!(adapter.subinterfaces()[0].config.tx_power_dbm, -9);
+}
+
+#[test]
+fn rnode_multi_builder_uses_enabled_for_child_radios_when_interface_enabled_absent() {
+    let iface = InterfaceConfig {
+        kind: "rnode_multi".to_string(),
+        enabled: Some(true),
+        device: Some("/dev/ttyACM0".to_string()),
+        baud_rate: Some(115_200),
+        extra: [
+            (
+                "radio0".to_string(),
+                toml::Value::Table(
+                    [
+                        ("enabled".to_string(), toml::Value::Boolean(false)),
+                        ("vport".to_string(), toml::Value::Integer(2)),
+                        ("frequency".to_string(), toml::Value::Integer(915_000_000)),
+                        ("bandwidth".to_string(), toml::Value::Integer(125_000)),
+                        ("spreadingfactor".to_string(), toml::Value::Integer(9)),
+                        ("codingrate".to_string(), toml::Value::Integer(5)),
+                        ("txpower".to_string(), toml::Value::Integer(-9)),
+                    ]
+                    .into_iter()
+                    .collect(),
+                ),
+            ),
+            (
+                "radio1".to_string(),
+                toml::Value::Table(
+                    [
+                        ("enabled".to_string(), toml::Value::Boolean(true)),
+                        ("vport".to_string(), toml::Value::Integer(3)),
+                        ("frequency".to_string(), toml::Value::Integer(920_000_000)),
+                        ("bandwidth".to_string(), toml::Value::Integer(125_000)),
+                        ("spreadingfactor".to_string(), toml::Value::Integer(10)),
+                        ("codingrate".to_string(), toml::Value::Integer(5)),
+                        ("txpower".to_string(), toml::Value::Integer(14)),
+                    ]
+                    .into_iter()
+                    .collect(),
+                ),
+            ),
+        ]
+        .into_iter()
+        .collect(),
+        ..InterfaceConfig::default()
+    };
+    let manager = std::sync::Arc::new(tokio::sync::Mutex::new(
+        rns_transport::iface::InterfaceManager::new(8),
+    ));
+
+    let adapter = rnode_multi::build_adapter(&iface, manager).expect("build rnode multi adapter");
+
+    assert_eq!(adapter.subinterfaces().len(), 1);
+    assert_eq!(adapter.subinterfaces()[0].vport, 3);
+    assert_eq!(adapter.subinterfaces()[0].config.tx_power_dbm, 14);
 }
 
 #[test]
