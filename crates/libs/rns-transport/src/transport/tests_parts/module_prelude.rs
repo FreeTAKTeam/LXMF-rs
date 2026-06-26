@@ -396,6 +396,38 @@ async fn reticulum_path_table_persistence_restores_route_and_identity_from_cache
     assert_eq!(restored_identity.public_key_bytes(), expected_identity.public_key_bytes());
     assert_eq!(restored_identity.verifying_key_bytes(), expected_identity.verifying_key_bytes());
     assert!(restored.has_path(&destination).await, "path table entry should be restored");
+
+    tokio::time::sleep(Duration::from_millis(550)).await;
+
+    let restored_handler = restored.get_handler();
+    let restored_messages = {
+        let mut guard = restored_handler.lock().await;
+        let transport_id = *guard.config.identity.address_hash();
+        guard.announce_table.drain_retransmissions(&transport_id)
+    };
+    assert!(
+        restored_messages.is_empty(),
+        "restored cached announces must not be scheduled as fresh rebroadcasts"
+    );
+
+    let requesting_iface = *restored.iface_manager().lock().await.new_channel(16).address();
+    let path_request = {
+        let mut guard = restored_handler.lock().await;
+        guard.path_requests.generate(&destination, Some(vec![0x77; crate::hash::ADDRESS_HASH_SIZE]))
+    };
+
+    {
+        let mut guard = restored_handler.lock().await;
+        handle_path_request(&path_request, &mut guard, requesting_iface).await;
+    }
+
+    let guard = restored_handler.lock().await;
+    let response = guard
+        .announce_table
+        .pending_response_for_destination(&destination)
+        .expect("restored cached announce should answer known-path requests");
+    assert_eq!(response.response_to_iface, Some(requesting_iface));
+    assert_eq!(response.packet.context, PacketContext::PathResponse);
 }
 
 #[tokio::test]

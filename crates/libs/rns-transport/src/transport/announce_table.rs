@@ -160,6 +160,24 @@ impl AnnounceTable {
         self.map.insert(destination, entry);
     }
 
+    pub(crate) fn add_cached(
+        &mut self,
+        announce: &Packet,
+        destination: AddressHash,
+        received_from: AddressHash,
+    ) {
+        let entry = AnnounceEntry {
+            packet: announce.clone(),
+            timeout: Instant::now(),
+            received_from,
+            retries: 0,
+            hops: announce.header.hops,
+            response_to_iface: None,
+        };
+
+        self.cache.insert(destination, entry);
+    }
+
     fn do_add_response(
         &mut self,
         mut response: AnnounceEntry,
@@ -412,5 +430,32 @@ mod tests {
         assert_eq!(messages[0].packet.context, PacketContext::PathResponse);
         assert_eq!(messages[0].packet.header.hops, 5);
         assert!(table.responses.is_empty());
+    }
+
+    #[test]
+    fn restored_cached_announces_do_not_rebroadcast_but_can_answer_path_requests() {
+        let mut table = AnnounceTable::new(16, 1);
+        let destination = AddressHash::new_from_rand(OsRng);
+        let received_from = AddressHash::new_from_rand(OsRng);
+        let transport_id = AddressHash::new_from_rand(OsRng);
+        let to_iface = AddressHash::new_from_rand(OsRng);
+        let packet = Packet { destination, context: PacketContext::None, ..Packet::default() };
+
+        table.add_cached(&packet, destination, received_from);
+        assert!(table.map.is_empty());
+        assert!(table.drain_retransmissions(&transport_id).is_empty());
+        assert_eq!(
+            table
+                .packet_for_destination(&destination)
+                .expect("restored announce is lookup material")
+                .context,
+            PacketContext::None
+        );
+
+        assert!(table.add_response(destination, to_iface, 2));
+        let response = table.responses.get(&destination).expect("cached response entry inserted");
+        assert_eq!(response.response_to_iface, Some(to_iface));
+        assert_eq!(response.packet.context, PacketContext::PathResponse);
+        assert_eq!(response.hops, 2);
     }
 }

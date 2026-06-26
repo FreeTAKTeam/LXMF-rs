@@ -42,6 +42,9 @@ The project is best described by capability level:
 - Known-path requests on roaming interfaces also suppress direct path answers
   when the learned next-hop iface is the same roaming iface, matching Python's
   loop-avoidance behavior.
+- Restored Reticulum path-table announces are now cache-only lookup material at
+  startup, not fresh rebroadcast work, while still serving known-path response
+  requests from the restored cache.
 - `reticulumd` supports TCP client/server, including Python-style
   TCP-over-I2P `i2p_tunneled` socket tuning for outbound clients and accepted
   server streams and Python-style `fixed_mtu` falsey/default and Reticulum

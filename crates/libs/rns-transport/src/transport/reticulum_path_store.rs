@@ -142,7 +142,11 @@ impl Transport {
                 .single_out_destinations
                 .entry(candidate.cached.packet.destination)
                 .or_insert_with(|| Arc::new(Mutex::new(candidate.cached.destination)));
-            handler.announce_table.add(&candidate.cached.packet, dest_hash, candidate.entry.iface);
+            handler.announce_table.add_cached(
+                &candidate.cached.packet,
+                dest_hash,
+                candidate.entry.iface,
+            );
             handler.path_table.restore_python_entry(candidate.entry, now, now_unix_secs);
             restored += 1;
         }
