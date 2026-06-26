@@ -209,6 +209,60 @@ fn parse_propagation_limits_keep_transfer_when_sync_slot_malformed() {
 }
 
 #[test]
+fn parse_announce_costs_keep_valid_siblings_when_array_slot_malformed() {
+    // index 5 = propagation costs. A bad optional cost slot must not erase valid
+    // sibling slots because the legacy caller collapses any Err to all None.
+    let announce = rmp_serde::to_vec_named(&rmpv::Value::Array(vec![
+        rmpv::Value::Nil,
+        rmpv::Value::Nil,
+        rmpv::Value::Nil,
+        rmpv::Value::Nil,
+        rmpv::Value::Nil,
+        rmpv::Value::Array(vec![
+            rmpv::Value::String("not-a-cost".into()),
+            rmpv::Value::from(2),
+            rmpv::Value::from(5),
+        ]),
+    ]))
+    .expect("encode announce");
+
+    assert_eq!(
+        parse_announce_costs_from_app_data_hex(Some(hex::encode(announce).as_str()))
+            .expect("structural decode succeeds"),
+        (None, Some(2), Some(5))
+    );
+}
+
+#[test]
+fn parse_announce_costs_keep_valid_siblings_when_map_slot_malformed() {
+    let announce = rmp_serde::to_vec_named(&rmpv::Value::Array(vec![
+        rmpv::Value::Nil,
+        rmpv::Value::Nil,
+        rmpv::Value::Nil,
+        rmpv::Value::Nil,
+        rmpv::Value::Nil,
+        rmpv::Value::Map(vec![
+            (
+                rmpv::Value::String("stamp_cost".into()),
+                rmpv::Value::String("not-a-cost".into()),
+            ),
+            (
+                rmpv::Value::String("stamp_cost_flexibility".into()),
+                rmpv::Value::from(3),
+            ),
+            (rmpv::Value::String("peering_cost".into()), rmpv::Value::from(7)),
+        ]),
+    ]))
+    .expect("encode announce");
+
+    assert_eq!(
+        parse_announce_costs_from_app_data_hex(Some(hex::encode(announce).as_str()))
+            .expect("structural decode succeeds"),
+        (None, Some(3), Some(7))
+    );
+}
+
+#[test]
 fn parse_propagation_enabled_preserved_for_minimal_array() {
     // A minimal `[flag, timebase, enabled]` announce still carries the enabled flag at
     // index 2; it must not be discarded for lacking later cost/metadata slots.
