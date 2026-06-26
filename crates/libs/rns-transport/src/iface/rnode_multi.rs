@@ -33,6 +33,11 @@ const RECONNECT_WAIT: Duration = Duration::from_secs(5);
 const RNODE_MULTI_REQUIRED_FW_VERSION_MAJOR: u8 = 1;
 const RNODE_MULTI_REQUIRED_FW_VERSION_MINOR: u8 = 74;
 const RNODE_MULTI_STARTUP_RESPONSE_TIMEOUT: Duration = Duration::from_millis(1_500);
+const RNODE_MULTI_MANAGEMENT_CHANNEL_CAPACITY: usize = 64;
+
+type RNodeMultiManagementFrameSender = tokio::sync::mpsc::Sender<(u8, Vec<u8>)>;
+type RNodeMultiManagementFrameReceiver =
+    Arc<tokio::sync::Mutex<tokio::sync::mpsc::Receiver<(u8, Vec<u8>)>>>;
 
 #[derive(Debug, Clone)]
 pub struct RNodeMultiSubInterfaceConfig {
@@ -50,6 +55,8 @@ pub struct RNodeMultiInterface {
     mtu: usize,
     runtime_status: Arc<Mutex<RNodeMultiRuntimeStatus>>,
     iface_manager: Arc<tokio::sync::Mutex<InterfaceManager>>,
+    management_frame_tx: RNodeMultiManagementFrameSender,
+    management_frame_rx: RNodeMultiManagementFrameReceiver,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -80,6 +87,7 @@ impl RNodeMultiInterface {
         device: T,
         iface_manager: Arc<tokio::sync::Mutex<InterfaceManager>>,
     ) -> Self {
+        let (management_frame_tx, management_frame_rx) = rnode_multi_management_channel();
         Self {
             endpoint: RNodeMultiEndpoint::Serial {
                 device: device.into(),
@@ -90,6 +98,8 @@ impl RNodeMultiInterface {
             mtu: DEFAULT_MTU,
             runtime_status: Arc::new(Mutex::new(RNodeMultiRuntimeStatus::from_subinterfaces(&[]))),
             iface_manager,
+            management_frame_tx,
+            management_frame_rx,
         }
     }
 
@@ -98,6 +108,7 @@ impl RNodeMultiInterface {
         addr: T,
         iface_manager: Arc<tokio::sync::Mutex<InterfaceManager>>,
     ) -> Self {
+        let (management_frame_tx, management_frame_rx) = rnode_multi_management_channel();
         Self {
             endpoint: RNodeMultiEndpoint::Tcp { addr: addr.into() },
             subinterfaces: Vec::new(),
@@ -105,6 +116,8 @@ impl RNodeMultiInterface {
             mtu: DEFAULT_MTU,
             runtime_status: Arc::new(Mutex::new(RNodeMultiRuntimeStatus::from_subinterfaces(&[]))),
             iface_manager,
+            management_frame_tx,
+            management_frame_rx,
         }
     }
 
@@ -166,10 +179,23 @@ impl RNodeMultiInterface {
         RNodeMultiRuntimeStatusHandle { inner: self.runtime_status.clone() }
     }
 
+    #[must_use]
+    pub fn rnode_management_handle(&self) -> RNodeMultiManagementHandle {
+        RNodeMultiManagementHandle { tx: self.management_frame_tx.clone() }
+    }
+
     pub async fn spawn(context: InterfaceContext<Self>) {
         let iface_stop = context.channel.stop.clone();
         let parent_iface = context.channel.address;
-        let (endpoint, subinterfaces, id_beacon, mtu, runtime_status, iface_manager) = {
+        let (
+            endpoint,
+            subinterfaces,
+            id_beacon,
+            mtu,
+            runtime_status,
+            iface_manager,
+            management_frame_rx,
+        ) = {
             let guard = context.inner.lock().expect("rnode multi interface mutex poisoned");
             (
                 guard.endpoint.clone(),
@@ -178,6 +204,7 @@ impl RNodeMultiInterface {
                 guard.mtu,
                 guard.runtime_status.clone(),
                 guard.iface_manager.clone(),
+                guard.management_frame_rx.clone(),
             )
         };
         let mut vport_map = BTreeMap::new();
@@ -248,7 +275,10 @@ impl RNodeMultiInterface {
                             device.clone(),
                             &subinterfaces,
                             mtu,
-                            runtime_status.clone(),
+                            RNodeMultiStreamRuntime {
+                                status: runtime_status.clone(),
+                                management_frame_rx: management_frame_rx.clone(),
+                            },
                             vport_map.clone(),
                             id_beacon.clone(),
                         ),
@@ -296,7 +326,10 @@ impl RNodeMultiInterface {
                             addr.clone(),
                             &subinterfaces,
                             mtu,
-                            runtime_status.clone(),
+                            RNodeMultiStreamRuntime {
+                                status: runtime_status.clone(),
+                                management_frame_rx: management_frame_rx.clone(),
+                            },
                             vport_map.clone(),
                             id_beacon.clone(),
                         ),
@@ -335,7 +368,7 @@ fn rnode_multi_stream_options(
     device: String,
     subinterfaces: &[RNodeMultiSubInterfaceConfig],
     mtu: usize,
-    runtime_status: Arc<Mutex<RNodeMultiRuntimeStatus>>,
+    runtime: RNodeMultiStreamRuntime,
     vport_map: BTreeMap<AddressHash, u8>,
     id_beacon: Option<KissIdBeaconConfig>,
 ) -> RNodeMultiStreamOptions {
@@ -343,14 +376,20 @@ fn rnode_multi_stream_options(
         parent_iface,
         device,
         subinterfaces: subinterfaces.to_vec(),
-        runtime_status,
+        runtime_status: runtime.status,
         vport_map,
         mtu,
         startup_probe: Some(RNodeMultiStartupProbe::from_subinterfaces(subinterfaces)),
         initial_frames: rnode_multi_initial_frames(subinterfaces),
         shutdown_frames: rnode_multi_shutdown_frames(subinterfaces),
         id_beacon,
+        management_frame_rx: runtime.management_frame_rx,
     }
+}
+
+struct RNodeMultiStreamRuntime {
+    status: Arc<Mutex<RNodeMultiRuntimeStatus>>,
+    management_frame_rx: RNodeMultiManagementFrameReceiver,
 }
 
 impl Interface for RNodeMultiInterface {
@@ -375,6 +414,7 @@ pub(crate) struct RNodeMultiStreamOptions {
     initial_frames: Vec<Vec<u8>>,
     shutdown_frames: Vec<Vec<u8>>,
     id_beacon: Option<KissIdBeaconConfig>,
+    management_frame_rx: RNodeMultiManagementFrameReceiver,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -394,6 +434,35 @@ impl RNodeMultiRuntimeStatusHandle {
     #[must_use]
     pub fn to_json(&self) -> serde_json::Value {
         self.inner.lock().expect("rnode multi runtime status mutex poisoned").to_json()
+    }
+}
+
+fn rnode_multi_management_channel(
+) -> (RNodeMultiManagementFrameSender, RNodeMultiManagementFrameReceiver) {
+    let (tx, rx) = tokio::sync::mpsc::channel(RNODE_MULTI_MANAGEMENT_CHANNEL_CAPACITY);
+    (tx, Arc::new(tokio::sync::Mutex::new(rx)))
+}
+
+#[derive(Debug, Clone)]
+pub struct RNodeMultiManagementHandle {
+    tx: RNodeMultiManagementFrameSender,
+}
+
+impl RNodeMultiManagementHandle {
+    pub fn try_dispatch_frame(
+        &self,
+        vport: u8,
+        frame: Vec<u8>,
+    ) -> Result<(), tokio::sync::mpsc::error::TrySendError<(u8, Vec<u8>)>> {
+        self.tx.try_send((vport, frame))
+    }
+
+    pub async fn dispatch_frame(
+        &self,
+        vport: u8,
+        frame: Vec<u8>,
+    ) -> Result<(), tokio::sync::mpsc::error::SendError<(u8, Vec<u8>)>> {
+        self.tx.send((vport, frame)).await
     }
 }
 
@@ -773,6 +842,7 @@ pub(crate) async fn run_rnode_multi_stream<IO>(
 
     loop {
         let mut tx_channel = tx_channel.lock().await;
+        let mut management_frame_rx = options.management_frame_rx.lock().await;
         tokio::select! {
             _ = cancel.cancelled() => break,
             _ = iface_stop.cancelled() => break,
@@ -852,6 +922,25 @@ pub(crate) async fn run_rnode_multi_stream<IO>(
                     if !write_rnode_multi_data(&mut stream, vport, output.as_slice()).await {
                         break;
                     }
+                }
+                if first_tx_at.is_none() {
+                    first_tx_at = Some(tokio::time::Instant::now());
+                }
+            }
+            Some((vport, frame)) = management_frame_rx.recv() => {
+                if !write_rnode_multi_management_frame(&mut stream, vport, &frame).await {
+                    log::warn!(
+                        "RNodeMulti management frame write failed iface={} device={} vport={}",
+                        options.parent_iface,
+                        options.device,
+                        vport
+                    );
+                    update_rnode_multi_runtime_state(
+                        &options.runtime_status,
+                        "write_failed",
+                        Some("management frame write failed".to_string()),
+                    );
+                    break;
                 }
                 if first_tx_at.is_none() {
                     first_tx_at = Some(tokio::time::Instant::now());
@@ -1016,6 +1105,16 @@ where
         && stream.flush().await.is_ok()
 }
 
+async fn write_rnode_multi_management_frame<IO>(stream: &mut IO, vport: u8, frame: &[u8]) -> bool
+where
+    IO: AsyncWrite + Unpin,
+{
+    let select = encode_command_frame(CMD_SEL_INT, &[vport]);
+    stream.write_all(&select).await.is_ok()
+        && stream.write_all(frame).await.is_ok()
+        && stream.flush().await.is_ok()
+}
+
 async fn write_rnode_multi_id_beacon<IO>(
     stream: &mut IO,
     options: &RNodeMultiStreamOptions,
@@ -1105,7 +1204,7 @@ mod tests {
     use crate::buffer::OutputBuffer;
     use crate::hash::AddressHash;
     use crate::iface::lora::{
-        BATTERY_STATE_CHARGING, CMD_BANDWIDTH, CMD_CR, CMD_RANDOM, CMD_SF, CMD_STAT_BAT,
+        BATTERY_STATE_CHARGING, CMD_BANDWIDTH, CMD_BLINK, CMD_CR, CMD_RANDOM, CMD_SF, CMD_STAT_BAT,
         CMD_STAT_CHTM, CMD_STAT_PHYPRM, CMD_STAT_RSSI, CMD_STAT_SNR,
     };
     use crate::iface::{IfaceRole, InterfaceManager, TxMessage, TxMessageType};
@@ -1123,25 +1222,40 @@ mod tests {
     }
 
     fn test_options(child: AddressHash, vport: u8) -> RNodeMultiStreamOptions {
+        test_options_with_management(child, vport).0
+    }
+
+    fn test_options_with_management(
+        child: AddressHash,
+        vport: u8,
+    ) -> (RNodeMultiStreamOptions, RNodeMultiManagementHandle) {
         let mut vport_map = BTreeMap::new();
         vport_map.insert(child, vport);
-        RNodeMultiStreamOptions {
-            parent_iface: AddressHash::new([0xAA; 16]),
-            device: "test".to_string(),
-            subinterfaces: vec![RNodeMultiSubInterfaceConfig {
-                name: "child".to_string(),
-                vport,
-                config: LoraConfig::us915_default(),
-                outgoing: true,
-            }],
-            runtime_status: Arc::new(Mutex::new(RNodeMultiRuntimeStatus::from_subinterfaces(&[]))),
-            vport_map,
-            mtu: DEFAULT_MTU,
-            startup_probe: None,
-            initial_frames: Vec::new(),
-            shutdown_frames: Vec::new(),
-            id_beacon: None,
-        }
+        let (management_frame_tx, management_frame_rx) = rnode_multi_management_channel();
+        let handle = RNodeMultiManagementHandle { tx: management_frame_tx };
+        (
+            RNodeMultiStreamOptions {
+                parent_iface: AddressHash::new([0xAA; 16]),
+                device: "test".to_string(),
+                subinterfaces: vec![RNodeMultiSubInterfaceConfig {
+                    name: "child".to_string(),
+                    vport,
+                    config: LoraConfig::us915_default(),
+                    outgoing: true,
+                }],
+                runtime_status: Arc::new(Mutex::new(RNodeMultiRuntimeStatus::from_subinterfaces(
+                    &[],
+                ))),
+                vport_map,
+                mtu: DEFAULT_MTU,
+                startup_probe: None,
+                initial_frames: Vec::new(),
+                shutdown_frames: Vec::new(),
+                id_beacon: None,
+                management_frame_rx,
+            },
+            handle,
+        )
     }
 
     #[test]
@@ -1502,6 +1616,46 @@ mod tests {
         let frames = decode_frames(&bytes[..n], 512).expect("decode frames");
         assert_eq!(frames[0], KissFrame::Command(KissCommand::Unknown(CMD_SEL_INT, vec![2])));
         assert!(matches!(frames[1], KissFrame::Data(_)));
+    }
+
+    #[tokio::test]
+    async fn rnode_multi_management_handle_writes_selected_vport_command_frame() {
+        let child = AddressHash::new([0x12; 16]);
+        let (stream, mut peer) = duplex(4096);
+        let (_rx_tx, rx_rx) = tokio::sync::mpsc::channel(4);
+        drop(rx_rx);
+        let (_tx_tx, tx_rx) = tokio::sync::mpsc::channel(4);
+        let cancel = CancellationToken::new();
+        let (options, handle) = test_options_with_management(child, 2);
+        let task = tokio::spawn(run_rnode_multi_stream(
+            stream,
+            options,
+            cancel.clone(),
+            CancellationToken::new(),
+            _rx_tx,
+            Arc::new(tokio::sync::Mutex::new(tx_rx)),
+        ));
+
+        handle
+            .dispatch_frame(2, LoraConfig::blink_frame(0x03))
+            .await
+            .expect("queue vport management frame");
+        let mut bytes = vec![0_u8; 256];
+        let n = tokio::time::timeout(Duration::from_secs(1), peer.read(&mut bytes))
+            .await
+            .expect("management frame timeout")
+            .expect("read management frames");
+        cancel.cancel();
+        task.await.expect("stream task");
+
+        let frames = decode_frames(&bytes[..n], 512).expect("decode management frames");
+        assert_eq!(
+            frames,
+            vec![
+                KissFrame::Command(KissCommand::Unknown(CMD_SEL_INT, vec![2])),
+                KissFrame::Command(KissCommand::Unknown(CMD_BLINK, vec![0x03])),
+            ]
+        );
     }
 
     #[tokio::test]

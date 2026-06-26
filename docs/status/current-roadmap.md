@@ -74,7 +74,9 @@ The project is best described by capability level:
   refresh the `_runtime.rnode_multi.radio_status` schema from the
   transport-side runtime handle, including stream/probe state, last error
   reporting for absent or failing hardware, and the ordinary RNode radio-status
-  fields for each vport. Display-capable ESP32/NRF52 devices get Python-style
+  fields for each vport. The transport also exposes a vport-aware RNodeMulti
+  management queue that writes `CMD_SEL_INT` before each queued management
+  command frame. Display-capable ESP32/NRF52 devices get Python-style
   external-framebuffer disable during teardown before per-vport radio-off and
   leave-host payload `0xff` frames.
 - Ordinary serial/TCP and feature-gated BLE RNodeInterface status now refreshes

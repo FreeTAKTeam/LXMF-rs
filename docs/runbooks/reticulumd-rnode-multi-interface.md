@@ -25,6 +25,8 @@ production-complete RNodeMulti parity claim.
 - Runtime status: selected-vport command responses update per-vport radio
   status bookkeeping in the transport runtime; the same status payload reports
   stream/probe state and the last open/probe/init/read error
+- Management dispatch: the transport exposes a vport-aware management queue
+  that writes KISS `CMD_SEL_INT` before each queued management command frame
 - Exported status: daemon startup metadata includes an initial `radio_status`
   snapshot schema under `settings._runtime.rnode_multi`, and live daemon/RPC
   snapshots refresh from the transport-side runtime handle
@@ -122,6 +124,17 @@ Outbound packet handling follows the Reticulum interface role:
 - Broadcast sends fan out to every configured child whose `outgoing` flag is
   `true`.
 - Broadcast sends do not fan out to receive-only children.
+
+## Management Dispatch
+
+The transport exposes a cloneable `RNodeMultiManagementHandle` for already
+encoded RNode management command frames. Each queued item carries an explicit
+child vport. The stream selects that vport with `CMD_SEL_INT`, writes the
+management command frame, and flushes the shared serial/TCP stream. Local
+duplex coverage proves this ordering with a blink management frame.
+
+Daemon/RPC binding is intentionally still pending: callers must not target a
+parent RNodeMulti interface without an explicit child-vport selection model.
 
 ## Status Routing
 
@@ -234,6 +247,8 @@ so stale child routes do not remain after parent shutdown.
   still required.
 - Broader RNodeMulti production parity remains incomplete; release notes should
   not describe this family as production-complete yet.
+- Daemon/RPC management binding for RNodeMulti remains pending until selectors
+  can identify the intended child vport without ambiguity.
 
 ## Verification Focus
 
@@ -252,3 +267,5 @@ Useful coverage for this slice should prove:
   `settings._runtime.rnode_multi.radio_status` with stable per-vport status
   keys.
 - Shutdown sends radio-off and leave-host frames for each child vport.
+- Vport-aware management dispatch writes `CMD_SEL_INT` immediately before the
+  queued management command frame.
