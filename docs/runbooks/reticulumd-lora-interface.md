@@ -180,8 +180,10 @@ probe identifies an ESP32 or NRF52 display-capable platform, BLE shutdown
 prepends Python-style external-framebuffer disable before radio-off plus
 leave-host frames and backend cleanup. The transport layer exposes
 Python-compatible KISS management frame helpers for blink indication, Bluetooth
-disable/enable/pair control, and ROM/EEPROM read requests, but broader
-end-to-end RNode management operations over BLE remain incomplete.
+disable/enable/pair control, display/NeoPixel controls, interference-avoidance
+control, Wi-Fi settings, configuration save/delete, firmware-update indicator,
+firmware hash, and ROM/EEPROM read/write/wipe requests, but broader end-to-end
+RNode management operations over BLE remain incomplete.
 
 ## Validation Rules
 
@@ -314,9 +316,12 @@ one-byte line number. Framebuffer and display-read command responses are
 retained with Python's expected 512-byte and 1024-byte payload sizes. The
 same protocol helper also exposes Python's hard-reset KISS command frame
 (`CMD_RESET` with payload `0xf8`), blink indication frame, Bluetooth
-disable/enable/pair frames, and ROM/EEPROM read request frame. The interface
-records online state from reported RNode radio-state responses. RNode reset responses
-are also classified at the protocol layer: an online ESP32 reset is surfaced as
+disable/enable/pair frames, display/NeoPixel control frames,
+interference-avoidance control frame, Wi-Fi configuration frames,
+configuration save/delete frames, firmware-update indicator and hash frames,
+and ROM/EEPROM read/write/wipe request frames. The interface records online
+state from reported RNode radio-state responses. RNode reset responses are also
+classified at the protocol layer: an online ESP32 reset is surfaced as
 Python's fatal `ESP32 reset` condition, while offline or non-ESP32 reset
 responses are accepted as informational. RNode hardware error command responses
 are classified with Python-compatible fatality: memory-low and modem-timeout

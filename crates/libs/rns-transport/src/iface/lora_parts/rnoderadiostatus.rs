@@ -476,6 +476,123 @@ impl LoraConfig {
     pub fn rom_read_frame() -> Vec<u8> {
         encode_command_frame(CMD_ROM_READ, &[0x00])
     }
+
+    #[must_use]
+    pub fn config_read_frame() -> Vec<u8> {
+        encode_command_frame(CMD_CFG_READ, &[0x00])
+    }
+
+    #[must_use]
+    pub fn config_save_frame() -> Vec<u8> {
+        encode_command_frame(CMD_CONF_SAVE, &[0x00])
+    }
+
+    #[must_use]
+    pub fn config_delete_frame() -> Vec<u8> {
+        encode_command_frame(CMD_CONF_DELETE, &[0x00])
+    }
+
+    #[must_use]
+    pub fn rom_wipe_frame() -> Vec<u8> {
+        encode_command_frame(CMD_ROM_WIPE, &[RESET_ESP32])
+    }
+
+    #[must_use]
+    pub fn rom_write_frame(addr: u8, byte: u8) -> Vec<u8> {
+        encode_command_frame(CMD_ROM_WRITE, &[addr, byte])
+    }
+
+    #[must_use]
+    pub fn display_intensity_frame(intensity: u8) -> Vec<u8> {
+        encode_command_frame(CMD_DISP_INT, &[intensity])
+    }
+
+    #[must_use]
+    pub fn display_blanking_frame(blanking_timeout: u8) -> Vec<u8> {
+        encode_command_frame(CMD_DISP_BLNK, &[blanking_timeout])
+    }
+
+    #[must_use]
+    pub fn display_rotation_frame(rotation: u8) -> Vec<u8> {
+        encode_command_frame(CMD_DISP_ROT, &[rotation])
+    }
+
+    #[must_use]
+    pub fn display_recondition_frame() -> Vec<u8> {
+        encode_command_frame(CMD_DISP_RCND, &[0x01])
+    }
+
+    #[must_use]
+    pub fn disable_interference_avoidance_frame(disabled: bool) -> Vec<u8> {
+        encode_command_frame(CMD_DIS_IA, &[u8::from(disabled)])
+    }
+
+    #[must_use]
+    pub fn neopixel_intensity_frame(intensity: u8) -> Vec<u8> {
+        encode_command_frame(CMD_NP_INT, &[intensity])
+    }
+
+    #[must_use]
+    pub fn display_address_frame(address: u8) -> Vec<u8> {
+        encode_command_frame(CMD_DISP_ADR, &[address])
+    }
+
+    #[must_use]
+    pub fn firmware_update_indicator_frame() -> Vec<u8> {
+        encode_command_frame(CMD_FW_UPD, &[0x01])
+    }
+
+    #[must_use]
+    pub fn firmware_hash_frame(hash: &[u8]) -> Vec<u8> {
+        encode_command_frame(CMD_FW_HASH, hash)
+    }
+
+    #[must_use]
+    pub fn wifi_mode_frame(mode: u8) -> Vec<u8> {
+        encode_command_frame(CMD_WIFI_MODE, &[mode])
+    }
+
+    pub fn wifi_channel_frame(channel: u8) -> Result<Vec<u8>, String> {
+        if !(1..=14).contains(&channel) {
+            return Err("rnode wifi channel must be between 1 and 14".to_string());
+        }
+        Ok(encode_command_frame(CMD_WIFI_CHN, &[channel]))
+    }
+
+    #[must_use]
+    pub fn wifi_ip_frame(ip: Option<Ipv4Addr>) -> Vec<u8> {
+        encode_command_frame(CMD_WIFI_IP, &ip.map_or([0; 4], |ip| ip.octets()))
+    }
+
+    #[must_use]
+    pub fn wifi_netmask_frame(netmask: Option<Ipv4Addr>) -> Vec<u8> {
+        encode_command_frame(CMD_WIFI_NM, &netmask.map_or([0; 4], |netmask| netmask.octets()))
+    }
+
+    pub fn wifi_ssid_frame(ssid: Option<&str>) -> Result<Vec<u8>, String> {
+        Ok(encode_command_frame(CMD_WIFI_SSID, &nul_terminated_wifi_field(ssid, 0, 33, "ssid")?))
+    }
+
+    pub fn wifi_psk_frame(psk: Option<&str>) -> Result<Vec<u8>, String> {
+        Ok(encode_command_frame(CMD_WIFI_PSK, &nul_terminated_wifi_field(psk, 8, 33, "psk")?))
+    }
+}
+
+fn nul_terminated_wifi_field(
+    value: Option<&str>,
+    min_len: usize,
+    max_len: usize,
+    field: &str,
+) -> Result<Vec<u8>, String> {
+    let Some(value) = value else {
+        return Ok(vec![0x00]);
+    };
+    let mut bytes = value.as_bytes().to_vec();
+    bytes.push(0x00);
+    if bytes.len() < min_len || bytes.len() > max_len {
+        return Err(format!("rnode wifi {field} length must be between {min_len} and {max_len} bytes including terminator"));
+    }
+    Ok(bytes)
 }
 
 fn u32_be_bytes(value: u64) -> [u8; 4] {

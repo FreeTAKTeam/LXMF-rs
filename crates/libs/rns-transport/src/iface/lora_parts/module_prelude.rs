@@ -1,4 +1,4 @@
-use std::net::{TcpStream as StdTcpStream, ToSocketAddrs};
+use std::net::{Ipv4Addr, TcpStream as StdTcpStream, ToSocketAddrs};
 
 use std::sync::Arc;
 
@@ -69,6 +69,8 @@ pub const CMD_FB_READ: u8 = 0x42;
 
 pub const CMD_FB_WRITE: u8 = 0x43;
 
+pub const CMD_DISP_INT: u8 = 0x45;
+
 pub const CMD_BT_CTRL: u8 = 0x46;
 
 pub const CMD_PLATFORM: u8 = 0x48;
@@ -79,9 +81,47 @@ pub const CMD_FW_VERSION: u8 = 0x50;
 
 pub const CMD_ROM_READ: u8 = 0x51;
 
+pub const CMD_ROM_WRITE: u8 = 0x52;
+
+pub const CMD_CONF_SAVE: u8 = 0x53;
+
+pub const CMD_CONF_DELETE: u8 = 0x54;
+
 pub const CMD_RESET: u8 = 0x55;
 
+pub const CMD_FW_HASH: u8 = 0x58;
+
+pub const CMD_ROM_WIPE: u8 = 0x59;
+
+pub const CMD_FW_UPD: u8 = 0x61;
+
+pub const CMD_DISP_ADR: u8 = 0x63;
+
+pub const CMD_DISP_BLNK: u8 = 0x64;
+
+pub const CMD_NP_INT: u8 = 0x65;
+
 pub const CMD_DISP_READ: u8 = 0x66;
+
+pub const CMD_DISP_ROT: u8 = 0x67;
+
+pub const CMD_DISP_RCND: u8 = 0x68;
+
+pub const CMD_DIS_IA: u8 = 0x69;
+
+pub const CMD_WIFI_MODE: u8 = 0x6A;
+
+pub const CMD_WIFI_SSID: u8 = 0x6B;
+
+pub const CMD_WIFI_PSK: u8 = 0x6C;
+
+pub const CMD_CFG_READ: u8 = 0x6D;
+
+pub const CMD_WIFI_CHN: u8 = 0x6E;
+
+pub const CMD_WIFI_IP: u8 = 0x84;
+
+pub const CMD_WIFI_NM: u8 = 0x85;
 
 pub const CMD_ERROR: u8 = 0x90;
 
