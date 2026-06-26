@@ -96,6 +96,9 @@ The project is best described by capability level:
   `rnode_management` RPC dispatch, reticulumd bridge dispatch tests, and
   `rnodeconf-rs` mock-RPC CLI tests. The daemon/tool path now also queues safe
   config/ROM read, display, NeoPixel, and interference-avoidance controls.
+  Daemon RPC also queues guarded persistent/destructive RNode controls for
+  Bluetooth, config save/delete, ROM write/wipe, hard reset, firmware metadata,
+  and Wi-Fi settings, with explicit persistent/destructive confirmation params.
   Frame-level helpers exist for Bluetooth control,
   display/NeoPixel controls, interference-avoidance control, Wi-Fi settings,
   config save/delete, firmware-update metadata, and ROM/EEPROM read/write/wipe

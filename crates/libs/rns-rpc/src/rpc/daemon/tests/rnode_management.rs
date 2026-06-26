@@ -87,6 +87,43 @@ fn rnode_management_rpc_delegates_to_bridge() {
 }
 
 #[test]
+fn rnode_management_rpc_preserves_guard_params_for_bridge() {
+    let daemon = RpcDaemon::test_instance();
+    let bridge = Arc::new(RecordingRNodeManagementBridge::new());
+    daemon.set_rnode_management_bridge(bridge.clone());
+
+    let response = daemon
+        .handle_rpc(rpc_request(
+            5,
+            "rnode_management",
+            json!({
+                "iface": "rnode-main",
+                "command": "save_config",
+                "vport": 2,
+                "confirm_persistent": true,
+                "confirm_command": "ignored_by_safe_bridge"
+            }),
+        ))
+        .expect("rnode management response");
+
+    assert!(response.error.is_none());
+    assert_eq!(
+        bridge.calls(),
+        vec![(
+            "rnode-main".to_string(),
+            "save_config".to_string(),
+            json!({
+                "iface": "rnode-main",
+                "command": "save_config",
+                "vport": 2,
+                "confirm_persistent": true,
+                "confirm_command": "ignored_by_safe_bridge"
+            })
+        )]
+    );
+}
+
+#[test]
 fn rnode_management_rpc_reports_missing_bridge() {
     let daemon = RpcDaemon::test_instance();
 
