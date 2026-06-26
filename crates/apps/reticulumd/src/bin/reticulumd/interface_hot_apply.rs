@@ -196,6 +196,9 @@ fn interface_record_mode(record: &InterfaceRecord) -> InterfaceMode {
 
 fn interface_record_shared_config(record: &InterfaceRecord) -> InterfaceSharedConfig {
     InterfaceSharedConfig {
+        announce_rate_target: setting_u64(record, "announce_rate_target"),
+        announce_rate_grace: setting_u64(record, "announce_rate_grace"),
+        announce_rate_penalty: setting_u64(record, "announce_rate_penalty"),
         bootstrap_only: setting_bool(record, "bootstrap_only"),
         ifac_size: setting_u64(record, "ifac_size"),
         network_name: setting_string(record, "network_name")
@@ -315,6 +318,9 @@ mod tests {
             "outgoing": false,
             "bitrate": 1200,
             "announce_cap": 5,
+            "announce_rate_target": 120,
+            "announce_rate_grace": 2,
+            "announce_rate_penalty": 30,
             "network_name": "field-net",
             "discoverable": true,
             "announce_interval": 21600
@@ -330,6 +336,9 @@ mod tests {
         assert_eq!(
             manager.shared_config(&address),
             Some(&InterfaceSharedConfig {
+                announce_rate_target: Some(120),
+                announce_rate_grace: Some(2),
+                announce_rate_penalty: Some(30),
                 network_name: Some("field-net".to_string()),
                 discoverable: Some(true),
                 announce_interval: Some(21_600),

@@ -1240,6 +1240,9 @@ mod tests {
             outgoing: Some(false),
             bitrate: Some(1200),
             announce_cap: Some(5),
+            announce_rate_target: Some(120),
+            announce_rate_grace: Some(2),
+            announce_rate_penalty: Some(30),
             bootstrap_only: Some(true),
             ifac_size: Some(16),
             networkname: Some("field-net".to_string()),
@@ -1270,6 +1273,9 @@ mod tests {
         assert_eq!(
             manager.shared_config(channel.address()),
             Some(&InterfaceSharedConfig {
+                announce_rate_target: Some(120),
+                announce_rate_grace: Some(2),
+                announce_rate_penalty: Some(30),
                 bootstrap_only: Some(true),
                 ifac_size: Some(16),
                 network_name: Some("field-net".to_string()),

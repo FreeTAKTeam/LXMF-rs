@@ -221,6 +221,13 @@ impl AnnounceLimitEntry {
     }
 }
 
+#[derive(Clone)]
+struct AnnounceRateTargetEntry {
+    last: Instant,
+    rate_violations: u64,
+    blocked_until: Instant,
+}
+
 pub struct ReleasedAnnounce {
     pub iface: AddressHash,
     pub packet: Packet,
@@ -229,6 +236,7 @@ pub struct ReleasedAnnounce {
 
 pub struct AnnounceLimits {
     limits: BTreeMap<AddressHash, AnnounceLimitEntry>,
+    announce_rate_targets: BTreeMap<AddressHash, AnnounceRateTargetEntry>,
     rate_limit: AnnounceRateLimit,
     interface_rate_limits: BTreeMap<AddressHash, AnnounceRateLimit>,
 }
@@ -239,7 +247,12 @@ impl AnnounceLimits {
     }
 
     pub(crate) fn with_rate_limit(rate_limit: AnnounceRateLimit) -> Self {
-        Self { limits: BTreeMap::new(), rate_limit, interface_rate_limits: BTreeMap::new() }
+        Self {
+            limits: BTreeMap::new(),
+            announce_rate_targets: BTreeMap::new(),
+            rate_limit,
+            interface_rate_limits: BTreeMap::new(),
+        }
     }
 
     #[allow(dead_code)]
@@ -357,6 +370,65 @@ impl AnnounceLimits {
             rate_limit.held_release_interval = value;
         }
         rate_limit
+    }
+
+    pub fn should_suppress_rebroadcast(
+        &mut self,
+        packet: &Packet,
+        shared_config: &InterfaceSharedConfig,
+    ) -> bool {
+        self.should_suppress_rebroadcast_at(packet, shared_config, Instant::now())
+    }
+
+    #[allow(dead_code)]
+    fn should_suppress_rebroadcast_at(
+        &mut self,
+        packet: &Packet,
+        shared_config: &InterfaceSharedConfig,
+        now: Instant,
+    ) -> bool {
+        if packet.context == PacketContext::PathResponse {
+            return false;
+        }
+
+        let Some(target) = shared_config
+            .announce_rate_target
+            .filter(|target| *target > 0)
+            .map(Duration::from_secs)
+        else {
+            return false;
+        };
+        let grace = shared_config.announce_rate_grace.unwrap_or(0);
+        let penalty = Duration::from_secs(shared_config.announce_rate_penalty.unwrap_or(0));
+
+        let Entry::Occupied(mut entry) = self.announce_rate_targets.entry(packet.destination)
+        else {
+            self.announce_rate_targets.insert(
+                packet.destination,
+                AnnounceRateTargetEntry { last: now, rate_violations: 0, blocked_until: now },
+            );
+            return false;
+        };
+
+        let entry = entry.get_mut();
+        if now <= entry.blocked_until {
+            return true;
+        }
+
+        let current_rate = now.saturating_duration_since(entry.last);
+        if current_rate < target {
+            entry.rate_violations = entry.rate_violations.saturating_add(1);
+        } else {
+            entry.rate_violations = entry.rate_violations.saturating_sub(1);
+        }
+
+        if entry.rate_violations > grace {
+            entry.blocked_until = entry.last + target + penalty;
+            true
+        } else {
+            entry.last = now;
+            false
+        }
     }
 
     pub fn release_ready(&mut self) -> Vec<ReleasedAnnounce> {
@@ -639,5 +711,71 @@ mod tests {
         let released = limits.release_ready_at(now + Duration::from_millis(90));
         assert_eq!(released.len(), 1);
         assert_eq!(released[0].packet.destination, AddressHash::new([3; 16]));
+    }
+
+    #[test]
+    fn announce_rate_target_suppresses_after_grace_is_exceeded() {
+        let mut limits = AnnounceLimits::new();
+        let destination = AddressHash::new([0x41; crate::hash::ADDRESS_HASH_SIZE]);
+        let packet = announce_packet(destination, 1);
+        let config = InterfaceSharedConfig {
+            announce_rate_target: Some(60),
+            announce_rate_grace: Some(1),
+            announce_rate_penalty: Some(30),
+            ..Default::default()
+        };
+        let now = Instant::now();
+
+        assert!(!limits.should_suppress_rebroadcast_at(&packet, &config, now));
+        assert!(!limits.should_suppress_rebroadcast_at(
+            &packet,
+            &config,
+            now + Duration::from_secs(1),
+        ));
+        assert!(limits.should_suppress_rebroadcast_at(
+            &packet,
+            &config,
+            now + Duration::from_secs(2),
+        ));
+        assert!(limits.should_suppress_rebroadcast_at(
+            &packet,
+            &config,
+            now + Duration::from_secs(89),
+        ));
+        assert!(!limits.should_suppress_rebroadcast_at(
+            &packet,
+            &config,
+            now + Duration::from_secs(92),
+        ));
+    }
+
+    #[test]
+    fn announce_rate_target_ignores_path_responses_and_zero_targets() {
+        let mut limits = AnnounceLimits::new();
+        let destination = AddressHash::new([0x42; crate::hash::ADDRESS_HASH_SIZE]);
+        let mut packet = announce_packet(destination, 1);
+        let now = Instant::now();
+
+        let zero_target =
+            InterfaceSharedConfig { announce_rate_target: Some(0), ..Default::default() };
+        assert!(!limits.should_suppress_rebroadcast_at(&packet, &zero_target, now));
+        assert!(!limits.should_suppress_rebroadcast_at(
+            &packet,
+            &zero_target,
+            now + Duration::from_secs(1),
+        ));
+
+        packet.context = PacketContext::PathResponse;
+        let config = InterfaceSharedConfig {
+            announce_rate_target: Some(60),
+            announce_rate_grace: Some(0),
+            ..Default::default()
+        };
+        assert!(!limits.should_suppress_rebroadcast_at(&packet, &config, now));
+        assert!(!limits.should_suppress_rebroadcast_at(
+            &packet,
+            &config,
+            now + Duration::from_secs(1),
+        ));
     }
 }

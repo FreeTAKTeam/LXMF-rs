@@ -251,6 +251,9 @@ fn apply_interface_runtime_config(
     manager.set_shared_config(
         address,
         rns_transport::iface::InterfaceSharedConfig {
+            announce_rate_target: iface.announce_rate_target,
+            announce_rate_grace: iface.announce_rate_grace,
+            announce_rate_penalty: iface.announce_rate_penalty,
             bootstrap_only: iface.bootstrap_only,
             ifac_size: iface.ifac_size,
             network_name: iface.ifac_network_name().cloned(),

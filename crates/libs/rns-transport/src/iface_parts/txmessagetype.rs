@@ -64,6 +64,9 @@ pub struct AnnounceBroadcastPolicy {
 
 #[derive(Debug, Default, PartialEq, Clone)]
 pub struct InterfaceSharedConfig {
+    pub announce_rate_target: Option<u64>,
+    pub announce_rate_grace: Option<u64>,
+    pub announce_rate_penalty: Option<u64>,
     pub bootstrap_only: Option<bool>,
     pub ifac_size: Option<u64>,
     pub network_name: Option<String>,
