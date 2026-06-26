@@ -26,6 +26,7 @@ where
             shutdown_frames: run.config.shutdown_frames(),
             id_beacon: run.id_beacon,
             activity_probe: run.activity_probe,
+            payload_adapter: KissPayloadAdapter::Raw,
             strip_command_port_nibble: false,
             command_tx: Some(command_tx),
             data_rx_tx: Some(data_rx_tx),

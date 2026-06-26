@@ -125,6 +125,7 @@ impl KissTcpClientInterface {
                     shutdown_frames: Vec::new(),
                     id_beacon: kiss.id_beacon.clone(),
                     activity_probe: None,
+                    payload_adapter: KissPayloadAdapter::Raw,
                     strip_command_port_nibble: true,
                     command_tx: None,
                     data_rx_tx: None,
@@ -169,9 +170,107 @@ pub struct KissStreamOptions {
     pub shutdown_frames: Vec<Vec<u8>>,
     pub id_beacon: Option<KissIdBeaconConfig>,
     pub activity_probe: Option<KissActivityProbeConfig>,
+    pub payload_adapter: KissPayloadAdapter,
     pub strip_command_port_nibble: bool,
     pub command_tx: Option<tokio::sync::mpsc::Sender<KissCommandFrame>>,
     pub data_rx_tx: Option<tokio::sync::mpsc::Sender<()>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum KissPayloadAdapter {
+    Raw,
+    Ax25(Ax25KissPayloadConfig),
+}
+
+impl Default for KissPayloadAdapter {
+    fn default() -> Self {
+        Self::Raw
+    }
+}
+
+impl KissPayloadAdapter {
+    fn inbound(&self, payload: &[u8]) -> Option<Vec<u8>> {
+        match self {
+            Self::Raw => Some(payload.to_vec()),
+            Self::Ax25(_) => decode_ax25_ui_payload(payload).map(Vec::from),
+        }
+    }
+
+    fn outbound(&self, payload: &[u8]) -> Vec<u8> {
+        match self {
+            Self::Raw => payload.to_vec(),
+            Self::Ax25(config) => encode_ax25_ui_payload(payload, config),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Ax25KissPayloadConfig {
+    pub src_call: Vec<u8>,
+    pub src_ssid: u8,
+    pub dst_call: Vec<u8>,
+    pub dst_ssid: u8,
+}
+
+impl Ax25KissPayloadConfig {
+    pub fn new(src_call: impl AsRef<str>, src_ssid: u8) -> Result<Self, String> {
+        Self::with_destination(src_call, src_ssid, "APZRNS", 0)
+    }
+
+    pub fn with_destination(
+        src_call: impl AsRef<str>,
+        src_ssid: u8,
+        dst_call: impl AsRef<str>,
+        dst_ssid: u8,
+    ) -> Result<Self, String> {
+        let src_call = normalize_ax25_call(src_call.as_ref(), "ax25_kiss.callsign")?;
+        let dst_call = normalize_ax25_call(dst_call.as_ref(), "ax25_kiss.destination_callsign")?;
+        if src_ssid > 15 {
+            return Err("ax25_kiss.ssid must be between 0 and 15".to_string());
+        }
+        if dst_ssid > 15 {
+            return Err("ax25_kiss.destination_ssid must be between 0 and 15".to_string());
+        }
+        Ok(Self { src_call, src_ssid, dst_call, dst_ssid })
+    }
+}
+
+const AX25_HEADER_SIZE: usize = 16;
+const AX25_CTRL_UI: u8 = 0x03;
+const AX25_PID_NOLAYER3: u8 = 0xF0;
+
+fn normalize_ax25_call(value: &str, field: &str) -> Result<Vec<u8>, String> {
+    let call = value.trim().to_ascii_uppercase();
+    if !(3..=6).contains(&call.len()) || !call.chars().all(|ch| ch.is_ascii_alphanumeric()) {
+        return Err(format!("{field} must be 3 to 6 ASCII alphanumeric characters"));
+    }
+    Ok(call.into_bytes())
+}
+
+fn encode_ax25_ui_payload(payload: &[u8], config: &Ax25KissPayloadConfig) -> Vec<u8> {
+    let mut output = Vec::with_capacity(AX25_HEADER_SIZE + payload.len());
+    push_ax25_call(&mut output, &config.dst_call);
+    output.push(0x60 | (config.dst_ssid << 1));
+    push_ax25_call(&mut output, &config.src_call);
+    output.push(0x60 | (config.src_ssid << 1) | 0x01);
+    output.push(AX25_CTRL_UI);
+    output.push(AX25_PID_NOLAYER3);
+    output.extend_from_slice(payload);
+    output
+}
+
+fn push_ax25_call(output: &mut Vec<u8>, call: &[u8]) {
+    for index in 0..6 {
+        let byte = call.get(index).copied().unwrap_or(b' ');
+        output.push(byte << 1);
+    }
+}
+
+fn decode_ax25_ui_payload(payload: &[u8]) -> Option<&[u8]> {
+    if payload.len() <= AX25_HEADER_SIZE {
+        return None;
+    }
+    Some(&payload[AX25_HEADER_SIZE..])
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -318,6 +417,9 @@ pub async fn run_kiss_stream<IO>(
                                                     log::warn!("KISS data notification dropped: {err}");
                                                 }
                                             }
+                                            let Some(payload) = options.payload_adapter.inbound(&payload) else {
+                                                continue;
+                                            };
                                             if let Ok(packet) = Packet::deserialize(&mut InputBuffer::new(&payload)) {
                                                 let _ = rx_channel
                                                     .send(RxMessage {
@@ -380,7 +482,7 @@ pub async fn run_kiss_stream<IO>(
             Some(message) = tx_channel.recv() => {
                 let mut output = OutputBuffer::new(&mut tx_buffer[..]);
                 if message.packet.serialize(&mut output).is_ok() {
-                    let payload = output.as_slice().to_vec();
+                    let payload = options.payload_adapter.outbound(output.as_slice());
                     if options.flow_control && !interface_ready {
                         pending.push_back(payload);
                     } else {
@@ -440,5 +542,63 @@ where
             options.device,
             err
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ax25_payload_adapter_wraps_reticulum_payload_in_python_ui_header() {
+        let config = Ax25KissPayloadConfig::new("n0call", 1).expect("ax25 config");
+        let adapter = KissPayloadAdapter::Ax25(config);
+        let payload = b"reticulum-packet";
+
+        let wrapped = adapter.outbound(payload);
+
+        assert_eq!(wrapped.len(), AX25_HEADER_SIZE + payload.len());
+        assert_eq!(
+            &wrapped[..AX25_HEADER_SIZE],
+            &[
+                b'A' << 1,
+                b'P' << 1,
+                b'Z' << 1,
+                b'R' << 1,
+                b'N' << 1,
+                b'S' << 1,
+                0x60,
+                b'N' << 1,
+                b'0' << 1,
+                b'C' << 1,
+                b'A' << 1,
+                b'L' << 1,
+                b'L' << 1,
+                0x60 | (1 << 1) | 0x01,
+                AX25_CTRL_UI,
+                AX25_PID_NOLAYER3,
+            ]
+        );
+        assert_eq!(adapter.inbound(&wrapped).as_deref(), Some(payload.as_slice()));
+    }
+
+    #[test]
+    fn ax25_payload_adapter_strips_any_long_python_ax25_header() {
+        let config = Ax25KissPayloadConfig::new("N0CALL", 0).expect("ax25 config");
+        let adapter = KissPayloadAdapter::Ax25(config);
+        let mut frame = vec![0xAA; AX25_HEADER_SIZE];
+        frame.extend_from_slice(b"packet");
+
+        assert_eq!(adapter.inbound(&frame).as_deref(), Some(&b"packet"[..]));
+        assert_eq!(adapter.inbound(&frame[..AX25_HEADER_SIZE]), None);
+    }
+
+    #[test]
+    fn ax25_payload_config_validates_python_callsign_and_ssid_bounds() {
+        assert!(Ax25KissPayloadConfig::new("ab1", 15).is_ok());
+        assert!(Ax25KissPayloadConfig::new("ab", 0).is_err());
+        assert!(Ax25KissPayloadConfig::new("abcdefg", 0).is_err());
+        assert!(Ax25KissPayloadConfig::new("ab-1", 0).is_err());
+        assert!(Ax25KissPayloadConfig::new("ab1", 16).is_err());
     }
 }

@@ -106,6 +106,16 @@ pub struct InterfaceConfig {
     #[serde(default)]
     pub target_port: Option<u16>,
     #[serde(default)]
+    pub command: Option<String>,
+    #[serde(default)]
+    pub respawn_delay: Option<f64>,
+    #[serde(default)]
+    pub shared_instance_type: Option<String>,
+    #[serde(default)]
+    pub instance_name: Option<String>,
+    #[serde(default)]
+    pub socket_path: Option<String>,
+    #[serde(default)]
     pub device: Option<String>,
     #[serde(default)]
     pub group_id: Option<String>,
@@ -121,6 +131,14 @@ pub struct InterfaceConfig {
     pub devices: Option<Vec<String>>,
     #[serde(default, deserialize_with = "deserialize_optional_string_list")]
     pub ignored_devices: Option<Vec<String>>,
+    #[serde(default, deserialize_with = "deserialize_optional_string_list")]
+    pub peers: Option<Vec<String>>,
+    #[serde(default)]
+    pub connectable: Option<bool>,
+    #[serde(default)]
+    pub sam_host: Option<String>,
+    #[serde(default)]
+    pub sam_port: Option<u16>,
     #[serde(default)]
     pub baud_rate: Option<u32>,
     #[serde(default)]
@@ -149,6 +167,10 @@ pub struct InterfaceConfig {
     pub id_callsign: Option<String>,
     #[serde(default)]
     pub id_interval: Option<u64>,
+    #[serde(default)]
+    pub callsign: Option<String>,
+    #[serde(default)]
+    pub ssid: Option<u8>,
     #[serde(default)]
     pub reconnect_backoff_ms: Option<u64>,
     #[serde(default)]

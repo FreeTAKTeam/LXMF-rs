@@ -231,6 +231,64 @@ impl RpcDaemon {
         });
     }
 
+    pub fn update_interface_runtime_metadata_by_iface(
+        &self,
+        runtime_iface: &str,
+        namespace: &str,
+        key: &str,
+        value: JsonValue,
+    ) -> bool {
+        let mut guard = self.interfaces.lock().expect("interfaces mutex poisoned");
+        let Some(record) = guard
+            .iter_mut()
+            .find(|record| Self::interface_runtime_iface(record) == Some(runtime_iface))
+        else {
+            return false;
+        };
+
+        Self::upsert_interface_runtime_metadata(record, namespace, key, value);
+        let interfaces = guard.clone();
+        drop(guard);
+        self.update_daemon_status_snapshot(|snapshot| {
+            snapshot.interfaces = interfaces;
+        });
+        true
+    }
+
+    fn interface_runtime_iface(record: &InterfaceRecord) -> Option<&str> {
+        record
+            .settings
+            .as_ref()
+            .and_then(|settings| settings.get("_runtime"))
+            .and_then(|runtime| runtime.get("iface"))
+            .and_then(JsonValue::as_str)
+    }
+
+    fn upsert_interface_runtime_metadata(
+        record: &mut InterfaceRecord,
+        namespace: &str,
+        key: &str,
+        value: JsonValue,
+    ) {
+        let mut settings = match record.settings.take() {
+            Some(JsonValue::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        };
+        let mut runtime = match settings.remove("_runtime") {
+            Some(JsonValue::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        };
+        let mut scoped = match runtime.remove(namespace) {
+            Some(JsonValue::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        };
+
+        scoped.insert(key.to_string(), value);
+        runtime.insert(namespace.to_string(), JsonValue::Object(scoped));
+        settings.insert("_runtime".to_string(), JsonValue::Object(runtime));
+        record.settings = Some(JsonValue::Object(settings));
+    }
+
     pub fn set_interface_mutation_bridge(&self, bridge: Arc<dyn InterfaceMutationBridge>) {
         let mut guard = self
             .interface_mutation_bridge

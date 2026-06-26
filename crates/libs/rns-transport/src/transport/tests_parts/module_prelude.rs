@@ -303,6 +303,56 @@ async fn reticulum_tunnel_table_persistence_restores_tunnel_paths_after_reappear
 }
 
 #[tokio::test]
+async fn shared_instance_transport_wraps_one_hop_outbound_packets() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut config = TransportConfig::new("shared-instance-client", &local_identity, true);
+    config.set_connected_to_shared_instance(true);
+    let transport = Transport::new(config);
+    let mut iface_channel = transport.iface_manager().lock().await.new_channel(16);
+    let iface = *iface_channel.address();
+    let destination = AddressHash::new_from_hash(&Hash::new_from_slice(b"destination"));
+
+    {
+        let handler = transport.get_handler();
+        let mut handler = handler.lock().await;
+        assert!(handler.path_table.restore_tunnel_path(
+            destination,
+            destination,
+            1,
+            iface,
+            Hash::new_from_slice(b"packet"),
+            std::time::Instant::now(),
+        ));
+    }
+
+    let packet = Packet {
+        header: Header {
+            header_type: HeaderType::Type1,
+            propagation_type: crate::packet::PropagationType::Broadcast,
+            destination_type: DestinationType::Single,
+            packet_type: PacketType::LinkRequest,
+            ..Header::default()
+        },
+        destination,
+        data: PacketDataBuffer::new_from_slice(b"link request"),
+        ..Packet::default()
+    };
+
+    let trace = transport.send_packet_with_trace(packet).await;
+    assert_eq!(trace.outcome, SendPacketOutcome::SentDirect);
+    assert_eq!(trace.direct_iface, Some(iface));
+
+    let sent = timeout(Duration::from_millis(200), iface_channel.tx_channel.recv())
+        .await
+        .expect("shared-instance packet should be queued")
+        .expect("tx channel open");
+    assert_eq!(sent.tx_type, crate::iface::TxMessageType::Direct(iface));
+    assert_eq!(sent.packet.header.header_type, HeaderType::Type2);
+    assert_eq!(sent.packet.header.propagation_type, crate::packet::PropagationType::Transport);
+    assert_eq!(sent.packet.transport, Some(destination));
+}
+
+#[tokio::test]
 async fn unknown_announces_are_held_per_interface_and_released_by_lowest_hops() {
     let local_identity = PrivateIdentity::new_from_rand(OsRng);
     let config = TransportConfig::new("test", &local_identity, true);

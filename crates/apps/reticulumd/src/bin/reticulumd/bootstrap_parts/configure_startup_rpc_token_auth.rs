@@ -60,6 +60,10 @@ fn interface_record_from_config(iface: &InterfaceConfig) -> InterfaceRecord {
 pub(super) struct TcpServerSelection {
     pub(super) bind_addr: Option<String>,
     pub(super) selected_index: Option<usize>,
+    pub(super) kind: String,
+    pub(super) client_mtu: Option<usize>,
+    pub(super) local_attach_addr: Option<String>,
+    pub(super) local_attach_index: Option<usize>,
 }
 
 pub(super) fn select_tcp_server_bind(
@@ -67,7 +71,14 @@ pub(super) fn select_tcp_server_bind(
     daemon_config: Option<&DaemonConfig>,
 ) -> Result<TcpServerSelection, String> {
     if let Some(addr) = args.transport.as_ref() {
-        return Ok(TcpServerSelection { bind_addr: Some(addr.clone()), selected_index: None });
+        return Ok(TcpServerSelection {
+            bind_addr: Some(addr.clone()),
+            selected_index: None,
+            kind: "tcp_server".to_string(),
+            client_mtu: None,
+            local_attach_addr: None,
+            local_attach_index: None,
+        });
     }
 
     let Some(config) = daemon_config else {
@@ -76,7 +87,7 @@ pub(super) fn select_tcp_server_bind(
 
     let mut matches = Vec::new();
     for (index, iface) in config.interfaces.iter().enumerate() {
-        if !iface.enabled() || iface.kind != "tcp_server" {
+        if !iface.enabled() || !is_tcp_listener_interface(iface) {
             continue;
         }
         let Some(port) = iface.port else {
@@ -88,24 +99,58 @@ pub(super) fn select_tcp_server_bind(
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .unwrap_or("0.0.0.0");
-        matches.push((index, format!("{}:{}", host, port)));
+        matches.push((index, iface.kind.clone(), iface.mtu, format!("{}:{}", host, port)));
     }
 
     if matches.len() > 1 {
         return Err(format!(
-            "multiple enabled tcp_server interfaces configured without --transport override: {}",
-            matches.iter().map(|(_, endpoint)| endpoint.as_str()).collect::<Vec<_>>().join(", ")
+            "multiple enabled TCP listener interfaces configured without --transport override: {}",
+            matches.iter().map(|(_, _, _, endpoint)| endpoint.as_str()).collect::<Vec<_>>().join(", ")
         ));
     }
 
-    Ok(matches
-        .into_iter()
-        .next()
-        .map(|(selected_index, bind_addr)| TcpServerSelection {
+    let Some((selected_index, kind, client_mtu, bind_addr)) = matches.into_iter().next() else {
+        return Ok(TcpServerSelection::default());
+    };
+
+    if kind == "local" && tcp_bind_addr_is_in_use(&bind_addr) {
+        return Ok(TcpServerSelection {
+            bind_addr: None,
+            selected_index: None,
+            kind,
+            client_mtu,
+            local_attach_addr: Some(bind_addr),
+            local_attach_index: Some(selected_index),
+        });
+    }
+
+    Ok(TcpServerSelection {
             bind_addr: Some(bind_addr),
             selected_index: Some(selected_index),
+            kind,
+            client_mtu,
+            local_attach_addr: None,
+            local_attach_index: None,
         })
-        .unwrap_or_default())
+}
+
+fn is_tcp_listener_interface(iface: &InterfaceConfig) -> bool {
+    match iface.kind.as_str() {
+        "tcp_server" | "backbone" => true,
+        "local" => iface.shared_instance_type.as_deref() != Some("unix"),
+        _ => false,
+    }
+}
+
+fn tcp_bind_addr_is_in_use(bind_addr: &str) -> bool {
+    match std::net::TcpListener::bind(bind_addr) {
+        Ok(listener) => {
+            drop(listener);
+            false
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::AddrInUse => true,
+        Err(_) => false,
+    }
 }
 
 pub(super) fn mark_interface_startup_status(

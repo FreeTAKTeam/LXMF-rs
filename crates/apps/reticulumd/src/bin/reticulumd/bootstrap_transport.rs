@@ -10,6 +10,9 @@ mod transport_destinations;
 use crate::bridge::PeerCrypto;
 use crate::interfaces::common::interface_label;
 use crate::Args;
+pub(super) use interface_startup::{
+    I2pRuntimeRefresh, RNodeMultiRuntimeRefresh, WeaveRuntimeRefresh,
+};
 use reticulum_daemon::announce_names::PropagationNodeAnnounceConfig;
 use reticulum_daemon::config::DaemonConfig;
 use reticulum_daemon::receipt_bridge::ReceiptBridge;
@@ -17,6 +20,7 @@ use rns_core::identity::PrivateIdentity;
 use rns_rpc::InterfaceRecord;
 use rns_transport::destination::SingleInputDestination;
 use rns_transport::hash::AddressHash;
+use rns_transport::iface::tcp_client::TcpSocketTuning;
 use rns_transport::iface::tcp_server::TcpServer;
 use rns_transport::transport::{Transport, TransportConfig};
 use std::collections::HashMap;
@@ -37,6 +41,9 @@ pub(super) struct TransportStartupArtifacts {
     pub(super) startup_successes: usize,
     pub(super) startup_failures: Vec<InterfaceStartupFailure>,
     pub(super) seeded_tcp_interfaces: Vec<(String, InterfaceRecord, AddressHash)>,
+    pub(super) i2p_runtime_refreshes: Vec<I2pRuntimeRefresh>,
+    pub(super) weave_runtime_refreshes: Vec<WeaveRuntimeRefresh>,
+    pub(super) rnode_multi_runtime_refreshes: Vec<RNodeMultiRuntimeRefresh>,
 }
 
 pub(super) struct TransportStartupInput<'a> {
@@ -53,6 +60,41 @@ pub(super) struct TransportStartupInput<'a> {
         tokio::sync::mpsc::Sender<reticulum_daemon::receipt_bridge::ReceiptEvent>,
     pub(super) propagation_control_enabled: bool,
     pub(super) propagation_announce_config: PropagationNodeAnnounceConfig,
+}
+
+fn spawn_shared_instance_reconnect_synthesizer(
+    transport: Arc<Transport>,
+    mut reconnect_rx: tokio::sync::mpsc::UnboundedReceiver<AddressHash>,
+) {
+    tokio::spawn(async move {
+        while let Some(iface) = reconnect_rx.recv().await {
+            if transport.synthesize_tunnel_on_interface(iface).await {
+                log::info!("[daemon] shared-instance reconnect synthesized tunnel iface={}", iface);
+            } else {
+                log::warn!(
+                    "[daemon] shared-instance reconnect could not synthesize tunnel iface={}",
+                    iface
+                );
+            }
+        }
+    });
+}
+
+fn build_selected_tcp_server_adapter(
+    addr: String,
+    iface_manager: Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
+    selected_tcp_server: &TcpServerSelection,
+) -> TcpServer {
+    let mut server = selected_tcp_server
+        .client_mtu
+        .map(|mtu| TcpServer::new(addr.clone(), iface_manager.clone()).with_client_mtu(mtu))
+        .unwrap_or_else(|| TcpServer::new(addr, iface_manager));
+    if selected_tcp_server.kind == "backbone" {
+        server = server
+            .with_client_socket_tuning(TcpSocketTuning::backbone())
+            .with_backbone_client_liveness();
+    }
+    server
 }
 
 pub(super) async fn start_transport_and_interfaces(
@@ -100,6 +142,9 @@ pub(super) async fn start_transport_and_interfaces(
     let mut startup_successes = 0usize;
     let mut startup_failures = Vec::new();
     let mut seeded_tcp_interfaces = Vec::new();
+    let mut i2p_runtime_refreshes = Vec::new();
+    let mut weave_runtime_refreshes = Vec::new();
+    let mut rnode_multi_runtime_refreshes = Vec::new();
 
     if transport_required {
         if let Some(addr) = selected_tcp_server.bind_addr.as_ref() {
@@ -121,18 +166,29 @@ pub(super) async fn start_transport_and_interfaces(
             .set_receipt_handler(Box::new(ReceiptBridge::new(receipt_map, receipt_tx.clone())))
             .await;
         let iface_manager = transport_instance.iface_manager();
+        let (shared_reconnect_tx, shared_reconnect_rx) =
+            tokio::sync::mpsc::unbounded_channel::<AddressHash>();
         let mut server_iface = None;
         if let Some(addr) = selected_tcp_server.bind_addr.as_ref() {
-            let active_iface = iface_manager
-                .lock()
-                .await
-                .spawn(TcpServer::new(addr.clone(), iface_manager.clone()), TcpServer::spawn);
-            log::info!("[daemon] tcp_server enabled iface={} bind={}", active_iface, addr);
+            let server = build_selected_tcp_server_adapter(
+                addr.clone(),
+                iface_manager.clone(),
+                &selected_tcp_server,
+            );
+            let active_iface = iface_manager.lock().await.spawn(server, TcpServer::spawn);
+            log::info!(
+                "[daemon] {} enabled iface={} bind={}",
+                selected_tcp_server.kind,
+                active_iface,
+                addr
+            );
             startup_successes += 1;
             server_iface = Some(active_iface);
         }
 
         if let Some(config) = daemon_config {
+            let mut transport_identity_hash = [0_u8; 16];
+            transport_identity_hash.copy_from_slice(identity.address_hash().as_slice());
             let startup = interface_startup::startup_configured_interfaces(
                 args,
                 config,
@@ -141,14 +197,22 @@ pub(super) async fn start_transport_and_interfaces(
                 &iface_manager,
                 server_iface.as_ref(),
                 &mut configured_interfaces,
+                Some(shared_reconnect_tx.clone()),
+                Some(transport_identity_hash),
             )
             .await;
             startup_successes += startup.startup_successes;
             startup_failures.extend(startup.startup_failures);
+            if startup.connected_to_shared_instance {
+                transport_instance.set_connected_to_shared_instance(true).await;
+            }
             for iface in startup.tunnel_synth_ifaces {
                 transport_instance.synthesize_tunnel_on_interface(iface).await;
             }
             seeded_tcp_interfaces.extend(startup.seeded_tcp_interfaces);
+            i2p_runtime_refreshes.extend(startup.i2p_runtime_refreshes);
+            weave_runtime_refreshes.extend(startup.weave_runtime_refreshes);
+            rnode_multi_runtime_refreshes.extend(startup.rnode_multi_runtime_refreshes);
         }
 
         match transport_instance.restore_reticulum_path_table(reticulum_storage_path).await {
@@ -167,7 +231,7 @@ pub(super) async fn start_transport_and_interfaces(
             {
                 let (host, port) = addr.rsplit_once(':').unwrap_or(("0.0.0.0", "0"));
                 let mut server_record = InterfaceRecord {
-                    kind: "tcp_server".into(),
+                    kind: selected_tcp_server.kind.clone(),
                     enabled: true,
                     host: Some(host.to_string()),
                     port: port.parse::<u16>().ok(),
@@ -204,7 +268,9 @@ pub(super) async fn start_transport_and_interfaces(
         control_destination_hash_hex = destinations.control_destination_hash_hex;
         delivery_source_hash = destinations.delivery_source_hash;
 
-        transport = Some(Arc::new(transport_instance));
+        let transport_arc = Arc::new(transport_instance);
+        spawn_shared_instance_reconnect_synthesizer(transport_arc.clone(), shared_reconnect_rx);
+        transport = Some(transport_arc);
     } else if let Some(config) = daemon_config {
         log::warn!(
             "{}",
@@ -249,5 +315,43 @@ pub(super) async fn start_transport_and_interfaces(
         startup_successes,
         startup_failures,
         seeded_tcp_interfaces,
+        i2p_runtime_refreshes,
+        weave_runtime_refreshes,
+        rnode_multi_runtime_refreshes,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{build_selected_tcp_server_adapter, TcpServerSelection};
+    use rns_transport::iface::InterfaceManager;
+    use std::sync::Arc;
+
+    #[test]
+    fn selected_backbone_server_adapter_enables_socket_tuning_and_liveness() {
+        let manager = Arc::new(tokio::sync::Mutex::new(InterfaceManager::new(8)));
+        let tcp = TcpServerSelection {
+            bind_addr: Some("127.0.0.1:0".to_string()),
+            kind: "tcp_server".to_string(),
+            ..TcpServerSelection::default()
+        };
+        let tcp_server =
+            build_selected_tcp_server_adapter("127.0.0.1:0".to_string(), manager.clone(), &tcp);
+
+        assert!(tcp_server.client_socket_tuning().is_empty());
+        assert!(!tcp_server.client_hdlc_liveness_enabled());
+
+        let backbone = TcpServerSelection {
+            bind_addr: Some("127.0.0.1:0".to_string()),
+            kind: "backbone".to_string(),
+            client_mtu: Some(1_048_576),
+            ..TcpServerSelection::default()
+        };
+        let backbone_server =
+            build_selected_tcp_server_adapter("127.0.0.1:0".to_string(), manager, &backbone);
+
+        assert_eq!(backbone_server.client_socket_tuning().nodelay, Some(true));
+        assert_eq!(backbone_server.client_socket_tuning().keepalive, Some(true));
+        assert!(backbone_server.client_hdlc_liveness_enabled());
     }
 }

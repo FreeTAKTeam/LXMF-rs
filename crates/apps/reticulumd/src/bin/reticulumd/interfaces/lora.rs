@@ -190,7 +190,7 @@ pub(crate) fn build_adapter(iface: &InterfaceConfig) -> Result<LoraInterface, St
         .with_startup_response_timeout(Duration::from_millis(startup_response_timeout_ms)))
 }
 
-fn build_lora_config(iface: &InterfaceConfig) -> Result<LoraConfig, String> {
+pub(crate) fn build_lora_config(iface: &InterfaceConfig) -> Result<LoraConfig, String> {
     let region = iface
         .region
         .as_deref()
@@ -247,7 +247,7 @@ fn rnode_kiss_config(iface: &InterfaceConfig) -> rns_transport::iface::kiss::Kis
     }
 }
 
-fn parse_coding_rate(value: &str) -> Result<u8, String> {
+pub(crate) fn parse_coding_rate(value: &str) -> Result<u8, String> {
     match value.trim() {
         "4/5" | "5" => Ok(5),
         "4/6" | "6" => Ok(6),
@@ -257,7 +257,7 @@ fn parse_coding_rate(value: &str) -> Result<u8, String> {
     }
 }
 
-fn airtime_limit_hundredths(field: &str, value: f64) -> Result<u16, String> {
+pub(crate) fn airtime_limit_hundredths(field: &str, value: f64) -> Result<u16, String> {
     if !(0.0..=100.0).contains(&value) {
         return Err(format!("{field} must be between 0 and 100"));
     }

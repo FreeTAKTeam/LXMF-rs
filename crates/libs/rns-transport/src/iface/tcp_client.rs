@@ -1,7 +1,9 @@
+use std::io;
 use std::sync::Arc;
 use std::sync::OnceLock;
+use std::time::{Duration, Instant};
 
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio_util::sync::CancellationToken;
 
@@ -11,15 +13,144 @@ use crate::iface::{IfaceSource, RxMessage};
 use crate::packet::Packet;
 use crate::serde::Serialize;
 
-use tokio::io::AsyncReadExt;
-
 use alloc::string::String;
 
 use super::hdlc::Hdlc;
-use super::{Interface, InterfaceContext};
+use super::{Interface, InterfaceContext, InterfaceRxSender, InterfaceTxReceiver};
 
 // TCP packet tracing is kept off by default and gated by diagnostics env flags.
 const PACKET_TRACE: bool = false;
+const HDLC_KEEPALIVE_FRAME: &[u8] = &[0x7e, 0x7e];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TcpSocketTuning {
+    pub nodelay: Option<bool>,
+    pub keepalive: Option<bool>,
+    pub tcp_keepalive_idle: Option<Duration>,
+    pub tcp_keepalive_interval: Option<Duration>,
+    pub tcp_keepalive_retries: Option<u32>,
+    pub tcp_user_timeout: Option<Duration>,
+}
+
+impl TcpSocketTuning {
+    #[must_use]
+    pub fn backbone() -> Self {
+        Self {
+            nodelay: Some(true),
+            keepalive: Some(true),
+            tcp_keepalive_idle: Some(Duration::from_secs(5)),
+            tcp_keepalive_interval: Some(Duration::from_secs(2)),
+            tcp_keepalive_retries: Some(12),
+            tcp_user_timeout: Some(Duration::from_secs(24)),
+        }
+    }
+
+    #[must_use]
+    pub fn is_empty(self) -> bool {
+        self.nodelay.is_none()
+            && self.keepalive.is_none()
+            && self.tcp_keepalive_idle.is_none()
+            && self.tcp_keepalive_interval.is_none()
+            && self.tcp_keepalive_retries.is_none()
+            && self.tcp_user_timeout.is_none()
+    }
+
+    pub fn apply_to_stream(self, stream: &TcpStream) -> io::Result<()> {
+        if let Some(nodelay) = self.nodelay {
+            stream.set_nodelay(nodelay)?;
+        }
+        self.apply_platform_tuning(stream)?;
+        Ok(())
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    fn apply_platform_tuning(self, stream: &TcpStream) -> io::Result<()> {
+        let socket = socket2::SockRef::from(stream);
+        let keepalive_params_configured = self.tcp_keepalive_idle.is_some()
+            || self.tcp_keepalive_interval.is_some()
+            || self.tcp_keepalive_retries.is_some();
+
+        if keepalive_params_configured {
+            let mut keepalive = socket2::TcpKeepalive::new();
+            if let Some(idle) = self.tcp_keepalive_idle {
+                keepalive = keepalive.with_time(idle);
+            }
+            if let Some(interval) = self.tcp_keepalive_interval {
+                keepalive = keepalive.with_interval(interval);
+            }
+            if let Some(retries) = self.tcp_keepalive_retries {
+                keepalive = keepalive.with_retries(retries);
+            }
+            socket.set_tcp_keepalive(&keepalive)?;
+        } else if let Some(keepalive) = self.keepalive {
+            socket.set_keepalive(keepalive)?;
+        }
+
+        if let Some(timeout) = self.tcp_user_timeout {
+            socket.set_tcp_user_timeout(Some(timeout))?;
+        }
+        Ok(())
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "android")))]
+    fn apply_platform_tuning(self, _stream: &TcpStream) -> io::Result<()> {
+        let _ = self;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum HdlcStreamEvent {
+    Read { bytes: usize },
+    Write { bytes: usize },
+    Keepalive,
+    Active,
+    Stale,
+    ReadTimeout,
+    Closed,
+    Error { message: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct HdlcStreamWatchdog {
+    pub keepalive_after: Duration,
+    pub stale_after: Duration,
+    pub read_timeout: Duration,
+}
+
+#[derive(Clone)]
+pub(crate) struct HdlcStreamRuntime {
+    pub watchdog: Option<HdlcStreamWatchdog>,
+    pub events: Option<tokio::sync::mpsc::UnboundedSender<HdlcStreamEvent>>,
+}
+
+impl HdlcStreamRuntime {
+    #[must_use]
+    pub(crate) fn new() -> Self {
+        Self { watchdog: None, events: None }
+    }
+
+    #[must_use]
+    pub(crate) fn with_watchdog(mut self, watchdog: HdlcStreamWatchdog) -> Self {
+        self.watchdog = Some(watchdog);
+        self
+    }
+
+    #[must_use]
+    pub(crate) fn with_events(
+        mut self,
+        events: tokio::sync::mpsc::UnboundedSender<HdlcStreamEvent>,
+    ) -> Self {
+        self.events = Some(events);
+        self
+    }
+}
+
+impl Default for HdlcStreamRuntime {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 fn tx_diag_enabled() -> bool {
     static ENABLED: OnceLock<bool> = OnceLock::new();
@@ -42,26 +173,398 @@ fn tcp_wire_buffer_capacity(mtu: usize) -> usize {
     mtu.saturating_mul(2).saturating_add(16)
 }
 
+pub(crate) fn backbone_hdlc_watchdog() -> HdlcStreamWatchdog {
+    HdlcStreamWatchdog {
+        keepalive_after: Duration::from_secs(10),
+        stale_after: Duration::from_secs(20),
+        read_timeout: Duration::from_secs(110),
+    }
+}
+
+pub(crate) async fn run_hdlc_stream<R, W>(
+    label: String,
+    iface_address: crate::hash::AddressHash,
+    mtu: usize,
+    cancel: CancellationToken,
+    iface_stop: CancellationToken,
+    rx_channel: InterfaceRxSender,
+    tx_channel: Arc<tokio::sync::Mutex<InterfaceTxReceiver>>,
+    read_stream: R,
+    write_stream: W,
+) where
+    R: AsyncRead + Unpin + Send + 'static,
+    W: AsyncWrite + Unpin + Send + 'static,
+{
+    run_hdlc_stream_with_runtime(
+        label,
+        iface_address,
+        mtu,
+        cancel,
+        iface_stop,
+        rx_channel,
+        tx_channel,
+        read_stream,
+        write_stream,
+        HdlcStreamRuntime::default(),
+    )
+    .await;
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn run_hdlc_stream_with_runtime<R, W>(
+    label: String,
+    iface_address: crate::hash::AddressHash,
+    mtu: usize,
+    cancel: CancellationToken,
+    iface_stop: CancellationToken,
+    rx_channel: InterfaceRxSender,
+    tx_channel: Arc<tokio::sync::Mutex<InterfaceTxReceiver>>,
+    read_stream: R,
+    write_stream: W,
+    runtime: HdlcStreamRuntime,
+) where
+    R: AsyncRead + Unpin + Send + 'static,
+    W: AsyncWrite + Unpin + Send + 'static,
+{
+    let stop = CancellationToken::new();
+    let iface_stop_rx = iface_stop.clone();
+    let iface_stop_tx = iface_stop.clone();
+    let last_read_at = Arc::new(std::sync::Mutex::new(Instant::now()));
+    let events = runtime.events.clone();
+
+    let rx_task = {
+        let cancel = cancel.clone();
+        let stop = stop.clone();
+        let mut stream = read_stream;
+        let rx_channel = rx_channel.clone();
+        let label = label.clone();
+        let last_read_at = last_read_at.clone();
+        let events = events.clone();
+
+        tokio::spawn(async move {
+            let mut hdlc_rx_buffer = vec![0u8; mtu];
+            let mut frame_buffer: Vec<u8> = Vec::with_capacity(mtu.saturating_mul(4));
+            let mut tcp_buffer = vec![0u8; mtu.saturating_mul(16)];
+
+            loop {
+                tokio::select! {
+                    _ = cancel.cancelled() => {
+                            break;
+                    }
+                    _ = iface_stop_rx.cancelled() => {
+                            stop.cancel();
+                            break;
+                    }
+                    _ = stop.cancelled() => {
+                            break;
+                    }
+                    result = stream.read(&mut tcp_buffer[..]) => {
+                            match result {
+                                Ok(0) => {
+                                    log::warn!("connection closed");
+                                    send_hdlc_stream_event(&events, HdlcStreamEvent::Closed);
+                                    stop.cancel();
+                                    break;
+                                }
+                                Ok(n) => {
+                                    if let Ok(mut last_read) = last_read_at.lock() {
+                                        *last_read = Instant::now();
+                                    }
+                                    send_hdlc_stream_event(&events, HdlcStreamEvent::Read { bytes: n });
+                                    // TCP and Unix streams can deliver partial or multiple HDLC frames.
+                                    frame_buffer.extend_from_slice(&tcp_buffer[..n]);
+
+                                    while let Some((start, end)) = Hdlc::find(&frame_buffer) {
+                                        let frame = &frame_buffer[start..=end];
+                                        let mut output = OutputBuffer::new(&mut hdlc_rx_buffer[..]);
+                                        if Hdlc::decode(frame, &mut output).is_ok() {
+                                            if let Ok(packet) =
+                                                Packet::deserialize(&mut InputBuffer::new(output.as_slice()))
+                                            {
+                                                if PACKET_TRACE {
+                                                    log::trace!("rx << ({}) {}", iface_address, packet);
+                                                }
+                                                if tx_diag_enabled() {
+                                                    log::debug!(
+                                                        "[tp-diag] {} rx_packet iface={} type={:?} dst={} ctx={:02x} hops={}",
+                                                        label,
+                                                        iface_address,
+                                                        packet.header.packet_type,
+                                                        packet.destination,
+                                                        packet.context as u8,
+                                                        packet.header.hops
+                                                    );
+                                                }
+                                                let _ = rx_channel
+                                                    .send(RxMessage {
+                                                        address: iface_address,
+                                                        packet,
+                                                        source: IfaceSource::None,
+                                                    })
+                                                    .await;
+                                            } else {
+                                                log::warn!("couldn't decode packet");
+                                            }
+                                        } else {
+                                            log::warn!("couldn't decode hdlc frame");
+                                        }
+
+                                        // Drop all bytes up to and including the closing
+                                        // flag of the frame we just handled.
+                                        frame_buffer.drain(..=end);
+                                    }
+
+                                    if frame_buffer.len() > mtu.saturating_mul(64) {
+                                        // Guard against unbounded growth on malformed
+                                        // streams where no valid frame closes.
+                                        frame_buffer.clear();
+                                    }
+                                }
+                                Err(e) => {
+                                    log::warn!("connection error {}", e);
+                                    send_hdlc_stream_event(
+                                        &events,
+                                        HdlcStreamEvent::Error { message: e.to_string() },
+                                    );
+                                    break;
+                                }
+                            }
+                        },
+                };
+            }
+        })
+    };
+
+    let tx_task = {
+        let cancel = cancel.clone();
+        let tx_channel = tx_channel.clone();
+        let mut stream = write_stream;
+        let label = label.clone();
+        let last_read_at = last_read_at.clone();
+        let events = events.clone();
+        let watchdog = runtime.watchdog.clone();
+
+        tokio::spawn(async move {
+            let mut last_write_at = Instant::now();
+            let mut stale = false;
+            let mut watchdog_tick = tokio::time::interval(Duration::from_secs(1));
+            watchdog_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            loop {
+                if stop.is_cancelled() {
+                    break;
+                }
+
+                let mut hdlc_tx_buffer = vec![0u8; tcp_wire_buffer_capacity(mtu)];
+                let mut tx_buffer = vec![0u8; mtu];
+
+                let mut tx_channel = tx_channel.lock().await;
+
+                tokio::select! {
+                    _ = cancel.cancelled() => {
+                            break;
+                    }
+                    _ = iface_stop_tx.cancelled() => {
+                            stop.cancel();
+                            break;
+                    }
+                    _ = stop.cancelled() => {
+                            break;
+                    }
+                    _ = watchdog_tick.tick(), if watchdog.is_some() => {
+                        let watchdog = watchdog.as_ref().expect("guarded by select condition");
+                        let now = Instant::now();
+                        let last_read = last_read_at.lock().map(|last_read| *last_read).unwrap_or(now);
+                        let read_idle = now.saturating_duration_since(last_read);
+
+                        if read_idle > watchdog.read_timeout {
+                            log::warn!(
+                                "[tp-diag] {} read watchdog timed out iface={} idle_ms={}",
+                                label,
+                                iface_address,
+                                read_idle.as_millis()
+                            );
+                            send_hdlc_stream_event(&events, HdlcStreamEvent::ReadTimeout);
+                            stop.cancel();
+                            break;
+                        }
+
+                        if read_idle > watchdog.stale_after {
+                            if !stale {
+                                send_hdlc_stream_event(&events, HdlcStreamEvent::Stale);
+                            }
+                            stale = true;
+                        } else if stale {
+                            stale = false;
+                            send_hdlc_stream_event(&events, HdlcStreamEvent::Active);
+                        }
+
+                        if now.saturating_duration_since(last_write_at) > watchdog.keepalive_after {
+                            match stream.write_all(HDLC_KEEPALIVE_FRAME).await {
+                                Ok(()) => {
+                                    if let Err(err) = stream.flush().await {
+                                        log::warn!("[tp-diag] keepalive flush failed iface={} err={}", iface_address, err);
+                                        send_hdlc_stream_event(
+                                            &events,
+                                            HdlcStreamEvent::Error { message: err.to_string() },
+                                        );
+                                        stop.cancel();
+                                        break;
+                                    }
+                                    last_write_at = Instant::now();
+                                    send_hdlc_stream_event(&events, HdlcStreamEvent::Keepalive);
+                                }
+                                Err(err) => {
+                                    log::warn!("[tp-diag] keepalive write failed iface={} err={}", iface_address, err);
+                                    send_hdlc_stream_event(
+                                        &events,
+                                        HdlcStreamEvent::Error { message: err.to_string() },
+                                    );
+                                    stop.cancel();
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    Some(message) = tx_channel.recv() => {
+                        let packet = message.packet;
+                        if PACKET_TRACE {
+                            log::trace!("tx >> ({}) {}", iface_address, packet);
+                        }
+                        if tx_diag_enabled() {
+                            log::debug!("[tp-diag] {} tx_dequeue iface={} {}", label, iface_address, packet);
+                        }
+                        let mut output = OutputBuffer::new(&mut tx_buffer);
+                        if packet.serialize(&mut output).is_ok() {
+                            let mut hdlc_output = OutputBuffer::new(&mut hdlc_tx_buffer[..]);
+                            if Hdlc::encode(output.as_slice(), &mut hdlc_output).is_ok() {
+                                if let Err(err) = stream.write_all(hdlc_output.as_slice()).await {
+                                    log::warn!("[tp-diag] write_all failed iface={} err={}", iface_address, err);
+                                    send_hdlc_stream_event(
+                                        &events,
+                                        HdlcStreamEvent::Error { message: err.to_string() },
+                                    );
+                                    stop.cancel();
+                                    break;
+                                }
+                                if let Err(err) = stream.flush().await {
+                                    log::warn!("[tp-diag] flush failed iface={} err={}", iface_address, err);
+                                    send_hdlc_stream_event(
+                                        &events,
+                                        HdlcStreamEvent::Error { message: err.to_string() },
+                                    );
+                                    stop.cancel();
+                                    break;
+                                }
+                                last_write_at = Instant::now();
+                                send_hdlc_stream_event(
+                                    &events,
+                                    HdlcStreamEvent::Write { bytes: hdlc_output.as_slice().len() },
+                                );
+                                if tx_diag_enabled() {
+                                    log::debug!(
+                                        "[tp-diag] {} tx_write_ok iface={} wire_len={} raw_len={}",
+                                        label,
+                                        iface_address,
+                                        hdlc_output.as_slice().len(),
+                                        output.as_slice().len()
+                                    );
+                                }
+                            } else {
+                                log::warn!(
+                                    "[tp-diag] hdlc_encode failed iface={} raw_len={}",
+                                    iface_address,
+                                    output.as_slice().len()
+                                );
+                            }
+                        } else {
+                            log::warn!(
+                                "[tp-diag] serialize failed iface={} buffer_cap={}",
+                                iface_address,
+                                tx_buffer.len()
+                            );
+                        }
+                    }
+                };
+            }
+        })
+    };
+
+    tx_task.await.unwrap();
+    rx_task.await.unwrap();
+}
+
+fn send_hdlc_stream_event(
+    events: &Option<tokio::sync::mpsc::UnboundedSender<HdlcStreamEvent>>,
+    event: HdlcStreamEvent,
+) {
+    if let Some(events) = events {
+        let _ = events.send(event);
+    }
+}
+
 pub struct TcpClient {
     addr: String,
     stream: Option<TcpStream>,
     mtu: usize,
+    socket_tuning: TcpSocketTuning,
+    hdlc_watchdog: Option<HdlcStreamWatchdog>,
+    reconnect_events: Option<tokio::sync::mpsc::UnboundedSender<crate::hash::AddressHash>>,
 }
 
 impl TcpClient {
     pub const DEFAULT_MTU: usize = 262_144;
 
     pub fn new<T: Into<String>>(addr: T) -> Self {
-        Self { addr: addr.into(), stream: None, mtu: Self::DEFAULT_MTU }
+        Self {
+            addr: addr.into(),
+            stream: None,
+            mtu: Self::DEFAULT_MTU,
+            socket_tuning: TcpSocketTuning::default(),
+            hdlc_watchdog: None,
+            reconnect_events: None,
+        }
     }
 
     pub fn new_from_stream<T: Into<String>>(addr: T, stream: TcpStream) -> Self {
-        Self { addr: addr.into(), stream: Some(stream), mtu: Self::DEFAULT_MTU }
+        Self {
+            addr: addr.into(),
+            stream: Some(stream),
+            mtu: Self::DEFAULT_MTU,
+            socket_tuning: TcpSocketTuning::default(),
+            hdlc_watchdog: None,
+            reconnect_events: None,
+        }
     }
 
     #[must_use]
     pub fn with_mtu(mut self, mtu: usize) -> Self {
         self.mtu = mtu.max(256);
+        self
+    }
+
+    #[must_use]
+    pub fn with_socket_tuning(mut self, socket_tuning: TcpSocketTuning) -> Self {
+        self.socket_tuning = socket_tuning;
+        self
+    }
+
+    #[must_use]
+    pub fn with_backbone_liveness(self) -> Self {
+        self.with_hdlc_watchdog(backbone_hdlc_watchdog())
+    }
+
+    #[must_use]
+    pub(crate) fn with_hdlc_watchdog(mut self, watchdog: HdlcStreamWatchdog) -> Self {
+        self.hdlc_watchdog = Some(watchdog);
+        self
+    }
+
+    #[must_use]
+    pub fn with_reconnect_events(
+        mut self,
+        events: tokio::sync::mpsc::UnboundedSender<crate::hash::AddressHash>,
+    ) -> Self {
+        self.reconnect_events = Some(events);
         self
     }
 
@@ -75,21 +578,41 @@ impl TcpClient {
         self.mtu
     }
 
+    #[must_use]
+    pub fn socket_tuning(&self) -> TcpSocketTuning {
+        self.socket_tuning
+    }
+
+    #[must_use]
+    pub fn hdlc_liveness_enabled(&self) -> bool {
+        self.hdlc_watchdog.is_some()
+    }
+
+    #[must_use]
+    #[cfg(test)]
+    pub(crate) fn hdlc_watchdog(&self) -> Option<HdlcStreamWatchdog> {
+        self.hdlc_watchdog.clone()
+    }
+
     #[tracing::instrument(name = "tcp_peer", skip_all, fields(addr = tracing::field::Empty))]
     pub async fn spawn(context: InterfaceContext<TcpClient>) {
         let iface_stop = context.channel.stop.clone();
-        let (addr, mtu) = {
+        let (addr, mtu, socket_tuning, hdlc_watchdog) = {
             let guard = context.inner.lock().unwrap();
-            (guard.addr.clone(), guard.mtu)
+            (guard.addr.clone(), guard.mtu, guard.socket_tuning, guard.hdlc_watchdog.clone())
         };
         tracing::Span::current().record("addr", addr.as_str());
         let iface_address = context.channel.address;
-        let mut stream = { context.inner.lock().unwrap().stream.take() };
+        let (mut stream, reconnect_events) = {
+            let mut guard = context.inner.lock().unwrap();
+            (guard.stream.take(), guard.reconnect_events.clone())
+        };
 
         let (rx_channel, tx_channel) = context.channel.split();
         let tx_channel = Arc::new(tokio::sync::Mutex::new(tx_channel));
 
         let mut running = true;
+        let mut has_connected = false;
         loop {
             if !running || context.cancel.is_cancelled() || iface_stop.is_cancelled() {
                 break;
@@ -117,190 +640,39 @@ impl TcpClient {
                 continue;
             }
 
-            let cancel = context.cancel.clone();
-            let stop = CancellationToken::new();
-            let iface_stop_rx = iface_stop.clone();
-            let iface_stop_tx = iface_stop.clone();
-
             let stream = stream.unwrap();
+            if let Err(err) = socket_tuning.apply_to_stream(&stream) {
+                log::warn!("failed to apply TCP socket tuning to <{}>: {}", addr, err);
+            }
             let (read_stream, write_stream) = stream.into_split();
 
             log::info!("connected to <{}>", addr);
+            if has_connected {
+                if let Some(events) = reconnect_events.as_ref() {
+                    let _ = events.send(iface_address);
+                }
+            } else {
+                has_connected = true;
+            }
 
-            // Use protocol MTU-scale buffers, not size_of::<Packet>(), since packet
-            // struct size does not reflect serialized wire size and can silently drop
-            // larger payloads during serialization.
-            // Start receive task
-            let rx_task = {
-                let cancel = cancel.clone();
-                let stop = stop.clone();
-                let mut stream = read_stream;
-                let rx_channel = rx_channel.clone();
+            let runtime =
+                hdlc_watchdog.clone().map_or_else(HdlcStreamRuntime::default, |watchdog| {
+                    HdlcStreamRuntime::new().with_watchdog(watchdog)
+                });
 
-                tokio::spawn(async move {
-                    let mut hdlc_rx_buffer = vec![0u8; mtu];
-                    let mut frame_buffer: Vec<u8> = Vec::with_capacity(mtu.saturating_mul(4));
-                    let mut tcp_buffer = vec![0u8; mtu.saturating_mul(16)];
-
-                    loop {
-                        tokio::select! {
-                            _ = cancel.cancelled() => {
-                                    break;
-                            }
-                            _ = iface_stop_rx.cancelled() => {
-                                    stop.cancel();
-                                    break;
-                            }
-                            _ = stop.cancelled() => {
-                                    break;
-                            }
-                            result = stream.read(&mut tcp_buffer[..]) => {
-                                    match result {
-                                        Ok(0) => {
-                                            log::warn!("connection closed");
-                                            stop.cancel();
-                                            break;
-                                        }
-                                        Ok(n) => {
-                                            // TCP can deliver partial or multiple HDLC frames.
-                                            frame_buffer.extend_from_slice(&tcp_buffer[..n]);
-
-                                            while let Some((start, end)) = Hdlc::find(&frame_buffer) {
-                                                let frame = &frame_buffer[start..=end];
-                                                let mut output = OutputBuffer::new(&mut hdlc_rx_buffer[..]);
-                                                if Hdlc::decode(frame, &mut output).is_ok() {
-                                                    if let Ok(packet) =
-                                                        Packet::deserialize(&mut InputBuffer::new(output.as_slice()))
-                                                    {
-                                                        if PACKET_TRACE {
-                                                            log::trace!("rx << ({}) {}", iface_address, packet);
-                                                        }
-                                                        if tx_diag_enabled() {
-                                                            log::debug!(
-                                                                "[tp-diag] tcp_client rx_packet iface={} type={:?} dst={} ctx={:02x} hops={}",
-                                                                iface_address,
-                                                                packet.header.packet_type,
-                                                                packet.destination,
-                                                                packet.context as u8,
-                                                                packet.header.hops
-                                                            );
-                                                        }
-                                                        let _ = rx_channel
-                                                            .send(RxMessage {
-                                                                address: iface_address,
-                                                                packet,
-                                                                source: IfaceSource::None,
-                                                            })
-                                                            .await;
-                                                    } else {
-                                                        log::warn!("couldn't decode packet");
-                                                    }
-                                                } else {
-                                                    log::warn!("couldn't decode hdlc frame");
-                                                }
-
-                                                // Drop all bytes up to and including the closing
-                                                // flag of the frame we just handled.
-                                                frame_buffer.drain(..=end);
-                                            }
-
-                                            if frame_buffer.len() > mtu.saturating_mul(64) {
-                                                // Guard against unbounded growth on malformed
-                                                // streams where no valid frame closes.
-                                                frame_buffer.clear();
-                                            }
-                                        }
-                                        Err(e) => {
-                                            log::warn!("connection error {}", e);
-                                            break;
-                                        }
-                                    }
-                                },
-                        };
-                    }
-                })
-            };
-
-            // Start transmit task
-            let tx_task = {
-                let cancel = cancel.clone();
-                let tx_channel = tx_channel.clone();
-                let mut stream = write_stream;
-
-                tokio::spawn(async move {
-                    loop {
-                        if stop.is_cancelled() {
-                            break;
-                        }
-
-                        let mut hdlc_tx_buffer = vec![0u8; tcp_wire_buffer_capacity(mtu)];
-                        let mut tx_buffer = vec![0u8; mtu];
-
-                        let mut tx_channel = tx_channel.lock().await;
-
-                        tokio::select! {
-                            _ = cancel.cancelled() => {
-                                    break;
-                            }
-                            _ = iface_stop_tx.cancelled() => {
-                                    stop.cancel();
-                                    break;
-                            }
-                            _ = stop.cancelled() => {
-                                    break;
-                            }
-                            Some(message) = tx_channel.recv() => {
-                                let packet = message.packet;
-                                if PACKET_TRACE {
-                                    log::trace!("tx >> ({}) {}", iface_address, packet);
-                                }
-                                if tx_diag_enabled() {
-                                    log::debug!("[tp-diag] tcp_client tx_dequeue iface={} {}", iface_address, packet);
-                                }
-                                let mut output = OutputBuffer::new(&mut tx_buffer);
-                                if packet.serialize(&mut output).is_ok() {
-                                    let mut hdlc_output = OutputBuffer::new(&mut hdlc_tx_buffer[..]);
-                                    if Hdlc::encode(output.as_slice(), &mut hdlc_output).is_ok() {
-                                        if let Err(err) = stream.write_all(hdlc_output.as_slice()).await {
-                                            log::warn!("[tp-diag] write_all failed iface={} err={}", iface_address, err);
-                                            stop.cancel();
-                                            break;
-                                        }
-                                        if let Err(err) = stream.flush().await {
-                                            log::warn!("[tp-diag] flush failed iface={} err={}", iface_address, err);
-                                            stop.cancel();
-                                            break;
-                                        }
-                                        if tx_diag_enabled() {
-                                            log::debug!(
-                                                "[tp-diag] tcp_client tx_write_ok iface={} wire_len={} raw_len={}",
-                                                iface_address,
-                                                hdlc_output.as_slice().len(),
-                                                output.as_slice().len()
-                                            );
-                                        }
-                                    } else {
-                                        log::warn!(
-                                            "[tp-diag] hdlc_encode failed iface={} raw_len={}",
-                                            iface_address,
-                                            output.as_slice().len()
-                                        );
-                                    }
-                                } else {
-                                    log::warn!(
-                                        "[tp-diag] serialize failed iface={} buffer_cap={}",
-                                        iface_address,
-                                        tx_buffer.len()
-                                    );
-                                }
-                            }
-                        };
-                    }
-                })
-            };
-
-            tx_task.await.unwrap();
-            rx_task.await.unwrap();
+            run_hdlc_stream_with_runtime(
+                "tcp_client".to_string(),
+                iface_address,
+                mtu,
+                context.cancel.clone(),
+                iface_stop.clone(),
+                rx_channel.clone(),
+                tx_channel.clone(),
+                read_stream,
+                write_stream,
+                runtime,
+            )
+            .await;
 
             log::info!("disconnected from <{}>", addr);
         }
@@ -321,9 +693,20 @@ impl Interface for TcpClient {
 
 #[cfg(test)]
 mod tests {
-    use super::{tcp_wire_buffer_capacity, TcpClient};
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use super::{
+        run_hdlc_stream_with_runtime, tcp_wire_buffer_capacity, HdlcStreamEvent, HdlcStreamRuntime,
+        HdlcStreamWatchdog, TcpClient, TcpSocketTuning,
+    };
     use crate::buffer::OutputBuffer;
+    use crate::hash::AddressHash;
     use crate::iface::hdlc::Hdlc;
+    use crate::iface::InterfaceManager;
+    use tokio::io::AsyncReadExt;
+    use tokio::net::{TcpListener, TcpStream};
+    use tokio_util::sync::CancellationToken;
 
     #[test]
     fn tcp_client_default_and_configured_mtu_are_exposed() {
@@ -331,6 +714,61 @@ mod tests {
         assert_eq!(TcpClient::DEFAULT_MTU, 262_144);
         assert_eq!(TcpClient::new("rmap.world:4242").with_mtu(4096).mtu_value(), 4096);
         assert_eq!(TcpClient::new("rmap.world:4242").with_mtu(64).mtu_value(), 256);
+    }
+
+    #[test]
+    fn tcp_client_default_liveness_is_disabled() {
+        let client = TcpClient::new("rmap.world:4242");
+
+        assert!(!client.hdlc_liveness_enabled());
+        assert_eq!(client.hdlc_watchdog(), None);
+    }
+
+    #[test]
+    fn tcp_client_backbone_liveness_uses_watchdog_profile() {
+        let client = TcpClient::new("rmap.world:4242").with_backbone_liveness();
+
+        assert!(client.hdlc_liveness_enabled());
+        assert_eq!(client.hdlc_watchdog(), Some(super::backbone_hdlc_watchdog()));
+    }
+
+    #[tokio::test]
+    async fn tcp_socket_tuning_applies_nodelay_to_stream() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind listener");
+        let addr = listener.local_addr().expect("listener addr");
+        let client = TcpStream::connect(addr).await.expect("connect client");
+        let (_server, _) = listener.accept().await.expect("accept server");
+
+        let tuning = TcpSocketTuning::backbone();
+        assert_eq!(tuning.nodelay, Some(true));
+        assert_eq!(tuning.keepalive, Some(true));
+        assert_eq!(tuning.tcp_keepalive_idle, Some(Duration::from_secs(5)));
+        assert_eq!(tuning.tcp_keepalive_interval, Some(Duration::from_secs(2)));
+        assert_eq!(tuning.tcp_keepalive_retries, Some(12));
+        assert_eq!(tuning.tcp_user_timeout, Some(Duration::from_secs(24)));
+
+        assert!(!client.nodelay().expect("read default nodelay"));
+        tuning.apply_to_stream(&client).expect("apply tuning");
+        assert!(client.nodelay().expect("read tuned nodelay"));
+
+        #[cfg(any(target_os = "linux", target_os = "android"))]
+        {
+            let socket = socket2::SockRef::from(&client);
+            assert!(socket.keepalive().expect("read keepalive"));
+            assert_eq!(
+                socket.keepalive_time().expect("read keepalive idle"),
+                Duration::from_secs(5)
+            );
+            assert_eq!(
+                socket.keepalive_interval().expect("read keepalive interval"),
+                Duration::from_secs(2)
+            );
+            assert_eq!(socket.keepalive_retries().expect("read keepalive retries"), 12);
+            assert_eq!(
+                socket.tcp_user_timeout().expect("read user timeout"),
+                Some(Duration::from_secs(24))
+            );
+        }
     }
 
     #[test]
@@ -342,5 +780,161 @@ mod tests {
 
         let encoded_len = Hdlc::encode(&raw, &mut output).expect("encode worst-case payload");
         assert!(encoded_len >= (mtu * 2) + 2, "wire len must cover escaped payload plus flags");
+    }
+
+    #[tokio::test]
+    async fn hdlc_watchdog_writes_keepalive_and_reports_event() {
+        let (stream, mut peer) = tokio::io::duplex(64);
+        let (read_stream, write_stream) = tokio::io::split(stream);
+        let cancel = CancellationToken::new();
+        let iface_stop = CancellationToken::new();
+        let (rx_channel, _rx_messages) = tokio::sync::mpsc::channel(1);
+        let (_tx_sender, tx_receiver) = tokio::sync::mpsc::channel(1);
+        let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel();
+
+        let handle = tokio::spawn(run_hdlc_stream_with_runtime(
+            "test".to_string(),
+            AddressHash::new([0x44; 16]),
+            256,
+            cancel.clone(),
+            iface_stop,
+            rx_channel,
+            Arc::new(tokio::sync::Mutex::new(tx_receiver)),
+            read_stream,
+            write_stream,
+            HdlcStreamRuntime::new()
+                .with_watchdog(HdlcStreamWatchdog {
+                    keepalive_after: Duration::from_millis(10),
+                    stale_after: Duration::from_secs(1),
+                    read_timeout: Duration::from_secs(5),
+                })
+                .with_events(event_tx),
+        ));
+
+        let mut keepalive = [0_u8; 2];
+        tokio::time::timeout(Duration::from_secs(3), peer.read_exact(&mut keepalive))
+            .await
+            .expect("keepalive deadline")
+            .expect("read keepalive");
+        assert_eq!(keepalive, [0x7e, 0x7e]);
+
+        let mut saw_keepalive = false;
+        for _ in 0..4 {
+            let event = tokio::time::timeout(Duration::from_secs(3), event_rx.recv())
+                .await
+                .expect("event deadline")
+                .expect("watchdog event");
+            if matches!(event, HdlcStreamEvent::Keepalive) {
+                saw_keepalive = true;
+                break;
+            }
+        }
+        assert!(saw_keepalive);
+
+        cancel.cancel();
+        drop(peer);
+        handle.await.expect("hdlc stream task");
+    }
+
+    #[tokio::test]
+    async fn tcp_client_spawn_uses_configured_hdlc_watchdog_keepalive() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind listener");
+        let addr = listener.local_addr().expect("listener addr");
+        let peer = TcpStream::connect(addr).await.expect("connect peer");
+        let (server_stream, _) = listener.accept().await.expect("accept stream");
+        let mut peer = peer;
+        let mut manager = InterfaceManager::new(8);
+        let context = manager.new_context(
+            TcpClient::new_from_stream(addr.to_string(), server_stream).with_hdlc_watchdog(
+                HdlcStreamWatchdog {
+                    keepalive_after: Duration::from_millis(10),
+                    stale_after: Duration::from_secs(1),
+                    read_timeout: Duration::from_secs(5),
+                },
+            ),
+        );
+        let cancel = context.cancel.clone();
+        let task = tokio::spawn(TcpClient::spawn(context));
+
+        let mut keepalive = [0_u8; 2];
+        tokio::time::timeout(Duration::from_secs(3), peer.read_exact(&mut keepalive))
+            .await
+            .expect("keepalive deadline")
+            .expect("read keepalive");
+
+        cancel.cancel();
+        drop(peer);
+        tokio::time::timeout(Duration::from_secs(2), task)
+            .await
+            .expect("client task timed out")
+            .expect("client task");
+
+        assert_eq!(keepalive, [0x7e, 0x7e]);
+    }
+
+    #[tokio::test]
+    async fn tcp_client_without_watchdog_does_not_emit_idle_keepalive() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind listener");
+        let addr = listener.local_addr().expect("listener addr");
+        let peer = TcpStream::connect(addr).await.expect("connect peer");
+        let (server_stream, _) = listener.accept().await.expect("accept stream");
+        let mut peer = peer;
+        let mut manager = InterfaceManager::new(8);
+        let context =
+            manager.new_context(TcpClient::new_from_stream(addr.to_string(), server_stream));
+        let cancel = context.cancel.clone();
+        let task = tokio::spawn(TcpClient::spawn(context));
+
+        let mut bytes = [0_u8; 2];
+        let read =
+            tokio::time::timeout(Duration::from_millis(200), peer.read_exact(&mut bytes)).await;
+
+        cancel.cancel();
+        drop(peer);
+        tokio::time::timeout(Duration::from_secs(2), task)
+            .await
+            .expect("client task timed out")
+            .expect("client task");
+
+        assert!(read.is_err(), "ordinary tcp client emitted an idle keepalive");
+    }
+
+    #[tokio::test]
+    async fn tcp_client_reports_reconnect_events_after_initial_connection() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind listener");
+        let addr = listener.local_addr().expect("listener addr");
+        let (reconnect_tx, mut reconnect_rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut manager = InterfaceManager::new(8);
+        let context = manager
+            .new_context(TcpClient::new(addr.to_string()).with_reconnect_events(reconnect_tx));
+        let iface_address = context.channel.address;
+        let cancel = context.cancel.clone();
+        let iface_stop = context.channel.stop.clone();
+        let task = tokio::spawn(TcpClient::spawn(context));
+
+        let (first_stream, _) = tokio::time::timeout(Duration::from_secs(2), listener.accept())
+            .await
+            .expect("first connect timed out")
+            .expect("first accept");
+        drop(first_stream);
+
+        let (second_stream, _) = tokio::time::timeout(Duration::from_secs(2), listener.accept())
+            .await
+            .expect("second reconnect timed out")
+            .expect("second accept");
+        let reconnected_iface = tokio::time::timeout(Duration::from_secs(2), reconnect_rx.recv())
+            .await
+            .expect("reconnect event timed out")
+            .expect("reconnect event");
+
+        cancel.cancel();
+        drop(second_stream);
+        tokio::time::timeout(Duration::from_secs(2), task)
+            .await
+            .expect("client task timed out")
+            .expect("client task");
+
+        assert!(iface_stop.is_cancelled());
+        assert_eq!(reconnected_iface, iface_address);
     }
 }

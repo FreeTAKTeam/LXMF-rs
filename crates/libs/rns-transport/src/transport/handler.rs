@@ -114,7 +114,11 @@ impl TransportHandler {
 
         diag::log_route_lookup(&self.path_table, &packet.destination);
 
-        let route = super::path::route_outbound_packet(&self.path_table, &packet);
+        let route = super::path::route_outbound_packet(
+            &self.path_table,
+            &packet,
+            self.config.connected_to_shared_instance,
+        );
         let packet = route.packet;
         if let Some(iface) = route.next_iface {
             let dispatch =

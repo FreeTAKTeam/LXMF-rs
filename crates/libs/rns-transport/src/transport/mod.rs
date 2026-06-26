@@ -164,6 +164,7 @@ pub struct TransportConfig {
     identity: PrivateIdentity,
     broadcast: bool,
     retransmit: bool,
+    connected_to_shared_instance: bool,
     announce_cache_capacity: usize,
     announce_retry_limit: u8,
     announce_queue_len: usize,

@@ -25,7 +25,47 @@ impl InterfaceConfig {
                 insert_opt_u64(&mut settings, "port", self.port.map(u64::from));
                 insert_opt_u64(&mut settings, "mtu", self.mtu.map(|v| v as u64));
             }
+            "backbone" => {
+                insert_opt_string(&mut settings, "host", self.host.as_ref());
+                insert_opt_u64(&mut settings, "port", self.port.map(u64::from));
+                insert_opt_u64(&mut settings, "mtu", self.mtu.map(|v| v as u64));
+            }
+            "backbone_client" => {
+                insert_opt_string(&mut settings, "host", self.host.as_ref());
+                insert_opt_u64(&mut settings, "port", self.port.map(u64::from));
+                insert_opt_string(&mut settings, "target_host", self.target_host.as_ref());
+                insert_opt_u64(&mut settings, "target_port", self.target_port.map(u64::from));
+                insert_opt_u64(&mut settings, "mtu", self.mtu.map(|v| v as u64));
+            }
+            "local" => {
+                insert_opt_string(
+                    &mut settings,
+                    "shared_instance_type",
+                    self.shared_instance_type.as_ref(),
+                );
+                insert_opt_string(&mut settings, "instance_name", self.instance_name.as_ref());
+                insert_opt_string(&mut settings, "socket_path", self.socket_path.as_ref());
+                insert_opt_string(&mut settings, "host", self.host.as_ref());
+                insert_opt_u64(&mut settings, "port", self.port.map(u64::from));
+                insert_opt_u64(&mut settings, "mtu", self.mtu.map(|v| v as u64));
+            }
+            "pipe" => {
+                insert_opt_string(&mut settings, "command", self.command.as_ref());
+                insert_opt_f64(&mut settings, "respawn_delay", self.respawn_delay);
+                insert_opt_u64(&mut settings, "mtu", self.mtu.map(|v| v as u64));
+            }
+            "i2p" => {
+                insert_opt_string_array(&mut settings, "peers", self.peers.as_ref());
+                insert_opt_bool(&mut settings, "connectable", self.connectable);
+                insert_opt_string(&mut settings, "sam_host", self.sam_host.as_ref());
+                insert_opt_u64(&mut settings, "sam_port", self.sam_port.map(u64::from));
+                insert_opt_u64(&mut settings, "mtu", self.mtu.map(|value| value as u64));
+                insert_opt_string(&mut settings, "state_path", self.state_path.as_ref());
+            }
             "udp" => {
+                insert_opt_string(&mut settings, "host", self.host.as_ref());
+                insert_opt_u64(&mut settings, "port", self.port.map(u64::from));
+                insert_opt_string(&mut settings, "device", self.device.as_ref());
                 insert_opt_string(&mut settings, "target_host", self.target_host.as_ref());
                 insert_opt_u64(&mut settings, "target_port", self.target_port.map(u64::from));
             }
@@ -72,6 +112,17 @@ impl InterfaceConfig {
                     self.max_reconnect_backoff_ms,
                 );
             }
+            "weave" => {
+                insert_opt_string(&mut settings, "device", self.device.as_ref());
+                insert_opt_u64(&mut settings, "baud_rate", self.baud_rate.map(u64::from));
+                insert_opt_u64(&mut settings, "mtu", self.mtu.map(|value| value as u64));
+                insert_opt_u64(&mut settings, "reconnect_backoff_ms", self.reconnect_backoff_ms);
+                insert_opt_u64(
+                    &mut settings,
+                    "max_reconnect_backoff_ms",
+                    self.max_reconnect_backoff_ms,
+                );
+            }
             "kiss" => {
                 insert_opt_string(&mut settings, "device", self.device.as_ref());
                 insert_opt_u64(&mut settings, "baud_rate", self.baud_rate.map(u64::from));
@@ -83,6 +134,28 @@ impl InterfaceConfig {
                 if let Some(flow_control) = self.kiss_flow_control {
                     settings.insert("kiss_flow_control".to_string(), JsonValue::Bool(flow_control));
                 }
+                insert_opt_string(&mut settings, "id_callsign", self.id_callsign.as_ref());
+                insert_opt_u64(&mut settings, "id_interval", self.id_interval);
+                insert_opt_u64(&mut settings, "reconnect_backoff_ms", self.reconnect_backoff_ms);
+                insert_opt_u64(
+                    &mut settings,
+                    "max_reconnect_backoff_ms",
+                    self.max_reconnect_backoff_ms,
+                );
+            }
+            "ax25_kiss" => {
+                insert_opt_string(&mut settings, "device", self.device.as_ref());
+                insert_opt_u64(&mut settings, "baud_rate", self.baud_rate.map(u64::from));
+                insert_opt_u64(&mut settings, "mtu", self.mtu.map(|v| v as u64));
+                insert_opt_u64(&mut settings, "preamble_ms", self.preamble_ms.map(u64::from));
+                insert_opt_u64(&mut settings, "tx_tail_ms", self.tx_tail_ms.map(u64::from));
+                insert_opt_u64(&mut settings, "persistence", self.persistence.map(u64::from));
+                insert_opt_u64(&mut settings, "slot_time_ms", self.slot_time_ms.map(u64::from));
+                if let Some(flow_control) = self.kiss_flow_control {
+                    settings.insert("kiss_flow_control".to_string(), JsonValue::Bool(flow_control));
+                }
+                insert_opt_string(&mut settings, "callsign", self.callsign.as_ref());
+                insert_opt_u64(&mut settings, "ssid", self.ssid.map(u64::from));
                 insert_opt_string(&mut settings, "id_callsign", self.id_callsign.as_ref());
                 insert_opt_u64(&mut settings, "id_interval", self.id_interval);
                 insert_opt_u64(&mut settings, "reconnect_backoff_ms", self.reconnect_backoff_ms);
@@ -223,6 +296,16 @@ impl InterfaceConfig {
                 );
                 insert_opt_string(&mut settings, "state_path", self.state_path.as_ref());
             }
+            "rnode_multi" => {
+                insert_opt_string(&mut settings, "device", self.device.as_ref());
+                insert_opt_u64(&mut settings, "baud_rate", self.baud_rate.map(u64::from));
+                insert_opt_u64(&mut settings, "mtu", self.mtu.map(|value| value as u64));
+                insert_opt_string(&mut settings, "id_callsign", self.id_callsign.as_ref());
+                insert_opt_u64(&mut settings, "id_interval", self.id_interval);
+                if let Some(subinterfaces) = rnode_multi_subinterfaces_settings_json(self) {
+                    settings.insert("subinterfaces".to_string(), subinterfaces);
+                }
+            }
             _ => {}
         }
         (!settings.is_empty()).then_some(JsonValue::Object(settings))
@@ -239,14 +322,19 @@ impl InterfaceConfig {
             "udp" => self.validate_udp(index),
             "auto" => self.validate_auto(index),
             "serial" => self.validate_serial(index),
+            "weave" => self.validate_weave(index),
             "kiss" => self.validate_kiss(index),
+            "ax25_kiss" => self.validate_ax25_kiss(index),
             "kiss_tcp_client" => self.validate_kiss_tcp_client(index),
+            "backbone" => self.validate_backbone(index),
+            "backbone_client" => self.validate_backbone_client(index),
+            "local" => self.validate_local(index),
+            "pipe" => self.validate_pipe(index),
+            "i2p" => self.validate_i2p(index),
             "ble_gatt" => self.validate_ble(index),
             "vrn76_kiss_ble" => self.validate_vrn76_kiss_ble(index),
             "lora" => self.validate_lora(index, original_kind),
-            _ if is_known_unsupported_python_interface(original_kind) => Err(format!(
-                "interfaces[{index}].type {original_kind} is a known unsupported Reticulum interface family"
-            )),
+            "rnode_multi" => self.validate_rnode_multi(index),
             _ => Ok(()),
         }
     }
@@ -310,6 +398,18 @@ impl InterfaceConfig {
         if self.kind == "tcp_server" {
             self.normalize_tcp_server_aliases(index)?;
         }
+        if self.kind == "backbone" || self.kind == "backbone_client" {
+            self.normalize_backbone_aliases(index, original_kind)?;
+        }
+        if self.kind == "local" {
+            self.normalize_local_aliases(index)?;
+        }
+        if self.kind == "pipe" {
+            self.normalize_pipe_aliases(index);
+        }
+        if self.kind == "i2p" {
+            self.normalize_i2p_aliases(index)?;
+        }
         if self.kind == "udp" {
             self.normalize_udp_aliases(index)?;
         }
@@ -319,14 +419,23 @@ impl InterfaceConfig {
         if self.kind == "serial" {
             self.normalize_serial_aliases(index)?;
         }
+        if self.kind == "weave" {
+            self.normalize_weave_aliases(index)?;
+        }
         if self.kind == "vrn76_kiss_ble" {
             self.normalize_vrn76_kiss_ble_aliases(index)?;
         }
         if self.kind == "kiss" {
             self.normalize_kiss_aliases(index, original_kind)?;
         }
+        if self.kind == "ax25_kiss" {
+            self.normalize_ax25_kiss_aliases(index)?;
+        }
         if self.kind == "lora" {
             self.normalize_lora_aliases(index, original_kind)?;
+        }
+        if self.kind == "rnode_multi" {
+            self.normalize_rnode_multi_aliases(index)?;
         }
         Ok(())
     }
@@ -336,12 +445,18 @@ impl InterfaceConfig {
             return Ok(());
         };
         match self.kind.as_str() {
-            "tcp_client" | "tcp_server" | "udp" | "kiss_tcp_client" => {
+            "tcp_client"
+            | "tcp_server"
+            | "udp"
+            | "kiss_tcp_client"
+            | "backbone"
+            | "backbone_client"
+            | "local" => {
                 if self.port.is_none() {
                     self.port = Some(port_number_from_value(value, index)?);
                 }
             }
-            "serial" | "kiss" | "lora" => {
+            "serial" | "weave" | "kiss" | "ax25_kiss" | "lora" | "rnode_multi" => {
                 if self.device.is_none() {
                     self.device =
                         Some(string_from_value(value, "port", index, self.kind.as_str())?);
@@ -393,6 +508,280 @@ impl InterfaceConfig {
         Ok(())
     }
 
+    fn normalize_backbone_aliases(
+        &mut self,
+        index: usize,
+        _original_kind: &str,
+    ) -> Result<(), String> {
+        if self.target_host.is_none() {
+            self.target_host = self
+                .take_string_alias_for_kind("remote", index, "backbone")?
+                .and_then(non_empty_string);
+        } else {
+            let _ = self.take_string_alias_for_kind("remote", index, "backbone")?;
+        }
+
+        if self.host.is_none() {
+            let listen_on = self
+                .take_string_alias_for_kind("listen_on", index, "backbone")?
+                .and_then(non_empty_string);
+            let listen_ip = self
+                .take_string_alias_for_kind("listen_ip", index, "backbone")?
+                .and_then(non_empty_string);
+            self.host = listen_on.or(listen_ip);
+        } else {
+            let _ = self.take_string_alias_for_kind("listen_on", index, "backbone")?;
+            let _ = self.take_string_alias_for_kind("listen_ip", index, "backbone")?;
+        }
+
+        if self.port.is_none() {
+            self.port = self.take_u16_alias_for_kind("listen_port", index, "backbone")?;
+        } else {
+            let _ = self.take_u16_alias_for_kind("listen_port", index, "backbone")?;
+        }
+        if self.port.is_none() {
+            self.port = self.target_port;
+        }
+        if self.target_port.is_none() {
+            self.target_port = self.port;
+        }
+
+        if self.mtu.is_none() {
+            self.mtu = Some(1_048_576);
+        }
+
+        if self.kind == "backbone"
+            && self.target_host.as_deref().map(str::trim).is_some_and(|value| !value.is_empty())
+        {
+            self.kind = "backbone_client".to_string();
+        }
+        if self.kind == "backbone_client" {
+            if self.host.is_none() {
+                self.host = self.target_host.clone().and_then(non_empty_string);
+            }
+            if self.port.is_none() {
+                self.port = self.target_port;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn validate_backbone(&self, index: usize) -> Result<(), String> {
+        if !self.enabled() {
+            return Ok(());
+        }
+        require_non_empty(
+            self.host.as_deref(),
+            &format!("interfaces[{index}].listen_ip or listen_on is required for backbone"),
+        )?;
+        if self.port.is_none() {
+            return Err(format!("interfaces[{index}].port is required for backbone"));
+        }
+        Ok(())
+    }
+
+    fn validate_backbone_client(&self, index: usize) -> Result<(), String> {
+        if !self.enabled() {
+            return Ok(());
+        }
+        require_non_empty(
+            self.target_host.as_deref().or(self.host.as_deref()),
+            &format!("interfaces[{index}].target_host or remote is required for backbone_client"),
+        )?;
+        if self.target_port.or(self.port).is_none() {
+            return Err(format!("interfaces[{index}].target_port or port is required for backbone_client"));
+        }
+        Ok(())
+    }
+
+    fn normalize_local_aliases(&mut self, index: usize) -> Result<(), String> {
+        if self.socket_path.is_none() {
+            self.socket_path = self
+                .take_string_alias_for_kind("unix_socket_path", index, "local")?
+                .and_then(non_empty_string);
+        } else {
+            let _ = self.take_string_alias_for_kind("unix_socket_path", index, "local")?;
+        }
+        if self.instance_name.is_none() {
+            self.instance_name = self
+                .take_string_alias_for_kind("instance_name", index, "local")?
+                .and_then(non_empty_string);
+        } else {
+            let _ = self.take_string_alias_for_kind("instance_name", index, "local")?;
+        }
+
+        let shared_instance_type = self
+            .shared_instance_type
+            .clone()
+            .and_then(non_empty_string)
+            .or_else(|| {
+                self.extra
+                    .remove("shared_instance_type")
+                    .and_then(|value| value.as_str().map(ToOwned::to_owned))
+                    .and_then(non_empty_string)
+            });
+        let shared_instance_type = shared_instance_type
+            .map(|value| value.trim().to_ascii_lowercase())
+            .unwrap_or_else(|| "tcp".to_string());
+        if !matches!(shared_instance_type.as_str(), "tcp" | "unix") {
+            return Err(format!(
+                "interfaces[{index}].shared_instance_type must be one of tcp, unix for local"
+            ));
+        }
+        self.shared_instance_type = Some(shared_instance_type.clone());
+
+        if shared_instance_type == "unix" {
+            if self.socket_path.is_none() {
+                let instance_name = self.instance_name.as_deref().unwrap_or("default");
+                self.socket_path = Some(default_local_unix_socket_value(instance_name));
+            }
+            self.host = None;
+            self.port = None;
+        } else {
+            if self.host.is_none() {
+                let listen_ip = self
+                    .take_string_alias_for_kind("listen_ip", index, "local")?
+                    .and_then(non_empty_string);
+                let bind_ip = self
+                    .take_string_alias_for_kind("bind_ip", index, "local")?
+                    .and_then(non_empty_string);
+                self.host = listen_ip.or(bind_ip).or_else(|| Some("127.0.0.1".to_string()));
+            } else {
+                let _ = self.take_string_alias_for_kind("listen_ip", index, "local")?;
+                let _ = self.take_string_alias_for_kind("bind_ip", index, "local")?;
+            }
+
+            if self.port.is_none() {
+                self.port = self.take_u16_alias_for_kind("listen_port", index, "local")?;
+            } else {
+                let _ = self.take_u16_alias_for_kind("listen_port", index, "local")?;
+            }
+            if self.port.is_none() {
+                self.port =
+                    self.take_u16_alias_for_kind("shared_instance_port", index, "local")?;
+            } else {
+                let _ = self.take_u16_alias_for_kind("shared_instance_port", index, "local")?;
+            }
+            if self.port.is_none() {
+                self.port = Some(37_428);
+            }
+        }
+
+        if self.mtu.is_none() {
+            self.mtu = self
+                .take_u64_alias_for_kind("fixed_mtu", index, "local")?
+                .map(|value| {
+                    usize::try_from(value).map_err(|_| {
+                        format!("interfaces[{index}].fixed_mtu must fit in usize for local")
+                    })
+                })
+                .transpose()?;
+        } else {
+            let _ = self.take_u64_alias_for_kind("fixed_mtu", index, "local")?;
+        }
+        if self.mtu.is_none() {
+            self.mtu = Some(rns_transport::iface::tcp_client::TcpClient::DEFAULT_MTU);
+        }
+
+        if self.bitrate.is_none() {
+            self.bitrate =
+                self.take_u64_alias_for_kind("force_shared_instance_bitrate", index, "local")?;
+        } else {
+            let _ =
+                self.take_u64_alias_for_kind("force_shared_instance_bitrate", index, "local")?;
+        }
+        if self.bitrate.is_none() {
+            self.bitrate = Some(1_000_000_000);
+        }
+
+        Ok(())
+    }
+
+    fn validate_local(&self, index: usize) -> Result<(), String> {
+        self.reject_unknown_new_kind_keys(index, "local")?;
+        if !self.enabled() {
+            return Ok(());
+        }
+        let host = self.host.as_deref().unwrap_or_default().trim();
+        if self.shared_instance_type.as_deref() == Some("unix") {
+            require_non_empty(
+                self.socket_path.as_deref(),
+                &format!("interfaces[{index}].socket_path is required for local unix"),
+            )?;
+            return Ok(());
+        }
+        if host.is_empty() {
+            return Err(format!("interfaces[{index}].host is required for local"));
+        }
+        if !matches!(host, "127.0.0.1" | "::1" | "localhost") {
+            return Err(format!(
+                "interfaces[{index}].host must be loopback for local"
+            ));
+        }
+        if self.port.is_none() {
+            return Err(format!("interfaces[{index}].port is required for local"));
+        }
+        if let Some(mtu) = self.mtu {
+            if !(256..=1_048_576).contains(&mtu) {
+                return Err(format!(
+                    "interfaces[{index}].mtu must be between 256 and 1048576 for local"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn normalize_pipe_aliases(&mut self, _index: usize) {
+        if self.mtu.is_none() {
+            self.mtu = Some(1_064);
+        }
+        if self.respawn_delay.is_none() {
+            self.respawn_delay = Some(5.0);
+        }
+    }
+
+    fn validate_pipe(&self, index: usize) -> Result<(), String> {
+        if !self.enabled() {
+            return Ok(());
+        }
+        require_non_empty(
+            self.command.as_deref(),
+            &format!("interfaces[{index}].command is required for pipe"),
+        )?;
+        if self.respawn_delay.is_some_and(|value| value < 0.0 || !value.is_finite()) {
+            return Err(format!("interfaces[{index}].respawn_delay must be finite and >= 0"));
+        }
+        Ok(())
+    }
+
+    fn validate_i2p(&self, index: usize) -> Result<(), String> {
+        self.reject_unknown_new_kind_keys(index, "i2p")?;
+        if !self.enabled() {
+            return Ok(());
+        }
+        require_non_empty(
+            self.sam_host.as_deref(),
+            &format!("interfaces[{index}].sam_host is required for i2p"),
+        )?;
+        if self.sam_port.is_none() {
+            return Err(format!("interfaces[{index}].sam_port is required for i2p"));
+        }
+        if let Some(peers) = self.peers.as_ref() {
+            if peers.iter().any(|peer| peer.trim().is_empty()) {
+                return Err(format!("interfaces[{index}].peers entries must be non-empty for i2p"));
+            }
+        }
+        if let Some(mtu) = self.mtu {
+            if !(256..=262_144).contains(&mtu) {
+                return Err(format!(
+                    "interfaces[{index}].mtu must be between 256 and 262144 for i2p"
+                ));
+            }
+        }
+        Ok(())
+    }
+
     fn normalize_udp_aliases(&mut self, index: usize) -> Result<(), String> {
         if self.host.is_none() {
             self.host = self.take_string_alias_for_kind("listen_ip", index, "udp")?;
@@ -423,4 +812,17 @@ impl InterfaceConfig {
         }
         Ok(())
     }
+}
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn default_local_unix_socket_value(instance_name: &str) -> String {
+    format!("@rns/{instance_name}")
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "android")))]
+fn default_local_unix_socket_value(instance_name: &str) -> String {
+    std::env::temp_dir()
+        .join(format!("rns-{instance_name}.sock"))
+        .to_string_lossy()
+        .to_string()
 }

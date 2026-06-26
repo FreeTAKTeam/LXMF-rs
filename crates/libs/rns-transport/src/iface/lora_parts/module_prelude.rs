@@ -12,7 +12,7 @@ use tokio_serial::{DataBits, FlowControl, Parity, SerialPortBuilderExt, StopBits
 
 use crate::iface::kiss::{
     run_kiss_stream, KissActivityProbeConfig, KissCommandFrame, KissIdBeaconConfig,
-    KissStreamOptions, KISS_FLOW_CONTROL_TIMEOUT, KISS_READ_FRAME_TIMEOUT,
+    KissPayloadAdapter, KissStreamOptions, KISS_FLOW_CONTROL_TIMEOUT, KISS_READ_FRAME_TIMEOUT,
 };
 
 use crate::kiss::encode_command_frame;

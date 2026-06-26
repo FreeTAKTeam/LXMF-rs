@@ -65,6 +65,14 @@ mod tests {
         assert!(!is_multicast_addr("not a socket addr"));
     }
 
+    #[tokio::test]
+    async fn bind_udp_enables_broadcast_for_ipv4_forward_targets() {
+        let socket = bind_udp("0.0.0.0:0", Some("255.255.255.255:4242"))
+            .expect("bind broadcast-capable udp socket");
+
+        assert!(socket.broadcast().expect("read broadcast flag"));
+    }
+
     fn fake_hash(byte: u8) -> AddressHash {
         AddressHash::new_from_hash(&crate::hash::Hash::new_from_slice(&[byte; 32]))
     }

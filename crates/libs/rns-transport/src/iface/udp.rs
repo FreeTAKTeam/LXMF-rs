@@ -31,6 +31,9 @@ fn bind_udp(bind_addr: &str, forward_addr: Option<&str>) -> std::io::Result<UdpS
     socket.set_reuse_address(true)?;
     #[cfg(unix)]
     socket.set_reuse_port(true)?;
+    if parsed.is_ipv4() && forward_addr.is_some() {
+        socket.set_broadcast(true)?;
+    }
 
     // If binding to a multicast group directly, bind to the unspecified address on
     // the same port instead; then join the group. This works cross-platform.

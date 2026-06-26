@@ -122,6 +122,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 ciborium = "0.2.2"
 tempfile = "3"
+shlex = "2.0.1"
 sha2 = "0.10"
 toml = "0.8"
 tokio = { version = "1.44.2", features = ["full"] }

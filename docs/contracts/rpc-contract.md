@@ -184,7 +184,7 @@ Startup policy notes:
 The following contract is mandatory in v1:
 
 1. `set_interfaces` accepts only legacy hot-apply kinds (`tcp_client`, `tcp_server`).
-2. If any startup-only kind is present (`serial`, `ble_gatt`, `lora`, or unknown future kinds),
+2. If any startup-only kind is present (`local`, `serial`, `ble_gatt`, `lora`, or unknown future kinds),
    the request is rejected atomically with:
    - `error.code = "CONFIG_RESTART_REQUIRED"`
    - `error.machine_code = "UNSUPPORTED_MUTATION_KIND_REQUIRES_RESTART"`

@@ -12,6 +12,146 @@ fn vrn76_builder_rejects_missing_peripheral_id() {
 }
 
 #[test]
+fn pipe_builder_uses_python_defaults_and_overrides() {
+    let iface = InterfaceConfig {
+        kind: "pipe".to_string(),
+        enabled: Some(true),
+        command: Some("cat".to_string()),
+        respawn_delay: Some(0.25),
+        mtu: Some(512),
+        ..InterfaceConfig::default()
+    };
+
+    let adapter = pipe::build_adapter(&iface).expect("build pipe adapter");
+
+    assert_eq!(adapter.command(), "cat");
+    assert_eq!(adapter.mtu_value(), 512);
+}
+
+#[test]
+fn pipe_builder_rejects_missing_command() {
+    let iface = InterfaceConfig {
+        kind: "pipe".to_string(),
+        enabled: Some(true),
+        ..InterfaceConfig::default()
+    };
+
+    let err = match pipe::build_adapter(&iface) {
+        Ok(_) => panic!("missing command should fail"),
+        Err(err) => err,
+    };
+    assert!(err.contains("pipe.command"));
+}
+
+#[test]
+fn rnode_multi_builder_carries_unpadded_python_id_beacon_settings() {
+    let iface = InterfaceConfig {
+        kind: "rnode_multi".to_string(),
+        enabled: Some(true),
+        device: Some("/dev/ttyACM0".to_string()),
+        baud_rate: Some(115_200),
+        id_callsign: Some("MYCALL-0".to_string()),
+        id_interval: Some(600),
+        extra: [(
+            "radio0".to_string(),
+            toml::Value::Table(
+                [
+                    ("vport".to_string(), toml::Value::Integer(2)),
+                    ("frequency".to_string(), toml::Value::Integer(915_000_000)),
+                    ("bandwidth".to_string(), toml::Value::Integer(125_000)),
+                    ("spreadingfactor".to_string(), toml::Value::Integer(9)),
+                    ("codingrate".to_string(), toml::Value::Integer(5)),
+                    ("txpower".to_string(), toml::Value::Integer(17)),
+                ]
+                .into_iter()
+                .collect(),
+            ),
+        )]
+        .into_iter()
+        .collect(),
+        ..InterfaceConfig::default()
+    };
+    let manager = std::sync::Arc::new(tokio::sync::Mutex::new(
+        rns_transport::iface::InterfaceManager::new(8),
+    ));
+
+    let adapter = rnode_multi::build_adapter(&iface, manager).expect("build rnode multi adapter");
+    let beacon = adapter.id_beacon().expect("rnode multi id beacon");
+
+    assert_eq!(beacon.callsign, b"MYCALL-0");
+    assert_eq!(beacon.interval, std::time::Duration::from_secs(600));
+    assert_eq!(beacon.min_payload_len, 0);
+}
+
+#[test]
+fn rnode_multi_builder_accepts_tcp_endpoint_without_serial_baud_rate() {
+    let iface = InterfaceConfig {
+        kind: "rnode_multi".to_string(),
+        enabled: Some(true),
+        device: Some("tcp://192.0.2.10:8001".to_string()),
+        extra: [(
+            "radio0".to_string(),
+            toml::Value::Table(
+                [
+                    ("vport".to_string(), toml::Value::Integer(2)),
+                    ("frequency".to_string(), toml::Value::Integer(915_000_000)),
+                    ("bandwidth".to_string(), toml::Value::Integer(125_000)),
+                    ("spreadingfactor".to_string(), toml::Value::Integer(9)),
+                    ("codingrate".to_string(), toml::Value::Integer(5)),
+                    ("txpower".to_string(), toml::Value::Integer(17)),
+                ]
+                .into_iter()
+                .collect(),
+            ),
+        )]
+        .into_iter()
+        .collect(),
+        ..InterfaceConfig::default()
+    };
+    let manager = std::sync::Arc::new(tokio::sync::Mutex::new(
+        rns_transport::iface::InterfaceManager::new(8),
+    ));
+
+    let adapter = rnode_multi::build_adapter(&iface, manager).expect("build tcp rnode multi");
+
+    assert_eq!(adapter.endpoint(), "192.0.2.10:8001");
+    assert_eq!(adapter.baud_rate(), None);
+    assert_eq!(adapter.subinterfaces().len(), 1);
+}
+
+#[test]
+fn ax25_kiss_builder_uses_serial_kiss_base_and_requires_callsign() {
+    let iface = InterfaceConfig {
+        kind: "ax25_kiss".to_string(),
+        enabled: Some(true),
+        device: Some("/dev/ttyUSB0".to_string()),
+        baud_rate: Some(1200),
+        callsign: Some("n0call".to_string()),
+        ssid: Some(1),
+        ..InterfaceConfig::default()
+    };
+
+    let adapter = kiss::build_ax25_adapter(&iface).expect("build ax25 kiss adapter");
+    assert_eq!(adapter.device(), "/dev/ttyUSB0");
+    assert_eq!(adapter.baud_rate(), 1200);
+
+    let missing = InterfaceConfig {
+        kind: "ax25_kiss".to_string(),
+        enabled: Some(true),
+        device: Some("/dev/ttyUSB0".to_string()),
+        baud_rate: Some(1200),
+        ssid: Some(1),
+        ..InterfaceConfig::default()
+    };
+
+    let err = match kiss::build_ax25_adapter(&missing) {
+        Ok(_) => panic!("missing callsign should fail"),
+        Err(err) => err,
+    };
+    assert!(err.contains("ax25_kiss.callsign"));
+}
+
+#[test]
 fn vrn76_builder_uses_profile_defaults_and_kiss_overrides() {
     let iface = InterfaceConfig {
         kind: "vrn76_kiss_ble".to_string(),
@@ -227,6 +367,107 @@ fn select_tcp_server_bind_uses_single_enabled_interface_when_transport_not_set()
 }
 
 #[test]
+fn select_tcp_server_bind_uses_single_backbone_listener_when_transport_not_set() {
+    let args = test_args(PathBuf::from("/tmp/db"), None, None, false);
+    let config = reticulum_daemon::config::DaemonConfig {
+        display_name: None,
+        announce_capabilities: Vec::new(),
+        propagation_node: None,
+        interfaces: vec![InterfaceConfig {
+            kind: "backbone".to_string(),
+            enabled: Some(true),
+            host: Some("127.0.0.1".to_string()),
+            port: Some(4242),
+            mtu: Some(1_048_576),
+            ..InterfaceConfig::default()
+        }],
+    };
+
+    let selected = select_tcp_server_bind(&args, Some(&config)).expect("select backbone");
+    assert_eq!(selected.bind_addr.as_deref(), Some("127.0.0.1:4242"));
+    assert_eq!(selected.selected_index, Some(0));
+    assert_eq!(selected.kind, "backbone");
+    assert_eq!(selected.client_mtu, Some(1_048_576));
+}
+
+#[test]
+fn select_tcp_server_bind_uses_single_local_listener_when_transport_not_set() {
+    let args = test_args(PathBuf::from("/tmp/db"), None, None, false);
+    let config = reticulum_daemon::config::DaemonConfig {
+        display_name: None,
+        announce_capabilities: Vec::new(),
+        propagation_node: None,
+        interfaces: vec![InterfaceConfig {
+            kind: "local".to_string(),
+            enabled: Some(true),
+            host: Some("127.0.0.1".to_string()),
+            port: Some(37_428),
+            mtu: Some(262_144),
+            ..InterfaceConfig::default()
+        }],
+    };
+
+    let selected = select_tcp_server_bind(&args, Some(&config)).expect("select local");
+    assert_eq!(selected.bind_addr.as_deref(), Some("127.0.0.1:37428"));
+    assert_eq!(selected.selected_index, Some(0));
+    assert_eq!(selected.kind, "local");
+    assert_eq!(selected.client_mtu, Some(262_144));
+}
+
+#[test]
+fn select_tcp_server_bind_ignores_unix_local_listener() {
+    let args = test_args(PathBuf::from("/tmp/db"), None, None, false);
+    let config = reticulum_daemon::config::DaemonConfig {
+        display_name: None,
+        announce_capabilities: Vec::new(),
+        propagation_node: None,
+        interfaces: vec![InterfaceConfig {
+            kind: "local".to_string(),
+            enabled: Some(true),
+            shared_instance_type: Some("unix".to_string()),
+            socket_path: Some("/tmp/rns-test.sock".to_string()),
+            mtu: Some(262_144),
+            ..InterfaceConfig::default()
+        }],
+    };
+
+    let selected = select_tcp_server_bind(&args, Some(&config)).expect("ignore unix local");
+    assert_eq!(selected.bind_addr, None);
+    assert_eq!(selected.selected_index, None);
+    assert_eq!(selected.kind, "");
+    assert_eq!(selected.client_mtu, None);
+}
+
+#[test]
+fn select_tcp_server_bind_attaches_local_listener_when_port_in_use() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind occupied port");
+    let port = listener.local_addr().expect("local addr").port();
+    let args = test_args(PathBuf::from("/tmp/db"), None, None, false);
+    let config = reticulum_daemon::config::DaemonConfig {
+        display_name: None,
+        announce_capabilities: Vec::new(),
+        propagation_node: None,
+        interfaces: vec![InterfaceConfig {
+            kind: "local".to_string(),
+            enabled: Some(true),
+            host: Some("127.0.0.1".to_string()),
+            port: Some(port),
+            mtu: Some(262_144),
+            ..InterfaceConfig::default()
+        }],
+    };
+
+    let selected = select_tcp_server_bind(&args, Some(&config)).expect("select local attach");
+    assert_eq!(selected.bind_addr, None);
+    assert_eq!(selected.selected_index, None);
+    assert_eq!(selected.kind, "local");
+    assert_eq!(selected.client_mtu, Some(262_144));
+    let endpoint = format!("127.0.0.1:{port}");
+    assert_eq!(selected.local_attach_addr.as_deref(), Some(endpoint.as_str()));
+    assert_eq!(selected.local_attach_index, Some(0));
+}
+
+#[test]
 fn select_tcp_server_bind_prefers_transport_override() {
     let args = test_args(PathBuf::from("/tmp/db"), None, Some("127.0.0.1:4333".to_string()), false);
     let config = reticulum_daemon::config::DaemonConfig {
@@ -282,7 +523,7 @@ fn select_tcp_server_bind_rejects_multiple_enabled_servers_without_override() {
     };
 
     let err = select_tcp_server_bind(&args, Some(&config)).expect_err("multiple servers must fail");
-    assert!(err.contains("multiple enabled tcp_server interfaces"));
+    assert!(err.contains("multiple enabled TCP listener interfaces"));
 }
 
 #[test]

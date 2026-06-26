@@ -157,7 +157,11 @@ impl Transport {
     pub async fn outbound(&self, packet: &Packet) {
         let decision = {
             let handler = self.handler.lock().await;
-            super::path::route_outbound_packet(&handler.path_table, packet)
+            super::path::route_outbound_packet(
+                &handler.path_table,
+                packet,
+                handler.config.connected_to_shared_instance,
+            )
         };
         let packet = decision.packet;
         let maybe_iface = decision.next_iface;
@@ -178,6 +182,10 @@ impl Transport {
 
     pub fn iface_manager(&self) -> Arc<Mutex<InterfaceManager>> {
         self.iface_manager.clone()
+    }
+
+    pub async fn set_connected_to_shared_instance(&self, connected: bool) {
+        self.handler.lock().await.config.set_connected_to_shared_instance(connected);
     }
 
     /// Spawn a multicast UDP interface with per-peer routing.

@@ -1,0 +1,101 @@
+# `reticulumd` I2P Interface Runbook
+
+## Purpose
+
+This runbook documents the in-progress `I2PInterface` slice. It supports
+configured outbound I2P peers and transient connectable accept sessions through
+an I2P SAM bridge, with HDLC-framed Reticulum packets over each resulting
+stream. It is not yet a production-complete I2P parity claim.
+
+## Scope
+
+- Reticulum type alias: `I2PInterface`
+- SAM default endpoint: `127.0.0.1:7656`
+- Default MTU: `1064`
+- Default bitrate: `256000`
+- Runtime role: multicast parent with virtual unicast peer children
+- Supported modes: outbound configured peers, transient connectable accept
+  sessions
+- Runtime status: startup metadata exposes an initial
+  `_runtime.i2p.tunnel_status` schema with SAM endpoint, connectable state,
+  accept-loop state, and per-peer tunnel rows.
+
+## Configuration
+
+```toml
+interfaces = [
+  {
+    type = "I2PInterface",
+    enabled = true,
+    name = "i2p-main",
+    peers = [
+      "exampledestination.b32.i2p"
+    ],
+    sam_host = "127.0.0.1",
+    sam_port = 7656,
+    connectable = true
+  }
+]
+```
+
+The parser accepts Python-style `peers` as either a comma-separated string or a
+string array. It also accepts `sam_ip` as an alias for `sam_host`,
+`storagepath` as an alias for `state_path`, and `configured_bitrate` as the
+interface bitrate used by announce pacing.
+
+## Runtime Behavior
+
+Startup creates one multicast/controller interface and one virtual unicast
+child per configured peer. Each child keeps a transient SAM stream session
+open, resolves `.i2p` names through `NAMING LOOKUP`, and issues `STREAM
+CONNECT` on a separate data socket for its peer destination.
+
+With `connectable = true`, startup also creates a SAM stream session for
+incoming peers and loops on `STREAM ACCEPT`. If `state_path` or Python-style
+`storagepath` is configured, the generated private I2P destination key is
+stored under `state_path/i2p/` and reused on later starts. During startup,
+`_runtime.i2p.reachable_endpoint` reports the derived `.b32.i2p` address for
+both already-persisted keys and keys generated in the same run. Each accepted
+stream strips the remote-destination line that SAM prepends, registers a
+virtual unicast child, and then hands the stream to the same HDLC packet
+runtime.
+
+Once the SAM stream is open, packets use the same HDLC framing as Reticulum's
+stream interfaces. Direct outbound sends to a peer child use that peer's SAM
+stream. Broadcast sends fan out to all configured peer children.
+
+The I2P stream runtime uses the shared HDLC stream watchdog in opt-in mode:
+idle streams emit empty HDLC keepalive frames, become `stale` when no reads are
+observed past the Python-style probe window, and request a reconnect after the
+read-timeout window. These events update the transport-side I2P tunnel status
+model for configured peers and accepted incoming streams. `reticulumd`
+periodically refreshes that model into the cached interface records returned by
+`daemon_status_ex` and `list_interfaces` as
+`_runtime.i2p.tunnel_status`.
+
+In normal startup mode, SAM failures are retried in the background. In strict
+startup mode, the daemon preflights the SAM bridge and marks the interface
+failed if the bridge is unreachable or does not complete `HELLO`.
+
+## Status Schema
+
+Runtime records include `_runtime.i2p.tunnel_status` with:
+
+- `sam_endpoint`, `connectable`, and `configured_peer_count`
+- `accept_state`, `accept_reconnect_attempts`, and `last_accept_error`
+- `peers`, one row per configured or accepted peer, including `peer`,
+  `direction`, `iface`, `state`, `reconnect_attempts`, `last_error`,
+  `bytes_rx`, `bytes_tx`, and `keepalives_sent`
+
+The initial startup snapshot is refreshed while the daemon is running, so
+status consumers can observe peer connection, stale, reconnecting, timeout,
+and counter changes without restarting the daemon.
+Closed incoming peer rows are retained only as a bounded recent history, so
+repeated transient inbound sessions cannot grow runtime status indefinitely.
+
+Current states are `configured`, `connecting`, `connected`, `listening`,
+`reconnecting`, `stale`, and `closed`.
+
+## Known Gaps
+
+- Full prepared-host I2P evidence and production parity are not complete.

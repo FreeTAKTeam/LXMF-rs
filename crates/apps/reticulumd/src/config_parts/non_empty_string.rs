@@ -58,24 +58,21 @@ fn normalize_interface_kind(value: &str) -> String {
         "AutoInterface" => "auto".to_string(),
         "TCPClientInterface" => "tcp_client".to_string(),
         "TCPServerInterface" => "tcp_server".to_string(),
+        "BackboneInterface" => "backbone".to_string(),
+        "BackboneClientInterface" => "backbone_client".to_string(),
+        "LocalInterface" => "local".to_string(),
+        "PipeInterface" => "pipe".to_string(),
         "UDPInterface" => "udp".to_string(),
         "SerialInterface" => "serial".to_string(),
         "KISSInterface" => "kiss".to_string(),
+        "AX25KISSInterface" => "ax25_kiss".to_string(),
         "RNodeInterface" => "lora".to_string(),
+        "RNodeMultiInterface" => "rnode_multi".to_string(),
+        "WeaveInterface" => "weave".to_string(),
+        "I2PInterface" => "i2p".to_string(),
         "Vrn76KissBluetoothInterface" | "Vrn76KissBleInterface" => "vrn76_kiss_ble".to_string(),
         value => value.to_string(),
     }
-}
-
-fn is_known_unsupported_python_interface(value: &str) -> bool {
-    matches!(
-        value,
-        "PipeInterface"
-            | "LocalInterface"
-            | "I2PInterface"
-            | "WeaveInterface"
-            | "BackboneInterface"
-    )
 }
 
 fn is_tcp_lora_port(value: &str) -> bool {
@@ -167,6 +164,42 @@ fn insert_opt_f64(target: &mut JsonMap<String, JsonValue>, key: &str, value: Opt
     if let Some(value) = value.and_then(serde_json::Number::from_f64) {
         target.insert(key.to_string(), JsonValue::Number(value));
     }
+}
+
+fn rnode_multi_subinterfaces_settings_json(iface: &InterfaceConfig) -> Option<JsonValue> {
+    let mut entries = Vec::new();
+    for (name, value) in &iface.extra {
+        let Some(table) = value.as_table() else {
+            continue;
+        };
+        let interface_enabled = table
+            .get("interface_enabled")
+            .and_then(toml::Value::as_bool)
+            .unwrap_or(true);
+        let enabled = table.get("enabled").and_then(toml::Value::as_bool).unwrap_or(true);
+        if !interface_enabled || !enabled {
+            continue;
+        }
+        let mut entry = JsonMap::new();
+        let display_name = table
+            .get("name")
+            .and_then(toml::Value::as_str)
+            .map(str::to_string)
+            .unwrap_or_else(|| name.clone());
+        entry.insert("name".to_string(), JsonValue::String(display_name));
+        if let Some(vport) = table.get("vport").and_then(toml::Value::as_integer) {
+            if let Ok(vport) = u64::try_from(vport) {
+                entry.insert("vport".to_string(), JsonValue::Number(vport.into()));
+            }
+        }
+        let outgoing = table
+            .get("outgoing")
+            .and_then(toml::Value::as_bool)
+            .unwrap_or_else(|| iface.outgoing());
+        entry.insert("outgoing".to_string(), JsonValue::Bool(outgoing));
+        entries.push(JsonValue::Object(entry));
+    }
+    (!entries.is_empty()).then_some(JsonValue::Array(entries))
 }
 
 fn matches_normalized(value: &str, candidates: &[&str]) -> bool {

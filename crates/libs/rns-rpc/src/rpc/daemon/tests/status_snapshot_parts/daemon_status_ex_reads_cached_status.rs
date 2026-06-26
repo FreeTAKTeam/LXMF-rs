@@ -71,6 +71,54 @@ fn daemon_status_ex_reads_cached_status_snapshot() {
 }
 
 #[test]
+fn interface_runtime_metadata_update_refreshes_daemon_status_snapshot() {
+    let daemon = RpcDaemon::test_instance();
+    daemon.replace_interfaces(vec![InterfaceRecord {
+        kind: "i2p".to_string(),
+        enabled: true,
+        host: Some("127.0.0.1".to_string()),
+        port: Some(7656),
+        name: Some("i2p-main".to_string()),
+        settings: Some(json!({
+            "_runtime": {
+                "iface": "/00112233445566778899aabbccddeeff",
+                "startup_status": "spawned",
+                "i2p": {
+                    "peer_count": 1,
+                    "tunnel_status": { "accept_state": "configured" }
+                }
+            }
+        })),
+    }]);
+
+    assert!(daemon.update_interface_runtime_metadata_by_iface(
+        "/00112233445566778899aabbccddeeff",
+        "i2p",
+        "tunnel_status",
+        json!({
+            "accept_state": "listening",
+            "accept_reconnect_attempts": 2,
+        }),
+    ));
+    assert!(!daemon.update_interface_runtime_metadata_by_iface(
+        "/ffffffffffffffffffffffffffffffff",
+        "i2p",
+        "tunnel_status",
+        json!({ "accept_state": "missing" }),
+    ));
+
+    let response = daemon
+        .handle_rpc(RpcRequest { id: 130, method: "daemon_status_ex".to_string(), params: None })
+        .expect("daemon status");
+    let result = response.result.expect("daemon status result");
+    let i2p = &result["interfaces"][0]["settings"]["_runtime"]["i2p"];
+
+    assert_eq!(i2p["peer_count"].as_u64(), Some(1));
+    assert_eq!(i2p["tunnel_status"]["accept_state"].as_str(), Some("listening"));
+    assert_eq!(i2p["tunnel_status"]["accept_reconnect_attempts"].as_u64(), Some(2));
+}
+
+#[test]
 fn propagation_enable_updates_auth_required_policy() {
     let daemon = RpcDaemon::test_instance();
 

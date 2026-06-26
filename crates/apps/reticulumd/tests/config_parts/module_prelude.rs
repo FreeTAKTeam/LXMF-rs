@@ -99,6 +99,225 @@ interfaces = [
 }
 
 #[test]
+fn parses_reticulum_backbone_listener_aliases() {
+    let input = r#"
+interfaces = [
+  { type = "BackboneInterface", enabled = true, name = "python-backbone", listen_on = "127.0.0.1", port = 4242 }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse Python BackboneInterface config");
+    let iface = &cfg.interfaces[0];
+    assert_eq!(iface.kind, "backbone");
+    assert_eq!(iface.host.as_deref(), Some("127.0.0.1"));
+    assert_eq!(iface.port, Some(4242));
+    assert_eq!(iface.mtu, Some(1_048_576));
+}
+
+#[test]
+fn parses_reticulum_backbone_remote_as_client() {
+    let input = r#"
+interfaces = [
+  { type = "BackboneInterface", enabled = true, name = "python-backbone-client", remote = "rmap.world", port = 4242 }
+]
+"#;
+    let cfg =
+        DaemonConfig::from_toml(input).expect("parse Python BackboneInterface remote config");
+    let iface = &cfg.interfaces[0];
+    assert_eq!(iface.kind, "backbone_client");
+    assert_eq!(iface.target_host.as_deref(), Some("rmap.world"));
+    assert_eq!(iface.target_port, Some(4242));
+    assert_eq!(iface.host.as_deref(), Some("rmap.world"));
+    assert_eq!(iface.port, Some(4242));
+    assert_eq!(iface.mtu, Some(1_048_576));
+}
+
+#[test]
+fn parses_reticulum_backbone_client_interface_aliases() {
+    let input = r#"
+interfaces = [
+  { type = "BackboneClientInterface", enabled = true, name = "python-backbone-client", target_host = "rmap.world", target_port = 4242 }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input)
+        .expect("parse Python BackboneClientInterface config");
+    let iface = &cfg.interfaces[0];
+    assert_eq!(iface.kind, "backbone_client");
+    assert_eq!(iface.host.as_deref(), Some("rmap.world"));
+    assert_eq!(iface.port, Some(4242));
+    assert_eq!(iface.mtu, Some(1_048_576));
+}
+
+#[test]
+fn parses_reticulum_local_interface_defaults_and_aliases() {
+    let input = r#"
+interfaces = [
+  { type = "LocalInterface", enabled = true, name = "local-main", shared_instance_type = "tcp", shared_instance_port = 37428, fixed_mtu = 4096, force_shared_instance_bitrate = 1000000 }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse Python LocalInterface config");
+    let iface = &cfg.interfaces[0];
+    assert_eq!(iface.kind, "local");
+    assert_eq!(iface.host.as_deref(), Some("127.0.0.1"));
+    assert_eq!(iface.port, Some(37_428));
+    assert_eq!(iface.mtu, Some(4096));
+    assert_eq!(iface.bitrate, Some(1_000_000));
+
+    let settings = iface.settings_json().expect("local settings");
+    assert_eq!(settings["host"], "127.0.0.1");
+    assert_eq!(settings["port"], 37_428);
+    assert_eq!(settings["mtu"], 4096);
+    assert_eq!(settings["bitrate"], 1_000_000);
+}
+
+#[test]
+fn parses_native_local_interface_with_python_default_port_and_mtu() {
+    let input = r#"
+interfaces = [
+  { type = "local", enabled = true, name = "local-main" }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse local config");
+    let iface = &cfg.interfaces[0];
+    assert_eq!(iface.kind, "local");
+    assert_eq!(iface.host.as_deref(), Some("127.0.0.1"));
+    assert_eq!(iface.port, Some(37_428));
+    assert_eq!(iface.mtu, Some(262_144));
+    assert_eq!(iface.bitrate, Some(1_000_000_000));
+}
+
+#[test]
+fn rejects_local_interface_non_loopback_host() {
+    let input = r#"
+interfaces = [
+  { type = "local", enabled = true, host = "0.0.0.0", port = 37428 }
+]
+"#;
+    let err = DaemonConfig::from_toml(input).expect_err("non-loopback local bind must fail");
+    let message = err.to_string();
+    assert!(message.contains("host must be loopback for local"), "unexpected parse error: {message}");
+}
+
+#[test]
+fn parses_local_interface_unix_shared_instance_type() {
+    let input = r#"
+interfaces = [
+  { type = "LocalInterface", enabled = true, name = "local-main", shared_instance_type = "unix", instance_name = "mesh" }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse unix local config");
+    let iface = &cfg.interfaces[0];
+    assert_eq!(iface.kind, "local");
+    assert_eq!(iface.shared_instance_type.as_deref(), Some("unix"));
+    assert_eq!(iface.instance_name.as_deref(), Some("mesh"));
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    assert_eq!(iface.socket_path.as_deref(), Some("@rns/mesh"));
+    #[cfg(not(any(target_os = "linux", target_os = "android")))]
+    assert!(
+        iface.socket_path.as_deref().unwrap_or_default().ends_with("rns-mesh.sock"),
+        "unexpected socket path: {:?}",
+        iface.socket_path
+    );
+    assert_eq!(iface.host, None);
+    assert_eq!(iface.port, None);
+    assert_eq!(iface.mtu, Some(262_144));
+
+    let settings = iface.settings_json().expect("local settings");
+    assert_eq!(settings["shared_instance_type"], "unix");
+    assert_eq!(settings["instance_name"], "mesh");
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    assert_eq!(settings["socket_path"].as_str(), Some("@rns/mesh"));
+    #[cfg(not(any(target_os = "linux", target_os = "android")))]
+    assert!(
+        settings["socket_path"].as_str().unwrap_or_default().ends_with("rns-mesh.sock"),
+        "unexpected socket path setting: {:?}",
+        settings["socket_path"]
+    );
+}
+
+#[test]
+fn parses_reticulum_pipe_interface() {
+    let input = r#"
+interfaces = [
+  { type = "PipeInterface", enabled = true, name = "pipe-main", command = "cat", respawn_delay = 0.25 }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse Python PipeInterface config");
+    let iface = &cfg.interfaces[0];
+    assert_eq!(iface.kind, "pipe");
+    assert_eq!(iface.command.as_deref(), Some("cat"));
+    assert_eq!(iface.respawn_delay, Some(0.25));
+    assert_eq!(iface.mtu, Some(1_064));
+
+    let settings = iface.settings_json().expect("pipe settings");
+    assert_eq!(settings["command"], "cat");
+    assert_eq!(settings["respawn_delay"], 0.25);
+    assert_eq!(settings["mtu"], 1_064);
+}
+
+#[test]
+fn parses_reticulum_ax25_kiss_interface_aliases() {
+    let input = r#"
+interfaces = [
+  { type = "AX25KISSInterface", enabled = true, name = "ax25-main", port = "/dev/ttyUSB0", speed = 1200, callsign = "n0call", ssid = 1, flow_control = true, preamble = 300, txtail = 40, slottime = 30, id_callsign = "MYCALL-0", id_interval = 600 }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse Python AX25KISSInterface config");
+    let iface = &cfg.interfaces[0];
+    assert_eq!(iface.kind, "ax25_kiss");
+    assert_eq!(iface.device.as_deref(), Some("/dev/ttyUSB0"));
+    assert_eq!(iface.baud_rate, Some(1200));
+    assert_eq!(iface.callsign.as_deref(), Some("n0call"));
+    assert_eq!(iface.ssid, Some(1));
+    assert_eq!(iface.kiss_flow_control, Some(true));
+    assert_eq!(iface.preamble_ms, Some(300));
+    assert_eq!(iface.tx_tail_ms, Some(40));
+    assert_eq!(iface.slot_time_ms, Some(30));
+    assert_eq!(iface.id_callsign.as_deref(), Some("MYCALL-0"));
+    assert_eq!(iface.id_interval, Some(600));
+    assert_eq!(iface.mtu, Some(564));
+
+    let settings = iface.settings_json().expect("ax25 settings");
+    assert_eq!(settings["device"], "/dev/ttyUSB0");
+    assert_eq!(settings["baud_rate"], 1200);
+    assert_eq!(settings["callsign"], "n0call");
+    assert_eq!(settings["ssid"], 1);
+    assert_eq!(settings["kiss_flow_control"], true);
+    assert_eq!(settings["id_callsign"], "MYCALL-0");
+    assert_eq!(settings["id_interval"], 600);
+    assert_eq!(settings["mtu"], 564);
+}
+
+#[test]
+fn rejects_invalid_reticulum_ax25_kiss_callsign_and_ssid() {
+    let input = r#"
+interfaces = [
+  { type = "AX25KISSInterface", enabled = true, name = "ax25-main", port = "/dev/ttyUSB0", speed = 1200, callsign = "NO-CALL", ssid = 16 }
+]
+"#;
+    let err = DaemonConfig::from_toml(input).expect_err("invalid AX.25 config must fail");
+    let message = err.to_string();
+    assert!(
+        message.contains("callsign") || message.contains("ssid"),
+        "unexpected parse error: {message}"
+    );
+}
+
+#[test]
+fn rejects_invalid_reticulum_ax25_kiss_id_beacon() {
+    let input = r#"
+interfaces = [
+  { type = "AX25KISSInterface", enabled = true, name = "ax25-main", port = "/dev/ttyUSB0", speed = 1200, callsign = "N0CALL", ssid = 1, id_interval = 0 }
+]
+"#;
+    let err = DaemonConfig::from_toml(input).expect_err("invalid AX.25 ID beacon must fail");
+    let message = err.to_string();
+    assert!(
+        message.contains("id_interval must be > 0"),
+        "unexpected parse error: {message}"
+    );
+}
+
+#[test]
 fn parses_python_interface_mode_aliases() {
     let input = r#"
 interfaces = [
@@ -278,6 +497,27 @@ interfaces = [
 }
 
 #[test]
+fn parses_reticulum_udp_interface_device_defaults() {
+    let input = r#"
+interfaces = [
+  { type = "UDPInterface", enabled = true, name = "python-udp-device", device = "eth0", port = 4242 }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse Python UDPInterface device config");
+    let iface = &cfg.interfaces[0];
+    assert_eq!(iface.kind, "udp");
+    assert_eq!(iface.device.as_deref(), Some("eth0"));
+    assert_eq!(iface.port, Some(4242));
+    assert!(iface.host.is_none());
+    assert!(iface.target_host.is_none());
+    assert!(iface.target_port.is_none());
+
+    let settings = iface.settings_json().expect("settings");
+    assert_eq!(settings["device"], "eth0");
+    assert_eq!(settings["port"], 4242);
+}
+
+#[test]
 fn parses_reticulum_auto_interface_defaults() {
     let input = r#"
 interfaces = [
@@ -359,6 +599,55 @@ interfaces = [
     assert_eq!(iface.kind, "serial");
     assert_eq!(iface.device.as_deref(), Some("/dev/ttyUSB0"));
     assert_eq!(iface.baud_rate, Some(115200));
+}
+
+#[test]
+fn parses_reticulum_weave_interface_defaults() {
+    let input = r#"
+interfaces = [
+  { type = "WeaveInterface", enabled = true, name = "weave-main", port = "/dev/ttyACM0", configured_bitrate = 250000 }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse Python WeaveInterface config");
+    let iface = &cfg.interfaces[0];
+    assert_eq!(iface.kind, "weave");
+    assert_eq!(iface.device.as_deref(), Some("/dev/ttyACM0"));
+    assert_eq!(iface.baud_rate, Some(3_000_000));
+    assert_eq!(iface.mtu, Some(1024));
+    assert_eq!(iface.bitrate, Some(250_000));
+
+    let settings = iface.settings_json().expect("settings");
+    assert_eq!(settings["device"], "/dev/ttyACM0");
+    assert_eq!(settings["baud_rate"], 3_000_000);
+    assert_eq!(settings["mtu"], 1024);
+}
+
+#[test]
+fn parses_reticulum_i2p_interface_defaults() {
+    let input = r#"
+interfaces = [
+  { type = "I2PInterface", enabled = true, name = "i2p-main", peers = "peer-one.b32.i2p, peer-two.b32.i2p", storagepath = "/tmp/rns", configured_bitrate = 128000 }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse Python I2PInterface config");
+    let iface = &cfg.interfaces[0];
+    assert_eq!(iface.kind, "i2p");
+    assert_eq!(
+        iface.peers.as_deref(),
+        Some(&["peer-one.b32.i2p".to_string(), "peer-two.b32.i2p".to_string()][..])
+    );
+    assert_eq!(iface.sam_host.as_deref(), Some("127.0.0.1"));
+    assert_eq!(iface.sam_port, Some(7656));
+    assert_eq!(iface.mtu, Some(1064));
+    assert_eq!(iface.bitrate, Some(128_000));
+    assert_eq!(iface.state_path.as_deref(), Some("/tmp/rns"));
+
+    let settings = iface.settings_json().expect("settings");
+    assert_eq!(settings["peers"], serde_json::json!(["peer-one.b32.i2p", "peer-two.b32.i2p"]));
+    assert_eq!(settings["sam_host"], "127.0.0.1");
+    assert_eq!(settings["sam_port"], 7656);
+    assert_eq!(settings["mtu"], 1064);
+    assert_eq!(settings["state_path"], "/tmp/rns");
 }
 
 #[test]

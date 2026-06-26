@@ -9,11 +9,12 @@ stream transport.
 
 ## Scope
 
-- Interface kinds: `kiss`, `kiss_tcp_client`
-- Reticulum type alias: `KISSInterface`
-- Active transports: serial KISS modem, TCP-connected KISS modem or bridge
-- Runtime mutation policy: `set_interfaces`/`reload_config` with `kiss`
-  or `kiss_tcp_client` changes require restart
+- Interface kinds: `kiss`, `ax25_kiss`, `kiss_tcp_client`
+- Reticulum type aliases: `KISSInterface`, `AX25KISSInterface`
+- Active transports: serial KISS modem, serial AX.25 KISS TNC,
+  TCP-connected KISS modem or bridge
+- Runtime mutation policy: `set_interfaces`/`reload_config` with `kiss`,
+  `ax25_kiss`, or `kiss_tcp_client` changes require restart
 
 ## Required Config Fields
 
@@ -87,6 +88,30 @@ interfaces = [
 ]
 ```
 
+AX.25 KISS, for example a serial KISS TNC carrying Reticulum packets inside a
+Python-compatible AX.25 UI header:
+
+```toml
+interfaces = [
+  {
+    type = "AX25KISSInterface",
+    enabled = true,
+    name = "ax25-main",
+    port = "/dev/ttyUSB0",
+    speed = 1200,
+    callsign = "N0CALL",
+    ssid = 1,
+    preamble = 350,
+    txtail = 20,
+    persistence = 64,
+    slottime = 20,
+    flow_control = true,
+    id_callsign = "N0CALL-1",
+    id_interval = 600
+  }
+]
+```
+
 Python `TCPClientInterface` entries with `kiss_framing = true` are normalized
 to `kiss_tcp_client`; `target_host` and `target_port` map to `host` and `port`,
 and `fixed_mtu` maps to `mtu`:
@@ -115,6 +140,15 @@ interfaces = [
   `preamble` as `preamble_ms`, `txtail` as `tx_tail_ms`, `slottime` as
   `slot_time_ms`, and boolean `flow_control` as `kiss_flow_control`. If
   `speed` is omitted, the Python alias uses the Python default `9600`.
+- For `AX25KISSInterface` compatibility, `port` is accepted as `device`,
+  `speed` as `baud_rate`, `databits` as `data_bits`, `stopbits` as
+  `stop_bits`, `preamble` as `preamble_ms`, `txtail` as `tx_tail_ms`,
+  `slottime` as `slot_time_ms`, and boolean `flow_control` as
+  `kiss_flow_control`. If `speed` is omitted, the Python alias uses the Python
+  default `9600`.
+- For `ax25_kiss`, `callsign` and `ssid` are required when enabled.
+  `callsign` must be 3 to 6 ASCII alphanumeric characters and `ssid` must be
+  between 0 and 15.
 - When `kiss_flow_control` or compatibility `flow_control` is enabled, the
   stream starts ready after the KISS startup frames are flushed, matching
   Python `KISSInterface` configuration. The first outbound packet is sent
@@ -158,10 +192,14 @@ interfaces = [
 Startup writes KISS modem commands for preamble, TX tail, persistence, slot
 time, and Python's READY setup command. Packet I/O uses KISS data frames;
 inbound READY commands release one queued outbound frame when flow control is enabled.
-The same KISS codec and startup commands are used by the serial and TCP
-bearers. For Python `KISSInterface` parity, serial and TCP KISS strip the high
-port nibble from inbound KISS command bytes and treat the low nibble as the
-single supported port command. RNode/LoRa keeps full command bytes because
+The same KISS codec and startup commands are used by the serial, AX.25, and
+TCP bearers. AX.25 KISS wraps outbound Reticulum packets in an AX.25 UI header
+with destination callsign `APZRNS` and strips the first 16 bytes from inbound
+AX.25 frames before Reticulum packet decoding, matching Python
+`AX25KISSInterface` behavior. For Python `KISSInterface` parity, serial and
+TCP KISS strip the high port nibble from inbound KISS command bytes and treat
+the low nibble as the single supported port command. RNode/LoRa keeps full
+command bytes because
 Python `RNodeInterface` uses full values such as firmware command `0x50`.
 If a peer starts a frame and then goes quiet beyond the Python KISS read
 timeout, the partial frame is dropped before later bytes are decoded.
@@ -178,6 +216,7 @@ requires a callsign and does not apply this serial KISS padding.
 Expected startup log:
 
 - `kiss enabled iface=<iface> name=<name> device=<device> baud_rate=<baud>`
+- `ax25_kiss enabled iface=<iface> name=<name> device=<device> baud_rate=<baud>`
 - `kiss_tcp_client enabled iface=<iface> name=<name> endpoint=<host>:<port>`
 
 Runtime status visibility:
@@ -189,8 +228,11 @@ Runtime status visibility:
 
 ```bash
 cargo test -p reticulum-rs-transport --test kiss_codec
+cargo test -p reticulum-rs-transport ax25_payload
 cargo test -p reticulumd --test config kiss
+cargo test -p reticulumd --test config ax25_kiss
 cargo test -p reticulumd --test config kiss_tcp_client
+cargo test -p reticulumd --bin reticulumd ax25_kiss_builder
 cargo test -p reticulumd --bin reticulumd kiss_tcp_client_builder
 cargo test -p reticulumd --bin reticulumd bootstrap_best_effort_starts_kiss_interface_without_transport_flag
 cargo check -p reticulumd --all-targets
@@ -198,6 +240,7 @@ cargo check -p reticulumd --all-targets
 
 ## Rollback
 
-- Disable `kiss` interface entries and restart daemon.
+- Disable `kiss`, `ax25_kiss`, or `kiss_tcp_client` interface entries and
+  restart daemon.
 - Confirm only the intended remaining interfaces are active with
   `list_interfaces`.

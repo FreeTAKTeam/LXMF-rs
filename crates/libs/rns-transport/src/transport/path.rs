@@ -62,6 +62,7 @@ pub(super) fn route_inbound_packet(
 pub(super) fn route_outbound_packet(
     path_table: &PathTable,
     original_packet: &Packet,
+    connected_to_shared_instance: bool,
 ) -> RouteDecision {
     if original_packet.header.header_type == HeaderType::Type2 {
         return RouteDecision { packet: original_packet.clone(), next_iface: None };
@@ -81,7 +82,10 @@ pub(super) fn route_outbound_packet(
         return RouteDecision { packet: original_packet.clone(), next_iface: None };
     };
 
-    if entry.hops <= 1 && entry.received_from == original_packet.destination {
+    if entry.hops <= 1
+        && entry.received_from == original_packet.destination
+        && !connected_to_shared_instance
+    {
         return RouteDecision { packet: original_packet.clone(), next_iface: Some(entry.iface) };
     }
 

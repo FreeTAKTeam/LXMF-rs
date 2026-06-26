@@ -50,6 +50,65 @@ impl InterfaceConfig {
         Ok(())
     }
 
+    fn normalize_weave_aliases(&mut self, index: usize) -> Result<(), String> {
+        if self.baud_rate.is_none() {
+            self.baud_rate = self
+                .take_u64_alias_for_kind("speed", index, "weave")?
+                .map(|value| {
+                    u32::try_from(value).map_err(|_| {
+                        format!("interfaces[{index}].speed must fit in u32 for weave")
+                    })
+                })
+                .transpose()?
+                .or(Some(3_000_000));
+        } else {
+            let _ = self.take_u64_alias_for_kind("speed", index, "weave")?;
+        }
+        if self.mtu.is_none() {
+            self.mtu = Some(1024);
+        }
+        if self.bitrate.is_none() {
+            self.bitrate = self.take_u64_alias_for_kind("configured_bitrate", index, "weave")?;
+        } else {
+            let _ = self.take_u64_alias_for_kind("configured_bitrate", index, "weave")?;
+        }
+        Ok(())
+    }
+
+    fn normalize_i2p_aliases(&mut self, index: usize) -> Result<(), String> {
+        if self.sam_host.is_none() {
+            self.sam_host = self
+                .take_string_alias_for_kind("sam_ip", index, "i2p")?
+                .and_then(non_empty_string)
+                .or_else(|| Some("127.0.0.1".to_string()));
+        } else {
+            let _ = self.take_string_alias_for_kind("sam_ip", index, "i2p")?;
+        }
+        if self.sam_port.is_none() {
+            self.sam_port = self.take_u16_alias_for_kind("sam_port", index, "i2p")?.or(Some(7656));
+        } else {
+            let _ = self.take_u16_alias_for_kind("sam_port", index, "i2p")?;
+        }
+        if self.mtu.is_none() {
+            self.mtu = Some(1064);
+        }
+        if self.bitrate.is_none() {
+            self.bitrate = self
+                .take_u64_alias_for_kind("configured_bitrate", index, "i2p")?
+                .or(Some(256_000));
+        } else {
+            let _ = self.take_u64_alias_for_kind("configured_bitrate", index, "i2p")?;
+        }
+        if self.state_path.is_none() {
+            self.state_path = self
+                .take_string_alias_for_kind("storagepath", index, "i2p")?
+                .and_then(non_empty_string);
+        } else {
+            let _ = self.take_string_alias_for_kind("storagepath", index, "i2p")?;
+        }
+        Ok(())
+    }
+
     fn normalize_lora_aliases(&mut self, index: usize, original_kind: &str) -> Result<(), String> {
         if self.frequency_hz.is_none() {
             self.frequency_hz = self.take_u64_alias_for_kind("frequency", index, "lora")?;
@@ -102,6 +161,26 @@ impl InterfaceConfig {
         Ok(())
     }
 
+    fn normalize_rnode_multi_aliases(&mut self, index: usize) -> Result<(), String> {
+        if self.baud_rate.is_none() {
+            self.baud_rate = self
+                .take_u64_alias_for_kind("speed", index, "rnode_multi")?
+                .map(|value| {
+                    u32::try_from(value).map_err(|_| {
+                        format!("interfaces[{index}].speed must fit in u32 for rnode_multi")
+                    })
+                })
+                .transpose()?
+                .or(Some(115_200));
+        } else {
+            let _ = self.take_u64_alias_for_kind("speed", index, "rnode_multi")?;
+        }
+        if self.mtu.is_none() {
+            self.mtu = Some(220);
+        }
+        Ok(())
+    }
+
     fn normalize_kiss_aliases(&mut self, index: usize, original_kind: &str) -> Result<(), String> {
         if self.baud_rate.is_none() {
             self.baud_rate = self
@@ -146,6 +225,56 @@ impl InterfaceConfig {
             if let Some(flow_control) = self.flow_control.as_ref().and_then(toml::Value::as_bool) {
                 self.kiss_flow_control = Some(flow_control);
             }
+        }
+        Ok(())
+    }
+
+    fn normalize_ax25_kiss_aliases(&mut self, index: usize) -> Result<(), String> {
+        if self.baud_rate.is_none() {
+            self.baud_rate = self
+                .take_u64_alias_for_kind("speed", index, "ax25_kiss")?
+                .map(|value| {
+                    u32::try_from(value).map_err(|_| {
+                        format!("interfaces[{index}].speed must fit in u32 for ax25_kiss")
+                    })
+                })
+                .transpose()?
+                .or(Some(9_600));
+        } else {
+            let _ = self.take_u64_alias_for_kind("speed", index, "ax25_kiss")?;
+        }
+        if self.data_bits.is_none() {
+            self.data_bits = self.take_u8_alias_for_kind("databits", index, "ax25_kiss")?;
+        } else {
+            let _ = self.take_u8_alias_for_kind("databits", index, "ax25_kiss")?;
+        }
+        if self.stop_bits.is_none() {
+            self.stop_bits = self.take_u8_alias_for_kind("stopbits", index, "ax25_kiss")?;
+        } else {
+            let _ = self.take_u8_alias_for_kind("stopbits", index, "ax25_kiss")?;
+        }
+        if self.preamble_ms.is_none() {
+            self.preamble_ms = self.take_u16_alias_for_kind("preamble", index, "ax25_kiss")?;
+        } else {
+            let _ = self.take_u16_alias_for_kind("preamble", index, "ax25_kiss")?;
+        }
+        if self.tx_tail_ms.is_none() {
+            self.tx_tail_ms = self.take_u16_alias_for_kind("txtail", index, "ax25_kiss")?;
+        } else {
+            let _ = self.take_u16_alias_for_kind("txtail", index, "ax25_kiss")?;
+        }
+        if self.slot_time_ms.is_none() {
+            self.slot_time_ms = self.take_u16_alias_for_kind("slottime", index, "ax25_kiss")?;
+        } else {
+            let _ = self.take_u16_alias_for_kind("slottime", index, "ax25_kiss")?;
+        }
+        if self.kiss_flow_control.is_none() {
+            if let Some(flow_control) = self.flow_control.as_ref().and_then(toml::Value::as_bool) {
+                self.kiss_flow_control = Some(flow_control);
+            }
+        }
+        if self.mtu.is_none() {
+            self.mtu = Some(564);
         }
         Ok(())
     }
@@ -328,15 +457,17 @@ impl InterfaceConfig {
         }
         let has_bind_host =
             self.host.as_deref().map(str::trim).is_some_and(|value| !value.is_empty());
-        if !has_bind_host {
-            return Err(format!("interfaces[{index}].host is required for udp"));
+        let has_device =
+            self.device.as_deref().map(str::trim).is_some_and(|value| !value.is_empty());
+        if !has_bind_host && !has_device {
+            return Err(format!("interfaces[{index}].host or device is required for udp"));
         }
         if self.port.is_none() {
             return Err(format!("interfaces[{index}].port is required for udp"));
         }
         let has_target_host =
             self.target_host.as_deref().map(str::trim).is_some_and(|value| !value.is_empty());
-        if has_target_host ^ self.target_port.is_some() {
+        if (has_target_host ^ self.target_port.is_some()) && !(has_device && !has_target_host) {
             return Err(format!(
                 "interfaces[{index}].target_host and target_port must be provided together for udp"
             ));

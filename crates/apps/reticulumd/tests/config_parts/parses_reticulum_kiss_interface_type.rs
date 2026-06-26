@@ -427,6 +427,63 @@ interfaces = [
 }
 
 #[test]
+fn parses_python_rnode_multi_interface_with_vport_subinterfaces() {
+    let input = r#"
+interfaces = [
+  { type = "RNodeMultiInterface", enabled = true, name = "rnode-multi", port = "/dev/ttyACM0", id_callsign = "MYCALL-0", id_interval = 600, radio0 = { vport = 0, frequency = 915000000, bandwidth = 125000, spreadingfactor = 9, codingrate = 5, txpower = 17 }, radio1 = { vport = 3, frequency = 920000000, bandwidth = 125000, spreadingfactor = 10, codingrate = "4/6", txpower = 14, outgoing = false } }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse Reticulum RNodeMultiInterface");
+    let iface = &cfg.interfaces[0];
+    assert_eq!(iface.kind, "rnode_multi");
+    assert_eq!(iface.device.as_deref(), Some("/dev/ttyACM0"));
+    assert_eq!(iface.baud_rate, Some(115_200));
+    assert_eq!(iface.mtu, Some(220));
+    assert_eq!(iface.id_callsign.as_deref(), Some("MYCALL-0"));
+    assert_eq!(iface.id_interval, Some(600));
+
+    let settings = iface.settings_json().expect("settings");
+    assert_eq!(settings["device"], "/dev/ttyACM0");
+    assert_eq!(settings["baud_rate"], 115_200);
+    assert_eq!(settings["id_callsign"], "MYCALL-0");
+    assert_eq!(settings["id_interval"], 600);
+    assert_eq!(settings["subinterfaces"][0]["vport"], 0);
+    assert_eq!(settings["subinterfaces"][1]["vport"], 3);
+    assert_eq!(settings["subinterfaces"][1]["outgoing"], false);
+}
+
+#[test]
+fn parses_python_rnode_multi_tcp_interface() {
+    let input = r#"
+interfaces = [
+  { type = "RNodeMultiInterface", enabled = true, name = "rnode-multi-tcp", port = "tcp://192.0.2.10:8001", radio0 = { vport = 0, frequency = 915000000, bandwidth = 125000, spreadingfactor = 9, codingrate = 5, txpower = 17 } }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse Reticulum TCP RNodeMultiInterface");
+    let iface = &cfg.interfaces[0];
+
+    assert_eq!(iface.kind, "rnode_multi");
+    assert_eq!(iface.device.as_deref(), Some("tcp://192.0.2.10:8001"));
+    assert_eq!(iface.mtu, Some(220));
+
+    let settings = iface.settings_json().expect("settings");
+    assert_eq!(settings["device"], "tcp://192.0.2.10:8001");
+    assert_eq!(settings["subinterfaces"][0]["vport"], 0);
+}
+
+#[test]
+fn rejects_python_rnode_multi_duplicate_vports() {
+    let input = r#"
+interfaces = [
+  { type = "RNodeMultiInterface", enabled = true, name = "rnode-multi", port = "/dev/ttyACM0", radio0 = { vport = 1, frequency = 915000000, bandwidth = 125000, spreadingfactor = 9, codingrate = 5, txpower = 17 }, radio1 = { vport = 1, frequency = 920000000, bandwidth = 125000, spreadingfactor = 10, codingrate = 5, txpower = 14 } }
+]
+"#;
+    let err = DaemonConfig::from_toml(input).expect_err("duplicate vports should fail");
+    let message = err.to_string();
+    assert!(message.contains("duplicated"), "unexpected parse error: {message}");
+}
+
+#[test]
 fn parses_lora_python_rnode_high_bandwidth_preset() {
     let input = r#"
 interfaces = [

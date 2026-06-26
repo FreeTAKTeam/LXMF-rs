@@ -5,24 +5,88 @@ use tokio::net::TcpListener;
 
 use crate::error::RnsError;
 
-use super::tcp_client::TcpClient;
+use super::tcp_client::{backbone_hdlc_watchdog, HdlcStreamWatchdog, TcpClient, TcpSocketTuning};
 use super::{Interface, InterfaceContext, InterfaceManager};
 
 pub struct TcpServer {
     addr: String,
     iface_manager: Arc<tokio::sync::Mutex<InterfaceManager>>,
+    client_mtu: usize,
+    client_socket_tuning: TcpSocketTuning,
+    client_hdlc_watchdog: Option<HdlcStreamWatchdog>,
 }
 
 impl TcpServer {
+    pub const DEFAULT_CLIENT_MTU: usize = TcpClient::DEFAULT_MTU;
+
     pub fn new<T: Into<String>>(
         addr: T,
         iface_manager: Arc<tokio::sync::Mutex<InterfaceManager>>,
     ) -> Self {
-        Self { addr: addr.into(), iface_manager }
+        Self {
+            addr: addr.into(),
+            iface_manager,
+            client_mtu: Self::DEFAULT_CLIENT_MTU,
+            client_socket_tuning: TcpSocketTuning::default(),
+            client_hdlc_watchdog: None,
+        }
+    }
+
+    #[must_use]
+    pub fn with_client_mtu(mut self, client_mtu: usize) -> Self {
+        self.client_mtu = client_mtu.max(256);
+        self
+    }
+
+    #[must_use]
+    pub fn with_client_socket_tuning(mut self, client_socket_tuning: TcpSocketTuning) -> Self {
+        self.client_socket_tuning = client_socket_tuning;
+        self
+    }
+
+    #[must_use]
+    pub fn with_backbone_client_liveness(mut self) -> Self {
+        self.client_hdlc_watchdog = Some(backbone_hdlc_watchdog());
+        self
+    }
+
+    #[must_use]
+    pub fn client_socket_tuning(&self) -> TcpSocketTuning {
+        self.client_socket_tuning
+    }
+
+    #[must_use]
+    pub fn client_hdlc_liveness_enabled(&self) -> bool {
+        self.client_hdlc_watchdog.is_some()
+    }
+
+    fn accepted_client(
+        addr: String,
+        stream: tokio::net::TcpStream,
+        client_mtu: usize,
+        client_socket_tuning: TcpSocketTuning,
+        client_hdlc_watchdog: Option<HdlcStreamWatchdog>,
+    ) -> TcpClient {
+        let client = TcpClient::new_from_stream(addr, stream)
+            .with_mtu(client_mtu)
+            .with_socket_tuning(client_socket_tuning);
+        if let Some(watchdog) = client_hdlc_watchdog {
+            client.with_hdlc_watchdog(watchdog)
+        } else {
+            client
+        }
     }
 
     pub async fn spawn(context: InterfaceContext<Self>) {
-        let addr = { context.inner.lock().unwrap().addr.clone() };
+        let (addr, client_mtu, client_socket_tuning, client_hdlc_watchdog) = {
+            let guard = context.inner.lock().unwrap();
+            (
+                guard.addr.clone(),
+                guard.client_mtu,
+                guard.client_socket_tuning,
+                guard.client_hdlc_watchdog.clone(),
+            )
+        };
 
         let iface_manager = { context.inner.lock().unwrap().iface_manager.clone() };
 
@@ -92,10 +156,14 @@ impl TcpServer {
 
                             let mut iface_manager = iface_manager.lock().await;
 
-                            iface_manager.spawn(
-                                TcpClient::new_from_stream(client.1.to_string(), client.0),
-                                TcpClient::spawn,
+                            let accepted_client = TcpServer::accepted_client(
+                                client.1.to_string(),
+                                client.0,
+                                client_mtu,
+                                client_socket_tuning,
+                                client_hdlc_watchdog.clone(),
                             );
+                            iface_manager.spawn(accepted_client, TcpClient::spawn);
                         }
                     }
                 }
@@ -109,5 +177,78 @@ impl TcpServer {
 impl Interface for TcpServer {
     fn mtu() -> usize {
         2048
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use super::{backbone_hdlc_watchdog, TcpClient, TcpServer, TcpSocketTuning};
+    use crate::iface::InterfaceManager;
+    use tokio::net::{TcpListener, TcpStream};
+
+    #[test]
+    fn tcp_server_exposes_client_socket_tuning() {
+        let manager = Arc::new(tokio::sync::Mutex::new(InterfaceManager::new(8)));
+        let server = TcpServer::new("127.0.0.1:0", manager.clone());
+        assert!(server.client_socket_tuning().is_empty());
+        assert!(!server.client_hdlc_liveness_enabled());
+
+        let tuned = TcpServer::new("127.0.0.1:0", manager)
+            .with_client_socket_tuning(TcpSocketTuning::backbone());
+        assert_eq!(tuned.client_socket_tuning().nodelay, Some(true));
+        assert_eq!(tuned.client_socket_tuning().keepalive, Some(true));
+        assert_eq!(tuned.client_socket_tuning().tcp_keepalive_idle, Some(Duration::from_secs(5)));
+        assert_eq!(
+            tuned.client_socket_tuning().tcp_keepalive_interval,
+            Some(Duration::from_secs(2))
+        );
+        assert_eq!(tuned.client_socket_tuning().tcp_keepalive_retries, Some(12));
+        assert_eq!(tuned.client_socket_tuning().tcp_user_timeout, Some(Duration::from_secs(24)));
+        assert!(!tuned.client_hdlc_liveness_enabled());
+    }
+
+    #[test]
+    fn tcp_server_backbone_client_liveness_is_exposed() {
+        let manager = Arc::new(tokio::sync::Mutex::new(InterfaceManager::new(8)));
+        let server = TcpServer::new("127.0.0.1:0", manager).with_backbone_client_liveness();
+
+        assert!(server.client_hdlc_liveness_enabled());
+    }
+
+    #[tokio::test]
+    async fn tcp_server_forwards_configured_liveness_to_accepted_clients() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind listener");
+        let addr = listener.local_addr().expect("listener addr");
+        let _peer = TcpStream::connect(addr).await.expect("connect peer");
+        let (stream, peer_addr) = listener.accept().await.expect("accept stream");
+
+        let ordinary = TcpServer::accepted_client(
+            peer_addr.to_string(),
+            stream,
+            TcpClient::DEFAULT_MTU,
+            TcpSocketTuning::default(),
+            None,
+        );
+        assert!(!ordinary.hdlc_liveness_enabled());
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind listener");
+        let addr = listener.local_addr().expect("listener addr");
+        let _peer = TcpStream::connect(addr).await.expect("connect peer");
+        let (stream, peer_addr) = listener.accept().await.expect("accept stream");
+
+        let backbone = TcpServer::accepted_client(
+            peer_addr.to_string(),
+            stream,
+            1_048_576,
+            TcpSocketTuning::backbone(),
+            Some(backbone_hdlc_watchdog()),
+        );
+
+        assert_eq!(backbone.mtu_value(), 1_048_576);
+        assert_eq!(backbone.socket_tuning().nodelay, Some(true));
+        assert!(backbone.hdlc_liveness_enabled());
     }
 }

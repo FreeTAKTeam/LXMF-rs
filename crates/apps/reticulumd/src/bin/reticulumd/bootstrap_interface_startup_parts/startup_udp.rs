@@ -223,7 +223,11 @@ async fn startup_kiss(
     record: &mut InterfaceRecord,
     startup_failures: &mut Vec<InterfaceStartupFailure>,
 ) -> bool {
-    let adapter = match kiss::build_adapter(iface) {
+    let adapter = match if iface.kind == "ax25_kiss" {
+        kiss::build_ax25_adapter(iface)
+    } else {
+        kiss::build_adapter(iface)
+    } {
         Ok(adapter) => adapter,
         Err(err) => {
             record_startup_failure(
@@ -262,7 +266,8 @@ async fn startup_kiss(
         apply_interface_runtime_config(&mut manager, kiss_iface, iface);
     }
     log::info!(
-        "[daemon] kiss enabled iface={} name={} device={} baud_rate={}",
+        "[daemon] {} enabled iface={} name={} device={} baud_rate={}",
+        iface.kind,
         kiss_iface,
         label,
         iface.device.as_deref().unwrap_or("<unset>"),

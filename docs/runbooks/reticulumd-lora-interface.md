@@ -14,6 +14,9 @@ This runbook documents `lora` startup policy, active serial device startup, stat
 - Runtime mutation policy: `set_interfaces`/`reload_config` with `lora` changes require restart
 - Compliance posture: fail-closed on uncertain duty-cycle state
 
+For the in-progress shared-serial, multi-vport RNode family, see
+`docs/runbooks/reticulumd-rnode-multi-interface.md`.
+
 ## Required Config Fields
 
 ```toml

@@ -41,6 +41,8 @@ use tokio::time::{timeout, Duration};
 
 use transport_startup::{start_transport_and_interfaces, TransportStartupInput};
 
+const INTERFACE_RUNTIME_STATUS_REFRESH_INTERVAL: Duration = Duration::from_secs(2);
+
 #[derive(Clone, Debug)]
 pub(super) struct RpcTlsConfig {
     pub(super) cert_chain_path: PathBuf,
@@ -172,6 +174,9 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     let startup_successes = startup.startup_successes;
     let startup_failures = startup.startup_failures;
     let seeded_tcp_interfaces = startup.seeded_tcp_interfaces;
+    let i2p_runtime_refreshes = startup.i2p_runtime_refreshes;
+    let weave_runtime_refreshes = startup.weave_runtime_refreshes;
+    let rnode_multi_runtime_refreshes = startup.rnode_multi_runtime_refreshes;
     let selected_tcp_server = startup.selected_tcp_server;
 
     if !startup_failures.is_empty() {
@@ -269,6 +274,9 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     daemon.set_delivery_destination_hash(delivery_destination_hash_hex);
     daemon.set_propagation_destination_hash(propagation_destination_hash_hex.clone());
     daemon.replace_interfaces(configured_interfaces);
+    spawn_i2p_runtime_status_refresher(daemon.clone(), i2p_runtime_refreshes);
+    spawn_weave_runtime_status_refresher(daemon.clone(), weave_runtime_refreshes);
+    spawn_rnode_multi_runtime_status_refresher(daemon.clone(), rnode_multi_runtime_refreshes);
     daemon.set_propagation_state(transport.is_some(), None, 0);
     daemon.configure_propagation_node(
         propagation_node_config.enabled,
@@ -390,6 +398,108 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     BootstrapContext { rpc_addr, rpc_unix, daemon, rpc_tls }
 }
 
+fn spawn_i2p_runtime_status_refresher(
+    daemon: Arc<RpcDaemon>,
+    refreshes: Vec<transport_startup::I2pRuntimeRefresh>,
+) {
+    if refreshes.is_empty() {
+        return;
+    }
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(INTERFACE_RUNTIME_STATUS_REFRESH_INTERVAL);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            interval.tick().await;
+            refresh_i2p_runtime_status_once(&daemon, &refreshes);
+        }
+    });
+}
+
+fn refresh_i2p_runtime_status_once(
+    daemon: &RpcDaemon,
+    refreshes: &[transport_startup::I2pRuntimeRefresh],
+) -> usize {
+    refreshes
+        .iter()
+        .filter(|refresh| {
+            daemon.update_interface_runtime_metadata_by_iface(
+                refresh.runtime_iface.to_string().as_str(),
+                "i2p",
+                "tunnel_status",
+                refresh.status.to_json(),
+            )
+        })
+        .count()
+}
+
+fn spawn_weave_runtime_status_refresher(
+    daemon: Arc<RpcDaemon>,
+    refreshes: Vec<transport_startup::WeaveRuntimeRefresh>,
+) {
+    if refreshes.is_empty() {
+        return;
+    }
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(INTERFACE_RUNTIME_STATUS_REFRESH_INTERVAL);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            interval.tick().await;
+            refresh_weave_runtime_status_once(&daemon, &refreshes);
+        }
+    });
+}
+
+fn refresh_weave_runtime_status_once(
+    daemon: &RpcDaemon,
+    refreshes: &[transport_startup::WeaveRuntimeRefresh],
+) -> usize {
+    refreshes
+        .iter()
+        .filter(|refresh| {
+            daemon.update_interface_runtime_metadata_by_iface(
+                refresh.runtime_iface.to_string().as_str(),
+                "weave",
+                "status",
+                refresh.status.to_json(),
+            )
+        })
+        .count()
+}
+
+fn spawn_rnode_multi_runtime_status_refresher(
+    daemon: Arc<RpcDaemon>,
+    refreshes: Vec<transport_startup::RNodeMultiRuntimeRefresh>,
+) {
+    if refreshes.is_empty() {
+        return;
+    }
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(INTERFACE_RUNTIME_STATUS_REFRESH_INTERVAL);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            interval.tick().await;
+            refresh_rnode_multi_runtime_status_once(&daemon, &refreshes);
+        }
+    });
+}
+
+fn refresh_rnode_multi_runtime_status_once(
+    daemon: &RpcDaemon,
+    refreshes: &[transport_startup::RNodeMultiRuntimeRefresh],
+) -> usize {
+    refreshes
+        .iter()
+        .filter(|refresh| {
+            daemon.update_interface_runtime_metadata_by_iface(
+                refresh.runtime_iface.to_string().as_str(),
+                "rnode_multi",
+                "radio_status",
+                refresh.status.to_json(),
+            )
+        })
+        .count()
+}
+
 fn pretty_console_logs_enabled() -> bool {
     matches!(
         std::env::var("LXMF_LOG_PRETTY").ok().as_deref(),
@@ -488,4 +598,161 @@ pub(super) fn enforce_rpc_bind_security(
 fn is_local_rpc_bind(addr: &SocketAddr) -> bool {
     let ip = addr.ip();
     ip.is_loopback() && !ip.is_unspecified()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn i2p_runtime_status_refresh_updates_matching_interface_record() {
+        let daemon = RpcDaemon::test_instance();
+        let runtime_iface = AddressHash::new([0x19; 16]);
+        daemon.replace_interfaces(vec![InterfaceRecord {
+            kind: "i2p".to_string(),
+            enabled: true,
+            host: Some("127.0.0.1".to_string()),
+            port: Some(7656),
+            name: Some("i2p-main".to_string()),
+            settings: Some(json!({
+                "_runtime": {
+                    "iface": runtime_iface.to_string(),
+                    "startup_status": "spawned",
+                    "i2p": {
+                        "tunnel_status": {
+                            "accept_state": "stale"
+                        }
+                    }
+                }
+            })),
+        }]);
+        let manager = Arc::new(tokio::sync::Mutex::new(
+            rns_transport::iface::InterfaceManager::new(8),
+        ));
+        let status = rns_transport::iface::i2p::I2pInterface::new("i2p-main", manager)
+            .with_connectable(true)
+            .runtime_status_handle();
+        let refresh = transport_startup::I2pRuntimeRefresh { runtime_iface, status };
+
+        assert_eq!(refresh_i2p_runtime_status_once(&daemon, &[refresh]), 1);
+        let result = daemon
+            .handle_rpc(RpcRequest { id: 88, method: "daemon_status_ex".to_string(), params: None })
+            .expect("daemon status")
+            .result
+            .expect("daemon status result");
+        let tunnel_status = &result["interfaces"][0]["settings"]["_runtime"]["i2p"]
+            ["tunnel_status"];
+
+        assert_eq!(tunnel_status["accept_state"].as_str(), Some("configured"));
+        assert_eq!(tunnel_status["connectable"].as_bool(), Some(true));
+    }
+
+    #[test]
+    fn weave_runtime_status_refresh_updates_matching_interface_record() {
+        let daemon = RpcDaemon::test_instance();
+        let runtime_iface = AddressHash::new([0x20; 16]);
+        daemon.replace_interfaces(vec![InterfaceRecord {
+            kind: "weave".to_string(),
+            enabled: true,
+            host: None,
+            port: None,
+            name: Some("weave-main".to_string()),
+            settings: Some(json!({
+                "_runtime": {
+                    "iface": runtime_iface.to_string(),
+                    "startup_status": "spawned",
+                    "weave": {
+                        "status": {
+                            "link_state": "stale"
+                        }
+                    }
+                }
+            })),
+        }]);
+        let manager = Arc::new(tokio::sync::Mutex::new(
+            rns_transport::iface::InterfaceManager::new(8),
+        ));
+        let status = rns_transport::iface::weave::WeaveInterface::new("test", manager)
+            .runtime_status_handle();
+        let refresh = transport_startup::WeaveRuntimeRefresh { runtime_iface, status };
+
+        assert_eq!(refresh_weave_runtime_status_once(&daemon, &[refresh]), 1);
+        let result = daemon
+            .handle_rpc(RpcRequest { id: 89, method: "daemon_status_ex".to_string(), params: None })
+            .expect("daemon status")
+            .result
+            .expect("daemon status result");
+        let status = &result["interfaces"][0]["settings"]["_runtime"]["weave"]["status"];
+
+        assert_eq!(status["link_state"].as_str(), Some("configured"));
+        assert_eq!(status["device"].as_str(), Some("test"));
+    }
+
+    #[test]
+    fn rnode_multi_runtime_status_refresh_updates_matching_interface_record() {
+        let daemon = RpcDaemon::test_instance();
+        let runtime_iface = AddressHash::new([0x21; 16]);
+        daemon.replace_interfaces(vec![InterfaceRecord {
+            kind: "rnode_multi".to_string(),
+            enabled: true,
+            host: None,
+            port: None,
+            name: Some("rnode-multi".to_string()),
+            settings: Some(json!({
+                "_runtime": {
+                    "iface": runtime_iface.to_string(),
+                    "startup_status": "spawned",
+                    "rnode_multi": {
+                        "radio_status": {
+                            "selected_vport": 99
+                        }
+                    }
+                }
+            })),
+        }]);
+        let manager = Arc::new(tokio::sync::Mutex::new(
+            rns_transport::iface::InterfaceManager::new(8),
+        ));
+        let status =
+            rns_transport::iface::rnode_multi::RNodeMultiInterface::new("test", manager)
+                .with_subinterfaces(vec![
+                    rns_transport::iface::rnode_multi::RNodeMultiSubInterfaceConfig {
+                        name: "radio0".to_string(),
+                        vport: 2,
+                        config: rns_transport::iface::lora::LoraConfig::us915_default(),
+                        outgoing: true,
+                    },
+                    rns_transport::iface::rnode_multi::RNodeMultiSubInterfaceConfig {
+                        name: "radio1".to_string(),
+                        vport: 3,
+                        config: rns_transport::iface::lora::LoraConfig::us915_default(),
+                        outgoing: true,
+                    },
+                ])
+                .runtime_status_handle();
+        let refresh = transport_startup::RNodeMultiRuntimeRefresh { runtime_iface, status };
+
+        assert_eq!(refresh_rnode_multi_runtime_status_once(&daemon, &[refresh]), 1);
+        let result = daemon
+            .handle_rpc(RpcRequest { id: 90, method: "daemon_status_ex".to_string(), params: None })
+            .expect("daemon status")
+            .result
+            .expect("daemon status result");
+        let radio_status = &result["interfaces"][0]["settings"]["_runtime"]["rnode_multi"]
+            ["radio_status"];
+
+        assert_eq!(radio_status["selected_vport"].as_u64(), Some(2));
+        assert_eq!(radio_status["stream_state"].as_str(), Some("configured"));
+        assert!(radio_status["last_error"].is_null());
+        assert_eq!(
+            radio_status["vports"]
+                .as_array()
+                .expect("status vports")
+                .iter()
+                .filter_map(|value| value.as_u64())
+                .collect::<Vec<_>>(),
+            vec![2, 3]
+        );
+        assert!(radio_status["subinterfaces"]["2"]["frequency_hz"].is_null());
+    }
 }

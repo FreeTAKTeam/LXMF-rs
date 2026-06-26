@@ -4,7 +4,7 @@ use rns_transport::hash::AddressHash;
 
 use rns_transport::iface::kiss::{
     run_kiss_stream, KissActivityProbeConfig, KissCommandFrame, KissIdBeaconConfig,
-    KissStreamOptions, KISS_FLOW_CONTROL_TIMEOUT, KISS_READ_FRAME_TIMEOUT,
+    KissPayloadAdapter, KissStreamOptions, KISS_FLOW_CONTROL_TIMEOUT, KISS_READ_FRAME_TIMEOUT,
 };
 
 use rns_transport::iface::{TxMessage, TxMessageType};
@@ -212,6 +212,7 @@ async fn run_kiss_stream_reports_unknown_command_frames() {
             shutdown_frames: Vec::new(),
             id_beacon: None,
             activity_probe: None,
+            payload_adapter: KissPayloadAdapter::Raw,
             strip_command_port_nibble: true,
             command_tx: Some(command_tx),
             data_rx_tx: None,
@@ -259,6 +260,7 @@ async fn run_kiss_stream_reports_inbound_data_frames_for_status_hooks() {
             shutdown_frames: Vec::new(),
             id_beacon: None,
             activity_probe: None,
+            payload_adapter: KissPayloadAdapter::Raw,
             strip_command_port_nibble: false,
             command_tx: None,
             data_rx_tx: Some(data_rx_tx),
@@ -307,6 +309,7 @@ async fn run_kiss_stream_drops_stale_partial_data_frame_after_python_read_timeou
             shutdown_frames: Vec::new(),
             id_beacon: None,
             activity_probe: None,
+            payload_adapter: KissPayloadAdapter::Raw,
             strip_command_port_nibble: true,
             command_tx: Some(command_tx),
             data_rx_tx: Some(data_rx_tx),
@@ -361,6 +364,7 @@ async fn run_kiss_stream_flow_control_allows_first_packet_after_python_configura
             shutdown_frames: Vec::new(),
             id_beacon: None,
             activity_probe: None,
+            payload_adapter: KissPayloadAdapter::Raw,
             strip_command_port_nibble: true,
             command_tx: None,
             data_rx_tx: None,

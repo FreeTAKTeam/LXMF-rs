@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last reassessed: 2026-06-19
+Last reassessed: 2026-06-26
 
 This file is the repository-level source of truth for parity posture, release
 confidence, and execution order. Detailed row-level status lives in:
@@ -36,14 +36,59 @@ The project is best described by capability level:
   behavior are the strongest RNS areas.
 - Link establishment, proof validation, interface binding, watchdog timing,
   teardown, receipts, and resource lifecycle have active regression coverage.
-- `reticulumd` supports TCP client/server, UDP, serial, KISS, AutoInterface,
-  LoRa/RNode, feature-gated RNode BLE, and feature-gated VR-N76 KISS-over-BLE.
+- `reticulumd` supports TCP client/server, Backbone TCP/HDLC
+  listener/client compatibility with Backbone MTU defaults and Reticulum-style
+  Backbone socket tuning (`TCP_NODELAY`, Linux/Android keepalive probes, and
+  TCP user timeout) plus Backbone-only HDLC stream liveness keepalives,
+  stale detection, and read-timeout reconnects, LocalInterface TCP-loopback
+  plus Unix filesystem and Linux/Android abstract AF_UNIX shared-instance
+  listener/client-attach compatibility, including Unix client-attach reconnect
+  after startup failures or later disconnects and TCP/Unix attach reconnect
+  signals that re-synthesize tunnel state plus shared-instance one-hop
+  transport wrapping, Pipe subprocess HDLC, UDP unicast/multicast plus
+  Python-style UDP `device` broadcast-address defaults and IPv4 broadcast
+  socket sends, serial, KISS, AX.25 KISS, AutoInterface, LoRa/RNode,
+  feature-gated RNode BLE, feature-gated VR-N76 KISS-over-BLE, and the
+  in-progress shared serial/TCP RNodeMulti baseline with nested vport virtual
+  children, a shared-serial Weave WDCL/HDLC endpoint baseline, and an
+  outbound I2P SAM peer baseline.
+- RNodeMultiInterface has a transport-side vport slice: a single serial or TCP
+  RNode endpoint can host nested subinterfaces, select virtual ports with KISS
+  `CMD_SEL_INT`, route direct sends to the matching virtual child, and fan out
+  broadcasts to children that remain marked outgoing. Startup probe validation
+  covers detect, firmware `>= 1.74`, platform, MCU, `CMD_INTERFACES`
+  discovery, and configured vports reported by the hardware. Parent-level
+  Python `id_callsign`/`id_interval` beacons are carried into the transport and
+  fan out as raw callsign data on outgoing subinterfaces after first traffic.
+  Runtime status bookkeeping applies selected-vport radio command/status
+  responses to the matching child status record, and daemon/RPC snapshots
+  refresh the `_runtime.rnode_multi.radio_status` schema from the
+  transport-side runtime handle, including stream/probe state and last error
+  reporting for absent or failing hardware.
+- WeaveInterface has a transport-side WDCL/HDLC slice: a shared serial parent
+  can answer discovery, learn endpoint events, register virtual endpoint
+  children, receive endpoint packets, write direct endpoint commands, and expose
+  refreshed `_runtime.weave.status` metadata with switch, endpoint, log-event,
+  byte/frame, target-scoped remote display-frame, and CPU/task/memory
+  device-stat fields.
+- I2PInterface has a transport-side SAM slice: configured peers get virtual
+  unicast children, transient SAM stream sessions, name lookup, HDLC packet
+  framing, direct peer sends, broadcast fanout, and transient connectable
+  `STREAM ACCEPT` support for incoming peers with private-key persistence when
+  `state_path`/`storagepath` is configured. Persisted private destination keys
+  use Python-compatible hashed `.i2p` filenames, prefer existing old-format
+  interface-name keys when present, and otherwise use the identity-bound
+  new-format key name. Daemon runtime metadata reports the derived `.b32.i2p`
+  endpoint for persisted keys and keys generated during startup, plus refreshed
+  `tunnel_status` metadata for tunnel state, reconnect attempts, errors,
+  counters, keepalive/stale/read-timeout bookkeeping, and bounded recent
+  history for closed incoming peers.
 - AutoInterface has a live daemon runtime, including discovery, peer lifecycle,
   peer-data sockets, transport ingress, outbound routing, and multicast proof
   fallback.
-- Known but unsupported Python interface families now fail config parsing with
-  deterministic unsupported-family diagnostics instead of silently becoming
-  inert unknown interface entries.
+- I2P transport-side tunnel watchdog/status bookkeeping is refreshed into
+  daemon/RPC interface status; prepared-host production evidence remains
+  pending.
 - `rnstatus-rs` now provides a local daemon status utility over the existing
   RPC status surface, including JSON output plus human interface runtime
   startup state and propagation peer state.
@@ -759,8 +804,13 @@ the implemented subset.
      mutation parity.
 3. **Operational breadth**
    - Add prepared-host hardware evidence for BLE/RNode paths.
-   - Implement or explicitly defer missing Python interface families and
-     utility commands.
+   - Complete RNodeMulti prepared-host hardware validation/evidence and
+     broader production parity before treating that family as
+     production-complete.
+   - Capture I2P prepared-host evidence, and implement utility commands where
+     product demand justifies them.
+   - Complete Weave UI integration and prepared-host hardware evidence before
+     treating that family as production-complete.
 
 ## Active Execution Order
 

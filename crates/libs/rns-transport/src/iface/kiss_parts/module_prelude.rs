@@ -106,6 +106,7 @@ pub struct KissInterface {
     reconnect_backoff: Duration,
     max_reconnect_backoff: Duration,
     kiss: KissConfig,
+    payload_adapter: KissPayloadAdapter,
 }
 
 impl KissInterface {
@@ -121,6 +122,7 @@ impl KissInterface {
             reconnect_backoff: Duration::from_millis(500),
             max_reconnect_backoff: Duration::from_millis(5_000),
             kiss: KissConfig::default(),
+            payload_adapter: KissPayloadAdapter::Raw,
         }
     }
 
@@ -228,6 +230,12 @@ impl KissInterface {
     }
 
     #[must_use]
+    pub fn with_payload_adapter(mut self, payload_adapter: KissPayloadAdapter) -> Self {
+        self.payload_adapter = payload_adapter;
+        self
+    }
+
+    #[must_use]
     pub fn with_reconnect_backoff(mut self, reconnect_backoff: Duration) -> Self {
         self.reconnect_backoff = reconnect_backoff;
         if self.max_reconnect_backoff < self.reconnect_backoff {
@@ -271,6 +279,7 @@ impl KissInterface {
             reconnect_backoff,
             max_reconnect_backoff,
             kiss,
+            payload_adapter,
         ) = {
             let guard = context.inner.lock().expect("kiss interface mutex poisoned");
             (
@@ -283,6 +292,7 @@ impl KissInterface {
                 guard.reconnect_backoff,
                 guard.max_reconnect_backoff,
                 guard.kiss.clone(),
+                guard.payload_adapter.clone(),
             )
         };
 
@@ -337,6 +347,7 @@ impl KissInterface {
                     shutdown_frames: Vec::new(),
                     id_beacon: kiss.id_beacon.clone(),
                     activity_probe: None,
+                    payload_adapter: payload_adapter.clone(),
                     strip_command_port_nibble: true,
                     command_tx: None,
                     data_rx_tx: None,

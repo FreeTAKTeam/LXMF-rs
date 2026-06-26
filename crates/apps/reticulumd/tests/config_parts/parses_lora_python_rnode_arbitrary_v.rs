@@ -119,28 +119,18 @@ interfaces = [
 }
 
 #[test]
-fn rejects_known_unsupported_python_interface_families_with_specific_error() {
-    for kind in
-        ["PipeInterface", "LocalInterface", "I2PInterface", "WeaveInterface", "BackboneInterface"]
-    {
-        let input = format!(
-            r#"
+fn parses_i2p_connectable_server_mode() {
+    let input = r#"
 interfaces = [
-  {{ type = "{kind}", enabled = true, name = "unsupported" }}
+  { type = "I2PInterface", enabled = true, name = "i2p-server", connectable = true }
 ]
-"#
-        );
-        let err = match DaemonConfig::from_toml(&input) {
-            Ok(_) => panic!("{kind} should be rejected as known unsupported"),
-            Err(err) => err,
-        };
-        let message = err.to_string();
-        assert!(
-            message.contains("known unsupported Reticulum interface family"),
-            "unexpected parse error for {kind}: {message}"
-        );
-        assert!(message.contains(kind), "error should name {kind}: {message}");
-    }
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse connectable i2p");
+    let iface = &cfg.interfaces[0];
+    assert_eq!(iface.kind, "i2p");
+    assert_eq!(iface.connectable, Some(true));
+    assert_eq!(iface.sam_host.as_deref(), Some("127.0.0.1"));
+    assert_eq!(iface.sam_port, Some(7656));
 }
 
 #[test]
