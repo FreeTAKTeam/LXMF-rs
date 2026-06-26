@@ -582,6 +582,11 @@ async fn startup_local_unix(
         iface_manager.clone(),
     )
     .with_client_mtu(iface.mtu.unwrap_or(TcpClient::DEFAULT_MTU));
+    let adapter = if let Some(bitrate_bps) = iface.force_shared_instance_bitrate {
+        adapter.with_client_forced_bitrate(bitrate_bps)
+    } else {
+        adapter
+    };
     let local_iface = iface_manager.lock().await.spawn_as_with_mode(
         adapter,
         rns_transport::iface::local::LocalUnixServer::spawn,
@@ -631,6 +636,9 @@ async fn startup_local_unix_attach(
     let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
     let mut adapter = rns_transport::iface::local::LocalUnixClient::new_connect(endpoint.clone())
         .with_mtu(iface.mtu.unwrap_or(TcpClient::DEFAULT_MTU));
+    if let Some(bitrate_bps) = iface.force_shared_instance_bitrate {
+        adapter = adapter.with_forced_bitrate(bitrate_bps);
+    }
     if let Some(events) = shared_reconnect_events {
         adapter = adapter.with_reconnect_events(events);
     }
@@ -1224,10 +1232,14 @@ fn build_tcp_client_adapter(endpoint: String, iface: &InterfaceConfig) -> TcpCli
         adapter = adapter.with_prefer_ipv6(prefer_ipv6);
     }
     if let Some(mtu) = iface.mtu {
-        adapter.with_mtu(mtu)
-    } else {
-        adapter
+        adapter = adapter.with_mtu(mtu);
     }
+    if matches!(iface.kind.as_str(), "local" | "local_client") {
+        if let Some(bitrate_bps) = iface.force_shared_instance_bitrate {
+            adapter = adapter.with_forced_bitrate(bitrate_bps);
+        }
+    }
+    adapter
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1498,6 +1510,25 @@ mod tests {
         assert_eq!(adapter.connect_timeout(), Duration::from_secs(7));
         assert_eq!(adapter.max_reconnect_tries(), Some(3));
         assert!(adapter.prefer_ipv6());
+    }
+
+    #[test]
+    fn local_client_builder_forces_shared_instance_bitrate() {
+        let iface = InterfaceConfig {
+            kind: "local_client".to_string(),
+            enabled: Some(true),
+            host: Some("127.0.0.1".to_string()),
+            port: Some(37_428),
+            bitrate: Some(1_000_000),
+            force_shared_instance_bitrate: Some(1_000_000),
+            ..InterfaceConfig::default()
+        };
+
+        let adapter = build_tcp_client_adapter("127.0.0.1:37428".to_string(), &iface);
+
+        assert_eq!(adapter.forced_bitrate_bps(), Some(1_000_000));
+        assert!(adapter.socket_tuning().is_empty());
+        assert!(!adapter.hdlc_liveness_enabled());
     }
 
     #[test]

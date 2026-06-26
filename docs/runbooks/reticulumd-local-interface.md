@@ -91,7 +91,9 @@ interfaces = [
 - `mtu` defaults to Python's local MTU, `262144`.
 - `fixed_mtu` is accepted as a compatibility alias for `mtu`.
 - `force_shared_instance_bitrate` is accepted as a compatibility alias for
-  `bitrate`; the default is `1000000000`.
+  `bitrate`; the default is `1000000000`. When configured, shared-instance TCP
+  and Unix client streams pace outbound packet writes with Python's
+  `len(packet) * 8 / bitrate` delay before HDLC framing.
 
 ## Runtime Behavior
 

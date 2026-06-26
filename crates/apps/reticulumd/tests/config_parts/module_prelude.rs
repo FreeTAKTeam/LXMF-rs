@@ -314,6 +314,7 @@ interfaces = [
     assert_eq!(iface.port, Some(37_428));
     assert_eq!(iface.mtu, Some(4096));
     assert_eq!(iface.bitrate, Some(1_000_000));
+    assert_eq!(iface.force_shared_instance_bitrate, Some(1_000_000));
 
     let settings = iface.settings_json().expect("local settings");
     assert_eq!(settings["host"], "127.0.0.1");

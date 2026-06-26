@@ -135,12 +135,13 @@ pub(crate) struct HdlcStreamWatchdog {
 pub(crate) struct HdlcStreamRuntime {
     pub watchdog: Option<HdlcStreamWatchdog>,
     pub events: Option<tokio::sync::mpsc::UnboundedSender<HdlcStreamEvent>>,
+    pub forced_bitrate_bps: Option<u64>,
 }
 
 impl HdlcStreamRuntime {
     #[must_use]
     pub(crate) fn new() -> Self {
-        Self { watchdog: None, events: None }
+        Self { watchdog: None, events: None, forced_bitrate_bps: None }
     }
 
     #[must_use]
@@ -155,6 +156,12 @@ impl HdlcStreamRuntime {
         events: tokio::sync::mpsc::UnboundedSender<HdlcStreamEvent>,
     ) -> Self {
         self.events = Some(events);
+        self
+    }
+
+    #[must_use]
+    pub(crate) fn with_forced_bitrate(mut self, bitrate_bps: u64) -> Self {
+        self.forced_bitrate_bps = (bitrate_bps > 0).then_some(bitrate_bps);
         self
     }
 }
@@ -184,6 +191,16 @@ fn tx_diag_enabled() -> bool {
 fn tcp_wire_buffer_capacity(mtu: usize) -> usize {
     // Worst-case HDLC expansion doubles bytes (all escaped) plus frame delimiters.
     mtu.saturating_mul(2).saturating_add(16)
+}
+
+fn forced_bitrate_delay(raw_len: usize, bitrate_bps: u64) -> Option<Duration> {
+    if raw_len == 0 || bitrate_bps == 0 {
+        return None;
+    }
+    let nanos =
+        (raw_len as u128).saturating_mul(8).saturating_mul(1_000_000_000) / u128::from(bitrate_bps);
+    let nanos = nanos.max(1).min(u128::from(u64::MAX)) as u64;
+    Some(Duration::from_nanos(nanos))
 }
 
 pub(crate) fn backbone_hdlc_watchdog() -> HdlcStreamWatchdog {
@@ -357,6 +374,7 @@ pub(crate) async fn run_hdlc_stream_with_runtime<R, W>(
         let last_read_at = last_read_at.clone();
         let events = events.clone();
         let watchdog = runtime.watchdog.clone();
+        let forced_bitrate_bps = runtime.forced_bitrate_bps;
 
         tokio::spawn(async move {
             let mut last_write_at = Instant::now();
@@ -449,6 +467,19 @@ pub(crate) async fn run_hdlc_stream_with_runtime<R, W>(
                         }
                         let mut output = OutputBuffer::new(&mut tx_buffer);
                         if packet.serialize(&mut output).is_ok() {
+                            if let Some(bitrate_bps) = forced_bitrate_bps {
+                                if let Some(delay) = forced_bitrate_delay(output.as_slice().len(), bitrate_bps) {
+                                    tokio::select! {
+                                        _ = cancel.cancelled() => break,
+                                        _ = iface_stop_tx.cancelled() => {
+                                            stop.cancel();
+                                            break;
+                                        }
+                                        _ = stop.cancelled() => break,
+                                        _ = tokio::time::sleep(delay) => {}
+                                    }
+                                }
+                            }
                             let mut hdlc_output = OutputBuffer::new(&mut hdlc_tx_buffer[..]);
                             if Hdlc::encode(output.as_slice(), &mut hdlc_output).is_ok() {
                                 if let Err(err) = stream.write_all(hdlc_output.as_slice()).await {
@@ -522,6 +553,7 @@ pub struct TcpClient {
     mtu: usize,
     socket_tuning: TcpSocketTuning,
     hdlc_watchdog: Option<HdlcStreamWatchdog>,
+    forced_bitrate_bps: Option<u64>,
     reconnect_events: Option<tokio::sync::mpsc::UnboundedSender<crate::hash::AddressHash>>,
     connect_timeout: Duration,
     max_reconnect_tries: Option<u64>,
@@ -539,6 +571,7 @@ impl TcpClient {
             mtu: Self::DEFAULT_MTU,
             socket_tuning: TcpSocketTuning::default(),
             hdlc_watchdog: None,
+            forced_bitrate_bps: None,
             reconnect_events: None,
             connect_timeout: Self::DEFAULT_CONNECT_TIMEOUT,
             max_reconnect_tries: None,
@@ -553,6 +586,7 @@ impl TcpClient {
             mtu: Self::DEFAULT_MTU,
             socket_tuning: TcpSocketTuning::default(),
             hdlc_watchdog: None,
+            forced_bitrate_bps: None,
             reconnect_events: None,
             connect_timeout: Self::DEFAULT_CONNECT_TIMEOUT,
             max_reconnect_tries: None,
@@ -580,6 +614,12 @@ impl TcpClient {
     #[must_use]
     pub(crate) fn with_hdlc_watchdog(mut self, watchdog: HdlcStreamWatchdog) -> Self {
         self.hdlc_watchdog = Some(watchdog);
+        self
+    }
+
+    #[must_use]
+    pub fn with_forced_bitrate(mut self, bitrate_bps: u64) -> Self {
+        self.forced_bitrate_bps = (bitrate_bps > 0).then_some(bitrate_bps);
         self
     }
 
@@ -631,6 +671,11 @@ impl TcpClient {
     }
 
     #[must_use]
+    pub fn forced_bitrate_bps(&self) -> Option<u64> {
+        self.forced_bitrate_bps
+    }
+
+    #[must_use]
     pub fn connect_timeout(&self) -> Duration {
         self.connect_timeout
     }
@@ -659,6 +704,7 @@ impl TcpClient {
             mtu,
             socket_tuning,
             hdlc_watchdog,
+            forced_bitrate_bps,
             connect_timeout,
             max_reconnect_tries,
             prefer_ipv6,
@@ -669,6 +715,7 @@ impl TcpClient {
                 guard.mtu,
                 guard.socket_tuning,
                 guard.hdlc_watchdog.clone(),
+                guard.forced_bitrate_bps,
                 guard.connect_timeout,
                 guard.max_reconnect_tries,
                 guard.prefer_ipv6,
@@ -749,6 +796,11 @@ impl TcpClient {
                 hdlc_watchdog.clone().map_or_else(HdlcStreamRuntime::default, |watchdog| {
                     HdlcStreamRuntime::new().with_watchdog(watchdog)
                 });
+            let runtime = if let Some(bitrate_bps) = forced_bitrate_bps {
+                runtime.with_forced_bitrate(bitrate_bps)
+            } else {
+                runtime
+            };
 
             run_hdlc_stream_with_runtime(
                 "tcp_client".to_string(),
@@ -816,14 +868,16 @@ mod tests {
     use std::time::Duration;
 
     use super::{
-        prefer_ipv6_socket_addrs, run_hdlc_stream_with_runtime, tcp_wire_buffer_capacity,
-        HdlcStreamEvent, HdlcStreamRuntime, HdlcStreamWatchdog, TcpClient, TcpSocketTuning,
+        forced_bitrate_delay, prefer_ipv6_socket_addrs, run_hdlc_stream_with_runtime,
+        tcp_wire_buffer_capacity, HdlcStreamEvent, HdlcStreamRuntime, HdlcStreamWatchdog,
+        TcpClient, TcpSocketTuning,
     };
     use crate::buffer::OutputBuffer;
     use crate::hash::AddressHash;
     use crate::iface::hdlc::Hdlc;
-    use crate::iface::InterfaceManager;
-    use tokio::io::AsyncReadExt;
+    use crate::iface::{InterfaceManager, TxMessage, TxMessageType};
+    use crate::packet::Packet;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::{TcpListener, TcpStream};
     use tokio_util::sync::CancellationToken;
 
@@ -841,6 +895,25 @@ mod tests {
 
         assert!(!client.hdlc_liveness_enabled());
         assert_eq!(client.hdlc_watchdog(), None);
+        assert_eq!(client.forced_bitrate_bps(), None);
+    }
+
+    #[test]
+    fn tcp_client_exposes_forced_bitrate() {
+        let client = TcpClient::new("rmap.world:4242").with_forced_bitrate(9_600);
+
+        assert_eq!(client.forced_bitrate_bps(), Some(9_600));
+        assert_eq!(
+            TcpClient::new("rmap.world:4242").with_forced_bitrate(0).forced_bitrate_bps(),
+            None
+        );
+    }
+
+    #[test]
+    fn forced_bitrate_delay_matches_python_formula() {
+        assert_eq!(forced_bitrate_delay(0, 1_000), None);
+        assert_eq!(forced_bitrate_delay(128, 0), None);
+        assert_eq!(forced_bitrate_delay(125, 1_000), Some(Duration::from_secs(1)));
     }
 
     #[test]
@@ -1007,6 +1080,48 @@ mod tests {
 
         cancel.cancel();
         drop(peer);
+        handle.await.expect("hdlc stream task");
+    }
+
+    #[tokio::test]
+    async fn hdlc_stream_forced_bitrate_delays_packet_writes() {
+        let (stream, mut peer) = tokio::io::duplex(256);
+        let (read_stream, write_stream) = tokio::io::split(stream);
+        let cancel = CancellationToken::new();
+        let iface_stop = CancellationToken::new();
+        let (rx_channel, _rx_messages) = tokio::sync::mpsc::channel(1);
+        let (tx_sender, tx_receiver) = tokio::sync::mpsc::channel(1);
+
+        let handle = tokio::spawn(run_hdlc_stream_with_runtime(
+            "test".to_string(),
+            AddressHash::new([0x45; 16]),
+            256,
+            cancel.clone(),
+            iface_stop,
+            rx_channel,
+            Arc::new(tokio::sync::Mutex::new(tx_receiver)),
+            read_stream,
+            write_stream,
+            HdlcStreamRuntime::new().with_forced_bitrate(1_000),
+        ));
+
+        tx_sender
+            .send(TxMessage { tx_type: TxMessageType::Broadcast(None), packet: Packet::default() })
+            .await
+            .expect("queue tx packet");
+
+        let early = tokio::time::timeout(Duration::from_millis(20), peer.read_u8()).await;
+        assert!(early.is_err(), "forced bitrate should delay the first wire byte");
+
+        let mut first_byte = [0_u8; 1];
+        tokio::time::timeout(Duration::from_secs(1), peer.read_exact(&mut first_byte))
+            .await
+            .expect("delayed write deadline")
+            .expect("read delayed wire byte");
+        assert_eq!(first_byte[0], 0x7e);
+
+        cancel.cancel();
+        peer.shutdown().await.expect("shutdown peer");
         handle.await.expect("hdlc stream task");
     }
 

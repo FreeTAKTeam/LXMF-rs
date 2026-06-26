@@ -63,7 +63,9 @@ placeholders:
   Linux/Android abstract AF_UNIX shared-instance listener/client-attach
   compatibility over the existing stream/HDLC runtime, including Python's
   default `127.0.0.1:37428` endpoint, `@rns/<instance_name>` Unix naming, and
-  262144-byte local MTU. Unix client-attach retries after initial connect
+  262144-byte local MTU. Python-style `force_shared_instance_bitrate` pacing
+  delays outbound shared-instance packet writes before HDLC framing on TCP and
+  Unix client streams. Unix client-attach retries after initial connect
   failures and reconnects after stream disconnects; TCP and Unix attach
   reconnect signals re-synthesize tunnel state through `reticulumd`, and
   attached shared-instance clients wrap one-hop outbound packets in transport

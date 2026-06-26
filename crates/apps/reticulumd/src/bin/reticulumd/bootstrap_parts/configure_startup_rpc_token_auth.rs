@@ -62,6 +62,7 @@ pub(super) struct TcpServerSelection {
     pub(super) selected_index: Option<usize>,
     pub(super) kind: String,
     pub(super) client_mtu: Option<usize>,
+    pub(super) client_forced_bitrate_bps: Option<u64>,
     pub(super) prefer_ipv6: bool,
     pub(super) i2p_tunneled: bool,
     pub(super) local_attach_addr: Option<String>,
@@ -78,6 +79,7 @@ pub(super) fn select_tcp_server_bind(
             selected_index: None,
             kind: "tcp_server".to_string(),
             client_mtu: None,
+            client_forced_bitrate_bps: None,
             prefer_ipv6: false,
             i2p_tunneled: false,
             local_attach_addr: None,
@@ -103,6 +105,7 @@ pub(super) fn select_tcp_server_bind(
             index,
             iface.kind.clone(),
             iface.mtu,
+            (iface.kind == "local").then_some(iface.force_shared_instance_bitrate).flatten(),
             iface.prefer_ipv6.unwrap_or(false),
             iface.i2p_tunneled.unwrap_or(false),
             tcp_bind_addr(host.as_str(), port),
@@ -112,11 +115,23 @@ pub(super) fn select_tcp_server_bind(
     if matches.len() > 1 {
         return Err(format!(
             "multiple enabled TCP listener interfaces configured without --transport override: {}",
-            matches.iter().map(|(_, _, _, _, _, endpoint)| endpoint.as_str()).collect::<Vec<_>>().join(", ")
+            matches
+                .iter()
+                .map(|(_, _, _, _, _, _, endpoint)| endpoint.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
         ));
     }
 
-    let Some((selected_index, kind, client_mtu, prefer_ipv6, i2p_tunneled, bind_addr)) =
+    let Some((
+        selected_index,
+        kind,
+        client_mtu,
+        client_forced_bitrate_bps,
+        prefer_ipv6,
+        i2p_tunneled,
+        bind_addr,
+    )) =
         matches.into_iter().next()
     else {
         return Ok(TcpServerSelection::default());
@@ -128,6 +143,7 @@ pub(super) fn select_tcp_server_bind(
             selected_index: None,
             kind,
             client_mtu,
+            client_forced_bitrate_bps,
             prefer_ipv6,
             i2p_tunneled,
             local_attach_addr: Some(bind_addr),
@@ -140,6 +156,7 @@ pub(super) fn select_tcp_server_bind(
             selected_index: Some(selected_index),
             kind,
             client_mtu,
+            client_forced_bitrate_bps,
             prefer_ipv6,
             i2p_tunneled,
             local_attach_addr: None,

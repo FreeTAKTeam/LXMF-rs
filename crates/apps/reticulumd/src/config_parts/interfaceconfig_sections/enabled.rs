@@ -955,12 +955,13 @@ impl InterfaceConfig {
             self.mtu = Some(rns_transport::iface::tcp_client::TcpClient::DEFAULT_MTU);
         }
 
+        let forced_bitrate =
+            self.take_u64_alias_for_kind("force_shared_instance_bitrate", index, "local")?;
+        if self.force_shared_instance_bitrate.is_none() {
+            self.force_shared_instance_bitrate = forced_bitrate;
+        }
         if self.bitrate.is_none() {
-            self.bitrate =
-                self.take_u64_alias_for_kind("force_shared_instance_bitrate", index, "local")?;
-        } else {
-            let _ =
-                self.take_u64_alias_for_kind("force_shared_instance_bitrate", index, "local")?;
+            self.bitrate = self.force_shared_instance_bitrate;
         }
         if self.bitrate.is_none() {
             self.bitrate = Some(1_000_000_000);

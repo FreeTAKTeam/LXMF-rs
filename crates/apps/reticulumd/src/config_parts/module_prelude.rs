@@ -98,6 +98,8 @@ pub struct InterfaceConfig {
     #[serde(default)]
     pub bitrate: Option<u64>,
     #[serde(default)]
+    pub force_shared_instance_bitrate: Option<u64>,
+    #[serde(default)]
     pub announce_cap: Option<u64>,
     #[serde(default)]
     pub announce_rate_target: Option<u64>,

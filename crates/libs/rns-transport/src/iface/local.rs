@@ -10,7 +10,9 @@ use std::time::Duration;
 
 use tokio::net::{UnixListener, UnixStream};
 
-use super::tcp_client::{run_hdlc_stream, TcpClient};
+use super::tcp_client::{
+    run_hdlc_stream, run_hdlc_stream_with_runtime, HdlcStreamRuntime, TcpClient,
+};
 use super::{Interface, InterfaceContext, InterfaceManager};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -91,6 +93,7 @@ pub struct LocalUnixServer {
     endpoint: LocalUnixEndpoint,
     iface_manager: Arc<tokio::sync::Mutex<InterfaceManager>>,
     client_mtu: usize,
+    client_forced_bitrate_bps: Option<u64>,
 }
 
 impl LocalUnixServer {
@@ -104,6 +107,7 @@ impl LocalUnixServer {
             endpoint: LocalUnixEndpoint::filesystem(path),
             iface_manager,
             client_mtu: Self::DEFAULT_CLIENT_MTU,
+            client_forced_bitrate_bps: None,
         }
     }
 
@@ -111,7 +115,12 @@ impl LocalUnixServer {
         endpoint: LocalUnixEndpoint,
         iface_manager: Arc<tokio::sync::Mutex<InterfaceManager>>,
     ) -> Self {
-        Self { endpoint, iface_manager, client_mtu: Self::DEFAULT_CLIENT_MTU }
+        Self {
+            endpoint,
+            iface_manager,
+            client_mtu: Self::DEFAULT_CLIENT_MTU,
+            client_forced_bitrate_bps: None,
+        }
     }
 
     #[must_use]
@@ -120,11 +129,22 @@ impl LocalUnixServer {
         self
     }
 
+    #[must_use]
+    pub fn with_client_forced_bitrate(mut self, bitrate_bps: u64) -> Self {
+        self.client_forced_bitrate_bps = (bitrate_bps > 0).then_some(bitrate_bps);
+        self
+    }
+
     pub async fn spawn(context: InterfaceContext<Self>) {
         let parent_iface = context.channel.address;
-        let (endpoint, client_mtu, iface_manager) = {
+        let (endpoint, client_mtu, client_forced_bitrate_bps, iface_manager) = {
             let guard = context.inner.lock().unwrap();
-            (guard.endpoint.clone(), guard.client_mtu, guard.iface_manager.clone())
+            (
+                guard.endpoint.clone(),
+                guard.client_mtu,
+                guard.client_forced_bitrate_bps,
+                guard.iface_manager.clone(),
+            )
         };
 
         let (_, tx_channel) = context.channel.split();
@@ -202,9 +222,14 @@ impl LocalUnixServer {
                                 log::info!("new local unix client <{}> connected", peer_label);
 
                                 let mut iface_manager = iface_manager.lock().await;
-                                let child_iface = iface_manager.spawn(
+                                let mut client =
                                     LocalUnixClient::new_from_stream(peer_label, stream)
-                                        .with_mtu(client_mtu),
+                                        .with_mtu(client_mtu);
+                                if let Some(bitrate_bps) = client_forced_bitrate_bps {
+                                    client = client.with_forced_bitrate(bitrate_bps);
+                                }
+                                let child_iface = iface_manager.spawn(
+                                    client,
                                     LocalUnixClient::spawn,
                                 );
                                 iface_manager.inherit_runtime_config(parent_iface, child_iface);
@@ -257,6 +282,7 @@ pub struct LocalUnixClient {
     stream: Option<UnixStream>,
     connect_endpoint: Option<LocalUnixEndpoint>,
     mtu: usize,
+    forced_bitrate_bps: Option<u64>,
     reconnect_wait: Duration,
     reconnect_events: Option<tokio::sync::mpsc::UnboundedSender<crate::hash::AddressHash>>,
 }
@@ -270,6 +296,7 @@ impl LocalUnixClient {
             stream: Some(stream),
             connect_endpoint: None,
             mtu: TcpClient::DEFAULT_MTU,
+            forced_bitrate_bps: None,
             reconnect_wait: Self::DEFAULT_RECONNECT_WAIT,
             reconnect_events: None,
         }
@@ -282,6 +309,7 @@ impl LocalUnixClient {
             stream: None,
             connect_endpoint: Some(endpoint),
             mtu: TcpClient::DEFAULT_MTU,
+            forced_bitrate_bps: None,
             reconnect_wait: Self::DEFAULT_RECONNECT_WAIT,
             reconnect_events: None,
         }
@@ -290,6 +318,12 @@ impl LocalUnixClient {
     #[must_use]
     pub fn with_mtu(mut self, mtu: usize) -> Self {
         self.mtu = mtu.max(256);
+        self
+    }
+
+    #[must_use]
+    pub fn with_forced_bitrate(mut self, bitrate_bps: u64) -> Self {
+        self.forced_bitrate_bps = (bitrate_bps > 0).then_some(bitrate_bps);
         self
     }
 
@@ -311,11 +345,20 @@ impl LocalUnixClient {
     pub async fn spawn(context: InterfaceContext<Self>) {
         let iface_stop = context.channel.stop.clone();
         let iface_address = context.channel.address;
-        let (addr, mtu, mut stream, connect_endpoint, reconnect_wait, reconnect_events) = {
+        let (
+            addr,
+            mtu,
+            forced_bitrate_bps,
+            mut stream,
+            connect_endpoint,
+            reconnect_wait,
+            reconnect_events,
+        ) = {
             let mut guard = context.inner.lock().unwrap();
             (
                 guard.addr.clone(),
                 guard.mtu,
+                guard.forced_bitrate_bps,
                 guard.stream.take(),
                 guard.connect_endpoint.clone(),
                 guard.reconnect_wait,
@@ -366,18 +409,34 @@ impl LocalUnixClient {
                 has_connected = true;
             }
 
-            run_hdlc_stream(
-                "local_unix".to_string(),
-                iface_address,
-                mtu,
-                context.cancel.clone(),
-                iface_stop.clone(),
-                rx_channel.clone(),
-                tx_channel.clone(),
-                read_stream,
-                write_stream,
-            )
-            .await;
+            if let Some(bitrate_bps) = forced_bitrate_bps {
+                run_hdlc_stream_with_runtime(
+                    "local_unix".to_string(),
+                    iface_address,
+                    mtu,
+                    context.cancel.clone(),
+                    iface_stop.clone(),
+                    rx_channel.clone(),
+                    tx_channel.clone(),
+                    read_stream,
+                    write_stream,
+                    HdlcStreamRuntime::new().with_forced_bitrate(bitrate_bps),
+                )
+                .await;
+            } else {
+                run_hdlc_stream(
+                    "local_unix".to_string(),
+                    iface_address,
+                    mtu,
+                    context.cancel.clone(),
+                    iface_stop.clone(),
+                    rx_channel.clone(),
+                    tx_channel.clone(),
+                    read_stream,
+                    write_stream,
+                )
+                .await;
+            }
 
             log::info!("disconnected from local unix client <{}>", addr);
         }

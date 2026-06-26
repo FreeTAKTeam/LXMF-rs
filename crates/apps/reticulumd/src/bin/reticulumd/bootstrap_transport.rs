@@ -96,6 +96,9 @@ fn build_selected_tcp_server_adapter(
         .map(|mtu| TcpServer::new(addr.clone(), iface_manager.clone()).with_client_mtu(mtu))
         .unwrap_or_else(|| TcpServer::new(addr, iface_manager));
     server = server.with_prefer_ipv6(selected_tcp_server.prefer_ipv6);
+    if let Some(bitrate_bps) = selected_tcp_server.client_forced_bitrate_bps {
+        server = server.with_client_forced_bitrate(bitrate_bps);
+    }
     if selected_tcp_server.kind == "backbone" {
         server = server
             .with_client_socket_tuning(TcpSocketTuning::backbone())
@@ -360,6 +363,7 @@ mod tests {
 
         assert!(tcp_server.client_socket_tuning().is_empty());
         assert!(!tcp_server.client_hdlc_liveness_enabled());
+        assert_eq!(tcp_server.client_forced_bitrate_bps(), None);
         assert!(!tcp_server.prefer_ipv6());
 
         let backbone = TcpServerSelection {
@@ -376,6 +380,24 @@ mod tests {
         assert_eq!(backbone_server.client_socket_tuning().keepalive, Some(true));
         assert!(backbone_server.client_hdlc_liveness_enabled());
         assert!(backbone_server.prefer_ipv6());
+    }
+
+    #[test]
+    fn selected_local_server_adapter_forces_shared_instance_bitrate() {
+        let manager = Arc::new(tokio::sync::Mutex::new(InterfaceManager::new(8)));
+        let local = TcpServerSelection {
+            bind_addr: Some("127.0.0.1:37428".to_string()),
+            kind: "local".to_string(),
+            client_forced_bitrate_bps: Some(1_000_000),
+            ..TcpServerSelection::default()
+        };
+
+        let server =
+            build_selected_tcp_server_adapter("127.0.0.1:37428".to_string(), manager, &local);
+
+        assert_eq!(server.client_forced_bitrate_bps(), Some(1_000_000));
+        assert!(server.client_socket_tuning().is_empty());
+        assert!(!server.client_hdlc_liveness_enabled());
     }
 
     #[test]

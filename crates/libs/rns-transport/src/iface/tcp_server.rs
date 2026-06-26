@@ -20,6 +20,7 @@ pub struct TcpServer {
     client_mtu: usize,
     client_socket_tuning: TcpSocketTuning,
     client_hdlc_watchdog: Option<HdlcStreamWatchdog>,
+    client_forced_bitrate_bps: Option<u64>,
     prefer_ipv6: bool,
 }
 
@@ -36,6 +37,7 @@ impl TcpServer {
             client_mtu: Self::DEFAULT_CLIENT_MTU,
             client_socket_tuning: TcpSocketTuning::default(),
             client_hdlc_watchdog: None,
+            client_forced_bitrate_bps: None,
             prefer_ipv6: false,
         }
     }
@@ -59,6 +61,12 @@ impl TcpServer {
     }
 
     #[must_use]
+    pub fn with_client_forced_bitrate(mut self, bitrate_bps: u64) -> Self {
+        self.client_forced_bitrate_bps = (bitrate_bps > 0).then_some(bitrate_bps);
+        self
+    }
+
+    #[must_use]
     pub fn with_prefer_ipv6(mut self, prefer_ipv6: bool) -> Self {
         self.prefer_ipv6 = prefer_ipv6;
         self
@@ -75,6 +83,11 @@ impl TcpServer {
     }
 
     #[must_use]
+    pub fn client_forced_bitrate_bps(&self) -> Option<u64> {
+        self.client_forced_bitrate_bps
+    }
+
+    #[must_use]
     pub fn prefer_ipv6(&self) -> bool {
         self.prefer_ipv6
     }
@@ -85,10 +98,14 @@ impl TcpServer {
         client_mtu: usize,
         client_socket_tuning: TcpSocketTuning,
         client_hdlc_watchdog: Option<HdlcStreamWatchdog>,
+        client_forced_bitrate_bps: Option<u64>,
     ) -> TcpClient {
-        let client = TcpClient::new_from_stream(addr, stream)
+        let mut client = TcpClient::new_from_stream(addr, stream)
             .with_mtu(client_mtu)
             .with_socket_tuning(client_socket_tuning);
+        if let Some(bitrate_bps) = client_forced_bitrate_bps {
+            client = client.with_forced_bitrate(bitrate_bps);
+        }
         if let Some(watchdog) = client_hdlc_watchdog {
             client.with_hdlc_watchdog(watchdog)
         } else {
@@ -98,13 +115,21 @@ impl TcpServer {
 
     pub async fn spawn(context: InterfaceContext<Self>) {
         let parent_iface = context.channel.address;
-        let (addr, client_mtu, client_socket_tuning, client_hdlc_watchdog, prefer_ipv6) = {
+        let (
+            addr,
+            client_mtu,
+            client_socket_tuning,
+            client_hdlc_watchdog,
+            client_forced_bitrate_bps,
+            prefer_ipv6,
+        ) = {
             let guard = context.inner.lock().unwrap();
             (
                 guard.addr.clone(),
                 guard.client_mtu,
                 guard.client_socket_tuning,
                 guard.client_hdlc_watchdog.clone(),
+                guard.client_forced_bitrate_bps,
                 guard.prefer_ipv6,
             )
         };
@@ -184,6 +209,7 @@ impl TcpServer {
                                 client_mtu,
                                 client_socket_tuning,
                                 client_hdlc_watchdog.clone(),
+                                client_forced_bitrate_bps,
                             );
                             let child_iface =
                                 iface_manager.spawn(accepted_client, TcpClient::spawn);
@@ -283,8 +309,10 @@ mod tests {
             TcpClient::DEFAULT_MTU,
             TcpSocketTuning::default(),
             None,
+            None,
         );
         assert!(!ordinary.hdlc_liveness_enabled());
+        assert_eq!(ordinary.forced_bitrate_bps(), None);
 
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind listener");
         let addr = listener.local_addr().expect("listener addr");
@@ -297,11 +325,13 @@ mod tests {
             1_048_576,
             TcpSocketTuning::backbone(),
             Some(backbone_hdlc_watchdog()),
+            Some(9_600),
         );
 
         assert_eq!(backbone.mtu_value(), 1_048_576);
         assert_eq!(backbone.socket_tuning().nodelay, Some(true));
         assert!(backbone.hdlc_liveness_enabled());
+        assert_eq!(backbone.forced_bitrate_bps(), Some(9_600));
     }
 
     #[tokio::test]
