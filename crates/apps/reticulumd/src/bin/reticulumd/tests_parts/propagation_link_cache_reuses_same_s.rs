@@ -121,6 +121,22 @@ fn serial_builder_accepts_python_serial_line_alias_values() {
     assert_eq!(adapter.data_bits_value(), 7);
     assert_eq!(adapter.parity_name(), "none");
     assert_eq!(adapter.stop_bits_value(), 2);
+    assert_eq!(adapter.mtu_value(), rns_transport::iface::serial::SerialInterface::DEFAULT_MTU);
+}
+
+#[test]
+fn serial_builder_honors_explicit_mtu() {
+    let iface = InterfaceConfig {
+        kind: "serial".to_string(),
+        enabled: Some(true),
+        device: Some("/dev/ttyUSB0".to_string()),
+        baud_rate: Some(115_200),
+        mtu: Some(1024),
+        ..InterfaceConfig::default()
+    };
+
+    let adapter = serial::build_adapter(&iface).expect("build serial adapter");
+    assert_eq!(adapter.mtu_value(), 1024);
 }
 
 #[test]

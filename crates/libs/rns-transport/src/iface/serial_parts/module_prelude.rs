@@ -46,6 +46,8 @@ fn bounded_backoff_next(current: Duration, max: Duration) -> Duration {
 }
 
 impl SerialInterface {
+    pub const DEFAULT_MTU: usize = 564;
+
     pub fn new<T: Into<String>>(device: T, baud_rate: u32) -> Self {
         Self {
             device: device.into(),
@@ -54,7 +56,7 @@ impl SerialInterface {
             parity: Parity::None,
             stop_bits: StopBits::One,
             flow_control: FlowControl::None,
-            mtu: 2048,
+            mtu: Self::DEFAULT_MTU,
             reconnect_backoff: Duration::from_millis(500),
             max_reconnect_backoff: Duration::from_millis(5_000),
         }
@@ -100,6 +102,11 @@ impl SerialInterface {
             StopBits::One => 1,
             StopBits::Two => 2,
         }
+    }
+
+    #[must_use]
+    pub fn mtu_value(&self) -> usize {
+        self.mtu
     }
 
     pub fn with_data_bits_raw(self, data_bits: u8) -> Result<Self, String> {
@@ -307,7 +314,7 @@ impl SerialInterface {
 
 impl Interface for SerialInterface {
     fn mtu() -> usize {
-        2048
+        SerialInterface::DEFAULT_MTU
     }
 
     fn configured_mtu(&self) -> usize {

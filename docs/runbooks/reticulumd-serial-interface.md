@@ -25,7 +25,7 @@ interfaces = [
     parity = "none",
     stop_bits = 1,
     flow_control = "none",
-    mtu = 2048,
+    mtu = 564,
     reconnect_backoff_ms = 500,
     max_reconnect_backoff_ms = 5000
   }
@@ -38,6 +38,8 @@ an alias for enabling the interface, `port` maps to `device`, `speed` maps to
 `baud_rate`, `databits` maps to `data_bits`, and `stopbits` maps to
 `stop_bits`. If `speed`/`baud_rate` is omitted on a `SerialInterface` config,
 the Python default of `9600` is used.
+When `mtu` is omitted, the runtime default is `564`, matching Python
+Reticulum's serial interface hardware MTU.
 
 ```toml
 interfaces = [
