@@ -303,6 +303,14 @@ impl RpcDaemon {
         *guard = Some(bridge);
     }
 
+    pub fn set_rnode_management_bridge(&self, bridge: Arc<dyn RNodeManagementBridge>) {
+        let mut guard = self
+            .rnode_management_bridge
+            .lock()
+            .expect("rnode_management_bridge mutex poisoned");
+        *guard = Some(bridge);
+    }
+
     pub fn set_propagation_state(
         &self,
         enabled: bool,

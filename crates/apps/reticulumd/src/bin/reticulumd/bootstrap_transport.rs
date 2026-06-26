@@ -14,7 +14,7 @@ use crate::Args;
 pub(super) use interface_startup::LoraRuntimeStatusSource;
 pub(super) use interface_startup::{
     AutoRuntimeRefresh, I2pRuntimeRefresh, LoraRuntimeRefresh, PipeRuntimeRefresh,
-    RNodeMultiRuntimeRefresh, WeaveRuntimeRefresh,
+    RNodeManagementBinding, RNodeMultiRuntimeRefresh, WeaveRuntimeRefresh,
 };
 use reticulum_daemon::announce_names::PropagationNodeAnnounceConfig;
 use reticulum_daemon::config::DaemonConfig;
@@ -50,6 +50,7 @@ pub(super) struct TransportStartupArtifacts {
     pub(super) weave_runtime_refreshes: Vec<WeaveRuntimeRefresh>,
     pub(super) rnode_multi_runtime_refreshes: Vec<RNodeMultiRuntimeRefresh>,
     pub(super) lora_runtime_refreshes: Vec<LoraRuntimeRefresh>,
+    pub(super) rnode_management_bindings: Vec<RNodeManagementBinding>,
 }
 
 pub(super) struct TransportStartupInput<'a> {
@@ -160,6 +161,7 @@ pub(super) async fn start_transport_and_interfaces(
     let mut weave_runtime_refreshes = Vec::new();
     let mut rnode_multi_runtime_refreshes = Vec::new();
     let mut lora_runtime_refreshes = Vec::new();
+    let mut rnode_management_bindings = Vec::new();
 
     if transport_required {
         if let Some(addr) = selected_tcp_server.bind_addr.as_ref() {
@@ -232,6 +234,7 @@ pub(super) async fn start_transport_and_interfaces(
             weave_runtime_refreshes.extend(startup.weave_runtime_refreshes);
             rnode_multi_runtime_refreshes.extend(startup.rnode_multi_runtime_refreshes);
             lora_runtime_refreshes.extend(startup.lora_runtime_refreshes);
+            rnode_management_bindings.extend(startup.rnode_management_bindings);
         }
 
         match transport_instance.restore_reticulum_path_table(reticulum_storage_path).await {
@@ -340,6 +343,7 @@ pub(super) async fn start_transport_and_interfaces(
         weave_runtime_refreshes,
         rnode_multi_runtime_refreshes,
         lora_runtime_refreshes,
+        rnode_management_bindings,
     }
 }
 

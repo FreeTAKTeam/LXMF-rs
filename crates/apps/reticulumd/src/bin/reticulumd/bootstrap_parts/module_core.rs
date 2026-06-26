@@ -8,6 +8,10 @@ use reticulum_daemon::config::{DaemonConfig, InterfaceConfig};
 
 use reticulum_daemon::identity_store::load_or_create_identity;
 
+use crate::bridge_rnode_management::{
+    DaemonRNodeManagementBinding, DaemonRNodeManagementBridge,
+};
+
 use rns_rpc::{
     AnnounceBridge, InterfaceRecord, MessagesStore, OutboundBridge, RemoteControlBridge,
     RpcDaemon, RpcRequest,
@@ -180,6 +184,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     let weave_runtime_refreshes = startup.weave_runtime_refreshes;
     let rnode_multi_runtime_refreshes = startup.rnode_multi_runtime_refreshes;
     let lora_runtime_refreshes = startup.lora_runtime_refreshes;
+    let rnode_management_bindings = startup.rnode_management_bindings;
     let selected_tcp_server = startup.selected_tcp_server;
 
     if !startup_failures.is_empty() {
@@ -269,6 +274,17 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
             transport.iface_manager(),
             seeded_tcp_interfaces,
         )));
+    }
+    if !rnode_management_bindings.is_empty() {
+        let bindings = rnode_management_bindings
+            .into_iter()
+            .map(|binding| DaemonRNodeManagementBinding {
+                runtime_iface: binding.runtime_iface,
+                name: binding.name,
+                handle: binding.handle,
+            })
+            .collect();
+        daemon.set_rnode_management_bridge(Arc::new(DaemonRNodeManagementBridge::new(bindings)));
     }
     if let Some(bridge) = bridge.as_ref() {
         bridge.set_daemon(daemon.clone());

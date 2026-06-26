@@ -164,6 +164,14 @@ struct TicketGenerateParams {
     ttl_secs: Option<u64>,
 }
 
+#[derive(Debug, Deserialize)]
+struct RNodeManagementParams {
+    iface: String,
+    command: String,
+    #[serde(default)]
+    pattern: Option<u8>,
+}
+
 #[derive(Debug, Deserialize, Default)]
 struct ListMessagesParams {
     #[serde(default)]

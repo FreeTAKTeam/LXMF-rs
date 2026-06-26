@@ -78,6 +78,7 @@ async fn startup_vrn76_kiss_ble(
 struct LoraStartupResult {
     started: bool,
     refresh: Option<LoraRuntimeRefresh>,
+    management_binding: Option<RNodeManagementBinding>,
 }
 
 async fn startup_lora(
@@ -96,12 +97,12 @@ async fn startup_lora(
             iface.kind.clone(),
             err,
         );
-        return LoraStartupResult { started: false, refresh: None };
+        return LoraStartupResult { started: false, refresh: None, management_binding: None };
     }
 
     if !lora::has_active_device(iface) {
         mark_interface_startup_status(record, "validated_startup_only", None, None);
-        return LoraStartupResult { started: true, refresh: None };
+        return LoraStartupResult { started: true, refresh: None, management_binding: None };
     }
 
     if iface.device.as_deref().is_some_and(lora::is_ble_rnode_port) {
@@ -115,7 +116,7 @@ async fn startup_lora(
                     iface.kind.clone(),
                     err,
                 );
-                return LoraStartupResult { started: false, refresh: None };
+                return LoraStartupResult { started: false, refresh: None, management_binding: None };
             }
         };
         #[cfg(not(feature = "rnode-ble"))]
@@ -147,7 +148,7 @@ async fn startup_lora(
                 iface.kind.clone(),
                 "RNodeInterface ble:// requires reticulumd feature rnode-ble".to_string(),
             );
-            return LoraStartupResult { started: false, refresh: None };
+            return LoraStartupResult { started: false, refresh: None, management_binding: None };
         }
         #[cfg(feature = "rnode-ble")]
         {
@@ -190,9 +191,10 @@ async fn startup_lora(
                         runtime_iface: rnode_iface,
                         status: LoraRuntimeStatusSource::RnodeBle(status_handle),
                     }),
+                    management_binding: None,
                 };
             }
-            return LoraStartupResult { started: true, refresh: None };
+            return LoraStartupResult { started: true, refresh: None, management_binding: None };
         }
     }
 
@@ -206,7 +208,7 @@ async fn startup_lora(
                 iface.kind.clone(),
                 err,
             );
-            return LoraStartupResult { started: false, refresh: None };
+            return LoraStartupResult { started: false, refresh: None, management_binding: None };
         }
     };
 
@@ -219,7 +221,7 @@ async fn startup_lora(
                 iface.kind.clone(),
                 err,
             );
-            return LoraStartupResult { started: false, refresh: None };
+            return LoraStartupResult { started: false, refresh: None, management_binding: None };
         }
     }
 
@@ -243,6 +245,10 @@ async fn startup_lora(
     );
     let runtime_iface = lora_iface.to_string();
     mark_interface_startup_status(record, "spawned", None, Some(runtime_iface.as_str()));
+    let management_handle = {
+        let guard = status_handle.lock().expect("lora interface mutex poisoned");
+        guard.rnode_management_handle()
+    };
     with_interface_runtime_metadata(record, |runtime| {
         runtime.insert(
             "lora".to_string(),
@@ -261,6 +267,11 @@ async fn startup_lora(
             status: LoraRuntimeStatusSource::Lora(
                 rns_transport::iface::lora::LoraRuntimeStatusHandle::new(status_handle),
             ),
+        }),
+        management_binding: Some(RNodeManagementBinding {
+            runtime_iface: lora_iface,
+            name: label.to_string(),
+            handle: management_handle,
         }),
     }
 }

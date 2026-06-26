@@ -124,6 +124,52 @@ impl RpcDaemon {
                     error: None,
                 })
             }
+            "rnode_management" => {
+                let params = request.params.ok_or_else(|| {
+                    std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing params")
+                })?;
+                let parsed: RNodeManagementParams = serde_json::from_value(params)
+                    .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
+                let iface = parsed.iface.trim();
+                if iface.is_empty() {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "iface is required",
+                    ));
+                }
+                let command = parsed.command.trim();
+                if command.is_empty() {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "command is required",
+                    ));
+                }
+                let Some(bridge) = self
+                    .rnode_management_bridge
+                    .lock()
+                    .expect("rnode_management_bridge mutex poisoned")
+                    .clone()
+                else {
+                    return Ok(RpcResponse {
+                        id: request.id,
+                        result: None,
+                        error: Some(RpcError::new(
+                            "RNODE_MANAGEMENT_UNAVAILABLE",
+                            "RNode management bridge is not configured",
+                        )),
+                    });
+                };
+                match bridge.dispatch_rnode_management(iface, command, parsed.pattern) {
+                    Ok(result) => {
+                        Ok(RpcResponse { id: request.id, result: Some(result), error: None })
+                    }
+                    Err(err) => Ok(RpcResponse {
+                        id: request.id,
+                        result: None,
+                        error: Some(RpcError::new("RNODE_MANAGEMENT_FAILED", err.to_string())),
+                    }),
+                }
+            }
             "announce_now" => {
                 let timestamp = now_i64();
                 if let Some(bridge) = &self.announce_bridge {

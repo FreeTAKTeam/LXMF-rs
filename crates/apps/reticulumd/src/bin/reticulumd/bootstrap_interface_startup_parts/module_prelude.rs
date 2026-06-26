@@ -43,6 +43,7 @@ pub(super) struct InterfaceStartupBatch {
     pub(super) weave_runtime_refreshes: Vec<WeaveRuntimeRefresh>,
     pub(super) rnode_multi_runtime_refreshes: Vec<RNodeMultiRuntimeRefresh>,
     pub(super) lora_runtime_refreshes: Vec<LoraRuntimeRefresh>,
+    pub(super) rnode_management_bindings: Vec<RNodeManagementBinding>,
 }
 
 #[derive(Clone)]
@@ -79,6 +80,13 @@ pub(crate) struct RNodeMultiRuntimeRefresh {
 pub(crate) struct LoraRuntimeRefresh {
     pub(crate) runtime_iface: AddressHash,
     pub(crate) status: LoraRuntimeStatusSource,
+}
+
+#[derive(Clone)]
+pub(crate) struct RNodeManagementBinding {
+    pub(crate) runtime_iface: AddressHash,
+    pub(crate) name: String,
+    pub(crate) handle: rns_transport::iface::lora::LoraRNodeManagementHandle,
 }
 
 #[derive(Clone)]
@@ -123,6 +131,7 @@ pub(super) async fn startup_configured_interfaces(
     let mut weave_runtime_refreshes = Vec::new();
     let mut rnode_multi_runtime_refreshes = Vec::new();
     let mut lora_runtime_refreshes = Vec::new();
+    let mut rnode_management_bindings = Vec::new();
 
     for (index, iface) in config.interfaces.iter().enumerate() {
         if !iface.enabled() {
@@ -419,6 +428,9 @@ pub(super) async fn startup_configured_interfaces(
                     if let Some(refresh) = started.refresh {
                         lora_runtime_refreshes.push(refresh);
                     }
+                    if let Some(binding) = started.management_binding {
+                        rnode_management_bindings.push(binding);
+                    }
                 }
             }
             "rnode_multi" => {
@@ -457,6 +469,7 @@ pub(super) async fn startup_configured_interfaces(
         weave_runtime_refreshes,
         rnode_multi_runtime_refreshes,
         lora_runtime_refreshes,
+        rnode_management_bindings,
     }
 }
 

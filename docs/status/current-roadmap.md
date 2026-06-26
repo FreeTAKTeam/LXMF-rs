@@ -88,7 +88,8 @@ The project is best described by capability level:
   now expose a transport-local management dispatch handle that writes
   pre-encoded KISS command frames through the live KISS runtime; the first
   covered operations are radio-state query and blink indication, backed by
-  duplex stream tests. Frame-level helpers exist for Bluetooth control,
+  duplex stream tests, daemon `rnode_management` RPC dispatch, reticulumd
+  bridge dispatch tests, and `rnodeconf-rs` mock-RPC CLI tests. Frame-level helpers exist for Bluetooth control,
   display/NeoPixel controls, interference-avoidance control, Wi-Fi settings,
   config save/delete, firmware-update metadata, and ROM/EEPROM read/write/wipe
   requests.

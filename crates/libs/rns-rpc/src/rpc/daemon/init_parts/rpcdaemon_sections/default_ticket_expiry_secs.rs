@@ -342,6 +342,7 @@ impl RpcDaemon {
             event_sink_tx,
             interface_mutation_bridge: Mutex::new(None),
             remote_control_bridge: Mutex::new(None),
+            rnode_management_bridge: Mutex::new(None),
             started_at: std::time::Instant::now(),
         };
         let _ = daemon.restore_sdk_domain_snapshot();

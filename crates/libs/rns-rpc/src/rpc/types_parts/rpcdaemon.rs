@@ -64,6 +64,7 @@ pub struct RpcDaemon {
     event_sink_tx: Option<mpsc::SyncSender<EventSinkCommand>>,
     interface_mutation_bridge: Mutex<Option<Arc<dyn InterfaceMutationBridge>>>,
     remote_control_bridge: Mutex<Option<Arc<dyn RemoteControlBridge>>>,
+    rnode_management_bridge: Mutex<Option<Arc<dyn RNodeManagementBridge>>>,
     started_at: std::time::Instant,
 }
 
@@ -107,6 +108,15 @@ pub trait InterfaceMutationBridge: Send + Sync {
         &self,
         interfaces: Vec<InterfaceRecord>,
     ) -> Result<Vec<InterfaceRecord>, std::io::Error>;
+}
+
+pub trait RNodeManagementBridge: Send + Sync {
+    fn dispatch_rnode_management(
+        &self,
+        iface: &str,
+        command: &str,
+        pattern: Option<u8>,
+    ) -> Result<JsonValue, std::io::Error>;
 }
 
 pub trait RemoteControlBridge: Send + Sync {
