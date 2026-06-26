@@ -35,6 +35,30 @@ fn i2p_prepared_host_smoke_preserves_evidence_contract() {
 }
 
 #[test]
+fn nightly_hil_workflow_exposes_i2p_prepared_host_job() {
+    let root = repo_root();
+    let workflow_path = root.join(".github/workflows/nightly-embedded-hil.yml");
+    let workflow = fs::read_to_string(&workflow_path).expect("read nightly HIL workflow");
+
+    for required in [
+        "i2p-prepared-host",
+        "HIL_I2P_ENABLED",
+        "HIL_I2P_SAM_HOST",
+        "HIL_I2P_SAM_PORT",
+        "HIL_I2P_TIMEOUT_SECS",
+        "./tools/scripts/i2p-prepared-host-smoke.sh",
+        "i2p-prepared-host-artifacts",
+        "target/i2p-hil/report.json",
+        "target/i2p-hil/run.*",
+    ] {
+        assert!(
+            workflow.contains(required),
+            "nightly HIL workflow should include required token {required:?}"
+        );
+    }
+}
+
+#[test]
 fn i2p_runbook_documents_prepared_host_smoke_artifacts() {
     let root = repo_root();
     let runbook_path = root.join("docs/runbooks/reticulumd-i2p-interface.md");
@@ -49,6 +73,7 @@ fn i2p_runbook_documents_prepared_host_smoke_artifacts() {
         "_runtime.i2p.tunnel_status.accept_state = \"listening\"",
         "target/i2p-hil/",
         "report.json",
+        "HIL_I2P_ENABLED",
     ] {
         assert!(
             runbook.contains(required),

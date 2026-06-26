@@ -126,3 +126,8 @@ requires `_runtime.i2p.reachable_endpoint`,
 destination key metadata before passing. Evidence is written under
 `target/i2p-hil/`, including `report.json`, daemon logs, the generated config,
 and the captured `rnstatus-rs` JSON.
+
+The nightly HIL workflow can run the same harness when
+`HIL_I2P_ENABLED=true`. Set `HIL_I2P_SAM_HOST`, `HIL_I2P_SAM_PORT`, and
+`HIL_I2P_TIMEOUT_SECS` as needed for the prepared runner; unset host/port
+values fall back to the local SAM default.

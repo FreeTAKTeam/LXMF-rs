@@ -30,9 +30,30 @@ jobs:
             target/hil/esp32-smoke.log
             target/hil/esp32-smoke-report.json
 
+  i2p-prepared-host:
+    if: ${{ vars.HIL_I2P_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: I2P prepared-host smoke
+        env:
+          SAM_HOST: ${{ vars.HIL_I2P_SAM_HOST }}
+          SAM_PORT: ${{ vars.HIL_I2P_SAM_PORT }}
+          TIMEOUT_SECS: ${{ vars.HIL_I2P_TIMEOUT_SECS }}
+        run: ./tools/scripts/i2p-prepared-host-smoke.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: i2p-prepared-host-artifacts
+          path: |
+            target/i2p-hil/report.json
+            target/i2p-hil/run.*
+
   hil-disabled:
-    if: ${{ vars.HIL_ESP32_ENABLED != 'true' }}
+    if: ${{ vars.HIL_ESP32_ENABLED != 'true' && vars.HIL_I2P_ENABLED != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: HIL disabled
-        run: echo "HIL_ESP32_ENABLED is not set to true; skipping ESP32 nightly run."
+        run: echo "HIL_ESP32_ENABLED and HIL_I2P_ENABLED are not set to true; skipping nightly HIL runs."

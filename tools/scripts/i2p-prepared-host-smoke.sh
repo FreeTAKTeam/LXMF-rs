@@ -7,6 +7,15 @@ cd "$ROOT_DIR"
 SAM_HOST="${SAM_HOST:-127.0.0.1}"
 SAM_PORT="${SAM_PORT:-7656}"
 TIMEOUT_SECS="${TIMEOUT_SECS:-180}"
+if [[ -z "$SAM_HOST" ]]; then
+  SAM_HOST="127.0.0.1"
+fi
+if [[ -z "$SAM_PORT" ]]; then
+  SAM_PORT="7656"
+fi
+if [[ -z "$TIMEOUT_SECS" ]]; then
+  TIMEOUT_SECS="180"
+fi
 LOG_DIR="${LOG_DIR:-${ROOT_DIR}/target/i2p-hil}"
 REPORT_PATH="${REPORT_PATH:-${LOG_DIR}/report.json}"
 mkdir -p "$LOG_DIR"
