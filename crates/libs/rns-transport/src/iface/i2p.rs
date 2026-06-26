@@ -609,13 +609,19 @@ impl I2pInterface {
                         TxMessageType::Broadcast(_) => {
                             let senders = peer_routes.lock().await.values().cloned().collect::<Vec<_>>();
                             for sender in senders {
-                                let _ = sender.try_send(message.clone());
+                                if let Err(err) = sender.try_send(message.clone()) {
+                                    log::warn!("failed to enqueue I2P broadcast packet: {err}");
+                                }
                             }
                         }
                         TxMessageType::Direct(address) => {
                             let sender = peer_routes.lock().await.get(&address).cloned();
                             if let Some(sender) = sender {
-                                let _ = sender.send(message).await;
+                                if let Err(err) = sender.send(message).await {
+                                    log::warn!(
+                                        "failed to enqueue I2P direct packet iface={address}: {err}"
+                                    );
+                                }
                             }
                         }
                     }

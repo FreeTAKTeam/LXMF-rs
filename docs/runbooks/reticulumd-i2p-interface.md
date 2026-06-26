@@ -98,6 +98,9 @@ repeated transient inbound sessions cannot grow runtime status indefinitely.
 When the parent I2P interface stops, configured and accepted virtual peer
 children are removed from the interface manager, their route entries are
 cleared, and runtime peer rows are marked `closed`.
+`rnstatus-rs` human output summarizes the same tunnel status with the SAM
+endpoint, accept-loop state, peer count, connected/stale/reconnecting peer
+counts, and the latest accept-loop error when present.
 
 Current states are `configured`, `connecting`, `connected`, `listening`,
 `reconnecting`, `stale`, and `closed`.
@@ -105,3 +108,21 @@ Current states are `configured`, `connecting`, `connected`, `listening`,
 ## Known Gaps
 
 - Full prepared-host I2P evidence and production parity are not complete.
+
+## Prepared-Host Smoke
+
+Use the opt-in smoke harness on a host with a real local I2P router and SAM
+enabled:
+
+```bash
+SAM_HOST=127.0.0.1 SAM_PORT=7656 ./tools/scripts/i2p-prepared-host-smoke.sh
+```
+
+The harness starts `reticulumd` with `strict_interface_startup = true`
+semantics via `--strict-interface-startup`, configures a connectable
+`I2PInterface`, verifies the SAM `HELLO`, polls `rnstatus-rs --json`, and
+requires `_runtime.i2p.reachable_endpoint`,
+`_runtime.i2p.tunnel_status.accept_state = "listening"`, and persisted private
+destination key metadata before passing. Evidence is written under
+`target/i2p-hil/`, including `report.json`, daemon logs, the generated config,
+and the captured `rnstatus-rs` JSON.

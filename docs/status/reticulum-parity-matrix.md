@@ -111,18 +111,21 @@ and connectable sessions can run through SAM, and transport-side tunnel
 watchdog/status bookkeeping is refreshed into daemon/RPC interface status.
 Private destination keys now follow Python's default daemon-storage injection
 and hashed key-file naming, including old-format fallback when an existing
-Python key is present. Prepared-host production evidence is still pending.
+Python key is present. `rnstatus-rs` human output summarizes the live I2P
+tunnel status for operators. Prepared-host production evidence is still
+pending.
 `RNodeMultiInterface` is tracked separately as an in-progress family: the
 shared serial/TCP vport routing slice exists and startup validates detect,
 firmware `>= 1.74`, platform, MCU, `CMD_INTERFACES`, and hardware-reported
 configured vports. Selected-vport radio status bookkeeping and live daemon/RPC
 `radio_status` refresh exist, including stream/probe state and last-error
-reporting. Full prepared-host hardware validation and broader production
-parity are still pending.
+reporting, and `rnstatus-rs` renders a compact human summary of that state.
+Full prepared-host hardware validation and broader production parity are still
+pending.
 `WeaveInterface` is also tracked as an in-progress family: WDCL/HDLC endpoint
 packet routing, target-scoped display-frame capture, CPU/task/memory stat
-parsing, and daemon/RPC status refresh exist, while UI integration and
-prepared-hardware evidence remain pending.
+parsing, daemon/RPC status refresh, and compact `rnstatus-rs` human summaries
+exist, while full UI integration and prepared-hardware evidence remain pending.
 
 ## Highest-Priority Gaps
 

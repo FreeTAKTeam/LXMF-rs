@@ -53,6 +53,9 @@ endpoint counters, byte/frame counters, last WDCL log event, and per-log-event
 counts. `reticulumd` seeds this under `_runtime.weave.status` during startup
 and periodically refreshes it into the cached interface records returned by
 `daemon_status_ex` and `list_interfaces`.
+`rnstatus-rs` also renders this runtime state in human output, including link
+state, endpoint count, WDCL connection state, byte counters, display progress,
+CPU load, and memory usage when the daemon has reported those fields.
 Incoming WDCL display frames addressed to the local switch update
 `_runtime.weave.status.display` with the remote framebuffer color format, fixed
 128x64 dimensions, total size, received size, completion flag, and a hex

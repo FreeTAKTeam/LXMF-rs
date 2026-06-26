@@ -1056,7 +1056,11 @@ async fn process_rnode_multi_payload(
         return;
     };
     if let Ok(packet) = Packet::deserialize(&mut InputBuffer::new(payload)) {
-        let _ = rx_channel.send(RxMessage { address, packet, source: IfaceSource::None }).await;
+        if let Err(err) =
+            rx_channel.send(RxMessage { address, packet, source: IfaceSource::None }).await
+        {
+            log::warn!("failed to enqueue RNodeMulti inbound packet iface={address}: {err}");
+        }
     }
 }
 
