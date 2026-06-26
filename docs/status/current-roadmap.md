@@ -72,10 +72,11 @@ The project is best described by capability level:
   Runtime status bookkeeping applies selected-vport radio command/status
   responses to the matching child status record, and daemon/RPC snapshots
   refresh the `_runtime.rnode_multi.radio_status` schema from the
-  transport-side runtime handle, including stream/probe state and last error
-  reporting for absent or failing hardware. Display-capable ESP32/NRF52
-  devices get Python-style external-framebuffer disable during teardown before
-  per-vport radio-off and leave-host payload `0xff` frames.
+  transport-side runtime handle, including stream/probe state, last error
+  reporting for absent or failing hardware, and the ordinary RNode radio-status
+  fields for each vport. Display-capable ESP32/NRF52 devices get Python-style
+  external-framebuffer disable during teardown before per-vport radio-off and
+  leave-host payload `0xff` frames.
 - Ordinary serial/TCP and feature-gated BLE RNodeInterface status now refreshes
   the transport-side RNode probe/radio state into daemon/RPC
   `_runtime.lora.rnode_status`; compact `rnstatus-rs` output summarizes
@@ -89,8 +90,9 @@ The project is best described by capability level:
   children, receive endpoint packets, write direct endpoint commands, and expose
   refreshed `_runtime.weave.status` metadata with switch, endpoint, log-event,
   byte/frame, target-scoped remote display-frame, and CPU/task/memory
-  device-stat fields. An opt-in prepared-host smoke harness records connected
-  serial evidence under `target/weave-hil/`.
+  device-stat fields. Display-frame completion is based on received byte
+  coverage rather than highest observed offset. An opt-in prepared-host smoke
+  harness records connected serial evidence under `target/weave-hil/`.
 - I2PInterface has a transport-side SAM slice: configured peers get virtual
   unicast children, transient SAM stream sessions, name lookup, HDLC packet
   framing, direct peer sends, broadcast fanout, and transient connectable

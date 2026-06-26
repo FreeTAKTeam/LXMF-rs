@@ -358,6 +358,7 @@ pub struct WeaveDisplayStatus {
     pub received_size: usize,
     pub complete: bool,
     buffer: Vec<u8>,
+    received: Vec<bool>,
 }
 
 impl WeaveDisplayStatus {
@@ -370,6 +371,7 @@ impl WeaveDisplayStatus {
             received_size: 0,
             complete: false,
             buffer: vec![0; total_size],
+            received: vec![false; total_size],
         }
     }
 
@@ -380,7 +382,12 @@ impl WeaveDisplayStatus {
         let end = offset.saturating_add(data.len()).min(self.buffer.len());
         let len = end.saturating_sub(offset);
         self.buffer[offset..end].copy_from_slice(&data[..len]);
-        self.received_size = self.received_size.max(end);
+        for received in &mut self.received[offset..end] {
+            if !*received {
+                *received = true;
+                self.received_size = self.received_size.saturating_add(1);
+            }
+        }
         self.complete = self.received_size >= self.total_size;
     }
 
@@ -1698,6 +1705,47 @@ mod tests {
         assert_eq!(json["device_stats"]["memory_used_percent_bp"].as_u64(), Some(7500));
         assert_eq!(json["device_stats"]["task_cpu"]["work"]["cpu_load"].as_u64(), Some(12));
         assert_eq!(json["device_stats"]["task_cpu"]["work"]["samples"].as_u64(), Some(1));
+    }
+
+    #[tokio::test]
+    async fn weave_display_status_requires_full_byte_coverage_before_complete() {
+        let (options, _manager, _parent) = test_options().await;
+        let local_switch = switch_id_for_identity(&options.switch_identity);
+        let runtime_status = options.runtime_status.clone();
+        let (stream, mut peer) = duplex(8192);
+        let (rx_tx, _rx_rx) = tokio::sync::mpsc::channel(4);
+        let (_tx_tx, tx_rx) = tokio::sync::mpsc::channel(4);
+        let cancel = CancellationToken::new();
+        let task = tokio::spawn(run_weave_stream(
+            stream,
+            options,
+            cancel.clone(),
+            CancellationToken::new(),
+            rx_tx,
+            Arc::new(tokio::sync::Mutex::new(tx_rx)),
+        ));
+
+        let mut drain = vec![0_u8; 128];
+        let _ = peer.read(&mut drain).await.expect("discover frame");
+        peer.write_all(&display_frame(local_switch, 1, 2, 4, &[0xCC, 0xDD]))
+            .await
+            .expect("display tail chunk");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let partial_json = runtime_status.lock().expect("weave runtime status").to_json();
+        peer.write_all(&display_frame(local_switch, 1, 0, 4, &[0xAA, 0xBB]))
+            .await
+            .expect("display head chunk");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let complete_json = runtime_status.lock().expect("weave runtime status").to_json();
+        cancel.cancel();
+        task.await.expect("stream task");
+
+        assert_eq!(partial_json["display"]["received_size"].as_u64(), Some(2));
+        assert_eq!(partial_json["display"]["complete"].as_bool(), Some(false));
+        assert!(partial_json["display"]["buffer_hex"].is_null());
+        assert_eq!(complete_json["display"]["received_size"].as_u64(), Some(4));
+        assert_eq!(complete_json["display"]["complete"].as_bool(), Some(true));
+        assert_eq!(complete_json["display"]["buffer_hex"].as_str(), Some("aabbccdd"));
     }
 
     #[tokio::test]

@@ -470,7 +470,7 @@ impl RNodeMultiRuntimeStatus {
             serde_json::Value::Object(
                 self.radio_status
                     .iter()
-                    .map(|(vport, status)| (vport.to_string(), rnode_radio_status_json(status)))
+                    .map(|(vport, status)| (vport.to_string(), status.to_json()))
                     .collect(),
             ),
         );
@@ -525,95 +525,6 @@ fn accept_rnode_multi_radio_status_command(
         }
         _ => status.accept_command(command, payload),
     }
-}
-
-fn optional_u8_json(value: Option<u8>) -> serde_json::Value {
-    value
-        .map(|value| serde_json::Value::Number(u64::from(value).into()))
-        .unwrap_or(serde_json::Value::Null)
-}
-
-fn optional_u16_json(value: Option<u16>) -> serde_json::Value {
-    value
-        .map(|value| serde_json::Value::Number(u64::from(value).into()))
-        .unwrap_or(serde_json::Value::Null)
-}
-
-fn optional_u32_json(value: Option<u32>) -> serde_json::Value {
-    value
-        .map(|value| serde_json::Value::Number(u64::from(value).into()))
-        .unwrap_or(serde_json::Value::Null)
-}
-
-fn optional_i16_json(value: Option<i16>) -> serde_json::Value {
-    value
-        .map(|value| serde_json::Value::Number(i64::from(value).into()))
-        .unwrap_or(serde_json::Value::Null)
-}
-
-fn optional_f64_json(value: Option<f64>) -> serde_json::Value {
-    value
-        .and_then(serde_json::Number::from_f64)
-        .map(serde_json::Value::Number)
-        .unwrap_or(serde_json::Value::Null)
-}
-
-fn rnode_radio_status_json(status: &RNodeRadioStatus) -> serde_json::Value {
-    let mut entry = serde_json::Map::new();
-    entry.insert("frequency_hz".to_string(), optional_u32_json(status.frequency_hz));
-    entry.insert("bandwidth_hz".to_string(), optional_u32_json(status.bandwidth_hz));
-    entry.insert("tx_power_dbm".to_string(), optional_u8_json(status.tx_power_dbm));
-    entry.insert("spreading_factor".to_string(), optional_u8_json(status.spreading_factor));
-    entry.insert("coding_rate".to_string(), optional_u8_json(status.coding_rate));
-    entry.insert("radio_state".to_string(), optional_u8_json(status.radio_state));
-    entry.insert("radio_lock".to_string(), optional_u8_json(status.radio_lock));
-    entry.insert("stat_rx".to_string(), optional_u32_json(status.stat_rx));
-    entry.insert("stat_tx".to_string(), optional_u32_json(status.stat_tx));
-    entry.insert("rssi_dbm".to_string(), optional_i16_json(status.rssi_dbm));
-    entry.insert("snr_db".to_string(), optional_f64_json(status.snr_db));
-    entry.insert(
-        "signal_quality_percent".to_string(),
-        optional_f64_json(status.signal_quality_percent),
-    );
-    entry.insert(
-        "short_airtime_limit_percent".to_string(),
-        optional_f64_json(status.short_airtime_limit_percent),
-    );
-    entry.insert(
-        "long_airtime_limit_percent".to_string(),
-        optional_f64_json(status.long_airtime_limit_percent),
-    );
-    entry.insert(
-        "airtime_short_percent".to_string(),
-        optional_f64_json(status.airtime_short_percent),
-    );
-    entry
-        .insert("airtime_long_percent".to_string(), optional_f64_json(status.airtime_long_percent));
-    entry.insert(
-        "channel_load_short_percent".to_string(),
-        optional_f64_json(status.channel_load_short_percent),
-    );
-    entry.insert(
-        "channel_load_long_percent".to_string(),
-        optional_f64_json(status.channel_load_long_percent),
-    );
-    entry.insert("current_rssi_dbm".to_string(), optional_i16_json(status.current_rssi_dbm));
-    entry.insert("noise_floor_dbm".to_string(), optional_i16_json(status.noise_floor_dbm));
-    entry.insert("interference_dbm".to_string(), optional_i16_json(status.interference_dbm));
-    entry.insert("symbol_time_ms".to_string(), optional_f64_json(status.symbol_time_ms));
-    entry.insert("symbol_rate_baud".to_string(), optional_u16_json(status.symbol_rate_baud));
-    entry.insert("preamble_symbols".to_string(), optional_u16_json(status.preamble_symbols));
-    entry.insert("preamble_time_ms".to_string(), optional_u16_json(status.preamble_time_ms));
-    entry.insert("csma_slot_time_ms".to_string(), optional_u16_json(status.csma_slot_time_ms));
-    entry.insert("csma_difs_ms".to_string(), optional_u16_json(status.csma_difs_ms));
-    entry.insert("csma_cw_band".to_string(), optional_u8_json(status.csma_cw_band));
-    entry.insert("csma_cw_min".to_string(), optional_u8_json(status.csma_cw_min));
-    entry.insert("csma_cw_max".to_string(), optional_u8_json(status.csma_cw_max));
-    entry.insert("battery_state".to_string(), optional_u8_json(status.battery_state));
-    entry.insert("battery_percent".to_string(), optional_u8_json(status.battery_percent));
-    entry.insert("temperature_c".to_string(), optional_i16_json(status.temperature_c));
-    entry.insert("random_byte".to_string(), optional_u8_json(status.random_byte));
-    serde_json::Value::Object(entry)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1193,7 +1104,10 @@ mod tests {
 
     use crate::buffer::OutputBuffer;
     use crate::hash::AddressHash;
-    use crate::iface::lora::{CMD_SF, CMD_STAT_CHTM, CMD_STAT_PHYPRM, CMD_STAT_RSSI, CMD_STAT_SNR};
+    use crate::iface::lora::{
+        BATTERY_STATE_CHARGING, CMD_BANDWIDTH, CMD_CR, CMD_RANDOM, CMD_SF, CMD_STAT_BAT,
+        CMD_STAT_CHTM, CMD_STAT_PHYPRM, CMD_STAT_RSSI, CMD_STAT_SNR,
+    };
     use crate::iface::{IfaceRole, InterfaceManager, TxMessage, TxMessageType};
     use crate::kiss::decode_frames;
     use crate::packet::Packet;
@@ -1369,9 +1283,17 @@ mod tests {
 
         assert_eq!(status.selected_vport, 2);
         status.accept_command(CMD_SEL_INT, &[2]).expect("select vport 2");
+        status
+            .accept_command(CMD_BANDWIDTH, &125_000_u32.to_be_bytes())
+            .expect("record vport 2 bandwidth");
         status.accept_command(CMD_SF, &[9]).expect("record vport 2 sf");
+        status.accept_command(CMD_CR, &[5]).expect("record vport 2 coding rate");
         status.accept_command(CMD_STAT_RSSI, &[200]).expect("record vport 2 rssi");
         status.accept_command(CMD_STAT_SNR, &[12]).expect("record vport 2 snr");
+        status
+            .accept_command(CMD_STAT_BAT, &[BATTERY_STATE_CHARGING, 87])
+            .expect("record vport 2 battery");
+        status.accept_command(CMD_RANDOM, &[0x5a]).expect("record vport 2 random byte");
         status
             .accept_command(CMD_STAT_CHTM, &[0, 50, 0, 75, 1, 0, 1, 29])
             .expect("record vport 2 channel telemetry");
@@ -1382,9 +1304,14 @@ mod tests {
         status.accept_command(CMD_SF, &[7]).expect("record vport 3 sf");
 
         let vport2 = status.status_for_vport(2).expect("vport 2 status");
+        assert_eq!(vport2.bandwidth_hz, Some(125_000));
         assert_eq!(vport2.spreading_factor, Some(9));
+        assert_eq!(vport2.coding_rate, Some(5));
         assert_eq!(vport2.rssi_dbm, Some(43));
         assert_eq!(vport2.snr_db, Some(3.0));
+        assert_eq!(vport2.battery_state, Some(BATTERY_STATE_CHARGING));
+        assert_eq!(vport2.battery_percent, Some(87));
+        assert_eq!(vport2.random_byte, Some(0x5a));
         assert_eq!(vport2.airtime_short_percent, Some(0.5));
         assert_eq!(vport2.airtime_long_percent, Some(0.75));
         assert_eq!(vport2.channel_load_short_percent, Some(2.56));
@@ -1403,9 +1330,23 @@ mod tests {
         assert_eq!(snapshot["stream_state"].as_str(), Some("configured"));
         assert!(snapshot["last_error"].is_null());
         assert_eq!(snapshot["selected_vport"].as_u64(), Some(3));
+        assert_eq!(snapshot["subinterfaces"]["2"]["bandwidth_hz"].as_u64(), Some(125_000));
         assert_eq!(snapshot["subinterfaces"]["2"]["spreading_factor"].as_u64(), Some(9));
+        assert_eq!(snapshot["subinterfaces"]["2"]["coding_rate"].as_u64(), Some(5));
         assert_eq!(snapshot["subinterfaces"]["2"]["rssi_dbm"].as_i64(), Some(43));
         assert_eq!(snapshot["subinterfaces"]["2"]["airtime_short_percent"].as_f64(), Some(0.5));
+        assert_eq!(
+            snapshot["subinterfaces"]["2"]["battery_state_label"].as_str(),
+            Some("charging")
+        );
+        assert_eq!(snapshot["subinterfaces"]["2"]["battery_percent"].as_u64(), Some(87));
+        assert_eq!(snapshot["subinterfaces"]["2"]["random_byte"].as_u64(), Some(0x5a));
+        assert_eq!(
+            snapshot["subinterfaces"]["2"]["reported_bitrate_bps"].as_f64(),
+            Some(1757.8125)
+        );
+        assert_eq!(snapshot["subinterfaces"]["2"]["framebuffer_bytes"].as_u64(), Some(0));
+        assert_eq!(snapshot["subinterfaces"]["2"]["display_bytes"].as_u64(), Some(0));
         assert_eq!(snapshot["subinterfaces"]["3"]["spreading_factor"].as_u64(), Some(7));
         assert!(snapshot["subinterfaces"]["3"]["rssi_dbm"].is_null());
     }

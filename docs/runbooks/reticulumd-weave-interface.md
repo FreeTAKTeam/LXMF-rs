@@ -59,8 +59,10 @@ CPU load, and memory usage when the daemon has reported those fields.
 Incoming WDCL display frames addressed to the local switch update
 `_runtime.weave.status.display` with the remote framebuffer color format, fixed
 128x64 dimensions, total size, received size, completion flag, and a hex
-framebuffer snapshot when a complete frame has arrived. Targeted CPU, task CPU,
-and memory log events update `_runtime.weave.status.device_stats`; off-target
+framebuffer snapshot when a complete frame has arrived. Completion is based on
+actual byte coverage, so out-of-order chunks do not report a complete
+framebuffer until all byte ranges have arrived. Targeted CPU, task CPU, and
+memory log events update `_runtime.weave.status.device_stats`; off-target
 display and log frames are ignored.
 
 ## Prepared-Host Smoke

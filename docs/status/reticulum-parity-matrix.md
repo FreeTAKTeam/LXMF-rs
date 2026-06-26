@@ -110,10 +110,10 @@ placeholders:
 - Shared serial Weave baseline with WDCL over HDLC framing, discovery
   handshake response, endpoint event learning, virtual peer child interfaces,
   inbound endpoint packet routing, direct endpoint command writes,
-  target-scoped remote-display frame capture, CPU/task/memory stat parsing, and
-  transport-side status bookkeeping refreshed into daemon/RPC
-  `_runtime.weave.status`, with an opt-in prepared-host smoke harness for
-  connected serial Weave devices.
+  target-scoped remote-display frame capture with byte-coverage completion,
+  CPU/task/memory stat parsing, and transport-side status bookkeeping refreshed
+  into daemon/RPC `_runtime.weave.status`, with an opt-in prepared-host smoke
+  harness for connected serial Weave devices.
 - I2P SAM baseline, with transient stream sessions, `.i2p` name lookup, HDLC
   framing, virtual peer child interfaces, direct peer sends, broadcast fanout
   across configured peers, `STREAM ACCEPT` connectable sessions, and private
@@ -159,18 +159,19 @@ shared serial/TCP vport routing slice exists and startup validates detect,
 firmware `>= 1.74`, platform, MCU, `CMD_INTERFACES`, and hardware-reported
 configured vports. Selected-vport radio status bookkeeping and live daemon/RPC
 `radio_status` refresh exist, including stream/probe state and last-error
-reporting, display-capable teardown disables the external framebuffer before
-per-vport radio-off/leave frames, and `rnstatus-rs` renders a compact human
-summary of that state. An opt-in prepared-host smoke harness now records
-serial/TCP RNodeMulti evidence under `target/rnode-multi-hil/`. Full
-prepared-host hardware validation across devices and broader production parity
-are still pending.
+reporting plus the ordinary RNode radio-status schema for each vport,
+display-capable teardown disables the external framebuffer before per-vport
+radio-off/leave frames, and `rnstatus-rs` renders a compact human summary of
+that state. An opt-in prepared-host smoke harness now records serial/TCP
+RNodeMulti evidence under `target/rnode-multi-hil/`. Full prepared-host
+hardware validation across devices and broader production parity are still
+pending.
 `WeaveInterface` is also tracked as an in-progress family: WDCL/HDLC endpoint
-packet routing, target-scoped display-frame capture, CPU/task/memory stat
-parsing, daemon/RPC status refresh, and compact `rnstatus-rs` human summaries
-exist. An opt-in prepared-host smoke harness records connected serial evidence
-under `target/weave-hil/`, while full UI integration and broader prepared-host
-hardware evidence remain pending.
+packet routing, target-scoped display-frame capture with byte-coverage
+completion, CPU/task/memory stat parsing, daemon/RPC status refresh, and compact
+`rnstatus-rs` human summaries exist. An opt-in prepared-host smoke harness
+records connected serial evidence under `target/weave-hil/`, while full UI
+integration and broader prepared-host hardware evidence remain pending.
 
 ## Highest-Priority Gaps
 

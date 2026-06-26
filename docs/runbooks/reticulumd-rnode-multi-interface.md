@@ -139,6 +139,9 @@ hardware has reported live values. While the daemon is running,
 `radio_status` object from the transport-side runtime handle. The refreshed
 object includes `stream_state` and `last_error`, so absent hardware or a failed
 probe is visible to RPC consumers instead of appearing as successful telemetry.
+Each subinterface uses the ordinary RNode radio-status JSON schema, including
+battery labels, framebuffer/display byte counts, random byte, and derived
+reported bitrate when the selected vport has reported enough radio parameters.
 `rnstatus-rs` human output summarizes the same runtime state with the stream
 state, selected vport, vport count, and last error so operators can see failed
 open/probe/read states without switching to JSON output.
