@@ -129,6 +129,24 @@ pub const PLATFORM_ESP32: u8 = 0x80;
 
 pub const PLATFORM_NRF52: u8 = 0x70;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RNodeBluetoothControl {
+    Disable,
+    Enable,
+    Pair,
+}
+
+impl RNodeBluetoothControl {
+    #[must_use]
+    pub const fn as_byte(self) -> u8 {
+        match self {
+            Self::Disable => 0x00,
+            Self::Enable => 0x01,
+            Self::Pair => 0x02,
+        }
+    }
+}
+
 const FREQ_MIN: u64 = 137_000_000;
 
 const FREQ_MAX: u64 = 3_000_000_000;

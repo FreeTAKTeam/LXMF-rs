@@ -446,6 +446,36 @@ impl LoraConfig {
     pub fn radio_state_query_frame() -> Vec<u8> {
         encode_command_frame(CMD_RADIO_STATE, &[RADIO_STATE_ASK])
     }
+
+    #[must_use]
+    pub fn blink_frame(pattern: u8) -> Vec<u8> {
+        encode_command_frame(CMD_BLINK, &[pattern])
+    }
+
+    #[must_use]
+    pub fn bluetooth_control_frame(control: RNodeBluetoothControl) -> Vec<u8> {
+        encode_command_frame(CMD_BT_CTRL, &[control.as_byte()])
+    }
+
+    #[must_use]
+    pub fn bluetooth_enable_frame() -> Vec<u8> {
+        Self::bluetooth_control_frame(RNodeBluetoothControl::Enable)
+    }
+
+    #[must_use]
+    pub fn bluetooth_disable_frame() -> Vec<u8> {
+        Self::bluetooth_control_frame(RNodeBluetoothControl::Disable)
+    }
+
+    #[must_use]
+    pub fn bluetooth_pair_frame() -> Vec<u8> {
+        Self::bluetooth_control_frame(RNodeBluetoothControl::Pair)
+    }
+
+    #[must_use]
+    pub fn rom_read_frame() -> Vec<u8> {
+        encode_command_frame(CMD_ROM_READ, &[0x00])
+    }
 }
 
 fn u32_be_bytes(value: u64) -> [u8; 4] {

@@ -1,6 +1,6 @@
 use rns_transport::iface::lora::{
     LoraConfig, LoraInterface, RNodeHardwareError, RNodeProbeStatus, RNodeRadioStatus,
-    BATTERY_STATE_CHARGED, BATTERY_STATE_CHARGING, BATTERY_STATE_DISCHARGING,
+    RNodeBluetoothControl, BATTERY_STATE_CHARGED, BATTERY_STATE_CHARGING, BATTERY_STATE_DISCHARGING,
     BATTERY_STATE_UNKNOWN, CMD_BANDWIDTH, CMD_BLINK, CMD_BT_CTRL, CMD_CR, CMD_DETECT,
     CMD_DISP_READ, CMD_ERROR, CMD_FB_EXT, CMD_FB_READ, CMD_FB_WRITE, CMD_FREQUENCY, CMD_FW_VERSION,
     CMD_LEAVE, CMD_LT_ALOCK, CMD_MCU, CMD_PLATFORM, CMD_RADIO_LOCK, CMD_RADIO_STATE, CMD_RANDOM,
@@ -96,6 +96,19 @@ fn lora_config_exposes_python_rnode_management_constants_and_query_frame() {
         LoraConfig::radio_state_query_frame(),
         vec![FEND, CMD_RADIO_STATE, RADIO_STATE_ASK, FEND]
     );
+    assert_eq!(LoraConfig::blink_frame(0x03), vec![FEND, CMD_BLINK, 0x03, FEND]);
+    assert_eq!(
+        LoraConfig::blink_frame(FEND),
+        vec![FEND, CMD_BLINK, FESC, TFEND, FEND]
+    );
+    assert_eq!(
+        LoraConfig::bluetooth_control_frame(RNodeBluetoothControl::Enable),
+        vec![FEND, CMD_BT_CTRL, 0x01, FEND]
+    );
+    assert_eq!(LoraConfig::bluetooth_enable_frame(), vec![FEND, CMD_BT_CTRL, 0x01, FEND]);
+    assert_eq!(LoraConfig::bluetooth_disable_frame(), vec![FEND, CMD_BT_CTRL, 0x00, FEND]);
+    assert_eq!(LoraConfig::bluetooth_pair_frame(), vec![FEND, CMD_BT_CTRL, 0x02, FEND]);
+    assert_eq!(LoraConfig::rom_read_frame(), vec![FEND, CMD_ROM_READ, 0x00, FEND]);
 }
 
 #[test]

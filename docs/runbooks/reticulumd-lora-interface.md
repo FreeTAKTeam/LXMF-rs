@@ -178,8 +178,10 @@ radio-on command frames used by serial/TCP RNode startup and validates startup
 and fatal command responses through the same RNode protocol state. If startup
 probe identifies an ESP32 or NRF52 display-capable platform, BLE shutdown
 prepends Python-style external-framebuffer disable before radio-off plus
-leave-host frames and backend cleanup. Broader RNode management operations over
-BLE remain incomplete.
+leave-host frames and backend cleanup. The transport layer exposes
+Python-compatible KISS management frame helpers for blink indication, Bluetooth
+disable/enable/pair control, and ROM/EEPROM read requests, but broader
+end-to-end RNode management operations over BLE remain incomplete.
 
 ## Validation Rules
 
@@ -311,8 +313,9 @@ Framebuffer image data is split into Python-compatible 8-byte lines with a
 one-byte line number. Framebuffer and display-read command responses are
 retained with Python's expected 512-byte and 1024-byte payload sizes. The
 same protocol helper also exposes Python's hard-reset KISS command frame
-(`CMD_RESET` with payload `0xf8`). The interface records
-online state from reported RNode radio-state responses. RNode reset responses
+(`CMD_RESET` with payload `0xf8`), blink indication frame, Bluetooth
+disable/enable/pair frames, and ROM/EEPROM read request frame. The interface
+records online state from reported RNode radio-state responses. RNode reset responses
 are also classified at the protocol layer: an online ESP32 reset is surfaced as
 Python's fatal `ESP32 reset` condition, while offline or non-ESP32 reset
 responses are accepted as informational. RNode hardware error command responses
