@@ -410,6 +410,55 @@ interfaces = [
 }
 
 #[test]
+fn parses_android_rnode_tcp_host_selector_alias() {
+    let input = r#"
+interfaces = [
+  { type = "RNodeInterface", enabled = true, name = "rnode-android-tcp", region = "US915", state_path = "/tmp/lora-state.json", tcp_host = "192.0.2.10", force_tcp = true, frequency = 915000000, bandwidth = 125000, spreadingfactor = 9, codingrate = 5, txpower = 17 }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse Android RNode tcp_host config");
+    let iface = &cfg.interfaces[0];
+    assert_eq!(iface.kind, "lora");
+    assert_eq!(iface.device.as_deref(), Some("tcp://192.0.2.10:7633"));
+    assert_eq!(iface.baud_rate, None);
+
+    let settings = iface.settings_json().expect("settings");
+    assert_eq!(settings["device"], "tcp://192.0.2.10:7633");
+}
+
+#[test]
+fn parses_android_rnode_ble_selector_aliases() {
+    let input = r#"
+interfaces = [
+  { type = "RNodeInterface", enabled = true, name = "rnode-android-ble", region = "US915", state_path = "/tmp/lora-state.json", ble_addr = "AA:BB:CC:DD:EE:FF", force_ble = true, frequency = 915000000, bandwidth = 125000, spreadingfactor = 9, codingrate = 5, txpower = 17 }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse Android RNode BLE selector config");
+    let iface = &cfg.interfaces[0];
+    assert_eq!(iface.kind, "lora");
+    assert_eq!(iface.device.as_deref(), Some("ble://AA:BB:CC:DD:EE:FF"));
+    assert_eq!(iface.baud_rate, None);
+
+    let settings = iface.settings_json().expect("settings");
+    assert_eq!(settings["device"], "ble://AA:BB:CC:DD:EE:FF");
+}
+
+#[test]
+fn rejects_android_rnode_classic_bluetooth_selectors() {
+    let input = r#"
+interfaces = [
+  { type = "RNodeInterface", enabled = true, name = "rnode-android-bt", region = "US915", state_path = "/tmp/lora-state.json", target_device_name = "RNode Classic", frequency = 915000000, bandwidth = 125000, spreadingfactor = 9, codingrate = 5, txpower = 17 }
+]
+"#;
+    let err = DaemonConfig::from_toml(input).expect_err("classic Bluetooth selector must fail");
+    let message = err.to_string();
+    assert!(
+        message.contains("classic Bluetooth selectors are not supported"),
+        "unexpected parse error: {message}"
+    );
+}
+
+#[test]
 fn parses_lora_python_rnode_serial_default_speed() {
     let input = r#"
 interfaces = [

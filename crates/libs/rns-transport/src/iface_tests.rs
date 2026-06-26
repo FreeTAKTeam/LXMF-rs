@@ -185,6 +185,34 @@ mod tests {
     }
 
     #[test]
+    fn accepted_child_can_inherit_parent_runtime_config() {
+        let mut mgr = InterfaceManager::new(16);
+        let parent = *mgr
+            .new_channel_with_role_and_mode(16, IfaceRole::Unicast, InterfaceMode::Gateway)
+            .address();
+        let child = *mgr.new_channel(16).address();
+        let shared_config = InterfaceSharedConfig {
+            announce_rate_target: Some(120),
+            announce_rate_grace: Some(2),
+            announce_rate_penalty: Some(30),
+            ingress_control: Some(false),
+            egress_control: Some(true),
+            ..Default::default()
+        };
+
+        assert!(mgr.set_outgoing(parent, false));
+        assert!(mgr.set_announce_pacing(parent, 1200, 5));
+        assert!(mgr.set_shared_config(parent, shared_config.clone()));
+
+        assert!(mgr.inherit_runtime_config(parent, child));
+
+        assert_eq!(mgr.mode(&child), Some(InterfaceMode::Gateway));
+        assert_eq!(mgr.outgoing(&child), Some(false));
+        assert_eq!(mgr.announce_pacing(&child), Some((1200, 5)));
+        assert_eq!(mgr.shared_config(&child), Some(&shared_config));
+    }
+
+    #[test]
     fn virtual_iface_inherits_host_mtu() {
         let mut mgr = InterfaceManager::new(16);
         let host = *mgr.new_channel_with_role_mode_mtu(

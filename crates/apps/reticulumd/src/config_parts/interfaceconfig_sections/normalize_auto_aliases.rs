@@ -111,6 +111,9 @@ impl InterfaceConfig {
     }
 
     fn normalize_lora_aliases(&mut self, index: usize, original_kind: &str) -> Result<(), String> {
+        if original_kind == "RNodeInterface" {
+            self.normalize_android_rnode_selector_aliases(index)?;
+        }
         if self.frequency_hz.is_none() {
             self.frequency_hz = self.take_u64_alias_for_kind("frequency", index, "lora")?;
         } else {
@@ -159,6 +162,47 @@ impl InterfaceConfig {
         {
             self.baud_rate = Some(115_200);
         }
+        Ok(())
+    }
+
+    fn normalize_android_rnode_selector_aliases(&mut self, index: usize) -> Result<(), String> {
+        let tcp_requested = self.force_tcp.unwrap_or(false)
+            || self.tcp_host.as_deref().map(str::trim).is_some_and(|value| !value.is_empty());
+        let ble_requested = self.force_ble.unwrap_or(false)
+            || self.ble_addr.as_deref().map(str::trim).is_some_and(|value| !value.is_empty())
+            || self.ble_name.as_deref().map(str::trim).is_some_and(|value| !value.is_empty());
+
+        if tcp_requested && ble_requested {
+            return Err(format!(
+                "interfaces[{index}] cannot combine RNodeInterface force_tcp/tcp_host with force_ble/ble_name/ble_addr"
+            ));
+        }
+        if self.device.is_some() || (!tcp_requested && !ble_requested) {
+            return Ok(());
+        }
+
+        if tcp_requested {
+            let Some(tcp_host) = self.tcp_host.as_deref().map(str::trim).filter(|value| !value.is_empty()) else {
+                return Err(format!(
+                    "interfaces[{index}].tcp_host is required when force_tcp is true for RNodeInterface"
+                ));
+            };
+            self.device = Some(android_rnode_tcp_device(tcp_host));
+        } else if ble_requested {
+            let ble_target = self
+                .ble_addr
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .or_else(|| self.ble_name.as_deref().map(str::trim).filter(|value| !value.is_empty()))
+                .ok_or_else(|| {
+                    format!(
+                        "interfaces[{index}].ble_name or ble_addr is required when force_ble is true for RNodeInterface"
+                    )
+                })?;
+            self.device = Some(format!("ble://{ble_target}"));
+        }
+
         Ok(())
     }
 
@@ -518,5 +562,17 @@ impl InterfaceConfig {
             return Err(format!("interfaces[{index}].data_port must be > 0 for auto"));
         }
         Ok(())
+    }
+}
+
+fn android_rnode_tcp_device(tcp_host: &str) -> String {
+    const ANDROID_RNODE_TCP_PORT: u16 = 7633;
+    let tcp_host = tcp_host.trim();
+    if tcp_host.to_ascii_lowercase().starts_with("tcp://") {
+        tcp_host.to_string()
+    } else if tcp_host.rsplit_once(':').is_some_and(|(_, port)| port.parse::<u16>().is_ok()) {
+        format!("tcp://{tcp_host}")
+    } else {
+        format!("tcp://{tcp_host}:{ANDROID_RNODE_TCP_PORT}")
     }
 }

@@ -78,6 +78,7 @@ impl TcpServer {
     }
 
     pub async fn spawn(context: InterfaceContext<Self>) {
+        let parent_iface = context.channel.address;
         let (addr, client_mtu, client_socket_tuning, client_hdlc_watchdog) = {
             let guard = context.inner.lock().unwrap();
             (
@@ -163,7 +164,9 @@ impl TcpServer {
                                 client_socket_tuning,
                                 client_hdlc_watchdog.clone(),
                             );
-                            iface_manager.spawn(accepted_client, TcpClient::spawn);
+                            let child_iface =
+                                iface_manager.spawn(accepted_client, TcpClient::spawn);
+                            iface_manager.inherit_runtime_config(parent_iface, child_iface);
                         }
                     }
                 }

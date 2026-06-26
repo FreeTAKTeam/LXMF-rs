@@ -254,6 +254,22 @@ pub struct InterfaceConfig {
     #[serde(default)]
     pub peripheral_id: Option<String>,
     #[serde(default)]
+    pub allow_bluetooth: Option<bool>,
+    #[serde(default)]
+    pub target_device_name: Option<String>,
+    #[serde(default)]
+    pub target_device_address: Option<String>,
+    #[serde(default)]
+    pub ble_name: Option<String>,
+    #[serde(default)]
+    pub ble_addr: Option<String>,
+    #[serde(default)]
+    pub tcp_host: Option<String>,
+    #[serde(default)]
+    pub force_ble: Option<bool>,
+    #[serde(default)]
+    pub force_tcp: Option<bool>,
+    #[serde(default)]
     pub service_uuid: Option<String>,
     #[serde(default)]
     pub write_char_uuid: Option<String>,

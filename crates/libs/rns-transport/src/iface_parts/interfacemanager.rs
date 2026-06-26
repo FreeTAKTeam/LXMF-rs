@@ -211,6 +211,31 @@ impl InterfaceManager {
         }
     }
 
+    pub fn inherit_runtime_config(
+        &mut self,
+        source: AddressHash,
+        target: AddressHash,
+    ) -> bool {
+        let Some(source_iface) = self.ifaces.iter().find(|i| i.address == source) else {
+            return false;
+        };
+        let mode = source_iface.mode;
+        let outgoing = source_iface.outgoing;
+        let announce_bitrate_bps = source_iface.announce_bitrate_bps;
+        let announce_cap_percent = source_iface.announce_cap_percent;
+        let shared_config = source_iface.shared_config.clone();
+
+        let Some(target_iface) = self.ifaces.iter_mut().find(|i| i.address == target) else {
+            return false;
+        };
+        target_iface.mode = mode;
+        target_iface.outgoing = outgoing;
+        target_iface.announce_bitrate_bps = announce_bitrate_bps;
+        target_iface.announce_cap_percent = announce_cap_percent;
+        target_iface.shared_config = shared_config;
+        true
+    }
+
     /// Register a virtual iface that shares its tx channel with an
     /// existing host iface. Used by the UDP multicast iface to pin
     /// per-peer point-to-point routes without spawning additional

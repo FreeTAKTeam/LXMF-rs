@@ -121,6 +121,7 @@ impl LocalUnixServer {
     }
 
     pub async fn spawn(context: InterfaceContext<Self>) {
+        let parent_iface = context.channel.address;
         let (endpoint, client_mtu, iface_manager) = {
             let guard = context.inner.lock().unwrap();
             (guard.endpoint.clone(), guard.client_mtu, guard.iface_manager.clone())
@@ -201,11 +202,12 @@ impl LocalUnixServer {
                                 log::info!("new local unix client <{}> connected", peer_label);
 
                                 let mut iface_manager = iface_manager.lock().await;
-                                iface_manager.spawn(
+                                let child_iface = iface_manager.spawn(
                                     LocalUnixClient::new_from_stream(peer_label, stream)
                                         .with_mtu(client_mtu),
                                     LocalUnixClient::spawn,
                                 );
+                                iface_manager.inherit_runtime_config(parent_iface, child_iface);
                             }
                             Err(err) => {
                                 log::warn!(
