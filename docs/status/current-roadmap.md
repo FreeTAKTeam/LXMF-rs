@@ -70,7 +70,8 @@ The project is best described by capability level:
   children, receive endpoint packets, write direct endpoint commands, and expose
   refreshed `_runtime.weave.status` metadata with switch, endpoint, log-event,
   byte/frame, target-scoped remote display-frame, and CPU/task/memory
-  device-stat fields.
+  device-stat fields. An opt-in prepared-host smoke harness records connected
+  serial evidence under `target/weave-hil/`.
 - I2PInterface has a transport-side SAM slice: configured peers get virtual
   unicast children, transient SAM stream sessions, name lookup, HDLC packet
   framing, direct peer sends, broadcast fanout, and transient connectable
@@ -809,8 +810,8 @@ the implemented subset.
      production-complete.
    - Capture I2P prepared-host evidence, and implement utility commands where
      product demand justifies them.
-   - Complete Weave UI integration and prepared-host hardware evidence before
-     treating that family as production-complete.
+   - Complete Weave UI integration and broader prepared-host hardware evidence
+     before treating that family as production-complete.
 
 ## Active Execution Order
 

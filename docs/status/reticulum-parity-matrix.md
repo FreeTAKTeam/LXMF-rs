@@ -88,7 +88,8 @@ placeholders:
   inbound endpoint packet routing, direct endpoint command writes,
   target-scoped remote-display frame capture, CPU/task/memory stat parsing, and
   transport-side status bookkeeping refreshed into daemon/RPC
-  `_runtime.weave.status`.
+  `_runtime.weave.status`, with an opt-in prepared-host smoke harness for
+  connected serial Weave devices.
 - I2P SAM baseline, with transient stream sessions, `.i2p` name lookup, HDLC
   framing, virtual peer child interfaces, direct peer sends, broadcast fanout
   across configured peers, `STREAM ACCEPT` connectable sessions, and private
@@ -128,7 +129,9 @@ validation across devices and broader production parity are still pending.
 `WeaveInterface` is also tracked as an in-progress family: WDCL/HDLC endpoint
 packet routing, target-scoped display-frame capture, CPU/task/memory stat
 parsing, daemon/RPC status refresh, and compact `rnstatus-rs` human summaries
-exist, while full UI integration and prepared-hardware evidence remain pending.
+exist. An opt-in prepared-host smoke harness records connected serial evidence
+under `target/weave-hil/`, while full UI integration and broader prepared-host
+hardware evidence remain pending.
 
 ## Highest-Priority Gaps
 

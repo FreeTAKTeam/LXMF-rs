@@ -63,8 +63,50 @@ framebuffer snapshot when a complete frame has arrived. Targeted CPU, task CPU,
 and memory log events update `_runtime.weave.status.device_stats`; off-target
 display and log frames are ignored.
 
+## Prepared-Host Smoke
+
+The opt-in prepared-host smoke validates the daemon against a host with a
+connected Weave serial device. By default it requires the WDCL connection log
+event, which proves that strict startup opened the serial device, the daemon
+sent discovery, the device responded with a remote switch ID, and the Weave
+runtime transitioned to connected state.
+
+```sh
+WEAVE_PORT=/dev/ttyACM0 \
+WEAVE_BAUD_RATE=3000000 \
+WEAVE_REQUIRE_CONNECTED=true \
+./tools/scripts/weave-prepared-host-smoke.sh
+```
+
+The script builds `reticulumd` and `rnstatus-rs`, starts the daemon with
+`--strict-interface-startup`, polls `rnstatus-rs --json`, and writes artifacts
+under `target/weave-hil/`. A passing default run requires:
+
+- `_runtime.startup_status = "spawned"`
+- `_runtime.iface` populated with the runtime parent interface hash
+- `_runtime.weave.status.link_state = "connected"`
+- `_runtime.weave.status.wdcl_connected = true`
+- `_runtime.weave.status.remote_switch_id` populated
+- `_runtime.weave.status.last_error = null`
+- non-zero `_runtime.weave.status.frames_tx` and `bytes_tx`
+
+Set `WEAVE_REQUIRE_CONNECTED=false` only for bench bring-up where the desired
+evidence is limited to serial open plus discovery transmission; full
+prepared-host evidence should keep the default connected gate. Reports are
+written to `report.json` and include the latest link state, WDCL connection
+flag, switch IDs, endpoint counters, byte/frame counters, display status, and
+device stats when the prepared host emits them.
+
+Nightly HIL exposes the same smoke through `HIL_WEAVE_ENABLED=true` with
+`HIL_WEAVE_PORT`, optional `HIL_WEAVE_BAUD_RATE`, optional `HIL_WEAVE_MTU`,
+optional `HIL_WEAVE_CONFIGURED_BITRATE`, optional
+`HIL_WEAVE_REQUIRE_CONNECTED`, and optional `HIL_WEAVE_TIMEOUT_SECS`.
+Artifacts are uploaded as `weave-prepared-host-artifacts`, including
+`target/weave-hil/report.json` and `target/weave-hil/run.*`.
+
 ## Known Gaps
 
-- Prepared-host Weave hardware evidence is still required.
+- Broader prepared-host Weave hardware evidence across devices and firmware
+  combinations is still required.
 - Remote display/status UI integration is not complete.
 - I2PInterface has a separate in-progress outbound SAM peer slice.
