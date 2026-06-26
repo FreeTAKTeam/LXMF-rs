@@ -33,7 +33,7 @@ Workspace paths are used for navigation. Published package names are
 | `RNS/Discovery.py` | `crates/libs/rns-transport`, `crates/apps/reticulumd` | partial | Announce/path discovery plus live AutoInterface discovery and peer runtime. | Public bootstrap/discovery breadth remains narrower than Python. |
 | `RNS/Resolver.py` | `crates/libs/rns-transport` | partial | Resolver helpers and cached lookup behavior exist. | Full resolver/discovery surface parity is not established. |
 | `RNS/Cryptography/*` | `crates/libs/rns-core` | done | Required Reticulum primitives used by identities, packets, links, and receipts. | No confirmed parity blocker. |
-| `RNS/Utilities/*` | `crates/apps/rns-tools` | partial | `rnx` is substantial; `rnsd` delegates to `reticulumd`; `rnstatus-rs` reports local daemon/interface and propagation peer status from RPC with JSON and human output; `rnodeconf-rs` covers serial/TCP and feature-gated BLE RNode radio-state query, blink, safe read/display/local-radio commands over daemon RPC. | Full equivalents for retired `rncp`, `rnid`, `rnir`, `rnpath`, `rnpkg`, and `rnprobe` remain absent; `rnodeconf-rs` is not a full Python `rnodeconf` equivalent; `rnstatus-rs` is local status only. |
+| `RNS/Utilities/*` | `crates/apps/rns-tools` | partial | `rnx` is substantial; `rnsd` delegates to `reticulumd`; `rnstatus-rs` reports local daemon/interface and propagation peer status from RPC with JSON and human output; `rnodeconf-rs` covers serial/TCP, feature-gated BLE, and RNodeMulti parent/vport RNode radio-state query, blink, safe read/display/local-radio commands, and guarded persistent/destructive management commands over daemon RPC. | Full equivalents for retired `rncp`, `rnid`, `rnir`, `rnpath`, `rnpkg`, and `rnprobe` remain absent; `rnodeconf-rs` is not a full Python `rnodeconf` equivalent; `rnstatus-rs` is local status only. |
 | `CRNS/*` | `crates/apps/rns-tools` | partial | Selected command workflows exist. | The Python command ecosystem is not reproduced. |
 
 ## Interface Detail
@@ -166,13 +166,14 @@ Radio-state query and blink dispatch are covered by local duplex/mock tests,
 daemon `rnode_management` RPC dispatch, and `rnodeconf-rs` query/blink CLI
 tests. Daemon RPC and `rnodeconf-rs` also queue safe config read, ROM read,
 display intensity/blanking/rotation/recondition/address, NeoPixel intensity,
-and interference-avoidance enable/disable controls. Daemon RPC additionally
+and interference-avoidance enable/disable controls. Daemon RPC and
+`rnodeconf-rs` additionally
 queues guarded Bluetooth control, config save/delete, ROM write/wipe, hard
 reset, firmware metadata, and Wi-Fi settings.
 Frame-level helpers now cover Bluetooth disable/enable/pair control,
 display/NeoPixel controls, interference-avoidance control, Wi-Fi settings,
 config save/delete, firmware-update metadata, and ROM/EEPROM read/write/wipe
-requests. BLE management hardware evidence and full `rnodeconf-rs` parity
+requests. BLE management hardware evidence and full Python `rnodeconf` parity
 remain pending.
 `RNodeMultiInterface` is tracked separately as an in-progress family: the
 shared serial/TCP vport routing slice exists and startup validates detect,

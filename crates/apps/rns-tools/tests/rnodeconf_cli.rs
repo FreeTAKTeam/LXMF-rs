@@ -193,6 +193,157 @@ fn rnodeconf_sends_disable_interference_avoidance_rpc() {
     rpc.thread.join().expect("mock rpc server");
 }
 
+#[test]
+fn rnodeconf_sends_persistent_rnode_management_guard_rpc() {
+    let rpc = spawn_mock_rpc(|request| {
+        assert_eq!(request.method, "rnode_management");
+        let params = request.params.expect("params");
+        assert_eq!(params["iface"].as_str(), Some("rnode-main"));
+        assert_eq!(params["command"].as_str(), Some("wifi_psk"));
+        assert_eq!(params["confirm_persistent"].as_bool(), Some(true));
+        assert_eq!(params["psk"].as_str(), Some("abcdefgh"));
+        RpcResponse {
+            id: request.id,
+            result: Some(json!({
+                "queued": true,
+                "iface": "rnode-main",
+                "command": "wifi_psk",
+                "confirmation": "persistent",
+                "psk_set": true
+            })),
+            error: None,
+        }
+    });
+
+    let output = Command::new(rnodeconf_bin())
+        .arg("--rpc")
+        .arg(rpc.addr)
+        .arg("set-wifi-psk")
+        .arg("--interface")
+        .arg("rnode-main")
+        .arg("--psk")
+        .arg("abcdefgh")
+        .arg("--confirm-persistent")
+        .output()
+        .expect("run rnodeconf-rs");
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
+    let value: serde_json::Value = serde_json::from_str(&stdout).expect("json stdout");
+    assert_eq!(value["command"].as_str(), Some("wifi_psk"));
+    assert_eq!(value["psk_set"].as_bool(), Some(true));
+    assert!(value.get("psk").is_none());
+    rpc.thread.join().expect("mock rpc server");
+}
+
+#[test]
+fn rnodeconf_sends_destructive_rnode_management_guard_rpc() {
+    let rpc = spawn_mock_rpc(|request| {
+        assert_eq!(request.method, "rnode_management");
+        let params = request.params.expect("params");
+        assert_eq!(params["iface"].as_str(), Some("rnode-main"));
+        assert_eq!(params["command"].as_str(), Some("rom_write"));
+        assert_eq!(params["address"].as_u64(), Some(9));
+        assert_eq!(params["byte"].as_u64(), Some(42));
+        assert_eq!(params["confirm_destructive"].as_bool(), Some(true));
+        assert_eq!(params["confirm_command"].as_str(), Some("rom_write"));
+        RpcResponse {
+            id: request.id,
+            result: Some(json!({
+                "queued": true,
+                "iface": "rnode-main",
+                "command": "rom_write",
+                "confirmation": "destructive",
+                "address": 9,
+                "byte": 42
+            })),
+            error: None,
+        }
+    });
+
+    let output = Command::new(rnodeconf_bin())
+        .arg("--rpc")
+        .arg(rpc.addr)
+        .arg("write-rom")
+        .arg("--interface")
+        .arg("rnode-main")
+        .arg("--address")
+        .arg("9")
+        .arg("--byte")
+        .arg("42")
+        .arg("--confirm-destructive")
+        .arg("--confirm-command")
+        .arg("rom_write")
+        .output()
+        .expect("run rnodeconf-rs");
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
+    let value: serde_json::Value = serde_json::from_str(&stdout).expect("json stdout");
+    assert_eq!(value["command"].as_str(), Some("rom_write"));
+    assert_eq!(value["confirmation"].as_str(), Some("destructive"));
+    rpc.thread.join().expect("mock rpc server");
+}
+
+#[test]
+fn rnodeconf_sends_guarded_rnode_multi_vport_rpc() {
+    let rpc = spawn_mock_rpc(|request| {
+        assert_eq!(request.method, "rnode_management");
+        let params = request.params.expect("params");
+        assert_eq!(params["iface"].as_str(), Some("rnode-main"));
+        assert_eq!(params["command"].as_str(), Some("config_save"));
+        assert_eq!(params["vport"].as_u64(), Some(2));
+        assert_eq!(params["confirm_persistent"].as_bool(), Some(true));
+        RpcResponse {
+            id: request.id,
+            result: Some(json!({
+                "queued": true,
+                "iface": "rnode-main",
+                "command": "config_save",
+                "vport": 2,
+                "confirmation": "persistent"
+            })),
+            error: None,
+        }
+    });
+
+    let output = Command::new(rnodeconf_bin())
+        .arg("--rpc")
+        .arg(rpc.addr)
+        .arg("save-config")
+        .arg("--interface")
+        .arg("rnode-main")
+        .arg("--vport")
+        .arg("2")
+        .arg("--confirm-persistent")
+        .output()
+        .expect("run rnodeconf-rs");
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
+    let value: serde_json::Value = serde_json::from_str(&stdout).expect("json stdout");
+    assert_eq!(value["vport"].as_u64(), Some(2));
+    assert_eq!(value["confirmation"].as_str(), Some("persistent"));
+    rpc.thread.join().expect("mock rpc server");
+}
+
+#[test]
+fn rnodeconf_rejects_missing_management_confirmation_before_rpc() {
+    let output = Command::new(rnodeconf_bin())
+        .arg("--rpc")
+        .arg("127.0.0.1:9")
+        .arg("save-config")
+        .arg("--interface")
+        .arg("rnode-main")
+        .output()
+        .expect("run rnodeconf-rs");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).expect("utf8 stderr");
+    assert!(stderr.contains("requires --confirm-persistent"), "{stderr}");
+    assert!(!stderr.contains("Connection refused"), "{stderr}");
+}
+
 struct MockRpc {
     addr: String,
     thread: thread::JoinHandle<()>,

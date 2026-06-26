@@ -192,14 +192,14 @@ serial/TCP/BLE operations through `rnode_management` RPC and the
 `rnodeconf-rs query-radio-state` / `rnodeconf-rs blink` commands. The same path
 also queues read/display/local-radio safe controls: config read, ROM read,
 display intensity/blanking/rotation/recondition/address, NeoPixel intensity,
-and interference-avoidance enable/disable. Daemon RPC also exposes guarded
+and interference-avoidance enable/disable. Daemon RPC and `rnodeconf-rs`
+also expose guarded
 persistent or destructive management commands for Bluetooth control, config
 save/delete, ROM write/wipe, hard reset, firmware update/hash metadata, and
 Wi-Fi mode/channel/IP/netmask/SSID/PSK set or clear. Persistent commands
 require `confirm_persistent = true`; destructive commands require
 `confirm_destructive = true` plus `confirm_command` matching the canonical
-command. `rnodeconf-rs` and BLE hardware evidence for management operations
-remain narrower than the daemon RPC surface.
+command. BLE hardware evidence for management operations remains pending.
 
 ## Validation Rules
 
