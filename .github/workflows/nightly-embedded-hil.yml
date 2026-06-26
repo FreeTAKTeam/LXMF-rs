@@ -51,9 +51,38 @@ jobs:
             target/i2p-hil/report.json
             target/i2p-hil/run.*
 
+  rnode-multi-prepared-host:
+    if: ${{ vars.HIL_RNODE_MULTI_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: RNodeMulti prepared-host smoke
+        env:
+          RNODE_MULTI_PORT: ${{ vars.HIL_RNODE_MULTI_PORT }}
+          RNODE_MULTI_BAUD_RATE: ${{ vars.HIL_RNODE_MULTI_BAUD_RATE }}
+          RNODE_MULTI_VPORTS: ${{ vars.HIL_RNODE_MULTI_VPORTS }}
+          RNODE_MULTI_REGION: ${{ vars.HIL_RNODE_MULTI_REGION }}
+          RNODE_MULTI_FREQUENCIES: ${{ vars.HIL_RNODE_MULTI_FREQUENCIES }}
+          RNODE_MULTI_BANDWIDTHS: ${{ vars.HIL_RNODE_MULTI_BANDWIDTHS }}
+          RNODE_MULTI_SPREADING_FACTORS: ${{ vars.HIL_RNODE_MULTI_SPREADING_FACTORS }}
+          RNODE_MULTI_CODING_RATES: ${{ vars.HIL_RNODE_MULTI_CODING_RATES }}
+          RNODE_MULTI_TX_POWERS: ${{ vars.HIL_RNODE_MULTI_TX_POWERS }}
+          RNODE_MULTI_OUTGOING: ${{ vars.HIL_RNODE_MULTI_OUTGOING }}
+          RNODE_MULTI_TIMEOUT_SECS: ${{ vars.HIL_RNODE_MULTI_TIMEOUT_SECS }}
+        run: ./tools/scripts/rnode-multi-prepared-host-smoke.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rnode-multi-prepared-host-artifacts
+          path: |
+            target/rnode-multi-hil/report.json
+            target/rnode-multi-hil/run.*
+
   hil-disabled:
-    if: ${{ vars.HIL_ESP32_ENABLED != 'true' && vars.HIL_I2P_ENABLED != 'true' }}
+    if: ${{ vars.HIL_ESP32_ENABLED != 'true' && vars.HIL_I2P_ENABLED != 'true' && vars.HIL_RNODE_MULTI_ENABLED != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: HIL disabled
-        run: echo "HIL_ESP32_ENABLED and HIL_I2P_ENABLED are not set to true; skipping nightly HIL runs."
+        run: echo "HIL_ESP32_ENABLED, HIL_I2P_ENABLED, and HIL_RNODE_MULTI_ENABLED are not set to true; skipping nightly HIL runs."

@@ -137,6 +137,62 @@ probe is visible to RPC consumers instead of appearing as successful telemetry.
 state, selected vport, vport count, and last error so operators can see failed
 open/probe/read states without switching to JSON output.
 
+## Prepared-Host Smoke
+
+The opt-in prepared-host smoke validates the daemon against a host that has a
+real RNodeMulti-capable device exposed as either a serial port or a
+`tcp://host:port` bridge:
+
+```bash
+RNODE_MULTI_PORT=/dev/ttyACM0 \
+RNODE_MULTI_BAUD_RATE=115200 \
+RNODE_MULTI_VPORTS=0,1 \
+./tools/scripts/rnode-multi-prepared-host-smoke.sh
+```
+
+For TCP bridges, set `RNODE_MULTI_PORT=tcp://192.0.2.10:8001`; the generated
+config omits serial baud rate in that mode. `RNODE_MULTI_VPORTS` is a
+comma-separated list of child vports; radio parameter variables accept either
+one value reused for every vport or one comma-separated value per vport:
+`RNODE_MULTI_FREQUENCIES`, `RNODE_MULTI_BANDWIDTHS`,
+`RNODE_MULTI_SPREADING_FACTORS`, `RNODE_MULTI_CODING_RATES`,
+`RNODE_MULTI_TX_POWERS`, and `RNODE_MULTI_OUTGOING`. `RNODE_MULTI_REGION`
+defaults to `US915`.
+
+The script starts `reticulumd` with `--strict-interface-startup`, waits for
+`rnstatus-rs --json`, and records pass/fail evidence under
+`target/rnode-multi-hil/`. The readiness gate requires:
+
+- `_runtime.rnode_multi.radio_status.stream_state = "running"`
+- `_runtime.rnode_multi.radio_status.vports` exactly matches
+  `RNODE_MULTI_VPORTS`
+- one exported `radio_status.subinterfaces` record per configured vport
+- `last_error = null`
+
+The `running` state is reached only after the transport-side startup probe has
+accepted detect, firmware `>= 1.74`, platform, MCU, `CMD_INTERFACES`, and
+configured-vport validation. The smoke does not require firmware/platform/MCU
+fields in JSON because the current runtime status schema exposes the resulting
+stream and radio status rather than raw probe details.
+
+Nightly HIL exposes the same smoke behind repository variables:
+
+- `HIL_RNODE_MULTI_ENABLED=true`
+- `HIL_RNODE_MULTI_PORT`
+- `HIL_RNODE_MULTI_BAUD_RATE`
+- `HIL_RNODE_MULTI_VPORTS`
+- `HIL_RNODE_MULTI_FREQUENCIES`
+- `HIL_RNODE_MULTI_BANDWIDTHS`
+- `HIL_RNODE_MULTI_SPREADING_FACTORS`
+- `HIL_RNODE_MULTI_CODING_RATES`
+- `HIL_RNODE_MULTI_TX_POWERS`
+- `HIL_RNODE_MULTI_OUTGOING`
+- `HIL_RNODE_MULTI_TIMEOUT_SECS`
+
+Artifacts are uploaded as `rnode-multi-prepared-host-artifacts`, including
+`target/rnode-multi-hil/report.json` and the latest `target/rnode-multi-hil/run.*`
+directory.
+
 ## Shutdown Behavior
 
 Shutdown iterates each child vport and writes:
@@ -157,9 +213,10 @@ so stale child routes do not remain after parent shutdown.
 - `WeaveInterface` has a separate in-progress WDCL/HDLC endpoint slice; full
   display/stat and hardware parity is not complete.
 - Selected-vport radio command/status bookkeeping, an initial exported
-  `radio_status` schema, stream/probe failure state, and live daemon snapshot
-  refresh exist, but prepared-host telemetry validation is not yet at Python
-  parity.
+  `radio_status` schema, stream/probe failure state, live daemon snapshot
+  refresh, and an opt-in prepared-host smoke harness exist, but broad
+  prepared-host telemetry evidence across devices and firmware combinations is
+  not yet at Python parity.
 - The startup probe baseline has validation for detect, firmware `>= 1.74`,
   platform, MCU, `CMD_INTERFACES`, and configured hardware vports, but full
   prepared-host hardware evidence across devices and firmware combinations is
