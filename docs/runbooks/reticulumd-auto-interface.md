@@ -153,6 +153,9 @@ The reusable transport layer now also includes Python-compatible helpers for:
   peer-data receive loops, injects accepted peer-data packets into transport,
   routes direct/broadcast transport sends to peer UDP data sockets, and records
   discovery/data runtime counts
+- live `_runtime.auto.carrier_runtime` reporting for Python-style `online`,
+  `final_init_done`, `carrier_changed`, multicast carrier events, and staged
+  link-local listener restart metadata
 - classifying local multicast echoes separately from remote peers so discovery
   packets from this node's own link-local addresses update echo state instead
   of spawning peer state
@@ -183,4 +186,3 @@ interfaces = [
 
 - Restart per-interface UDP listeners from the link-local replacement helper
   when the live address for an adopted interface changes.
-- Wire the runtime `carrier_changed` flag into live status/reporting.

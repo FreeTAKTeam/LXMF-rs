@@ -68,7 +68,8 @@ placeholders:
 - Serial, serial KISS, and AX.25 KISS with Python-compatible AX.25 UI header
   wrapping over the serial KISS runtime.
 - AutoInterface discovery, authenticated peering, peer lifecycle, duplicate
-  suppression, multicast announcements, data sockets, and transport bridging.
+  suppression, multicast announcements, data sockets, transport bridging, and
+  live carrier-runtime status reporting.
 - Serial and TCP/Wi-Fi LoRa/RNode with startup probes, configuration
   validation, telemetry, flow control, and teardown.
 - Shared serial/TCP RNodeMulti baseline with nested vport subinterfaces,

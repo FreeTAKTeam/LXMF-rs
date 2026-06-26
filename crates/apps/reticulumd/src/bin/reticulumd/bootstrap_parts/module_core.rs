@@ -174,6 +174,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     let startup_successes = startup.startup_successes;
     let startup_failures = startup.startup_failures;
     let seeded_tcp_interfaces = startup.seeded_tcp_interfaces;
+    let auto_runtime_refreshes = startup.auto_runtime_refreshes;
     let i2p_runtime_refreshes = startup.i2p_runtime_refreshes;
     let weave_runtime_refreshes = startup.weave_runtime_refreshes;
     let rnode_multi_runtime_refreshes = startup.rnode_multi_runtime_refreshes;
@@ -274,6 +275,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     daemon.set_delivery_destination_hash(delivery_destination_hash_hex);
     daemon.set_propagation_destination_hash(propagation_destination_hash_hex.clone());
     daemon.replace_interfaces(configured_interfaces);
+    spawn_auto_runtime_status_refresher(daemon.clone(), auto_runtime_refreshes);
     spawn_i2p_runtime_status_refresher(daemon.clone(), i2p_runtime_refreshes);
     spawn_weave_runtime_status_refresher(daemon.clone(), weave_runtime_refreshes);
     spawn_rnode_multi_runtime_status_refresher(daemon.clone(), rnode_multi_runtime_refreshes);
@@ -396,6 +398,40 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     }
 
     BootstrapContext { rpc_addr, rpc_unix, daemon, rpc_tls }
+}
+
+fn spawn_auto_runtime_status_refresher(
+    daemon: Arc<RpcDaemon>,
+    refreshes: Vec<transport_startup::AutoRuntimeRefresh>,
+) {
+    if refreshes.is_empty() {
+        return;
+    }
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(INTERFACE_RUNTIME_STATUS_REFRESH_INTERVAL);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            interval.tick().await;
+            refresh_auto_runtime_status_once(&daemon, &refreshes);
+        }
+    });
+}
+
+fn refresh_auto_runtime_status_once(
+    daemon: &RpcDaemon,
+    refreshes: &[transport_startup::AutoRuntimeRefresh],
+) -> usize {
+    refreshes
+        .iter()
+        .filter(|refresh| {
+            daemon.update_interface_runtime_metadata_by_iface(
+                refresh.runtime_iface.to_string().as_str(),
+                "auto",
+                "carrier_runtime",
+                refresh.status.to_json(),
+            )
+        })
+        .count()
 }
 
 fn spawn_i2p_runtime_status_refresher(
@@ -603,6 +639,58 @@ fn is_local_rpc_bind(addr: &SocketAddr) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn auto_runtime_status_refresh_updates_matching_interface_record() {
+        let daemon = RpcDaemon::test_instance();
+        let runtime_iface = AddressHash::new([0x18; 16]);
+        daemon.replace_interfaces(vec![InterfaceRecord {
+            kind: "auto".to_string(),
+            enabled: true,
+            host: None,
+            port: None,
+            name: Some("auto-main".to_string()),
+            settings: Some(json!({
+                "_runtime": {
+                    "iface": runtime_iface.to_string(),
+                    "startup_status": "spawned",
+                    "auto": {
+                        "carrier_runtime": {
+                            "carrier_changed": false
+                        }
+                    }
+                }
+            })),
+        }]);
+        let plan = rns_transport::iface::auto::AutoStartupPlan {
+            discovery_listeners: Vec::new(),
+            data_listeners: Vec::new(),
+            peer_job_interval: core::time::Duration::ZERO,
+            initial_peering_wait: core::time::Duration::ZERO,
+        };
+        let status = crate::interfaces::auto::AutoRuntimeStatusHandle::from_startup_plan(&plan);
+        status.record_carrier_events(&[
+            rns_transport::iface::auto::AutoMulticastCarrierEvent::CarrierLost {
+                ifname: "eth0".to_string(),
+            },
+        ]);
+        let refresh = transport_startup::AutoRuntimeRefresh { runtime_iface, status };
+
+        assert_eq!(refresh_auto_runtime_status_once(&daemon, &[refresh]), 1);
+        let result = daemon
+            .handle_rpc(RpcRequest { id: 87, method: "daemon_status_ex".to_string(), params: None })
+            .expect("daemon status")
+            .result
+            .expect("daemon status result");
+        let carrier_runtime = &result["interfaces"][0]["settings"]["_runtime"]["auto"]
+            ["carrier_runtime"];
+
+        assert_eq!(carrier_runtime["online"].as_bool(), Some(true));
+        assert_eq!(carrier_runtime["final_init_done"].as_bool(), Some(true));
+        assert_eq!(carrier_runtime["carrier_changed"].as_bool(), Some(true));
+        assert_eq!(carrier_runtime["carrier_event_count"].as_u64(), Some(1));
+        assert_eq!(carrier_runtime["carrier_events"][0]["event"].as_str(), Some("carrier_lost"));
+    }
 
     #[test]
     fn i2p_runtime_status_refresh_updates_matching_interface_record() {

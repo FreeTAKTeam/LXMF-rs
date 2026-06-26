@@ -37,9 +37,16 @@ pub(super) struct InterfaceStartupBatch {
     pub(super) seeded_tcp_interfaces: Vec<(String, InterfaceRecord, AddressHash)>,
     pub(super) tunnel_synth_ifaces: Vec<AddressHash>,
     pub(super) connected_to_shared_instance: bool,
+    pub(super) auto_runtime_refreshes: Vec<AutoRuntimeRefresh>,
     pub(super) i2p_runtime_refreshes: Vec<I2pRuntimeRefresh>,
     pub(super) weave_runtime_refreshes: Vec<WeaveRuntimeRefresh>,
     pub(super) rnode_multi_runtime_refreshes: Vec<RNodeMultiRuntimeRefresh>,
+}
+
+#[derive(Clone)]
+pub(crate) struct AutoRuntimeRefresh {
+    pub(crate) runtime_iface: AddressHash,
+    pub(crate) status: auto::AutoRuntimeStatusHandle,
 }
 
 #[derive(Clone)]
@@ -78,6 +85,7 @@ pub(super) async fn startup_configured_interfaces(
     let mut seeded_tcp_interfaces = Vec::new();
     let mut tunnel_synth_ifaces = Vec::new();
     let mut connected_to_shared_instance = false;
+    let mut auto_runtime_refreshes = Vec::new();
     let mut i2p_runtime_refreshes = Vec::new();
     let mut weave_runtime_refreshes = Vec::new();
     let mut rnode_multi_runtime_refreshes = Vec::new();
@@ -235,7 +243,7 @@ pub(super) async fn startup_configured_interfaces(
                 }
             }
             "auto" => {
-                if startup_auto(
+                if let Some(refresh) = startup_auto(
                     iface,
                     &label,
                     iface_manager,
@@ -245,6 +253,7 @@ pub(super) async fn startup_configured_interfaces(
                 .await
                 {
                     startup_successes += 1;
+                    auto_runtime_refreshes.push(refresh);
                 }
             }
             "serial" => {
@@ -404,6 +413,7 @@ pub(super) async fn startup_configured_interfaces(
         seeded_tcp_interfaces,
         tunnel_synth_ifaces,
         connected_to_shared_instance,
+        auto_runtime_refreshes,
         i2p_runtime_refreshes,
         weave_runtime_refreshes,
         rnode_multi_runtime_refreshes,

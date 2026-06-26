@@ -11,7 +11,7 @@ use crate::bridge::PeerCrypto;
 use crate::interfaces::common::interface_label;
 use crate::Args;
 pub(super) use interface_startup::{
-    I2pRuntimeRefresh, RNodeMultiRuntimeRefresh, WeaveRuntimeRefresh,
+    AutoRuntimeRefresh, I2pRuntimeRefresh, RNodeMultiRuntimeRefresh, WeaveRuntimeRefresh,
 };
 use reticulum_daemon::announce_names::PropagationNodeAnnounceConfig;
 use reticulum_daemon::config::DaemonConfig;
@@ -41,6 +41,7 @@ pub(super) struct TransportStartupArtifacts {
     pub(super) startup_successes: usize,
     pub(super) startup_failures: Vec<InterfaceStartupFailure>,
     pub(super) seeded_tcp_interfaces: Vec<(String, InterfaceRecord, AddressHash)>,
+    pub(super) auto_runtime_refreshes: Vec<AutoRuntimeRefresh>,
     pub(super) i2p_runtime_refreshes: Vec<I2pRuntimeRefresh>,
     pub(super) weave_runtime_refreshes: Vec<WeaveRuntimeRefresh>,
     pub(super) rnode_multi_runtime_refreshes: Vec<RNodeMultiRuntimeRefresh>,
@@ -143,6 +144,7 @@ pub(super) async fn start_transport_and_interfaces(
     let mut startup_successes = 0usize;
     let mut startup_failures = Vec::new();
     let mut seeded_tcp_interfaces = Vec::new();
+    let mut auto_runtime_refreshes = Vec::new();
     let mut i2p_runtime_refreshes = Vec::new();
     let mut weave_runtime_refreshes = Vec::new();
     let mut rnode_multi_runtime_refreshes = Vec::new();
@@ -212,6 +214,7 @@ pub(super) async fn start_transport_and_interfaces(
                 transport_instance.synthesize_tunnel_on_interface(iface).await;
             }
             seeded_tcp_interfaces.extend(startup.seeded_tcp_interfaces);
+            auto_runtime_refreshes.extend(startup.auto_runtime_refreshes);
             i2p_runtime_refreshes.extend(startup.i2p_runtime_refreshes);
             weave_runtime_refreshes.extend(startup.weave_runtime_refreshes);
             rnode_multi_runtime_refreshes.extend(startup.rnode_multi_runtime_refreshes);
@@ -317,6 +320,7 @@ pub(super) async fn start_transport_and_interfaces(
         startup_successes,
         startup_failures,
         seeded_tcp_interfaces,
+        auto_runtime_refreshes,
         i2p_runtime_refreshes,
         weave_runtime_refreshes,
         rnode_multi_runtime_refreshes,

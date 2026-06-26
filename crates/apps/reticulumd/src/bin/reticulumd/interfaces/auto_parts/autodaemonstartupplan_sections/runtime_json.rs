@@ -167,6 +167,7 @@ impl AutoDaemonStartupPlan {
                 missing_initial_echo_count: run.missing_initial_echo_interfaces.len(),
                 carrier_changed: !run.carrier_events.is_empty(),
                 carrier_event_count: run.carrier_events.len(),
+                carrier_events: run.carrier_events,
             },
             datagrams,
         )
@@ -288,13 +289,14 @@ impl AutoDaemonStartupPlan {
     pub(crate) async fn spawn_discovery_runtime_with_native_scope_ids(
         &self,
     ) -> Result<AutoDiscoveryRuntimeSummary, String> {
-        self.spawn_discovery_runtime_with_native_scope_ids_and_transport(None).await
+        self.spawn_discovery_runtime_with_native_scope_ids_and_transport(None, None).await
     }
 
     #[allow(dead_code)]
     pub(crate) async fn spawn_discovery_runtime_with_native_scope_ids_and_transport(
         &self,
         transport_runtime: Option<AutoInterfaceTransportRuntime>,
+        runtime_status: Option<AutoRuntimeStatusHandle>,
     ) -> Result<AutoDiscoveryRuntimeSummary, String> {
         let (transport_bridge, transport_tx_channel) = match transport_runtime {
             Some(runtime) => {
@@ -376,6 +378,7 @@ impl AutoDaemonStartupPlan {
             self.spawn_peer_job_scheduler(
                 Arc::clone(&state),
                 Arc::clone(socket),
+                runtime_status.clone(),
                 shutdown_rx.clone(),
             )
         });

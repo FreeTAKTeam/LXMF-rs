@@ -176,13 +176,27 @@ pub(crate) struct AutoDiscoveryRuntimeSummary {
     pub(crate) data_receive_loop_count: usize,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct AutoPeerJobRuntimeSummary {
     pub(crate) expired_peer_count: usize,
     pub(crate) reverse_peer_announce_count: usize,
     pub(crate) missing_initial_echo_count: usize,
     pub(crate) carrier_changed: bool,
     pub(crate) carrier_event_count: usize,
+    pub(crate) carrier_events: Vec<AutoMulticastCarrierEvent>,
+}
+
+#[derive(Clone)]
+pub(crate) struct AutoRuntimeStatusHandle {
+    inner: Arc<std::sync::Mutex<AutoRuntimeStatus>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct AutoRuntimeStatus {
+    state: AutoRuntimeState,
+    started_at: Instant,
+    carrier_events: Vec<AutoMulticastCarrierEvent>,
+    link_local_update: Option<AutoLinkLocalAddressUpdate>,
 }
 
 #[allow(dead_code)]

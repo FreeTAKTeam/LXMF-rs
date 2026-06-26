@@ -172,6 +172,55 @@ pub(crate) fn auto_carrier_runtime_json(
     })
 }
 
+impl AutoRuntimeStatusHandle {
+    pub(crate) fn from_startup_plan(plan: &AutoStartupPlan) -> Self {
+        Self {
+            inner: Arc::new(std::sync::Mutex::new(AutoRuntimeStatus {
+                state: AutoRuntimeState::from_startup_plan(
+                    plan,
+                    core::time::Duration::ZERO,
+                ),
+                started_at: Instant::now(),
+                carrier_events: Vec::new(),
+                link_local_update: None,
+            })),
+        }
+    }
+
+    pub(crate) fn record_carrier_events(&self, events: &[AutoMulticastCarrierEvent]) -> bool {
+        let mut guard = self.inner.lock().expect("auto runtime status mutex poisoned");
+        if !guard.state.record_carrier_events(events) {
+            return false;
+        }
+        guard.carrier_events = events.to_vec();
+        true
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn record_link_local_update(
+        &self,
+        update: Option<&AutoLinkLocalAddressUpdate>,
+    ) -> bool {
+        let mut guard = self.inner.lock().expect("auto runtime status mutex poisoned");
+        if !guard.state.record_link_local_update(update) {
+            return false;
+        }
+        guard.link_local_update = update.cloned();
+        true
+    }
+
+    pub(crate) fn to_json(&self) -> JsonValue {
+        let mut guard = self.inner.lock().expect("auto runtime status mutex poisoned");
+        let elapsed = guard.started_at.elapsed();
+        guard.state.advance(elapsed);
+        auto_carrier_runtime_json(
+            &guard.state,
+            &guard.carrier_events,
+            guard.link_local_update.as_ref(),
+        )
+    }
+}
+
 fn carrier_event_json(event: &AutoMulticastCarrierEvent) -> JsonValue {
     match event {
         AutoMulticastCarrierEvent::CarrierLost { ifname } => {

@@ -72,12 +72,16 @@ impl AutoDaemonStartupPlan {
         &self,
         state: Arc<tokio::sync::Mutex<AutoDiscoveryState>>,
         socket: Arc<tokio::net::UdpSocket>,
+        runtime_status: Option<&AutoRuntimeStatusHandle>,
         now: core::time::Duration,
     ) -> Result<AutoPeerJobRuntimeSummary, String> {
         let (summary, datagrams) = {
             let mut state = state.lock().await;
             self.run_peer_job_datagrams(&mut state, now)
         };
+        if let Some(runtime_status) = runtime_status {
+            runtime_status.record_carrier_events(&summary.carrier_events);
+        }
         if datagrams.is_empty() {
             return Ok(summary);
         }
@@ -96,6 +100,7 @@ impl AutoDaemonStartupPlan {
         &self,
         state: Arc<tokio::sync::Mutex<AutoDiscoveryState>>,
         socket: Arc<tokio::net::UdpSocket>,
+        runtime_status: Option<AutoRuntimeStatusHandle>,
         mut shutdown: tokio::sync::watch::Receiver<bool>,
     ) -> tokio::task::JoinHandle<()> {
         let plan = self.clone();
@@ -119,6 +124,7 @@ impl AutoDaemonStartupPlan {
                             .send_due_peer_job_with_runtime_socket(
                                 Arc::clone(&state),
                                 Arc::clone(&socket),
+                                runtime_status.as_ref(),
                                 started_at.elapsed(),
                             )
                             .await

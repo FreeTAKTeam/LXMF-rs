@@ -71,11 +71,13 @@ async fn startup_auto(
     iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
     record: &mut InterfaceRecord,
     startup_failures: &mut Vec<InterfaceStartupFailure>,
-) -> bool {
+) -> Option<AutoRuntimeRefresh> {
     match auto::build_native_startup_plan(iface) {
         Ok(plan) => {
             let adopted_count = plan.adopted_devices.len();
             let candidate_count = plan.candidates.len();
+            let runtime_status =
+                auto::AutoRuntimeStatusHandle::from_startup_plan(&plan.startup_plan);
             with_interface_runtime_metadata(record, |runtime| {
                 runtime.insert("auto".to_string(), plan.runtime_json());
             });
@@ -98,7 +100,7 @@ async fn startup_auto(
             match plan
                 .spawn_discovery_runtime_with_native_scope_ids_and_transport(Some(
                     transport_runtime,
-                ))
+                ), Some(runtime_status.clone()))
                 .await
             {
                 Ok(summary) => {
@@ -129,7 +131,7 @@ async fn startup_auto(
                         Some(runtime_iface.as_str()),
                     );
                     mark_interface_runtime_fields(record, "running", 0);
-                    true
+                    Some(AutoRuntimeRefresh { runtime_iface: host_iface, status: runtime_status })
                 }
                 Err(err) => {
                     let _ = iface_manager.lock().await.stop_interface(host_iface);
@@ -140,7 +142,7 @@ async fn startup_auto(
                         iface.kind.clone(),
                         format!("AutoInterface discovery runtime startup failed: {err}"),
                     );
-                    false
+                    None
                 }
             }
         }
@@ -152,7 +154,7 @@ async fn startup_auto(
                 iface.kind.clone(),
                 format!("AutoInterface OS interface discovery failed: {err}"),
             );
-            false
+            None
         }
     }
 }
