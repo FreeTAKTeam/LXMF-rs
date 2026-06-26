@@ -125,6 +125,26 @@ pub(super) async fn startup_configured_interfaces(
                     LocalUnixStartup::Failed => {}
                 }
             }
+            "local_client" if iface.shared_instance_type.as_deref() == Some("unix") => {
+                match startup_local_unix_client_attach(
+                    args,
+                    iface,
+                    &label,
+                    iface_manager,
+                    &mut configured_interfaces[index],
+                    &mut startup_failures,
+                    shared_reconnect_events.clone(),
+                )
+                .await
+                {
+                    LocalUnixStartup::Attached(client_iface) => {
+                        startup_successes += 1;
+                        tunnel_synth_ifaces.push(client_iface);
+                        connected_to_shared_instance = true;
+                    }
+                    LocalUnixStartup::Active | LocalUnixStartup::Failed => {}
+                }
+            }
             "local" => {
                 if selected_tcp_server.local_attach_index == Some(index) {
                     if let Some(client_iface) = startup_local_tcp_attach(
@@ -161,6 +181,23 @@ pub(super) async fn startup_configured_interfaces(
                         manager.set_mode(*active_iface, mode);
                         apply_interface_runtime_config(&mut manager, *active_iface, iface);
                     }
+                }
+            }
+            "local_client" => {
+                if let Some(client_iface) = startup_local_tcp_client_attach(
+                    args,
+                    iface,
+                    &label,
+                    iface_manager,
+                    &mut configured_interfaces[index],
+                    &mut startup_failures,
+                    shared_reconnect_events.clone(),
+                )
+                .await
+                {
+                    startup_successes += 1;
+                    tunnel_synth_ifaces.push(client_iface);
+                    connected_to_shared_instance = true;
                 }
             }
             "tcp_client" | "backbone_client" => {
@@ -1119,6 +1156,62 @@ async fn startup_local_tcp_attach(
         return None;
     };
 
+    startup_local_tcp_attach_endpoint(
+        args,
+        iface,
+        label,
+        endpoint,
+        iface_manager,
+        record,
+        startup_failures,
+        shared_reconnect_events,
+    )
+    .await
+}
+
+async fn startup_local_tcp_client_attach(
+    args: &Args,
+    iface: &InterfaceConfig,
+    label: &str,
+    iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
+    record: &mut InterfaceRecord,
+    startup_failures: &mut Vec<InterfaceStartupFailure>,
+    shared_reconnect_events: Option<tokio::sync::mpsc::UnboundedSender<AddressHash>>,
+) -> Option<AddressHash> {
+    let (Some(host), Some(port)) = (iface.host.as_deref(), iface.port) else {
+        record_startup_failure(
+            record,
+            startup_failures,
+            label.to_string(),
+            iface.kind.clone(),
+            "local_client attach requires host and port for startup".to_string(),
+        );
+        return None;
+    };
+    let endpoint = format!("{}:{}", host, port);
+    startup_local_tcp_attach_endpoint(
+        args,
+        iface,
+        label,
+        endpoint.as_str(),
+        iface_manager,
+        record,
+        startup_failures,
+        shared_reconnect_events,
+    )
+    .await
+}
+
+async fn startup_local_tcp_attach_endpoint(
+    args: &Args,
+    iface: &InterfaceConfig,
+    label: &str,
+    endpoint: &str,
+    iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
+    record: &mut InterfaceRecord,
+    startup_failures: &mut Vec<InterfaceStartupFailure>,
+    shared_reconnect_events: Option<tokio::sync::mpsc::UnboundedSender<AddressHash>>,
+) -> Option<AddressHash> {
     if args.strict_interface_startup {
         if let Err(err) = strict_tcp_client_preflight(endpoint).await {
             record_startup_failure(
@@ -1156,6 +1249,65 @@ async fn startup_local_tcp_attach(
     let runtime_iface = client_iface.to_string();
     mark_interface_startup_status(record, "attached", None, Some(runtime_iface.as_str()));
     Some(client_iface)
+}
+
+#[cfg(unix)]
+async fn startup_local_unix_client_attach(
+    args: &Args,
+    iface: &InterfaceConfig,
+    label: &str,
+    iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
+    record: &mut InterfaceRecord,
+    startup_failures: &mut Vec<InterfaceStartupFailure>,
+    shared_reconnect_events: Option<tokio::sync::mpsc::UnboundedSender<AddressHash>>,
+) -> LocalUnixStartup {
+    let Some(socket_path) = iface
+        .socket_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        record_startup_failure(
+            record,
+            startup_failures,
+            label.to_string(),
+            iface.kind.clone(),
+            "local_client unix requires socket_path for startup".to_string(),
+        );
+        return LocalUnixStartup::Failed;
+    };
+    let endpoint = rns_transport::iface::local::LocalUnixEndpoint::from_config_value(socket_path);
+    startup_local_unix_attach(
+        args,
+        iface,
+        label,
+        endpoint,
+        iface_manager,
+        record,
+        startup_failures,
+        shared_reconnect_events,
+    )
+    .await
+}
+
+#[cfg(not(unix))]
+async fn startup_local_unix_client_attach(
+    _args: &Args,
+    iface: &InterfaceConfig,
+    label: &str,
+    _iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
+    record: &mut InterfaceRecord,
+    startup_failures: &mut Vec<InterfaceStartupFailure>,
+    _shared_reconnect_events: Option<tokio::sync::mpsc::UnboundedSender<AddressHash>>,
+) -> LocalUnixStartup {
+    record_startup_failure(
+        record,
+        startup_failures,
+        label.to_string(),
+        iface.kind.clone(),
+        "local_client unix shared_instance_type is only supported on unix platforms".to_string(),
+    );
+    LocalUnixStartup::Failed
 }
 
 #[cfg(test)]

@@ -355,6 +355,71 @@ interfaces = [
     );
 }
 
+#[test]
+fn bootstrap_local_client_interface_forces_tcp_attach() {
+    let shared_listener =
+        std::net::TcpListener::bind("127.0.0.1:0").expect("bind shared local instance");
+    let port = shared_listener.local_addr().expect("shared local addr").port();
+    shared_listener.set_nonblocking(true).expect("nonblocking listener");
+
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let config_path = temp.path().join("daemon.toml");
+    fs::write(
+        &config_path,
+        format!(
+            r#"
+interfaces = [
+  {{ type = "LocalClientInterface", enabled = true, name = "local-client", shared_instance_type = "tcp", shared_instance_port = {port} }}
+]
+"#
+        ),
+    )
+    .expect("write config");
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let context = runtime.block_on(async {
+        let context =
+            bootstrap::bootstrap(test_args(db_path.clone(), Some(config_path.clone()), None, false))
+                .await;
+        tokio::task::yield_now().await;
+        context
+    });
+
+    let response = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 1, method: "list_interfaces".to_string(), params: None })
+        .expect("list_interfaces");
+    let interfaces = response
+        .result
+        .expect("result")
+        .get("interfaces")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .expect("interfaces array");
+
+    let local = interfaces
+        .iter()
+        .find(|entry| entry.get("type").and_then(|value| value.as_str()) == Some("local_client"))
+        .expect("local_client entry");
+    assert_eq!(
+        local
+            .get("settings")
+            .and_then(|value| value.get("_runtime"))
+            .and_then(|value| value.get("startup_status"))
+            .and_then(|value| value.as_str()),
+        Some("attached")
+    );
+    assert_eq!(
+        local
+            .get("settings")
+            .and_then(|value| value.get("port"))
+            .and_then(|value| value.as_u64()),
+        Some(u64::from(port))
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn bootstrap_starts_local_unix_interface_from_config_without_transport_flag() {

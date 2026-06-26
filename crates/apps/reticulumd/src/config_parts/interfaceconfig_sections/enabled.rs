@@ -115,7 +115,7 @@ impl InterfaceConfig {
                 insert_opt_u64(&mut settings, "target_port", self.target_port.map(u64::from));
                 insert_opt_u64(&mut settings, "mtu", self.mtu.map(|v| v as u64));
             }
-            "local" => {
+            "local" | "local_client" => {
                 insert_opt_string(
                     &mut settings,
                     "shared_instance_type",
@@ -408,7 +408,7 @@ impl InterfaceConfig {
             "kiss_tcp_client" => self.validate_kiss_tcp_client(index),
             "backbone" => self.validate_backbone(index),
             "backbone_client" => self.validate_backbone_client(index),
-            "local" => self.validate_local(index),
+            "local" | "local_client" => self.validate_local(index),
             "pipe" => self.validate_pipe(index),
             "i2p" => self.validate_i2p(index),
             "ble_gatt" => self.validate_ble(index),
@@ -564,7 +564,7 @@ impl InterfaceConfig {
         if self.kind == "backbone" || self.kind == "backbone_client" {
             self.normalize_backbone_aliases(index, original_kind)?;
         }
-        if self.kind == "local" {
+        if self.kind == "local" || self.kind == "local_client" {
             self.normalize_local_aliases(index)?;
         }
         if self.kind == "pipe" {
@@ -617,7 +617,8 @@ impl InterfaceConfig {
             | "kiss_tcp_client"
             | "backbone"
             | "backbone_client"
-            | "local" => {
+            | "local"
+            | "local_client" => {
                 if self.port.is_none() {
                     self.port = Some(port_number_from_value(value, index)?);
                 }

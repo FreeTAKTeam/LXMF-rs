@@ -61,6 +61,8 @@ fn normalize_interface_kind(value: &str) -> String {
         "BackboneInterface" => "backbone".to_string(),
         "BackboneClientInterface" => "backbone_client".to_string(),
         "LocalInterface" => "local".to_string(),
+        "LocalServerInterface" => "local".to_string(),
+        "LocalClientInterface" => "local_client".to_string(),
         "PipeInterface" => "pipe".to_string(),
         "UDPInterface" => "udp".to_string(),
         "SerialInterface" => "serial".to_string(),

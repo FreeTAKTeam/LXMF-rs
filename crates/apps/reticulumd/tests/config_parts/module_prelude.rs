@@ -217,6 +217,42 @@ interfaces = [
 }
 
 #[test]
+fn parses_reticulum_local_server_interface_alias() {
+    let input = r#"
+interfaces = [
+  { type = "LocalServerInterface", enabled = true, name = "local-server", shared_instance_type = "tcp", shared_instance_port = 37428 }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse Python LocalServerInterface config");
+    let iface = &cfg.interfaces[0];
+    assert_eq!(iface.kind, "local");
+    assert_eq!(iface.host.as_deref(), Some("127.0.0.1"));
+    assert_eq!(iface.port, Some(37_428));
+    assert_eq!(iface.mtu, Some(262_144));
+}
+
+#[test]
+fn parses_reticulum_local_client_interface_alias() {
+    let input = r#"
+interfaces = [
+  { type = "LocalClientInterface", enabled = true, name = "local-client", shared_instance_type = "tcp", shared_instance_port = 37428, fixed_mtu = 4096 }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse Python LocalClientInterface config");
+    let iface = &cfg.interfaces[0];
+    assert_eq!(iface.kind, "local_client");
+    assert_eq!(iface.host.as_deref(), Some("127.0.0.1"));
+    assert_eq!(iface.port, Some(37_428));
+    assert_eq!(iface.mtu, Some(4096));
+
+    let settings = iface.settings_json().expect("local client settings");
+    assert_eq!(settings["shared_instance_type"], "tcp");
+    assert_eq!(settings["host"], "127.0.0.1");
+    assert_eq!(settings["port"], 37_428);
+    assert_eq!(settings["mtu"], 4096);
+}
+
+#[test]
 fn parses_native_local_interface_with_python_default_port_and_mtu() {
     let input = r#"
 interfaces = [
