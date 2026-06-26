@@ -1,5 +1,5 @@
 struct RecordingRNodeManagementBridge {
-    calls: std::sync::Mutex<Vec<(String, String, Option<u8>)>>,
+    calls: std::sync::Mutex<Vec<(String, String, JsonValue)>>,
 }
 
 impl RecordingRNodeManagementBridge {
@@ -7,7 +7,7 @@ impl RecordingRNodeManagementBridge {
         Self { calls: std::sync::Mutex::new(Vec::new()) }
     }
 
-    fn calls(&self) -> Vec<(String, String, Option<u8>)> {
+    fn calls(&self) -> Vec<(String, String, JsonValue)> {
         self.calls.lock().expect("calls mutex poisoned").clone()
     }
 }
@@ -17,18 +17,18 @@ impl RNodeManagementBridge for RecordingRNodeManagementBridge {
         &self,
         iface: &str,
         command: &str,
-        pattern: Option<u8>,
+        params: &JsonValue,
     ) -> Result<JsonValue, std::io::Error> {
         self.calls.lock().expect("calls mutex poisoned").push((
             iface.to_string(),
             command.to_string(),
-            pattern,
+            params.clone(),
         ));
         Ok(json!({
             "iface": iface,
             "command": command,
             "queued": true,
-            "pattern": pattern,
+            "pattern": params.get("pattern").cloned().unwrap_or(JsonValue::Null),
         }))
     }
 }
@@ -40,7 +40,7 @@ impl RNodeManagementBridge for FailingRNodeManagementBridge {
         &self,
         _iface: &str,
         _command: &str,
-        _pattern: Option<u8>,
+        _params: &JsonValue,
     ) -> Result<JsonValue, std::io::Error> {
         Err(std::io::Error::new(std::io::ErrorKind::NotFound, "unknown RNode interface"))
     }
@@ -72,7 +72,15 @@ fn rnode_management_rpc_delegates_to_bridge() {
     assert_eq!(result["pattern"].as_u64(), Some(3));
     assert_eq!(
         bridge.calls(),
-        vec![("rnode-main".to_string(), "blink".to_string(), Some(3))]
+        vec![(
+            "rnode-main".to_string(),
+            "blink".to_string(),
+            json!({
+                "iface": "rnode-main",
+                "command": "blink",
+                "pattern": 3
+            })
+        )]
     );
 }
 

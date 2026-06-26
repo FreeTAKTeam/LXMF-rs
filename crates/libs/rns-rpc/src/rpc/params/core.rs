@@ -168,8 +168,6 @@ struct TicketGenerateParams {
 struct RNodeManagementParams {
     iface: String,
     command: String,
-    #[serde(default)]
-    pattern: Option<u8>,
 }
 
 #[derive(Debug, Deserialize, Default)]

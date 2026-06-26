@@ -187,9 +187,13 @@ streams also expose a transport-local management dispatch handle that writes
 pre-encoded command frames through the live KISS runtime; radio-state query and
 blink dispatch are covered by local duplex tests. The daemon exposes those
 initial safe serial/TCP operations through `rnode_management` RPC and the
-`rnodeconf-rs query-radio-state` / `rnodeconf-rs blink` commands. Broader
-daemon/RPC management controls and end-to-end RNode management operations over
-BLE remain incomplete.
+`rnodeconf-rs query-radio-state` / `rnodeconf-rs blink` commands. The same
+path also queues read/display/local-radio safe controls: config read, ROM
+read, display intensity/blanking/rotation/recondition/address, NeoPixel
+intensity, and interference-avoidance enable/disable. Destructive or
+persistent mutations such as config save/delete, ROM write/wipe, Wi-Fi
+credential changes, Bluetooth control, firmware update indicators, and
+end-to-end RNode management operations over BLE remain incomplete.
 
 ## Validation Rules
 

@@ -83,6 +83,116 @@ fn rnodeconf_sends_blink_rpc() {
     rpc.thread.join().expect("mock rpc server");
 }
 
+#[test]
+fn rnodeconf_sends_read_config_rpc() {
+    let rpc = spawn_mock_rpc(|request| {
+        assert_eq!(request.method, "rnode_management");
+        let params = request.params.expect("params");
+        assert_eq!(params["iface"].as_str(), Some("rnode-main"));
+        assert_eq!(params["command"].as_str(), Some("config_read"));
+        RpcResponse {
+            id: request.id,
+            result: Some(json!({
+                "queued": true,
+                "iface": "rnode-main",
+                "command": "config_read"
+            })),
+            error: None,
+        }
+    });
+
+    let output = Command::new(rnodeconf_bin())
+        .arg("--rpc")
+        .arg(rpc.addr)
+        .arg("read-config")
+        .arg("--interface")
+        .arg("rnode-main")
+        .output()
+        .expect("run rnodeconf-rs");
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
+    let value: serde_json::Value = serde_json::from_str(&stdout).expect("json stdout");
+    assert_eq!(value["command"].as_str(), Some("config_read"));
+    rpc.thread.join().expect("mock rpc server");
+}
+
+#[test]
+fn rnodeconf_sends_display_intensity_rpc() {
+    let rpc = spawn_mock_rpc(|request| {
+        assert_eq!(request.method, "rnode_management");
+        let params = request.params.expect("params");
+        assert_eq!(params["iface"].as_str(), Some("rnode-main"));
+        assert_eq!(params["command"].as_str(), Some("display_intensity"));
+        assert_eq!(params["intensity"].as_u64(), Some(8));
+        RpcResponse {
+            id: request.id,
+            result: Some(json!({
+                "queued": true,
+                "iface": "rnode-main",
+                "command": "display_intensity",
+                "intensity": 8
+            })),
+            error: None,
+        }
+    });
+
+    let output = Command::new(rnodeconf_bin())
+        .arg("--rpc")
+        .arg(rpc.addr)
+        .arg("set-display-intensity")
+        .arg("--interface")
+        .arg("rnode-main")
+        .arg("--intensity")
+        .arg("8")
+        .output()
+        .expect("run rnodeconf-rs");
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
+    let value: serde_json::Value = serde_json::from_str(&stdout).expect("json stdout");
+    assert_eq!(value["command"].as_str(), Some("display_intensity"));
+    assert_eq!(value["intensity"].as_u64(), Some(8));
+    rpc.thread.join().expect("mock rpc server");
+}
+
+#[test]
+fn rnodeconf_sends_disable_interference_avoidance_rpc() {
+    let rpc = spawn_mock_rpc(|request| {
+        assert_eq!(request.method, "rnode_management");
+        let params = request.params.expect("params");
+        assert_eq!(params["iface"].as_str(), Some("rnode-main"));
+        assert_eq!(params["command"].as_str(), Some("disable_interference_avoidance"));
+        assert_eq!(params["disabled"].as_bool(), Some(true));
+        RpcResponse {
+            id: request.id,
+            result: Some(json!({
+                "queued": true,
+                "iface": "rnode-main",
+                "command": "disable_interference_avoidance",
+                "disabled": true
+            })),
+            error: None,
+        }
+    });
+
+    let output = Command::new(rnodeconf_bin())
+        .arg("--rpc")
+        .arg(rpc.addr)
+        .arg("disable-interference-avoidance")
+        .arg("--interface")
+        .arg("rnode-main")
+        .output()
+        .expect("run rnodeconf-rs");
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
+    let value: serde_json::Value = serde_json::from_str(&stdout).expect("json stdout");
+    assert_eq!(value["command"].as_str(), Some("disable_interference_avoidance"));
+    assert_eq!(value["disabled"].as_bool(), Some(true));
+    rpc.thread.join().expect("mock rpc server");
+}
+
 struct MockRpc {
     addr: String,
     thread: thread::JoinHandle<()>,

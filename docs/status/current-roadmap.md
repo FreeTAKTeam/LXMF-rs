@@ -89,7 +89,9 @@ The project is best described by capability level:
   pre-encoded KISS command frames through the live KISS runtime; the first
   covered operations are radio-state query and blink indication, backed by
   duplex stream tests, daemon `rnode_management` RPC dispatch, reticulumd
-  bridge dispatch tests, and `rnodeconf-rs` mock-RPC CLI tests. Frame-level helpers exist for Bluetooth control,
+  bridge dispatch tests, and `rnodeconf-rs` mock-RPC CLI tests. The daemon/tool
+  path now also queues safe config/ROM read, display, NeoPixel, and
+  interference-avoidance controls. Frame-level helpers exist for Bluetooth control,
   display/NeoPixel controls, interference-avoidance control, Wi-Fi settings,
   config save/delete, firmware-update metadata, and ROM/EEPROM read/write/wipe
   requests.

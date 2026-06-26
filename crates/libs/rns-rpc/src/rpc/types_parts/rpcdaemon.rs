@@ -115,7 +115,7 @@ pub trait RNodeManagementBridge: Send + Sync {
         &self,
         iface: &str,
         command: &str,
-        pattern: Option<u8>,
+        params: &JsonValue,
     ) -> Result<JsonValue, std::io::Error>;
 }
 

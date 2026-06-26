@@ -161,10 +161,13 @@ All methods below are required for full CLI feature coverage.
 - `reload_config` (no params)
 - `rnode_management`
 : Params keys: `iface`, `command` (optional: `pattern`). Initial supported
-  commands are `radio_state_query`/`query_radio_state` and `blink`.
-  Serial/TCP RNodeInterface handles are selected by runtime iface id or an
-  unambiguous configured interface name. Successful responses report that the
-  management frame was queued, not that the radio has completed the operation.
+  commands are `radio_state_query`/`query_radio_state`, `blink`,
+  `config_read`/`read_config`, `rom_read`/`read_rom`, display
+  intensity/blanking/rotation/recondition/address controls, NeoPixel
+  intensity, and interference-avoidance enable/disable controls. Serial/TCP
+  RNodeInterface handles are selected by runtime iface id or an unambiguous
+  configured interface name. Successful responses report that the management
+  frame was queued, not that the radio has completed the operation.
 
 `list_interfaces` response notes:
 

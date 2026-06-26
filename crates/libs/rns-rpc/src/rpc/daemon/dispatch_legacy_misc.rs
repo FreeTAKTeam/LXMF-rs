@@ -128,7 +128,7 @@ impl RpcDaemon {
                 let params = request.params.ok_or_else(|| {
                     std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing params")
                 })?;
-                let parsed: RNodeManagementParams = serde_json::from_value(params)
+                let parsed: RNodeManagementParams = serde_json::from_value(params.clone())
                     .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
                 let iface = parsed.iface.trim();
                 if iface.is_empty() {
@@ -159,7 +159,7 @@ impl RpcDaemon {
                         )),
                     });
                 };
-                match bridge.dispatch_rnode_management(iface, command, parsed.pattern) {
+                match bridge.dispatch_rnode_management(iface, command, &params) {
                     Ok(result) => {
                         Ok(RpcResponse { id: request.id, result: Some(result), error: None })
                     }
