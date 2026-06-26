@@ -238,6 +238,85 @@
                 .and_then(JsonValue::as_str),
             None
         );
+        assert_eq!(
+            runtime
+                .get("carrier_runtime")
+                .and_then(|value| value.get("carrier_changed"))
+                .and_then(JsonValue::as_bool),
+            Some(false)
+        );
+        assert_eq!(
+            runtime
+                .get("carrier_runtime")
+                .and_then(|value| value.get("carrier_event_count"))
+                .and_then(JsonValue::as_u64),
+            Some(0)
+        );
+        assert_eq!(
+            runtime
+                .get("carrier_runtime")
+                .and_then(|value| value.get("link_local_update")),
+            Some(&JsonValue::Null)
+        );
+    }
+
+    #[test]
+    fn auto_carrier_runtime_json_exposes_events_and_link_local_restart() {
+        let plan = build_startup_plan_from_candidates(
+            &auto_iface(),
+            vec![AutoInterfaceDeviceCandidate {
+                ifname: "eth0".to_string(),
+                ipv6_addresses: vec!["fe80::1234".to_string()],
+            }],
+        )
+        .expect("startup plan");
+        let mut runtime_state =
+            AutoRuntimeState::from_startup_plan(&plan.startup_plan, core::time::Duration::ZERO);
+        let carrier_events =
+            vec![AutoMulticastCarrierEvent::CarrierLost { ifname: "eth0".to_string() }];
+        let mut discovery_state = plan.discovery_state();
+        let link_local_update = discovery_state
+            .update_adopted_link_local_address(&plan.config, "eth0", "fe80::5678%eth0")
+            .expect("link-local replacement");
+
+        assert!(runtime_state.record_carrier_events(&carrier_events));
+        assert!(runtime_state.record_link_local_update(Some(&link_local_update)));
+
+        let runtime =
+            auto_carrier_runtime_json(&runtime_state, &carrier_events, Some(&link_local_update));
+
+        assert_eq!(
+            runtime.get("carrier_changed").and_then(JsonValue::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            runtime.get("carrier_event_count").and_then(JsonValue::as_u64),
+            Some(1)
+        );
+        assert_eq!(
+            runtime
+                .get("carrier_events")
+                .and_then(JsonValue::as_array)
+                .and_then(|items| items.first())
+                .and_then(|item| item.get("event"))
+                .and_then(JsonValue::as_str),
+            Some("carrier_lost")
+        );
+        assert_eq!(
+            runtime
+                .get("link_local_update")
+                .and_then(|value| value.get("old_link_local_address"))
+                .and_then(JsonValue::as_str),
+            Some("fe80::1234")
+        );
+        assert_eq!(
+            runtime
+                .get("link_local_update")
+                .and_then(|value| value.get("restart_data_listener"))
+                .and_then(|value| value.get("bind_address"))
+                .and_then(JsonValue::as_str),
+            Some("fe80::5678%eth0")
+        );
     }
 
     #[test]

@@ -1,6 +1,8 @@
 impl AutoDaemonStartupPlan {
 
     pub(crate) fn runtime_json(&self) -> JsonValue {
+        let initial_runtime_state =
+            AutoRuntimeState::from_startup_plan(&self.startup_plan, core::time::Duration::ZERO);
         let mut initial_peer_announces = Vec::new();
         let _ = self.send_initial_peer_announces(|datagram| {
             initial_peer_announces.push(peering_datagram_json(datagram));
@@ -13,6 +15,7 @@ impl AutoDaemonStartupPlan {
             "candidate_devices": self.candidates.iter().map(candidate_json).collect::<Vec<_>>(),
             "adopted_devices": self.adopted_devices.iter().map(adopted_json).collect::<Vec<_>>(),
             "startup_plan": startup_plan_json(&self.startup_plan),
+            "carrier_runtime": auto_carrier_runtime_json(&initial_runtime_state, &[], None),
             "planned_initial_peer_announce_count": initial_peer_announces.len(),
             "planned_repeat_peer_announce_scheduler_count": usize::from(!self.adopted_devices.is_empty()),
             "planned_peer_job_scheduler_count": usize::from(!self.adopted_devices.is_empty()),
@@ -162,6 +165,7 @@ impl AutoDaemonStartupPlan {
                 expired_peer_count: run.expired_peers.len(),
                 reverse_peer_announce_count: datagrams.len(),
                 missing_initial_echo_count: run.missing_initial_echo_interfaces.len(),
+                carrier_changed: !run.carrier_events.is_empty(),
                 carrier_event_count: run.carrier_events.len(),
             },
             datagrams,

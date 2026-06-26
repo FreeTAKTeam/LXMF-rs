@@ -126,7 +126,7 @@ impl AutoDaemonStartupPlan {
                             Ok(summary)
                                 if summary.expired_peer_count > 0
                                     || summary.reverse_peer_announce_count > 0
-                                    || summary.carrier_event_count > 0 =>
+                                    || summary.carrier_changed =>
                             {
                                 log::debug!(
                                     "[daemon-auto] peer-job scheduler expired={} reverse_announces={} missing_initial_echoes={} carrier_events={}",

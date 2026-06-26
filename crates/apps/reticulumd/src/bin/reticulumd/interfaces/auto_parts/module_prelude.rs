@@ -9,7 +9,8 @@ use rns_transport::iface::auto::{
     AutoDiscoveryRejectReason, AutoDiscoveryScope, AutoDiscoveryState,
     AutoInboundPacketDeduplicator, AutoInterfaceAdoptedDevice, AutoInterfaceConfig,
     AutoInterfaceDeviceCandidate, AutoInterfaceDeviceFilter, AutoInterfacePlatform,
-    AutoInterfaceTiming, AutoPeerInboundDecision, AutoPeeringPacket, AutoPeeringPacketKind,
+    AutoInterfaceTiming, AutoLinkLocalAddressUpdate, AutoMulticastCarrierEvent,
+    AutoPeerInboundDecision, AutoPeeringPacket, AutoPeeringPacketKind, AutoRuntimeState,
     AutoStartupPlan, MulticastAddressType,
 };
 
@@ -180,6 +181,7 @@ pub(crate) struct AutoPeerJobRuntimeSummary {
     pub(crate) expired_peer_count: usize,
     pub(crate) reverse_peer_announce_count: usize,
     pub(crate) missing_initial_echo_count: usize,
+    pub(crate) carrier_changed: bool,
     pub(crate) carrier_event_count: usize,
 }
 

@@ -157,6 +157,47 @@ fn data_socket_bind_json(target: &AutoDataSocketBindTarget) -> JsonValue {
     })
 }
 
+pub(crate) fn auto_carrier_runtime_json(
+    state: &AutoRuntimeState,
+    carrier_events: &[AutoMulticastCarrierEvent],
+    link_local_update: Option<&AutoLinkLocalAddressUpdate>,
+) -> JsonValue {
+    json!({
+        "online": state.online,
+        "final_init_done": state.final_init_done,
+        "carrier_changed": state.carrier_changed,
+        "carrier_event_count": carrier_events.len(),
+        "carrier_events": carrier_events.iter().map(carrier_event_json).collect::<Vec<_>>(),
+        "link_local_update": link_local_update.map(link_local_update_json),
+    })
+}
+
+fn carrier_event_json(event: &AutoMulticastCarrierEvent) -> JsonValue {
+    match event {
+        AutoMulticastCarrierEvent::CarrierLost { ifname } => {
+            json!({
+                "event": "carrier_lost",
+                "ifname": ifname,
+            })
+        }
+        AutoMulticastCarrierEvent::CarrierRecovered { ifname } => {
+            json!({
+                "event": "carrier_recovered",
+                "ifname": ifname,
+            })
+        }
+    }
+}
+
+fn link_local_update_json(update: &AutoLinkLocalAddressUpdate) -> JsonValue {
+    json!({
+        "ifname": update.ifname,
+        "old_link_local_address": update.old_link_local_address,
+        "new_link_local_address": update.new_link_local_address,
+        "restart_data_listener": data_listener_json(&update.listener_binding),
+    })
+}
+
 pub(crate) fn discovery_runtime_summary_json(summary: &AutoDiscoveryRuntimeSummary) -> JsonValue {
     json!({
         "bound_socket_count": summary.bound_socket_count,
