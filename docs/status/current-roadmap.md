@@ -82,7 +82,8 @@ The project is best described by capability level:
   bearer, online/detected state, firmware, radio configuration, counters,
   battery, hardware errors, and last command error. An opt-in prepared-host
   smoke harness records serial/TCP/BLE RNode lifecycle evidence under
-  `target/rnode-hil/`.
+  `target/rnode-hil/`. Display-capable BLE RNode shutdown now disables the
+  external framebuffer before radio-off/leave frames.
 - WeaveInterface has a transport-side WDCL/HDLC slice: a shared serial parent
   can answer discovery, learn endpoint events, register virtual endpoint
   children, receive endpoint packets, write direct endpoint commands, and expose

@@ -88,10 +88,11 @@ placeholders:
   unknown `multicast_address_type` values to `temporary`.
 - Serial, TCP/Wi-Fi, and feature-gated BLE LoRa/RNode with startup probes,
   Python and Android-style selector aliases, configuration validation,
-  telemetry, flow control, teardown, and live
-  daemon/RPC `rnode_status` refresh plus compact `rnstatus-rs` human summaries
-  for probe and radio state, with an opt-in prepared-host smoke harness for
-  serial, TCP/Wi-Fi, or BLE RNode devices.
+  telemetry, flow control, teardown, display-capable BLE external-framebuffer
+  disable before shutdown, and live daemon/RPC `rnode_status` refresh plus
+  compact `rnstatus-rs` human summaries for probe and radio state, with an
+  opt-in prepared-host smoke harness for serial, TCP/Wi-Fi, or BLE RNode
+  devices.
 - Shared serial/TCP RNodeMulti baseline with nested vport subinterfaces,
   `CMD_SEL_INT` KISS vport selection, direct routing to virtual child
   interfaces, Python-style child enabled/interface-enabled handling, broadcast
@@ -150,8 +151,9 @@ pending.
 Ordinary serial/TCP and feature-gated BLE `RNodeInterface` now refresh transport-side probe/radio
 state into daemon/RPC `_runtime.lora.rnode_status`, and `rnstatus-rs` renders a
 compact human summary for operators. An opt-in prepared-host smoke harness now
-records serial/TCP/BLE RNode lifecycle evidence under `target/rnode-hil/`;
-broader BLE hardware evidence remains pending.
+records serial/TCP/BLE RNode lifecycle evidence under `target/rnode-hil/`.
+Display-capable BLE RNode shutdown now disables the external framebuffer before
+radio-off/leave frames. Broader BLE hardware evidence remains pending.
 `RNodeMultiInterface` is tracked separately as an in-progress family: the
 shared serial/TCP vport routing slice exists and startup validates detect,
 firmware `>= 1.74`, platform, MCU, `CMD_INTERFACES`, and hardware-reported

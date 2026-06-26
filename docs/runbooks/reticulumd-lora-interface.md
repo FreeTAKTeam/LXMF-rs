@@ -174,10 +174,12 @@ payloads, and its command monitor exposes retained probe status, radio status,
 non-fatal hardware errors, fatal command error, online state, and reported
 bitrate. Daemon `RNodeInterface` `ble://` startup appends the same RNode
 detect, firmware, platform, MCU, radio configuration, airtime-lock, and
-radio-on command frames used by serial/TCP RNode startup, validates startup and
-fatal command responses through the same RNode protocol state, and shutdown
-writes radio-off plus leave-host frames before BLE cleanup. Broader RNode
-management operations over BLE remain incomplete.
+radio-on command frames used by serial/TCP RNode startup and validates startup
+and fatal command responses through the same RNode protocol state. If startup
+probe identifies an ESP32 or NRF52 display-capable platform, BLE shutdown
+prepends Python-style external-framebuffer disable before radio-off plus
+leave-host frames and backend cleanup. Broader RNode management operations over
+BLE remain incomplete.
 
 ## Validation Rules
 

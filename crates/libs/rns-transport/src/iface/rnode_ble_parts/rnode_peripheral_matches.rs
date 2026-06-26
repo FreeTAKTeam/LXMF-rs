@@ -77,7 +77,14 @@ where
     }
 
     pub async fn shutdown(&mut self) -> Result<(), RnodeBleKissError> {
-        let writes = self.session.shutdown_frames();
+        self.shutdown_with_prefix_frames(Vec::new()).await
+    }
+
+    pub async fn shutdown_with_prefix_frames(
+        &mut self,
+        prefix_frames: Vec<Vec<u8>>,
+    ) -> Result<(), RnodeBleKissError> {
+        let writes = self.session.shutdown_frames_with_prefix(prefix_frames);
         self.write_all(writes, "shutdown_write").await
     }
 
@@ -480,7 +487,12 @@ impl NativeRnodeBleKissInterface {
                 }
             }
 
-            let _ = runtime.shutdown().await;
+            let shutdown_prefix_frames = command_monitor
+                .as_ref()
+                .and_then(|monitor| monitor.external_framebuffer_frame(false))
+                .into_iter()
+                .collect::<Vec<_>>();
+            let _ = runtime.shutdown_with_prefix_frames(shutdown_prefix_frames).await;
             let mut backend = runtime.into_backend();
             let _ = backend.cleanup().await;
             if context.cancel.is_cancelled() || iface_stop.is_cancelled() {

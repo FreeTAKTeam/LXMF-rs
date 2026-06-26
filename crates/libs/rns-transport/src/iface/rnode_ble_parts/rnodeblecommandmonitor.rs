@@ -78,6 +78,11 @@ impl RnodeBleCommandMonitor {
     }
 
     #[must_use]
+    pub fn external_framebuffer_frame(&self, enable: bool) -> Option<Vec<u8>> {
+        self.lora.probe_status().external_framebuffer_frame(enable)
+    }
+
+    #[must_use]
     pub fn runtime_status_json(&self, endpoint: &str) -> serde_json::Value {
         rnode_ble_runtime_status_json(&self.lora, endpoint)
     }
@@ -214,10 +219,17 @@ impl RnodeBleKissSession {
 
     #[must_use]
     pub fn shutdown_frames(&self) -> Vec<RnodeBleWrite> {
-        self.config
-            .shutdown_frames
-            .iter()
-            .cloned()
+        self.shutdown_frames_with_prefix(std::iter::empty::<Vec<u8>>())
+    }
+
+    #[must_use]
+    pub fn shutdown_frames_with_prefix(
+        &self,
+        prefix_frames: impl IntoIterator<Item = Vec<u8>>,
+    ) -> Vec<RnodeBleWrite> {
+        prefix_frames
+            .into_iter()
+            .chain(self.config.shutdown_frames.iter().cloned())
             .flat_map(|frame| self.kiss_writes(frame))
             .collect()
     }
