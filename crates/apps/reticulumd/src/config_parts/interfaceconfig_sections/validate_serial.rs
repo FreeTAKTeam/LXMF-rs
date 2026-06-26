@@ -130,6 +130,9 @@ impl InterfaceConfig {
         if self.baud_rate == Some(0) {
             return Err(format!("interfaces[{index}].baud_rate must be > 0 for kiss"));
         }
+        if self.flow_control.as_ref().is_some_and(|value| !value.is_bool()) {
+            return Err(format!("interfaces[{index}].flow_control must be a boolean for kiss"));
+        }
         self.validate_id_beacon(index, "kiss")?;
         if let Some(mtu) = self.mtu {
             if !(64..=65535).contains(&mtu) {
@@ -248,6 +251,11 @@ impl InterfaceConfig {
         }
         if self.port == Some(0) {
             return Err(format!("interfaces[{index}].port must be > 0 for kiss_tcp_client"));
+        }
+        if self.flow_control.as_ref().is_some_and(|value| !value.is_bool()) {
+            return Err(format!(
+                "interfaces[{index}].flow_control must be a boolean for kiss_tcp_client"
+            ));
         }
         self.validate_id_beacon(index, "kiss_tcp_client")?;
         if let Some(mtu) = self.mtu {

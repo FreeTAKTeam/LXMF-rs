@@ -319,6 +319,8 @@ impl InterfaceConfig {
         self.interface_mode().map_err(|err| format!("interfaces[{index}].{err}"))?;
         self.validate_announce_pacing(index)?;
         match kind {
+            "tcp_client" => self.validate_tcp_client(index),
+            "tcp_server" => self.validate_tcp_server(index),
             "udp" => self.validate_udp(index),
             "auto" => self.validate_auto(index),
             "serial" => self.validate_serial(index),
@@ -428,6 +430,9 @@ impl InterfaceConfig {
         if self.kind == "kiss" {
             self.normalize_kiss_aliases(index, original_kind)?;
         }
+        if self.kind == "kiss_tcp_client" {
+            self.normalize_kiss_tcp_client_aliases(index);
+        }
         if self.kind == "ax25_kiss" {
             self.normalize_ax25_kiss_aliases(index)?;
         }
@@ -504,6 +509,46 @@ impl InterfaceConfig {
             self.port = self.take_u16_alias_for_kind("listen_port", index, "tcp_server")?;
         } else {
             let _ = self.take_u16_alias_for_kind("listen_port", index, "tcp_server")?;
+        }
+        Ok(())
+    }
+
+    fn validate_tcp_client(&self, index: usize) -> Result<(), String> {
+        if !self.enabled() {
+            return Ok(());
+        }
+        require_non_empty(
+            self.host.as_deref(),
+            &format!("interfaces[{index}].host or target_host is required for tcp_client"),
+        )?;
+        if self.port.is_none() {
+            return Err(format!("interfaces[{index}].port or target_port is required for tcp_client"));
+        }
+        if self.port == Some(0) {
+            return Err(format!("interfaces[{index}].port must be > 0 for tcp_client"));
+        }
+        if let Some(mtu) = self.mtu {
+            if mtu == 0 {
+                return Err(format!("interfaces[{index}].mtu must be > 0 for tcp_client"));
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_tcp_server(&self, index: usize) -> Result<(), String> {
+        if !self.enabled() {
+            return Ok(());
+        }
+        if let Some(host) = self.host.as_deref() {
+            require_non_empty(
+                Some(host),
+                &format!("interfaces[{index}].host or listen_ip cannot be empty for tcp_server"),
+            )?;
+        }
+        if let Some(mtu) = self.mtu {
+            if mtu == 0 {
+                return Err(format!("interfaces[{index}].mtu must be > 0 for tcp_server"));
+            }
         }
         Ok(())
     }

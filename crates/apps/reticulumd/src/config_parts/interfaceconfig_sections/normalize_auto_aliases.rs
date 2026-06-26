@@ -230,6 +230,14 @@ impl InterfaceConfig {
         Ok(())
     }
 
+    fn normalize_kiss_tcp_client_aliases(&mut self, _index: usize) {
+        if self.kiss_flow_control.is_none() {
+            if let Some(flow_control) = self.flow_control.as_ref().and_then(toml::Value::as_bool) {
+                self.kiss_flow_control = Some(flow_control);
+            }
+        }
+    }
+
     fn normalize_ax25_kiss_aliases(&mut self, index: usize) -> Result<(), String> {
         if self.baud_rate.is_none() {
             self.baud_rate = self

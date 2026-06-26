@@ -81,7 +81,7 @@ interfaces = [
 fn parses_reticulum_tcp_client_kiss_framing_as_kiss_tcp_client() {
     let input = r#"
 interfaces = [
-  { type = "TCPClientInterface", enabled = true, name = "python-kiss-tcp", target_host = "192.0.2.10", target_port = 8001, kiss_framing = true, fixed_mtu = 512 }
+  { type = "TCPClientInterface", enabled = true, name = "python-kiss-tcp", target_host = "192.0.2.10", target_port = 8001, kiss_framing = true, fixed_mtu = 512, flow_control = true }
 ]
 "#;
     let cfg = DaemonConfig::from_toml(input)
@@ -97,6 +97,22 @@ interfaces = [
     assert_eq!(settings["host"], "192.0.2.10");
     assert_eq!(settings["port"], 8001);
     assert_eq!(settings["mtu"], 512);
+    assert_eq!(settings["kiss_flow_control"], true);
+}
+
+#[test]
+fn rejects_enabled_tcp_client_missing_endpoint() {
+    let input = r#"
+interfaces = [
+  { type = "TCPClientInterface", enabled = true, name = "broken-client" }
+]
+"#;
+    let err = DaemonConfig::from_toml(input).expect_err("tcp client endpoint should be required");
+    let message = err.to_string();
+    assert!(
+        message.contains("host or target_host is required for tcp_client"),
+        "unexpected parse error: {message}"
+    );
 }
 
 #[test]
@@ -112,6 +128,21 @@ interfaces = [
     assert_eq!(iface.host.as_deref(), Some("127.0.0.1"));
     assert_eq!(iface.port, Some(4242));
     assert_eq!(cfg.tcp_server_endpoints(), vec![("127.0.0.1".to_string(), 4242)]);
+}
+
+#[test]
+fn rejects_enabled_tcp_server_empty_host() {
+    let input = r#"
+interfaces = [
+  { type = "TCPServerInterface", enabled = true, name = "broken-server", listen_ip = "   ", listen_port = 0 }
+]
+"#;
+    let err = DaemonConfig::from_toml(input).expect_err("tcp server empty host should fail");
+    let message = err.to_string();
+    assert!(
+        message.contains("host or listen_ip cannot be empty for tcp_server"),
+        "unexpected parse error: {message}"
+    );
 }
 
 #[test]
@@ -757,4 +788,32 @@ interfaces = [
     assert_eq!(settings["persistence"], 64);
     assert_eq!(settings["slot_time_ms"], 20);
     assert_eq!(settings["kiss_flow_control"], true);
+}
+
+#[test]
+fn rejects_reticulum_kiss_flow_control_non_boolean() {
+    let input = r#"
+interfaces = [
+  { type = "KISSInterface", enabled = true, name = "kiss-main", port = "/dev/ttyACM0", flow_control = "yes" }
+]
+"#;
+    let err = DaemonConfig::from_toml(input).expect_err("kiss flow_control must be boolean");
+    let message = err.to_string();
+    assert!(
+        message.contains("flow_control must be a boolean for kiss"),
+        "unexpected parse error: {message}"
+    );
+
+    let input = r#"
+interfaces = [
+  { type = "kiss_tcp_client", enabled = true, name = "kiss-wifi", host = "192.0.2.10", port = 8001, flow_control = "yes" }
+]
+"#;
+    let err =
+        DaemonConfig::from_toml(input).expect_err("kiss_tcp_client flow_control must be boolean");
+    let message = err.to_string();
+    assert!(
+        message.contains("flow_control must be a boolean for kiss_tcp_client"),
+        "unexpected parse error: {message}"
+    );
 }
