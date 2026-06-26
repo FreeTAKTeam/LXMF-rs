@@ -575,7 +575,11 @@ impl InterfaceConfig {
     }
 
     fn normalize_aliases(&mut self, index: usize, original_kind: &str) -> Result<(), String> {
-        self.normalize_port_alias(index)?;
+        if self.kind == "udp" {
+            self.normalize_udp_aliases(index)?;
+        } else {
+            self.normalize_port_alias(index)?;
+        }
         if self.kind == "tcp_client" {
             self.normalize_tcp_client_aliases(index)?;
         }
@@ -593,9 +597,6 @@ impl InterfaceConfig {
         }
         if self.kind == "i2p" {
             self.normalize_i2p_aliases(index)?;
-        }
-        if self.kind == "udp" {
-            self.normalize_udp_aliases(index)?;
         }
         if self.kind == "auto" {
             self.normalize_auto_aliases(index)?;
@@ -1043,32 +1044,32 @@ impl InterfaceConfig {
     }
 
     fn normalize_udp_aliases(&mut self, index: usize) -> Result<(), String> {
+        let shared_port = self.take_u16_alias_for_kind("port", index, "udp")?;
         if self.host.is_none() {
             self.host = self.take_string_alias_for_kind("listen_ip", index, "udp")?;
         } else {
             let _ = self.take_string_alias_for_kind("listen_ip", index, "udp")?;
         }
         if self.port.is_none() {
-            self.port = self.take_u16_alias_for_kind("listen_port", index, "udp")?;
+            self.port =
+                self.take_u16_alias_for_kind("listen_port", index, "udp")?.or(shared_port);
         } else {
             let _ = self.take_u16_alias_for_kind("listen_port", index, "udp")?;
         }
-        let used_forward_ip_alias = if self.target_host.is_none() {
-            let forward_ip = self.take_string_alias_for_kind("forward_ip", index, "udp")?;
-            let used = forward_ip.is_some();
-            self.target_host = forward_ip;
-            used
+        let forward_ip = if self.target_host.is_none() {
+            self.take_string_alias_for_kind("forward_ip", index, "udp")?
+                .and_then(non_empty_string)
         } else {
             let _ = self.take_string_alias_for_kind("forward_ip", index, "udp")?;
-            false
+            None
         };
-        if self.target_port.is_none() {
-            self.target_port = self.take_u16_alias_for_kind("forward_port", index, "udp")?;
-        } else {
-            let _ = self.take_u16_alias_for_kind("forward_port", index, "udp")?;
+        let forward_port = self.take_u16_alias_for_kind("forward_port", index, "udp")?;
+        let target_port = forward_port.or(shared_port);
+        if self.target_host.is_none() && target_port.is_some() {
+            self.target_host = forward_ip;
         }
-        if used_forward_ip_alias && self.target_port.is_none() {
-            self.target_port = self.port;
+        if self.target_port.is_none() {
+            self.target_port = if self.target_host.is_some() { target_port } else { None };
         }
         Ok(())
     }

@@ -32,6 +32,40 @@ interfaces = [
 }
 
 #[test]
+fn parses_android_kiss_beacon_aliases_as_python_id_beacon() {
+    let input = r#"
+interfaces = [
+  { type = "KISSInterface", enabled = true, name = "android-kiss", port = "/dev/ttyACM0", beacon_interval = 900, beacon_data = "ANDROID-1" }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse Android KISS beacon aliases");
+    let iface = &cfg.interfaces[0];
+
+    assert_eq!(iface.kind, "kiss");
+    assert_eq!(iface.id_interval, Some(900));
+    assert_eq!(iface.id_callsign.as_deref(), Some("ANDROID-1"));
+
+    let settings = iface.settings_json().expect("settings");
+    assert_eq!(settings["id_interval"], 900);
+    assert_eq!(settings["id_callsign"], "ANDROID-1");
+}
+
+#[test]
+fn android_kiss_beacon_aliases_preserve_canonical_id_beacon_precedence() {
+    let input = r#"
+interfaces = [
+  { type = "KISSInterface", enabled = true, name = "android-kiss", port = "/dev/ttyACM0", id_interval = 600, id_callsign = "PYTHON-0", beacon_interval = 900, beacon_data = "ANDROID-1" }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse mixed KISS beacon aliases");
+    let iface = &cfg.interfaces[0];
+
+    assert_eq!(iface.id_interval, Some(600));
+    assert_eq!(iface.id_callsign.as_deref(), Some("PYTHON-0"));
+    assert!(iface.extra.is_empty());
+}
+
+#[test]
 fn parses_reticulum_kiss_interface_default_speed() {
     let input = r#"
 interfaces = [

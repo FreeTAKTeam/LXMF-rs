@@ -303,6 +303,26 @@ fn ax25_kiss_builder_uses_serial_kiss_base_and_requires_callsign() {
 }
 
 #[test]
+fn kiss_builder_carries_android_beacon_aliases_as_id_beacon() {
+    let cfg = reticulum_daemon::config::DaemonConfig::from_toml(
+        r#"
+interfaces = [
+  { type = "KISSInterface", enabled = true, name = "android-kiss", port = "/dev/ttyACM0", beacon_interval = 900, beacon_data = "ANDROID-1" }
+]
+"#,
+    )
+    .expect("parse Android KISS beacon aliases");
+    let iface = &cfg.interfaces[0];
+
+    let adapter = kiss::build_adapter(iface).expect("build kiss adapter");
+    let beacon = adapter.kiss_config().id_beacon.expect("id beacon");
+
+    assert_eq!(beacon.callsign, b"ANDROID-1");
+    assert_eq!(beacon.interval, std::time::Duration::from_secs(900));
+    assert_eq!(beacon.min_payload_len, 15);
+}
+
+#[test]
 fn vrn76_builder_uses_profile_defaults_and_kiss_overrides() {
     let iface = InterfaceConfig {
         kind: "vrn76_kiss_ble".to_string(),

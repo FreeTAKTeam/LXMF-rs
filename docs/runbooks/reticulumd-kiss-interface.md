@@ -140,6 +140,9 @@ interfaces = [
   `preamble` as `preamble_ms`, `txtail` as `tx_tail_ms`, `slottime` as
   `slot_time_ms`, and boolean `flow_control` as `kiss_flow_control`. If
   `speed` is omitted, the Python alias uses the Python default `9600`.
+  Android-style `beacon_interval` and `beacon_data` are accepted as aliases
+  for the existing Python ID beacon fields `id_interval` and `id_callsign`;
+  canonical `id_*` fields take precedence when both forms are supplied.
 - For `AX25KISSInterface` compatibility, `port` is accepted as `device`,
   `speed` as `baud_rate`, `databits` as `data_bits`, `stopbits` as
   `stop_bits`, `preamble` as `preamble_ms`, `txtail` as `tx_tail_ms`,

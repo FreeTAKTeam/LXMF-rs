@@ -320,6 +320,18 @@ impl InterfaceConfig {
                 self.kiss_flow_control = Some(flow_control);
             }
         }
+        if self.id_interval.is_none() {
+            self.id_interval = self.take_u64_alias_for_kind("beacon_interval", index, "kiss")?;
+        } else {
+            let _ = self.take_u64_alias_for_kind("beacon_interval", index, "kiss")?;
+        }
+        if self.id_callsign.is_none() {
+            self.id_callsign = self
+                .take_string_alias_for_kind("beacon_data", index, "kiss")?
+                .and_then(non_empty_string);
+        } else {
+            let _ = self.take_string_alias_for_kind("beacon_data", index, "kiss")?;
+        }
         Ok(())
     }
 

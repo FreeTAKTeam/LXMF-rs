@@ -70,9 +70,13 @@ placeholders:
   status reporting through daemon/RPC `_runtime.pipe.status`.
 - UDP unicast and multicast with peer routing, multicast proof fallback,
   Python-style `device` broadcast-address defaults via host interface lookup,
-  and IPv4 broadcast socket sends.
+  IPv4 broadcast socket sends, and Python `UDPInterface` alias semantics where
+  shared `port` can default both listen and forward ports but `listen_port`
+  alone does not imply forwarding.
 - Serial, serial KISS, and AX.25 KISS with Python-compatible AX.25 UI header
-  wrapping over the serial KISS runtime.
+  wrapping over the serial KISS runtime. Android-style KISS beacon aliases
+  `beacon_interval` and `beacon_data` feed the same ID beacon runtime as
+  Python `id_interval` and `id_callsign`.
 - AutoInterface discovery, authenticated peering, peer lifecycle, duplicate
   suppression, multicast announcements, data sockets, transport bridging, and
   live carrier-runtime status reporting.

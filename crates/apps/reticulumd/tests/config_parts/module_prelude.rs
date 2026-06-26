@@ -778,6 +778,54 @@ interfaces = [
 }
 
 #[test]
+fn reticulum_udp_listen_port_does_not_default_forward_port() {
+    let input = r#"
+interfaces = [
+  { type = "UDPInterface", enabled = true, name = "python-udp", listen_ip = "127.0.0.1", listen_port = 4242, forward_ip = "127.0.0.1" }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse partial Python UDPInterface config");
+    let iface = &cfg.interfaces[0];
+
+    assert_eq!(iface.host.as_deref(), Some("127.0.0.1"));
+    assert_eq!(iface.port, Some(4242));
+    assert!(iface.target_host.is_none());
+    assert!(iface.target_port.is_none());
+}
+
+#[test]
+fn reticulum_udp_forward_port_without_forward_ip_is_receive_only() {
+    let input = r#"
+interfaces = [
+  { type = "UDPInterface", enabled = true, name = "python-udp", listen_ip = "127.0.0.1", listen_port = 4242, forward_port = 4243 }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse partial Python UDPInterface config");
+    let iface = &cfg.interfaces[0];
+
+    assert_eq!(iface.host.as_deref(), Some("127.0.0.1"));
+    assert_eq!(iface.port, Some(4242));
+    assert!(iface.target_host.is_none());
+    assert!(iface.target_port.is_none());
+}
+
+#[test]
+fn reticulum_udp_shared_port_defaults_forward_port_when_forward_ip_is_present() {
+    let input = r#"
+interfaces = [
+  { type = "UDPInterface", enabled = true, name = "python-udp", listen_ip = "127.0.0.1", port = 4242, forward_ip = "127.0.0.2" }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse Python UDPInterface shared port config");
+    let iface = &cfg.interfaces[0];
+
+    assert_eq!(iface.host.as_deref(), Some("127.0.0.1"));
+    assert_eq!(iface.port, Some(4242));
+    assert_eq!(iface.target_host.as_deref(), Some("127.0.0.2"));
+    assert_eq!(iface.target_port, Some(4242));
+}
+
+#[test]
 fn parses_reticulum_udp_interface_device_defaults() {
     let input = r#"
 interfaces = [

@@ -39,14 +39,22 @@ where
     let bind_port = iface.port.ok_or_else(|| "udp.port is required".to_string())?;
     let bind_addr = format!("{}:{}", bind_host, bind_port);
 
-    let target_host = iface
+    let configured_target_host = iface
         .target_host
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .map(str::to_string)
-        .or_else(|| device_broadcast.clone());
-    let target_port = iface.target_port.or_else(|| target_host.as_ref().map(|_| bind_port));
+        .map(str::to_string);
+    let target_host_uses_device_default =
+        configured_target_host.is_none() && device_broadcast.is_some();
+    let target_host = configured_target_host.or_else(|| device_broadcast.clone());
+    let target_port = iface.target_port.or({
+        if target_host_uses_device_default {
+            Some(bind_port)
+        } else {
+            None
+        }
+    });
 
     let forward_addr = match (target_host.as_deref(), target_port) {
         (Some(host), Some(port)) => {
@@ -131,5 +139,43 @@ mod tests {
 
         assert_eq!(bind_addr, "0.0.0.0:4242");
         assert_eq!(forward_addr.as_deref(), Some("192.0.2.255:4242"));
+    }
+
+    #[test]
+    fn udp_explicit_forward_host_without_port_does_not_infer_bind_port() {
+        let iface = InterfaceConfig {
+            kind: "udp".to_string(),
+            enabled: Some(true),
+            host: Some("127.0.0.1".to_string()),
+            port: Some(4242),
+            target_host: Some("127.0.0.2".to_string()),
+            ..InterfaceConfig::default()
+        };
+
+        let err = bind_and_forward_addr_with_device_resolver(&iface, |_| {
+            panic!("device resolver should not run")
+        })
+        .expect_err("partial forward target should fail");
+
+        assert!(err.contains("target_host and udp.target_port"));
+    }
+
+    #[test]
+    fn udp_explicit_bind_without_forward_target_is_receive_only() {
+        let iface = InterfaceConfig {
+            kind: "udp".to_string(),
+            enabled: Some(true),
+            host: Some("127.0.0.1".to_string()),
+            port: Some(4242),
+            ..InterfaceConfig::default()
+        };
+
+        let (bind_addr, forward_addr) = bind_and_forward_addr_with_device_resolver(&iface, |_| {
+            panic!("device resolver should not run")
+        })
+        .expect("bind-only udp");
+
+        assert_eq!(bind_addr, "127.0.0.1:4242");
+        assert!(forward_addr.is_none());
     }
 }

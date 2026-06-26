@@ -230,6 +230,11 @@ impl KissInterface {
     }
 
     #[must_use]
+    pub fn kiss_config(&self) -> KissConfig {
+        self.kiss.clone()
+    }
+
+    #[must_use]
     pub fn with_payload_adapter(mut self, payload_adapter: KissPayloadAdapter) -> Self {
         self.payload_adapter = payload_adapter;
         self
