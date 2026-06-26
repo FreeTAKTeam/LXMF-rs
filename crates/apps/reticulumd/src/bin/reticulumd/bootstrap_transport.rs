@@ -69,19 +69,16 @@ pub(super) struct TransportStartupInput<'a> {
     pub(super) propagation_announce_config: PropagationNodeAnnounceConfig,
 }
 
-fn spawn_shared_instance_reconnect_synthesizer(
+fn spawn_stream_reconnect_tunnel_synthesizer(
     transport: Arc<Transport>,
     mut reconnect_rx: tokio::sync::mpsc::UnboundedReceiver<AddressHash>,
 ) {
     tokio::spawn(async move {
         while let Some(iface) = reconnect_rx.recv().await {
             if transport.synthesize_tunnel_on_interface(iface).await {
-                log::info!("[daemon] shared-instance reconnect synthesized tunnel iface={}", iface);
+                log::info!("[daemon] stream reconnect synthesized tunnel iface={}", iface);
             } else {
-                log::warn!(
-                    "[daemon] shared-instance reconnect could not synthesize tunnel iface={}",
-                    iface
-                );
+                log::warn!("[daemon] stream reconnect could not synthesize tunnel iface={}", iface);
             }
         }
     });
@@ -183,7 +180,7 @@ pub(super) async fn start_transport_and_interfaces(
             .set_receipt_handler(Box::new(ReceiptBridge::new(receipt_map, receipt_tx.clone())))
             .await;
         let iface_manager = transport_instance.iface_manager();
-        let (shared_reconnect_tx, shared_reconnect_rx) =
+        let (stream_reconnect_tx, stream_reconnect_rx) =
             tokio::sync::mpsc::unbounded_channel::<AddressHash>();
         let mut server_iface = None;
         if let Some(addr) = selected_tcp_server.bind_addr.as_ref() {
@@ -215,7 +212,7 @@ pub(super) async fn start_transport_and_interfaces(
                 server_iface.as_ref(),
                 &mut configured_interfaces,
                 reticulum_storage_path,
-                Some(shared_reconnect_tx.clone()),
+                Some(stream_reconnect_tx.clone()),
                 Some(transport_identity_hash),
             )
             .await;
@@ -291,7 +288,7 @@ pub(super) async fn start_transport_and_interfaces(
         delivery_source_hash = destinations.delivery_source_hash;
 
         let transport_arc = Arc::new(transport_instance);
-        spawn_shared_instance_reconnect_synthesizer(transport_arc.clone(), shared_reconnect_rx);
+        spawn_stream_reconnect_tunnel_synthesizer(transport_arc.clone(), stream_reconnect_rx);
         transport = Some(transport_arc);
     } else if let Some(config) = daemon_config {
         log::warn!(

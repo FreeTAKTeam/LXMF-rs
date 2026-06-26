@@ -265,6 +265,7 @@ pub(super) async fn startup_configured_interfaces(
                     &mut configured_interfaces[index],
                     &mut startup_failures,
                     &mut seeded_tcp_interfaces,
+                    shared_reconnect_events.clone(),
                 )
                 .await
                 {
@@ -1184,6 +1185,7 @@ fn weave_runtime_metadata_json(
     serde_json::Value::Object(metadata)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn startup_tcp_client(
     args: &Args,
     iface: &InterfaceConfig,
@@ -1192,6 +1194,7 @@ async fn startup_tcp_client(
     record: &mut InterfaceRecord,
     startup_failures: &mut Vec<InterfaceStartupFailure>,
     seeded_tcp_interfaces: &mut Vec<(String, InterfaceRecord, AddressHash)>,
+    stream_reconnect_events: Option<tokio::sync::mpsc::UnboundedSender<AddressHash>>,
 ) -> Option<AddressHash> {
     let (Some(host), Some(port)) = (iface.host.as_ref(), iface.port) else {
         record_startup_failure(
@@ -1219,7 +1222,7 @@ async fn startup_tcp_client(
     }
 
     let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
-    let adapter = build_tcp_client_adapter(endpoint, iface);
+    let adapter = build_tcp_client_adapter(endpoint, iface, stream_reconnect_events);
     let client_iface = iface_manager.lock().await.spawn_as_with_mode(
         adapter,
         TcpClient::spawn,
@@ -1246,7 +1249,11 @@ async fn startup_tcp_client(
     Some(client_iface)
 }
 
-fn build_tcp_client_adapter(endpoint: String, iface: &InterfaceConfig) -> TcpClient {
+fn build_tcp_client_adapter(
+    endpoint: String,
+    iface: &InterfaceConfig,
+    stream_reconnect_events: Option<tokio::sync::mpsc::UnboundedSender<AddressHash>>,
+) -> TcpClient {
     let mut adapter = TcpClient::new(endpoint);
     if iface.kind == "backbone_client" {
         adapter = adapter
@@ -1270,6 +1277,11 @@ fn build_tcp_client_adapter(endpoint: String, iface: &InterfaceConfig) -> TcpCli
     if matches!(iface.kind.as_str(), "local" | "local_client") {
         if let Some(bitrate_bps) = iface.force_shared_instance_bitrate {
             adapter = adapter.with_forced_bitrate(bitrate_bps);
+        }
+    }
+    if matches!(iface.kind.as_str(), "tcp_client" | "backbone_client") {
+        if let Some(events) = stream_reconnect_events {
+            adapter = adapter.with_reconnect_events(events);
         }
     }
     adapter
@@ -1368,7 +1380,7 @@ async fn startup_local_tcp_attach_endpoint(
     }
 
     let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
-    let mut adapter = build_tcp_client_adapter(endpoint.to_string(), iface);
+    let mut adapter = build_tcp_client_adapter(endpoint.to_string(), iface, None);
     if let Some(events) = shared_reconnect_events {
         adapter = adapter.with_reconnect_events(events);
     }
@@ -1485,12 +1497,13 @@ mod tests {
             ..InterfaceConfig::default()
         };
 
-        let adapter = build_tcp_client_adapter("rmap.world:4242".to_string(), &iface);
+        let adapter = build_tcp_client_adapter("rmap.world:4242".to_string(), &iface, None);
 
         assert_eq!(adapter.addr(), "rmap.world:4242");
         assert_eq!(adapter.mtu_value(), 4096);
         assert!(adapter.socket_tuning().is_empty());
         assert!(!adapter.hdlc_liveness_enabled());
+        assert!(!adapter.reconnect_events_enabled());
     }
 
     #[tokio::test]
@@ -1564,7 +1577,9 @@ interfaces = [
             ..InterfaceConfig::default()
         };
 
-        let adapter = build_tcp_client_adapter("rmap.world:4242".to_string(), &iface);
+        let (reconnect_tx, _reconnect_rx) = tokio::sync::mpsc::unbounded_channel();
+        let adapter =
+            build_tcp_client_adapter("rmap.world:4242".to_string(), &iface, Some(reconnect_tx));
 
         assert_eq!(adapter.addr(), "rmap.world:4242");
         assert_eq!(adapter.mtu_value(), 1_048_576);
@@ -1584,6 +1599,7 @@ interfaces = [
             Some(Duration::from_secs(24))
         );
         assert!(adapter.hdlc_liveness_enabled());
+        assert!(adapter.reconnect_events_enabled());
     }
 
     #[test]
@@ -1599,11 +1615,14 @@ interfaces = [
             ..InterfaceConfig::default()
         };
 
-        let adapter = build_tcp_client_adapter("rmap.world:4242".to_string(), &iface);
+        let (reconnect_tx, _reconnect_rx) = tokio::sync::mpsc::unbounded_channel();
+        let adapter =
+            build_tcp_client_adapter("rmap.world:4242".to_string(), &iface, Some(reconnect_tx));
 
         assert_eq!(adapter.connect_timeout(), Duration::from_secs(7));
         assert_eq!(adapter.max_reconnect_tries(), Some(3));
         assert!(adapter.prefer_ipv6());
+        assert!(adapter.reconnect_events_enabled());
     }
 
     #[test]
@@ -1618,11 +1637,12 @@ interfaces = [
             ..InterfaceConfig::default()
         };
 
-        let adapter = build_tcp_client_adapter("127.0.0.1:37428".to_string(), &iface);
+        let adapter = build_tcp_client_adapter("127.0.0.1:37428".to_string(), &iface, None);
 
         assert_eq!(adapter.forced_bitrate_bps(), Some(1_000_000));
         assert!(adapter.socket_tuning().is_empty());
         assert!(!adapter.hdlc_liveness_enabled());
+        assert!(!adapter.reconnect_events_enabled());
     }
 
     #[test]
@@ -1636,10 +1656,11 @@ interfaces = [
             ..InterfaceConfig::default()
         };
 
-        let adapter = build_tcp_client_adapter("rmap.world:4242".to_string(), &iface);
+        let adapter = build_tcp_client_adapter("rmap.world:4242".to_string(), &iface, None);
 
         assert_eq!(adapter.socket_tuning(), TcpSocketTuning::i2p_tunneled());
         assert!(!adapter.hdlc_liveness_enabled());
+        assert!(!adapter.reconnect_events_enabled());
     }
 
     #[test]

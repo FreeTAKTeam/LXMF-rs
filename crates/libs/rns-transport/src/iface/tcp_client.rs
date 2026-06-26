@@ -676,6 +676,11 @@ impl TcpClient {
     }
 
     #[must_use]
+    pub fn reconnect_events_enabled(&self) -> bool {
+        self.reconnect_events.is_some()
+    }
+
+    #[must_use]
     pub fn connect_timeout(&self) -> Duration {
         self.connect_timeout
     }
@@ -1081,6 +1086,81 @@ mod tests {
         cancel.cancel();
         drop(peer);
         handle.await.expect("hdlc stream task");
+    }
+
+    #[tokio::test]
+    async fn hdlc_watchdog_reports_stale_active_and_read_timeout_order() {
+        let (stream, mut peer) = tokio::io::duplex(256);
+        let (read_stream, write_stream) = tokio::io::split(stream);
+        let cancel = CancellationToken::new();
+        let iface_stop = CancellationToken::new();
+        let (rx_channel, _rx_messages) = tokio::sync::mpsc::channel(1);
+        let (_tx_sender, tx_receiver) = tokio::sync::mpsc::channel(1);
+        let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel();
+
+        let handle = tokio::spawn(run_hdlc_stream_with_runtime(
+            "test".to_string(),
+            AddressHash::new([0x46; 16]),
+            256,
+            cancel.clone(),
+            iface_stop,
+            rx_channel,
+            Arc::new(tokio::sync::Mutex::new(tx_receiver)),
+            read_stream,
+            write_stream,
+            HdlcStreamRuntime::new()
+                .with_watchdog(HdlcStreamWatchdog {
+                    keepalive_after: Duration::from_millis(10),
+                    stale_after: Duration::from_millis(1500),
+                    read_timeout: Duration::from_millis(3500),
+                })
+                .with_events(event_tx),
+        ));
+
+        let first_event = tokio::time::timeout(Duration::from_secs(3), event_rx.recv())
+            .await
+            .expect("first watchdog event deadline")
+            .expect("first watchdog event");
+        assert_eq!(first_event, HdlcStreamEvent::Keepalive);
+
+        loop {
+            let event = tokio::time::timeout(Duration::from_secs(4), event_rx.recv())
+                .await
+                .expect("stale event deadline")
+                .expect("watchdog event");
+            if event == HdlcStreamEvent::Stale {
+                break;
+            }
+            assert_ne!(event, HdlcStreamEvent::ReadTimeout);
+        }
+
+        peer.write_all(&[0x7e, 0x7e]).await.expect("write empty HDLC frame");
+        loop {
+            let event = tokio::time::timeout(Duration::from_secs(4), event_rx.recv())
+                .await
+                .expect("active event deadline")
+                .expect("watchdog event");
+            if event == HdlcStreamEvent::Active {
+                break;
+            }
+            assert_ne!(event, HdlcStreamEvent::ReadTimeout);
+        }
+
+        loop {
+            let event = tokio::time::timeout(Duration::from_secs(6), event_rx.recv())
+                .await
+                .expect("read-timeout event deadline")
+                .expect("watchdog event");
+            if event == HdlcStreamEvent::ReadTimeout {
+                break;
+            }
+        }
+
+        drop(peer);
+        tokio::time::timeout(Duration::from_secs(2), handle)
+            .await
+            .expect("hdlc stream task timed out")
+            .expect("hdlc stream task");
     }
 
     #[tokio::test]
