@@ -158,7 +158,11 @@ fn table_i8_alias(table: &toml::value::Table, primary: &str, alias: &str) -> Opt
 }
 
 fn table_f64(table: &toml::value::Table, key: &str) -> Option<f64> {
-    table.get(key).and_then(toml::Value::as_float)
+    table.get(key).and_then(|value| match value {
+        toml::Value::Float(value) => Some(*value),
+        toml::Value::Integer(value) => Some(*value as f64),
+        _ => None,
+    })
 }
 
 fn table_coding_rate(table: &toml::value::Table, primary: &str, alias: &str) -> Option<String> {

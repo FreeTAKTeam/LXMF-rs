@@ -430,7 +430,7 @@ interfaces = [
 fn parses_python_rnode_multi_interface_with_vport_subinterfaces() {
     let input = r#"
 interfaces = [
-  { type = "RNodeMultiInterface", enabled = true, name = "rnode-multi", port = "/dev/ttyACM0", id_callsign = "MYCALL-0", id_interval = 600, radio0 = { vport = 0, frequency = 915000000, bandwidth = 125000, spreadingfactor = 9, codingrate = 5, txpower = 17 }, radio1 = { vport = 3, frequency = 920000000, bandwidth = 125000, spreadingfactor = 10, codingrate = "4/6", txpower = 14, outgoing = false } }
+  { type = "RNodeMultiInterface", enabled = true, name = "rnode-multi", port = "/dev/ttyACM0", id_callsign = "MYCALL-0", id_interval = 600, flow_control = true, airtime_limit_short = 25, radio0 = { vport = 0, frequency = 915000000, bandwidth = 125000, spreadingfactor = 9, codingrate = 5, txpower = 17 }, radio1 = { vport = 3, frequency = 920000000, bandwidth = 125000, spreadingfactor = 10, codingrate = "4/6", txpower = 14, flow_control = false, airtime_limit_long = 75.5, outgoing = false } }
 ]
 "#;
     let cfg = DaemonConfig::from_toml(input).expect("parse Reticulum RNodeMultiInterface");
@@ -448,7 +448,17 @@ interfaces = [
     assert_eq!(settings["id_callsign"], "MYCALL-0");
     assert_eq!(settings["id_interval"], 600);
     assert_eq!(settings["subinterfaces"][0]["vport"], 0);
+    assert_eq!(settings["subinterfaces"][0]["frequency_hz"], 915_000_000);
+    assert_eq!(settings["subinterfaces"][0]["bandwidth_hz"], 125_000);
+    assert_eq!(settings["subinterfaces"][0]["spreading_factor"], 9);
+    assert_eq!(settings["subinterfaces"][0]["coding_rate"], 5);
+    assert_eq!(settings["subinterfaces"][0]["tx_power_dbm"], 17);
+    assert_eq!(settings["subinterfaces"][0]["flow_control"], true);
+    assert_eq!(settings["subinterfaces"][0]["airtime_limit_short"], 25.0);
     assert_eq!(settings["subinterfaces"][1]["vport"], 3);
+    assert_eq!(settings["subinterfaces"][1]["flow_control"], false);
+    assert_eq!(settings["subinterfaces"][1]["airtime_limit_short"], 25.0);
+    assert_eq!(settings["subinterfaces"][1]["airtime_limit_long"], 75.5);
     assert_eq!(settings["subinterfaces"][1]["outgoing"], false);
 }
 
@@ -481,6 +491,33 @@ interfaces = [
     let err = DaemonConfig::from_toml(input).expect_err("duplicate vports should fail");
     let message = err.to_string();
     assert!(message.contains("duplicated"), "unexpected parse error: {message}");
+}
+
+#[test]
+fn rejects_python_rnode_multi_invalid_subinterface_options() {
+    let input = r#"
+interfaces = [
+  { type = "RNodeMultiInterface", enabled = true, name = "rnode-multi", port = "/dev/ttyACM0", radio0 = { vport = 1, frequency = 915000000, bandwidth = 125000, spreadingfactor = 9, codingrate = 5, txpower = 17, flow_control = "yes" } }
+]
+"#;
+    let err = DaemonConfig::from_toml(input).expect_err("flow_control must be boolean");
+    let message = err.to_string();
+    assert!(
+        message.contains("radio0.flow_control must be a boolean"),
+        "unexpected parse error: {message}"
+    );
+
+    let input = r#"
+interfaces = [
+  { type = "RNodeMultiInterface", enabled = true, name = "rnode-multi", port = "/dev/ttyACM0", radio0 = { vport = 1, frequency = 915000000, bandwidth = 125000, spreadingfactor = 9, codingrate = 5, txpower = 17, airtime_limit_short = 125 } }
+]
+"#;
+    let err = DaemonConfig::from_toml(input).expect_err("airtime limit must be in range");
+    let message = err.to_string();
+    assert!(
+        message.contains("radio0.airtime_limit_short must be between 0 and 100"),
+        "unexpected parse error: {message}"
+    );
 }
 
 #[test]

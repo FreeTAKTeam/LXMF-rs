@@ -192,6 +192,30 @@ fn rnode_multi_subinterfaces_settings_json(iface: &InterfaceConfig) -> Option<Js
                 entry.insert("vport".to_string(), JsonValue::Number(vport.into()));
             }
         }
+        insert_table_u64_alias(&mut entry, table, "frequency_hz", "frequency");
+        insert_table_u64_alias(&mut entry, table, "bandwidth_hz", "bandwidth");
+        insert_table_u64_alias(&mut entry, table, "spreading_factor", "spreadingfactor");
+        insert_table_coding_rate(&mut entry, table, "coding_rate", "codingrate");
+        insert_table_i64_alias(&mut entry, table, "tx_power_dbm", "txpower");
+        if let Some(flow_control) = table
+            .get("flow_control")
+            .or_else(|| iface.flow_control.as_ref())
+            .and_then(toml::Value::as_bool)
+        {
+            entry.insert("flow_control".to_string(), JsonValue::Bool(flow_control));
+        }
+        insert_table_or_parent_f64(
+            &mut entry,
+            table,
+            "airtime_limit_short",
+            iface.airtime_limit_short,
+        );
+        insert_table_or_parent_f64(
+            &mut entry,
+            table,
+            "airtime_limit_long",
+            iface.airtime_limit_long,
+        );
         let outgoing = table
             .get("outgoing")
             .and_then(toml::Value::as_bool)
@@ -200,6 +224,80 @@ fn rnode_multi_subinterfaces_settings_json(iface: &InterfaceConfig) -> Option<Js
         entries.push(JsonValue::Object(entry));
     }
     (!entries.is_empty()).then_some(JsonValue::Array(entries))
+}
+
+fn insert_table_u64_alias(
+    target: &mut JsonMap<String, JsonValue>,
+    table: &toml::value::Table,
+    primary: &str,
+    alias: &str,
+) {
+    if let Some(value) = table
+        .get(primary)
+        .or_else(|| table.get(alias))
+        .and_then(toml::Value::as_integer)
+        .and_then(|value| u64::try_from(value).ok())
+    {
+        target.insert(primary.to_string(), JsonValue::Number(value.into()));
+    }
+}
+
+fn insert_table_i64_alias(
+    target: &mut JsonMap<String, JsonValue>,
+    table: &toml::value::Table,
+    primary: &str,
+    alias: &str,
+) {
+    if let Some(value) = table
+        .get(primary)
+        .or_else(|| table.get(alias))
+        .and_then(toml::Value::as_integer)
+    {
+        target.insert(primary.to_string(), JsonValue::Number(value.into()));
+    }
+}
+
+fn insert_table_coding_rate(
+    target: &mut JsonMap<String, JsonValue>,
+    table: &toml::value::Table,
+    primary: &str,
+    alias: &str,
+) {
+    if let Some(value) = table.get(primary).or_else(|| table.get(alias)) {
+        match value {
+            toml::Value::Integer(value) => {
+                target.insert(primary.to_string(), JsonValue::Number((*value).into()));
+            }
+            toml::Value::String(value) => {
+                target.insert(primary.to_string(), JsonValue::String(value.clone()));
+            }
+            _ => {}
+        }
+    }
+}
+
+fn insert_table_or_parent_f64(
+    target: &mut JsonMap<String, JsonValue>,
+    table: &toml::value::Table,
+    key: &str,
+    parent: Option<f64>,
+) {
+    let value = table
+        .get(key)
+        .and_then(table_number_as_f64)
+        .or(parent)
+        .and_then(serde_json::Number::from_f64);
+    if let Some(value) = value {
+        target.insert(key.to_string(), JsonValue::Number(value));
+    }
+}
+
+fn table_number_as_f64(value: &toml::Value) -> Option<f64> {
+    match value {
+        toml::Value::Float(value) => Some(*value),
+        toml::Value::Integer(value) => Some(*value as f64),
+        _ => None,
+    }
 }
 
 fn matches_normalized(value: &str, candidates: &[&str]) -> bool {

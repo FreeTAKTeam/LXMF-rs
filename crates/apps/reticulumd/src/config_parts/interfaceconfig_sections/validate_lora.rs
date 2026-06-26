@@ -198,6 +198,25 @@ impl InterfaceConfig {
                 ));
             }
         }
+        if let Some(flow_control) = self.flow_control.as_ref() {
+            if !flow_control.is_bool() {
+                return Err(format!(
+                    "interfaces[{index}].flow_control must be a boolean for rnode_multi"
+                ));
+            }
+        }
+        validate_rnode_multi_airtime_limit(
+            self.airtime_limit_short,
+            "airtime_limit_short",
+            index,
+            None,
+        )?;
+        validate_rnode_multi_airtime_limit(
+            self.airtime_limit_long,
+            "airtime_limit_long",
+            index,
+            None,
+        )?;
 
         let mut enabled_subinterfaces = 0usize;
         let mut vports = std::collections::BTreeSet::new();
@@ -248,6 +267,33 @@ impl InterfaceConfig {
                 return Err(format!(
                     "interfaces[{index}].{name}.txpower must be between 0 and 37"
                 ));
+            }
+            if let Some(flow_control) = table.get("flow_control") {
+                if !flow_control.is_bool() {
+                    return Err(format!(
+                        "interfaces[{index}].{name}.flow_control must be a boolean for rnode_multi"
+                    ));
+                }
+            }
+            if let Some(airtime_limit_short) =
+                rnode_multi_optional_f64(table, "airtime_limit_short", index, name)?
+            {
+                validate_rnode_multi_airtime_limit(
+                    Some(airtime_limit_short),
+                    "airtime_limit_short",
+                    index,
+                    Some(name),
+                )?;
+            }
+            if let Some(airtime_limit_long) =
+                rnode_multi_optional_f64(table, "airtime_limit_long", index, name)?
+            {
+                validate_rnode_multi_airtime_limit(
+                    Some(airtime_limit_long),
+                    "airtime_limit_long",
+                    index,
+                    Some(name),
+                )?;
             }
         }
         if enabled_subinterfaces == 0 {
@@ -433,4 +479,44 @@ fn rnode_multi_required_i8_alias(
         .as_integer()
         .and_then(|value| i8::try_from(value).ok())
         .ok_or_else(|| format!("interfaces[{index}].{name}.{alias} must be an integer"))
+}
+
+fn rnode_multi_optional_f64(
+    table: &toml::value::Table,
+    key: &str,
+    index: usize,
+    name: &str,
+) -> Result<Option<f64>, String> {
+    let Some(value) = table.get(key) else {
+        return Ok(None);
+    };
+    match value {
+        toml::Value::Float(value) => Ok(Some(*value)),
+        toml::Value::Integer(value) => Ok(Some(*value as f64)),
+        _ => Err(format!(
+            "interfaces[{index}].{name}.{key} must be a number for rnode_multi"
+        )),
+    }
+}
+
+fn validate_rnode_multi_airtime_limit(
+    value: Option<f64>,
+    key: &str,
+    index: usize,
+    subinterface: Option<&str>,
+) -> Result<(), String> {
+    let Some(value) = value else {
+        return Ok(());
+    };
+    if !(0.0..=100.0).contains(&value) {
+        if let Some(name) = subinterface {
+            return Err(format!(
+                "interfaces[{index}].{name}.{key} must be between 0 and 100 for rnode_multi"
+            ));
+        }
+        return Err(format!(
+            "interfaces[{index}].{key} must be between 0 and 100 for rnode_multi"
+        ));
+    }
+    Ok(())
 }
