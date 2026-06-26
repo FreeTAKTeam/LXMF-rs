@@ -1,5 +1,6 @@
 use super::diag;
 use super::*;
+use crate::iface::InterfaceMode;
 use crate::packet::{DestinationType, Header, HeaderType, PacketType, PropagationType};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -188,8 +189,12 @@ pub(super) async fn handle_path_request<'a>(
 
         if handler.config.retransmit {
             if let Some(entry) = handler.path_table.get(&request.destination) {
+                let next_hop = entry.received_from;
+                let learned_iface = entry.iface;
+                let hops = entry.hops;
+
                 if let Some(requestor_id) = request.requesting_transport {
-                    if requestor_id == entry.received_from {
+                    if requestor_id == next_hop {
                         log::trace!(
                             "tp({}): dropping circular path request from {}",
                             handler.config.name,
@@ -199,7 +204,15 @@ pub(super) async fn handle_path_request<'a>(
                     }
                 }
 
-                let hops = entry.hops;
+                let incoming_iface_mode = handler.iface_manager.lock().await.mode(&iface);
+                if incoming_iface_mode == Some(InterfaceMode::Roaming) && learned_iface == iface {
+                    log::trace!(
+                        "tp({}): suppressing roaming same-iface path response for {}",
+                        handler.config.name,
+                        request.destination
+                    );
+                    return;
+                }
 
                 handler.announce_table.add_response(request.destination, iface, hops);
 

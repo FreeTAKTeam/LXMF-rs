@@ -242,6 +242,105 @@ async fn known_remote_path_request_sends_path_response_context() {
 }
 
 #[tokio::test]
+async fn full_iface_answers_known_path_request_when_next_hop_is_same_iface() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut config = TransportConfig::new("test", &local_identity, true);
+    config.set_retransmit(true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+
+    let iface = {
+        let manager = transport.iface_manager();
+        let mut manager = manager.lock().await;
+        *manager
+            .new_channel_with_role_and_mode(
+                16,
+                crate::iface::IfaceRole::Unicast,
+                crate::iface::InterfaceMode::Full,
+            )
+            .address()
+    };
+
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut remote_destination =
+        SingleInputDestination::new(remote_identity, DestinationName::new("lxmf", "delivery"));
+    let mut announce = remote_destination.announce(OsRng, None).expect("valid announce packet");
+    announce.header.hops = 2;
+    let destination = announce.destination;
+
+    handle_announce(&announce, handler.lock().await, iface, crate::iface::IfaceSource::None).await;
+
+    let path_request = {
+        let mut guard = handler.lock().await;
+        guard.path_requests.generate(&destination, Some(vec![0x55; crate::hash::ADDRESS_HASH_SIZE]))
+    };
+
+    {
+        let mut guard = handler.lock().await;
+        handle_path_request(&path_request, &mut guard, iface).await;
+    }
+
+    let guard = handler.lock().await;
+    let response = guard
+        .announce_table
+        .pending_response_for_destination(&destination)
+        .expect("full-mode iface should schedule a known-path response");
+    assert_eq!(response.response_to_iface, Some(iface));
+    assert_eq!(response.hops, 2);
+    assert_eq!(response.packet.context, PacketContext::PathResponse);
+}
+
+#[tokio::test]
+async fn roaming_iface_suppresses_known_path_response_when_next_hop_is_same_iface() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut config = TransportConfig::new("test", &local_identity, true);
+    config.set_retransmit(true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+
+    let iface = {
+        let manager = transport.iface_manager();
+        let mut manager = manager.lock().await;
+        *manager
+            .new_channel_with_role_and_mode(
+                16,
+                crate::iface::IfaceRole::Unicast,
+                crate::iface::InterfaceMode::Roaming,
+            )
+            .address()
+    };
+
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut remote_destination =
+        SingleInputDestination::new(remote_identity, DestinationName::new("lxmf", "delivery"));
+    let mut announce = remote_destination.announce(OsRng, None).expect("valid announce packet");
+    announce.header.hops = 2;
+    let destination = announce.destination;
+
+    handle_announce(&announce, handler.lock().await, iface, crate::iface::IfaceSource::None).await;
+
+    let path_request = {
+        let mut guard = handler.lock().await;
+        guard.path_requests.generate(&destination, Some(vec![0x66; crate::hash::ADDRESS_HASH_SIZE]))
+    };
+
+    {
+        let mut guard = handler.lock().await;
+        handle_path_request(&path_request, &mut guard, iface).await;
+    }
+
+    assert!(
+        handler
+            .lock()
+            .await
+            .announce_table
+            .pending_response_for_destination(&destination)
+            .is_none(),
+        "roaming-mode iface should not answer when the known path was learned on the same iface"
+    );
+}
+
+#[tokio::test]
 async fn reticulum_path_table_persistence_restores_route_and_identity_from_cached_announce() {
     let temp = tempfile::tempdir().expect("tempdir");
     let local_identity = PrivateIdentity::new_from_rand(OsRng);

@@ -203,6 +203,14 @@ impl AnnounceTable {
             .or_else(|| self.responses.get(destination).map(|entry| entry.packet.clone()))
     }
 
+    #[cfg(test)]
+    pub(crate) fn pending_response_for_destination(
+        &self,
+        destination: &AddressHash,
+    ) -> Option<&AnnounceEntry> {
+        self.responses.get(destination)
+    }
+
     pub fn drain_retransmissions(&mut self, transport_id: &AddressHash) -> Vec<TxMessage> {
         let mut messages = vec![];
         let mut completed = vec![];
