@@ -1135,6 +1135,9 @@ fn build_tcp_client_adapter(endpoint: String, iface: &InterfaceConfig) -> TcpCli
     if iface.max_reconnect_tries.is_some() {
         adapter = adapter.with_max_reconnect_tries(iface.max_reconnect_tries);
     }
+    if let Some(prefer_ipv6) = iface.prefer_ipv6 {
+        adapter = adapter.with_prefer_ipv6(prefer_ipv6);
+    }
     if let Some(mtu) = iface.mtu {
         adapter.with_mtu(mtu)
     } else {
@@ -1398,6 +1401,7 @@ mod tests {
             port: Some(4242),
             connect_timeout: Some(7),
             max_reconnect_tries: Some(3),
+            prefer_ipv6: Some(true),
             ..InterfaceConfig::default()
         };
 
@@ -1405,6 +1409,7 @@ mod tests {
 
         assert_eq!(adapter.connect_timeout(), Duration::from_secs(7));
         assert_eq!(adapter.max_reconnect_tries(), Some(3));
+        assert!(adapter.prefer_ipv6());
     }
 
     #[test]

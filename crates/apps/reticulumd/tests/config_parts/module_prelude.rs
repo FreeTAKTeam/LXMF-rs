@@ -171,7 +171,7 @@ interfaces = [
 fn parses_reticulum_backbone_listener_aliases() {
     let input = r#"
 interfaces = [
-  { type = "BackboneInterface", enabled = true, name = "python-backbone", listen_on = "127.0.0.1", port = 4242 }
+  { type = "BackboneInterface", enabled = true, name = "python-backbone", listen_on = "127.0.0.1", port = 4242, prefer_ipv6 = true, i2p_tunneled = true }
 ]
 "#;
     let cfg = DaemonConfig::from_toml(input).expect("parse Python BackboneInterface config");
@@ -180,6 +180,12 @@ interfaces = [
     assert_eq!(iface.host.as_deref(), Some("127.0.0.1"));
     assert_eq!(iface.port, Some(4242));
     assert_eq!(iface.mtu, Some(1_048_576));
+    assert_eq!(iface.prefer_ipv6, Some(true));
+    assert_eq!(iface.i2p_tunneled, Some(true));
+
+    let settings = iface.settings_json().expect("settings");
+    assert_eq!(settings["prefer_ipv6"], true);
+    assert_eq!(settings["i2p_tunneled"], true);
 }
 
 #[test]

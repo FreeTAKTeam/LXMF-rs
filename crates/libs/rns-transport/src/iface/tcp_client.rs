@@ -1,10 +1,11 @@
 use std::io;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use tokio::net::TcpStream;
+use tokio::net::{lookup_host, TcpStream};
 use tokio_util::sync::CancellationToken;
 
 use crate::buffer::{InputBuffer, OutputBuffer};
@@ -511,6 +512,7 @@ pub struct TcpClient {
     reconnect_events: Option<tokio::sync::mpsc::UnboundedSender<crate::hash::AddressHash>>,
     connect_timeout: Duration,
     max_reconnect_tries: Option<u64>,
+    prefer_ipv6: bool,
 }
 
 impl TcpClient {
@@ -527,6 +529,7 @@ impl TcpClient {
             reconnect_events: None,
             connect_timeout: Self::DEFAULT_CONNECT_TIMEOUT,
             max_reconnect_tries: None,
+            prefer_ipv6: false,
         }
     }
 
@@ -540,6 +543,7 @@ impl TcpClient {
             reconnect_events: None,
             connect_timeout: Self::DEFAULT_CONNECT_TIMEOUT,
             max_reconnect_tries: None,
+            prefer_ipv6: false,
         }
     }
 
@@ -588,6 +592,12 @@ impl TcpClient {
     }
 
     #[must_use]
+    pub fn with_prefer_ipv6(mut self, prefer_ipv6: bool) -> Self {
+        self.prefer_ipv6 = prefer_ipv6;
+        self
+    }
+
+    #[must_use]
     pub fn addr(&self) -> &str {
         &self.addr
     }
@@ -618,6 +628,11 @@ impl TcpClient {
     }
 
     #[must_use]
+    pub fn prefer_ipv6(&self) -> bool {
+        self.prefer_ipv6
+    }
+
+    #[must_use]
     #[cfg(test)]
     pub(crate) fn hdlc_watchdog(&self) -> Option<HdlcStreamWatchdog> {
         self.hdlc_watchdog.clone()
@@ -626,7 +641,15 @@ impl TcpClient {
     #[tracing::instrument(name = "tcp_peer", skip_all, fields(addr = tracing::field::Empty))]
     pub async fn spawn(context: InterfaceContext<TcpClient>) {
         let iface_stop = context.channel.stop.clone();
-        let (addr, mtu, socket_tuning, hdlc_watchdog, connect_timeout, max_reconnect_tries) = {
+        let (
+            addr,
+            mtu,
+            socket_tuning,
+            hdlc_watchdog,
+            connect_timeout,
+            max_reconnect_tries,
+            prefer_ipv6,
+        ) = {
             let guard = context.inner.lock().unwrap();
             (
                 guard.addr.clone(),
@@ -635,6 +658,7 @@ impl TcpClient {
                 guard.hdlc_watchdog.clone(),
                 guard.connect_timeout,
                 guard.max_reconnect_tries,
+                guard.prefer_ipv6,
             )
         };
         tracing::Span::current().record("addr", addr.as_str());
@@ -661,10 +685,13 @@ impl TcpClient {
                         running = false;
                         Ok(stream)
                     }
-                    None => tokio::time::timeout(connect_timeout, TcpStream::connect(addr.clone()))
-                        .await
-                        .map_err(|_| RnsError::ConnectionError)
-                        .and_then(|result| result.map_err(|_| RnsError::ConnectionError)),
+                    None => tokio::time::timeout(
+                        connect_timeout,
+                        connect_tcp_stream(addr.clone(), prefer_ipv6),
+                    )
+                    .await
+                    .map_err(|_| RnsError::ConnectionError)
+                    .and_then(|result| result.map_err(|_| RnsError::ConnectionError)),
                 }
             };
 
@@ -731,6 +758,35 @@ impl TcpClient {
     }
 }
 
+pub(crate) fn prefer_ipv6_socket_addrs(
+    addrs: impl IntoIterator<Item = SocketAddr>,
+    prefer_ipv6: bool,
+) -> Vec<SocketAddr> {
+    let mut addrs = addrs.into_iter().collect::<Vec<_>>();
+    if prefer_ipv6 {
+        addrs.sort_by_key(|addr| if addr.is_ipv6() { 0 } else { 1 });
+    }
+    addrs
+}
+
+async fn connect_tcp_stream(addr: String, prefer_ipv6: bool) -> io::Result<TcpStream> {
+    if !prefer_ipv6 {
+        return TcpStream::connect(addr).await;
+    }
+
+    let addrs = prefer_ipv6_socket_addrs(lookup_host(addr.as_str()).await?, true);
+    let mut last_err = None;
+    for addr in addrs {
+        match TcpStream::connect(addr).await {
+            Ok(stream) => return Ok(stream),
+            Err(err) => last_err = Some(err),
+        }
+    }
+    Err(last_err.unwrap_or_else(|| {
+        io::Error::new(io::ErrorKind::InvalidInput, "TCP endpoint resolved to no addresses")
+    }))
+}
+
 impl Interface for TcpClient {
     fn mtu() -> usize {
         TcpClient::DEFAULT_MTU
@@ -747,8 +803,8 @@ mod tests {
     use std::time::Duration;
 
     use super::{
-        run_hdlc_stream_with_runtime, tcp_wire_buffer_capacity, HdlcStreamEvent, HdlcStreamRuntime,
-        HdlcStreamWatchdog, TcpClient, TcpSocketTuning,
+        prefer_ipv6_socket_addrs, run_hdlc_stream_with_runtime, tcp_wire_buffer_capacity,
+        HdlcStreamEvent, HdlcStreamRuntime, HdlcStreamWatchdog, TcpClient, TcpSocketTuning,
     };
     use crate::buffer::OutputBuffer;
     use crate::hash::AddressHash;
@@ -778,10 +834,21 @@ mod tests {
     fn tcp_client_exposes_reticulum_reconnect_options() {
         let client = TcpClient::new("rmap.world:4242")
             .with_connect_timeout(Duration::from_secs(7))
-            .with_max_reconnect_tries(Some(3));
+            .with_max_reconnect_tries(Some(3))
+            .with_prefer_ipv6(true);
 
         assert_eq!(client.connect_timeout(), Duration::from_secs(7));
         assert_eq!(client.max_reconnect_tries(), Some(3));
+        assert!(client.prefer_ipv6());
+    }
+
+    #[test]
+    fn tcp_client_prefers_ipv6_socket_addrs_when_requested() {
+        let v4: std::net::SocketAddr = "127.0.0.1:4242".parse().expect("v4 addr");
+        let v6: std::net::SocketAddr = "[::1]:4242".parse().expect("v6 addr");
+
+        assert_eq!(prefer_ipv6_socket_addrs([v4, v6], false), vec![v4, v6]);
+        assert_eq!(prefer_ipv6_socket_addrs([v4, v6], true), vec![v6, v4]);
     }
 
     #[tokio::test]

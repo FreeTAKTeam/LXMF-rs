@@ -379,6 +379,7 @@ fn select_tcp_server_bind_uses_single_backbone_listener_when_transport_not_set()
             host: Some("127.0.0.1".to_string()),
             port: Some(4242),
             mtu: Some(1_048_576),
+            prefer_ipv6: Some(true),
             ..InterfaceConfig::default()
         }],
     };
@@ -388,6 +389,7 @@ fn select_tcp_server_bind_uses_single_backbone_listener_when_transport_not_set()
     assert_eq!(selected.selected_index, Some(0));
     assert_eq!(selected.kind, "backbone");
     assert_eq!(selected.client_mtu, Some(1_048_576));
+    assert!(selected.prefer_ipv6);
 }
 
 #[test]

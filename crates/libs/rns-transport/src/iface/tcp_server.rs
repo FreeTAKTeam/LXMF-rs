@@ -1,11 +1,15 @@
 use alloc::string::String;
+use std::io;
 use std::sync::Arc;
 
-use tokio::net::TcpListener;
+use tokio::net::{lookup_host, TcpListener};
 
 use crate::error::RnsError;
 
-use super::tcp_client::{backbone_hdlc_watchdog, HdlcStreamWatchdog, TcpClient, TcpSocketTuning};
+use super::tcp_client::{
+    backbone_hdlc_watchdog, prefer_ipv6_socket_addrs, HdlcStreamWatchdog, TcpClient,
+    TcpSocketTuning,
+};
 use super::{Interface, InterfaceContext, InterfaceManager};
 
 pub struct TcpServer {
@@ -14,6 +18,7 @@ pub struct TcpServer {
     client_mtu: usize,
     client_socket_tuning: TcpSocketTuning,
     client_hdlc_watchdog: Option<HdlcStreamWatchdog>,
+    prefer_ipv6: bool,
 }
 
 impl TcpServer {
@@ -29,6 +34,7 @@ impl TcpServer {
             client_mtu: Self::DEFAULT_CLIENT_MTU,
             client_socket_tuning: TcpSocketTuning::default(),
             client_hdlc_watchdog: None,
+            prefer_ipv6: false,
         }
     }
 
@@ -51,6 +57,12 @@ impl TcpServer {
     }
 
     #[must_use]
+    pub fn with_prefer_ipv6(mut self, prefer_ipv6: bool) -> Self {
+        self.prefer_ipv6 = prefer_ipv6;
+        self
+    }
+
+    #[must_use]
     pub fn client_socket_tuning(&self) -> TcpSocketTuning {
         self.client_socket_tuning
     }
@@ -58,6 +70,11 @@ impl TcpServer {
     #[must_use]
     pub fn client_hdlc_liveness_enabled(&self) -> bool {
         self.client_hdlc_watchdog.is_some()
+    }
+
+    #[must_use]
+    pub fn prefer_ipv6(&self) -> bool {
+        self.prefer_ipv6
     }
 
     fn accepted_client(
@@ -79,13 +96,14 @@ impl TcpServer {
 
     pub async fn spawn(context: InterfaceContext<Self>) {
         let parent_iface = context.channel.address;
-        let (addr, client_mtu, client_socket_tuning, client_hdlc_watchdog) = {
+        let (addr, client_mtu, client_socket_tuning, client_hdlc_watchdog, prefer_ipv6) = {
             let guard = context.inner.lock().unwrap();
             (
                 guard.addr.clone(),
                 guard.client_mtu,
                 guard.client_socket_tuning,
                 guard.client_hdlc_watchdog.clone(),
+                guard.prefer_ipv6,
             )
         };
 
@@ -99,8 +117,9 @@ impl TcpServer {
                 break;
             }
 
-            let listener =
-                TcpListener::bind(addr.clone()).await.map_err(|_| RnsError::ConnectionError);
+            let listener = bind_tcp_listener(addr.clone(), prefer_ipv6)
+                .await
+                .map_err(|_| RnsError::ConnectionError);
 
             if listener.is_err() {
                 log::warn!("couldn't bind to <{}>", addr);
@@ -183,6 +202,24 @@ impl Interface for TcpServer {
     }
 }
 
+async fn bind_tcp_listener(addr: String, prefer_ipv6: bool) -> io::Result<TcpListener> {
+    if !prefer_ipv6 {
+        return TcpListener::bind(addr).await;
+    }
+
+    let addrs = prefer_ipv6_socket_addrs(lookup_host(addr.as_str()).await?, true);
+    let mut last_err = None;
+    for addr in addrs {
+        match TcpListener::bind(addr).await {
+            Ok(listener) => return Ok(listener),
+            Err(err) => last_err = Some(err),
+        }
+    }
+    Err(last_err.unwrap_or_else(|| {
+        io::Error::new(io::ErrorKind::InvalidInput, "TCP listener resolved to no addresses")
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -198,9 +235,11 @@ mod tests {
         let server = TcpServer::new("127.0.0.1:0", manager.clone());
         assert!(server.client_socket_tuning().is_empty());
         assert!(!server.client_hdlc_liveness_enabled());
+        assert!(!server.prefer_ipv6());
 
         let tuned = TcpServer::new("127.0.0.1:0", manager)
-            .with_client_socket_tuning(TcpSocketTuning::backbone());
+            .with_client_socket_tuning(TcpSocketTuning::backbone())
+            .with_prefer_ipv6(true);
         assert_eq!(tuned.client_socket_tuning().nodelay, Some(true));
         assert_eq!(tuned.client_socket_tuning().keepalive, Some(true));
         assert_eq!(tuned.client_socket_tuning().tcp_keepalive_idle, Some(Duration::from_secs(5)));
@@ -211,6 +250,7 @@ mod tests {
         assert_eq!(tuned.client_socket_tuning().tcp_keepalive_retries, Some(12));
         assert_eq!(tuned.client_socket_tuning().tcp_user_timeout, Some(Duration::from_secs(24)));
         assert!(!tuned.client_hdlc_liveness_enabled());
+        assert!(tuned.prefer_ipv6());
     }
 
     #[test]

@@ -62,6 +62,7 @@ pub(super) struct TcpServerSelection {
     pub(super) selected_index: Option<usize>,
     pub(super) kind: String,
     pub(super) client_mtu: Option<usize>,
+    pub(super) prefer_ipv6: bool,
     pub(super) local_attach_addr: Option<String>,
     pub(super) local_attach_index: Option<usize>,
 }
@@ -76,6 +77,7 @@ pub(super) fn select_tcp_server_bind(
             selected_index: None,
             kind: "tcp_server".to_string(),
             client_mtu: None,
+            prefer_ipv6: false,
             local_attach_addr: None,
             local_attach_index: None,
         });
@@ -99,17 +101,23 @@ pub(super) fn select_tcp_server_bind(
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .unwrap_or("0.0.0.0");
-        matches.push((index, iface.kind.clone(), iface.mtu, format!("{}:{}", host, port)));
+        matches.push((
+            index,
+            iface.kind.clone(),
+            iface.mtu,
+            iface.prefer_ipv6.unwrap_or(false),
+            format!("{}:{}", host, port),
+        ));
     }
 
     if matches.len() > 1 {
         return Err(format!(
             "multiple enabled TCP listener interfaces configured without --transport override: {}",
-            matches.iter().map(|(_, _, _, endpoint)| endpoint.as_str()).collect::<Vec<_>>().join(", ")
+            matches.iter().map(|(_, _, _, _, endpoint)| endpoint.as_str()).collect::<Vec<_>>().join(", ")
         ));
     }
 
-    let Some((selected_index, kind, client_mtu, bind_addr)) = matches.into_iter().next() else {
+    let Some((selected_index, kind, client_mtu, prefer_ipv6, bind_addr)) = matches.into_iter().next() else {
         return Ok(TcpServerSelection::default());
     };
 
@@ -119,6 +127,7 @@ pub(super) fn select_tcp_server_bind(
             selected_index: None,
             kind,
             client_mtu,
+            prefer_ipv6,
             local_attach_addr: Some(bind_addr),
             local_attach_index: Some(selected_index),
         });
@@ -129,6 +138,7 @@ pub(super) fn select_tcp_server_bind(
             selected_index: Some(selected_index),
             kind,
             client_mtu,
+            prefer_ipv6,
             local_attach_addr: None,
             local_attach_index: None,
         })

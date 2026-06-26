@@ -89,6 +89,7 @@ fn build_selected_tcp_server_adapter(
         .client_mtu
         .map(|mtu| TcpServer::new(addr.clone(), iface_manager.clone()).with_client_mtu(mtu))
         .unwrap_or_else(|| TcpServer::new(addr, iface_manager));
+    server = server.with_prefer_ipv6(selected_tcp_server.prefer_ipv6);
     if selected_tcp_server.kind == "backbone" {
         server = server
             .with_client_socket_tuning(TcpSocketTuning::backbone())
@@ -340,11 +341,13 @@ mod tests {
 
         assert!(tcp_server.client_socket_tuning().is_empty());
         assert!(!tcp_server.client_hdlc_liveness_enabled());
+        assert!(!tcp_server.prefer_ipv6());
 
         let backbone = TcpServerSelection {
             bind_addr: Some("127.0.0.1:0".to_string()),
             kind: "backbone".to_string(),
             client_mtu: Some(1_048_576),
+            prefer_ipv6: true,
             ..TcpServerSelection::default()
         };
         let backbone_server =
@@ -353,5 +356,6 @@ mod tests {
         assert_eq!(backbone_server.client_socket_tuning().nodelay, Some(true));
         assert_eq!(backbone_server.client_socket_tuning().keepalive, Some(true));
         assert!(backbone_server.client_hdlc_liveness_enabled());
+        assert!(backbone_server.prefer_ipv6());
     }
 }
