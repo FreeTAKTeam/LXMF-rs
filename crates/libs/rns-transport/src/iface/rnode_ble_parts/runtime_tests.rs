@@ -1,8 +1,8 @@
 use crate::iface::lora::{
-    LoraConfig, CMD_DETECT, CMD_FB_EXT, CMD_FW_VERSION, CMD_LEAVE, CMD_MCU, CMD_PLATFORM,
-    CMD_RADIO_STATE, DETECT_RESP, PLATFORM_ESP32, RADIO_STATE_OFF,
+    CMD_DETECT, CMD_FB_EXT, CMD_FW_VERSION, CMD_LEAVE, CMD_MCU, CMD_PLATFORM, CMD_RADIO_STATE,
+    DETECT_RESP, PLATFORM_ESP32, RADIO_STATE_OFF,
 };
-use crate::kiss::{decode_frames, KissCommand, KissFrame};
+use crate::kiss::decode_frames;
 
 #[derive(Default)]
 struct TestBackend {
@@ -36,7 +36,8 @@ impl RnodeBleBackend for TestBackend {
 
 #[tokio::test]
 async fn startup_caps_max_write_len_to_negotiated_att_payload() {
-    let backend = TestBackend { negotiated_mtu: Some(23), notifications: VecDeque::new() };
+    let backend =
+        TestBackend { negotiated_mtu: Some(23), notifications: VecDeque::new(), writes: Vec::new() };
     let config = RnodeBleKissConfig {
         mtu: 508,
         max_write_len: 512,
