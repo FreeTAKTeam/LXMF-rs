@@ -107,8 +107,16 @@ impl InterfaceConfig {
                 insert_opt_u64(&mut settings, "max_reconnect_tries", self.max_reconnect_tries);
                 insert_opt_u64(&mut settings, "mtu", self.mtu.map(|v| v as u64));
             }
+            "tcp_server" => {
+                insert_opt_string(&mut settings, "host", self.host.as_ref());
+                insert_opt_string(&mut settings, "device", self.device.as_ref());
+                insert_opt_u64(&mut settings, "port", self.port.map(u64::from));
+                insert_opt_bool(&mut settings, "prefer_ipv6", self.prefer_ipv6);
+                insert_opt_u64(&mut settings, "mtu", self.mtu.map(|v| v as u64));
+            }
             "backbone" => {
                 insert_opt_string(&mut settings, "host", self.host.as_ref());
+                insert_opt_string(&mut settings, "device", self.device.as_ref());
                 insert_opt_u64(&mut settings, "port", self.port.map(u64::from));
                 insert_opt_bool(&mut settings, "prefer_ipv6", self.prefer_ipv6);
                 insert_opt_bool(&mut settings, "i2p_tunneled", self.i2p_tunneled);
@@ -722,6 +730,12 @@ impl InterfaceConfig {
                 &format!("interfaces[{index}].host or listen_ip cannot be empty for tcp_server"),
             )?;
         }
+        if let Some(device) = self.device.as_deref() {
+            require_non_empty(
+                Some(device),
+                &format!("interfaces[{index}].device cannot be empty for tcp_server"),
+            )?;
+        }
         if let Some(mtu) = self.mtu {
             if mtu == 0 {
                 return Err(format!("interfaces[{index}].mtu must be > 0 for tcp_server"));
@@ -793,10 +807,25 @@ impl InterfaceConfig {
         if !self.enabled() {
             return Ok(());
         }
-        require_non_empty(
-            self.host.as_deref(),
-            &format!("interfaces[{index}].listen_ip or listen_on is required for backbone"),
-        )?;
+        if let Some(host) = self.host.as_deref() {
+            require_non_empty(
+                Some(host),
+                &format!("interfaces[{index}].listen_ip or listen_on cannot be empty for backbone"),
+            )?;
+        }
+        if let Some(device) = self.device.as_deref() {
+            require_non_empty(
+                Some(device),
+                &format!("interfaces[{index}].device cannot be empty for backbone"),
+            )?;
+        }
+        if self.host.as_deref().map(str::trim).filter(|value| !value.is_empty()).is_none()
+            && self.device.as_deref().map(str::trim).filter(|value| !value.is_empty()).is_none()
+        {
+            return Err(format!(
+                "interfaces[{index}].listen_ip, listen_on, or device is required for backbone"
+            ));
+        }
         if self.port.is_none() {
             return Err(format!("interfaces[{index}].port is required for backbone"));
         }

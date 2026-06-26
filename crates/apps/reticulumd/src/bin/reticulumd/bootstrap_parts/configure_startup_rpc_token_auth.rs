@@ -95,18 +95,14 @@ pub(super) fn select_tcp_server_bind(
         let Some(port) = iface.port else {
             continue;
         };
-        let host = iface
-            .host
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .unwrap_or("0.0.0.0");
+        let host = tcp_listener_bind_host(iface)
+            .map_err(|err| format!("interfaces[{index}] {err}"))?;
         matches.push((
             index,
             iface.kind.clone(),
             iface.mtu,
             iface.prefer_ipv6.unwrap_or(false),
-            format!("{}:{}", host, port),
+            tcp_bind_addr(host.as_str(), port),
         ));
     }
 
@@ -150,6 +146,63 @@ fn is_tcp_listener_interface(iface: &InterfaceConfig) -> bool {
         "local" => iface.shared_instance_type.as_deref() != Some("unix"),
         _ => false,
     }
+}
+
+fn tcp_listener_bind_host(iface: &InterfaceConfig) -> Result<String, String> {
+    if let Some(host) = iface.host.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+        return Ok(host.to_string());
+    }
+    let Some(device) = iface.device.as_deref().map(str::trim).filter(|value| !value.is_empty())
+    else {
+        return Ok("0.0.0.0".to_string());
+    };
+    resolve_tcp_listener_device_bind_host(device, iface.prefer_ipv6.unwrap_or(false))
+}
+
+fn tcp_bind_addr(host: &str, port: u16) -> String {
+    if let Ok(ip) = host.parse::<std::net::IpAddr>() {
+        return std::net::SocketAddr::new(ip, port).to_string();
+    }
+    if host.contains(':') && !host.starts_with('[') {
+        format!("[{host}]:{port}")
+    } else {
+        format!("{host}:{port}")
+    }
+}
+
+fn resolve_tcp_listener_device_bind_host(device: &str, prefer_ipv6: bool) -> Result<String, String> {
+    let interfaces = if_addrs::get_if_addrs()
+        .map_err(|err| format!("failed to inspect network interfaces for device {device}: {err}"))?;
+    let candidates = interfaces
+        .iter()
+        .map(|iface| (iface.name.as_str(), iface.ip(), iface.is_oper_up()))
+        .collect::<Vec<_>>();
+    select_tcp_listener_device_ip(device, prefer_ipv6, &candidates)
+        .map(|addr| addr.to_string())
+}
+
+pub(crate) fn select_tcp_listener_device_ip(
+    device: &str,
+    prefer_ipv6: bool,
+    candidates: &[(&str, std::net::IpAddr, bool)],
+) -> Result<std::net::IpAddr, String> {
+    let mut matches = candidates
+        .iter()
+        .copied()
+        .filter(|(name, _, is_up)| *name == device && *is_up)
+        .map(|(_, ip, _)| ip)
+        .filter(|ip| !ip.is_unspecified())
+        .filter(|ip| !ip.is_loopback() || device.starts_with("lo"))
+        .collect::<Vec<_>>();
+    matches.sort_by_key(|ip| match (prefer_ipv6, ip) {
+        (true, std::net::IpAddr::V6(_)) | (false, std::net::IpAddr::V4(_)) => 0,
+        _ => 1,
+    });
+    matches.into_iter().next().ok_or_else(|| {
+        format!(
+            "device {device} did not resolve to an operational bindable interface address"
+        )
+    })
 }
 
 fn tcp_bind_addr_is_in_use(bind_addr: &str) -> bool {

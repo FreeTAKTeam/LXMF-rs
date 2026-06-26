@@ -153,6 +153,26 @@ interfaces = [
 }
 
 #[test]
+fn parses_reticulum_tcp_server_device_listener() {
+    let input = r#"
+interfaces = [
+  { type = "TCPServerInterface", enabled = true, name = "python-tcp-server", device = "eth0", port = 4242, prefer_ipv6 = true }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse Python TCPServerInterface device config");
+    let iface = &cfg.interfaces[0];
+
+    assert_eq!(iface.kind, "tcp_server");
+    assert_eq!(iface.device.as_deref(), Some("eth0"));
+    assert_eq!(iface.port, Some(4242));
+    assert_eq!(iface.prefer_ipv6, Some(true));
+
+    let settings = iface.settings_json().expect("settings");
+    assert_eq!(settings["device"], "eth0");
+    assert_eq!(settings["prefer_ipv6"], true);
+}
+
+#[test]
 fn rejects_enabled_tcp_server_empty_host() {
     let input = r#"
 interfaces = [
@@ -186,6 +206,26 @@ interfaces = [
     let settings = iface.settings_json().expect("settings");
     assert_eq!(settings["prefer_ipv6"], true);
     assert_eq!(settings["i2p_tunneled"], true);
+}
+
+#[test]
+fn parses_reticulum_backbone_device_listener() {
+    let input = r#"
+interfaces = [
+  { type = "BackboneInterface", enabled = true, name = "python-backbone", device = "eth0", port = 4242, prefer_ipv6 = true }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse Python BackboneInterface device config");
+    let iface = &cfg.interfaces[0];
+
+    assert_eq!(iface.kind, "backbone");
+    assert_eq!(iface.device.as_deref(), Some("eth0"));
+    assert_eq!(iface.port, Some(4242));
+    assert_eq!(iface.mtu, Some(1_048_576));
+
+    let settings = iface.settings_json().expect("settings");
+    assert_eq!(settings["device"], "eth0");
+    assert_eq!(settings["prefer_ipv6"], true);
 }
 
 #[test]

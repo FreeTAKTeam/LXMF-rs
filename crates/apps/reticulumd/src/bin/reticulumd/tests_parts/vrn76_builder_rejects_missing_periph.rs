@@ -486,6 +486,24 @@ fn select_tcp_server_bind_uses_single_backbone_listener_when_transport_not_set()
 }
 
 #[test]
+fn select_tcp_listener_device_ip_honors_prefer_ipv6_and_oper_state() {
+    let candidates = [
+        ("eth0", std::net::IpAddr::V4(std::net::Ipv4Addr::new(192, 0, 2, 10)), true),
+        ("eth0", std::net::IpAddr::V6("2001:db8::10".parse().expect("test IPv6")), true),
+        ("eth1", std::net::IpAddr::V4(std::net::Ipv4Addr::new(198, 51, 100, 10)), true),
+        ("eth0", std::net::IpAddr::V4(std::net::Ipv4Addr::new(192, 0, 2, 11)), false),
+    ];
+
+    let ipv4 =
+        select_tcp_listener_device_ip("eth0", false, &candidates).expect("select IPv4 address");
+    let ipv6 =
+        select_tcp_listener_device_ip("eth0", true, &candidates).expect("select IPv6 address");
+
+    assert_eq!(ipv4, std::net::IpAddr::V4(std::net::Ipv4Addr::new(192, 0, 2, 10)));
+    assert_eq!(ipv6, std::net::IpAddr::V6("2001:db8::10".parse().expect("test IPv6")));
+}
+
+#[test]
 fn select_tcp_server_bind_uses_single_local_listener_when_transport_not_set() {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind free local port");
     let port = listener.local_addr().expect("local addr").port();

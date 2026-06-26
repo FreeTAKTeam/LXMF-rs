@@ -1,7 +1,7 @@
 use crate::bootstrap::{
     configure_startup_rpc_token_auth, enforce_rpc_bind_security, enforce_startup_policy,
-    mark_interface_runtime_fields, mark_interface_startup_status, select_tcp_server_bind,
-    InterfaceStartupFailure, RpcTlsConfig,
+    mark_interface_runtime_fields, mark_interface_startup_status, select_tcp_listener_device_ip,
+    select_tcp_server_bind, InterfaceStartupFailure, RpcTlsConfig,
 };
 
 use crate::bridge::{
