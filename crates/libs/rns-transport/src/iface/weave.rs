@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use ed25519_dalek::Signature;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::time::Instant;
 use tokio_serial::{DataBits, FlowControl, Parity, SerialPortBuilderExt, StopBits};
 use tokio_util::sync::CancellationToken;
 
@@ -43,6 +44,8 @@ const DEFAULT_BAUD_RATE: u32 = 3_000_000;
 const DEFAULT_MTU: usize = 1024;
 const READ_CAPACITY: usize = 1500;
 const RECONNECT_WAIT: Duration = Duration::from_secs(5);
+const WEAVE_ENDPOINT_IDLE_TIMEOUT: Duration = Duration::from_secs(1800);
+const WEAVE_ENDPOINT_CLEANUP_INTERVAL: Duration = Duration::from_secs(10);
 
 #[derive(Clone)]
 pub struct WeaveInterface {
@@ -248,9 +251,15 @@ pub(crate) struct WeaveStreamOptions {
 struct WeaveRuntimeState {
     remote_switch_id: Option<[u8; SWITCH_ID_LEN]>,
     local_endpoint_id: Option<[u8; ENDPOINT_ID_LEN]>,
-    endpoints: BTreeMap<[u8; ENDPOINT_ID_LEN], AddressHash>,
+    endpoints: BTreeMap<[u8; ENDPOINT_ID_LEN], WeaveEndpointState>,
     addresses: BTreeMap<AddressHash, [u8; ENDPOINT_ID_LEN]>,
     wdcl_connected: bool,
+}
+
+#[derive(Debug)]
+struct WeaveEndpointState {
+    iface: AddressHash,
+    last_seen: Instant,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -568,6 +577,14 @@ impl WeaveRuntimeStatus {
         }
     }
 
+    fn remove_endpoint(&mut self, endpoint_id: &[u8; ENDPOINT_ID_LEN]) {
+        self.endpoints.remove(endpoint_id);
+    }
+
+    fn clear_endpoints(&mut self) {
+        self.endpoints.clear();
+    }
+
     fn mark_display_chunk(
         &mut self,
         color_format: u8,
@@ -729,12 +746,16 @@ pub(crate) async fn run_weave_stream<IO>(
     let mut hdlc_rx_buffer = vec![0_u8; options.mtu.max(DEFAULT_MTU) + 128];
     let mut read_buffer = vec![0_u8; READ_CAPACITY.max(options.mtu)];
     let mut tx_buffer = vec![0_u8; options.mtu];
+    let mut cleanup_interval = tokio::time::interval(WEAVE_ENDPOINT_CLEANUP_INTERVAL);
 
     loop {
         let mut tx_channel = tx_channel.lock().await;
         tokio::select! {
             _ = cancel.cancelled() => break,
             _ = iface_stop.cancelled() => break,
+            _ = cleanup_interval.tick() => {
+                gc_weave_endpoints(&options, state.clone(), Instant::now()).await;
+            }
             result = stream.read(&mut read_buffer[..]) => {
                 match result {
                     Ok(0) => {
@@ -821,6 +842,7 @@ pub(crate) async fn run_weave_stream<IO>(
             }
         }
     }
+    cleanup_weave_endpoints(&options, state).await;
 }
 
 async fn process_weave_frame<IO>(
@@ -1004,13 +1026,28 @@ async fn weave_tx_frames(
     let mut output = OutputBuffer::new(tx_buffer);
     message.packet.serialize(&mut output).ok()?;
     let payload = output.as_slice();
-    let state = state.lock().await;
+    let mut state = state.lock().await;
     let remote_switch_id = state.remote_switch_id?;
     let endpoints: Vec<[u8; ENDPOINT_ID_LEN]> = match message.tx_type {
-        TxMessageType::Direct(address) => {
-            state.addresses.get(&address).copied().into_iter().collect()
+        TxMessageType::Direct(address) => match state.addresses.get(&address).copied() {
+            Some(endpoint) => {
+                if let Some(entry) = state.endpoints.get_mut(&endpoint) {
+                    entry.last_seen = Instant::now();
+                }
+                vec![endpoint]
+            }
+            None => Vec::new(),
+        },
+        TxMessageType::Broadcast(_) => {
+            let endpoints: Vec<[u8; ENDPOINT_ID_LEN]> = state.endpoints.keys().copied().collect();
+            let now = Instant::now();
+            for endpoint in &endpoints {
+                if let Some(entry) = state.endpoints.get_mut(endpoint) {
+                    entry.last_seen = now;
+                }
+            }
+            endpoints
         }
-        TxMessageType::Broadcast(_) => state.endpoints.keys().copied().collect(),
     };
     drop(state);
 
@@ -1030,8 +1067,12 @@ async fn ensure_weave_endpoint(
     options: &WeaveStreamOptions,
     state: Arc<tokio::sync::Mutex<WeaveRuntimeState>>,
 ) -> Option<AddressHash> {
-    if let Some(address) = state.lock().await.endpoints.get(&endpoint).copied() {
-        return Some(address);
+    {
+        let mut state = state.lock().await;
+        if let Some(entry) = state.endpoints.get_mut(&endpoint) {
+            entry.last_seen = Instant::now();
+            return Some(entry.iface);
+        }
     }
     let mut manager = options.iface_manager.lock().await;
     let address =
@@ -1040,9 +1081,73 @@ async fn ensure_weave_endpoint(
     drop(manager);
 
     let mut state = state.lock().await;
-    state.endpoints.insert(endpoint, address);
+    state
+        .endpoints
+        .insert(endpoint, WeaveEndpointState { iface: address, last_seen: Instant::now() });
     state.addresses.insert(address, endpoint);
     Some(address)
+}
+
+async fn gc_weave_endpoints(
+    options: &WeaveStreamOptions,
+    state: Arc<tokio::sync::Mutex<WeaveRuntimeState>>,
+    now: Instant,
+) {
+    let stale = {
+        let mut state = state.lock().await;
+        let stale: Vec<([u8; ENDPOINT_ID_LEN], AddressHash)> = state
+            .endpoints
+            .iter()
+            .filter(|(_, endpoint)| {
+                now.duration_since(endpoint.last_seen) >= WEAVE_ENDPOINT_IDLE_TIMEOUT
+            })
+            .map(|(endpoint_id, endpoint)| (*endpoint_id, endpoint.iface))
+            .collect();
+        for (endpoint_id, iface) in &stale {
+            state.endpoints.remove(endpoint_id);
+            state.addresses.remove(iface);
+        }
+        stale
+    };
+
+    if stale.is_empty() {
+        return;
+    }
+
+    for (_, iface) in &stale {
+        let _ = options.iface_manager.lock().await.stop_interface(*iface);
+    }
+    update_weave_status(&options.runtime_status, |status| {
+        for (endpoint_id, _) in &stale {
+            status.remove_endpoint(endpoint_id);
+        }
+    });
+}
+
+async fn cleanup_weave_endpoints(
+    options: &WeaveStreamOptions,
+    state: Arc<tokio::sync::Mutex<WeaveRuntimeState>>,
+) {
+    let endpoints = {
+        let mut state = state.lock().await;
+        let endpoints: Vec<([u8; ENDPOINT_ID_LEN], AddressHash)> = state
+            .endpoints
+            .iter()
+            .map(|(endpoint_id, endpoint)| (*endpoint_id, endpoint.iface))
+            .collect();
+        state.endpoints.clear();
+        state.addresses.clear();
+        endpoints
+    };
+
+    if endpoints.is_empty() {
+        return;
+    }
+
+    for (_, iface) in &endpoints {
+        let _ = options.iface_manager.lock().await.stop_interface(*iface);
+    }
+    update_weave_status(&options.runtime_status, WeaveRuntimeStatus::clear_endpoints);
 }
 
 fn accept_discovery_response(
@@ -1191,6 +1296,175 @@ mod tests {
             manager,
             parent,
         )
+    }
+
+    #[tokio::test]
+    async fn weave_endpoint_gc_removes_stale_virtual_iface_and_status() {
+        let (options, manager, _parent) = test_options().await;
+        let state = Arc::new(tokio::sync::Mutex::new(WeaveRuntimeState::default()));
+        let endpoint = [0x11_u8; ENDPOINT_ID_LEN];
+        let address = ensure_weave_endpoint(endpoint, &options, state.clone())
+            .await
+            .expect("register endpoint");
+        update_weave_status(&options.runtime_status, |status| {
+            status.mark_endpoint_alive(endpoint, address);
+        });
+        {
+            let mut state = state.lock().await;
+            state.endpoints.get_mut(&endpoint).expect("endpoint state").last_seen =
+                Instant::now() - WEAVE_ENDPOINT_IDLE_TIMEOUT - Duration::from_secs(1);
+        }
+
+        gc_weave_endpoints(&options, state.clone(), Instant::now()).await;
+
+        let state = state.lock().await;
+        assert!(state.endpoints.is_empty());
+        assert!(state.addresses.is_empty());
+        drop(state);
+        assert!(options.runtime_status.lock().expect("weave runtime status").endpoints.is_empty());
+        assert_eq!(manager.lock().await.role(&address), None);
+    }
+
+    #[tokio::test]
+    async fn weave_endpoint_gc_keeps_fresh_endpoint() {
+        let (options, manager, _parent) = test_options().await;
+        let state = Arc::new(tokio::sync::Mutex::new(WeaveRuntimeState::default()));
+        let endpoint = [0x22_u8; ENDPOINT_ID_LEN];
+        let address = ensure_weave_endpoint(endpoint, &options, state.clone())
+            .await
+            .expect("register endpoint");
+        update_weave_status(&options.runtime_status, |status| {
+            status.mark_endpoint_alive(endpoint, address);
+        });
+
+        gc_weave_endpoints(&options, state.clone(), Instant::now()).await;
+
+        assert!(state.lock().await.endpoints.contains_key(&endpoint));
+        assert!(options
+            .runtime_status
+            .lock()
+            .expect("weave runtime status")
+            .endpoints
+            .contains_key(&endpoint));
+        assert_eq!(manager.lock().await.role(&address), Some(IfaceRole::VirtualUnicast));
+    }
+
+    #[tokio::test]
+    async fn weave_endpoint_repeat_event_refreshes_last_seen_and_reuses_iface() {
+        let (options, manager, _parent) = test_options().await;
+        let state = Arc::new(tokio::sync::Mutex::new(WeaveRuntimeState::default()));
+        let endpoint = [0x33_u8; ENDPOINT_ID_LEN];
+        let address = ensure_weave_endpoint(endpoint, &options, state.clone())
+            .await
+            .expect("register endpoint");
+        {
+            let mut state = state.lock().await;
+            state.endpoints.get_mut(&endpoint).expect("endpoint state").last_seen =
+                Instant::now() - WEAVE_ENDPOINT_IDLE_TIMEOUT - Duration::from_secs(1);
+        }
+
+        let refreshed_address = ensure_weave_endpoint(endpoint, &options, state.clone())
+            .await
+            .expect("refresh endpoint");
+        gc_weave_endpoints(&options, state.clone(), Instant::now()).await;
+
+        assert_eq!(refreshed_address, address);
+        assert!(state.lock().await.endpoints.contains_key(&endpoint));
+        assert_eq!(manager.lock().await.role(&address), Some(IfaceRole::VirtualUnicast));
+    }
+
+    #[tokio::test]
+    async fn weave_tx_frames_refreshes_endpoint_activity() {
+        let (options, manager, _parent) = test_options().await;
+        let state = Arc::new(tokio::sync::Mutex::new(WeaveRuntimeState::default()));
+        let direct_endpoint = [0x34_u8; ENDPOINT_ID_LEN];
+        let stale_endpoint = [0x35_u8; ENDPOINT_ID_LEN];
+        let direct_address = ensure_weave_endpoint(direct_endpoint, &options, state.clone())
+            .await
+            .expect("register direct endpoint");
+        let stale_address = ensure_weave_endpoint(stale_endpoint, &options, state.clone())
+            .await
+            .expect("register stale endpoint");
+        {
+            let mut state = state.lock().await;
+            state.remote_switch_id = Some([0x99_u8; SWITCH_ID_LEN]);
+            for endpoint in [direct_endpoint, stale_endpoint] {
+                state.endpoints.get_mut(&endpoint).expect("endpoint state").last_seen =
+                    Instant::now() - WEAVE_ENDPOINT_IDLE_TIMEOUT - Duration::from_secs(1);
+            }
+        }
+
+        let mut tx_buffer = vec![0_u8; DEFAULT_MTU];
+        let frames = weave_tx_frames(
+            &TxMessage {
+                tx_type: TxMessageType::Direct(direct_address),
+                packet: Packet::default(),
+            },
+            &options,
+            state.clone(),
+            &mut tx_buffer,
+        )
+        .await
+        .expect("direct tx frame");
+        assert_eq!(frames.len(), 1);
+        gc_weave_endpoints(&options, state.clone(), Instant::now()).await;
+
+        assert!(state.lock().await.endpoints.contains_key(&direct_endpoint));
+        assert_eq!(manager.lock().await.role(&direct_address), Some(IfaceRole::VirtualUnicast));
+        assert_eq!(manager.lock().await.role(&stale_address), None);
+
+        let broadcast_endpoint = [0x36_u8; ENDPOINT_ID_LEN];
+        let broadcast_address = ensure_weave_endpoint(broadcast_endpoint, &options, state.clone())
+            .await
+            .expect("register broadcast endpoint");
+        {
+            let mut state = state.lock().await;
+            state.endpoints.get_mut(&broadcast_endpoint).expect("endpoint state").last_seen =
+                Instant::now() - WEAVE_ENDPOINT_IDLE_TIMEOUT - Duration::from_secs(1);
+        }
+
+        let frames = weave_tx_frames(
+            &TxMessage { tx_type: TxMessageType::Broadcast(None), packet: Packet::default() },
+            &options,
+            state.clone(),
+            &mut tx_buffer,
+        )
+        .await
+        .expect("broadcast tx frames");
+        assert_eq!(frames.len(), 2);
+        gc_weave_endpoints(&options, state.clone(), Instant::now()).await;
+
+        assert!(state.lock().await.endpoints.contains_key(&broadcast_endpoint));
+        assert_eq!(manager.lock().await.role(&broadcast_address), Some(IfaceRole::VirtualUnicast));
+    }
+
+    #[tokio::test]
+    async fn weave_stream_shutdown_stops_registered_endpoint_virtual_ifaces() {
+        let (options, manager, _parent) = test_options().await;
+        let state = Arc::new(tokio::sync::Mutex::new(WeaveRuntimeState::default()));
+        let first_endpoint = [0x44_u8; ENDPOINT_ID_LEN];
+        let second_endpoint = [0x55_u8; ENDPOINT_ID_LEN];
+        let first_address = ensure_weave_endpoint(first_endpoint, &options, state.clone())
+            .await
+            .expect("register first endpoint");
+        let second_address = ensure_weave_endpoint(second_endpoint, &options, state.clone())
+            .await
+            .expect("register second endpoint");
+        update_weave_status(&options.runtime_status, |status| {
+            status.mark_endpoint_alive(first_endpoint, first_address);
+            status.mark_endpoint_via(second_endpoint, second_address);
+        });
+
+        cleanup_weave_endpoints(&options, state.clone()).await;
+
+        let state = state.lock().await;
+        assert!(state.endpoints.is_empty());
+        assert!(state.addresses.is_empty());
+        drop(state);
+        assert!(options.runtime_status.lock().expect("weave runtime status").endpoints.is_empty());
+        let manager = manager.lock().await;
+        assert_eq!(manager.role(&first_address), None);
+        assert_eq!(manager.role(&second_address), None);
     }
 
     #[tokio::test]

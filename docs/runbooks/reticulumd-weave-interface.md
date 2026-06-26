@@ -38,7 +38,9 @@ maps to the interface bitrate used by announce pacing.
 Startup opens the serial port and sends a WDCL discovery broadcast framed with
 HDLC. When a valid discovery response arrives, the runtime sends the WDCL
 connect handshake. Endpoint-alive and endpoint-via events register virtual
-unicast child interfaces.
+unicast child interfaces. Endpoint alive, via, and packet activity refreshes
+the child lifecycle timestamp; idle endpoint children are stopped and removed
+from runtime status, and stream shutdown clears any remaining endpoint children.
 
 Inbound WDCL endpoint packets are deserialized as Reticulum packets and
 delivered to the matching virtual child. Direct outbound sends to a virtual
@@ -62,5 +64,4 @@ display and log frames are ignored.
 
 - Prepared-host Weave hardware evidence is still required.
 - Remote display/status UI integration is not complete.
-- Long-running endpoint timeout cleanup is not complete.
 - I2PInterface has a separate in-progress outbound SAM peer slice.
