@@ -185,15 +185,17 @@ control, Wi-Fi settings, configuration save/delete, firmware-update indicator,
 firmware hash, and ROM/EEPROM read/write/wipe requests. Serial/TCP RNode
 streams also expose a transport-local management dispatch handle that writes
 pre-encoded command frames through the live KISS runtime; radio-state query and
-blink dispatch are covered by local duplex tests. The daemon exposes those
-initial safe serial/TCP operations through `rnode_management` RPC and the
-`rnodeconf-rs query-radio-state` / `rnodeconf-rs blink` commands. The same
-path also queues read/display/local-radio safe controls: config read, ROM
-read, display intensity/blanking/rotation/recondition/address, NeoPixel
-intensity, and interference-avoidance enable/disable. Destructive or
-persistent mutations such as config save/delete, ROM write/wipe, Wi-Fi
-credential changes, Bluetooth control, firmware update indicators, and
-end-to-end RNode management operations over BLE remain incomplete.
+blink dispatch are covered by local duplex tests. Feature-gated BLE RNode
+streams expose the same management queue through the Nordic UART write path,
+including BLE write-length chunking. The daemon exposes those initial safe
+serial/TCP/BLE operations through `rnode_management` RPC and the
+`rnodeconf-rs query-radio-state` / `rnodeconf-rs blink` commands. The same path
+also queues read/display/local-radio safe controls: config read, ROM read,
+display intensity/blanking/rotation/recondition/address, NeoPixel intensity,
+and interference-avoidance enable/disable. Destructive or persistent mutations
+such as config save/delete, ROM write/wipe, Wi-Fi credential changes,
+Bluetooth control, firmware update indicators, and BLE hardware evidence for
+management operations remain incomplete.
 
 ## Validation Rules
 

@@ -1,6 +1,8 @@
 use rns_rpc::RNodeManagementBridge;
 use rns_transport::hash::AddressHash;
 use rns_transport::iface::lora::{LoraConfig, LoraRNodeManagementHandle};
+#[cfg(feature = "rnode-ble")]
+use rns_transport::iface::rnode_ble::RnodeBleManagementHandle;
 
 use serde_json::{json, Value as JsonValue};
 
@@ -10,13 +12,32 @@ use std::collections::{HashMap, HashSet};
 struct RNodeManagementTarget {
     runtime_iface: String,
     name: String,
-    handle: LoraRNodeManagementHandle,
+    handle: DaemonRNodeManagementHandle,
+}
+
+#[derive(Clone)]
+pub(crate) enum DaemonRNodeManagementHandle {
+    Lora(LoraRNodeManagementHandle),
+    #[cfg(feature = "rnode-ble")]
+    RnodeBle(RnodeBleManagementHandle),
+}
+
+impl DaemonRNodeManagementHandle {
+    fn try_dispatch_frame(&self, frame: Vec<u8>) -> Result<(), String> {
+        match self {
+            Self::Lora(handle) => handle.try_dispatch_frame(frame).map_err(|err| err.to_string()),
+            #[cfg(feature = "rnode-ble")]
+            Self::RnodeBle(handle) => {
+                handle.try_dispatch_frame(frame).map_err(|err| err.to_string())
+            }
+        }
+    }
 }
 
 pub(crate) struct DaemonRNodeManagementBinding {
     pub(crate) runtime_iface: AddressHash,
     pub(crate) name: String,
-    pub(crate) handle: LoraRNodeManagementHandle,
+    pub(crate) handle: DaemonRNodeManagementHandle,
 }
 
 pub(crate) struct DaemonRNodeManagementBridge {
@@ -217,7 +238,7 @@ mod tests {
         DaemonRNodeManagementBinding {
             runtime_iface: rns_transport::hash::AddressHash::new([runtime_byte; 16]),
             name: name.to_string(),
-            handle: iface.rnode_management_handle(),
+            handle: DaemonRNodeManagementHandle::Lora(iface.rnode_management_handle()),
         }
     }
 
@@ -233,7 +254,7 @@ mod tests {
         let binding = DaemonRNodeManagementBinding {
             runtime_iface: rns_transport::hash::AddressHash::new([runtime_byte; 16]),
             name: name.to_string(),
-            handle: iface.rnode_management_handle(),
+            handle: DaemonRNodeManagementHandle::Lora(iface.rnode_management_handle()),
         };
         (binding, iface)
     }

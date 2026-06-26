@@ -1,6 +1,6 @@
 use crate::iface::lora::{
-    CMD_DETECT, CMD_FB_EXT, CMD_FW_VERSION, CMD_LEAVE, CMD_MCU, CMD_PLATFORM, CMD_RADIO_STATE,
-    DETECT_RESP, PLATFORM_ESP32, RADIO_STATE_OFF,
+    CMD_BLINK, CMD_DETECT, CMD_FB_EXT, CMD_FW_VERSION, CMD_LEAVE, CMD_MCU, CMD_PLATFORM,
+    CMD_RADIO_STATE, DETECT_RESP, PLATFORM_ESP32, RADIO_STATE_ASK, RADIO_STATE_OFF,
 };
 use crate::kiss::decode_frames;
 
@@ -91,4 +91,70 @@ async fn shutdown_can_prefix_display_disable_for_display_capable_rnode() {
             KissFrame::Command(KissCommand::Unknown(CMD_LEAVE, vec![0xff])),
         ]
     );
+}
+
+#[tokio::test]
+async fn management_frame_write_uses_existing_ble_kiss_chunking() {
+    let backend = TestBackend::default();
+    let config = RnodeBleKissConfig {
+        max_write_len: 2,
+        ..RnodeBleKissConfig::default()
+    };
+    let mut runtime = RnodeBleKissRuntime::new(backend, config);
+
+    runtime
+        .send_management_frame(LoraConfig::blink_frame(0x03))
+        .await
+        .expect("management write");
+
+    let backend = runtime.into_backend();
+    let chunks = backend.writes.into_iter().map(|write| write.payload).collect::<Vec<_>>();
+    assert!(
+        chunks.len() > 1,
+        "small max_write_len should force management frame fragmentation"
+    );
+    let raw = chunks.into_iter().flatten().collect::<Vec<_>>();
+    let frames = decode_frames(&raw, 512).expect("decode management write");
+
+    assert_eq!(frames, vec![KissFrame::Command(KissCommand::Unknown(CMD_BLINK, vec![0x03]))]);
+}
+
+#[tokio::test]
+async fn management_frame_write_queues_radio_state_query() {
+    let backend = TestBackend::default();
+    let mut runtime = RnodeBleKissRuntime::new(backend, RnodeBleKissConfig::default());
+
+    runtime
+        .send_management_frame(LoraConfig::radio_state_query_frame())
+        .await
+        .expect("management write");
+
+    let backend = runtime.into_backend();
+    let raw = backend.writes.into_iter().flat_map(|write| write.payload).collect::<Vec<_>>();
+    let frames = decode_frames(&raw, 512).expect("decode management write");
+
+    assert_eq!(
+        frames,
+        vec![KissFrame::Command(KissCommand::Unknown(CMD_RADIO_STATE, vec![RADIO_STATE_ASK]))]
+    );
+}
+
+#[tokio::test]
+async fn native_rnode_ble_management_handle_queues_frames() {
+    let iface = NativeRnodeBleKissInterface::new(
+        "rnode-ble-test",
+        NativeRnodeBleSettings::for_peripheral("RNode Test"),
+        RnodeBleKissConfig::default(),
+    );
+    let handle = iface.rnode_management_handle();
+
+    handle
+        .try_dispatch_frame(LoraConfig::blink_frame(0x04))
+        .expect("queue management frame");
+
+    let mut rx = iface.management_frame_rx.lock().await;
+    let frame = rx.recv().await.expect("management frame queued");
+    let frames = decode_frames(&frame, 512).expect("decode queued management frame");
+
+    assert_eq!(frames, vec![KissFrame::Command(KissCommand::Unknown(CMD_BLINK, vec![0x04]))]);
 }

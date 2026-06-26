@@ -88,12 +88,14 @@ The project is best described by capability level:
   `target/rnode-hil/`. Display-capable BLE RNode shutdown now disables the
   external framebuffer before radio-off/leave frames. Serial/TCP RNode streams
   now expose a transport-local management dispatch handle that writes
-  pre-encoded KISS command frames through the live KISS runtime; the first
-  covered operations are radio-state query and blink indication, backed by
-  duplex stream tests, daemon `rnode_management` RPC dispatch, reticulumd
-  bridge dispatch tests, and `rnodeconf-rs` mock-RPC CLI tests. The daemon/tool
-  path now also queues safe config/ROM read, display, NeoPixel, and
-  interference-avoidance controls. Frame-level helpers exist for Bluetooth control,
+  pre-encoded KISS command frames through the live KISS runtime; feature-gated
+  BLE RNode streams expose the same management dispatch through the Nordic UART
+  write path with BLE chunking. The first covered operations are radio-state
+  query and blink indication, backed by duplex/mock tests, daemon
+  `rnode_management` RPC dispatch, reticulumd bridge dispatch tests, and
+  `rnodeconf-rs` mock-RPC CLI tests. The daemon/tool path now also queues safe
+  config/ROM read, display, NeoPixel, and interference-avoidance controls.
+  Frame-level helpers exist for Bluetooth control,
   display/NeoPixel controls, interference-avoidance control, Wi-Fi settings,
   config save/delete, firmware-update metadata, and ROM/EEPROM read/write/wipe
   requests.

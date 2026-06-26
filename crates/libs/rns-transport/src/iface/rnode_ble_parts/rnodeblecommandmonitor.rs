@@ -140,6 +140,36 @@ impl RnodeBleRuntimeStatusHandle {
     }
 }
 
+#[cfg(feature = "rnode-ble")]
+fn rnode_ble_management_channel(
+) -> (RnodeBleManagementFrameSender, RnodeBleManagementFrameReceiver) {
+    let (tx, rx) = tokio::sync::mpsc::channel(RNODE_BLE_MANAGEMENT_CHANNEL_CAPACITY);
+    (tx, Arc::new(tokio::sync::Mutex::new(rx)))
+}
+
+#[cfg(feature = "rnode-ble")]
+#[derive(Debug, Clone)]
+pub struct RnodeBleManagementHandle {
+    tx: RnodeBleManagementFrameSender,
+}
+
+#[cfg(feature = "rnode-ble")]
+impl RnodeBleManagementHandle {
+    pub fn try_dispatch_frame(
+        &self,
+        frame: Vec<u8>,
+    ) -> Result<(), tokio::sync::mpsc::error::TrySendError<Vec<u8>>> {
+        self.tx.try_send(frame)
+    }
+
+    pub async fn dispatch_frame(
+        &self,
+        frame: Vec<u8>,
+    ) -> Result<(), tokio::sync::mpsc::error::SendError<Vec<u8>>> {
+        self.tx.send(frame).await
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct RnodeBleKissSession {
     config: RnodeBleKissConfig,
@@ -271,6 +301,11 @@ impl RnodeBleKissSession {
             self.interface_ready = false;
         }
         writes
+    }
+
+    #[must_use]
+    pub fn management_frame_writes(&self, frame: Vec<u8>) -> Vec<RnodeBleWrite> {
+        self.kiss_writes(frame)
     }
 
     pub fn accept_notification(

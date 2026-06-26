@@ -165,9 +165,11 @@ All methods below are required for full CLI feature coverage.
   `config_read`/`read_config`, `rom_read`/`read_rom`, display
   intensity/blanking/rotation/recondition/address controls, NeoPixel
   intensity, and interference-avoidance enable/disable controls. Serial/TCP
-  RNodeInterface handles are selected by runtime iface id or an unambiguous
-  configured interface name. Successful responses report that the management
-  frame was queued, not that the radio has completed the operation.
+  RNodeInterface handles, plus feature-gated BLE RNodeInterface handles when
+  `reticulumd` is built with `rnode-ble`, are selected by runtime iface id or
+  an unambiguous configured interface name. Successful responses report that
+  the management frame was queued, not that the radio has completed the
+  operation.
 
 `list_interfaces` response notes:
 

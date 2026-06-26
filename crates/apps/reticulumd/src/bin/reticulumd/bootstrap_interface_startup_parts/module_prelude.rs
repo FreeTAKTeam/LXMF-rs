@@ -5,6 +5,8 @@ use super::super::{
 
 use super::{InterfaceStartupFailure, TcpServerSelection};
 
+use crate::bridge_rnode_management::DaemonRNodeManagementHandle;
+
 use crate::interface_hot_apply::tcp_interface_key;
 
 use crate::interfaces::{
@@ -86,7 +88,7 @@ pub(crate) struct LoraRuntimeRefresh {
 pub(crate) struct RNodeManagementBinding {
     pub(crate) runtime_iface: AddressHash,
     pub(crate) name: String,
-    pub(crate) handle: rns_transport::iface::lora::LoraRNodeManagementHandle,
+    pub(crate) handle: DaemonRNodeManagementHandle,
 }
 
 #[derive(Clone)]
