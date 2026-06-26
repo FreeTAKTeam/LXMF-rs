@@ -90,7 +90,8 @@ placeholders:
 - I2P SAM baseline, with transient stream sessions, `.i2p` name lookup, HDLC
   framing, virtual peer child interfaces, direct peer sends, broadcast fanout
   across configured peers, `STREAM ACCEPT` connectable sessions, and private
-  destination key persistence when `state_path`/`storagepath` is configured,
+  destination key persistence under the daemon storage root by default or under
+  explicit `state_path`/`storagepath` when configured,
   using Python-compatible hashed `.i2p` filenames with old-format key reuse and
   identity-bound new-format key names for generated destinations. Startup
   metadata reports the derived `.b32.i2p` endpoint for persisted keys and keys
@@ -108,9 +109,9 @@ whole Python family, not because the implemented interfaces are stubs.
 `I2PInterface` is tracked as an in-progress family: configured outbound peers
 and connectable sessions can run through SAM, and transport-side tunnel
 watchdog/status bookkeeping is refreshed into daemon/RPC interface status.
-Private destination keys now follow Python's hashed key-file naming, including
-old-format fallback when an existing Python key is present. Prepared-host
-production evidence is still pending.
+Private destination keys now follow Python's default daemon-storage injection
+and hashed key-file naming, including old-format fallback when an existing
+Python key is present. Prepared-host production evidence is still pending.
 `RNodeMultiInterface` is tracked separately as an in-progress family: the
 shared serial/TCP vport routing slice exists and startup validates detect,
 firmware `>= 1.74`, platform, MCU, `CMD_INTERFACES`, and hardware-reported

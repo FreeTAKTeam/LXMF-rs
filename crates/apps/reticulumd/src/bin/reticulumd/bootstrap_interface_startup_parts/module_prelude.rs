@@ -68,6 +68,7 @@ pub(super) async fn startup_configured_interfaces(
     iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
     server_iface: Option<&AddressHash>,
     configured_interfaces: &mut [InterfaceRecord],
+    reticulum_storage_path: &std::path::Path,
     shared_reconnect_events: Option<tokio::sync::mpsc::UnboundedSender<AddressHash>>,
     transport_identity_hash: Option<[u8; 16]>,
 ) -> InterfaceStartupBatch {
@@ -323,6 +324,7 @@ pub(super) async fn startup_configured_interfaces(
                     iface_manager,
                     &mut configured_interfaces[index],
                     &mut startup_failures,
+                    reticulum_storage_path,
                     transport_identity_hash,
                 )
                 .await
@@ -666,9 +668,11 @@ async fn startup_i2p(
     iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
     record: &mut InterfaceRecord,
     startup_failures: &mut Vec<InterfaceStartupFailure>,
+    reticulum_storage_path: &std::path::Path,
     transport_identity_hash: Option<[u8; 16]>,
 ) -> Option<I2pRuntimeRefresh> {
-    let adapter = match i2p::build_adapter(iface, iface_manager.clone()) {
+    let effective_iface = i2p_config_with_storage_default(iface, reticulum_storage_path);
+    let adapter = match i2p::build_adapter(&effective_iface, iface_manager.clone()) {
         Ok(adapter) => adapter,
         Err(err) => {
             record_startup_failure(
@@ -697,7 +701,8 @@ async fn startup_i2p(
     }
 
     let peer_count = adapter.peers().len();
-    let i2p_metadata = match i2p_runtime_metadata_json(args, iface, &adapter, peer_count).await {
+    let i2p_metadata =
+        match i2p_runtime_metadata_json(args, &effective_iface, &adapter, peer_count).await {
         Ok(metadata) => metadata,
         Err(err) => {
             record_startup_failure(
@@ -736,6 +741,18 @@ async fn startup_i2p(
         runtime.insert("i2p".to_string(), i2p_metadata);
     });
     Some(I2pRuntimeRefresh { runtime_iface: i2p_iface, status: runtime_status })
+}
+
+fn i2p_config_with_storage_default(
+    iface: &InterfaceConfig,
+    reticulum_storage_path: &std::path::Path,
+) -> InterfaceConfig {
+    let mut effective = iface.clone();
+    if effective.state_path.as_deref().map(str::trim).filter(|value| !value.is_empty()).is_none()
+    {
+        effective.state_path = Some(reticulum_storage_path.to_string_lossy().to_string());
+    }
+    effective
 }
 
 async fn i2p_runtime_metadata_json(
@@ -1860,6 +1877,7 @@ interfaces = [
             &manager,
             &mut record,
             &mut startup_failures,
+            std::path::Path::new("."),
             None,
         )
         .await;
@@ -1949,6 +1967,7 @@ interfaces = [
             &manager,
             &mut record,
             &mut startup_failures,
+            std::path::Path::new("."),
             Some(identity_hash),
         )
         .await;
@@ -1962,6 +1981,84 @@ interfaces = [
             .and_then(|runtime| runtime.get("i2p"))
             .expect("i2p runtime metadata");
         assert_eq!(i2p.get("connectable").and_then(|value| value.as_bool()), Some(true));
+        assert_eq!(
+            i2p.get("private_key_persisted").and_then(|value| value.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
+            i2p.get("reachable_endpoint").and_then(|value| value.as_str()),
+            Some(expected_endpoint.as_str())
+        );
+        assert_eq!(
+            i2p.get("private_key_path").and_then(|value| value.as_str()),
+            Some(key_path.to_string_lossy().as_ref())
+        );
+        let _ = std::fs::remove_dir_all(root.as_path());
+    }
+
+    #[tokio::test]
+    async fn i2p_startup_uses_daemon_storage_path_when_config_omits_storagepath() {
+        let root = std::env::temp_dir().join(format!(
+            "lxmfrs-i2p-default-storage-metadata-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(root.as_path());
+        let private_key = fake_i2p_private_key();
+        let identity_hash = [0x42_u8; 16];
+        let key_path = rns_transport::iface::i2p::i2p_private_key_old_format_path(
+            &root,
+            "i2p-main",
+        );
+        std::fs::create_dir_all(key_path.parent().expect("key dir")).expect("key dir");
+        std::fs::write(key_path.as_path(), private_key.as_bytes()).expect("write key");
+        let expected_endpoint =
+            rns_transport::iface::i2p::i2p_b32_from_private_destination(&private_key)
+                .expect("expected endpoint");
+
+        let cfg = reticulum_daemon::config::DaemonConfig::from_toml(
+            r#"
+interfaces = [
+  { type = "I2PInterface", enabled = true, name = "i2p-main", connectable = true }
+]
+"#,
+        )
+        .expect("parse i2p config");
+        let args = test_args();
+        let iface = &cfg.interfaces[0];
+        let identity = rns_core::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let transport_identity = to_transport_private_identity(&identity);
+        let transport = Transport::new(TransportConfig::new("test", &transport_identity, true));
+        let manager = transport.iface_manager();
+        let mut record = InterfaceRecord {
+            kind: iface.kind.clone(),
+            enabled: true,
+            host: None,
+            port: None,
+            name: iface.name.clone(),
+            settings: iface.settings_json(),
+        };
+        let mut startup_failures = Vec::new();
+
+        let started = startup_i2p(
+            &args,
+            iface,
+            "i2p-main",
+            &manager,
+            &mut record,
+            &mut startup_failures,
+            root.as_path(),
+            Some(identity_hash),
+        )
+        .await;
+
+        assert!(started.is_some());
+        assert!(startup_failures.is_empty());
+        let i2p = record
+            .settings
+            .as_ref()
+            .and_then(|settings| settings.get("_runtime"))
+            .and_then(|runtime| runtime.get("i2p"))
+            .expect("i2p runtime metadata");
         assert_eq!(
             i2p.get("private_key_persisted").and_then(|value| value.as_bool()),
             Some(true)
@@ -2048,6 +2145,7 @@ interfaces = [
             &manager,
             &mut record,
             &mut startup_failures,
+            std::path::Path::new("."),
             Some(identity_hash),
         )
         .await;

@@ -41,7 +41,9 @@ interfaces = [
 The parser accepts Python-style `peers` as either a comma-separated string or a
 string array. It also accepts `sam_ip` as an alias for `sam_host`,
 `storagepath` as an alias for `state_path`, and `configured_bitrate` as the
-interface bitrate used by announce pacing.
+interface bitrate used by announce pacing. If no explicit `state_path` or
+`storagepath` is supplied, daemon startup injects the Reticulum storage root for
+I2P destination-key persistence, matching Python's `I2PInterface` setup.
 
 ## Runtime Behavior
 
@@ -51,9 +53,10 @@ open, resolves `.i2p` names through `NAMING LOOKUP`, and issues `STREAM
 CONNECT` on a separate data socket for its peer destination.
 
 With `connectable = true`, startup also creates a SAM stream session for
-incoming peers and loops on `STREAM ACCEPT`. If `state_path` or Python-style
-`storagepath` is configured, the generated private I2P destination key is
-stored under `state_path/i2p/` and reused on later starts. During startup,
+incoming peers and loops on `STREAM ACCEPT`. The generated private I2P
+destination key is stored under the explicit `state_path`/`storagepath`, or
+under the daemon Reticulum storage root when omitted, and reused on later
+starts. During startup,
 `_runtime.i2p.reachable_endpoint` reports the derived `.b32.i2p` address for
 both already-persisted keys and keys generated in the same run. Each accepted
 stream strips the remote-destination line that SAM prepends, registers a
