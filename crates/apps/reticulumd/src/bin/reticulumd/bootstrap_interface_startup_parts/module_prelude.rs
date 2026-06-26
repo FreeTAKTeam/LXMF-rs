@@ -1161,7 +1161,8 @@ async fn startup_local_tcp_attach(
 #[cfg(test)]
 mod tests {
     use super::{
-        build_tcp_client_adapter, startup_i2p, startup_rnode_multi, startup_udp, startup_weave,
+        build_tcp_client_adapter, startup_i2p, startup_kiss, startup_kiss_tcp_client,
+        startup_rnode_multi, startup_udp, startup_weave,
     };
     use base64::Engine;
     use crate::Args;
@@ -1278,6 +1279,108 @@ mod tests {
         let runtime_iface =
             AddressHash::new_from_hex_string(runtime_iface.trim_matches('/')).expect("iface hash");
         assert_eq!(manager.lock().await.role(&runtime_iface), Some(IfaceRole::Multicast));
+    }
+
+    #[tokio::test]
+    async fn ax25_kiss_startup_marks_spawned_unicast_without_strict_preflight() {
+        let cfg = reticulum_daemon::config::DaemonConfig::from_toml(
+            r#"
+interfaces = [
+  { type = "AX25KISSInterface", enabled = true, name = "ax25-main", port = "/dev/does-not-exist-ax25", speed = 1200, callsign = "N0CALL", ssid = 1 }
+]
+"#,
+        )
+        .expect("parse ax25 kiss config");
+        let args = test_args();
+        let iface = &cfg.interfaces[0];
+        let identity = rns_core::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let transport_identity = to_transport_private_identity(&identity);
+        let transport = Transport::new(TransportConfig::new("test", &transport_identity, true));
+        let manager = transport.iface_manager();
+        let mut record = InterfaceRecord {
+            kind: iface.kind.clone(),
+            enabled: true,
+            host: None,
+            port: None,
+            name: iface.name.clone(),
+            settings: iface.settings_json(),
+        };
+        let mut startup_failures = Vec::new();
+
+        let started = startup_kiss(
+            &args,
+            iface,
+            "ax25-main",
+            &manager,
+            &mut record,
+            &mut startup_failures,
+        )
+        .await;
+
+        assert!(started);
+        assert!(startup_failures.is_empty());
+        let runtime = record
+            .settings
+            .as_ref()
+            .and_then(|settings| settings.get("_runtime"))
+            .expect("runtime settings");
+        assert_eq!(runtime["startup_status"].as_str(), Some("spawned"));
+        let runtime_iface =
+            runtime["iface"].as_str().expect("runtime iface").trim_matches('/').to_string();
+        let runtime_iface =
+            AddressHash::new_from_hex_string(&runtime_iface).expect("iface hash");
+        assert_eq!(manager.lock().await.role(&runtime_iface), Some(IfaceRole::Unicast));
+    }
+
+    #[tokio::test]
+    async fn kiss_tcp_client_startup_marks_spawned_unicast_without_strict_preflight() {
+        let cfg = reticulum_daemon::config::DaemonConfig::from_toml(
+            r#"
+interfaces = [
+  { type = "kiss_tcp_client", enabled = true, name = "kiss-wifi", host = "127.0.0.1", port = 65535, flow_control = true }
+]
+"#,
+        )
+        .expect("parse kiss tcp client config");
+        let args = test_args();
+        let iface = &cfg.interfaces[0];
+        let identity = rns_core::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let transport_identity = to_transport_private_identity(&identity);
+        let transport = Transport::new(TransportConfig::new("test", &transport_identity, true));
+        let manager = transport.iface_manager();
+        let mut record = InterfaceRecord {
+            kind: iface.kind.clone(),
+            enabled: true,
+            host: iface.host.clone(),
+            port: iface.port,
+            name: iface.name.clone(),
+            settings: iface.settings_json(),
+        };
+        let mut startup_failures = Vec::new();
+
+        let started = startup_kiss_tcp_client(
+            &args,
+            iface,
+            "kiss-wifi",
+            &manager,
+            &mut record,
+            &mut startup_failures,
+        )
+        .await;
+
+        assert!(started);
+        assert!(startup_failures.is_empty());
+        let runtime = record
+            .settings
+            .as_ref()
+            .and_then(|settings| settings.get("_runtime"))
+            .expect("runtime settings");
+        assert_eq!(runtime["startup_status"].as_str(), Some("spawned"));
+        let runtime_iface =
+            runtime["iface"].as_str().expect("runtime iface").trim_matches('/').to_string();
+        let runtime_iface =
+            AddressHash::new_from_hex_string(&runtime_iface).expect("iface hash");
+        assert_eq!(manager.lock().await.role(&runtime_iface), Some(IfaceRole::Unicast));
     }
 
     #[tokio::test]
