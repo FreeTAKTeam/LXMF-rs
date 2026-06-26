@@ -248,4 +248,38 @@ fn apply_interface_runtime_config(
         let announce_cap = iface.announce_cap.unwrap_or(current_announce_cap);
         manager.set_announce_pacing(address, bitrate, announce_cap);
     }
+    manager.set_shared_config(
+        address,
+        rns_transport::iface::InterfaceSharedConfig {
+            bootstrap_only: iface.bootstrap_only,
+            ifac_size: iface.ifac_size,
+            network_name: iface.ifac_network_name().cloned(),
+            passphrase: iface.ifac_passphrase().cloned(),
+            ingress_control: iface.ingress_control,
+            egress_control: iface.egress_control,
+            ic_max_held_announces: iface.ic_max_held_announces,
+            ic_burst_hold: iface.ic_burst_hold,
+            ic_burst_freq_new: iface.ic_burst_freq_new,
+            ic_burst_freq: iface.ic_burst_freq,
+            ic_pr_burst_freq_new: iface.ic_pr_burst_freq_new,
+            ic_pr_burst_freq: iface.ic_pr_burst_freq,
+            ec_pr_freq: iface.ec_pr_freq,
+            ic_new_time: iface.ic_new_time,
+            ic_burst_penalty: iface.ic_burst_penalty,
+            ic_held_release_interval: iface.ic_held_release_interval,
+            discoverable: iface.discoverable,
+            announce_interval: iface.announce_interval,
+            discovery_stamp_value: iface.discovery_stamp_value,
+            discovery_name: iface.discovery_name.clone(),
+            discovery_encrypt: iface.discovery_encrypt,
+            reachable_on: iface.reachable_on.clone(),
+            publish_ifac: iface.publish_ifac,
+            latitude: iface.latitude,
+            longitude: iface.longitude,
+            height: iface.height,
+            discovery_frequency: iface.discovery_frequency,
+            discovery_bandwidth: iface.discovery_bandwidth,
+            discovery_modulation: iface.discovery_modulation,
+        },
+    );
 }

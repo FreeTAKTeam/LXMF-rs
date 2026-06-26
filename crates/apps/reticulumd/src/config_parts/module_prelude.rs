@@ -98,6 +98,76 @@ pub struct InterfaceConfig {
     #[serde(default)]
     pub announce_cap: Option<u64>,
     #[serde(default)]
+    pub announce_rate_target: Option<u64>,
+    #[serde(default)]
+    pub announce_rate_grace: Option<u64>,
+    #[serde(default)]
+    pub announce_rate_penalty: Option<u64>,
+    #[serde(default)]
+    pub bootstrap_only: Option<bool>,
+    #[serde(default)]
+    pub ignore_config_warnings: Option<bool>,
+    #[serde(default)]
+    pub ifac_size: Option<u64>,
+    #[serde(default)]
+    pub networkname: Option<String>,
+    #[serde(default)]
+    pub network_name: Option<String>,
+    #[serde(default)]
+    pub passphrase: Option<String>,
+    #[serde(default)]
+    pub pass_phrase: Option<String>,
+    #[serde(default)]
+    pub ingress_control: Option<bool>,
+    #[serde(default)]
+    pub egress_control: Option<bool>,
+    #[serde(default)]
+    pub ic_max_held_announces: Option<u64>,
+    #[serde(default)]
+    pub ic_burst_hold: Option<f64>,
+    #[serde(default)]
+    pub ic_burst_freq_new: Option<f64>,
+    #[serde(default)]
+    pub ic_burst_freq: Option<f64>,
+    #[serde(default)]
+    pub ic_pr_burst_freq_new: Option<f64>,
+    #[serde(default)]
+    pub ic_pr_burst_freq: Option<f64>,
+    #[serde(default)]
+    pub ec_pr_freq: Option<f64>,
+    #[serde(default)]
+    pub ic_new_time: Option<f64>,
+    #[serde(default)]
+    pub ic_burst_penalty: Option<f64>,
+    #[serde(default)]
+    pub ic_held_release_interval: Option<f64>,
+    #[serde(default)]
+    pub discoverable: Option<bool>,
+    #[serde(default)]
+    pub announce_interval: Option<u64>,
+    #[serde(default)]
+    pub discovery_stamp_value: Option<u64>,
+    #[serde(default)]
+    pub discovery_name: Option<String>,
+    #[serde(default)]
+    pub discovery_encrypt: Option<bool>,
+    #[serde(default)]
+    pub reachable_on: Option<String>,
+    #[serde(default)]
+    pub publish_ifac: Option<bool>,
+    #[serde(default)]
+    pub latitude: Option<f64>,
+    #[serde(default)]
+    pub longitude: Option<f64>,
+    #[serde(default)]
+    pub height: Option<f64>,
+    #[serde(default)]
+    pub discovery_frequency: Option<u64>,
+    #[serde(default)]
+    pub discovery_bandwidth: Option<u64>,
+    #[serde(default)]
+    pub discovery_modulation: Option<u64>,
+    #[serde(default)]
     pub host: Option<String>,
     #[serde(skip)]
     pub port: Option<u16>,

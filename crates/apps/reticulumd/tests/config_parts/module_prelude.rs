@@ -421,6 +421,81 @@ interfaces = [
 }
 
 #[test]
+fn parses_common_reticulum_ifac_and_rate_control_fields() {
+    let input = r#"
+interfaces = [
+  { type = "KISSInterface", enabled = true, name = "kiss-main", port = "/dev/ttyACM0", speed = 19200, ifac_size = 16, networkname = "field-net", pass_phrase = "shared-secret", announce_rate_target = 12, ingress_control = false, egress_control = true, ic_burst_hold = 1.5, ic_pr_burst_freq = 0.25, ec_pr_freq = 0.5, bootstrap_only = true }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse common IFAC and rate control fields");
+    let iface = &cfg.interfaces[0];
+    assert_eq!(iface.ifac_size, Some(16));
+    assert_eq!(iface.networkname.as_deref(), Some("field-net"));
+    assert_eq!(iface.pass_phrase.as_deref(), Some("shared-secret"));
+    assert_eq!(iface.announce_rate_target, Some(12));
+    assert_eq!(iface.announce_rate_grace, None);
+    assert_eq!(iface.announce_rate_penalty, None);
+    assert_eq!(iface.ingress_control, Some(false));
+    assert_eq!(iface.egress_control, Some(true));
+    assert_eq!(iface.bootstrap_only, Some(true));
+
+    let settings = iface.settings_json().expect("kiss settings");
+    assert_eq!(settings["ifac_size"], 16);
+    assert_eq!(settings["network_name"], "field-net");
+    assert_eq!(settings["passphrase"], "shared-secret");
+    assert_eq!(settings["announce_rate_target"], 12);
+    assert_eq!(settings["announce_rate_grace"], 0);
+    assert_eq!(settings["announce_rate_penalty"], 0);
+    assert_eq!(settings["ingress_control"], false);
+    assert_eq!(settings["egress_control"], true);
+    assert_eq!(settings["ic_burst_hold"], 1.5);
+    assert_eq!(settings["ic_pr_burst_freq"], 0.25);
+    assert_eq!(settings["ec_pr_freq"], 0.5);
+    assert_eq!(settings["bootstrap_only"], true);
+}
+
+#[test]
+fn parses_common_reticulum_discovery_metadata_fields() {
+    let input = r#"
+interfaces = [
+  { type = "RNodeInterface", enabled = true, name = "rnode-main", region = "US915", state_path = "/tmp/lora-state.json", port = "tcp://192.0.2.10:8001", frequency = 915000000, bandwidth = 125000, spreadingfactor = 9, codingrate = 5, txpower = 17, discoverable = true, announce_interval = 360, discovery_stamp_value = 8, discovery_name = "field node", discovery_encrypt = true, reachable_on = "lxmf://field", publish_ifac = true, latitude = 45.5, longitude = -63.5, height = 42.0, discovery_frequency = 915000000, discovery_bandwidth = 125000, discovery_modulation = 1, ignore_config_warnings = true }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse common discovery metadata fields");
+    let iface = &cfg.interfaces[0];
+    assert_eq!(iface.discoverable, Some(true));
+    assert_eq!(iface.announce_interval, Some(360));
+    assert_eq!(iface.discovery_stamp_value, Some(8));
+    assert_eq!(iface.discovery_name.as_deref(), Some("field node"));
+    assert_eq!(iface.discovery_encrypt, Some(true));
+    assert_eq!(iface.reachable_on.as_deref(), Some("lxmf://field"));
+    assert_eq!(iface.publish_ifac, Some(true));
+    assert_eq!(iface.latitude, Some(45.5));
+    assert_eq!(iface.longitude, Some(-63.5));
+    assert_eq!(iface.height, Some(42.0));
+    assert_eq!(iface.discovery_frequency, Some(915_000_000));
+    assert_eq!(iface.discovery_bandwidth, Some(125_000));
+    assert_eq!(iface.discovery_modulation, Some(1));
+    assert_eq!(iface.ignore_config_warnings, Some(true));
+
+    let settings = iface.settings_json().expect("rnode settings");
+    assert_eq!(settings["discoverable"], true);
+    assert_eq!(settings["announce_interval"], 360);
+    assert_eq!(settings["discovery_stamp_value"], 8);
+    assert_eq!(settings["discovery_name"], "field node");
+    assert_eq!(settings["discovery_encrypt"], true);
+    assert_eq!(settings["reachable_on"], "lxmf://field");
+    assert_eq!(settings["publish_ifac"], true);
+    assert_eq!(settings["latitude"], 45.5);
+    assert_eq!(settings["longitude"], -63.5);
+    assert_eq!(settings["height"], 42.0);
+    assert_eq!(settings["discovery_frequency"], 915_000_000);
+    assert_eq!(settings["discovery_bandwidth"], 125_000);
+    assert_eq!(settings["discovery_modulation"], 1);
+    assert_eq!(settings["ignore_config_warnings"], true);
+}
+
+#[test]
 fn rejects_invalid_common_announce_pacing_fields() {
     let input = r#"
 interfaces = [

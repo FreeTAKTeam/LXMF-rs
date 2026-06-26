@@ -1161,8 +1161,9 @@ async fn startup_local_tcp_attach(
 #[cfg(test)]
 mod tests {
     use super::{
-        build_tcp_client_adapter, mark_ble_spawn_success, startup_i2p, startup_kiss,
-        startup_kiss_tcp_client, startup_rnode_multi, startup_udp, startup_weave,
+        apply_interface_runtime_config, build_tcp_client_adapter, mark_ble_spawn_success,
+        startup_i2p, startup_kiss, startup_kiss_tcp_client, startup_rnode_multi, startup_udp,
+        startup_weave,
     };
     use base64::Engine;
     use crate::Args;
@@ -1170,7 +1171,7 @@ mod tests {
     use rns_rpc::InterfaceRecord;
     use rns_transport::hash::AddressHash;
     use rns_transport::identity_bridge::to_transport_private_identity;
-    use rns_transport::iface::{IfaceRole, InterfaceMode};
+    use rns_transport::iface::{IfaceRole, InterfaceMode, InterfaceSharedConfig};
     use rns_transport::transport::{Transport, TransportConfig};
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
     use tokio::net::TcpListener;
@@ -1227,6 +1228,69 @@ mod tests {
             Some(Duration::from_secs(24))
         );
         assert!(adapter.hdlc_liveness_enabled());
+    }
+
+    #[test]
+    fn apply_runtime_config_records_reticulum_shared_options() {
+        let mut manager = rns_transport::iface::InterfaceManager::new(16);
+        let channel = manager.new_channel(16);
+        let iface = InterfaceConfig {
+            kind: "kiss".to_string(),
+            enabled: Some(true),
+            outgoing: Some(false),
+            bitrate: Some(1200),
+            announce_cap: Some(5),
+            bootstrap_only: Some(true),
+            ifac_size: Some(16),
+            networkname: Some("field-net".to_string()),
+            pass_phrase: Some("shared-secret".to_string()),
+            ingress_control: Some(false),
+            egress_control: Some(true),
+            ic_burst_hold: Some(1.5),
+            discoverable: Some(true),
+            announce_interval: Some(360),
+            discovery_name: Some("field node".to_string()),
+            discovery_encrypt: Some(true),
+            reachable_on: Some("lxmf://field".to_string()),
+            publish_ifac: Some(true),
+            latitude: Some(45.5),
+            longitude: Some(-63.5),
+            height: Some(42.0),
+            discovery_frequency: Some(915_000_000),
+            discovery_bandwidth: Some(125_000),
+            discovery_modulation: Some(1),
+            ..InterfaceConfig::default()
+        };
+
+        apply_interface_runtime_config(&mut manager, *channel.address(), &iface);
+
+        assert_eq!(manager.outgoing(channel.address()), Some(false));
+        assert_eq!(manager.announce_pacing(channel.address()), Some((1200, 5)));
+        assert_eq!(
+            manager.shared_config(channel.address()),
+            Some(&InterfaceSharedConfig {
+                bootstrap_only: Some(true),
+                ifac_size: Some(16),
+                network_name: Some("field-net".to_string()),
+                passphrase: Some("shared-secret".to_string()),
+                ingress_control: Some(false),
+                egress_control: Some(true),
+                ic_burst_hold: Some(1.5),
+                discoverable: Some(true),
+                announce_interval: Some(360),
+                discovery_name: Some("field node".to_string()),
+                discovery_encrypt: Some(true),
+                reachable_on: Some("lxmf://field".to_string()),
+                publish_ifac: Some(true),
+                latitude: Some(45.5),
+                longitude: Some(-63.5),
+                height: Some(42.0),
+                discovery_frequency: Some(915_000_000),
+                discovery_bandwidth: Some(125_000),
+                discovery_modulation: Some(1),
+                ..InterfaceSharedConfig::default()
+            })
+        );
     }
 
     #[tokio::test]

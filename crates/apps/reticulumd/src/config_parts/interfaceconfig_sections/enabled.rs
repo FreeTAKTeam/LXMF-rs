@@ -19,6 +19,76 @@ impl InterfaceConfig {
         insert_opt_bool(&mut settings, "outgoing", self.outgoing);
         insert_opt_u64(&mut settings, "bitrate", self.bitrate);
         insert_opt_u64(&mut settings, "announce_cap", self.announce_cap);
+        insert_opt_u64(&mut settings, "announce_rate_target", self.announce_rate_target);
+        if self.announce_rate_target.is_some() {
+            insert_opt_u64(
+                &mut settings,
+                "announce_rate_grace",
+                Some(self.announce_rate_grace.unwrap_or(0)),
+            );
+            insert_opt_u64(
+                &mut settings,
+                "announce_rate_penalty",
+                Some(self.announce_rate_penalty.unwrap_or(0)),
+            );
+        } else {
+            insert_opt_u64(&mut settings, "announce_rate_grace", self.announce_rate_grace);
+            insert_opt_u64(&mut settings, "announce_rate_penalty", self.announce_rate_penalty);
+        }
+        insert_opt_bool(&mut settings, "bootstrap_only", self.bootstrap_only);
+        insert_opt_bool(&mut settings, "ignore_config_warnings", self.ignore_config_warnings);
+        insert_opt_u64(&mut settings, "ifac_size", self.ifac_size);
+        insert_opt_string(&mut settings, "network_name", self.ifac_network_name());
+        insert_opt_string(&mut settings, "passphrase", self.ifac_passphrase());
+        insert_opt_bool(&mut settings, "ingress_control", self.ingress_control);
+        insert_opt_bool(&mut settings, "egress_control", self.egress_control);
+        insert_opt_u64(
+            &mut settings,
+            "ic_max_held_announces",
+            self.ic_max_held_announces,
+        );
+        insert_opt_f64(&mut settings, "ic_burst_hold", self.ic_burst_hold);
+        insert_opt_f64(&mut settings, "ic_burst_freq_new", self.ic_burst_freq_new);
+        insert_opt_f64(&mut settings, "ic_burst_freq", self.ic_burst_freq);
+        insert_opt_f64(
+            &mut settings,
+            "ic_pr_burst_freq_new",
+            self.ic_pr_burst_freq_new,
+        );
+        insert_opt_f64(&mut settings, "ic_pr_burst_freq", self.ic_pr_burst_freq);
+        insert_opt_f64(&mut settings, "ec_pr_freq", self.ec_pr_freq);
+        insert_opt_f64(&mut settings, "ic_new_time", self.ic_new_time);
+        insert_opt_f64(&mut settings, "ic_burst_penalty", self.ic_burst_penalty);
+        insert_opt_f64(
+            &mut settings,
+            "ic_held_release_interval",
+            self.ic_held_release_interval,
+        );
+        insert_opt_bool(&mut settings, "discoverable", self.discoverable);
+        insert_opt_u64(&mut settings, "announce_interval", self.announce_interval);
+        insert_opt_u64(
+            &mut settings,
+            "discovery_stamp_value",
+            self.discovery_stamp_value,
+        );
+        insert_opt_string(&mut settings, "discovery_name", self.discovery_name.as_ref());
+        insert_opt_bool(&mut settings, "discovery_encrypt", self.discovery_encrypt);
+        insert_opt_string(&mut settings, "reachable_on", self.reachable_on.as_ref());
+        insert_opt_bool(&mut settings, "publish_ifac", self.publish_ifac);
+        insert_opt_f64(&mut settings, "latitude", self.latitude);
+        insert_opt_f64(&mut settings, "longitude", self.longitude);
+        insert_opt_f64(&mut settings, "height", self.height);
+        insert_opt_u64(
+            &mut settings,
+            "discovery_frequency",
+            self.discovery_frequency,
+        );
+        insert_opt_u64(&mut settings, "discovery_bandwidth", self.discovery_bandwidth);
+        insert_opt_u64(
+            &mut settings,
+            "discovery_modulation",
+            self.discovery_modulation,
+        );
         match self.kind.as_str() {
             "tcp_client" => {
                 insert_opt_string(&mut settings, "host", self.host.as_ref());
@@ -384,12 +454,61 @@ impl InterfaceConfig {
         if self.bitrate == Some(0) {
             return Err(format!("interfaces[{index}].bitrate must be > 0"));
         }
+        if self.announce_rate_target == Some(0) {
+            return Err(format!("interfaces[{index}].announce_rate_target must be > 0"));
+        }
         if let Some(announce_cap) = self.announce_cap {
             if !(1..=100).contains(&announce_cap) {
                 return Err(format!("interfaces[{index}].announce_cap must be between 1 and 100"));
             }
         }
+        self.validate_finite_shared_float(index, "ic_burst_hold", self.ic_burst_hold)?;
+        self.validate_finite_shared_float(index, "ic_burst_freq_new", self.ic_burst_freq_new)?;
+        self.validate_finite_shared_float(index, "ic_burst_freq", self.ic_burst_freq)?;
+        self.validate_finite_shared_float(
+            index,
+            "ic_pr_burst_freq_new",
+            self.ic_pr_burst_freq_new,
+        )?;
+        self.validate_finite_shared_float(index, "ic_pr_burst_freq", self.ic_pr_burst_freq)?;
+        self.validate_finite_shared_float(index, "ec_pr_freq", self.ec_pr_freq)?;
+        self.validate_finite_shared_float(index, "ic_new_time", self.ic_new_time)?;
+        self.validate_finite_shared_float(index, "ic_burst_penalty", self.ic_burst_penalty)?;
+        self.validate_finite_shared_float(
+            index,
+            "ic_held_release_interval",
+            self.ic_held_release_interval,
+        )?;
+        self.validate_finite_shared_float(index, "latitude", self.latitude)?;
+        self.validate_finite_shared_float(index, "longitude", self.longitude)?;
+        self.validate_finite_shared_float(index, "height", self.height)?;
         Ok(())
+    }
+
+    fn validate_finite_shared_float(
+        &self,
+        index: usize,
+        field: &str,
+        value: Option<f64>,
+    ) -> Result<(), String> {
+        if value.is_some_and(|value| !value.is_finite()) {
+            return Err(format!("interfaces[{index}].{field} must be finite"));
+        }
+        Ok(())
+    }
+
+    pub fn ifac_network_name(&self) -> Option<&String> {
+        self.network_name
+            .as_ref()
+            .filter(|value| !value.trim().is_empty())
+            .or_else(|| self.networkname.as_ref().filter(|value| !value.trim().is_empty()))
+    }
+
+    pub fn ifac_passphrase(&self) -> Option<&String> {
+        self.passphrase
+            .as_ref()
+            .filter(|value| !value.trim().is_empty())
+            .or_else(|| self.pass_phrase.as_ref().filter(|value| !value.trim().is_empty()))
     }
 
     fn normalize_aliases(&mut self, index: usize, original_kind: &str) -> Result<(), String> {

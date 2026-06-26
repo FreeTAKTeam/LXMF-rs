@@ -66,6 +66,31 @@ mod tests {
     }
 
     #[test]
+    fn set_shared_config_updates_registered_iface_and_virtual_copy() {
+        let mut mgr = InterfaceManager::new(16);
+        let channel = mgr.new_channel(16);
+        let config = InterfaceSharedConfig {
+            bootstrap_only: Some(true),
+            ifac_size: Some(16),
+            network_name: Some("field-net".to_string()),
+            passphrase: Some("shared-secret".to_string()),
+            ingress_control: Some(false),
+            discoverable: Some(true),
+            discovery_name: Some("field node".to_string()),
+            latitude: Some(45.5),
+            ..InterfaceSharedConfig::default()
+        };
+
+        assert!(mgr.set_shared_config(*channel.address(), config.clone()));
+        assert_eq!(mgr.shared_config(channel.address()), Some(&config));
+
+        let virtual_iface = mgr
+            .register_virtual_iface(*channel.address(), IfaceRole::Unicast)
+            .expect("virtual iface");
+        assert_eq!(mgr.shared_config(&virtual_iface), Some(&config));
+    }
+
+    #[test]
     fn set_mode_updates_registered_iface() {
         let mut mgr = InterfaceManager::new(16);
         let channel = mgr.new_channel(16);

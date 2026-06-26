@@ -55,6 +55,7 @@ impl InterfaceManager {
             announce_allowed_at: Instant::now(),
             announce_bitrate_bps: DEFAULT_IFACE_BITRATE_BPS,
             announce_cap_percent: DEFAULT_ANNOUNCE_CAP_PERCENT,
+            shared_config: InterfaceSharedConfig::default(),
         });
 
         InterfaceChannel { rx_channel: self.rx_send.clone(), tx_channel: tx_recv, address, stop }
@@ -151,6 +152,10 @@ impl InterfaceManager {
             .map(|i| (i.announce_bitrate_bps, i.announce_cap_percent))
     }
 
+    pub fn shared_config(&self, address: &AddressHash) -> Option<&InterfaceSharedConfig> {
+        self.ifaces.iter().find(|i| i.address == *address).map(|i| &i.shared_config)
+    }
+
     pub fn full_hash(&self, address: &AddressHash) -> Option<Hash> {
         self.ifaces.iter().find(|i| i.address == *address).map(|i| i.full_hash)
     }
@@ -186,6 +191,19 @@ impl InterfaceManager {
         if let Some(iface) = self.ifaces.iter_mut().find(|i| i.address == address) {
             iface.announce_bitrate_bps = bitrate_bps;
             iface.announce_cap_percent = cap_percent;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn set_shared_config(
+        &mut self,
+        address: AddressHash,
+        shared_config: InterfaceSharedConfig,
+    ) -> bool {
+        if let Some(iface) = self.ifaces.iter_mut().find(|i| i.address == address) {
+            iface.shared_config = shared_config;
             true
         } else {
             false
@@ -244,6 +262,7 @@ impl InterfaceManager {
             announce_allowed_at: Instant::now(),
             announce_bitrate_bps: host_iface.announce_bitrate_bps,
             announce_cap_percent: host_iface.announce_cap_percent,
+            shared_config: host_iface.shared_config.clone(),
         });
 
         Some(address)
