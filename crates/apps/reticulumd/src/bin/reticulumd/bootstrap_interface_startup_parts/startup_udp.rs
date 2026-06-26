@@ -347,19 +347,7 @@ async fn startup_ble(
 ) -> bool {
     match ble::spawn(iface_manager.clone(), iface).await {
         Ok(ble_iface) => {
-            let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
-            let mut manager = iface_manager.lock().await;
-            manager.set_mode(ble_iface, mode);
-            apply_interface_runtime_config(&mut manager, ble_iface, iface);
-            log::info!(
-                "[daemon] ble_gatt enabled iface={} name={} peripheral_id={}",
-                ble_iface,
-                label,
-                iface.peripheral_id.as_deref().unwrap_or("<unset>")
-            );
-            let runtime_iface = ble_iface.to_string();
-            mark_interface_startup_status(record, "spawned", None, Some(runtime_iface.as_str()));
-            mark_interface_runtime_fields(record, "running", 0);
+            mark_ble_spawn_success(iface, label, iface_manager, record, ble_iface).await;
             true
         }
         Err(err) => {
@@ -374,4 +362,26 @@ async fn startup_ble(
             false
         }
     }
+}
+
+async fn mark_ble_spawn_success(
+    iface: &InterfaceConfig,
+    label: &str,
+    iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
+    record: &mut InterfaceRecord,
+    ble_iface: AddressHash,
+) {
+    let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
+    let mut manager = iface_manager.lock().await;
+    manager.set_mode(ble_iface, mode);
+    apply_interface_runtime_config(&mut manager, ble_iface, iface);
+    log::info!(
+        "[daemon] ble_gatt enabled iface={} name={} peripheral_id={}",
+        ble_iface,
+        label,
+        iface.peripheral_id.as_deref().unwrap_or("<unset>")
+    );
+    let runtime_iface = ble_iface.to_string();
+    mark_interface_startup_status(record, "spawned", None, Some(runtime_iface.as_str()));
+    mark_interface_runtime_fields(record, "running", 0);
 }

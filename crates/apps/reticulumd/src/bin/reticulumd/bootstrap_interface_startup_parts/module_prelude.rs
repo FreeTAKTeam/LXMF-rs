@@ -1161,8 +1161,8 @@ async fn startup_local_tcp_attach(
 #[cfg(test)]
 mod tests {
     use super::{
-        build_tcp_client_adapter, startup_i2p, startup_kiss, startup_kiss_tcp_client,
-        startup_rnode_multi, startup_udp, startup_weave,
+        build_tcp_client_adapter, mark_ble_spawn_success, startup_i2p, startup_kiss,
+        startup_kiss_tcp_client, startup_rnode_multi, startup_udp, startup_weave,
     };
     use base64::Engine;
     use crate::Args;
@@ -1170,7 +1170,7 @@ mod tests {
     use rns_rpc::InterfaceRecord;
     use rns_transport::hash::AddressHash;
     use rns_transport::identity_bridge::to_transport_private_identity;
-    use rns_transport::iface::IfaceRole;
+    use rns_transport::iface::{IfaceRole, InterfaceMode};
     use rns_transport::transport::{Transport, TransportConfig};
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
     use tokio::net::TcpListener;
@@ -1381,6 +1381,52 @@ interfaces = [
         let runtime_iface =
             AddressHash::new_from_hex_string(&runtime_iface).expect("iface hash");
         assert_eq!(manager.lock().await.role(&runtime_iface), Some(IfaceRole::Unicast));
+    }
+
+    #[tokio::test]
+    async fn ble_gatt_spawn_success_marks_running_unicast_without_hardware() {
+        let cfg = reticulum_daemon::config::DaemonConfig::from_toml(
+            r#"
+interfaces = [
+  { type = "ble_gatt", enabled = true, name = "ble-main", peripheral_id = "AA:BB:CC:DD:EE:FF", service_uuid = "12345678-1234-1234-1234-1234567890ab", write_char_uuid = "2A37", notify_char_uuid = "2A38", mode = "ap" }
+]
+"#,
+        )
+        .expect("parse ble gatt config");
+        let iface = &cfg.interfaces[0];
+        let identity = rns_core::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let transport_identity = to_transport_private_identity(&identity);
+        let transport = Transport::new(TransportConfig::new("test", &transport_identity, true));
+        let manager = transport.iface_manager();
+        let ble_iface =
+            *manager.lock().await.new_channel_with_role(8, IfaceRole::Unicast).address();
+        let mut record = InterfaceRecord {
+            kind: iface.kind.clone(),
+            enabled: true,
+            host: None,
+            port: None,
+            name: iface.name.clone(),
+            settings: iface.settings_json(),
+        };
+
+        mark_ble_spawn_success(iface, "ble-main", &manager, &mut record, ble_iface).await;
+
+        let runtime = record
+            .settings
+            .as_ref()
+            .and_then(|settings| settings.get("_runtime"))
+            .expect("runtime settings");
+        assert_eq!(runtime["startup_status"].as_str(), Some("spawned"));
+        assert_eq!(runtime["runtime_status"].as_str(), Some("running"));
+        assert_eq!(runtime["reconnect_attempts"].as_u64(), Some(0));
+        let runtime_iface =
+            runtime["iface"].as_str().expect("runtime iface").trim_matches('/').to_string();
+        let runtime_iface =
+            AddressHash::new_from_hex_string(&runtime_iface).expect("iface hash");
+        let manager = manager.lock().await;
+        assert_eq!(runtime_iface, ble_iface);
+        assert_eq!(manager.role(&runtime_iface), Some(IfaceRole::Unicast));
+        assert_eq!(manager.mode(&runtime_iface), Some(InterfaceMode::AccessPoint));
     }
 
     #[tokio::test]
