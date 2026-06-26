@@ -193,6 +193,7 @@ struct LocalInterface {
     announce_bitrate_bps: u64,
     announce_cap_percent: u64,
     shared_config: InterfaceSharedConfig,
+    outgoing_pr_history: VecDeque<Instant>,
 }
 
 #[derive(Debug, Clone)]

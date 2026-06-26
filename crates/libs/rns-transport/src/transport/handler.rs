@@ -187,6 +187,16 @@ impl TransportHandler {
         dispatch
     }
 
+    pub(super) async fn send_recursive_path_request(&self, message: TxMessage) -> TxDispatchTrace {
+        let packet = message.packet.clone();
+        self.packet_cache.lock().await.update(&packet);
+        let dispatch = self.iface_manager.lock().await.send_recursive_path_request(message).await;
+        if dispatch.sent_ifaces > 0 {
+            self.note_link_packet_sent(&packet).await;
+        }
+        dispatch
+    }
+
     pub(super) fn has_destination(&self, address: &AddressHash) -> bool {
         self.single_in_destinations.contains_key(address)
     }

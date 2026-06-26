@@ -56,6 +56,7 @@ impl InterfaceManager {
             announce_bitrate_bps: DEFAULT_IFACE_BITRATE_BPS,
             announce_cap_percent: DEFAULT_ANNOUNCE_CAP_PERCENT,
             shared_config: InterfaceSharedConfig::default(),
+            outgoing_pr_history: VecDeque::new(),
         });
 
         InterfaceChannel { rx_channel: self.rx_send.clone(), tx_channel: tx_recv, address, stop }
@@ -263,6 +264,7 @@ impl InterfaceManager {
             announce_bitrate_bps: host_iface.announce_bitrate_bps,
             announce_cap_percent: host_iface.announce_cap_percent,
             shared_config: host_iface.shared_config.clone(),
+            outgoing_pr_history: VecDeque::new(),
         });
 
         Some(address)
@@ -397,6 +399,46 @@ impl InterfaceManager {
         iface.announce_queue.remove(index).map(|entry| entry.message)
     }
 
+    fn outgoing_pr_frequency(iface: &mut LocalInterface, now: Instant) -> f64 {
+        while let Some(oldest) = iface.outgoing_pr_history.front().copied() {
+            if now.duration_since(oldest) > OUTGOING_PR_FREQ_DECAY {
+                iface.outgoing_pr_history.pop_front();
+            } else {
+                break;
+            }
+        }
+
+        let Some(oldest) = iface.outgoing_pr_history.front().copied() else {
+            return 0.0;
+        };
+        let span = now.duration_since(oldest);
+        if span.is_zero() {
+            0.0
+        } else {
+            iface.outgoing_pr_history.len() as f64 / span.as_secs_f64()
+        }
+    }
+
+    fn should_egress_limit_pr(iface: &mut LocalInterface, now: Instant) -> bool {
+        if iface.shared_config.egress_control != Some(true) {
+            return false;
+        }
+        let threshold = iface
+            .shared_config
+            .ec_pr_freq
+            .filter(|value| value.is_finite() && *value >= 0.0)
+            .unwrap_or(DEFAULT_EGRESS_PR_FREQ_HZ);
+        Self::outgoing_pr_frequency(iface, now) > threshold
+            && iface.outgoing_pr_history.len() >= OUTGOING_PR_MIN_LIMIT_SAMPLES
+    }
+
+    fn record_outgoing_pr(iface: &mut LocalInterface, now: Instant) {
+        iface.outgoing_pr_history.push_back(now);
+        while iface.outgoing_pr_history.len() > OUTGOING_PR_FREQ_SAMPLES {
+            iface.outgoing_pr_history.pop_front();
+        }
+    }
+
     pub async fn release_queued_announces(&mut self) -> TxDispatchTrace {
         let mut trace = TxDispatchTrace::default();
         let now = Instant::now();
@@ -440,6 +482,19 @@ impl InterfaceManager {
         message: TxMessage,
         announce_policy: Option<AnnounceBroadcastPolicy>,
     ) -> TxDispatchTrace {
+        self.send_with_options(message, announce_policy, false).await
+    }
+
+    pub async fn send_recursive_path_request(&mut self, message: TxMessage) -> TxDispatchTrace {
+        self.send_with_options(message, None, true).await
+    }
+
+    async fn send_with_options(
+        &mut self,
+        message: TxMessage,
+        announce_policy: Option<AnnounceBroadcastPolicy>,
+        apply_egress_control: bool,
+    ) -> TxDispatchTrace {
         let mut trace = TxDispatchTrace::default();
         for iface in &mut self.ifaces {
             let should_send = match message.tx_type {
@@ -470,10 +525,16 @@ impl InterfaceManager {
 
             if should_send && iface.outgoing && !iface.stop.is_cancelled() {
                 trace.matched_ifaces += 1;
+                let now = Instant::now();
+                let is_path_request =
+                    apply_egress_control && matches!(message.tx_type, TxMessageType::Broadcast(_));
+                if is_path_request && Self::should_egress_limit_pr(iface, now) {
+                    trace.failed_ifaces += 1;
+                    continue;
+                }
                 let is_paced_announce = message.packet.header.packet_type == PacketType::Announce
                     && message.packet.header.hops > 0
                     && matches!(message.tx_type, TxMessageType::Broadcast(_));
-                let now = Instant::now();
                 if is_paced_announce
                     && (!iface.announce_queue.is_empty() || now < iface.announce_allowed_at)
                 {
@@ -496,6 +557,9 @@ impl InterfaceManager {
 
                 if Self::send_to_iface(iface, message.clone()).await {
                     trace.sent_ifaces += 1;
+                    if is_path_request {
+                        Self::record_outgoing_pr(iface, now);
+                    }
                 } else {
                     trace.failed_ifaces += 1;
                 }

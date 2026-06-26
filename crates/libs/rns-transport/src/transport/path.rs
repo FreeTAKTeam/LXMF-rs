@@ -222,7 +222,10 @@ pub(super) async fn handle_path_request<'a>(
                 Some(request.tag_bytes.clone()),
             ) {
                 handler
-                    .send(TxMessage { tx_type: TxMessageType::Broadcast(Some(iface)), packet })
+                    .send_recursive_path_request(TxMessage {
+                        tx_type: TxMessageType::Broadcast(Some(iface)),
+                        packet,
+                    })
                     .await;
             }
         }

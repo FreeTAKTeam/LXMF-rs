@@ -253,6 +253,95 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn egress_control_limits_rapid_path_request_broadcasts() {
+        let mut mgr = InterfaceManager::new(16);
+        let mut rx = mgr.new_channel(16).tx_channel;
+        let iface = mgr.ifaces[0].address;
+        assert!(mgr.set_shared_config(
+            iface,
+            InterfaceSharedConfig {
+                egress_control: Some(true),
+                ec_pr_freq: Some(0.1),
+                ..Default::default()
+            },
+        ));
+
+        for _ in 0..OUTGOING_PR_MIN_LIMIT_SAMPLES {
+            let trace = mgr
+                .send_recursive_path_request(TxMessage {
+                    tx_type: TxMessageType::Broadcast(None),
+                    packet: path_request_packet(),
+                })
+                .await;
+            assert_eq!(trace.sent_ifaces, 1);
+            assert!(rx.try_recv().is_ok());
+        }
+
+        let limited = mgr
+            .send_recursive_path_request(TxMessage {
+                tx_type: TxMessageType::Broadcast(None),
+                packet: path_request_packet(),
+            })
+            .await;
+        assert_eq!(limited.matched_ifaces, 1);
+        assert_eq!(limited.sent_ifaces, 0);
+        assert_eq!(limited.failed_ifaces, 1);
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn egress_control_false_does_not_limit_path_request_broadcasts() {
+        let mut mgr = InterfaceManager::new(16);
+        let mut rx = mgr.new_channel(16).tx_channel;
+        let iface = mgr.ifaces[0].address;
+        assert!(mgr.set_shared_config(
+            iface,
+            InterfaceSharedConfig {
+                egress_control: Some(false),
+                ec_pr_freq: Some(0.1),
+                ..Default::default()
+            },
+        ));
+
+        for _ in 0..=OUTGOING_PR_MIN_LIMIT_SAMPLES {
+            let trace = mgr
+                .send_recursive_path_request(TxMessage {
+                    tx_type: TxMessageType::Broadcast(None),
+                    packet: path_request_packet(),
+                })
+                .await;
+            assert_eq!(trace.sent_ifaces, 1);
+            assert!(rx.try_recv().is_ok());
+        }
+    }
+
+    #[tokio::test]
+    async fn egress_control_does_not_limit_regular_path_request_broadcasts() {
+        let mut mgr = InterfaceManager::new(16);
+        let mut rx = mgr.new_channel(16).tx_channel;
+        let iface = mgr.ifaces[0].address;
+        assert!(mgr.set_shared_config(
+            iface,
+            InterfaceSharedConfig {
+                egress_control: Some(true),
+                ec_pr_freq: Some(0.1),
+                ..Default::default()
+            },
+        ));
+
+        for _ in 0..=OUTGOING_PR_MIN_LIMIT_SAMPLES {
+            let trace = mgr
+                .send(TxMessage {
+                    tx_type: TxMessageType::Broadcast(None),
+                    packet: path_request_packet(),
+                })
+                .await;
+            assert_eq!(trace.sent_ifaces, 1);
+            assert!(rx.try_recv().is_ok());
+        }
+    }
+
+    #[tokio::test]
     async fn saturated_broadcast_queue_returns_without_enqueue_timeout() {
         let mut mgr = InterfaceManager::new(16);
         let mut rx = mgr.new_channel(1).tx_channel;
@@ -417,6 +506,10 @@ mod tests {
             },
             ..Default::default()
         }
+    }
+
+    fn path_request_packet() -> Packet {
+        Packet::default()
     }
 
     fn announce_packet_with(hops: u8, seed: &[u8], emitted: u64) -> Packet {

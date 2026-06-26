@@ -10,6 +10,10 @@ const DEFAULT_IFACE_MTU: usize =
     crate::packet::PACKET_MDU + 2 + 1 + crate::hash::ADDRESS_HASH_SIZE * 2 + 1;
 const MAX_QUEUED_ANNOUNCES_PER_IFACE: usize = 16_384;
 const QUEUED_ANNOUNCE_LIFE: Duration = Duration::from_secs(60 * 60 * 24);
+const OUTGOING_PR_FREQ_SAMPLES: usize = 48;
+const OUTGOING_PR_MIN_LIMIT_SAMPLES: usize = 6;
+const OUTGOING_PR_FREQ_DECAY: Duration = Duration::from_secs(10);
+const DEFAULT_EGRESS_PR_FREQ_HZ: f64 = 5.0;
 
 fn tx_diag_enabled() -> bool {
     static ENABLED: OnceLock<bool> = OnceLock::new();
