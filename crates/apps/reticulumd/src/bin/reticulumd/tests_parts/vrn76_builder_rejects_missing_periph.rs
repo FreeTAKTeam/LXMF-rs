@@ -392,6 +392,9 @@ fn select_tcp_server_bind_uses_single_backbone_listener_when_transport_not_set()
 
 #[test]
 fn select_tcp_server_bind_uses_single_local_listener_when_transport_not_set() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind free local port");
+    let port = listener.local_addr().expect("local addr").port();
+    drop(listener);
     let args = test_args(PathBuf::from("/tmp/db"), None, None, false);
     let config = reticulum_daemon::config::DaemonConfig {
         display_name: None,
@@ -401,14 +404,15 @@ fn select_tcp_server_bind_uses_single_local_listener_when_transport_not_set() {
             kind: "local".to_string(),
             enabled: Some(true),
             host: Some("127.0.0.1".to_string()),
-            port: Some(37_428),
+            port: Some(port),
             mtu: Some(262_144),
             ..InterfaceConfig::default()
         }],
     };
 
     let selected = select_tcp_server_bind(&args, Some(&config)).expect("select local");
-    assert_eq!(selected.bind_addr.as_deref(), Some("127.0.0.1:37428"));
+    let endpoint = format!("127.0.0.1:{port}");
+    assert_eq!(selected.bind_addr.as_deref(), Some(endpoint.as_str()));
     assert_eq!(selected.selected_index, Some(0));
     assert_eq!(selected.kind, "local");
     assert_eq!(selected.client_mtu, Some(262_144));
