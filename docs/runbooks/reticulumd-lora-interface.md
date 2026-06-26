@@ -339,6 +339,60 @@ RNode lifecycle smoke tests. Feature-gated `ble://` RNode startup still uses
 the same protocol monitor internally, but daemon/RPC live refresh for the BLE
 adapter remains pending.
 
+## Prepared-Host Smoke
+
+The opt-in prepared-host smoke validates `reticulumd` against a host with a
+single serial or TCP/Wi-Fi RNode available as `RNodeInterface`. It intentionally
+does not accept `ble://` yet because BLE startup does not refresh
+`_runtime.lora.rnode_status` through daemon/RPC.
+
+```sh
+RNODE_PORT=/dev/ttyACM0 \
+RNODE_FREQUENCY=915000000 \
+RNODE_BANDWIDTH=125000 \
+RNODE_SPREADING_FACTOR=9 \
+RNODE_CODING_RATE=5 \
+RNODE_TX_POWER=17 \
+RNODE_COMMAND_TIMEOUT_MS=1500 \
+./tools/scripts/rnode-prepared-host-smoke.sh
+```
+
+For Wi-Fi/TCP RNodes, use `RNODE_PORT=tcp://192.0.2.10:8001`; the generated
+config omits serial baud rate and the pass gate expects
+`_runtime.lora.rnode_status.endpoint` to match `host:port`.
+
+The script builds `reticulumd` and `rnstatus-rs`, starts the daemon with
+`--strict-interface-startup`, polls `rnstatus-rs --json`, and writes artifacts
+under `target/rnode-hil/`. A passing run requires:
+
+- `_runtime.startup_status = "spawned"`
+- `_runtime.iface` populated with the runtime interface hash
+- `_runtime.lora.rnode_status.probe_status.detected = true`
+- `_runtime.lora.rnode_status.probe_status.firmware_version` populated
+- `_runtime.lora.rnode_status.probe_status.platform` and `mcu` populated
+- `_runtime.lora.rnode_status.radio_status.frequency_hz` is within 100 Hz of
+  the configured value
+- `_runtime.lora.rnode_status.radio_status.bandwidth_hz`, `spreading_factor`,
+  `coding_rate`, and `tx_power_dbm` match the configured values
+- `_runtime.lora.rnode_status.radio_status.radio_state = 1`
+- `_runtime.lora.rnode_status.online = true`
+- `_runtime.lora.rnode_status.last_command_error = null`
+- `_runtime.lora.rnode_status.hardware_errors` is empty
+
+Reports are written to `report.json` and include the latest endpoint, bearer,
+probe status, radio status, reported bitrate, hardware errors, and command
+error fields.
+
+Nightly HIL exposes the same smoke through `HIL_RNODE_ENABLED=true` with
+`HIL_RNODE_PORT`, optional `HIL_RNODE_BAUD_RATE`, optional `HIL_RNODE_REGION`,
+optional `HIL_RNODE_FREQUENCY`, optional `HIL_RNODE_BANDWIDTH`, optional
+`HIL_RNODE_SPREADING_FACTOR`, optional `HIL_RNODE_CODING_RATE`, optional
+`HIL_RNODE_TX_POWER`, optional `HIL_RNODE_BITRATE`, optional
+`HIL_RNODE_COMMAND_TIMEOUT_MS`, and optional `HIL_RNODE_TIMEOUT_SECS`.
+Artifacts are uploaded as
+`rnode-prepared-host-artifacts`, including
+`target/rnode-hil/report.json` and `target/rnode-hil/run.*`.
+
 When `device` and `baud_rate` are absent, the interface remains
 `validated_startup_only` and only the compliance state gate runs.
 

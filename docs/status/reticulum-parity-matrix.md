@@ -73,7 +73,8 @@ placeholders:
 - Serial and TCP/Wi-Fi LoRa/RNode with startup probes, configuration
   validation, telemetry, flow control, teardown, and live daemon/RPC
   `rnode_status` refresh plus compact `rnstatus-rs` human summaries for probe
-  and radio state.
+  and radio state, with an opt-in prepared-host smoke harness for serial or
+  TCP/Wi-Fi RNode devices.
 - Shared serial/TCP RNodeMulti baseline with nested vport subinterfaces,
   `CMD_SEL_INT` KISS vport selection, direct routing to virtual child
   interfaces, broadcast fanout only to outgoing children, and startup probe
@@ -121,8 +122,9 @@ tunnel status for operators. Prepared-host production evidence is still
 pending.
 Ordinary serial/TCP `RNodeInterface` now refreshes transport-side probe/radio
 state into daemon/RPC `_runtime.lora.rnode_status`, and `rnstatus-rs` renders a
-compact human summary for operators. Prepared-host lifecycle evidence and BLE
-live-status refresh remain pending.
+compact human summary for operators. An opt-in prepared-host smoke harness now
+records serial/TCP RNode lifecycle evidence under `target/rnode-hil/`; BLE
+live-status refresh and BLE prepared-host evidence remain pending.
 `RNodeMultiInterface` is tracked separately as an in-progress family: the
 shared serial/TCP vport routing slice exists and startup validates detect,
 firmware `>= 1.74`, platform, MCU, `CMD_INTERFACES`, and hardware-reported

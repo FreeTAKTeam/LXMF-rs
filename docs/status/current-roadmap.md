@@ -69,7 +69,8 @@ The project is best described by capability level:
   RNode probe/radio state into daemon/RPC `_runtime.lora.rnode_status`; compact
   `rnstatus-rs` output summarizes bearer, online/detected state, firmware,
   radio configuration, counters, battery, hardware errors, and last command
-  error.
+  error. An opt-in prepared-host smoke harness records serial/TCP RNode
+  lifecycle evidence under `target/rnode-hil/`.
 - WeaveInterface has a transport-side WDCL/HDLC slice: a shared serial parent
   can answer discovery, learn endpoint events, register virtual endpoint
   children, receive endpoint packets, write direct endpoint commands, and expose
@@ -810,8 +811,8 @@ the implemented subset.
      mutation parity.
 3. **Operational breadth**
    - Add prepared-host hardware evidence for BLE/RNode paths; serial/TCP RNode
-     now has live daemon status suitable for a prepared-host smoke gate, while
-     BLE live-status refresh remains pending.
+     now has an opt-in prepared-host smoke gate, while BLE live-status refresh
+     and BLE prepared-host evidence remain pending.
    - Complete RNodeMulti prepared-host hardware validation/evidence and
      broader production parity before treating that family as
      production-complete.
