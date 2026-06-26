@@ -1277,7 +1277,7 @@ mod tests {
                 egress_control: Some(true),
                 ic_burst_hold: Some(1.5),
                 discoverable: Some(true),
-                announce_interval: Some(360),
+                announce_interval: Some(21_600),
                 discovery_name: Some("field node".to_string()),
                 discovery_encrypt: Some(true),
                 reachable_on: Some("lxmf://field".to_string()),

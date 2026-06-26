@@ -268,7 +268,7 @@ fn apply_interface_runtime_config(
             ic_burst_penalty: iface.ic_burst_penalty,
             ic_held_release_interval: iface.ic_held_release_interval,
             discoverable: iface.discoverable,
-            announce_interval: iface.announce_interval,
+            announce_interval: iface.discovery_announce_interval_secs(),
             discovery_stamp_value: iface.discovery_stamp_value,
             discovery_name: iface.discovery_name.clone(),
             discovery_encrypt: iface.discovery_encrypt,

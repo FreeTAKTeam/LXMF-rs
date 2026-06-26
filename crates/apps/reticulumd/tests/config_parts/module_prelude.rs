@@ -480,7 +480,7 @@ interfaces = [
 
     let settings = iface.settings_json().expect("rnode settings");
     assert_eq!(settings["discoverable"], true);
-    assert_eq!(settings["announce_interval"], 360);
+    assert_eq!(settings["announce_interval"], 21_600);
     assert_eq!(settings["discovery_stamp_value"], 8);
     assert_eq!(settings["discovery_name"], "field node");
     assert_eq!(settings["discovery_encrypt"], true);
@@ -493,6 +493,57 @@ interfaces = [
     assert_eq!(settings["discovery_bandwidth"], 125_000);
     assert_eq!(settings["discovery_modulation"], 1);
     assert_eq!(settings["ignore_config_warnings"], true);
+}
+
+#[test]
+fn discoverable_interfaces_select_reticulum_gateway_or_ap_modes() {
+    let input = r#"
+interfaces = [
+  { type = "TCPClientInterface", enabled = true, name = "tcp-discovery", target_host = "rmap.world", target_port = 4242, discoverable = true },
+  { type = "RNodeInterface", enabled = true, name = "rnode-discovery", region = "US915", state_path = "/tmp/lora-state.json", port = "tcp://192.0.2.10:8001", frequency = 915000000, bandwidth = 125000, spreadingfactor = 9, codingrate = 5, txpower = 17, discoverable = true },
+  { type = "UDPInterface", enabled = true, name = "udp-ignored", listen_ip = "127.0.0.1", listen_port = 4242, mode = "boundary", discoverable = true, ignore_config_warnings = true }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse discoverable mode config");
+
+    assert_eq!(cfg.interfaces[0].interface_mode().unwrap(), InterfaceMode::Gateway);
+    assert_eq!(cfg.interfaces[1].interface_mode().unwrap(), InterfaceMode::AccessPoint);
+    assert_eq!(cfg.interfaces[2].interface_mode().unwrap(), InterfaceMode::Boundary);
+
+    assert_eq!(
+        cfg.interfaces[0].settings_json().expect("tcp settings")["interface_mode"],
+        "gateway"
+    );
+    assert_eq!(
+        cfg.interfaces[1].settings_json().expect("rnode settings")["interface_mode"],
+        "access_point"
+    );
+    assert_eq!(
+        cfg.interfaces[2].settings_json().expect("udp settings")["interface_mode"],
+        "boundary"
+    );
+}
+
+#[test]
+fn discoverable_announce_interval_matches_reticulum_seconds() {
+    let input = r#"
+interfaces = [
+  { type = "TCPClientInterface", enabled = true, name = "default-interval", target_host = "rmap.world", target_port = 4242, discoverable = true },
+  { type = "TCPClientInterface", enabled = true, name = "minimum-interval", target_host = "rmap.world", target_port = 4243, discoverable = true, announce_interval = 1 }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse discoverable intervals");
+
+    assert_eq!(cfg.interfaces[0].discovery_announce_interval_secs(), Some(21_600));
+    assert_eq!(cfg.interfaces[1].discovery_announce_interval_secs(), Some(300));
+    assert_eq!(
+        cfg.interfaces[0].settings_json().expect("default settings")["announce_interval"],
+        21_600
+    );
+    assert_eq!(
+        cfg.interfaces[1].settings_json().expect("minimum settings")["announce_interval"],
+        300
+    );
 }
 
 #[test]

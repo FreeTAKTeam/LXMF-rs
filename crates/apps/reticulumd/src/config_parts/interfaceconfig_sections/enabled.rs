@@ -10,8 +10,12 @@ impl InterfaceConfig {
 
     pub fn settings_json(&self) -> Option<JsonValue> {
         let mut settings = JsonMap::new();
-        if self.interface_mode_raw().is_some() {
-            if let Ok(mode) = self.interface_mode() {
+        if let Ok(configured_mode) = self.configured_interface_mode() {
+            let override_mode = self.discoverable_mode_override(configured_mode);
+            let mode = override_mode.unwrap_or(configured_mode);
+            if self.interface_mode_raw().is_some()
+                || override_mode.is_some()
+            {
                 settings
                     .insert("interface_mode".to_string(), JsonValue::String(mode.as_str().into()));
             }
@@ -65,7 +69,11 @@ impl InterfaceConfig {
             self.ic_held_release_interval,
         );
         insert_opt_bool(&mut settings, "discoverable", self.discoverable);
-        insert_opt_u64(&mut settings, "announce_interval", self.announce_interval);
+        insert_opt_u64(
+            &mut settings,
+            "announce_interval",
+            self.discovery_announce_interval_secs(),
+        );
         insert_opt_u64(
             &mut settings,
             "discovery_stamp_value",
@@ -412,6 +420,11 @@ impl InterfaceConfig {
     }
 
     pub fn interface_mode(&self) -> Result<rns_transport::iface::InterfaceMode, String> {
+        let mode = self.configured_interface_mode()?;
+        Ok(self.discoverable_mode_override(mode).unwrap_or(mode))
+    }
+
+    fn configured_interface_mode(&self) -> Result<rns_transport::iface::InterfaceMode, String> {
         let Some((field, value)) = self.interface_mode_raw() else {
             return Ok(rns_transport::iface::InterfaceMode::Full);
         };
@@ -427,6 +440,35 @@ impl InterfaceConfig {
             .as_deref()
             .map(|value| ("interface_mode", value))
             .or_else(|| self.mode.as_deref().map(|value| ("mode", value)))
+    }
+
+    fn discoverable_mode_override(
+        &self,
+        configured: rns_transport::iface::InterfaceMode,
+    ) -> Option<rns_transport::iface::InterfaceMode> {
+        if self.discoverable != Some(true) || self.ignore_config_warnings == Some(true) {
+            return None;
+        }
+        if matches!(
+            configured,
+            rns_transport::iface::InterfaceMode::Gateway
+                | rns_transport::iface::InterfaceMode::AccessPoint
+        ) {
+            return None;
+        }
+        if matches!(self.kind.as_str(), "lora" | "rnode_multi") {
+            Some(rns_transport::iface::InterfaceMode::AccessPoint)
+        } else {
+            Some(rns_transport::iface::InterfaceMode::Gateway)
+        }
+    }
+
+    pub fn discovery_announce_interval_secs(&self) -> Option<u64> {
+        if self.discoverable != Some(true) {
+            return self.announce_interval;
+        }
+        let interval = self.announce_interval.map(|minutes| minutes.saturating_mul(60));
+        Some(interval.unwrap_or(6 * 60 * 60).max(5 * 60))
     }
 
     pub fn flow_control_name(&self) -> Option<&str> {
