@@ -922,10 +922,8 @@ async fn process_weave_frame<IO>(
                 process_weave_log(payload, options, state).await;
             }
         }
-        WDCL_T_DISP => {
-            if target == local_switch_id {
-                process_weave_display(payload, options);
-            }
+        WDCL_T_DISP if target == local_switch_id => {
+            process_weave_display(payload, options);
         }
         _ => {}
     }

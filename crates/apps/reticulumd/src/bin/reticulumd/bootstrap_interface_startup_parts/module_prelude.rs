@@ -60,6 +60,7 @@ pub(crate) struct RNodeMultiRuntimeRefresh {
     pub(crate) status: rns_transport::iface::rnode_multi::RNodeMultiRuntimeStatusHandle,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn startup_configured_interfaces(
     args: &Args,
     config: &DaemonConfig,
@@ -553,6 +554,7 @@ async fn startup_local_unix(
 }
 
 #[cfg(unix)]
+#[allow(clippy::too_many_arguments)]
 async fn startup_local_unix_attach(
     args: &Args,
     iface: &InterfaceConfig,
@@ -661,6 +663,7 @@ async fn startup_pipe(
     true
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn startup_i2p(
     args: &Args,
     iface: &InterfaceConfig,
@@ -1162,6 +1165,7 @@ fn build_tcp_client_adapter(endpoint: String, iface: &InterfaceConfig) -> TcpCli
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn startup_local_tcp_attach(
     args: &Args,
     iface: &InterfaceConfig,
@@ -1229,6 +1233,7 @@ async fn startup_local_tcp_client_attach(
     .await
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn startup_local_tcp_attach_endpoint(
     args: &Args,
     iface: &InterfaceConfig,

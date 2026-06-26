@@ -176,16 +176,11 @@ pub struct KissStreamOptions {
     pub data_rx_tx: Option<tokio::sync::mpsc::Sender<()>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum KissPayloadAdapter {
+    #[default]
     Raw,
     Ax25(Ax25KissPayloadConfig),
-}
-
-impl Default for KissPayloadAdapter {
-    fn default() -> Self {
-        Self::Raw
-    }
 }
 
 impl KissPayloadAdapter {

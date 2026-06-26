@@ -182,6 +182,7 @@ pub(crate) fn backbone_hdlc_watchdog() -> HdlcStreamWatchdog {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn run_hdlc_stream<R, W>(
     label: String,
     iface_address: crate::hash::AddressHash,

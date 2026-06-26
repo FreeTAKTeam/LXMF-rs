@@ -520,7 +520,10 @@ impl InterfaceConfig {
         }
         let has_target_host =
             self.target_host.as_deref().map(str::trim).is_some_and(|value| !value.is_empty());
-        if (has_target_host ^ self.target_port.is_some()) && !(has_device && !has_target_host) {
+        let has_target_port = self.target_port.is_some();
+        let missing_target_pair = has_target_host ^ has_target_port;
+        let device_only_udp = has_device && !has_target_host;
+        if missing_target_pair && !device_only_udp {
             return Err(format!(
                 "interfaces[{index}].target_host and target_port must be provided together for udp"
             ));

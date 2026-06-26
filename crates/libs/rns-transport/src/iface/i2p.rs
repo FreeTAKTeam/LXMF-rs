@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -638,6 +638,7 @@ impl Interface for I2pInterface {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_i2p_peer_loop(
     peer: String,
     iface_address: AddressHash,
@@ -740,6 +741,7 @@ async fn cleanup_i2p_peer_routes(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_i2p_accept_loop(
     parent_iface: AddressHash,
     name: String,
@@ -842,6 +844,7 @@ async fn run_i2p_accept_loop(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_i2p_accept_session(
     _session_stream: TcpStream,
     session_id: &str,
@@ -921,6 +924,7 @@ async fn run_i2p_accept_session(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_i2p_accepted_stream(
     remote_destination: String,
     child_iface: AddressHash,
@@ -1089,12 +1093,12 @@ async fn generate_sam_destination(sam_addr: &str) -> io::Result<(String, String)
     Ok((public, private))
 }
 
-pub fn i2p_private_key_path(root: &PathBuf, name: &str) -> PathBuf {
+pub fn i2p_private_key_path(root: &Path, name: &str) -> PathBuf {
     i2p_private_key_old_format_path(root, name)
 }
 
 pub fn i2p_private_key_path_with_identity(
-    root: &PathBuf,
+    root: &Path,
     name: &str,
     transport_identity_hash: Option<&[u8; 16]>,
 ) -> PathBuf {
@@ -1107,12 +1111,12 @@ pub fn i2p_private_key_path_with_identity(
     })
 }
 
-pub fn i2p_private_key_old_format_path(root: &PathBuf, name: &str) -> PathBuf {
+pub fn i2p_private_key_old_format_path(root: &Path, name: &str) -> PathBuf {
     root.join("i2p").join(format!("{}.i2p", i2p_old_format_key_stem(name)))
 }
 
 pub fn i2p_private_key_new_format_path(
-    root: &PathBuf,
+    root: &Path,
     name: &str,
     transport_identity_hash: &[u8; 16],
 ) -> PathBuf {

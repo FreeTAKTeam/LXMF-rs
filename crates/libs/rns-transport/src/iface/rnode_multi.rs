@@ -402,7 +402,7 @@ impl RNodeMultiRuntimeStatus {
     pub fn from_subinterfaces(subinterfaces: &[RNodeMultiSubInterfaceConfig]) -> Self {
         let mut radio_status = BTreeMap::new();
         for subinterface in subinterfaces {
-            radio_status.entry(subinterface.vport).or_insert_with(RNodeRadioStatus::default);
+            radio_status.entry(subinterface.vport).or_default();
         }
         Self {
             stream_state: "configured".to_string(),
@@ -425,12 +425,11 @@ impl RNodeMultiRuntimeStatus {
                 );
             };
             self.selected_vport = *vport;
-            self.radio_status.entry(*vport).or_insert_with(RNodeRadioStatus::default);
+            self.radio_status.entry(*vport).or_default();
             return Ok(true);
         }
 
-        let status =
-            self.radio_status.entry(self.selected_vport).or_insert_with(RNodeRadioStatus::default);
+        let status = self.radio_status.entry(self.selected_vport).or_default();
         accept_rnode_multi_radio_status_command(status, command, payload)
     }
 
@@ -864,10 +863,10 @@ pub(crate) async fn run_rnode_multi_stream<IO>(
                 let Some(first_tx) = first_tx_at else {
                     continue;
                 };
-                if first_tx.elapsed() >= beacon.interval {
-                    if write_rnode_multi_id_beacon(&mut stream, &options, beacon).await {
-                        first_tx_at = None;
-                    }
+                if first_tx.elapsed() >= beacon.interval
+                    && write_rnode_multi_id_beacon(&mut stream, &options, beacon).await
+                {
+                    first_tx_at = None;
                 }
             }
             result = stream.read(&mut read_buffer[..]) => {

@@ -148,6 +148,7 @@ async fn run_pipe_process(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_pipe_stream<R, W>(
     mut reader: R,
     mut writer: W,
@@ -171,7 +172,7 @@ async fn run_pipe_stream<R, W>(
         tokio::spawn(async move {
             let mut hdlc_rx_buffer = vec![0_u8; mtu];
             let mut frame_buffer = Vec::<u8>::with_capacity(mtu * 4);
-            let mut read_buffer = vec![0_u8; mtu.max(256).min(32_768)];
+            let mut read_buffer = vec![0_u8; mtu.clamp(256, 32_768)];
 
             loop {
                 tokio::select! {

@@ -201,7 +201,7 @@ fn rnode_multi_subinterfaces_settings_json(iface: &InterfaceConfig) -> Option<Js
         insert_table_i64_alias(&mut entry, table, "tx_power_dbm", "txpower");
         if let Some(flow_control) = table
             .get("flow_control")
-            .or_else(|| iface.flow_control.as_ref())
+            .or(iface.flow_control.as_ref())
             .and_then(toml::Value::as_bool)
         {
             entry.insert("flow_control".to_string(), JsonValue::Bool(flow_control));
