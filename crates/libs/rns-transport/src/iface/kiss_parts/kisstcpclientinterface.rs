@@ -129,6 +129,7 @@ impl KissTcpClientInterface {
                     strip_command_port_nibble: true,
                     command_tx: None,
                     data_rx_tx: None,
+                    management_frame_rx: None,
                 },
                 stream_cancel.clone(),
                 rx_channel.clone(),
@@ -158,7 +159,7 @@ impl Interface for KissTcpClientInterface {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct KissStreamOptions {
     pub iface_address: AddressHash,
     pub device: String,
@@ -174,6 +175,7 @@ pub struct KissStreamOptions {
     pub strip_command_port_nibble: bool,
     pub command_tx: Option<tokio::sync::mpsc::Sender<KissCommandFrame>>,
     pub data_rx_tx: Option<tokio::sync::mpsc::Sender<()>>,
+    pub management_frame_rx: Option<Arc<tokio::sync::Mutex<tokio::sync::mpsc::Receiver<Vec<u8>>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -282,7 +284,7 @@ pub struct KissCommandFrame {
 
 pub async fn run_kiss_stream<IO>(
     mut stream: IO,
-    options: KissStreamOptions,
+    mut options: KissStreamOptions,
     cancel: CancellationToken,
     rx_channel: tokio::sync::mpsc::Sender<RxMessage>,
     tx_channel: Arc<tokio::sync::Mutex<tokio::sync::mpsc::Receiver<TxMessage>>>,
@@ -304,6 +306,7 @@ pub async fn run_kiss_stream<IO>(
     let mut activity_tick = tokio::time::interval(Duration::from_millis(80));
     activity_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     let mut last_read_at = Instant::now();
+    let mut management_frame_rx = options.management_frame_rx.take();
 
     for frame in &options.initial_frames {
         if let Err(err) = stream.write_all(frame).await {
@@ -390,6 +393,25 @@ pub async fn run_kiss_stream<IO>(
                     && write_raw_kiss_frames(&mut stream, &options, &probe.frames, "activity probe").await
                 {
                     last_write_at = Instant::now();
+                }
+            }
+            frame = recv_optional_management_frame(&mut management_frame_rx), if management_frame_rx.is_some() => {
+                match frame {
+                    Some(frame) => {
+                        if write_raw_kiss_frames(
+                            &mut stream,
+                            &options,
+                            &[frame],
+                            "management command",
+                        )
+                        .await
+                        {
+                            last_write_at = Instant::now();
+                        }
+                    }
+                    None => {
+                        management_frame_rx = None;
+                    }
                 }
             }
             result = stream.read(&mut read_buffer[..]) => {
@@ -509,6 +531,15 @@ pub async fn run_kiss_stream<IO>(
     }
 
     write_shutdown_frames(&mut stream, &options).await;
+}
+
+async fn recv_optional_management_frame(
+    management_frame_rx: &mut Option<Arc<tokio::sync::Mutex<tokio::sync::mpsc::Receiver<Vec<u8>>>>>,
+) -> Option<Vec<u8>> {
+    match management_frame_rx {
+        Some(rx) => rx.lock().await.recv().await,
+        None => None,
+    }
 }
 
 async fn write_shutdown_frames<IO>(stream: &mut IO, options: &KissStreamOptions)

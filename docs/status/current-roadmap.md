@@ -84,10 +84,14 @@ The project is best described by capability level:
   battery, hardware errors, and last command error. An opt-in prepared-host
   smoke harness records serial/TCP/BLE RNode lifecycle evidence under
   `target/rnode-hil/`. Display-capable BLE RNode shutdown now disables the
-  external framebuffer before radio-off/leave frames, and frame-level helpers
-  exist for blink indication, Bluetooth control, display/NeoPixel controls,
-  interference-avoidance control, Wi-Fi settings, config save/delete,
-  firmware-update metadata, and ROM/EEPROM read/write/wipe requests.
+  external framebuffer before radio-off/leave frames. Serial/TCP RNode streams
+  now expose a transport-local management dispatch handle that writes
+  pre-encoded KISS command frames through the live KISS runtime; the first
+  covered operations are radio-state query and blink indication, backed by
+  duplex stream tests. Frame-level helpers exist for Bluetooth control,
+  display/NeoPixel controls, interference-avoidance control, Wi-Fi settings,
+  config save/delete, firmware-update metadata, and ROM/EEPROM read/write/wipe
+  requests.
 - WeaveInterface has a transport-side WDCL/HDLC slice: a shared serial parent
   can answer discovery, learn endpoint events, register virtual endpoint
   children, receive endpoint packets, write direct endpoint commands, and expose

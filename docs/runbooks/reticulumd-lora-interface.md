@@ -182,8 +182,11 @@ leave-host frames and backend cleanup. The transport layer exposes
 Python-compatible KISS management frame helpers for blink indication, Bluetooth
 disable/enable/pair control, display/NeoPixel controls, interference-avoidance
 control, Wi-Fi settings, configuration save/delete, firmware-update indicator,
-firmware hash, and ROM/EEPROM read/write/wipe requests, but broader end-to-end
-RNode management operations over BLE remain incomplete.
+firmware hash, and ROM/EEPROM read/write/wipe requests. Serial/TCP RNode
+streams also expose a transport-local management dispatch handle that writes
+pre-encoded command frames through the live KISS runtime; radio-state query and
+blink dispatch are covered by local duplex tests. Broader daemon/RPC management
+controls and end-to-end RNode management operations over BLE remain incomplete.
 
 ## Validation Rules
 

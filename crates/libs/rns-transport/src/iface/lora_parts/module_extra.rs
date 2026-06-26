@@ -30,6 +30,7 @@ where
             strip_command_port_nibble: false,
             command_tx: Some(command_tx),
             data_rx_tx: Some(data_rx_tx),
+            management_frame_rx: Some(run.management_frame_rx),
         },
         stream_cancel,
         run.rx_channel,
@@ -402,6 +403,74 @@ mod tests {
         let guard = iface.lock().expect("lora interface mutex poisoned");
         assert_eq!(guard.last_command_error(), None);
         guard.validate_startup_responses().expect("fresh startup responses");
+    }
+
+    #[tokio::test]
+    async fn lora_management_handle_writes_runtime_command_frame_over_duplex() {
+        let iface =
+            Arc::new(Mutex::new(LoraInterface::new("COM9", 115_200, LoraConfig::us915_default())));
+        let handle = {
+            let guard = iface.lock().expect("lora interface mutex poisoned");
+            guard.rnode_management_handle()
+        };
+        let management_frame_rx = {
+            let guard = iface.lock().expect("lora interface mutex poisoned");
+            guard.management_frame_rx.clone()
+        };
+        let (stream, mut peer) = tokio::io::duplex(4096);
+        let cancel = CancellationToken::new();
+        let (rx_channel, _rx_recv) = tokio::sync::mpsc::channel(1);
+        let (_tx_send, tx_recv) = tokio::sync::mpsc::channel(1);
+        let tx_channel = Arc::new(tokio::sync::Mutex::new(tx_recv));
+
+        let task_cancel = cancel.clone();
+        let task = tokio::spawn(run_lora_kiss_stream(
+            stream,
+            LoraStreamRun {
+                interface: iface,
+                cancel: task_cancel,
+                iface_address: crate::hash::AddressHash::default(),
+                endpoint_label: "duplex-rnode".to_string(),
+                config: LoraConfig::us915_default(),
+                flow_control: false,
+                id_beacon: None,
+                activity_probe: None,
+                startup_response_timeout: Duration::from_secs(60),
+                management_frame_rx,
+                rx_channel,
+                tx_channel,
+            },
+        ));
+
+        let frame = LoraConfig::blink_frame(0x03);
+        handle.blink(0x03).await.expect("queue blink management command");
+
+        let mut seen = Vec::new();
+        let mut buffer = [0_u8; 512];
+        for _ in 0..12 {
+            let read = tokio::time::timeout(
+                Duration::from_secs(1),
+                tokio::io::AsyncReadExt::read(&mut peer, &mut buffer),
+            )
+            .await
+            .expect("management frame should be written")
+            .expect("read management frame bytes");
+            if read == 0 {
+                break;
+            }
+            seen.extend_from_slice(&buffer[..read]);
+            if seen.windows(frame.len()).any(|window| window == frame.as_slice()) {
+                cancel.cancel();
+                drop(peer);
+                task.await.expect("lora stream exits");
+                return;
+            }
+        }
+
+        cancel.cancel();
+        drop(peer);
+        task.await.expect("lora stream exits");
+        panic!("did not observe blink management frame in stream bytes: {seen:02x?}");
     }
 
     #[test]

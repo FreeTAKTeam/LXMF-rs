@@ -155,11 +155,14 @@ state into daemon/RPC `_runtime.lora.rnode_status`, and `rnstatus-rs` renders a
 compact human summary for operators. An opt-in prepared-host smoke harness now
 records serial/TCP/BLE RNode lifecycle evidence under `target/rnode-hil/`.
 Display-capable BLE RNode shutdown now disables the external framebuffer before
-radio-off/leave frames. Frame-level helpers now cover blink indication,
-Bluetooth disable/enable/pair control, display/NeoPixel controls,
-interference-avoidance control, Wi-Fi settings, config save/delete,
-firmware-update metadata, and ROM/EEPROM read/write/wipe requests. Broader BLE
-hardware evidence remains pending.
+radio-off/leave frames. Serial/TCP RNode streams now expose a transport-local
+management dispatch handle that writes pre-encoded KISS command frames through
+the live KISS runtime; radio-state query and blink dispatch are covered by
+local duplex tests. Frame-level helpers now cover Bluetooth disable/enable/pair
+control, display/NeoPixel controls, interference-avoidance control, Wi-Fi
+settings, config save/delete, firmware-update metadata, and ROM/EEPROM
+read/write/wipe requests. Broader daemon/RPC management controls and BLE
+hardware evidence remain pending.
 `RNodeMultiInterface` is tracked separately as an in-progress family: the
 shared serial/TCP vport routing slice exists and startup validates detect,
 firmware `>= 1.74`, platform, MCU, `CMD_INTERFACES`, and hardware-reported

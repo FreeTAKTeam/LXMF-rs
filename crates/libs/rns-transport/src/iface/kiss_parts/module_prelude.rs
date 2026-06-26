@@ -356,6 +356,7 @@ impl KissInterface {
                     strip_command_port_nibble: true,
                     command_tx: None,
                     data_rx_tx: None,
+                    management_frame_rx: None,
                 },
                 context.cancel.clone(),
                 rx_channel.clone(),

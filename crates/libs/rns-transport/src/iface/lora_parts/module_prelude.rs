@@ -199,6 +199,8 @@ const Q_SNR_STEP: f64 = 2.0;
 
 const LORA_KISS_PROBE_CHANNEL_CAPACITY: usize = 64;
 
+const LORA_RNODE_MANAGEMENT_CHANNEL_CAPACITY: usize = 64;
+
 const R_NODE_STARTUP_RESPONSE_TIMEOUT: Duration = Duration::from_millis(1_500);
 
 const R_NODE_TCP_ACTIVITY_KEEPALIVE: Duration = Duration::from_millis(3_500);

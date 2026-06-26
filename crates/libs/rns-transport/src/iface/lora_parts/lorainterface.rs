@@ -1,3 +1,7 @@
+type RNodeManagementFrameSender = tokio::sync::mpsc::Sender<Vec<u8>>;
+type RNodeManagementFrameReceiver =
+    Arc<tokio::sync::Mutex<tokio::sync::mpsc::Receiver<Vec<u8>>>>;
+
 #[derive(Debug, Clone)]
 pub struct LoraInterface {
     endpoint: LoraEndpoint,
@@ -12,11 +16,14 @@ pub struct LoraInterface {
     reconnect_backoff: Duration,
     max_reconnect_backoff: Duration,
     startup_response_timeout: Duration,
+    management_frame_tx: RNodeManagementFrameSender,
+    management_frame_rx: RNodeManagementFrameReceiver,
 }
 
 impl LoraInterface {
     #[must_use]
     pub fn new<T: Into<String>>(device: T, baud_rate: u32, config: LoraConfig) -> Self {
+        let (management_frame_tx, management_frame_rx) = rnode_management_channel();
         Self {
             endpoint: LoraEndpoint::Serial { device: device.into(), baud_rate },
             config,
@@ -30,11 +37,14 @@ impl LoraInterface {
             reconnect_backoff: Duration::from_millis(500),
             max_reconnect_backoff: Duration::from_millis(5_000),
             startup_response_timeout: R_NODE_STARTUP_RESPONSE_TIMEOUT,
+            management_frame_tx,
+            management_frame_rx,
         }
     }
 
     #[must_use]
     pub fn new_tcp<T: Into<String>>(addr: T, config: LoraConfig) -> Self {
+        let (management_frame_tx, management_frame_rx) = rnode_management_channel();
         Self {
             endpoint: LoraEndpoint::Tcp { addr: addr.into() },
             config,
@@ -48,6 +58,8 @@ impl LoraInterface {
             reconnect_backoff: Duration::from_millis(500),
             max_reconnect_backoff: Duration::from_millis(5_000),
             startup_response_timeout: R_NODE_STARTUP_RESPONSE_TIMEOUT,
+            management_frame_tx,
+            management_frame_rx,
         }
     }
 
@@ -109,6 +121,11 @@ impl LoraInterface {
     #[must_use]
     pub fn startup_response_timeout(&self) -> Duration {
         self.startup_response_timeout
+    }
+
+    #[must_use]
+    pub fn rnode_management_handle(&self) -> LoraRNodeManagementHandle {
+        LoraRNodeManagementHandle { tx: self.management_frame_tx.clone() }
     }
 
     #[must_use]
@@ -281,6 +298,7 @@ impl LoraInterface {
             reconnect_backoff,
             max_reconnect_backoff,
             startup_response_timeout,
+            management_frame_rx,
         ) = {
             let guard = context.inner.lock().expect("lora interface mutex poisoned");
             (
@@ -291,6 +309,7 @@ impl LoraInterface {
                 guard.reconnect_backoff,
                 guard.max_reconnect_backoff,
                 guard.startup_response_timeout,
+                guard.management_frame_rx.clone(),
             )
         };
 
@@ -350,6 +369,7 @@ impl LoraInterface {
                             id_beacon: id_beacon.clone(),
                             activity_probe: None,
                             startup_response_timeout,
+                            management_frame_rx: management_frame_rx.clone(),
                             rx_channel: rx_channel.clone(),
                             tx_channel: tx_channel.clone(),
                         },
@@ -390,6 +410,7 @@ impl LoraInterface {
                             id_beacon: id_beacon.clone(),
                             activity_probe: Some(rnode_tcp_activity_probe()),
                             startup_response_timeout,
+                            management_frame_rx: management_frame_rx.clone(),
                             rx_channel: rx_channel.clone(),
                             tx_channel: tx_channel.clone(),
                         },
@@ -406,6 +427,55 @@ impl LoraInterface {
         }
 
         iface_stop.cancel();
+    }
+}
+
+fn rnode_management_channel() -> (RNodeManagementFrameSender, RNodeManagementFrameReceiver) {
+    let (tx, rx) = tokio::sync::mpsc::channel(LORA_RNODE_MANAGEMENT_CHANNEL_CAPACITY);
+    (tx, Arc::new(tokio::sync::Mutex::new(rx)))
+}
+
+#[derive(Debug, Clone)]
+pub struct LoraRNodeManagementHandle {
+    tx: RNodeManagementFrameSender,
+}
+
+impl LoraRNodeManagementHandle {
+    pub fn try_dispatch_frame(
+        &self,
+        frame: Vec<u8>,
+    ) -> Result<(), tokio::sync::mpsc::error::TrySendError<Vec<u8>>> {
+        self.tx.try_send(frame)
+    }
+
+    pub async fn dispatch_frame(
+        &self,
+        frame: Vec<u8>,
+    ) -> Result<(), tokio::sync::mpsc::error::SendError<Vec<u8>>> {
+        self.tx.send(frame).await
+    }
+
+    pub fn try_query_radio_state(
+        &self,
+    ) -> Result<(), tokio::sync::mpsc::error::TrySendError<Vec<u8>>> {
+        self.try_dispatch_frame(LoraConfig::radio_state_query_frame())
+    }
+
+    pub fn try_blink(&self, pattern: u8) -> Result<(), tokio::sync::mpsc::error::TrySendError<Vec<u8>>> {
+        self.try_dispatch_frame(LoraConfig::blink_frame(pattern))
+    }
+
+    pub async fn query_radio_state(
+        &self,
+    ) -> Result<(), tokio::sync::mpsc::error::SendError<Vec<u8>>> {
+        self.dispatch_frame(LoraConfig::radio_state_query_frame()).await
+    }
+
+    pub async fn blink(
+        &self,
+        pattern: u8,
+    ) -> Result<(), tokio::sync::mpsc::error::SendError<Vec<u8>>> {
+        self.dispatch_frame(LoraConfig::blink_frame(pattern)).await
     }
 }
 
@@ -436,6 +506,7 @@ struct LoraStreamRun {
     id_beacon: Option<KissIdBeaconConfig>,
     activity_probe: Option<KissActivityProbeConfig>,
     startup_response_timeout: Duration,
+    management_frame_rx: RNodeManagementFrameReceiver,
     rx_channel: tokio::sync::mpsc::Sender<crate::iface::RxMessage>,
     tx_channel: Arc<tokio::sync::Mutex<tokio::sync::mpsc::Receiver<crate::iface::TxMessage>>>,
 }
