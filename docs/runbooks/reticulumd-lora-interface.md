@@ -316,6 +316,29 @@ interface teardown, the stream sends Python-style detach commands before
 closing: radio state off followed by the RNode leave-host command. Plain KISS
 serial and TCP interfaces do not send these RNode-specific shutdown commands.
 
+For active serial or TCP RNode ports, daemon/RPC status now refreshes the live
+transport-side RNode status under `_runtime.lora.rnode_status`. `rnstatus-rs`
+renders a compact human summary with bearer, online/detected state, firmware,
+radio configuration, counters, battery percentage, hardware-error count, and
+last command error when present. The JSON status includes:
+
+- `endpoint`, `bearer`, and serial `baud_rate` when applicable.
+- `configured.frequency_hz`, `bandwidth_hz`, `spreading_factor`,
+  `coding_rate`, `tx_power_dbm`, and `max_payload_bytes`.
+- `probe_status.detected`, firmware version, platform, MCU, and display
+  capability.
+- `radio_status` fields for reported radio configuration, radio state,
+  RX/TX counters, signal telemetry, airtime/channel load, PHY/CSMA telemetry,
+  battery, temperature, framebuffer/display payload lengths, random byte, and
+  reported bitrate.
+- `hardware_errors`, `last_command_error`, `online`, `flow_control`, and
+  `reported_bitrate_bps`.
+
+This status surface is the evidence foundation for prepared-host serial/TCP
+RNode lifecycle smoke tests. Feature-gated `ble://` RNode startup still uses
+the same protocol monitor internally, but daemon/RPC live refresh for the BLE
+adapter remains pending.
+
 When `device` and `baud_rate` are absent, the interface remains
 `validated_startup_only` and only the compliance state gate runs.
 
@@ -375,6 +398,8 @@ Failure log:
 Runtime status visibility:
 
 - `list_interfaces` includes `_runtime.startup_status`.
+- Active serial/TCP RNode interfaces include refreshed
+  `_runtime.lora.rnode_status`.
 - Failed interfaces include `_runtime.startup_error`.
 
 ## Verification Commands

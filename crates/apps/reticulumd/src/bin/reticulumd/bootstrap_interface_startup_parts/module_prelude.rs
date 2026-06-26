@@ -41,6 +41,7 @@ pub(super) struct InterfaceStartupBatch {
     pub(super) i2p_runtime_refreshes: Vec<I2pRuntimeRefresh>,
     pub(super) weave_runtime_refreshes: Vec<WeaveRuntimeRefresh>,
     pub(super) rnode_multi_runtime_refreshes: Vec<RNodeMultiRuntimeRefresh>,
+    pub(super) lora_runtime_refreshes: Vec<LoraRuntimeRefresh>,
 }
 
 #[derive(Clone)]
@@ -67,6 +68,12 @@ pub(crate) struct RNodeMultiRuntimeRefresh {
     pub(crate) status: rns_transport::iface::rnode_multi::RNodeMultiRuntimeStatusHandle,
 }
 
+#[derive(Clone)]
+pub(crate) struct LoraRuntimeRefresh {
+    pub(crate) runtime_iface: AddressHash,
+    pub(crate) status: rns_transport::iface::lora::LoraRuntimeStatusHandle,
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn startup_configured_interfaces(
     args: &Args,
@@ -89,6 +96,7 @@ pub(super) async fn startup_configured_interfaces(
     let mut i2p_runtime_refreshes = Vec::new();
     let mut weave_runtime_refreshes = Vec::new();
     let mut rnode_multi_runtime_refreshes = Vec::new();
+    let mut lora_runtime_refreshes = Vec::new();
 
     for (index, iface) in config.interfaces.iter().enumerate() {
         if !iface.enabled() {
@@ -370,7 +378,7 @@ pub(super) async fn startup_configured_interfaces(
                 }
             }
             "lora" => {
-                if startup_lora(
+                let started = startup_lora(
                     args,
                     iface,
                     &label,
@@ -378,9 +386,12 @@ pub(super) async fn startup_configured_interfaces(
                     &mut configured_interfaces[index],
                     &mut startup_failures,
                 )
-                .await
-                {
+                .await;
+                if started.started {
                     startup_successes += 1;
+                    if let Some(refresh) = started.refresh {
+                        lora_runtime_refreshes.push(refresh);
+                    }
                 }
             }
             "rnode_multi" => {
@@ -417,6 +428,7 @@ pub(super) async fn startup_configured_interfaces(
         i2p_runtime_refreshes,
         weave_runtime_refreshes,
         rnode_multi_runtime_refreshes,
+        lora_runtime_refreshes,
     }
 }
 

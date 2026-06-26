@@ -178,6 +178,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     let i2p_runtime_refreshes = startup.i2p_runtime_refreshes;
     let weave_runtime_refreshes = startup.weave_runtime_refreshes;
     let rnode_multi_runtime_refreshes = startup.rnode_multi_runtime_refreshes;
+    let lora_runtime_refreshes = startup.lora_runtime_refreshes;
     let selected_tcp_server = startup.selected_tcp_server;
 
     if !startup_failures.is_empty() {
@@ -279,6 +280,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     spawn_i2p_runtime_status_refresher(daemon.clone(), i2p_runtime_refreshes);
     spawn_weave_runtime_status_refresher(daemon.clone(), weave_runtime_refreshes);
     spawn_rnode_multi_runtime_status_refresher(daemon.clone(), rnode_multi_runtime_refreshes);
+    spawn_lora_runtime_status_refresher(daemon.clone(), lora_runtime_refreshes);
     daemon.set_propagation_state(transport.is_some(), None, 0);
     daemon.configure_propagation_node(
         propagation_node_config.enabled,
@@ -530,6 +532,40 @@ fn refresh_rnode_multi_runtime_status_once(
                 refresh.runtime_iface.to_string().as_str(),
                 "rnode_multi",
                 "radio_status",
+                refresh.status.to_json(),
+            )
+        })
+        .count()
+}
+
+fn spawn_lora_runtime_status_refresher(
+    daemon: Arc<RpcDaemon>,
+    refreshes: Vec<transport_startup::LoraRuntimeRefresh>,
+) {
+    if refreshes.is_empty() {
+        return;
+    }
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(INTERFACE_RUNTIME_STATUS_REFRESH_INTERVAL);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            interval.tick().await;
+            refresh_lora_runtime_status_once(&daemon, &refreshes);
+        }
+    });
+}
+
+fn refresh_lora_runtime_status_once(
+    daemon: &RpcDaemon,
+    refreshes: &[transport_startup::LoraRuntimeRefresh],
+) -> usize {
+    refreshes
+        .iter()
+        .filter(|refresh| {
+            daemon.update_interface_runtime_metadata_by_iface(
+                refresh.runtime_iface.to_string().as_str(),
+                "lora",
+                "rnode_status",
                 refresh.status.to_json(),
             )
         })
@@ -842,5 +878,67 @@ mod tests {
             vec![2, 3]
         );
         assert!(radio_status["subinterfaces"]["2"]["frequency_hz"].is_null());
+    }
+
+    #[test]
+    fn lora_runtime_status_refresh_updates_matching_interface_record() {
+        let daemon = RpcDaemon::test_instance();
+        let runtime_iface = AddressHash::new([0x22; 16]);
+        daemon.replace_interfaces(vec![InterfaceRecord {
+            kind: "lora".to_string(),
+            enabled: true,
+            host: None,
+            port: None,
+            name: Some("rnode-main".to_string()),
+            settings: Some(json!({
+                "_runtime": {
+                    "iface": runtime_iface.to_string(),
+                    "startup_status": "spawned",
+                    "lora": {
+                        "rnode_status": {
+                            "online": false
+                        }
+                    }
+                }
+            })),
+        }]);
+        let mut iface = rns_transport::iface::lora::LoraInterface::new(
+            "COM9",
+            115_200,
+            rns_transport::iface::lora::LoraConfig::us915_default(),
+        );
+        iface
+            .record_command_response(rns_transport::iface::lora::CMD_DETECT, &[
+                rns_transport::iface::lora::DETECT_RESP,
+            ])
+            .expect("detect");
+        iface
+            .record_command_response(rns_transport::iface::lora::CMD_FW_VERSION, &[1, 52])
+            .expect("firmware");
+        iface
+            .record_command_response(rns_transport::iface::lora::CMD_PLATFORM, &[
+                rns_transport::iface::lora::PLATFORM_ESP32,
+            ])
+            .expect("platform");
+        iface
+            .record_command_response(rns_transport::iface::lora::CMD_MCU, &[0x01])
+            .expect("mcu");
+        let status = rns_transport::iface::lora::LoraRuntimeStatusHandle::new(Arc::new(
+            Mutex::new(iface),
+        ));
+        let refresh = transport_startup::LoraRuntimeRefresh { runtime_iface, status };
+
+        assert_eq!(refresh_lora_runtime_status_once(&daemon, &[refresh]), 1);
+        let result = daemon
+            .handle_rpc(RpcRequest { id: 91, method: "daemon_status_ex".to_string(), params: None })
+            .expect("daemon status")
+            .result
+            .expect("daemon status result");
+        let status = &result["interfaces"][0]["settings"]["_runtime"]["lora"]["rnode_status"];
+
+        assert_eq!(status["endpoint"].as_str(), Some("COM9"));
+        assert_eq!(status["bearer"].as_str(), Some("serial"));
+        assert_eq!(status["probe_status"]["detected"].as_bool(), Some(true));
+        assert_eq!(status["probe_status"]["firmware_version"]["label"].as_str(), Some("1.52"));
     }
 }

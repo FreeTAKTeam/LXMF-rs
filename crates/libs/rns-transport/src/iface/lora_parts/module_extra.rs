@@ -403,4 +403,44 @@ mod tests {
         assert_eq!(guard.last_command_error(), None);
         guard.validate_startup_responses().expect("fresh startup responses");
     }
+
+    #[test]
+    fn lora_runtime_status_json_exposes_rnode_probe_and_radio_state() {
+        let mut iface = LoraInterface::new("COM9", 115_200, LoraConfig::us915_default());
+        iface.record_command_response(CMD_DETECT, &[DETECT_RESP]).expect("detect");
+        iface.record_command_response(CMD_FW_VERSION, &[1, 52]).expect("firmware");
+        iface.record_command_response(CMD_PLATFORM, &[PLATFORM_ESP32]).expect("platform");
+        iface.record_command_response(CMD_MCU, &[0x01]).expect("mcu");
+        iface
+            .record_command_response(CMD_FREQUENCY, &915_000_000_u32.to_be_bytes())
+            .expect("frequency");
+        iface
+            .record_command_response(CMD_BANDWIDTH, &125_000_u32.to_be_bytes())
+            .expect("bandwidth");
+        iface.record_command_response(CMD_TXPOWER, &[17]).expect("tx power");
+        iface.record_command_response(CMD_SF, &[9]).expect("sf");
+        iface.record_command_response(CMD_CR, &[5]).expect("cr");
+        iface.record_command_response(CMD_RADIO_STATE, &[RADIO_STATE_ON]).expect("radio state");
+        iface.record_command_response(CMD_STAT_RX, &7_u32.to_be_bytes()).expect("rx");
+        iface.record_command_response(CMD_STAT_TX, &11_u32.to_be_bytes()).expect("tx");
+
+        let json = iface.runtime_status_json();
+
+        assert_eq!(json["endpoint"].as_str(), Some("COM9"));
+        assert_eq!(json["bearer"].as_str(), Some("serial"));
+        assert_eq!(json["baud_rate"].as_u64(), Some(115_200));
+        assert_eq!(json["probe_status"]["detected"].as_bool(), Some(true));
+        assert_eq!(json["probe_status"]["firmware_version"]["label"].as_str(), Some("1.52"));
+        assert_eq!(json["probe_status"]["has_display"].as_bool(), Some(true));
+        assert_eq!(json["radio_status"]["frequency_hz"].as_u64(), Some(915_000_000));
+        assert_eq!(json["radio_status"]["bandwidth_hz"].as_u64(), Some(125_000));
+        assert_eq!(json["radio_status"]["spreading_factor"].as_u64(), Some(9));
+        assert_eq!(json["radio_status"]["coding_rate"].as_u64(), Some(5));
+        assert_eq!(json["radio_status"]["tx_power_dbm"].as_u64(), Some(17));
+        assert_eq!(json["radio_status"]["radio_state"].as_u64(), Some(RADIO_STATE_ON.into()));
+        assert_eq!(json["radio_status"]["stat_rx"].as_u64(), Some(7));
+        assert_eq!(json["radio_status"]["stat_tx"].as_u64(), Some(11));
+        assert_eq!(json["online"].as_bool(), Some(true));
+        assert!(json["last_command_error"].is_null());
+    }
 }

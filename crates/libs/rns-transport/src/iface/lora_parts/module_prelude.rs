@@ -279,6 +279,19 @@ impl RNodeProbeStatus {
         }
         Ok(true)
     }
+
+    #[must_use]
+    pub fn to_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "detected": self.detected,
+            "firmware_version": self.firmware_version.map(|(major, minor)| {
+                serde_json::json!({ "major": major, "minor": minor, "label": format!("{major}.{minor}") })
+            }),
+            "platform": self.platform,
+            "mcu": self.mcu,
+            "has_display": self.has_display(),
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -306,6 +319,15 @@ impl RNodeHardwareError {
             },
             _ => Self { code, description: "Unknown hardware failure", fatal: true },
         }
+    }
+
+    #[must_use]
+    pub fn to_json(self) -> serde_json::Value {
+        serde_json::json!({
+            "code": self.code,
+            "description": self.description,
+            "fatal": self.fatal,
+        })
     }
 }
 

@@ -238,6 +238,50 @@ impl RNodeRadioStatus {
                 * (bandwidth_hz / f64::from(symbol_divisor)),
         )
     }
+
+    #[must_use]
+    pub fn to_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "frequency_hz": self.frequency_hz,
+            "bandwidth_hz": self.bandwidth_hz,
+            "tx_power_dbm": self.tx_power_dbm,
+            "spreading_factor": self.spreading_factor,
+            "coding_rate": self.coding_rate,
+            "radio_state": self.radio_state,
+            "radio_lock": self.radio_lock,
+            "stat_rx": self.stat_rx,
+            "stat_tx": self.stat_tx,
+            "rssi_dbm": self.rssi_dbm,
+            "snr_db": self.snr_db,
+            "signal_quality_percent": self.signal_quality_percent,
+            "short_airtime_limit_percent": self.short_airtime_limit_percent,
+            "long_airtime_limit_percent": self.long_airtime_limit_percent,
+            "airtime_short_percent": self.airtime_short_percent,
+            "airtime_long_percent": self.airtime_long_percent,
+            "channel_load_short_percent": self.channel_load_short_percent,
+            "channel_load_long_percent": self.channel_load_long_percent,
+            "current_rssi_dbm": self.current_rssi_dbm,
+            "noise_floor_dbm": self.noise_floor_dbm,
+            "interference_dbm": self.interference_dbm,
+            "symbol_time_ms": self.symbol_time_ms,
+            "symbol_rate_baud": self.symbol_rate_baud,
+            "preamble_symbols": self.preamble_symbols,
+            "preamble_time_ms": self.preamble_time_ms,
+            "csma_slot_time_ms": self.csma_slot_time_ms,
+            "csma_difs_ms": self.csma_difs_ms,
+            "csma_cw_band": self.csma_cw_band,
+            "csma_cw_min": self.csma_cw_min,
+            "csma_cw_max": self.csma_cw_max,
+            "battery_state": self.battery_state,
+            "battery_state_label": self.battery_state_string(),
+            "battery_percent": self.battery_percent,
+            "temperature_c": self.temperature_c,
+            "framebuffer_bytes": self.framebuffer.as_ref().map(Vec::len),
+            "display_bytes": self.display.as_ref().map(Vec::len),
+            "random_byte": self.random_byte,
+            "reported_bitrate_bps": self.reported_bitrate_bps(),
+        })
+    }
 }
 
 fn u32_from_payload(command: u8, payload: &[u8], name: &str) -> Result<u32, String> {

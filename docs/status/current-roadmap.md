@@ -65,6 +65,11 @@ The project is best described by capability level:
   refresh the `_runtime.rnode_multi.radio_status` schema from the
   transport-side runtime handle, including stream/probe state and last error
   reporting for absent or failing hardware.
+- Ordinary serial/TCP RNodeInterface status now refreshes the transport-side
+  RNode probe/radio state into daemon/RPC `_runtime.lora.rnode_status`; compact
+  `rnstatus-rs` output summarizes bearer, online/detected state, firmware,
+  radio configuration, counters, battery, hardware errors, and last command
+  error.
 - WeaveInterface has a transport-side WDCL/HDLC slice: a shared serial parent
   can answer discovery, learn endpoint events, register virtual endpoint
   children, receive endpoint packets, write direct endpoint commands, and expose
@@ -804,7 +809,9 @@ the implemented subset.
    - Finish resolver/bootstrap, announce/path edge behavior, and runtime
      mutation parity.
 3. **Operational breadth**
-   - Add prepared-host hardware evidence for BLE/RNode paths.
+   - Add prepared-host hardware evidence for BLE/RNode paths; serial/TCP RNode
+     now has live daemon status suitable for a prepared-host smoke gate, while
+     BLE live-status refresh remains pending.
    - Complete RNodeMulti prepared-host hardware validation/evidence and
      broader production parity before treating that family as
      production-complete.

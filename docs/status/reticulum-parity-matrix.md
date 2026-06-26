@@ -71,7 +71,9 @@ placeholders:
   suppression, multicast announcements, data sockets, transport bridging, and
   live carrier-runtime status reporting.
 - Serial and TCP/Wi-Fi LoRa/RNode with startup probes, configuration
-  validation, telemetry, flow control, and teardown.
+  validation, telemetry, flow control, teardown, and live daemon/RPC
+  `rnode_status` refresh plus compact `rnstatus-rs` human summaries for probe
+  and radio state.
 - Shared serial/TCP RNodeMulti baseline with nested vport subinterfaces,
   `CMD_SEL_INT` KISS vport selection, direct routing to virtual child
   interfaces, broadcast fanout only to outgoing children, and startup probe
@@ -117,6 +119,10 @@ and hashed key-file naming, including old-format fallback when an existing
 Python key is present. `rnstatus-rs` human output summarizes the live I2P
 tunnel status for operators. Prepared-host production evidence is still
 pending.
+Ordinary serial/TCP `RNodeInterface` now refreshes transport-side probe/radio
+state into daemon/RPC `_runtime.lora.rnode_status`, and `rnstatus-rs` renders a
+compact human summary for operators. Prepared-host lifecycle evidence and BLE
+live-status refresh remain pending.
 `RNodeMultiInterface` is tracked separately as an in-progress family: the
 shared serial/TCP vport routing slice exists and startup validates detect,
 firmware `>= 1.74`, platform, MCU, `CMD_INTERFACES`, and hardware-reported

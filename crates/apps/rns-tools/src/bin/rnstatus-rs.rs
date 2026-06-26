@@ -193,6 +193,13 @@ fn interface_runtime(interface: &Value) -> String {
         parts.push(summary);
     }
     if let Some(summary) = runtime
+        .get("lora")
+        .and_then(|value| value.get("rnode_status"))
+        .and_then(lora_rnode_runtime_summary)
+    {
+        parts.push(summary);
+    }
+    if let Some(summary) = runtime
         .get("rnode_multi")
         .and_then(|value| value.get("radio_status"))
         .and_then(rnode_multi_runtime_summary)
@@ -270,6 +277,44 @@ fn rnode_multi_runtime_summary(status: &Value) -> Option<String> {
     Some(summary)
 }
 
+fn lora_rnode_runtime_summary(status: &Value) -> Option<String> {
+    if !status.is_object() {
+        return None;
+    }
+    let probe = status.get("probe_status").filter(|value| value.is_object());
+    let radio = status.get("radio_status").filter(|value| value.is_object());
+    let mut summary = format!(
+        "rnode bearer={} online={} detected={}",
+        value_str(status, "bearer"),
+        value_bool(status, "online"),
+        probe.map_or_else(|| "?".to_string(), |probe| value_bool(probe, "detected"))
+    );
+    if let Some(probe) = probe {
+        if let Some(firmware) = probe
+            .get("firmware_version")
+            .and_then(|value| value.get("label"))
+            .and_then(Value::as_str)
+        {
+            summary.push_str(&format!(" fw={firmware}"));
+        }
+    }
+    if let Some(radio) = radio {
+        append_optional_u64(&mut summary, "freq", radio.get("frequency_hz"));
+        append_optional_u64(&mut summary, "bw", radio.get("bandwidth_hz"));
+        append_optional_u64(&mut summary, "sf", radio.get("spreading_factor"));
+        append_optional_u64(&mut summary, "cr", radio.get("coding_rate"));
+        append_optional_u64(&mut summary, "txp", radio.get("tx_power_dbm"));
+        append_optional_u64(&mut summary, "rx", radio.get("stat_rx"));
+        append_optional_u64(&mut summary, "tx", radio.get("stat_tx"));
+        append_optional_u64(&mut summary, "bat", radio.get("battery_percent"));
+    }
+    if let Some(errors) = status.get("hardware_errors").and_then(Value::as_array) {
+        append_count(&mut summary, "hwerr", errors.len());
+    }
+    append_optional_str(&mut summary, "err", status.get("last_command_error"));
+    Some(summary)
+}
+
 fn count_rows_with_str(rows: Option<&Vec<Value>>, key: &str, expected: &str) -> usize {
     rows.map_or(0, |rows| {
         rows.iter().filter(|row| row.get(key).and_then(Value::as_str) == Some(expected)).count()
@@ -338,7 +383,7 @@ mod tests {
         let status = json!({
             "identity_hash": "abc",
             "running": true,
-            "interface_count": 3,
+            "interface_count": 4,
             "interfaces": [
                 {
                     "name": "i2p-main",
@@ -391,6 +436,38 @@ mod tests {
                     }
                 },
                 {
+                    "name": "rnode-main",
+                    "type": "lora",
+                    "enabled": true,
+                    "settings": {
+                        "_runtime": {
+                            "startup_status": "spawned",
+                            "lora": {
+                                "rnode_status": {
+                                    "bearer": "serial",
+                                    "online": true,
+                                    "probe_status": {
+                                        "detected": true,
+                                        "firmware_version": { "label": "1.52" }
+                                    },
+                                    "radio_status": {
+                                        "frequency_hz": 915000000,
+                                        "bandwidth_hz": 125000,
+                                        "spreading_factor": 9,
+                                        "coding_rate": 5,
+                                        "tx_power_dbm": 17,
+                                        "stat_rx": 3,
+                                        "stat_tx": 4,
+                                        "battery_percent": 88
+                                    },
+                                    "hardware_errors": [],
+                                    "last_command_error": null
+                                }
+                            }
+                        }
+                    }
+                },
+                {
                     "name": "rnode-multi",
                     "type": "rnode_multi",
                     "enabled": true,
@@ -422,6 +499,10 @@ mod tests {
         assert!(output.contains("display=128x64/true"));
         assert!(output.contains("cpu=42"));
         assert!(output.contains("mem=51.25%"));
+        assert!(output.contains("rnode bearer=serial online=true detected=true"));
+        assert!(output.contains("fw=1.52"));
+        assert!(output.contains("freq=915000000"));
+        assert!(output.contains("bat=88"));
         assert!(output.contains("rnode_multi stream=running selected=2 vports=2"));
     }
 

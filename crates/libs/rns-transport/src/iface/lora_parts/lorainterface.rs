@@ -195,6 +195,39 @@ impl LoraInterface {
     }
 
     #[must_use]
+    pub fn runtime_status_json(&self) -> serde_json::Value {
+        let configured = serde_json::json!({
+            "frequency_hz": self.config.frequency_hz,
+            "bandwidth_hz": self.config.bandwidth_hz,
+            "spreading_factor": self.config.spreading_factor,
+            "coding_rate": self.config.coding_rate,
+            "tx_power_dbm": self.config.tx_power_dbm,
+            "max_payload_bytes": self.config.max_payload_bytes,
+        });
+        serde_json::json!({
+            "endpoint": self.endpoint(),
+            "bearer": match self.bearer() {
+                LoraBearer::Serial => "serial",
+                LoraBearer::Tcp => "tcp",
+            },
+            "baud_rate": self.baud_rate(),
+            "configured": configured,
+            "probe_status": self.probe_status.to_json(),
+            "radio_status": self.radio_status.to_json(),
+            "hardware_errors": self
+                .hardware_errors
+                .iter()
+                .copied()
+                .map(RNodeHardwareError::to_json)
+                .collect::<Vec<_>>(),
+            "last_command_error": self.last_command_error.as_deref(),
+            "online": self.online,
+            "flow_control": self.flow_control,
+            "reported_bitrate_bps": self.reported_bitrate_bps(),
+        })
+    }
+
+    #[must_use]
     pub fn with_reconnect_backoff(mut self, reconnect_backoff: Duration) -> Self {
         self.reconnect_backoff = reconnect_backoff;
         if self.max_reconnect_backoff < self.reconnect_backoff {
@@ -373,6 +406,23 @@ impl LoraInterface {
         }
 
         iface_stop.cancel();
+    }
+}
+
+#[derive(Clone)]
+pub struct LoraRuntimeStatusHandle {
+    inner: Arc<std::sync::Mutex<LoraInterface>>,
+}
+
+impl LoraRuntimeStatusHandle {
+    #[must_use]
+    pub fn new(inner: Arc<std::sync::Mutex<LoraInterface>>) -> Self {
+        Self { inner }
+    }
+
+    #[must_use]
+    pub fn to_json(&self) -> serde_json::Value {
+        self.inner.lock().expect("lora interface mutex poisoned").runtime_status_json()
     }
 }
 

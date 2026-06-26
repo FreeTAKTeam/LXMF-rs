@@ -75,6 +75,11 @@ async fn startup_vrn76_kiss_ble(
     }
 }
 
+struct LoraStartupResult {
+    started: bool,
+    refresh: Option<LoraRuntimeRefresh>,
+}
+
 async fn startup_lora(
     args: &Args,
     iface: &InterfaceConfig,
@@ -82,7 +87,7 @@ async fn startup_lora(
     iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
     record: &mut InterfaceRecord,
     startup_failures: &mut Vec<InterfaceStartupFailure>,
-) -> bool {
+) -> LoraStartupResult {
     if let Err(err) = lora::startup(iface) {
         record_startup_failure(
             record,
@@ -91,12 +96,12 @@ async fn startup_lora(
             iface.kind.clone(),
             err,
         );
-        return false;
+        return LoraStartupResult { started: false, refresh: None };
     }
 
     if !lora::has_active_device(iface) {
         mark_interface_startup_status(record, "validated_startup_only", None, None);
-        return true;
+        return LoraStartupResult { started: true, refresh: None };
     }
 
     if iface.device.as_deref().is_some_and(lora::is_ble_rnode_port) {
@@ -110,7 +115,7 @@ async fn startup_lora(
                     iface.kind.clone(),
                     err,
                 );
-                return false;
+                return LoraStartupResult { started: false, refresh: None };
             }
         };
         #[cfg(not(feature = "rnode-ble"))]
@@ -142,7 +147,7 @@ async fn startup_lora(
                 iface.kind.clone(),
                 "RNodeInterface ble:// requires reticulumd feature rnode-ble".to_string(),
             );
-            return false;
+            return LoraStartupResult { started: false, refresh: None };
         }
         #[cfg(feature = "rnode-ble")]
         {
@@ -169,7 +174,7 @@ async fn startup_lora(
             );
             let runtime_iface = rnode_iface.to_string();
             mark_interface_startup_status(record, "spawned", None, Some(runtime_iface.as_str()));
-            return true;
+            return LoraStartupResult { started: true, refresh: None };
         }
     }
 
@@ -183,7 +188,7 @@ async fn startup_lora(
                 iface.kind.clone(),
                 err,
             );
-            return false;
+            return LoraStartupResult { started: false, refresh: None };
         }
     };
 
@@ -196,12 +201,12 @@ async fn startup_lora(
                 iface.kind.clone(),
                 err,
             );
-            return false;
+            return LoraStartupResult { started: false, refresh: None };
         }
     }
 
     let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
-    let lora_iface = iface_manager.lock().await.spawn_as_with_mode(
+    let (lora_iface, status_handle) = iface_manager.lock().await.spawn_as_with_mode_and_handle(
         adapter,
         |context| async move { rns_transport::iface::lora::LoraInterface::spawn(context).await },
         IfaceRole::Unicast,
@@ -220,7 +225,24 @@ async fn startup_lora(
     );
     let runtime_iface = lora_iface.to_string();
     mark_interface_startup_status(record, "spawned", None, Some(runtime_iface.as_str()));
-    true
+    with_interface_runtime_metadata(record, |runtime| {
+        runtime.insert(
+            "lora".to_string(),
+            serde_json::json!({
+                "rnode_status": status_handle
+                    .lock()
+                    .expect("lora interface mutex poisoned")
+                    .runtime_status_json()
+            }),
+        );
+    });
+    LoraStartupResult {
+        started: true,
+        refresh: Some(LoraRuntimeRefresh {
+            runtime_iface: lora_iface,
+            status: rns_transport::iface::lora::LoraRuntimeStatusHandle::new(status_handle),
+        }),
+    }
 }
 
 fn record_startup_failure(

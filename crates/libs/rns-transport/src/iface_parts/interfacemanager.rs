@@ -130,6 +130,27 @@ impl InterfaceManager {
         address
     }
 
+    pub fn spawn_as_with_mode_and_handle<T: Interface, F, R>(
+        &mut self,
+        inner: T,
+        worker: F,
+        role: IfaceRole,
+        mode: InterfaceMode,
+    ) -> (AddressHash, Arc<Mutex<T>>)
+    where
+        F: FnOnce(InterfaceContext<T>) -> R,
+        R: std::future::Future<Output = ()> + Send + 'static,
+        R::Output: Send + 'static,
+    {
+        let context = self.new_context_with_role_and_mode(inner, role, mode);
+        let address = *context.channel.address();
+        let handle = context.inner.clone();
+
+        task::spawn(worker(context));
+
+        (address, handle)
+    }
+
     pub fn role(&self, address: &AddressHash) -> Option<IfaceRole> {
         self.ifaces.iter().find(|i| i.address == *address).map(|i| i.role)
     }
