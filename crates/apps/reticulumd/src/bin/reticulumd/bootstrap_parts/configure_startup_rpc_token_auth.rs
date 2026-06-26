@@ -63,6 +63,7 @@ pub(super) struct TcpServerSelection {
     pub(super) kind: String,
     pub(super) client_mtu: Option<usize>,
     pub(super) prefer_ipv6: bool,
+    pub(super) i2p_tunneled: bool,
     pub(super) local_attach_addr: Option<String>,
     pub(super) local_attach_index: Option<usize>,
 }
@@ -78,6 +79,7 @@ pub(super) fn select_tcp_server_bind(
             kind: "tcp_server".to_string(),
             client_mtu: None,
             prefer_ipv6: false,
+            i2p_tunneled: false,
             local_attach_addr: None,
             local_attach_index: None,
         });
@@ -102,6 +104,7 @@ pub(super) fn select_tcp_server_bind(
             iface.kind.clone(),
             iface.mtu,
             iface.prefer_ipv6.unwrap_or(false),
+            iface.i2p_tunneled.unwrap_or(false),
             tcp_bind_addr(host.as_str(), port),
         ));
     }
@@ -109,11 +112,13 @@ pub(super) fn select_tcp_server_bind(
     if matches.len() > 1 {
         return Err(format!(
             "multiple enabled TCP listener interfaces configured without --transport override: {}",
-            matches.iter().map(|(_, _, _, _, endpoint)| endpoint.as_str()).collect::<Vec<_>>().join(", ")
+            matches.iter().map(|(_, _, _, _, _, endpoint)| endpoint.as_str()).collect::<Vec<_>>().join(", ")
         ));
     }
 
-    let Some((selected_index, kind, client_mtu, prefer_ipv6, bind_addr)) = matches.into_iter().next() else {
+    let Some((selected_index, kind, client_mtu, prefer_ipv6, i2p_tunneled, bind_addr)) =
+        matches.into_iter().next()
+    else {
         return Ok(TcpServerSelection::default());
     };
 
@@ -124,6 +129,7 @@ pub(super) fn select_tcp_server_bind(
             kind,
             client_mtu,
             prefer_ipv6,
+            i2p_tunneled,
             local_attach_addr: Some(bind_addr),
             local_attach_index: Some(selected_index),
         });
@@ -135,6 +141,7 @@ pub(super) fn select_tcp_server_bind(
             kind,
             client_mtu,
             prefer_ipv6,
+            i2p_tunneled,
             local_attach_addr: None,
             local_attach_index: None,
         })

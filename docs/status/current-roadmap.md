@@ -36,16 +36,18 @@ The project is best described by capability level:
   behavior are the strongest RNS areas.
 - Link establishment, proof validation, interface binding, watchdog timing,
   teardown, receipts, and resource lifecycle have active regression coverage.
-- `reticulumd` supports TCP client/server, Backbone TCP/HDLC
-  listener/client compatibility with Backbone MTU defaults and Reticulum-style
-  Backbone socket tuning (`TCP_NODELAY`, Linux/Android keepalive probes, and
-  TCP user timeout) plus Backbone-only HDLC stream liveness keepalives,
-  stale detection, and read-timeout reconnects, LocalInterface TCP-loopback
-  plus Unix filesystem and Linux/Android abstract AF_UNIX shared-instance
-  listener/client-attach compatibility, including Unix client-attach reconnect
-  after startup failures or later disconnects and TCP/Unix attach reconnect
-  signals that re-synthesize tunnel state plus shared-instance one-hop
-  transport wrapping, Pipe subprocess HDLC, UDP unicast/multicast plus
+- `reticulumd` supports TCP client/server, including Python-style
+  TCP-over-I2P `i2p_tunneled` socket tuning for outbound clients and accepted
+  server streams, Backbone TCP/HDLC listener/client compatibility with
+  Backbone MTU defaults and Reticulum-style Backbone socket tuning
+  (`TCP_NODELAY`, Linux/Android keepalive probes, and TCP user timeout) plus
+  Backbone-only HDLC stream liveness keepalives, stale detection, and
+  read-timeout reconnects, LocalInterface TCP-loopback plus Unix filesystem
+  and Linux/Android abstract AF_UNIX shared-instance listener/client-attach
+  compatibility, including Unix client-attach reconnect after startup failures
+  or later disconnects and TCP/Unix attach reconnect signals that
+  re-synthesize tunnel state plus shared-instance one-hop transport wrapping,
+  Pipe subprocess HDLC, UDP unicast/multicast plus
   Python-style UDP `device` broadcast-address defaults and IPv4 broadcast
   socket sends, serial, KISS, AX.25 KISS, AutoInterface, LoRa/RNode,
   feature-gated RNode BLE, feature-gated VR-N76 KISS-over-BLE, and the

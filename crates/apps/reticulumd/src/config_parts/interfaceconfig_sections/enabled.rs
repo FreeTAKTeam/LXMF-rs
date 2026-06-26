@@ -112,6 +112,7 @@ impl InterfaceConfig {
                 insert_opt_string(&mut settings, "device", self.device.as_ref());
                 insert_opt_u64(&mut settings, "port", self.port.map(u64::from));
                 insert_opt_bool(&mut settings, "prefer_ipv6", self.prefer_ipv6);
+                insert_opt_bool(&mut settings, "i2p_tunneled", self.i2p_tunneled);
                 insert_opt_u64(&mut settings, "mtu", self.mtu.map(|v| v as u64));
             }
             "backbone" => {

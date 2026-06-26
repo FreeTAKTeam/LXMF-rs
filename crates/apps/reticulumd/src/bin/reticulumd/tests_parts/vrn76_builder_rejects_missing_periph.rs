@@ -508,6 +508,7 @@ fn select_tcp_server_bind_uses_single_enabled_interface_when_transport_not_set()
             enabled: Some(true),
             host: None,
             port: Some(4242),
+            i2p_tunneled: Some(true),
             ..InterfaceConfig::default()
         }],
     };
@@ -515,6 +516,7 @@ fn select_tcp_server_bind_uses_single_enabled_interface_when_transport_not_set()
     let selected = select_tcp_server_bind(&args, Some(&config)).expect("select server");
     assert_eq!(selected.bind_addr.as_deref(), Some("0.0.0.0:4242"));
     assert_eq!(selected.selected_index, Some(0));
+    assert!(selected.i2p_tunneled);
 }
 
 #[test]

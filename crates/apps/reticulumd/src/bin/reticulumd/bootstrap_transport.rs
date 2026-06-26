@@ -100,6 +100,8 @@ fn build_selected_tcp_server_adapter(
         server = server
             .with_client_socket_tuning(TcpSocketTuning::backbone())
             .with_backbone_client_liveness();
+    } else if selected_tcp_server.kind == "tcp_server" && selected_tcp_server.i2p_tunneled {
+        server = server.with_client_socket_tuning(TcpSocketTuning::i2p_tunneled());
     }
     server
 }
@@ -343,6 +345,7 @@ mod tests {
     use super::{build_selected_tcp_server_adapter, TcpServerSelection};
     use rns_transport::iface::InterfaceManager;
     use std::sync::Arc;
+    use std::time::Duration;
 
     #[test]
     fn selected_backbone_server_adapter_enables_socket_tuning_and_liveness() {
@@ -373,5 +376,36 @@ mod tests {
         assert_eq!(backbone_server.client_socket_tuning().keepalive, Some(true));
         assert!(backbone_server.client_hdlc_liveness_enabled());
         assert!(backbone_server.prefer_ipv6());
+    }
+
+    #[test]
+    fn selected_i2p_tunneled_tcp_server_adapter_applies_client_socket_profile() {
+        let manager = Arc::new(tokio::sync::Mutex::new(InterfaceManager::new(8)));
+        let tcp = TcpServerSelection {
+            bind_addr: Some("127.0.0.1:0".to_string()),
+            kind: "tcp_server".to_string(),
+            i2p_tunneled: true,
+            ..TcpServerSelection::default()
+        };
+
+        let tcp_server =
+            build_selected_tcp_server_adapter("127.0.0.1:0".to_string(), manager, &tcp);
+
+        assert_eq!(tcp_server.client_socket_tuning().nodelay, Some(true));
+        assert_eq!(tcp_server.client_socket_tuning().keepalive, Some(true));
+        assert_eq!(
+            tcp_server.client_socket_tuning().tcp_keepalive_idle,
+            Some(Duration::from_secs(10))
+        );
+        assert_eq!(
+            tcp_server.client_socket_tuning().tcp_keepalive_interval,
+            Some(Duration::from_secs(9))
+        );
+        assert_eq!(tcp_server.client_socket_tuning().tcp_keepalive_retries, Some(5));
+        assert_eq!(
+            tcp_server.client_socket_tuning().tcp_user_timeout,
+            Some(Duration::from_secs(45))
+        );
+        assert!(!tcp_server.client_hdlc_liveness_enabled());
     }
 }

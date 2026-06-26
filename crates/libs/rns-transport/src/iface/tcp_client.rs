@@ -47,6 +47,18 @@ impl TcpSocketTuning {
     }
 
     #[must_use]
+    pub fn i2p_tunneled() -> Self {
+        Self {
+            nodelay: Some(true),
+            keepalive: Some(true),
+            tcp_keepalive_idle: Some(Duration::from_secs(10)),
+            tcp_keepalive_interval: Some(Duration::from_secs(9)),
+            tcp_keepalive_retries: Some(5),
+            tcp_user_timeout: Some(Duration::from_secs(45)),
+        }
+    }
+
+    #[must_use]
     pub fn is_empty(self) -> bool {
         self.nodelay.is_none()
             && self.keepalive.is_none()
@@ -919,6 +931,18 @@ mod tests {
                 Some(Duration::from_secs(24))
             );
         }
+    }
+
+    #[test]
+    fn tcp_socket_tuning_i2p_tunneled_matches_reticulum_profile() {
+        let tuning = TcpSocketTuning::i2p_tunneled();
+
+        assert_eq!(tuning.nodelay, Some(true));
+        assert_eq!(tuning.keepalive, Some(true));
+        assert_eq!(tuning.tcp_keepalive_idle, Some(Duration::from_secs(10)));
+        assert_eq!(tuning.tcp_keepalive_interval, Some(Duration::from_secs(9)));
+        assert_eq!(tuning.tcp_keepalive_retries, Some(5));
+        assert_eq!(tuning.tcp_user_timeout, Some(Duration::from_secs(45)));
     }
 
     #[test]

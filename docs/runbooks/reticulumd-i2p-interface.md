@@ -79,6 +79,14 @@ periodically refreshes that model into the cached interface records returned by
 `daemon_status_ex` and `list_interfaces` as
 `_runtime.i2p.tunnel_status`.
 
+Python `TCPClientInterface` and `TCPServerInterface` configs can also mark
+plain TCP streams as carried through an external I2P tunnel with
+`i2p_tunneled = true`. That flag does not create a SAM session; it applies
+Reticulum's slower I2P TCP socket profile to outbound TCP clients and to
+server-side accepted client streams: `TCP_NODELAY`, keepalive enabled, and on
+Linux/Android a 45-second TCP user timeout, 10-second keepalive idle,
+9-second keepalive interval, and 5 keepalive probes.
+
 In normal startup mode, SAM failures are retried in the background. In strict
 startup mode, the daemon preflights the SAM bridge and marks the interface
 failed if the bridge is unreachable or does not complete `HELLO`.

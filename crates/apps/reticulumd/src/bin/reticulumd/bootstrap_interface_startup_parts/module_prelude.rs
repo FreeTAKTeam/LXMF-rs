@@ -1211,6 +1211,8 @@ fn build_tcp_client_adapter(endpoint: String, iface: &InterfaceConfig) -> TcpCli
         adapter = adapter
             .with_socket_tuning(TcpSocketTuning::backbone())
             .with_backbone_liveness();
+    } else if iface.kind == "tcp_client" && iface.i2p_tunneled == Some(true) {
+        adapter = adapter.with_socket_tuning(TcpSocketTuning::i2p_tunneled());
     }
     if let Some(connect_timeout) = iface.connect_timeout {
         adapter = adapter.with_connect_timeout(Duration::from_secs(connect_timeout));
@@ -1417,6 +1419,7 @@ mod tests {
     use reticulum_daemon::config::InterfaceConfig;
     use rns_rpc::InterfaceRecord;
     use rns_transport::hash::AddressHash;
+    use rns_transport::iface::tcp_client::TcpSocketTuning;
     use rns_transport::identity_bridge::to_transport_private_identity;
     use rns_transport::iface::{IfaceRole, InterfaceMode, InterfaceSharedConfig};
     use rns_transport::transport::{Transport, TransportConfig};
@@ -1495,6 +1498,23 @@ mod tests {
         assert_eq!(adapter.connect_timeout(), Duration::from_secs(7));
         assert_eq!(adapter.max_reconnect_tries(), Some(3));
         assert!(adapter.prefer_ipv6());
+    }
+
+    #[test]
+    fn tcp_client_builder_applies_i2p_tunneled_socket_profile() {
+        let iface = InterfaceConfig {
+            kind: "tcp_client".to_string(),
+            enabled: Some(true),
+            host: Some("rmap.world".to_string()),
+            port: Some(4242),
+            i2p_tunneled: Some(true),
+            ..InterfaceConfig::default()
+        };
+
+        let adapter = build_tcp_client_adapter("rmap.world:4242".to_string(), &iface);
+
+        assert_eq!(adapter.socket_tuning(), TcpSocketTuning::i2p_tunneled());
+        assert!(!adapter.hdlc_liveness_enabled());
     }
 
     #[test]

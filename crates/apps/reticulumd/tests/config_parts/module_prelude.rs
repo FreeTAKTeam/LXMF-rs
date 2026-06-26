@@ -141,7 +141,7 @@ interfaces = [
 fn parses_reticulum_tcp_server_interface_aliases() {
     let input = r#"
 interfaces = [
-  { type = "TCPServerInterface", enabled = true, name = "python-tcp-server", listen_ip = "127.0.0.1", listen_port = 4242 }
+  { type = "TCPServerInterface", enabled = true, name = "python-tcp-server", listen_ip = "127.0.0.1", listen_port = 4242, i2p_tunneled = true }
 ]
 "#;
     let cfg = DaemonConfig::from_toml(input).expect("parse Python TCPServerInterface config");
@@ -149,7 +149,11 @@ interfaces = [
     assert_eq!(iface.kind, "tcp_server");
     assert_eq!(iface.host.as_deref(), Some("127.0.0.1"));
     assert_eq!(iface.port, Some(4242));
+    assert_eq!(iface.i2p_tunneled, Some(true));
     assert_eq!(cfg.tcp_server_endpoints(), vec![("127.0.0.1".to_string(), 4242)]);
+
+    let settings = iface.settings_json().expect("settings");
+    assert_eq!(settings["i2p_tunneled"], true);
 }
 
 #[test]
