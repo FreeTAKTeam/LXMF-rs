@@ -19,6 +19,7 @@ pub struct PipeInterface {
     command: String,
     respawn_delay: Duration,
     mtu: usize,
+    runtime_status: Arc<std::sync::Mutex<PipeRuntimeStatus>>,
 }
 
 impl PipeInterface {
@@ -26,10 +27,12 @@ impl PipeInterface {
     pub const DEFAULT_RESPAWN_DELAY: Duration = Duration::from_secs(5);
 
     pub fn new<T: Into<String>>(command: T) -> Self {
+        let command = command.into();
         Self {
-            command: command.into(),
+            command: command.clone(),
             respawn_delay: Self::DEFAULT_RESPAWN_DELAY,
             mtu: Self::DEFAULT_MTU,
+            runtime_status: Arc::new(std::sync::Mutex::new(PipeRuntimeStatus::new(command))),
         }
     }
 
@@ -48,6 +51,16 @@ impl PipeInterface {
     #[must_use]
     pub fn command(&self) -> &str {
         &self.command
+    }
+
+    #[must_use]
+    pub fn runtime_status_json(&self) -> serde_json::Value {
+        self.runtime_status.lock().expect("pipe runtime status mutex poisoned").to_json()
+    }
+
+    #[must_use]
+    pub fn runtime_status_handle(&self) -> PipeRuntimeStatusHandle {
+        PipeRuntimeStatusHandle { inner: self.runtime_status.clone() }
     }
 
     #[must_use]
@@ -79,6 +92,16 @@ impl PipeInterface {
                 let guard = context.inner.lock().expect("pipe interface mutex poisoned");
                 (guard.command.clone(), guard.respawn_delay, guard.mtu)
             };
+            let runtime_status = {
+                let guard = context.inner.lock().expect("pipe interface mutex poisoned");
+                guard.runtime_status.clone()
+            };
+            update_pipe_status(&runtime_status, |status| {
+                status.command.clone_from(&command);
+                status.process_state = "spawning".to_string();
+                status.pipe_is_open = false;
+                status.last_error = None;
+            });
 
             if let Err(err) = run_pipe_process(
                 command.as_str(),
@@ -88,10 +111,23 @@ impl PipeInterface {
                 iface_stop.clone(),
                 rx_channel.clone(),
                 tx_channel.clone(),
+                runtime_status.clone(),
             )
             .await
             {
+                update_pipe_status(&runtime_status, |status| {
+                    status.process_state = "respawning".to_string();
+                    status.pipe_is_open = false;
+                    status.respawn_attempts = status.respawn_attempts.saturating_add(1);
+                    status.last_error = Some(err.clone());
+                });
                 log::warn!("pipe_interface command failed iface={} err={}", iface_address, err);
+            } else if !context.cancel.is_cancelled() && !iface_stop.is_cancelled() {
+                update_pipe_status(&runtime_status, |status| {
+                    status.process_state = "respawning".to_string();
+                    status.pipe_is_open = false;
+                    status.respawn_attempts = status.respawn_attempts.saturating_add(1);
+                });
             }
 
             if context.cancel.is_cancelled() || iface_stop.is_cancelled() {
@@ -105,7 +141,69 @@ impl PipeInterface {
             }
         }
 
+        let runtime_status = {
+            let guard = context.inner.lock().expect("pipe interface mutex poisoned");
+            guard.runtime_status.clone()
+        };
+        update_pipe_status(&runtime_status, |status| {
+            status.process_state = "stopped".to_string();
+            status.pipe_is_open = false;
+        });
         iface_stop.cancel();
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PipeRuntimeStatus {
+    pub command: String,
+    pub process_state: String,
+    pub pipe_is_open: bool,
+    pub respawn_attempts: u64,
+    pub last_error: Option<String>,
+}
+
+#[derive(Clone)]
+pub struct PipeRuntimeStatusHandle {
+    inner: Arc<std::sync::Mutex<PipeRuntimeStatus>>,
+}
+
+impl PipeRuntimeStatusHandle {
+    #[must_use]
+    pub fn to_json(&self) -> serde_json::Value {
+        self.inner.lock().expect("pipe runtime status mutex poisoned").to_json()
+    }
+
+    pub fn record_error_for_test(&self, state: &str, error: impl Into<String>) {
+        update_pipe_status(&self.inner, |status| {
+            status.process_state = state.to_string();
+            status.pipe_is_open = false;
+            status.respawn_attempts = status.respawn_attempts.saturating_add(1);
+            status.last_error = Some(error.into());
+        });
+    }
+}
+
+impl PipeRuntimeStatus {
+    #[must_use]
+    pub fn new(command: impl Into<String>) -> Self {
+        Self {
+            command: command.into(),
+            process_state: "configured".to_string(),
+            pipe_is_open: false,
+            respawn_attempts: 0,
+            last_error: None,
+        }
+    }
+
+    #[must_use]
+    pub fn to_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "command": self.command,
+            "process_state": self.process_state,
+            "pipe_is_open": self.pipe_is_open,
+            "respawn_attempts": self.respawn_attempts,
+            "last_error": self.last_error,
+        })
     }
 }
 
@@ -119,6 +217,7 @@ impl Interface for PipeInterface {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_pipe_process(
     command: &str,
     iface_address: AddressHash,
@@ -127,6 +226,7 @@ async fn run_pipe_process(
     iface_stop: CancellationToken,
     rx_channel: tokio::sync::mpsc::Sender<RxMessage>,
     tx_channel: Arc<tokio::sync::Mutex<tokio::sync::mpsc::Receiver<TxMessage>>>,
+    runtime_status: Arc<std::sync::Mutex<PipeRuntimeStatus>>,
 ) -> Result<(), String> {
     let argv = PipeInterface::parse_command(command)?;
     let mut child = Command::new(&argv[0])
@@ -139,9 +239,24 @@ async fn run_pipe_process(
     let stdout = child.stdout.take().ok_or_else(|| "pipe stdout unavailable".to_string())?;
     let stdin = child.stdin.take().ok_or_else(|| "pipe stdin unavailable".to_string())?;
     log::info!("pipe_interface spawned iface={} command={}", iface_address, command);
+    update_pipe_status(&runtime_status, |status| {
+        status.process_state = "running".to_string();
+        status.pipe_is_open = true;
+        status.last_error = None;
+    });
 
-    run_pipe_stream(stdout, stdin, iface_address, mtu, cancel, iface_stop, rx_channel, tx_channel)
-        .await;
+    run_pipe_stream(
+        stdout,
+        stdin,
+        iface_address,
+        mtu,
+        cancel,
+        iface_stop,
+        rx_channel,
+        tx_channel,
+        runtime_status,
+    )
+    .await;
 
     let _ = child.kill().await;
     let _ = child.wait().await;
@@ -158,6 +273,7 @@ async fn run_pipe_stream<R, W>(
     iface_stop: CancellationToken,
     rx_channel: tokio::sync::mpsc::Sender<RxMessage>,
     tx_channel: Arc<tokio::sync::Mutex<tokio::sync::mpsc::Receiver<TxMessage>>>,
+    runtime_status: Arc<std::sync::Mutex<PipeRuntimeStatus>>,
 ) where
     R: AsyncRead + Unpin + Send + 'static,
     W: AsyncWrite + Unpin + Send + 'static,
@@ -169,6 +285,7 @@ async fn run_pipe_stream<R, W>(
     let rx_task = {
         let cancel = cancel.clone();
         let iface_stop = iface_stop.clone();
+        let runtime_status = runtime_status.clone();
         tokio::spawn(async move {
             let mut hdlc_rx_buffer = vec![0_u8; mtu];
             let mut frame_buffer = Vec::<u8>::with_capacity(mtu * 4);
@@ -182,6 +299,11 @@ async fn run_pipe_stream<R, W>(
                     result = reader.read(&mut read_buffer[..]) => {
                         match result {
                             Ok(0) => {
+                                update_pipe_status(&runtime_status, |status| {
+                                    status.process_state = "closed".to_string();
+                                    status.pipe_is_open = false;
+                                    status.last_error = Some("pipe stdout closed".to_string());
+                                });
                                 rx_stop.cancel();
                                 break;
                             }
@@ -212,6 +334,11 @@ async fn run_pipe_stream<R, W>(
                             }
                             Err(err) => {
                                 log::warn!("pipe read error iface={} err={}", iface_address, err);
+                                update_pipe_status(&runtime_status, |status| {
+                                    status.process_state = "read_error".to_string();
+                                    status.pipe_is_open = false;
+                                    status.last_error = Some(err.to_string());
+                                });
                                 rx_stop.cancel();
                                 break;
                             }
@@ -226,6 +353,7 @@ async fn run_pipe_stream<R, W>(
         let cancel = cancel.clone();
         let iface_stop = iface_stop.clone();
         let tx_channel = tx_channel.clone();
+        let runtime_status = runtime_status.clone();
         tokio::spawn(async move {
             loop {
                 if tx_stop.is_cancelled() {
@@ -247,11 +375,21 @@ async fn run_pipe_stream<R, W>(
                             if Hdlc::encode(output.as_slice(), &mut hdlc_output).is_ok() {
                                 if let Err(err) = writer.write_all(hdlc_output.as_slice()).await {
                                     log::warn!("pipe write error iface={} err={}", iface_address, err);
+                                    update_pipe_status(&runtime_status, |status| {
+                                        status.process_state = "write_error".to_string();
+                                        status.pipe_is_open = false;
+                                        status.last_error = Some(err.to_string());
+                                    });
                                     tx_stop.cancel();
                                     break;
                                 }
                                 if let Err(err) = writer.flush().await {
                                     log::warn!("pipe flush error iface={} err={}", iface_address, err);
+                                    update_pipe_status(&runtime_status, |status| {
+                                        status.process_state = "write_error".to_string();
+                                        status.pipe_is_open = false;
+                                        status.last_error = Some(err.to_string());
+                                    });
                                     tx_stop.cancel();
                                     break;
                                 }
@@ -266,6 +404,14 @@ async fn run_pipe_stream<R, W>(
     let _ = rx_task.await;
     stop.cancel();
     let _ = tx_task.await;
+}
+
+fn update_pipe_status(
+    runtime_status: &Arc<std::sync::Mutex<PipeRuntimeStatus>>,
+    update: impl FnOnce(&mut PipeRuntimeStatus),
+) {
+    let mut guard = runtime_status.lock().expect("pipe runtime status mutex poisoned");
+    update(&mut guard);
 }
 
 pub fn spawn_pipe(
@@ -297,5 +443,26 @@ mod tests {
             PipeInterface::new("cat").with_respawn_delay(Duration::from_millis(250)).with_mtu(512);
         assert_eq!(adapter.command(), "cat");
         assert_eq!(adapter.mtu_value(), 512);
+        let status = adapter.runtime_status_json();
+        assert_eq!(status["command"].as_str(), Some("cat"));
+        assert_eq!(status["process_state"].as_str(), Some("configured"));
+        assert_eq!(status["pipe_is_open"].as_bool(), Some(false));
+        assert_eq!(status["respawn_attempts"].as_u64(), Some(0));
+        assert!(status["last_error"].is_null());
+    }
+
+    #[test]
+    fn pipe_runtime_status_handle_records_respawn_errors() {
+        let adapter = PipeInterface::new("cat");
+        let status = adapter.runtime_status_handle();
+
+        status.record_error_for_test("respawning", "spawn cat failed");
+
+        let json = status.to_json();
+        assert_eq!(json["command"].as_str(), Some("cat"));
+        assert_eq!(json["process_state"].as_str(), Some("respawning"));
+        assert_eq!(json["pipe_is_open"].as_bool(), Some(false));
+        assert_eq!(json["respawn_attempts"].as_u64(), Some(1));
+        assert_eq!(json["last_error"].as_str(), Some("spawn cat failed"));
     }
 }

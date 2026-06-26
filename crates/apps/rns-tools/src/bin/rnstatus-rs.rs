@@ -188,6 +188,11 @@ fn interface_runtime(interface: &Value) -> String {
         parts.push(summary);
     }
     if let Some(summary) =
+        runtime.get("pipe").and_then(|value| value.get("status")).and_then(pipe_runtime_summary)
+    {
+        parts.push(summary);
+    }
+    if let Some(summary) =
         runtime.get("weave").and_then(|value| value.get("status")).and_then(weave_runtime_summary)
     {
         parts.push(summary);
@@ -228,6 +233,20 @@ fn i2p_runtime_summary(status: &Value) -> Option<String> {
     append_count(&mut summary, "stale", stale);
     append_count(&mut summary, "reconnecting", reconnecting);
     append_optional_str(&mut summary, "err", status.get("last_accept_error"));
+    Some(summary)
+}
+
+fn pipe_runtime_summary(status: &Value) -> Option<String> {
+    if !status.is_object() {
+        return None;
+    }
+    let mut summary = format!(
+        "pipe state={} open={} respawns={}",
+        value_str(status, "process_state"),
+        value_bool(status, "pipe_is_open"),
+        value_u64(status, "respawn_attempts")
+    );
+    append_optional_str(&mut summary, "err", status.get("last_error"));
     Some(summary)
 }
 
@@ -484,6 +503,25 @@ mod tests {
                             }
                         }
                     }
+                },
+                {
+                    "name": "pipe-main",
+                    "type": "pipe",
+                    "enabled": true,
+                    "settings": {
+                        "_runtime": {
+                            "startup_status": "spawned",
+                            "pipe": {
+                                "status": {
+                                    "command": "cat",
+                                    "process_state": "respawning",
+                                    "pipe_is_open": false,
+                                    "respawn_attempts": 2,
+                                    "last_error": "spawn cat failed"
+                                }
+                            }
+                        }
+                    }
                 }
             ]
         });
@@ -504,6 +542,8 @@ mod tests {
         assert!(output.contains("freq=915000000"));
         assert!(output.contains("bat=88"));
         assert!(output.contains("rnode_multi stream=running selected=2 vports=2"));
+        assert!(output.contains("pipe state=respawning open=false respawns=2"));
+        assert!(output.contains("err=spawn cat failed"));
     }
 
     #[test]

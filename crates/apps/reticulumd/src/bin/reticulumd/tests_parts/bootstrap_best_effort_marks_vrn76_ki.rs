@@ -241,6 +241,12 @@ interfaces = [
             .and_then(|value| value.as_u64()),
         Some(1_064)
     );
+    let pipe_status = &pipe["settings"]["_runtime"]["pipe"]["status"];
+    assert_eq!(pipe_status["command"].as_str(), Some("cat"));
+    assert_eq!(pipe_status["process_state"].as_str(), Some("configured"));
+    assert_eq!(pipe_status["pipe_is_open"].as_bool(), Some(false));
+    assert_eq!(pipe_status["respawn_attempts"].as_u64(), Some(0));
+    assert!(pipe_status["last_error"].is_null());
 }
 
 #[test]

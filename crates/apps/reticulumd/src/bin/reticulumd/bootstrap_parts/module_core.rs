@@ -175,6 +175,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     let startup_failures = startup.startup_failures;
     let seeded_tcp_interfaces = startup.seeded_tcp_interfaces;
     let auto_runtime_refreshes = startup.auto_runtime_refreshes;
+    let pipe_runtime_refreshes = startup.pipe_runtime_refreshes;
     let i2p_runtime_refreshes = startup.i2p_runtime_refreshes;
     let weave_runtime_refreshes = startup.weave_runtime_refreshes;
     let rnode_multi_runtime_refreshes = startup.rnode_multi_runtime_refreshes;
@@ -277,6 +278,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     daemon.set_propagation_destination_hash(propagation_destination_hash_hex.clone());
     daemon.replace_interfaces(configured_interfaces);
     spawn_auto_runtime_status_refresher(daemon.clone(), auto_runtime_refreshes);
+    spawn_pipe_runtime_status_refresher(daemon.clone(), pipe_runtime_refreshes);
     spawn_i2p_runtime_status_refresher(daemon.clone(), i2p_runtime_refreshes);
     spawn_weave_runtime_status_refresher(daemon.clone(), weave_runtime_refreshes);
     spawn_rnode_multi_runtime_status_refresher(daemon.clone(), rnode_multi_runtime_refreshes);
@@ -430,6 +432,40 @@ fn refresh_auto_runtime_status_once(
                 refresh.runtime_iface.to_string().as_str(),
                 "auto",
                 "carrier_runtime",
+                refresh.status.to_json(),
+            )
+        })
+        .count()
+}
+
+fn spawn_pipe_runtime_status_refresher(
+    daemon: Arc<RpcDaemon>,
+    refreshes: Vec<transport_startup::PipeRuntimeRefresh>,
+) {
+    if refreshes.is_empty() {
+        return;
+    }
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(INTERFACE_RUNTIME_STATUS_REFRESH_INTERVAL);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            interval.tick().await;
+            refresh_pipe_runtime_status_once(&daemon, &refreshes);
+        }
+    });
+}
+
+fn refresh_pipe_runtime_status_once(
+    daemon: &RpcDaemon,
+    refreshes: &[transport_startup::PipeRuntimeRefresh],
+) -> usize {
+    refreshes
+        .iter()
+        .filter(|refresh| {
+            daemon.update_interface_runtime_metadata_by_iface(
+                refresh.runtime_iface.to_string().as_str(),
+                "pipe",
+                "status",
                 refresh.status.to_json(),
             )
         })
@@ -769,6 +805,47 @@ mod tests {
 
         assert_eq!(tunnel_status["accept_state"].as_str(), Some("configured"));
         assert_eq!(tunnel_status["connectable"].as_bool(), Some(true));
+    }
+
+    #[test]
+    fn pipe_runtime_status_refresh_updates_matching_interface_record() {
+        let daemon = RpcDaemon::test_instance();
+        let runtime_iface = AddressHash::new([0x1a; 16]);
+        daemon.replace_interfaces(vec![InterfaceRecord {
+            kind: "pipe".to_string(),
+            enabled: true,
+            host: None,
+            port: None,
+            name: Some("pipe-main".to_string()),
+            settings: Some(json!({
+                "_runtime": {
+                    "iface": runtime_iface.to_string(),
+                    "startup_status": "spawned",
+                    "pipe": {
+                        "status": {
+                            "process_state": "stale"
+                        }
+                    }
+                }
+            })),
+        }]);
+        let status = rns_transport::iface::pipe::PipeInterface::new("cat").runtime_status_handle();
+        status.record_error_for_test("respawning", "spawn cat failed");
+        let refresh = transport_startup::PipeRuntimeRefresh { runtime_iface, status };
+
+        assert_eq!(refresh_pipe_runtime_status_once(&daemon, &[refresh]), 1);
+        let result = daemon
+            .handle_rpc(RpcRequest { id: 93, method: "daemon_status_ex".to_string(), params: None })
+            .expect("daemon status")
+            .result
+            .expect("daemon status result");
+        let status = &result["interfaces"][0]["settings"]["_runtime"]["pipe"]["status"];
+
+        assert_eq!(status["command"].as_str(), Some("cat"));
+        assert_eq!(status["process_state"].as_str(), Some("respawning"));
+        assert_eq!(status["pipe_is_open"].as_bool(), Some(false));
+        assert_eq!(status["respawn_attempts"].as_u64(), Some(1));
+        assert_eq!(status["last_error"].as_str(), Some("spawn cat failed"));
     }
 
     #[test]

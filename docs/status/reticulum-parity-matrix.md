@@ -61,7 +61,8 @@ placeholders:
   attached shared-instance clients wrap one-hop outbound packets in transport
   headers before handing them to the shared instance.
 - PipeInterface subprocess stdin/stdout transport with Python-style command
-  parsing, HDLC packet framing, respawn delay, and default MTU.
+  parsing, HDLC packet framing, respawn delay, default MTU, and live subprocess
+  status reporting through daemon/RPC `_runtime.pipe.status`.
 - UDP unicast and multicast with peer routing, multicast proof fallback,
   Python-style `device` broadcast-address defaults via host interface lookup,
   and IPv4 broadcast socket sends.

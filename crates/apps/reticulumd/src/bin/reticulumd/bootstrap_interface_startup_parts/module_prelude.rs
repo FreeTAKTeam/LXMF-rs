@@ -38,6 +38,7 @@ pub(super) struct InterfaceStartupBatch {
     pub(super) tunnel_synth_ifaces: Vec<AddressHash>,
     pub(super) connected_to_shared_instance: bool,
     pub(super) auto_runtime_refreshes: Vec<AutoRuntimeRefresh>,
+    pub(super) pipe_runtime_refreshes: Vec<PipeRuntimeRefresh>,
     pub(super) i2p_runtime_refreshes: Vec<I2pRuntimeRefresh>,
     pub(super) weave_runtime_refreshes: Vec<WeaveRuntimeRefresh>,
     pub(super) rnode_multi_runtime_refreshes: Vec<RNodeMultiRuntimeRefresh>,
@@ -48,6 +49,12 @@ pub(super) struct InterfaceStartupBatch {
 pub(crate) struct AutoRuntimeRefresh {
     pub(crate) runtime_iface: AddressHash,
     pub(crate) status: auto::AutoRuntimeStatusHandle,
+}
+
+#[derive(Clone)]
+pub(crate) struct PipeRuntimeRefresh {
+    pub(crate) runtime_iface: AddressHash,
+    pub(crate) status: rns_transport::iface::pipe::PipeRuntimeStatusHandle,
 }
 
 #[derive(Clone)]
@@ -111,6 +118,7 @@ pub(super) async fn startup_configured_interfaces(
     let mut tunnel_synth_ifaces = Vec::new();
     let mut connected_to_shared_instance = false;
     let mut auto_runtime_refreshes = Vec::new();
+    let mut pipe_runtime_refreshes = Vec::new();
     let mut i2p_runtime_refreshes = Vec::new();
     let mut weave_runtime_refreshes = Vec::new();
     let mut rnode_multi_runtime_refreshes = Vec::new();
@@ -340,7 +348,7 @@ pub(super) async fn startup_configured_interfaces(
                 }
             }
             "pipe" => {
-                if startup_pipe(
+                if let Some(refresh) = startup_pipe(
                     iface,
                     &label,
                     iface_manager,
@@ -350,6 +358,7 @@ pub(super) async fn startup_configured_interfaces(
                 .await
                 {
                     startup_successes += 1;
+                    pipe_runtime_refreshes.push(refresh);
                 }
             }
             "i2p" => {
@@ -443,6 +452,7 @@ pub(super) async fn startup_configured_interfaces(
         tunnel_synth_ifaces,
         connected_to_shared_instance,
         auto_runtime_refreshes,
+        pipe_runtime_refreshes,
         i2p_runtime_refreshes,
         weave_runtime_refreshes,
         rnode_multi_runtime_refreshes,
@@ -671,7 +681,7 @@ async fn startup_pipe(
     iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
     record: &mut InterfaceRecord,
     startup_failures: &mut Vec<InterfaceStartupFailure>,
-) -> bool {
+) -> Option<PipeRuntimeRefresh> {
     let adapter = match pipe::build_adapter(iface) {
         Ok(adapter) => adapter,
         Err(err) => {
@@ -682,10 +692,12 @@ async fn startup_pipe(
                 iface.kind.clone(),
                 err,
             );
-            return false;
+            return None;
         }
     };
 
+    let pipe_metadata = pipe_runtime_metadata_json(&adapter);
+    let runtime_status = adapter.runtime_status_handle();
     let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
     let pipe_iface = iface_manager.lock().await.spawn_as_with_mode(
         adapter,
@@ -700,7 +712,18 @@ async fn startup_pipe(
     log::info!("[daemon] pipe enabled iface={} name={}", pipe_iface, label);
     let runtime_iface = pipe_iface.to_string();
     mark_interface_startup_status(record, "spawned", None, Some(runtime_iface.as_str()));
-    true
+    with_interface_runtime_metadata(record, |runtime| {
+        runtime.insert("pipe".to_string(), pipe_metadata);
+    });
+    Some(PipeRuntimeRefresh { runtime_iface: pipe_iface, status: runtime_status })
+}
+
+fn pipe_runtime_metadata_json(
+    adapter: &rns_transport::iface::pipe::PipeInterface,
+) -> serde_json::Value {
+    let mut metadata = serde_json::Map::new();
+    metadata.insert("status".to_string(), adapter.runtime_status_json());
+    serde_json::Value::Object(metadata)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1386,8 +1409,8 @@ async fn startup_local_unix_client_attach(
 mod tests {
     use super::{
         apply_interface_runtime_config, build_tcp_client_adapter, mark_ble_spawn_success,
-        startup_i2p, startup_kiss, startup_kiss_tcp_client, startup_rnode_multi, startup_udp,
-        startup_weave,
+        startup_i2p, startup_kiss, startup_kiss_tcp_client, startup_pipe, startup_rnode_multi,
+        startup_udp, startup_weave,
     };
     use base64::Engine;
     use crate::Args;
@@ -1823,6 +1846,57 @@ interfaces = [
         assert!(
             rnode_multi_runtime["radio_status"]["subinterfaces"]["3"]["spreading_factor"].is_null()
         );
+    }
+
+    #[tokio::test]
+    async fn pipe_startup_embeds_runtime_status() {
+        let cfg = reticulum_daemon::config::DaemonConfig::from_toml(
+            r#"
+interfaces = [
+  { type = "PipeInterface", enabled = true, name = "pipe-main", command = "cat", respawn_delay = 0.1 }
+]
+"#,
+        )
+        .expect("parse pipe config");
+        let iface = &cfg.interfaces[0];
+        let identity = rns_core::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let transport_identity = to_transport_private_identity(&identity);
+        let transport = Transport::new(TransportConfig::new("test", &transport_identity, true));
+        let manager = transport.iface_manager();
+        let mut record = InterfaceRecord {
+            kind: iface.kind.clone(),
+            enabled: true,
+            host: None,
+            port: None,
+            name: iface.name.clone(),
+            settings: iface.settings_json(),
+        };
+        let mut startup_failures = Vec::new();
+
+        let started =
+            startup_pipe(iface, "pipe-main", &manager, &mut record, &mut startup_failures).await;
+
+        assert!(started.is_some());
+        assert!(startup_failures.is_empty());
+        let runtime_iface = record
+            .settings
+            .as_ref()
+            .and_then(|settings| settings.get("_runtime"))
+            .and_then(|runtime| runtime.get("iface"))
+            .and_then(|iface| iface.as_str())
+            .expect("runtime iface");
+        let runtime_iface =
+            AddressHash::new_from_hex_string(runtime_iface.trim_matches('/')).expect("iface hash");
+        assert_eq!(manager.lock().await.role(&runtime_iface), Some(IfaceRole::Unicast));
+        let pipe_status = &record
+            .settings
+            .as_ref()
+            .expect("settings")["_runtime"]["pipe"]["status"];
+        assert_eq!(pipe_status["command"].as_str(), Some("cat"));
+        assert_eq!(pipe_status["process_state"].as_str(), Some("configured"));
+        assert_eq!(pipe_status["pipe_is_open"].as_bool(), Some(false));
+        assert_eq!(pipe_status["respawn_attempts"].as_u64(), Some(0));
+        assert!(pipe_status["last_error"].is_null());
     }
 
     #[tokio::test]
