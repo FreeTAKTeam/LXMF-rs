@@ -24,7 +24,7 @@ Workspace paths are used for navigation. Published package names are
 | `RNS/Identity.py` | `crates/libs/rns-core` | done | Identity material, hashing, signing, encryption, recall, and key conversion. | No confirmed parity blocker. |
 | `RNS/Destination.py` | `crates/libs/rns-core`, `crates/libs/rns-transport` | done | Destination hashing, descriptors, announces, proof validation, ratchets, and known-key stability checks. | No confirmed parity blocker. |
 | `RNS/Packet.py` | `crates/libs/rns-core`, `crates/libs/rns-transport` | done | Framing, serialization, contexts, proofs, receipts, Python-default link proof context, and header semantics. | No confirmed parity blocker. |
-| `RNS/Transport.py` | `crates/libs/rns-transport`, `crates/apps/reticulumd` | partial | Path and announce handling, link routing, resources, receipts, interface-aware sending, pacing, and duplicate suppression. | Remaining announce/path edge policy and full runtime behavior require live parity evidence. |
+| `RNS/Transport.py` | `crates/libs/rns-transport`, `crates/apps/reticulumd` | partial | Path and announce handling, including direct cached remote path responses stamped as `PATH_RESPONSE`, link routing, resources, receipts, interface-aware sending, pacing, and duplicate suppression. | Remaining announce/path edge policy and full runtime behavior require live parity evidence. |
 | `RNS/Link.py` | `crates/libs/rns-transport` | done | Establishment, proof validation, bound-interface enforcement, RTT-derived liveness, protocol close, and cleanup. | Continue live regression coverage; no confirmed blocker. |
 | `RNS/Resource.py` | `crates/libs/rns-transport` | done | Bounded receive allocation, advertisement validation, retries, adaptive fragment scheduling, timeout/failure events, cancellation, and cleanup. | Split/segmented resources remain intentionally unsupported and rejected. |
 | `RNS/Channel.py` | `crates/libs/rns-transport` | done | Channel packet handling, retry scheduling, buffering, ordered receive delivery, callback ordering/short-circuit/panic containment, delivery-on-proof, timeout retry, exhaustion cleanup, and live Rust/Python channel sequence tests. | No confirmed channel parity blocker. |
@@ -140,6 +140,11 @@ placeholders:
 Python-style interface-driven `tcp_server` startup now works from config
 without Rust-only transport overrides.
 
+Cached remote path-response announces now carry `PacketContext::PathResponse`
+when scheduled from a known path, matching Python's `PATH_RESPONSE` treatment
+for direct path answers and keeping ordinary announce rebroadcast policy
+separate from path-response delivery.
+
 Enabled unknown interface kinds still parse so operators can see them in daemon
 status, but daemon startup marks them as failed with explicit
 `unsupported interface kind` runtime metadata instead of silently dropping the
@@ -200,7 +205,8 @@ integration and broader prepared-host hardware evidence remain pending.
 
 ## Highest-Priority Gaps
 
-1. Close remaining announce/path/discovery edge-policy differences.
+1. Close remaining announce/path/discovery edge-policy differences beyond the
+   cached remote path-response `PATH_RESPONSE` context slice.
 2. Complete resolver/bootstrap behavior.
 3. Capture broader prepared-host BLE/RNode lifecycle evidence.
 4. Capture I2P prepared-host evidence, or explicitly document its product

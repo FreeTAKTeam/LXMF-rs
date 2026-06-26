@@ -36,6 +36,9 @@ The project is best described by capability level:
   behavior are the strongest RNS areas.
 - Link establishment, proof validation, interface binding, watchdog timing,
   teardown, receipts, and resource lifecycle have active regression coverage.
+- Cached remote path responses now keep the cached announce payload while
+  stamping the direct response packet as `PATH_RESPONSE`, aligning another
+  Python announce/path discovery edge policy.
 - `reticulumd` supports TCP client/server, including Python-style
   TCP-over-I2P `i2p_tunneled` socket tuning for outbound clients and accepted
   server streams and Python-style `fixed_mtu` falsey/default and Reticulum

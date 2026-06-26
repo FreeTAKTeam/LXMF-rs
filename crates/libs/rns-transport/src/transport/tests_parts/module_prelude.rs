@@ -2,7 +2,7 @@ use super::announce::{handle_announce, release_held_announces};
 
 use super::announce_limits::{AnnounceLimits, AnnounceRateLimit};
 
-use super::path::handle_link_request_as_intermediate;
+use super::path::{handle_link_request_as_intermediate, handle_path_request};
 
 use super::wire::{handle_data, handle_proof};
 
@@ -173,6 +173,72 @@ async fn announce_lookup_key_uses_destination_hash() {
     assert!(keyed_by_destination.is_some(), "announce lookup should be keyed by destination hash");
     let keyed_by_identity = guard.announce_table.packet_for_destination(&announced_identity);
     assert!(keyed_by_identity.is_none(), "identity hash must not be used as announce lookup key");
+}
+
+#[tokio::test]
+async fn known_remote_path_request_sends_path_response_context() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut config = TransportConfig::new("test", &local_identity, true);
+    config.set_retransmit(true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+
+    let (learned_iface, requesting_iface) = {
+        let manager = transport.iface_manager();
+        let mut manager = manager.lock().await;
+        let learned_iface = *manager.new_channel(16).address();
+        let requesting_iface = *manager.new_channel(16).address();
+        (learned_iface, requesting_iface)
+    };
+
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut remote_destination =
+        SingleInputDestination::new(remote_identity, DestinationName::new("lxmf", "delivery"));
+    let mut announce = remote_destination.announce(OsRng, None).expect("valid announce packet");
+    announce.header.hops = 2;
+    let destination = announce.destination;
+    let cached_data = announce.data.clone();
+
+    handle_announce(
+        &announce,
+        handler.lock().await,
+        learned_iface,
+        crate::iface::IfaceSource::None,
+    )
+    .await;
+
+    let path_request = {
+        let mut guard = handler.lock().await;
+        guard.path_requests.generate(&destination, Some(vec![0x44; crate::hash::ADDRESS_HASH_SIZE]))
+    };
+
+    {
+        let mut guard = handler.lock().await;
+        handle_path_request(&path_request, &mut guard, requesting_iface).await;
+    }
+
+    tokio::time::sleep(Duration::from_millis(450)).await;
+
+    let messages = {
+        let mut guard = handler.lock().await;
+        let transport_id = *guard.config.identity.address_hash();
+        guard.announce_table.drain_retransmissions(&transport_id)
+    };
+
+    assert_eq!(messages.len(), 1);
+    let sent = &messages[0];
+    assert!(
+        matches!(sent.tx_type, TxMessageType::Direct(iface) if iface == requesting_iface),
+        "known remote path responses should be direct to the requester"
+    );
+    assert_eq!(sent.packet.destination, destination);
+    assert_eq!(sent.packet.context, PacketContext::PathResponse);
+    assert_eq!(sent.packet.header.hops, 2);
+    assert_eq!(sent.packet.data.as_slice(), cached_data.as_slice());
+    assert!(
+        !matches!(sent.tx_type, TxMessageType::Broadcast(Some(iface)) if iface == learned_iface),
+        "path response must not rebroadcast on the learned-path ingress iface"
+    );
 }
 
 #[tokio::test]
