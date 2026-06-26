@@ -178,8 +178,7 @@ fn rnode_multi_subinterfaces_settings_json(iface: &InterfaceConfig) -> Option<Js
             .get("interface_enabled")
             .and_then(toml::Value::as_bool)
             .unwrap_or(true);
-        let enabled = table.get("enabled").and_then(toml::Value::as_bool).unwrap_or(true);
-        if !interface_enabled || !enabled {
+        if !interface_enabled {
             continue;
         }
         let mut entry = JsonMap::new();

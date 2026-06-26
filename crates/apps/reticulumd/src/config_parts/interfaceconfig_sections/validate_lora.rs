@@ -255,8 +255,7 @@ impl InterfaceConfig {
             };
             let interface_enabled =
                 rnode_multi_table_bool(table, "interface_enabled", true, index, name)?;
-            let enabled = rnode_multi_table_bool(table, "enabled", true, index, name)?;
-            if !interface_enabled || !enabled {
+            if !interface_enabled {
                 continue;
             }
             enabled_subinterfaces += 1;
@@ -290,9 +289,9 @@ impl InterfaceConfig {
             }
             let tx_power_dbm =
                 rnode_multi_required_i8_alias(table, "tx_power_dbm", "txpower", index, name)?;
-            if !(0..=37).contains(&tx_power_dbm) {
+            if !(-9..=37).contains(&tx_power_dbm) {
                 return Err(format!(
-                    "interfaces[{index}].{name}.txpower must be between 0 and 37"
+                    "interfaces[{index}].{name}.txpower must be between -9 and 37"
                 ));
             }
             if let Some(flow_control) = table.get("flow_control") {

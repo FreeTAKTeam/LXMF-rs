@@ -59,7 +59,7 @@ pub(crate) fn build_subinterfaces(
         let Some(table) = value.as_table() else {
             return Err(format!("rnode_multi.{name} must be a subinterface table"));
         };
-        if !table_bool(table, "interface_enabled", true)? || !table_bool(table, "enabled", true)? {
+        if !table_bool(table, "interface_enabled", true)? {
             continue;
         }
         let vport = table_u8(table, "vport")?;
@@ -97,8 +97,8 @@ pub(crate) fn build_subinterfaces(
         };
         child.flow_control =
             table.get("flow_control").cloned().or_else(|| iface.flow_control.clone());
-        let config =
-            lora::build_lora_config(&child).map_err(|err| format!("rnode_multi.{name}: {err}"))?;
+        let config = lora::build_rnode_multi_lora_config(&child)
+            .map_err(|err| format!("rnode_multi.{name}: {err}"))?;
         subinterfaces.push(RNodeMultiSubInterfaceConfig {
             name: child.name.unwrap_or_else(|| name.clone()),
             vport,

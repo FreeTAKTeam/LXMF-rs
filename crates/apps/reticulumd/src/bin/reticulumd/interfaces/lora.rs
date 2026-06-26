@@ -191,6 +191,17 @@ pub(crate) fn build_adapter(iface: &InterfaceConfig) -> Result<LoraInterface, St
 }
 
 pub(crate) fn build_lora_config(iface: &InterfaceConfig) -> Result<LoraConfig, String> {
+    build_lora_config_with_validation(iface, LoraConfig::validate)
+}
+
+pub(crate) fn build_rnode_multi_lora_config(iface: &InterfaceConfig) -> Result<LoraConfig, String> {
+    build_lora_config_with_validation(iface, LoraConfig::validate_rnode_multi)
+}
+
+fn build_lora_config_with_validation(
+    iface: &InterfaceConfig,
+    validate: impl FnOnce(LoraConfig) -> Result<(), String>,
+) -> Result<LoraConfig, String> {
     let region = iface
         .region
         .as_deref()
@@ -226,7 +237,7 @@ pub(crate) fn build_lora_config(iface: &InterfaceConfig) -> Result<LoraConfig, S
     if let Some(max_payload_bytes) = iface.max_payload_bytes {
         config.max_payload_bytes = max_payload_bytes;
     }
-    config.validate()?;
+    validate(config)?;
     Ok(config)
 }
 

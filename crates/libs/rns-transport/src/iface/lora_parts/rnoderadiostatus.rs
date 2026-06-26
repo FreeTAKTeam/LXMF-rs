@@ -315,6 +315,14 @@ impl LoraConfig {
     }
 
     pub fn validate(self) -> Result<(), String> {
+        self.validate_with_tx_power_min(0)
+    }
+
+    pub fn validate_rnode_multi(self) -> Result<(), String> {
+        self.validate_with_tx_power_min(-9)
+    }
+
+    fn validate_with_tx_power_min(self, tx_power_min: i8) -> Result<(), String> {
         if !(FREQ_MIN..=FREQ_MAX).contains(&self.frequency_hz) {
             return Err(format!("lora.frequency_hz must be between {FREQ_MIN} and {FREQ_MAX}"));
         }
@@ -327,8 +335,8 @@ impl LoraConfig {
         if !(5..=8).contains(&self.coding_rate) {
             return Err("lora.coding_rate must be between 5 and 8".to_string());
         }
-        if !(0..=37).contains(&self.tx_power_dbm) {
-            return Err("lora.tx_power_dbm must be between 0 and 37".to_string());
+        if !(tx_power_min..=37).contains(&self.tx_power_dbm) {
+            return Err(format!("lora.tx_power_dbm must be between {tx_power_min} and 37"));
         }
         if !(1..=255).contains(&self.max_payload_bytes) {
             return Err("lora.max_payload_bytes must be between 1 and 255".to_string());
