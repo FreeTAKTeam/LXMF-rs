@@ -509,10 +509,13 @@ pub struct TcpClient {
     socket_tuning: TcpSocketTuning,
     hdlc_watchdog: Option<HdlcStreamWatchdog>,
     reconnect_events: Option<tokio::sync::mpsc::UnboundedSender<crate::hash::AddressHash>>,
+    connect_timeout: Duration,
+    max_reconnect_tries: Option<u64>,
 }
 
 impl TcpClient {
     pub const DEFAULT_MTU: usize = 262_144;
+    pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
     pub fn new<T: Into<String>>(addr: T) -> Self {
         Self {
@@ -522,6 +525,8 @@ impl TcpClient {
             socket_tuning: TcpSocketTuning::default(),
             hdlc_watchdog: None,
             reconnect_events: None,
+            connect_timeout: Self::DEFAULT_CONNECT_TIMEOUT,
+            max_reconnect_tries: None,
         }
     }
 
@@ -533,6 +538,8 @@ impl TcpClient {
             socket_tuning: TcpSocketTuning::default(),
             hdlc_watchdog: None,
             reconnect_events: None,
+            connect_timeout: Self::DEFAULT_CONNECT_TIMEOUT,
+            max_reconnect_tries: None,
         }
     }
 
@@ -569,6 +576,18 @@ impl TcpClient {
     }
 
     #[must_use]
+    pub fn with_connect_timeout(mut self, connect_timeout: Duration) -> Self {
+        self.connect_timeout = connect_timeout.max(Duration::from_millis(1));
+        self
+    }
+
+    #[must_use]
+    pub fn with_max_reconnect_tries(mut self, max_reconnect_tries: Option<u64>) -> Self {
+        self.max_reconnect_tries = max_reconnect_tries;
+        self
+    }
+
+    #[must_use]
     pub fn addr(&self) -> &str {
         &self.addr
     }
@@ -589,6 +608,16 @@ impl TcpClient {
     }
 
     #[must_use]
+    pub fn connect_timeout(&self) -> Duration {
+        self.connect_timeout
+    }
+
+    #[must_use]
+    pub fn max_reconnect_tries(&self) -> Option<u64> {
+        self.max_reconnect_tries
+    }
+
+    #[must_use]
     #[cfg(test)]
     pub(crate) fn hdlc_watchdog(&self) -> Option<HdlcStreamWatchdog> {
         self.hdlc_watchdog.clone()
@@ -597,9 +626,16 @@ impl TcpClient {
     #[tracing::instrument(name = "tcp_peer", skip_all, fields(addr = tracing::field::Empty))]
     pub async fn spawn(context: InterfaceContext<TcpClient>) {
         let iface_stop = context.channel.stop.clone();
-        let (addr, mtu, socket_tuning, hdlc_watchdog) = {
+        let (addr, mtu, socket_tuning, hdlc_watchdog, connect_timeout, max_reconnect_tries) = {
             let guard = context.inner.lock().unwrap();
-            (guard.addr.clone(), guard.mtu, guard.socket_tuning, guard.hdlc_watchdog.clone())
+            (
+                guard.addr.clone(),
+                guard.mtu,
+                guard.socket_tuning,
+                guard.hdlc_watchdog.clone(),
+                guard.connect_timeout,
+                guard.max_reconnect_tries,
+            )
         };
         tracing::Span::current().record("addr", addr.as_str());
         let iface_address = context.channel.address;
@@ -613,6 +649,7 @@ impl TcpClient {
 
         let mut running = true;
         let mut has_connected = false;
+        let mut failed_connect_attempts = 0_u64;
         loop {
             if !running || context.cancel.is_cancelled() || iface_stop.is_cancelled() {
                 break;
@@ -624,14 +661,26 @@ impl TcpClient {
                         running = false;
                         Ok(stream)
                     }
-                    None => TcpStream::connect(addr.clone())
+                    None => tokio::time::timeout(connect_timeout, TcpStream::connect(addr.clone()))
                         .await
-                        .map_err(|_| RnsError::ConnectionError),
+                        .map_err(|_| RnsError::ConnectionError)
+                        .and_then(|result| result.map_err(|_| RnsError::ConnectionError)),
                 }
             };
 
             if stream.is_err() {
+                failed_connect_attempts = failed_connect_attempts.saturating_add(1);
                 log::warn!("couldn't connect to <{}>", addr);
+                if max_reconnect_tries.is_some_and(|max_reconnect_tries| {
+                    failed_connect_attempts > max_reconnect_tries
+                }) {
+                    log::error!(
+                        "max TCP reconnect attempts reached for <{}> after {} failed attempts",
+                        addr,
+                        failed_connect_attempts
+                    );
+                    break;
+                }
                 tokio::select! {
                     _ = context.cancel.cancelled() => break,
                     _ = iface_stop.cancelled() => break,
@@ -641,6 +690,7 @@ impl TcpClient {
             }
 
             let stream = stream.unwrap();
+            failed_connect_attempts = 0;
             if let Err(err) = socket_tuning.apply_to_stream(&stream) {
                 log::warn!("failed to apply TCP socket tuning to <{}>: {}", addr, err);
             }
@@ -722,6 +772,38 @@ mod tests {
 
         assert!(!client.hdlc_liveness_enabled());
         assert_eq!(client.hdlc_watchdog(), None);
+    }
+
+    #[test]
+    fn tcp_client_exposes_reticulum_reconnect_options() {
+        let client = TcpClient::new("rmap.world:4242")
+            .with_connect_timeout(Duration::from_secs(7))
+            .with_max_reconnect_tries(Some(3));
+
+        assert_eq!(client.connect_timeout(), Duration::from_secs(7));
+        assert_eq!(client.max_reconnect_tries(), Some(3));
+    }
+
+    #[tokio::test]
+    async fn tcp_client_stops_after_reconnect_budget_is_exhausted() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind listener");
+        let addr = listener.local_addr().expect("listener addr");
+        drop(listener);
+
+        let mut manager = InterfaceManager::new(8);
+        let context = manager.new_context(
+            TcpClient::new(addr.to_string())
+                .with_connect_timeout(Duration::from_millis(50))
+                .with_max_reconnect_tries(Some(0)),
+        );
+        let iface_stop = context.channel.stop.clone();
+        let task = tokio::spawn(TcpClient::spawn(context));
+
+        tokio::time::timeout(Duration::from_secs(1), task)
+            .await
+            .expect("tcp client should stop after reconnect budget")
+            .expect("tcp client task should not panic");
+        assert!(iface_stop.is_cancelled());
     }
 
     #[test]

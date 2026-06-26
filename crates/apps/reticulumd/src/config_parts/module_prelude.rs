@@ -178,6 +178,14 @@ pub struct InterfaceConfig {
     #[serde(default)]
     pub target_port: Option<u16>,
     #[serde(default)]
+    pub prefer_ipv6: Option<bool>,
+    #[serde(default)]
+    pub i2p_tunneled: Option<bool>,
+    #[serde(default)]
+    pub connect_timeout: Option<u64>,
+    #[serde(default)]
+    pub max_reconnect_tries: Option<u64>,
+    #[serde(default)]
     pub command: Option<String>,
     #[serde(default)]
     pub respawn_delay: Option<f64>,

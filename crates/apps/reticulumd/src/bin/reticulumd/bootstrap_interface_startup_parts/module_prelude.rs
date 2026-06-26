@@ -29,6 +29,7 @@ use rns_transport::iface::{IfaceRole, InterfaceMode};
 use rns_transport::transport::Transport;
 
 use std::sync::Arc;
+use std::time::Duration;
 
 pub(super) struct InterfaceStartupBatch {
     pub(super) startup_successes: usize,
@@ -1128,6 +1129,12 @@ fn build_tcp_client_adapter(endpoint: String, iface: &InterfaceConfig) -> TcpCli
             .with_socket_tuning(TcpSocketTuning::backbone())
             .with_backbone_liveness();
     }
+    if let Some(connect_timeout) = iface.connect_timeout {
+        adapter = adapter.with_connect_timeout(Duration::from_secs(connect_timeout));
+    }
+    if iface.max_reconnect_tries.is_some() {
+        adapter = adapter.with_max_reconnect_tries(iface.max_reconnect_tries);
+    }
     if let Some(mtu) = iface.mtu {
         adapter.with_mtu(mtu)
     } else {
@@ -1380,6 +1387,24 @@ mod tests {
             Some(Duration::from_secs(24))
         );
         assert!(adapter.hdlc_liveness_enabled());
+    }
+
+    #[test]
+    fn tcp_client_builder_applies_reticulum_reconnect_options() {
+        let iface = InterfaceConfig {
+            kind: "tcp_client".to_string(),
+            enabled: Some(true),
+            host: Some("rmap.world".to_string()),
+            port: Some(4242),
+            connect_timeout: Some(7),
+            max_reconnect_tries: Some(3),
+            ..InterfaceConfig::default()
+        };
+
+        let adapter = build_tcp_client_adapter("rmap.world:4242".to_string(), &iface);
+
+        assert_eq!(adapter.connect_timeout(), Duration::from_secs(7));
+        assert_eq!(adapter.max_reconnect_tries(), Some(3));
     }
 
     #[test]

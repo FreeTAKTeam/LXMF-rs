@@ -78,6 +78,28 @@ interfaces = [
 }
 
 #[test]
+fn parses_reticulum_tcp_client_reconnect_options() {
+    let input = r#"
+interfaces = [
+  { type = "TCPClientInterface", enabled = true, name = "python-tcp-client", target_host = "rmap.world", target_port = 4242, prefer_ipv6 = true, i2p_tunneled = true, connect_timeout = 7, max_reconnect_tries = 3 }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse Python TCPClientInterface options");
+    let iface = &cfg.interfaces[0];
+    assert_eq!(iface.kind, "tcp_client");
+    assert_eq!(iface.prefer_ipv6, Some(true));
+    assert_eq!(iface.i2p_tunneled, Some(true));
+    assert_eq!(iface.connect_timeout, Some(7));
+    assert_eq!(iface.max_reconnect_tries, Some(3));
+
+    let settings = iface.settings_json().expect("settings");
+    assert_eq!(settings["prefer_ipv6"], true);
+    assert_eq!(settings["i2p_tunneled"], true);
+    assert_eq!(settings["connect_timeout"], 7);
+    assert_eq!(settings["max_reconnect_tries"], 3);
+}
+
+#[test]
 fn parses_reticulum_tcp_client_kiss_framing_as_kiss_tcp_client() {
     let input = r#"
 interfaces = [
