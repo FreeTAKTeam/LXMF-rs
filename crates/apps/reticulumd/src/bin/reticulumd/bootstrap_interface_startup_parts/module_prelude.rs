@@ -442,6 +442,7 @@ pub(super) async fn startup_configured_interfaces(
                     iface_manager,
                     &mut configured_interfaces[index],
                     &mut startup_failures,
+                    &mut rnode_management_bindings,
                 )
                 .await
                 {
@@ -966,6 +967,7 @@ async fn startup_rnode_multi(
     iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
     record: &mut InterfaceRecord,
     startup_failures: &mut Vec<InterfaceStartupFailure>,
+    rnode_management_bindings: &mut Vec<RNodeManagementBinding>,
 ) -> Option<RNodeMultiRuntimeRefresh> {
     let adapter = match rnode_multi::build_adapter(iface, iface_manager.clone()) {
         Ok(adapter) => adapter,
@@ -980,9 +982,11 @@ async fn startup_rnode_multi(
             return None;
         }
     };
-    let subinterface_count = adapter.subinterfaces().len();
-    let rnode_multi_metadata = rnode_multi_runtime_metadata_json(iface, adapter.subinterfaces());
+    let subinterfaces = adapter.subinterfaces().to_vec();
+    let subinterface_count = subinterfaces.len();
+    let rnode_multi_metadata = rnode_multi_runtime_metadata_json(iface, &subinterfaces);
     let runtime_status = adapter.runtime_status_handle();
+    let management_handle = adapter.rnode_management_handle();
     let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
     let rnode_multi_iface = iface_manager.lock().await.spawn_as_with_mode(
         adapter,
@@ -1006,6 +1010,20 @@ async fn startup_rnode_multi(
     mark_interface_startup_status(record, "spawned", None, Some(runtime_iface.as_str()));
     with_interface_runtime_metadata(record, |runtime| {
         runtime.insert("rnode_multi".to_string(), rnode_multi_metadata);
+    });
+    let mut allowed_vports = subinterfaces
+        .iter()
+        .map(|subinterface| subinterface.vport)
+        .collect::<Vec<_>>();
+    allowed_vports.sort_unstable();
+    allowed_vports.dedup();
+    rnode_management_bindings.push(RNodeManagementBinding {
+        runtime_iface: rnode_multi_iface,
+        name: label.to_string(),
+        handle: DaemonRNodeManagementHandle::RNodeMulti {
+            handle: management_handle,
+            allowed_vports,
+        },
     });
     Some(RNodeMultiRuntimeRefresh { runtime_iface: rnode_multi_iface, status: runtime_status })
 }
@@ -1441,8 +1459,9 @@ mod tests {
         startup_i2p, startup_kiss, startup_kiss_tcp_client, startup_pipe, startup_rnode_multi,
         startup_configured_interfaces, startup_udp, startup_weave,
     };
-    use base64::Engine;
     use crate::Args;
+    use crate::bridge_rnode_management::DaemonRNodeManagementHandle;
+    use base64::Engine;
     use reticulum_daemon::config::{DaemonConfig, InterfaceConfig};
     use rns_rpc::InterfaceRecord;
     use rns_transport::hash::AddressHash;
@@ -1918,6 +1937,7 @@ interfaces = [
             settings: iface.settings_json(),
         };
         let mut startup_failures = Vec::new();
+        let mut rnode_management_bindings = Vec::new();
 
         let started = startup_rnode_multi(
             iface,
@@ -1925,11 +1945,19 @@ interfaces = [
             &manager,
             &mut record,
             &mut startup_failures,
+            &mut rnode_management_bindings,
         )
         .await;
 
         assert!(started.is_some());
         assert!(startup_failures.is_empty());
+        assert_eq!(rnode_management_bindings.len(), 1);
+        assert_eq!(rnode_management_bindings[0].name, "rnode-multi");
+        assert!(matches!(
+            &rnode_management_bindings[0].handle,
+            DaemonRNodeManagementHandle::RNodeMulti { allowed_vports, .. }
+                if allowed_vports == &vec![2, 3]
+        ));
         let runtime_iface = record
             .settings
             .as_ref()
@@ -1940,6 +1968,7 @@ interfaces = [
         let runtime_iface =
             AddressHash::new_from_hex_string(runtime_iface.trim_matches('/')).expect("iface hash");
         assert_eq!(manager.lock().await.role(&runtime_iface), Some(IfaceRole::Multicast));
+        assert_eq!(rnode_management_bindings[0].runtime_iface, runtime_iface);
         let rnode_multi_runtime = record
             .settings
             .as_ref()

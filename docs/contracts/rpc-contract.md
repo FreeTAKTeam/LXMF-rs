@@ -160,16 +160,20 @@ All methods below are required for full CLI feature coverage.
 : Params keys: `interfaces`
 - `reload_config` (no params)
 - `rnode_management`
-: Params keys: `iface`, `command` (optional: `pattern`). Initial supported
-  commands are `radio_state_query`/`query_radio_state`, `blink`,
+: Params keys: `iface`, `command`; command-specific keys include `pattern`,
+  display/NeoPixel fields, interference-avoidance flags, and, for
+  `RNodeMultiInterface`, required child `vport`. Initial supported commands
+  are `radio_state_query`/`query_radio_state`, `blink`,
   `config_read`/`read_config`, `rom_read`/`read_rom`, display
   intensity/blanking/rotation/recondition/address controls, NeoPixel
   intensity, and interference-avoidance enable/disable controls. Serial/TCP
   RNodeInterface handles, plus feature-gated BLE RNodeInterface handles when
   `reticulumd` is built with `rnode-ble`, are selected by runtime iface id or
-  an unambiguous configured interface name. Successful responses report that
-  the management frame was queued, not that the radio has completed the
-  operation.
+  an unambiguous configured interface name. RNodeMulti handles are selected by
+  parent runtime iface id or unambiguous configured parent name, then validate
+  the requested child `vport`; missing or unconfigured vports are rejected.
+  Successful responses report that the management frame was queued, not that
+  the radio has completed the operation.
 
 `list_interfaces` response notes:
 

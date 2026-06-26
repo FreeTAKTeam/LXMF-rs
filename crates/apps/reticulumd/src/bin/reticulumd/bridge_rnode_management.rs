@@ -3,6 +3,7 @@ use rns_transport::hash::AddressHash;
 use rns_transport::iface::lora::{LoraConfig, LoraRNodeManagementHandle};
 #[cfg(feature = "rnode-ble")]
 use rns_transport::iface::rnode_ble::RnodeBleManagementHandle;
+use rns_transport::iface::rnode_multi::RNodeMultiManagementHandle;
 
 use serde_json::{json, Value as JsonValue};
 
@@ -20,15 +21,42 @@ pub(crate) enum DaemonRNodeManagementHandle {
     Lora(LoraRNodeManagementHandle),
     #[cfg(feature = "rnode-ble")]
     RnodeBle(RnodeBleManagementHandle),
+    RNodeMulti {
+        handle: RNodeMultiManagementHandle,
+        allowed_vports: Vec<u8>,
+    },
 }
 
 impl DaemonRNodeManagementHandle {
-    fn try_dispatch_frame(&self, frame: Vec<u8>) -> Result<(), String> {
+    fn selected_vport(&self, params: &JsonValue) -> Result<Option<u8>, std::io::Error> {
+        match self {
+            Self::Lora(_) => Ok(None),
+            #[cfg(feature = "rnode-ble")]
+            Self::RnodeBle(_) => Ok(None),
+            Self::RNodeMulti { allowed_vports, .. } => {
+                let vport = param_u8(params, &["vport"])?;
+                if allowed_vports.contains(&vport) {
+                    Ok(Some(vport))
+                } else {
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        format!("vport {vport} is not configured for this RNodeMulti interface"),
+                    ))
+                }
+            }
+        }
+    }
+
+    fn try_dispatch_frame(&self, vport: Option<u8>, frame: Vec<u8>) -> Result<(), String> {
         match self {
             Self::Lora(handle) => handle.try_dispatch_frame(frame).map_err(|err| err.to_string()),
             #[cfg(feature = "rnode-ble")]
             Self::RnodeBle(handle) => {
                 handle.try_dispatch_frame(frame).map_err(|err| err.to_string())
+            }
+            Self::RNodeMulti { handle, .. } => {
+                let vport = vport.expect("RNodeMulti vport should be validated before dispatch");
+                handle.try_dispatch_frame(vport, frame).map_err(|err| err.to_string())
             }
         }
     }
@@ -172,7 +200,8 @@ impl RNodeManagementBridge for DaemonRNodeManagementBridge {
                 format!("unsupported RNode management command '{command}'"),
             ))?,
         };
-        target.handle.try_dispatch_frame(frame).map_err(|err| {
+        let vport = target.handle.selected_vport(params)?;
+        target.handle.try_dispatch_frame(vport, frame).map_err(|err| {
             std::io::Error::new(
                 std::io::ErrorKind::WouldBlock,
                 format!("queue {canonical} failed: {err}"),
@@ -180,10 +209,15 @@ impl RNodeManagementBridge for DaemonRNodeManagementBridge {
         })?;
         let mut result = json!({
             "queued": true,
-            "iface": target.runtime_iface,
             "name": target.name,
             "command": canonical,
+            "iface": target.runtime_iface,
         });
+        if let Some(result) = result.as_object_mut() {
+            if let Some(vport) = vport {
+                result.insert("vport".to_string(), json!(vport));
+            }
+        }
         if let (Some(result), Some(echoed)) = (result.as_object_mut(), echoed.as_object()) {
             result.extend(echoed.clone());
         }
@@ -349,5 +383,78 @@ mod tests {
 
         assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
         assert!(err.to_string().contains("intensity is required"));
+    }
+
+    #[test]
+    fn bridge_dispatches_rnode_multi_management_by_parent_selector_and_vport() {
+        let runtime_iface = rns_transport::hash::AddressHash::new([0x61; 16]);
+        let iface_manager = std::sync::Arc::new(tokio::sync::Mutex::new(
+            rns_transport::iface::InterfaceManager::new(8),
+        ));
+        let iface =
+            rns_transport::iface::rnode_multi::RNodeMultiInterface::new("COM9", iface_manager)
+                .with_subinterfaces(vec![
+                    rns_transport::iface::rnode_multi::RNodeMultiSubInterfaceConfig {
+                        name: "rnode-child".to_string(),
+                        vport: 2,
+                        config: rns_transport::iface::lora::LoraConfig::us915_default(),
+                        outgoing: true,
+                    },
+                ]);
+        let bridge = DaemonRNodeManagementBridge::new(vec![DaemonRNodeManagementBinding {
+            runtime_iface,
+            name: "rnode-main".to_string(),
+            handle: DaemonRNodeManagementHandle::RNodeMulti {
+                handle: iface.rnode_management_handle(),
+                allowed_vports: vec![2, 3],
+            },
+        }]);
+
+        let result = bridge
+            .dispatch_rnode_management("rnode-main", "blink", &json!({ "vport": 2, "pattern": 3 }))
+            .expect("rnode multi management should queue by parent selector and vport");
+
+        assert_eq!(result["queued"].as_bool(), Some(true));
+        assert_eq!(result["name"].as_str(), Some("rnode-main"));
+        assert_eq!(result["iface"].as_str(), Some(runtime_iface.to_string().as_str()));
+        assert_eq!(result["vport"].as_u64(), Some(2));
+        assert_eq!(result["pattern"].as_u64(), Some(3));
+    }
+
+    #[test]
+    fn bridge_rejects_rnode_multi_management_without_or_unknown_vport() {
+        let iface_manager = std::sync::Arc::new(tokio::sync::Mutex::new(
+            rns_transport::iface::InterfaceManager::new(8),
+        ));
+        let iface =
+            rns_transport::iface::rnode_multi::RNodeMultiInterface::new("COM9", iface_manager)
+                .with_subinterfaces(vec![
+                    rns_transport::iface::rnode_multi::RNodeMultiSubInterfaceConfig {
+                        name: "rnode-child".to_string(),
+                        vport: 2,
+                        config: rns_transport::iface::lora::LoraConfig::us915_default(),
+                        outgoing: true,
+                    },
+                ]);
+        let bridge = DaemonRNodeManagementBridge::new(vec![DaemonRNodeManagementBinding {
+            runtime_iface: rns_transport::hash::AddressHash::new([0x62; 16]),
+            name: "rnode-main".to_string(),
+            handle: DaemonRNodeManagementHandle::RNodeMulti {
+                handle: iface.rnode_management_handle(),
+                allowed_vports: vec![2],
+            },
+        }]);
+
+        let missing = bridge
+            .dispatch_rnode_management("rnode-main", "blink", &json!({ "pattern": 3 }))
+            .expect_err("vport is required");
+        assert_eq!(missing.kind(), std::io::ErrorKind::InvalidInput);
+        assert!(missing.to_string().contains("vport is required"));
+
+        let unknown = bridge
+            .dispatch_rnode_management("rnode-main", "blink", &json!({ "vport": 3, "pattern": 3 }))
+            .expect_err("unknown vport is rejected");
+        assert_eq!(unknown.kind(), std::io::ErrorKind::InvalidInput);
+        assert!(unknown.to_string().contains("vport 3 is not configured"));
     }
 }

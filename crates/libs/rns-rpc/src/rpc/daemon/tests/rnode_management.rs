@@ -59,6 +59,7 @@ fn rnode_management_rpc_delegates_to_bridge() {
             json!({
                 "iface": "rnode-main",
                 "command": "blink",
+                "vport": 2,
                 "pattern": 3
             }),
         ))
@@ -78,6 +79,7 @@ fn rnode_management_rpc_delegates_to_bridge() {
             json!({
                 "iface": "rnode-main",
                 "command": "blink",
+                "vport": 2,
                 "pattern": 3
             })
         )]

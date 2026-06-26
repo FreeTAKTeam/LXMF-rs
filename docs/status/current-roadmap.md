@@ -74,8 +74,9 @@ The project is best described by capability level:
   refresh the `_runtime.rnode_multi.radio_status` schema from the
   transport-side runtime handle, including stream/probe state, last error
   reporting for absent or failing hardware, and the ordinary RNode radio-status
-  fields for each vport. The transport also exposes a vport-aware RNodeMulti
-  management queue that writes `CMD_SEL_INT` before each queued management
+  fields for each vport. Daemon/RPC can queue safe RNode management commands
+  through the parent interface with explicit configured child `vport`
+  validation; the transport writes `CMD_SEL_INT` before each queued management
   command frame. Display-capable ESP32/NRF52 devices get Python-style
   external-framebuffer disable during teardown before per-vport radio-off and
   leave-host payload `0xff` frames.
@@ -842,7 +843,7 @@ the implemented subset.
    - Add broader prepared-host hardware evidence for BLE/RNode paths; ordinary
      serial/TCP/BLE RNode now has an opt-in prepared-host smoke gate.
    - Complete RNodeMulti prepared-host hardware validation/evidence and
-     broader production parity before treating that family as
+     remaining broader production parity before treating that family as
      production-complete.
    - Capture I2P prepared-host evidence, and implement utility commands where
      product demand justifies them.

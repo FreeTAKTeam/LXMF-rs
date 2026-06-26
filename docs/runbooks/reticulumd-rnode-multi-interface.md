@@ -25,13 +25,15 @@ production-complete RNodeMulti parity claim.
 - Runtime status: selected-vport command responses update per-vport radio
   status bookkeeping in the transport runtime; the same status payload reports
   stream/probe state and the last open/probe/init/read error
-- Management dispatch: the transport exposes a vport-aware management queue
-  that writes KISS `CMD_SEL_INT` before each queued management command frame
+- Management dispatch: daemon/RPC callers select the parent RNodeMulti
+  interface by runtime iface id or unambiguous configured name, then pass the
+  child `vport`; the transport queue writes KISS `CMD_SEL_INT` before each
+  queued management command frame
 - Exported status: daemon startup metadata includes an initial `radio_status`
   snapshot schema under `settings._runtime.rnode_multi`, and live daemon/RPC
   snapshots refresh from the transport-side runtime handle
-- Current posture: partial, with live daemon status refresh, prepared-host
-  validation, and broader production parity still pending
+- Current posture: partial, with broader prepared-host hardware evidence and
+  production parity still pending
 
 ## Configuration Model
 
@@ -127,14 +129,29 @@ Outbound packet handling follows the Reticulum interface role:
 
 ## Management Dispatch
 
+The daemon binds each RNodeMulti parent into the safe `rnode_management` RPC
+bridge. Callers select the parent by runtime iface id or by an unambiguous
+configured parent name, then provide the intended child `vport` in params:
+
+```json
+{
+  "iface": "rnode-multi",
+  "command": "blink",
+  "vport": 2,
+  "pattern": 3
+}
+```
+
+The bridge rejects missing `vport` values and vports that were not configured
+on the selected parent. A successful RPC response means the management frame
+was queued for the transport task, not that the radio has completed the
+operation.
+
 The transport exposes a cloneable `RNodeMultiManagementHandle` for already
-encoded RNode management command frames. Each queued item carries an explicit
+encoded RNode management command frames. Each queued item carries the validated
 child vport. The stream selects that vport with `CMD_SEL_INT`, writes the
 management command frame, and flushes the shared serial/TCP stream. Local
 duplex coverage proves this ordering with a blink management frame.
-
-Daemon/RPC binding is intentionally still pending: callers must not target a
-parent RNodeMulti interface without an explicit child-vport selection model.
 
 ## Status Routing
 
@@ -247,8 +264,6 @@ so stale child routes do not remain after parent shutdown.
   still required.
 - Broader RNodeMulti production parity remains incomplete; release notes should
   not describe this family as production-complete yet.
-- Daemon/RPC management binding for RNodeMulti remains pending until selectors
-  can identify the intended child vport without ambiguity.
 
 ## Verification Focus
 
@@ -267,5 +282,7 @@ Useful coverage for this slice should prove:
   `settings._runtime.rnode_multi.radio_status` with stable per-vport status
   keys.
 - Shutdown sends radio-off and leave-host frames for each child vport.
+- Daemon/RPC management dispatch rejects missing or unconfigured child `vport`
+  values after resolving the selected parent interface.
 - Vport-aware management dispatch writes `CMD_SEL_INT` immediately before the
   queued management command frame.
