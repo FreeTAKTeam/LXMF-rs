@@ -131,6 +131,11 @@ placeholders:
 Python-style interface-driven `tcp_server` startup now works from config
 without Rust-only transport overrides.
 
+Enabled unknown interface kinds still parse so operators can see them in daemon
+status, but daemon startup marks them as failed with explicit
+`unsupported interface kind` runtime metadata instead of silently dropping the
+record.
+
 `RNS/Interfaces/*` remains `partial` because parity is measured against the
 whole Python family, not because the implemented interfaces are stubs.
 

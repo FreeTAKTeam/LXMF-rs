@@ -1424,11 +1424,11 @@ mod tests {
     use super::{
         apply_interface_runtime_config, build_tcp_client_adapter, mark_ble_spawn_success,
         startup_i2p, startup_kiss, startup_kiss_tcp_client, startup_pipe, startup_rnode_multi,
-        startup_udp, startup_weave,
+        startup_configured_interfaces, startup_udp, startup_weave,
     };
     use base64::Engine;
     use crate::Args;
-    use reticulum_daemon::config::InterfaceConfig;
+    use reticulum_daemon::config::{DaemonConfig, InterfaceConfig};
     use rns_rpc::InterfaceRecord;
     use rns_transport::hash::AddressHash;
     use rns_transport::iface::tcp_client::TcpSocketTuning;
@@ -1457,6 +1457,66 @@ mod tests {
         assert_eq!(adapter.mtu_value(), 4096);
         assert!(adapter.socket_tuning().is_empty());
         assert!(!adapter.hdlc_liveness_enabled());
+    }
+
+    #[tokio::test]
+    async fn startup_configured_interfaces_marks_unknown_kind_as_failed() {
+        let config = DaemonConfig::from_toml(
+            r#"
+interfaces = [
+  { type = "FutureReticulumInterface", enabled = true, name = "future" }
+]
+"#,
+        )
+        .expect("unknown interface kinds should parse for runtime reporting");
+        let identity = rns_core::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let transport_identity = to_transport_private_identity(&identity);
+        let transport = Transport::new(TransportConfig::new("test", &transport_identity, true));
+        let manager = transport.iface_manager();
+        let mut records = config
+            .interfaces
+            .iter()
+            .map(|iface| InterfaceRecord {
+                kind: iface.kind.clone(),
+                enabled: iface.enabled(),
+                host: iface.host.clone(),
+                port: iface.port,
+                name: iface.name.clone(),
+                settings: iface.settings_json(),
+            })
+            .collect::<Vec<_>>();
+
+        let batch = startup_configured_interfaces(
+            &test_args(),
+            &config,
+            &super::super::TcpServerSelection::default(),
+            &transport,
+            &manager,
+            None,
+            &mut records,
+            std::path::Path::new("."),
+            None,
+            None,
+        )
+        .await;
+
+        assert_eq!(batch.startup_successes, 0);
+        assert_eq!(batch.startup_failures.len(), 1);
+        assert_eq!(batch.startup_failures[0].kind, "FutureReticulumInterface");
+        assert_eq!(
+            batch.startup_failures[0].error,
+            "unsupported interface kind 'FutureReticulumInterface'"
+        );
+        let runtime = records[0]
+            .settings
+            .as_ref()
+            .and_then(|settings| settings.get("_runtime"))
+            .expect("runtime metadata");
+        assert_eq!(runtime["startup_status"].as_str(), Some("failed"));
+        assert_eq!(
+            runtime["startup_error"].as_str(),
+            Some("unsupported interface kind 'FutureReticulumInterface'")
+        );
     }
 
     #[test]

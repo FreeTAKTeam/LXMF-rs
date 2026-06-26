@@ -58,7 +58,9 @@ The project is best described by capability level:
   feature-gated RNode BLE, feature-gated VR-N76 KISS-over-BLE, and the
   in-progress shared serial/TCP RNodeMulti baseline with nested vport virtual
   children, a shared-serial Weave WDCL/HDLC endpoint baseline, and an
-  outbound I2P SAM peer baseline.
+  outbound I2P SAM peer baseline. Enabled unknown interface kinds remain
+  parseable for operator visibility but are covered as explicit failed startup
+  records with `unsupported interface kind` runtime metadata.
 - RNodeMultiInterface has a transport-side vport slice: a single serial or TCP
   RNode endpoint can host nested subinterfaces, select virtual ports with KISS
   `CMD_SEL_INT`, route direct sends to the matching virtual child, and fan out
