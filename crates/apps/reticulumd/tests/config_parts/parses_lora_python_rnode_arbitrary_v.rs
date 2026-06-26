@@ -50,6 +50,28 @@ interfaces = [
 }
 
 #[test]
+fn parses_vanilla_reticulum_rnode_interface_without_lora_state_fields() {
+    let input = r#"
+interfaces = [
+  { type = "RNodeInterface", enabled = true, name = "rnode-main", port = "/dev/ttyACM0", frequency = 915000000, bandwidth = 125000, spreadingfactor = 9, codingrate = 5, txpower = 17 }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse vanilla Reticulum RNodeInterface");
+    let iface = &cfg.interfaces[0];
+
+    assert_eq!(iface.kind, "lora");
+    assert!(iface.rnode_profile);
+    assert_eq!(iface.region.as_deref(), Some("US915"));
+    assert_eq!(iface.state_path, None);
+    assert_eq!(iface.baud_rate, Some(115_200));
+    assert_eq!(iface.max_payload_bytes, Some(508));
+
+    let settings = iface.settings_json().expect("settings");
+    assert_eq!(settings["device"], "/dev/ttyACM0");
+    assert_eq!(settings["max_payload_bytes"], 508);
+}
+
+#[test]
 fn rejects_lora_invalid_airtime_limit() {
     let input = r#"
 interfaces = [

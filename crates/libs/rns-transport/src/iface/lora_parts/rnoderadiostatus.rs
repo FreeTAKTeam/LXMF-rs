@@ -315,14 +315,18 @@ impl LoraConfig {
     }
 
     pub fn validate(self) -> Result<(), String> {
-        self.validate_with_tx_power_min(0)
+        self.validate_with_bounds(0, 255)
     }
 
     pub fn validate_rnode_multi(self) -> Result<(), String> {
-        self.validate_with_tx_power_min(-9)
+        self.validate_with_bounds(-9, 255)
     }
 
-    fn validate_with_tx_power_min(self, tx_power_min: i8) -> Result<(), String> {
+    pub fn validate_rnode(self) -> Result<(), String> {
+        self.validate_with_bounds(0, 508)
+    }
+
+    fn validate_with_bounds(self, tx_power_min: i8, max_payload_limit: u16) -> Result<(), String> {
         if !(FREQ_MIN..=FREQ_MAX).contains(&self.frequency_hz) {
             return Err(format!("lora.frequency_hz must be between {FREQ_MIN} and {FREQ_MAX}"));
         }
@@ -338,8 +342,10 @@ impl LoraConfig {
         if !(tx_power_min..=37).contains(&self.tx_power_dbm) {
             return Err(format!("lora.tx_power_dbm must be between {tx_power_min} and 37"));
         }
-        if !(1..=255).contains(&self.max_payload_bytes) {
-            return Err("lora.max_payload_bytes must be between 1 and 255".to_string());
+        if !(1..=max_payload_limit).contains(&self.max_payload_bytes) {
+            return Err(format!(
+                "lora.max_payload_bytes must be between 1 and {max_payload_limit}"
+            ));
         }
         if self.airtime_limit_short_hundredths.is_some_and(|value| value > 10_000) {
             return Err("lora.airtime_limit_short must be between 0 and 100".to_string());

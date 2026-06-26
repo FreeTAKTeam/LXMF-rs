@@ -322,6 +322,31 @@ fn lora_builder_supports_python_rnode_tcp_port() {
 }
 
 #[test]
+fn lora_builder_supports_vanilla_reticulum_rnode_profile() {
+    let iface = InterfaceConfig {
+        kind: "lora".to_string(),
+        enabled: Some(true),
+        rnode_profile: true,
+        region: Some("US915".to_string()),
+        device: Some("/dev/ttyACM0".to_string()),
+        baud_rate: Some(115_200),
+        frequency_hz: Some(915_000_000),
+        bandwidth_hz: Some(125_000),
+        spreading_factor: Some(9),
+        coding_rate: Some("5".to_string()),
+        tx_power_dbm: Some(17),
+        max_payload_bytes: Some(508),
+        ..InterfaceConfig::default()
+    };
+
+    lora::startup(&iface).expect("RNode profile without lora state path should start");
+    let adapter = lora::build_adapter(&iface).expect("build RNode adapter");
+
+    assert_eq!(adapter.baud_rate(), Some(115_200));
+    assert_eq!(adapter.config().max_payload_bytes, 508);
+}
+
+#[test]
 fn lora_builder_supports_python_high_bandwidth_rnode_config() {
     let iface = InterfaceConfig {
         kind: "lora".to_string(),

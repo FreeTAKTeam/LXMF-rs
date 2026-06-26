@@ -18,7 +18,9 @@ impl InterfaceConfig {
                 "interfaces[{index}].region must be one of EU868, US915, AU915, AS923, IN865, KR920, RU864 for lora"
             ));
         }
-        if self.state_path.as_deref().map(str::trim).filter(|value| !value.is_empty()).is_none() {
+        if original_kind != "RNodeInterface"
+            && self.state_path.as_deref().map(str::trim).filter(|value| !value.is_empty()).is_none()
+        {
             return Err(format!("interfaces[{index}].state_path is required for lora"));
         }
         let has_device =
@@ -112,9 +114,10 @@ impl InterfaceConfig {
             }
         }
         if let Some(max_payload_bytes) = self.max_payload_bytes {
-            if !(1..=255).contains(&max_payload_bytes) {
+            let max_payload_limit = if original_kind == "RNodeInterface" { 508 } else { 255 };
+            if !(1..=max_payload_limit).contains(&max_payload_bytes) {
                 return Err(format!(
-                    "interfaces[{index}].max_payload_bytes must be between 1 and 255 for lora"
+                    "interfaces[{index}].max_payload_bytes must be between 1 and {max_payload_limit} for lora"
                 ));
             }
         }

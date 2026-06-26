@@ -112,7 +112,14 @@ impl InterfaceConfig {
 
     fn normalize_lora_aliases(&mut self, index: usize, original_kind: &str) -> Result<(), String> {
         if original_kind == "RNodeInterface" {
+            self.rnode_profile = true;
             self.normalize_android_rnode_selector_aliases(index)?;
+            if self.region.is_none() {
+                self.region = Some("US915".to_string());
+            }
+            if self.max_payload_bytes.is_none() {
+                self.max_payload_bytes = Some(508);
+            }
         }
         if self.frequency_hz.is_none() {
             self.frequency_hz = self.take_u64_alias_for_kind("frequency", index, "lora")?;

@@ -8,6 +8,16 @@ use rns_transport::iface::rnode_ble::{RnodeBleKissConfig, RNODE_BLE_READ_FRAME_T
 use std::time::Duration;
 
 pub(crate) fn startup(iface: &InterfaceConfig) -> Result<(), String> {
+    if iface.rnode_profile
+        && iface.state_path.as_deref().map(str::trim).filter(|value| !value.is_empty()).is_none()
+    {
+        log::info!(
+            "[daemon] rnode configured name={} without lora state_path compliance gate",
+            iface.name.as_deref().unwrap_or("<unnamed>")
+        );
+        return Ok(());
+    }
+
     let path = iface
         .state_path
         .as_deref()
@@ -93,7 +103,11 @@ pub(crate) fn build_rnode_ble_config(
         .max_reconnect_backoff_ms
         .unwrap_or_else(|| reconnect_backoff_ms.max(5_000))
         .max(reconnect_backoff_ms);
-    let lora_config = build_lora_config(iface)?;
+    let lora_config = if iface.rnode_profile {
+        build_rnode_lora_config(iface)?
+    } else {
+        build_lora_config(iface)?
+    };
 
     Ok(RnodeBleDaemonConfig {
         peripheral_id,
@@ -155,7 +169,11 @@ pub(crate) fn build_adapter(iface: &InterfaceConfig) -> Result<LoraInterface, St
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .ok_or_else(|| "lora.device is required".to_string())?;
-    let config = build_lora_config(iface)?;
+    let config = if iface.rnode_profile {
+        build_rnode_lora_config(iface)?
+    } else {
+        build_lora_config(iface)?
+    };
 
     let reconnect_backoff_ms = iface.reconnect_backoff_ms.unwrap_or(500).max(50);
     let max_reconnect_backoff_ms = iface
@@ -196,6 +214,10 @@ pub(crate) fn build_lora_config(iface: &InterfaceConfig) -> Result<LoraConfig, S
 
 pub(crate) fn build_rnode_multi_lora_config(iface: &InterfaceConfig) -> Result<LoraConfig, String> {
     build_lora_config_with_validation(iface, LoraConfig::validate_rnode_multi)
+}
+
+pub(crate) fn build_rnode_lora_config(iface: &InterfaceConfig) -> Result<LoraConfig, String> {
+    build_lora_config_with_validation(iface, LoraConfig::validate_rnode)
 }
 
 fn build_lora_config_with_validation(

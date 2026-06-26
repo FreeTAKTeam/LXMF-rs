@@ -45,9 +45,10 @@ the serial `device`, and `frequency`, `bandwidth`, `spreadingfactor`,
 `codingrate`, and `txpower` map to the corresponding Rust field names. The
 Python alias defaults serial `baud_rate` to `115200` when `speed` is omitted.
 Like Python, the `RNodeInterface` alias requires explicit `frequency`,
-`bandwidth`, `spreadingfactor`, and `codingrate` values instead of inheriting
-Rust region defaults. The repo still requires `state_path` so duty-cycle
-fail-closed state is explicit:
+`bandwidth`, `spreadingfactor`, and `codingrate` values instead of relying on
+generic LoRa region defaults. When `region` is omitted, the compatibility path
+uses `US915` as the radio-config seed, and `state_path` is optional because
+Python RNode configs do not use the daemon LoRa duty-cycle state file:
 
 ```toml
 interfaces = [
@@ -55,8 +56,6 @@ interfaces = [
     type = "RNodeInterface",
     enabled = true,
     name = "rnode-main",
-    region = "US915",
-    state_path = "var/reticulumd/lora-state.json",
     port = "/dev/ttyACM0",
     frequency = 915000000,
     bandwidth = 125000,
@@ -82,8 +81,6 @@ interfaces = [
     type = "RNodeInterface",
     enabled = true,
     name = "rnode-wifi",
-    region = "US915",
-    state_path = "var/reticulumd/lora-state.json",
     port = "tcp://192.0.2.10:8001",
     frequency = 915000000,
     bandwidth = 125000,
@@ -105,8 +102,6 @@ interfaces = [
     type = "RNodeInterface",
     enabled = true,
     name = "rnode-ble",
-    region = "US915",
-    state_path = "var/reticulumd/lora-state.json",
     port = "ble://RNode 1234",
     adapter = "Bluetooth",
     frequency = 915000000,
@@ -163,9 +158,12 @@ management operations over BLE remain incomplete.
 
 ## Validation Rules
 
-- `region` required when enabled.
+- `region` required when native `lora` is enabled. `RNodeInterface` may omit it
+  and will use `US915` as the compatibility seed.
 - Supported regions: `EU868`, `US915`, `AU915`, `AS923`, `IN865`, `KR920`, `RU864`.
-- `state_path` required and non-empty when enabled.
+- `state_path` required and non-empty when native `lora` is enabled.
+  `RNodeInterface` may omit it; in that case the daemon skips the LoRa
+  duty-cycle state-file preflight.
 - `device` and `baud_rate` are optional as a pair for serial RNodes. Without an
   active port, startup only validates and persists LoRa compliance state.
 - For `RNodeInterface` compatibility, a serial `port` without `baud_rate`
@@ -206,7 +204,9 @@ management operations over BLE remain incomplete.
   a real outbound packet and the configured interval have elapsed.
 - `airtime_limit_short` and `airtime_limit_long` are optional percentages in
   the Python RNode range `0..=100`.
-- `max_payload_bytes` allowed range: `1..=255`.
+- `max_payload_bytes` allowed range: `1..=255` for native `lora` and `1..=508`
+  for `RNodeInterface`. Omitted `RNodeInterface` payload size defaults to `508`,
+  matching Python's RNode hardware MTU.
 - `outgoing` defaults to `true`. Set `outgoing = false` to keep the interface
   available for inbound packets while suppressing daemon-initiated outbound
   broadcast and direct transmissions on that interface.

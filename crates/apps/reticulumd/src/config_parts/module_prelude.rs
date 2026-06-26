@@ -85,6 +85,8 @@ pub struct InterfaceConfig {
     pub enabled: Option<bool>,
     #[serde(default)]
     pub interface_enabled: Option<bool>,
+    #[serde(skip)]
+    pub rnode_profile: bool,
     #[serde(default)]
     pub interface_mode: Option<String>,
     #[serde(default)]
