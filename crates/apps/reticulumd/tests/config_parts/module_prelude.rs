@@ -78,6 +78,40 @@ interfaces = [
 }
 
 #[test]
+fn rejects_reticulum_tcp_client_fixed_mtu_below_reticulum_mtu() {
+    let input = r#"
+interfaces = [
+  { type = "TCPClientInterface", enabled = true, name = "python-tcp-client", target_host = "rmap.world", target_port = 4242, fixed_mtu = 499 }
+]
+"#;
+    let err = DaemonConfig::from_toml(input)
+        .expect_err("reject Python TCPClientInterface fixed_mtu below Reticulum MTU");
+    assert!(
+        err.to_string().contains("fixed_mtu must be 0 or at least 500"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn treats_reticulum_tcp_client_fixed_mtu_zero_as_default() {
+    let input = r#"
+interfaces = [
+  { type = "TCPClientInterface", enabled = true, name = "python-tcp-client", target_host = "rmap.world", target_port = 4242, fixed_mtu = 0 }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input)
+        .expect("parse Python TCPClientInterface fixed_mtu zero config");
+    let iface = &cfg.interfaces[0];
+    assert_eq!(iface.kind, "tcp_client");
+    assert_eq!(iface.host.as_deref(), Some("rmap.world"));
+    assert_eq!(iface.port, Some(4242));
+    assert_eq!(iface.mtu, None);
+
+    let settings = iface.settings_json().expect("settings");
+    assert!(settings.get("mtu").is_none(), "settings should keep TCP default MTU");
+}
+
+#[test]
 fn parses_reticulum_tcp_client_reconnect_options() {
     let input = r#"
 interfaces = [
@@ -920,18 +954,19 @@ interfaces = [
 }
 
 #[test]
-fn rejects_udp_target_host_without_target_port() {
+fn udp_target_host_uses_shared_port_when_target_port_is_absent() {
     let input = r#"
 interfaces = [
   { type = "udp", enabled = true, host = "127.0.0.1", port = 4242, target_host = "127.0.0.1" }
 ]
 "#;
-    let err = DaemonConfig::from_toml(input).expect_err("partial udp target settings must fail");
-    let message = err.to_string();
-    assert!(
-        message.contains("target_host and target_port must be provided together for udp"),
-        "unexpected parse error: {message}"
-    );
+    let cfg = DaemonConfig::from_toml(input).expect("parse udp shared port fallback config");
+    let iface = &cfg.interfaces[0];
+
+    assert_eq!(iface.host.as_deref(), Some("127.0.0.1"));
+    assert_eq!(iface.port, Some(4242));
+    assert_eq!(iface.target_host.as_deref(), Some("127.0.0.1"));
+    assert_eq!(iface.target_port, Some(4242));
 }
 
 #[test]

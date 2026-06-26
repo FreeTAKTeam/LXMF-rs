@@ -114,7 +114,9 @@ interfaces = [
 
 Python `TCPClientInterface` entries with `kiss_framing = true` are normalized
 to `kiss_tcp_client`; `target_host` and `target_port` map to `host` and `port`,
-and `fixed_mtu` maps to `mtu`:
+and `fixed_mtu` maps to `mtu`. Like Python Reticulum, `fixed_mtu = 0` keeps
+the default TCP MTU and non-zero values must be at least the Reticulum MTU of
+500 bytes:
 
 ```toml
 interfaces = [

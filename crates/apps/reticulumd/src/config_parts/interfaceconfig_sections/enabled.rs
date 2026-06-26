@@ -1,3 +1,5 @@
+const RETICULUM_CONFIG_MTU: usize = lxmf::constants::RETICULUM_MTU;
+
 impl InterfaceConfig {
 
     pub fn enabled(&self) -> bool {
@@ -665,22 +667,33 @@ impl InterfaceConfig {
         if self.port.is_none() {
             self.port = self.target_port;
         }
-        if self.mtu.is_none() {
-            self.mtu = self
-                .take_u64_alias_for_kind("fixed_mtu", index, "tcp_client")?
-                .map(|value| {
-                    usize::try_from(value).map_err(|_| {
-                        format!("interfaces[{index}].fixed_mtu must fit in usize for tcp_client")
-                    })
-                })
-                .transpose()?;
-        } else {
-            let _ = self.take_u64_alias_for_kind("fixed_mtu", index, "tcp_client")?;
+        if let Some(fixed_mtu) = self.take_tcp_fixed_mtu_alias(index)? {
+            if self.mtu.is_none() {
+                self.mtu = Some(fixed_mtu);
+            }
         }
         if self.take_bool_alias_for_kind("kiss_framing", index, "tcp_client")?.unwrap_or(false) {
             self.kind = "kiss_tcp_client".to_string();
         }
         Ok(())
+    }
+
+    fn take_tcp_fixed_mtu_alias(&mut self, index: usize) -> Result<Option<usize>, String> {
+        let Some(value) = self.take_u64_alias_for_kind("fixed_mtu", index, "tcp_client")? else {
+            return Ok(None);
+        };
+        if value == 0 {
+            return Ok(None);
+        }
+        let mtu = usize::try_from(value).map_err(|_| {
+            format!("interfaces[{index}].fixed_mtu must fit in usize for tcp_client")
+        })?;
+        if mtu < RETICULUM_CONFIG_MTU {
+            return Err(format!(
+                "interfaces[{index}].fixed_mtu must be 0 or at least {RETICULUM_CONFIG_MTU} for tcp_client"
+            ));
+        }
+        Ok(Some(mtu))
     }
 
     fn normalize_tcp_server_aliases(&mut self, index: usize) -> Result<(), String> {

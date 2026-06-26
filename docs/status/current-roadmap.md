@@ -38,8 +38,9 @@ The project is best described by capability level:
   teardown, receipts, and resource lifecycle have active regression coverage.
 - `reticulumd` supports TCP client/server, including Python-style
   TCP-over-I2P `i2p_tunneled` socket tuning for outbound clients and accepted
-  server streams, Backbone TCP/HDLC listener/client compatibility with
-  Backbone MTU defaults and Reticulum-style Backbone socket tuning
+  server streams and Python-style `fixed_mtu` falsey/default and Reticulum
+  MTU lower-bound validation, Backbone TCP/HDLC listener/client compatibility
+  with Backbone MTU defaults and Reticulum-style Backbone socket tuning
   (`TCP_NODELAY`, Linux/Android keepalive probes, and TCP user timeout) plus
   Backbone-only HDLC stream liveness keepalives, stale detection, and
   read-timeout reconnects, LocalInterface TCP-loopback plus Unix filesystem
