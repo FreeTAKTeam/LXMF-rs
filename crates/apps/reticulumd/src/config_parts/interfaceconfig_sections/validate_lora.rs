@@ -5,9 +5,6 @@ impl InterfaceConfig {
         if !self.enabled() {
             return Ok(());
         }
-        if original_kind == "RNodeInterface" {
-            self.validate_android_rnode_selector_aliases(index)?;
-        }
         require_non_empty(
             self.region.as_deref(),
             &format!("interfaces[{index}].region is required for lora"),
@@ -134,30 +131,6 @@ impl InterfaceConfig {
                     "interfaces[{index}].airtime_limit_long must be between 0 and 100 for lora"
                 ));
             }
-        }
-        Ok(())
-    }
-
-    fn validate_android_rnode_selector_aliases(&self, index: usize) -> Result<(), String> {
-        if self.allow_bluetooth == Some(true) {
-            return Err(format!(
-                "interfaces[{index}].allow_bluetooth is not supported by reticulumd RNodeInterface; use port=\"ble://...\" or ble_name/ble_addr instead"
-            ));
-        }
-        if self
-            .target_device_name
-            .as_deref()
-            .map(str::trim)
-            .is_some_and(|value| !value.is_empty())
-            || self
-                .target_device_address
-                .as_deref()
-                .map(str::trim)
-                .is_some_and(|value| !value.is_empty())
-        {
-            return Err(format!(
-                "interfaces[{index}].target_device_name/target_device_address classic Bluetooth selectors are not supported by reticulumd RNodeInterface; use BLE selectors instead"
-            ));
         }
         Ok(())
     }

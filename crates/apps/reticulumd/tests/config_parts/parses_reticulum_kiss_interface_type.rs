@@ -444,16 +444,52 @@ interfaces = [
 }
 
 #[test]
-fn rejects_android_rnode_classic_bluetooth_selectors() {
+fn parses_android_rnode_bluetooth_target_selector_aliases() {
     let input = r#"
 interfaces = [
-  { type = "RNodeInterface", enabled = true, name = "rnode-android-bt", region = "US915", state_path = "/tmp/lora-state.json", target_device_name = "RNode Classic", frequency = 915000000, bandwidth = 125000, spreadingfactor = 9, codingrate = 5, txpower = 17 }
+  { type = "RNodeInterface", enabled = true, name = "rnode-android-bt", region = "US915", state_path = "/tmp/lora-state.json", allow_bluetooth = true, target_device_name = "RNode Classic", frequency = 915000000, bandwidth = 125000, spreadingfactor = 9, codingrate = 5, txpower = 17 }
 ]
 "#;
-    let err = DaemonConfig::from_toml(input).expect_err("classic Bluetooth selector must fail");
+    let cfg = DaemonConfig::from_toml(input)
+        .expect("parse Android RNode Bluetooth target selector config");
+    let iface = &cfg.interfaces[0];
+    assert_eq!(iface.kind, "lora");
+    assert_eq!(iface.device.as_deref(), Some("ble://RNode Classic"));
+    assert_eq!(iface.baud_rate, None);
+
+    let settings = iface.settings_json().expect("settings");
+    assert_eq!(settings["device"], "ble://RNode Classic");
+}
+
+#[test]
+fn parses_android_rnode_bluetooth_address_before_name() {
+    let input = r#"
+interfaces = [
+  { type = "RNodeInterface", enabled = true, name = "rnode-android-bt", region = "US915", state_path = "/tmp/lora-state.json", allow_bluetooth = true, target_device_name = "RNode Classic", target_device_address = "AA:BB:CC:DD:EE:FF", frequency = 915000000, bandwidth = 125000, spreadingfactor = 9, codingrate = 5, txpower = 17 }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input)
+        .expect("parse Android RNode Bluetooth address selector config");
+    let iface = &cfg.interfaces[0];
+    assert_eq!(iface.kind, "lora");
+    assert_eq!(iface.device.as_deref(), Some("ble://AA:BB:CC:DD:EE:FF"));
+    assert_eq!(iface.baud_rate, None);
+
+    let settings = iface.settings_json().expect("settings");
+    assert_eq!(settings["device"], "ble://AA:BB:CC:DD:EE:FF");
+}
+
+#[test]
+fn rejects_android_rnode_bluetooth_without_target() {
+    let input = r#"
+interfaces = [
+  { type = "RNodeInterface", enabled = true, name = "rnode-android-bt", region = "US915", state_path = "/tmp/lora-state.json", allow_bluetooth = true, frequency = 915000000, bandwidth = 125000, spreadingfactor = 9, codingrate = 5, txpower = 17 }
+]
+"#;
+    let err = DaemonConfig::from_toml(input).expect_err("Bluetooth selector target must fail");
     let message = err.to_string();
     assert!(
-        message.contains("classic Bluetooth selectors are not supported"),
+        message.contains("target_device_name"),
         "unexpected parse error: {message}"
     );
 }

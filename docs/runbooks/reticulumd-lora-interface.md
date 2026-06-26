@@ -117,6 +117,29 @@ interfaces = [
 ]
 ```
 
+Android-style RNode selector fields are accepted as migration aliases for the
+same native BLE backend. `ble_addr` or `target_device_address` is preferred
+over `ble_name` or `target_device_name`, and `allow_bluetooth = true` requires
+one of those selectors unless an explicit `port = "ble://..."` is already
+configured:
+
+```toml
+interfaces = [
+  {
+    type = "RNodeInterface",
+    enabled = true,
+    name = "rnode-android-ble",
+    allow_bluetooth = true,
+    target_device_address = "AA:BB:CC:DD:EE:FF",
+    frequency = 915000000,
+    bandwidth = 125000,
+    spreadingfactor = 9,
+    codingrate = 5,
+    txpower = 17
+  }
+]
+```
+
 Adapter discovery, permissions, pairing, bonding, and trust prompts are host OS
 responsibilities outside this repository. For VT-N76/VR-N76 Bluetooth KISS
 operation, use the `vrn76_kiss_ble` interface because those devices use the

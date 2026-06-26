@@ -71,7 +71,8 @@ placeholders:
   suppression, multicast announcements, data sockets, transport bridging, and
   live carrier-runtime status reporting.
 - Serial, TCP/Wi-Fi, and feature-gated BLE LoRa/RNode with startup probes,
-  configuration validation, telemetry, flow control, teardown, and live
+  Python and Android-style selector aliases, configuration validation,
+  telemetry, flow control, teardown, and live
   daemon/RPC `rnode_status` refresh plus compact `rnstatus-rs` human summaries
   for probe and radio state, with an opt-in prepared-host smoke harness for
   serial, TCP/Wi-Fi, or BLE RNode devices.

@@ -176,12 +176,23 @@ impl InterfaceConfig {
         let tcp_requested = self.force_tcp.unwrap_or(false)
             || self.tcp_host.as_deref().map(str::trim).is_some_and(|value| !value.is_empty());
         let ble_requested = self.force_ble.unwrap_or(false)
+            || self.allow_bluetooth.unwrap_or(false)
             || self.ble_addr.as_deref().map(str::trim).is_some_and(|value| !value.is_empty())
-            || self.ble_name.as_deref().map(str::trim).is_some_and(|value| !value.is_empty());
+            || self.ble_name.as_deref().map(str::trim).is_some_and(|value| !value.is_empty())
+            || self
+                .target_device_address
+                .as_deref()
+                .map(str::trim)
+                .is_some_and(|value| !value.is_empty())
+            || self
+                .target_device_name
+                .as_deref()
+                .map(str::trim)
+                .is_some_and(|value| !value.is_empty());
 
         if tcp_requested && ble_requested {
             return Err(format!(
-                "interfaces[{index}] cannot combine RNodeInterface force_tcp/tcp_host with force_ble/ble_name/ble_addr"
+                "interfaces[{index}] cannot combine RNodeInterface force_tcp/tcp_host with Bluetooth selector fields"
             ));
         }
         if self.device.is_some() || (!tcp_requested && !ble_requested) {
@@ -201,10 +212,27 @@ impl InterfaceConfig {
                 .as_deref()
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
-                .or_else(|| self.ble_name.as_deref().map(str::trim).filter(|value| !value.is_empty()))
+                .or_else(|| {
+                    self.target_device_address
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                })
+                .or_else(|| {
+                    self.ble_name
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                })
+                .or_else(|| {
+                    self.target_device_name
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                })
                 .ok_or_else(|| {
                     format!(
-                        "interfaces[{index}].ble_name or ble_addr is required when force_ble is true for RNodeInterface"
+                        "interfaces[{index}].ble_name, ble_addr, target_device_name, or target_device_address is required when Bluetooth is requested for RNodeInterface"
                     )
                 })?;
             self.device = Some(format!("ble://{ble_target}"));
