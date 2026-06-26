@@ -105,7 +105,9 @@ placeholders:
   metadata reports the derived `.b32.i2p` endpoint for persisted keys and keys
   generated during startup, plus transport-side tunnel state, keepalive, stale,
   read-timeout, per-peer counter bookkeeping, and bounded closed-incoming-peer
-  history refreshed into daemon/RPC `tunnel_status` runtime metadata.
+  history refreshed into daemon/RPC `tunnel_status` runtime metadata. The
+  config parser accepts I2P-local IFAC aliases `ifac_netname` and
+  `ifac_netkey`.
 - Feature-gated native RNode BLE and VR-N76 KISS-over-BLE.
 
 Python-style interface-driven `tcp_server` startup now works from config

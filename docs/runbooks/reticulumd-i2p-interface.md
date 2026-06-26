@@ -41,9 +41,12 @@ interfaces = [
 The parser accepts Python-style `peers` as either a comma-separated string or a
 string array. It also accepts `sam_ip` as an alias for `sam_host`,
 `storagepath` as an alias for `state_path`, and `configured_bitrate` as the
-interface bitrate used by announce pacing. If no explicit `state_path` or
-`storagepath` is supplied, daemon startup injects the Reticulum storage root for
-I2P destination-key persistence, matching Python's `I2PInterface` setup.
+interface bitrate used by announce pacing. Python I2P-local `ifac_netname` and
+`ifac_netkey` are accepted as aliases for the shared IFAC `network_name` and
+`passphrase` fields; canonical shared fields win if both forms are supplied. If
+no explicit `state_path` or `storagepath` is supplied, daemon startup injects
+the Reticulum storage root for I2P destination-key persistence, matching
+Python's `I2PInterface` setup.
 
 ## Runtime Behavior
 

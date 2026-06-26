@@ -107,6 +107,20 @@ impl InterfaceConfig {
         } else {
             let _ = self.take_string_alias_for_kind("storagepath", index, "i2p")?;
         }
+        if self.network_name.is_none() && self.networkname.is_none() {
+            self.network_name = self
+                .take_string_alias_for_kind("ifac_netname", index, "i2p")?
+                .and_then(non_empty_string);
+        } else {
+            let _ = self.take_string_alias_for_kind("ifac_netname", index, "i2p")?;
+        }
+        if self.passphrase.is_none() && self.pass_phrase.is_none() {
+            self.passphrase = self
+                .take_string_alias_for_kind("ifac_netkey", index, "i2p")?
+                .and_then(non_empty_string);
+        } else {
+            let _ = self.take_string_alias_for_kind("ifac_netkey", index, "i2p")?;
+        }
         Ok(())
     }
 

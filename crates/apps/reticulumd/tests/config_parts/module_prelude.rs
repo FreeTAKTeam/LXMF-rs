@@ -903,7 +903,7 @@ interfaces = [
 fn parses_reticulum_i2p_interface_defaults() {
     let input = r#"
 interfaces = [
-  { type = "I2PInterface", enabled = true, name = "i2p-main", peers = "peer-one.b32.i2p, peer-two.b32.i2p", storagepath = "/tmp/rns", configured_bitrate = 128000 }
+  { type = "I2PInterface", enabled = true, name = "i2p-main", peers = "peer-one.b32.i2p, peer-two.b32.i2p", storagepath = "/tmp/rns", configured_bitrate = 128000, ifac_netname = "i2p-field", ifac_netkey = "i2p-secret" }
 ]
 "#;
     let cfg = DaemonConfig::from_toml(input).expect("parse Python I2PInterface config");
@@ -918,6 +918,8 @@ interfaces = [
     assert_eq!(iface.mtu, Some(1064));
     assert_eq!(iface.bitrate, Some(128_000));
     assert_eq!(iface.state_path.as_deref(), Some("/tmp/rns"));
+    assert_eq!(iface.network_name.as_deref(), Some("i2p-field"));
+    assert_eq!(iface.passphrase.as_deref(), Some("i2p-secret"));
 
     let settings = iface.settings_json().expect("settings");
     assert_eq!(settings["peers"], serde_json::json!(["peer-one.b32.i2p", "peer-two.b32.i2p"]));
@@ -925,6 +927,26 @@ interfaces = [
     assert_eq!(settings["sam_port"], 7656);
     assert_eq!(settings["mtu"], 1064);
     assert_eq!(settings["state_path"], "/tmp/rns");
+    assert_eq!(settings["network_name"], "i2p-field");
+    assert_eq!(settings["passphrase"], "i2p-secret");
+}
+
+#[test]
+fn i2p_ifac_net_aliases_do_not_override_canonical_fields() {
+    let input = r#"
+interfaces = [
+  { type = "I2PInterface", enabled = true, name = "i2p-main", connectable = true, network_name = "canonical-net", passphrase = "canonical-secret", ifac_netname = "i2p-field", ifac_netkey = "i2p-secret" }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse Python I2PInterface IFAC aliases");
+    let iface = &cfg.interfaces[0];
+
+    assert_eq!(iface.network_name.as_deref(), Some("canonical-net"));
+    assert_eq!(iface.passphrase.as_deref(), Some("canonical-secret"));
+
+    let settings = iface.settings_json().expect("settings");
+    assert_eq!(settings["network_name"], "canonical-net");
+    assert_eq!(settings["passphrase"], "canonical-secret");
 }
 
 #[test]
