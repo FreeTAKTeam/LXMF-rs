@@ -79,7 +79,8 @@ placeholders:
   Python `id_interval` and `id_callsign`.
 - AutoInterface discovery, authenticated peering, peer lifecycle, duplicate
   suppression, multicast announcements, data sockets, transport bridging, and
-  live carrier-runtime status reporting.
+  live carrier-runtime status reporting, including Python-style fallback from
+  unknown `multicast_address_type` values to `temporary`.
 - Serial, TCP/Wi-Fi, and feature-gated BLE LoRa/RNode with startup probes,
   Python and Android-style selector aliases, configuration validation,
   telemetry, flow control, teardown, and live

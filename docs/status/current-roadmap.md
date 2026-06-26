@@ -50,7 +50,8 @@ The project is best described by capability level:
   Pipe subprocess HDLC, UDP unicast/multicast plus
   Python-style UDP `device` broadcast-address defaults, IPv4 broadcast socket
   sends, and shared-`port` forward fallback semantics, serial, KISS, AX.25
-  KISS with Android-style beacon alias compatibility, AutoInterface, LoRa/RNode,
+  KISS with Android-style beacon alias compatibility, AutoInterface with
+  Python-style multicast address type fallback, LoRa/RNode,
   feature-gated RNode BLE, feature-gated VR-N76 KISS-over-BLE, and the
   in-progress shared serial/TCP RNodeMulti baseline with nested vport virtual
   children, a shared-serial Weave WDCL/HDLC endpoint baseline, and an

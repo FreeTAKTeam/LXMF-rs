@@ -13,6 +13,8 @@ the Reticulum defaults in interface status:
 - `discovery_port`: defaults to `29716`
 - `data_port`: defaults to `42671`
 - `multicast_address_type`: defaults to `temporary`
+  - valid values are `temporary` and `permanent`; Python-compatible parsing
+    falls back to `temporary` for unknown values
 - `discovery_multicast_address`: derived with the Python `AutoInterface`
   algorithm from `group_id`, `discovery_scope`, and
   `multicast_address_type`; the default is

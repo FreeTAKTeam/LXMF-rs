@@ -13,7 +13,12 @@ impl InterfaceConfig {
         if self.data_port.is_none() {
             self.data_port = Some(42_671);
         }
-        if self.multicast_address_type.is_none() {
+        if self
+            .multicast_address_type
+            .as_deref()
+            .and_then(rns_transport::iface::auto::MulticastAddressType::parse)
+            .is_none()
+        {
             self.multicast_address_type = Some("temporary".to_string());
         }
         if self.bitrate.is_none() {

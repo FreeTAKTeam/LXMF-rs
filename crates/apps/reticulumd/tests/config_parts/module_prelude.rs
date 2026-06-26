@@ -872,6 +872,25 @@ interfaces = [
 }
 
 #[test]
+fn reticulum_auto_invalid_multicast_address_type_falls_back_to_temporary() {
+    let input = r#"
+interfaces = [
+  { type = "AutoInterface", enabled = true, name = "python-auto", multicast_address_type = "nonsense" }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input)
+        .expect("parse AutoInterface unknown multicast_address_type fallback");
+    let iface = &cfg.interfaces[0];
+
+    assert_eq!(iface.kind, "auto");
+    assert_eq!(iface.multicast_address_type.as_deref(), Some("temporary"));
+
+    let settings = iface.settings_json().expect("settings");
+    assert_eq!(settings["multicast_address_type"], "temporary");
+    assert_eq!(settings["discovery_multicast_address"], "ff12:0:d70b:fb1c:16e4:5e39:485e:31e1");
+}
+
+#[test]
 fn parses_reticulum_auto_interface_options() {
     let input = r#"
 interfaces = [
