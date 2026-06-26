@@ -36,7 +36,9 @@ pub(crate) fn build_adapter(
         }
         RNodeMultiInterface::new(device.to_string(), iface_manager).with_baud_rate(baud_rate)
     };
-    Ok(adapter.with_subinterfaces(subinterfaces).with_id_beacon(rnode_multi_id_beacon(iface)))
+    let adapter =
+        adapter.with_subinterfaces(subinterfaces).with_id_beacon(rnode_multi_id_beacon(iface));
+    Ok(if let Some(mtu) = iface.mtu { adapter.with_mtu(mtu) } else { adapter })
 }
 
 fn rnode_multi_id_beacon(iface: &InterfaceConfig) -> Option<KissIdBeaconConfig> {

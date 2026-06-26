@@ -9,6 +9,7 @@ production-complete RNodeMulti parity claim.
 ## Scope
 
 - Reticulum type alias: `RNodeMultiInterface`
+- Default MTU: `508`, matching Python `RNodeMultiInterface.HW_MTU`
 - Physical transport: one serial RNode device or `tcp://host:port` RNode
   endpoint opened at the parent level
 - Child model: nested vport subinterfaces registered as virtual unicast

@@ -219,9 +219,9 @@ impl InterfaceConfig {
             }
         }
         if let Some(mtu) = self.mtu {
-            if !(1..=255).contains(&mtu) {
+            if !(1..=u16::MAX as usize).contains(&mtu) {
                 return Err(format!(
-                    "interfaces[{index}].mtu must be between 1 and 255 for rnode_multi"
+                    "interfaces[{index}].mtu must be between 1 and 65535 for rnode_multi"
                 ));
             }
         }

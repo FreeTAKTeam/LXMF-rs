@@ -78,6 +78,7 @@ fn rnode_multi_builder_carries_unpadded_python_id_beacon_settings() {
     let adapter = rnode_multi::build_adapter(&iface, manager).expect("build rnode multi adapter");
     let beacon = adapter.id_beacon().expect("rnode multi id beacon");
 
+    assert_eq!(adapter.mtu_value(), 508);
     assert_eq!(beacon.callsign, b"MYCALL-0");
     assert_eq!(beacon.interval, std::time::Duration::from_secs(600));
     assert_eq!(beacon.min_payload_len, 0);
@@ -117,6 +118,42 @@ fn rnode_multi_builder_accepts_tcp_endpoint_without_serial_baud_rate() {
     assert_eq!(adapter.endpoint(), "192.0.2.10:8001");
     assert_eq!(adapter.baud_rate(), None);
     assert_eq!(adapter.subinterfaces().len(), 1);
+}
+
+#[test]
+fn rnode_multi_builder_applies_explicit_mtu() {
+    let iface = InterfaceConfig {
+        kind: "rnode_multi".to_string(),
+        enabled: Some(true),
+        device: Some("/dev/ttyACM0".to_string()),
+        baud_rate: Some(115_200),
+        mtu: Some(1024),
+        extra: [(
+            "radio0".to_string(),
+            toml::Value::Table(
+                [
+                    ("vport".to_string(), toml::Value::Integer(2)),
+                    ("frequency".to_string(), toml::Value::Integer(915_000_000)),
+                    ("bandwidth".to_string(), toml::Value::Integer(125_000)),
+                    ("spreadingfactor".to_string(), toml::Value::Integer(9)),
+                    ("codingrate".to_string(), toml::Value::Integer(5)),
+                    ("txpower".to_string(), toml::Value::Integer(17)),
+                ]
+                .into_iter()
+                .collect(),
+            ),
+        )]
+        .into_iter()
+        .collect(),
+        ..InterfaceConfig::default()
+    };
+    let manager = std::sync::Arc::new(tokio::sync::Mutex::new(
+        rns_transport::iface::InterfaceManager::new(8),
+    ));
+
+    let adapter = rnode_multi::build_adapter(&iface, manager).expect("build rnode multi adapter");
+
+    assert_eq!(adapter.mtu_value(), 1024);
 }
 
 #[test]

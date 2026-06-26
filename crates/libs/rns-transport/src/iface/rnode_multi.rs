@@ -28,7 +28,7 @@ use super::{
 const CMD_SEL_INT: u8 = 0x1F;
 pub const CMD_INTERFACES: u8 = 0x71;
 const DEFAULT_BAUD_RATE: u32 = 115_200;
-const DEFAULT_MTU: usize = 220;
+const DEFAULT_MTU: usize = 508;
 const RECONNECT_WAIT: Duration = Duration::from_secs(5);
 const RNODE_MULTI_REQUIRED_FW_VERSION_MAJOR: u8 = 1;
 const RNODE_MULTI_REQUIRED_FW_VERSION_MINOR: u8 = 74;
@@ -47,6 +47,7 @@ pub struct RNodeMultiInterface {
     endpoint: RNodeMultiEndpoint,
     subinterfaces: Vec<RNodeMultiSubInterfaceConfig>,
     id_beacon: Option<KissIdBeaconConfig>,
+    mtu: usize,
     runtime_status: Arc<Mutex<RNodeMultiRuntimeStatus>>,
     iface_manager: Arc<tokio::sync::Mutex<InterfaceManager>>,
 }
@@ -86,6 +87,7 @@ impl RNodeMultiInterface {
             },
             subinterfaces: Vec::new(),
             id_beacon: None,
+            mtu: DEFAULT_MTU,
             runtime_status: Arc::new(Mutex::new(RNodeMultiRuntimeStatus::from_subinterfaces(&[]))),
             iface_manager,
         }
@@ -100,6 +102,7 @@ impl RNodeMultiInterface {
             endpoint: RNodeMultiEndpoint::Tcp { addr: addr.into() },
             subinterfaces: Vec::new(),
             id_beacon: None,
+            mtu: DEFAULT_MTU,
             runtime_status: Arc::new(Mutex::new(RNodeMultiRuntimeStatus::from_subinterfaces(&[]))),
             iface_manager,
         }
@@ -128,6 +131,12 @@ impl RNodeMultiInterface {
     }
 
     #[must_use]
+    pub fn with_mtu(mut self, mtu: usize) -> Self {
+        self.mtu = mtu.max(256);
+        self
+    }
+
+    #[must_use]
     pub fn subinterfaces(&self) -> &[RNodeMultiSubInterfaceConfig] {
         &self.subinterfaces
     }
@@ -135,6 +144,11 @@ impl RNodeMultiInterface {
     #[must_use]
     pub fn id_beacon(&self) -> Option<&KissIdBeaconConfig> {
         self.id_beacon.as_ref()
+    }
+
+    #[must_use]
+    pub fn mtu_value(&self) -> usize {
+        self.mtu
     }
 
     #[must_use]
@@ -155,12 +169,13 @@ impl RNodeMultiInterface {
     pub async fn spawn(context: InterfaceContext<Self>) {
         let iface_stop = context.channel.stop.clone();
         let parent_iface = context.channel.address;
-        let (endpoint, subinterfaces, id_beacon, runtime_status, iface_manager) = {
+        let (endpoint, subinterfaces, id_beacon, mtu, runtime_status, iface_manager) = {
             let guard = context.inner.lock().expect("rnode multi interface mutex poisoned");
             (
                 guard.endpoint.clone(),
                 guard.subinterfaces.clone(),
                 guard.id_beacon.clone(),
+                guard.mtu,
                 guard.runtime_status.clone(),
                 guard.iface_manager.clone(),
             )
@@ -232,6 +247,7 @@ impl RNodeMultiInterface {
                             parent_iface,
                             device.clone(),
                             &subinterfaces,
+                            mtu,
                             runtime_status.clone(),
                             vport_map.clone(),
                             id_beacon.clone(),
@@ -279,6 +295,7 @@ impl RNodeMultiInterface {
                             parent_iface,
                             addr.clone(),
                             &subinterfaces,
+                            mtu,
                             runtime_status.clone(),
                             vport_map.clone(),
                             id_beacon.clone(),
@@ -317,6 +334,7 @@ fn rnode_multi_stream_options(
     parent_iface: AddressHash,
     device: String,
     subinterfaces: &[RNodeMultiSubInterfaceConfig],
+    mtu: usize,
     runtime_status: Arc<Mutex<RNodeMultiRuntimeStatus>>,
     vport_map: BTreeMap<AddressHash, u8>,
     id_beacon: Option<KissIdBeaconConfig>,
@@ -327,7 +345,7 @@ fn rnode_multi_stream_options(
         subinterfaces: subinterfaces.to_vec(),
         runtime_status,
         vport_map,
-        mtu: DEFAULT_MTU,
+        mtu,
         startup_probe: Some(RNodeMultiStartupProbe::from_subinterfaces(subinterfaces)),
         initial_frames: rnode_multi_initial_frames(subinterfaces),
         shutdown_frames: rnode_multi_shutdown_frames(subinterfaces),
@@ -338,6 +356,10 @@ fn rnode_multi_stream_options(
 impl Interface for RNodeMultiInterface {
     fn mtu() -> usize {
         DEFAULT_MTU
+    }
+
+    fn configured_mtu(&self) -> usize {
+        self.mtu
     }
 }
 
@@ -1181,12 +1203,26 @@ mod tests {
             }],
             runtime_status: Arc::new(Mutex::new(RNodeMultiRuntimeStatus::from_subinterfaces(&[]))),
             vport_map,
-            mtu: 220,
+            mtu: DEFAULT_MTU,
             startup_probe: None,
             initial_frames: Vec::new(),
             shutdown_frames: Vec::new(),
             id_beacon: None,
         }
+    }
+
+    #[test]
+    fn rnode_multi_uses_python_default_mtu_and_explicit_override() {
+        let manager = Arc::new(tokio::sync::Mutex::new(InterfaceManager::new(8)));
+        let adapter = RNodeMultiInterface::new("/dev/ttyACM0", manager.clone());
+
+        assert_eq!(RNodeMultiInterface::mtu(), 508);
+        assert_eq!(adapter.mtu_value(), 508);
+        assert_eq!(adapter.configured_mtu(), 508);
+        assert_eq!(
+            RNodeMultiInterface::new_tcp("192.0.2.10:8001", manager).with_mtu(1024).mtu_value(),
+            1024
+        );
     }
 
     fn accepted_probe_status() -> RNodeMultiProbeStatus {

@@ -221,7 +221,7 @@ impl InterfaceConfig {
             let _ = self.take_u64_alias_for_kind("speed", index, "rnode_multi")?;
         }
         if self.mtu.is_none() {
-            self.mtu = Some(220);
+            self.mtu = Some(508);
         }
         Ok(())
     }

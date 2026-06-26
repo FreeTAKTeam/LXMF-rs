@@ -487,7 +487,7 @@ interfaces = [
     assert_eq!(iface.kind, "rnode_multi");
     assert_eq!(iface.device.as_deref(), Some("/dev/ttyACM0"));
     assert_eq!(iface.baud_rate, Some(115_200));
-    assert_eq!(iface.mtu, Some(220));
+    assert_eq!(iface.mtu, Some(508));
     assert_eq!(iface.id_callsign.as_deref(), Some("MYCALL-0"));
     assert_eq!(iface.id_interval, Some(600));
 
@@ -523,7 +523,7 @@ interfaces = [
 
     assert_eq!(iface.kind, "rnode_multi");
     assert_eq!(iface.device.as_deref(), Some("tcp://192.0.2.10:8001"));
-    assert_eq!(iface.mtu, Some(220));
+    assert_eq!(iface.mtu, Some(508));
 
     let settings = iface.settings_json().expect("settings");
     assert_eq!(settings["device"], "tcp://192.0.2.10:8001");
