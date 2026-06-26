@@ -334,17 +334,14 @@ last command error when present. The JSON status includes:
 - `hardware_errors`, `last_command_error`, `online`, `flow_control`, and
   `reported_bitrate_bps`.
 
-This status surface is the evidence foundation for prepared-host serial/TCP
-RNode lifecycle smoke tests. Feature-gated `ble://` RNode startup still uses
-the same protocol monitor internally, but daemon/RPC live refresh for the BLE
-adapter remains pending.
+This status surface is the evidence foundation for prepared-host serial, TCP,
+and feature-gated BLE RNode lifecycle smoke tests.
 
 ## Prepared-Host Smoke
 
 The opt-in prepared-host smoke validates `reticulumd` against a host with a
-single serial or TCP/Wi-Fi RNode available as `RNodeInterface`. It intentionally
-does not accept `ble://` yet because BLE startup does not refresh
-`_runtime.lora.rnode_status` through daemon/RPC.
+single serial, TCP/Wi-Fi, or feature-gated BLE RNode available as
+`RNodeInterface`.
 
 ```sh
 RNODE_PORT=/dev/ttyACM0 \
@@ -360,6 +357,12 @@ RNODE_COMMAND_TIMEOUT_MS=1500 \
 For Wi-Fi/TCP RNodes, use `RNODE_PORT=tcp://192.0.2.10:8001`; the generated
 config omits serial baud rate and the pass gate expects
 `_runtime.lora.rnode_status.endpoint` to match `host:port`.
+
+For BLE RNodes, use `RNODE_PORT=ble://RNode 1234`. The script builds
+`reticulumd` with `--features rnode-ble`, omits serial baud rate, and expects
+`_runtime.lora.rnode_status.bearer = "ble"` plus the full `ble://...`
+endpoint. `RNODE_BLE_ADAPTER`, `RNODE_BLE_SCAN_TIMEOUT_MS`,
+`RNODE_BLE_CONNECT_TIMEOUT_MS`, and `RNODE_BLE_MAX_WRITE_LEN` are optional.
 
 The script builds `reticulumd` and `rnstatus-rs`, starts the daemon with
 `--strict-interface-startup`, polls `rnstatus-rs --json`, and writes artifacts
@@ -388,7 +391,10 @@ Nightly HIL exposes the same smoke through `HIL_RNODE_ENABLED=true` with
 optional `HIL_RNODE_FREQUENCY`, optional `HIL_RNODE_BANDWIDTH`, optional
 `HIL_RNODE_SPREADING_FACTOR`, optional `HIL_RNODE_CODING_RATE`, optional
 `HIL_RNODE_TX_POWER`, optional `HIL_RNODE_BITRATE`, optional
-`HIL_RNODE_COMMAND_TIMEOUT_MS`, and optional `HIL_RNODE_TIMEOUT_SECS`.
+`HIL_RNODE_COMMAND_TIMEOUT_MS`, optional `HIL_RNODE_BLE_ADAPTER`, optional
+`HIL_RNODE_BLE_SCAN_TIMEOUT_MS`, optional `HIL_RNODE_BLE_CONNECT_TIMEOUT_MS`,
+optional `HIL_RNODE_BLE_MAX_WRITE_LEN`, and optional
+`HIL_RNODE_TIMEOUT_SECS`.
 Artifacts are uploaded as
 `rnode-prepared-host-artifacts`, including
 `target/rnode-hil/report.json` and `target/rnode-hil/run.*`.
@@ -452,7 +458,7 @@ Failure log:
 Runtime status visibility:
 
 - `list_interfaces` includes `_runtime.startup_status`.
-- Active serial/TCP RNode interfaces include refreshed
+- Active serial/TCP/BLE RNode interfaces include refreshed
   `_runtime.lora.rnode_status`.
 - Failed interfaces include `_runtime.startup_error`.
 

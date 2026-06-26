@@ -65,12 +65,13 @@ The project is best described by capability level:
   refresh the `_runtime.rnode_multi.radio_status` schema from the
   transport-side runtime handle, including stream/probe state and last error
   reporting for absent or failing hardware.
-- Ordinary serial/TCP RNodeInterface status now refreshes the transport-side
-  RNode probe/radio state into daemon/RPC `_runtime.lora.rnode_status`; compact
-  `rnstatus-rs` output summarizes bearer, online/detected state, firmware,
-  radio configuration, counters, battery, hardware errors, and last command
-  error. An opt-in prepared-host smoke harness records serial/TCP RNode
-  lifecycle evidence under `target/rnode-hil/`.
+- Ordinary serial/TCP and feature-gated BLE RNodeInterface status now refreshes
+  the transport-side RNode probe/radio state into daemon/RPC
+  `_runtime.lora.rnode_status`; compact `rnstatus-rs` output summarizes
+  bearer, online/detected state, firmware, radio configuration, counters,
+  battery, hardware errors, and last command error. An opt-in prepared-host
+  smoke harness records serial/TCP/BLE RNode lifecycle evidence under
+  `target/rnode-hil/`.
 - WeaveInterface has a transport-side WDCL/HDLC slice: a shared serial parent
   can answer discovery, learn endpoint events, register virtual endpoint
   children, receive endpoint packets, write direct endpoint commands, and expose
@@ -810,9 +811,8 @@ the implemented subset.
    - Finish resolver/bootstrap, announce/path edge behavior, and runtime
      mutation parity.
 3. **Operational breadth**
-   - Add prepared-host hardware evidence for BLE/RNode paths; serial/TCP RNode
-     now has an opt-in prepared-host smoke gate, while BLE live-status refresh
-     and BLE prepared-host evidence remain pending.
+   - Add broader prepared-host hardware evidence for BLE/RNode paths; ordinary
+     serial/TCP/BLE RNode now has an opt-in prepared-host smoke gate.
    - Complete RNodeMulti prepared-host hardware validation/evidence and
      broader production parity before treating that family as
      production-complete.

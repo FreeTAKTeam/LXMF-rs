@@ -10,6 +10,8 @@ mod transport_destinations;
 use crate::bridge::PeerCrypto;
 use crate::interfaces::common::interface_label;
 use crate::Args;
+#[cfg(test)]
+pub(super) use interface_startup::LoraRuntimeStatusSource;
 pub(super) use interface_startup::{
     AutoRuntimeRefresh, I2pRuntimeRefresh, LoraRuntimeRefresh, RNodeMultiRuntimeRefresh,
     WeaveRuntimeRefresh,

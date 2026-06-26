@@ -71,7 +71,25 @@ pub(crate) struct RNodeMultiRuntimeRefresh {
 #[derive(Clone)]
 pub(crate) struct LoraRuntimeRefresh {
     pub(crate) runtime_iface: AddressHash,
-    pub(crate) status: rns_transport::iface::lora::LoraRuntimeStatusHandle,
+    pub(crate) status: LoraRuntimeStatusSource,
+}
+
+#[derive(Clone)]
+pub(crate) enum LoraRuntimeStatusSource {
+    Lora(rns_transport::iface::lora::LoraRuntimeStatusHandle),
+    #[cfg(feature = "rnode-ble")]
+    RnodeBle(rns_transport::iface::rnode_ble::RnodeBleRuntimeStatusHandle),
+}
+
+impl LoraRuntimeStatusSource {
+    #[must_use]
+    pub(crate) fn to_json(&self) -> serde_json::Value {
+        match self {
+            Self::Lora(status) => status.to_json(),
+            #[cfg(feature = "rnode-ble")]
+            Self::RnodeBle(status) => status.to_json(),
+        }
+    }
 }
 
 #[allow(clippy::too_many_arguments)]

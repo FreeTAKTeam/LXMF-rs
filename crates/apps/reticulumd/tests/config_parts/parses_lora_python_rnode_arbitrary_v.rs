@@ -50,6 +50,44 @@ interfaces = [
 }
 
 #[test]
+fn parses_reticulum_rnode_interface_array_table_type_alias() {
+    let input = r#"
+[[interfaces]]
+type = "RNodeInterface"
+enabled = true
+name = "rnode-main"
+region = "US915"
+state_path = "/tmp/lora-state.json"
+port = "/dev/ttyACM0"
+baud_rate = 115200
+frequency = 915000000
+bandwidth = 125000
+spreadingfactor = 9
+codingrate = 5
+txpower = 17
+bitrate = 1200
+command_timeout_ms = 1500
+scan_timeout_ms = 2000
+ble_connect_timeout_ms = 5000
+max_write_len = 20
+"#;
+    let cfg =
+        DaemonConfig::from_toml(input).expect("parse Reticulum RNodeInterface table config");
+    let iface = &cfg.interfaces[0];
+
+    assert_eq!(iface.kind, "lora");
+    assert!(iface.rnode_profile);
+    assert_eq!(iface.max_payload_bytes, Some(508));
+    assert_eq!(iface.device.as_deref(), Some("/dev/ttyACM0"));
+    assert_eq!(iface.baud_rate, Some(115_200));
+    assert_eq!(iface.bitrate, Some(1_200));
+    assert_eq!(iface.connect_timeout_ms, Some(1_500));
+    assert_eq!(iface.scan_timeout_ms, Some(2_000));
+    assert_eq!(iface.ble_connect_timeout_ms, Some(5_000));
+    assert_eq!(iface.max_write_len, Some(20));
+}
+
+#[test]
 fn parses_vanilla_reticulum_rnode_interface_without_lora_state_fields() {
     let input = r#"
 interfaces = [

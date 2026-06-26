@@ -77,6 +77,11 @@ impl RnodeBleCommandMonitor {
         self.lora.reported_bitrate_bps()
     }
 
+    #[must_use]
+    pub fn runtime_status_json(&self, endpoint: &str) -> serde_json::Value {
+        rnode_ble_runtime_status_json(&self.lora, endpoint)
+    }
+
     pub fn validate_startup_deadline(&mut self) -> Result<(), String> {
         let Some(deadline) = self.startup_deadline else {
             return Ok(());
@@ -86,6 +91,47 @@ impl RnodeBleCommandMonitor {
         }
         self.startup_deadline = None;
         self.lora.validate_startup_responses()
+    }
+}
+
+#[must_use]
+pub fn rnode_ble_initial_runtime_status_json(
+    config: LoraConfig,
+    endpoint: &str,
+) -> serde_json::Value {
+    let mut lora = LoraInterface::new_tcp(endpoint.to_string(), config);
+    lora.begin_startup_response_collection();
+    rnode_ble_runtime_status_json(&lora, endpoint)
+}
+
+#[must_use]
+pub fn rnode_ble_runtime_status_json(
+    lora: &LoraInterface,
+    endpoint: &str,
+) -> serde_json::Value {
+    let mut value = lora.runtime_status_json();
+    if let Some(object) = value.as_object_mut() {
+        object.insert("endpoint".to_string(), serde_json::Value::String(endpoint.to_string()));
+        object.insert("bearer".to_string(), serde_json::Value::String("ble".to_string()));
+        object.insert("baud_rate".to_string(), serde_json::Value::Null);
+    }
+    value
+}
+
+#[derive(Clone)]
+pub struct RnodeBleRuntimeStatusHandle {
+    inner: Arc<Mutex<serde_json::Value>>,
+}
+
+impl RnodeBleRuntimeStatusHandle {
+    #[must_use]
+    pub fn new(inner: Arc<Mutex<serde_json::Value>>) -> Self {
+        Self { inner }
+    }
+
+    #[must_use]
+    pub fn to_json(&self) -> serde_json::Value {
+        self.inner.lock().expect("RNode BLE status mutex poisoned").clone()
     }
 }
 

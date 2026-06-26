@@ -926,7 +926,10 @@ mod tests {
         let status = rns_transport::iface::lora::LoraRuntimeStatusHandle::new(Arc::new(
             Mutex::new(iface),
         ));
-        let refresh = transport_startup::LoraRuntimeRefresh { runtime_iface, status };
+        let refresh = transport_startup::LoraRuntimeRefresh {
+            runtime_iface,
+            status: transport_startup::LoraRuntimeStatusSource::Lora(status),
+        };
 
         assert_eq!(refresh_lora_runtime_status_once(&daemon, &[refresh]), 1);
         let result = daemon
@@ -940,5 +943,65 @@ mod tests {
         assert_eq!(status["bearer"].as_str(), Some("serial"));
         assert_eq!(status["probe_status"]["detected"].as_bool(), Some(true));
         assert_eq!(status["probe_status"]["firmware_version"]["label"].as_str(), Some("1.52"));
+    }
+
+    #[cfg(feature = "rnode-ble")]
+    #[test]
+    fn rnode_ble_runtime_status_refresh_updates_matching_interface_record() {
+        let daemon = RpcDaemon::test_instance();
+        let runtime_iface = AddressHash::new([0x23; 16]);
+        daemon.replace_interfaces(vec![InterfaceRecord {
+            kind: "lora".to_string(),
+            enabled: true,
+            host: None,
+            port: None,
+            name: Some("rnode-ble".to_string()),
+            settings: Some(json!({
+                "_runtime": {
+                    "iface": runtime_iface.to_string(),
+                    "startup_status": "spawned",
+                    "lora": {
+                        "rnode_status": {
+                            "online": false
+                        }
+                    }
+                }
+            })),
+        }]);
+        let status = std::sync::Arc::new(Mutex::new(serde_json::json!({
+            "endpoint": "ble://RNode 1234",
+            "bearer": "ble",
+            "baud_rate": null,
+            "probe_status": {
+                "detected": true,
+                "firmware_version": { "label": "1.52" },
+                "platform": "ESP32",
+                "mcu": "ESP32"
+            },
+            "radio_status": {
+                "radio_state": 1
+            },
+            "online": true
+        })));
+        let refresh = transport_startup::LoraRuntimeRefresh {
+            runtime_iface,
+            status: transport_startup::LoraRuntimeStatusSource::RnodeBle(
+                rns_transport::iface::rnode_ble::RnodeBleRuntimeStatusHandle::new(status),
+            ),
+        };
+
+        assert_eq!(refresh_lora_runtime_status_once(&daemon, &[refresh]), 1);
+        let result = daemon
+            .handle_rpc(RpcRequest { id: 92, method: "daemon_status_ex".to_string(), params: None })
+            .expect("daemon status")
+            .result
+            .expect("daemon status result");
+        let status = &result["interfaces"][0]["settings"]["_runtime"]["lora"]["rnode_status"];
+
+        assert_eq!(status["endpoint"].as_str(), Some("ble://RNode 1234"));
+        assert_eq!(status["bearer"].as_str(), Some("ble"));
+        assert!(status["baud_rate"].is_null());
+        assert_eq!(status["online"].as_bool(), Some(true));
+        assert_eq!(status["probe_status"]["detected"].as_bool(), Some(true));
     }
 }

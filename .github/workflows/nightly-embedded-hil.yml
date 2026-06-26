@@ -99,6 +99,10 @@ jobs:
           RNODE_TX_POWER: ${{ vars.HIL_RNODE_TX_POWER }}
           RNODE_BITRATE: ${{ vars.HIL_RNODE_BITRATE }}
           RNODE_COMMAND_TIMEOUT_MS: ${{ vars.HIL_RNODE_COMMAND_TIMEOUT_MS }}
+          RNODE_BLE_ADAPTER: ${{ vars.HIL_RNODE_BLE_ADAPTER }}
+          RNODE_BLE_SCAN_TIMEOUT_MS: ${{ vars.HIL_RNODE_BLE_SCAN_TIMEOUT_MS }}
+          RNODE_BLE_CONNECT_TIMEOUT_MS: ${{ vars.HIL_RNODE_BLE_CONNECT_TIMEOUT_MS }}
+          RNODE_BLE_MAX_WRITE_LEN: ${{ vars.HIL_RNODE_BLE_MAX_WRITE_LEN }}
           RNODE_TIMEOUT_SECS: ${{ vars.HIL_RNODE_TIMEOUT_SECS }}
         run: ./tools/scripts/rnode-prepared-host-smoke.sh
       - uses: actions/upload-artifact@v4

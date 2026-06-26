@@ -14,6 +14,10 @@ RNODE_CODING_RATE="${RNODE_CODING_RATE:-5}"
 RNODE_TX_POWER="${RNODE_TX_POWER:-17}"
 RNODE_BITRATE="${RNODE_BITRATE:-${RNODE_CONFIGURED_BITRATE:-1200}}"
 RNODE_COMMAND_TIMEOUT_MS="${RNODE_COMMAND_TIMEOUT_MS:-1500}"
+RNODE_BLE_ADAPTER="${RNODE_BLE_ADAPTER:-}"
+RNODE_BLE_SCAN_TIMEOUT_MS="${RNODE_BLE_SCAN_TIMEOUT_MS:-2000}"
+RNODE_BLE_CONNECT_TIMEOUT_MS="${RNODE_BLE_CONNECT_TIMEOUT_MS:-5000}"
+RNODE_BLE_MAX_WRITE_LEN="${RNODE_BLE_MAX_WRITE_LEN:-20}"
 TIMEOUT_SECS="${RNODE_TIMEOUT_SECS:-${TIMEOUT_SECS:-180}}"
 if [[ -z "$RNODE_BAUD_RATE" ]]; then
   RNODE_BAUD_RATE="115200"
@@ -72,7 +76,13 @@ from urllib.parse import urlparse
     log_path,
     rnstatus_path,
 ) = sys.argv[1:16]
-transport_kind = "tcp" if rnode_port.lower().startswith("tcp://") else "serial"
+port_lower = rnode_port.lower()
+if port_lower.startswith("tcp://"):
+    transport_kind = "tcp"
+elif port_lower.startswith("ble://"):
+    transport_kind = "ble"
+else:
+    transport_kind = "serial"
 expected_endpoint = rnode_port
 if transport_kind == "tcp":
     parsed = urlparse(rnode_port)
@@ -82,7 +92,7 @@ report = {
     "rnode_port": rnode_port,
     "transport_kind": transport_kind,
     "expected_endpoint": expected_endpoint,
-    "baud_rate": None if transport_kind == "tcp" else int(baud_rate),
+    "baud_rate": None if transport_kind in {"tcp", "ble"} else int(baud_rate),
     "expected_frequency_hz": int(frequency),
     "expected_bandwidth_hz": int(bandwidth),
     "expected_spreading_factor": int(spreading_factor),
@@ -159,17 +169,34 @@ fail() {
 }
 
 if [[ -z "$RNODE_PORT" ]]; then
-  fail "RNODE_PORT must name a serial device or tcp://host:port endpoint"
+  fail "RNODE_PORT must name a serial device, tcp://host:port endpoint, or ble://peripheral endpoint"
 fi
 
-if [[ "${RNODE_PORT,,}" == ble://* ]]; then
-  fail "RNODE_PORT ble:// is not supported by this smoke until BLE live status refresh is available"
-fi
-
-python3 - <<'PY' "$RNODE_BAUD_RATE" "$TIMEOUT_SECS" "$RNODE_FREQUENCY" "$RNODE_BANDWIDTH" "$RNODE_SPREADING_FACTOR" "$RNODE_CODING_RATE" "$RNODE_TX_POWER" "$RNODE_BITRATE" "$RNODE_COMMAND_TIMEOUT_MS" || fail "RNode numeric environment is invalid"
+python3 - <<'PY' "$RNODE_BAUD_RATE" "$TIMEOUT_SECS" "$RNODE_FREQUENCY" "$RNODE_BANDWIDTH" "$RNODE_SPREADING_FACTOR" "$RNODE_CODING_RATE" "$RNODE_TX_POWER" "$RNODE_BITRATE" "$RNODE_COMMAND_TIMEOUT_MS" "$RNODE_BLE_SCAN_TIMEOUT_MS" "$RNODE_BLE_CONNECT_TIMEOUT_MS" "$RNODE_BLE_MAX_WRITE_LEN" || fail "RNode numeric environment is invalid"
 import sys
-baud_rate, timeout_secs, frequency, bandwidth, spreading_factor, coding_rate, tx_power, bitrate, command_timeout_ms = (int(value) for value in sys.argv[1:10])
-if baud_rate <= 0 or timeout_secs <= 0 or bitrate <= 0 or command_timeout_ms <= 0:
+(
+    baud_rate,
+    timeout_secs,
+    frequency,
+    bandwidth,
+    spreading_factor,
+    coding_rate,
+    tx_power,
+    bitrate,
+    command_timeout_ms,
+    ble_scan_timeout_ms,
+    ble_connect_timeout_ms,
+    ble_max_write_len,
+) = (int(value) for value in sys.argv[1:13])
+if (
+    baud_rate <= 0
+    or timeout_secs <= 0
+    or bitrate <= 0
+    or command_timeout_ms <= 0
+    or ble_scan_timeout_ms <= 0
+    or ble_connect_timeout_ms <= 0
+    or ble_max_write_len <= 0
+):
     raise SystemExit(1)
 if not 137_000_000 <= frequency <= 3_000_000_000:
     raise SystemExit(1)
@@ -195,11 +222,14 @@ if not parsed.hostname or not parsed.port:
 with socket.create_connection((parsed.hostname, parsed.port), timeout=5):
     pass
 PY
+elif [[ "${RNODE_PORT,,}" == ble://* ]]; then
+  :
 elif [[ ! -e "$RNODE_PORT" ]]; then
   fail "RNode serial device ${RNODE_PORT} does not exist"
 fi
 
-python3 - <<'PY' "$CONFIG_PATH" "$RNODE_PORT" "$RNODE_BAUD_RATE" "$RNODE_REGION" "$RNODE_FREQUENCY" "$RNODE_BANDWIDTH" "$RNODE_SPREADING_FACTOR" "$RNODE_CODING_RATE" "$RNODE_TX_POWER" "$RNODE_BITRATE" "$RNODE_COMMAND_TIMEOUT_MS" || fail "failed to generate RNode config"
+python3 - <<'PY' "$CONFIG_PATH" "$RNODE_PORT" "$RNODE_BAUD_RATE" "$RNODE_REGION" "$RNODE_FREQUENCY" "$RNODE_BANDWIDTH" "$RNODE_SPREADING_FACTOR" "$RNODE_CODING_RATE" "$RNODE_TX_POWER" "$RNODE_BITRATE" "$RNODE_COMMAND_TIMEOUT_MS" "$RNODE_BLE_ADAPTER" "$RNODE_BLE_SCAN_TIMEOUT_MS" "$RNODE_BLE_CONNECT_TIMEOUT_MS" "$RNODE_BLE_MAX_WRITE_LEN" || fail "failed to generate RNode config"
+import json
 import pathlib
 import sys
 
@@ -215,36 +245,51 @@ import sys
     tx_power,
     bitrate,
     command_timeout_ms,
-) = sys.argv[1:12]
-lines = [
-    "interfaces = [",
-    "  {",
-    '    type = "RNodeInterface",',
-    "    enabled = true,",
-    '    name = "rnode-prepared-host",',
-    f'    port = "{port}",',
+    ble_adapter,
+    ble_scan_timeout_ms,
+    ble_connect_timeout_ms,
+    ble_max_write_len,
+) = sys.argv[1:16]
+fields = [
+    'type = "RNodeInterface"',
+    "enabled = true",
+    'name = "rnode-prepared-host"',
+    f"port = {json.dumps(port)}",
 ]
-if not port.lower().startswith("tcp://"):
-    lines.append(f"    baud_rate = {int(baud_rate)},")
-lines.extend(
+port_lower = port.lower()
+if not (port_lower.startswith("tcp://") or port_lower.startswith("ble://")):
+    fields.append(f"baud_rate = {int(baud_rate)}")
+if port_lower.startswith("ble://") and ble_adapter:
+    fields.append(f"adapter = {json.dumps(ble_adapter)}")
+fields.extend(
     [
-        f'    region = "{region}",',
-        f"    frequency = {int(frequency)},",
-        f"    bandwidth = {int(bandwidth)},",
-        f"    spreadingfactor = {int(spreading_factor)},",
-        f"    codingrate = {int(coding_rate)},",
-        f"    txpower = {int(tx_power)},",
-        f"    bitrate = {int(bitrate)},",
-        f"    command_timeout_ms = {int(command_timeout_ms)},",
-        f'    state_path = "{pathlib.Path(config_path).parent / "lora-state.json"}"',
-        "  }",
-        "]",
+        f"region = {json.dumps(region)}",
+        f"frequency = {int(frequency)}",
+        f"bandwidth = {int(bandwidth)}",
+        f"spreadingfactor = {int(spreading_factor)}",
+        f"codingrate = {int(coding_rate)}",
+        f"txpower = {int(tx_power)}",
+        f"bitrate = {int(bitrate)}",
+        f"command_timeout_ms = {int(command_timeout_ms)}",
+        f"scan_timeout_ms = {int(ble_scan_timeout_ms)}",
+        f"ble_connect_timeout_ms = {int(ble_connect_timeout_ms)}",
+        f"max_write_len = {int(ble_max_write_len)}",
+        f"state_path = {json.dumps(str(pathlib.Path(config_path).parent / 'lora-state.json'))}",
     ]
 )
+lines = [
+    "interfaces = [",
+    f"  {{ {', '.join(fields)} }}",
+    "]",
+]
 pathlib.Path(config_path).write_text("\n".join(lines) + "\n", encoding="utf-8")
 PY
 
-cargo build -p reticulumd --bin reticulumd --quiet
+if [[ "${RNODE_PORT,,}" == ble://* ]]; then
+  cargo build -p reticulumd --bin reticulumd --features rnode-ble --quiet
+else
+  cargo build -p reticulumd --bin reticulumd --quiet
+fi
 cargo build -p rns-tools --bin rnstatus-rs --quiet
 
 "${ROOT_DIR}/target/debug/reticulumd" \
@@ -276,7 +321,13 @@ from urllib.parse import urlparse
     coding_rate,
     tx_power,
 ) = sys.argv[1:9]
-transport_kind = "tcp" if rnode_port.lower().startswith("tcp://") else "serial"
+port_lower = rnode_port.lower()
+if port_lower.startswith("tcp://"):
+    transport_kind = "tcp"
+elif port_lower.startswith("ble://"):
+    transport_kind = "ble"
+else:
+    transport_kind = "serial"
 expected_endpoint = rnode_port
 if transport_kind == "tcp":
     parsed = urlparse(rnode_port)
@@ -305,6 +356,8 @@ if status.get("bearer") != transport_kind:
 if status.get("endpoint") != expected_endpoint:
     raise SystemExit(1)
 if transport_kind == "serial" and status.get("baud_rate") != int(baud_rate):
+    raise SystemExit(1)
+if transport_kind in {"tcp", "ble"} and status.get("baud_rate") is not None:
     raise SystemExit(1)
 probe = status.get("probe_status") or {}
 firmware = probe.get("firmware_version") or {}

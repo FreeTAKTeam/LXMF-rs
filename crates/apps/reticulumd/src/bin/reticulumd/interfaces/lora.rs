@@ -61,6 +61,10 @@ pub(crate) fn is_ble_rnode_port(value: &str) -> bool {
     value.trim().to_ascii_lowercase().starts_with("ble://")
 }
 
+fn is_rnode_profile(iface: &InterfaceConfig) -> bool {
+    iface.rnode_profile || iface.max_payload_bytes.is_some_and(|value| value > 255)
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct RnodeBleDaemonConfig {
     pub(crate) peripheral_id: String,
@@ -103,7 +107,7 @@ pub(crate) fn build_rnode_ble_config(
         .max_reconnect_backoff_ms
         .unwrap_or_else(|| reconnect_backoff_ms.max(5_000))
         .max(reconnect_backoff_ms);
-    let lora_config = if iface.rnode_profile {
+    let lora_config = if is_rnode_profile(iface) {
         build_rnode_lora_config(iface)?
     } else {
         build_lora_config(iface)?
@@ -169,7 +173,7 @@ pub(crate) fn build_adapter(iface: &InterfaceConfig) -> Result<LoraInterface, St
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .ok_or_else(|| "lora.device is required".to_string())?;
-    let config = if iface.rnode_profile {
+    let config = if is_rnode_profile(iface) {
         build_rnode_lora_config(iface)?
     } else {
         build_lora_config(iface)?
@@ -259,7 +263,11 @@ fn build_lora_config_with_validation(
     if let Some(max_payload_bytes) = iface.max_payload_bytes {
         config.max_payload_bytes = max_payload_bytes;
     }
-    validate(config)?;
+    if config.max_payload_bytes > 255 {
+        LoraConfig::validate_rnode(config)?;
+    } else {
+        validate(config)?;
+    }
     Ok(config)
 }
 

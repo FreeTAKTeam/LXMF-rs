@@ -152,6 +152,7 @@ async fn startup_lora(
         #[cfg(feature = "rnode-ble")]
         {
             let adapter = lora::build_native_rnode_ble_interface(iface, config);
+            let status_handle = adapter.runtime_status_handle();
             let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
             let rnode_iface = iface_manager.lock().await.spawn_as_with_mode(
                 adapter,
@@ -174,6 +175,23 @@ async fn startup_lora(
             );
             let runtime_iface = rnode_iface.to_string();
             mark_interface_startup_status(record, "spawned", None, Some(runtime_iface.as_str()));
+            if let Some(status_handle) = status_handle {
+                with_interface_runtime_metadata(record, |runtime| {
+                    runtime.insert(
+                        "lora".to_string(),
+                        serde_json::json!({
+                            "rnode_status": status_handle.to_json()
+                        }),
+                    );
+                });
+                return LoraStartupResult {
+                    started: true,
+                    refresh: Some(LoraRuntimeRefresh {
+                        runtime_iface: rnode_iface,
+                        status: LoraRuntimeStatusSource::RnodeBle(status_handle),
+                    }),
+                };
+            }
             return LoraStartupResult { started: true, refresh: None };
         }
     }
@@ -240,7 +258,9 @@ async fn startup_lora(
         started: true,
         refresh: Some(LoraRuntimeRefresh {
             runtime_iface: lora_iface,
-            status: rns_transport::iface::lora::LoraRuntimeStatusHandle::new(status_handle),
+            status: LoraRuntimeStatusSource::Lora(
+                rns_transport::iface::lora::LoraRuntimeStatusHandle::new(status_handle),
+            ),
         }),
     }
 }

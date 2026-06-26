@@ -131,6 +131,7 @@ pub struct NativeRnodeBleKissInterface {
     settings: NativeRnodeBleSettings,
     config: RnodeBleKissConfig,
     rnode_config: Option<LoraConfig>,
+    rnode_status: Option<Arc<Mutex<serde_json::Value>>>,
     startup_response_timeout: Duration,
     reconnect_backoff: Duration,
     max_reconnect_backoff: Duration,
@@ -150,6 +151,7 @@ impl NativeRnodeBleKissInterface {
             settings,
             config,
             rnode_config: None,
+            rnode_status: None,
             // TODO: startup_response_timeout should not exist. The device should send an
             //       explicit "ready" notification after completing startup, removing the
             //       need for a client-side deadline entirely. Consider raising a firmware
@@ -168,9 +170,19 @@ impl NativeRnodeBleKissInterface {
         rnode_config: LoraConfig,
         startup_response_timeout: Duration,
     ) -> Self {
+        let endpoint = format!("ble://{}", self.settings.peripheral_id);
+        self.rnode_status = Some(Arc::new(Mutex::new(rnode_ble_initial_runtime_status_json(
+            rnode_config,
+            endpoint.as_str(),
+        ))));
         self.rnode_config = Some(rnode_config);
         self.startup_response_timeout = startup_response_timeout;
         self
+    }
+
+    #[must_use]
+    pub fn runtime_status_handle(&self) -> Option<RnodeBleRuntimeStatusHandle> {
+        self.rnode_status.as_ref().map(|inner| RnodeBleRuntimeStatusHandle::new(inner.clone()))
     }
 
     #[must_use]
@@ -206,6 +218,7 @@ impl NativeRnodeBleKissInterface {
             settings,
             config,
             rnode_config,
+            rnode_status,
             startup_response_timeout,
             reconnect_backoff,
             max_reconnect_backoff,
@@ -217,6 +230,7 @@ impl NativeRnodeBleKissInterface {
                 guard.settings.clone(),
                 guard.config.clone(),
                 guard.rnode_config,
+                guard.rnode_status.clone(),
                 guard.startup_response_timeout,
                 guard.reconnect_backoff,
                 guard.max_reconnect_backoff,
@@ -271,6 +285,12 @@ impl NativeRnodeBleKissInterface {
             let mut reconnect_needed = false;
             let mut command_monitor = rnode_config
                 .map(|config| RnodeBleCommandMonitor::new(config, startup_response_timeout));
+            if let (Some(monitor), Some(status)) =
+                (command_monitor.as_ref(), rnode_status.as_ref())
+            {
+                *status.lock().expect("RNode BLE status mutex poisoned") =
+                    monitor.runtime_status_json(format!("ble://{}", settings.peripheral_id).as_str());
+            }
             let mut radio_config_sent = command_monitor.is_none();
             log::info!(
                 "RNode BLE session ready: command_monitor={} radio_config_sent={} iface={}",
@@ -375,6 +395,12 @@ impl NativeRnodeBleKissInterface {
                                 reconnect_needed = true;
                                 break;
                             }
+                            if let Some(status) = rnode_status.as_ref() {
+                                *status.lock().expect("RNode BLE status mutex poisoned") = monitor
+                                    .runtime_status_json(
+                                        format!("ble://{}", settings.peripheral_id).as_str(),
+                                    );
+                            }
                             if !radio_config_sent && monitor.is_detected() {
                                 log::info!(
                                     "RNode BLE detected (CMD_DETECT response received), \
@@ -446,6 +472,10 @@ impl NativeRnodeBleKissInterface {
                         );
                         reconnect_needed = true;
                         break;
+                    }
+                    if let Some(status) = rnode_status.as_ref() {
+                        *status.lock().expect("RNode BLE status mutex poisoned") = monitor
+                            .runtime_status_json(format!("ble://{}", settings.peripheral_id).as_str());
                     }
                 }
             }

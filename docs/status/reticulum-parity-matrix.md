@@ -70,11 +70,11 @@ placeholders:
 - AutoInterface discovery, authenticated peering, peer lifecycle, duplicate
   suppression, multicast announcements, data sockets, transport bridging, and
   live carrier-runtime status reporting.
-- Serial and TCP/Wi-Fi LoRa/RNode with startup probes, configuration
-  validation, telemetry, flow control, teardown, and live daemon/RPC
-  `rnode_status` refresh plus compact `rnstatus-rs` human summaries for probe
-  and radio state, with an opt-in prepared-host smoke harness for serial or
-  TCP/Wi-Fi RNode devices.
+- Serial, TCP/Wi-Fi, and feature-gated BLE LoRa/RNode with startup probes,
+  configuration validation, telemetry, flow control, teardown, and live
+  daemon/RPC `rnode_status` refresh plus compact `rnstatus-rs` human summaries
+  for probe and radio state, with an opt-in prepared-host smoke harness for
+  serial, TCP/Wi-Fi, or BLE RNode devices.
 - Shared serial/TCP RNodeMulti baseline with nested vport subinterfaces,
   `CMD_SEL_INT` KISS vport selection, direct routing to virtual child
   interfaces, broadcast fanout only to outgoing children, and startup probe
@@ -120,11 +120,11 @@ and hashed key-file naming, including old-format fallback when an existing
 Python key is present. `rnstatus-rs` human output summarizes the live I2P
 tunnel status for operators. Prepared-host production evidence is still
 pending.
-Ordinary serial/TCP `RNodeInterface` now refreshes transport-side probe/radio
+Ordinary serial/TCP and feature-gated BLE `RNodeInterface` now refresh transport-side probe/radio
 state into daemon/RPC `_runtime.lora.rnode_status`, and `rnstatus-rs` renders a
 compact human summary for operators. An opt-in prepared-host smoke harness now
-records serial/TCP RNode lifecycle evidence under `target/rnode-hil/`; BLE
-live-status refresh and BLE prepared-host evidence remain pending.
+records serial/TCP/BLE RNode lifecycle evidence under `target/rnode-hil/`;
+broader BLE hardware evidence remains pending.
 `RNodeMultiInterface` is tracked separately as an in-progress family: the
 shared serial/TCP vport routing slice exists and startup validates detect,
 firmware `>= 1.74`, platform, MCU, `CMD_INTERFACES`, and hardware-reported
@@ -145,7 +145,7 @@ hardware evidence remain pending.
 
 1. Close remaining announce/path/discovery edge-policy differences.
 2. Complete resolver/bootstrap behavior.
-3. Capture prepared-host BLE/RNode lifecycle evidence.
+3. Capture broader prepared-host BLE/RNode lifecycle evidence.
 4. Capture I2P prepared-host evidence, or explicitly document its product
    boundary.
 5. Complete or explicitly defer RNodeMulti prepared-host hardware validation

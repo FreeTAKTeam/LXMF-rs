@@ -347,6 +347,48 @@ fn lora_builder_supports_vanilla_reticulum_rnode_profile() {
 }
 
 #[test]
+fn lora_builder_preserves_generated_rnode_smoke_profile() {
+    let cfg = reticulum_daemon::config::DaemonConfig::from_toml(
+        r#"
+interfaces = [
+  { type = "RNodeInterface", enabled = true, name = "rnode-prepared-host", port = "target/rnode-hil-dry-run/not-a-serial-device", baud_rate = 115200, region = "US915", frequency = 915000000, bandwidth = 125000, spreadingfactor = 9, codingrate = 5, txpower = 17, bitrate = 1200, command_timeout_ms = 1500, scan_timeout_ms = 2000, ble_connect_timeout_ms = 5000, max_write_len = 20, state_path = "target/rnode-hil-dry-run/run.L1l6T5/lora-state.json" }
+]
+"#,
+    )
+    .expect("parse generated RNode smoke config");
+    let iface = &cfg.interfaces[0];
+
+    assert!(iface.rnode_profile);
+    let adapter = lora::build_adapter(iface).expect("build generated RNode smoke adapter");
+
+    assert_eq!(adapter.baud_rate(), Some(115_200));
+    assert_eq!(adapter.config().max_payload_bytes, 508);
+}
+
+#[test]
+fn lora_builder_treats_python_rnode_mtu_as_profile_signal() {
+    let iface = InterfaceConfig {
+        kind: "lora".to_string(),
+        enabled: Some(true),
+        region: Some("US915".to_string()),
+        state_path: Some("/tmp/lora-state.json".to_string()),
+        device: Some("/dev/ttyACM0".to_string()),
+        baud_rate: Some(115_200),
+        frequency_hz: Some(915_000_000),
+        bandwidth_hz: Some(125_000),
+        spreading_factor: Some(9),
+        coding_rate: Some("5".to_string()),
+        tx_power_dbm: Some(17),
+        max_payload_bytes: Some(508),
+        ..InterfaceConfig::default()
+    };
+
+    let adapter = lora::build_adapter(&iface).expect("build RNode adapter from Python MTU");
+
+    assert_eq!(adapter.config().max_payload_bytes, 508);
+}
+
+#[test]
 fn lora_builder_supports_python_high_bandwidth_rnode_config() {
     let iface = InterfaceConfig {
         kind: "lora".to_string(),
