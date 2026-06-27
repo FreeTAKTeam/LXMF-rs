@@ -40,7 +40,9 @@ HDLC. When a valid discovery response arrives, the runtime sends the WDCL
 connect handshake. Endpoint-alive and endpoint-via events register virtual
 unicast child interfaces. Endpoint alive, via, and packet activity refreshes
 the child lifecycle timestamp; idle endpoint children are stopped and removed
-from runtime status, and stream shutdown clears any remaining endpoint children.
+from runtime status. Stream shutdown and software cancellation/stop mark the
+runtime link state `closed`, clear the WDCL-connected flag, and clear any
+remaining endpoint children.
 
 Inbound WDCL endpoint packets are deserialized as Reticulum packets and
 delivered to the matching virtual child. Direct outbound sends to a virtual

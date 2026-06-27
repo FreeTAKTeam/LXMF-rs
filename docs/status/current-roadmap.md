@@ -136,8 +136,10 @@ The project is best described by capability level:
   refreshed `_runtime.weave.status` metadata with switch, endpoint, log-event,
   byte/frame, target-scoped remote display-frame, and CPU/task/memory
   device-stat fields. Display-frame completion is based on received byte
-  coverage rather than highest observed offset. An opt-in prepared-host smoke
-  harness records connected serial evidence under `target/weave-hil/`.
+  coverage rather than highest observed offset, and software cancellation/stop
+  now marks the runtime link closed while clearing WDCL connection and endpoint
+  state. An opt-in prepared-host smoke harness records connected serial
+  evidence under `target/weave-hil/`.
 - I2PInterface has a transport-side SAM slice: configured peers get virtual
   unicast children, transient SAM stream sessions, name lookup, HDLC packet
   framing, direct peer sends, broadcast fanout, and transient connectable

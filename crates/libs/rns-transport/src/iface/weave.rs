@@ -223,6 +223,11 @@ impl WeaveInterface {
             .await;
         }
 
+        update_weave_status(&runtime_status, |status| {
+            status.link_state = WeaveLinkState::Closed;
+            status.wdcl_connected = false;
+            status.last_error = None;
+        });
         iface_stop.cancel();
     }
 }
@@ -754,12 +759,19 @@ pub(crate) async fn run_weave_stream<IO>(
     let mut read_buffer = vec![0_u8; READ_CAPACITY.max(options.mtu)];
     let mut tx_buffer = vec![0_u8; options.mtu];
     let mut cleanup_interval = tokio::time::interval(WEAVE_ENDPOINT_CLEANUP_INTERVAL);
+    let mut stopped_by_control = false;
 
     loop {
         let mut tx_channel = tx_channel.lock().await;
         tokio::select! {
-            _ = cancel.cancelled() => break,
-            _ = iface_stop.cancelled() => break,
+            _ = cancel.cancelled() => {
+                stopped_by_control = true;
+                break;
+            }
+            _ = iface_stop.cancelled() => {
+                stopped_by_control = true;
+                break;
+            }
             _ = cleanup_interval.tick() => {
                 gc_weave_endpoints(&options, state.clone(), Instant::now()).await;
             }
@@ -850,6 +862,13 @@ pub(crate) async fn run_weave_stream<IO>(
         }
     }
     cleanup_weave_endpoints(&options, state).await;
+    if stopped_by_control {
+        update_weave_status(&options.runtime_status, |status| {
+            status.link_state = WeaveLinkState::Closed;
+            status.wdcl_connected = false;
+            status.last_error = None;
+        });
+    }
 }
 
 async fn process_weave_frame<IO>(
@@ -1470,6 +1489,60 @@ mod tests {
         let manager = manager.lock().await;
         assert_eq!(manager.role(&first_address), None);
         assert_eq!(manager.role(&second_address), None);
+    }
+
+    #[tokio::test]
+    async fn weave_stream_cancel_marks_runtime_closed_without_hardware() {
+        let (options, manager, _parent) = test_options().await;
+        let local_switch = switch_id_for_identity(&options.switch_identity);
+        let runtime_status = options.runtime_status.clone();
+        let endpoint = [0x47_u8; ENDPOINT_ID_LEN];
+        let (stream, mut peer) = duplex(8192);
+        let (rx_tx, _rx_rx) = tokio::sync::mpsc::channel(4);
+        let (_tx_tx, tx_rx) = tokio::sync::mpsc::channel(4);
+        let cancel = CancellationToken::new();
+        let task = tokio::spawn(run_weave_stream(
+            stream,
+            options,
+            cancel.clone(),
+            CancellationToken::new(),
+            rx_tx,
+            Arc::new(tokio::sync::Mutex::new(tx_rx)),
+        ));
+
+        let mut drain = vec![0_u8; 128];
+        let _ = peer.read(&mut drain).await.expect("discover frame");
+        peer.write_all(&log_frame(local_switch, ET_PROTO_WEAVE_EP_ALIVE, &endpoint))
+            .await
+            .expect("alive event");
+        let endpoint_iface = tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                let endpoint_iface = {
+                    let status = runtime_status.lock().expect("weave runtime status");
+                    status.endpoints.get(&endpoint).map(|endpoint| endpoint.iface)
+                };
+                if let Some(endpoint_iface) = endpoint_iface {
+                    break endpoint_iface;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("endpoint registered");
+        assert_eq!(manager.lock().await.role(&endpoint_iface), Some(IfaceRole::VirtualUnicast));
+
+        cancel.cancel();
+        tokio::time::timeout(Duration::from_secs(1), task)
+            .await
+            .expect("weave stream shutdown timeout")
+            .expect("weave stream task");
+
+        let status = runtime_status.lock().expect("weave runtime status").clone();
+        assert_eq!(status.link_state, WeaveLinkState::Closed);
+        assert!(!status.wdcl_connected);
+        assert!(status.last_error.is_none());
+        assert!(status.endpoints.is_empty());
+        assert_eq!(manager.lock().await.role(&endpoint_iface), None);
     }
 
     #[tokio::test]
