@@ -821,9 +821,10 @@ mod tests {
             status.mark_incoming_connected(format!("closed-{index}").as_str(), iface);
             status.mark_incoming_closed(iface);
         }
+        let status_handle = status.clone();
         let refresh = transport_startup::I2pRuntimeRefresh { runtime_iface, status };
 
-        assert_eq!(refresh_i2p_runtime_status_once(&daemon, &[refresh]), 1);
+        assert_eq!(refresh_i2p_runtime_status_once(&daemon, std::slice::from_ref(&refresh)), 1);
         let result = daemon
             .handle_rpc(RpcRequest { id: 88, method: "daemon_status_ex".to_string(), params: None })
             .expect("daemon status")
@@ -861,6 +862,18 @@ mod tests {
             })
             .count();
         assert_eq!(closed_incoming_count, 16);
+
+        status_handle.mark_accept_closed();
+        assert_eq!(refresh_i2p_runtime_status_once(&daemon, std::slice::from_ref(&refresh)), 1);
+        let result = daemon
+            .handle_rpc(RpcRequest { id: 89, method: "daemon_status_ex".to_string(), params: None })
+            .expect("daemon status after accept close")
+            .result
+            .expect("daemon status result after accept close");
+        let tunnel_status = &result["interfaces"][0]["settings"]["_runtime"]["i2p"]
+            ["tunnel_status"];
+        assert_eq!(tunnel_status["accept_state"].as_str(), Some("closed"));
+        assert!(tunnel_status["last_accept_error"].is_null());
     }
 
     #[test]

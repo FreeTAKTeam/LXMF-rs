@@ -178,6 +178,10 @@ impl I2pRuntimeStatusHandle {
         self.inner.lock().expect("i2p runtime status mutex poisoned").mark_accept_listening();
     }
 
+    pub fn mark_accept_closed(&self) {
+        self.inner.lock().expect("i2p runtime status mutex poisoned").mark_accept_closed();
+    }
+
     pub fn mark_outbound_connected(&self, peer: &str, iface: AddressHash) {
         self.inner
             .lock()
@@ -312,6 +316,11 @@ impl I2pRuntimeStatus {
         self.accept_state = I2pTunnelState::Reconnecting;
         self.accept_reconnect_attempts = self.accept_reconnect_attempts.saturating_add(1);
         self.last_accept_error = Some(error);
+    }
+
+    pub fn mark_accept_closed(&mut self) {
+        self.accept_state = I2pTunnelState::Closed;
+        self.last_accept_error = None;
     }
 
     pub(crate) fn apply_peer_event(&mut self, key: &str, event: &HdlcStreamEvent) {
@@ -877,6 +886,7 @@ async fn run_i2p_accept_loop(
         )
         .await;
     }
+    runtime_status.lock().expect("i2p runtime status mutex poisoned").mark_accept_closed();
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1853,11 +1863,12 @@ mod tests {
             loop {
                 let cleaned = {
                     let status = runtime_status.lock().expect("i2p runtime status");
-                    status.peers.values().any(|peer| {
-                        peer.peer == "incoming-destination"
-                            && peer.direction == "incoming"
-                            && peer.state == I2pTunnelState::Closed
-                    })
+                    status.accept_state == I2pTunnelState::Closed
+                        && status.peers.values().any(|peer| {
+                            peer.peer == "incoming-destination"
+                                && peer.direction == "incoming"
+                                && peer.state == I2pTunnelState::Closed
+                        })
                 };
                 if cleaned {
                     break;
