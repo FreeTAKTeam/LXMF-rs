@@ -120,7 +120,8 @@ children are removed from the interface manager, their route entries are
 cleared, and runtime peer rows are marked `closed`.
 `rnstatus-rs` human output summarizes the same tunnel status with the SAM
 endpoint, accept-loop state, peer count, connected/stale/reconnecting peer
-counts, and the latest accept-loop error when present.
+counts, outbound/incoming/closed row counts, aggregate tunnel bytes, and the
+latest accept-loop error when present.
 
 Current states are `configured`, `connecting`, `connected`, `listening`,
 `reconnecting`, `stale`, and `closed`.

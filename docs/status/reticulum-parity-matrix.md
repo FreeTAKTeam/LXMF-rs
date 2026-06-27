@@ -203,7 +203,8 @@ and hashed key-file naming, including old-format fallback when an existing
 Python key is present. Missing explicit SAM host/port config now uses Python's
 `I2P_SAM_ADDRESS` environment default when it is set to `host:port`.
 `rnstatus-rs` human output summarizes the live I2P tunnel status for
-operators. Prepared-host production evidence is still pending.
+operators, including outbound, incoming, closed, and aggregate byte counters.
+Prepared-host production evidence is still pending.
 Ordinary serial/TCP and feature-gated BLE `RNodeInterface` now refresh transport-side probe/radio
 state into daemon/RPC `_runtime.lora.rnode_status`, and `rnstatus-rs` renders a
 compact human summary for operators. An opt-in prepared-host smoke harness now

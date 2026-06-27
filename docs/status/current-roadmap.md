@@ -166,8 +166,9 @@ The project is best described by capability level:
   drained during restart, removal, or runtime shutdown; remaining follow-up is
   broader prepared-host interface churn evidence.
 - I2P transport-side tunnel watchdog/status bookkeeping is refreshed into
-  daemon/RPC interface status; prepared-host production evidence remains
-  pending.
+  daemon/RPC interface status, and `rnstatus-rs` now summarizes outbound,
+  incoming, closed, and aggregate byte counters for the tunnel rows;
+  prepared-host production evidence remains pending.
 - `rnstatus-rs` now provides a local daemon status utility over the existing
   RPC status surface, including JSON output plus human interface runtime
   startup state and propagation peer state.

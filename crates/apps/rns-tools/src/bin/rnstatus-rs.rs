@@ -224,6 +224,11 @@ fn i2p_runtime_summary(status: &Value) -> Option<String> {
     let connected = count_rows_with_str(peers, "state", "connected");
     let stale = count_rows_with_str(peers, "state", "stale");
     let reconnecting = count_rows_with_str(peers, "state", "reconnecting");
+    let closed = count_rows_with_str(peers, "state", "closed");
+    let outbound = count_rows_with_str(peers, "direction", "outbound");
+    let incoming = count_rows_with_str(peers, "direction", "incoming");
+    let bytes_rx = sum_rows_u64(peers, "bytes_rx");
+    let bytes_tx = sum_rows_u64(peers, "bytes_tx");
     let mut summary = format!(
         "i2p sam={} accept={} peers={peer_count}",
         value_str(status, "sam_endpoint"),
@@ -232,6 +237,11 @@ fn i2p_runtime_summary(status: &Value) -> Option<String> {
     append_count(&mut summary, "connected", connected);
     append_count(&mut summary, "stale", stale);
     append_count(&mut summary, "reconnecting", reconnecting);
+    append_count(&mut summary, "closed", closed);
+    append_count(&mut summary, "outbound", outbound);
+    append_count(&mut summary, "incoming", incoming);
+    append_nonzero_u64(&mut summary, "rx", bytes_rx);
+    append_nonzero_u64(&mut summary, "tx", bytes_tx);
     append_optional_str(&mut summary, "err", status.get("last_accept_error"));
     Some(summary)
 }
@@ -340,7 +350,17 @@ fn count_rows_with_str(rows: Option<&Vec<Value>>, key: &str, expected: &str) -> 
     })
 }
 
+fn sum_rows_u64(rows: Option<&Vec<Value>>, key: &str) -> u64 {
+    rows.map_or(0, |rows| rows.iter().filter_map(|row| row.get(key).and_then(Value::as_u64)).sum())
+}
+
 fn append_count(summary: &mut String, label: &str, value: usize) {
+    if value > 0 {
+        summary.push_str(&format!(" {label}={value}"));
+    }
+}
+
+fn append_nonzero_u64(summary: &mut String, label: &str, value: u64) {
     if value > 0 {
         summary.push_str(&format!(" {label}={value}"));
     }
@@ -418,8 +438,24 @@ mod tests {
                                     "configured_peer_count": 2,
                                     "last_accept_error": null,
                                     "peers": [
-                                        { "state": "connected" },
-                                        { "state": "stale" }
+                                        {
+                                            "direction": "outbound",
+                                            "state": "connected",
+                                            "bytes_rx": 10,
+                                            "bytes_tx": 20
+                                        },
+                                        {
+                                            "direction": "incoming",
+                                            "state": "stale",
+                                            "bytes_rx": 30,
+                                            "bytes_tx": 40
+                                        },
+                                        {
+                                            "direction": "incoming",
+                                            "state": "closed",
+                                            "bytes_rx": 5,
+                                            "bytes_tx": 0
+                                        }
                                     ]
                                 }
                             }
@@ -530,9 +566,14 @@ mod tests {
         write_human_status(&mut output, &status).expect("write status");
 
         let output = String::from_utf8(output).expect("utf8");
-        assert!(output.contains("i2p sam=127.0.0.1:7656 accept=listening peers=2"));
+        assert!(output.contains("i2p sam=127.0.0.1:7656 accept=listening peers=3"));
         assert!(output.contains("connected=1"));
         assert!(output.contains("stale=1"));
+        assert!(output.contains("closed=1"));
+        assert!(output.contains("outbound=1"));
+        assert!(output.contains("incoming=2"));
+        assert!(output.contains("rx=45"));
+        assert!(output.contains("tx=60"));
         assert!(output.contains("weave link=connected endpoints=2 wdcl=true"));
         assert!(output.contains("display=128x64/true"));
         assert!(output.contains("cpu=42"));

@@ -25,7 +25,7 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
                 "identity_hash": "0123456789abcdef0123456789abcdef",
                 "running": true,
                 "peer_count": 2,
-                "interface_count": 1,
+                "interface_count": 2,
                 "propagation": {
                     "enabled": true,
                     "selected_node": "cafebabe",
@@ -34,19 +34,53 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
                     "target_cost": 8,
                     "from_static_only": false
                 },
-                "interfaces": [{
-                    "name": "field-uplink",
-                    "type": "tcp_server",
-                    "enabled": true,
-                    "host": "0.0.0.0",
-                    "port": 4242,
-                    "settings": {
-                        "_runtime": {
-                            "startup_status": "failed",
-                            "startup_error": "bind denied"
+                "interfaces": [
+                    {
+                        "name": "field-uplink",
+                        "type": "tcp_server",
+                        "enabled": true,
+                        "host": "0.0.0.0",
+                        "port": 4242,
+                        "settings": {
+                            "_runtime": {
+                                "startup_status": "failed",
+                                "startup_error": "bind denied"
+                            }
+                        }
+                    },
+                    {
+                        "name": "i2p-main",
+                        "type": "i2p",
+                        "enabled": true,
+                        "settings": {
+                            "_runtime": {
+                                "startup_status": "spawned",
+                                "i2p": {
+                                    "tunnel_status": {
+                                        "sam_endpoint": "127.0.0.1:7656",
+                                        "accept_state": "listening",
+                                        "configured_peer_count": 1,
+                                        "last_accept_error": null,
+                                        "peers": [
+                                            {
+                                                "direction": "outbound",
+                                                "state": "connected",
+                                                "bytes_rx": 3,
+                                                "bytes_tx": 7
+                                            },
+                                            {
+                                                "direction": "incoming",
+                                                "state": "closed",
+                                                "bytes_rx": 11,
+                                                "bytes_tx": 0
+                                            }
+                                        ]
+                                    }
+                                }
+                            }
                         }
                     }
-                }]
+                ]
             })),
             error: None,
         };
@@ -88,7 +122,7 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
                 "identity_hash": "0123456789abcdef0123456789abcdef",
                 "running": true,
                 "peer_count": 2,
-                "interface_count": 1,
+                "interface_count": 2,
                 "propagation": {
                     "enabled": true,
                     "selected_node": "cafebabe",
@@ -97,19 +131,53 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
                     "target_cost": 8,
                     "from_static_only": false
                 },
-                "interfaces": [{
-                    "name": "field-uplink",
-                    "type": "tcp_server",
-                    "enabled": true,
-                    "host": "0.0.0.0",
-                    "port": 4242,
-                    "settings": {
-                        "_runtime": {
-                            "startup_status": "failed",
-                            "startup_error": "bind denied"
+                "interfaces": [
+                    {
+                        "name": "field-uplink",
+                        "type": "tcp_server",
+                        "enabled": true,
+                        "host": "0.0.0.0",
+                        "port": 4242,
+                        "settings": {
+                            "_runtime": {
+                                "startup_status": "failed",
+                                "startup_error": "bind denied"
+                            }
+                        }
+                    },
+                    {
+                        "name": "i2p-main",
+                        "type": "i2p",
+                        "enabled": true,
+                        "settings": {
+                            "_runtime": {
+                                "startup_status": "spawned",
+                                "i2p": {
+                                    "tunnel_status": {
+                                        "sam_endpoint": "127.0.0.1:7656",
+                                        "accept_state": "listening",
+                                        "configured_peer_count": 1,
+                                        "last_accept_error": null,
+                                        "peers": [
+                                            {
+                                                "direction": "outbound",
+                                                "state": "connected",
+                                                "bytes_rx": 3,
+                                                "bytes_tx": 7
+                                            },
+                                            {
+                                                "direction": "incoming",
+                                                "state": "closed",
+                                                "bytes_rx": 11,
+                                                "bytes_tx": 0
+                                            }
+                                        ]
+                                    }
+                                }
+                            }
                         }
                     }
-                }]
+                ]
             })),
             error: None,
         };
@@ -131,6 +199,14 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
     assert!(stdout.contains("tcp_server"), "stdout: {stdout}");
     assert!(stdout.contains("failed"), "stdout: {stdout}");
     assert!(stdout.contains("bind denied"), "stdout: {stdout}");
+    assert!(stdout.contains("i2p-main"), "stdout: {stdout}");
+    assert!(stdout.contains("i2p sam=127.0.0.1:7656 accept=listening peers=2"), "stdout: {stdout}");
+    assert!(stdout.contains("connected=1"), "stdout: {stdout}");
+    assert!(stdout.contains("closed=1"), "stdout: {stdout}");
+    assert!(stdout.contains("outbound=1"), "stdout: {stdout}");
+    assert!(stdout.contains("incoming=1"), "stdout: {stdout}");
+    assert!(stdout.contains("rx=14"), "stdout: {stdout}");
+    assert!(stdout.contains("tx=7"), "stdout: {stdout}");
     assert!(stdout.contains("Propagation: enabled=true"), "stdout: {stdout}");
     assert!(stdout.contains("peers=2"), "stdout: {stdout}");
     assert!(stdout.contains("selected=cafebabe"), "stdout: {stdout}");
