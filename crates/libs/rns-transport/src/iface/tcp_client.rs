@@ -172,6 +172,177 @@ impl Default for HdlcStreamRuntime {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TcpRuntimeStatus {
+    pub endpoint: String,
+    pub mtu: usize,
+    pub stream_state: String,
+    pub reconnect_attempts: u64,
+    pub liveness_enabled: bool,
+    pub forced_bitrate_bps: Option<u64>,
+    pub bytes_rx: u64,
+    pub bytes_tx: u64,
+    pub keepalives_sent: u64,
+    pub stale_events: u64,
+    pub read_timeouts: u64,
+    pub closed_events: u64,
+    pub error_events: u64,
+    pub last_error: Option<String>,
+}
+
+impl TcpRuntimeStatus {
+    #[must_use]
+    pub fn new(endpoint: String, mtu: usize) -> Self {
+        Self {
+            endpoint,
+            mtu,
+            stream_state: "configured".to_string(),
+            reconnect_attempts: 0,
+            liveness_enabled: false,
+            forced_bitrate_bps: None,
+            bytes_rx: 0,
+            bytes_tx: 0,
+            keepalives_sent: 0,
+            stale_events: 0,
+            read_timeouts: 0,
+            closed_events: 0,
+            error_events: 0,
+            last_error: None,
+        }
+    }
+
+    fn mark_connecting(&mut self) {
+        self.stream_state = "connecting".to_string();
+        self.last_error = None;
+    }
+
+    fn mark_connected(&mut self) {
+        self.stream_state = "connected".to_string();
+        self.last_error = None;
+    }
+
+    fn mark_reconnecting(&mut self, error: String) {
+        self.stream_state = "reconnecting".to_string();
+        self.reconnect_attempts = self.reconnect_attempts.saturating_add(1);
+        self.last_error = Some(error);
+    }
+
+    fn mark_closed(&mut self) {
+        self.stream_state = "closed".to_string();
+    }
+
+    fn apply_event(&mut self, event: HdlcStreamEvent) {
+        match event {
+            HdlcStreamEvent::Read { bytes } => {
+                self.bytes_rx = self.bytes_rx.saturating_add(bytes as u64);
+                if self.stream_state == "stale" {
+                    self.stream_state = "connected".to_string();
+                }
+            }
+            HdlcStreamEvent::Write { bytes } => {
+                self.bytes_tx = self.bytes_tx.saturating_add(bytes as u64);
+            }
+            HdlcStreamEvent::Keepalive => {
+                self.keepalives_sent = self.keepalives_sent.saturating_add(1);
+            }
+            HdlcStreamEvent::Active => {
+                self.stream_state = "connected".to_string();
+            }
+            HdlcStreamEvent::Stale => {
+                self.stream_state = "stale".to_string();
+                self.stale_events = self.stale_events.saturating_add(1);
+            }
+            HdlcStreamEvent::ReadTimeout => {
+                self.stream_state = "reconnecting".to_string();
+                self.read_timeouts = self.read_timeouts.saturating_add(1);
+                self.last_error = Some("tcp stream read timeout".to_string());
+            }
+            HdlcStreamEvent::Closed => {
+                self.stream_state = "closed".to_string();
+                self.closed_events = self.closed_events.saturating_add(1);
+            }
+            HdlcStreamEvent::Error { message } => {
+                self.stream_state = "reconnecting".to_string();
+                self.error_events = self.error_events.saturating_add(1);
+                self.last_error = Some(message);
+            }
+        }
+    }
+
+    #[must_use]
+    pub fn to_json(&self) -> serde_json::Value {
+        let mut root = serde_json::Map::new();
+        root.insert("endpoint".to_string(), serde_json::Value::String(self.endpoint.clone()));
+        root.insert("mtu".to_string(), serde_json::Value::Number((self.mtu as u64).into()));
+        root.insert(
+            "stream_state".to_string(),
+            serde_json::Value::String(self.stream_state.clone()),
+        );
+        root.insert(
+            "reconnect_attempts".to_string(),
+            serde_json::Value::Number(self.reconnect_attempts.into()),
+        );
+        root.insert("liveness_enabled".to_string(), serde_json::Value::Bool(self.liveness_enabled));
+        root.insert(
+            "forced_bitrate_bps".to_string(),
+            self.forced_bitrate_bps
+                .map(|value| serde_json::Value::Number(value.into()))
+                .unwrap_or(serde_json::Value::Null),
+        );
+        root.insert("bytes_rx".to_string(), serde_json::Value::Number(self.bytes_rx.into()));
+        root.insert("bytes_tx".to_string(), serde_json::Value::Number(self.bytes_tx.into()));
+        root.insert(
+            "keepalives_sent".to_string(),
+            serde_json::Value::Number(self.keepalives_sent.into()),
+        );
+        root.insert(
+            "stale_events".to_string(),
+            serde_json::Value::Number(self.stale_events.into()),
+        );
+        root.insert(
+            "read_timeouts".to_string(),
+            serde_json::Value::Number(self.read_timeouts.into()),
+        );
+        root.insert(
+            "closed_events".to_string(),
+            serde_json::Value::Number(self.closed_events.into()),
+        );
+        root.insert(
+            "error_events".to_string(),
+            serde_json::Value::Number(self.error_events.into()),
+        );
+        root.insert(
+            "last_error".to_string(),
+            self.last_error
+                .as_ref()
+                .map(|err| serde_json::Value::String(err.clone()))
+                .unwrap_or(serde_json::Value::Null),
+        );
+        serde_json::Value::Object(root)
+    }
+}
+
+#[derive(Clone)]
+pub struct TcpRuntimeStatusHandle {
+    inner: Arc<std::sync::Mutex<TcpRuntimeStatus>>,
+}
+
+impl TcpRuntimeStatusHandle {
+    #[must_use]
+    pub fn to_json(&self) -> serde_json::Value {
+        self.inner.lock().expect("tcp runtime status mutex poisoned").to_json()
+    }
+}
+
+async fn track_tcp_stream_events(
+    runtime_status: Arc<std::sync::Mutex<TcpRuntimeStatus>>,
+    mut event_rx: tokio::sync::mpsc::UnboundedReceiver<HdlcStreamEvent>,
+) {
+    while let Some(event) = event_rx.recv().await {
+        runtime_status.lock().expect("tcp runtime status mutex poisoned").apply_event(event);
+    }
+}
+
 fn tx_diag_enabled() -> bool {
     static ENABLED: OnceLock<bool> = OnceLock::new();
     *ENABLED.get_or_init(|| {
@@ -558,6 +729,7 @@ pub struct TcpClient {
     connect_timeout: Duration,
     max_reconnect_tries: Option<u64>,
     prefer_ipv6: bool,
+    runtime_status: Arc<std::sync::Mutex<TcpRuntimeStatus>>,
 }
 
 impl TcpClient {
@@ -565,8 +737,13 @@ impl TcpClient {
     pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
     pub fn new<T: Into<String>>(addr: T) -> Self {
+        let addr = addr.into();
         Self {
-            addr: addr.into(),
+            runtime_status: Arc::new(std::sync::Mutex::new(TcpRuntimeStatus::new(
+                addr.clone(),
+                Self::DEFAULT_MTU,
+            ))),
+            addr,
             stream: None,
             mtu: Self::DEFAULT_MTU,
             socket_tuning: TcpSocketTuning::default(),
@@ -580,8 +757,13 @@ impl TcpClient {
     }
 
     pub fn new_from_stream<T: Into<String>>(addr: T, stream: TcpStream) -> Self {
+        let addr = addr.into();
         Self {
-            addr: addr.into(),
+            runtime_status: Arc::new(std::sync::Mutex::new(TcpRuntimeStatus::new(
+                addr.clone(),
+                Self::DEFAULT_MTU,
+            ))),
+            addr,
             stream: Some(stream),
             mtu: Self::DEFAULT_MTU,
             socket_tuning: TcpSocketTuning::default(),
@@ -597,6 +779,7 @@ impl TcpClient {
     #[must_use]
     pub fn with_mtu(mut self, mtu: usize) -> Self {
         self.mtu = mtu.max(256);
+        self.runtime_status.lock().expect("tcp runtime status mutex poisoned").mtu = self.mtu;
         self
     }
 
@@ -614,12 +797,16 @@ impl TcpClient {
     #[must_use]
     pub(crate) fn with_hdlc_watchdog(mut self, watchdog: HdlcStreamWatchdog) -> Self {
         self.hdlc_watchdog = Some(watchdog);
+        self.runtime_status.lock().expect("tcp runtime status mutex poisoned").liveness_enabled =
+            true;
         self
     }
 
     #[must_use]
     pub fn with_forced_bitrate(mut self, bitrate_bps: u64) -> Self {
         self.forced_bitrate_bps = (bitrate_bps > 0).then_some(bitrate_bps);
+        self.runtime_status.lock().expect("tcp runtime status mutex poisoned").forced_bitrate_bps =
+            self.forced_bitrate_bps;
         self
     }
 
@@ -696,6 +883,16 @@ impl TcpClient {
     }
 
     #[must_use]
+    pub fn runtime_status_json(&self) -> serde_json::Value {
+        self.runtime_status.lock().expect("tcp runtime status mutex poisoned").to_json()
+    }
+
+    #[must_use]
+    pub fn runtime_status_handle(&self) -> TcpRuntimeStatusHandle {
+        TcpRuntimeStatusHandle { inner: self.runtime_status.clone() }
+    }
+
+    #[must_use]
     #[cfg(test)]
     pub(crate) fn hdlc_watchdog(&self) -> Option<HdlcStreamWatchdog> {
         self.hdlc_watchdog.clone()
@@ -713,6 +910,7 @@ impl TcpClient {
             connect_timeout,
             max_reconnect_tries,
             prefer_ipv6,
+            runtime_status,
         ) = {
             let guard = context.inner.lock().unwrap();
             (
@@ -724,6 +922,7 @@ impl TcpClient {
                 guard.connect_timeout,
                 guard.max_reconnect_tries,
                 guard.prefer_ipv6,
+                guard.runtime_status.clone(),
             )
         };
         tracing::Span::current().record("addr", addr.as_str());
@@ -750,18 +949,28 @@ impl TcpClient {
                         running = false;
                         Ok(stream)
                     }
-                    None => tokio::time::timeout(
-                        connect_timeout,
-                        connect_tcp_stream(addr.clone(), prefer_ipv6),
-                    )
-                    .await
-                    .map_err(|_| RnsError::ConnectionError)
-                    .and_then(|result| result.map_err(|_| RnsError::ConnectionError)),
+                    None => {
+                        runtime_status
+                            .lock()
+                            .expect("tcp runtime status mutex poisoned")
+                            .mark_connecting();
+                        tokio::time::timeout(
+                            connect_timeout,
+                            connect_tcp_stream(addr.clone(), prefer_ipv6),
+                        )
+                        .await
+                        .map_err(|_| RnsError::ConnectionError)
+                        .and_then(|result| result.map_err(|_| RnsError::ConnectionError))
+                    }
                 }
             };
 
             if stream.is_err() {
                 failed_connect_attempts = failed_connect_attempts.saturating_add(1);
+                runtime_status
+                    .lock()
+                    .expect("tcp runtime status mutex poisoned")
+                    .mark_reconnecting(format!("tcp connect failed endpoint={addr}"));
                 log::warn!("couldn't connect to <{}>", addr);
                 if max_reconnect_tries.is_some_and(|max_reconnect_tries| {
                     failed_connect_attempts > max_reconnect_tries
@@ -783,6 +992,7 @@ impl TcpClient {
 
             let stream = stream.unwrap();
             failed_connect_attempts = 0;
+            runtime_status.lock().expect("tcp runtime status mutex poisoned").mark_connected();
             if let Err(err) = socket_tuning.apply_to_stream(&stream) {
                 log::warn!("failed to apply TCP socket tuning to <{}>: {}", addr, err);
             }
@@ -797,6 +1007,9 @@ impl TcpClient {
                 has_connected = true;
             }
 
+            let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
+            let status_task =
+                tokio::spawn(track_tcp_stream_events(runtime_status.clone(), event_rx));
             let runtime =
                 hdlc_watchdog.clone().map_or_else(HdlcStreamRuntime::default, |watchdog| {
                     HdlcStreamRuntime::new().with_watchdog(watchdog)
@@ -805,7 +1018,8 @@ impl TcpClient {
                 runtime.with_forced_bitrate(bitrate_bps)
             } else {
                 runtime
-            };
+            }
+            .with_events(event_tx);
 
             run_hdlc_stream_with_runtime(
                 "tcp_client".to_string(),
@@ -820,10 +1034,12 @@ impl TcpClient {
                 runtime,
             )
             .await;
+            let _ = status_task.await;
 
             log::info!("disconnected from <{}>", addr);
         }
 
+        runtime_status.lock().expect("tcp runtime status mutex poisoned").mark_closed();
         iface_stop.cancel();
     }
 }
@@ -949,11 +1165,11 @@ mod tests {
         drop(listener);
 
         let mut manager = InterfaceManager::new(8);
-        let context = manager.new_context(
-            TcpClient::new(addr.to_string())
-                .with_connect_timeout(Duration::from_millis(50))
-                .with_max_reconnect_tries(Some(0)),
-        );
+        let client = TcpClient::new(addr.to_string())
+            .with_connect_timeout(Duration::from_millis(50))
+            .with_max_reconnect_tries(Some(0));
+        let runtime_status = client.runtime_status_handle();
+        let context = manager.new_context(client);
         let iface_stop = context.channel.stop.clone();
         let task = tokio::spawn(TcpClient::spawn(context));
 
@@ -962,6 +1178,14 @@ mod tests {
             .expect("tcp client should stop after reconnect budget")
             .expect("tcp client task should not panic");
         assert!(iface_stop.is_cancelled());
+        let status = runtime_status.to_json();
+        assert_eq!(status["endpoint"].as_str(), Some(addr.to_string().as_str()));
+        assert_eq!(status["stream_state"].as_str(), Some("closed"));
+        assert_eq!(status["reconnect_attempts"].as_u64(), Some(1));
+        assert_eq!(
+            status["last_error"].as_str(),
+            Some(format!("tcp connect failed endpoint={addr}").as_str())
+        );
     }
 
     #[test]
@@ -970,6 +1194,7 @@ mod tests {
 
         assert!(client.hdlc_liveness_enabled());
         assert_eq!(client.hdlc_watchdog(), Some(super::backbone_hdlc_watchdog()));
+        assert_eq!(client.runtime_status_json()["liveness_enabled"].as_bool(), Some(true));
     }
 
     #[tokio::test]
@@ -1269,15 +1494,14 @@ mod tests {
         let (server_stream, _) = listener.accept().await.expect("accept stream");
         let mut peer = peer;
         let mut manager = InterfaceManager::new(8);
-        let context = manager.new_context(
-            TcpClient::new_from_stream(addr.to_string(), server_stream).with_hdlc_watchdog(
-                HdlcStreamWatchdog {
-                    keepalive_after: Duration::from_millis(10),
-                    stale_after: Duration::from_secs(1),
-                    read_timeout: Duration::from_secs(5),
-                },
-            ),
-        );
+        let client = TcpClient::new_from_stream(addr.to_string(), server_stream)
+            .with_hdlc_watchdog(HdlcStreamWatchdog {
+                keepalive_after: Duration::from_millis(10),
+                stale_after: Duration::from_secs(1),
+                read_timeout: Duration::from_secs(5),
+            });
+        let runtime_status = client.runtime_status_handle();
+        let context = manager.new_context(client);
         let cancel = context.cancel.clone();
         let task = tokio::spawn(TcpClient::spawn(context));
 
@@ -1295,6 +1519,10 @@ mod tests {
             .expect("client task");
 
         assert_eq!(keepalive, [0x7e, 0x7e]);
+        let status = runtime_status.to_json();
+        assert_eq!(status["stream_state"].as_str(), Some("closed"));
+        assert_eq!(status["liveness_enabled"].as_bool(), Some(true));
+        assert_eq!(status["keepalives_sent"].as_u64(), Some(1));
     }
 
     #[tokio::test]
