@@ -878,7 +878,7 @@ pub(crate) async fn run_rnode_multi_stream<IO>(
     let mut mark_closed_on_exit = false;
     update_rnode_multi_runtime_state(&options.runtime_status, "running", None);
 
-    loop {
+    'stream_loop: loop {
         let mut tx_channel = tx_channel.lock().await;
         let mut management_frame_rx = options.management_frame_rx.lock().await;
         tokio::select! {
@@ -967,7 +967,18 @@ pub(crate) async fn run_rnode_multi_stream<IO>(
                 }
                 for vport in vports {
                     if !write_rnode_multi_data(&mut stream, vport, output.as_slice()).await {
-                        break;
+                        log::warn!(
+                            "RNodeMulti data frame write failed iface={} device={} vport={}",
+                            options.parent_iface,
+                            options.device,
+                            vport
+                        );
+                        update_rnode_multi_runtime_state(
+                            &options.runtime_status,
+                            "write_failed",
+                            Some("data frame write failed".to_string()),
+                        );
+                        break 'stream_loop;
                     }
                 }
                 if first_tx_at.is_none() {
@@ -1296,6 +1307,36 @@ mod tests {
         ) -> Poll<io::Result<usize>> {
             self.writes.extend_from_slice(buf);
             Poll::Ready(Ok(buf.len()))
+        }
+
+        fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+
+        fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    struct FailingWriteStream;
+
+    impl AsyncRead for FailingWriteStream {
+        fn poll_read(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            _buf: &mut ReadBuf<'_>,
+        ) -> Poll<io::Result<()>> {
+            Poll::Pending
+        }
+    }
+
+    impl AsyncWrite for FailingWriteStream {
+        fn poll_write(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            _buf: &[u8],
+        ) -> Poll<io::Result<usize>> {
+            Poll::Ready(Err(io::Error::other("synthetic rnode multi data write failure")))
         }
 
         fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
@@ -1745,6 +1786,56 @@ mod tests {
         let status = runtime_status.lock().expect("rnode multi runtime status mutex poisoned");
         assert_eq!(status.stream_state, "read_failed");
         assert_eq!(status.last_error.as_deref(), Some("synthetic rnode multi read failure"));
+    }
+
+    #[tokio::test]
+    async fn rnode_multi_stream_data_write_failure_preserves_failed_runtime_state() {
+        let child = AddressHash::new([0x0A; 16]);
+        let (rx_tx, rx_rx) = tokio::sync::mpsc::channel(4);
+        drop(rx_rx);
+        let (tx_tx, tx_rx) = tokio::sync::mpsc::channel(4);
+        let cancel = CancellationToken::new();
+        let options = test_options(child, 1);
+        let runtime_status = options.runtime_status.clone();
+
+        let task = tokio::spawn(run_rnode_multi_stream(
+            FailingWriteStream,
+            options,
+            cancel,
+            CancellationToken::new(),
+            rx_tx,
+            Arc::new(tokio::sync::Mutex::new(tx_rx)),
+        ));
+
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                let running = {
+                    let status =
+                        runtime_status.lock().expect("rnode multi runtime status mutex poisoned");
+                    status.stream_state == "running"
+                };
+                if running {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("runtime reached running");
+
+        tx_tx
+            .send(TxMessage { tx_type: TxMessageType::Direct(child), packet: Packet::default() })
+            .await
+            .expect("queue tx");
+
+        tokio::time::timeout(Duration::from_secs(1), task)
+            .await
+            .expect("rnode multi stream write failure timeout")
+            .expect("rnode multi stream task");
+
+        let status = runtime_status.lock().expect("rnode multi runtime status mutex poisoned");
+        assert_eq!(status.stream_state, "write_failed");
+        assert_eq!(status.last_error.as_deref(), Some("data frame write failed"));
     }
 
     #[tokio::test]
