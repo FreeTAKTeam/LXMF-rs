@@ -44,6 +44,7 @@ pub(super) struct InterfaceStartupBatch {
     pub(super) auto_runtime_refreshes: Vec<AutoRuntimeRefresh>,
     pub(super) pipe_runtime_refreshes: Vec<PipeRuntimeRefresh>,
     pub(super) udp_runtime_refreshes: Vec<UdpRuntimeRefresh>,
+    pub(super) serial_runtime_refreshes: Vec<SerialRuntimeRefresh>,
     pub(super) i2p_runtime_refreshes: Vec<I2pRuntimeRefresh>,
     pub(super) tcp_runtime_refreshes: Vec<TcpRuntimeRefresh>,
     pub(super) weave_runtime_refreshes: Vec<WeaveRuntimeRefresh>,
@@ -70,6 +71,12 @@ pub(crate) struct PipeRuntimeRefresh {
 pub(crate) struct UdpRuntimeRefresh {
     pub(crate) runtime_iface: AddressHash,
     pub(crate) status: rns_transport::iface::udp::UdpRuntimeStatusHandle,
+}
+
+#[derive(Clone)]
+pub(crate) struct SerialRuntimeRefresh {
+    pub(crate) runtime_iface: AddressHash,
+    pub(crate) status: rns_transport::iface::serial::SerialRuntimeStatusHandle,
 }
 
 struct UdpStartupSinks<'a> {
@@ -184,6 +191,7 @@ pub(super) async fn startup_configured_interfaces(
     let mut auto_runtime_refreshes = Vec::new();
     let mut pipe_runtime_refreshes = Vec::new();
     let mut udp_runtime_refreshes = Vec::new();
+    let mut serial_runtime_refreshes = Vec::new();
     let mut i2p_runtime_refreshes = Vec::new();
     let mut tcp_runtime_refreshes = Vec::new();
     let mut weave_runtime_refreshes = Vec::new();
@@ -395,6 +403,7 @@ pub(super) async fn startup_configured_interfaces(
                     iface_manager,
                     &mut configured_interfaces[index],
                     &mut startup_failures,
+                    &mut serial_runtime_refreshes,
                 )
                 .await
                 {
@@ -560,6 +569,7 @@ pub(super) async fn startup_configured_interfaces(
         auto_runtime_refreshes,
         pipe_runtime_refreshes,
         udp_runtime_refreshes,
+        serial_runtime_refreshes,
         i2p_runtime_refreshes,
         tcp_runtime_refreshes,
         weave_runtime_refreshes,
@@ -2092,13 +2102,22 @@ interfaces = [
             settings: iface.settings_json(),
         };
         let mut startup_failures = Vec::new();
+        let mut serial_runtime_refreshes = Vec::new();
 
-        let started =
-            startup_serial(&args, iface, "serial-main", &manager, &mut record, &mut startup_failures)
-                .await;
+        let started = startup_serial(
+            &args,
+            iface,
+            "serial-main",
+            &manager,
+            &mut record,
+            &mut startup_failures,
+            &mut serial_runtime_refreshes,
+        )
+        .await;
 
         assert!(started);
         assert!(startup_failures.is_empty());
+        assert_eq!(serial_runtime_refreshes.len(), 1);
         let runtime = record
             .settings
             .as_ref()

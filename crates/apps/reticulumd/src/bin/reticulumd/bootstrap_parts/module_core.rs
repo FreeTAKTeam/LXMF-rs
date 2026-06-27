@@ -181,6 +181,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     let auto_runtime_refreshes = startup.auto_runtime_refreshes;
     let pipe_runtime_refreshes = startup.pipe_runtime_refreshes;
     let udp_runtime_refreshes = startup.udp_runtime_refreshes;
+    let serial_runtime_refreshes = startup.serial_runtime_refreshes;
     let i2p_runtime_refreshes = startup.i2p_runtime_refreshes;
     let tcp_runtime_refreshes = startup.tcp_runtime_refreshes;
     let weave_runtime_refreshes = startup.weave_runtime_refreshes;
@@ -300,6 +301,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     spawn_auto_runtime_status_refresher(daemon.clone(), auto_runtime_refreshes);
     spawn_pipe_runtime_status_refresher(daemon.clone(), pipe_runtime_refreshes);
     spawn_udp_runtime_status_refresher(daemon.clone(), udp_runtime_refreshes);
+    spawn_serial_runtime_status_refresher(daemon.clone(), serial_runtime_refreshes);
     spawn_i2p_runtime_status_refresher(daemon.clone(), i2p_runtime_refreshes);
     spawn_tcp_runtime_status_refresher(daemon.clone(), tcp_runtime_refreshes);
     spawn_weave_runtime_status_refresher(daemon.clone(), weave_runtime_refreshes);
@@ -523,6 +525,40 @@ fn refresh_udp_runtime_status_once(
             daemon.update_interface_runtime_metadata_by_iface(
                 refresh.runtime_iface.to_string().as_str(),
                 "udp",
+                "status",
+                refresh.status.to_json(),
+            )
+        })
+        .count()
+}
+
+fn spawn_serial_runtime_status_refresher(
+    daemon: Arc<RpcDaemon>,
+    refreshes: Vec<transport_startup::SerialRuntimeRefresh>,
+) {
+    if refreshes.is_empty() {
+        return;
+    }
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(INTERFACE_RUNTIME_STATUS_REFRESH_INTERVAL);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            interval.tick().await;
+            refresh_serial_runtime_status_once(&daemon, &refreshes);
+        }
+    });
+}
+
+fn refresh_serial_runtime_status_once(
+    daemon: &RpcDaemon,
+    refreshes: &[transport_startup::SerialRuntimeRefresh],
+) -> usize {
+    refreshes
+        .iter()
+        .filter(|refresh| {
+            daemon.update_interface_runtime_metadata_by_iface(
+                refresh.runtime_iface.to_string().as_str(),
+                "serial",
                 "status",
                 refresh.status.to_json(),
             )
@@ -1095,6 +1131,100 @@ mod tests {
         assert_eq!(status["tx_errors"].as_u64(), Some(4));
         assert_eq!(status["dropped_direct"].as_u64(), Some(5));
         assert_eq!(status["last_error"].as_str(), Some("simulated udp decode failure"));
+    }
+
+    #[test]
+    fn serial_runtime_status_refresh_updates_matching_interface_record() {
+        let daemon = RpcDaemon::test_instance();
+        let runtime_iface = AddressHash::new([0x26; 16]);
+        let runtime_iface_string = runtime_iface.to_string();
+        daemon.replace_interfaces(vec![InterfaceRecord {
+            kind: "serial".to_string(),
+            enabled: true,
+            host: None,
+            port: None,
+            name: Some("serial-main".to_string()),
+            settings: Some(json!({
+                "_runtime": {
+                    "iface": runtime_iface_string,
+                    "startup_status": "spawned",
+                    "serial": {
+                        "status": {
+                            "link_state": "configured"
+                        }
+                    }
+                }
+            })),
+        }]);
+        let status =
+            rns_transport::iface::serial::SerialInterface::new("/dev/ttyUSB0", 19200)
+                .with_data_bits_raw(7)
+                .expect("data bits")
+                .with_parity_name("even")
+                .expect("parity")
+                .with_stop_bits_raw(2)
+                .expect("stop bits")
+                .with_flow_control_name("hardware")
+                .expect("flow")
+                .with_mtu(1024)
+                .runtime_status_handle();
+        status.update(|status| {
+            status.link_state = "running".to_string();
+            status.iface = Some(runtime_iface.to_string());
+            status.reconnect_attempts = 2;
+            status.open_errors = 1;
+            status.packets_rx = 3;
+            status.packets_tx = 4;
+            status.frames_rx = 5;
+            status.frames_tx = 6;
+            status.bytes_rx = 120;
+            status.bytes_tx = 80;
+            status.decode_errors = 1;
+            status.deserialize_errors = 2;
+            status.rx_queue_errors = 3;
+            status.serialize_errors = 4;
+            status.hdlc_encode_errors = 5;
+            status.tx_errors = 6;
+            status.read_errors = 7;
+            status.eof_count = 8;
+            status.last_error = Some("simulated serial read failure".to_string());
+        });
+        let refresh = transport_startup::SerialRuntimeRefresh { runtime_iface, status };
+
+        assert_eq!(refresh_serial_runtime_status_once(&daemon, &[refresh]), 1);
+        let result = daemon
+            .handle_rpc(RpcRequest { id: 95, method: "daemon_status_ex".to_string(), params: None })
+            .expect("daemon status")
+            .result
+            .expect("daemon status result");
+        let status = &result["interfaces"][0]["settings"]["_runtime"]["serial"]["status"];
+
+        assert_eq!(status["link_state"].as_str(), Some("running"));
+        assert_eq!(status["device"].as_str(), Some("/dev/ttyUSB0"));
+        assert_eq!(status["baud_rate"].as_u64(), Some(19200));
+        assert_eq!(status["data_bits"].as_u64(), Some(7));
+        assert_eq!(status["parity"].as_str(), Some("even"));
+        assert_eq!(status["stop_bits"].as_u64(), Some(2));
+        assert_eq!(status["flow_control"].as_str(), Some("hardware"));
+        assert_eq!(status["mtu"].as_u64(), Some(1024));
+        assert_eq!(status["iface"].as_str(), Some(runtime_iface.to_string().as_str()));
+        assert_eq!(status["reconnect_attempts"].as_u64(), Some(2));
+        assert_eq!(status["open_errors"].as_u64(), Some(1));
+        assert_eq!(status["packets_rx"].as_u64(), Some(3));
+        assert_eq!(status["packets_tx"].as_u64(), Some(4));
+        assert_eq!(status["frames_rx"].as_u64(), Some(5));
+        assert_eq!(status["frames_tx"].as_u64(), Some(6));
+        assert_eq!(status["bytes_rx"].as_u64(), Some(120));
+        assert_eq!(status["bytes_tx"].as_u64(), Some(80));
+        assert_eq!(status["decode_errors"].as_u64(), Some(1));
+        assert_eq!(status["deserialize_errors"].as_u64(), Some(2));
+        assert_eq!(status["rx_queue_errors"].as_u64(), Some(3));
+        assert_eq!(status["serialize_errors"].as_u64(), Some(4));
+        assert_eq!(status["hdlc_encode_errors"].as_u64(), Some(5));
+        assert_eq!(status["tx_errors"].as_u64(), Some(6));
+        assert_eq!(status["read_errors"].as_u64(), Some(7));
+        assert_eq!(status["eof_count"].as_u64(), Some(8));
+        assert_eq!(status["last_error"].as_str(), Some("simulated serial read failure"));
     }
 
     #[test]

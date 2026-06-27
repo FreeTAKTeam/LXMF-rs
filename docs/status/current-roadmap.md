@@ -180,11 +180,11 @@ The project is best described by capability level:
   connected, subscribed, ready, startup-write failure, and queue counters.
 - UDP now refreshes live bind state, role, last observed peer-route count,
   packet, byte, drop, and error counters in daemon/RPC metadata and
-  `rnstatus-rs`. Serial, KISS/AX.25 KISS, KISS TCP, and BLE GATT expose
-  configured bearer status,
-  including device/endpoint, baud, KISS timing, AX.25 callsign/SSID, BLE UUIDs,
-  and BLE lifecycle timeout fields; their live byte/error counters remain a
-  follow-up.
+  `rnstatus-rs`. Serial now refreshes live open/reconnect, HDLC frame, packet,
+  byte, EOF, queue, decode, serialize, read, and write-error counters. KISS/AX.25
+  KISS, KISS TCP, and BLE GATT expose configured bearer status, including
+  device/endpoint, baud, KISS timing, AX.25 callsign/SSID, BLE UUIDs, and BLE
+  lifecycle timeout fields; their live byte/error counters remain a follow-up.
 - `rnstatus-rs` now provides a local daemon status utility over the existing
   RPC status surface, including JSON output plus human interface endpoint
   details across configured interface families, runtime startup state, Auto

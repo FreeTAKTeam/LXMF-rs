@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 use std::io::{Read, Write};
 use std::net::{Shutdown, TcpListener};
 use std::process::Command;
@@ -532,7 +534,24 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
                                         "parity": "even",
                                         "stop_bits": 2,
                                         "flow_control": "hardware",
-                                        "mtu": 1024
+                                        "mtu": 1024,
+                                        "reconnect_attempts": 2,
+                                        "open_errors": 1,
+                                        "packets_rx": 3,
+                                        "packets_tx": 4,
+                                        "frames_rx": 5,
+                                        "frames_tx": 6,
+                                        "bytes_rx": 120,
+                                        "bytes_tx": 80,
+                                        "decode_errors": 1,
+                                        "deserialize_errors": 2,
+                                        "rx_queue_errors": 3,
+                                        "serialize_errors": 4,
+                                        "hdlc_encode_errors": 5,
+                                        "tx_errors": 6,
+                                        "read_errors": 7,
+                                        "eof_count": 8,
+                                        "last_error": "simulated serial read failure"
                                     }
                                 }
                             }
@@ -707,6 +726,16 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
         "stdout: {stdout}"
     );
     assert!(stdout.contains("flow=hardware"), "stdout: {stdout}");
+    assert!(stdout.contains("reconnects=2"), "stdout: {stdout}");
+    assert!(stdout.contains("open_errors=1"), "stdout: {stdout}");
+    assert!(stdout.contains("rx_frames=5"), "stdout: {stdout}");
+    assert!(stdout.contains("tx_frames=6"), "stdout: {stdout}");
+    assert!(stdout.contains("deserialize_errors=2"), "stdout: {stdout}");
+    assert!(stdout.contains("serialize_errors=4"), "stdout: {stdout}");
+    assert!(stdout.contains("hdlc_encode_errors=5"), "stdout: {stdout}");
+    assert!(stdout.contains("read_errors=7"), "stdout: {stdout}");
+    assert!(stdout.contains("eof=8"), "stdout: {stdout}");
+    assert!(stdout.contains("err=simulated serial read failure"), "stdout: {stdout}");
     assert!(stdout.contains("kiss-main"), "stdout: {stdout}");
     assert!(
         stdout.contains("kiss state=configured bearer=serial device=/dev/ttyKISS0"),

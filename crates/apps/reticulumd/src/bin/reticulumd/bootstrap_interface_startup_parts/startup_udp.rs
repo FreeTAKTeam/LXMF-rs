@@ -179,6 +179,7 @@ async fn startup_serial(
     iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
     record: &mut InterfaceRecord,
     startup_failures: &mut Vec<InterfaceStartupFailure>,
+    serial_runtime_refreshes: &mut Vec<SerialRuntimeRefresh>,
 ) -> bool {
     let adapter = match serial::build_adapter(iface) {
         Ok(adapter) => adapter,
@@ -208,6 +209,7 @@ async fn startup_serial(
     }
 
     let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
+    let status = adapter.runtime_status_handle();
     let serial_iface = iface_manager.lock().await.spawn_as_with_mode(
         adapter,
         |context| async move { rns_transport::iface::serial::SerialInterface::spawn(context).await },
@@ -228,6 +230,7 @@ async fn startup_serial(
     let runtime_iface = serial_iface.to_string();
     mark_interface_startup_status(record, "spawned", None, Some(runtime_iface.as_str()));
     mark_serial_runtime_status(record, iface, serial_iface);
+    serial_runtime_refreshes.push(SerialRuntimeRefresh { runtime_iface: serial_iface, status });
     true
 }
 

@@ -95,15 +95,17 @@ placeholders:
   state, role, last observed peer-route count, packet, byte, drop, and error
   counters into `_runtime.udp.status`, and `rnstatus-rs` renders those rows for
   operators.
-- Serial, serial KISS, and AX.25 KISS with Python-compatible AX.25 UI header
-  wrapping over the serial KISS runtime. Android-style KISS beacon aliases
+- Serial now refreshes live daemon/RPC status with open/reconnect, HDLC frame,
+  packet, byte, EOF, queue, decode, serialize, read, and write-error counters.
+  Serial KISS and AX.25 KISS retain Python-compatible AX.25 UI header wrapping
+  over the serial KISS runtime. Android-style KISS beacon aliases
   `beacon_interval` and `beacon_data` feed the same ID beacon runtime as
   Python `id_interval` and `id_callsign`. Daemon/RPC status now records
-  configured serial, KISS, AX.25 KISS, KISS TCP, and BLE GATT bearer metadata
-  such as device/endpoint, baud, MTU, KISS timing, AX.25 callsign/SSID, BLE
-  UUIDs, and BLE lifecycle timeouts; `rnstatus-rs` renders those configured
-  status rows. Live byte/error counters for serial, KISS/AX.25 KISS, KISS TCP,
-  and BLE GATT remain a follow-up.
+  configured KISS, AX.25 KISS, KISS TCP, and BLE GATT bearer metadata such as
+  device/endpoint, baud, MTU, KISS timing, AX.25 callsign/SSID, BLE UUIDs, and
+  BLE lifecycle timeouts; `rnstatus-rs` renders those configured status rows.
+  Live byte/error counters for KISS/AX.25 KISS, KISS TCP, and BLE GATT remain a
+  follow-up.
 - AutoInterface discovery, authenticated peering, peer lifecycle, duplicate
   suppression, multicast announcements, data sockets, transport bridging, and
   live carrier-runtime status reporting, including polling reconciliation for

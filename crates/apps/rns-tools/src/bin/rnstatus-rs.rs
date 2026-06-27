@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 use std::io::{self, Read, Write};
 use std::net::{Shutdown, TcpStream};
 
@@ -534,6 +536,23 @@ fn serial_runtime_summary(status: &Value) -> Option<String> {
     append_optional_u64(&mut summary, "stop_bits", status.get("stop_bits"));
     append_optional_str(&mut summary, "flow", status.get("flow_control"));
     append_optional_u64(&mut summary, "mtu", status.get("mtu"));
+    append_optional_u64(&mut summary, "reconnects", status.get("reconnect_attempts"));
+    append_optional_u64(&mut summary, "open_errors", status.get("open_errors"));
+    append_optional_u64(&mut summary, "rxp", status.get("packets_rx"));
+    append_optional_u64(&mut summary, "txp", status.get("packets_tx"));
+    append_optional_u64(&mut summary, "rx_frames", status.get("frames_rx"));
+    append_optional_u64(&mut summary, "tx_frames", status.get("frames_tx"));
+    append_optional_u64(&mut summary, "rx", status.get("bytes_rx"));
+    append_optional_u64(&mut summary, "tx", status.get("bytes_tx"));
+    append_optional_u64(&mut summary, "decode_errors", status.get("decode_errors"));
+    append_optional_u64(&mut summary, "deserialize_errors", status.get("deserialize_errors"));
+    append_optional_u64(&mut summary, "rx_queue_errors", status.get("rx_queue_errors"));
+    append_optional_u64(&mut summary, "serialize_errors", status.get("serialize_errors"));
+    append_optional_u64(&mut summary, "hdlc_encode_errors", status.get("hdlc_encode_errors"));
+    append_optional_u64(&mut summary, "tx_errors", status.get("tx_errors"));
+    append_optional_u64(&mut summary, "read_errors", status.get("read_errors"));
+    append_optional_u64(&mut summary, "eof", status.get("eof_count"));
+    append_optional_str(&mut summary, "err", status.get("last_error"));
     Some(summary)
 }
 
@@ -968,7 +987,24 @@ mod tests {
                                     "parity": "even",
                                     "stop_bits": 2,
                                     "flow_control": "hardware",
-                                    "mtu": 1024
+                                    "mtu": 1024,
+                                    "reconnect_attempts": 2,
+                                    "open_errors": 1,
+                                    "packets_rx": 3,
+                                    "packets_tx": 4,
+                                    "frames_rx": 5,
+                                    "frames_tx": 6,
+                                    "bytes_rx": 120,
+                                    "bytes_tx": 80,
+                                    "decode_errors": 1,
+                                    "deserialize_errors": 2,
+                                    "rx_queue_errors": 3,
+                                    "serialize_errors": 4,
+                                    "hdlc_encode_errors": 5,
+                                    "tx_errors": 6,
+                                    "read_errors": 7,
+                                    "eof_count": 8,
+                                    "last_error": "simulated serial read failure"
                                 }
                             }
                         }
@@ -1124,6 +1160,16 @@ mod tests {
         assert!(output.contains("serial state=configured device=/dev/ttyUSB0 baud=19200"));
         assert!(output.contains("data_bits=7"));
         assert!(output.contains("flow=hardware"));
+        assert!(output.contains("reconnects=2"));
+        assert!(output.contains("open_errors=1"));
+        assert!(output.contains("rx_frames=5"));
+        assert!(output.contains("tx_frames=6"));
+        assert!(output.contains("deserialize_errors=2"));
+        assert!(output.contains("serialize_errors=4"));
+        assert!(output.contains("hdlc_encode_errors=5"));
+        assert!(output.contains("read_errors=7"));
+        assert!(output.contains("eof=8"));
+        assert!(output.contains("err=simulated serial read failure"));
         assert!(output.contains("kiss state=configured bearer=serial device=/dev/ttyKISS0"));
         assert!(output.contains("ax25=true"));
         assert!(output.contains("callsign=N0CALL"));
