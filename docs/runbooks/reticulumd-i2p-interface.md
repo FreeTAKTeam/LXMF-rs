@@ -82,7 +82,8 @@ model for configured peers and accepted incoming streams. Local fake-SAM tests
 exercise the outbound peer loop through session creation, name lookup, stream
 connect, HDLC writes, and refreshed byte counters, plus the connectable accept
 loop through incoming `STREAM ACCEPT`, virtual child registration, HDLC ingress,
-runtime byte counters, and cleanup without requiring a prepared I2P router.
+direct outbound egress over the accepted peer stream, runtime byte counters, and
+cleanup without requiring a prepared I2P router.
 `reticulumd`
 periodically refreshes that model into the cached interface records returned by
 `daemon_status_ex` and `list_interfaces` as

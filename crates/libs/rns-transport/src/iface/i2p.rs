@@ -1741,6 +1741,140 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn i2p_accept_loop_routes_direct_tx_to_incoming_peer_stream() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind fake SAM");
+        let sam_addr = listener.local_addr().expect("local addr").to_string();
+        let server = tokio::spawn(async move {
+            let (session_socket, _) = listener.accept().await.expect("accept session");
+            let mut session_reader = BufReader::new(session_socket);
+            for response in [
+                "HELLO REPLY RESULT=OK VERSION=3.3\n",
+                "SESSION STATUS RESULT=OK DESTINATION=fake-accept.b32.i2p\n",
+            ] {
+                let mut line = String::new();
+                session_reader.read_line(&mut line).await.expect("read session command");
+                session_reader
+                    .get_mut()
+                    .write_all(response.as_bytes())
+                    .await
+                    .expect("write session response");
+            }
+
+            let (accept_socket, _) = listener.accept().await.expect("accept stream");
+            let mut accept_reader = BufReader::new(accept_socket);
+            for response in ["HELLO REPLY RESULT=OK VERSION=3.3\n", "STREAM STATUS RESULT=OK\n"] {
+                let mut line = String::new();
+                accept_reader.read_line(&mut line).await.expect("read accept command");
+                accept_reader
+                    .get_mut()
+                    .write_all(response.as_bytes())
+                    .await
+                    .expect("write accept response");
+            }
+            let mut accepted_stream = accept_reader.into_inner();
+            accepted_stream
+                .write_all(b"incoming-destination\n")
+                .await
+                .expect("write remote destination");
+            let mut hdlc_bytes = vec![0_u8; 512];
+            let read =
+                tokio::time::timeout(Duration::from_secs(1), accepted_stream.read(&mut hdlc_bytes))
+                    .await
+                    .expect("read outbound HDLC deadline")
+                    .expect("read outbound HDLC");
+            hdlc_bytes.truncate(read);
+            drop(accepted_stream);
+
+            hdlc_bytes
+        });
+
+        let mut manager = crate::iface::InterfaceManager::new(8);
+        let parent_channel = manager.new_channel_with_role(8, IfaceRole::Multicast);
+        let parent_iface = parent_channel.address;
+        let iface_stop = parent_channel.stop.clone();
+        let manager = Arc::new(tokio::sync::Mutex::new(manager));
+        let runtime_status =
+            Arc::new(std::sync::Mutex::new(I2pRuntimeStatus::new(sam_addr.clone(), true, &[])));
+        let cancel = CancellationToken::new();
+        let (rx_channel, _rx_messages) = tokio::sync::mpsc::channel(8);
+        let peer_routes = Arc::new(tokio::sync::Mutex::new(BTreeMap::new()));
+        let accept_loop = tokio::spawn(run_i2p_accept_loop(
+            parent_iface,
+            "i2p-main".to_string(),
+            sam_addr,
+            None,
+            None,
+            I2pInterface::DEFAULT_MTU,
+            Duration::from_millis(10),
+            Arc::clone(&runtime_status),
+            cancel.clone(),
+            iface_stop.clone(),
+            rx_channel,
+            Arc::clone(&manager),
+            Arc::clone(&peer_routes),
+        ));
+
+        let (child_iface, sender) = tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                if let Some((child_iface, sender)) = {
+                    let routes = peer_routes.lock().await;
+                    routes.iter().next().map(|(iface, sender)| (*iface, sender.clone()))
+                } {
+                    return (child_iface, sender);
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("incoming peer route");
+
+        sender
+            .send(TxMessage {
+                tx_type: TxMessageType::Direct(child_iface),
+                packet: Packet::default(),
+            })
+            .await
+            .expect("send direct tx to incoming peer");
+        let hdlc_bytes = tokio::time::timeout(Duration::from_secs(2), server)
+            .await
+            .expect("fake SAM outbound read timeout")
+            .expect("fake SAM server");
+        assert!(!hdlc_bytes.is_empty());
+        assert_eq!(hdlc_bytes.first().copied(), Some(0x7e));
+
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                let bytes_tx = {
+                    let status = runtime_status.lock().expect("i2p runtime status");
+                    status
+                        .peers
+                        .values()
+                        .find(|peer| {
+                            peer.peer == "incoming-destination"
+                                && peer.direction == "incoming"
+                                && peer.iface == Some(child_iface)
+                        })
+                        .map(|peer| peer.bytes_tx)
+                        .unwrap_or(0)
+                };
+                if bytes_tx > 0 {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("incoming peer recorded tx bytes");
+
+        cancel.cancel();
+        iface_stop.cancel();
+        tokio::time::timeout(Duration::from_secs(2), accept_loop)
+            .await
+            .expect("accept loop shutdown timeout")
+            .expect("accept loop task");
+    }
+
+    #[tokio::test]
     async fn i2p_accept_loop_registers_incoming_peer_through_fake_sam_stream() {
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind fake SAM");
         let sam_addr = listener.local_addr().expect("local addr").to_string();

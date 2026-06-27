@@ -169,7 +169,8 @@ The project is best described by capability level:
   outbound peer loop through session creation, lookup, stream connect, HDLC
   writes, and refreshed runtime counters, plus the connectable accept loop
   through incoming `STREAM ACCEPT`, virtual child registration, HDLC ingress,
-  runtime counters, and cleanup.
+  direct outbound egress over the accepted stream, runtime counters, and
+  cleanup.
 - AutoInterface has a live daemon runtime, including discovery, peer lifecycle,
   peer-data sockets, transport ingress, outbound routing, multicast proof
   fallback, supervised discovery/data receive loops, transport-side

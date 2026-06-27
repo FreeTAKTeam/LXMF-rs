@@ -180,8 +180,9 @@ placeholders:
   history refreshed into daemon/RPC `tunnel_status` runtime metadata. Local
   fake-SAM tests now cover outbound peer-loop session creation, lookup, stream
   connect, HDLC writes, connectable accept-loop incoming `STREAM ACCEPT`,
-  virtual child registration, HDLC ingress, cleanup, and daemon/RPC status
-  refresh without requiring a prepared I2P router. The config parser accepts
+  virtual child registration, HDLC ingress, direct outbound egress over accepted
+  streams, cleanup, and daemon/RPC status refresh without requiring a prepared
+  I2P router. The config parser accepts
   I2P-local IFAC aliases `ifac_netname` and `ifac_netkey`.
 - Feature-gated native RNode BLE and VR-N76 KISS-over-BLE. The VR-N76 native
   interface now exposes live daemon/RPC `_runtime.vrn76.status` metadata with
@@ -230,7 +231,8 @@ evidence across real devices and platforms remains pending.
 and connectable sessions can run through SAM, and transport-side tunnel
 watchdog/status bookkeeping is refreshed into daemon/RPC interface status, with
 fake-SAM coverage for outbound peer-loop writes, connectable accept-loop HDLC
-ingress, cleanup, and runtime counter/status updates.
+ingress, accepted-stream direct egress, cleanup, and runtime counter/status
+updates.
 Private destination keys now follow Python's default daemon-storage injection
 and hashed key-file naming, including old-format fallback when an existing
 Python key is present. Missing explicit SAM host/port config now uses Python's
