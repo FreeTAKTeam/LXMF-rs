@@ -151,15 +151,18 @@ The project is best described by capability level:
   endpoint for persisted keys and keys generated during startup, plus refreshed
   `tunnel_status` metadata for tunnel state, reconnect attempts, errors,
   counters, keepalive/stale/read-timeout bookkeeping, and bounded recent
-  history for closed incoming peers.
+  history for closed incoming peers. Local fake-SAM coverage now exercises the
+  outbound peer loop through session creation, lookup, stream connect, HDLC
+  writes, and refreshed runtime counters.
 - AutoInterface has a live daemon runtime, including discovery, peer lifecycle,
   peer-data sockets, transport ingress, outbound routing, multicast proof
   fallback, supervised discovery/data receive loops, transport-side
   adopted-interface diff planning, daemon-side add/remove lifecycle
   application for active and zero-initial runtimes, and polling link-local
-  replacement reconciliation for already adopted interfaces. Remaining
-  dynamic-runtime hardening includes broader explicit shutdown for dynamically
-  spawned listeners and prepared-host interface churn evidence.
+  replacement reconciliation for already adopted interfaces. Replacement-stop
+  tasks for dynamically swapped discovery/data listeners are tracked and
+  drained during restart, removal, or runtime shutdown; remaining follow-up is
+  broader prepared-host interface churn evidence.
 - I2P transport-side tunnel watchdog/status bookkeeping is refreshed into
   daemon/RPC interface status; prepared-host production evidence remains
   pending.

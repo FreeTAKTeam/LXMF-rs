@@ -174,6 +174,35 @@ pub struct I2pRuntimeStatusHandle {
 }
 
 impl I2pRuntimeStatusHandle {
+    pub fn mark_accept_listening(&self) {
+        self.inner.lock().expect("i2p runtime status mutex poisoned").mark_accept_listening();
+    }
+
+    pub fn mark_outbound_connected(&self, peer: &str, iface: AddressHash) {
+        self.inner
+            .lock()
+            .expect("i2p runtime status mutex poisoned")
+            .mark_outbound_connected(peer, iface);
+    }
+
+    pub fn mark_outbound_reconnecting(&self, peer: &str, iface: AddressHash, error: String) {
+        self.inner
+            .lock()
+            .expect("i2p runtime status mutex poisoned")
+            .mark_outbound_reconnecting(peer, iface, error);
+    }
+
+    pub fn mark_incoming_connected(&self, peer: &str, iface: AddressHash) {
+        self.inner
+            .lock()
+            .expect("i2p runtime status mutex poisoned")
+            .mark_incoming_connected(peer, iface);
+    }
+
+    pub fn mark_incoming_closed(&self, iface: AddressHash) {
+        self.inner.lock().expect("i2p runtime status mutex poisoned").mark_incoming_closed(iface);
+    }
+
     #[must_use]
     pub fn to_json(&self) -> serde_json::Value {
         self.inner.lock().expect("i2p runtime status mutex poisoned").to_json()
@@ -1326,17 +1355,21 @@ mod tests {
         connectable_session_destination_with_identity, create_sam_session,
         i2p_b32_from_private_destination, i2p_new_format_key_stem, i2p_old_format_key_stem,
         i2p_private_key_new_format_path, i2p_private_key_old_format_path,
-        i2p_private_key_path_with_identity, open_sam_stream, HdlcStreamEvent, I2pInterface,
-        I2pRuntimeStatus, I2pTunnelState, I2P_CERT_LEN_OFFSET, I2P_DEST_PREFIX_LEN,
+        i2p_private_key_path_with_identity, open_sam_stream, run_i2p_peer_loop, HdlcStreamEvent,
+        I2pInterface, I2pRuntimeStatus, I2pTunnelState, I2P_CERT_LEN_OFFSET, I2P_DEST_PREFIX_LEN,
         I2P_MAX_CLOSED_INCOMING_PEERS,
     };
     use std::collections::BTreeMap;
     use std::sync::Arc;
+    use std::time::Duration;
 
+    use crate::iface::{TxMessage, TxMessageType};
+    use crate::packet::Packet;
     use base64::Engine;
     use sha2::Digest;
     use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
     use tokio::net::TcpListener;
+    use tokio_util::sync::CancellationToken;
 
     #[test]
     fn i2p_defaults_match_python_slice() {
@@ -1562,6 +1595,129 @@ mod tests {
             lines[5],
             "STREAM CONNECT ID=lxmf-rs-test DESTINATION=resolved-destination SILENT=false"
         );
+    }
+
+    #[tokio::test]
+    async fn i2p_peer_loop_updates_runtime_status_through_fake_sam_stream() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind fake SAM");
+        let sam_addr = listener.local_addr().expect("local addr").to_string();
+        let server = tokio::spawn(async move {
+            let (session_socket, _) = listener.accept().await.expect("accept session");
+            let mut session_reader = BufReader::new(session_socket);
+            for response in [
+                "HELLO REPLY RESULT=OK VERSION=3.3\n",
+                "SESSION STATUS RESULT=OK DESTINATION=fake.b32.i2p\n",
+            ] {
+                let mut line = String::new();
+                session_reader.read_line(&mut line).await.expect("read session command");
+                session_reader
+                    .get_mut()
+                    .write_all(response.as_bytes())
+                    .await
+                    .expect("write session response");
+            }
+
+            let (lookup_socket, _) = listener.accept().await.expect("accept lookup");
+            let mut lookup_reader = BufReader::new(lookup_socket);
+            for response in [
+                "HELLO REPLY RESULT=OK VERSION=3.3\n",
+                "NAMING REPLY RESULT=OK NAME=peer.b32.i2p VALUE=resolved-destination\n",
+            ] {
+                let mut line = String::new();
+                lookup_reader.read_line(&mut line).await.expect("read lookup command");
+                lookup_reader
+                    .get_mut()
+                    .write_all(response.as_bytes())
+                    .await
+                    .expect("write lookup response");
+            }
+
+            let (connect_socket, _) = listener.accept().await.expect("accept stream");
+            let mut connect_reader = BufReader::new(connect_socket);
+            for response in ["HELLO REPLY RESULT=OK VERSION=3.3\n", "STREAM STATUS RESULT=OK\n"] {
+                let mut line = String::new();
+                connect_reader.read_line(&mut line).await.expect("read connect command");
+                connect_reader
+                    .get_mut()
+                    .write_all(response.as_bytes())
+                    .await
+                    .expect("write connect response");
+            }
+
+            let mut hdlc_bytes = [0_u8; 64];
+            connect_reader.get_mut().read(&mut hdlc_bytes).await.expect("read tunneled HDLC bytes")
+        });
+
+        let peer = "peer.b32.i2p".to_string();
+        let iface_address = crate::hash::AddressHash::new([0x33; 16]);
+        let runtime_status = Arc::new(std::sync::Mutex::new(I2pRuntimeStatus::new(
+            sam_addr.clone(),
+            false,
+            std::slice::from_ref(&peer),
+        )));
+        let cancel = CancellationToken::new();
+        let iface_stop = CancellationToken::new();
+        let (rx_channel, _rx_messages) = tokio::sync::mpsc::channel(8);
+        let (peer_tx, peer_rx) = tokio::sync::mpsc::channel(8);
+        let peer_loop = tokio::spawn(run_i2p_peer_loop(
+            peer.clone(),
+            iface_address,
+            sam_addr,
+            I2pInterface::DEFAULT_MTU,
+            Duration::from_millis(10),
+            Arc::clone(&runtime_status),
+            cancel.clone(),
+            iface_stop.clone(),
+            rx_channel,
+            peer_rx,
+        ));
+
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                let connected = {
+                    let status = runtime_status.lock().expect("i2p runtime status");
+                    status.peers[&peer].state == I2pTunnelState::Connected
+                };
+                if connected {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("peer loop connected");
+
+        peer_tx
+            .send(TxMessage { tx_type: TxMessageType::Broadcast(None), packet: Packet::default() })
+            .await
+            .expect("send peer packet");
+        let hdlc_bytes_read = tokio::time::timeout(Duration::from_secs(1), server)
+            .await
+            .expect("fake SAM stream read timeout")
+            .expect("fake SAM server");
+        assert!(hdlc_bytes_read > 0);
+
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                let bytes_tx = {
+                    let status = runtime_status.lock().expect("i2p runtime status");
+                    status.peers[&peer].bytes_tx
+                };
+                if bytes_tx > 0 {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("peer loop recorded tx bytes");
+
+        cancel.cancel();
+        iface_stop.cancel();
+        tokio::time::timeout(Duration::from_secs(1), peer_loop)
+            .await
+            .expect("peer loop shutdown timeout")
+            .expect("peer loop task");
     }
 
     #[tokio::test]

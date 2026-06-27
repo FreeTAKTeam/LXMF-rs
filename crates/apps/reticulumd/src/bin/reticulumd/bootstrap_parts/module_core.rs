@@ -807,7 +807,20 @@ mod tests {
         ));
         let status = rns_transport::iface::i2p::I2pInterface::new("i2p-main", manager)
             .with_connectable(true)
+            .with_peers(vec!["peer-a.b32.i2p".to_string(), "peer-b.b32.i2p".to_string()])
             .runtime_status_handle();
+        status.mark_accept_listening();
+        status.mark_outbound_connected("peer-a.b32.i2p", AddressHash::new([0x20; 16]));
+        status.mark_outbound_reconnecting(
+            "peer-b.b32.i2p",
+            AddressHash::new([0x21; 16]),
+            "simulated stream reset".to_string(),
+        );
+        for index in 0..18 {
+            let iface = AddressHash::new([0x40 + index; 16]);
+            status.mark_incoming_connected(format!("closed-{index}").as_str(), iface);
+            status.mark_incoming_closed(iface);
+        }
         let refresh = transport_startup::I2pRuntimeRefresh { runtime_iface, status };
 
         assert_eq!(refresh_i2p_runtime_status_once(&daemon, &[refresh]), 1);
@@ -819,8 +832,35 @@ mod tests {
         let tunnel_status = &result["interfaces"][0]["settings"]["_runtime"]["i2p"]
             ["tunnel_status"];
 
-        assert_eq!(tunnel_status["accept_state"].as_str(), Some("configured"));
+        assert_eq!(tunnel_status["accept_state"].as_str(), Some("listening"));
         assert_eq!(tunnel_status["connectable"].as_bool(), Some(true));
+        assert_eq!(tunnel_status["configured_peer_count"].as_u64(), Some(2));
+        let peers = tunnel_status["peers"].as_array().expect("i2p peer rows");
+        let peer_row = |name: &str| {
+            peers
+                .iter()
+                .find(|row| row["peer"].as_str() == Some(name))
+                .unwrap_or_else(|| panic!("missing i2p peer row {name}"))
+        };
+        let peer_a = peer_row("peer-a.b32.i2p");
+        assert_eq!(peer_a["state"].as_str(), Some("connected"));
+        assert_eq!(peer_a["direction"].as_str(), Some("outbound"));
+        assert_eq!(peer_a["iface"].as_str(), Some(AddressHash::new([0x20; 16]).to_string().as_str()));
+        let peer_b = peer_row("peer-b.b32.i2p");
+        assert_eq!(peer_b["state"].as_str(), Some("reconnecting"));
+        assert_eq!(peer_b["reconnect_attempts"].as_u64(), Some(1));
+        assert_eq!(peer_b["last_error"].as_str(), Some("simulated stream reset"));
+        assert!(peers.iter().all(|row| row["peer"].as_str() != Some("closed-0")));
+        assert!(peers.iter().all(|row| row["peer"].as_str() != Some("closed-1")));
+        assert!(peers.iter().any(|row| row["peer"].as_str() == Some("closed-17")));
+        let closed_incoming_count = peers
+            .iter()
+            .filter(|row| {
+                row["direction"].as_str() == Some("incoming")
+                    && row["state"].as_str() == Some("closed")
+            })
+            .count();
+        assert_eq!(closed_incoming_count, 16);
     }
 
     #[test]

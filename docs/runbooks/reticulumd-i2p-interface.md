@@ -78,7 +78,10 @@ The I2P stream runtime uses the shared HDLC stream watchdog in opt-in mode:
 idle streams emit empty HDLC keepalive frames, become `stale` when no reads are
 observed past the Python-style probe window, and request a reconnect after the
 read-timeout window. These events update the transport-side I2P tunnel status
-model for configured peers and accepted incoming streams. `reticulumd`
+model for configured peers and accepted incoming streams. Local fake-SAM tests
+exercise the outbound peer loop through session creation, name lookup, stream
+connect, HDLC writes, and refreshed byte counters without requiring a prepared
+I2P router. `reticulumd`
 periodically refreshes that model into the cached interface records returned by
 `daemon_status_ex` and `list_interfaces` as
 `_runtime.i2p.tunnel_status`.
