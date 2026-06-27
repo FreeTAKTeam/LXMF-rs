@@ -72,6 +72,10 @@ actual byte coverage, so out-of-order chunks do not report a complete
 framebuffer until all byte ranges have arrived. Targeted CPU, task CPU, and
 memory log events update `_runtime.weave.status.device_stats`; off-target
 display and log frames are ignored.
+The transport also has the Python-compatible WDCL remote-display service
+control frame primitive (`WDCL_CMD_REMOTE_DISPLAY`, payload `0x01` to enable
+and `0x00` to disable) covered by software tests; daemon/RPC or CLI control
+dispatch for issuing that command on a live stream remains a follow-up.
 
 ## Prepared-Host Smoke
 
@@ -120,5 +124,6 @@ Artifacts are uploaded as `weave-prepared-host-artifacts`, including
   combinations is still required.
 - Dedicated remote display control UI integration is not complete; current
   operator visibility is through daemon/RPC status, `rnstatus-rs` summaries,
-  and `rnstatus-rs --weave-display`.
+  and `rnstatus-rs --weave-display`, while the transport-side WDCL control
+  frame primitive is covered.
 - I2PInterface has a separate in-progress outbound SAM peer slice.

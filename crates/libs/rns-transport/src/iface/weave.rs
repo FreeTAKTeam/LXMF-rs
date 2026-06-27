@@ -28,6 +28,7 @@ const WDCL_T_DISP: u8 = 0x04;
 const WDCL_T_ENDPOINT_PKT: u8 = 0x05;
 const WDCL_BROADCAST: [u8; 4] = [0xFF; 4];
 const WDCL_CMD_ENDPOINT_PKT: u16 = 0x0001;
+const WDCL_CMD_REMOTE_DISPLAY: u16 = 0x0A00;
 const ET_PROTO_WDCL_CONNECTION: u16 = 0x3002;
 const ET_PROTO_WDCL_HOST_ENDPOINT: u16 = 0x3003;
 const ET_PROTO_WEAVE_EP_ALIVE: u16 = 0x3102;
@@ -1226,6 +1227,12 @@ fn weave_endpoint_command_frame(
     weave_wdcl_frame(remote_switch_id, WDCL_T_CMD, &command)
 }
 
+pub fn weave_remote_display_command_frame(remote_switch_id: [u8; 4], enable: bool) -> Vec<u8> {
+    let command =
+        [(WDCL_CMD_REMOTE_DISPLAY >> 8) as u8, WDCL_CMD_REMOTE_DISPLAY as u8, u8::from(enable)];
+    weave_wdcl_frame(remote_switch_id, WDCL_T_CMD, &command)
+}
+
 fn weave_wdcl_frame(target: [u8; SWITCH_ID_LEN], packet_type: u8, payload: &[u8]) -> Vec<u8> {
     let mut frame = Vec::with_capacity(SWITCH_ID_LEN + 1 + payload.len());
     frame.extend_from_slice(&target);
@@ -1702,6 +1709,27 @@ mod tests {
         assert_eq!(handshake[SWITCH_ID_LEN], WDCL_T_CONNECT);
         assert_eq!(status.remote_switch_id, Some(switch_id_for_identity(&remote)));
         assert_eq!(status.frames_tx, 2);
+    }
+
+    #[test]
+    fn weave_remote_display_command_frames_match_python_wdcl_control() {
+        let remote_switch = [0x10, 0x20, 0x30, 0x40];
+
+        let enable = weave_remote_display_command_frame(remote_switch, true);
+        let disable = weave_remote_display_command_frame(remote_switch, false);
+
+        for (frame, expected_value) in [(enable, 1_u8), (disable, 0_u8)] {
+            let wire = weave_wire_frame(&frame);
+            let command = decode_one_wire_frame(&wire);
+            assert_eq!(command[..SWITCH_ID_LEN], remote_switch);
+            assert_eq!(command[SWITCH_ID_LEN], WDCL_T_CMD);
+            assert_eq!(
+                &command[SWITCH_ID_LEN + 1..SWITCH_ID_LEN + 3],
+                &WDCL_CMD_REMOTE_DISPLAY.to_be_bytes()
+            );
+            assert_eq!(command[SWITCH_ID_LEN + 3], expected_value);
+            assert_eq!(command.len(), SWITCH_ID_LEN + 1 + 3);
+        }
     }
 
     #[tokio::test]
