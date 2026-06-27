@@ -108,7 +108,9 @@ placeholders:
   alone does not imply forwarding. Daemon/RPC status now refreshes UDP bind
   state, role, last observed peer-route count, packet, byte, drop, and error
   counters into `_runtime.udp.status`, and `rnstatus-rs` renders those rows for
-  operators.
+  operators. A software loopback smoke now proves Python-style alias parsing,
+  strict startup, bound loopback status, and malformed-datagram
+  `bytes_rx`/`decode_errors` telemetry without external network services.
 - Serial now refreshes live daemon/RPC status with open/reconnect, HDLC frame,
   packet, byte, EOF, queue, decode, serialize, read, and write-error counters.
   Serial KISS and AX.25 KISS retain Python-compatible AX.25 UI header wrapping

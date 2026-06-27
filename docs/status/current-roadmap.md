@@ -81,7 +81,9 @@ The project is best described by capability level:
   startup and refreshed `rnstatus-rs` JSON/human runtime status, UDP
   unicast/multicast plus
   Python-style UDP `device` broadcast-address defaults, IPv4 broadcast socket
-  sends, and shared-`port` forward fallback semantics, serial, KISS, AX.25
+  sends, shared-`port` forward fallback semantics, and a software loopback
+  smoke for strict startup, bind status, and receive-side decode telemetry,
+  serial, KISS, AX.25
   KISS with Android-style beacon alias compatibility, Python
   `TCPClientInterface` `kiss_framing = true` parse-to-bootstrap/status
   coverage as `kiss_tcp_client`, AutoInterface with
@@ -230,7 +232,10 @@ The project is best described by capability level:
   against real VR-N76 hardware remains pending.
 - UDP now refreshes live bind state, role, last observed peer-route count,
   packet, byte, drop, and error counters in daemon/RPC metadata and
-  `rnstatus-rs`. Serial now refreshes live open/reconnect, HDLC frame, packet,
+  `rnstatus-rs`. A software loopback smoke now proves Python-style
+  `UDPInterface` alias parsing, strict daemon startup, bound loopback status,
+  and malformed-datagram `bytes_rx`/`decode_errors` telemetry without external
+  network services. Serial now refreshes live open/reconnect, HDLC frame, packet,
   byte, EOF, queue, decode, serialize, read, and write-error counters.
   KISS/AX.25 KISS and KISS TCP now refresh live packet, data-frame,
   command-frame, byte, flow-control, queue, AX.25 drop, and error counters.
