@@ -25,7 +25,7 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
                 "identity_hash": "0123456789abcdef0123456789abcdef",
                 "running": true,
                 "peer_count": 2,
-                "interface_count": 2,
+                "interface_count": 4,
                 "propagation": {
                     "enabled": true,
                     "selected_node": "cafebabe",
@@ -75,6 +75,53 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
                                                 "bytes_tx": 0
                                             }
                                         ]
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "name": "weave-main",
+                        "type": "weave",
+                        "enabled": true,
+                        "settings": {
+                            "_runtime": {
+                                "startup_status": "spawned",
+                                "weave": {
+                                    "status": {
+                                        "link_state": "reconnecting",
+                                        "endpoint_count": 2,
+                                        "wdcl_connected": false,
+                                        "bytes_rx": 120,
+                                        "bytes_tx": 80,
+                                        "display": {
+                                            "width": 128,
+                                            "height": 64,
+                                            "complete": false
+                                        },
+                                        "device_stats": {
+                                            "cpu_load": 42,
+                                            "memory_used_percent_bp": 5125
+                                        },
+                                        "last_error": "synthetic weave write failure"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "name": "rnode-multi",
+                        "type": "rnode_multi",
+                        "enabled": true,
+                        "settings": {
+                            "_runtime": {
+                                "startup_status": "spawned",
+                                "rnode_multi": {
+                                    "radio_status": {
+                                        "stream_state": "write_failed",
+                                        "selected_vport": 2,
+                                        "last_error": "data frame write failed",
+                                        "vports": [2, 3]
                                     }
                                 }
                             }
@@ -122,7 +169,7 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
                 "identity_hash": "0123456789abcdef0123456789abcdef",
                 "running": true,
                 "peer_count": 2,
-                "interface_count": 2,
+                "interface_count": 4,
                 "propagation": {
                     "enabled": true,
                     "selected_node": "cafebabe",
@@ -176,6 +223,53 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
                                 }
                             }
                         }
+                    },
+                    {
+                        "name": "weave-main",
+                        "type": "weave",
+                        "enabled": true,
+                        "settings": {
+                            "_runtime": {
+                                "startup_status": "spawned",
+                                "weave": {
+                                    "status": {
+                                        "link_state": "reconnecting",
+                                        "endpoint_count": 2,
+                                        "wdcl_connected": false,
+                                        "bytes_rx": 120,
+                                        "bytes_tx": 80,
+                                        "display": {
+                                            "width": 128,
+                                            "height": 64,
+                                            "complete": false
+                                        },
+                                        "device_stats": {
+                                            "cpu_load": 42,
+                                            "memory_used_percent_bp": 5125
+                                        },
+                                        "last_error": "synthetic weave write failure"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "name": "rnode-multi",
+                        "type": "rnode_multi",
+                        "enabled": true,
+                        "settings": {
+                            "_runtime": {
+                                "startup_status": "spawned",
+                                "rnode_multi": {
+                                    "radio_status": {
+                                        "stream_state": "write_failed",
+                                        "selected_vport": 2,
+                                        "last_error": "data frame write failed",
+                                        "vports": [2, 3]
+                                    }
+                                }
+                            }
+                        }
                     }
                 ]
             })),
@@ -207,6 +301,18 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
     assert!(stdout.contains("incoming=1"), "stdout: {stdout}");
     assert!(stdout.contains("rx=14"), "stdout: {stdout}");
     assert!(stdout.contains("tx=7"), "stdout: {stdout}");
+    assert!(stdout.contains("weave-main"), "stdout: {stdout}");
+    assert!(stdout.contains("weave link=reconnecting endpoints=2 wdcl=false"), "stdout: {stdout}");
+    assert!(stdout.contains("display=128x64/false"), "stdout: {stdout}");
+    assert!(stdout.contains("cpu=42"), "stdout: {stdout}");
+    assert!(stdout.contains("mem=51.25%"), "stdout: {stdout}");
+    assert!(stdout.contains("err=synthetic weave write failure"), "stdout: {stdout}");
+    assert!(stdout.contains("rnode-multi"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("rnode_multi stream=write_failed selected=2 vports=2"),
+        "stdout: {stdout}"
+    );
+    assert!(stdout.contains("err=data frame write failed"), "stdout: {stdout}");
     assert!(stdout.contains("Propagation: enabled=true"), "stdout: {stdout}");
     assert!(stdout.contains("peers=2"), "stdout: {stdout}");
     assert!(stdout.contains("selected=cafebabe"), "stdout: {stdout}");
