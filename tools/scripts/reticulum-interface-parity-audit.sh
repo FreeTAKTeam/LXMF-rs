@@ -272,15 +272,15 @@ def rnode_fake_tcp_check():
 
 def candidate_rnode_hil_paths(manifest_report_paths):
     paths = []
-    paths.extend(glob.glob(str(root / "target/rnode-hil/report.json")))
-    paths.extend(glob.glob(str(root / "target/rnode-hil/*/report.json")))
-    paths.extend(glob.glob(str(root / "target/rnode-hil/**/*.report.json"), recursive=True))
     for item in manifest_report_paths:
         paths.append(str(resolve_path(item)))
     for item in rnode_hil_reports.split(":"):
         item = item.strip()
         if item:
             paths.append(str(resolve_path(item)))
+    paths.extend(glob.glob(str(root / "target/rnode-hil/report.json")))
+    paths.extend(glob.glob(str(root / "target/rnode-hil/*/report.json")))
+    paths.extend(glob.glob(str(root / "target/rnode-hil/**/*.report.json"), recursive=True))
     seen = set()
     result = []
     for path in paths:
@@ -360,7 +360,7 @@ def rnode_hardware_matrix(artifact_manifest):
             reasons.append("post-management last_command_error is not null")
         if post.get("hardware_errors") not in ([], None):
             reasons.append("post-management hardware_errors is not empty")
-        found[scope] = {
+        candidate = {
             "bearer": expected_bearer,
             "path": str(path.relative_to(root) if path.is_absolute() and root in path.parents else path),
             "status": "pass" if not reasons else "fail",
@@ -372,6 +372,9 @@ def rnode_hardware_matrix(artifact_manifest):
             "mcu": payload.get("mcu"),
             "reason": "; ".join(reasons) if reasons else None,
         }
+        existing = found.get(scope)
+        if existing is None or (existing.get("status") != "pass" and candidate["status"] == "pass"):
+            found[scope] = candidate
     checks = []
     for scope, bearer in required_scopes.items():
         checks.append(

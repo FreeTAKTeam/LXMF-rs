@@ -6,7 +6,7 @@ cd "$ROOT_DIR"
 
 ALLOW_PARTIAL=false
 AUDIT_EXISTING=false
-RUN_LOCAL_SMOKES="${RIF_RUN_LOCAL_SMOKES:-false}"
+RUN_LOCAL_SMOKES="${RIF_RUN_LOCAL_SMOKES:-auto}"
 for arg in "$@"; do
   case "$arg" in
     --allow-partial)
@@ -25,6 +25,14 @@ for arg in "$@"; do
       ;;
   esac
 done
+
+if [[ "$RUN_LOCAL_SMOKES" == "auto" ]]; then
+  if [[ "$ALLOW_PARTIAL" != true && "$AUDIT_EXISTING" != true ]]; then
+    RUN_LOCAL_SMOKES=true
+  else
+    RUN_LOCAL_SMOKES=false
+  fi
+fi
 
 LOG_DIR="${LOG_DIR:-${ROOT_DIR}/target/reticulum-interface-hil-matrix}"
 REPORT_PATH="${REPORT_PATH:-${LOG_DIR}/report.json}"
@@ -61,7 +69,7 @@ bearer_env_value() {
 write_report() {
   local status="$1"
   local reason="${2:-}"
-  python3 - <<'PY' "$REPORT_PATH" "$status" "$reason" "$LOG_DIR" "$RNODE_MATRIX_DIR" "$AUDIT_REPORT_PATH" "$ARTIFACT_MANIFEST_PATH" "$SERIAL_PORT" "$TCP_PORT" "$BLE_PORT" "$AUDIT_EXISTING" "$ALLOW_PARTIAL"
+  RUN_LOCAL_SMOKES_EFFECTIVE="$RUN_LOCAL_SMOKES" python3 - <<'PY' "$REPORT_PATH" "$status" "$reason" "$LOG_DIR" "$RNODE_MATRIX_DIR" "$AUDIT_REPORT_PATH" "$ARTIFACT_MANIFEST_PATH" "$SERIAL_PORT" "$TCP_PORT" "$BLE_PORT" "$AUDIT_EXISTING" "$ALLOW_PARTIAL"
 import hashlib
 import json
 import os
@@ -167,6 +175,11 @@ report = {
         "interface parity audit. Software-only RNode evidence is recorded but "
         "does not replace the hardware matrix."
     ),
+    "local_smoke_policy": (
+        "Strict matrix runs refresh LocalInterface #384 smokes by default so "
+        "clean HIL runners have the full evidence set before --require-full; "
+        "partial and audit-existing modes skip them unless requested."
+    ),
     "reason": reason or None,
     "configured_ports": {
         "serial": serial_port or None,
@@ -182,6 +195,7 @@ report = {
     "per_bearer_overrides": configured_overrides,
     "audit_existing": audit_existing == "true",
     "allow_partial": allow_partial == "true",
+    "run_local_smokes": os.environ.get("RUN_LOCAL_SMOKES_EFFECTIVE"),
     "log_dir": log_dir,
     "rnode_matrix_dir": rel_path(matrix_dir),
     "expected_rnode_reports": [

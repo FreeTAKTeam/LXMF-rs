@@ -304,9 +304,11 @@ or the `RIF_HIL_ARTIFACT_MANIFEST` / `RIF_ARTIFACT_MANIFEST` aliases; the audit
 requires `schema = "reticulum_interface_hil_matrix_artifacts.v1"` and verifies
 the `rnode_serial_report`, `rnode_tcp_report`, and `rnode_ble_report` SHA-256
 digests before using those reports.
-Use `--audit-existing` to re-check archived matrix reports without touching
-devices, or `--run-local-smokes` / `RIF_RUN_LOCAL_SMOKES=true` to refresh the
-LocalInterface #384 smoke evidence in the same run.
+Strict matrix runs refresh the LocalInterface #384 smoke evidence by default
+before the final `--require-full` audit, so clean HIL runners collect the full
+evidence set in one pass. Use `--audit-existing` to re-check archived matrix
+reports without touching devices or refreshing smokes; partial mode skips local
+smokes unless `--run-local-smokes` or `RIF_RUN_LOCAL_SMOKES=true` is set.
 
 Nightly HIL exposes this path with `HIL_RNODE_MATRIX_ENABLED=true`. Configure
 `HIL_RNODE_MATRIX_SERIAL_PORT`, `HIL_RNODE_MATRIX_TCP_PORT`,

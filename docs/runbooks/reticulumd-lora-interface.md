@@ -581,10 +581,12 @@ or the `RIF_HIL_ARTIFACT_MANIFEST` / `RIF_ARTIFACT_MANIFEST` aliases; the audit
 verifies the `rnode_serial_report`, `rnode_tcp_report`, and `rnode_ble_report`
 SHA-256 digests before using those reports.
 It accepts legacy aliases `RNODE_SERIAL_PORT`, `RNODE_TCP_PORT`, and
-`RNODE_BLE_PORT`. Use `--allow-partial` for diagnostics when only some devices
-are attached, `--audit-existing` to re-check archived reports without touching
-devices, and `--run-local-smokes` or `RIF_RUN_LOCAL_SMOKES=true` to refresh the
-LocalInterface #384 smokes before the final audit.
+`RNODE_BLE_PORT`. Strict matrix runs refresh the LocalInterface #384 smokes by
+default before the final `--require-full` audit, so clean HIL runners collect
+the full evidence set in one pass. Use `--allow-partial` for diagnostics when
+only some devices are attached and `--audit-existing` to re-check archived
+reports without touching devices or refreshing smokes; partial mode skips local
+smokes unless `--run-local-smokes` or `RIF_RUN_LOCAL_SMOKES=true` is set.
 
 The matrix inherits the ordinary `RNODE_*` radio, timeout, management, and BLE
 settings for every bearer, but each bearer can override them with
