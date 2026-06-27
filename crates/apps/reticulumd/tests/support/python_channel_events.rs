@@ -77,8 +77,17 @@ pub(super) async fn wait_for_reply(
     seen: &Arc<StdMutex<Vec<(String, String)>>>,
     duration: Duration,
 ) {
+    wait_for_reply_tuple(seen, duration, "rust-1", "reply:hello-python").await;
+}
+
+pub(super) async fn wait_for_reply_tuple(
+    seen: &Arc<StdMutex<Vec<(String, String)>>>,
+    duration: Duration,
+    expected_id: &str,
+    expected_data: &str,
+) {
     wait_for_seen_tuple(seen, duration, "Python channel reply", |id, data| {
-        id == "rust-1" && data == "reply:hello-python"
+        id == expected_id && data == expected_data
     })
     .await;
 }

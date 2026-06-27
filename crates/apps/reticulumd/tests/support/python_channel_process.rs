@@ -1,5 +1,5 @@
 use std::fs;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -52,6 +52,15 @@ impl Drop for ChildGuard {
         if let Some(child) = self.child.as_mut() {
             let _ = child.kill();
             let _ = child.wait();
+            if std::thread::panicking() {
+                if let Some(mut stderr) = child.stderr.take() {
+                    let mut output = String::new();
+                    let _ = stderr.read_to_string(&mut output);
+                    if !output.trim().is_empty() {
+                        eprintln!("python child stderr:\n{output}");
+                    }
+                }
+            }
         }
     }
 }

@@ -220,11 +220,13 @@ metadata for vports `2` and `3`, then starts `reticulumd` with
 The smoke writes structured evidence under
 `target/rnode-multi-fake-tcp-smoke/`, including `report.json`, the fake-peer
 state with `management_blink_seen`, daemon logs, `rnstatus-rs` JSON/human
-output, and the `rnodeconf-rs` management response. This proves Python-style
-TCP parent config, strict daemon startup, startup-probe status refresh,
-`rnstatus-rs`, and vport management dispatch through the real daemon path. It
-is still not a substitute for prepared-host execution against real RNodeMulti
-hardware.
+output, and the `rnodeconf-rs` management response. The report records
+`evidence_scope = "software_fake_tcp_rnode_multi"` plus a `product_boundary`
+note that this is not prepared-host or broad hardware production parity. This
+proves Python-style TCP parent config, strict daemon startup, startup-probe
+status refresh, `rnstatus-rs`, and vport management dispatch through the real
+daemon path. It is still not a substitute for prepared-host execution against
+real RNodeMulti hardware.
 
 ## Software Fake-PTY Smoke
 
@@ -259,11 +261,13 @@ metadata for vports `2` and `3`. A passing run requires:
 The smoke writes structured evidence under
 `target/rnode-multi-fake-pty-smoke/`, including `report.json`, the fake-peer
 state with `management_blink_seen`, daemon logs, `rnstatus-rs` JSON/human
-output, and the `rnodeconf-rs` management response. This proves the RNodeMulti
-serial software path, strict daemon startup, startup-probe status refresh,
-`rnstatus-rs`, and vport management dispatch through the real daemon path. It
-is still not a substitute for prepared-host execution against real RNodeMulti
-hardware.
+output, and the `rnodeconf-rs` management response. The report records
+`evidence_scope = "software_fake_pty_rnode_multi"` plus a `product_boundary`
+note that this is not prepared-host or broad hardware production parity. This
+proves the RNodeMulti serial software path, strict daemon startup,
+startup-probe status refresh, `rnstatus-rs`, and vport management dispatch
+through the real daemon path. It is still not a substitute for prepared-host
+execution against real RNodeMulti hardware.
 
 ## Prepared-Host Smoke
 

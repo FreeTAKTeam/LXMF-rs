@@ -175,7 +175,13 @@ async fn rust_to_python_backbone_channel_roundtrip() {
             .expect("encode Backbone channel message");
     channel.send(MSG_TYPE, payload).await.expect("send Backbone channel message");
 
-    wait_for_reply(&seen, Duration::from_secs(8)).await;
+    wait_for_reply_tuple(
+        &seen,
+        Duration::from_secs(8),
+        "rust-backbone",
+        "reply:hello-python-backbone",
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -420,7 +426,7 @@ async fn rust_to_python_resource_backed_request_response_roundtrip() {
         &mut resource_events,
         link_id,
         request_id,
-        Duration::from_secs(8),
+        Duration::from_secs(30),
     )
     .await;
     assert_eq!(

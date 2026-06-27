@@ -65,6 +65,12 @@ import sys
 ) = sys.argv[1:16]
 report = {
     "status": status,
+    "evidence_scope": "software_fake_pty_weave",
+    "product_boundary": (
+        "This proves the Weave serial software path, signed discovery, runtime "
+        "status, display rendering, and remote-display dispatch against a local "
+        "PTY fake peer; it is not prepared-host or broad hardware production parity."
+    ),
     "reason": reason or None,
     "rpc_addr": rpc_addr,
     "run_dir": run_dir,

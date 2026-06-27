@@ -610,6 +610,7 @@ impl I2pInterface {
                 peer,
                 child_iface,
                 sam_addr.clone(),
+                transport_identity_hash,
                 mtu,
                 reconnect_wait,
                 runtime_status.clone(),
@@ -688,6 +689,7 @@ async fn run_i2p_peer_loop(
     peer: String,
     iface_address: AddressHash,
     sam_addr: String,
+    transport_identity_hash: Option<[u8; 16]>,
     mtu: usize,
     reconnect_wait: Duration,
     runtime_status: Arc<std::sync::Mutex<I2pRuntimeStatus>>,
@@ -697,7 +699,7 @@ async fn run_i2p_peer_loop(
     peer_rx: tokio::sync::mpsc::Receiver<TxMessage>,
 ) {
     let peer_rx = Arc::new(tokio::sync::Mutex::new(peer_rx));
-    let session_id = sam_session_id(iface_address);
+    let session_id = sam_session_id(iface_address, transport_identity_hash.as_ref());
 
     loop {
         if cancel.is_cancelled() || iface_stop.is_cancelled() {
@@ -804,7 +806,8 @@ async fn run_i2p_accept_loop(
         tokio::sync::Mutex<BTreeMap<AddressHash, tokio::sync::mpsc::Sender<TxMessage>>>,
     >,
 ) {
-    let session_id = format!("{}-accept", sam_session_id(parent_iface));
+    let session_id =
+        format!("{}-accept", sam_session_id(parent_iface, transport_identity_hash.as_ref()));
 
     loop {
         if cancel.is_cancelled() || iface_stop.is_cancelled() {
@@ -915,6 +918,7 @@ async fn run_i2p_accept_session(
         let (remote_destination, stream) = match accept_sam_stream(sam_addr, session_id).await {
             Ok(accepted) => accepted,
             Err(err) => {
+                let recreate_session = accept_error_requires_session_recreate(&err);
                 runtime_status
                     .lock()
                     .expect("i2p runtime status mutex poisoned")
@@ -925,6 +929,9 @@ async fn run_i2p_accept_session(
                     parent_iface,
                     err
                 );
+                if recreate_session {
+                    break;
+                }
                 tokio::select! {
                     _ = cancel.cancelled() => break,
                     _ = iface_stop.cancelled() => break,
@@ -1081,6 +1088,10 @@ pub(crate) async fn accept_sam_stream(
         })?
         .to_string();
     Ok((remote_destination, stream))
+}
+
+fn accept_error_requires_session_recreate(err: &io::Error) -> bool {
+    err.kind() == io::ErrorKind::InvalidData && err.to_string().contains("is not a STREAM session")
 }
 
 pub async fn connectable_session_destination(
@@ -1350,23 +1361,31 @@ fn sam_value<'a>(line: &'a str, key: &str) -> Option<&'a str> {
     line.split_ascii_whitespace().find_map(|part| part.strip_prefix(key.as_str()))
 }
 
-fn sam_session_id(iface_address: AddressHash) -> String {
+fn sam_session_id(iface_address: AddressHash, identity_hash: Option<&[u8; 16]>) -> String {
     let hex = iface_address.to_string();
     let trimmed = hex.trim_matches('/');
     let suffix = trimmed.get(..16).unwrap_or(trimmed);
-    format!("lxmf-rs-{suffix}")
+    let Some(identity_hash) = identity_hash else {
+        return format!("lxmf-rs-{suffix}");
+    };
+
+    let mut identity_suffix = String::with_capacity(16);
+    for byte in identity_hash.iter().take(8) {
+        identity_suffix.push_str(format!("{byte:02x}").as_str());
+    }
+    format!("lxmf-rs-{suffix}-{identity_suffix}")
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        accept_sam_stream, base32_no_pad_lower, cleanup_i2p_peer_routes,
-        connectable_session_destination_with_identity, create_sam_session,
+        accept_error_requires_session_recreate, accept_sam_stream, base32_no_pad_lower,
+        cleanup_i2p_peer_routes, connectable_session_destination_with_identity, create_sam_session,
         i2p_b32_from_private_destination, i2p_new_format_key_stem, i2p_old_format_key_stem,
         i2p_private_key_new_format_path, i2p_private_key_old_format_path,
         i2p_private_key_path_with_identity, open_sam_stream, run_i2p_accept_loop,
-        run_i2p_peer_loop, HdlcStreamEvent, I2pInterface, I2pRuntimeStatus, I2pTunnelState,
-        I2P_CERT_LEN_OFFSET, I2P_DEST_PREFIX_LEN, I2P_MAX_CLOSED_INCOMING_PEERS,
+        run_i2p_peer_loop, sam_session_id, HdlcStreamEvent, I2pInterface, I2pRuntimeStatus,
+        I2pTunnelState, I2P_CERT_LEN_OFFSET, I2P_DEST_PREFIX_LEN, I2P_MAX_CLOSED_INCOMING_PEERS,
     };
     use std::collections::BTreeMap;
     use std::sync::Arc;
@@ -1489,6 +1508,36 @@ mod tests {
         assert!(!peer_rows.iter().any(|row| row["peer"].as_str() == Some("closed-0")));
         assert!(!peer_rows.iter().any(|row| row["peer"].as_str() == Some("closed-3")));
         assert!(peer_rows.iter().any(|row| row["peer"].as_str() == Some("closed-4")));
+    }
+
+    #[test]
+    fn i2p_accept_recreates_session_when_sam_session_expires() {
+        let expired = std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "unexpected SAM response for STREAM STATUS: STREAM STATUS RESULT=I2P_ERROR MESSAGE=\"specified ID lxmf-rs-accept is not a STREAM session\"",
+        );
+        assert!(accept_error_requires_session_recreate(&expired));
+
+        let timeout = std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "SAM accept failed after status ok: STREAM STATUS RESULT=TIMEOUT",
+        );
+        assert!(!accept_error_requires_session_recreate(&timeout));
+    }
+
+    #[test]
+    fn i2p_sam_session_id_includes_transport_identity_when_available() {
+        let iface_address = crate::hash::AddressHash::new([0x33; 16]);
+        assert_eq!(sam_session_id(iface_address, None), "lxmf-rs-3333333333333333");
+
+        let identity_hash = [
+            0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80,
+            0x90, 0xA0,
+        ];
+        assert_eq!(
+            sam_session_id(iface_address, Some(&identity_hash)),
+            "lxmf-rs-3333333333333333-aabbccddeeff1020"
+        );
     }
 
     #[tokio::test]
@@ -1682,6 +1731,7 @@ mod tests {
             peer.clone(),
             iface_address,
             sam_addr,
+            None,
             I2pInterface::DEFAULT_MTU,
             Duration::from_millis(10),
             Arc::clone(&runtime_status),

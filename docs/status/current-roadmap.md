@@ -60,9 +60,9 @@ The project is best described by capability level:
   read-timeout reconnects, local slow-reader HDLC tx backpressure evidence
   paired with Python selector/epoll and live Python Reticulum
   `BackboneClientInterface` slow-reader probes in the pinned Python interop
-  workflow, and ignored live Rust/Python Backbone channel, link-data,
+  workflow, and live Rust/Python Backbone channel, link-data,
   request/response, and resource roundtrips in both directions over Python
-  `BackboneInterface`/`BackboneClientInterface`,
+  `BackboneInterface`/`BackboneClientInterface` against the pinned reference,
   TCP/Backbone client reconnect tunnel re-synthesis, TCP/Backbone listener
   daemon/RPC runtime status with accept counters and latest accepted stream
   snapshots, Python `BackboneInterface` `remote` alias
@@ -77,9 +77,17 @@ The project is best described by capability level:
   listeners through a sidecar startup path,
   Python-style `force_shared_instance_bitrate` stream pacing, plus
   shared-instance one-hop transport wrapping,
-  LocalInterface TCP shared-instance software smoke coverage for strict startup,
-  TCP listener/attach status, Python local MTU, bitrate alias reporting, and
-  `rnstatus-rs` JSON/human output,
+  LocalInterface TCP and Unix shared-instance software smoke coverage for
+  strict startup, TCP listener/attach status, filesystem Unix listener startup,
+  Linux abstract Unix listener/client attach, Python local MTU, bitrate alias
+  reporting, and `rnstatus-rs` JSON/human output, plus pinned Python Reticulum
+  shared-instance attach and Python-origin announce-fanout evidence over TCP
+  and Linux abstract Unix sockets. The Reticulum interface parity audit records
+  LocalInterface #384 evidence under
+  `target/reticulum-interface-parity-audit/report.json` with
+  `evidence_scope = "reticulum_interfaces_384_385_parity_audit"` and optional
+  `RNODE_HIL_ARTIFACT_MANIFEST` verification for
+  `schema = "reticulum_interface_hil_matrix_artifacts.v1"` matrix artifacts,
   Pipe subprocess HDLC with a software fake-subprocess smoke for strict daemon
   startup and refreshed `rnstatus-rs` JSON/human runtime status, UDP
   unicast/multicast plus
@@ -125,7 +133,9 @@ The project is best described by capability level:
   command frame. Software fake-TCP and fake-PTY smokes now exercise strict
   daemon startup, startup-probe status refresh, `rnstatus-rs` JSON/human output,
   and `rnodeconf-rs` vport blink dispatch through the real TCP and serial PTY
-  parent paths without hardware. Display-capable ESP32/NRF52 devices get Python-style
+  parent paths without hardware, while their reports record
+  `software_fake_tcp_rnode_multi` and `software_fake_pty_rnode_multi` evidence
+  scopes with product-boundary notes. Display-capable ESP32/NRF52 devices get Python-style
   external-framebuffer disable during teardown before per-vport radio-off and
   leave-host payload `0xff` frames. Clean stream EOF and software stop now
   report `stream_state = "closed"` without masking read/write/probe failure
@@ -145,18 +155,45 @@ The project is best described by capability level:
   `_runtime.lora.rnode_status`. An opt-in prepared-host
   smoke harness records serial/TCP/BLE RNode lifecycle evidence under
   `target/rnode-hil/` with bearer-scoped `evidence_scope` values for serial,
-  TCP/Wi-Fi, and BLE prepared endpoints. Display-capable BLE RNode shutdown now disables the
-  external framebuffer before radio-off/leave frames. Android configured
-  RNode BLE reconnect now excludes the failed configured peripheral from the
-  fallback scan, while still allowing alias and service-UUID fallback matches
-  with stable log context. Serial/TCP RNode streams now expose a
+  TCP/Wi-Fi, and BLE prepared endpoints; that same prepared-host gate now
+  dispatches safe `rnodeconf-rs query-radio-state` and `blink` management
+  commands through the live daemon binding, records their queued JSON results,
+  and captures a post-management status snapshot that must remain online,
+  radio-on, and command-error free. A software-only RNode BLE smoke records
+  `evidence_scope = "software_rnode_ble_fallback_management"` under
+  `target/rnode-ble-software-smoke/` for feature-gated fallback, command-monitor,
+  management dispatch, `reticulumd` daemon `RnodeBle` management bridge
+  dispatch, `rnodeconf-rs` extended management command-to-RPC coverage,
+  persistent/destructive CLI guard enforcement, and shared
+  closed-queue cleanup regressions. A fake TCP RNode smoke records
+  `evidence_scope = "software_fake_tcp_rnode_prepared_host_management"` by
+  running the ordinary prepared-host path against a deterministic local KISS TCP
+  peer and verifying startup, radio configuration, radio-state query, and blink
+  management frames reached the peer. The Reticulum interface parity audit
+  combines RNode BLE #385 software evidence with serial, TCP/Wi-Fi, and BLE prepared-host RNode hardware reports before allowing a strict full-parity
+  pass; `tools/scripts/reticulum-interface-hil-matrix.sh` collects those three
+  bearer reports under `target/rnode-hil/matrix/` and writes
+  `target/reticulum-interface-hil-matrix/report.json` with
+  `evidence_scope = "reticulum_interfaces_384_385_hil_matrix"` plus
+  `target/reticulum-interface-hil-matrix/artifact-manifest.json` with SHA-256
+  digests. Nightly HIL
+  exposes the same path as `reticulum-interface-hil-matrix` behind
+  `HIL_RNODE_MATRIX_ENABLED=true`, and strict reports must include endpoint,
+  bearer, firmware, platform, MCU identity, and capture provenance fields.
+  Display-capable BLE
+  RNode shutdown now disables the external framebuffer before radio-off/leave
+  frames. Android configured RNode BLE reconnect now excludes the failed
+  configured peripheral from the fallback scan, while still allowing alias and
+  service-UUID fallback matches with stable log context. Serial/TCP RNode streams now expose a
   transport-local management dispatch handle that writes
   pre-encoded KISS command frames through the live KISS runtime; feature-gated
   BLE RNode streams expose the same management dispatch through the Nordic UART
   write path with BLE chunking. The first covered operations are radio-state
   query and blink indication, backed by duplex/mock tests, daemon
-  `rnode_management` RPC dispatch, reticulumd bridge dispatch tests, and
-  `rnodeconf-rs` mock-RPC CLI tests. The daemon/tool path now also queues safe
+  `rnode_management` RPC dispatch, reticulumd bridge dispatch tests,
+  `rnodeconf-rs` mock-RPC CLI tests, and prepared-host safe-management
+  dispatch artifacts when the serial/TCP/BLE HIL gate is enabled. The
+  daemon/tool path now also queues safe
   config/ROM read, display, NeoPixel, and interference-avoidance controls.
   Daemon RPC and `rnodeconf-rs` also queue guarded persistent/destructive RNode
   controls for Bluetooth, config save/delete, ROM write/wipe, hard reset,
@@ -186,7 +223,9 @@ The project is best described by capability level:
   enable/disable commands. A software fake-PTY smoke now proves signed WDCL
   discovery, connected runtime status refresh, endpoint/display/device-stat
   reporting, `rnstatus-rs --weave-display`, and live `weaveconf-rs`
-  enable/disable dispatch through the real daemon path without hardware. An
+  enable/disable dispatch through the real daemon path without hardware; its
+  report records `software_fake_pty_weave` evidence scope with a
+  product-boundary note. An
   opt-in prepared-host smoke harness records
   connected serial evidence under `target/weave-hil/` and can optionally prove
   the live `weaveconf-rs` remote-display enable/disable dispatch against that
@@ -213,7 +252,10 @@ The project is best described by capability level:
   writes, and refreshed runtime counters, plus the connectable accept loop
   through incoming `STREAM ACCEPT`, virtual child registration, HDLC ingress,
   direct outbound egress over the accepted stream, runtime counters, and
-  cleanup.
+  cleanup. SAM session IDs now include the daemon transport identity when
+  available to avoid cross-process collisions on a shared router, and expired
+  accept-loop session IDs recreate the connectable session instead of retrying
+  a dead ID indefinitely.
 - AutoInterface has a live daemon runtime, including discovery, peer lifecycle,
   peer-data sockets, transport ingress, outbound routing, multicast proof
   fallback, supervised discovery/data receive loops, transport-side
@@ -241,9 +283,14 @@ The project is best described by capability level:
   prepared-host smoke can now optionally require configured outbound peers to
   reach `connected` state when `I2P_PEERS` is supplied; its report explicitly
   distinguishes no-peer `sam_connectable_only` evidence from
-  `sam_connectable_with_outbound_peers` production evidence. Prepared-host
-  connected-peer production evidence remains pending until that harness is run
-  against a real SAM router and reachable peer set.
+  `sam_connectable_with_outbound_peers` production evidence. The real-SAM pair
+  smoke now records
+  `evidence_scope = "sam_connectable_with_outbound_peers_real_pair"` with
+  connected dialer outbound and acceptor incoming peer rows for two local
+  daemons sharing one router, and can optionally record
+  `sam_connectable_with_outbound_peers_real_pair_soak` with periodic
+  `rnstatus-rs` samples for bounded single-router stability. Broader public I2P
+  peer-set and long-running production evidence remain pending.
 - Feature-gated VR-N76 KISS-over-BLE now refreshes transport-side runtime
   status into daemon/RPC `_runtime.vrn76.status`; `rnstatus-rs` summarizes
   connected, subscribed, ready, startup-write failure, and queue counters. An
@@ -995,13 +1042,23 @@ the implemented subset.
      mutation parity.
 3. **Operational breadth**
    - Add broader prepared-host hardware evidence across serial/TCP/BLE RNode
-     device, firmware, and radio combinations; ordinary serial/TCP/BLE RNode
-     now has an opt-in prepared-host smoke gate with bearer-scoped reports.
+     device, firmware, management, and radio combinations; ordinary
+     serial/TCP/BLE RNode now has an opt-in prepared-host smoke gate with
+     bearer-scoped lifecycle plus safe-management dispatch reports and a
+     software-only BLE fallback/management smoke report. LocalInterface #384
+     and RNode BLE #385 now have an executable audit at
+     `target/reticulum-interface-parity-audit/report.json`; strict
+     `--require-full` mode remains incomplete until serial, TCP/Wi-Fi, and BLE
+     prepared-host RNode hardware reports are present. The
+     `reticulum-interface-hil-matrix.sh` runner is the collection path for that
+     hardware matrix, and its artifact manifest can be passed back through
+     `RNODE_HIL_ARTIFACT_MANIFEST` for strict SHA-256 verification.
    - Capture broader RNodeMulti prepared-host hardware validation/evidence
      across device, firmware, and radio combinations before treating that
      family as production-complete.
-   - Capture I2P prepared-host connected-peer evidence, and implement utility
-     commands where product demand justifies them.
+   - Capture broader public I2P peer-set and long-running prepared-host
+     evidence, and implement utility commands where product demand justifies
+     them.
    - Capture broader prepared-host Weave hardware evidence before treating that
      family as production-complete.
 

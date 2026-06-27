@@ -132,7 +132,10 @@ including `report.json`, fake-peer state with `device_stats_sent`,
 `rnstatus-rs` JSON/human output, `rnstatus-rs --weave-display` JSON/human
 output, and both `weaveconf-rs` command responses. This proves signed
 discovery, WDCL connection status refresh, display/status rendering, and live
-remote-display control dispatch through the real daemon path. It is still not a
+remote-display control dispatch through the real daemon path. The report
+records `evidence_scope = "software_fake_pty_weave"` plus a
+`product_boundary` note: not prepared-host or broad hardware production parity.
+It is still not a
 substitute for prepared-host execution against real Weave hardware.
 
 ## Prepared-Host Smoke

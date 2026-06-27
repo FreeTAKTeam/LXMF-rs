@@ -49,6 +49,56 @@ fn i2p_prepared_host_smoke_preserves_evidence_contract() {
 }
 
 #[test]
+fn i2p_prepared_host_pair_smoke_preserves_evidence_contract() {
+    let root = repo_root();
+    let script_path = root.join("tools/scripts/i2p-prepared-host-pair-smoke.sh");
+    let script = fs::read_to_string(&script_path).expect("read I2P prepared-host pair script");
+
+    for required in [
+        "target/i2p-hil-pair",
+        "SAM_HOST",
+        "SAM_PORT",
+        "I2P_PAIR_SOAK_SECS",
+        "I2P_PAIR_SOAK_POLL_SECS",
+        "HELLO VERSION MIN=3.0 MAX=3.3",
+        "i2p-pair-acceptor",
+        "i2p-pair-dialer",
+        "I2PInterface",
+        "connectable = true",
+        "peers = [",
+        "--strict-interface-startup",
+        "rnstatus-rs",
+        "acceptor_rnstatus_json",
+        "dialer_rnstatus_json",
+        "sam_connectable_with_outbound_peers_real_pair",
+        "sam_connectable_with_outbound_peers_real_pair_soak",
+        "soak_requested_secs",
+        "soak_samples",
+        "soak_samples_jsonl",
+        "product_boundary",
+        "broader public",
+        "I2P peer-set",
+        "long-running production evidence",
+        "reachable_endpoint",
+        "private_key_persisted",
+        "accept_state",
+        "listening",
+        "configured_peer_count",
+        "connected_outbound_peers",
+        "direction",
+        "incoming",
+        "outbound",
+        "connected",
+        "report.json",
+    ] {
+        assert!(
+            script.contains(required),
+            "I2P prepared-host pair smoke should include required token {required:?}"
+        );
+    }
+}
+
+#[test]
 fn i2p_fake_sam_smoke_preserves_software_evidence_contract() {
     let root = repo_root();
     let script_path = root.join("tools/scripts/i2p-fake-sam-smoke.sh");
@@ -132,6 +182,7 @@ fn i2p_runbook_documents_prepared_host_smoke_artifacts() {
         "Prepared-Host Smoke",
         "Software Fake-SAM Smoke",
         "./tools/scripts/i2p-prepared-host-smoke.sh",
+        "./tools/scripts/i2p-prepared-host-pair-smoke.sh",
         "./tools/scripts/i2p-fake-sam-smoke.sh",
         "SAM_HOST=127.0.0.1",
         "I2P_PEERS=peer-one.b32.i2p",
@@ -153,6 +204,13 @@ fn i2p_runbook_documents_prepared_host_smoke_artifacts() {
         "evidence_scope",
         "sam_connectable_only",
         "sam_connectable_with_outbound_peers",
+        "sam_connectable_with_outbound_peers_real_pair",
+        "sam_connectable_with_outbound_peers_real_pair_soak",
+        "target/i2p-hil-pair/",
+        "I2P_PAIR_SOAK_SECS",
+        "soak_samples",
+        "connected incoming peer row",
+        "broader public peer-set parity",
         "product_boundary",
         "not outbound peer production parity",
         "HIL_I2P_ENABLED",
