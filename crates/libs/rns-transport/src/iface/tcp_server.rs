@@ -10,9 +10,155 @@ use crate::error::RnsError;
 
 use super::tcp_client::{
     backbone_hdlc_watchdog, prefer_ipv6_socket_addrs, HdlcStreamWatchdog, TcpClient,
-    TcpSocketTuning,
+    TcpRuntimeStatusHandle, TcpSocketTuning,
 };
 use super::{Interface, InterfaceContext, InterfaceManager};
+
+#[derive(Clone)]
+pub struct TcpListenerRuntimeStatusHandle {
+    inner: Arc<std::sync::Mutex<TcpListenerRuntimeStatus>>,
+}
+
+impl TcpListenerRuntimeStatusHandle {
+    #[must_use]
+    pub fn to_json(&self) -> serde_json::Value {
+        self.inner.lock().expect("tcp listener runtime status mutex poisoned").to_json()
+    }
+}
+
+#[derive(Clone)]
+struct TcpListenerRuntimeStatus {
+    bind_addr: String,
+    listener_state: String,
+    client_mtu: usize,
+    prefer_ipv6: bool,
+    client_liveness_enabled: bool,
+    client_forced_bitrate_bps: Option<u64>,
+    accepted_connections: u64,
+    accept_errors: u64,
+    latest_client_endpoint: Option<String>,
+    latest_client_iface: Option<String>,
+    latest_stream_status: Option<TcpRuntimeStatusHandle>,
+    last_error: Option<String>,
+}
+
+impl TcpListenerRuntimeStatus {
+    fn new(bind_addr: String, client_mtu: usize) -> Self {
+        Self {
+            bind_addr,
+            listener_state: "configured".to_string(),
+            client_mtu,
+            prefer_ipv6: false,
+            client_liveness_enabled: false,
+            client_forced_bitrate_bps: None,
+            accepted_connections: 0,
+            accept_errors: 0,
+            latest_client_endpoint: None,
+            latest_client_iface: None,
+            latest_stream_status: None,
+            last_error: None,
+        }
+    }
+
+    fn mark_binding(&mut self) {
+        self.listener_state = "binding".to_string();
+        self.last_error = None;
+    }
+
+    fn mark_listening(&mut self) {
+        self.listener_state = "listening".to_string();
+        self.last_error = None;
+    }
+
+    fn mark_bind_error(&mut self, error: String) {
+        self.listener_state = "bind_error".to_string();
+        self.last_error = Some(error);
+    }
+
+    fn mark_accept_error(&mut self, error: String) {
+        self.accept_errors = self.accept_errors.saturating_add(1);
+        self.last_error = Some(error);
+    }
+
+    fn mark_accepted(
+        &mut self,
+        endpoint: String,
+        iface: crate::hash::AddressHash,
+        status: TcpRuntimeStatusHandle,
+    ) {
+        self.listener_state = "listening".to_string();
+        self.accepted_connections = self.accepted_connections.saturating_add(1);
+        self.latest_client_endpoint = Some(endpoint);
+        self.latest_client_iface = Some(iface.to_string());
+        self.latest_stream_status = Some(status);
+        self.last_error = None;
+    }
+
+    fn mark_closed(&mut self) {
+        self.listener_state = "closed".to_string();
+    }
+
+    fn to_json(&self) -> serde_json::Value {
+        let mut root = serde_json::Map::new();
+        root.insert("bind_addr".to_string(), serde_json::Value::String(self.bind_addr.clone()));
+        root.insert(
+            "listener_state".to_string(),
+            serde_json::Value::String(self.listener_state.clone()),
+        );
+        root.insert(
+            "client_mtu".to_string(),
+            serde_json::Value::Number((self.client_mtu as u64).into()),
+        );
+        root.insert("prefer_ipv6".to_string(), serde_json::Value::Bool(self.prefer_ipv6));
+        root.insert(
+            "client_liveness_enabled".to_string(),
+            serde_json::Value::Bool(self.client_liveness_enabled),
+        );
+        root.insert(
+            "client_forced_bitrate_bps".to_string(),
+            self.client_forced_bitrate_bps
+                .map(|value| serde_json::Value::Number(value.into()))
+                .unwrap_or(serde_json::Value::Null),
+        );
+        root.insert(
+            "accepted_connections".to_string(),
+            serde_json::Value::Number(self.accepted_connections.into()),
+        );
+        root.insert(
+            "accept_errors".to_string(),
+            serde_json::Value::Number(self.accept_errors.into()),
+        );
+        root.insert(
+            "latest_client_endpoint".to_string(),
+            self.latest_client_endpoint
+                .as_ref()
+                .map(|value| serde_json::Value::String(value.clone()))
+                .unwrap_or(serde_json::Value::Null),
+        );
+        root.insert(
+            "latest_client_iface".to_string(),
+            self.latest_client_iface
+                .as_ref()
+                .map(|value| serde_json::Value::String(value.clone()))
+                .unwrap_or(serde_json::Value::Null),
+        );
+        root.insert(
+            "latest_stream_status".to_string(),
+            self.latest_stream_status
+                .as_ref()
+                .map(TcpRuntimeStatusHandle::to_json)
+                .unwrap_or(serde_json::Value::Null),
+        );
+        root.insert(
+            "last_error".to_string(),
+            self.last_error
+                .as_ref()
+                .map(|err| serde_json::Value::String(err.clone()))
+                .unwrap_or(serde_json::Value::Null),
+        );
+        serde_json::Value::Object(root)
+    }
+}
 
 pub struct TcpServer {
     addr: String,
@@ -22,6 +168,7 @@ pub struct TcpServer {
     client_hdlc_watchdog: Option<HdlcStreamWatchdog>,
     client_forced_bitrate_bps: Option<u64>,
     prefer_ipv6: bool,
+    runtime_status: Arc<std::sync::Mutex<TcpListenerRuntimeStatus>>,
 }
 
 impl TcpServer {
@@ -31,8 +178,13 @@ impl TcpServer {
         addr: T,
         iface_manager: Arc<tokio::sync::Mutex<InterfaceManager>>,
     ) -> Self {
+        let addr = addr.into();
         Self {
-            addr: addr.into(),
+            runtime_status: Arc::new(std::sync::Mutex::new(TcpListenerRuntimeStatus::new(
+                addr.clone(),
+                Self::DEFAULT_CLIENT_MTU,
+            ))),
+            addr,
             iface_manager,
             client_mtu: Self::DEFAULT_CLIENT_MTU,
             client_socket_tuning: TcpSocketTuning::default(),
@@ -45,6 +197,10 @@ impl TcpServer {
     #[must_use]
     pub fn with_client_mtu(mut self, client_mtu: usize) -> Self {
         self.client_mtu = client_mtu.max(256);
+        self.runtime_status
+            .lock()
+            .expect("tcp listener runtime status mutex poisoned")
+            .client_mtu = self.client_mtu;
         self
     }
 
@@ -57,18 +213,30 @@ impl TcpServer {
     #[must_use]
     pub fn with_backbone_client_liveness(mut self) -> Self {
         self.client_hdlc_watchdog = Some(backbone_hdlc_watchdog());
+        self.runtime_status
+            .lock()
+            .expect("tcp listener runtime status mutex poisoned")
+            .client_liveness_enabled = true;
         self
     }
 
     #[must_use]
     pub fn with_client_forced_bitrate(mut self, bitrate_bps: u64) -> Self {
         self.client_forced_bitrate_bps = (bitrate_bps > 0).then_some(bitrate_bps);
+        self.runtime_status
+            .lock()
+            .expect("tcp listener runtime status mutex poisoned")
+            .client_forced_bitrate_bps = self.client_forced_bitrate_bps;
         self
     }
 
     #[must_use]
     pub fn with_prefer_ipv6(mut self, prefer_ipv6: bool) -> Self {
         self.prefer_ipv6 = prefer_ipv6;
+        self.runtime_status
+            .lock()
+            .expect("tcp listener runtime status mutex poisoned")
+            .prefer_ipv6 = prefer_ipv6;
         self
     }
 
@@ -90,6 +258,11 @@ impl TcpServer {
     #[must_use]
     pub fn prefer_ipv6(&self) -> bool {
         self.prefer_ipv6
+    }
+
+    #[must_use]
+    pub fn runtime_status_handle(&self) -> TcpListenerRuntimeStatusHandle {
+        TcpListenerRuntimeStatusHandle { inner: self.runtime_status.clone() }
     }
 
     fn accepted_client(
@@ -122,6 +295,7 @@ impl TcpServer {
             client_hdlc_watchdog,
             client_forced_bitrate_bps,
             prefer_ipv6,
+            runtime_status,
         ) = {
             let guard = context.inner.lock().unwrap();
             (
@@ -131,6 +305,7 @@ impl TcpServer {
                 guard.client_hdlc_watchdog.clone(),
                 guard.client_forced_bitrate_bps,
                 guard.prefer_ipv6,
+                guard.runtime_status.clone(),
             )
         };
 
@@ -144,9 +319,15 @@ impl TcpServer {
                 break;
             }
 
-            let listener = bind_tcp_listener(addr.clone(), prefer_ipv6)
-                .await
-                .map_err(|_| RnsError::ConnectionError);
+            if let Ok(mut status) = runtime_status.lock() {
+                status.mark_binding();
+            }
+            let listener = bind_tcp_listener(addr.clone(), prefer_ipv6).await.map_err(|err| {
+                if let Ok(mut status) = runtime_status.lock() {
+                    status.mark_bind_error(err.to_string());
+                }
+                RnsError::ConnectionError
+            });
 
             if listener.is_err() {
                 log::warn!("couldn't bind to <{}>", addr);
@@ -157,6 +338,9 @@ impl TcpServer {
             log::info!("listen on <{}>", addr);
 
             let listener = listener.unwrap();
+            if let Ok(mut status) = runtime_status.lock() {
+                status.mark_listening();
+            }
 
             let tx_task = {
                 let cancel = context.cancel.clone();
@@ -194,33 +378,48 @@ impl TcpServer {
                     }
 
                     client = listener.accept() => {
-                        if let Ok(client) = client {
-                            log::info!(
-                                "new client <{}> connected to <{}>",
-                                client.1,
-                                addr
-                            );
+                        match client {
+                            Ok(client) => {
+                                log::info!(
+                                    "new client <{}> connected to <{}>",
+                                    client.1,
+                                    addr
+                                );
 
-                            let mut iface_manager = iface_manager.lock().await;
+                                let mut iface_manager = iface_manager.lock().await;
 
-                            let accepted_client = TcpServer::accepted_client(
-                                client.1.to_string(),
-                                client.0,
-                                client_mtu,
-                                client_socket_tuning,
-                                client_hdlc_watchdog.clone(),
-                                client_forced_bitrate_bps,
-                            );
-                            let child_iface =
-                                iface_manager.spawn(accepted_client, TcpClient::spawn);
-                            iface_manager.inherit_runtime_config(parent_iface, child_iface);
-                        }
+                                let endpoint = client.1.to_string();
+                                let accepted_client = TcpServer::accepted_client(
+                                    endpoint.clone(),
+                                    client.0,
+                                    client_mtu,
+                                    client_socket_tuning,
+                                    client_hdlc_watchdog.clone(),
+                                    client_forced_bitrate_bps,
+                                );
+                                let child_status = accepted_client.runtime_status_handle();
+                                let child_iface =
+                                    iface_manager.spawn(accepted_client, TcpClient::spawn);
+                                iface_manager.inherit_runtime_config(parent_iface, child_iface);
+                                if let Ok(mut status) = runtime_status.lock() {
+                                    status.mark_accepted(endpoint, child_iface, child_status);
+                                }
+                            }
+                            Err(err) => {
+                                if let Ok(mut status) = runtime_status.lock() {
+                                    status.mark_accept_error(err.to_string());
+                                }
+                            }
+                        };
                     }
                 }
             }
 
             let _ = tokio::join!(tx_task);
         }
+        if let Ok(mut status) = runtime_status.lock() {
+            status.mark_closed();
+        };
     }
 }
 
@@ -335,6 +534,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn tcp_server_runtime_status_tracks_accepted_client() {
+        let probe = TcpListener::bind("127.0.0.1:0").await.expect("bind probe listener");
+        let addr = probe.local_addr().expect("probe listener addr");
+        drop(probe);
+
+        let manager = Arc::new(tokio::sync::Mutex::new(InterfaceManager::new(8)));
+        let server = TcpServer::new(addr.to_string(), manager.clone())
+            .with_backbone_client_liveness()
+            .with_client_forced_bitrate(9_600);
+        let status = server.runtime_status_handle();
+        let parent_iface = manager.lock().await.spawn(server, TcpServer::spawn);
+
+        wait_for_status(&status, |status| {
+            status.get("listener_state").and_then(serde_json::Value::as_str) == Some("listening")
+        })
+        .await;
+        let _peer = TcpStream::connect(addr).await.expect("connect peer");
+        wait_for_status(&status, |status| {
+            status.get("accepted_connections").and_then(serde_json::Value::as_u64) == Some(1)
+        })
+        .await;
+
+        let snapshot = status.to_json();
+        assert_eq!(snapshot["bind_addr"].as_str(), Some(addr.to_string().as_str()));
+        assert_eq!(snapshot["client_liveness_enabled"].as_bool(), Some(true));
+        assert_eq!(snapshot["client_forced_bitrate_bps"].as_u64(), Some(9_600));
+        assert!(snapshot["latest_client_endpoint"].as_str().is_some());
+        assert!(snapshot["latest_client_iface"].as_str().is_some());
+        assert_eq!(snapshot["latest_stream_status"]["liveness_enabled"].as_bool(), Some(true));
+        assert_eq!(snapshot["latest_stream_status"]["forced_bitrate_bps"].as_u64(), Some(9_600));
+
+        manager.lock().await.stop_interface(parent_iface);
+    }
+
+    #[tokio::test]
     async fn tcp_listener_sets_reuse_address_for_ipv4() {
         let listener =
             bind_tcp_listener("127.0.0.1:0".to_string(), false).await.expect("bind listener");
@@ -362,5 +596,20 @@ mod tests {
         let socket: socket2::Socket = std_listener.into();
 
         assert!(socket.reuse_address().expect("reuse_address"));
+    }
+
+    async fn wait_for_status(
+        status: &super::TcpListenerRuntimeStatusHandle,
+        predicate: impl Fn(&serde_json::Value) -> bool,
+    ) {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+        loop {
+            let snapshot = status.to_json();
+            if predicate(&snapshot) {
+                return;
+            }
+            assert!(tokio::time::Instant::now() < deadline, "timed out waiting for {snapshot:?}");
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
     }
 }

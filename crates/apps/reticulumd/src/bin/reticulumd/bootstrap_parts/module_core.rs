@@ -551,7 +551,7 @@ fn refresh_tcp_runtime_status_once(
             daemon.update_interface_runtime_metadata_by_iface(
                 refresh.runtime_iface.to_string().as_str(),
                 "tcp",
-                "stream_status",
+                refresh.status.runtime_key(),
                 refresh.status.to_json(),
             )
         })
@@ -979,7 +979,10 @@ mod tests {
             .with_backbone_liveness()
             .with_forced_bitrate(9_600)
             .runtime_status_handle();
-        let refresh = transport_startup::TcpRuntimeRefresh { runtime_iface, status };
+        let refresh = transport_startup::TcpRuntimeRefresh {
+            runtime_iface,
+            status: transport_startup::TcpRuntimeStatusSource::Stream(status),
+        };
 
         assert_eq!(refresh_tcp_runtime_status_once(&daemon, &[refresh]), 1);
         let result = daemon
@@ -993,6 +996,57 @@ mod tests {
         assert_eq!(status["stream_state"].as_str(), Some("configured"));
         assert_eq!(status["liveness_enabled"].as_bool(), Some(true));
         assert_eq!(status["forced_bitrate_bps"].as_u64(), Some(9_600));
+    }
+
+    #[test]
+    fn tcp_listener_runtime_status_refresh_updates_matching_interface_record() {
+        let daemon = RpcDaemon::test_instance();
+        let runtime_iface = AddressHash::default();
+        daemon.replace_interfaces(vec![InterfaceRecord {
+            kind: "backbone".to_string(),
+            enabled: true,
+            host: Some("127.0.0.1".to_string()),
+            port: Some(4242),
+            name: Some("backbone-main".to_string()),
+            settings: Some(json!({
+                "_runtime": {
+                    "iface": runtime_iface.to_string(),
+                    "startup_status": "active",
+                    "tcp": {
+                        "listener_status": {
+                            "listener_state": "configured"
+                        }
+                    }
+                }
+            })),
+        }]);
+        let manager =
+            Arc::new(tokio::sync::Mutex::new(rns_transport::iface::InterfaceManager::new(8)));
+        let status = rns_transport::iface::tcp_server::TcpServer::new(
+            "127.0.0.1:4242",
+            manager,
+        )
+        .with_backbone_client_liveness()
+        .with_client_forced_bitrate(9_600)
+        .runtime_status_handle();
+        let refresh = transport_startup::TcpRuntimeRefresh {
+            runtime_iface,
+            status: transport_startup::TcpRuntimeStatusSource::Listener(status),
+        };
+
+        assert_eq!(refresh_tcp_runtime_status_once(&daemon, &[refresh]), 1);
+        let result = daemon
+            .handle_rpc(RpcRequest { id: 95, method: "daemon_status_ex".to_string(), params: None })
+            .expect("daemon status")
+            .result
+            .expect("daemon status result");
+        let status = &result["interfaces"][0]["settings"]["_runtime"]["tcp"]["listener_status"];
+
+        assert_eq!(status["bind_addr"].as_str(), Some("127.0.0.1:4242"));
+        assert_eq!(status["listener_state"].as_str(), Some("configured"));
+        assert_eq!(status["client_liveness_enabled"].as_bool(), Some(true));
+        assert_eq!(status["client_forced_bitrate_bps"].as_u64(), Some(9_600));
+        assert_eq!(status["accepted_connections"].as_u64(), Some(0));
     }
 
     #[test]

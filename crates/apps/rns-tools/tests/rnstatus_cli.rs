@@ -25,7 +25,7 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
                 "identity_hash": "0123456789abcdef0123456789abcdef",
                 "running": true,
                 "peer_count": 2,
-                "interface_count": 5,
+                "interface_count": 7,
                 "propagation": {
                     "enabled": true,
                     "selected_node": "cafebabe",
@@ -45,6 +45,35 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
                             "_runtime": {
                                 "startup_status": "failed",
                                 "startup_error": "bind denied"
+                            }
+                        }
+                    },
+                    {
+                        "name": "auto-main",
+                        "type": "auto",
+                        "enabled": true,
+                        "settings": {
+                            "_runtime": {
+                                "startup_status": "spawned",
+                                "auto": {
+                                    "carrier_runtime": {
+                                        "online": true,
+                                        "final_init_done": true,
+                                        "carrier_changed": true,
+                                        "carrier_event_count": 1,
+                                        "carrier_events": [
+                                            {
+                                                "event": "carrier_recovered",
+                                                "ifname": "eth0"
+                                            }
+                                        ],
+                                        "link_local_update": {
+                                            "ifname": "eth0",
+                                            "old_link_local_address": "fe80::1234%eth0",
+                                            "new_link_local_address": "fe80::5678%eth0"
+                                        }
+                                    }
+                                }
                             }
                         }
                     },
@@ -102,6 +131,33 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
                                         "liveness_enabled": true,
                                         "forced_bitrate_bps": 9600,
                                         "last_error": "tcp stream read timeout"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "name": "backbone-listener",
+                        "type": "backbone",
+                        "enabled": true,
+                        "settings": {
+                            "_runtime": {
+                                "startup_status": "active",
+                                "tcp": {
+                                    "listener_status": {
+                                        "bind_addr": "0.0.0.0:4242",
+                                        "listener_state": "listening",
+                                        "client_liveness_enabled": true,
+                                        "client_forced_bitrate_bps": 9600,
+                                        "accepted_connections": 2,
+                                        "accept_errors": 1,
+                                        "latest_client_endpoint": "127.0.0.1:54000",
+                                        "latest_stream_status": {
+                                            "stream_state": "connected",
+                                            "bytes_rx": 56,
+                                            "bytes_tx": 78
+                                        },
+                                        "last_error": null
                                     }
                                 }
                             }
@@ -179,6 +235,10 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("json output");
     assert_eq!(value["identity_hash"], "0123456789abcdef0123456789abcdef");
     assert_eq!(value["interfaces"][0]["settings"]["_runtime"]["startup_status"], "failed");
+    assert_eq!(
+        value["interfaces"][4]["settings"]["_runtime"]["tcp"]["listener_status"]["listener_state"],
+        "listening"
+    );
 
     server.join().expect("mock rpc server");
 
@@ -196,7 +256,7 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
                 "identity_hash": "0123456789abcdef0123456789abcdef",
                 "running": true,
                 "peer_count": 2,
-                "interface_count": 5,
+                "interface_count": 7,
                 "propagation": {
                     "enabled": true,
                     "selected_node": "cafebabe",
@@ -216,6 +276,35 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
                             "_runtime": {
                                 "startup_status": "failed",
                                 "startup_error": "bind denied"
+                            }
+                        }
+                    },
+                    {
+                        "name": "auto-main",
+                        "type": "auto",
+                        "enabled": true,
+                        "settings": {
+                            "_runtime": {
+                                "startup_status": "spawned",
+                                "auto": {
+                                    "carrier_runtime": {
+                                        "online": true,
+                                        "final_init_done": true,
+                                        "carrier_changed": true,
+                                        "carrier_event_count": 1,
+                                        "carrier_events": [
+                                            {
+                                                "event": "carrier_recovered",
+                                                "ifname": "eth0"
+                                            }
+                                        ],
+                                        "link_local_update": {
+                                            "ifname": "eth0",
+                                            "old_link_local_address": "fe80::1234%eth0",
+                                            "new_link_local_address": "fe80::5678%eth0"
+                                        }
+                                    }
+                                }
                             }
                         }
                     },
@@ -273,6 +362,33 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
                                         "liveness_enabled": true,
                                         "forced_bitrate_bps": 9600,
                                         "last_error": "tcp stream read timeout"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "name": "backbone-listener",
+                        "type": "backbone",
+                        "enabled": true,
+                        "settings": {
+                            "_runtime": {
+                                "startup_status": "active",
+                                "tcp": {
+                                    "listener_status": {
+                                        "bind_addr": "0.0.0.0:4242",
+                                        "listener_state": "listening",
+                                        "client_liveness_enabled": true,
+                                        "client_forced_bitrate_bps": 9600,
+                                        "accepted_connections": 2,
+                                        "accept_errors": 1,
+                                        "latest_client_endpoint": "127.0.0.1:54000",
+                                        "latest_stream_status": {
+                                            "stream_state": "connected",
+                                            "bytes_rx": 56,
+                                            "bytes_tx": 78
+                                        },
+                                        "last_error": null
                                     }
                                 }
                             }
@@ -347,6 +463,13 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
     assert!(stdout.contains("tcp_server"), "stdout: {stdout}");
     assert!(stdout.contains("failed"), "stdout: {stdout}");
     assert!(stdout.contains("bind denied"), "stdout: {stdout}");
+    assert!(stdout.contains("auto-main"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("auto online=true init=true carrier_changed=true carrier_events=1"),
+        "stdout: {stdout}"
+    );
+    assert!(stdout.contains("link_local=eth0"), "stdout: {stdout}");
+    assert!(stdout.contains("new_ll=fe80::5678%eth0"), "stdout: {stdout}");
     assert!(stdout.contains("i2p-main"), "stdout: {stdout}");
     assert!(stdout.contains("i2p sam=127.0.0.1:7656 accept=listening peers=2"), "stdout: {stdout}");
     assert!(stdout.contains("connected=1"), "stdout: {stdout}");
@@ -367,6 +490,18 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
     assert!(stdout.contains("liveness=true"), "stdout: {stdout}");
     assert!(stdout.contains("bitrate=9600"), "stdout: {stdout}");
     assert!(stdout.contains("err=tcp stream read timeout"), "stdout: {stdout}");
+    assert!(stdout.contains("backbone-listener"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("tcp listener=listening bind=0.0.0.0:4242 accepted=2"),
+        "stdout: {stdout}"
+    );
+    assert!(stdout.contains("accept_errors=1"), "stdout: {stdout}");
+    assert!(stdout.contains("child_liveness=true"), "stdout: {stdout}");
+    assert!(stdout.contains("child_bitrate=9600"), "stdout: {stdout}");
+    assert!(stdout.contains("latest=127.0.0.1:54000"), "stdout: {stdout}");
+    assert!(stdout.contains("latest_state=connected"), "stdout: {stdout}");
+    assert!(stdout.contains("latest_rx=56"), "stdout: {stdout}");
+    assert!(stdout.contains("latest_tx=78"), "stdout: {stdout}");
     assert!(stdout.contains("weave-main"), "stdout: {stdout}");
     assert!(stdout.contains("weave link=reconnecting endpoints=2 wdcl=false"), "stdout: {stdout}");
     assert!(stdout.contains("display=128x64/false"), "stdout: {stdout}");

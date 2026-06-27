@@ -14,7 +14,8 @@ use crate::Args;
 pub(super) use interface_startup::LoraRuntimeStatusSource;
 pub(super) use interface_startup::{
     AutoRuntimeRefresh, I2pRuntimeRefresh, LoraRuntimeRefresh, PipeRuntimeRefresh,
-    RNodeManagementBinding, RNodeMultiRuntimeRefresh, TcpRuntimeRefresh, WeaveRuntimeRefresh,
+    RNodeManagementBinding, RNodeMultiRuntimeRefresh, TcpRuntimeRefresh, TcpRuntimeStatusSource,
+    WeaveRuntimeRefresh,
 };
 use reticulum_daemon::announce_names::PropagationNodeAnnounceConfig;
 use reticulum_daemon::config::DaemonConfig;
@@ -191,6 +192,7 @@ pub(super) async fn start_transport_and_interfaces(
                 iface_manager.clone(),
                 &selected_tcp_server,
             );
+            let runtime_status = server.runtime_status_handle();
             let active_iface = iface_manager.lock().await.spawn(server, TcpServer::spawn);
             log::info!(
                 "[daemon] {} enabled iface={} bind={}",
@@ -200,6 +202,10 @@ pub(super) async fn start_transport_and_interfaces(
             );
             startup_successes += 1;
             server_iface = Some(active_iface);
+            tcp_runtime_refreshes.push(TcpRuntimeRefresh {
+                runtime_iface: active_iface,
+                status: TcpRuntimeStatusSource::Listener(runtime_status),
+            });
         }
 
         if let Some(config) = daemon_config {

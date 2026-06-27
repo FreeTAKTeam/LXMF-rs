@@ -72,7 +72,31 @@ pub(crate) struct I2pRuntimeRefresh {
 #[derive(Clone)]
 pub(crate) struct TcpRuntimeRefresh {
     pub(crate) runtime_iface: AddressHash,
-    pub(crate) status: rns_transport::iface::tcp_client::TcpRuntimeStatusHandle,
+    pub(crate) status: TcpRuntimeStatusSource,
+}
+
+#[derive(Clone)]
+pub(crate) enum TcpRuntimeStatusSource {
+    Stream(rns_transport::iface::tcp_client::TcpRuntimeStatusHandle),
+    Listener(rns_transport::iface::tcp_server::TcpListenerRuntimeStatusHandle),
+}
+
+impl TcpRuntimeStatusSource {
+    #[must_use]
+    pub(crate) fn runtime_key(&self) -> &'static str {
+        match self {
+            Self::Stream(_) => "stream_status",
+            Self::Listener(_) => "listener_status",
+        }
+    }
+
+    #[must_use]
+    pub(crate) fn to_json(&self) -> serde_json::Value {
+        match self {
+            Self::Stream(status) => status.to_json(),
+            Self::Listener(status) => status.to_json(),
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -1380,7 +1404,10 @@ async fn startup_tcp_client(
     );
     let runtime_iface = client_iface.to_string();
     mark_interface_startup_status(record, "spawned", None, Some(runtime_iface.as_str()));
-    tcp_runtime_refreshes.push(TcpRuntimeRefresh { runtime_iface: client_iface, status: runtime_status });
+    tcp_runtime_refreshes.push(TcpRuntimeRefresh {
+        runtime_iface: client_iface,
+        status: TcpRuntimeStatusSource::Stream(runtime_status),
+    });
     if let Some(key) = tcp_interface_key(record) {
         seeded_tcp_interfaces.push((key, record.clone(), client_iface));
     }

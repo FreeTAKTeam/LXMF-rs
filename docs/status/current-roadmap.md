@@ -58,7 +58,9 @@ The project is best described by capability level:
   (`TCP_NODELAY`, Linux/Android keepalive probes, and TCP user timeout) plus
   Backbone-only HDLC stream liveness keepalives, stale detection, and
   read-timeout reconnects, local slow-reader HDLC tx backpressure evidence,
-  TCP/Backbone client reconnect tunnel re-synthesis, LocalInterface
+  TCP/Backbone client reconnect tunnel re-synthesis, TCP/Backbone listener
+  daemon/RPC runtime status with accept counters and latest accepted stream
+  snapshots, LocalInterface
   TCP-loopback plus Unix filesystem
   and Linux/Android abstract AF_UNIX shared-instance listener/client-attach
   compatibility, including Unix client-attach reconnect after startup failures
@@ -175,7 +177,8 @@ The project is best described by capability level:
   prepared-host production evidence remains pending.
 - `rnstatus-rs` now provides a local daemon status utility over the existing
   RPC status surface, including JSON output plus human interface runtime
-  startup state and propagation peer state.
+  startup state, Auto carrier/link-local state, TCP/Backbone listener state,
+  and propagation peer state.
 
 ### LXMF
 

@@ -181,6 +181,13 @@ fn interface_runtime(interface: &Value) -> String {
         _ => status.to_string(),
     }];
     if let Some(summary) = runtime
+        .get("auto")
+        .and_then(|value| value.get("carrier_runtime"))
+        .and_then(auto_runtime_summary)
+    {
+        parts.push(summary);
+    }
+    if let Some(summary) = runtime
         .get("i2p")
         .and_then(|value| value.get("tunnel_status"))
         .and_then(i2p_runtime_summary)
@@ -191,6 +198,13 @@ fn interface_runtime(interface: &Value) -> String {
         .get("tcp")
         .and_then(|value| value.get("stream_status"))
         .and_then(tcp_runtime_summary)
+    {
+        parts.push(summary);
+    }
+    if let Some(summary) = runtime
+        .get("tcp")
+        .and_then(|value| value.get("listener_status"))
+        .and_then(tcp_listener_runtime_summary)
     {
         parts.push(summary);
     }
@@ -253,6 +267,24 @@ fn i2p_runtime_summary(status: &Value) -> Option<String> {
     Some(summary)
 }
 
+fn auto_runtime_summary(status: &Value) -> Option<String> {
+    if !status.is_object() {
+        return None;
+    }
+    let mut summary = format!(
+        "auto online={} init={} carrier_changed={} carrier_events={}",
+        value_bool(status, "online"),
+        value_bool(status, "final_init_done"),
+        value_bool(status, "carrier_changed"),
+        value_u64(status, "carrier_event_count")
+    );
+    if let Some(link_local) = status.get("link_local_update").and_then(Value::as_object) {
+        append_optional_str(&mut summary, "link_local", link_local.get("ifname"));
+        append_optional_str(&mut summary, "new_ll", link_local.get("new_link_local_address"));
+    }
+    Some(summary)
+}
+
 fn tcp_runtime_summary(status: &Value) -> Option<String> {
     if !status.is_object() {
         return None;
@@ -274,6 +306,31 @@ fn tcp_runtime_summary(status: &Value) -> Option<String> {
         summary.push_str(" liveness=true");
     }
     append_optional_u64(&mut summary, "bitrate", status.get("forced_bitrate_bps"));
+    append_optional_str(&mut summary, "err", status.get("last_error"));
+    Some(summary)
+}
+
+fn tcp_listener_runtime_summary(status: &Value) -> Option<String> {
+    if !status.is_object() {
+        return None;
+    }
+    let mut summary = format!(
+        "tcp listener={} bind={} accepted={}",
+        value_str(status, "listener_state"),
+        value_str(status, "bind_addr"),
+        value_u64(status, "accepted_connections")
+    );
+    append_optional_u64(&mut summary, "accept_errors", status.get("accept_errors"));
+    if status.get("client_liveness_enabled").and_then(Value::as_bool) == Some(true) {
+        summary.push_str(" child_liveness=true");
+    }
+    append_optional_u64(&mut summary, "child_bitrate", status.get("client_forced_bitrate_bps"));
+    append_optional_str(&mut summary, "latest", status.get("latest_client_endpoint"));
+    if let Some(latest_stream) = status.get("latest_stream_status").and_then(Value::as_object) {
+        append_optional_str(&mut summary, "latest_state", latest_stream.get("stream_state"));
+        append_optional_u64(&mut summary, "latest_rx", latest_stream.get("bytes_rx"));
+        append_optional_u64(&mut summary, "latest_tx", latest_stream.get("bytes_tx"));
+    }
     append_optional_str(&mut summary, "err", status.get("last_error"));
     Some(summary)
 }
@@ -454,8 +511,37 @@ mod tests {
         let status = json!({
             "identity_hash": "abc",
             "running": true,
-            "interface_count": 5,
+            "interface_count": 7,
             "interfaces": [
+                {
+                    "name": "auto-main",
+                    "type": "auto",
+                    "enabled": true,
+                    "settings": {
+                        "_runtime": {
+                            "startup_status": "spawned",
+                            "auto": {
+                                "carrier_runtime": {
+                                    "online": true,
+                                    "final_init_done": true,
+                                    "carrier_changed": true,
+                                    "carrier_event_count": 1,
+                                    "carrier_events": [
+                                        {
+                                            "event": "carrier_recovered",
+                                            "ifname": "eth0"
+                                        }
+                                    ],
+                                    "link_local_update": {
+                                        "ifname": "eth0",
+                                        "old_link_local_address": "fe80::1234%eth0",
+                                        "new_link_local_address": "fe80::5678%eth0"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
                 {
                     "name": "i2p-main",
                     "type": "i2p",
@@ -516,6 +602,33 @@ mod tests {
                                     "liveness_enabled": true,
                                     "forced_bitrate_bps": 9600,
                                     "last_error": "tcp stream read timeout"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "backbone-listener",
+                    "type": "backbone",
+                    "enabled": true,
+                    "settings": {
+                        "_runtime": {
+                            "startup_status": "active",
+                            "tcp": {
+                                "listener_status": {
+                                    "bind_addr": "0.0.0.0:4242",
+                                    "listener_state": "listening",
+                                    "client_liveness_enabled": true,
+                                    "client_forced_bitrate_bps": 9600,
+                                    "accepted_connections": 2,
+                                    "accept_errors": 1,
+                                    "latest_client_endpoint": "127.0.0.1:54000",
+                                    "latest_stream_status": {
+                                        "stream_state": "connected",
+                                        "bytes_rx": 56,
+                                        "bytes_tx": 78
+                                    },
+                                    "last_error": null
                                 }
                             }
                         }
@@ -625,6 +738,9 @@ mod tests {
         write_human_status(&mut output, &status).expect("write status");
 
         let output = String::from_utf8(output).expect("utf8");
+        assert!(output.contains("auto online=true init=true carrier_changed=true carrier_events=1"));
+        assert!(output.contains("link_local=eth0"));
+        assert!(output.contains("new_ll=fe80::5678%eth0"));
         assert!(output.contains("i2p sam=127.0.0.1:7656 accept=listening peers=3"));
         assert!(output.contains("connected=1"));
         assert!(output.contains("stale=1"));
@@ -641,6 +757,14 @@ mod tests {
         assert!(output.contains("liveness=true"));
         assert!(output.contains("bitrate=9600"));
         assert!(output.contains("err=tcp stream read timeout"));
+        assert!(output.contains("tcp listener=listening bind=0.0.0.0:4242 accepted=2"));
+        assert!(output.contains("accept_errors=1"));
+        assert!(output.contains("child_liveness=true"));
+        assert!(output.contains("child_bitrate=9600"));
+        assert!(output.contains("latest=127.0.0.1:54000"));
+        assert!(output.contains("latest_state=connected"));
+        assert!(output.contains("latest_rx=56"));
+        assert!(output.contains("latest_tx=78"));
         assert!(output.contains("weave link=connected endpoints=2 wdcl=true"));
         assert!(output.contains("display=128x64/true"));
         assert!(output.contains("cpu=42"));
