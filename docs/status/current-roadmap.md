@@ -197,6 +197,9 @@ The project is best described by capability level:
 - I2P transport-side tunnel watchdog/status bookkeeping is refreshed into
   daemon/RPC interface status, and `rnstatus-rs` now summarizes outbound,
   incoming, closed, and aggregate byte counters for the tunnel rows. The
+  software fake-SAM smoke exercises strict daemon startup, destination
+  persistence, connectable accept status, outbound peer connection state, and
+  `rnstatus-rs` JSON/human output without a real I2P router. The
   prepared-host smoke can now optionally require configured outbound peers to
   reach `connected` state when `I2P_PEERS` is supplied; prepared-host
   production evidence remains pending until that harness is run against a real

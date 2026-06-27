@@ -131,6 +131,38 @@ Current states are `configured`, `connecting`, `connected`, `listening`,
 
 - Full prepared-host I2P evidence and production parity are not complete.
 
+## Software Fake-SAM Smoke
+
+Use the software fake-SAM smoke to exercise the daemon and status tooling
+without a real I2P router:
+
+```bash
+I2P_PEERS=peer-one.b32.i2p \
+TIMEOUT_SECS=60 \
+./tools/scripts/i2p-fake-sam-smoke.sh
+```
+
+The script starts a local fake SAM bridge on `127.0.0.1:0`, validates the SAM
+`HELLO`, `DEST GENERATE`, `SESSION CREATE`, `NAMING LOOKUP`, `STREAM CONNECT`,
+and `STREAM ACCEPT` command paths, then starts `reticulumd` with
+`--strict-interface-startup` and polls both `rnstatus-rs --json` and human
+`rnstatus-rs` output. A passing run requires:
+
+- `_runtime.startup_status = "spawned"`
+- `_runtime.i2p.reachable_endpoint` ending in `.b32.i2p`
+- `_runtime.i2p.private_key_persisted = true`
+- `_runtime.i2p.tunnel_status.accept_state = "listening"`
+- `_runtime.i2p.tunnel_status.configured_peer_count` matching `I2P_PEERS`
+- connected outbound peer rows with `direction = "outbound"` and non-empty
+  `iface`
+- human `rnstatus-rs` output containing the I2P tunnel summary
+
+Evidence is written under `target/i2p-fake-sam-smoke/`, including
+`report.json`, fake-SAM logs, daemon logs, generated config, captured JSON
+status, and captured human status. This smoke is software-only evidence for
+daemon integration and status refresh; it does not replace the prepared-host
+router evidence below.
+
 ## Prepared-Host Smoke
 
 Use the opt-in smoke harness on a host with a real local I2P router and SAM

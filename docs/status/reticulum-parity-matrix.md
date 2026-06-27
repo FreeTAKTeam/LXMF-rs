@@ -244,10 +244,13 @@ Python key is present. Missing explicit SAM host/port config now uses Python's
 `I2P_SAM_ADDRESS` environment default when it is set to `host:port`.
 `rnstatus-rs` human output summarizes the live I2P tunnel status for
 operators, including outbound, incoming, closed, and aggregate byte counters.
-The opt-in prepared-host smoke can also require configured outbound peers to
-reach `connected` state when `I2P_PEERS` is supplied. Prepared-host production
-evidence is still pending until the harness is run against a real SAM router
-and reachable peer set.
+The software fake-SAM smoke exercises strict daemon startup, destination
+persistence, connectable accept status, outbound peer connection state, and
+`rnstatus-rs` JSON/human output without a real I2P router. The opt-in
+prepared-host smoke can also require configured outbound peers to reach
+`connected` state when `I2P_PEERS` is supplied. Prepared-host production
+evidence is still pending until the harness is run against a real SAM router and
+reachable peer set.
 Ordinary serial/TCP and feature-gated BLE `RNodeInterface` now refresh transport-side probe/radio
 state into daemon/RPC `_runtime.lora.rnode_status`, and `rnstatus-rs` renders a
 compact human summary for operators. An opt-in prepared-host smoke harness now

@@ -43,6 +43,45 @@ fn i2p_prepared_host_smoke_preserves_evidence_contract() {
 }
 
 #[test]
+fn i2p_fake_sam_smoke_preserves_software_evidence_contract() {
+    let root = repo_root();
+    let script_path = root.join("tools/scripts/i2p-fake-sam-smoke.sh");
+    let script = fs::read_to_string(&script_path).expect("read I2P fake-SAM smoke script");
+
+    for required in [
+        "target/i2p-fake-sam-smoke",
+        "I2P_PEERS",
+        "HELLO VERSION MIN=3.0 MAX=3.3",
+        "DEST GENERATE SIGNATURE_TYPE=7",
+        "SESSION CREATE",
+        "NAMING LOOKUP NAME=",
+        "STREAM CONNECT",
+        "STREAM ACCEPT",
+        "I2PInterface",
+        "i2p-fake-sam",
+        "--strict-interface-startup",
+        "rnstatus-rs",
+        "rnstatus_json",
+        "rnstatus_human",
+        "reachable_endpoint",
+        "private_key_persisted",
+        "accept_state",
+        "listening",
+        "configured_peer_count",
+        "connected_outbound_peers",
+        "direction",
+        "outbound",
+        "connected",
+        "report.json",
+    ] {
+        assert!(
+            script.contains(required),
+            "I2P fake-SAM smoke should include required token {required:?}"
+        );
+    }
+}
+
+#[test]
 fn nightly_hil_workflow_exposes_i2p_prepared_host_job() {
     let root = repo_root();
     let workflow_path = root.join(".github/workflows/nightly-embedded-hil.yml");
@@ -75,7 +114,9 @@ fn i2p_runbook_documents_prepared_host_smoke_artifacts() {
 
     for required in [
         "Prepared-Host Smoke",
+        "Software Fake-SAM Smoke",
         "./tools/scripts/i2p-prepared-host-smoke.sh",
+        "./tools/scripts/i2p-fake-sam-smoke.sh",
         "SAM_HOST=127.0.0.1",
         "I2P_PEERS=peer-one.b32.i2p",
         "--strict-interface-startup",
@@ -83,6 +124,7 @@ fn i2p_runbook_documents_prepared_host_smoke_artifacts() {
         "_runtime.i2p.tunnel_status.accept_state = \"listening\"",
         "_runtime.i2p.tunnel_status.configured_peer_count",
         "connected outbound peer rows",
+        "target/i2p-fake-sam-smoke/",
         "target/i2p-hil/",
         "report.json",
         "HIL_I2P_ENABLED",
