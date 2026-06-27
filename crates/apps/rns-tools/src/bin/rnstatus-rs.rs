@@ -5,7 +5,7 @@ use std::net::{Shutdown, TcpStream};
 
 use clap::Parser;
 use rns_rpc::e2e_harness::{build_http_post, build_rpc_frame, parse_http_response_body};
-use serde_json::Value;
+use serde_json::{json, Value};
 
 #[derive(Debug, Parser)]
 #[command(name = "rnstatus-rs")]
@@ -15,6 +15,9 @@ struct Cli {
 
     #[arg(long)]
     json: bool,
+
+    #[arg(long, value_name = "INTERFACE")]
+    weave_display: Option<String>,
 }
 
 fn main() -> std::process::ExitCode {
@@ -32,10 +35,122 @@ fn run(cli: &Cli, output: &mut dyn Write) -> io::Result<()> {
     let response = rpc_call(&cli.rpc, 1, "daemon_status_ex")?;
     let status = ensure_rpc_ok(response, "daemon_status_ex")?
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing daemon status"))?;
-    if cli.json {
+    if let Some(interface_name) = cli.weave_display.as_deref() {
+        let weave_status = find_weave_status(&status, interface_name)?;
+        if cli.json {
+            writeln!(
+                output,
+                "{}",
+                serde_json::to_string_pretty(&weave_display_report(interface_name, weave_status))?
+            )?;
+        } else {
+            write_weave_display_view(output, interface_name, weave_status)?;
+        }
+    } else if cli.json {
         writeln!(output, "{}", serde_json::to_string_pretty(&status)?)?;
     } else {
         write_human_status(output, &status)?;
+    }
+    Ok(())
+}
+
+fn find_weave_status<'a>(status: &'a Value, interface_name: &str) -> io::Result<&'a Value> {
+    let Some(interface) =
+        status.get("interfaces").and_then(Value::as_array).and_then(|interfaces| {
+            interfaces.iter().find(|interface| {
+                interface.get("name").and_then(Value::as_str) == Some(interface_name)
+            })
+        })
+    else {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("interface {interface_name:?} not found"),
+        ));
+    };
+
+    interface
+        .get("settings")
+        .and_then(|settings| settings.get("_runtime"))
+        .and_then(|runtime| runtime.get("weave"))
+        .and_then(|weave| weave.get("status"))
+        .filter(|status| status.is_object())
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("interface {interface_name:?} has no Weave runtime display status"),
+            )
+        })
+}
+
+fn weave_display_report(interface_name: &str, status: &Value) -> Value {
+    json!({
+        "interface": interface_name,
+        "link_state": status.get("link_state").cloned().unwrap_or(Value::Null),
+        "wdcl_connected": status.get("wdcl_connected").cloned().unwrap_or(Value::Null),
+        "remote_switch_id": status.get("remote_switch_id").cloned().unwrap_or(Value::Null),
+        "display": status.get("display").cloned().unwrap_or(Value::Null),
+        "device_stats": status.get("device_stats").cloned().unwrap_or(Value::Null),
+        "last_error": status.get("last_error").cloned().unwrap_or(Value::Null),
+    })
+}
+
+fn write_weave_display_view(
+    output: &mut dyn Write,
+    interface_name: &str,
+    status: &Value,
+) -> io::Result<()> {
+    writeln!(output, "Weave Display: {interface_name}")?;
+    writeln!(
+        output,
+        "link={} wdcl={} remote={}",
+        value_str(status, "link_state"),
+        value_bool(status, "wdcl_connected"),
+        value_str(status, "remote_switch_id")
+    )?;
+    if let Some(display) = status.get("display").filter(|display| display.is_object()) {
+        writeln!(
+            output,
+            "size={}x{} complete={} color={} bytes={}/{}",
+            value_u64(display, "width"),
+            value_u64(display, "height"),
+            value_bool(display, "complete"),
+            value_u64(display, "color_format"),
+            value_u64(display, "received_size"),
+            value_u64(display, "total_size")
+        )?;
+        if let Some(buffer_hex) = display.get("buffer_hex").and_then(Value::as_str) {
+            writeln!(output, "buffer_hex={buffer_hex}")?;
+        }
+    } else {
+        writeln!(output, "display=unavailable")?;
+    }
+    if let Some(stats) = status.get("device_stats").filter(|stats| stats.is_object()) {
+        let mut summary = String::from("stats");
+        append_optional_u64(&mut summary, "cpu", stats.get("cpu_load"));
+        if let Some(percent) = stats
+            .get("memory_used_percent_bp")
+            .and_then(Value::as_u64)
+            .map(format_basis_points_percent)
+        {
+            summary.push_str(&format!(" mem={percent}"));
+        }
+        if let Some(task_count) =
+            stats.get("task_cpu").and_then(Value::as_object).map(serde_json::Map::len)
+        {
+            append_count(&mut summary, "tasks", task_count);
+        }
+        writeln!(output, "{summary}")?;
+    }
+    append_optional_str_line(output, "err", status.get("last_error"))
+}
+
+fn append_optional_str_line(
+    output: &mut dyn Write,
+    label: &str,
+    value: Option<&Value>,
+) -> io::Result<()> {
+    if let Some(value) = value.and_then(Value::as_str).filter(|value| !value.is_empty()) {
+        writeln!(output, "{label}={value}")?;
     }
     Ok(())
 }
@@ -789,6 +904,51 @@ mod tests {
     }
 
     #[test]
+    fn weave_display_view_reports_framebuffer_and_status_detail() {
+        let status = json!({
+            "link_state": "connected",
+            "wdcl_connected": true,
+            "remote_switch_id": "0011223344556677",
+            "display": {
+                "color_format": 1,
+                "width": 128,
+                "height": 64,
+                "total_size": 4,
+                "received_size": 4,
+                "complete": true,
+                "buffer_hex": "aabbccdd"
+            },
+            "device_stats": {
+                "cpu_load": 42,
+                "memory_used_percent_bp": 5125,
+                "task_cpu": {
+                    "wdcl": {
+                        "cpu_load": 7,
+                        "samples": 3
+                    }
+                }
+            },
+            "last_error": "synthetic weave warning"
+        });
+        let mut output = Vec::new();
+
+        write_weave_display_view(&mut output, "weave-main", &status).expect("write display view");
+        let output = String::from_utf8(output).expect("utf8");
+
+        assert!(output.contains("Weave Display: weave-main"));
+        assert!(output.contains("link=connected wdcl=true remote=0011223344556677"));
+        assert!(output.contains("size=128x64 complete=true color=1 bytes=4/4"));
+        assert!(output.contains("buffer_hex=aabbccdd"));
+        assert!(output.contains("stats cpu=42 mem=51.25% tasks=1"));
+        assert!(output.contains("err=synthetic weave warning"));
+
+        let report = weave_display_report("weave-main", &status);
+        assert_eq!(report["interface"], "weave-main");
+        assert_eq!(report["display"]["buffer_hex"], "aabbccdd");
+        assert_eq!(report["device_stats"]["task_cpu"]["wdcl"]["samples"], 3);
+    }
+
+    #[test]
     fn human_status_includes_interface_runtime_detail() {
         let status = json!({
             "identity_hash": "abc",
@@ -945,7 +1105,8 @@ mod tests {
                                         "height": 64,
                                         "total_size": 1024,
                                         "received_size": 1024,
-                                        "complete": true
+                                        "complete": true,
+                                        "buffer_hex": "aabbccdd"
                                     },
                                     "device_stats": {
                                         "cpu_load": 42,

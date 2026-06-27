@@ -161,9 +161,10 @@ placeholders:
   CPU/task/memory stat parsing, and transport-side status bookkeeping refreshed
   into daemon/RPC `_runtime.weave.status`, with `rnstatus-rs` rendering remote
   switch ID, byte/frame counters, invalid-frame and last-log diagnostics,
-  display progress/color, CPU/memory, and task-stat counts, including software
-  cancel/stop closure of link, WDCL-connected, and endpoint state, with an
-  opt-in prepared-host smoke harness for connected serial Weave devices.
+  display progress/color, CPU/memory, and task-stat counts plus a
+  `--weave-display` display-focused view, including software cancel/stop closure
+  of link, WDCL-connected, and endpoint state, with an opt-in prepared-host
+  smoke harness for connected serial Weave devices.
 - I2P SAM baseline, with transient stream sessions, `.i2p` name lookup, HDLC
   framing, virtual peer child interfaces, direct peer sends, broadcast fanout
   across configured peers, `STREAM ACCEPT` connectable sessions, and private
@@ -282,11 +283,11 @@ production parity are still pending.
 packet routing, target-scoped display-frame capture with byte-coverage
 completion, CPU/task/memory stat parsing, daemon/RPC status refresh, and compact
 `rnstatus-rs` human summaries with remote switch, frame/log, display progress,
-and device-stat detail exist. Software cancel/stop now marks the runtime closed
-and clears endpoint children. An opt-in prepared-host smoke harness records
-connected serial evidence under `target/weave-hil/`, while dedicated remote
-display/control UI integration and broader prepared-host hardware evidence
-remain pending.
+device-stat detail, and a `rnstatus-rs --weave-display` framebuffer/status view
+exist. Software cancel/stop now marks the runtime closed and clears endpoint
+children. An opt-in prepared-host smoke harness records connected serial
+evidence under `target/weave-hil/`, while dedicated remote display control UI
+integration and broader prepared-host hardware evidence remain pending.
 
 ## Highest-Priority Gaps
 

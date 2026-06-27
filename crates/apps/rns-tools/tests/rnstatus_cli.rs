@@ -898,6 +898,96 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
     server.join().expect("mock rpc server");
 }
 
+#[test]
+fn rnstatus_weave_display_renders_display_focused_view() {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind mock rpc");
+    let rpc = listener.local_addr().expect("mock rpc addr").to_string();
+    let server = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accept rpc request");
+        let mut request = Vec::new();
+        stream.read_to_end(&mut request).expect("read rpc request");
+        let body = http_body(&request);
+        let rpc_request = codec::decode_frame::<rns_rpc::RpcRequest>(body).expect("decode request");
+        assert_eq!(rpc_request.method, "daemon_status_ex");
+
+        let response = RpcResponse {
+            id: rpc_request.id,
+            result: Some(json!({
+                "identity_hash": "0123456789abcdef0123456789abcdef",
+                "running": true,
+                "interface_count": 1,
+                "interfaces": [
+                    {
+                        "name": "weave-main",
+                        "type": "weave",
+                        "enabled": true,
+                        "settings": {
+                            "_runtime": {
+                                "startup_status": "spawned",
+                                "weave": {
+                                    "status": {
+                                        "link_state": "connected",
+                                        "wdcl_connected": true,
+                                        "remote_switch_id": "0011223344556677",
+                                        "display": {
+                                            "color_format": 1,
+                                            "width": 128,
+                                            "height": 64,
+                                            "total_size": 4,
+                                            "received_size": 4,
+                                            "complete": true,
+                                            "buffer_hex": "aabbccdd"
+                                        },
+                                        "device_stats": {
+                                            "cpu_load": 42,
+                                            "memory_used_percent_bp": 5125,
+                                            "task_cpu": {
+                                                "wdcl": {
+                                                    "cpu_load": 7,
+                                                    "samples": 3
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                ]
+            })),
+            error: None,
+        };
+        let body = codec::encode_frame(&response).expect("encode response");
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/msgpack\r\nContent-Length: {}\r\n\r\n",
+            body.len()
+        );
+        stream.write_all(response.as_bytes()).expect("write response headers");
+        stream.write_all(&body).expect("write response body");
+        stream.shutdown(Shutdown::Write).expect("shutdown response");
+    });
+
+    let output = Command::new(rnstatus_bin())
+        .arg("--rpc")
+        .arg(rpc)
+        .arg("--weave-display")
+        .arg("weave-main")
+        .output()
+        .expect("run rnstatus-rs");
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
+    assert!(stdout.contains("Weave Display: weave-main"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("link=connected wdcl=true remote=0011223344556677"),
+        "stdout: {stdout}"
+    );
+    assert!(stdout.contains("size=128x64 complete=true color=1 bytes=4/4"), "stdout: {stdout}");
+    assert!(stdout.contains("buffer_hex=aabbccdd"), "stdout: {stdout}");
+    assert!(stdout.contains("stats cpu=42 mem=51.25% tasks=1"), "stdout: {stdout}");
+
+    server.join().expect("mock rpc server");
+}
+
 fn rnstatus_bin() -> String {
     env!("CARGO_BIN_EXE_rnstatus-rs").to_string()
 }

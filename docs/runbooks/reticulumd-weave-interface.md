@@ -60,6 +60,10 @@ state, endpoint count, WDCL connection state, remote switch ID, byte and frame
 counters, invalid-frame count, last log event, display completion and byte
 progress, display color format, CPU load, memory usage, and task-stat counts
 when the daemon has reported those fields.
+Use `rnstatus-rs --weave-display <interface-name>` for a display-focused view
+of the captured remote framebuffer metadata, complete framebuffer hex snapshot
+when available, and current device-stat summary; add `--json` to return only
+the Weave display/status subset for that interface.
 Incoming WDCL display frames addressed to the local switch update
 `_runtime.weave.status.display` with the remote framebuffer color format, fixed
 128x64 dimensions, total size, received size, completion flag, and a hex
@@ -114,6 +118,7 @@ Artifacts are uploaded as `weave-prepared-host-artifacts`, including
 
 - Broader prepared-host Weave hardware evidence across devices and firmware
   combinations is still required.
-- Dedicated remote display/control UI integration is not complete; current
-  operator visibility is through daemon/RPC status and `rnstatus-rs` summaries.
+- Dedicated remote display control UI integration is not complete; current
+  operator visibility is through daemon/RPC status, `rnstatus-rs` summaries,
+  and `rnstatus-rs --weave-display`.
 - I2PInterface has a separate in-progress outbound SAM peer slice.
