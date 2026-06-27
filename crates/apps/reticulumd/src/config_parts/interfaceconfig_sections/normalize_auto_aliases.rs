@@ -16,10 +16,8 @@ impl InterfaceConfig {
         if self
             .multicast_address_type
             .as_deref()
-            .and_then(|value| {
-                rns_transport::iface::auto::MulticastAddressType::parse(value).ok().flatten()
-            })
-            .is_none()
+            .map(rns_transport::iface::auto::MulticastAddressType::parse)
+            .is_none_or(|parsed| parsed.ok().flatten().is_none())
         {
             self.multicast_address_type = Some("temporary".to_string());
         }

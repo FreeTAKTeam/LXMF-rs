@@ -326,11 +326,13 @@ impl Transport {
     pub async fn handle_inbound_for_test(&self, packet: Packet) {
         let (receipt, receipt_handler) = {
             let handler = self.handler.lock().await;
-            let receipt = super::wire::validated_receipt_hash(&packet, &handler)
-                .await
-                .ok()
-                .flatten()
-                .map(DeliveryReceipt::new);
+            let receipt = match super::wire::validated_receipt_hash(&packet, &handler).await {
+                Ok(receipt_hash) => receipt_hash.map(DeliveryReceipt::new),
+                Err(err) => {
+                    log::warn!("[transport] failed to validate inbound test receipt: {err:?}");
+                    None
+                }
+            };
             let receipt_handler = handler.receipt_handler.clone();
             (receipt, receipt_handler)
         };
