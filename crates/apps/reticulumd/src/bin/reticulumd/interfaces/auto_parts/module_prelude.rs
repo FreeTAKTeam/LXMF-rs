@@ -5,7 +5,8 @@ use rns_transport::buffer::InputBuffer;
 use rns_transport::hash::AddressHash;
 
 use rns_transport::iface::auto::{
-    AutoDataListenerBinding, AutoDiscoveryEvent, AutoDiscoveryListenerBinding,
+    AutoAdoptedInterfaceChange, AutoDataListenerBinding, AutoDiscoveryEvent,
+    AutoDiscoveryListenerBinding,
     AutoDiscoveryRejectReason, AutoDiscoveryScope, AutoDiscoveryState,
     AutoInboundPacketDeduplicator, AutoInterfaceAdoptedDevice, AutoInterfaceConfig,
     AutoInterfaceDeviceCandidate, AutoInterfaceDeviceFilter, AutoInterfacePlatform,
@@ -35,6 +36,7 @@ use std::time::Instant;
 pub(crate) struct AutoDaemonStartupPlan {
     pub(crate) config: AutoInterfaceConfig,
     pub(crate) platform: AutoInterfacePlatform,
+    pub(crate) device_filter: AutoInterfaceDeviceFilter,
     pub(crate) candidates: Vec<AutoInterfaceDeviceCandidate>,
     pub(crate) adopted_devices: Vec<AutoInterfaceAdoptedDevice>,
     peering_packets: Vec<AutoPeeringPacket>,

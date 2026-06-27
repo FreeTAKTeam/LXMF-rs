@@ -354,7 +354,6 @@ impl AutoDaemonStartupPlan {
         ));
         discovery_listener_supervisor.lock().await.spawn_sockets(sockets, &events_tx);
         let receive_loop_count = discovery_listener_supervisor.lock().await.receive_loop_count();
-        drop(events_tx);
         let data_listener_supervisor = Arc::new(tokio::sync::Mutex::new(
             AutoPeerDataListenerSupervisor::new(
                 self.clone(),
@@ -366,17 +365,23 @@ impl AutoDaemonStartupPlan {
         ));
         data_listener_supervisor.lock().await.spawn_sockets(data_sockets, &data_events_tx);
         let data_receive_loop_count = data_listener_supervisor.lock().await.len();
+        let runtime_loop_handles = AutoInterfaceRuntimeLoopHandles {
+            discovery_supervisor: Arc::clone(&discovery_listener_supervisor),
+            data_supervisor: Arc::clone(&data_listener_supervisor),
+            discovery_events: events_tx.clone(),
+            data_events: data_events_tx.clone(),
+        };
         let link_local_reconciler_handle = if data_receive_loop_count > 0 {
             Some(self.spawn_link_local_address_reconciler(
                 Arc::clone(&state),
-                Arc::clone(&data_listener_supervisor),
+                runtime_loop_handles,
                 runtime_status.clone(),
-                data_events_tx.clone(),
                 shutdown_rx.clone(),
             ))
         } else {
             None
         };
+        drop(events_tx);
         drop(data_events_tx);
         let transport_tx_handle = transport_tx_channel.map(|tx_channel| {
             self.spawn_peer_data_transport_tx_loop(

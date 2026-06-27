@@ -42,6 +42,7 @@
         AutoDaemonStartupPlan {
             config: AutoInterfaceConfig::default(),
             platform: AutoInterfacePlatform::Other,
+            device_filter: AutoInterfaceDeviceFilter::default(),
             candidates: Vec::new(),
             adopted_devices: Vec::new(),
             peering_packets: Vec::new(),
@@ -58,6 +59,7 @@
         AutoDaemonStartupPlan {
             config: AutoInterfaceConfig::default(),
             platform: AutoInterfacePlatform::Other,
+            device_filter: AutoInterfaceDeviceFilter::default(),
             candidates: Vec::new(),
             adopted_devices: Vec::new(),
             peering_packets: Vec::new(),
@@ -535,6 +537,119 @@
             Some(&JsonValue::Null)
         );
         supervisor.lock().await.shutdown_all().await;
+    }
+
+    #[tokio::test]
+    async fn auto_adopted_interface_add_failure_does_not_commit_state() {
+        let plan = build_startup_plan_from_candidates(&auto_iface(), Vec::new())
+            .expect("empty startup plan");
+        let state = Arc::new(tokio::sync::Mutex::new(plan.discovery_state()));
+        let dedupe = Arc::new(tokio::sync::Mutex::new(AutoInboundPacketDeduplicator::from_timing(
+            AutoInterfaceTiming::for_platform(AutoInterfacePlatform::Other),
+        )));
+        let (discovery_events_tx, _discovery_events_rx) = tokio::sync::mpsc::channel(8);
+        let (data_events_tx, _data_events_rx) = tokio::sync::mpsc::channel(8);
+        let (_shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+        let discovery_supervisor = Arc::new(tokio::sync::Mutex::new(
+            AutoDiscoveryListenerSupervisor::new(
+                plan.clone(),
+                Arc::clone(&state),
+                shutdown_rx.clone(),
+            ),
+        ));
+        let data_supervisor = Arc::new(tokio::sync::Mutex::new(
+            AutoPeerDataListenerSupervisor::new(
+                plan.clone(),
+                Arc::clone(&state),
+                dedupe,
+                None,
+                shutdown_rx,
+            ),
+        ));
+        let runtime_loop_handles = AutoInterfaceRuntimeLoopHandles {
+            discovery_supervisor: Arc::clone(&discovery_supervisor),
+            data_supervisor: Arc::clone(&data_supervisor),
+            discovery_events: discovery_events_tx,
+            data_events: data_events_tx,
+        };
+
+        let err = plan
+            .reconcile_adopted_interface_add_remove(
+                Arc::clone(&state),
+                &runtime_loop_handles,
+                vec![AutoInterfaceDeviceCandidate {
+                    ifname: "eth0".to_string(),
+                    ipv6_addresses: vec!["fe80::1111".to_string()],
+                }],
+                |_| Err("missing interface index".to_string()),
+            )
+            .await
+            .expect_err("add should fail before state commit");
+
+        assert!(err.contains("missing interface index"));
+        assert!(state.lock().await.adopted_devices().is_empty());
+        assert_eq!(discovery_supervisor.lock().await.receive_loop_count(), 0);
+        assert_eq!(data_supervisor.lock().await.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn auto_adopted_interface_remove_commits_cleanup() {
+        let plan = build_startup_plan_from_candidates(
+            &auto_iface(),
+            vec![AutoInterfaceDeviceCandidate {
+                ifname: "eth0".to_string(),
+                ipv6_addresses: vec!["fe80::1111".to_string()],
+            }],
+        )
+        .expect("startup plan");
+        let state = Arc::new(tokio::sync::Mutex::new(plan.discovery_state()));
+        state.lock().await.observe_discovery_packet(
+            "fe80::aaaa",
+            "eth0",
+            core::time::Duration::from_secs(1),
+        );
+        let dedupe = Arc::new(tokio::sync::Mutex::new(AutoInboundPacketDeduplicator::from_timing(
+            AutoInterfaceTiming::for_platform(AutoInterfacePlatform::Other),
+        )));
+        let (discovery_events_tx, _discovery_events_rx) = tokio::sync::mpsc::channel(8);
+        let (data_events_tx, _data_events_rx) = tokio::sync::mpsc::channel(8);
+        let (_shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+        let discovery_supervisor = Arc::new(tokio::sync::Mutex::new(
+            AutoDiscoveryListenerSupervisor::new(
+                plan.clone(),
+                Arc::clone(&state),
+                shutdown_rx.clone(),
+            ),
+        ));
+        let data_supervisor = Arc::new(tokio::sync::Mutex::new(
+            AutoPeerDataListenerSupervisor::new(
+                plan.clone(),
+                Arc::clone(&state),
+                dedupe,
+                None,
+                shutdown_rx,
+            ),
+        ));
+        let runtime_loop_handles = AutoInterfaceRuntimeLoopHandles {
+            discovery_supervisor: Arc::clone(&discovery_supervisor),
+            data_supervisor: Arc::clone(&data_supervisor),
+            discovery_events: discovery_events_tx,
+            data_events: data_events_tx,
+        };
+
+        let applied = plan
+            .reconcile_adopted_interface_add_remove(
+                Arc::clone(&state),
+                &runtime_loop_handles,
+                Vec::new(),
+                |_| panic!("remove should not resolve scope ids"),
+            )
+            .await
+            .expect("remove applies");
+
+        assert_eq!(applied, 1);
+        assert!(state.lock().await.adopted_devices().is_empty());
+        assert!(state.lock().await.peer("fe80::aaaa").is_none());
     }
 
     #[test]

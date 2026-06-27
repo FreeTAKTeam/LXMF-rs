@@ -36,6 +36,7 @@ fn build_startup_plan_from_candidates(
     Ok(AutoDaemonStartupPlan {
         config,
         platform,
+        device_filter: filter,
         candidates,
         adopted_devices,
         peering_packets,

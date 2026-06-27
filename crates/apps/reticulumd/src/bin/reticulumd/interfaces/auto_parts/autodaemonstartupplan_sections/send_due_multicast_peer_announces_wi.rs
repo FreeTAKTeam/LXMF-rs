@@ -1,3 +1,11 @@
+#[derive(Clone)]
+struct AutoInterfaceRuntimeLoopHandles {
+    discovery_supervisor: Arc<tokio::sync::Mutex<AutoDiscoveryListenerSupervisor>>,
+    data_supervisor: Arc<tokio::sync::Mutex<AutoPeerDataListenerSupervisor>>,
+    discovery_events: tokio::sync::mpsc::Sender<AutoDiscoveryLoopEvent>,
+    data_events: tokio::sync::mpsc::Sender<AutoPeerDataLoopEvent>,
+}
+
 impl AutoDaemonStartupPlan {
 
     async fn send_due_multicast_peer_announces_with_runtime_socket(
@@ -158,10 +166,12 @@ impl AutoDaemonStartupPlan {
         state: Arc<tokio::sync::Mutex<AutoDiscoveryState>>,
         candidates: Vec<AutoInterfaceDeviceCandidate>,
     ) -> Vec<AutoLinkLocalAddressUpdate> {
-        let allowed = self
-            .adopted_devices
-            .iter()
-            .map(|device| device.ifname.clone())
+        let allowed = state
+            .lock()
+            .await
+            .adopted_devices()
+            .into_iter()
+            .map(|device| device.ifname)
             .collect::<Vec<_>>();
         let filter = AutoInterfaceDeviceFilter { allowed, ignored: Vec::new() };
         let adopted = filter.adopt_devices(&candidates, self.platform);
@@ -206,12 +216,77 @@ impl AutoDaemonStartupPlan {
         Ok(restarted)
     }
 
+    async fn reconcile_adopted_interface_add_remove(
+        &self,
+        state: Arc<tokio::sync::Mutex<AutoDiscoveryState>>,
+        runtime: &AutoInterfaceRuntimeLoopHandles,
+        candidates: Vec<AutoInterfaceDeviceCandidate>,
+        mut scope_id_for_ifname: impl FnMut(&str) -> Result<u32, String>,
+    ) -> Result<usize, String> {
+        let desired = self.device_filter.adopt_devices(&candidates, self.platform);
+        let changes = state.lock().await.plan_adopted_interface_changes(
+            &self.config,
+            self.platform,
+            &desired,
+        );
+        let mut applied = 0;
+        for change in changes {
+            match &change {
+                AutoAdoptedInterfaceChange::Added {
+                    adopted,
+                    discovery_listener,
+                    data_listener,
+                    ..
+                } => {
+                    let discovery_sockets = self
+                        .bind_discovery_sockets_for_listener(
+                            discovery_listener,
+                            &mut scope_id_for_ifname,
+                        )
+                        .await?;
+                    let data_socket = self
+                        .bind_data_socket_for_listener(data_listener, &mut scope_id_for_ifname)
+                        .await?;
+                    runtime.discovery_supervisor.lock().await.spawn_bound_listener(
+                        adopted.ifname.clone(),
+                        discovery_sockets,
+                        &runtime.discovery_events,
+                    );
+                    runtime
+                        .data_supervisor
+                        .lock()
+                        .await
+                        .spawn_bound_socket(data_socket, &runtime.data_events);
+                    state.lock().await.apply_adopted_interface_change(&change);
+                    applied += 1;
+                }
+                AutoAdoptedInterfaceChange::Removed { adopted, .. } => {
+                    runtime
+                        .discovery_supervisor
+                        .lock()
+                        .await
+                        .remove_listener(&adopted.ifname)
+                        .await;
+                    runtime
+                        .data_supervisor
+                        .lock()
+                        .await
+                        .remove_listener(&adopted.ifname)
+                        .await;
+                    state.lock().await.apply_adopted_interface_change(&change);
+                    applied += 1;
+                }
+                AutoAdoptedInterfaceChange::LinkLocalChanged(_) => {}
+            }
+        }
+        Ok(applied)
+    }
+
     fn spawn_link_local_address_reconciler(
         &self,
         state: Arc<tokio::sync::Mutex<AutoDiscoveryState>>,
-        supervisor: Arc<tokio::sync::Mutex<AutoPeerDataListenerSupervisor>>,
+        runtime: AutoInterfaceRuntimeLoopHandles,
         runtime_status: Option<AutoRuntimeStatusHandle>,
-        events: tokio::sync::mpsc::Sender<AutoPeerDataLoopEvent>,
         mut shutdown: tokio::sync::watch::Receiver<bool>,
     ) -> tokio::task::JoinHandle<()> {
         let plan = self.clone();
@@ -245,11 +320,29 @@ impl AutoDaemonStartupPlan {
                             }
                         };
                         match plan
+                            .reconcile_adopted_interface_add_remove(
+                                Arc::clone(&state),
+                                &runtime,
+                                candidates.clone(),
+                                |ifname| resolver.resolve(ifname),
+                            )
+                            .await
+                        {
+                            Ok(applied) if applied > 0 => {
+                                log::debug!("[daemon-auto] adopted-interface reconciler applied {applied} add/remove change(s)");
+                            }
+                            Ok(_) => {}
+                            Err(err) => {
+                                log::warn!("[daemon-auto] adopted-interface reconciler failed: {err}");
+                                continue;
+                            }
+                        }
+                        match plan
                             .reconcile_link_local_addresses(
                                 Arc::clone(&state),
-                                Arc::clone(&supervisor),
+                                Arc::clone(&runtime.data_supervisor),
                                 runtime_status.as_ref(),
-                                &events,
+                                &runtime.data_events,
                                 candidates,
                                 |ifname| resolver.resolve(ifname),
                             )
@@ -606,6 +699,40 @@ impl AutoDiscoveryListenerSupervisor {
     }
 
     #[allow(dead_code)]
+    pub(crate) fn spawn_bound_listener(
+        &mut self,
+        ifname: String,
+        sockets: Vec<AutoBoundDiscoverySocket>,
+        events: &tokio::sync::mpsc::Sender<AutoDiscoveryLoopEvent>,
+    ) {
+        self.spawn_listener(ifname, sockets, events);
+    }
+
+    #[allow(dead_code)]
+    pub(crate) async fn add_listener(
+        &mut self,
+        listener: &AutoDiscoveryListenerBinding,
+        events: &tokio::sync::mpsc::Sender<AutoDiscoveryLoopEvent>,
+        mut scope_id_for_ifname: impl FnMut(&str) -> Result<u32, String>,
+    ) -> Result<(), String> {
+        let sockets = self
+            .plan
+            .bind_discovery_sockets_for_listener(listener, &mut scope_id_for_ifname)
+            .await?;
+        self.spawn_listener(listener.ifname.clone(), sockets, events);
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    pub(crate) async fn remove_listener(&mut self, ifname: &str) -> bool {
+        let Some(old) = self.listeners.remove(ifname) else {
+            return false;
+        };
+        old.stop().await;
+        true
+    }
+
+    #[allow(dead_code)]
     pub(crate) fn receive_loop_count(&self) -> usize {
         self.listeners.values().map(|listener| listener.joins.len()).sum()
     }
@@ -676,6 +803,43 @@ impl AutoPeerDataListenerSupervisor {
                 old.stop().await;
             });
         }
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn spawn_bound_socket(
+        &mut self,
+        socket: AutoBoundDataSocket,
+        events: &tokio::sync::mpsc::Sender<AutoPeerDataLoopEvent>,
+    ) -> SocketAddr {
+        let bind_addr = socket.bind_addr;
+        self.spawn_socket(socket, events);
+        bind_addr
+    }
+
+    #[allow(dead_code)]
+    pub(crate) async fn add_listener(
+        &mut self,
+        listener: &AutoDataListenerBinding,
+        events: &tokio::sync::mpsc::Sender<AutoPeerDataLoopEvent>,
+        mut scope_id_for_ifname: impl FnMut(&str) -> Result<u32, String>,
+    ) -> Result<SocketAddr, String> {
+        let socket = self.plan.bind_data_socket_for_listener(listener, &mut scope_id_for_ifname).await?;
+        let bind_addr = socket.bind_addr;
+        self.spawn_socket(socket, events);
+        Ok(bind_addr)
+    }
+
+    #[allow(dead_code)]
+    pub(crate) async fn remove_listener(&mut self, ifname: &str) -> bool {
+        let Some(old) = self.listeners.remove(ifname) else {
+            return false;
+        };
+        let old_socket = Arc::clone(&old.socket);
+        old.stop().await;
+        if let Some(transport) = &self.transport {
+            transport.remove_outbound_routes_for_socket(&old_socket).await;
+        }
+        true
     }
 
     #[allow(dead_code)]

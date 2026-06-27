@@ -73,8 +73,9 @@ The project is best described by capability level:
   KISS with Android-style beacon alias compatibility, AutoInterface with
   Python-style multicast address type fallback, polling adopted-address
   reconciliation, adopted-interface add/remove/change diff planning,
-  supervised discovery receive loops, and supervised link-local data-listener
-  restart, LoRa/RNode,
+  daemon-side add/remove lifecycle application for active AutoInterface
+  runtimes, supervised discovery receive loops, and supervised link-local
+  data-listener restart, LoRa/RNode,
   feature-gated RNode BLE, feature-gated VR-N76 KISS-over-BLE, and the
   in-progress shared serial/TCP RNodeMulti baseline with nested vport virtual
   children, a shared-serial Weave WDCL/HDLC endpoint baseline, and an
@@ -152,8 +153,11 @@ The project is best described by capability level:
 - AutoInterface has a live daemon runtime, including discovery, peer lifecycle,
   peer-data sockets, transport ingress, outbound routing, multicast proof
   fallback, supervised discovery/data receive loops, transport-side
-  adopted-interface diff planning, and polling link-local replacement
-  reconciliation for already adopted interfaces.
+  adopted-interface diff planning, daemon-side add/remove lifecycle
+  application for active runtimes, and polling link-local replacement
+  reconciliation for already adopted interfaces. Remaining dynamic-runtime
+  hardening includes zero-initial-device polling startup, explicit shutdown for
+  dynamically spawned listeners, and prepared-host interface churn evidence.
 - I2P transport-side tunnel watchdog/status bookkeeping is refreshed into
   daemon/RPC interface status; prepared-host production evidence remains
   pending.

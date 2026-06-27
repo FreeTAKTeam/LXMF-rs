@@ -159,6 +159,7 @@
         let plan = AutoDaemonStartupPlan {
             config: AutoInterfaceConfig::default(),
             platform: AutoInterfacePlatform::Other,
+            device_filter: AutoInterfaceDeviceFilter::default(),
             candidates: Vec::new(),
             adopted_devices: Vec::new(),
             peering_packets: vec![AutoPeeringPacket {
