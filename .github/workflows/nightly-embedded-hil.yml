@@ -151,6 +151,7 @@ jobs:
           WEAVE_MTU: ${{ vars.HIL_WEAVE_MTU }}
           WEAVE_CONFIGURED_BITRATE: ${{ vars.HIL_WEAVE_CONFIGURED_BITRATE }}
           WEAVE_REQUIRE_CONNECTED: ${{ vars.HIL_WEAVE_REQUIRE_CONNECTED }}
+          WEAVE_REMOTE_DISPLAY_CONTROL: ${{ vars.HIL_WEAVE_REMOTE_DISPLAY_CONTROL }}
           WEAVE_TIMEOUT_SECS: ${{ vars.HIL_WEAVE_TIMEOUT_SECS }}
         run: ./tools/scripts/weave-prepared-host-smoke.sh
       - uses: actions/upload-artifact@v4

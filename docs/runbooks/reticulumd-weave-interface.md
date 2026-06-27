@@ -128,10 +128,19 @@ written to `report.json` and include the latest link state, WDCL connection
 flag, switch IDs, endpoint counters, byte/frame counters, display status, and
 device stats when the prepared host emits them.
 
+Set `WEAVE_REMOTE_DISPLAY_CONTROL=true` to additionally prove the live
+`weaveconf-rs enable-remote-display` and `weaveconf-rs disable-remote-display`
+RPC path against the connected device. This opt-in gate requires
+`WEAVE_REQUIRE_CONNECTED=true`, queues both controls against
+`weave-prepared-host`, refreshes `rnstatus-rs --json` afterwards, and records
+`remote_display_control_requested` plus `remote_display_control_result` in
+`report.json`.
+
 Nightly HIL exposes the same smoke through `HIL_WEAVE_ENABLED=true` with
 `HIL_WEAVE_PORT`, optional `HIL_WEAVE_BAUD_RATE`, optional `HIL_WEAVE_MTU`,
 optional `HIL_WEAVE_CONFIGURED_BITRATE`, optional
-`HIL_WEAVE_REQUIRE_CONNECTED`, and optional `HIL_WEAVE_TIMEOUT_SECS`.
+`HIL_WEAVE_REQUIRE_CONNECTED`, optional `HIL_WEAVE_REMOTE_DISPLAY_CONTROL`, and
+optional `HIL_WEAVE_TIMEOUT_SECS`.
 Artifacts are uploaded as `weave-prepared-host-artifacts`, including
 `target/weave-hil/report.json` and `target/weave-hil/run.*`.
 

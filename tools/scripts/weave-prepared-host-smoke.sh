@@ -9,6 +9,7 @@ WEAVE_BAUD_RATE="${WEAVE_BAUD_RATE:-${WEAVE_SPEED:-3000000}}"
 WEAVE_MTU="${WEAVE_MTU:-1024}"
 WEAVE_CONFIGURED_BITRATE="${WEAVE_CONFIGURED_BITRATE:-250000}"
 WEAVE_REQUIRE_CONNECTED="${WEAVE_REQUIRE_CONNECTED:-true}"
+WEAVE_REMOTE_DISPLAY_CONTROL="${WEAVE_REMOTE_DISPLAY_CONTROL:-false}"
 TIMEOUT_SECS="${WEAVE_TIMEOUT_SECS:-${TIMEOUT_SECS:-180}}"
 if [[ -z "$WEAVE_BAUD_RATE" ]]; then
   WEAVE_BAUD_RATE="3000000"
@@ -25,6 +26,10 @@ fi
 if [[ -z "$WEAVE_REQUIRE_CONNECTED" ]]; then
   WEAVE_REQUIRE_CONNECTED="true"
 fi
+if [[ -z "$WEAVE_REMOTE_DISPLAY_CONTROL" ]]; then
+  WEAVE_REMOTE_DISPLAY_CONTROL="false"
+fi
+REMOTE_DISPLAY_CONTROL_RESULT="not_requested"
 
 LOG_DIR="${LOG_DIR:-${ROOT_DIR}/target/weave-hil}"
 REPORT_PATH="${REPORT_PATH:-${LOG_DIR}/report.json}"
@@ -53,7 +58,7 @@ fi
 write_report() {
   local status="$1"
   local reason="${2:-}"
-  python3 - <<'PY' "$REPORT_PATH" "$status" "$reason" "$WEAVE_PORT" "$WEAVE_BAUD_RATE" "$WEAVE_MTU" "$WEAVE_CONFIGURED_BITRATE" "$WEAVE_REQUIRE_CONNECTED" "$RPC_ADDR" "$RUN_DIR" "$CONFIG_PATH" "$RETICULUMD_LOG" "$RNSTATUS_JSON"
+  python3 - <<'PY' "$REPORT_PATH" "$status" "$reason" "$WEAVE_PORT" "$WEAVE_BAUD_RATE" "$WEAVE_MTU" "$WEAVE_CONFIGURED_BITRATE" "$WEAVE_REQUIRE_CONNECTED" "$WEAVE_REMOTE_DISPLAY_CONTROL" "$REMOTE_DISPLAY_CONTROL_RESULT" "$RPC_ADDR" "$RUN_DIR" "$CONFIG_PATH" "$RETICULUMD_LOG" "$RNSTATUS_JSON"
 import json
 import pathlib
 import sys
@@ -67,12 +72,14 @@ import sys
     mtu,
     configured_bitrate,
     require_connected,
+    remote_display_control,
+    remote_display_control_result,
     rpc_addr,
     run_dir,
     config_path,
     log_path,
     rnstatus_path,
-) = sys.argv[1:14]
+) = sys.argv[1:16]
 report = {
     "status": status,
     "weave_port": weave_port,
@@ -80,6 +87,8 @@ report = {
     "mtu": int(mtu),
     "configured_bitrate": int(configured_bitrate),
     "require_connected": require_connected.lower() in {"1", "true", "yes", "on"},
+    "remote_display_control_requested": remote_display_control.lower() in {"1", "true", "yes", "on"},
+    "remote_display_control_result": remote_display_control_result,
     "rpc_addr": rpc_addr,
     "run_dir": run_dir,
     "config_path": config_path,
@@ -181,6 +190,9 @@ EOF
 
 cargo build -p reticulumd --bin reticulumd --quiet
 cargo build -p rns-tools --bin rnstatus-rs --quiet
+if [[ "$WEAVE_REMOTE_DISPLAY_CONTROL" =~ ^(1|true|TRUE|yes|YES|on|ON)$ ]]; then
+  cargo build -p rns-tools --bin weaveconf-rs --quiet
+fi
 
 "${ROOT_DIR}/target/debug/reticulumd" \
   --rpc "$RPC_ADDR" \
@@ -244,6 +256,25 @@ else:
         raise SystemExit(1)
 PY
     then
+      if [[ "$WEAVE_REMOTE_DISPLAY_CONTROL" =~ ^(1|true|TRUE|yes|YES|on|ON)$ ]]; then
+        if [[ ! "$WEAVE_REQUIRE_CONNECTED" =~ ^(1|true|TRUE|yes|YES|on|ON)$ ]]; then
+          fail "WEAVE_REMOTE_DISPLAY_CONTROL requires WEAVE_REQUIRE_CONNECTED=true"
+        fi
+        REMOTE_DISPLAY_CONTROL_RESULT="attempted"
+        "${ROOT_DIR}/target/debug/weaveconf-rs" \
+          --rpc "$RPC_ADDR" \
+          enable-remote-display \
+          --interface weave-prepared-host >>"$RETICULUMD_LOG" 2>&1 \
+          || fail "weaveconf-rs enable-remote-display failed"
+        "${ROOT_DIR}/target/debug/weaveconf-rs" \
+          --rpc "$RPC_ADDR" \
+          disable-remote-display \
+          --interface weave-prepared-host >>"$RETICULUMD_LOG" 2>&1 \
+          || fail "weaveconf-rs disable-remote-display failed"
+        REMOTE_DISPLAY_CONTROL_RESULT="enable_disable_ok"
+        "${ROOT_DIR}/target/debug/rnstatus-rs" --rpc "$RPC_ADDR" --json >"$RNSTATUS_JSON" 2>>"$RETICULUMD_LOG" \
+          || fail "rnstatus-rs refresh after Weave remote-display control failed"
+      fi
       write_report "pass"
       echo "[weave-prepared-host-smoke] pass"
       echo "[weave-prepared-host-smoke] report=${REPORT_PATH}"

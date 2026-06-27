@@ -157,7 +157,9 @@ The project is best described by capability level:
   `reticulumd` exposes live dispatch through the
   `weave_remote_display_control` RPC bridge with `weaveconf-rs`
   enable/disable commands. An opt-in prepared-host smoke harness records
-  connected serial evidence under `target/weave-hil/`.
+  connected serial evidence under `target/weave-hil/` and can optionally prove
+  the live `weaveconf-rs` remote-display enable/disable dispatch against that
+  connected device.
 - I2PInterface has a transport-side SAM slice: configured peers get virtual
   unicast children, transient SAM stream sessions, name lookup, HDLC packet
   framing, direct peer sends, broadcast fanout, and transient connectable

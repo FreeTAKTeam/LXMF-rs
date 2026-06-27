@@ -298,8 +298,10 @@ primitive is covered in transport tests, and `reticulumd` now wires live
 dispatch through `weave_remote_display_control` with `weaveconf-rs`
 enable/disable commands. Software cancel/stop now marks the runtime closed and
 clears endpoint children. An opt-in prepared-host smoke harness records
-connected serial evidence under `target/weave-hil/`, while broader
-prepared-host hardware evidence remains pending.
+connected serial evidence under `target/weave-hil/` and can optionally prove
+the live `weaveconf-rs` remote-display enable/disable dispatch against that
+connected device, while broader prepared-host hardware evidence remains
+pending.
 
 ## Highest-Priority Gaps
 
