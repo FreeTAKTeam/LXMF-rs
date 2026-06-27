@@ -136,6 +136,7 @@ impl LocalUnixServer {
     }
 
     pub async fn spawn(context: InterfaceContext<Self>) {
+        let iface_stop = context.channel.stop.clone();
         let parent_iface = context.channel.address;
         let (endpoint, client_mtu, client_forced_bitrate_bps, iface_manager) = {
             let guard = context.inner.lock().unwrap();
@@ -153,11 +154,12 @@ impl LocalUnixServer {
 
         let tx_task = {
             let cancel = context.cancel.clone();
+            let iface_stop = iface_stop.clone();
             let tx_channel = tx_channel.clone();
 
             tokio::spawn(async move {
                 loop {
-                    if cancel.is_cancelled() {
+                    if cancel.is_cancelled() || iface_stop.is_cancelled() {
                         break;
                     }
 
@@ -167,15 +169,22 @@ impl LocalUnixServer {
                         _ = cancel.cancelled() => {
                             break;
                         }
+                        _ = iface_stop.cancelled() => {
+                            break;
+                        }
                         // Listener interfaces do not transmit packets directly.
-                        _ = tx_channel.recv() => {}
+                        message = tx_channel.recv() => {
+                            if message.is_none() {
+                                break;
+                            }
+                        }
                     }
                 }
             })
         };
 
         loop {
-            if context.cancel.is_cancelled() {
+            if context.cancel.is_cancelled() || iface_stop.is_cancelled() {
                 break;
             }
 
@@ -184,6 +193,7 @@ impl LocalUnixServer {
                     log::warn!("couldn't prepare local unix socket <{}>: {}", endpoint_label, err);
                     tokio::select! {
                         _ = context.cancel.cancelled() => break,
+                        _ = iface_stop.cancelled() => break,
                         _ = tokio::time::sleep(std::time::Duration::from_secs(5)) => {}
                     }
                     continue;
@@ -196,6 +206,7 @@ impl LocalUnixServer {
                     log::warn!("couldn't bind local unix socket <{}>: {}", endpoint_label, err);
                     tokio::select! {
                         _ = context.cancel.cancelled() => break,
+                        _ = iface_stop.cancelled() => break,
                         _ = tokio::time::sleep(std::time::Duration::from_secs(5)) => {}
                     }
                     continue;
@@ -206,12 +217,15 @@ impl LocalUnixServer {
             let mut counter = 0usize;
 
             loop {
-                if context.cancel.is_cancelled() {
+                if context.cancel.is_cancelled() || iface_stop.is_cancelled() {
                     break;
                 }
 
                 tokio::select! {
                     _ = context.cancel.cancelled() => {
+                        break;
+                    }
+                    _ = iface_stop.cancelled() => {
                         break;
                     }
                     client = listener.accept() => {
@@ -255,6 +269,7 @@ impl LocalUnixServer {
         if let Some(path) = endpoint.filesystem_path() {
             let _ = remove_socket_file(path);
         }
+        iface_stop.cancel();
         let _ = tokio::join!(tx_task);
     }
 
@@ -518,6 +533,42 @@ mod tests {
             accept_task.await.expect("accept task").expect("accept abstract socket");
 
         assert!(!Path::new(format!("@{name}").as_str()).exists());
+    }
+
+    #[tokio::test]
+    async fn local_unix_server_stops_on_interface_stop_and_releases_socket() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("reticulum-local-server.sock");
+        let endpoint = LocalUnixEndpoint::filesystem(path.clone());
+        let manager = Arc::new(tokio::sync::Mutex::new(InterfaceManager::new(8)));
+        let context = {
+            let mut manager_guard = manager.lock().await;
+            manager_guard.new_context(LocalUnixServer::new(path.clone(), manager.clone()))
+        };
+        let iface_address = context.channel.address;
+        let task = tokio::spawn(LocalUnixServer::spawn(context));
+
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                if path.exists() {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("local unix server socket was not created");
+
+        assert!(manager.lock().await.stop_interface(iface_address));
+        tokio::time::timeout(Duration::from_secs(2), task)
+            .await
+            .expect("local unix server task timed out")
+            .expect("local unix server task");
+
+        assert!(!path.exists());
+        LocalUnixServer::preflight_bind_available(&endpoint)
+            .await
+            .expect("socket path can be rebound after stop");
     }
 
     #[tokio::test]

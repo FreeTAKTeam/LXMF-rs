@@ -861,8 +861,8 @@ pub(crate) async fn run_weave_stream<IO>(
                             status.bytes_rx = status.bytes_rx.saturating_add(n as u64);
                         });
                         frame_buffer.extend_from_slice(&read_buffer[..n]);
-                        while let Some((_, end)) = Hdlc::find(&frame_buffer) {
-                            let frame = &frame_buffer[..=end];
+                        while let Some((start, end)) = Hdlc::find(&frame_buffer) {
+                            let frame = &frame_buffer[start..=end];
                             let mut output = OutputBuffer::new(&mut hdlc_rx_buffer[..]);
                             if Hdlc::decode(frame, &mut output).is_ok() {
                                 update_weave_status(&options.runtime_status, |status| {
@@ -1810,6 +1810,55 @@ mod tests {
         assert_eq!(handshake[SWITCH_ID_LEN], WDCL_T_CONNECT);
         assert_eq!(status.remote_switch_id, Some(switch_id_for_identity(&remote)));
         assert_eq!(status.frames_tx, 2);
+    }
+
+    #[tokio::test]
+    async fn weave_stream_slices_first_frame_after_leading_serial_noise() {
+        let (options, _manager, _parent) = test_options().await;
+        let local_switch = switch_id_for_identity(&options.switch_identity);
+        let runtime_status = options.runtime_status.clone();
+        let remote = PrivateIdentity::new_from_name("remote-weave-noise");
+        let mut discovery_payload = Vec::new();
+        discovery_payload.extend_from_slice(remote.as_identity().verifying_key_bytes());
+        discovery_payload.extend_from_slice(&remote.sign(&local_switch).to_bytes());
+
+        let (stream, mut peer) = duplex(8192);
+        let (rx_tx, _rx_rx) = tokio::sync::mpsc::channel(4);
+        let (_tx_tx, tx_rx) = tokio::sync::mpsc::channel(4);
+        let cancel = CancellationToken::new();
+        let task = tokio::spawn(run_weave_stream(
+            stream,
+            options,
+            cancel.clone(),
+            CancellationToken::new(),
+            rx_tx,
+            Arc::new(tokio::sync::Mutex::new(tx_rx)),
+            unused_weave_management_rx(),
+        ));
+
+        let mut bytes = vec![0_u8; 512];
+        let _ = peer.read(&mut bytes).await.expect("discover frame");
+        peer.write_all(b"boot log before hdlc").await.expect("leading serial noise");
+        peer.write_all(&weave_wire_frame(&weave_wdcl_frame(
+            local_switch,
+            WDCL_T_DISCOVER,
+            &discovery_payload,
+        )))
+        .await
+        .expect("discovery response");
+        let n = tokio::time::timeout(Duration::from_secs(1), peer.read(&mut bytes))
+            .await
+            .expect("handshake frame timeout")
+            .expect("handshake frame");
+        let status = runtime_status.lock().expect("weave runtime status").clone();
+        cancel.cancel();
+        task.await.expect("stream task");
+
+        let handshake = decode_one_wire_frame(&bytes[..n]);
+        assert_eq!(handshake[..SWITCH_ID_LEN], switch_id_for_identity(&remote));
+        assert_eq!(handshake[SWITCH_ID_LEN], WDCL_T_CONNECT);
+        assert_eq!(status.remote_switch_id, Some(switch_id_for_identity(&remote)));
+        assert_eq!(status.invalid_frames, 0);
     }
 
     #[test]
