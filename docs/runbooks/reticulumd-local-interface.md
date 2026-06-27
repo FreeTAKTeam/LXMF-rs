@@ -135,10 +135,14 @@ When a Python-style `[reticulum]` section enables sharing and no explicit local
 shared-instance interface is configured, config loading creates the equivalent
 enabled `local` interface named `shared-instance`. That synthetic entry then
 uses the same listener-or-attach startup path and reports normal
-`list_interfaces` runtime status. Current `reticulumd` TCP listener startup is
-still single-bind; full Python behavior where the implicit shared local TCP
-listener coexists with other configured TCP listener interfaces remains a
-broader runtime parity item.
+`list_interfaces` runtime status. If another configured `TCPServerInterface` or
+`BackboneInterface` is selected as the primary daemon TCP listener, the
+synthetic shared local TCP listener starts as a sidecar listener instead of
+being treated as a conflicting explicit multi-listener configuration. If that
+synthetic endpoint is already bound by another local shared instance, the
+sidecar path attaches as a local client and reports `attached`. Explicit
+multi-listener TCP configurations still use the primary single-bind selector and
+remain rejected unless `--transport` supplies the active override.
 
 When attached to an existing shared instance, outbound one-hop packets are
 transport-wrapped before they are sent to the shared instance. This matches

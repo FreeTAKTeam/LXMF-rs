@@ -724,6 +724,45 @@ fn select_tcp_server_bind_rejects_multiple_enabled_servers_without_override() {
 }
 
 #[test]
+fn select_tcp_server_bind_allows_implicit_shared_local_with_tcp_server() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind free tcp port");
+    let tcp_port = listener.local_addr().expect("tcp addr").port();
+    drop(listener);
+    let args = test_args(PathBuf::from("/tmp/db"), None, None, false);
+    let config = reticulum_daemon::config::DaemonConfig {
+        display_name: None,
+        announce_capabilities: Vec::new(),
+        propagation_node: None,
+        interfaces: vec![
+            InterfaceConfig {
+                kind: "tcp_server".to_string(),
+                enabled: Some(true),
+                host: Some("127.0.0.1".to_string()),
+                port: Some(tcp_port),
+                ..InterfaceConfig::default()
+            },
+            InterfaceConfig {
+                kind: "local".to_string(),
+                enabled: Some(true),
+                synthetic_shared_instance: true,
+                shared_instance_type: Some("tcp".to_string()),
+                host: Some("127.0.0.1".to_string()),
+                port: Some(0),
+                ..InterfaceConfig::default()
+            },
+        ],
+    };
+
+    let selected = select_tcp_server_bind(&args, Some(&config)).expect("select tcp server");
+
+    let endpoint = format!("127.0.0.1:{tcp_port}");
+    assert_eq!(selected.bind_addr.as_deref(), Some(endpoint.as_str()));
+    assert_eq!(selected.selected_index, Some(0));
+    assert_eq!(selected.kind, "tcp_server");
+    assert_eq!(selected.local_attach_index, None);
+}
+
+#[test]
 fn bootstrap_best_effort_starts_configured_interfaces_without_transport_flag() {
     let temp = TempDir::new().expect("temp dir");
     let db_path = temp.path().join("reticulum.db");

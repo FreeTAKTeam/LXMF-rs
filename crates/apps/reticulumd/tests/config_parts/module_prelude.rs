@@ -352,6 +352,7 @@ force_shared_instance_bitrate = 1000000
     let iface = &cfg.interfaces[0];
     assert_eq!(iface.kind, "local");
     assert_eq!(iface.name.as_deref(), Some("shared-instance"));
+    assert!(iface.synthetic_shared_instance);
     assert_eq!(iface.shared_instance_type.as_deref(), Some("tcp"));
     assert_eq!(iface.host.as_deref(), Some("127.0.0.1"));
     assert_eq!(iface.port, Some(0));
@@ -387,6 +388,7 @@ shared_instance_port = 37428
     let cfg = DaemonConfig::from_toml(input).expect("parse explicit local plus global config");
     assert_eq!(cfg.interfaces.len(), 1);
     assert_eq!(cfg.interfaces[0].name.as_deref(), Some("explicit-local"));
+    assert!(!cfg.interfaces[0].synthetic_shared_instance);
 }
 
 #[test]

@@ -1,6 +1,6 @@
 use super::super::{
     mark_interface_runtime_fields, mark_interface_startup_status, strict_tcp_client_preflight,
-    with_interface_runtime_metadata,
+    tcp_bind_addr, tcp_bind_addr_is_in_use, tcp_listener_bind_host, with_interface_runtime_metadata,
 };
 
 use super::{InterfaceStartupFailure, TcpServerSelection};
@@ -23,6 +23,8 @@ use rns_rpc::InterfaceRecord;
 use rns_transport::hash::AddressHash;
 
 use rns_transport::iface::tcp_client::{TcpClient, TcpSocketTuning};
+
+use rns_transport::iface::tcp_server::TcpServer;
 
 use rns_transport::iface::udp::UdpInterface;
 
@@ -218,6 +220,28 @@ pub(super) async fn startup_configured_interfaces(
                         startup_successes += 1;
                         tunnel_synth_ifaces.push(client_iface);
                         connected_to_shared_instance = true;
+                    }
+                } else if iface.synthetic_shared_instance
+                    && selected_tcp_server.selected_index != Some(index)
+                {
+                    match startup_synthetic_local_tcp_sidecar(
+                        args,
+                        iface,
+                        &label,
+                        iface_manager,
+                        &mut configured_interfaces[index],
+                        &mut startup_failures,
+                        shared_reconnect_events.clone(),
+                    )
+                    .await
+                    {
+                        LocalTcpSidecarStartup::Active => startup_successes += 1,
+                        LocalTcpSidecarStartup::Attached(client_iface) => {
+                            startup_successes += 1;
+                            tunnel_synth_ifaces.push(client_iface);
+                            connected_to_shared_instance = true;
+                        }
+                        LocalTcpSidecarStartup::Failed => {}
                     }
                 } else {
                     startup_tcp_server_record(
@@ -538,6 +562,93 @@ enum LocalUnixStartup {
     Active,
     Attached(AddressHash),
     Failed,
+}
+
+enum LocalTcpSidecarStartup {
+    Active,
+    Attached(AddressHash),
+    Failed,
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn startup_synthetic_local_tcp_sidecar(
+    args: &Args,
+    iface: &InterfaceConfig,
+    label: &str,
+    iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
+    record: &mut InterfaceRecord,
+    startup_failures: &mut Vec<InterfaceStartupFailure>,
+    shared_reconnect_events: Option<tokio::sync::mpsc::UnboundedSender<AddressHash>>,
+) -> LocalTcpSidecarStartup {
+    let Some(port) = iface.port else {
+        record_startup_failure(
+            record,
+            startup_failures,
+            label.to_string(),
+            iface.kind.clone(),
+            "synthetic local shared-instance requires port for startup".to_string(),
+        );
+        return LocalTcpSidecarStartup::Failed;
+    };
+
+    let host = match tcp_listener_bind_host(iface) {
+        Ok(host) => host,
+        Err(err) => {
+            record_startup_failure(
+                record,
+                startup_failures,
+                label.to_string(),
+                iface.kind.clone(),
+                err,
+            );
+            return LocalTcpSidecarStartup::Failed;
+        }
+    };
+    let bind_addr = tcp_bind_addr(host.as_str(), port);
+    if tcp_bind_addr_is_in_use(&bind_addr) {
+        if let Some(client_iface) = startup_local_tcp_attach_endpoint(
+            args,
+            iface,
+            label,
+            bind_addr.as_str(),
+            iface_manager,
+            record,
+            startup_failures,
+            shared_reconnect_events,
+        )
+        .await
+        {
+            return LocalTcpSidecarStartup::Attached(client_iface);
+        }
+        return LocalTcpSidecarStartup::Failed;
+    }
+
+    let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
+    let mut adapter = TcpServer::new(bind_addr.clone(), iface_manager.clone())
+        .with_client_mtu(iface.mtu.unwrap_or(TcpClient::DEFAULT_MTU))
+        .with_prefer_ipv6(iface.prefer_ipv6.unwrap_or(false));
+    if let Some(bitrate_bps) = iface.force_shared_instance_bitrate {
+        adapter = adapter.with_client_forced_bitrate(bitrate_bps);
+    }
+    let local_iface = iface_manager.lock().await.spawn_as_with_mode(
+        adapter,
+        TcpServer::spawn,
+        IfaceRole::Unicast,
+        mode,
+    );
+    {
+        let mut manager = iface_manager.lock().await;
+        apply_interface_runtime_config(&mut manager, local_iface, iface);
+    }
+    log::info!(
+        "[daemon] synthetic local tcp sidecar enabled iface={} name={} bind={}",
+        local_iface,
+        label,
+        bind_addr
+    );
+    let runtime_iface = local_iface.to_string();
+    mark_interface_startup_status(record, "active", None, Some(runtime_iface.as_str()));
+    LocalTcpSidecarStartup::Active
 }
 
 #[cfg(unix)]

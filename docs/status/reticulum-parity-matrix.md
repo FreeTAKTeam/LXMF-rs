@@ -76,9 +76,11 @@ placeholders:
   failures and reconnects after stream disconnects; TCP and Unix attach
   reconnect signals re-synthesize tunnel state through `reticulumd`, and
   attached shared-instance clients wrap one-hop outbound packets in transport
-  headers before handing them to the shared instance. Full Python parity for an
-  implicit shared local TCP listener coexisting with other configured TCP
-  listeners remains outside the current single-bind daemon startup path.
+  headers before handing them to the shared instance. When global
+  `share_instance` synthesizes an implicit TCP `LocalInterface`, that listener
+  can now coexist with another configured TCP or Backbone listener by starting
+  as a daemon sidecar while explicit multi-listener TCP configs still use the
+  primary single-bind selector.
 - PipeInterface subprocess stdin/stdout transport with Python-style command
   parsing, HDLC packet framing, respawn delay, default MTU, and live subprocess
   status reporting through daemon/RPC `_runtime.pipe.status`.

@@ -346,6 +346,75 @@ shared_instance_port = 0
 }
 
 #[test]
+fn bootstrap_starts_implicit_shared_local_tcp_beside_configured_tcp_server() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let config_path = temp.path().join("daemon.toml");
+    fs::write(
+        &config_path,
+        r#"
+interfaces = [
+  { type = "TCPServerInterface", enabled = true, name = "tcp-main", host = "127.0.0.1", port = 0 }
+]
+
+[reticulum]
+share_instance = true
+shared_instance_type = "tcp"
+shared_instance_port = 0
+"#,
+    )
+    .expect("write config");
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let context = runtime.block_on(async {
+        bootstrap::bootstrap(test_args(db_path.clone(), Some(config_path.clone()), None, false))
+            .await
+    });
+    let response = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 1, method: "list_interfaces".to_string(), params: None })
+        .expect("list_interfaces");
+    let interfaces = response
+        .result
+        .expect("result")
+        .get("interfaces")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .expect("interfaces array");
+
+    let tcp_server = interfaces
+        .iter()
+        .find(|entry| entry.get("type").and_then(|value| value.as_str()) == Some("tcp_server"))
+        .expect("tcp server entry");
+    assert_eq!(tcp_server.get("name").and_then(|value| value.as_str()), Some("tcp-main"));
+    assert_eq!(
+        tcp_server
+            .get("settings")
+            .and_then(|value| value.get("_runtime"))
+            .and_then(|value| value.get("startup_status"))
+            .and_then(|value| value.as_str()),
+        Some("active")
+    );
+
+    let local = interfaces
+        .iter()
+        .find(|entry| {
+            entry.get("type").and_then(|value| value.as_str()) == Some("local")
+                && entry.get("name").and_then(|value| value.as_str()) == Some("shared-instance")
+        })
+        .expect("implicit local entry");
+    assert_eq!(
+        local
+            .get("settings")
+            .and_then(|value| value.get("_runtime"))
+            .and_then(|value| value.get("startup_status"))
+            .and_then(|value| value.as_str()),
+        Some("active")
+    );
+}
+
+#[test]
 fn bootstrap_reticulum_global_share_instance_false_does_not_start_implicit_local() {
     let temp = TempDir::new().expect("temp dir");
     let db_path = temp.path().join("reticulum.db");

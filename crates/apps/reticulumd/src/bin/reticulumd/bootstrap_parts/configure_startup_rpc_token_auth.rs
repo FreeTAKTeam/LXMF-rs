@@ -101,15 +101,22 @@ pub(super) fn select_tcp_server_bind(
         };
         let host = tcp_listener_bind_host(iface)
             .map_err(|err| format!("interfaces[{index}] {err}"))?;
-        matches.push((
+        matches.push(TcpListenerMatch {
             index,
-            iface.kind.clone(),
-            iface.mtu,
-            (iface.kind == "local").then_some(iface.force_shared_instance_bitrate).flatten(),
-            iface.prefer_ipv6.unwrap_or(false),
-            iface.i2p_tunneled.unwrap_or(false),
-            tcp_bind_addr(host.as_str(), port),
-        ));
+            kind: iface.kind.clone(),
+            client_mtu: iface.mtu,
+            client_forced_bitrate_bps: (iface.kind == "local")
+                .then_some(iface.force_shared_instance_bitrate)
+                .flatten(),
+            prefer_ipv6: iface.prefer_ipv6.unwrap_or(false),
+            i2p_tunneled: iface.i2p_tunneled.unwrap_or(false),
+            bind_addr: tcp_bind_addr(host.as_str(), port),
+            synthetic_shared_tcp_local: is_synthetic_shared_tcp_local(iface),
+        });
+    }
+
+    if matches.len() > 1 && matches.iter().any(|entry| !entry.synthetic_shared_tcp_local) {
+        matches.retain(|entry| !entry.synthetic_shared_tcp_local);
     }
 
     if matches.len() > 1 {
@@ -117,51 +124,53 @@ pub(super) fn select_tcp_server_bind(
             "multiple enabled TCP listener interfaces configured without --transport override: {}",
             matches
                 .iter()
-                .map(|(_, _, _, _, _, _, endpoint)| endpoint.as_str())
+                .map(|entry| entry.bind_addr.as_str())
                 .collect::<Vec<_>>()
                 .join(", ")
         ));
     }
 
-    let Some((
-        selected_index,
-        kind,
-        client_mtu,
-        client_forced_bitrate_bps,
-        prefer_ipv6,
-        i2p_tunneled,
-        bind_addr,
-    )) =
-        matches.into_iter().next()
-    else {
+    let Some(selected) = matches.into_iter().next() else {
         return Ok(TcpServerSelection::default());
     };
 
-    if kind == "local" && tcp_bind_addr_is_in_use(&bind_addr) {
+    if selected.kind == "local" && tcp_bind_addr_is_in_use(&selected.bind_addr) {
         return Ok(TcpServerSelection {
             bind_addr: None,
             selected_index: None,
-            kind,
-            client_mtu,
-            client_forced_bitrate_bps,
-            prefer_ipv6,
-            i2p_tunneled,
-            local_attach_addr: Some(bind_addr),
-            local_attach_index: Some(selected_index),
+            kind: selected.kind,
+            client_mtu: selected.client_mtu,
+            client_forced_bitrate_bps: selected.client_forced_bitrate_bps,
+            prefer_ipv6: selected.prefer_ipv6,
+            i2p_tunneled: selected.i2p_tunneled,
+            local_attach_addr: Some(selected.bind_addr),
+            local_attach_index: Some(selected.index),
         });
     }
 
     Ok(TcpServerSelection {
-            bind_addr: Some(bind_addr),
-            selected_index: Some(selected_index),
-            kind,
-            client_mtu,
-            client_forced_bitrate_bps,
-            prefer_ipv6,
-            i2p_tunneled,
-            local_attach_addr: None,
-            local_attach_index: None,
-        })
+        bind_addr: Some(selected.bind_addr),
+        selected_index: Some(selected.index),
+        kind: selected.kind,
+        client_mtu: selected.client_mtu,
+        client_forced_bitrate_bps: selected.client_forced_bitrate_bps,
+        prefer_ipv6: selected.prefer_ipv6,
+        i2p_tunneled: selected.i2p_tunneled,
+        local_attach_addr: None,
+        local_attach_index: None,
+    })
+}
+
+#[derive(Debug)]
+struct TcpListenerMatch {
+    index: usize,
+    kind: String,
+    client_mtu: Option<usize>,
+    client_forced_bitrate_bps: Option<u64>,
+    prefer_ipv6: bool,
+    i2p_tunneled: bool,
+    bind_addr: String,
+    synthetic_shared_tcp_local: bool,
 }
 
 fn is_tcp_listener_interface(iface: &InterfaceConfig) -> bool {
@@ -170,6 +179,12 @@ fn is_tcp_listener_interface(iface: &InterfaceConfig) -> bool {
         "local" => iface.shared_instance_type.as_deref() != Some("unix"),
         _ => false,
     }
+}
+
+fn is_synthetic_shared_tcp_local(iface: &InterfaceConfig) -> bool {
+    iface.synthetic_shared_instance
+        && iface.kind == "local"
+        && iface.shared_instance_type.as_deref() != Some("unix")
 }
 
 fn tcp_listener_bind_host(iface: &InterfaceConfig) -> Result<String, String> {

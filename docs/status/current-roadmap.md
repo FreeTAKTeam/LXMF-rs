@@ -65,6 +65,8 @@ The project is best described by capability level:
   or later disconnects and TCP/Unix attach reconnect signals that
   re-synthesize tunnel state, Python-style global `[reticulum] share_instance`
   synthesis when no explicit local shared-instance interface is configured,
+  implicit shared local TCP listener coexistence with configured TCP/Backbone
+  listeners through a sidecar startup path,
   Python-style `force_shared_instance_bitrate` stream pacing, plus
   shared-instance one-hop transport wrapping,
   Pipe subprocess HDLC, UDP unicast/multicast plus

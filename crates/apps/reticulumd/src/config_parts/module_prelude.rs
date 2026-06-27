@@ -98,6 +98,7 @@ impl ReticulumConfigRaw {
             kind: "local".to_string(),
             enabled: Some(true),
             name: Some("shared-instance".to_string()),
+            synthetic_shared_instance: true,
             shared_instance_type: Some(shared_instance_type),
             host: is_tcp.then(|| "127.0.0.1".to_string()),
             port: is_tcp.then_some(self.shared_instance_port.unwrap_or(37_428)),
@@ -171,6 +172,8 @@ pub struct InterfaceConfig {
     pub interface_enabled: Option<bool>,
     #[serde(skip)]
     pub rnode_profile: bool,
+    #[serde(skip)]
+    pub synthetic_shared_instance: bool,
     #[serde(default)]
     pub interface_mode: Option<String>,
     #[serde(default)]
