@@ -350,15 +350,16 @@ impl AutoDaemonStartupPlan {
             shutdown_rx.clone(),
         );
         let receive_loop_count = handles.len();
-        let data_handles = self.spawn_peer_data_receive_loops(
-            data_sockets,
+        let mut data_listener_supervisor = AutoPeerDataListenerSupervisor::new(
+            self.clone(),
             Arc::clone(&state),
             dedupe,
             transport_bridge.clone(),
-            data_events_tx,
             shutdown_rx.clone(),
         );
-        let data_receive_loop_count = data_handles.len();
+        data_listener_supervisor.spawn_sockets(data_sockets, &data_events_tx);
+        drop(data_events_tx);
+        let data_receive_loop_count = data_listener_supervisor.len();
         let transport_tx_handle = transport_tx_channel.map(|tx_channel| {
             self.spawn_peer_data_transport_tx_loop(
                 transport_bridge.expect("transport bridge exists with tx channel"),
@@ -408,11 +409,7 @@ impl AutoDaemonStartupPlan {
                     log::warn!("[daemon-auto] discovery receive loop task stopped: {err}");
                 }
             }
-            for handle in data_handles {
-                if let Err(err) = handle.await {
-                    log::warn!("[daemon-auto] peer data receive loop task stopped: {err}");
-                }
-            }
+            data_listener_supervisor.shutdown_all().await;
             if let Some(handle) = scheduler_handle {
                 if let Err(err) = handle.await {
                     log::warn!("[daemon-auto] repeat peer-announce scheduler stopped: {err}");

@@ -165,6 +165,22 @@ pub(crate) enum AutoPeerDataLoopEvent {
 }
 
 #[allow(dead_code)]
+pub(crate) struct AutoPeerDataListenerSupervisor {
+    plan: AutoDaemonStartupPlan,
+    state: Arc<tokio::sync::Mutex<AutoDiscoveryState>>,
+    dedupe: Arc<tokio::sync::Mutex<AutoInboundPacketDeduplicator>>,
+    transport: Option<AutoInterfaceTransportBridge>,
+    shutdown: tokio::sync::watch::Receiver<bool>,
+    listeners: BTreeMap<String, AutoPeerDataListenerHandle>,
+}
+
+#[allow(dead_code)]
+struct AutoPeerDataListenerHandle {
+    socket: Arc<tokio::net::UdpSocket>,
+    join: tokio::task::JoinHandle<()>,
+}
+
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct AutoDiscoveryRuntimeSummary {
     pub(crate) bound_socket_count: usize,
@@ -359,6 +375,13 @@ impl AutoInterfaceTransportBridge {
                 source: IfaceSource::Udp(processed.datagram.source_addr),
             })
             .await;
+    }
+
+    async fn remove_outbound_routes_for_socket(&self, socket: &Arc<tokio::net::UdpSocket>) -> usize {
+        let mut routes = self.outbound_routes.lock().await;
+        let before = routes.len();
+        routes.retain(|_, route| !Arc::ptr_eq(&route.socket, socket));
+        before.saturating_sub(routes.len())
     }
 
     async fn send_outbound(&self, message: TxMessage) {

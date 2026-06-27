@@ -94,7 +94,7 @@ The reusable transport layer now also includes Python-compatible helpers for:
   lost/recovered events occur or link-local address replacement requires a
   listener restart
 - updating adopted link-local address state when an interface address changes
-  and returning the replacement listener binding the runtime must restart
+  and returning the replacement listener binding for runtime restart
 - verifying incoming discovery packets against the sender address before they
   update local echo or remote peer state, including Python's behavior of
   comparing only the first full-hash bytes of the packet payload
@@ -155,6 +155,10 @@ The reusable transport layer now also includes Python-compatible helpers for:
   peer-data receive loops, injects accepted peer-data packets into transport,
   routes direct/broadcast transport sends to peer UDP data sockets, and records
   discovery/data runtime counts
+- a supervised peer-data listener restart primitive that stops only the
+  affected interface listener, binds the replacement link-local data listener,
+  prunes stale outbound routes that referenced the old socket, and records the
+  link-local update in carrier runtime status
 - live `_runtime.auto.carrier_runtime` reporting for Python-style `online`,
   `final_init_done`, `carrier_changed`, multicast carrier events, and staged
   link-local listener restart metadata
@@ -186,5 +190,6 @@ interfaces = [
 
 ## Operational Follow-Up
 
-- Restart per-interface UDP listeners from the link-local replacement helper
-  when the live address for an adopted interface changes.
+- Wire an OS interface-address watcher/reconciler to call the supervised
+  per-interface UDP listener restart primitive when the live address for an
+  adopted interface changes.

@@ -93,8 +93,10 @@ placeholders:
   Python `id_interval` and `id_callsign`.
 - AutoInterface discovery, authenticated peering, peer lifecycle, duplicate
   suppression, multicast announcements, data sockets, transport bridging, and
-  live carrier-runtime status reporting, including Python-style fallback from
-  unknown `multicast_address_type` values to `temporary`.
+  live carrier-runtime status reporting, including supervised per-interface
+  link-local data-listener restart, stale outbound route pruning after restart,
+  and Python-style fallback from unknown `multicast_address_type` values to
+  `temporary`.
 - Serial, TCP/Wi-Fi, and feature-gated BLE LoRa/RNode with startup probes,
   Python and Android-style selector aliases, configuration validation,
   telemetry, flow control, teardown, display-capable BLE external-framebuffer
@@ -173,7 +175,9 @@ record.
 `RNS/Interfaces/*` remains `partial` because parity is measured against the
 whole Python family, not because the implemented interfaces are stubs. Backbone
 still needs a live Python selector/epoll comparison for the same slow-reader
-workload before the backpressure evidence is considered complete.
+workload before the backpressure evidence is considered complete. AutoInterface
+still needs a live OS interface-address watcher/reconciler to invoke the tested
+link-local data-listener restart primitive automatically.
 
 `I2PInterface` is tracked as an in-progress family: configured outbound peers
 and connectable sessions can run through SAM, and transport-side tunnel

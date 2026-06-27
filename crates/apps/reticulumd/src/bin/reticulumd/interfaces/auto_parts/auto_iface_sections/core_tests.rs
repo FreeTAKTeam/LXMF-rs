@@ -319,6 +319,141 @@
         );
     }
 
+    #[tokio::test]
+    async fn auto_peer_data_listener_supervisor_restarts_link_local_listener() {
+        let plan = plan_with_data_listener(AutoDataListenerBinding {
+            ifname: "lo".to_string(),
+            link_local_address: "127.0.0.1".to_string(),
+            bind_address: "127.0.0.1".to_string(),
+            bind_port: 0,
+        });
+        let sockets = plan
+            .bind_data_sockets(|_| panic!("IPv4 data bind is unscoped"))
+            .await
+            .expect("bind initial peer data socket");
+        let old_bind_addr = sockets[0].bind_addr;
+        let state = Arc::new(tokio::sync::Mutex::new(plan.discovery_state()));
+        let dedupe = Arc::new(tokio::sync::Mutex::new(AutoInboundPacketDeduplicator::from_timing(
+            AutoInterfaceTiming::for_platform(AutoInterfacePlatform::Other),
+        )));
+        let (events_tx, mut events_rx) = tokio::sync::mpsc::channel(8);
+        let (_shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+        let mut supervisor = AutoPeerDataListenerSupervisor::new(
+            plan.clone(),
+            Arc::clone(&state),
+            dedupe,
+            None,
+            shutdown_rx,
+        );
+        supervisor.spawn_sockets(sockets, &events_tx);
+
+        let sender = tokio::net::UdpSocket::bind("127.0.0.1:0").await.expect("bind sender");
+        let source_address = sender.local_addr().expect("sender addr").ip().to_string();
+        state.lock().await.observe_discovery_packet(
+            &source_address,
+            "lo",
+            core::time::Duration::ZERO,
+        );
+        let inbound_packet = Packet {
+            destination: AddressHash::new_from_slice(
+                &[0x66; rns_transport::hash::ADDRESS_HASH_SIZE],
+            ),
+            data: rns_transport::packet::PacketDataBuffer::new_from_slice(b"restart"),
+            ..Default::default()
+        };
+        let inbound_payload = inbound_packet.to_bytes().expect("serialize inbound packet");
+
+        sender
+            .send_to(&inbound_payload, old_bind_addr)
+            .await
+            .expect("send initial peer data datagram");
+        let initial = tokio::time::timeout(std::time::Duration::from_secs(1), events_rx.recv())
+            .await
+            .expect("initial event timeout")
+            .expect("initial event");
+        assert!(matches!(
+            initial,
+            AutoPeerDataLoopEvent::Processed(AutoProcessedPeerDataDatagram {
+                decision: AutoPeerInboundDecision::Accepted { .. },
+                ..
+            })
+        ));
+
+        let runtime_status = AutoRuntimeStatusHandle::from_startup_plan(&plan.startup_plan);
+        let update = AutoLinkLocalAddressUpdate {
+            ifname: "lo".to_string(),
+            old_link_local_address: "127.0.0.1".to_string(),
+            new_link_local_address: "127.0.0.2".to_string(),
+            listener_binding: AutoDataListenerBinding {
+                ifname: "lo".to_string(),
+                link_local_address: "127.0.0.2".to_string(),
+                bind_address: "127.0.0.1".to_string(),
+                bind_port: 0,
+            },
+        };
+        let new_bind_addr = supervisor
+            .restart_link_local_listener(
+                &update,
+                Some(&runtime_status),
+                &events_tx,
+                |_| panic!("IPv4 data bind is unscoped"),
+            )
+            .await
+            .expect("restart link-local data listener");
+        assert_ne!(new_bind_addr, old_bind_addr);
+
+        let restarted_packet = Packet {
+            destination: AddressHash::new_from_slice(
+                &[0x77; rns_transport::hash::ADDRESS_HASH_SIZE],
+            ),
+            data: rns_transport::packet::PacketDataBuffer::new_from_slice(b"restarted"),
+            ..Default::default()
+        };
+        let restarted_payload = restarted_packet.to_bytes().expect("serialize restarted packet");
+        sender
+            .send_to(&restarted_payload, new_bind_addr)
+            .await
+            .expect("send restarted peer data datagram");
+        let restarted = tokio::time::timeout(std::time::Duration::from_secs(1), events_rx.recv())
+            .await
+            .expect("restarted event timeout")
+            .expect("restarted event");
+        match restarted {
+            AutoPeerDataLoopEvent::Processed(processed) => {
+                assert_eq!(processed.datagram.bind_addr, new_bind_addr);
+                assert!(matches!(processed.decision, AutoPeerInboundDecision::Accepted { .. }));
+            }
+            event => panic!("unexpected restarted event: {event:?}"),
+        }
+
+        sender
+            .send_to(&inbound_payload, old_bind_addr)
+            .await
+            .expect("send to old peer data datagram");
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(100), events_rx.recv())
+                .await
+                .is_err(),
+            "old peer-data listener should not emit events after restart"
+        );
+
+        let runtime = runtime_status.to_json();
+        assert_eq!(
+            runtime.get("carrier_changed").and_then(JsonValue::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            runtime
+                .get("link_local_update")
+                .and_then(|value| value.get("restart_data_listener"))
+                .and_then(|value| value.get("link_local_address"))
+                .and_then(JsonValue::as_str),
+            Some("127.0.0.2")
+        );
+
+        supervisor.shutdown_all().await;
+    }
+
     #[test]
     fn auto_initial_peer_announce_sender_exposes_datagram_payloads() {
         let plan = build_startup_plan_from_candidates(

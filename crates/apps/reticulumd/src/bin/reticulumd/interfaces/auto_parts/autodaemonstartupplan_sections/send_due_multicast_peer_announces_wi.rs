@@ -196,19 +196,40 @@ impl AutoDaemonStartupPlan {
     ) -> Result<Vec<AutoBoundDataSocket>, String> {
         let mut sockets = Vec::new();
         for target in self.data_socket_bind_targets() {
-            let bind_addr = target.resolve_bind_addr(&mut scope_id_for_ifname).map_err(|err| {
-                format!("resolve auto peer data bind {} failed: {err}", target.display_bind_addr())
-            })?;
-            let socket = tokio::net::UdpSocket::bind(bind_addr).await.map_err(|err| {
-                format!("bind auto peer data socket {} failed: {err}", target.display_bind_addr())
-            })?;
-            sockets.push(AutoBoundDataSocket {
-                ifname: target.ifname,
-                bind_addr: socket.local_addr().unwrap_or(bind_addr),
-                socket: Arc::new(socket),
-            });
+            sockets.push(self.bind_data_socket_target(target, &mut scope_id_for_ifname).await?);
         }
         Ok(sockets)
+    }
+
+    #[allow(dead_code)]
+    pub(crate) async fn bind_data_socket_for_listener(
+        &self,
+        listener: &AutoDataListenerBinding,
+        mut scope_id_for_ifname: impl FnMut(&str) -> Result<u32, String>,
+    ) -> Result<AutoBoundDataSocket, String> {
+        self.bind_data_socket_target(
+            AutoDataSocketBindTarget::from_listener(listener),
+            &mut scope_id_for_ifname,
+        )
+        .await
+    }
+
+    async fn bind_data_socket_target(
+        &self,
+        target: AutoDataSocketBindTarget,
+        mut scope_id_for_ifname: impl FnMut(&str) -> Result<u32, String>,
+    ) -> Result<AutoBoundDataSocket, String> {
+        let bind_addr = target.resolve_bind_addr(&mut scope_id_for_ifname).map_err(|err| {
+            format!("resolve auto peer data bind {} failed: {err}", target.display_bind_addr())
+        })?;
+        let socket = tokio::net::UdpSocket::bind(bind_addr).await.map_err(|err| {
+            format!("bind auto peer data socket {} failed: {err}", target.display_bind_addr())
+        })?;
+        Ok(AutoBoundDataSocket {
+            ifname: target.ifname,
+            bind_addr: socket.local_addr().unwrap_or(bind_addr),
+            socket: Arc::new(socket),
+        })
     }
 
     // Binds and joins only the multicast side of discovery; startup combines
@@ -386,5 +407,103 @@ impl AutoDaemonStartupPlan {
                 )
             })
             .collect()
+    }
+}
+
+impl AutoPeerDataListenerSupervisor {
+    #[allow(dead_code)]
+    pub(crate) fn new(
+        plan: AutoDaemonStartupPlan,
+        state: Arc<tokio::sync::Mutex<AutoDiscoveryState>>,
+        dedupe: Arc<tokio::sync::Mutex<AutoInboundPacketDeduplicator>>,
+        transport: Option<AutoInterfaceTransportBridge>,
+        shutdown: tokio::sync::watch::Receiver<bool>,
+    ) -> Self {
+        Self { plan, state, dedupe, transport, shutdown, listeners: BTreeMap::new() }
+    }
+
+    pub(crate) fn spawn_sockets(
+        &mut self,
+        sockets: Vec<AutoBoundDataSocket>,
+        events: &tokio::sync::mpsc::Sender<AutoPeerDataLoopEvent>,
+    ) {
+        for socket in sockets {
+            self.spawn_socket(socket, events);
+        }
+    }
+
+    fn spawn_socket(
+        &mut self,
+        socket: AutoBoundDataSocket,
+        events: &tokio::sync::mpsc::Sender<AutoPeerDataLoopEvent>,
+    ) {
+        let ifname = socket.ifname.clone();
+        let socket_handle = Arc::clone(&socket.socket);
+        let join = self.plan.spawn_peer_data_receive_loop(
+            socket,
+            Arc::clone(&self.state),
+            Arc::clone(&self.dedupe),
+            self.transport.clone(),
+            events.clone(),
+            self.shutdown.clone(),
+        );
+        if let Some(old) =
+            self.listeners.insert(ifname, AutoPeerDataListenerHandle { socket: socket_handle, join })
+        {
+            tokio::spawn(async move {
+                old.stop().await;
+            });
+        }
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn len(&self) -> usize {
+        self.listeners.len()
+    }
+
+    #[allow(dead_code)]
+    pub(crate) async fn restart_link_local_listener(
+        &mut self,
+        update: &AutoLinkLocalAddressUpdate,
+        runtime_status: Option<&AutoRuntimeStatusHandle>,
+        events: &tokio::sync::mpsc::Sender<AutoPeerDataLoopEvent>,
+        mut scope_id_for_ifname: impl FnMut(&str) -> Result<u32, String>,
+    ) -> Result<SocketAddr, String> {
+        let socket = self
+            .plan
+            .bind_data_socket_for_listener(&update.listener_binding, &mut scope_id_for_ifname)
+            .await?;
+        let bind_addr = socket.bind_addr;
+        let old = self.listeners.remove(&update.ifname);
+        self.spawn_socket(socket, events);
+        if let Some(old) = old {
+            let old_socket = Arc::clone(&old.socket);
+            old.stop().await;
+            if let Some(transport) = &self.transport {
+                transport.remove_outbound_routes_for_socket(&old_socket).await;
+            }
+        }
+        if let Some(runtime_status) = runtime_status {
+            runtime_status.record_link_local_update(Some(update));
+        }
+        Ok(bind_addr)
+    }
+
+    #[allow(dead_code)]
+    pub(crate) async fn shutdown_all(self) {
+        for handle in self.listeners.into_values() {
+            handle.stop().await;
+        }
+    }
+}
+
+impl AutoPeerDataListenerHandle {
+    async fn stop(self) {
+        self.join.abort();
+        if let Err(err) = self.join.await {
+            if !err.is_cancelled() {
+                log::warn!("[daemon-auto] peer data receive loop task stopped: {err}");
+            }
+        }
     }
 }
