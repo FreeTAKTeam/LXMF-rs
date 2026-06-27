@@ -1,5 +1,5 @@
 use super::diag;
-use super::wire::should_encrypt_packet;
+use super::wire_encryption::should_encrypt_packet;
 use super::*;
 
 impl TransportHandler {

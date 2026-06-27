@@ -1,6 +1,7 @@
 use super::diag;
 use super::path::send_to_next_hop;
 use super::resource_wire;
+use super::wire_encryption::should_encrypt_packet;
 use super::*;
 use ed25519_dalek::{Signature, SIGNATURE_LENGTH};
 
@@ -322,27 +323,6 @@ pub(super) async fn handle_keepalive_response<'a>(
     }
 
     false
-}
-
-pub(super) fn should_encrypt_packet(packet: &Packet) -> bool {
-    if packet.header.packet_type != PacketType::Data {
-        return false;
-    }
-    if packet.header.destination_type != DestinationType::Single {
-        return false;
-    }
-    !matches!(
-        packet.context,
-        PacketContext::Resource
-            | PacketContext::ResourceAdvrtisement
-            | PacketContext::ResourceRequest
-            | PacketContext::ResourceHashUpdate
-            | PacketContext::ResourceProof
-            | PacketContext::ResourceInitiatorCancel
-            | PacketContext::ResourceReceiverCancel
-            | PacketContext::KeepAlive
-            | PacketContext::CacheRequest
-    )
 }
 
 pub(super) async fn handle_data<'a>(
