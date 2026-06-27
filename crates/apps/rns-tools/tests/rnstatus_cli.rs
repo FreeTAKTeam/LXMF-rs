@@ -63,6 +63,10 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
                                         "final_init_done": true,
                                         "carrier_changed": true,
                                         "carrier_event_count": 1,
+                                        "adopted_device_count": 1,
+                                        "adopted_add_count": 2,
+                                        "adopted_remove_count": 1,
+                                        "link_local_replacement_count": 1,
                                         "carrier_events": [
                                             {
                                                 "event": "carrier_recovered",
@@ -319,6 +323,10 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
                                         "final_init_done": true,
                                         "carrier_changed": true,
                                         "carrier_event_count": 1,
+                                        "adopted_device_count": 1,
+                                        "adopted_add_count": 2,
+                                        "adopted_remove_count": 1,
+                                        "link_local_replacement_count": 1,
                                         "carrier_events": [
                                             {
                                                 "event": "carrier_recovered",
@@ -711,6 +719,10 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
         stdout.contains("auto online=true init=true carrier_changed=true carrier_events=1"),
         "stdout: {stdout}"
     );
+    assert!(stdout.contains("adopted=1"), "stdout: {stdout}");
+    assert!(stdout.contains("added=2"), "stdout: {stdout}");
+    assert!(stdout.contains("removed=1"), "stdout: {stdout}");
+    assert!(stdout.contains("replaced=1"), "stdout: {stdout}");
     assert!(stdout.contains("link_local=eth0"), "stdout: {stdout}");
     assert!(stdout.contains("new_ll=fe80::5678%eth0"), "stdout: {stdout}");
     assert!(stdout.contains("i2p-main"), "stdout: {stdout}");

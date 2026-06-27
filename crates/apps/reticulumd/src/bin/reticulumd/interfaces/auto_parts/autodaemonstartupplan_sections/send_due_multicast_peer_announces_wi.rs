@@ -221,6 +221,7 @@ impl AutoDaemonStartupPlan {
         state: Arc<tokio::sync::Mutex<AutoDiscoveryState>>,
         runtime: &AutoInterfaceRuntimeLoopHandles,
         candidates: Vec<AutoInterfaceDeviceCandidate>,
+        runtime_status: Option<&AutoRuntimeStatusHandle>,
         mut scope_id_for_ifname: impl FnMut(&str) -> Result<u32, String>,
     ) -> Result<usize, String> {
         let desired = self.device_filter.adopt_devices(&candidates, self.platform);
@@ -258,6 +259,9 @@ impl AutoDaemonStartupPlan {
                         .await
                         .spawn_bound_socket(data_socket, &runtime.data_events);
                     state.lock().await.apply_adopted_interface_change(&change);
+                    if let Some(runtime_status) = runtime_status {
+                        runtime_status.record_adopted_interface_change(&change);
+                    }
                     applied += 1;
                 }
                 AutoAdoptedInterfaceChange::Removed { adopted, .. } => {
@@ -274,6 +278,9 @@ impl AutoDaemonStartupPlan {
                         .remove_listener(&adopted.ifname)
                         .await;
                     state.lock().await.apply_adopted_interface_change(&change);
+                    if let Some(runtime_status) = runtime_status {
+                        runtime_status.record_adopted_interface_change(&change);
+                    }
                     applied += 1;
                 }
                 AutoAdoptedInterfaceChange::LinkLocalChanged(_) => {}
@@ -324,6 +331,7 @@ impl AutoDaemonStartupPlan {
                                 Arc::clone(&state),
                                 &runtime,
                                 candidates.clone(),
+                                runtime_status.as_ref(),
                                 |ifname| resolver.resolve(ifname),
                             )
                             .await

@@ -212,9 +212,41 @@ interfaces = [
 ]
 ```
 
+## Prepared-Host Churn Smoke
+
+The opt-in prepared-host smoke exercises the live AutoInterface reconciler on a
+Linux host with `ip netns`, dummy interfaces, and permission to manage network
+namespaces. It starts `reticulumd` in an isolated namespace with a zero-initial
+`AutoInterface`, then churns one link-local interface through add, link-local
+replacement, and removal.
+
+```bash
+AUTO_CHURN_DEVICE=lxauto0 \
+AUTO_CHURN_INITIAL_ADDR=fe80::1200 \
+AUTO_CHURN_REPLACEMENT_ADDR=fe80::1201 \
+./tools/scripts/auto-interface-prepared-host-smoke.sh
+```
+
+The script validates refreshed RPC status with `rnstatus-rs --json` after each
+phase. Required evidence fields include:
+
+- `_runtime.auto.carrier_runtime.adopted_add_count`
+- `_runtime.auto.carrier_runtime.adopted_remove_count`
+- `_runtime.auto.carrier_runtime.link_local_replacement_count`
+- `_runtime.auto.carrier_runtime.last_adopted_change`
+- `_runtime.auto.carrier_runtime.adopted_devices`
+
+Artifacts are written under `target/auto-interface-hil/`, including
+`report.json`, the daemon log, the last `rnstatus-rs` JSON payload, and phase snapshots
+for zero-initial startup, add, replacement, and removal. The nightly
+HIL workflow exposes this as `auto-interface-prepared-host-artifacts` when
+`HIL_AUTO_INTERFACE_ENABLED=true`.
+
 ## Operational Follow-Up
 
 - AutoInterface dynamic add/remove now has daemon-side lifecycle application,
   including zero-initial startup polling and tracked shutdown for dynamically
-  replaced discovery/data listeners. Remaining follow-up is broader
-  prepared-host evidence for interface churn.
+  replaced discovery/data listeners. The Linux namespace prepared-host churn
+  smoke records add/remove/link-local replacement evidence, while broader
+  prepared-host evidence across real Wi-Fi/Ethernet devices and platforms
+  remains follow-up.

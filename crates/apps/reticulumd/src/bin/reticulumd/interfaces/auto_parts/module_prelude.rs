@@ -231,6 +231,11 @@ struct AutoRuntimeStatus {
     started_at: Instant,
     carrier_events: Vec<AutoMulticastCarrierEvent>,
     link_local_update: Option<AutoLinkLocalAddressUpdate>,
+    adopted_devices: Vec<AutoInterfaceAdoptedDevice>,
+    adopted_add_count: u64,
+    adopted_remove_count: u64,
+    link_local_replacement_count: u64,
+    last_adopted_change: Option<AutoAdoptedInterfaceChange>,
 }
 
 #[allow(dead_code)]

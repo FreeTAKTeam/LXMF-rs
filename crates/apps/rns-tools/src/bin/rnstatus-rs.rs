@@ -358,6 +358,10 @@ fn auto_runtime_summary(status: &Value) -> Option<String> {
         value_bool(status, "carrier_changed"),
         value_u64(status, "carrier_event_count")
     );
+    append_optional_u64(&mut summary, "adopted", status.get("adopted_device_count"));
+    append_optional_u64(&mut summary, "added", status.get("adopted_add_count"));
+    append_optional_u64(&mut summary, "removed", status.get("adopted_remove_count"));
+    append_optional_u64(&mut summary, "replaced", status.get("link_local_replacement_count"));
     if let Some(link_local) = status.get("link_local_update").and_then(Value::as_object) {
         append_optional_str(&mut summary, "link_local", link_local.get("ifname"));
         append_optional_str(&mut summary, "new_ll", link_local.get("new_link_local_address"));
@@ -790,6 +794,10 @@ mod tests {
                                     "final_init_done": true,
                                     "carrier_changed": true,
                                     "carrier_event_count": 1,
+                                    "adopted_device_count": 1,
+                                    "adopted_add_count": 2,
+                                    "adopted_remove_count": 1,
+                                    "link_local_replacement_count": 1,
                                     "carrier_events": [
                                         {
                                             "event": "carrier_recovered",
@@ -1220,6 +1228,10 @@ mod tests {
 
         let output = String::from_utf8(output).expect("utf8");
         assert!(output.contains("auto online=true init=true carrier_changed=true carrier_events=1"));
+        assert!(output.contains("adopted=1"));
+        assert!(output.contains("added=2"));
+        assert!(output.contains("removed=1"));
+        assert!(output.contains("replaced=1"));
         assert!(output.contains("link_local=eth0"));
         assert!(output.contains("new_ll=fe80::5678%eth0"));
         assert!(output.contains("i2p sam=127.0.0.1:7656 accept=listening peers=3"));

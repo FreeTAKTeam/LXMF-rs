@@ -169,8 +169,11 @@ The project is best described by capability level:
   application for active and zero-initial runtimes, and polling link-local
   replacement reconciliation for already adopted interfaces. Replacement-stop
   tasks for dynamically swapped discovery/data listeners are tracked and
-  drained during restart, removal, or runtime shutdown; remaining follow-up is
-  broader prepared-host interface churn evidence.
+  drained during restart, removal, or runtime shutdown. An opt-in Linux
+  namespace prepared-host smoke now records zero-initial add, link-local
+  replacement, and removal churn evidence through refreshed `_runtime.auto`
+  status; remaining follow-up is broader prepared-host interface churn evidence
+  across real devices and platforms.
 - I2P transport-side tunnel watchdog/status bookkeeping is refreshed into
   daemon/RPC interface status, and `rnstatus-rs` now summarizes outbound,
   incoming, closed, and aggregate byte counters for the tunnel rows;

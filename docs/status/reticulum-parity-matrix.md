@@ -210,8 +210,10 @@ using the implemented diff plan plus discovery and data listener supervisors.
 Zero-initial startup now keeps the polling reconciler and scheduler runtime
 alive for later adopted devices, and the supervisors track replacement-stop
 tasks so dynamically replaced listeners are drained during restart, removal, or
-runtime shutdown. It still needs broader prepared-host interface churn
-evidence.
+runtime shutdown. An opt-in Linux namespace prepared-host smoke now records
+zero-initial add, link-local replacement, and removal churn evidence through
+refreshed `_runtime.auto` status; broader prepared-host interface churn
+evidence across real devices and platforms remains pending.
 
 `I2PInterface` is tracked as an in-progress family: configured outbound peers
 and connectable sessions can run through SAM, and transport-side tunnel

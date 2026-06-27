@@ -402,6 +402,83 @@
         assert_eq!(datagrams[0].source_link_local_address, "fe80::5678");
     }
 
+    #[test]
+    fn auto_runtime_status_tracks_adopted_interface_churn() {
+        let plan = build_startup_plan_from_candidates(&auto_iface(), Vec::new())
+            .expect("zero-initial startup plan");
+        let status = AutoRuntimeStatusHandle::from_startup_plan(&plan.startup_plan);
+        let adopted = AutoInterfaceAdoptedDevice {
+            ifname: "eth0".to_string(),
+            link_local_address: "fe80::1234".to_string(),
+        };
+        let added = AutoAdoptedInterfaceChange::Added {
+            discovery_listener: plan.config.discovery_listener_binding(&adopted, plan.platform),
+            data_listener: plan.config.data_listener_binding(&adopted),
+            adopted: adopted.clone(),
+        };
+
+        status.record_adopted_interface_change(&added);
+        let runtime = status.to_json();
+        assert_eq!(
+            runtime.get("adopted_device_count").and_then(JsonValue::as_u64),
+            Some(1)
+        );
+        assert_eq!(runtime.get("adopted_add_count").and_then(JsonValue::as_u64), Some(1));
+        assert_eq!(
+            runtime
+                .get("last_adopted_change")
+                .and_then(|value| value.get("event"))
+                .and_then(JsonValue::as_str),
+            Some("added")
+        );
+
+        let update = AutoLinkLocalAddressUpdate {
+            ifname: "eth0".to_string(),
+            old_link_local_address: "fe80::1234".to_string(),
+            new_link_local_address: "fe80::5678".to_string(),
+            listener_binding: plan.config.data_listener_binding(&AutoInterfaceAdoptedDevice {
+                ifname: "eth0".to_string(),
+                link_local_address: "fe80::5678".to_string(),
+            }),
+        };
+        assert!(status.record_link_local_update(Some(&update)));
+        let runtime = status.to_json();
+        assert_eq!(
+            runtime.get("link_local_replacement_count").and_then(JsonValue::as_u64),
+            Some(1)
+        );
+        assert_eq!(
+            runtime
+                .get("adopted_devices")
+                .and_then(JsonValue::as_array)
+                .and_then(|items| items.first())
+                .and_then(|item| item.get("link_local_address"))
+                .and_then(JsonValue::as_str),
+            Some("fe80::5678")
+        );
+
+        let removed = AutoAdoptedInterfaceChange::Removed {
+            discovery_listener: plan.config.discovery_listener_binding(&adopted, plan.platform),
+            data_listener: plan.config.data_listener_binding(&adopted),
+            removed_peers: Vec::new(),
+            adopted,
+        };
+        status.record_adopted_interface_change(&removed);
+        let runtime = status.to_json();
+        assert_eq!(
+            runtime.get("adopted_device_count").and_then(JsonValue::as_u64),
+            Some(0)
+        );
+        assert_eq!(runtime.get("adopted_remove_count").and_then(JsonValue::as_u64), Some(1));
+        assert_eq!(
+            runtime
+                .get("last_adopted_change")
+                .and_then(|value| value.get("event"))
+                .and_then(JsonValue::as_str),
+            Some("removed")
+        );
+    }
+
     #[tokio::test]
     async fn auto_peer_data_listener_supervisor_restarts_link_local_listener() {
         let plan = plan_with_data_listener(AutoDataListenerBinding {
@@ -637,6 +714,7 @@
                     ifname: "eth0".to_string(),
                     ipv6_addresses: vec!["fe80::1111".to_string()],
                 }],
+                None,
                 |_| Err("missing interface index".to_string()),
             )
             .await
@@ -726,6 +804,7 @@
                 Arc::clone(&state),
                 &runtime_loop_handles,
                 Vec::new(),
+                None,
                 |_| panic!("remove should not resolve scope ids"),
             )
             .await
