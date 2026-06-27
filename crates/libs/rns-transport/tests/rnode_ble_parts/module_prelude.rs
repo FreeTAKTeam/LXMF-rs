@@ -15,6 +15,11 @@ use rns_transport::iface::rnode_ble::{
     RNODE_BLE_SERVICE_UUID, RNODE_BLE_TX_CHARACTERISTIC_UUID, RNODE_BLE_WRITE_CHARACTERISTIC_UUID,
 };
 
+#[cfg(feature = "rnode-ble")]
+use rns_transport::iface::rnode_ble::{
+    native_rnode_identifier_is_excluded, native_rnode_identifier_matches_any,
+};
+
 use rns_transport::kiss::{
     encode_command_frame, encode_data_frame, CMD_DATA, CMD_P, CMD_READY, CMD_SETHARDWARE,
     CMD_SLOTTIME, CMD_TXDELAY, CMD_TXTAIL, FEND,
@@ -41,6 +46,37 @@ fn rnode_ble_defaults_match_python_nordic_uart_profile() {
     assert_eq!(config.kiss.persistence, 64);
     assert_eq!(config.kiss.slot_time_ms, 20);
     assert!(!config.kiss.flow_control);
+}
+
+#[cfg(feature = "rnode-ble")]
+#[test]
+fn rnode_ble_native_identifier_matching_uses_configured_id_and_aliases() {
+    let aliases = vec!["RNode Field".to_string(), "AA:BB:CC:DD:EE:FF".to_string()];
+
+    assert!(native_rnode_identifier_matches_any(
+        "aa-bb-cc-dd-ee-ff",
+        "11:22:33:44:55:66",
+        &aliases
+    ));
+    assert!(native_rnode_identifier_matches_any(
+        "112233445566",
+        "11:22:33:44:55:66",
+        &aliases
+    ));
+    assert!(!native_rnode_identifier_matches_any(
+        "00:00:00:00:00:00",
+        "11:22:33:44:55:66",
+        &aliases
+    ));
+}
+
+#[cfg(feature = "rnode-ble")]
+#[test]
+fn rnode_ble_native_identifier_exclusion_normalizes_android_address() {
+    let excluded = vec!["AA:BB:CC:DD:EE:FF".to_string()];
+
+    assert!(native_rnode_identifier_is_excluded("aa-bb-cc-dd-ee-ff", &excluded));
+    assert!(!native_rnode_identifier_is_excluded("11:22:33:44:55:66", &excluded));
 }
 
 #[test]

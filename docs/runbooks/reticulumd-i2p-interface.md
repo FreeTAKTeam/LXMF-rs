@@ -129,7 +129,12 @@ Current states are `configured`, `connecting`, `connected`, `listening`,
 
 ## Known Gaps
 
-- Full prepared-host I2P evidence and production parity are not complete.
+- Prepared-host runs without `I2P_PEERS` are scoped to SAM/connectable runtime,
+  destination persistence, and status refresh. They do not prove outbound peer
+  production parity.
+- Full outbound peer production evidence requires a prepared-host run with
+  reachable `I2P_PEERS` and connected outbound peer rows for every configured
+  destination.
 
 ## Software Fake-SAM Smoke
 
@@ -201,7 +206,12 @@ requires connected outbound peer rows for every configured destination.
 Evidence is written under
 `target/i2p-hil/`, including `report.json`, daemon logs, the generated config,
 and the captured `rnstatus-rs` JSON. The report includes the expected outbound
-peers, connected outbound peers, configured peer count, and raw peer rows.
+peers, connected outbound peers, configured peer count, raw peer rows, and an
+`evidence_scope` value. A no-peer run records
+`evidence_scope = "sam_connectable_only"` plus a `product_boundary` note that
+it is not outbound peer production parity. A run with reachable peers records
+`evidence_scope = "sam_connectable_with_outbound_peers"` after all configured
+outbound peer rows reach `connected`.
 
 The nightly HIL workflow can run the same harness when
 `HIL_I2P_ENABLED=true`. Set `HIL_I2P_SAM_HOST`, `HIL_I2P_SAM_PORT`, and

@@ -75,6 +75,12 @@ import sys
 report = {
     "status": status,
     "reason": reason or None,
+    "evidence_scope": "prepared_host_vrn76_ble_readiness",
+    "product_boundary": (
+        "This proves one prepared VR-N76 BLE peripheral can scan, connect, subscribe, "
+        "and reach readiness; broader hardware parity still requires write, indication, "
+        "disconnect, reconnect, adapter, firmware, and channel-ID evidence."
+    ),
     "peripheral_id": peripheral_id,
     "adapter": adapter or None,
     "expected_mtu": int(mtu),

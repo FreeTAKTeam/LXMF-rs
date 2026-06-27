@@ -24,6 +24,11 @@ fn i2p_prepared_host_smoke_preserves_evidence_contract() {
         "--strict-interface-startup",
         "rnstatus-rs",
         "rnstatus_json",
+        "evidence_scope",
+        "sam_connectable_only",
+        "sam_connectable_with_outbound_peers",
+        "product_boundary",
+        "not outbound peer production parity",
         "reachable_endpoint",
         "private_key_persisted",
         "accept_state",
@@ -145,6 +150,11 @@ fn i2p_runbook_documents_prepared_host_smoke_artifacts() {
         "target/i2p-fake-sam-smoke/",
         "target/i2p-hil/",
         "report.json",
+        "evidence_scope",
+        "sam_connectable_only",
+        "sam_connectable_with_outbound_peers",
+        "product_boundary",
+        "not outbound peer production parity",
         "HIL_I2P_ENABLED",
     ] {
         assert!(

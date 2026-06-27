@@ -348,54 +348,6 @@ impl InterfaceManager {
         self.ifaces.iter().any(|i| i.role == role)
     }
 
-    async fn send_to_iface(iface: &LocalInterface, message: TxMessage) -> bool {
-        let tx_type = message.tx_type;
-        match iface.tx_send.try_send(message) {
-            Ok(()) => true,
-            Err(mpsc::error::TrySendError::Full(message)) => {
-                if matches!(tx_type, TxMessageType::Broadcast(_)) {
-                    log::warn!("tx queue full dropping broadcast on {} for {:?}", iface.address, tx_type);
-                    return false;
-                }
-                match tokio::time::timeout(
-                    Duration::from_millis(IFACE_TX_ENQUEUE_TIMEOUT_MS),
-                    iface.tx_send.send(message),
-                )
-                .await
-                {
-                    Ok(Ok(())) => {
-                        log::warn!(
-                            "recovered from full tx queue on {} for {:?}",
-                            iface.address,
-                            tx_type
-                        );
-                        true
-                    }
-                    Ok(Err(_)) => {
-                        log::warn!(
-                            "tx queue closed on {} for {:?}",
-                            iface.address,
-                            tx_type
-                        );
-                        false
-                    }
-                    Err(_) => {
-                        log::warn!(
-                            "tx queue full timeout on {} for {:?}",
-                            iface.address,
-                            tx_type
-                        );
-                        false
-                    }
-                }
-            }
-            Err(mpsc::error::TrySendError::Closed(_)) => {
-                log::warn!("tx queue closed on {} for {:?}", iface.address, tx_type);
-                false
-            }
-        }
-    }
-
     fn queue_announce(iface: &mut LocalInterface, message: TxMessage, now: Instant) -> bool {
         iface
             .announce_queue
@@ -482,8 +434,10 @@ impl InterfaceManager {
     }
 
     pub async fn release_queued_announces(&mut self) -> TxDispatchTrace {
+        self.cleanup();
         let mut trace = TxDispatchTrace::default();
         let now = Instant::now();
+        let mut saw_closed_queue = false;
 
         for iface in &mut self.ifaces {
             if iface.stop.is_cancelled()
@@ -505,13 +459,20 @@ impl InterfaceManager {
                     iface.announce_bitrate_bps,
                     iface.announce_cap_percent,
                 );
-            if Self::send_to_iface(iface, message).await {
-                trace.sent_ifaces += 1;
-            } else {
-                trace.failed_ifaces += 1;
+            match Self::send_to_iface(iface, message).await {
+                TxIfaceSendResult::Sent => trace.sent_ifaces += 1,
+                TxIfaceSendResult::Failed => trace.failed_ifaces += 1,
+                TxIfaceSendResult::Closed => {
+                    trace.failed_ifaces += 1;
+                    saw_closed_queue = true;
+                }
             }
         }
 
+        if saw_closed_queue {
+            self.cleanup_closed_tx_queues();
+        }
+        self.cleanup();
         trace
     }
 
@@ -537,7 +498,9 @@ impl InterfaceManager {
         announce_policy: Option<AnnounceBroadcastPolicy>,
         apply_egress_control: bool,
     ) -> TxDispatchTrace {
+        self.cleanup();
         let mut trace = TxDispatchTrace::default();
+        let mut saw_closed_queue = false;
         for iface in &mut self.ifaces {
             let should_send = match message.tx_type {
                 TxMessageType::Broadcast(address) => {
@@ -597,17 +560,28 @@ impl InterfaceManager {
                         );
                 }
 
-                if Self::send_to_iface(iface, message.clone()).await {
-                    trace.sent_ifaces += 1;
-                    if is_path_request {
-                        Self::record_outgoing_pr(iface, now);
+                match Self::send_to_iface(iface, message.clone()).await {
+                    TxIfaceSendResult::Sent => {
+                        trace.sent_ifaces += 1;
+                        if is_path_request {
+                            Self::record_outgoing_pr(iface, now);
+                        }
                     }
-                } else {
-                    trace.failed_ifaces += 1;
+                    TxIfaceSendResult::Failed => {
+                        trace.failed_ifaces += 1;
+                    }
+                    TxIfaceSendResult::Closed => {
+                        trace.failed_ifaces += 1;
+                        saw_closed_queue = true;
+                    }
                 }
             }
         }
 
+        if saw_closed_queue {
+            self.cleanup_closed_tx_queues();
+        }
+        self.cleanup();
         trace
     }
 }

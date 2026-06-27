@@ -30,6 +30,10 @@ fn vrn76_prepared_host_smoke_preserves_evidence_contract() {
         "rnstatus-rs",
         "rnstatus_json",
         "rnstatus_human",
+        "evidence_scope",
+        "prepared_host_vrn76_ble_readiness",
+        "product_boundary",
+        "broader hardware parity",
         "startup_status",
         "runtime_iface",
         "connected",
@@ -96,6 +100,10 @@ fn vrn76_docs_document_prepared_host_smoke_artifacts() {
         "_runtime.vrn76.status.interface_ready = true",
         "target/vrn76-hil/",
         "report.json",
+        "evidence_scope",
+        "prepared_host_vrn76_ble_readiness",
+        "product_boundary",
+        "broader hardware parity",
         "HIL_VRN76_ENABLED",
     ] {
         assert!(runbook.contains(required), "VR-N76 runbook should document {required:?}");

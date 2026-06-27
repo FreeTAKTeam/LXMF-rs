@@ -59,8 +59,8 @@ Required request/response/event types:
   session is considered ready.
 - Hosts that remain at the Bluetooth default `ATT MTU 23` (`20` payload bytes) must fail
   readiness with validation semantics instead of surfacing a healthy-but-silent session.
-- Native `btleplug` backends cannot request a larger MTU in version `0.11.8`; platform hosts
-  that can negotiate MTU must do so before enabling notifications.
+- Native `btleplug` backends use the platform-reported negotiated ATT MTU; platform hosts
+  that can negotiate MTU must do so and report the resulting value before enabling notifications.
 
 ## Conformance
 

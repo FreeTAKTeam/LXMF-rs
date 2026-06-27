@@ -71,6 +71,12 @@ expected_vports = [int(item.strip()) for item in expected_vports_raw.split(",") 
 transport_kind = "tcp" if rnode_multi_port.lower().startswith("tcp://") else "serial"
 report = {
     "status": status,
+    "evidence_scope": "prepared_host_single_device_vport_probe",
+    "product_boundary": (
+        "This proves one prepared serial/TCP RNodeMulti endpoint and configured "
+        "vports; it is not broad production parity across device, firmware, and "
+        "radio combinations."
+    ),
     "rnode_multi_port": rnode_multi_port,
     "transport_kind": transport_kind,
     "baud_rate": None if transport_kind == "tcp" else int(baud_rate),

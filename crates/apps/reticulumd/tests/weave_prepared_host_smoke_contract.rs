@@ -28,6 +28,11 @@ fn weave_prepared_host_smoke_preserves_evidence_contract() {
         "--strict-interface-startup",
         "rnstatus-rs",
         "rnstatus_json",
+        "evidence_scope",
+        "prepared_host_connected_serial",
+        "prepared_host_serial_discovery_only",
+        "product_boundary",
+        "broader production parity",
         "weave",
         "status",
         "runtime_iface",
@@ -145,6 +150,11 @@ fn weave_runbook_documents_prepared_host_smoke_artifacts() {
         "weaveconf-rs disable-remote-display",
         "target/weave-hil/",
         "report.json",
+        "evidence_scope",
+        "prepared_host_connected_serial",
+        "prepared_host_serial_discovery_only",
+        "product_boundary",
+        "broader production parity",
         "HIL_WEAVE_ENABLED",
     ] {
         assert!(

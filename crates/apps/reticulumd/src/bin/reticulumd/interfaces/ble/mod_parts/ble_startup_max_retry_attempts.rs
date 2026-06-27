@@ -422,7 +422,7 @@ fn startup_probe_mismatch_diagnostic(expected_len: usize, actual_len: usize) -> 
     if actual_len == DEFAULT_ATT_NOTIFICATION_PAYLOAD_BYTES
         || actual_len < expected_len && actual_len < DEFAULT_ATT_NOTIFICATION_PAYLOAD_BYTES
     {
-        "; likely ATT MTU 23 / 20-byte notification payload; btleplug cannot request a larger MTU in this backend, so configure a host adapter that negotiates MTU before enabling notifications"
+        "; likely ATT MTU 23 / 20-byte notification payload; the BLE host/backend did not report a usable negotiated MTU before notifications, so verify btleplug 0.12+ platform MTU support or configure a host adapter that negotiates a larger ATT MTU"
     } else {
         ""
     }

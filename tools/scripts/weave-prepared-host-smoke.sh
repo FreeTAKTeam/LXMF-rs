@@ -80,14 +80,26 @@ import sys
     log_path,
     rnstatus_path,
 ) = sys.argv[1:16]
+connected_required = require_connected.lower() in {"1", "true", "yes", "on"}
+remote_display_requested = remote_display_control.lower() in {"1", "true", "yes", "on"}
 report = {
     "status": status,
+    "evidence_scope": (
+        "prepared_host_connected_serial"
+        if connected_required
+        else "prepared_host_serial_discovery_only"
+    ),
+    "product_boundary": (
+        "This proves the configured Weave serial host scope only; broader production parity "
+        "still requires evidence across devices, firmware, display/status payloads, and "
+        "operator workflows."
+    ),
     "weave_port": weave_port,
     "baud_rate": int(baud_rate),
     "mtu": int(mtu),
     "configured_bitrate": int(configured_bitrate),
-    "require_connected": require_connected.lower() in {"1", "true", "yes", "on"},
-    "remote_display_control_requested": remote_display_control.lower() in {"1", "true", "yes", "on"},
+    "require_connected": connected_required,
+    "remote_display_control_requested": remote_display_requested,
     "remote_display_control_result": remote_display_control_result,
     "rpc_addr": rpc_addr,
     "run_dir": run_dir,

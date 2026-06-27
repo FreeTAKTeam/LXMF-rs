@@ -52,8 +52,12 @@ import sys
 
 report_path, status, reason, sam_endpoint, peers_raw, rpc_addr, run_dir, log_path, rnstatus_path = sys.argv[1:10]
 expected_peers = [item.strip() for item in peers_raw.split(",") if item.strip()]
+evidence_scope = (
+    "sam_connectable_with_outbound_peers" if expected_peers else "sam_connectable_only"
+)
 report = {
     "status": status,
+    "evidence_scope": evidence_scope,
     "sam_endpoint": sam_endpoint,
     "expected_outbound_peers": expected_peers,
     "rpc_addr": rpc_addr,
@@ -61,6 +65,11 @@ report = {
     "reticulumd_log": log_path,
     "rnstatus_json": rnstatus_path,
 }
+if not expected_peers:
+    report["product_boundary"] = (
+        "No I2P_PEERS supplied; this proves SAM/connectable runtime, destination "
+        "persistence, and status refresh only, not outbound peer production parity."
+    )
 if reason:
     report["reason"] = reason
 status_path = pathlib.Path(rnstatus_path)

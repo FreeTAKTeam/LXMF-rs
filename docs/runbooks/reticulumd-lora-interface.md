@@ -168,11 +168,17 @@ write/notification characteristics, subscribes to notifications, and writes
 raw KISS payload chunks to the backend characteristic writer. Outbound BLE
 packet writes are rejected before backend I/O when they exceed the configured
 RNode BLE MTU, and encoded raw-KISS bytes are chunked by the configured maximum
-BLE write length before they reach the backend. The RNode BLE notification path
-also preserves non-READY KISS command responses alongside decoded packet
-payloads, and its command monitor exposes retained probe status, radio status,
-non-fatal hardware errors, fatal command error, online state, and reported
-bitrate. Daemon `RNodeInterface` `ble://` startup appends the same RNode
+BLE write length before they reach the backend. The native backend reads the
+negotiated ATT MTU exposed by `btleplug` 0.12 after connect/service discovery,
+raises the default write chunk size when the platform reports a larger payload,
+and warns when a reported MTU remains below the 173-byte LXMF notification
+minimum. A 20-byte partial notification is diagnosed as likely ATT MTU 23 /
+20-byte payload evidence, which means the host/backend did not report a usable
+larger negotiated MTU before notifications. The RNode BLE notification path also
+preserves non-READY KISS command responses alongside decoded packet payloads,
+and its command monitor exposes retained probe status, radio status, non-fatal
+hardware errors, fatal command error, online state, and reported bitrate.
+Daemon `RNodeInterface` `ble://` startup appends the same RNode
 detect, firmware, platform, MCU, radio configuration, airtime-lock, and
 radio-on command frames used by serial/TCP RNode startup and validates startup
 and fatal command responses through the same RNode protocol state. If startup
@@ -433,7 +439,12 @@ under `target/rnode-hil/`. A passing run requires:
 
 Reports are written to `report.json` and include the latest endpoint, bearer,
 probe status, radio status, reported bitrate, hardware errors, and command
-error fields.
+error fields. The report also records a bearer-specific `evidence_scope`:
+`prepared_host_serial_rnode`, `prepared_host_tcp_rnode`, or
+`prepared_host_ble_rnode`. A passing run proves one prepared endpoint for that
+bearer; the `product_boundary` note records that broader hardware parity still
+requires evidence across serial, TCP/Wi-Fi, BLE, device, firmware, and radio
+combinations.
 
 Nightly HIL exposes the same smoke through `HIL_RNODE_ENABLED=true` with
 `HIL_RNODE_PORT`, optional `HIL_RNODE_BAUD_RATE`, optional `HIL_RNODE_REGION`,

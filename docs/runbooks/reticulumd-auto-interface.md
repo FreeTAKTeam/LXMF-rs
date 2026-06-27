@@ -240,7 +240,10 @@ phase. Required evidence fields include:
 
 Artifacts are written under `target/auto-interface-hil/`, including
 `report.json`, the daemon log, the last `rnstatus-rs` JSON payload, and phase snapshots
-for zero-initial startup, add, replacement, and removal. The nightly
+for zero-initial startup, add, replacement, and removal. The report records
+`evidence_scope = "linux_namespace_dummy_churn"` plus a `product_boundary`
+note that broader prepared-host parity still requires evidence across real
+Wi-Fi, Ethernet, and platform interface churn. The nightly
 HIL workflow exposes this as `auto-interface-prepared-host-artifacts` when
 `HIL_AUTO_INTERFACE_ENABLED=true`.
 

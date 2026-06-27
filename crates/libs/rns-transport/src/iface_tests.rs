@@ -3,6 +3,8 @@ mod tests {
     use super::*;
     use crate::packet::PacketType;
 
+    include!("iface_tests_parts/closed_tx_queue_cleanup.rs");
+
     #[test]
     fn new_channel_defaults_to_unicast_role() {
         let mut mgr = InterfaceManager::new(16);
