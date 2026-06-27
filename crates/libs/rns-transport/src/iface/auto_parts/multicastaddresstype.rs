@@ -172,6 +172,23 @@ impl AutoPeerTable {
         peer.last_outbound_at = now;
         true
     }
+
+    pub fn peers_by_ifname(&self, ifname: &str) -> Vec<AutoPeer> {
+        self.peers
+            .values()
+            .filter(|peer| peer.ifname == ifname)
+            .cloned()
+            .collect()
+    }
+
+    pub fn remove_by_ifname(&mut self, ifname: &str) -> Vec<AutoPeer> {
+        let removed = self
+            .peers
+            .iter()
+            .filter_map(|(address, peer)| (peer.ifname == ifname).then_some(address.clone()))
+            .collect::<Vec<_>>();
+        removed.into_iter().filter_map(|address| self.peers.remove(&address)).collect()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -197,6 +214,22 @@ pub struct AutoLinkLocalAddressUpdate {
     pub old_link_local_address: String,
     pub new_link_local_address: String,
     pub listener_binding: AutoDataListenerBinding,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AutoAdoptedInterfaceChange {
+    Added {
+        adopted: AutoInterfaceAdoptedDevice,
+        discovery_listener: AutoDiscoveryListenerBinding,
+        data_listener: AutoDataListenerBinding,
+    },
+    Removed {
+        adopted: AutoInterfaceAdoptedDevice,
+        discovery_listener: AutoDiscoveryListenerBinding,
+        data_listener: AutoDataListenerBinding,
+        removed_peers: Vec<AutoPeer>,
+    },
+    LinkLocalChanged(AutoLinkLocalAddressUpdate),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -95,10 +95,11 @@ placeholders:
   suppression, multicast announcements, data sockets, transport bridging, and
   live carrier-runtime status reporting, including polling reconciliation for
   already adopted link-local address replacements, supervised per-interface
-  discovery and data-listener receive loops, stale outbound route pruning after
-  restart, dynamic multicast/reverse announce source refresh after replacement,
-  and Python-style fallback from unknown `multicast_address_type` values to
-  `temporary`.
+  discovery and data-listener receive loops, adopted-interface add/remove/change
+  diff planning with explicit state apply semantics, stale outbound route
+  pruning after restart, dynamic multicast/reverse announce source refresh
+  after replacement, and Python-style fallback from unknown
+  `multicast_address_type` values to `temporary`.
 - Serial, TCP/Wi-Fi, and feature-gated BLE LoRa/RNode with startup probes,
   Python and Android-style selector aliases, configuration validation,
   telemetry, flow control, teardown, display-capable BLE external-framebuffer
@@ -178,9 +179,9 @@ record.
 whole Python family, not because the implemented interfaces are stubs. Backbone
 still needs a live Python selector/epoll comparison for the same slow-reader
 workload before the backpressure evidence is considered complete. AutoInterface
-still needs dynamic add/remove reconciliation for newly appearing or
-disappearing adopted interfaces, using the implemented discovery and data
-listener supervisors to apply ordered add/remove lifecycle changes.
+still needs daemon-side dynamic add/remove reconciliation for newly appearing
+or disappearing adopted interfaces, using the implemented diff plan plus
+discovery and data listener supervisors to apply ordered lifecycle changes.
 
 `I2PInterface` is tracked as an in-progress family: configured outbound peers
 and connectable sessions can run through SAM, and transport-side tunnel

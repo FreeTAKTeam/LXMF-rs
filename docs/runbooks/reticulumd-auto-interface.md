@@ -167,6 +167,10 @@ The reusable transport layer now also includes Python-compatible helpers for:
   candidates for already adopted devices, invokes the supervised listener
   restart when an adopted address changes, and commits the new discovery state
   only after the replacement listener restart succeeds
+- transport-side adopted-interface change planning for added, removed, and
+  link-local-replaced devices, with explicit apply semantics that clear stale
+  echo, timeout, announce, and removed-peer state only after the daemon has
+  completed the required listener lifecycle work
 - live `_runtime.auto.carrier_runtime` reporting for Python-style `online`,
   `final_init_done`, `carrier_changed`, multicast carrier events, and staged
   link-local listener restart metadata
@@ -200,5 +204,5 @@ interfaces = [
 
 - Add/remove supervision for newly appearing or disappearing adopted interfaces
   remains separate follow-up work: the discovery and data listener supervisors
-  are now present, but the reconciler still needs adopted-interface diff
-  planning and ordered add/remove lifecycle application.
+  and transport diff/apply plan are now present, but the daemon reconciler still
+  needs to bind/stop listeners and apply the planned changes in order.
