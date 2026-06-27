@@ -206,7 +206,10 @@ The project is best described by capability level:
   SAM router and reachable peer set.
 - Feature-gated VR-N76 KISS-over-BLE now refreshes transport-side runtime
   status into daemon/RPC `_runtime.vrn76.status`; `rnstatus-rs` summarizes
-  connected, subscribed, ready, startup-write failure, and queue counters.
+  connected, subscribed, ready, startup-write failure, and queue counters. An
+  opt-in prepared-host smoke harness records daemon startup, connected,
+  subscribed, ready, and counter evidence under `target/vrn76-hil/`; execution
+  against real VR-N76 hardware remains pending.
 - UDP now refreshes live bind state, role, last observed peer-route count,
   packet, byte, drop, and error counters in daemon/RPC metadata and
   `rnstatus-rs`. Serial now refreshes live open/reconnect, HDLC frame, packet,

@@ -162,9 +162,40 @@ jobs:
             target/weave-hil/report.json
             target/weave-hil/run.*
 
+  vrn76-prepared-host:
+    if: ${{ vars.HIL_VRN76_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Linux BLE build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libdbus-1-dev
+      - name: VR-N76 KISS BLE prepared-host smoke
+        env:
+          VRN76_PERIPHERAL_ID: ${{ vars.HIL_VRN76_PERIPHERAL_ID }}
+          VRN76_ADAPTER: ${{ vars.HIL_VRN76_ADAPTER }}
+          VRN76_MTU: ${{ vars.HIL_VRN76_MTU }}
+          VRN76_MAX_WRITE_LEN: ${{ vars.HIL_VRN76_MAX_WRITE_LEN }}
+          VRN76_FRAME_MODE: ${{ vars.HIL_VRN76_FRAME_MODE }}
+          VRN76_KISS_FLOW_CONTROL: ${{ vars.HIL_VRN76_KISS_FLOW_CONTROL }}
+          VRN76_SCAN_TIMEOUT_MS: ${{ vars.HIL_VRN76_SCAN_TIMEOUT_MS }}
+          VRN76_CONNECT_TIMEOUT_MS: ${{ vars.HIL_VRN76_CONNECT_TIMEOUT_MS }}
+          VRN76_TIMEOUT_SECS: ${{ vars.HIL_VRN76_TIMEOUT_SECS }}
+        run: ./tools/scripts/vrn76-kiss-ble-prepared-host-smoke.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vrn76-prepared-host-artifacts
+          path: |
+            target/vrn76-hil/report.json
+            target/vrn76-hil/run.*
+
   hil-disabled:
-    if: ${{ vars.HIL_ESP32_ENABLED != 'true' && vars.HIL_I2P_ENABLED != 'true' && vars.HIL_AUTO_INTERFACE_ENABLED != 'true' && vars.HIL_RNODE_MULTI_ENABLED != 'true' && vars.HIL_RNODE_ENABLED != 'true' && vars.HIL_WEAVE_ENABLED != 'true' }}
+    if: ${{ vars.HIL_ESP32_ENABLED != 'true' && vars.HIL_I2P_ENABLED != 'true' && vars.HIL_AUTO_INTERFACE_ENABLED != 'true' && vars.HIL_RNODE_MULTI_ENABLED != 'true' && vars.HIL_RNODE_ENABLED != 'true' && vars.HIL_WEAVE_ENABLED != 'true' && vars.HIL_VRN76_ENABLED != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: HIL disabled
-        run: echo "HIL_ESP32_ENABLED, HIL_I2P_ENABLED, HIL_AUTO_INTERFACE_ENABLED, HIL_RNODE_MULTI_ENABLED, HIL_RNODE_ENABLED, and HIL_WEAVE_ENABLED are not set to true; skipping nightly HIL runs."
+        run: echo "HIL_ESP32_ENABLED, HIL_I2P_ENABLED, HIL_AUTO_INTERFACE_ENABLED, HIL_RNODE_MULTI_ENABLED, HIL_RNODE_ENABLED, HIL_WEAVE_ENABLED, and HIL_VRN76_ENABLED are not set to true; skipping nightly HIL runs."

@@ -192,6 +192,20 @@ cargo run -p reticulum-rs-transport --features vrn76-kiss-ble --example vrn76_ki
 
 Use `--test-payload-hex <hex>` to send a specific explicit test KISS payload.
 
+## Prepared-Host Smoke
+
+Prepared-host smoke evidence is captured by
+`tools/scripts/vrn76-kiss-ble-prepared-host-smoke.sh`. The harness builds the
+feature-gated daemon, starts a `vrn76_kiss_ble` interface on a host that already
+has Bluetooth and the target radio provisioned, polls daemon/RPC status through
+`rnstatus-rs`, and writes `report.json`, logs, generated config, and status
+snapshots under `target/vrn76-hil/`.
+
+This confirms daemon startup, scan/connect/subscribe, interface readiness, and
+runtime counter visibility for a prepared host. It does not provision the host
+Bluetooth adapter, perform pairing or bonding, or replace broader disconnect
+and reconnect validation.
+
 ## Known Limitations
 
 - Hardware-backed scan, connect, subscribe, write, indication, disconnect, and

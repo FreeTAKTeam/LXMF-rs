@@ -192,7 +192,10 @@ placeholders:
 - Feature-gated native RNode BLE and VR-N76 KISS-over-BLE. The VR-N76 native
   interface now exposes live daemon/RPC `_runtime.vrn76.status` metadata with
   connection, subscription, readiness, startup-write failure, and queued packet
-  counters, and `rnstatus-rs` renders a compact human summary.
+  counters, and `rnstatus-rs` renders a compact human summary. An opt-in
+  prepared-host smoke harness records VR-N76 daemon startup,
+  connected/subscribed/ready, and counter evidence under `target/vrn76-hil/`;
+  execution against real VR-N76 hardware remains pending.
 
 Python-style interface-driven `tcp_server` startup now works from config
 without Rust-only transport overrides.
