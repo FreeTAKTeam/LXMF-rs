@@ -45,6 +45,7 @@ pub(super) struct InterfaceStartupBatch {
     pub(super) pipe_runtime_refreshes: Vec<PipeRuntimeRefresh>,
     pub(super) udp_runtime_refreshes: Vec<UdpRuntimeRefresh>,
     pub(super) serial_runtime_refreshes: Vec<SerialRuntimeRefresh>,
+    pub(super) kiss_runtime_refreshes: Vec<KissRuntimeRefresh>,
     pub(super) i2p_runtime_refreshes: Vec<I2pRuntimeRefresh>,
     pub(super) tcp_runtime_refreshes: Vec<TcpRuntimeRefresh>,
     pub(super) weave_runtime_refreshes: Vec<WeaveRuntimeRefresh>,
@@ -77,6 +78,13 @@ pub(crate) struct UdpRuntimeRefresh {
 pub(crate) struct SerialRuntimeRefresh {
     pub(crate) runtime_iface: AddressHash,
     pub(crate) status: rns_transport::iface::serial::SerialRuntimeStatusHandle,
+}
+
+#[derive(Clone)]
+pub(crate) struct KissRuntimeRefresh {
+    pub(crate) runtime_iface: AddressHash,
+    pub(crate) runtime_key: &'static str,
+    pub(crate) status: rns_transport::iface::kiss::KissRuntimeStatusHandle,
 }
 
 struct UdpStartupSinks<'a> {
@@ -192,6 +200,7 @@ pub(super) async fn startup_configured_interfaces(
     let mut pipe_runtime_refreshes = Vec::new();
     let mut udp_runtime_refreshes = Vec::new();
     let mut serial_runtime_refreshes = Vec::new();
+    let mut kiss_runtime_refreshes = Vec::new();
     let mut i2p_runtime_refreshes = Vec::new();
     let mut tcp_runtime_refreshes = Vec::new();
     let mut weave_runtime_refreshes = Vec::new();
@@ -433,6 +442,7 @@ pub(super) async fn startup_configured_interfaces(
                     iface_manager,
                     &mut configured_interfaces[index],
                     &mut startup_failures,
+                    &mut kiss_runtime_refreshes,
                 )
                 .await
                 {
@@ -447,6 +457,7 @@ pub(super) async fn startup_configured_interfaces(
                     iface_manager,
                     &mut configured_interfaces[index],
                     &mut startup_failures,
+                    &mut kiss_runtime_refreshes,
                 )
                 .await
                 {
@@ -570,6 +581,7 @@ pub(super) async fn startup_configured_interfaces(
         pipe_runtime_refreshes,
         udp_runtime_refreshes,
         serial_runtime_refreshes,
+        kiss_runtime_refreshes,
         i2p_runtime_refreshes,
         tcp_runtime_refreshes,
         weave_runtime_refreshes,
@@ -2166,6 +2178,7 @@ interfaces = [
             settings: iface.settings_json(),
         };
         let mut startup_failures = Vec::new();
+        let mut kiss_runtime_refreshes = Vec::new();
 
         let started = startup_kiss(
             &args,
@@ -2174,11 +2187,13 @@ interfaces = [
             &manager,
             &mut record,
             &mut startup_failures,
+            &mut kiss_runtime_refreshes,
         )
         .await;
 
         assert!(started);
         assert!(startup_failures.is_empty());
+        assert_eq!(kiss_runtime_refreshes.len(), 1);
         let runtime = record
             .settings
             .as_ref()
@@ -2199,6 +2214,8 @@ interfaces = [
         assert_eq!(kiss_status["callsign"].as_str(), Some("N0CALL"));
         assert_eq!(kiss_status["ssid"].as_u64(), Some(1));
         assert_eq!(kiss_status["iface"].as_str(), Some(runtime_iface.to_string().as_str()));
+        assert_eq!(kiss_runtime_refreshes[0].runtime_iface, runtime_iface);
+        assert_eq!(kiss_runtime_refreshes[0].runtime_key, "kiss");
     }
 
     #[tokio::test]
@@ -2226,6 +2243,7 @@ interfaces = [
             settings: iface.settings_json(),
         };
         let mut startup_failures = Vec::new();
+        let mut kiss_runtime_refreshes = Vec::new();
 
         let started = startup_kiss_tcp_client(
             &args,
@@ -2234,11 +2252,13 @@ interfaces = [
             &manager,
             &mut record,
             &mut startup_failures,
+            &mut kiss_runtime_refreshes,
         )
         .await;
 
         assert!(started);
         assert!(startup_failures.is_empty());
+        assert_eq!(kiss_runtime_refreshes.len(), 1);
         let runtime = record
             .settings
             .as_ref()
@@ -2257,6 +2277,8 @@ interfaces = [
         assert_eq!(kiss_status["kiss_flow_control"].as_bool(), Some(true));
         assert_eq!(kiss_status["ax25"].as_bool(), Some(false));
         assert_eq!(kiss_status["iface"].as_str(), Some(runtime_iface.to_string().as_str()));
+        assert_eq!(kiss_runtime_refreshes[0].runtime_iface, runtime_iface);
+        assert_eq!(kiss_runtime_refreshes[0].runtime_key, "kiss_tcp");
     }
 
     #[tokio::test]

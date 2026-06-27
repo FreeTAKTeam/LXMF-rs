@@ -1,6 +1,6 @@
 # Reticulum Parity Matrix
 
-Last reassessed: 2026-06-26
+Last reassessed: 2026-06-27
 
 This is the maintained row-level status for Python Reticulum compatibility.
 Repository-level posture and execution order live in
@@ -100,12 +100,12 @@ placeholders:
   Serial KISS and AX.25 KISS retain Python-compatible AX.25 UI header wrapping
   over the serial KISS runtime. Android-style KISS beacon aliases
   `beacon_interval` and `beacon_data` feed the same ID beacon runtime as
-  Python `id_interval` and `id_callsign`. Daemon/RPC status now records
-  configured KISS, AX.25 KISS, KISS TCP, and BLE GATT bearer metadata such as
-  device/endpoint, baud, MTU, KISS timing, AX.25 callsign/SSID, BLE UUIDs, and
-  BLE lifecycle timeouts; `rnstatus-rs` renders those configured status rows.
-  Live byte/error counters for KISS/AX.25 KISS, KISS TCP, and BLE GATT remain a
-  follow-up.
+  Python `id_interval` and `id_callsign`. KISS/AX.25 KISS and KISS TCP now
+  refresh live daemon/RPC status with packet, data-frame, command-frame, byte,
+  flow-control, queue, AX.25 drop, and error counters, and `rnstatus-rs`
+  renders those counters alongside configured bearer metadata. BLE GATT records
+  configured bearer metadata such as BLE UUIDs and lifecycle timeouts; live
+  BLE GATT byte/error counters remain a follow-up.
 - AutoInterface discovery, authenticated peering, peer lifecycle, duplicate
   suppression, multicast announcements, data sockets, transport bridging, and
   live carrier-runtime status reporting, including polling reconciliation for

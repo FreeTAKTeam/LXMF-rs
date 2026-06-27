@@ -241,6 +241,7 @@ async fn startup_kiss(
     iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
     record: &mut InterfaceRecord,
     startup_failures: &mut Vec<InterfaceStartupFailure>,
+    kiss_runtime_refreshes: &mut Vec<KissRuntimeRefresh>,
 ) -> bool {
     let adapter = match if iface.kind == "ax25_kiss" {
         kiss::build_ax25_adapter(iface)
@@ -274,6 +275,7 @@ async fn startup_kiss(
     }
 
     let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
+    let status = adapter.runtime_status_handle();
     let kiss_iface = iface_manager.lock().await.spawn_as_with_mode(
         adapter,
         |context| async move { rns_transport::iface::kiss::KissInterface::spawn(context).await },
@@ -295,6 +297,11 @@ async fn startup_kiss(
     let runtime_iface = kiss_iface.to_string();
     mark_interface_startup_status(record, "spawned", None, Some(runtime_iface.as_str()));
     mark_kiss_runtime_status(record, iface, kiss_iface);
+    kiss_runtime_refreshes.push(KissRuntimeRefresh {
+        runtime_iface: kiss_iface,
+        runtime_key: "kiss",
+        status,
+    });
     true
 }
 
@@ -305,6 +312,7 @@ async fn startup_kiss_tcp_client(
     iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
     record: &mut InterfaceRecord,
     startup_failures: &mut Vec<InterfaceStartupFailure>,
+    kiss_runtime_refreshes: &mut Vec<KissRuntimeRefresh>,
 ) -> bool {
     let adapter = match kiss::build_tcp_client_adapter(iface) {
         Ok(adapter) => adapter,
@@ -334,6 +342,7 @@ async fn startup_kiss_tcp_client(
     }
 
     let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
+    let status = adapter.runtime_status_handle();
     let kiss_iface = iface_manager.lock().await.spawn_as_with_mode(
         adapter,
         |context| async move {
@@ -356,6 +365,11 @@ async fn startup_kiss_tcp_client(
     let runtime_iface = kiss_iface.to_string();
     mark_interface_startup_status(record, "spawned", None, Some(runtime_iface.as_str()));
     mark_kiss_tcp_runtime_status(record, iface, kiss_iface);
+    kiss_runtime_refreshes.push(KissRuntimeRefresh {
+        runtime_iface: kiss_iface,
+        runtime_key: "kiss_tcp",
+        status,
+    });
     true
 }
 

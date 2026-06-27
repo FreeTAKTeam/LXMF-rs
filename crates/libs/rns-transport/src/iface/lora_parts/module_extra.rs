@@ -31,6 +31,7 @@ where
             command_tx: Some(command_tx),
             data_rx_tx: Some(data_rx_tx),
             management_frame_rx: Some(run.management_frame_rx),
+            runtime_status: None,
         },
         stream_cancel,
         run.rx_channel,

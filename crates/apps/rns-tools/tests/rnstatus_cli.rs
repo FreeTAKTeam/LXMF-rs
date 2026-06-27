@@ -578,7 +578,36 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
                                         "callsign": "N0CALL",
                                         "ssid": 1,
                                         "id_callsign": "MYCALL-0",
-                                        "id_interval": 600
+                                        "id_interval": 600,
+                                        "interface_ready": false,
+                                        "pending_depth": 2,
+                                        "reconnect_attempts": 3,
+                                        "open_errors": 1,
+                                        "packets_rx": 4,
+                                        "packets_tx": 5,
+                                        "data_frames_rx": 6,
+                                        "data_frames_tx": 7,
+                                        "command_frames_rx": 8,
+                                        "ready_frames_rx": 9,
+                                        "init_frames_tx": 10,
+                                        "shutdown_frames_tx": 11,
+                                        "management_frames_tx": 12,
+                                        "activity_frames_tx": 13,
+                                        "id_beacon_frames_tx": 14,
+                                        "bytes_rx": 120,
+                                        "bytes_tx": 80,
+                                        "decode_errors": 1,
+                                        "deserialize_errors": 2,
+                                        "rx_queue_errors": 3,
+                                        "serialize_errors": 4,
+                                        "read_errors": 5,
+                                        "tx_errors": 6,
+                                        "eof_count": 7,
+                                        "flow_control_timeouts": 8,
+                                        "ax25_drops": 9,
+                                        "data_notifications_dropped": 10,
+                                        "command_notifications_dropped": 11,
+                                        "last_error": "simulated kiss read failure"
                                     }
                                 }
                             }
@@ -597,7 +626,12 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
                                         "bearer": "tcp",
                                         "endpoint": "127.0.0.1:8001",
                                         "kiss_flow_control": false,
-                                        "ax25": false
+                                        "ax25": false,
+                                        "connect_errors": 2,
+                                        "packets_rx": 3,
+                                        "packets_tx": 4,
+                                        "bytes_rx": 55,
+                                        "bytes_tx": 66
                                     }
                                 }
                             }
@@ -743,11 +777,24 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
     );
     assert!(stdout.contains("ax25=true"), "stdout: {stdout}");
     assert!(stdout.contains("callsign=N0CALL"), "stdout: {stdout}");
+    assert!(stdout.contains("ready=false"), "stdout: {stdout}");
+    assert!(stdout.contains("pending=2"), "stdout: {stdout}");
+    assert!(stdout.contains("data_rx=6"), "stdout: {stdout}");
+    assert!(stdout.contains("cmd_rx=8"), "stdout: {stdout}");
+    assert!(stdout.contains("beacon_tx=14"), "stdout: {stdout}");
+    assert!(stdout.contains("flow_timeouts=8"), "stdout: {stdout}");
+    assert!(stdout.contains("ax25_drops=9"), "stdout: {stdout}");
+    assert!(stdout.contains("data_drops=10"), "stdout: {stdout}");
+    assert!(stdout.contains("cmd_drops=11"), "stdout: {stdout}");
+    assert!(stdout.contains("err=simulated kiss read failure"), "stdout: {stdout}");
     assert!(stdout.contains("kiss-wifi"), "stdout: {stdout}");
     assert!(
         stdout.contains("kiss state=configured bearer=tcp endpoint=127.0.0.1:8001"),
         "stdout: {stdout}"
     );
+    assert!(stdout.contains("connect_errors=2"), "stdout: {stdout}");
+    assert!(stdout.contains("rx=55"), "stdout: {stdout}");
+    assert!(stdout.contains("tx=66"), "stdout: {stdout}");
     assert!(stdout.contains("ble-main"), "stdout: {stdout}");
     assert!(
         stdout.contains("ble_gatt state=configured peripheral=AA:BB:CC:DD:EE:FF"),

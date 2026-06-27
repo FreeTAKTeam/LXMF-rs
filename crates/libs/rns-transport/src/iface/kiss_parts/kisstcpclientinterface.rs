@@ -1,24 +1,40 @@
 impl KissTcpClientInterface {
     #[must_use]
     pub fn new<T: Into<String>>(addr: T) -> Self {
+        let addr = addr.into();
+        let mtu = 564;
+        let kiss = KissConfig::default();
+        let runtime_status =
+            KissRuntimeStatusHandle::new(KissRuntimeStatus::new_tcp(addr.clone(), mtu, &kiss));
         Self {
-            addr: addr.into(),
-            mtu: 564,
+            addr,
+            mtu,
             reconnect_backoff: Duration::from_millis(500),
             max_reconnect_backoff: Duration::from_millis(5_000),
-            kiss: KissConfig::default(),
+            kiss,
+            runtime_status,
         }
     }
 
     #[must_use]
     pub fn with_mtu(mut self, mtu: usize) -> Self {
         self.mtu = mtu.max(64);
+        self.runtime_status.update(|status| {
+            status.mtu = self.mtu;
+        });
         self
     }
 
     #[must_use]
     pub fn with_kiss_config(mut self, kiss: KissConfig) -> Self {
         self.kiss = kiss;
+        self.runtime_status.update(|status| {
+            status.preamble_ms = self.kiss.preamble_ms;
+            status.tx_tail_ms = self.kiss.tx_tail_ms;
+            status.persistence = self.kiss.persistence;
+            status.slot_time_ms = self.kiss.slot_time_ms;
+            status.kiss_flow_control = self.kiss.flow_control;
+        });
         self
     }
 
@@ -62,10 +78,15 @@ impl KissTcpClientInterface {
         self.max_reconnect_backoff
     }
 
+    #[must_use]
+    pub fn runtime_status_handle(&self) -> KissRuntimeStatusHandle {
+        self.runtime_status.clone()
+    }
+
     pub async fn spawn(context: InterfaceContext<KissTcpClientInterface>) {
         let iface_stop = context.channel.stop.clone();
         let iface_address = context.channel.address;
-        let (addr, mtu, reconnect_backoff, max_reconnect_backoff, kiss) = {
+        let (addr, mtu, reconnect_backoff, max_reconnect_backoff, kiss, runtime_status) = {
             let guard = context.inner.lock().expect("kiss tcp client interface mutex poisoned");
             (
                 guard.addr.clone(),
@@ -73,8 +94,12 @@ impl KissTcpClientInterface {
                 guard.reconnect_backoff,
                 guard.max_reconnect_backoff,
                 guard.kiss.clone(),
+                guard.runtime_status.clone(),
             )
         };
+        runtime_status.update(|status| {
+            status.iface = Some(iface_address.to_string());
+        });
 
         let (rx_channel, tx_channel) = context.channel.split();
         let tx_channel = Arc::new(tokio::sync::Mutex::new(tx_channel));
@@ -89,6 +114,12 @@ impl KissTcpClientInterface {
                 Ok(stream) => stream,
                 Err(err) => {
                     log::warn!("failed to connect KISS TCP endpoint={} err={}", addr, err);
+                    runtime_status.update(|status| {
+                        status.link_state = "connect_failed".to_string();
+                        status.connect_errors = status.connect_errors.saturating_add(1);
+                        status.reconnect_attempts = status.reconnect_attempts.saturating_add(1);
+                        status.last_error = Some(err.to_string());
+                    });
                     tokio::select! {
                         _ = context.cancel.cancelled() => break,
                         _ = iface_stop.cancelled() => break,
@@ -101,6 +132,10 @@ impl KissTcpClientInterface {
 
             log::info!("connected KISS TCP endpoint={} iface={}", addr, iface_address);
             active_backoff = reconnect_backoff;
+            runtime_status.update(|status| {
+                status.link_state = "connected".to_string();
+                status.last_error = None;
+            });
 
             let stream_cancel = context.cancel.child_token();
             let stop_cancel = stream_cancel.clone();
@@ -130,6 +165,7 @@ impl KissTcpClientInterface {
                     command_tx: None,
                     data_rx_tx: None,
                     management_frame_rx: None,
+                    runtime_status: Some(runtime_status.clone()),
                 },
                 stream_cancel.clone(),
                 rx_channel.clone(),
@@ -146,6 +182,9 @@ impl KissTcpClientInterface {
         }
 
         iface_stop.cancel();
+        runtime_status.update(|status| {
+            status.link_state = "stopped".to_string();
+        });
     }
 }
 
@@ -176,6 +215,7 @@ pub struct KissStreamOptions {
     pub command_tx: Option<tokio::sync::mpsc::Sender<KissCommandFrame>>,
     pub data_rx_tx: Option<tokio::sync::mpsc::Sender<()>>,
     pub management_frame_rx: Option<Arc<tokio::sync::Mutex<tokio::sync::mpsc::Receiver<Vec<u8>>>>>,
+    pub runtime_status: Option<KissRuntimeStatusHandle>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -282,6 +322,26 @@ pub struct KissCommandFrame {
     pub payload: Vec<u8>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum KissDataFrameKind {
+    Packet,
+    IdBeacon,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum KissRawFrameKind {
+    Init,
+    Shutdown,
+    Management,
+    Activity,
+}
+
+#[derive(Debug)]
+struct PendingKissPayload {
+    payload: Vec<u8>,
+    kind: KissDataFrameKind,
+}
+
 pub async fn run_kiss_stream<IO>(
     mut stream: IO,
     mut options: KissStreamOptions,
@@ -295,7 +355,7 @@ pub async fn run_kiss_stream<IO>(
         .with_command_port_nibble_stripping(options.strip_command_port_nibble);
     let mut read_buffer = vec![0_u8; options.mtu.max(256)];
     let mut tx_buffer = vec![0_u8; options.mtu];
-    let mut pending = VecDeque::<Vec<u8>>::new();
+    let mut pending = VecDeque::<PendingKissPayload>::new();
     let mut interface_ready = true;
     let mut flow_control_locked_at: Option<Instant> = None;
     let mut first_tx_at: Option<Instant> = None;
@@ -308,24 +368,22 @@ pub async fn run_kiss_stream<IO>(
     let mut last_read_at = Instant::now();
     let mut management_frame_rx = options.management_frame_rx.take();
 
-    for frame in &options.initial_frames {
-        if let Err(err) = stream.write_all(frame).await {
-            log::warn!(
-                "KISS init write error iface={} device={} err={}",
-                options.iface_address,
-                options.device,
-                err
-            );
-            return;
-        }
-    }
-    if let Err(err) = stream.flush().await {
-        log::warn!(
-            "KISS init flush error iface={} device={} err={}",
-            options.iface_address,
-            options.device,
-            err
-        );
+    update_kiss_status(&options, |status| {
+        status.link_state = "running".to_string();
+        status.interface_ready = true;
+        status.pending_depth = 0;
+        status.last_error = None;
+    });
+    if !options.initial_frames.is_empty()
+        && !write_raw_kiss_frames(
+            &mut stream,
+            &options,
+            &options.initial_frames,
+            "init",
+            KissRawFrameKind::Init,
+        )
+        .await
+    {
         return;
     }
     let mut last_write_at = Instant::now();
@@ -344,7 +402,11 @@ pub async fn run_kiss_stream<IO>(
                 if first_tx.elapsed() >= beacon.interval {
                     let payload = beacon.payload();
                     if options.flow_control && !interface_ready {
-                        pending.push_back(payload);
+                        pending.push_back(PendingKissPayload {
+                            payload,
+                            kind: KissDataFrameKind::IdBeacon,
+                        });
+                        update_kiss_pending_depth(&options, pending.len());
                     } else {
                         if write_kiss_payload(
                             &mut stream,
@@ -352,6 +414,7 @@ pub async fn run_kiss_stream<IO>(
                             &mut interface_ready,
                             &mut flow_control_locked_at,
                             payload,
+                            KissDataFrameKind::IdBeacon,
                         )
                         .await
                         {
@@ -373,6 +436,10 @@ pub async fn run_kiss_stream<IO>(
                     );
                     interface_ready = true;
                     flow_control_locked_at = None;
+                    update_kiss_status(&options, |status| {
+                        status.interface_ready = true;
+                        status.flow_control_timeouts = status.flow_control_timeouts.saturating_add(1);
+                    });
                     flush_pending_kiss(
                         &mut stream,
                         &options,
@@ -390,7 +457,14 @@ pub async fn run_kiss_stream<IO>(
                     continue;
                 };
                 if last_write_at.elapsed() >= probe.interval
-                    && write_raw_kiss_frames(&mut stream, &options, &probe.frames, "activity probe").await
+                    && write_raw_kiss_frames(
+                        &mut stream,
+                        &options,
+                        &probe.frames,
+                        "activity probe",
+                        KissRawFrameKind::Activity,
+                    )
+                    .await
                 {
                     last_write_at = Instant::now();
                 }
@@ -403,6 +477,7 @@ pub async fn run_kiss_stream<IO>(
                             &options,
                             &[frame],
                             "management command",
+                            KissRawFrameKind::Management,
                         )
                         .await
                         {
@@ -416,8 +491,17 @@ pub async fn run_kiss_stream<IO>(
             }
             result = stream.read(&mut read_buffer[..]) => {
                 match result {
-                    Ok(0) => break,
+                    Ok(0) => {
+                        update_kiss_status(&options, |status| {
+                            status.link_state = "eof".to_string();
+                            status.eof_count = status.eof_count.saturating_add(1);
+                        });
+                        break;
+                    }
                     Ok(n) => {
+                        update_kiss_status(&options, |status| {
+                            status.bytes_rx = status.bytes_rx.saturating_add(n as u64);
+                        });
                         if decoder.has_partial_frame()
                             && last_read_at.elapsed() >= options.read_frame_timeout
                         {
@@ -429,27 +513,74 @@ pub async fn run_kiss_stream<IO>(
                                 for frame in frames {
                                     match frame {
                                         KissFrame::Data(payload) => {
+                                            update_kiss_status(&options, |status| {
+                                                status.data_frames_rx =
+                                                    status.data_frames_rx.saturating_add(1);
+                                            });
                                             if let Some(data_rx_tx) = &options.data_rx_tx {
                                                 if let Err(err) = data_rx_tx.try_send(()) {
                                                     log::warn!("KISS data notification dropped: {err}");
+                                                    update_kiss_status(&options, |status| {
+                                                        status.data_notifications_dropped = status
+                                                            .data_notifications_dropped
+                                                            .saturating_add(1);
+                                                        status.last_error = Some(err.to_string());
+                                                    });
                                                 }
                                             }
                                             let Some(payload) = options.payload_adapter.inbound(&payload) else {
+                                                update_kiss_status(&options, |status| {
+                                                    status.ax25_drops =
+                                                        status.ax25_drops.saturating_add(1);
+                                                    status.last_error =
+                                                        Some("AX.25 UI payload too short".to_string());
+                                                });
                                                 continue;
                                             };
                                             if let Ok(packet) = Packet::deserialize(&mut InputBuffer::new(&payload)) {
-                                                let _ = rx_channel
+                                                match rx_channel
                                                     .send(RxMessage {
                                                         address: options.iface_address,
                                                         packet,
                                                         source: IfaceSource::None,
                                                     })
-                                                    .await;
+                                                    .await
+                                                {
+                                                    Ok(()) => {
+                                                        update_kiss_status(&options, |status| {
+                                                            status.packets_rx =
+                                                                status.packets_rx.saturating_add(1);
+                                                            status.last_error = None;
+                                                        });
+                                                    }
+                                                    Err(err) => {
+                                                        update_kiss_status(&options, |status| {
+                                                            status.rx_queue_errors = status
+                                                                .rx_queue_errors
+                                                                .saturating_add(1);
+                                                            status.last_error = Some(err.to_string());
+                                                        });
+                                                    }
+                                                }
+                                            } else {
+                                                update_kiss_status(&options, |status| {
+                                                    status.deserialize_errors =
+                                                        status.deserialize_errors.saturating_add(1);
+                                                    status.last_error =
+                                                        Some("packet deserialize failed".to_string());
+                                                });
                                             }
                                         }
                                         KissFrame::Command(KissCommand::Ready) => {
                                             interface_ready = true;
                                             flow_control_locked_at = None;
+                                            update_kiss_status(&options, |status| {
+                                                status.command_frames_rx =
+                                                    status.command_frames_rx.saturating_add(1);
+                                                status.ready_frames_rx =
+                                                    status.ready_frames_rx.saturating_add(1);
+                                                status.interface_ready = true;
+                                            });
                                             flush_pending_kiss(
                                                 &mut stream,
                                                 &options,
@@ -462,6 +593,10 @@ pub async fn run_kiss_stream<IO>(
                                             .await;
                                         }
                                         KissFrame::Command(KissCommand::Unknown(command, payload)) => {
+                                            update_kiss_status(&options, |status| {
+                                                status.command_frames_rx =
+                                                    status.command_frames_rx.saturating_add(1);
+                                            });
                                             if let Some(command_tx) = &options.command_tx {
                                                 if let Err(err) =
                                                     command_tx.try_send(KissCommandFrame { command, payload })
@@ -469,6 +604,12 @@ pub async fn run_kiss_stream<IO>(
                                                     log::warn!(
                                                         "KISS command notification dropped: {err}"
                                                     );
+                                                    update_kiss_status(&options, |status| {
+                                                        status.command_notifications_dropped = status
+                                                            .command_notifications_dropped
+                                                            .saturating_add(1);
+                                                        status.last_error = Some(err.to_string());
+                                                    });
                                                 }
                                             }
                                         }
@@ -482,6 +623,10 @@ pub async fn run_kiss_stream<IO>(
                                     options.device,
                                     err
                                 );
+                                update_kiss_status(&options, |status| {
+                                    status.decode_errors = status.decode_errors.saturating_add(1);
+                                    status.last_error = Some(format!("{err:?}"));
+                                });
                             }
                         }
                     }
@@ -492,6 +637,11 @@ pub async fn run_kiss_stream<IO>(
                             options.device,
                             err
                         );
+                        update_kiss_status(&options, |status| {
+                            status.link_state = "read_error".to_string();
+                            status.read_errors = status.read_errors.saturating_add(1);
+                            status.last_error = Some(err.to_string());
+                        });
                         break;
                     }
                 }
@@ -501,7 +651,11 @@ pub async fn run_kiss_stream<IO>(
                 if message.packet.serialize(&mut output).is_ok() {
                     let payload = options.payload_adapter.outbound(output.as_slice());
                     if options.flow_control && !interface_ready {
-                        pending.push_back(payload);
+                        pending.push_back(PendingKissPayload {
+                            payload,
+                            kind: KissDataFrameKind::Packet,
+                        });
+                        update_kiss_pending_depth(&options, pending.len());
                     } else {
                         if write_kiss_payload(
                             &mut stream,
@@ -509,6 +663,7 @@ pub async fn run_kiss_stream<IO>(
                             &mut interface_ready,
                             &mut flow_control_locked_at,
                             payload,
+                            KissDataFrameKind::Packet,
                         )
                         .await
                         {
@@ -525,12 +680,21 @@ pub async fn run_kiss_stream<IO>(
                         options.device,
                         options.mtu
                     );
+                    update_kiss_status(&options, |status| {
+                        status.serialize_errors = status.serialize_errors.saturating_add(1);
+                        status.last_error = Some("packet serialize failed".to_string());
+                    });
                 }
             }
         }
     }
 
     write_shutdown_frames(&mut stream, &options).await;
+    update_kiss_status(&options, |status| {
+        status.link_state = "closed".to_string();
+        status.interface_ready = interface_ready;
+        status.pending_depth = pending.len();
+    });
 }
 
 async fn recv_optional_management_frame(
@@ -547,28 +711,14 @@ async fn write_shutdown_frames<IO>(stream: &mut IO, options: &KissStreamOptions)
 where
     IO: AsyncWrite + Unpin,
 {
-    if options.shutdown_frames.is_empty() {
-        return;
-    }
-    for frame in &options.shutdown_frames {
-        if let Err(err) = stream.write_all(frame).await {
-            log::warn!(
-                "KISS shutdown write error iface={} device={} err={}",
-                options.iface_address,
-                options.device,
-                err
-            );
-            return;
-        }
-    }
-    if let Err(err) = stream.flush().await {
-        log::warn!(
-            "KISS shutdown flush error iface={} device={} err={}",
-            options.iface_address,
-            options.device,
-            err
-        );
-    }
+    let _ = write_raw_kiss_frames(
+        stream,
+        options,
+        &options.shutdown_frames,
+        "shutdown",
+        KissRawFrameKind::Shutdown,
+    )
+    .await;
 }
 
 #[cfg(test)]

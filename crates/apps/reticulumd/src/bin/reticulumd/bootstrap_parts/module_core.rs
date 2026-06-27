@@ -182,6 +182,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     let pipe_runtime_refreshes = startup.pipe_runtime_refreshes;
     let udp_runtime_refreshes = startup.udp_runtime_refreshes;
     let serial_runtime_refreshes = startup.serial_runtime_refreshes;
+    let kiss_runtime_refreshes = startup.kiss_runtime_refreshes;
     let i2p_runtime_refreshes = startup.i2p_runtime_refreshes;
     let tcp_runtime_refreshes = startup.tcp_runtime_refreshes;
     let weave_runtime_refreshes = startup.weave_runtime_refreshes;
@@ -302,6 +303,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     spawn_pipe_runtime_status_refresher(daemon.clone(), pipe_runtime_refreshes);
     spawn_udp_runtime_status_refresher(daemon.clone(), udp_runtime_refreshes);
     spawn_serial_runtime_status_refresher(daemon.clone(), serial_runtime_refreshes);
+    spawn_kiss_runtime_status_refresher(daemon.clone(), kiss_runtime_refreshes);
     spawn_i2p_runtime_status_refresher(daemon.clone(), i2p_runtime_refreshes);
     spawn_tcp_runtime_status_refresher(daemon.clone(), tcp_runtime_refreshes);
     spawn_weave_runtime_status_refresher(daemon.clone(), weave_runtime_refreshes);
@@ -559,6 +561,40 @@ fn refresh_serial_runtime_status_once(
             daemon.update_interface_runtime_metadata_by_iface(
                 refresh.runtime_iface.to_string().as_str(),
                 "serial",
+                "status",
+                refresh.status.to_json(),
+            )
+        })
+        .count()
+}
+
+fn spawn_kiss_runtime_status_refresher(
+    daemon: Arc<RpcDaemon>,
+    refreshes: Vec<transport_startup::KissRuntimeRefresh>,
+) {
+    if refreshes.is_empty() {
+        return;
+    }
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(INTERFACE_RUNTIME_STATUS_REFRESH_INTERVAL);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            interval.tick().await;
+            refresh_kiss_runtime_status_once(&daemon, &refreshes);
+        }
+    });
+}
+
+fn refresh_kiss_runtime_status_once(
+    daemon: &RpcDaemon,
+    refreshes: &[transport_startup::KissRuntimeRefresh],
+) -> usize {
+    refreshes
+        .iter()
+        .filter(|refresh| {
+            daemon.update_interface_runtime_metadata_by_iface(
+                refresh.runtime_iface.to_string().as_str(),
+                refresh.runtime_key,
                 "status",
                 refresh.status.to_json(),
             )
@@ -1225,6 +1261,182 @@ mod tests {
         assert_eq!(status["read_errors"].as_u64(), Some(7));
         assert_eq!(status["eof_count"].as_u64(), Some(8));
         assert_eq!(status["last_error"].as_str(), Some("simulated serial read failure"));
+    }
+
+    #[test]
+    fn kiss_runtime_status_refresh_updates_matching_interface_record() {
+        let daemon = RpcDaemon::test_instance();
+        let runtime_iface = AddressHash::new([0x27; 16]);
+        daemon.replace_interfaces(vec![InterfaceRecord {
+            kind: "ax25_kiss".to_string(),
+            enabled: true,
+            host: None,
+            port: None,
+            name: Some("kiss-main".to_string()),
+            settings: Some(json!({
+                "_runtime": {
+                    "iface": runtime_iface.to_string(),
+                    "startup_status": "spawned",
+                    "kiss": {
+                        "status": {
+                            "link_state": "configured"
+                        }
+                    }
+                }
+            })),
+        }]);
+        let payload_config =
+            rns_transport::iface::kiss::Ax25KissPayloadConfig::new("N0CALL", 1)
+                .expect("ax25 config");
+        let status = rns_transport::iface::kiss::KissInterface::new("/dev/ttyKISS0", 1200)
+            .with_mtu(1024)
+            .with_payload_adapter(rns_transport::iface::kiss::KissPayloadAdapter::Ax25(
+                payload_config,
+            ))
+            .runtime_status_handle();
+        status.update(|status| {
+            status.link_state = "running".to_string();
+            status.iface = Some(runtime_iface.to_string());
+            status.interface_ready = false;
+            status.pending_depth = 2;
+            status.reconnect_attempts = 3;
+            status.open_errors = 1;
+            status.packets_rx = 4;
+            status.packets_tx = 5;
+            status.data_frames_rx = 6;
+            status.data_frames_tx = 7;
+            status.command_frames_rx = 8;
+            status.ready_frames_rx = 9;
+            status.init_frames_tx = 10;
+            status.shutdown_frames_tx = 11;
+            status.management_frames_tx = 12;
+            status.activity_frames_tx = 13;
+            status.id_beacon_frames_tx = 14;
+            status.bytes_rx = 120;
+            status.bytes_tx = 80;
+            status.decode_errors = 1;
+            status.deserialize_errors = 2;
+            status.rx_queue_errors = 3;
+            status.serialize_errors = 4;
+            status.read_errors = 5;
+            status.tx_errors = 6;
+            status.eof_count = 7;
+            status.flow_control_timeouts = 8;
+            status.ax25_drops = 9;
+            status.data_notifications_dropped = 10;
+            status.command_notifications_dropped = 11;
+            status.last_error = Some("simulated kiss read failure".to_string());
+        });
+        let refresh = transport_startup::KissRuntimeRefresh {
+            runtime_iface,
+            runtime_key: "kiss",
+            status,
+        };
+
+        assert_eq!(refresh_kiss_runtime_status_once(&daemon, &[refresh]), 1);
+        let result = daemon
+            .handle_rpc(RpcRequest { id: 96, method: "daemon_status_ex".to_string(), params: None })
+            .expect("daemon status")
+            .result
+            .expect("daemon status result");
+        let status = &result["interfaces"][0]["settings"]["_runtime"]["kiss"]["status"];
+
+        assert_eq!(status["link_state"].as_str(), Some("running"));
+        assert_eq!(status["bearer"].as_str(), Some("serial"));
+        assert_eq!(status["device"].as_str(), Some("/dev/ttyKISS0"));
+        assert_eq!(status["baud_rate"].as_u64(), Some(1200));
+        assert_eq!(status["mtu"].as_u64(), Some(1024));
+        assert_eq!(status["ax25"].as_bool(), Some(true));
+        assert_eq!(status["iface"].as_str(), Some(runtime_iface.to_string().as_str()));
+        assert_eq!(status["interface_ready"].as_bool(), Some(false));
+        assert_eq!(status["pending_depth"].as_u64(), Some(2));
+        assert_eq!(status["reconnect_attempts"].as_u64(), Some(3));
+        assert_eq!(status["open_errors"].as_u64(), Some(1));
+        assert_eq!(status["packets_rx"].as_u64(), Some(4));
+        assert_eq!(status["packets_tx"].as_u64(), Some(5));
+        assert_eq!(status["data_frames_rx"].as_u64(), Some(6));
+        assert_eq!(status["data_frames_tx"].as_u64(), Some(7));
+        assert_eq!(status["command_frames_rx"].as_u64(), Some(8));
+        assert_eq!(status["ready_frames_rx"].as_u64(), Some(9));
+        assert_eq!(status["init_frames_tx"].as_u64(), Some(10));
+        assert_eq!(status["shutdown_frames_tx"].as_u64(), Some(11));
+        assert_eq!(status["management_frames_tx"].as_u64(), Some(12));
+        assert_eq!(status["activity_frames_tx"].as_u64(), Some(13));
+        assert_eq!(status["id_beacon_frames_tx"].as_u64(), Some(14));
+        assert_eq!(status["bytes_rx"].as_u64(), Some(120));
+        assert_eq!(status["bytes_tx"].as_u64(), Some(80));
+        assert_eq!(status["decode_errors"].as_u64(), Some(1));
+        assert_eq!(status["deserialize_errors"].as_u64(), Some(2));
+        assert_eq!(status["rx_queue_errors"].as_u64(), Some(3));
+        assert_eq!(status["serialize_errors"].as_u64(), Some(4));
+        assert_eq!(status["read_errors"].as_u64(), Some(5));
+        assert_eq!(status["tx_errors"].as_u64(), Some(6));
+        assert_eq!(status["eof_count"].as_u64(), Some(7));
+        assert_eq!(status["flow_control_timeouts"].as_u64(), Some(8));
+        assert_eq!(status["ax25_drops"].as_u64(), Some(9));
+        assert_eq!(status["data_notifications_dropped"].as_u64(), Some(10));
+        assert_eq!(status["command_notifications_dropped"].as_u64(), Some(11));
+        assert_eq!(status["last_error"].as_str(), Some("simulated kiss read failure"));
+    }
+
+    #[test]
+    fn kiss_tcp_runtime_status_refresh_updates_matching_interface_record() {
+        let daemon = RpcDaemon::test_instance();
+        let runtime_iface = AddressHash::new([0x28; 16]);
+        daemon.replace_interfaces(vec![InterfaceRecord {
+            kind: "kiss_tcp_client".to_string(),
+            enabled: true,
+            host: Some("127.0.0.1".to_string()),
+            port: Some(8001),
+            name: Some("kiss-wifi".to_string()),
+            settings: Some(json!({
+                "_runtime": {
+                    "iface": runtime_iface.to_string(),
+                    "startup_status": "spawned",
+                    "kiss_tcp": {
+                        "status": {
+                            "link_state": "configured"
+                        }
+                    }
+                }
+            })),
+        }]);
+        let status = rns_transport::iface::kiss::KissTcpClientInterface::new("127.0.0.1:8001")
+            .with_mtu(768)
+            .runtime_status_handle();
+        status.update(|status| {
+            status.link_state = "connected".to_string();
+            status.iface = Some(runtime_iface.to_string());
+            status.connect_errors = 2;
+            status.packets_rx = 3;
+            status.packets_tx = 4;
+            status.bytes_rx = 55;
+            status.bytes_tx = 66;
+        });
+        let refresh = transport_startup::KissRuntimeRefresh {
+            runtime_iface,
+            runtime_key: "kiss_tcp",
+            status,
+        };
+
+        assert_eq!(refresh_kiss_runtime_status_once(&daemon, &[refresh]), 1);
+        let result = daemon
+            .handle_rpc(RpcRequest { id: 97, method: "daemon_status_ex".to_string(), params: None })
+            .expect("daemon status")
+            .result
+            .expect("daemon status result");
+        let status = &result["interfaces"][0]["settings"]["_runtime"]["kiss_tcp"]["status"];
+
+        assert_eq!(status["link_state"].as_str(), Some("connected"));
+        assert_eq!(status["bearer"].as_str(), Some("tcp"));
+        assert_eq!(status["endpoint"].as_str(), Some("127.0.0.1:8001"));
+        assert_eq!(status["mtu"].as_u64(), Some(768));
+        assert_eq!(status["iface"].as_str(), Some(runtime_iface.to_string().as_str()));
+        assert_eq!(status["connect_errors"].as_u64(), Some(2));
+        assert_eq!(status["packets_rx"].as_u64(), Some(3));
+        assert_eq!(status["packets_tx"].as_u64(), Some(4));
+        assert_eq!(status["bytes_rx"].as_u64(), Some(55));
+        assert_eq!(status["bytes_tx"].as_u64(), Some(66));
     }
 
     #[test]

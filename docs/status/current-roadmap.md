@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last reassessed: 2026-06-26
+Last reassessed: 2026-06-27
 
 This file is the repository-level source of truth for parity posture, release
 confidence, and execution order. Detailed row-level status lives in:
@@ -181,10 +181,11 @@ The project is best described by capability level:
 - UDP now refreshes live bind state, role, last observed peer-route count,
   packet, byte, drop, and error counters in daemon/RPC metadata and
   `rnstatus-rs`. Serial now refreshes live open/reconnect, HDLC frame, packet,
-  byte, EOF, queue, decode, serialize, read, and write-error counters. KISS/AX.25
-  KISS, KISS TCP, and BLE GATT expose configured bearer status, including
-  device/endpoint, baud, KISS timing, AX.25 callsign/SSID, BLE UUIDs, and BLE
-  lifecycle timeout fields; their live byte/error counters remain a follow-up.
+  byte, EOF, queue, decode, serialize, read, and write-error counters.
+  KISS/AX.25 KISS and KISS TCP now refresh live packet, data-frame,
+  command-frame, byte, flow-control, queue, AX.25 drop, and error counters.
+  BLE GATT exposes configured bearer status, including BLE UUIDs and lifecycle
+  timeout fields; its live byte/error counters remain a follow-up.
 - `rnstatus-rs` now provides a local daemon status utility over the existing
   RPC status surface, including JSON output plus human interface endpoint
   details across configured interface families, runtime startup state, Auto

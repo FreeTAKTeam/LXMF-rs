@@ -577,6 +577,36 @@ fn kiss_runtime_summary(status: &Value) -> Option<String> {
     append_optional_u64(&mut summary, "ssid", status.get("ssid"));
     append_optional_str(&mut summary, "id", status.get("id_callsign"));
     append_optional_u64(&mut summary, "id_interval", status.get("id_interval"));
+    append_optional_bool(&mut summary, "ready", status.get("interface_ready"));
+    append_optional_u64(&mut summary, "pending", status.get("pending_depth"));
+    append_optional_u64(&mut summary, "reconnects", status.get("reconnect_attempts"));
+    append_optional_u64(&mut summary, "open_errors", status.get("open_errors"));
+    append_optional_u64(&mut summary, "connect_errors", status.get("connect_errors"));
+    append_optional_u64(&mut summary, "rxp", status.get("packets_rx"));
+    append_optional_u64(&mut summary, "txp", status.get("packets_tx"));
+    append_optional_u64(&mut summary, "data_rx", status.get("data_frames_rx"));
+    append_optional_u64(&mut summary, "data_tx", status.get("data_frames_tx"));
+    append_optional_u64(&mut summary, "cmd_rx", status.get("command_frames_rx"));
+    append_optional_u64(&mut summary, "ready_rx", status.get("ready_frames_rx"));
+    append_optional_u64(&mut summary, "init_tx", status.get("init_frames_tx"));
+    append_optional_u64(&mut summary, "shutdown_tx", status.get("shutdown_frames_tx"));
+    append_optional_u64(&mut summary, "mgmt_tx", status.get("management_frames_tx"));
+    append_optional_u64(&mut summary, "activity_tx", status.get("activity_frames_tx"));
+    append_optional_u64(&mut summary, "beacon_tx", status.get("id_beacon_frames_tx"));
+    append_optional_u64(&mut summary, "rx", status.get("bytes_rx"));
+    append_optional_u64(&mut summary, "tx", status.get("bytes_tx"));
+    append_optional_u64(&mut summary, "decode_errors", status.get("decode_errors"));
+    append_optional_u64(&mut summary, "deserialize_errors", status.get("deserialize_errors"));
+    append_optional_u64(&mut summary, "rx_queue_errors", status.get("rx_queue_errors"));
+    append_optional_u64(&mut summary, "serialize_errors", status.get("serialize_errors"));
+    append_optional_u64(&mut summary, "read_errors", status.get("read_errors"));
+    append_optional_u64(&mut summary, "tx_errors", status.get("tx_errors"));
+    append_optional_u64(&mut summary, "eof", status.get("eof_count"));
+    append_optional_u64(&mut summary, "flow_timeouts", status.get("flow_control_timeouts"));
+    append_optional_u64(&mut summary, "ax25_drops", status.get("ax25_drops"));
+    append_optional_u64(&mut summary, "data_drops", status.get("data_notifications_dropped"));
+    append_optional_u64(&mut summary, "cmd_drops", status.get("command_notifications_dropped"));
+    append_optional_str(&mut summary, "err", status.get("last_error"));
     Some(summary)
 }
 
@@ -1031,7 +1061,36 @@ mod tests {
                                     "callsign": "N0CALL",
                                     "ssid": 1,
                                     "id_callsign": "MYCALL-0",
-                                    "id_interval": 600
+                                    "id_interval": 600,
+                                    "interface_ready": false,
+                                    "pending_depth": 2,
+                                    "reconnect_attempts": 3,
+                                    "open_errors": 1,
+                                    "packets_rx": 4,
+                                    "packets_tx": 5,
+                                    "data_frames_rx": 6,
+                                    "data_frames_tx": 7,
+                                    "command_frames_rx": 8,
+                                    "ready_frames_rx": 9,
+                                    "init_frames_tx": 10,
+                                    "shutdown_frames_tx": 11,
+                                    "management_frames_tx": 12,
+                                    "activity_frames_tx": 13,
+                                    "id_beacon_frames_tx": 14,
+                                    "bytes_rx": 120,
+                                    "bytes_tx": 80,
+                                    "decode_errors": 1,
+                                    "deserialize_errors": 2,
+                                    "rx_queue_errors": 3,
+                                    "serialize_errors": 4,
+                                    "read_errors": 5,
+                                    "tx_errors": 6,
+                                    "eof_count": 7,
+                                    "flow_control_timeouts": 8,
+                                    "ax25_drops": 9,
+                                    "data_notifications_dropped": 10,
+                                    "command_notifications_dropped": 11,
+                                    "last_error": "simulated kiss read failure"
                                 }
                             }
                         }
@@ -1050,7 +1109,12 @@ mod tests {
                                     "bearer": "tcp",
                                     "endpoint": "127.0.0.1:8001",
                                     "kiss_flow_control": false,
-                                    "ax25": false
+                                    "ax25": false,
+                                    "connect_errors": 2,
+                                    "packets_rx": 3,
+                                    "packets_tx": 4,
+                                    "bytes_rx": 55,
+                                    "bytes_tx": 66
                                 }
                             }
                         }
@@ -1173,7 +1237,20 @@ mod tests {
         assert!(output.contains("kiss state=configured bearer=serial device=/dev/ttyKISS0"));
         assert!(output.contains("ax25=true"));
         assert!(output.contains("callsign=N0CALL"));
+        assert!(output.contains("ready=false"));
+        assert!(output.contains("pending=2"));
+        assert!(output.contains("data_rx=6"));
+        assert!(output.contains("cmd_rx=8"));
+        assert!(output.contains("beacon_tx=14"));
+        assert!(output.contains("flow_timeouts=8"));
+        assert!(output.contains("ax25_drops=9"));
+        assert!(output.contains("data_drops=10"));
+        assert!(output.contains("cmd_drops=11"));
+        assert!(output.contains("err=simulated kiss read failure"));
         assert!(output.contains("kiss state=configured bearer=tcp endpoint=127.0.0.1:8001"));
+        assert!(output.contains("connect_errors=2"));
+        assert!(output.contains("rx=55"));
+        assert!(output.contains("tx=66"));
         assert!(output.contains("ble_gatt state=configured peripheral=AA:BB:CC:DD:EE:FF"));
         assert!(output.contains("service=12345678-1234-1234-1234-1234567890ab"));
         assert!(output.contains("pipe state=respawning open=false respawns=2"));
