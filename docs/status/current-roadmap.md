@@ -57,8 +57,9 @@ The project is best described by capability level:
   and Reticulum-style Backbone socket tuning
   (`TCP_NODELAY`, Linux/Android keepalive probes, and TCP user timeout) plus
   Backbone-only HDLC stream liveness keepalives, stale detection, and
-  read-timeout reconnects, TCP/Backbone client reconnect tunnel
-  re-synthesis, LocalInterface TCP-loopback plus Unix filesystem
+  read-timeout reconnects, local slow-reader HDLC tx backpressure evidence,
+  TCP/Backbone client reconnect tunnel re-synthesis, LocalInterface
+  TCP-loopback plus Unix filesystem
   and Linux/Android abstract AF_UNIX shared-instance listener/client-attach
   compatibility, including Unix client-attach reconnect after startup failures
   or later disconnects and TCP/Unix attach reconnect signals that

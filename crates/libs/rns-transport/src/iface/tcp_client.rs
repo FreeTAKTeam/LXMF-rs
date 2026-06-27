@@ -1164,6 +1164,62 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn backbone_hdlc_stream_backpressures_when_peer_stops_reading() {
+        let (stream, mut peer) = tokio::io::duplex(1);
+        let (read_stream, write_stream) = tokio::io::split(stream);
+        let cancel = CancellationToken::new();
+        let iface_stop = CancellationToken::new();
+        let (rx_channel, _rx_messages) = tokio::sync::mpsc::channel(1);
+        let (tx_sender, tx_receiver) = tokio::sync::mpsc::channel(1);
+
+        let handle = tokio::spawn(run_hdlc_stream_with_runtime(
+            "backbone-test".to_string(),
+            AddressHash::new([0x47; 16]),
+            256,
+            cancel.clone(),
+            iface_stop,
+            rx_channel,
+            Arc::new(tokio::sync::Mutex::new(tx_receiver)),
+            read_stream,
+            write_stream,
+            HdlcStreamRuntime::new().with_watchdog(super::backbone_hdlc_watchdog()),
+        ));
+
+        tx_sender
+            .send(TxMessage { tx_type: TxMessageType::Broadcast(None), packet: Packet::default() })
+            .await
+            .expect("queue first packet");
+
+        let mut first_wire_byte = [0_u8; 1];
+        tokio::time::timeout(Duration::from_secs(1), peer.read_exact(&mut first_wire_byte))
+            .await
+            .expect("first wire byte deadline")
+            .expect("read first wire byte");
+        assert_eq!(first_wire_byte[0], 0x7e);
+        tokio::task::yield_now().await;
+
+        tx_sender
+            .send(TxMessage { tx_type: TxMessageType::Broadcast(None), packet: Packet::default() })
+            .await
+            .expect("queue second packet behind blocked writer");
+
+        let third_send = tx_sender
+            .send(TxMessage { tx_type: TxMessageType::Broadcast(None), packet: Packet::default() });
+        assert!(
+            tokio::time::timeout(Duration::from_millis(100), third_send).await.is_err(),
+            "slow Backbone peer should backpressure the tx queue instead of draining unbounded work"
+        );
+
+        cancel.cancel();
+        drop(tx_sender);
+        drop(peer);
+        tokio::time::timeout(Duration::from_secs(2), handle)
+            .await
+            .expect("hdlc stream task timed out")
+            .expect("hdlc stream task");
+    }
+
+    #[tokio::test]
     async fn hdlc_stream_forced_bitrate_delays_packet_writes() {
         let (stream, mut peer) = tokio::io::duplex(256);
         let (read_stream, write_stream) = tokio::io::split(stream);
