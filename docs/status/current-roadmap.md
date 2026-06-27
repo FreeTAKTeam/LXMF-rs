@@ -93,7 +93,10 @@ The project is best described by capability level:
   validation; the transport writes `CMD_SEL_INT` before each queued management
   command frame. Display-capable ESP32/NRF52 devices get Python-style
   external-framebuffer disable during teardown before per-vport radio-off and
-  leave-host payload `0xff` frames.
+  leave-host payload `0xff` frames. In strict startup mode, the daemon
+  preflights the configured serial port or TCP endpoint and fails closed before
+  registering RNodeMulti management targets if the parent endpoint is
+  unavailable.
 - Ordinary serial/TCP and feature-gated BLE RNodeInterface status now refreshes
   the transport-side RNode probe/radio state into daemon/RPC
   `_runtime.lora.rnode_status`; compact `rnstatus-rs` output summarizes
@@ -130,7 +133,9 @@ The project is best described by capability level:
   unicast children, transient SAM stream sessions, name lookup, HDLC packet
   framing, direct peer sends, broadcast fanout, and transient connectable
   `STREAM ACCEPT` support for incoming peers with private-key persistence when
-  `state_path`/`storagepath` is configured. Persisted private destination keys
+  `state_path`/`storagepath` is configured. Missing explicit SAM host/port
+  config honors Python's `I2P_SAM_ADDRESS` `host:port` environment default
+  before falling back to `127.0.0.1:7656`. Persisted private destination keys
   use Python-compatible hashed `.i2p` filenames, prefer existing old-format
   interface-name keys when present, and otherwise use the identity-bound
   new-format key name. Daemon runtime metadata reports the derived `.b32.i2p`

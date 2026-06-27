@@ -1,3 +1,17 @@
+fn expected_i2p_sam_default_for_lora_config_tests() -> (String, u16) {
+    std::env::var("I2P_SAM_ADDRESS")
+        .ok()
+        .and_then(|value| {
+            let (host, port) = value.trim().split_once(':')?;
+            let host = host.trim();
+            if host.is_empty() {
+                return None;
+            }
+            Some((host.to_string(), port.trim().parse().ok()?))
+        })
+        .unwrap_or_else(|| ("127.0.0.1".to_string(), 7656))
+}
+
 #[test]
 fn parses_lora_python_rnode_arbitrary_valid_bandwidth() {
     let input = r#"
@@ -187,10 +201,11 @@ interfaces = [
 "#;
     let cfg = DaemonConfig::from_toml(input).expect("parse connectable i2p");
     let iface = &cfg.interfaces[0];
+    let (expected_sam_host, expected_sam_port) = expected_i2p_sam_default_for_lora_config_tests();
     assert_eq!(iface.kind, "i2p");
     assert_eq!(iface.connectable, Some(true));
-    assert_eq!(iface.sam_host.as_deref(), Some("127.0.0.1"));
-    assert_eq!(iface.sam_port, Some(7656));
+    assert_eq!(iface.sam_host.as_deref(), Some(expected_sam_host.as_str()));
+    assert_eq!(iface.sam_port, Some(expected_sam_port));
 }
 
 #[test]

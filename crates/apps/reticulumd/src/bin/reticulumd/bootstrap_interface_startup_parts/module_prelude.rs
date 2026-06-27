@@ -438,6 +438,7 @@ pub(super) async fn startup_configured_interfaces(
             }
             "rnode_multi" => {
                 if let Some(refresh) = startup_rnode_multi(
+                    args,
                     iface,
                     &label,
                     iface_manager,
@@ -963,6 +964,7 @@ async fn i2p_runtime_metadata_json(
 }
 
 async fn startup_rnode_multi(
+    args: &Args,
     iface: &InterfaceConfig,
     label: &str,
     iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
@@ -983,6 +985,18 @@ async fn startup_rnode_multi(
             return None;
         }
     };
+    if args.strict_interface_startup {
+        if let Err(err) = adapter.preflight_open() {
+            record_startup_failure(
+                record,
+                startup_failures,
+                label.to_string(),
+                iface.kind.clone(),
+                err,
+            );
+            return None;
+        }
+    }
     let subinterfaces = adapter.subinterfaces().to_vec();
     let subinterface_count = subinterfaces.len();
     let rnode_multi_metadata = rnode_multi_runtime_metadata_json(iface, &subinterfaces);
@@ -1959,8 +1973,10 @@ interfaces = [
         };
         let mut startup_failures = Vec::new();
         let mut rnode_management_bindings = Vec::new();
+        let args = test_args();
 
         let started = startup_rnode_multi(
+            &args,
             iface,
             "rnode-multi",
             &manager,

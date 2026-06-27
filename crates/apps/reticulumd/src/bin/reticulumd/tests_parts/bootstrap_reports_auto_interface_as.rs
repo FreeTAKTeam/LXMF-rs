@@ -266,6 +266,40 @@ interfaces = [
 }
 
 #[test]
+fn bootstrap_strict_mode_panics_on_rnode_multi_preflight_open_failure() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let config_path = temp.path().join("daemon.toml");
+    fs::write(
+        &config_path,
+        r#"
+interfaces = [
+  { type = "RNodeMultiInterface", enabled = true, name = "rnode-multi", port = "__definitely_not_a_device__", radio0 = { vport = 0, frequency = 915000000, bandwidth = 125000, spreadingfactor = 9, codingrate = 5, txpower = 17 } }
+]
+"#,
+    )
+    .expect("write config");
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        runtime.block_on(async {
+            bootstrap::bootstrap(test_args(
+                db_path.clone(),
+                Some(config_path.clone()),
+                Some("127.0.0.1:0".to_string()),
+                true,
+            ))
+            .await;
+        });
+    }));
+    assert!(
+        result.is_err(),
+        "strict mode should panic when RNodeMulti preflight open fails"
+    );
+}
+
+#[test]
 fn bootstrap_strict_mode_panics_on_tcp_client_preflight_connect_failure() {
     let temp = TempDir::new().expect("temp dir");
     let db_path = temp.path().join("reticulum.db");

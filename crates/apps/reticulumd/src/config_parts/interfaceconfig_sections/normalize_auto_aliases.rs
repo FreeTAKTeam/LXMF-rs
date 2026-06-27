@@ -82,18 +82,39 @@ impl InterfaceConfig {
     }
 
     fn normalize_i2p_aliases(&mut self, index: usize) -> Result<(), String> {
-        if self.sam_host.is_none() {
-            self.sam_host = self
-                .take_string_alias_for_kind("sam_ip", index, "i2p")?
-                .and_then(non_empty_string)
-                .or_else(|| Some("127.0.0.1".to_string()));
+        let sam_host_alias = if self.sam_host.is_none() {
+            self.take_string_alias_for_kind("sam_ip", index, "i2p")?.and_then(non_empty_string)
         } else {
             let _ = self.take_string_alias_for_kind("sam_ip", index, "i2p")?;
-        }
-        if self.sam_port.is_none() {
-            self.sam_port = self.take_u16_alias_for_kind("sam_port", index, "i2p")?.or(Some(7656));
+            None
+        };
+        let sam_port_alias = if self.sam_port.is_none() {
+            self.take_u16_alias_for_kind("sam_port", index, "i2p")?
         } else {
             let _ = self.take_u16_alias_for_kind("sam_port", index, "i2p")?;
+            None
+        };
+        let env_default = if self.sam_host.is_none()
+            && sam_host_alias.is_none()
+            && self.sam_port.is_none()
+            && sam_port_alias.is_none()
+        {
+            i2p_sam_address_env_default()
+        } else {
+            None
+        };
+        if self.sam_host.is_none() {
+            self.sam_host =
+                sam_host_alias.or_else(|| env_default.as_ref().map(|(host, _)| host.clone()));
+            if self.sam_host.is_none() {
+                self.sam_host = Some("127.0.0.1".to_string());
+            }
+        }
+        if self.sam_port.is_none() {
+            self.sam_port = sam_port_alias.or_else(|| env_default.as_ref().map(|(_, port)| *port));
+            if self.sam_port.is_none() {
+                self.sam_port = Some(7656);
+            }
         }
         if self.mtu.is_none() {
             self.mtu = Some(1064);
@@ -644,4 +665,19 @@ fn android_rnode_tcp_device(tcp_host: &str) -> String {
     } else {
         format!("tcp://{tcp_host}:{ANDROID_RNODE_TCP_PORT}")
     }
+}
+
+fn i2p_sam_address_env_default() -> Option<(String, u16)> {
+    std::env::var("I2P_SAM_ADDRESS")
+        .ok()
+        .and_then(|value| parse_i2p_sam_address(value.as_str()))
+}
+
+fn parse_i2p_sam_address(value: &str) -> Option<(String, u16)> {
+    let (host, port) = value.trim().split_once(':')?;
+    let host = host.trim();
+    if host.is_empty() {
+        return None;
+    }
+    Some((host.to_string(), port.trim().parse().ok()?))
 }

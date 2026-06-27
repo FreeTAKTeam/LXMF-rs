@@ -1,5 +1,6 @@
 use alloc::string::String;
 use std::collections::BTreeMap;
+use std::net::{TcpStream as StdTcpStream, ToSocketAddrs};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -184,6 +185,27 @@ impl RNodeMultiInterface {
         RNodeMultiManagementHandle { tx: self.management_frame_tx.clone() }
     }
 
+    pub fn preflight_open(&self) -> Result<(), String> {
+        match &self.endpoint {
+            RNodeMultiEndpoint::Serial { device, baud_rate } => {
+                tokio_serial::new(device.clone(), *baud_rate)
+                    .data_bits(DataBits::Eight)
+                    .parity(Parity::None)
+                    .stop_bits(StopBits::One)
+                    .flow_control(FlowControl::None)
+                    .open_native_async()
+                    .map(|_| ())
+                    .map_err(|err| {
+                        format!(
+                            "rnode_multi preflight open failed device={} baud_rate={} err={}",
+                            device, baud_rate, err
+                        )
+                    })
+            }
+            RNodeMultiEndpoint::Tcp { addr } => preflight_tcp_connect(addr),
+        }
+    }
+
     pub async fn spawn(context: InterfaceContext<Self>) {
         let iface_stop = context.channel.stop.clone();
         let parent_iface = context.channel.address;
@@ -347,6 +369,17 @@ impl RNodeMultiInterface {
         iface_stop.cancel();
         cleanup_rnode_multi_virtual_ifaces(&iface_manager, &vport_map).await;
     }
+}
+
+fn preflight_tcp_connect(addr: &str) -> Result<(), String> {
+    let socket_addr = addr
+        .to_socket_addrs()
+        .map_err(|err| format!("rnode_multi tcp preflight resolve failed addr={addr} err={err}"))?
+        .next()
+        .ok_or_else(|| format!("rnode_multi tcp preflight resolve failed addr={addr}"))?;
+    StdTcpStream::connect_timeout(&socket_addr, Duration::from_secs(3))
+        .map(|_| ())
+        .map_err(|err| format!("rnode_multi tcp preflight connect failed addr={addr} err={err}"))
 }
 
 async fn cleanup_rnode_multi_virtual_ifaces(

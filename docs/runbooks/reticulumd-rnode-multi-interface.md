@@ -32,6 +32,9 @@ production-complete RNodeMulti parity claim.
 - Exported status: daemon startup metadata includes an initial `radio_status`
   snapshot schema under `settings._runtime.rnode_multi`, and live daemon/RPC
   snapshots refresh from the transport-side runtime handle
+- Strict startup: `--strict-interface-startup` preflights the configured serial
+  port or TCP endpoint and fails startup before registering management targets
+  when the parent endpoint cannot be opened
 - Current posture: partial, with broader prepared-host hardware evidence and
   production parity still pending
 
@@ -84,12 +87,15 @@ both fields are present, `interface_enabled` takes precedence.
 
 ## Startup Behavior
 
-Daemon startup registers the shared RNode parent and child virtual
-interfaces immediately, then the transport task opens the configured parent
-serial port/speed or TCP endpoint asynchronously. The runtime registers one
-virtual child interface per configured subinterface, applies the child's
-`outgoing` policy to that virtual interface, and builds an address-to-vport map
-for direct sends.
+In normal best-effort startup mode, daemon startup registers the shared RNode
+parent and child virtual interfaces immediately, then the transport task opens
+the configured parent serial port/speed or TCP endpoint asynchronously. With
+`--strict-interface-startup`, daemon startup first preflights the parent serial
+open or TCP connect and records a startup failure instead of spawning the
+interface when that endpoint is unavailable. The runtime registers one virtual
+child interface per configured subinterface, applies the child's `outgoing`
+policy to that virtual interface, and builds an address-to-vport map for direct
+sends.
 
 Before applying child configuration, the transport task validates that the
 attached device responds to the RNode probe sequence. The baseline checks

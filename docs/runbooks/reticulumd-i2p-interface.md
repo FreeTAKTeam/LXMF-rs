@@ -10,7 +10,8 @@ stream. It is not yet a production-complete I2P parity claim.
 ## Scope
 
 - Reticulum type alias: `I2PInterface`
-- SAM default endpoint: `127.0.0.1:7656`
+- SAM default endpoint: `I2P_SAM_ADDRESS` (`host:port`) when set and valid,
+  otherwise `127.0.0.1:7656`
 - Default MTU: `1064`
 - Default bitrate: `256000`
 - Runtime role: multicast parent with virtual unicast peer children
@@ -41,7 +42,10 @@ interfaces = [
 The parser accepts Python-style `peers` as either a comma-separated string or a
 string array. It also accepts `sam_ip` as an alias for `sam_host`,
 `storagepath` as an alias for `state_path`, and `configured_bitrate` as the
-interface bitrate used by announce pacing. Python I2P-local `ifac_netname` and
+interface bitrate used by announce pacing. When no explicit `sam_host`,
+`sam_ip`, or `sam_port` is supplied, the default SAM endpoint follows Python's
+`I2P_SAM_ADDRESS` environment variable if it contains `host:port`; explicit
+config fields win over the environment. Python I2P-local `ifac_netname` and
 `ifac_netkey` are accepted as aliases for the shared IFAC `network_name` and
 `passphrase` fields; canonical shared fields win if both forms are supplied. If
 no explicit `state_path` or `storagepath` is supplied, daemon startup injects

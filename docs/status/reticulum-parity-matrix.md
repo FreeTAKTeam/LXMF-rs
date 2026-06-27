@@ -109,12 +109,14 @@ placeholders:
   and providing a configured child `vport`; the transport writes `CMD_SEL_INT`
   before each queued management frame. Parent-level Python
   `id_callsign`/`id_interval` settings fan out raw callsign ID beacons on
-  outgoing subinterfaces after first traffic. Display-capable ESP32/NRF52
-  devices get Python-style external-framebuffer disable during teardown before
-  per-vport radio-off and leave-host payload `0xff` frames. Daemon/RPC
-  snapshots refresh over the `radio_status` runtime metadata schema, including
-  stream/probe state and last-error reporting, with an opt-in prepared-host
-  smoke harness for serial or TCP RNodeMulti devices.
+  outgoing subinterfaces after first traffic. Strict startup mode preflights
+  the configured serial or TCP parent endpoint and records startup failure
+  instead of registering management targets when the endpoint is unavailable.
+  Display-capable ESP32/NRF52 devices get Python-style external-framebuffer
+  disable during teardown before per-vport radio-off and leave-host payload
+  `0xff` frames. Daemon/RPC snapshots refresh over the `radio_status` runtime
+  metadata schema, including stream/probe state and last-error reporting, with
+  an opt-in prepared-host smoke harness for serial or TCP RNodeMulti devices.
 - Shared serial Weave baseline with WDCL over HDLC framing, discovery
   handshake response, endpoint event learning, virtual peer child interfaces,
   inbound endpoint packet routing, direct endpoint command writes,
@@ -128,9 +130,11 @@ placeholders:
   destination key persistence under the daemon storage root by default or under
   explicit `state_path`/`storagepath` when configured,
   using Python-compatible hashed `.i2p` filenames with old-format key reuse and
-  identity-bound new-format key names for generated destinations. Startup
-  metadata reports the derived `.b32.i2p` endpoint for persisted keys and keys
-  generated during startup, plus transport-side tunnel state, keepalive, stale,
+  identity-bound new-format key names for generated destinations. Missing
+  explicit SAM host/port config honors Python's `I2P_SAM_ADDRESS` `host:port`
+  environment default before falling back to `127.0.0.1:7656`. Startup metadata
+  reports the derived `.b32.i2p` endpoint for persisted keys and keys generated
+  during startup, plus transport-side tunnel state, keepalive, stale,
   read-timeout, per-peer counter bookkeeping, and bounded closed-incoming-peer
   history refreshed into daemon/RPC `tunnel_status` runtime metadata. The
   config parser accepts I2P-local IFAC aliases `ifac_netname` and
@@ -168,9 +172,10 @@ and connectable sessions can run through SAM, and transport-side tunnel
 watchdog/status bookkeeping is refreshed into daemon/RPC interface status.
 Private destination keys now follow Python's default daemon-storage injection
 and hashed key-file naming, including old-format fallback when an existing
-Python key is present. `rnstatus-rs` human output summarizes the live I2P
-tunnel status for operators. Prepared-host production evidence is still
-pending.
+Python key is present. Missing explicit SAM host/port config now uses Python's
+`I2P_SAM_ADDRESS` environment default when it is set to `host:port`.
+`rnstatus-rs` human output summarizes the live I2P tunnel status for
+operators. Prepared-host production evidence is still pending.
 Ordinary serial/TCP and feature-gated BLE `RNodeInterface` now refresh transport-side probe/radio
 state into daemon/RPC `_runtime.lora.rnode_status`, and `rnstatus-rs` renders a
 compact human summary for operators. An opt-in prepared-host smoke harness now
@@ -199,9 +204,10 @@ firmware `>= 1.74`, platform, MCU, `CMD_INTERFACES`, and hardware-reported
 configured vports. Selected-vport radio status bookkeeping and live daemon/RPC
 `radio_status` refresh exist, including stream/probe state and last-error
 reporting plus the ordinary RNode radio-status schema for each vport,
-display-capable teardown disables the external framebuffer before per-vport
-radio-off/leave frames, daemon RPC binds the parent interface to the
-vport-aware management queue with explicit child `vport` validation, and
+strict startup preflights the parent serial/TCP endpoint before registering
+management targets, display-capable teardown disables the external framebuffer
+before per-vport radio-off/leave frames, daemon RPC binds the parent interface
+to the vport-aware management queue with explicit child `vport` validation, and
 `rnstatus-rs` renders a compact human summary of that state. An opt-in
 prepared-host smoke harness now records serial/TCP RNodeMulti evidence under
 `target/rnode-multi-hil/`. Full prepared-host hardware validation and broader

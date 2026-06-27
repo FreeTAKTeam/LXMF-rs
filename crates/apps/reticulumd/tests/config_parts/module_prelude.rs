@@ -6,6 +6,20 @@ use std::fs;
 
 use tempfile::NamedTempFile;
 
+fn expected_i2p_sam_default() -> (String, u16) {
+    std::env::var("I2P_SAM_ADDRESS")
+        .ok()
+        .and_then(|value| {
+            let (host, port) = value.trim().split_once(':')?;
+            let host = host.trim();
+            if host.is_empty() {
+                return None;
+            }
+            Some((host.to_string(), port.trim().parse().ok()?))
+        })
+        .unwrap_or_else(|| ("127.0.0.1".to_string(), 7656))
+}
+
 #[test]
 fn parses_tcp_client_interface() {
     let input = r#"
@@ -1015,13 +1029,14 @@ interfaces = [
 "#;
     let cfg = DaemonConfig::from_toml(input).expect("parse Python I2PInterface config");
     let iface = &cfg.interfaces[0];
+    let (expected_sam_host, expected_sam_port) = expected_i2p_sam_default();
     assert_eq!(iface.kind, "i2p");
     assert_eq!(
         iface.peers.as_deref(),
         Some(&["peer-one.b32.i2p".to_string(), "peer-two.b32.i2p".to_string()][..])
     );
-    assert_eq!(iface.sam_host.as_deref(), Some("127.0.0.1"));
-    assert_eq!(iface.sam_port, Some(7656));
+    assert_eq!(iface.sam_host.as_deref(), Some(expected_sam_host.as_str()));
+    assert_eq!(iface.sam_port, Some(expected_sam_port));
     assert_eq!(iface.mtu, Some(1064));
     assert_eq!(iface.bitrate, Some(128_000));
     assert_eq!(iface.state_path.as_deref(), Some("/tmp/rns"));
@@ -1030,8 +1045,8 @@ interfaces = [
 
     let settings = iface.settings_json().expect("settings");
     assert_eq!(settings["peers"], serde_json::json!(["peer-one.b32.i2p", "peer-two.b32.i2p"]));
-    assert_eq!(settings["sam_host"], "127.0.0.1");
-    assert_eq!(settings["sam_port"], 7656);
+    assert_eq!(settings["sam_host"], expected_sam_host);
+    assert_eq!(settings["sam_port"], expected_sam_port);
     assert_eq!(settings["mtu"], 1064);
     assert_eq!(settings["state_path"], "/tmp/rns");
     assert_eq!(settings["network_name"], "i2p-field");
