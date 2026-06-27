@@ -77,6 +77,9 @@ The project is best described by capability level:
   listeners through a sidecar startup path,
   Python-style `force_shared_instance_bitrate` stream pacing, plus
   shared-instance one-hop transport wrapping,
+  LocalInterface TCP shared-instance software smoke coverage for strict startup,
+  TCP listener/attach status, Python local MTU, bitrate alias reporting, and
+  `rnstatus-rs` JSON/human output,
   Pipe subprocess HDLC with a software fake-subprocess smoke for strict daemon
   startup and refreshed `rnstatus-rs` JSON/human runtime status, UDP
   unicast/multicast plus

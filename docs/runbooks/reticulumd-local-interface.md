@@ -169,11 +169,40 @@ Runtime status visibility:
 - Attached TCP/Unix local clients transport-wrap one-hop outbound packets before
   handing them to the shared instance.
 
+## Software TCP Shared-Instance Smoke
+
+```bash
+./tools/scripts/local-interface-smoke.sh
+```
+
+The smoke creates one `LocalInterface` TCP loopback listener and one
+`LocalClientInterface` TCP attach entry with
+`shared_instance_type = "tcp"`, `fixed_mtu = 262144`, and
+`force_shared_instance_bitrate = 1000000`. It starts a fake shared instance on
+loopback, runs `reticulumd` with `--strict-interface-startup`, and records
+`rnstatus-rs` JSON/human output plus fake-peer state under
+`target/local-interface-smoke/`.
+
+Passing evidence requires:
+
+- `_runtime.startup_status = "active"` for the loopback listener.
+- `_runtime.startup_status = "attached"` for the attach client.
+- The configured loopback host/ports, local MTU, and bitrate alias to be visible
+  through RPC status.
+- The fake shared instance accepting the attach connection.
+- Human `rnstatus-rs` output containing both local interface rows.
+
+This is software-only coverage for local shared-instance startup/status
+plumbing. It is not a substitute for multi-process Python shared-instance
+interop or Unix-domain socket production validation.
+
 ## Verification Commands
 
 ```bash
 cargo test -p reticulum-rs-transport shared_instance
 cargo test -p reticulumd --test config local_interface
+cargo test -p reticulumd --test local_interface_smoke_contract --quiet
+TIMEOUT_SECS=45 ./tools/scripts/local-interface-smoke.sh
 cargo test -p reticulumd --bin reticulumd local
 cargo test -p reticulumd --test config
 cargo test -p reticulumd --bin reticulumd

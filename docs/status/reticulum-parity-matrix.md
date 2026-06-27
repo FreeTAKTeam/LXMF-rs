@@ -95,7 +95,10 @@ placeholders:
   `share_instance` synthesizes an implicit TCP `LocalInterface`, that listener
   can now coexist with another configured TCP or Backbone listener by starting
   as a daemon sidecar while explicit multi-listener TCP configs still use the
-  primary single-bind selector.
+  primary single-bind selector. A software TCP shared-instance smoke now proves
+  strict daemon startup, loopback listener status, attach-client status,
+  Python local MTU and bitrate alias reporting, fake shared-instance attach,
+  and `rnstatus-rs` JSON/human output without another local Reticulum process.
 - PipeInterface subprocess stdin/stdout transport with Python-style command
   parsing, HDLC packet framing, respawn delay, default MTU, and live subprocess
   status reporting through daemon/RPC `_runtime.pipe.status`. A software
