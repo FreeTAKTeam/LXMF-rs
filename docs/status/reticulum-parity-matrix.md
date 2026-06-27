@@ -103,9 +103,12 @@ placeholders:
   Python `id_interval` and `id_callsign`. KISS/AX.25 KISS and KISS TCP now
   refresh live daemon/RPC status with packet, data-frame, command-frame, byte,
   flow-control, queue, AX.25 drop, and error counters, and `rnstatus-rs`
-  renders those counters alongside configured bearer metadata. BLE GATT records
-  configured bearer metadata such as BLE UUIDs and lifecycle timeouts; live
-  BLE GATT byte/error counters remain a follow-up.
+  renders those counters alongside configured bearer metadata. BLE GATT now
+  refreshes live daemon/RPC status with connection/subscription, packet, HDLC
+  frame, notification byte, payload byte, write-chunk, reconnect, startup
+  phase, queue, decode, serialize, read/write, buffer-drop, cleanup, and
+  last-error counters alongside configured BLE UUID and lifecycle timeout
+  metadata.
 - AutoInterface discovery, authenticated peering, peer lifecycle, duplicate
   suppression, multicast announcements, data sockets, transport bridging, and
   live carrier-runtime status reporting, including polling reconciliation for

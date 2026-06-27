@@ -46,6 +46,7 @@ pub(super) struct InterfaceStartupBatch {
     pub(super) udp_runtime_refreshes: Vec<UdpRuntimeRefresh>,
     pub(super) serial_runtime_refreshes: Vec<SerialRuntimeRefresh>,
     pub(super) kiss_runtime_refreshes: Vec<KissRuntimeRefresh>,
+    pub(super) ble_gatt_runtime_refreshes: Vec<BleGattRuntimeRefresh>,
     pub(super) i2p_runtime_refreshes: Vec<I2pRuntimeRefresh>,
     pub(super) tcp_runtime_refreshes: Vec<TcpRuntimeRefresh>,
     pub(super) weave_runtime_refreshes: Vec<WeaveRuntimeRefresh>,
@@ -85,6 +86,12 @@ pub(crate) struct KissRuntimeRefresh {
     pub(crate) runtime_iface: AddressHash,
     pub(crate) runtime_key: &'static str,
     pub(crate) status: rns_transport::iface::kiss::KissRuntimeStatusHandle,
+}
+
+#[derive(Clone)]
+pub(crate) struct BleGattRuntimeRefresh {
+    pub(crate) runtime_iface: AddressHash,
+    pub(crate) status: ble::BleRuntimeStatusHandle,
 }
 
 struct UdpStartupSinks<'a> {
@@ -201,6 +208,7 @@ pub(super) async fn startup_configured_interfaces(
     let mut udp_runtime_refreshes = Vec::new();
     let mut serial_runtime_refreshes = Vec::new();
     let mut kiss_runtime_refreshes = Vec::new();
+    let mut ble_gatt_runtime_refreshes = Vec::new();
     let mut i2p_runtime_refreshes = Vec::new();
     let mut tcp_runtime_refreshes = Vec::new();
     let mut weave_runtime_refreshes = Vec::new();
@@ -502,6 +510,7 @@ pub(super) async fn startup_configured_interfaces(
                     iface_manager,
                     &mut configured_interfaces[index],
                     &mut startup_failures,
+                    &mut ble_gatt_runtime_refreshes,
                 )
                 .await
                 {
@@ -582,6 +591,7 @@ pub(super) async fn startup_configured_interfaces(
         udp_runtime_refreshes,
         serial_runtime_refreshes,
         kiss_runtime_refreshes,
+        ble_gatt_runtime_refreshes,
         i2p_runtime_refreshes,
         tcp_runtime_refreshes,
         weave_runtime_refreshes,

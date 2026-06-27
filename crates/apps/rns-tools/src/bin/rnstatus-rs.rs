@@ -624,6 +624,32 @@ fn ble_gatt_runtime_summary(status: &Value) -> Option<String> {
     append_optional_u64(&mut summary, "mtu", status.get("mtu"));
     append_optional_u64(&mut summary, "scan_ms", status.get("scan_timeout_ms"));
     append_optional_u64(&mut summary, "connect_ms", status.get("connect_timeout_ms"));
+    append_optional_bool(&mut summary, "connected", status.get("connected"));
+    append_optional_bool(&mut summary, "subscribed", status.get("subscribed"));
+    append_optional_u64(&mut summary, "reconnects", status.get("reconnect_attempts"));
+    append_optional_u64(&mut summary, "rxp", status.get("packets_rx"));
+    append_optional_u64(&mut summary, "txp", status.get("packets_tx"));
+    append_optional_u64(&mut summary, "rx_frames", status.get("frames_rx"));
+    append_optional_u64(&mut summary, "tx_frames", status.get("frames_tx"));
+    append_optional_u64(&mut summary, "notify_rx", status.get("notification_bytes_rx"));
+    append_optional_u64(&mut summary, "rx", status.get("bytes_rx"));
+    append_optional_u64(&mut summary, "tx", status.get("bytes_tx"));
+    append_optional_u64(&mut summary, "chunks_tx", status.get("write_chunks_tx"));
+    append_optional_u64(&mut summary, "scan_errors", status.get("scan_errors"));
+    append_optional_u64(&mut summary, "connect_errors", status.get("connect_errors"));
+    append_optional_u64(&mut summary, "subscribe_errors", status.get("subscribe_errors"));
+    append_optional_u64(&mut summary, "probe_write_errors", status.get("probe_write_errors"));
+    append_optional_u64(&mut summary, "probe_read_errors", status.get("probe_read_errors"));
+    append_optional_u64(&mut summary, "serialize_errors", status.get("serialize_errors"));
+    append_optional_u64(&mut summary, "hdlc_encode_errors", status.get("hdlc_encode_errors"));
+    append_optional_u64(&mut summary, "hdlc_decode_errors", status.get("hdlc_decode_errors"));
+    append_optional_u64(&mut summary, "deserialize_errors", status.get("deserialize_errors"));
+    append_optional_u64(&mut summary, "rx_queue_errors", status.get("rx_queue_errors"));
+    append_optional_u64(&mut summary, "write_errors", status.get("write_errors"));
+    append_optional_u64(&mut summary, "read_errors", status.get("read_errors"));
+    append_optional_u64(&mut summary, "buffer_drops", status.get("stale_buffer_drops"));
+    append_optional_u64(&mut summary, "cleanup_errors", status.get("cleanup_errors"));
+    append_optional_str(&mut summary, "err", status.get("last_error"));
     Some(summary)
 }
 
@@ -1135,7 +1161,33 @@ mod tests {
                                     "service_uuid": "12345678-1234-1234-1234-1234567890ab",
                                     "mtu": 128,
                                     "scan_timeout_ms": 10000,
-                                    "connect_timeout_ms": 3000
+                                    "connect_timeout_ms": 3000,
+                                    "connected": true,
+                                    "subscribed": true,
+                                    "reconnect_attempts": 2,
+                                    "packets_rx": 6,
+                                    "packets_tx": 7,
+                                    "frames_rx": 8,
+                                    "frames_tx": 9,
+                                    "notification_bytes_rx": 100,
+                                    "bytes_rx": 80,
+                                    "bytes_tx": 90,
+                                    "write_chunks_tx": 10,
+                                    "scan_errors": 1,
+                                    "connect_errors": 2,
+                                    "subscribe_errors": 3,
+                                    "probe_write_errors": 4,
+                                    "probe_read_errors": 5,
+                                    "serialize_errors": 11,
+                                    "hdlc_encode_errors": 12,
+                                    "hdlc_decode_errors": 13,
+                                    "deserialize_errors": 14,
+                                    "rx_queue_errors": 15,
+                                    "write_errors": 16,
+                                    "read_errors": 17,
+                                    "stale_buffer_drops": 18,
+                                    "cleanup_errors": 19,
+                                    "last_error": "simulated ble read failure"
                                 }
                             }
                         }
@@ -1253,6 +1305,15 @@ mod tests {
         assert!(output.contains("tx=66"));
         assert!(output.contains("ble_gatt state=configured peripheral=AA:BB:CC:DD:EE:FF"));
         assert!(output.contains("service=12345678-1234-1234-1234-1234567890ab"));
+        assert!(output.contains("connected=true"));
+        assert!(output.contains("subscribed=true"));
+        assert!(output.contains("notify_rx=100"));
+        assert!(output.contains("chunks_tx=10"));
+        assert!(output.contains("scan_errors=1"));
+        assert!(output.contains("probe_read_errors=5"));
+        assert!(output.contains("hdlc_decode_errors=13"));
+        assert!(output.contains("buffer_drops=18"));
+        assert!(output.contains("err=simulated ble read failure"));
         assert!(output.contains("pipe state=respawning open=false respawns=2"));
         assert!(output.contains("err=spawn cat failed"));
     }

@@ -183,6 +183,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     let udp_runtime_refreshes = startup.udp_runtime_refreshes;
     let serial_runtime_refreshes = startup.serial_runtime_refreshes;
     let kiss_runtime_refreshes = startup.kiss_runtime_refreshes;
+    let ble_gatt_runtime_refreshes = startup.ble_gatt_runtime_refreshes;
     let i2p_runtime_refreshes = startup.i2p_runtime_refreshes;
     let tcp_runtime_refreshes = startup.tcp_runtime_refreshes;
     let weave_runtime_refreshes = startup.weave_runtime_refreshes;
@@ -304,6 +305,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     spawn_udp_runtime_status_refresher(daemon.clone(), udp_runtime_refreshes);
     spawn_serial_runtime_status_refresher(daemon.clone(), serial_runtime_refreshes);
     spawn_kiss_runtime_status_refresher(daemon.clone(), kiss_runtime_refreshes);
+    spawn_ble_gatt_runtime_status_refresher(daemon.clone(), ble_gatt_runtime_refreshes);
     spawn_i2p_runtime_status_refresher(daemon.clone(), i2p_runtime_refreshes);
     spawn_tcp_runtime_status_refresher(daemon.clone(), tcp_runtime_refreshes);
     spawn_weave_runtime_status_refresher(daemon.clone(), weave_runtime_refreshes);
@@ -595,6 +597,40 @@ fn refresh_kiss_runtime_status_once(
             daemon.update_interface_runtime_metadata_by_iface(
                 refresh.runtime_iface.to_string().as_str(),
                 refresh.runtime_key,
+                "status",
+                refresh.status.to_json(),
+            )
+        })
+        .count()
+}
+
+fn spawn_ble_gatt_runtime_status_refresher(
+    daemon: Arc<RpcDaemon>,
+    refreshes: Vec<transport_startup::BleGattRuntimeRefresh>,
+) {
+    if refreshes.is_empty() {
+        return;
+    }
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(INTERFACE_RUNTIME_STATUS_REFRESH_INTERVAL);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            interval.tick().await;
+            refresh_ble_gatt_runtime_status_once(&daemon, &refreshes);
+        }
+    });
+}
+
+fn refresh_ble_gatt_runtime_status_once(
+    daemon: &RpcDaemon,
+    refreshes: &[transport_startup::BleGattRuntimeRefresh],
+) -> usize {
+    refreshes
+        .iter()
+        .filter(|refresh| {
+            daemon.update_interface_runtime_metadata_by_iface(
+                refresh.runtime_iface.to_string().as_str(),
+                "ble_gatt",
                 "status",
                 refresh.status.to_json(),
             )
@@ -1437,6 +1473,123 @@ mod tests {
         assert_eq!(status["packets_tx"].as_u64(), Some(4));
         assert_eq!(status["bytes_rx"].as_u64(), Some(55));
         assert_eq!(status["bytes_tx"].as_u64(), Some(66));
+    }
+
+    #[test]
+    fn ble_gatt_runtime_status_refresh_updates_matching_interface_record() {
+        let daemon = RpcDaemon::test_instance();
+        let runtime_iface = AddressHash::new([0x29; 16]);
+        daemon.replace_interfaces(vec![InterfaceRecord {
+            kind: "ble_gatt".to_string(),
+            enabled: true,
+            host: None,
+            port: None,
+            name: Some("ble-main".to_string()),
+            settings: Some(json!({
+                "_runtime": {
+                    "iface": runtime_iface.to_string(),
+                    "startup_status": "spawned",
+                    "ble_gatt": {
+                        "status": {
+                            "link_state": "configured"
+                        }
+                    }
+                }
+            })),
+        }]);
+        let status = crate::interfaces::ble::BleRuntimeStatusHandle::new(
+            crate::interfaces::ble::BleRuntimeStatus::from_settings(
+                &crate::interfaces::ble::BleRuntimeSettings {
+                    adapter: Some("Bluetooth".to_string()),
+                    peripheral_id: "AA:BB:CC:DD:EE:FF".to_string(),
+                    service_uuid: "12345678-1234-1234-1234-1234567890ab".to_string(),
+                    write_char_uuid: "2A37".to_string(),
+                    notify_char_uuid: "2A38".to_string(),
+                    mtu: 128,
+                    scan_timeout: Duration::from_millis(10_000),
+                    connect_timeout: Duration::from_millis(3_000),
+                    reconnect_backoff: Duration::from_millis(500),
+                    max_reconnect_backoff: Duration::from_millis(5_000),
+                },
+            ),
+        );
+        status.update(|status| {
+            status.link_state = "running".to_string();
+            status.iface = Some(runtime_iface.to_string());
+            status.connected = true;
+            status.subscribed = true;
+            status.reconnect_attempts = 2;
+            status.scan_errors = 1;
+            status.connect_errors = 2;
+            status.subscribe_errors = 3;
+            status.probe_write_errors = 4;
+            status.probe_read_errors = 5;
+            status.packets_rx = 6;
+            status.packets_tx = 7;
+            status.frames_rx = 8;
+            status.frames_tx = 9;
+            status.notification_bytes_rx = 100;
+            status.bytes_rx = 80;
+            status.bytes_tx = 90;
+            status.write_chunks_tx = 10;
+            status.serialize_errors = 11;
+            status.hdlc_encode_errors = 12;
+            status.hdlc_decode_errors = 13;
+            status.deserialize_errors = 14;
+            status.rx_queue_errors = 15;
+            status.write_errors = 16;
+            status.read_errors = 17;
+            status.stale_buffer_drops = 18;
+            status.cleanup_errors = 19;
+            status.last_error = Some("simulated ble read failure".to_string());
+        });
+        let refresh = transport_startup::BleGattRuntimeRefresh { runtime_iface, status };
+
+        assert_eq!(refresh_ble_gatt_runtime_status_once(&daemon, &[refresh]), 1);
+        let result = daemon
+            .handle_rpc(RpcRequest { id: 98, method: "daemon_status_ex".to_string(), params: None })
+            .expect("daemon status")
+            .result
+            .expect("daemon status result");
+        let status = &result["interfaces"][0]["settings"]["_runtime"]["ble_gatt"]["status"];
+
+        assert_eq!(status["link_state"].as_str(), Some("running"));
+        assert_eq!(status["adapter"].as_str(), Some("Bluetooth"));
+        assert_eq!(status["peripheral_id"].as_str(), Some("AA:BB:CC:DD:EE:FF"));
+        assert_eq!(
+            status["service_uuid"].as_str(),
+            Some("12345678-1234-1234-1234-1234567890ab")
+        );
+        assert_eq!(status["mtu"].as_u64(), Some(128));
+        assert_eq!(status["scan_timeout_ms"].as_u64(), Some(10_000));
+        assert_eq!(status["connect_timeout_ms"].as_u64(), Some(3_000));
+        assert_eq!(status["iface"].as_str(), Some(runtime_iface.to_string().as_str()));
+        assert_eq!(status["connected"].as_bool(), Some(true));
+        assert_eq!(status["subscribed"].as_bool(), Some(true));
+        assert_eq!(status["reconnect_attempts"].as_u64(), Some(2));
+        assert_eq!(status["scan_errors"].as_u64(), Some(1));
+        assert_eq!(status["connect_errors"].as_u64(), Some(2));
+        assert_eq!(status["subscribe_errors"].as_u64(), Some(3));
+        assert_eq!(status["probe_write_errors"].as_u64(), Some(4));
+        assert_eq!(status["probe_read_errors"].as_u64(), Some(5));
+        assert_eq!(status["packets_rx"].as_u64(), Some(6));
+        assert_eq!(status["packets_tx"].as_u64(), Some(7));
+        assert_eq!(status["frames_rx"].as_u64(), Some(8));
+        assert_eq!(status["frames_tx"].as_u64(), Some(9));
+        assert_eq!(status["notification_bytes_rx"].as_u64(), Some(100));
+        assert_eq!(status["bytes_rx"].as_u64(), Some(80));
+        assert_eq!(status["bytes_tx"].as_u64(), Some(90));
+        assert_eq!(status["write_chunks_tx"].as_u64(), Some(10));
+        assert_eq!(status["serialize_errors"].as_u64(), Some(11));
+        assert_eq!(status["hdlc_encode_errors"].as_u64(), Some(12));
+        assert_eq!(status["hdlc_decode_errors"].as_u64(), Some(13));
+        assert_eq!(status["deserialize_errors"].as_u64(), Some(14));
+        assert_eq!(status["rx_queue_errors"].as_u64(), Some(15));
+        assert_eq!(status["write_errors"].as_u64(), Some(16));
+        assert_eq!(status["read_errors"].as_u64(), Some(17));
+        assert_eq!(status["stale_buffer_drops"].as_u64(), Some(18));
+        assert_eq!(status["cleanup_errors"].as_u64(), Some(19));
+        assert_eq!(status["last_error"].as_str(), Some("simulated ble read failure"));
     }
 
     #[test]

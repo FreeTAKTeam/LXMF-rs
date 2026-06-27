@@ -379,10 +379,15 @@ async fn startup_ble(
     iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
     record: &mut InterfaceRecord,
     startup_failures: &mut Vec<InterfaceStartupFailure>,
+    ble_gatt_runtime_refreshes: &mut Vec<BleGattRuntimeRefresh>,
 ) -> bool {
     match ble::spawn(iface_manager.clone(), iface).await {
-        Ok(ble_iface) => {
-            mark_ble_spawn_success(iface, label, iface_manager, record, ble_iface).await;
+        Ok(spawned) => {
+            mark_ble_spawn_success(iface, label, iface_manager, record, spawned.iface).await;
+            ble_gatt_runtime_refreshes.push(BleGattRuntimeRefresh {
+                runtime_iface: spawned.iface,
+                status: spawned.status,
+            });
             true
         }
         Err(err) => {

@@ -184,8 +184,10 @@ The project is best described by capability level:
   byte, EOF, queue, decode, serialize, read, and write-error counters.
   KISS/AX.25 KISS and KISS TCP now refresh live packet, data-frame,
   command-frame, byte, flow-control, queue, AX.25 drop, and error counters.
-  BLE GATT exposes configured bearer status, including BLE UUIDs and lifecycle
-  timeout fields; its live byte/error counters remain a follow-up.
+  BLE GATT now refreshes live connection/subscription, packet, HDLC frame,
+  notification byte, payload byte, write-chunk, reconnect, startup phase,
+  queue, decode, serialize, read/write, buffer-drop, cleanup, and last-error
+  counters alongside configured BLE UUID and lifecycle timeout metadata.
 - `rnstatus-rs` now provides a local daemon status utility over the existing
   RPC status surface, including JSON output plus human interface endpoint
   details across configured interface families, runtime startup state, Auto

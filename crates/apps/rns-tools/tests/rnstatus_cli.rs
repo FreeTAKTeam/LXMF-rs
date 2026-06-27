@@ -652,7 +652,33 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
                                         "service_uuid": "12345678-1234-1234-1234-1234567890ab",
                                         "mtu": 128,
                                         "scan_timeout_ms": 10000,
-                                        "connect_timeout_ms": 3000
+                                        "connect_timeout_ms": 3000,
+                                        "connected": true,
+                                        "subscribed": true,
+                                        "reconnect_attempts": 2,
+                                        "packets_rx": 6,
+                                        "packets_tx": 7,
+                                        "frames_rx": 8,
+                                        "frames_tx": 9,
+                                        "notification_bytes_rx": 100,
+                                        "bytes_rx": 80,
+                                        "bytes_tx": 90,
+                                        "write_chunks_tx": 10,
+                                        "scan_errors": 1,
+                                        "connect_errors": 2,
+                                        "subscribe_errors": 3,
+                                        "probe_write_errors": 4,
+                                        "probe_read_errors": 5,
+                                        "serialize_errors": 11,
+                                        "hdlc_encode_errors": 12,
+                                        "hdlc_decode_errors": 13,
+                                        "deserialize_errors": 14,
+                                        "rx_queue_errors": 15,
+                                        "write_errors": 16,
+                                        "read_errors": 17,
+                                        "stale_buffer_drops": 18,
+                                        "cleanup_errors": 19,
+                                        "last_error": "simulated ble read failure"
                                     }
                                 }
                             }
@@ -800,6 +826,15 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
         stdout.contains("ble_gatt state=configured peripheral=AA:BB:CC:DD:EE:FF"),
         "stdout: {stdout}"
     );
+    assert!(stdout.contains("connected=true"), "stdout: {stdout}");
+    assert!(stdout.contains("subscribed=true"), "stdout: {stdout}");
+    assert!(stdout.contains("notify_rx=100"), "stdout: {stdout}");
+    assert!(stdout.contains("chunks_tx=10"), "stdout: {stdout}");
+    assert!(stdout.contains("scan_errors=1"), "stdout: {stdout}");
+    assert!(stdout.contains("probe_read_errors=5"), "stdout: {stdout}");
+    assert!(stdout.contains("hdlc_decode_errors=13"), "stdout: {stdout}");
+    assert!(stdout.contains("buffer_drops=18"), "stdout: {stdout}");
+    assert!(stdout.contains("err=simulated ble read failure"), "stdout: {stdout}");
     assert!(stdout.contains("Propagation: enabled=true"), "stdout: {stdout}");
     assert!(stdout.contains("peers=2"), "stdout: {stdout}");
     assert!(stdout.contains("selected=cafebabe"), "stdout: {stdout}");
