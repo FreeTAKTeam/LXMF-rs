@@ -19,7 +19,7 @@ pub(crate) fn build_adapter(iface: &InterfaceConfig) -> Result<SerialInterface, 
         .max_reconnect_backoff_ms
         .unwrap_or_else(|| reconnect_backoff_ms.max(5_000))
         .max(reconnect_backoff_ms);
-    let mtu = iface.mtu.unwrap_or(2048);
+    let mtu = iface.mtu.unwrap_or(SerialInterface::DEFAULT_MTU);
 
     let mut adapter = SerialInterface::new(device.to_string(), baud_rate)
         .with_mtu(mtu)

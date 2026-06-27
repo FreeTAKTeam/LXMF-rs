@@ -8,6 +8,16 @@ use rns_transport::iface::rnode_ble::{RnodeBleKissConfig, RNODE_BLE_READ_FRAME_T
 use std::time::Duration;
 
 pub(crate) fn startup(iface: &InterfaceConfig) -> Result<(), String> {
+    if iface.rnode_profile
+        && iface.state_path.as_deref().map(str::trim).filter(|value| !value.is_empty()).is_none()
+    {
+        log::info!(
+            "[daemon] rnode configured name={} without lora state_path compliance gate",
+            iface.name.as_deref().unwrap_or("<unnamed>")
+        );
+        return Ok(());
+    }
+
     let path = iface
         .state_path
         .as_deref()
@@ -49,6 +59,10 @@ pub(crate) fn is_tcp_rnode_port(value: &str) -> bool {
 
 pub(crate) fn is_ble_rnode_port(value: &str) -> bool {
     value.trim().to_ascii_lowercase().starts_with("ble://")
+}
+
+fn is_rnode_profile(iface: &InterfaceConfig) -> bool {
+    iface.rnode_profile || iface.max_payload_bytes.is_some_and(|value| value > 255)
 }
 
 #[derive(Debug, Clone)]
@@ -93,7 +107,11 @@ pub(crate) fn build_rnode_ble_config(
         .max_reconnect_backoff_ms
         .unwrap_or_else(|| reconnect_backoff_ms.max(5_000))
         .max(reconnect_backoff_ms);
-    let lora_config = build_lora_config(iface)?;
+    let lora_config = if is_rnode_profile(iface) {
+        build_rnode_lora_config(iface)?
+    } else {
+        build_lora_config(iface)?
+    };
 
     Ok(RnodeBleDaemonConfig {
         peripheral_id,
@@ -155,7 +173,11 @@ pub(crate) fn build_adapter(iface: &InterfaceConfig) -> Result<LoraInterface, St
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .ok_or_else(|| "lora.device is required".to_string())?;
-    let config = build_lora_config(iface)?;
+    let config = if is_rnode_profile(iface) {
+        build_rnode_lora_config(iface)?
+    } else {
+        build_lora_config(iface)?
+    };
 
     let reconnect_backoff_ms = iface.reconnect_backoff_ms.unwrap_or(500).max(50);
     let max_reconnect_backoff_ms = iface
@@ -190,7 +212,22 @@ pub(crate) fn build_adapter(iface: &InterfaceConfig) -> Result<LoraInterface, St
         .with_startup_response_timeout(Duration::from_millis(startup_response_timeout_ms)))
 }
 
-fn build_lora_config(iface: &InterfaceConfig) -> Result<LoraConfig, String> {
+pub(crate) fn build_lora_config(iface: &InterfaceConfig) -> Result<LoraConfig, String> {
+    build_lora_config_with_validation(iface, LoraConfig::validate)
+}
+
+pub(crate) fn build_rnode_multi_lora_config(iface: &InterfaceConfig) -> Result<LoraConfig, String> {
+    build_lora_config_with_validation(iface, LoraConfig::validate_rnode_multi)
+}
+
+pub(crate) fn build_rnode_lora_config(iface: &InterfaceConfig) -> Result<LoraConfig, String> {
+    build_lora_config_with_validation(iface, LoraConfig::validate_rnode)
+}
+
+fn build_lora_config_with_validation(
+    iface: &InterfaceConfig,
+    validate: impl FnOnce(LoraConfig) -> Result<(), String>,
+) -> Result<LoraConfig, String> {
     let region = iface
         .region
         .as_deref()
@@ -228,7 +265,11 @@ fn build_lora_config(iface: &InterfaceConfig) -> Result<LoraConfig, String> {
     if let Some(max_payload_bytes) = iface.max_payload_bytes {
         config.max_payload_bytes = max_payload_bytes;
     }
-    config.validate()?;
+    if config.max_payload_bytes > 255 {
+        LoraConfig::validate_rnode(config)?;
+    } else {
+        validate(config)?;
+    }
     Ok(config)
 }
 
@@ -249,7 +290,7 @@ fn rnode_kiss_config(iface: &InterfaceConfig) -> rns_transport::iface::kiss::Kis
     }
 }
 
-fn parse_coding_rate(value: &str) -> Result<u8, String> {
+pub(crate) fn parse_coding_rate(value: &str) -> Result<u8, String> {
     match value.trim() {
         "4/5" | "5" => Ok(5),
         "4/6" | "6" => Ok(6),
@@ -259,7 +300,7 @@ fn parse_coding_rate(value: &str) -> Result<u8, String> {
     }
 }
 
-fn airtime_limit_hundredths(field: &str, value: f64) -> Result<u16, String> {
+pub(crate) fn airtime_limit_hundredths(field: &str, value: f64) -> Result<u16, String> {
     if !(0.0..=100.0).contains(&value) {
         return Err(format!("{field} must be between 0 and 100"));
     }

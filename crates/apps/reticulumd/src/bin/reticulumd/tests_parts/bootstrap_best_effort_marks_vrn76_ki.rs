@@ -138,6 +138,837 @@ interfaces = [
 }
 
 #[test]
+fn bootstrap_starts_backbone_listener_from_config_without_transport_flag() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let config_path = temp.path().join("daemon.toml");
+    fs::write(
+        &config_path,
+        r#"
+interfaces = [
+  { type = "BackboneInterface", enabled = true, name = "backbone-main", listen_on = "127.0.0.1", port = 0 }
+]
+"#,
+    )
+    .expect("write config");
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let context = runtime.block_on(async {
+        bootstrap::bootstrap(test_args(db_path.clone(), Some(config_path.clone()), None, false))
+            .await
+    });
+    let response = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 1, method: "list_interfaces".to_string(), params: None })
+        .expect("list_interfaces");
+    let interfaces = response
+        .result
+        .expect("result")
+        .get("interfaces")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .expect("interfaces array");
+
+    let backbone = interfaces
+        .iter()
+        .find(|entry| entry.get("type").and_then(|value| value.as_str()) == Some("backbone"))
+        .expect("backbone entry");
+    assert_eq!(
+        backbone
+            .get("settings")
+            .and_then(|value| value.get("_runtime"))
+            .and_then(|value| value.get("startup_status"))
+            .and_then(|value| value.as_str()),
+        Some("active")
+    );
+    assert_eq!(
+        backbone
+            .get("settings")
+            .and_then(|value| value.get("mtu"))
+            .and_then(|value| value.as_u64()),
+        Some(1_048_576)
+    );
+}
+
+#[test]
+fn bootstrap_python_backbone_remote_alias_reports_backbone_client_status() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let config_path = temp.path().join("daemon.toml");
+    fs::write(
+        &config_path,
+        r#"
+interfaces = [
+  { type = "BackboneInterface", enabled = true, name = "backbone-remote", remote = "127.0.0.1", port = 65535 }
+]
+"#,
+    )
+    .expect("write config");
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let context = runtime.block_on(async {
+        bootstrap::bootstrap(test_args(db_path.clone(), Some(config_path.clone()), None, false))
+            .await
+    });
+    let response = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 1, method: "list_interfaces".to_string(), params: None })
+        .expect("list_interfaces");
+    let interfaces = response
+        .result
+        .expect("result")
+        .get("interfaces")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .expect("interfaces array");
+
+    let backbone = interfaces
+        .iter()
+        .find(|entry| entry.get("type").and_then(|value| value.as_str()) == Some("backbone_client"))
+        .expect("backbone_client entry");
+    assert_eq!(backbone.get("host").and_then(|value| value.as_str()), Some("127.0.0.1"));
+    assert_eq!(backbone.get("port").and_then(|value| value.as_u64()), Some(65535));
+    let runtime = backbone
+        .get("settings")
+        .and_then(|value| value.get("_runtime"))
+        .expect("backbone client runtime");
+    assert_eq!(runtime.get("startup_status").and_then(|value| value.as_str()), Some("spawned"));
+    assert!(runtime.get("iface").and_then(|value| value.as_str()).is_some());
+}
+
+#[test]
+fn bootstrap_python_tcp_client_kiss_framing_alias_reports_kiss_tcp_status() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let config_path = temp.path().join("daemon.toml");
+    fs::write(
+        &config_path,
+        r#"
+interfaces = [
+  { type = "TCPClientInterface", enabled = true, name = "python-kiss-tcp", target_host = "127.0.0.1", target_port = 65535, kiss_framing = true, flow_control = true, fixed_mtu = 512 }
+]
+"#,
+    )
+    .expect("write config");
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let context = runtime.block_on(async {
+        bootstrap::bootstrap(test_args(db_path.clone(), Some(config_path.clone()), None, false))
+            .await
+    });
+    let response = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 1, method: "list_interfaces".to_string(), params: None })
+        .expect("list_interfaces");
+    let interfaces = response
+        .result
+        .expect("result")
+        .get("interfaces")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .expect("interfaces array");
+
+    let kiss_tcp = interfaces
+        .iter()
+        .find(|entry| entry.get("type").and_then(|value| value.as_str()) == Some("kiss_tcp_client"))
+        .expect("kiss_tcp_client entry");
+    let runtime = kiss_tcp
+        .get("settings")
+        .and_then(|value| value.get("_runtime"))
+        .expect("kiss tcp runtime");
+    assert_eq!(runtime.get("startup_status").and_then(|value| value.as_str()), Some("spawned"));
+    assert!(runtime.get("iface").and_then(|value| value.as_str()).is_some());
+    let status = &runtime["kiss_tcp"]["status"];
+    assert_eq!(status["bearer"].as_str(), Some("tcp"));
+    assert_eq!(status["endpoint"].as_str(), Some("127.0.0.1:65535"));
+    assert_eq!(status["kiss_flow_control"].as_bool(), Some(true));
+    assert_eq!(status["mtu"].as_u64(), Some(512));
+}
+
+#[test]
+fn bootstrap_python_rnode_alias_reports_lora_rnode_status() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let config_path = temp.path().join("daemon.toml");
+    let state_path = temp.path().join("lora-state.json");
+    let device_path = temp.path().join("not-a-real-rnode-serial");
+    fs::write(
+        &config_path,
+        format!(
+            r#"
+interfaces = [
+  {{ type = "RNodeInterface", enabled = true, name = "python-rnode", region = "US915", state_path = "{}", port = "{}", baud_rate = 115200, frequency = 915000000, bandwidth = 125000, spreadingfactor = 9, codingrate = 5, txpower = 17 }}
+]
+"#,
+            state_path.to_string_lossy().replace('\\', "\\\\"),
+            device_path.to_string_lossy().replace('\\', "\\\\"),
+        ),
+    )
+    .expect("write config");
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let local = tokio::task::LocalSet::new();
+    let context = runtime.block_on(local.run_until(async {
+        bootstrap::bootstrap(test_args(db_path.clone(), Some(config_path.clone()), None, false))
+            .await
+    }));
+    let response = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 1, method: "list_interfaces".to_string(), params: None })
+        .expect("list_interfaces");
+    let interfaces = response
+        .result
+        .expect("result")
+        .get("interfaces")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .expect("interfaces array");
+
+    let lora = interfaces
+        .iter()
+        .find(|entry| entry.get("type").and_then(|value| value.as_str()) == Some("lora"))
+        .unwrap_or_else(|| panic!("lora entry, interfaces={interfaces:?}"));
+    let runtime = lora
+        .get("settings")
+        .and_then(|value| value.get("_runtime"))
+        .expect("lora runtime");
+    assert_eq!(runtime.get("startup_status").and_then(|value| value.as_str()), Some("spawned"));
+    assert!(runtime.get("iface").and_then(|value| value.as_str()).is_some());
+    let rnode_status = &runtime["lora"]["rnode_status"];
+    assert_eq!(
+        rnode_status.get("endpoint").and_then(|value| value.as_str()),
+        Some(device_path.to_string_lossy().as_ref())
+    );
+    assert_eq!(rnode_status.get("bearer").and_then(|value| value.as_str()), Some("serial"));
+    assert_eq!(rnode_status.get("baud_rate").and_then(|value| value.as_u64()), Some(115_200));
+    assert_eq!(
+        rnode_status["configured"]["frequency_hz"].as_u64(),
+        Some(915_000_000)
+    );
+    assert_eq!(rnode_status["configured"]["spreading_factor"].as_u64(), Some(9));
+}
+
+#[test]
+fn bootstrap_starts_pipe_interface_from_config() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let config_path = temp.path().join("daemon.toml");
+    fs::write(
+        &config_path,
+        r#"
+interfaces = [
+  { type = "PipeInterface", enabled = true, name = "pipe-main", command = "cat", respawn_delay = 0.1 }
+]
+"#,
+    )
+    .expect("write config");
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let context = runtime.block_on(async {
+        bootstrap::bootstrap(test_args(db_path.clone(), Some(config_path.clone()), None, false))
+            .await
+    });
+    let response = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 1, method: "list_interfaces".to_string(), params: None })
+        .expect("list_interfaces");
+    let interfaces = response
+        .result
+        .expect("result")
+        .get("interfaces")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .expect("interfaces array");
+
+    let pipe = interfaces
+        .iter()
+        .find(|entry| entry.get("type").and_then(|value| value.as_str()) == Some("pipe"))
+        .expect("pipe entry");
+    assert_eq!(
+        pipe.get("settings")
+            .and_then(|value| value.get("_runtime"))
+            .and_then(|value| value.get("startup_status"))
+            .and_then(|value| value.as_str()),
+        Some("spawned")
+    );
+    assert_eq!(
+        pipe.get("settings")
+            .and_then(|value| value.get("mtu"))
+            .and_then(|value| value.as_u64()),
+        Some(1_064)
+    );
+    let pipe_status = &pipe["settings"]["_runtime"]["pipe"]["status"];
+    assert_eq!(pipe_status["command"].as_str(), Some("cat"));
+    assert_eq!(pipe_status["process_state"].as_str(), Some("configured"));
+    assert_eq!(pipe_status["pipe_is_open"].as_bool(), Some(false));
+    assert_eq!(pipe_status["respawn_attempts"].as_u64(), Some(0));
+    assert!(pipe_status["last_error"].is_null());
+}
+
+#[test]
+fn bootstrap_starts_local_interface_from_config_without_transport_flag() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let config_path = temp.path().join("daemon.toml");
+    fs::write(
+        &config_path,
+        r#"
+interfaces = [
+  { type = "LocalInterface", enabled = true, name = "local-main", shared_instance_type = "tcp", shared_instance_port = 0 }
+]
+"#,
+    )
+    .expect("write config");
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let context = runtime.block_on(async {
+        bootstrap::bootstrap(test_args(db_path.clone(), Some(config_path.clone()), None, false))
+            .await
+    });
+    let response = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 1, method: "list_interfaces".to_string(), params: None })
+        .expect("list_interfaces");
+    let interfaces = response
+        .result
+        .expect("result")
+        .get("interfaces")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .expect("interfaces array");
+
+    let local = interfaces
+        .iter()
+        .find(|entry| entry.get("type").and_then(|value| value.as_str()) == Some("local"))
+        .expect("local entry");
+    assert_eq!(
+        local
+            .get("settings")
+            .and_then(|value| value.get("_runtime"))
+            .and_then(|value| value.get("startup_status"))
+            .and_then(|value| value.as_str()),
+        Some("active")
+    );
+}
+
+#[test]
+fn bootstrap_starts_reticulum_global_shared_instance_without_local_interface_entry() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let config_path = temp.path().join("daemon.toml");
+    fs::write(
+        &config_path,
+        r#"
+[reticulum]
+share_instance = true
+shared_instance_type = "tcp"
+shared_instance_port = 0
+"#,
+    )
+    .expect("write config");
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let context = runtime.block_on(async {
+        bootstrap::bootstrap(test_args(db_path.clone(), Some(config_path.clone()), None, false))
+            .await
+    });
+    let response = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 1, method: "list_interfaces".to_string(), params: None })
+        .expect("list_interfaces");
+    let interfaces = response
+        .result
+        .expect("result")
+        .get("interfaces")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .expect("interfaces array");
+
+    let local = interfaces
+        .iter()
+        .find(|entry| entry.get("type").and_then(|value| value.as_str()) == Some("local"))
+        .expect("implicit local entry");
+    assert_eq!(local.get("name").and_then(|value| value.as_str()), Some("shared-instance"));
+    assert_eq!(
+        local
+            .get("settings")
+            .and_then(|value| value.get("_runtime"))
+            .and_then(|value| value.get("startup_status"))
+            .and_then(|value| value.as_str()),
+        Some("active")
+    );
+}
+
+#[test]
+fn bootstrap_starts_implicit_shared_local_tcp_beside_configured_tcp_server() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let config_path = temp.path().join("daemon.toml");
+    fs::write(
+        &config_path,
+        r#"
+interfaces = [
+  { type = "TCPServerInterface", enabled = true, name = "tcp-main", host = "127.0.0.1", port = 0 }
+]
+
+[reticulum]
+share_instance = true
+shared_instance_type = "tcp"
+shared_instance_port = 0
+"#,
+    )
+    .expect("write config");
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let context = runtime.block_on(async {
+        bootstrap::bootstrap(test_args(db_path.clone(), Some(config_path.clone()), None, false))
+            .await
+    });
+    let response = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 1, method: "list_interfaces".to_string(), params: None })
+        .expect("list_interfaces");
+    let interfaces = response
+        .result
+        .expect("result")
+        .get("interfaces")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .expect("interfaces array");
+
+    let tcp_server = interfaces
+        .iter()
+        .find(|entry| entry.get("type").and_then(|value| value.as_str()) == Some("tcp_server"))
+        .expect("tcp server entry");
+    assert_eq!(tcp_server.get("name").and_then(|value| value.as_str()), Some("tcp-main"));
+    assert_eq!(
+        tcp_server
+            .get("settings")
+            .and_then(|value| value.get("_runtime"))
+            .and_then(|value| value.get("startup_status"))
+            .and_then(|value| value.as_str()),
+        Some("active")
+    );
+
+    let local = interfaces
+        .iter()
+        .find(|entry| {
+            entry.get("type").and_then(|value| value.as_str()) == Some("local")
+                && entry.get("name").and_then(|value| value.as_str()) == Some("shared-instance")
+        })
+        .expect("implicit local entry");
+    assert_eq!(
+        local
+            .get("settings")
+            .and_then(|value| value.get("_runtime"))
+            .and_then(|value| value.get("startup_status"))
+            .and_then(|value| value.as_str()),
+        Some("active")
+    );
+}
+
+#[test]
+fn bootstrap_reticulum_global_share_instance_false_does_not_start_implicit_local() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let config_path = temp.path().join("daemon.toml");
+    fs::write(
+        &config_path,
+        r#"
+[reticulum]
+share_instance = false
+shared_instance_type = "tcp"
+shared_instance_port = 0
+"#,
+    )
+    .expect("write config");
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let context = runtime.block_on(async {
+        bootstrap::bootstrap(test_args(db_path.clone(), Some(config_path.clone()), None, false))
+            .await
+    });
+    let response = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 1, method: "list_interfaces".to_string(), params: None })
+        .expect("list_interfaces");
+    let interfaces = response
+        .result
+        .expect("result")
+        .get("interfaces")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .expect("interfaces array");
+
+    assert!(
+        interfaces
+            .iter()
+            .all(|entry| entry.get("type").and_then(|value| value.as_str()) != Some("local")),
+        "share_instance=false should not synthesize local interface: {interfaces:?}"
+    );
+}
+
+#[test]
+fn bootstrap_attaches_local_interface_when_shared_instance_is_already_listening() {
+    let shared_listener =
+        std::net::TcpListener::bind("127.0.0.1:0").expect("bind shared local instance");
+    let port = shared_listener.local_addr().expect("shared local addr").port();
+    shared_listener.set_nonblocking(true).expect("nonblocking listener");
+
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let config_path = temp.path().join("daemon.toml");
+    fs::write(
+        &config_path,
+        format!(
+            r#"
+interfaces = [
+  {{ type = "LocalInterface", enabled = true, name = "local-attach", shared_instance_type = "tcp", shared_instance_port = {port} }}
+]
+"#
+        ),
+    )
+    .expect("write config");
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let context = runtime.block_on(async {
+        let context =
+            bootstrap::bootstrap(test_args(db_path.clone(), Some(config_path.clone()), None, false))
+                .await;
+        tokio::task::yield_now().await;
+        context
+    });
+
+    let response = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 1, method: "list_interfaces".to_string(), params: None })
+        .expect("list_interfaces");
+    let interfaces = response
+        .result
+        .expect("result")
+        .get("interfaces")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .expect("interfaces array");
+
+    let local = interfaces
+        .iter()
+        .find(|entry| entry.get("type").and_then(|value| value.as_str()) == Some("local"))
+        .expect("local entry");
+    assert_eq!(
+        local
+            .get("settings")
+            .and_then(|value| value.get("_runtime"))
+            .and_then(|value| value.get("startup_status"))
+            .and_then(|value| value.as_str()),
+        Some("attached")
+    );
+    assert_eq!(
+        local
+            .get("settings")
+            .and_then(|value| value.get("port"))
+            .and_then(|value| value.as_u64()),
+        Some(u64::from(port))
+    );
+}
+
+#[test]
+fn bootstrap_local_client_interface_forces_tcp_attach() {
+    let shared_listener =
+        std::net::TcpListener::bind("127.0.0.1:0").expect("bind shared local instance");
+    let port = shared_listener.local_addr().expect("shared local addr").port();
+    shared_listener.set_nonblocking(true).expect("nonblocking listener");
+
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let config_path = temp.path().join("daemon.toml");
+    fs::write(
+        &config_path,
+        format!(
+            r#"
+interfaces = [
+  {{ type = "LocalClientInterface", enabled = true, name = "local-client", shared_instance_type = "tcp", shared_instance_port = {port} }}
+]
+"#
+        ),
+    )
+    .expect("write config");
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let context = runtime.block_on(async {
+        let context =
+            bootstrap::bootstrap(test_args(db_path.clone(), Some(config_path.clone()), None, false))
+                .await;
+        tokio::task::yield_now().await;
+        context
+    });
+
+    let response = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 1, method: "list_interfaces".to_string(), params: None })
+        .expect("list_interfaces");
+    let interfaces = response
+        .result
+        .expect("result")
+        .get("interfaces")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .expect("interfaces array");
+
+    let local = interfaces
+        .iter()
+        .find(|entry| entry.get("type").and_then(|value| value.as_str()) == Some("local_client"))
+        .expect("local_client entry");
+    assert_eq!(
+        local
+            .get("settings")
+            .and_then(|value| value.get("_runtime"))
+            .and_then(|value| value.get("startup_status"))
+            .and_then(|value| value.as_str()),
+        Some("attached")
+    );
+    assert_eq!(
+        local
+            .get("settings")
+            .and_then(|value| value.get("port"))
+            .and_then(|value| value.as_u64()),
+        Some(u64::from(port))
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn bootstrap_starts_local_unix_interface_from_config_without_transport_flag() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let socket_path = temp.path().join("reticulum.sock");
+    let config_path = temp.path().join("daemon.toml");
+    fs::write(
+        &config_path,
+        format!(
+            r#"
+interfaces = [
+  {{ type = "LocalInterface", enabled = true, name = "local-unix", shared_instance_type = "unix", socket_path = "{}" }}
+]
+"#,
+            socket_path.display()
+        ),
+    )
+    .expect("write config");
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let context = runtime.block_on(async {
+        let context =
+            bootstrap::bootstrap(test_args(db_path.clone(), Some(config_path.clone()), None, false))
+                .await;
+        tokio::task::yield_now().await;
+        context
+    });
+    assert!(socket_path.exists(), "local unix listener should create socket path");
+
+    let response = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 1, method: "list_interfaces".to_string(), params: None })
+        .expect("list_interfaces");
+    let interfaces = response
+        .result
+        .expect("result")
+        .get("interfaces")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .expect("interfaces array");
+
+    let local = interfaces
+        .iter()
+        .find(|entry| entry.get("type").and_then(|value| value.as_str()) == Some("local"))
+        .expect("local entry");
+    assert_eq!(
+        local
+            .get("settings")
+            .and_then(|value| value.get("shared_instance_type"))
+            .and_then(|value| value.as_str()),
+        Some("unix")
+    );
+    assert_eq!(
+        local
+            .get("settings")
+            .and_then(|value| value.get("socket_path"))
+            .and_then(|value| value.as_str()),
+        socket_path.to_str()
+    );
+    assert_eq!(
+        local
+            .get("settings")
+            .and_then(|value| value.get("_runtime"))
+            .and_then(|value| value.get("startup_status"))
+            .and_then(|value| value.as_str()),
+        Some("active")
+    );
+}
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+#[test]
+fn bootstrap_starts_local_unix_abstract_interface_from_instance_name() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let config_path = temp.path().join("daemon.toml");
+    let instance_name = format!(
+        "codex-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock after epoch")
+            .as_nanos()
+    );
+    fs::write(
+        &config_path,
+        format!(
+            r#"
+interfaces = [
+  {{ type = "LocalInterface", enabled = true, name = "local-unix-abstract", shared_instance_type = "unix", instance_name = "{instance_name}" }}
+]
+"#
+        ),
+    )
+    .expect("write config");
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let context = runtime.block_on(async {
+        let context =
+            bootstrap::bootstrap(test_args(db_path.clone(), Some(config_path.clone()), None, false))
+                .await;
+        tokio::task::yield_now().await;
+        context
+    });
+
+    let response = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 1, method: "list_interfaces".to_string(), params: None })
+        .expect("list_interfaces");
+    let interfaces = response
+        .result
+        .expect("result")
+        .get("interfaces")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .expect("interfaces array");
+    let local = interfaces
+        .iter()
+        .find(|entry| entry.get("type").and_then(|value| value.as_str()) == Some("local"))
+        .expect("local entry");
+    let expected_socket_path = format!("@rns/{instance_name}");
+    assert_eq!(
+        local
+            .get("settings")
+            .and_then(|value| value.get("socket_path"))
+            .and_then(|value| value.as_str()),
+        Some(expected_socket_path.as_str())
+    );
+    assert_eq!(
+        local
+            .get("settings")
+            .and_then(|value| value.get("_runtime"))
+            .and_then(|value| value.get("startup_status"))
+            .and_then(|value| value.as_str()),
+        Some("active")
+    );
+}
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+#[test]
+fn bootstrap_attaches_local_unix_when_abstract_instance_is_already_listening() {
+    fn abstract_socket_path(name: &str) -> PathBuf {
+        let mut bytes = Vec::with_capacity(name.len() + 1);
+        bytes.push(0);
+        bytes.extend_from_slice(name.as_bytes());
+        PathBuf::from(OsString::from_vec(bytes))
+    }
+
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let config_path = temp.path().join("daemon.toml");
+    let instance_name = format!(
+        "codex-attach-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock after epoch")
+            .as_nanos()
+    );
+    fs::write(
+        &config_path,
+        format!(
+            r#"
+interfaces = [
+  {{ type = "LocalInterface", enabled = true, name = "local-unix-attach", shared_instance_type = "unix", instance_name = "{instance_name}" }}
+]
+"#
+        ),
+    )
+    .expect("write config");
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let context = runtime.block_on(async {
+        let abstract_name = format!("rns/{instance_name}");
+        let _shared_listener = tokio::net::UnixListener::bind(abstract_socket_path(
+            abstract_name.as_str(),
+        ))
+        .expect("bind shared abstract local instance");
+        let context =
+            bootstrap::bootstrap(test_args(db_path.clone(), Some(config_path.clone()), None, false))
+                .await;
+        tokio::task::yield_now().await;
+        context
+    });
+
+    let response = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 1, method: "list_interfaces".to_string(), params: None })
+        .expect("list_interfaces");
+    let interfaces = response
+        .result
+        .expect("result")
+        .get("interfaces")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .expect("interfaces array");
+    let local = interfaces
+        .iter()
+        .find(|entry| entry.get("type").and_then(|value| value.as_str()) == Some("local"))
+        .expect("local entry");
+    let expected_socket_path = format!("@rns/{instance_name}");
+    assert_eq!(
+        local
+            .get("settings")
+            .and_then(|value| value.get("_runtime"))
+            .and_then(|value| value.get("startup_status"))
+            .and_then(|value| value.as_str()),
+        Some("attached")
+    );
+    assert_eq!(
+        local
+            .get("settings")
+            .and_then(|value| value.get("socket_path"))
+            .and_then(|value| value.as_str()),
+        Some(expected_socket_path.as_str())
+    );
+}
+
+#[test]
 fn bootstrap_transport_override_shadows_configured_tcp_servers_without_failure() {
     let temp = TempDir::new().expect("temp dir");
     let db_path = temp.path().join("reticulum.db");

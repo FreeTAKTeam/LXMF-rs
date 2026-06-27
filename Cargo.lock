@@ -2192,6 +2192,7 @@ name = "reticulum-rs-transport"
 version = "0.5.1"
 dependencies = [
  "aes",
+ "base64 0.22.1",
  "btleplug",
  "bzip2",
  "cbc",
@@ -2213,6 +2214,7 @@ dependencies = [
  "serde_bytes",
  "serde_json",
  "sha2",
+ "shlex",
  "socket2 0.5.10",
  "tempfile",
  "tokio",

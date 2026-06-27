@@ -166,6 +166,45 @@ Supported settings are:
 - KISS slot time: `20 ms`
 - KISS flow control: `false`
 
+## Runtime Visibility
+
+With `reticulumd --features vrn76-kiss-ble`, the native interface refreshes
+daemon/RPC `_runtime.vrn76.status` metadata while it runs. `rnstatus-rs`
+renders the same status as a compact row with connection, subscription,
+readiness, startup KISS write failure, pending payload, pending write, and
+pending packet counters.
+
+## Prepared-Host Smoke
+
+The prepared-host smoke is opt-in hardware evidence for hosts where Bluetooth
+has already been provisioned and a VR-N76-class peripheral is ready to connect:
+
+```powershell
+VRN76_PERIPHERAL_ID=VR-N76 \
+VRN76_ADAPTER=Bluetooth \
+VRN76_TIMEOUT_SECS=180 \
+./tools/scripts/vrn76-kiss-ble-prepared-host-smoke.sh
+```
+
+The script builds `reticulumd --features vrn76-kiss-ble`, starts the daemon
+with `--strict-interface-startup`, and polls both `rnstatus-rs --json` and
+human `rnstatus-rs` output. It writes the generated config, daemon log,
+`rnstatus-rs` JSON/human output, and `report.json` under `target/vrn76-hil/`.
+
+Passing evidence requires the `vrn76-prepared-host` row to report
+`_runtime.vrn76.status.connected = true`,
+`_runtime.vrn76.status.subscribed = true`, and
+`_runtime.vrn76.status.interface_ready = true`. The report also records
+`startup_write_failures`, `pending_payloads`, `pending_writes`, and
+`pending_packets` as non-negative runtime counters.
+
+The nightly HIL workflow exposes the same harness behind `HIL_VRN76_ENABLED`.
+Repository variables can provide `HIL_VRN76_PERIPHERAL_ID`,
+`HIL_VRN76_ADAPTER`, `HIL_VRN76_MTU`, `HIL_VRN76_MAX_WRITE_LEN`,
+`HIL_VRN76_FRAME_MODE`, `HIL_VRN76_KISS_FLOW_CONTROL`,
+`HIL_VRN76_SCAN_TIMEOUT_MS`, `HIL_VRN76_CONNECT_TIMEOUT_MS`, and
+`HIL_VRN76_TIMEOUT_SECS`.
+
 ## Current Verification
 
 ```powershell
@@ -174,6 +213,9 @@ cargo test -p reticulum-rs-transport --features vrn76-kiss-ble --test vrn76_kiss
 cargo check -p reticulum-rs-transport --features vrn76-kiss-ble --example vrn76_kiss_ble_probe
 cargo test -p reticulumd --test config vrn76
 cargo test -p reticulumd --features vrn76-kiss-ble --bin reticulumd vrn76_builder
+cargo test -p reticulumd --features vrn76-kiss-ble --bin reticulumd vrn76_runtime_status_refresh_updates_matching_interface_record
+cargo test -p reticulumd --test vrn76_prepared_host_smoke_contract
+cargo test -p rns-tools --bin rnstatus-rs human_status_includes_interface_runtime_detail
 ```
 
 The current tests cover profile constants, Benshi `HT_SEND_DATA` wrapping,
@@ -188,7 +230,9 @@ failures. They also cover Python-compatible KISS station-ID beacon config,
 VR-N76 BLE frame mode. Outbound Benshi writes are covered for configured
 maximum BLE write length fragmentation. Stale partial inbound KISS frames are
 discarded after the Python BLE read timeout before later Benshi or raw KISS
-indication bytes are decoded.
+indication bytes are decoded. Daemon/RPC runtime status refresh and
+`rnstatus-rs` summary rendering are covered without requiring Bluetooth
+hardware.
 
 The probe example covers argument parsing, lifecycle setup, KISS configuration
 submission, startup command failure counting, runtime status printing, and
@@ -196,11 +240,16 @@ explicit opt-in test-frame transmission at compile time. It still requires
 hardware-backed execution for scan/connect/write/indication evidence on a host
 where Bluetooth has already been provisioned.
 
+The prepared-host smoke contract covers the generated HIL script, nightly
+workflow wiring, and documentation artifacts without requiring Bluetooth
+hardware.
+
 ## Remaining Work
 
 - Confirm hardware behavior for Benshi `TncDataFragment` channel IDs matches
   the implemented parser semantics.
-- Capture hardware or adapter-backed integration evidence for scan, connect,
-  subscribe, write, indication, disconnect, and reconnect behavior on a prepared
-  host. Do not treat OS Bluetooth adapter setup or device bonding as an
-  LXMF-rs implementation task.
+- Run the prepared-host smoke against real VR-N76 hardware and capture
+  scan/connect/subscribe/readiness evidence. Do not treat OS Bluetooth adapter
+  setup or device bonding as an LXMF-rs implementation task.
+- Capture broader hardware or adapter-backed integration evidence for write,
+  indication, disconnect, and reconnect behavior on a prepared host.

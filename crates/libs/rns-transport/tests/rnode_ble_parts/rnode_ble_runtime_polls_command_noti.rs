@@ -117,6 +117,27 @@ fn rnode_ble_command_monitor_exposes_rnode_protocol_state() {
 }
 
 #[test]
+fn rnode_ble_command_monitor_status_json_reports_ble_bearer() {
+    let config = LoraConfig::us915_default();
+    let mut monitor = RnodeBleCommandMonitor::new(config, Duration::ZERO);
+
+    monitor
+        .accept_notification(&RnodeBleNotification {
+            packets: Vec::new(),
+            commands: valid_startup_commands(config),
+        })
+        .expect("valid command responses");
+    let status = monitor.runtime_status_json("ble://RNode 1234");
+
+    assert_eq!(status["endpoint"].as_str(), Some("ble://RNode 1234"));
+    assert_eq!(status["bearer"].as_str(), Some("ble"));
+    assert!(status["baud_rate"].is_null());
+    assert_eq!(status["probe_status"]["detected"].as_bool(), Some(true));
+    assert_eq!(status["radio_status"]["radio_state"].as_u64(), Some(1));
+    assert_eq!(status["online"].as_bool(), Some(true));
+}
+
+#[test]
 fn rnode_ble_command_monitor_rejects_missing_startup_responses_after_deadline() {
     let config = LoraConfig::us915_default();
     let mut monitor = RnodeBleCommandMonitor::new(config, Duration::ZERO);

@@ -4,9 +4,18 @@ pub mod driver;
 
 pub mod hdlc;
 
+pub mod i2p;
+
 pub mod kiss;
 
 pub mod lora;
+
+#[cfg(unix)]
+pub mod local;
+
+pub mod pipe;
+
+pub mod rnode_multi;
 
 pub mod rnode_ble;
 
@@ -19,6 +28,8 @@ pub mod tcp_server;
 pub mod udp;
 
 pub mod vrn76_kiss_ble;
+
+pub mod weave;
 
 include!("iface_parts/module_prelude.rs");
 

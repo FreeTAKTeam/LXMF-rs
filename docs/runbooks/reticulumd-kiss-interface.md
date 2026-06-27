@@ -9,11 +9,12 @@ stream transport.
 
 ## Scope
 
-- Interface kinds: `kiss`, `kiss_tcp_client`
-- Reticulum type alias: `KISSInterface`
-- Active transports: serial KISS modem, TCP-connected KISS modem or bridge
-- Runtime mutation policy: `set_interfaces`/`reload_config` with `kiss`
-  or `kiss_tcp_client` changes require restart
+- Interface kinds: `kiss`, `ax25_kiss`, `kiss_tcp_client`
+- Reticulum type aliases: `KISSInterface`, `AX25KISSInterface`
+- Active transports: serial KISS modem, serial AX.25 KISS TNC,
+  TCP-connected KISS modem or bridge
+- Runtime mutation policy: `set_interfaces`/`reload_config` with `kiss`,
+  `ax25_kiss`, or `kiss_tcp_client` changes require restart
 
 ## Required Config Fields
 
@@ -87,9 +88,35 @@ interfaces = [
 ]
 ```
 
+AX.25 KISS, for example a serial KISS TNC carrying Reticulum packets inside a
+Python-compatible AX.25 UI header:
+
+```toml
+interfaces = [
+  {
+    type = "AX25KISSInterface",
+    enabled = true,
+    name = "ax25-main",
+    port = "/dev/ttyUSB0",
+    speed = 1200,
+    callsign = "N0CALL",
+    ssid = 1,
+    preamble = 350,
+    txtail = 20,
+    persistence = 64,
+    slottime = 20,
+    flow_control = true,
+    id_callsign = "N0CALL-1",
+    id_interval = 600
+  }
+]
+```
+
 Python `TCPClientInterface` entries with `kiss_framing = true` are normalized
 to `kiss_tcp_client`; `target_host` and `target_port` map to `host` and `port`,
-and `fixed_mtu` maps to `mtu`:
+and `fixed_mtu` maps to `mtu`. Like Python Reticulum, `fixed_mtu = 0` keeps
+the default TCP MTU and non-zero values must be at least the Reticulum MTU of
+500 bytes:
 
 ```toml
 interfaces = [
@@ -115,6 +142,18 @@ interfaces = [
   `preamble` as `preamble_ms`, `txtail` as `tx_tail_ms`, `slottime` as
   `slot_time_ms`, and boolean `flow_control` as `kiss_flow_control`. If
   `speed` is omitted, the Python alias uses the Python default `9600`.
+  Android-style `beacon_interval` and `beacon_data` are accepted as aliases
+  for the existing Python ID beacon fields `id_interval` and `id_callsign`;
+  canonical `id_*` fields take precedence when both forms are supplied.
+- For `AX25KISSInterface` compatibility, `port` is accepted as `device`,
+  `speed` as `baud_rate`, `databits` as `data_bits`, `stopbits` as
+  `stop_bits`, `preamble` as `preamble_ms`, `txtail` as `tx_tail_ms`,
+  `slottime` as `slot_time_ms`, and boolean `flow_control` as
+  `kiss_flow_control`. If `speed` is omitted, the Python alias uses the Python
+  default `9600`.
+- For `ax25_kiss`, `callsign` and `ssid` are required when enabled.
+  `callsign` must be 3 to 6 ASCII alphanumeric characters and `ssid` must be
+  between 0 and 15.
 - When `kiss_flow_control` or compatibility `flow_control` is enabled, the
   stream starts ready after the KISS startup frames are flushed, matching
   Python `KISSInterface` configuration. The first outbound packet is sent
@@ -158,10 +197,14 @@ interfaces = [
 Startup writes KISS modem commands for preamble, TX tail, persistence, slot
 time, and Python's READY setup command. Packet I/O uses KISS data frames;
 inbound READY commands release one queued outbound frame when flow control is enabled.
-The same KISS codec and startup commands are used by the serial and TCP
-bearers. For Python `KISSInterface` parity, serial and TCP KISS strip the high
-port nibble from inbound KISS command bytes and treat the low nibble as the
-single supported port command. RNode/LoRa keeps full command bytes because
+The same KISS codec and startup commands are used by the serial, AX.25, and
+TCP bearers. AX.25 KISS wraps outbound Reticulum packets in an AX.25 UI header
+with destination callsign `APZRNS` and strips the first 16 bytes from inbound
+AX.25 frames before Reticulum packet decoding, matching Python
+`AX25KISSInterface` behavior. For Python `KISSInterface` parity, serial and
+TCP KISS strip the high port nibble from inbound KISS command bytes and treat
+the low nibble as the single supported port command. RNode/LoRa keeps full
+command bytes because
 Python `RNodeInterface` uses full values such as firmware command `0x50`.
 If a peer starts a frame and then goes quiet beyond the Python KISS read
 timeout, the partial frame is dropped before later bytes are decoded.
@@ -178,6 +221,7 @@ requires a callsign and does not apply this serial KISS padding.
 Expected startup log:
 
 - `kiss enabled iface=<iface> name=<name> device=<device> baud_rate=<baud>`
+- `ax25_kiss enabled iface=<iface> name=<name> device=<device> baud_rate=<baud>`
 - `kiss_tcp_client enabled iface=<iface> name=<name> endpoint=<host>:<port>`
 
 Runtime status visibility:
@@ -185,12 +229,94 @@ Runtime status visibility:
 - `list_interfaces` includes `_runtime.startup_status = "spawned"`.
 - `list_interfaces` includes `_runtime.iface` with the active interface hash.
 
+## Software Fake-PTY Smoke
+
+The software fake-PTY smoke validates the serial KISS daemon path without
+attached TNC or modem hardware:
+
+```bash
+./tools/scripts/kiss-fake-pty-smoke.sh
+```
+
+The script starts two raw pseudo-terminal fake peers, keeps their PTY slave
+devices available across strict-startup preflight and runtime serial opens, and
+starts `reticulumd` with Python-style `KISSInterface` and `AX25KISSInterface`
+configs. The fake peers decode KISS frames, record the startup command
+sequence, and send a `CMD_READY` frame back to the daemon. A passing run
+requires:
+
+- `_runtime.startup_status = "spawned"`
+- `_runtime.kiss.status.link_state = "running"`
+- `_runtime.kiss.status.bearer = "serial"`
+- `_runtime.kiss.status.interface_ready = true`
+- `_runtime.kiss.status.init_frames_tx >= 5`
+- `_runtime.kiss.status.command_frames_rx >= 1`
+- `_runtime.kiss.status.ready_frames_rx >= 1`
+- `_runtime.kiss.status.bytes_tx` to cover the startup command frames
+- `_runtime.kiss.status.bytes_rx` to cover the fake READY response
+- the AX.25 row to report `_runtime.kiss.status.ax25 = true`
+- human `rnstatus-rs` output to summarize the running serial KISS rows
+- the fake peer recording all KISS startup command frames:
+  `CMD_TXDELAY`, `CMD_TXTAIL`, `CMD_P`, `CMD_SLOTTIME`, and `CMD_READY`
+
+The smoke writes structured evidence under `target/kiss-fake-pty-smoke/`,
+including `report.json`, fake-peer frame state, daemon logs, and `rnstatus-rs`
+JSON/human output. This proves Python-style serial KISS and AX.25 KISS config,
+strict daemon startup, KISS startup frame emission, READY command handling, and
+refreshed operator status through the real daemon path. It is local-only
+evidence, not a substitute for real TNC or modem hardware evidence.
+
+## Software Fake-TCP Smoke
+
+The software fake-TCP smoke validates the Python `TCPClientInterface`
+`kiss_framing = true` daemon path, normalized to `kiss_tcp_client`, without a
+real Wi-Fi KISS bridge or TCP-attached modem:
+
+```bash
+./tools/scripts/kiss-fake-tcp-smoke.sh
+```
+
+The script starts a local fake TCP KISS server, waits for its listener port, and
+starts `reticulumd` with a Python-style `TCPClientInterface` config using
+`kiss_framing = true`. Strict startup first proves the configured endpoint is
+reachable, then the runtime KISS TCP client connects, emits startup commands,
+and receives a fake `CMD_READY` response. A passing run requires:
+
+- `_runtime.startup_status = "spawned"`
+- `_runtime.kiss_tcp.status.link_state = "running"`
+- `_runtime.kiss_tcp.status.bearer = "tcp"`
+- `_runtime.kiss_tcp.status.endpoint` to match the fake TCP server
+- `_runtime.kiss_tcp.status.interface_ready = true`
+- `_runtime.kiss_tcp.status.init_frames_tx >= 5`
+- `_runtime.kiss_tcp.status.command_frames_rx >= 1`
+- `_runtime.kiss_tcp.status.ready_frames_rx >= 1`
+- `_runtime.kiss_tcp.status.bytes_tx` to cover the startup command frames
+- `_runtime.kiss_tcp.status.bytes_rx` to cover the fake READY response
+- human `rnstatus-rs` output to summarize the running TCP KISS row
+- the fake server recording all KISS startup command frames:
+  `CMD_TXDELAY`, `CMD_TXTAIL`, `CMD_P`, `CMD_SLOTTIME`, and `CMD_READY`
+
+The smoke writes structured evidence under `target/kiss-fake-tcp-smoke/`,
+including `report.json`, fake-server frame state, daemon logs, and
+`rnstatus-rs` JSON/human output. This proves Python-style TCP KISS alias
+normalization, strict daemon startup, KISS startup frame emission, READY command
+handling, and refreshed operator status through the real daemon path. It is
+local-only evidence, not a substitute for real Wi-Fi KISS bridge or modem
+hardware evidence.
+
 ## Verification Commands
 
 ```bash
+cargo test -p reticulumd --test kiss_fake_pty_smoke_contract
+cargo test -p reticulumd --test kiss_fake_tcp_smoke_contract
+./tools/scripts/kiss-fake-pty-smoke.sh
+./tools/scripts/kiss-fake-tcp-smoke.sh
 cargo test -p reticulum-rs-transport --test kiss_codec
+cargo test -p reticulum-rs-transport ax25_payload
 cargo test -p reticulumd --test config kiss
+cargo test -p reticulumd --test config ax25_kiss
 cargo test -p reticulumd --test config kiss_tcp_client
+cargo test -p reticulumd --bin reticulumd ax25_kiss_builder
 cargo test -p reticulumd --bin reticulumd kiss_tcp_client_builder
 cargo test -p reticulumd --bin reticulumd bootstrap_best_effort_starts_kiss_interface_without_transport_flag
 cargo check -p reticulumd --all-targets
@@ -198,6 +324,7 @@ cargo check -p reticulumd --all-targets
 
 ## Rollback
 
-- Disable `kiss` interface entries and restart daemon.
+- Disable `kiss`, `ax25_kiss`, or `kiss_tcp_client` interface entries and
+  restart daemon.
 - Confirm only the intended remaining interfaces are active with
   `list_interfaces`.

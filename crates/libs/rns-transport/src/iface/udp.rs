@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use socket2::{Domain, Protocol, Socket, Type};
 use tokio::net::UdpSocket;
@@ -15,6 +15,109 @@ use crate::packet::{Packet, PacketContext, PacketType};
 use crate::serde::Serialize;
 
 use super::{Interface, InterfaceContext};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UdpRuntimeStatus {
+    pub link_state: String,
+    pub role: String,
+    pub bind_addr: String,
+    pub forward_addr: Option<String>,
+    pub iface: Option<String>,
+    pub peer_routes: usize,
+    pub packets_rx: u64,
+    pub packets_tx: u64,
+    pub bytes_rx: u64,
+    pub bytes_tx: u64,
+    pub decode_errors: u64,
+    pub rx_queue_errors: u64,
+    pub socket_errors: u64,
+    pub tx_errors: u64,
+    pub dropped_direct: u64,
+    pub last_error: Option<String>,
+}
+
+impl UdpRuntimeStatus {
+    #[must_use]
+    pub fn new(bind_addr: String, forward_addr: Option<String>, is_multicast: bool) -> Self {
+        Self {
+            link_state: "configured".to_string(),
+            role: if is_multicast {
+                "multicast".to_string()
+            } else if forward_addr.is_some() {
+                "peer".to_string()
+            } else {
+                "listener".to_string()
+            },
+            bind_addr,
+            forward_addr,
+            iface: None,
+            peer_routes: 0,
+            packets_rx: 0,
+            packets_tx: 0,
+            bytes_rx: 0,
+            bytes_tx: 0,
+            decode_errors: 0,
+            rx_queue_errors: 0,
+            socket_errors: 0,
+            tx_errors: 0,
+            dropped_direct: 0,
+            last_error: None,
+        }
+    }
+
+    #[must_use]
+    pub fn to_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "link_state": self.link_state,
+            "role": self.role,
+            "bind_addr": self.bind_addr,
+            "forward_addr": self.forward_addr,
+            "iface": self.iface,
+            "peer_routes": self.peer_routes,
+            "packets_rx": self.packets_rx,
+            "packets_tx": self.packets_tx,
+            "bytes_rx": self.bytes_rx,
+            "bytes_tx": self.bytes_tx,
+            "decode_errors": self.decode_errors,
+            "rx_queue_errors": self.rx_queue_errors,
+            "socket_errors": self.socket_errors,
+            "tx_errors": self.tx_errors,
+            "dropped_direct": self.dropped_direct,
+            "last_error": self.last_error,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct UdpRuntimeStatusHandle {
+    inner: Arc<Mutex<UdpRuntimeStatus>>,
+}
+
+impl UdpRuntimeStatusHandle {
+    fn new(bind_addr: String, forward_addr: Option<String>, is_multicast: bool) -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(UdpRuntimeStatus::new(
+                bind_addr,
+                forward_addr,
+                is_multicast,
+            ))),
+        }
+    }
+
+    pub fn update(&self, update: impl FnOnce(&mut UdpRuntimeStatus)) {
+        update(&mut self.inner.lock().expect("udp runtime status mutex poisoned"));
+    }
+
+    #[must_use]
+    pub fn snapshot(&self) -> UdpRuntimeStatus {
+        self.inner.lock().expect("udp runtime status mutex poisoned").clone()
+    }
+
+    #[must_use]
+    pub fn to_json(&self) -> serde_json::Value {
+        self.snapshot().to_json()
+    }
+}
 
 fn bind_udp(bind_addr: &str, forward_addr: Option<&str>) -> std::io::Result<UdpSocket> {
     let parsed: SocketAddr = bind_addr.parse().map_err(|e| {
@@ -31,6 +134,9 @@ fn bind_udp(bind_addr: &str, forward_addr: Option<&str>) -> std::io::Result<UdpS
     socket.set_reuse_address(true)?;
     #[cfg(unix)]
     socket.set_reuse_port(true)?;
+    if parsed.is_ipv4() && forward_addr.is_some() {
+        socket.set_broadcast(true)?;
+    }
 
     // If binding to a multicast group directly, bind to the unspecified address on
     // the same port instead; then join the group. This works cross-platform.
@@ -152,6 +258,7 @@ pub struct UdpInterface {
     /// received packets to a virtual iface hash based on the sender's
     /// `SocketAddr`. For unicast ifaces this is `None`.
     peer_routing: Option<Arc<TokioMutex<PeerRouting>>>,
+    runtime_status: UdpRuntimeStatusHandle,
 }
 
 impl UdpInterface {
@@ -162,7 +269,9 @@ impl UdpInterface {
         let forward_addr = forward_addr.map(Into::into);
         let is_multicast = is_multicast_addr(&bind_addr)
             || forward_addr.as_deref().map(is_multicast_addr).unwrap_or(false);
-        Self { bind_addr, forward_addr, is_multicast, peer_routing: None }
+        let runtime_status =
+            UdpRuntimeStatusHandle::new(bind_addr.clone(), forward_addr.clone(), is_multicast);
+        Self { bind_addr, forward_addr, is_multicast, peer_routing: None, runtime_status }
     }
 
     /// Multicast UDP iface with a shared peer-routing map. Announces
@@ -180,6 +289,9 @@ impl UdpInterface {
     ) -> Self {
         let mut iface = Self::new(bind_addr, forward_addr);
         iface.peer_routing = Some(peer_routing);
+        iface.runtime_status.update(|status| {
+            status.role = "multicast".to_string();
+        });
         iface
     }
 
@@ -190,17 +302,26 @@ impl UdpInterface {
         self.is_multicast || self.peer_routing.is_some()
     }
 
+    #[must_use]
+    pub fn runtime_status_handle(&self) -> UdpRuntimeStatusHandle {
+        self.runtime_status.clone()
+    }
+
     pub async fn spawn(context: InterfaceContext<Self>) {
-        let (bind_addr, forward_addr, is_multicast, peer_routing) = {
+        let (bind_addr, forward_addr, is_multicast, peer_routing, runtime_status) = {
             let inner = context.inner.lock().unwrap();
             (
                 inner.bind_addr.clone(),
                 inner.forward_addr.clone(),
                 inner.is_multicast,
                 inner.peer_routing.clone(),
+                inner.runtime_status.clone(),
             )
         };
         let iface_address = context.channel.address;
+        runtime_status.update(|status| {
+            status.iface = Some(iface_address.to_string());
+        });
 
         let (rx_channel, tx_channel) = context.channel.split();
         let tx_channel = Arc::new(tokio::sync::Mutex::new(tx_channel));
@@ -210,11 +331,15 @@ impl UdpInterface {
                 break;
             }
 
-            let socket = bind_udp(&bind_addr, forward_addr.as_deref())
-                .map_err(|_| RnsError::ConnectionError);
+            let socket = bind_udp(&bind_addr, forward_addr.as_deref());
 
-            if socket.is_err() {
+            if let Err(err) = socket.as_ref() {
                 log::warn!("couldn't bind to <{}>", bind_addr);
+                runtime_status.update(|status| {
+                    status.link_state = "bind_failed".to_string();
+                    status.last_error = Some(err.to_string());
+                    status.socket_errors = status.socket_errors.saturating_add(1);
+                });
                 tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                 continue;
             }
@@ -223,6 +348,10 @@ impl UdpInterface {
             let stop = CancellationToken::new();
 
             let socket = socket.unwrap();
+            runtime_status.update(|status| {
+                status.link_state = "bound".to_string();
+                status.last_error = None;
+            });
             let read_socket = Arc::new(socket);
             let write_socket = read_socket.clone();
 
@@ -242,6 +371,7 @@ impl UdpInterface {
                 let socket = read_socket;
                 let rx_channel = rx_channel.clone();
                 let peer_routing = peer_routing.clone();
+                let runtime_status = runtime_status.clone();
 
                 tokio::spawn(async move {
                     loop {
@@ -258,6 +388,9 @@ impl UdpInterface {
                                 match result {
                                     Ok((0, _)) => {
                                         log::warn!("connection closed");
+                                        runtime_status.update(|status| {
+                                            status.link_state = "closed".to_string();
+                                        });
                                         stop.cancel();
                                         break;
                                     }
@@ -276,6 +409,17 @@ impl UdpInterface {
                                                     .unwrap_or(iface_address),
                                                 None => iface_address,
                                             };
+                                            let peer_routes = match peer_routing.as_ref() {
+                                                Some(routing) => routing.lock().await.len(),
+                                                None => 0,
+                                            };
+                                            runtime_status.update(|status| {
+                                                status.link_state = "bound".to_string();
+                                                status.peer_routes = peer_routes;
+                                                status.packets_rx = status.packets_rx.saturating_add(1);
+                                                status.bytes_rx = status.bytes_rx.saturating_add(n as u64);
+                                                status.last_error = None;
+                                            });
                                             if PACKET_TRACE {
                                                 log::trace!(
                                                     "rx << (iface {} / attributed {}) from {} {}",
@@ -288,13 +432,28 @@ impl UdpInterface {
                                                 source: IfaceSource::Udp(in_addr),
                                             }).await {
                                                 log::warn!("udp_interface RX queue closed: {err}");
+                                                runtime_status.update(|status| {
+                                                    status.rx_queue_errors = status.rx_queue_errors.saturating_add(1);
+                                                    status.last_error = Some(err.to_string());
+                                                });
                                             }
                                         } else {
                                             log::warn!("couldn't decode packet");
+                                            runtime_status.update(|status| {
+                                                status.decode_errors = status.decode_errors.saturating_add(1);
+                                                status.bytes_rx = status.bytes_rx.saturating_add(n as u64);
+                                                status.last_error = Some("couldn't decode packet".to_string());
+                                            });
                                         }
                                     }
                                     Err(e) => {
                                         log::warn!("connection error {}", e);
+                                        runtime_status.update(|status| {
+                                            status.link_state = "error".to_string();
+                                            status.last_error = Some(e.to_string());
+                                            status.socket_errors = status.socket_errors.saturating_add(1);
+                                        });
+                                        stop.cancel();
                                         break;
                                     }
                                 }
@@ -311,6 +470,7 @@ impl UdpInterface {
                     let tx_channel = tx_channel.clone();
                     let socket = write_socket;
                     let peer_routing = peer_routing.clone();
+                    let runtime_status = runtime_status.clone();
 
                     tokio::spawn(async move {
                         loop {
@@ -362,6 +522,9 @@ impl UdpInterface {
                                                             message.packet.header.packet_type,
                                                         );
                                                     }
+                                                    runtime_status.update(|status| {
+                                                        status.dropped_direct = status.dropped_direct.saturating_add(1);
+                                                    });
                                                     None
                                                 } else {
                                                     if PACKET_TRACE {
@@ -370,6 +533,9 @@ impl UdpInterface {
                                                             addr,
                                                         );
                                                     }
+                                                    runtime_status.update(|status| {
+                                                        status.dropped_direct = status.dropped_direct.saturating_add(1);
+                                                    });
                                                     None
                                                 }
                                             } else {
@@ -390,7 +556,22 @@ impl UdpInterface {
                                         }
                                         let mut output = OutputBuffer::new(&mut tx_buffer);
                                         if packet.serialize(&mut output).is_ok() {
-                                            let _ = socket.send_to(output.as_slice(), &dest).await;
+                                            match socket.send_to(output.as_slice(), &dest).await {
+                                                Ok(n) => {
+                                                    runtime_status.update(|status| {
+                                                        status.link_state = "bound".to_string();
+                                                        status.packets_tx = status.packets_tx.saturating_add(1);
+                                                        status.bytes_tx = status.bytes_tx.saturating_add(n as u64);
+                                                        status.last_error = None;
+                                                    });
+                                                }
+                                                Err(err) => {
+                                                    runtime_status.update(|status| {
+                                                        status.tx_errors = status.tx_errors.saturating_add(1);
+                                                        status.last_error = Some(err.to_string());
+                                                    });
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -404,6 +585,9 @@ impl UdpInterface {
             rx_task.await.unwrap();
 
             log::info!("udp_interface <{}>: closed", bind_addr);
+            runtime_status.update(|status| {
+                status.link_state = "closed".to_string();
+            });
         }
     }
 }
@@ -424,10 +608,20 @@ pub fn spawn_multicast_udp(
     bind_addr: String,
     forward_addr: Option<String>,
 ) -> (AddressHash, Arc<TokioMutex<PeerRouting>>) {
+    let (hash, peer_routing, _) = spawn_multicast_udp_with_status(mgr, bind_addr, forward_addr);
+    (hash, peer_routing)
+}
+
+pub fn spawn_multicast_udp_with_status(
+    mgr: &mut InterfaceManager,
+    bind_addr: String,
+    forward_addr: Option<String>,
+) -> (AddressHash, Arc<TokioMutex<PeerRouting>>, UdpRuntimeStatusHandle) {
     let peer_routing = Arc::new(TokioMutex::new(PeerRouting::new()));
     let iface = UdpInterface::new_multicast(bind_addr, forward_addr, peer_routing.clone());
+    let status = iface.runtime_status_handle();
     let hash = mgr.spawn_as(iface, UdpInterface::spawn, IfaceRole::Multicast);
-    (hash, peer_routing)
+    (hash, peer_routing, status)
 }
 
 pub fn encode_frame(data: &[u8]) -> Result<Vec<u8>, RnsError> {

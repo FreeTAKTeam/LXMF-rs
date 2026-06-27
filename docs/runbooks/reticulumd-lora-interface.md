@@ -14,6 +14,9 @@ This runbook documents `lora` startup policy, active serial device startup, stat
 - Runtime mutation policy: `set_interfaces`/`reload_config` with `lora` changes require restart
 - Compliance posture: fail-closed on uncertain duty-cycle state
 
+For the in-progress shared-serial, multi-vport RNode family, see
+`docs/runbooks/reticulumd-rnode-multi-interface.md`.
+
 ## Required Config Fields
 
 ```toml
@@ -42,9 +45,10 @@ the serial `device`, and `frequency`, `bandwidth`, `spreadingfactor`,
 `codingrate`, and `txpower` map to the corresponding Rust field names. The
 Python alias defaults serial `baud_rate` to `115200` when `speed` is omitted.
 Like Python, the `RNodeInterface` alias requires explicit `frequency`,
-`bandwidth`, `spreadingfactor`, and `codingrate` values instead of inheriting
-Rust region defaults. The repo still requires `state_path` so duty-cycle
-fail-closed state is explicit:
+`bandwidth`, `spreadingfactor`, and `codingrate` values instead of relying on
+generic LoRa region defaults. When `region` is omitted, the compatibility path
+uses `US915` as the radio-config seed, and `state_path` is optional because
+Python RNode configs do not use the daemon LoRa duty-cycle state file:
 
 ```toml
 interfaces = [
@@ -52,8 +56,6 @@ interfaces = [
     type = "RNodeInterface",
     enabled = true,
     name = "rnode-main",
-    region = "US915",
-    state_path = "var/reticulumd/lora-state.json",
     port = "/dev/ttyACM0",
     frequency = 915000000,
     bandwidth = 125000,
@@ -79,8 +81,6 @@ interfaces = [
     type = "RNodeInterface",
     enabled = true,
     name = "rnode-wifi",
-    region = "US915",
-    state_path = "var/reticulumd/lora-state.json",
     port = "tcp://192.0.2.10:8001",
     frequency = 915000000,
     bandwidth = 125000,
@@ -102,8 +102,6 @@ interfaces = [
     type = "RNodeInterface",
     enabled = true,
     name = "rnode-ble",
-    region = "US915",
-    state_path = "var/reticulumd/lora-state.json",
     port = "ble://RNode 1234",
     adapter = "Bluetooth",
     frequency = 915000000,
@@ -115,6 +113,29 @@ interfaces = [
     ble_connect_timeout_ms = 5000,
     command_timeout_ms = 1500,
     max_write_len = 20
+  }
+]
+```
+
+Android-style RNode selector fields are accepted as migration aliases for the
+same native BLE backend. `ble_addr` or `target_device_address` is preferred
+over `ble_name` or `target_device_name`, and `allow_bluetooth = true` requires
+one of those selectors unless an explicit `port = "ble://..."` is already
+configured:
+
+```toml
+interfaces = [
+  {
+    type = "RNodeInterface",
+    enabled = true,
+    name = "rnode-android-ble",
+    allow_bluetooth = true,
+    target_device_address = "AA:BB:CC:DD:EE:FF",
+    frequency = 915000000,
+    bandwidth = 125000,
+    spreadingfactor = 9,
+    codingrate = 5,
+    txpower = 17
   }
 ]
 ```
@@ -153,16 +174,41 @@ payloads, and its command monitor exposes retained probe status, radio status,
 non-fatal hardware errors, fatal command error, online state, and reported
 bitrate. Daemon `RNodeInterface` `ble://` startup appends the same RNode
 detect, firmware, platform, MCU, radio configuration, airtime-lock, and
-radio-on command frames used by serial/TCP RNode startup, validates startup and
-fatal command responses through the same RNode protocol state, and shutdown
-writes radio-off plus leave-host frames before BLE cleanup. Broader RNode
-management operations over BLE remain incomplete.
+radio-on command frames used by serial/TCP RNode startup and validates startup
+and fatal command responses through the same RNode protocol state. If startup
+probe identifies an ESP32 or NRF52 display-capable platform, BLE shutdown
+prepends Python-style external-framebuffer disable before radio-off plus
+leave-host frames and backend cleanup. The transport layer exposes
+Python-compatible KISS management frame helpers for blink indication, Bluetooth
+disable/enable/pair control, display/NeoPixel controls, interference-avoidance
+control, Wi-Fi settings, configuration save/delete, firmware-update indicator,
+firmware hash, and ROM/EEPROM read/write/wipe requests. Serial/TCP RNode
+streams also expose a transport-local management dispatch handle that writes
+pre-encoded command frames through the live KISS runtime; radio-state query and
+blink dispatch are covered by local duplex tests. Feature-gated BLE RNode
+streams expose the same management queue through the Nordic UART write path,
+including BLE write-length chunking. The daemon exposes those initial safe
+serial/TCP/BLE operations through `rnode_management` RPC and the
+`rnodeconf-rs query-radio-state` / `rnodeconf-rs blink` commands. The same path
+also queues read/display/local-radio safe controls: config read, ROM read,
+display intensity/blanking/rotation/recondition/address, NeoPixel intensity,
+and interference-avoidance enable/disable. Daemon RPC and `rnodeconf-rs`
+also expose guarded
+persistent or destructive management commands for Bluetooth control, config
+save/delete, ROM write/wipe, hard reset, firmware update/hash metadata, and
+Wi-Fi mode/channel/IP/netmask/SSID/PSK set or clear. Persistent commands
+require `confirm_persistent = true`; destructive commands require
+`confirm_destructive = true` plus `confirm_command` matching the canonical
+command. BLE hardware evidence for management operations remains pending.
 
 ## Validation Rules
 
-- `region` required when enabled.
+- `region` required when native `lora` is enabled. `RNodeInterface` may omit it
+  and will use `US915` as the compatibility seed.
 - Supported regions: `EU868`, `US915`, `AU915`, `AS923`, `IN865`, `KR920`, `RU864`.
-- `state_path` required and non-empty when enabled.
+- `state_path` required and non-empty when native `lora` is enabled.
+  `RNodeInterface` may omit it; in that case the daemon skips the LoRa
+  duty-cycle state-file preflight.
 - `device` and `baud_rate` are optional as a pair for serial RNodes. Without an
   active port, startup only validates and persists LoRa compliance state.
 - For `RNodeInterface` compatibility, a serial `port` without `baud_rate`
@@ -203,7 +249,9 @@ management operations over BLE remain incomplete.
   a real outbound packet and the configured interval have elapsed.
 - `airtime_limit_short` and `airtime_limit_long` are optional percentages in
   the Python RNode range `0..=100`.
-- `max_payload_bytes` allowed range: `1..=255`.
+- `max_payload_bytes` allowed range: `1..=255` for native `lora` and `1..=508`
+  for `RNodeInterface`. Omitted `RNodeInterface` payload size defaults to `508`,
+  matching Python's RNode hardware MTU.
 - `outgoing` defaults to `true`. Set `outgoing = false` to keep the interface
   available for inbound packets while suppressing daemon-initiated outbound
   broadcast and direct transmissions on that interface.
@@ -283,9 +331,13 @@ Framebuffer image data is split into Python-compatible 8-byte lines with a
 one-byte line number. Framebuffer and display-read command responses are
 retained with Python's expected 512-byte and 1024-byte payload sizes. The
 same protocol helper also exposes Python's hard-reset KISS command frame
-(`CMD_RESET` with payload `0xf8`). The interface records
-online state from reported RNode radio-state responses. RNode reset responses
-are also classified at the protocol layer: an online ESP32 reset is surfaced as
+(`CMD_RESET` with payload `0xf8`), blink indication frame, Bluetooth
+disable/enable/pair frames, display/NeoPixel control frames,
+interference-avoidance control frame, Wi-Fi configuration frames,
+configuration save/delete frames, firmware-update indicator and hash frames,
+and ROM/EEPROM read/write/wipe request frames. The interface records online
+state from reported RNode radio-state responses. RNode reset responses are also
+classified at the protocol layer: an online ESP32 reset is surfaced as
 Python's fatal `ESP32 reset` condition, while offline or non-ESP32 reset
 responses are accepted as informational. RNode hardware error command responses
 are classified with Python-compatible fatality: memory-low and modem-timeout
@@ -312,6 +364,89 @@ When an active LoRa/RNode KISS stream is cancelled by daemon shutdown or
 interface teardown, the stream sends Python-style detach commands before
 closing: radio state off followed by the RNode leave-host command. Plain KISS
 serial and TCP interfaces do not send these RNode-specific shutdown commands.
+
+For active serial or TCP RNode ports, daemon/RPC status now refreshes the live
+transport-side RNode status under `_runtime.lora.rnode_status`. `rnstatus-rs`
+renders a compact human summary with bearer, online/detected state, firmware,
+radio configuration, counters, battery percentage, hardware-error count, and
+last command error when present. The JSON status includes:
+
+- `endpoint`, `bearer`, and serial `baud_rate` when applicable.
+- `configured.frequency_hz`, `bandwidth_hz`, `spreading_factor`,
+  `coding_rate`, `tx_power_dbm`, and `max_payload_bytes`.
+- `probe_status.detected`, firmware version, platform, MCU, and display
+  capability.
+- `radio_status` fields for reported radio configuration, radio state,
+  RX/TX counters, signal telemetry, airtime/channel load, PHY/CSMA telemetry,
+  battery, temperature, framebuffer/display payload lengths, random byte, and
+  reported bitrate.
+- `hardware_errors`, `last_command_error`, `online`, `flow_control`, and
+  `reported_bitrate_bps`.
+
+This status surface is the evidence foundation for prepared-host serial, TCP,
+and feature-gated BLE RNode lifecycle smoke tests.
+
+## Prepared-Host Smoke
+
+The opt-in prepared-host smoke validates `reticulumd` against a host with a
+single serial, TCP/Wi-Fi, or feature-gated BLE RNode available as
+`RNodeInterface`.
+
+```sh
+RNODE_PORT=/dev/ttyACM0 \
+RNODE_FREQUENCY=915000000 \
+RNODE_BANDWIDTH=125000 \
+RNODE_SPREADING_FACTOR=9 \
+RNODE_CODING_RATE=5 \
+RNODE_TX_POWER=17 \
+RNODE_COMMAND_TIMEOUT_MS=1500 \
+./tools/scripts/rnode-prepared-host-smoke.sh
+```
+
+For Wi-Fi/TCP RNodes, use `RNODE_PORT=tcp://192.0.2.10:8001`; the generated
+config omits serial baud rate and the pass gate expects
+`_runtime.lora.rnode_status.endpoint` to match `host:port`.
+
+For BLE RNodes, use `RNODE_PORT=ble://RNode 1234`. The script builds
+`reticulumd` with `--features rnode-ble`, omits serial baud rate, and expects
+`_runtime.lora.rnode_status.bearer = "ble"` plus the full `ble://...`
+endpoint. `RNODE_BLE_ADAPTER`, `RNODE_BLE_SCAN_TIMEOUT_MS`,
+`RNODE_BLE_CONNECT_TIMEOUT_MS`, and `RNODE_BLE_MAX_WRITE_LEN` are optional.
+
+The script builds `reticulumd` and `rnstatus-rs`, starts the daemon with
+`--strict-interface-startup`, polls `rnstatus-rs --json`, and writes artifacts
+under `target/rnode-hil/`. A passing run requires:
+
+- `_runtime.startup_status = "spawned"`
+- `_runtime.iface` populated with the runtime interface hash
+- `_runtime.lora.rnode_status.probe_status.detected = true`
+- `_runtime.lora.rnode_status.probe_status.firmware_version` populated
+- `_runtime.lora.rnode_status.probe_status.platform` and `mcu` populated
+- `_runtime.lora.rnode_status.radio_status.frequency_hz` is within 100 Hz of
+  the configured value
+- `_runtime.lora.rnode_status.radio_status.bandwidth_hz`, `spreading_factor`,
+  `coding_rate`, and `tx_power_dbm` match the configured values
+- `_runtime.lora.rnode_status.radio_status.radio_state = 1`
+- `_runtime.lora.rnode_status.online = true`
+- `_runtime.lora.rnode_status.last_command_error = null`
+- `_runtime.lora.rnode_status.hardware_errors` is empty
+
+Reports are written to `report.json` and include the latest endpoint, bearer,
+probe status, radio status, reported bitrate, hardware errors, and command
+error fields.
+
+Nightly HIL exposes the same smoke through `HIL_RNODE_ENABLED=true` with
+`HIL_RNODE_PORT`, optional `HIL_RNODE_BAUD_RATE`, optional `HIL_RNODE_REGION`,
+optional `HIL_RNODE_FREQUENCY`, optional `HIL_RNODE_BANDWIDTH`, optional
+`HIL_RNODE_SPREADING_FACTOR`, optional `HIL_RNODE_CODING_RATE`, optional
+`HIL_RNODE_TX_POWER`, optional `HIL_RNODE_BITRATE`, optional
+`HIL_RNODE_COMMAND_TIMEOUT_MS`, optional `HIL_RNODE_BLE_ADAPTER`, optional
+`HIL_RNODE_BLE_SCAN_TIMEOUT_MS`, optional `HIL_RNODE_BLE_CONNECT_TIMEOUT_MS`,
+optional `HIL_RNODE_BLE_MAX_WRITE_LEN`, and optional
+`HIL_RNODE_TIMEOUT_SECS`.
+Artifacts are uploaded as
+`rnode-prepared-host-artifacts`, including
+`target/rnode-hil/report.json` and `target/rnode-hil/run.*`.
 
 When `device` and `baud_rate` are absent, the interface remains
 `validated_startup_only` and only the compliance state gate runs.
@@ -372,6 +507,8 @@ Failure log:
 Runtime status visibility:
 
 - `list_interfaces` includes `_runtime.startup_status`.
+- Active serial/TCP/BLE RNode interfaces include refreshed
+  `_runtime.lora.rnode_status`.
 - Failed interfaces include `_runtime.startup_error`.
 
 ## Verification Commands

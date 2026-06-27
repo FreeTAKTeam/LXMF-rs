@@ -1,7 +1,7 @@
 use crate::bootstrap::{
     configure_startup_rpc_token_auth, enforce_rpc_bind_security, enforce_startup_policy,
-    mark_interface_runtime_fields, mark_interface_startup_status, select_tcp_server_bind,
-    InterfaceStartupFailure, RpcTlsConfig,
+    mark_interface_runtime_fields, mark_interface_startup_status, select_tcp_listener_device_ip,
+    select_tcp_server_bind, InterfaceStartupFailure, RpcTlsConfig,
 };
 
 use crate::bridge::{
@@ -11,7 +11,7 @@ use crate::bridge::{
 
 use crate::bridge_helpers::opportunistic_payload;
 
-use crate::interfaces::{kiss, lora, serial, vrn76_kiss_ble};
+use crate::interfaces::{kiss, lora, pipe, rnode_multi, serial, vrn76_kiss_ble};
 
 use crate::{bootstrap, Args};
 
@@ -53,7 +53,13 @@ use serde_json::json;
 
 use std::collections::HashMap;
 
+#[cfg(any(target_os = "linux", target_os = "android"))]
+use std::ffi::OsString;
+
 use std::fs;
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+use std::os::unix::ffi::OsStringExt;
 
 use std::path::PathBuf;
 

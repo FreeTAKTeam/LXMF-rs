@@ -30,9 +30,172 @@ jobs:
             target/hil/esp32-smoke.log
             target/hil/esp32-smoke-report.json
 
+  i2p-prepared-host:
+    if: ${{ vars.HIL_I2P_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: I2P prepared-host smoke
+        env:
+          SAM_HOST: ${{ vars.HIL_I2P_SAM_HOST }}
+          SAM_PORT: ${{ vars.HIL_I2P_SAM_PORT }}
+          I2P_PEERS: ${{ vars.HIL_I2P_PEERS }}
+          TIMEOUT_SECS: ${{ vars.HIL_I2P_TIMEOUT_SECS }}
+        run: ./tools/scripts/i2p-prepared-host-smoke.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: i2p-prepared-host-artifacts
+          path: |
+            target/i2p-hil/report.json
+            target/i2p-hil/run.*
+
+  auto-interface-prepared-host:
+    if: ${{ vars.HIL_AUTO_INTERFACE_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: AutoInterface prepared-host churn smoke
+        env:
+          AUTO_CHURN_NETNS: ${{ vars.HIL_AUTO_INTERFACE_NETNS }}
+          AUTO_CHURN_DEVICE: ${{ vars.HIL_AUTO_INTERFACE_DEVICE }}
+          AUTO_CHURN_INITIAL_ADDR: ${{ vars.HIL_AUTO_INTERFACE_INITIAL_ADDR }}
+          AUTO_CHURN_REPLACEMENT_ADDR: ${{ vars.HIL_AUTO_INTERFACE_REPLACEMENT_ADDR }}
+          AUTO_CHURN_TIMEOUT_SECS: ${{ vars.HIL_AUTO_INTERFACE_TIMEOUT_SECS }}
+        run: ./tools/scripts/auto-interface-prepared-host-smoke.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: auto-interface-prepared-host-artifacts
+          path: |
+            target/auto-interface-hil/report.json
+            target/auto-interface-hil/run.*
+
+  rnode-multi-prepared-host:
+    if: ${{ vars.HIL_RNODE_MULTI_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: RNodeMulti prepared-host smoke
+        env:
+          RNODE_MULTI_PORT: ${{ vars.HIL_RNODE_MULTI_PORT }}
+          RNODE_MULTI_BAUD_RATE: ${{ vars.HIL_RNODE_MULTI_BAUD_RATE }}
+          RNODE_MULTI_VPORTS: ${{ vars.HIL_RNODE_MULTI_VPORTS }}
+          RNODE_MULTI_REGION: ${{ vars.HIL_RNODE_MULTI_REGION }}
+          RNODE_MULTI_FREQUENCIES: ${{ vars.HIL_RNODE_MULTI_FREQUENCIES }}
+          RNODE_MULTI_BANDWIDTHS: ${{ vars.HIL_RNODE_MULTI_BANDWIDTHS }}
+          RNODE_MULTI_SPREADING_FACTORS: ${{ vars.HIL_RNODE_MULTI_SPREADING_FACTORS }}
+          RNODE_MULTI_CODING_RATES: ${{ vars.HIL_RNODE_MULTI_CODING_RATES }}
+          RNODE_MULTI_TX_POWERS: ${{ vars.HIL_RNODE_MULTI_TX_POWERS }}
+          RNODE_MULTI_OUTGOING: ${{ vars.HIL_RNODE_MULTI_OUTGOING }}
+          RNODE_MULTI_TIMEOUT_SECS: ${{ vars.HIL_RNODE_MULTI_TIMEOUT_SECS }}
+        run: ./tools/scripts/rnode-multi-prepared-host-smoke.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rnode-multi-prepared-host-artifacts
+          path: |
+            target/rnode-multi-hil/report.json
+            target/rnode-multi-hil/run.*
+
+  rnode-prepared-host:
+    if: ${{ vars.HIL_RNODE_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: RNode prepared-host smoke
+        env:
+          RNODE_PORT: ${{ vars.HIL_RNODE_PORT }}
+          RNODE_BAUD_RATE: ${{ vars.HIL_RNODE_BAUD_RATE }}
+          RNODE_REGION: ${{ vars.HIL_RNODE_REGION }}
+          RNODE_FREQUENCY: ${{ vars.HIL_RNODE_FREQUENCY }}
+          RNODE_BANDWIDTH: ${{ vars.HIL_RNODE_BANDWIDTH }}
+          RNODE_SPREADING_FACTOR: ${{ vars.HIL_RNODE_SPREADING_FACTOR }}
+          RNODE_CODING_RATE: ${{ vars.HIL_RNODE_CODING_RATE }}
+          RNODE_TX_POWER: ${{ vars.HIL_RNODE_TX_POWER }}
+          RNODE_BITRATE: ${{ vars.HIL_RNODE_BITRATE }}
+          RNODE_COMMAND_TIMEOUT_MS: ${{ vars.HIL_RNODE_COMMAND_TIMEOUT_MS }}
+          RNODE_BLE_ADAPTER: ${{ vars.HIL_RNODE_BLE_ADAPTER }}
+          RNODE_BLE_SCAN_TIMEOUT_MS: ${{ vars.HIL_RNODE_BLE_SCAN_TIMEOUT_MS }}
+          RNODE_BLE_CONNECT_TIMEOUT_MS: ${{ vars.HIL_RNODE_BLE_CONNECT_TIMEOUT_MS }}
+          RNODE_BLE_MAX_WRITE_LEN: ${{ vars.HIL_RNODE_BLE_MAX_WRITE_LEN }}
+          RNODE_TIMEOUT_SECS: ${{ vars.HIL_RNODE_TIMEOUT_SECS }}
+        run: ./tools/scripts/rnode-prepared-host-smoke.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rnode-prepared-host-artifacts
+          path: |
+            target/rnode-hil/report.json
+            target/rnode-hil/run.*
+
+  weave-prepared-host:
+    if: ${{ vars.HIL_WEAVE_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Weave prepared-host smoke
+        env:
+          WEAVE_PORT: ${{ vars.HIL_WEAVE_PORT }}
+          WEAVE_BAUD_RATE: ${{ vars.HIL_WEAVE_BAUD_RATE }}
+          WEAVE_MTU: ${{ vars.HIL_WEAVE_MTU }}
+          WEAVE_CONFIGURED_BITRATE: ${{ vars.HIL_WEAVE_CONFIGURED_BITRATE }}
+          WEAVE_REQUIRE_CONNECTED: ${{ vars.HIL_WEAVE_REQUIRE_CONNECTED }}
+          WEAVE_REMOTE_DISPLAY_CONTROL: ${{ vars.HIL_WEAVE_REMOTE_DISPLAY_CONTROL }}
+          WEAVE_TIMEOUT_SECS: ${{ vars.HIL_WEAVE_TIMEOUT_SECS }}
+        run: ./tools/scripts/weave-prepared-host-smoke.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: weave-prepared-host-artifacts
+          path: |
+            target/weave-hil/report.json
+            target/weave-hil/run.*
+
+  vrn76-prepared-host:
+    if: ${{ vars.HIL_VRN76_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Linux BLE build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libdbus-1-dev
+      - name: VR-N76 KISS BLE prepared-host smoke
+        env:
+          VRN76_PERIPHERAL_ID: ${{ vars.HIL_VRN76_PERIPHERAL_ID }}
+          VRN76_ADAPTER: ${{ vars.HIL_VRN76_ADAPTER }}
+          VRN76_MTU: ${{ vars.HIL_VRN76_MTU }}
+          VRN76_MAX_WRITE_LEN: ${{ vars.HIL_VRN76_MAX_WRITE_LEN }}
+          VRN76_FRAME_MODE: ${{ vars.HIL_VRN76_FRAME_MODE }}
+          VRN76_KISS_FLOW_CONTROL: ${{ vars.HIL_VRN76_KISS_FLOW_CONTROL }}
+          VRN76_SCAN_TIMEOUT_MS: ${{ vars.HIL_VRN76_SCAN_TIMEOUT_MS }}
+          VRN76_CONNECT_TIMEOUT_MS: ${{ vars.HIL_VRN76_CONNECT_TIMEOUT_MS }}
+          VRN76_TIMEOUT_SECS: ${{ vars.HIL_VRN76_TIMEOUT_SECS }}
+        run: ./tools/scripts/vrn76-kiss-ble-prepared-host-smoke.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vrn76-prepared-host-artifacts
+          path: |
+            target/vrn76-hil/report.json
+            target/vrn76-hil/run.*
+
   hil-disabled:
-    if: ${{ vars.HIL_ESP32_ENABLED != 'true' }}
+    if: ${{ vars.HIL_ESP32_ENABLED != 'true' && vars.HIL_I2P_ENABLED != 'true' && vars.HIL_AUTO_INTERFACE_ENABLED != 'true' && vars.HIL_RNODE_MULTI_ENABLED != 'true' && vars.HIL_RNODE_ENABLED != 'true' && vars.HIL_WEAVE_ENABLED != 'true' && vars.HIL_VRN76_ENABLED != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: HIL disabled
-        run: echo "HIL_ESP32_ENABLED is not set to true; skipping ESP32 nightly run."
+        run: echo "HIL_ESP32_ENABLED, HIL_I2P_ENABLED, HIL_AUTO_INTERFACE_ENABLED, HIL_RNODE_MULTI_ENABLED, HIL_RNODE_ENABLED, HIL_WEAVE_ENABLED, and HIL_VRN76_ENABLED are not set to true; skipping nightly HIL runs."

@@ -10,6 +10,10 @@ impl Transport {
         &self,
         storage_path: P,
     ) -> io::Result<usize> {
+        if self.handler.lock().await.config.connected_to_shared_instance {
+            return Ok(0);
+        }
+
         let storage_path = storage_path.as_ref().to_path_buf();
         let now = std::time::Instant::now();
         let now_unix_secs = now_unix_secs();
@@ -74,6 +78,10 @@ impl Transport {
         &self,
         storage_path: P,
     ) -> io::Result<usize> {
+        if self.handler.lock().await.config.connected_to_shared_instance {
+            return Ok(0);
+        }
+
         let storage_path = storage_path.as_ref().to_path_buf();
         let path = storage_path.join("destination_table");
         let announce_cache = ReticulumAnnounceCache::new(&storage_path);
@@ -121,7 +129,11 @@ impl Transport {
                     continue;
                 }
                 if let Some(cached) = announce_cache.restore(path.packet_hash).await? {
-                    tunnel_announces.insert(path.packet_hash, cached);
+                    let iface = path
+                        .interface_hash
+                        .map(|hash| AddressHash::new_from_hash(&hash))
+                        .unwrap_or(path.destination);
+                    tunnel_announces.insert(path.packet_hash, (cached, iface));
                 }
             }
         }
@@ -142,20 +154,26 @@ impl Transport {
                 .single_out_destinations
                 .entry(candidate.cached.packet.destination)
                 .or_insert_with(|| Arc::new(Mutex::new(candidate.cached.destination)));
-            handler.announce_table.add(&candidate.cached.packet, dest_hash, candidate.entry.iface);
+            handler.announce_table.add_cached(
+                &candidate.cached.packet,
+                dest_hash,
+                candidate.entry.iface,
+            );
             handler.path_table.restore_python_entry(candidate.entry, now, now_unix_secs);
             restored += 1;
         }
 
         let mut valid_tunnel_announces = HashSet::new();
-        for (packet_hash, cached) in tunnel_announces {
+        for (packet_hash, (cached, iface)) in tunnel_announces {
             if !cached_announce_compatible(&handler, &cached.packet, &cached.destination) {
                 continue;
             }
+            let dest_hash = cached.destination.desc.address_hash;
             handler
                 .single_out_destinations
                 .entry(cached.packet.destination)
                 .or_insert_with(|| Arc::new(Mutex::new(cached.destination)));
+            handler.announce_table.add_cached(&cached.packet, dest_hash, iface);
             valid_tunnel_announces.insert(packet_hash);
         }
 

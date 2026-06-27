@@ -5,7 +5,7 @@ use tokio::time::{Duration, Instant};
 
 use crate::hash::AddressHash;
 use crate::iface::{TxMessage, TxMessageType};
-use crate::packet::{Header, HeaderType, Packet, PropagationType};
+use crate::packet::{Header, HeaderType, Packet, PacketContext, PropagationType};
 
 const PATHFINDER_RETRY_GRACE: Duration = Duration::from_secs(5);
 const PATHFINDER_RETRY_WINDOW: Duration = Duration::from_millis(500);
@@ -160,6 +160,24 @@ impl AnnounceTable {
         self.map.insert(destination, entry);
     }
 
+    pub(crate) fn add_cached(
+        &mut self,
+        announce: &Packet,
+        destination: AddressHash,
+        received_from: AddressHash,
+    ) {
+        let entry = AnnounceEntry {
+            packet: announce.clone(),
+            timeout: Instant::now(),
+            received_from,
+            retries: 0,
+            hops: announce.header.hops,
+            response_to_iface: None,
+        };
+
+        self.cache.insert(destination, entry);
+    }
+
     fn do_add_response(
         &mut self,
         mut response: AnnounceEntry,
@@ -171,6 +189,7 @@ impl AnnounceTable {
         response.hops = hops;
         response.timeout = Instant::now() + PATH_RESPONSE_GRACE;
         response.response_to_iface = Some(to_iface);
+        response.packet.context = PacketContext::PathResponse;
 
         self.responses.insert(destination, response);
     }
@@ -197,9 +216,17 @@ impl AnnounceTable {
     pub fn packet_for_destination(&self, destination: &AddressHash) -> Option<Packet> {
         self.map
             .get(destination)
-            .or_else(|| self.responses.get(destination))
             .map(|entry| entry.packet.clone())
             .or_else(|| self.cache.get(destination).map(|entry| entry.packet))
+            .or_else(|| self.responses.get(destination).map(|entry| entry.packet.clone()))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn pending_response_for_destination(
+        &self,
+        destination: &AddressHash,
+    ) -> Option<&AnnounceEntry> {
+        self.responses.get(destination)
     }
 
     pub fn drain_retransmissions(&mut self, transport_id: &AddressHash) -> Vec<TxMessage> {
@@ -342,6 +369,7 @@ mod tests {
         assert!(table.drain_retransmissions(&transport_id).is_empty());
         assert_eq!(table.responses.len(), 1);
         let response = table.responses.get(&destination).expect("response entry inserted");
+        assert_eq!(response.packet.context, PacketContext::PathResponse);
         let response_delay =
             response.timeout.checked_duration_since(Instant::now()).unwrap_or_default();
         assert!(
@@ -354,7 +382,7 @@ mod tests {
         let messages = table.drain_retransmissions(&transport_id);
         assert_eq!(messages.len(), 1);
         assert!(matches!(messages[0].tx_type, TxMessageType::Direct(iface) if iface == to_iface));
-        assert_eq!(messages[0].packet.context, PacketContext::None);
+        assert_eq!(messages[0].packet.context, PacketContext::PathResponse);
         assert!(table.responses.is_empty());
         assert!(table.map.contains_key(&destination));
         assert!(table.add_response(destination, to_iface, 4));
@@ -365,7 +393,69 @@ mod tests {
         assert_eq!(messages.len(), 1);
         assert!(matches!(messages[0].tx_type, TxMessageType::Direct(iface) if iface == to_iface));
         assert_eq!(messages[0].packet.header.hops, 4);
+        assert_eq!(messages[0].packet.context, PacketContext::PathResponse);
         assert!(table.responses.is_empty());
         assert!(table.map.contains_key(&destination));
+    }
+
+    #[test]
+    fn cached_path_response_entries_stamp_response_without_shadowing_cache() {
+        let mut table = AnnounceTable::new(16, 1);
+        let destination = AddressHash::new_from_rand(OsRng);
+        let received_from = AddressHash::new_from_rand(OsRng);
+        let transport_id = AddressHash::new_from_rand(OsRng);
+        let to_iface = AddressHash::new_from_rand(OsRng);
+        let packet = Packet { destination, context: PacketContext::None, ..Packet::default() };
+
+        table.add(&packet, destination, received_from);
+        let cached = table.map.remove(&destination).expect("announce entry inserted");
+        table.cache.insert(destination, cached);
+
+        assert!(table.add_response(destination, to_iface, 5));
+        let response = table.responses.get(&destination).expect("cached response entry inserted");
+        assert_eq!(response.packet.context, PacketContext::PathResponse);
+        assert_eq!(
+            table
+                .packet_for_destination(&destination)
+                .expect("cached announce remains available")
+                .context,
+            PacketContext::None
+        );
+
+        sleep(StdDuration::from_millis(450));
+
+        let messages = table.drain_retransmissions(&transport_id);
+        assert_eq!(messages.len(), 1);
+        assert!(matches!(messages[0].tx_type, TxMessageType::Direct(iface) if iface == to_iface));
+        assert_eq!(messages[0].packet.context, PacketContext::PathResponse);
+        assert_eq!(messages[0].packet.header.hops, 5);
+        assert!(table.responses.is_empty());
+    }
+
+    #[test]
+    fn restored_cached_announces_do_not_rebroadcast_but_can_answer_path_requests() {
+        let mut table = AnnounceTable::new(16, 1);
+        let destination = AddressHash::new_from_rand(OsRng);
+        let received_from = AddressHash::new_from_rand(OsRng);
+        let transport_id = AddressHash::new_from_rand(OsRng);
+        let to_iface = AddressHash::new_from_rand(OsRng);
+        let packet = Packet { destination, context: PacketContext::None, ..Packet::default() };
+
+        table.add_cached(&packet, destination, received_from);
+        assert!(table.map.is_empty());
+        assert!(table.drain_retransmissions(&transport_id).is_empty());
+        assert_eq!(
+            table
+                .packet_for_destination(&destination)
+                .expect("restored announce is lookup material")
+                .context,
+            PacketContext::None
+        );
+
+        assert!(table.add_response(destination, to_iface, 2));
+        let response = table.responses.get(&destination).expect("cached response entry inserted");
+        assert_eq!(response.response_to_iface, Some(to_iface));
+        assert_eq!(response.packet.context, PacketContext::PathResponse);
+        assert_eq!(response.hops, 2);
     }
 }

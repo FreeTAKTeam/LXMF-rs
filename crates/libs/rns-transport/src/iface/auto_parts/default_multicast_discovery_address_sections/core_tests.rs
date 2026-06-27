@@ -3,9 +3,10 @@
         AutoDiscoveryEvent, AutoDiscoveryRejectReason, AutoDiscoveryScope, AutoDiscoveryState,
         AutoInboundPacketDeduplicator, AutoInterfaceAdoptedDevice, AutoInterfaceConfig,
         AutoInterfaceDeviceCandidate, AutoInterfaceDeviceFilter, AutoInterfacePlatform,
-        AutoInterfaceTiming, AutoLinkLocalAddressUpdate, AutoMulticastCarrierEvent, AutoPeer,
-        AutoPeerEvent, AutoPeerInboundDecision, AutoPeerTable, AutoPeeringPacketKind,
-        AutoRuntimeEvent, AutoRuntimeState, MulticastAddressType,
+        AutoInterfaceTiming, AutoLinkLocalAddressUpdate, AutoAdoptedInterfaceChange,
+        AutoMulticastCarrierEvent, AutoPeer, AutoPeerEvent, AutoPeerInboundDecision,
+        AutoPeerTable, AutoPeeringPacketKind, AutoRuntimeEvent, AutoRuntimeState,
+        MulticastAddressType,
     };
 
     #[test]
@@ -432,6 +433,217 @@
     }
 
     #[test]
+    fn link_local_update_plan_is_non_mutating_until_applied() {
+        let config = AutoInterfaceConfig::default();
+        let mut state = AutoDiscoveryState::from_timing(
+            vec![AutoInterfaceAdoptedDevice {
+                ifname: "eth0".to_string(),
+                link_local_address: "fe80::1111".to_string(),
+            }],
+            AutoInterfaceTiming::for_platform(AutoInterfacePlatform::Other),
+        );
+
+        let update = state
+            .plan_adopted_link_local_address_update(&config, "eth0", "fe80::2222%eth0")
+            .expect("planned link-local replacement");
+
+        assert_eq!(
+            state.observe_discovery_packet(
+                "fe80::1111",
+                "eth0",
+                core::time::Duration::from_secs(3),
+            ),
+            AutoDiscoveryEvent::LocalMulticastEcho { ifname: "eth0".to_string() }
+        );
+        assert_eq!(
+            state.observe_discovery_packet(
+                "fe80::2222",
+                "eth0",
+                core::time::Duration::from_secs(4),
+            ),
+            AutoDiscoveryEvent::Peer(AutoPeerEvent::Added)
+        );
+
+        state.apply_adopted_link_local_address_update(&update);
+
+        assert_eq!(
+            state.observe_discovery_packet(
+                "fe80::2222",
+                "eth0",
+                core::time::Duration::from_secs(5),
+            ),
+            AutoDiscoveryEvent::LocalMulticastEcho { ifname: "eth0".to_string() }
+        );
+    }
+
+    #[test]
+    fn adopted_interface_change_add_plans_listener_bindings_without_runtime_state() {
+        let config = AutoInterfaceConfig::default();
+        let mut state = AutoDiscoveryState::from_timing(
+            Vec::new(),
+            AutoInterfaceTiming::for_platform(AutoInterfacePlatform::Other),
+        );
+        let desired = vec![AutoInterfaceAdoptedDevice {
+            ifname: "eth0".to_string(),
+            link_local_address: "fe80::1111".to_string(),
+        }];
+
+        let changes =
+            state.plan_adopted_interface_changes(&config, AutoInterfacePlatform::Other, &desired);
+
+        assert_eq!(changes.len(), 1);
+        match &changes[0] {
+            AutoAdoptedInterfaceChange::Added {
+                adopted,
+                discovery_listener,
+                data_listener,
+            } => {
+                assert_eq!(adopted.link_local_address, "fe80::1111");
+                assert_eq!(discovery_listener.unicast_bind_address, "fe80::1111%eth0");
+                assert_eq!(data_listener.bind_address, "fe80::1111%eth0");
+            }
+            change => panic!("unexpected change: {change:?}"),
+        }
+
+        assert!(state.adopted_devices().is_empty());
+        state.apply_adopted_interface_change(&changes[0]);
+        assert_eq!(state.adopted_devices(), desired);
+        assert_eq!(state.peer_count(), 0);
+        assert_eq!(state.last_multicast_echo("eth0"), None);
+        assert_eq!(state.initial_multicast_echo("eth0"), None);
+        assert_eq!(state.multicast_echo_timed_out("eth0"), None);
+    }
+
+    #[test]
+    fn adopted_interface_change_remove_clears_interface_state_and_peers() {
+        let config = AutoInterfaceConfig::default();
+        let timing = AutoInterfaceTiming::for_platform(AutoInterfacePlatform::Other);
+        let mut state = AutoDiscoveryState::from_timing(
+            vec![
+                AutoInterfaceAdoptedDevice {
+                    ifname: "eth0".to_string(),
+                    link_local_address: "fe80::1111".to_string(),
+                },
+                AutoInterfaceAdoptedDevice {
+                    ifname: "wlan0".to_string(),
+                    link_local_address: "fe80::2222".to_string(),
+                },
+            ],
+            timing,
+        );
+        state.observe_discovery_packet("fe80::1111", "eth0", core::time::Duration::from_secs(1));
+        state.observe_discovery_packet("fe80::2222", "wlan0", core::time::Duration::from_secs(1));
+        state.observe_discovery_packet("fe80::aaaa", "eth0", core::time::Duration::from_secs(1));
+        state.observe_discovery_packet("fe80::bbbb", "wlan0", core::time::Duration::from_secs(1));
+        let adopted = state.adopted_devices();
+        assert_eq!(
+            state
+                .run_multicast_announce_job(
+                    &config,
+                    &adopted,
+                    core::time::Duration::from_secs(1),
+                    timing.announce_interval,
+                )
+                .len(),
+            2
+        );
+        state.update_multicast_echo_timeouts(
+            core::time::Duration::from_secs(10),
+            core::time::Duration::from_secs(1),
+        );
+
+        let desired = vec![AutoInterfaceAdoptedDevice {
+            ifname: "wlan0".to_string(),
+            link_local_address: "fe80::2222".to_string(),
+        }];
+        let changes =
+            state.plan_adopted_interface_changes(&config, AutoInterfacePlatform::Other, &desired);
+
+        assert_eq!(changes.len(), 1);
+        match &changes[0] {
+            AutoAdoptedInterfaceChange::Removed {
+                adopted,
+                discovery_listener,
+                data_listener,
+                removed_peers,
+            } => {
+                assert_eq!(adopted.ifname, "eth0");
+                assert_eq!(adopted.link_local_address, "fe80::1111");
+                assert_eq!(discovery_listener.unicast_bind_address, "fe80::1111%eth0");
+                assert_eq!(data_listener.bind_address, "fe80::1111%eth0");
+                assert_eq!(removed_peers.len(), 1);
+                assert_eq!(removed_peers[0].address, "fe80::aaaa");
+            }
+            change => panic!("unexpected change: {change:?}"),
+        }
+
+        state.apply_adopted_interface_change(&changes[0]);
+
+        assert_eq!(state.adopted_devices(), desired);
+        assert_eq!(state.last_multicast_echo("eth0"), None);
+        assert_eq!(state.initial_multicast_echo("eth0"), None);
+        assert_eq!(state.multicast_echo_timed_out("eth0"), None);
+        assert!(!state.missing_initial_multicast_echoes().contains(&"eth0".to_string()));
+        assert!(state.peer("fe80::aaaa").is_none());
+        assert!(state.peer("fe80::bbbb").is_some());
+        assert_eq!(state.last_multicast_echo("wlan0"), Some(core::time::Duration::from_secs(1)));
+    }
+
+    #[test]
+    fn adopted_interface_link_local_change_clears_freshness_and_reannounces() {
+        let config = AutoInterfaceConfig::default();
+        let timing = AutoInterfaceTiming::for_platform(AutoInterfacePlatform::Other);
+        let mut state = AutoDiscoveryState::from_timing(
+            vec![AutoInterfaceAdoptedDevice {
+                ifname: "eth0".to_string(),
+                link_local_address: "fe80::1111".to_string(),
+            }],
+            timing,
+        );
+        state.observe_discovery_packet("fe80::1111", "eth0", core::time::Duration::from_secs(1));
+        let adopted = state.adopted_devices();
+        assert_eq!(
+            state
+                .run_multicast_announce_job(
+                    &config,
+                    &adopted,
+                    core::time::Duration::from_secs(1),
+                    timing.announce_interval,
+                )
+                .len(),
+            1
+        );
+        state.update_multicast_echo_timeouts(
+            core::time::Duration::from_secs(10),
+            core::time::Duration::from_secs(1),
+        );
+
+        let desired = vec![AutoInterfaceAdoptedDevice {
+            ifname: "eth0".to_string(),
+            link_local_address: "fe80::3333".to_string(),
+        }];
+        let changes =
+            state.plan_adopted_interface_changes(&config, AutoInterfacePlatform::Other, &desired);
+
+        assert_eq!(changes.len(), 1);
+        assert!(matches!(changes[0], AutoAdoptedInterfaceChange::LinkLocalChanged(_)));
+        state.apply_adopted_interface_change(&changes[0]);
+
+        assert_eq!(state.last_multicast_echo("eth0"), None);
+        assert_eq!(state.initial_multicast_echo("eth0"), None);
+        assert_eq!(state.multicast_echo_timed_out("eth0"), None);
+        let adopted = state.adopted_devices();
+        let packets = state.run_multicast_announce_job(
+            &config,
+            &adopted,
+            core::time::Duration::from_secs(2),
+            timing.announce_interval,
+        );
+        assert_eq!(packets.len(), 1);
+        assert_eq!(packets[0].source_link_local_address, "fe80::3333");
+    }
+
+    #[test]
     fn link_local_update_is_noop_for_same_or_unknown_interface() {
         let config = AutoInterfaceConfig::default();
         let mut state = AutoDiscoveryState::from_timing(
@@ -447,4 +659,12 @@
             None
         );
         assert_eq!(state.update_adopted_link_local_address(&config, "wlan0", "fe80::2222"), None);
+        assert_eq!(
+            state.plan_adopted_link_local_address_update(&config, "eth0", "fe80::1111%eth0"),
+            None
+        );
+        assert_eq!(
+            state.plan_adopted_link_local_address_update(&config, "wlan0", "fe80::2222"),
+            None
+        );
     }

@@ -1,12 +1,17 @@
+use std::net::Ipv4Addr;
+
 use rns_transport::iface::lora::{
     LoraConfig, LoraInterface, RNodeHardwareError, RNodeProbeStatus, RNodeRadioStatus,
-    BATTERY_STATE_CHARGED, BATTERY_STATE_CHARGING, BATTERY_STATE_DISCHARGING,
-    BATTERY_STATE_UNKNOWN, CMD_BANDWIDTH, CMD_BLINK, CMD_BT_CTRL, CMD_CR, CMD_DETECT,
-    CMD_DISP_READ, CMD_ERROR, CMD_FB_EXT, CMD_FB_READ, CMD_FB_WRITE, CMD_FREQUENCY, CMD_FW_VERSION,
-    CMD_LEAVE, CMD_LT_ALOCK, CMD_MCU, CMD_PLATFORM, CMD_RADIO_LOCK, CMD_RADIO_STATE, CMD_RANDOM,
-    CMD_RESET, CMD_ROM_READ, CMD_SF, CMD_STAT_BAT, CMD_STAT_CHTM, CMD_STAT_CSMA, CMD_STAT_PHYPRM,
-    CMD_STAT_RSSI, CMD_STAT_RX, CMD_STAT_SNR, CMD_STAT_TEMP, CMD_STAT_TX, CMD_ST_ALOCK,
-    CMD_TXPOWER, DETECT_REQ, DETECT_RESP, ERROR_INITRADIO, ERROR_MEMORY_LOW, ERROR_MODEM_TIMEOUT,
+    RNodeBluetoothControl, BATTERY_STATE_CHARGED, BATTERY_STATE_CHARGING, BATTERY_STATE_DISCHARGING,
+    BATTERY_STATE_UNKNOWN, CMD_BANDWIDTH, CMD_BLINK, CMD_BT_CTRL, CMD_CFG_READ, CMD_CONF_DELETE,
+    CMD_CONF_SAVE, CMD_CR, CMD_DETECT, CMD_DISP_ADR, CMD_DISP_BLNK, CMD_DISP_INT, CMD_DISP_RCND,
+    CMD_DISP_READ, CMD_DISP_ROT, CMD_DIS_IA, CMD_ERROR, CMD_FB_EXT, CMD_FB_READ, CMD_FB_WRITE,
+    CMD_FREQUENCY, CMD_FW_HASH, CMD_FW_UPD, CMD_FW_VERSION, CMD_LEAVE, CMD_LT_ALOCK, CMD_MCU,
+    CMD_NP_INT, CMD_PLATFORM, CMD_RADIO_LOCK, CMD_RADIO_STATE, CMD_RANDOM, CMD_RESET, CMD_ROM_READ,
+    CMD_ROM_WIPE, CMD_ROM_WRITE, CMD_SF, CMD_STAT_BAT, CMD_STAT_CHTM, CMD_STAT_CSMA,
+    CMD_STAT_PHYPRM, CMD_STAT_RSSI, CMD_STAT_RX, CMD_STAT_SNR, CMD_STAT_TEMP, CMD_STAT_TX,
+    CMD_ST_ALOCK, CMD_TXPOWER, CMD_WIFI_CHN, CMD_WIFI_IP, CMD_WIFI_MODE, CMD_WIFI_NM, CMD_WIFI_PSK,
+    CMD_WIFI_SSID, DETECT_REQ, DETECT_RESP, ERROR_INITRADIO, ERROR_MEMORY_LOW, ERROR_MODEM_TIMEOUT,
     ERROR_TXFAILED, PLATFORM_AVR, PLATFORM_ESP32, PLATFORM_NRF52, RADIO_STATE_ASK, RADIO_STATE_OFF,
     RADIO_STATE_ON, RESET_ESP32,
 };
@@ -96,6 +101,69 @@ fn lora_config_exposes_python_rnode_management_constants_and_query_frame() {
         LoraConfig::radio_state_query_frame(),
         vec![FEND, CMD_RADIO_STATE, RADIO_STATE_ASK, FEND]
     );
+    assert_eq!(LoraConfig::blink_frame(0x03), vec![FEND, CMD_BLINK, 0x03, FEND]);
+    assert_eq!(
+        LoraConfig::blink_frame(FEND),
+        vec![FEND, CMD_BLINK, FESC, TFEND, FEND]
+    );
+    assert_eq!(
+        LoraConfig::bluetooth_control_frame(RNodeBluetoothControl::Enable),
+        vec![FEND, CMD_BT_CTRL, 0x01, FEND]
+    );
+    assert_eq!(LoraConfig::bluetooth_enable_frame(), vec![FEND, CMD_BT_CTRL, 0x01, FEND]);
+    assert_eq!(LoraConfig::bluetooth_disable_frame(), vec![FEND, CMD_BT_CTRL, 0x00, FEND]);
+    assert_eq!(LoraConfig::bluetooth_pair_frame(), vec![FEND, CMD_BT_CTRL, 0x02, FEND]);
+    assert_eq!(LoraConfig::rom_read_frame(), vec![FEND, CMD_ROM_READ, 0x00, FEND]);
+}
+
+#[test]
+fn lora_config_builds_python_rnode_display_config_and_wifi_management_frames() {
+    assert_eq!(LoraConfig::config_read_frame(), vec![FEND, CMD_CFG_READ, 0x00, FEND]);
+    assert_eq!(LoraConfig::config_save_frame(), vec![FEND, CMD_CONF_SAVE, 0x00, FEND]);
+    assert_eq!(LoraConfig::config_delete_frame(), vec![FEND, CMD_CONF_DELETE, 0x00, FEND]);
+    assert_eq!(LoraConfig::rom_wipe_frame(), vec![FEND, CMD_ROM_WIPE, RESET_ESP32, FEND]);
+    assert_eq!(
+        LoraConfig::rom_write_frame(FEND, FESC),
+        vec![FEND, CMD_ROM_WRITE, FESC, TFEND, FESC, TFESC, FEND]
+    );
+    assert_eq!(LoraConfig::display_intensity_frame(0x7f), vec![FEND, CMD_DISP_INT, 0x7f, FEND]);
+    assert_eq!(LoraConfig::display_blanking_frame(0x20), vec![FEND, CMD_DISP_BLNK, 0x20, FEND]);
+    assert_eq!(LoraConfig::display_rotation_frame(0x02), vec![FEND, CMD_DISP_ROT, 0x02, FEND]);
+    assert_eq!(LoraConfig::display_recondition_frame(), vec![FEND, CMD_DISP_RCND, 0x01, FEND]);
+    assert_eq!(LoraConfig::disable_interference_avoidance_frame(true), vec![FEND, CMD_DIS_IA, 0x01, FEND]);
+    assert_eq!(LoraConfig::disable_interference_avoidance_frame(false), vec![FEND, CMD_DIS_IA, 0x00, FEND]);
+    assert_eq!(LoraConfig::neopixel_intensity_frame(0x42), vec![FEND, CMD_NP_INT, 0x42, FEND]);
+    assert_eq!(LoraConfig::display_address_frame(0x3c), vec![FEND, CMD_DISP_ADR, 0x3c, FEND]);
+    assert_eq!(LoraConfig::firmware_update_indicator_frame(), vec![FEND, CMD_FW_UPD, 0x01, FEND]);
+    assert_eq!(
+        LoraConfig::firmware_hash_frame(&[FEND, 0x01]),
+        vec![FEND, CMD_FW_HASH, FESC, TFEND, 0x01, FEND]
+    );
+    assert_eq!(LoraConfig::wifi_mode_frame(0x02), vec![FEND, CMD_WIFI_MODE, 0x02, FEND]);
+    assert_eq!(LoraConfig::wifi_channel_frame(14).expect("valid channel"), vec![FEND, CMD_WIFI_CHN, 14, FEND]);
+    assert!(LoraConfig::wifi_channel_frame(0).is_err());
+    assert_eq!(
+        LoraConfig::wifi_ip_frame(Some(Ipv4Addr::new(192, 168, 4, 1))),
+        vec![FEND, CMD_WIFI_IP, FESC, TFEND, 168, 4, 1, FEND]
+    );
+    assert_eq!(LoraConfig::wifi_ip_frame(None), vec![FEND, CMD_WIFI_IP, 0, 0, 0, 0, FEND]);
+    assert_eq!(
+        LoraConfig::wifi_netmask_frame(Some(Ipv4Addr::new(255, 255, 255, 0))),
+        vec![FEND, CMD_WIFI_NM, 255, 255, 255, 0, FEND]
+    );
+    assert_eq!(LoraConfig::wifi_netmask_frame(None), vec![FEND, CMD_WIFI_NM, 0, 0, 0, 0, FEND]);
+    assert_eq!(
+        LoraConfig::wifi_ssid_frame(Some("net")).expect("valid ssid"),
+        vec![FEND, CMD_WIFI_SSID, b'n', b'e', b't', 0x00, FEND]
+    );
+    assert_eq!(LoraConfig::wifi_ssid_frame(None).expect("empty ssid"), vec![FEND, CMD_WIFI_SSID, 0x00, FEND]);
+    assert!(LoraConfig::wifi_ssid_frame(Some("123456789012345678901234567890123")).is_err());
+    assert_eq!(
+        LoraConfig::wifi_psk_frame(Some("1234567")).expect("valid psk"),
+        vec![FEND, CMD_WIFI_PSK, b'1', b'2', b'3', b'4', b'5', b'6', b'7', 0x00, FEND]
+    );
+    assert_eq!(LoraConfig::wifi_psk_frame(None).expect("empty psk"), vec![FEND, CMD_WIFI_PSK, 0x00, FEND]);
+    assert!(LoraConfig::wifi_psk_frame(Some("123456")).is_err());
 }
 
 #[test]

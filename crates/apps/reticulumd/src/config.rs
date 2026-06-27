@@ -41,4 +41,16 @@ peering_cost = 21
         assert_eq!(propagation_node.stamp_cost_flexibility, Some(4));
         assert_eq!(propagation_node.peering_cost, Some(21));
     }
+
+    #[test]
+    fn i2p_sam_address_env_default_parser_matches_python_shape() {
+        assert_eq!(parse_i2p_sam_address("127.0.0.2:8765"), Some(("127.0.0.2".to_string(), 8765)));
+        assert_eq!(
+            parse_i2p_sam_address(" sam.example:7656 "),
+            Some(("sam.example".to_string(), 7656))
+        );
+        assert_eq!(parse_i2p_sam_address("127.0.0.1"), None);
+        assert_eq!(parse_i2p_sam_address(":7656"), None);
+        assert_eq!(parse_i2p_sam_address("127.0.0.1:not-a-port"), None);
+    }
 }

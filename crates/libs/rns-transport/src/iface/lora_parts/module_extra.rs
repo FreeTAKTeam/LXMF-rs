@@ -26,9 +26,12 @@ where
             shutdown_frames: run.config.shutdown_frames(),
             id_beacon: run.id_beacon,
             activity_probe: run.activity_probe,
+            payload_adapter: KissPayloadAdapter::Raw,
             strip_command_port_nibble: false,
             command_tx: Some(command_tx),
             data_rx_tx: Some(data_rx_tx),
+            management_frame_rx: Some(run.management_frame_rx),
+            runtime_status: None,
         },
         stream_cancel,
         run.rx_channel,
@@ -401,5 +404,113 @@ mod tests {
         let guard = iface.lock().expect("lora interface mutex poisoned");
         assert_eq!(guard.last_command_error(), None);
         guard.validate_startup_responses().expect("fresh startup responses");
+    }
+
+    #[tokio::test]
+    async fn lora_management_handle_writes_runtime_command_frame_over_duplex() {
+        let iface =
+            Arc::new(Mutex::new(LoraInterface::new("COM9", 115_200, LoraConfig::us915_default())));
+        let handle = {
+            let guard = iface.lock().expect("lora interface mutex poisoned");
+            guard.rnode_management_handle()
+        };
+        let management_frame_rx = {
+            let guard = iface.lock().expect("lora interface mutex poisoned");
+            guard.management_frame_rx.clone()
+        };
+        let (stream, mut peer) = tokio::io::duplex(4096);
+        let cancel = CancellationToken::new();
+        let (rx_channel, _rx_recv) = tokio::sync::mpsc::channel(1);
+        let (_tx_send, tx_recv) = tokio::sync::mpsc::channel(1);
+        let tx_channel = Arc::new(tokio::sync::Mutex::new(tx_recv));
+
+        let task_cancel = cancel.clone();
+        let task = tokio::spawn(run_lora_kiss_stream(
+            stream,
+            LoraStreamRun {
+                interface: iface,
+                cancel: task_cancel,
+                iface_address: crate::hash::AddressHash::default(),
+                endpoint_label: "duplex-rnode".to_string(),
+                config: LoraConfig::us915_default(),
+                flow_control: false,
+                id_beacon: None,
+                activity_probe: None,
+                startup_response_timeout: Duration::from_secs(60),
+                management_frame_rx,
+                rx_channel,
+                tx_channel,
+            },
+        ));
+
+        let frame = LoraConfig::blink_frame(0x03);
+        handle.blink(0x03).await.expect("queue blink management command");
+
+        let mut seen = Vec::new();
+        let mut buffer = [0_u8; 512];
+        for _ in 0..12 {
+            let read = tokio::time::timeout(
+                Duration::from_secs(1),
+                tokio::io::AsyncReadExt::read(&mut peer, &mut buffer),
+            )
+            .await
+            .expect("management frame should be written")
+            .expect("read management frame bytes");
+            if read == 0 {
+                break;
+            }
+            seen.extend_from_slice(&buffer[..read]);
+            if seen.windows(frame.len()).any(|window| window == frame.as_slice()) {
+                cancel.cancel();
+                drop(peer);
+                task.await.expect("lora stream exits");
+                return;
+            }
+        }
+
+        cancel.cancel();
+        drop(peer);
+        task.await.expect("lora stream exits");
+        panic!("did not observe blink management frame in stream bytes: {seen:02x?}");
+    }
+
+    #[test]
+    fn lora_runtime_status_json_exposes_rnode_probe_and_radio_state() {
+        let mut iface = LoraInterface::new("COM9", 115_200, LoraConfig::us915_default());
+        iface.record_command_response(CMD_DETECT, &[DETECT_RESP]).expect("detect");
+        iface.record_command_response(CMD_FW_VERSION, &[1, 52]).expect("firmware");
+        iface.record_command_response(CMD_PLATFORM, &[PLATFORM_ESP32]).expect("platform");
+        iface.record_command_response(CMD_MCU, &[0x01]).expect("mcu");
+        iface
+            .record_command_response(CMD_FREQUENCY, &915_000_000_u32.to_be_bytes())
+            .expect("frequency");
+        iface
+            .record_command_response(CMD_BANDWIDTH, &125_000_u32.to_be_bytes())
+            .expect("bandwidth");
+        iface.record_command_response(CMD_TXPOWER, &[17]).expect("tx power");
+        iface.record_command_response(CMD_SF, &[9]).expect("sf");
+        iface.record_command_response(CMD_CR, &[5]).expect("cr");
+        iface.record_command_response(CMD_RADIO_STATE, &[RADIO_STATE_ON]).expect("radio state");
+        iface.record_command_response(CMD_STAT_RX, &7_u32.to_be_bytes()).expect("rx");
+        iface.record_command_response(CMD_STAT_TX, &11_u32.to_be_bytes()).expect("tx");
+
+        let json = iface.runtime_status_json();
+
+        assert_eq!(json["endpoint"].as_str(), Some("COM9"));
+        assert_eq!(json["bearer"].as_str(), Some("serial"));
+        assert_eq!(json["baud_rate"].as_u64(), Some(115_200));
+        assert_eq!(json["probe_status"]["detected"].as_bool(), Some(true));
+        assert_eq!(json["probe_status"]["firmware_version"]["label"].as_str(), Some("1.52"));
+        assert_eq!(json["probe_status"]["has_display"].as_bool(), Some(true));
+        assert_eq!(json["radio_status"]["frequency_hz"].as_u64(), Some(915_000_000));
+        assert_eq!(json["radio_status"]["bandwidth_hz"].as_u64(), Some(125_000));
+        assert_eq!(json["radio_status"]["spreading_factor"].as_u64(), Some(9));
+        assert_eq!(json["radio_status"]["coding_rate"].as_u64(), Some(5));
+        assert_eq!(json["radio_status"]["tx_power_dbm"].as_u64(), Some(17));
+        assert_eq!(json["radio_status"]["radio_state"].as_u64(), Some(RADIO_STATE_ON.into()));
+        assert_eq!(json["radio_status"]["stat_rx"].as_u64(), Some(7));
+        assert_eq!(json["radio_status"]["stat_tx"].as_u64(), Some(11));
+        assert_eq!(json["online"].as_bool(), Some(true));
+        assert!(json["last_command_error"].is_null());
     }
 }

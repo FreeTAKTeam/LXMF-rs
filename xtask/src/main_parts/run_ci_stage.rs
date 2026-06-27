@@ -6,7 +6,7 @@ fn run_ci_stage(stage: CiStage, timeout_secs: Option<u64>) -> Result<()> {
             run("cargo", &["nextest", "run", "--workspace", "--lib", "--bins"])
         }
         CiStage::TestIntegration => run("cargo", &["test", "--workspace", "--tests"]),
-        CiStage::Doc => run("cargo", &["doc", "--workspace", "--no-deps"]),
+        CiStage::Doc => run("cargo", &["doc", "--workspace", "--no-deps", "--lib"]),
         CiStage::Security => {
             run_cargo_deny_policy_check()?;
             run_cargo_audit()?;
@@ -99,7 +99,7 @@ fn run_cargo_deny_policy_check() -> Result<()> {
 fn run_release_check() -> Result<()> {
     run_pr_core_ci()?;
     run_correctness_check()?;
-    run("cargo", &["doc", "--workspace", "--no-deps"])?;
+    run("cargo", &["doc", "--workspace", "--no-deps", "--lib"])?;
     run_sdk_docs_check()?;
     run_sdk_cookbook_check()?;
     run_sdk_ergonomics_check()?;

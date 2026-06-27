@@ -60,6 +60,13 @@ fn interface_record_from_config(iface: &InterfaceConfig) -> InterfaceRecord {
 pub(super) struct TcpServerSelection {
     pub(super) bind_addr: Option<String>,
     pub(super) selected_index: Option<usize>,
+    pub(super) kind: String,
+    pub(super) client_mtu: Option<usize>,
+    pub(super) client_forced_bitrate_bps: Option<u64>,
+    pub(super) prefer_ipv6: bool,
+    pub(super) i2p_tunneled: bool,
+    pub(super) local_attach_addr: Option<String>,
+    pub(super) local_attach_index: Option<usize>,
 }
 
 pub(super) fn select_tcp_server_bind(
@@ -67,7 +74,17 @@ pub(super) fn select_tcp_server_bind(
     daemon_config: Option<&DaemonConfig>,
 ) -> Result<TcpServerSelection, String> {
     if let Some(addr) = args.transport.as_ref() {
-        return Ok(TcpServerSelection { bind_addr: Some(addr.clone()), selected_index: None });
+        return Ok(TcpServerSelection {
+            bind_addr: Some(addr.clone()),
+            selected_index: None,
+            kind: "tcp_server".to_string(),
+            client_mtu: None,
+            client_forced_bitrate_bps: None,
+            prefer_ipv6: false,
+            i2p_tunneled: false,
+            local_attach_addr: None,
+            local_attach_index: None,
+        });
     }
 
     let Some(config) = daemon_config else {
@@ -76,36 +93,166 @@ pub(super) fn select_tcp_server_bind(
 
     let mut matches = Vec::new();
     for (index, iface) in config.interfaces.iter().enumerate() {
-        if !iface.enabled() || iface.kind != "tcp_server" {
+        if !iface.enabled() || !is_tcp_listener_interface(iface) {
             continue;
         }
         let Some(port) = iface.port else {
             continue;
         };
-        let host = iface
-            .host
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .unwrap_or("0.0.0.0");
-        matches.push((index, format!("{}:{}", host, port)));
+        let host = tcp_listener_bind_host(iface)
+            .map_err(|err| format!("interfaces[{index}] {err}"))?;
+        matches.push(TcpListenerMatch {
+            index,
+            kind: iface.kind.clone(),
+            client_mtu: iface.mtu,
+            client_forced_bitrate_bps: (iface.kind == "local")
+                .then_some(iface.force_shared_instance_bitrate)
+                .flatten(),
+            prefer_ipv6: iface.prefer_ipv6.unwrap_or(false),
+            i2p_tunneled: iface.i2p_tunneled.unwrap_or(false),
+            bind_addr: tcp_bind_addr(host.as_str(), port),
+            synthetic_shared_tcp_local: is_synthetic_shared_tcp_local(iface),
+        });
+    }
+
+    if matches.len() > 1 && matches.iter().any(|entry| !entry.synthetic_shared_tcp_local) {
+        matches.retain(|entry| !entry.synthetic_shared_tcp_local);
     }
 
     if matches.len() > 1 {
         return Err(format!(
-            "multiple enabled tcp_server interfaces configured without --transport override: {}",
-            matches.iter().map(|(_, endpoint)| endpoint.as_str()).collect::<Vec<_>>().join(", ")
+            "multiple enabled TCP listener interfaces configured without --transport override: {}",
+            matches
+                .iter()
+                .map(|entry| entry.bind_addr.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
         ));
     }
 
-    Ok(matches
-        .into_iter()
-        .next()
-        .map(|(selected_index, bind_addr)| TcpServerSelection {
-            bind_addr: Some(bind_addr),
-            selected_index: Some(selected_index),
-        })
-        .unwrap_or_default())
+    let Some(selected) = matches.into_iter().next() else {
+        return Ok(TcpServerSelection::default());
+    };
+
+    if selected.kind == "local" && tcp_bind_addr_is_in_use(&selected.bind_addr) {
+        return Ok(TcpServerSelection {
+            bind_addr: None,
+            selected_index: None,
+            kind: selected.kind,
+            client_mtu: selected.client_mtu,
+            client_forced_bitrate_bps: selected.client_forced_bitrate_bps,
+            prefer_ipv6: selected.prefer_ipv6,
+            i2p_tunneled: selected.i2p_tunneled,
+            local_attach_addr: Some(selected.bind_addr),
+            local_attach_index: Some(selected.index),
+        });
+    }
+
+    Ok(TcpServerSelection {
+        bind_addr: Some(selected.bind_addr),
+        selected_index: Some(selected.index),
+        kind: selected.kind,
+        client_mtu: selected.client_mtu,
+        client_forced_bitrate_bps: selected.client_forced_bitrate_bps,
+        prefer_ipv6: selected.prefer_ipv6,
+        i2p_tunneled: selected.i2p_tunneled,
+        local_attach_addr: None,
+        local_attach_index: None,
+    })
+}
+
+#[derive(Debug)]
+struct TcpListenerMatch {
+    index: usize,
+    kind: String,
+    client_mtu: Option<usize>,
+    client_forced_bitrate_bps: Option<u64>,
+    prefer_ipv6: bool,
+    i2p_tunneled: bool,
+    bind_addr: String,
+    synthetic_shared_tcp_local: bool,
+}
+
+fn is_tcp_listener_interface(iface: &InterfaceConfig) -> bool {
+    match iface.kind.as_str() {
+        "tcp_server" | "backbone" => true,
+        "local" => iface.shared_instance_type.as_deref() != Some("unix"),
+        _ => false,
+    }
+}
+
+fn is_synthetic_shared_tcp_local(iface: &InterfaceConfig) -> bool {
+    iface.synthetic_shared_instance
+        && iface.kind == "local"
+        && iface.shared_instance_type.as_deref() != Some("unix")
+}
+
+fn tcp_listener_bind_host(iface: &InterfaceConfig) -> Result<String, String> {
+    if let Some(host) = iface.host.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+        return Ok(host.to_string());
+    }
+    let Some(device) = iface.device.as_deref().map(str::trim).filter(|value| !value.is_empty())
+    else {
+        return Ok("0.0.0.0".to_string());
+    };
+    resolve_tcp_listener_device_bind_host(device, iface.prefer_ipv6.unwrap_or(false))
+}
+
+fn tcp_bind_addr(host: &str, port: u16) -> String {
+    if let Ok(ip) = host.parse::<std::net::IpAddr>() {
+        return std::net::SocketAddr::new(ip, port).to_string();
+    }
+    if host.contains(':') && !host.starts_with('[') {
+        format!("[{host}]:{port}")
+    } else {
+        format!("{host}:{port}")
+    }
+}
+
+fn resolve_tcp_listener_device_bind_host(device: &str, prefer_ipv6: bool) -> Result<String, String> {
+    let interfaces = if_addrs::get_if_addrs()
+        .map_err(|err| format!("failed to inspect network interfaces for device {device}: {err}"))?;
+    let candidates = interfaces
+        .iter()
+        .map(|iface| (iface.name.as_str(), iface.ip(), iface.is_oper_up()))
+        .collect::<Vec<_>>();
+    select_tcp_listener_device_ip(device, prefer_ipv6, &candidates)
+        .map(|addr| addr.to_string())
+}
+
+pub(crate) fn select_tcp_listener_device_ip(
+    device: &str,
+    prefer_ipv6: bool,
+    candidates: &[(&str, std::net::IpAddr, bool)],
+) -> Result<std::net::IpAddr, String> {
+    let mut matches = candidates
+        .iter()
+        .copied()
+        .filter(|(name, _, is_up)| *name == device && *is_up)
+        .map(|(_, ip, _)| ip)
+        .filter(|ip| !ip.is_unspecified())
+        .filter(|ip| !ip.is_loopback() || device.starts_with("lo"))
+        .collect::<Vec<_>>();
+    matches.sort_by_key(|ip| match (prefer_ipv6, ip) {
+        (true, std::net::IpAddr::V6(_)) | (false, std::net::IpAddr::V4(_)) => 0,
+        _ => 1,
+    });
+    matches.into_iter().next().ok_or_else(|| {
+        format!(
+            "device {device} did not resolve to an operational bindable interface address"
+        )
+    })
+}
+
+fn tcp_bind_addr_is_in_use(bind_addr: &str) -> bool {
+    match std::net::TcpListener::bind(bind_addr) {
+        Ok(listener) => {
+            drop(listener);
+            false
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::AddrInUse => true,
+        Err(_) => false,
+    }
 }
 
 pub(super) fn mark_interface_startup_status(

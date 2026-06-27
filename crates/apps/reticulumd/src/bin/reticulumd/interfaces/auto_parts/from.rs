@@ -36,6 +36,7 @@ fn build_startup_plan_from_candidates(
     Ok(AutoDaemonStartupPlan {
         config,
         platform,
+        device_filter: filter,
         candidates,
         adopted_devices,
         peering_packets,
@@ -161,6 +162,199 @@ fn data_socket_bind_json(target: &AutoDataSocketBindTarget) -> JsonValue {
     })
 }
 
+pub(crate) fn auto_carrier_runtime_json(
+    state: &AutoRuntimeState,
+    carrier_events: &[AutoMulticastCarrierEvent],
+    link_local_update: Option<&AutoLinkLocalAddressUpdate>,
+) -> JsonValue {
+    json!({
+        "online": state.online,
+        "final_init_done": state.final_init_done,
+        "carrier_changed": state.carrier_changed,
+        "carrier_event_count": carrier_events.len(),
+        "carrier_events": carrier_events.iter().map(carrier_event_json).collect::<Vec<_>>(),
+        "link_local_update": link_local_update.map(link_local_update_json),
+    })
+}
+
+impl AutoRuntimeStatusHandle {
+    pub(crate) fn from_startup_plan(plan: &AutoStartupPlan) -> Self {
+        let adopted_devices = plan
+            .data_listeners
+            .iter()
+            .map(|listener| AutoInterfaceAdoptedDevice {
+                ifname: listener.ifname.clone(),
+                link_local_address: listener.link_local_address.clone(),
+            })
+            .collect();
+        Self {
+            inner: Arc::new(std::sync::Mutex::new(AutoRuntimeStatus {
+                state: AutoRuntimeState::from_startup_plan(
+                    plan,
+                    core::time::Duration::ZERO,
+                ),
+                started_at: Instant::now(),
+                carrier_events: Vec::new(),
+                link_local_update: None,
+                adopted_devices,
+                adopted_add_count: 0,
+                adopted_remove_count: 0,
+                link_local_replacement_count: 0,
+                last_adopted_change: None,
+            })),
+        }
+    }
+
+    pub(crate) fn record_carrier_events(&self, events: &[AutoMulticastCarrierEvent]) -> bool {
+        let mut guard = self.inner.lock().expect("auto runtime status mutex poisoned");
+        if !guard.state.record_carrier_events(events) {
+            return false;
+        }
+        guard.carrier_events = events.to_vec();
+        true
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn record_link_local_update(
+        &self,
+        update: Option<&AutoLinkLocalAddressUpdate>,
+    ) -> bool {
+        let mut guard = self.inner.lock().expect("auto runtime status mutex poisoned");
+        if !guard.state.record_link_local_update(update) {
+            return false;
+        }
+        if let Some(update) = update {
+            guard
+                .adopted_devices
+                .iter_mut()
+                .filter(|device| device.ifname == update.ifname)
+                .for_each(|device| {
+                    device.link_local_address = update.new_link_local_address.clone();
+                });
+            guard.link_local_replacement_count += 1;
+            guard.last_adopted_change =
+                Some(AutoAdoptedInterfaceChange::LinkLocalChanged(update.clone()));
+            guard.link_local_update = Some(update.clone());
+        }
+        true
+    }
+
+    pub(crate) fn record_adopted_interface_change(&self, change: &AutoAdoptedInterfaceChange) {
+        let mut guard = self.inner.lock().expect("auto runtime status mutex poisoned");
+        match change {
+            AutoAdoptedInterfaceChange::Added { adopted, .. } => {
+                if let Some(existing) =
+                    guard.adopted_devices.iter_mut().find(|device| device.ifname == adopted.ifname)
+                {
+                    *existing = adopted.clone();
+                } else {
+                    guard.adopted_devices.push(adopted.clone());
+                }
+                guard.adopted_devices.sort_by(|left, right| left.ifname.cmp(&right.ifname));
+                guard.adopted_add_count += 1;
+            }
+            AutoAdoptedInterfaceChange::Removed { adopted, .. } => {
+                guard.adopted_devices.retain(|device| device.ifname != adopted.ifname);
+                guard.adopted_remove_count += 1;
+            }
+            AutoAdoptedInterfaceChange::LinkLocalChanged(update) => {
+                if let Some(existing) =
+                    guard.adopted_devices.iter_mut().find(|device| device.ifname == update.ifname)
+                {
+                    existing.link_local_address = update.new_link_local_address.clone();
+                }
+                guard.link_local_update = Some(update.clone());
+                guard.link_local_replacement_count += 1;
+            }
+        }
+        guard.state.carrier_changed = true;
+        guard.last_adopted_change = Some(change.clone());
+    }
+
+    pub(crate) fn to_json(&self) -> JsonValue {
+        let mut guard = self.inner.lock().expect("auto runtime status mutex poisoned");
+        let elapsed = guard.started_at.elapsed();
+        guard.state.advance(elapsed);
+        let mut value = auto_carrier_runtime_json(
+            &guard.state,
+            &guard.carrier_events,
+            guard.link_local_update.as_ref(),
+        );
+        if let Some(object) = value.as_object_mut() {
+            object.insert(
+                "adopted_device_count".to_string(),
+                json!(guard.adopted_devices.len()),
+            );
+            object.insert(
+                "adopted_devices".to_string(),
+                json!(guard.adopted_devices.iter().map(adopted_json).collect::<Vec<_>>()),
+            );
+            object.insert("adopted_add_count".to_string(), json!(guard.adopted_add_count));
+            object.insert("adopted_remove_count".to_string(), json!(guard.adopted_remove_count));
+            object.insert(
+                "link_local_replacement_count".to_string(),
+                json!(guard.link_local_replacement_count),
+            );
+            object.insert(
+                "last_adopted_change".to_string(),
+                guard
+                    .last_adopted_change
+                    .as_ref()
+                    .map(adopted_change_json)
+                    .unwrap_or(JsonValue::Null),
+            );
+        }
+        value
+    }
+}
+
+fn adopted_change_json(change: &AutoAdoptedInterfaceChange) -> JsonValue {
+    match change {
+        AutoAdoptedInterfaceChange::Added { adopted, .. } => json!({
+            "event": "added",
+            "ifname": adopted.ifname,
+            "link_local_address": adopted.link_local_address,
+        }),
+        AutoAdoptedInterfaceChange::Removed { adopted, .. } => json!({
+            "event": "removed",
+            "ifname": adopted.ifname,
+            "link_local_address": adopted.link_local_address,
+        }),
+        AutoAdoptedInterfaceChange::LinkLocalChanged(update) => json!({
+            "event": "link_local_changed",
+            "ifname": update.ifname,
+            "old_link_local_address": update.old_link_local_address,
+            "new_link_local_address": update.new_link_local_address,
+        }),
+    }
+}
+
+fn carrier_event_json(event: &AutoMulticastCarrierEvent) -> JsonValue {
+    match event {
+        AutoMulticastCarrierEvent::CarrierLost { ifname } => {
+            json!({
+                "event": "carrier_lost",
+                "ifname": ifname,
+            })
+        }
+        AutoMulticastCarrierEvent::CarrierRecovered { ifname } => {
+            json!({
+                "event": "carrier_recovered",
+                "ifname": ifname,
+            })
+        }
+    }
+}
+
+fn link_local_update_json(update: &AutoLinkLocalAddressUpdate) -> JsonValue {
+    json!({
+        "ifname": update.ifname,
+        "old_link_local_address": update.old_link_local_address,
+        "new_link_local_address": update.new_link_local_address,
+        "restart_data_listener": data_listener_json(&update.listener_binding),
+    })
+}
+
 pub(crate) fn discovery_runtime_summary_json(summary: &AutoDiscoveryRuntimeSummary) -> JsonValue {
     json!({
         "bound_socket_count": summary.bound_socket_count,
@@ -168,6 +362,7 @@ pub(crate) fn discovery_runtime_summary_json(summary: &AutoDiscoveryRuntimeSumma
         "initial_peer_announce_count": summary.initial_peer_announce_count,
         "repeat_peer_announce_scheduler_count": summary.repeat_peer_announce_scheduler_count,
         "peer_job_scheduler_count": summary.peer_job_scheduler_count,
+        "adopted_interface_reconciler_count": summary.adopted_interface_reconciler_count,
         "data_socket_count": summary.data_socket_count,
         "data_receive_loop_count": summary.data_receive_loop_count,
     })

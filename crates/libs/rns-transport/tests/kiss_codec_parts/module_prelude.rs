@@ -1,10 +1,12 @@
 use std::sync::Arc;
 
+use rns_transport::buffer::OutputBuffer;
+
 use rns_transport::hash::AddressHash;
 
 use rns_transport::iface::kiss::{
-    run_kiss_stream, KissActivityProbeConfig, KissCommandFrame, KissIdBeaconConfig,
-    KissStreamOptions, KISS_FLOW_CONTROL_TIMEOUT, KISS_READ_FRAME_TIMEOUT,
+    run_kiss_stream, KissActivityProbeConfig, KissCommandFrame, KissIdBeaconConfig, KissInterface,
+    KissPayloadAdapter, KissStreamOptions, KISS_FLOW_CONTROL_TIMEOUT, KISS_READ_FRAME_TIMEOUT,
 };
 
 use rns_transport::iface::{TxMessage, TxMessageType};
@@ -16,6 +18,7 @@ use rns_transport::kiss::{
 };
 
 use rns_transport::packet::Packet;
+use rns_transport::serde::Serialize;
 
 use tokio_util::sync::CancellationToken;
 
@@ -212,9 +215,12 @@ async fn run_kiss_stream_reports_unknown_command_frames() {
             shutdown_frames: Vec::new(),
             id_beacon: None,
             activity_probe: None,
+            payload_adapter: KissPayloadAdapter::Raw,
             strip_command_port_nibble: true,
             command_tx: Some(command_tx),
             data_rx_tx: None,
+            management_frame_rx: None,
+            runtime_status: None,
         },
         worker_cancel,
         rx_send,
@@ -259,9 +265,12 @@ async fn run_kiss_stream_reports_inbound_data_frames_for_status_hooks() {
             shutdown_frames: Vec::new(),
             id_beacon: None,
             activity_probe: None,
+            payload_adapter: KissPayloadAdapter::Raw,
             strip_command_port_nibble: false,
             command_tx: None,
             data_rx_tx: Some(data_rx_tx),
+            management_frame_rx: None,
+            runtime_status: None,
         },
         worker_cancel,
         rx_send,
@@ -276,6 +285,158 @@ async fn run_kiss_stream_reports_inbound_data_frames_for_status_hooks() {
         .await
         .expect("data callback")
         .expect("data frame notification");
+
+    cancel.cancel();
+    drop(peer);
+    worker.await.expect("worker exits");
+}
+
+#[tokio::test]
+async fn run_kiss_stream_updates_runtime_status_for_data_rx_and_tx() {
+    let (mut peer, stream) = tokio::io::duplex(512);
+    let iface_address = AddressHash::new_from_slice(b"kiss-status");
+    let (rx_send, mut rx_recv) = tokio::sync::mpsc::channel(1);
+    let (tx_send, tx_recv) = tokio::sync::mpsc::channel(1);
+    let tx_recv = Arc::new(tokio::sync::Mutex::new(tx_recv));
+    let runtime_status = KissInterface::new("test-kiss", 1200).runtime_status_handle();
+    let cancel = CancellationToken::new();
+
+    let worker_cancel = cancel.clone();
+    let worker = tokio::spawn(run_kiss_stream(
+        stream,
+        KissStreamOptions {
+            iface_address,
+            device: "test-kiss".to_string(),
+            mtu: 256,
+            flow_control: false,
+            flow_control_timeout: KISS_FLOW_CONTROL_TIMEOUT,
+            read_frame_timeout: KISS_READ_FRAME_TIMEOUT,
+            initial_frames: Vec::new(),
+            shutdown_frames: Vec::new(),
+            id_beacon: None,
+            activity_probe: None,
+            payload_adapter: KissPayloadAdapter::Raw,
+            strip_command_port_nibble: true,
+            command_tx: None,
+            data_rx_tx: None,
+            management_frame_rx: None,
+            runtime_status: Some(runtime_status.clone()),
+        },
+        worker_cancel,
+        rx_send,
+        tx_recv,
+    ));
+
+    tx_send
+        .send(TxMessage { tx_type: TxMessageType::Broadcast(None), packet: Packet::default() })
+        .await
+        .expect("send outbound packet");
+    let mut tx_wire = [0_u8; 256];
+    let tx_wire_len = tokio::time::timeout(
+        std::time::Duration::from_secs(1),
+        tokio::io::AsyncReadExt::read(&mut peer, &mut tx_wire),
+    )
+    .await
+    .expect("outbound kiss frame")
+    .expect("read outbound kiss frame");
+    assert!(tx_wire_len > 0);
+
+    let mut packet_payload = [0_u8; 256];
+    let mut output = OutputBuffer::new(&mut packet_payload);
+    Packet::default().serialize(&mut output).expect("serialize inbound packet");
+    let inbound_frame = encode_data_frame(output.as_slice());
+    tokio::io::AsyncWriteExt::write_all(&mut peer, &inbound_frame)
+        .await
+        .expect("write inbound packet");
+    let rx = tokio::time::timeout(std::time::Duration::from_secs(1), rx_recv.recv())
+        .await
+        .expect("rx packet")
+        .expect("rx message");
+    assert_eq!(rx.address, iface_address);
+
+    let snapshot = runtime_status.snapshot();
+    assert_eq!(snapshot.packets_tx, 1);
+    assert_eq!(snapshot.data_frames_tx, 1);
+    assert_eq!(snapshot.bytes_tx, tx_wire_len as u64);
+    assert_eq!(snapshot.packets_rx, 1);
+    assert_eq!(snapshot.data_frames_rx, 1);
+    assert_eq!(snapshot.bytes_rx, inbound_frame.len() as u64);
+
+    cancel.cancel();
+    drop(peer);
+    worker.await.expect("worker exits");
+}
+
+#[tokio::test]
+async fn run_kiss_stream_writes_outbound_management_command_frames() {
+    let (mut peer, stream) = tokio::io::duplex(256);
+    let (rx_send, _rx_recv) = tokio::sync::mpsc::channel(1);
+    let (_tx_send, tx_recv) = tokio::sync::mpsc::channel(1);
+    let tx_recv = Arc::new(tokio::sync::Mutex::new(tx_recv));
+    let (management_tx, management_rx) =
+        tokio::sync::mpsc::channel(KISS_TEST_CALLBACK_CHANNEL_CAPACITY);
+    let management_rx = Arc::new(tokio::sync::Mutex::new(management_rx));
+    let cancel = CancellationToken::new();
+
+    let worker_cancel = cancel.clone();
+    let worker = tokio::spawn(run_kiss_stream(
+        stream,
+        KissStreamOptions {
+            iface_address: AddressHash::default(),
+            device: "test-rnode-management".to_string(),
+            mtu: 64,
+            flow_control: true,
+            flow_control_timeout: KISS_FLOW_CONTROL_TIMEOUT,
+            read_frame_timeout: KISS_READ_FRAME_TIMEOUT,
+            initial_frames: Vec::new(),
+            shutdown_frames: Vec::new(),
+            id_beacon: None,
+            activity_probe: None,
+            payload_adapter: KissPayloadAdapter::Raw,
+            strip_command_port_nibble: false,
+            command_tx: None,
+            data_rx_tx: None,
+            management_frame_rx: Some(management_rx),
+            runtime_status: None,
+        },
+        worker_cancel,
+        rx_send,
+        tx_recv,
+    ));
+
+    let radio_query_frame = encode_command_frame(0x06, &[0xff]);
+    let blink_frame = encode_command_frame(0x30, &[0x03]);
+    management_tx
+        .send(radio_query_frame.clone())
+        .await
+        .expect("queue radio query management frame");
+    management_tx.send(blink_frame.clone()).await.expect("queue blink management frame");
+
+    let mut seen = Vec::new();
+    let mut buffer = [0_u8; 256];
+    for _ in 0..2 {
+        let n = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            tokio::io::AsyncReadExt::read(&mut peer, &mut buffer),
+        )
+        .await
+        .expect("management command frame")
+        .expect("read management command");
+        seen.extend_from_slice(&buffer[..n]);
+        if seen.windows(radio_query_frame.len()).any(|window| window == radio_query_frame.as_slice())
+            && seen.windows(blink_frame.len()).any(|window| window == blink_frame.as_slice())
+        {
+            break;
+        }
+    }
+    assert!(
+        seen.windows(radio_query_frame.len()).any(|window| window == radio_query_frame.as_slice()),
+        "radio-state query frame missing from stream bytes: {seen:02x?}"
+    );
+    assert!(
+        seen.windows(blink_frame.len()).any(|window| window == blink_frame.as_slice()),
+        "blink frame missing from stream bytes: {seen:02x?}"
+    );
 
     cancel.cancel();
     drop(peer);
@@ -307,9 +468,12 @@ async fn run_kiss_stream_drops_stale_partial_data_frame_after_python_read_timeou
             shutdown_frames: Vec::new(),
             id_beacon: None,
             activity_probe: None,
+            payload_adapter: KissPayloadAdapter::Raw,
             strip_command_port_nibble: true,
             command_tx: Some(command_tx),
             data_rx_tx: Some(data_rx_tx),
+            management_frame_rx: None,
+            runtime_status: None,
         },
         worker_cancel,
         rx_send,
@@ -361,9 +525,12 @@ async fn run_kiss_stream_flow_control_allows_first_packet_after_python_configura
             shutdown_frames: Vec::new(),
             id_beacon: None,
             activity_probe: None,
+            payload_adapter: KissPayloadAdapter::Raw,
             strip_command_port_nibble: true,
             command_tx: None,
             data_rx_tx: None,
+            management_frame_rx: None,
+            runtime_status: None,
         },
         worker_cancel,
         rx_send,

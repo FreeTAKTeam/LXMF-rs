@@ -114,7 +114,11 @@ impl TransportHandler {
 
         diag::log_route_lookup(&self.path_table, &packet.destination);
 
-        let route = super::path::route_outbound_packet(&self.path_table, &packet);
+        let route = super::path::route_outbound_packet(
+            &self.path_table,
+            &packet,
+            self.config.connected_to_shared_instance,
+        );
         let packet = route.packet;
         if let Some(iface) = route.next_iface {
             let dispatch =
@@ -178,6 +182,16 @@ impl TransportHandler {
             .send_with_announce_policy(message, announce_policy)
             .await;
         if dispatch.sent_ifaces > 0 || dispatch.queued_ifaces > 0 {
+            self.note_link_packet_sent(&packet).await;
+        }
+        dispatch
+    }
+
+    pub(super) async fn send_recursive_path_request(&self, message: TxMessage) -> TxDispatchTrace {
+        let packet = message.packet.clone();
+        self.packet_cache.lock().await.update(&packet);
+        let dispatch = self.iface_manager.lock().await.send_recursive_path_request(message).await;
+        if dispatch.sent_ifaces > 0 {
             self.note_link_packet_sent(&packet).await;
         }
         dispatch

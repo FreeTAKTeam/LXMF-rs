@@ -22,7 +22,7 @@ use rns_transport::hash::{address_hash, AddressHash};
 
 use rns_transport::identity_bridge::to_transport_private_identity;
 
-use rns_transport::iface::tcp_client::TcpClient;
+use rns_transport::iface::tcp_client::{TcpClient, TcpSocketTuning};
 
 use rns_transport::iface::tcp_server::TcpServer;
 
@@ -33,6 +33,34 @@ use rns_transport::transport::{Transport, TransportConfig};
 use tokio::time::sleep;
 
 const MSG_TYPE: u16 = 0xABCD;
+
+fn rust_client_for_python_interop(kind: PythonInteropInterfaceKind, server_port: u16) -> TcpClient {
+    let client = TcpClient::new(format!("127.0.0.1:{server_port}"));
+    match kind {
+        PythonInteropInterfaceKind::Tcp => client,
+        PythonInteropInterfaceKind::Backbone => {
+            client
+                .with_mtu(1_048_576)
+                .with_socket_tuning(TcpSocketTuning::backbone())
+                .with_backbone_liveness()
+        }
+    }
+}
+
+fn rust_server_for_python_interop(
+    kind: PythonInteropInterfaceKind,
+    server_port: u16,
+    iface_manager: Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
+) -> TcpServer {
+    let server = TcpServer::new(format!("127.0.0.1:{server_port}"), iface_manager);
+    match kind {
+        PythonInteropInterfaceKind::Tcp => server,
+        PythonInteropInterfaceKind::Backbone => server
+            .with_client_mtu(1_048_576)
+            .with_client_socket_tuning(TcpSocketTuning::backbone())
+            .with_backbone_client_liveness(),
+    }
+}
 
 #[tokio::test]
 #[ignore = "requires local Python Reticulum checkout"]
@@ -94,6 +122,64 @@ async fn rust_to_python_channel_roundtrip() {
 
 #[tokio::test]
 #[ignore = "requires local Python Reticulum checkout"]
+async fn rust_to_python_backbone_channel_roundtrip() {
+    let _interop_guard = python_interop_guard().await;
+    let paths = python_channel_interop_paths();
+
+    let server_port = free_tcp_port();
+    let temp = tempfile::tempdir().expect("tempdir");
+    let py_config_dir = temp.path().join("python-rns-backbone-channel");
+    fs::create_dir_all(&py_config_dir).expect("python config dir");
+    write_python_config_for_kind(&py_config_dir, server_port, PythonInteropInterfaceKind::Backbone);
+
+    let mut child = paths.spawn_endpoint(&py_config_dir, "channel");
+    let ready = read_ready(&mut child).expect("python endpoint ready");
+    let _guard = ChildGuard { child: Some(child) };
+    wait_for_port(server_port, Duration::from_secs(5)).await;
+
+    let target_hash =
+        AddressHash::new_from_hex_string(&ready.destination_hash).expect("destination hash");
+    let rust_identity = PrivateIdentity::new_from_rand(OsRng);
+    let rust_identity = to_transport_private_identity(&rust_identity);
+    let mut config = TransportConfig::new("python-backbone-channel-interop", &rust_identity, true);
+    config.set_path_request_timeout_secs(2);
+    let transport = Transport::new(config);
+    transport.iface_manager().lock().await.spawn(
+        rust_client_for_python_interop(PythonInteropInterfaceKind::Backbone, server_port),
+        TcpClient::spawn,
+    );
+
+    let destination = wait_for_announce(&transport, target_hash, Duration::from_secs(8)).await;
+    let mut link_events = transport.out_link_events();
+    let link = transport.link(destination).await;
+    let link_id = wait_for_out_link_active(&mut link_events, &link, Duration::from_secs(8)).await;
+    sleep(Duration::from_millis(100)).await;
+
+    let channel = transport.channel(link_id);
+    let seen = Arc::new(StdMutex::new(Vec::<(String, String)>::new()));
+    let seen_clone = seen.clone();
+    channel
+        .register_handler(MSG_TYPE, move |envelope| {
+            if let Ok(decoded) = rmp_serde::from_slice::<(String, String)>(&envelope.payload) {
+                seen_clone.lock().expect("seen lock").push(decoded);
+                true
+            } else {
+                false
+            }
+        })
+        .await
+        .expect("register channel handler");
+
+    let payload =
+        rmp_serde::to_vec(&(String::from("rust-backbone"), String::from("hello-python-backbone")))
+            .expect("encode Backbone channel message");
+    channel.send(MSG_TYPE, payload).await.expect("send Backbone channel message");
+
+    wait_for_reply(&seen, Duration::from_secs(8)).await;
+}
+
+#[tokio::test]
+#[ignore = "requires local Python Reticulum checkout"]
 async fn rust_to_python_link_data_roundtrip() {
     let _interop_guard = python_interop_guard().await;
     let paths = python_channel_interop_paths();
@@ -121,6 +207,48 @@ async fn rust_to_python_link_data_roundtrip() {
         .lock()
         .await
         .spawn(TcpClient::new(format!("127.0.0.1:{server_port}")), TcpClient::spawn);
+
+    let destination = wait_for_announce(&transport, target_hash, Duration::from_secs(8)).await;
+    let mut link_events = transport.out_link_events();
+    let link = transport.link(destination).await;
+    let link_id = wait_for_out_link_active(&mut link_events, &link, Duration::from_secs(8)).await;
+    let mut received = transport.received_data_events();
+    sleep(Duration::from_millis(100)).await;
+
+    transport.send_to_out_links(&target_hash, b"hello-link-data").await;
+    wait_for_link_data(&mut received, link_id, b"reply:hello-link-data", Duration::from_secs(8))
+        .await;
+}
+
+#[tokio::test]
+#[ignore = "requires local Python Reticulum checkout"]
+async fn rust_to_python_backbone_link_data_roundtrip() {
+    let _interop_guard = python_interop_guard().await;
+    let paths = python_channel_interop_paths();
+
+    let server_port = free_tcp_port();
+    let temp = tempfile::tempdir().expect("tempdir");
+    let py_config_dir = temp.path().join("python-rns-backbone-link-data");
+    fs::create_dir_all(&py_config_dir).expect("python config dir");
+    write_python_config_for_kind(&py_config_dir, server_port, PythonInteropInterfaceKind::Backbone);
+
+    let mut child = paths.spawn_endpoint(&py_config_dir, "link-data");
+    let ready = read_ready(&mut child).expect("python Backbone endpoint ready");
+    let _guard = ChildGuard { child: Some(child) };
+    wait_for_port(server_port, Duration::from_secs(5)).await;
+
+    let target_hash =
+        AddressHash::new_from_hex_string(&ready.destination_hash).expect("destination hash");
+    let rust_identity = PrivateIdentity::new_from_rand(OsRng);
+    let rust_identity = to_transport_private_identity(&rust_identity);
+    let mut config =
+        TransportConfig::new("python-backbone-link-data-interop", &rust_identity, true);
+    config.set_path_request_timeout_secs(2);
+    let transport = Transport::new(config);
+    transport.iface_manager().lock().await.spawn(
+        rust_client_for_python_interop(PythonInteropInterfaceKind::Backbone, server_port),
+        TcpClient::spawn,
+    );
 
     let destination = wait_for_announce(&transport, target_hash, Duration::from_secs(8)).await;
     let mut link_events = transport.out_link_events();
@@ -179,6 +307,57 @@ async fn rust_to_python_request_response_roundtrip() {
     let request_id = send_link_context_packet(&transport, &link, PacketContext::Request, &payload)
         .await
         .expect("send request")
+        .expect("request id");
+    let response =
+        wait_for_request_response(&mut received, link_id, request_id, Duration::from_secs(8)).await;
+    assert_eq!(rmpv_to_string(&response).as_deref(), Some("reply:hello-python-request"));
+}
+
+#[tokio::test]
+#[ignore = "requires local Python Reticulum checkout"]
+async fn rust_to_python_backbone_request_response_roundtrip() {
+    let _interop_guard = python_interop_guard().await;
+    let paths = python_channel_interop_paths();
+
+    let server_port = free_tcp_port();
+    let temp = tempfile::tempdir().expect("tempdir");
+    let py_config_dir = temp.path().join("python-rns-backbone-request");
+    fs::create_dir_all(&py_config_dir).expect("python config dir");
+    write_python_config_for_kind(&py_config_dir, server_port, PythonInteropInterfaceKind::Backbone);
+
+    let mut child = paths.spawn_endpoint(&py_config_dir, "request");
+    let ready = read_ready(&mut child).expect("python Backbone endpoint ready");
+    let _guard = ChildGuard { child: Some(child) };
+    wait_for_port(server_port, Duration::from_secs(5)).await;
+
+    let target_hash =
+        AddressHash::new_from_hex_string(&ready.destination_hash).expect("destination hash");
+    let rust_identity = PrivateIdentity::new_from_rand(OsRng);
+    let rust_identity = to_transport_private_identity(&rust_identity);
+    let mut config =
+        TransportConfig::new("python-backbone-request-interop", &rust_identity, true);
+    config.set_path_request_timeout_secs(2);
+    let transport = Transport::new(config);
+    transport.iface_manager().lock().await.spawn(
+        rust_client_for_python_interop(PythonInteropInterfaceKind::Backbone, server_port),
+        TcpClient::spawn,
+    );
+
+    let destination = wait_for_announce(&transport, target_hash, Duration::from_secs(8)).await;
+    let mut link_events = transport.out_link_events();
+    let link = transport.link(destination).await;
+    let link_id = wait_for_out_link_active(&mut link_events, &link, Duration::from_secs(8)).await;
+    let mut received = transport.received_data_events();
+    sleep(Duration::from_millis(100)).await;
+
+    let payload = build_link_request_payload(
+        "/test/request",
+        rmpv::Value::String("hello-python-request".into()),
+    )
+    .expect("request payload");
+    let request_id = send_link_context_packet(&transport, &link, PacketContext::Request, &payload)
+        .await
+        .expect("send Backbone request")
         .expect("request id");
     let response =
         wait_for_request_response(&mut received, link_id, request_id, Duration::from_secs(8)).await;

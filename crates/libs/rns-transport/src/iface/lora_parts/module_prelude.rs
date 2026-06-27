@@ -1,4 +1,4 @@
-use std::net::{TcpStream as StdTcpStream, ToSocketAddrs};
+use std::net::{Ipv4Addr, TcpStream as StdTcpStream, ToSocketAddrs};
 
 use std::sync::Arc;
 
@@ -12,7 +12,7 @@ use tokio_serial::{DataBits, FlowControl, Parity, SerialPortBuilderExt, StopBits
 
 use crate::iface::kiss::{
     run_kiss_stream, KissActivityProbeConfig, KissCommandFrame, KissIdBeaconConfig,
-    KissStreamOptions, KISS_FLOW_CONTROL_TIMEOUT, KISS_READ_FRAME_TIMEOUT,
+    KissPayloadAdapter, KissStreamOptions, KISS_FLOW_CONTROL_TIMEOUT, KISS_READ_FRAME_TIMEOUT,
 };
 
 use crate::kiss::encode_command_frame;
@@ -69,6 +69,8 @@ pub const CMD_FB_READ: u8 = 0x42;
 
 pub const CMD_FB_WRITE: u8 = 0x43;
 
+pub const CMD_DISP_INT: u8 = 0x45;
+
 pub const CMD_BT_CTRL: u8 = 0x46;
 
 pub const CMD_PLATFORM: u8 = 0x48;
@@ -79,9 +81,47 @@ pub const CMD_FW_VERSION: u8 = 0x50;
 
 pub const CMD_ROM_READ: u8 = 0x51;
 
+pub const CMD_ROM_WRITE: u8 = 0x52;
+
+pub const CMD_CONF_SAVE: u8 = 0x53;
+
+pub const CMD_CONF_DELETE: u8 = 0x54;
+
 pub const CMD_RESET: u8 = 0x55;
 
+pub const CMD_FW_HASH: u8 = 0x58;
+
+pub const CMD_ROM_WIPE: u8 = 0x59;
+
+pub const CMD_FW_UPD: u8 = 0x61;
+
+pub const CMD_DISP_ADR: u8 = 0x63;
+
+pub const CMD_DISP_BLNK: u8 = 0x64;
+
+pub const CMD_NP_INT: u8 = 0x65;
+
 pub const CMD_DISP_READ: u8 = 0x66;
+
+pub const CMD_DISP_ROT: u8 = 0x67;
+
+pub const CMD_DISP_RCND: u8 = 0x68;
+
+pub const CMD_DIS_IA: u8 = 0x69;
+
+pub const CMD_WIFI_MODE: u8 = 0x6A;
+
+pub const CMD_WIFI_SSID: u8 = 0x6B;
+
+pub const CMD_WIFI_PSK: u8 = 0x6C;
+
+pub const CMD_CFG_READ: u8 = 0x6D;
+
+pub const CMD_WIFI_CHN: u8 = 0x6E;
+
+pub const CMD_WIFI_IP: u8 = 0x84;
+
+pub const CMD_WIFI_NM: u8 = 0x85;
 
 pub const CMD_ERROR: u8 = 0x90;
 
@@ -129,6 +169,24 @@ pub const PLATFORM_ESP32: u8 = 0x80;
 
 pub const PLATFORM_NRF52: u8 = 0x70;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RNodeBluetoothControl {
+    Disable,
+    Enable,
+    Pair,
+}
+
+impl RNodeBluetoothControl {
+    #[must_use]
+    pub const fn as_byte(self) -> u8 {
+        match self {
+            Self::Disable => 0x00,
+            Self::Enable => 0x01,
+            Self::Pair => 0x02,
+        }
+    }
+}
+
 const FREQ_MIN: u64 = 137_000_000;
 
 const FREQ_MAX: u64 = 3_000_000_000;
@@ -140,6 +198,8 @@ const Q_SNR_MAX: f64 = 6.0;
 const Q_SNR_STEP: f64 = 2.0;
 
 const LORA_KISS_PROBE_CHANNEL_CAPACITY: usize = 64;
+
+const LORA_RNODE_MANAGEMENT_CHANNEL_CAPACITY: usize = 64;
 
 const R_NODE_STARTUP_RESPONSE_TIMEOUT: Duration = Duration::from_millis(1_500);
 
@@ -280,6 +340,19 @@ impl RNodeProbeStatus {
         }
         Ok(true)
     }
+
+    #[must_use]
+    pub fn to_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "detected": self.detected,
+            "firmware_version": self.firmware_version.map(|(major, minor)| {
+                serde_json::json!({ "major": major, "minor": minor, "label": format!("{major}.{minor}") })
+            }),
+            "platform": self.platform,
+            "mcu": self.mcu,
+            "has_display": self.has_display(),
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -307,6 +380,15 @@ impl RNodeHardwareError {
             },
             _ => Self { code, description: "Unknown hardware failure", fatal: true },
         }
+    }
+
+    #[must_use]
+    pub fn to_json(self) -> serde_json::Value {
+        serde_json::json!({
+            "code": self.code,
+            "description": self.description,
+            "fatal": self.fatal,
+        })
     }
 }
 

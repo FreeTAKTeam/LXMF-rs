@@ -124,6 +124,98 @@ impl RpcDaemon {
                     error: None,
                 })
             }
+            "rnode_management" => {
+                let params = request.params.ok_or_else(|| {
+                    std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing params")
+                })?;
+                let parsed: RNodeManagementParams = serde_json::from_value(params.clone())
+                    .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
+                let iface = parsed.iface.trim();
+                if iface.is_empty() {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "iface is required",
+                    ));
+                }
+                let command = parsed.command.trim();
+                if command.is_empty() {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "command is required",
+                    ));
+                }
+                let Some(bridge) = self
+                    .rnode_management_bridge
+                    .lock()
+                    .expect("rnode_management_bridge mutex poisoned")
+                    .clone()
+                else {
+                    return Ok(RpcResponse {
+                        id: request.id,
+                        result: None,
+                        error: Some(RpcError::new(
+                            "RNODE_MANAGEMENT_UNAVAILABLE",
+                            "RNode management bridge is not configured",
+                        )),
+                    });
+                };
+                match bridge.dispatch_rnode_management(iface, command, &params) {
+                    Ok(result) => {
+                        Ok(RpcResponse { id: request.id, result: Some(result), error: None })
+                    }
+                    Err(err) => Ok(RpcResponse {
+                        id: request.id,
+                        result: None,
+                        error: Some(RpcError::new("RNODE_MANAGEMENT_FAILED", err.to_string())),
+                    }),
+                }
+            }
+            "weave_remote_display_control" => {
+                let params = request.params.ok_or_else(|| {
+                    std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing params")
+                })?;
+                let parsed: WeaveRemoteDisplayControlParams =
+                    serde_json::from_value(params.clone()).map_err(|err| {
+                        std::io::Error::new(std::io::ErrorKind::InvalidInput, err)
+                    })?;
+                let iface = parsed.iface.trim();
+                if iface.is_empty() {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "iface is required",
+                    ));
+                }
+                let remote_switch_id_hex = parsed
+                    .remote_switch_id_hex
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty());
+                let Some(bridge) = self
+                    .weave_display_control_bridge
+                    .lock()
+                    .expect("weave_display_control_bridge mutex poisoned")
+                    .clone()
+                else {
+                    return Ok(RpcResponse {
+                        id: request.id,
+                        result: None,
+                        error: Some(RpcError::new(
+                            "WEAVE_DISPLAY_CONTROL_UNAVAILABLE",
+                            "Weave display control bridge is not configured",
+                        )),
+                    });
+                };
+                match bridge.set_weave_remote_display(iface, parsed.enable, remote_switch_id_hex) {
+                    Ok(result) => {
+                        Ok(RpcResponse { id: request.id, result: Some(result), error: None })
+                    }
+                    Err(err) => Ok(RpcResponse {
+                        id: request.id,
+                        result: None,
+                        error: Some(RpcError::new("WEAVE_DISPLAY_CONTROL_FAILED", err.to_string())),
+                    }),
+                }
+            }
             "announce_now" => {
                 let timestamp = now_i64();
                 if let Some(bridge) = &self.announce_bridge {
