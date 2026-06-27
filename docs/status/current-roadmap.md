@@ -114,7 +114,10 @@ The project is best described by capability level:
   queue safe RNode management commands
   through the parent interface with explicit configured child `vport`
   validation; the transport writes `CMD_SEL_INT` before each queued management
-  command frame. Display-capable ESP32/NRF52 devices get Python-style
+  command frame. A software fake-TCP smoke now exercises strict daemon startup,
+  startup-probe status refresh, `rnstatus-rs` JSON/human output, and
+  `rnodeconf-rs` vport blink dispatch through the real TCP parent path without
+  hardware. Display-capable ESP32/NRF52 devices get Python-style
   external-framebuffer disable during teardown before per-vport radio-off and
   leave-host payload `0xff` frames. Clean stream EOF and software stop now
   report `stream_state = "closed"` without masking read/write/probe failure

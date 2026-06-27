@@ -188,6 +188,44 @@ state, selected vport, vport count, startup-probe firmware/platform/MCU/interfac
 details, and last error so operators can see failed open/probe/read states
 without switching to JSON output.
 
+## Software Fake-TCP Smoke
+
+The software fake-TCP smoke validates the daemon path without attached RNode
+hardware:
+
+```bash
+./tools/scripts/rnode-multi-fake-tcp-smoke.sh
+```
+
+The script starts a local fake TCP RNodeMulti peer on `127.0.0.1:0`, accepts
+the strict-startup preflight connection, answers the real runtime startup probe
+for detect, firmware `1.74`, ESP32 platform, MCU, and `CMD_INTERFACES`
+metadata for vports `2` and `3`, then starts `reticulumd` with
+`--strict-interface-startup`. A passing run requires:
+
+- `_runtime.rnode_multi.radio_status.stream_state = "running"`
+- `_runtime.rnode_multi.radio_status.vports` containing `2` and `3`
+- `_runtime.rnode_multi.radio_status.startup_probe.firmware_version.label =
+  "1.74"`
+- `_runtime.rnode_multi.radio_status.startup_probe.platform = 128`
+- `_runtime.rnode_multi.radio_status.startup_probe.mcu = 1`
+- `_runtime.rnode_multi.radio_status.startup_probe.interface_summary =
+  "2:SX126X,3:SX128X"`
+- human `rnstatus-rs` output summarizing the same startup-probe metadata
+- `rnodeconf-rs blink --interface rnode-multi-fake-tcp --vport 2 --pattern 3`
+  returning a queued management result
+- the fake peer recording `CMD_SEL_INT` before a blink management command
+  (`CMD_BLINK`) for vport `2`
+
+The smoke writes structured evidence under
+`target/rnode-multi-fake-tcp-smoke/`, including `report.json`, the fake-peer
+state with `management_blink_seen`, daemon logs, `rnstatus-rs` JSON/human
+output, and the `rnodeconf-rs` management response. This proves Python-style
+TCP parent config, strict daemon startup, startup-probe status refresh,
+`rnstatus-rs`, and vport management dispatch through the real daemon path. It
+is still not a substitute for prepared-host execution against real RNodeMulti
+hardware.
+
 ## Prepared-Host Smoke
 
 The opt-in prepared-host smoke validates the daemon against a host that has a

@@ -156,7 +156,10 @@ placeholders:
   and providing a configured child `vport`; the transport writes `CMD_SEL_INT`
   before each queued management frame. Parent-level Python
   `id_callsign`/`id_interval` settings fan out raw callsign ID beacons on
-  outgoing subinterfaces after first traffic. Strict startup mode preflights
+  outgoing subinterfaces after first traffic. A software fake-TCP smoke now
+  proves Python-style TCP parent config, strict startup probe/status refresh,
+  `rnstatus-rs` JSON/human reporting, and `rnodeconf-rs` vport blink dispatch
+  through the real daemon path without hardware. Strict startup mode preflights
   the configured serial or TCP parent endpoint and records startup failure
   instead of registering management targets when the endpoint is unavailable.
   Display-capable ESP32/NRF52 devices get Python-style external-framebuffer

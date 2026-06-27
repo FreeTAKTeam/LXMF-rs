@@ -54,6 +54,46 @@ fn rnode_multi_prepared_host_smoke_preserves_evidence_contract() {
 }
 
 #[test]
+fn rnode_multi_fake_tcp_smoke_preserves_software_evidence_contract() {
+    let root = repo_root();
+    let script_path = root.join("tools/scripts/rnode-multi-fake-tcp-smoke.sh");
+    let script = fs::read_to_string(&script_path).expect("read RNodeMulti fake TCP smoke script");
+
+    for required in [
+        "target/rnode-multi-fake-tcp-smoke",
+        "RNodeMultiInterface",
+        "rnode-multi-fake-tcp",
+        "tcp://127.0.0.1",
+        "radio0",
+        "radio1",
+        "vport = 2",
+        "vport = 3",
+        "--strict-interface-startup",
+        "rnstatus-rs",
+        "rnodeconf-rs",
+        "blink",
+        "--vport 2",
+        "--pattern 3",
+        "CMD_INTERFACES",
+        "CMD_SEL_INT",
+        "CMD_BLINK",
+        "startup_status",
+        "stream_state",
+        "running",
+        "startup_probe",
+        "firmware_version",
+        "interface_summary",
+        "management_blink_seen",
+        "report.json",
+    ] {
+        assert!(
+            script.contains(required),
+            "RNodeMulti fake TCP smoke should include required token {required:?}"
+        );
+    }
+}
+
+#[test]
 fn nightly_hil_workflow_exposes_rnode_multi_prepared_host_job() {
     let root = repo_root();
     let workflow_path = root.join(".github/workflows/nightly-embedded-hil.yml");
@@ -81,6 +121,31 @@ fn nightly_hil_workflow_exposes_rnode_multi_prepared_host_job() {
         assert!(
             workflow.contains(required),
             "nightly HIL workflow should include required token {required:?}"
+        );
+    }
+}
+
+#[test]
+fn rnode_multi_runbook_documents_fake_tcp_smoke_artifacts() {
+    let root = repo_root();
+    let runbook_path = root.join("docs/runbooks/reticulumd-rnode-multi-interface.md");
+    let runbook = fs::read_to_string(&runbook_path).expect("read RNodeMulti runbook");
+
+    for required in [
+        "Software Fake-TCP Smoke",
+        "./tools/scripts/rnode-multi-fake-tcp-smoke.sh",
+        "target/rnode-multi-fake-tcp-smoke/",
+        "fake TCP RNodeMulti peer",
+        "`CMD_INTERFACES`",
+        "`CMD_SEL_INT` before a blink management command",
+        "`rnodeconf-rs blink --interface rnode-multi-fake-tcp --vport 2 --pattern 3`",
+        "_runtime.rnode_multi.radio_status.stream_state = \"running\"",
+        "_runtime.rnode_multi.radio_status.startup_probe.interface_summary",
+        "management_blink_seen",
+    ] {
+        assert!(
+            runbook.contains(required),
+            "RNodeMulti runbook should document fake TCP token {required:?}"
         );
     }
 }
