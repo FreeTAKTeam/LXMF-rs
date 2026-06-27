@@ -5,11 +5,13 @@ use rns_transport::buffer::InputBuffer;
 use rns_transport::hash::AddressHash;
 
 use rns_transport::iface::auto::{
-    AutoDataListenerBinding, AutoDiscoveryEvent, AutoDiscoveryListenerBinding,
+    AutoAdoptedInterfaceChange, AutoDataListenerBinding, AutoDiscoveryEvent,
+    AutoDiscoveryListenerBinding,
     AutoDiscoveryRejectReason, AutoDiscoveryScope, AutoDiscoveryState,
     AutoInboundPacketDeduplicator, AutoInterfaceAdoptedDevice, AutoInterfaceConfig,
     AutoInterfaceDeviceCandidate, AutoInterfaceDeviceFilter, AutoInterfacePlatform,
-    AutoInterfaceTiming, AutoPeerInboundDecision, AutoPeeringPacket, AutoPeeringPacketKind,
+    AutoInterfaceTiming, AutoLinkLocalAddressUpdate, AutoMulticastCarrierEvent,
+    AutoPeerInboundDecision, AutoPeeringPacket, AutoPeeringPacketKind, AutoRuntimeState,
     AutoStartupPlan, MulticastAddressType,
 };
 
@@ -34,6 +36,7 @@ use std::time::Instant;
 pub(crate) struct AutoDaemonStartupPlan {
     pub(crate) config: AutoInterfaceConfig,
     pub(crate) platform: AutoInterfacePlatform,
+    pub(crate) device_filter: AutoInterfaceDeviceFilter,
     pub(crate) candidates: Vec<AutoInterfaceDeviceCandidate>,
     pub(crate) adopted_devices: Vec<AutoInterfaceAdoptedDevice>,
     peering_packets: Vec<AutoPeeringPacket>,
@@ -164,6 +167,37 @@ pub(crate) enum AutoPeerDataLoopEvent {
 }
 
 #[allow(dead_code)]
+pub(crate) struct AutoDiscoveryListenerSupervisor {
+    plan: AutoDaemonStartupPlan,
+    state: Arc<tokio::sync::Mutex<AutoDiscoveryState>>,
+    shutdown: tokio::sync::watch::Receiver<bool>,
+    listeners: BTreeMap<String, AutoDiscoveryListenerHandle>,
+    pending_stops: Vec<tokio::task::JoinHandle<()>>,
+}
+
+#[allow(dead_code)]
+struct AutoDiscoveryListenerHandle {
+    joins: Vec<tokio::task::JoinHandle<()>>,
+}
+
+#[allow(dead_code)]
+pub(crate) struct AutoPeerDataListenerSupervisor {
+    plan: AutoDaemonStartupPlan,
+    state: Arc<tokio::sync::Mutex<AutoDiscoveryState>>,
+    dedupe: Arc<tokio::sync::Mutex<AutoInboundPacketDeduplicator>>,
+    transport: Option<AutoInterfaceTransportBridge>,
+    shutdown: tokio::sync::watch::Receiver<bool>,
+    listeners: BTreeMap<String, AutoPeerDataListenerHandle>,
+    pending_stops: Vec<tokio::task::JoinHandle<()>>,
+}
+
+#[allow(dead_code)]
+struct AutoPeerDataListenerHandle {
+    socket: Arc<tokio::net::UdpSocket>,
+    join: tokio::task::JoinHandle<()>,
+}
+
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct AutoDiscoveryRuntimeSummary {
     pub(crate) bound_socket_count: usize,
@@ -171,16 +205,37 @@ pub(crate) struct AutoDiscoveryRuntimeSummary {
     pub(crate) initial_peer_announce_count: usize,
     pub(crate) repeat_peer_announce_scheduler_count: usize,
     pub(crate) peer_job_scheduler_count: usize,
+    pub(crate) adopted_interface_reconciler_count: usize,
     pub(crate) data_socket_count: usize,
     pub(crate) data_receive_loop_count: usize,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct AutoPeerJobRuntimeSummary {
     pub(crate) expired_peer_count: usize,
     pub(crate) reverse_peer_announce_count: usize,
     pub(crate) missing_initial_echo_count: usize,
+    pub(crate) carrier_changed: bool,
     pub(crate) carrier_event_count: usize,
+    pub(crate) carrier_events: Vec<AutoMulticastCarrierEvent>,
+}
+
+#[derive(Clone)]
+pub(crate) struct AutoRuntimeStatusHandle {
+    inner: Arc<std::sync::Mutex<AutoRuntimeStatus>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct AutoRuntimeStatus {
+    state: AutoRuntimeState,
+    started_at: Instant,
+    carrier_events: Vec<AutoMulticastCarrierEvent>,
+    link_local_update: Option<AutoLinkLocalAddressUpdate>,
+    adopted_devices: Vec<AutoInterfaceAdoptedDevice>,
+    adopted_add_count: u64,
+    adopted_remove_count: u64,
+    link_local_replacement_count: u64,
+    last_adopted_change: Option<AutoAdoptedInterfaceChange>,
 }
 
 #[allow(dead_code)]
@@ -343,6 +398,13 @@ impl AutoInterfaceTransportBridge {
                 source: IfaceSource::Udp(processed.datagram.source_addr),
             })
             .await;
+    }
+
+    async fn remove_outbound_routes_for_socket(&self, socket: &Arc<tokio::net::UdpSocket>) -> usize {
+        let mut routes = self.outbound_routes.lock().await;
+        let before = routes.len();
+        routes.retain(|_, route| !Arc::ptr_eq(&route.socket, socket));
+        before.saturating_sub(routes.len())
     }
 
     async fn send_outbound(&self, message: TxMessage) {

@@ -72,6 +72,13 @@
                             "settings": {
                                 "peripheral_id": "AA:BB:CC"
                             }
+                        },
+                        {
+                            "type": "local",
+                            "enabled": true,
+                            "host": "127.0.0.1",
+                            "port": 37428,
+                            "name": "local-main"
                         }
                     ]
                 }),

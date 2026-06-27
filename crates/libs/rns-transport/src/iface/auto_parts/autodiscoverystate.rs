@@ -82,8 +82,18 @@ impl AutoDiscoveryState {
         AutoPeerInboundDecision::Accepted { peer }
     }
 
-    pub fn update_adopted_link_local_address(
-        &mut self,
+    pub fn adopted_devices(&self) -> Vec<AutoInterfaceAdoptedDevice> {
+        self.adopted_devices
+            .iter()
+            .map(|(ifname, link_local_address)| AutoInterfaceAdoptedDevice {
+                ifname: ifname.clone(),
+                link_local_address: link_local_address.clone(),
+            })
+            .collect()
+    }
+
+    pub fn plan_adopted_link_local_address_update(
+        &self,
         config: &AutoInterfaceConfig,
         ifname: &str,
         link_local_address: &str,
@@ -94,7 +104,6 @@ impl AutoDiscoveryState {
             return None;
         }
 
-        self.adopted_devices.insert(ifname.to_string(), new_link_local_address.clone());
         let adopted = AutoInterfaceAdoptedDevice {
             ifname: ifname.to_string(),
             link_local_address: new_link_local_address.clone(),
@@ -106,6 +115,104 @@ impl AutoDiscoveryState {
             new_link_local_address,
             listener_binding: config.data_listener_binding(&adopted),
         })
+    }
+
+    pub fn plan_adopted_interface_changes(
+        &self,
+        config: &AutoInterfaceConfig,
+        platform: AutoInterfacePlatform,
+        desired_adopted: &[AutoInterfaceAdoptedDevice],
+    ) -> Vec<AutoAdoptedInterfaceChange> {
+        let desired_by_ifname = desired_adopted
+            .iter()
+            .map(|adopted| {
+                (
+                    adopted.ifname.clone(),
+                    AutoInterfaceAdoptedDevice {
+                        ifname: adopted.ifname.clone(),
+                        link_local_address: descope_link_local(&adopted.link_local_address),
+                    },
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        let mut changes = Vec::new();
+        for (ifname, old_link_local_address) in &self.adopted_devices {
+            if !desired_by_ifname.contains_key(ifname) {
+                let adopted = AutoInterfaceAdoptedDevice {
+                    ifname: ifname.clone(),
+                    link_local_address: old_link_local_address.clone(),
+                };
+                changes.push(AutoAdoptedInterfaceChange::Removed {
+                    discovery_listener: config.discovery_listener_binding(&adopted, platform),
+                    data_listener: config.data_listener_binding(&adopted),
+                    removed_peers: self.peers.peers_by_ifname(ifname),
+                    adopted,
+                });
+            }
+        }
+        for adopted in desired_by_ifname.values() {
+            match self.adopted_devices.get(&adopted.ifname) {
+                None => changes.push(AutoAdoptedInterfaceChange::Added {
+                    adopted: adopted.clone(),
+                    discovery_listener: config.discovery_listener_binding(adopted, platform),
+                    data_listener: config.data_listener_binding(adopted),
+                }),
+                Some(existing) if existing != &adopted.link_local_address => {
+                    let update = self
+                        .plan_adopted_link_local_address_update(
+                            config,
+                            &adopted.ifname,
+                            &adopted.link_local_address,
+                        )
+                        .expect("known adopted interface has a planned link-local update");
+                    changes.push(AutoAdoptedInterfaceChange::LinkLocalChanged(update));
+                }
+                Some(_) => {}
+            }
+        }
+        changes
+    }
+
+    pub fn apply_adopted_link_local_address_update(&mut self, update: &AutoLinkLocalAddressUpdate) {
+        self.adopted_devices
+            .insert(update.ifname.clone(), update.new_link_local_address.clone());
+        self.clear_interface_runtime_state(&update.ifname);
+    }
+
+    pub fn apply_adopted_interface_change(&mut self, change: &AutoAdoptedInterfaceChange) {
+        match change {
+            AutoAdoptedInterfaceChange::Added { adopted, .. } => {
+                self.adopted_devices
+                    .insert(adopted.ifname.clone(), descope_link_local(&adopted.link_local_address));
+            }
+            AutoAdoptedInterfaceChange::Removed { adopted, .. } => {
+                self.adopted_devices.remove(&adopted.ifname);
+                self.clear_interface_runtime_state(&adopted.ifname);
+                self.peers.remove_by_ifname(&adopted.ifname);
+            }
+            AutoAdoptedInterfaceChange::LinkLocalChanged(update) => {
+                self.apply_adopted_link_local_address_update(update);
+            }
+        }
+    }
+
+    fn clear_interface_runtime_state(&mut self, ifname: &str) {
+        self.multicast_echoes.remove(ifname);
+        self.initial_echoes.remove(ifname);
+        self.last_multicast_announces.remove(ifname);
+        self.timed_out_interfaces.remove(ifname);
+    }
+
+    pub fn update_adopted_link_local_address(
+        &mut self,
+        config: &AutoInterfaceConfig,
+        ifname: &str,
+        link_local_address: &str,
+    ) -> Option<AutoLinkLocalAddressUpdate> {
+        let update =
+            self.plan_adopted_link_local_address_update(config, ifname, link_local_address)?;
+        self.apply_adopted_link_local_address_update(&update);
+        Some(update)
     }
 
     pub fn peer_count(&self) -> usize {

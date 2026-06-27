@@ -45,6 +45,9 @@ impl RpcDaemon {
             | "propagation_remote_unpeer" => self.handle_rpc_legacy_propagation(request),
             "paper_ingest_uri" | "stamp_policy_get" | "stamp_policy_set" | "ticket_generate"
             | "announce_now" | "announce_received" => self.handle_rpc_legacy_misc(request),
+            "rnode_management" | "weave_remote_display_control" => {
+                self.handle_rpc_legacy_misc(request)
+            }
             "clear_messages" | "clear_resources" | "clear_peers" | "clear_all" => {
                 self.handle_rpc_legacy_clear(request)
             }

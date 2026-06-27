@@ -1,7 +1,8 @@
 use rns_rpc::{InterfaceMutationBridge, InterfaceRecord};
 use rns_transport::hash::AddressHash;
 use rns_transport::iface::tcp_client::TcpClient;
-use rns_transport::iface::InterfaceManager;
+use rns_transport::iface::{IfaceRole, InterfaceManager, InterfaceMode, InterfaceSharedConfig};
+use serde_json::Value as JsonValue;
 use std::collections::HashMap;
 use std::io;
 use std::sync::Arc;
@@ -121,7 +122,13 @@ async fn apply_tcp_interface_records(
     }
 
     for (key, record) in desired {
-        if !record.enabled || managed.contains_key(&key) {
+        if !record.enabled {
+            continue;
+        }
+        if let Some(current) = managed.get_mut(&key) {
+            let mut guard = iface_manager.lock().await;
+            apply_record_runtime_config(&mut guard, current.address, &record);
+            current.record = record;
             continue;
         }
         let Some(endpoint) = tcp_endpoint(&record) else {
@@ -129,7 +136,15 @@ async fn apply_tcp_interface_records(
         };
         let address = {
             let mut guard = iface_manager.lock().await;
-            guard.spawn(TcpClient::new(endpoint), TcpClient::spawn)
+            let mode = interface_record_mode(&record);
+            let address = guard.spawn_as_with_mode(
+                TcpClient::new(endpoint),
+                TcpClient::spawn,
+                IfaceRole::Unicast,
+                mode,
+            );
+            apply_record_runtime_config(&mut guard, address, &record);
+            address
         };
         managed.insert(key, ManagedTcpInterface { record, address });
     }
@@ -157,11 +172,100 @@ fn tcp_endpoint(record: &InterfaceRecord) -> Option<String> {
     Some(format!("{}:{}", record.host.as_ref()?, record.port?))
 }
 
+fn apply_record_runtime_config(
+    manager: &mut InterfaceManager,
+    address: AddressHash,
+    record: &InterfaceRecord,
+) {
+    manager.set_mode(address, interface_record_mode(record));
+    manager.set_outgoing(address, setting_bool(record, "outgoing").unwrap_or(true));
+    manager.set_announce_pacing(
+        address,
+        setting_u64(record, "bitrate").unwrap_or(62_500),
+        setting_u64(record, "announce_cap").unwrap_or(2),
+    );
+    manager.set_shared_config(address, interface_record_shared_config(record));
+}
+
+fn interface_record_mode(record: &InterfaceRecord) -> InterfaceMode {
+    setting_str(record, "interface_mode")
+        .or_else(|| setting_str(record, "mode"))
+        .and_then(|value| InterfaceMode::parse(value).ok().flatten())
+        .unwrap_or(InterfaceMode::Full)
+}
+
+fn interface_record_shared_config(record: &InterfaceRecord) -> InterfaceSharedConfig {
+    InterfaceSharedConfig {
+        announce_rate_target: setting_u64(record, "announce_rate_target"),
+        announce_rate_grace: setting_u64(record, "announce_rate_grace"),
+        announce_rate_penalty: setting_u64(record, "announce_rate_penalty"),
+        bootstrap_only: setting_bool(record, "bootstrap_only"),
+        ifac_size: setting_u64(record, "ifac_size"),
+        network_name: setting_string(record, "network_name")
+            .or_else(|| setting_string(record, "networkname")),
+        passphrase: setting_string(record, "passphrase")
+            .or_else(|| setting_string(record, "pass_phrase")),
+        ingress_control: setting_bool(record, "ingress_control"),
+        egress_control: setting_bool(record, "egress_control"),
+        ic_max_held_announces: setting_u64(record, "ic_max_held_announces"),
+        ic_burst_hold: setting_f64(record, "ic_burst_hold"),
+        ic_burst_freq_new: setting_f64(record, "ic_burst_freq_new"),
+        ic_burst_freq: setting_f64(record, "ic_burst_freq"),
+        ic_pr_burst_freq_new: setting_f64(record, "ic_pr_burst_freq_new"),
+        ic_pr_burst_freq: setting_f64(record, "ic_pr_burst_freq"),
+        ec_pr_freq: setting_f64(record, "ec_pr_freq"),
+        ic_new_time: setting_f64(record, "ic_new_time"),
+        ic_burst_penalty: setting_f64(record, "ic_burst_penalty"),
+        ic_held_release_interval: setting_f64(record, "ic_held_release_interval"),
+        discoverable: setting_bool(record, "discoverable"),
+        announce_interval: setting_u64(record, "announce_interval"),
+        discovery_stamp_value: setting_u64(record, "discovery_stamp_value"),
+        discovery_name: setting_string(record, "discovery_name"),
+        discovery_encrypt: setting_bool(record, "discovery_encrypt"),
+        reachable_on: setting_string(record, "reachable_on"),
+        publish_ifac: setting_bool(record, "publish_ifac"),
+        latitude: setting_f64(record, "latitude"),
+        longitude: setting_f64(record, "longitude"),
+        height: setting_f64(record, "height"),
+        discovery_frequency: setting_u64(record, "discovery_frequency"),
+        discovery_bandwidth: setting_u64(record, "discovery_bandwidth"),
+        discovery_modulation: setting_u64(record, "discovery_modulation"),
+    }
+}
+
+fn setting<'a>(record: &'a InterfaceRecord, key: &str) -> Option<&'a JsonValue> {
+    record.settings.as_ref()?.as_object()?.get(key)
+}
+
+fn setting_str<'a>(record: &'a InterfaceRecord, key: &str) -> Option<&'a str> {
+    setting(record, key)?.as_str()
+}
+
+fn setting_string(record: &InterfaceRecord, key: &str) -> Option<String> {
+    setting_str(record, key).map(ToOwned::to_owned)
+}
+
+fn setting_bool(record: &InterfaceRecord, key: &str) -> Option<bool> {
+    setting(record, key)?.as_bool()
+}
+
+fn setting_u64(record: &InterfaceRecord, key: &str) -> Option<u64> {
+    setting(record, key)?.as_u64()
+}
+
+fn setting_f64(record: &InterfaceRecord, key: &str) -> Option<f64> {
+    setting(record, key)?.as_f64()
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        InterfaceManager, InterfaceMutationBridge, InterfaceRecord, TcpInterfaceMutationBridge,
+        apply_tcp_interface_records, InterfaceManager, InterfaceMutationBridge, InterfaceRecord,
+        ManagedTcpInterface, TcpInterfaceMutationBridge,
     };
+    use rns_transport::iface::{InterfaceMode, InterfaceSharedConfig};
+    use serde_json::json;
+    use std::collections::HashMap;
     use std::io;
     use std::sync::Arc;
     use tokio::net::TcpListener;
@@ -202,6 +306,79 @@ mod tests {
             .expect("tcp client should connect");
         let (_stream, peer_addr) = accept.expect("accept connection");
         assert!(peer_addr.ip().is_loopback());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn hot_apply_spawns_tcp_client_with_record_runtime_settings() {
+        let iface_manager = Arc::new(tokio::sync::Mutex::new(InterfaceManager::new(8)));
+        let mut managed = HashMap::new();
+        let mut record = tcp_record("loopback", "127.0.0.1", 1);
+        record.settings = Some(json!({
+            "interface_mode": "gateway",
+            "outgoing": false,
+            "bitrate": 1200,
+            "announce_cap": 5,
+            "announce_rate_target": 120,
+            "announce_rate_grace": 2,
+            "announce_rate_penalty": 30,
+            "network_name": "field-net",
+            "discoverable": true,
+            "announce_interval": 21600
+        }));
+
+        apply_tcp_interface_records(&iface_manager, &mut managed, vec![record]).await;
+
+        let address = managed.get("loopback").expect("managed tcp client").address;
+        let manager = iface_manager.lock().await;
+        assert_eq!(manager.mode(&address), Some(InterfaceMode::Gateway));
+        assert_eq!(manager.outgoing(&address), Some(false));
+        assert_eq!(manager.announce_pacing(&address), Some((1200, 5)));
+        assert_eq!(
+            manager.shared_config(&address),
+            Some(&InterfaceSharedConfig {
+                announce_rate_target: Some(120),
+                announce_rate_grace: Some(2),
+                announce_rate_penalty: Some(30),
+                network_name: Some("field-net".to_string()),
+                discoverable: Some(true),
+                announce_interval: Some(21_600),
+                ..InterfaceSharedConfig::default()
+            })
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn hot_apply_updates_existing_tcp_client_runtime_settings() {
+        let iface_manager = Arc::new(tokio::sync::Mutex::new(InterfaceManager::new(8)));
+        let address = {
+            let mut manager = iface_manager.lock().await;
+            *manager.new_channel(8).address()
+        };
+        let mut managed = HashMap::from([(
+            "loopback".to_string(),
+            ManagedTcpInterface { record: tcp_record("loopback", "127.0.0.1", 1), address },
+        )]);
+        let mut record = tcp_record("loopback", "127.0.0.1", 1);
+        record.settings = Some(json!({
+            "interface_mode": "access_point",
+            "outgoing": false,
+            "passphrase": "shared-secret",
+            "publish_ifac": true
+        }));
+
+        apply_tcp_interface_records(&iface_manager, &mut managed, vec![record]).await;
+
+        let manager = iface_manager.lock().await;
+        assert_eq!(manager.mode(&address), Some(InterfaceMode::AccessPoint));
+        assert_eq!(manager.outgoing(&address), Some(false));
+        assert_eq!(
+            manager.shared_config(&address),
+            Some(&InterfaceSharedConfig {
+                passphrase: Some("shared-secret".to_string()),
+                publish_ifac: Some(true),
+                ..InterfaceSharedConfig::default()
+            })
+        );
     }
 
     #[test]

@@ -2,7 +2,7 @@ use super::announce::{handle_announce, release_held_announces};
 
 use super::announce_limits::{AnnounceLimits, AnnounceRateLimit};
 
-use super::path::handle_link_request_as_intermediate;
+use super::path::{handle_link_request_as_intermediate, handle_path_request};
 
 use super::wire::{handle_data, handle_proof};
 
@@ -176,6 +176,171 @@ async fn announce_lookup_key_uses_destination_hash() {
 }
 
 #[tokio::test]
+async fn known_remote_path_request_sends_path_response_context() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut config = TransportConfig::new("test", &local_identity, true);
+    config.set_retransmit(true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+
+    let (learned_iface, requesting_iface) = {
+        let manager = transport.iface_manager();
+        let mut manager = manager.lock().await;
+        let learned_iface = *manager.new_channel(16).address();
+        let requesting_iface = *manager.new_channel(16).address();
+        (learned_iface, requesting_iface)
+    };
+
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut remote_destination =
+        SingleInputDestination::new(remote_identity, DestinationName::new("lxmf", "delivery"));
+    let mut announce = remote_destination.announce(OsRng, None).expect("valid announce packet");
+    announce.header.hops = 2;
+    let destination = announce.destination;
+    let cached_data = announce.data.clone();
+
+    handle_announce(
+        &announce,
+        handler.lock().await,
+        learned_iface,
+        crate::iface::IfaceSource::None,
+    )
+    .await;
+
+    let path_request = {
+        let mut guard = handler.lock().await;
+        guard.path_requests.generate(&destination, Some(vec![0x44; crate::hash::ADDRESS_HASH_SIZE]))
+    };
+
+    {
+        let mut guard = handler.lock().await;
+        handle_path_request(&path_request, &mut guard, requesting_iface).await;
+    }
+
+    tokio::time::sleep(Duration::from_millis(450)).await;
+
+    let messages = {
+        let mut guard = handler.lock().await;
+        let transport_id = *guard.config.identity.address_hash();
+        guard.announce_table.drain_retransmissions(&transport_id)
+    };
+
+    assert_eq!(messages.len(), 1);
+    let sent = &messages[0];
+    assert!(
+        matches!(sent.tx_type, TxMessageType::Direct(iface) if iface == requesting_iface),
+        "known remote path responses should be direct to the requester"
+    );
+    assert_eq!(sent.packet.destination, destination);
+    assert_eq!(sent.packet.context, PacketContext::PathResponse);
+    assert_eq!(sent.packet.header.hops, 2);
+    assert_eq!(sent.packet.data.as_slice(), cached_data.as_slice());
+    assert!(
+        !matches!(sent.tx_type, TxMessageType::Broadcast(Some(iface)) if iface == learned_iface),
+        "path response must not rebroadcast on the learned-path ingress iface"
+    );
+}
+
+#[tokio::test]
+async fn full_iface_answers_known_path_request_when_next_hop_is_same_iface() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut config = TransportConfig::new("test", &local_identity, true);
+    config.set_retransmit(true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+
+    let iface = {
+        let manager = transport.iface_manager();
+        let mut manager = manager.lock().await;
+        *manager
+            .new_channel_with_role_and_mode(
+                16,
+                crate::iface::IfaceRole::Unicast,
+                crate::iface::InterfaceMode::Full,
+            )
+            .address()
+    };
+
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut remote_destination =
+        SingleInputDestination::new(remote_identity, DestinationName::new("lxmf", "delivery"));
+    let mut announce = remote_destination.announce(OsRng, None).expect("valid announce packet");
+    announce.header.hops = 2;
+    let destination = announce.destination;
+
+    handle_announce(&announce, handler.lock().await, iface, crate::iface::IfaceSource::None).await;
+
+    let path_request = {
+        let mut guard = handler.lock().await;
+        guard.path_requests.generate(&destination, Some(vec![0x55; crate::hash::ADDRESS_HASH_SIZE]))
+    };
+
+    {
+        let mut guard = handler.lock().await;
+        handle_path_request(&path_request, &mut guard, iface).await;
+    }
+
+    let guard = handler.lock().await;
+    let response = guard
+        .announce_table
+        .pending_response_for_destination(&destination)
+        .expect("full-mode iface should schedule a known-path response");
+    assert_eq!(response.response_to_iface, Some(iface));
+    assert_eq!(response.hops, 2);
+    assert_eq!(response.packet.context, PacketContext::PathResponse);
+}
+
+#[tokio::test]
+async fn roaming_iface_suppresses_known_path_response_when_next_hop_is_same_iface() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut config = TransportConfig::new("test", &local_identity, true);
+    config.set_retransmit(true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+
+    let iface = {
+        let manager = transport.iface_manager();
+        let mut manager = manager.lock().await;
+        *manager
+            .new_channel_with_role_and_mode(
+                16,
+                crate::iface::IfaceRole::Unicast,
+                crate::iface::InterfaceMode::Roaming,
+            )
+            .address()
+    };
+
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut remote_destination =
+        SingleInputDestination::new(remote_identity, DestinationName::new("lxmf", "delivery"));
+    let mut announce = remote_destination.announce(OsRng, None).expect("valid announce packet");
+    announce.header.hops = 2;
+    let destination = announce.destination;
+
+    handle_announce(&announce, handler.lock().await, iface, crate::iface::IfaceSource::None).await;
+
+    let path_request = {
+        let mut guard = handler.lock().await;
+        guard.path_requests.generate(&destination, Some(vec![0x66; crate::hash::ADDRESS_HASH_SIZE]))
+    };
+
+    {
+        let mut guard = handler.lock().await;
+        handle_path_request(&path_request, &mut guard, iface).await;
+    }
+
+    assert!(
+        handler
+            .lock()
+            .await
+            .announce_table
+            .pending_response_for_destination(&destination)
+            .is_none(),
+        "roaming-mode iface should not answer when the known path was learned on the same iface"
+    );
+}
+
+#[tokio::test]
 async fn reticulum_path_table_persistence_restores_route_and_identity_from_cached_announce() {
     let temp = tempfile::tempdir().expect("tempdir");
     let local_identity = PrivateIdentity::new_from_rand(OsRng);
@@ -231,6 +396,113 @@ async fn reticulum_path_table_persistence_restores_route_and_identity_from_cache
     assert_eq!(restored_identity.public_key_bytes(), expected_identity.public_key_bytes());
     assert_eq!(restored_identity.verifying_key_bytes(), expected_identity.verifying_key_bytes());
     assert!(restored.has_path(&destination).await, "path table entry should be restored");
+
+    tokio::time::sleep(Duration::from_millis(550)).await;
+
+    let restored_handler = restored.get_handler();
+    let restored_messages = {
+        let mut guard = restored_handler.lock().await;
+        let transport_id = *guard.config.identity.address_hash();
+        guard.announce_table.drain_retransmissions(&transport_id)
+    };
+    assert!(
+        restored_messages.is_empty(),
+        "restored cached announces must not be scheduled as fresh rebroadcasts"
+    );
+
+    let requesting_iface = *restored.iface_manager().lock().await.new_channel(16).address();
+    let path_request = {
+        let mut guard = restored_handler.lock().await;
+        guard.path_requests.generate(&destination, Some(vec![0x77; crate::hash::ADDRESS_HASH_SIZE]))
+    };
+
+    {
+        let mut guard = restored_handler.lock().await;
+        handle_path_request(&path_request, &mut guard, requesting_iface).await;
+    }
+
+    let guard = restored_handler.lock().await;
+    let response = guard
+        .announce_table
+        .pending_response_for_destination(&destination)
+        .expect("restored cached announce should answer known-path requests");
+    assert_eq!(response.response_to_iface, Some(requesting_iface));
+    assert_eq!(response.packet.context, PacketContext::PathResponse);
+}
+
+#[tokio::test]
+async fn reticulum_path_table_restore_skips_when_connected_to_shared_instance() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut config = TransportConfig::new("test", &local_identity, true);
+    config.set_retransmit(true);
+    let transport = Transport::new(config);
+    let iface = *transport.iface_manager().lock().await.new_channel(16).address();
+
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut remote_destination =
+        SingleInputDestination::new(remote_identity, DestinationName::new("lxmf", "delivery"));
+    let announce = remote_destination.announce(OsRng, None).expect("valid announce packet");
+    let destination = announce.destination;
+
+    handle_announce(
+        &announce,
+        transport.get_handler().lock().await,
+        iface,
+        crate::iface::IfaceSource::None,
+    )
+    .await;
+
+    assert_eq!(transport.save_reticulum_path_table(temp.path()).await.expect("save"), 1);
+
+    let mut restored_config = TransportConfig::new("shared-instance-client", &local_identity, true);
+    restored_config.set_retransmit(true);
+    restored_config.set_connected_to_shared_instance(true);
+    let restored = Transport::new(restored_config);
+    let restored_iface = *restored.iface_manager().lock().await.new_channel(16).address();
+    assert_eq!(restored_iface, iface, "test relies on deterministic iface hashes");
+
+    assert_eq!(restored.restore_reticulum_path_table(temp.path()).await.expect("restore"), 0);
+    assert!(
+        !restored.has_path(&destination).await,
+        "shared-instance clients should not restore local path-table entries from storage"
+    );
+}
+
+#[tokio::test]
+async fn reticulum_path_table_save_skips_when_connected_to_shared_instance() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut config = TransportConfig::new("shared-instance-client", &local_identity, true);
+    config.set_retransmit(true);
+    config.set_connected_to_shared_instance(true);
+    let transport = Transport::new(config);
+    let iface = *transport.iface_manager().lock().await.new_channel(16).address();
+
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut remote_destination =
+        SingleInputDestination::new(remote_identity, DestinationName::new("lxmf", "delivery"));
+    let announce = remote_destination.announce(OsRng, None).expect("valid announce packet");
+    let destination = announce.destination;
+
+    handle_announce(
+        &announce,
+        transport.get_handler().lock().await,
+        iface,
+        crate::iface::IfaceSource::None,
+    )
+    .await;
+
+    assert!(transport.has_path(&destination).await, "test should have an in-memory path");
+    assert_eq!(transport.save_reticulum_path_table(temp.path()).await.expect("save"), 0);
+    assert!(
+        !temp.path().join("destination_table").exists(),
+        "shared-instance clients should not persist destination_table"
+    );
+    assert!(
+        !temp.path().join("tunnels").exists(),
+        "shared-instance clients should not persist tunnel table"
+    );
 }
 
 #[tokio::test]
@@ -300,6 +572,76 @@ async fn reticulum_tunnel_table_persistence_restores_tunnel_paths_after_reappear
         "tunnel reappearance should restore the persisted tunnel path"
     );
     assert!(restored.destination_identity(&destination).await.is_some());
+
+    let requesting_iface = *restored.iface_manager().lock().await.new_channel(16).address();
+    let restored_handler = restored.get_handler();
+    let path_request = {
+        let mut guard = restored_handler.lock().await;
+        guard.path_requests.generate(&destination, Some(vec![0x88; crate::hash::ADDRESS_HASH_SIZE]))
+    };
+
+    {
+        let mut guard = restored_handler.lock().await;
+        handle_path_request(&path_request, &mut guard, requesting_iface).await;
+    }
+
+    let guard = restored_handler.lock().await;
+    let response = guard
+        .announce_table
+        .pending_response_for_destination(&destination)
+        .expect("restored tunnel cached announce should answer known-path requests");
+    assert_eq!(response.response_to_iface, Some(requesting_iface));
+    assert_eq!(response.packet.context, PacketContext::PathResponse);
+}
+
+#[tokio::test]
+async fn shared_instance_transport_wraps_one_hop_outbound_packets() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut config = TransportConfig::new("shared-instance-client", &local_identity, true);
+    config.set_connected_to_shared_instance(true);
+    let transport = Transport::new(config);
+    let mut iface_channel = transport.iface_manager().lock().await.new_channel(16);
+    let iface = *iface_channel.address();
+    let destination = AddressHash::new_from_hash(&Hash::new_from_slice(b"destination"));
+
+    {
+        let handler = transport.get_handler();
+        let mut handler = handler.lock().await;
+        assert!(handler.path_table.restore_tunnel_path(
+            destination,
+            destination,
+            1,
+            iface,
+            Hash::new_from_slice(b"packet"),
+            std::time::Instant::now(),
+        ));
+    }
+
+    let packet = Packet {
+        header: Header {
+            header_type: HeaderType::Type1,
+            propagation_type: crate::packet::PropagationType::Broadcast,
+            destination_type: DestinationType::Single,
+            packet_type: PacketType::LinkRequest,
+            ..Header::default()
+        },
+        destination,
+        data: PacketDataBuffer::new_from_slice(b"link request"),
+        ..Packet::default()
+    };
+
+    let trace = transport.send_packet_with_trace(packet).await;
+    assert_eq!(trace.outcome, SendPacketOutcome::SentDirect);
+    assert_eq!(trace.direct_iface, Some(iface));
+
+    let sent = timeout(Duration::from_millis(200), iface_channel.tx_channel.recv())
+        .await
+        .expect("shared-instance packet should be queued")
+        .expect("tx channel open");
+    assert_eq!(sent.tx_type, crate::iface::TxMessageType::Direct(iface));
+    assert_eq!(sent.packet.header.header_type, HeaderType::Type2);
+    assert_eq!(sent.packet.header.propagation_type, crate::packet::PropagationType::Transport);
+    assert_eq!(sent.packet.transport, Some(destination));
 }
 
 #[tokio::test]
@@ -417,4 +759,70 @@ async fn unknown_announces_are_held_per_interface_and_released_by_lowest_hops() 
             .expect("broadcast receive");
         assert_eq!(released_next.hops, 3);
     }
+}
+
+#[tokio::test]
+async fn ingress_control_false_bypasses_unknown_announce_holding() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let config = TransportConfig::new("test", &local_identity, true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+    let mut announce_rx = transport.recv_announces().await;
+
+    handler.lock().await.announce_limits = AnnounceLimits::with_rate_limit(AnnounceRateLimit {
+        incoming_freq_samples: 3,
+        max_held_announces: 8,
+        new_time: Duration::from_secs(3600),
+        burst_freq_new: 0.1,
+        burst_freq: 0.1,
+        burst_hold: Duration::from_millis(20),
+        burst_penalty: Duration::from_millis(20),
+        held_release_interval: Duration::from_millis(10),
+    });
+
+    let iface = {
+        let manager = transport.iface_manager();
+        let mut manager = manager.lock().await;
+        let iface = *manager.new_channel(8).address();
+        manager.set_shared_config(
+            iface,
+            crate::iface::InterfaceSharedConfig {
+                ingress_control: Some(false),
+                ..Default::default()
+            },
+        );
+        iface
+    };
+
+    let mut first_destination = SingleInputDestination::new(
+        PrivateIdentity::new_from_rand(OsRng),
+        DestinationName::new("lxmf", "delivery"),
+    );
+    let first_announce = first_destination.announce(OsRng, None).expect("first announce");
+    handle_announce(&first_announce, handler.lock().await, iface, crate::iface::IfaceSource::None)
+        .await;
+    timeout(Duration::from_millis(200), announce_rx.recv())
+        .await
+        .expect("first announce should emit")
+        .expect("broadcast receive");
+
+    tokio::time::sleep(Duration::from_millis(1)).await;
+
+    let mut second_destination = SingleInputDestination::new(
+        PrivateIdentity::new_from_rand(OsRng),
+        DestinationName::new("lxmf", "delivery"),
+    );
+    let second_announce = second_destination.announce(OsRng, None).expect("second announce");
+    handle_announce(
+        &second_announce,
+        handler.lock().await,
+        iface,
+        crate::iface::IfaceSource::None,
+    )
+    .await;
+
+    timeout(Duration::from_millis(200), announce_rx.recv())
+        .await
+        .expect("second announce should bypass limiter and emit")
+        .expect("broadcast receive");
 }

@@ -1,6 +1,7 @@
 use reticulum_daemon::config::InterfaceConfig;
 use rns_transport::iface::kiss::{
-    KissConfig, KissIdBeaconConfig, KissInterface, KissTcpClientInterface,
+    Ax25KissPayloadConfig, KissConfig, KissIdBeaconConfig, KissInterface, KissPayloadAdapter,
+    KissTcpClientInterface,
 };
 use std::time::Duration;
 
@@ -35,6 +36,19 @@ pub(crate) fn build_adapter(iface: &InterfaceConfig) -> Result<KissInterface, St
     }
 
     Ok(adapter)
+}
+
+pub(crate) fn build_ax25_adapter(iface: &InterfaceConfig) -> Result<KissInterface, String> {
+    let callsign = iface
+        .callsign
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "ax25_kiss.callsign is required".to_string())?;
+    let ssid = iface.ssid.ok_or_else(|| "ax25_kiss.ssid is required".to_string())?;
+    let payload_config = Ax25KissPayloadConfig::new(callsign, ssid)?;
+    build_adapter(iface)
+        .map(|adapter| adapter.with_payload_adapter(KissPayloadAdapter::Ax25(payload_config)))
 }
 
 pub(crate) fn build_tcp_client_adapter(

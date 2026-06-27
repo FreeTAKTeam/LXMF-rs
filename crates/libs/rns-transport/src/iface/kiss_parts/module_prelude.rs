@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use std::time::{Duration, Instant};
 
@@ -106,21 +106,253 @@ pub struct KissInterface {
     reconnect_backoff: Duration,
     max_reconnect_backoff: Duration,
     kiss: KissConfig,
+    payload_adapter: KissPayloadAdapter,
+    runtime_status: KissRuntimeStatusHandle,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KissRuntimeStatus {
+    pub link_state: String,
+    pub bearer: String,
+    pub device: Option<String>,
+    pub endpoint: Option<String>,
+    pub baud_rate: Option<u32>,
+    pub mtu: usize,
+    pub preamble_ms: u16,
+    pub tx_tail_ms: u16,
+    pub persistence: u8,
+    pub slot_time_ms: u16,
+    pub kiss_flow_control: bool,
+    pub ax25: bool,
+    pub iface: Option<String>,
+    pub interface_ready: bool,
+    pub pending_depth: usize,
+    pub reconnect_attempts: u64,
+    pub open_errors: u64,
+    pub connect_errors: u64,
+    pub packets_rx: u64,
+    pub packets_tx: u64,
+    pub data_frames_rx: u64,
+    pub data_frames_tx: u64,
+    pub command_frames_rx: u64,
+    pub ready_frames_rx: u64,
+    pub init_frames_tx: u64,
+    pub shutdown_frames_tx: u64,
+    pub management_frames_tx: u64,
+    pub activity_frames_tx: u64,
+    pub id_beacon_frames_tx: u64,
+    pub bytes_rx: u64,
+    pub bytes_tx: u64,
+    pub decode_errors: u64,
+    pub deserialize_errors: u64,
+    pub rx_queue_errors: u64,
+    pub serialize_errors: u64,
+    pub read_errors: u64,
+    pub tx_errors: u64,
+    pub eof_count: u64,
+    pub flow_control_timeouts: u64,
+    pub ax25_drops: u64,
+    pub data_notifications_dropped: u64,
+    pub command_notifications_dropped: u64,
+    pub last_error: Option<String>,
+}
+
+impl KissRuntimeStatus {
+    #[must_use]
+    pub fn new_serial(
+        device: String,
+        baud_rate: u32,
+        mtu: usize,
+        kiss: &KissConfig,
+        payload_adapter: &KissPayloadAdapter,
+    ) -> Self {
+        Self::new(
+            "serial",
+            Some(device),
+            None,
+            Some(baud_rate),
+            mtu,
+            kiss,
+            matches!(payload_adapter, KissPayloadAdapter::Ax25(_)),
+        )
+    }
+
+    #[must_use]
+    pub fn new_tcp(endpoint: String, mtu: usize, kiss: &KissConfig) -> Self {
+        Self::new("tcp", None, Some(endpoint), None, mtu, kiss, false)
+    }
+
+    fn new(
+        bearer: &str,
+        device: Option<String>,
+        endpoint: Option<String>,
+        baud_rate: Option<u32>,
+        mtu: usize,
+        kiss: &KissConfig,
+        ax25: bool,
+    ) -> Self {
+        Self {
+            link_state: "configured".to_string(),
+            bearer: bearer.to_string(),
+            device,
+            endpoint,
+            baud_rate,
+            mtu,
+            preamble_ms: kiss.preamble_ms,
+            tx_tail_ms: kiss.tx_tail_ms,
+            persistence: kiss.persistence,
+            slot_time_ms: kiss.slot_time_ms,
+            kiss_flow_control: kiss.flow_control,
+            ax25,
+            iface: None,
+            interface_ready: true,
+            pending_depth: 0,
+            reconnect_attempts: 0,
+            open_errors: 0,
+            connect_errors: 0,
+            packets_rx: 0,
+            packets_tx: 0,
+            data_frames_rx: 0,
+            data_frames_tx: 0,
+            command_frames_rx: 0,
+            ready_frames_rx: 0,
+            init_frames_tx: 0,
+            shutdown_frames_tx: 0,
+            management_frames_tx: 0,
+            activity_frames_tx: 0,
+            id_beacon_frames_tx: 0,
+            bytes_rx: 0,
+            bytes_tx: 0,
+            decode_errors: 0,
+            deserialize_errors: 0,
+            rx_queue_errors: 0,
+            serialize_errors: 0,
+            read_errors: 0,
+            tx_errors: 0,
+            eof_count: 0,
+            flow_control_timeouts: 0,
+            ax25_drops: 0,
+            data_notifications_dropped: 0,
+            command_notifications_dropped: 0,
+            last_error: None,
+        }
+    }
+
+    #[must_use]
+    pub fn to_json(&self) -> serde_json::Value {
+        let mut root = serde_json::Map::new();
+        root.insert("link_state".to_string(), self.link_state.clone().into());
+        root.insert("bearer".to_string(), self.bearer.clone().into());
+        root.insert("device".to_string(), optional_string_json(self.device.as_deref()));
+        root.insert("endpoint".to_string(), optional_string_json(self.endpoint.as_deref()));
+        root.insert("baud_rate".to_string(), optional_u32_json(self.baud_rate));
+        root.insert("mtu".to_string(), self.mtu.into());
+        root.insert("preamble_ms".to_string(), self.preamble_ms.into());
+        root.insert("tx_tail_ms".to_string(), self.tx_tail_ms.into());
+        root.insert("persistence".to_string(), self.persistence.into());
+        root.insert("slot_time_ms".to_string(), self.slot_time_ms.into());
+        root.insert("kiss_flow_control".to_string(), self.kiss_flow_control.into());
+        root.insert("ax25".to_string(), self.ax25.into());
+        root.insert("iface".to_string(), optional_string_json(self.iface.as_deref()));
+        root.insert("interface_ready".to_string(), self.interface_ready.into());
+        root.insert("pending_depth".to_string(), self.pending_depth.into());
+        root.insert("reconnect_attempts".to_string(), self.reconnect_attempts.into());
+        root.insert("open_errors".to_string(), self.open_errors.into());
+        root.insert("connect_errors".to_string(), self.connect_errors.into());
+        root.insert("packets_rx".to_string(), self.packets_rx.into());
+        root.insert("packets_tx".to_string(), self.packets_tx.into());
+        root.insert("data_frames_rx".to_string(), self.data_frames_rx.into());
+        root.insert("data_frames_tx".to_string(), self.data_frames_tx.into());
+        root.insert("command_frames_rx".to_string(), self.command_frames_rx.into());
+        root.insert("ready_frames_rx".to_string(), self.ready_frames_rx.into());
+        root.insert("init_frames_tx".to_string(), self.init_frames_tx.into());
+        root.insert("shutdown_frames_tx".to_string(), self.shutdown_frames_tx.into());
+        root.insert("management_frames_tx".to_string(), self.management_frames_tx.into());
+        root.insert("activity_frames_tx".to_string(), self.activity_frames_tx.into());
+        root.insert("id_beacon_frames_tx".to_string(), self.id_beacon_frames_tx.into());
+        root.insert("bytes_rx".to_string(), self.bytes_rx.into());
+        root.insert("bytes_tx".to_string(), self.bytes_tx.into());
+        root.insert("decode_errors".to_string(), self.decode_errors.into());
+        root.insert("deserialize_errors".to_string(), self.deserialize_errors.into());
+        root.insert("rx_queue_errors".to_string(), self.rx_queue_errors.into());
+        root.insert("serialize_errors".to_string(), self.serialize_errors.into());
+        root.insert("read_errors".to_string(), self.read_errors.into());
+        root.insert("tx_errors".to_string(), self.tx_errors.into());
+        root.insert("eof_count".to_string(), self.eof_count.into());
+        root.insert("flow_control_timeouts".to_string(), self.flow_control_timeouts.into());
+        root.insert("ax25_drops".to_string(), self.ax25_drops.into());
+        root.insert(
+            "data_notifications_dropped".to_string(),
+            self.data_notifications_dropped.into(),
+        );
+        root.insert(
+            "command_notifications_dropped".to_string(),
+            self.command_notifications_dropped.into(),
+        );
+        root.insert("last_error".to_string(), optional_string_json(self.last_error.as_deref()));
+        serde_json::Value::Object(root)
+    }
+}
+
+fn optional_string_json(value: Option<&str>) -> serde_json::Value {
+    value.map_or(serde_json::Value::Null, serde_json::Value::from)
+}
+
+fn optional_u32_json(value: Option<u32>) -> serde_json::Value {
+    value.map_or(serde_json::Value::Null, serde_json::Value::from)
+}
+
+#[derive(Debug, Clone)]
+pub struct KissRuntimeStatusHandle {
+    inner: Arc<Mutex<KissRuntimeStatus>>,
+}
+
+impl KissRuntimeStatusHandle {
+    fn new(status: KissRuntimeStatus) -> Self {
+        Self { inner: Arc::new(Mutex::new(status)) }
+    }
+
+    pub fn update(&self, update: impl FnOnce(&mut KissRuntimeStatus)) {
+        update(&mut self.inner.lock().expect("kiss runtime status mutex poisoned"));
+    }
+
+    #[must_use]
+    pub fn snapshot(&self) -> KissRuntimeStatus {
+        self.inner.lock().expect("kiss runtime status mutex poisoned").clone()
+    }
+
+    #[must_use]
+    pub fn to_json(&self) -> serde_json::Value {
+        self.snapshot().to_json()
+    }
 }
 
 impl KissInterface {
     #[must_use]
     pub fn new<T: Into<String>>(device: T, baud_rate: u32) -> Self {
+        let device = device.into();
+        let mtu = 564;
+        let kiss = KissConfig::default();
+        let payload_adapter = KissPayloadAdapter::Raw;
+        let runtime_status = KissRuntimeStatusHandle::new(KissRuntimeStatus::new_serial(
+            device.clone(),
+            baud_rate,
+            mtu,
+            &kiss,
+            &payload_adapter,
+        ));
         Self {
-            device: device.into(),
+            device,
             baud_rate,
             data_bits: DataBits::Eight,
             parity: Parity::None,
             stop_bits: StopBits::One,
-            mtu: 564,
+            mtu,
             reconnect_backoff: Duration::from_millis(500),
             max_reconnect_backoff: Duration::from_millis(5_000),
-            kiss: KissConfig::default(),
+            kiss,
+            payload_adapter,
+            runtime_status,
         }
     }
 
@@ -218,13 +450,42 @@ impl KissInterface {
     #[must_use]
     pub fn with_mtu(mut self, mtu: usize) -> Self {
         self.mtu = mtu.max(64);
+        self.runtime_status.update(|status| {
+            status.mtu = self.mtu;
+        });
         self
     }
 
     #[must_use]
     pub fn with_kiss_config(mut self, kiss: KissConfig) -> Self {
         self.kiss = kiss;
+        self.runtime_status.update(|status| {
+            status.preamble_ms = self.kiss.preamble_ms;
+            status.tx_tail_ms = self.kiss.tx_tail_ms;
+            status.persistence = self.kiss.persistence;
+            status.slot_time_ms = self.kiss.slot_time_ms;
+            status.kiss_flow_control = self.kiss.flow_control;
+        });
         self
+    }
+
+    #[must_use]
+    pub fn kiss_config(&self) -> KissConfig {
+        self.kiss.clone()
+    }
+
+    #[must_use]
+    pub fn with_payload_adapter(mut self, payload_adapter: KissPayloadAdapter) -> Self {
+        self.payload_adapter = payload_adapter;
+        self.runtime_status.update(|status| {
+            status.ax25 = matches!(self.payload_adapter, KissPayloadAdapter::Ax25(_));
+        });
+        self
+    }
+
+    #[must_use]
+    pub fn runtime_status_handle(&self) -> KissRuntimeStatusHandle {
+        self.runtime_status.clone()
     }
 
     #[must_use]
@@ -271,6 +532,8 @@ impl KissInterface {
             reconnect_backoff,
             max_reconnect_backoff,
             kiss,
+            payload_adapter,
+            runtime_status,
         ) = {
             let guard = context.inner.lock().expect("kiss interface mutex poisoned");
             (
@@ -283,8 +546,13 @@ impl KissInterface {
                 guard.reconnect_backoff,
                 guard.max_reconnect_backoff,
                 guard.kiss.clone(),
+                guard.payload_adapter.clone(),
+                guard.runtime_status.clone(),
             )
         };
+        runtime_status.update(|status| {
+            status.iface = Some(iface_address.to_string());
+        });
 
         let (rx_channel, tx_channel) = context.channel.split();
         let tx_channel = Arc::new(tokio::sync::Mutex::new(tx_channel));
@@ -310,6 +578,12 @@ impl KissInterface {
                         baud_rate,
                         err
                     );
+                    runtime_status.update(|status| {
+                        status.link_state = "open_failed".to_string();
+                        status.open_errors = status.open_errors.saturating_add(1);
+                        status.reconnect_attempts = status.reconnect_attempts.saturating_add(1);
+                        status.last_error = Some(err.to_string());
+                    });
                     tokio::time::sleep(active_backoff).await;
                     active_backoff = bounded_backoff_next(active_backoff, max_reconnect_backoff);
                     continue;
@@ -323,6 +597,10 @@ impl KissInterface {
                 iface_address
             );
             active_backoff = reconnect_backoff;
+            runtime_status.update(|status| {
+                status.link_state = "open".to_string();
+                status.last_error = None;
+            });
 
             run_kiss_stream(
                 port,
@@ -337,9 +615,12 @@ impl KissInterface {
                     shutdown_frames: Vec::new(),
                     id_beacon: kiss.id_beacon.clone(),
                     activity_probe: None,
+                    payload_adapter: payload_adapter.clone(),
                     strip_command_port_nibble: true,
                     command_tx: None,
                     data_rx_tx: None,
+                    management_frame_rx: None,
+                    runtime_status: Some(runtime_status.clone()),
                 },
                 context.cancel.clone(),
                 rx_channel.clone(),
@@ -355,6 +636,9 @@ impl KissInterface {
         }
 
         iface_stop.cancel();
+        runtime_status.update(|status| {
+            status.link_state = "stopped".to_string();
+        });
     }
 }
 
@@ -375,4 +659,5 @@ pub struct KissTcpClientInterface {
     reconnect_backoff: Duration,
     max_reconnect_backoff: Duration,
     kiss: KissConfig,
+    runtime_status: KissRuntimeStatusHandle,
 }

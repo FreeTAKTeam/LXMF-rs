@@ -74,6 +74,47 @@ impl InterfaceConfig {
         Ok(())
     }
 
+    fn validate_weave(&self, index: usize) -> Result<(), String> {
+        self.reject_unknown_new_kind_keys(index, "weave")?;
+        if !self.enabled() {
+            return Ok(());
+        }
+        require_non_empty(
+            self.device.as_deref(),
+            &format!("interfaces[{index}].device or port is required for weave"),
+        )?;
+        if self.baud_rate.is_none() {
+            return Err(format!("interfaces[{index}].baud_rate is required for weave"));
+        }
+        if self.baud_rate == Some(0) {
+            return Err(format!("interfaces[{index}].baud_rate must be > 0 for weave"));
+        }
+        if let Some(mtu) = self.mtu {
+            if !(256..=32768).contains(&mtu) {
+                return Err(format!(
+                    "interfaces[{index}].mtu must be between 256 and 32768 for weave"
+                ));
+            }
+        }
+        if let Some(reconnect_backoff_ms) = self.reconnect_backoff_ms {
+            if reconnect_backoff_ms < 50 {
+                return Err(format!(
+                    "interfaces[{index}].reconnect_backoff_ms must be >= 50 for weave"
+                ));
+            }
+        }
+        if let (Some(reconnect_backoff_ms), Some(max_reconnect_backoff_ms)) =
+            (self.reconnect_backoff_ms, self.max_reconnect_backoff_ms)
+        {
+            if max_reconnect_backoff_ms < reconnect_backoff_ms {
+                return Err(format!(
+                    "interfaces[{index}].max_reconnect_backoff_ms must be >= reconnect_backoff_ms for weave"
+                ));
+            }
+        }
+        Ok(())
+    }
+
     fn validate_kiss(&self, index: usize) -> Result<(), String> {
         self.reject_unknown_new_kind_keys(index, "kiss")?;
         if !self.enabled() {
@@ -88,6 +129,9 @@ impl InterfaceConfig {
         }
         if self.baud_rate == Some(0) {
             return Err(format!("interfaces[{index}].baud_rate must be > 0 for kiss"));
+        }
+        if self.flow_control.as_ref().is_some_and(|value| !value.is_bool()) {
+            return Err(format!("interfaces[{index}].flow_control must be a boolean for kiss"));
         }
         self.validate_id_beacon(index, "kiss")?;
         if let Some(mtu) = self.mtu {
@@ -116,6 +160,83 @@ impl InterfaceConfig {
         Ok(())
     }
 
+    fn validate_ax25_kiss(&self, index: usize) -> Result<(), String> {
+        self.reject_unknown_new_kind_keys(index, "ax25_kiss")?;
+        if !self.enabled() {
+            return Ok(());
+        }
+        require_non_empty(
+            self.device.as_deref(),
+            &format!("interfaces[{index}].device is required for ax25_kiss"),
+        )?;
+        if self.baud_rate.is_none() {
+            return Err(format!("interfaces[{index}].baud_rate is required for ax25_kiss"));
+        }
+        if self.baud_rate == Some(0) {
+            return Err(format!("interfaces[{index}].baud_rate must be > 0 for ax25_kiss"));
+        }
+        self.validate_id_beacon(index, "ax25_kiss")?;
+        let callsign = self.callsign.as_deref().unwrap_or_default().trim();
+        if !(3..=6).contains(&callsign.len())
+            || !callsign.chars().all(|ch| ch.is_ascii_alphanumeric())
+        {
+            return Err(format!(
+                "interfaces[{index}].callsign must be 3 to 6 ASCII alphanumeric characters for ax25_kiss"
+            ));
+        }
+        if self.ssid.is_none_or(|ssid| ssid > 15) {
+            return Err(format!("interfaces[{index}].ssid must be between 0 and 15 for ax25_kiss"));
+        }
+        if let Some(data_bits) = self.data_bits {
+            if !(5..=8).contains(&data_bits) {
+                return Err(format!(
+                    "interfaces[{index}].data_bits must be one of 5, 6, 7, 8 for ax25_kiss"
+                ));
+            }
+        }
+        if let Some(stop_bits) = self.stop_bits {
+            if stop_bits != 1 && stop_bits != 2 {
+                return Err(format!(
+                    "interfaces[{index}].stop_bits must be one of 1, 2 for ax25_kiss"
+                ));
+            }
+        }
+        if let Some(parity) = self.parity.as_deref() {
+            if !matches_normalized(parity, &["n", "none", "e", "even", "o", "odd"]) {
+                return Err(format!(
+                    "interfaces[{index}].parity must be one of n, none, e, even, o, odd for ax25_kiss"
+                ));
+            }
+        }
+        if self.flow_control.as_ref().is_some_and(|value| !value.is_bool()) {
+            return Err(format!("interfaces[{index}].flow_control must be a boolean for ax25_kiss"));
+        }
+        if let Some(mtu) = self.mtu {
+            if !(64..=65535).contains(&mtu) {
+                return Err(format!(
+                    "interfaces[{index}].mtu must be between 64 and 65535 for ax25_kiss"
+                ));
+            }
+        }
+        if let Some(reconnect_backoff_ms) = self.reconnect_backoff_ms {
+            if reconnect_backoff_ms < 50 {
+                return Err(format!(
+                    "interfaces[{index}].reconnect_backoff_ms must be >= 50 for ax25_kiss"
+                ));
+            }
+        }
+        if let (Some(reconnect_backoff_ms), Some(max_reconnect_backoff_ms)) =
+            (self.reconnect_backoff_ms, self.max_reconnect_backoff_ms)
+        {
+            if max_reconnect_backoff_ms < reconnect_backoff_ms {
+                return Err(format!(
+                    "interfaces[{index}].max_reconnect_backoff_ms must be >= reconnect_backoff_ms for ax25_kiss"
+                ));
+            }
+        }
+        Ok(())
+    }
+
     fn validate_kiss_tcp_client(&self, index: usize) -> Result<(), String> {
         self.reject_unknown_new_kind_keys(index, "kiss_tcp_client")?;
         if !self.enabled() {
@@ -130,6 +251,11 @@ impl InterfaceConfig {
         }
         if self.port == Some(0) {
             return Err(format!("interfaces[{index}].port must be > 0 for kiss_tcp_client"));
+        }
+        if self.flow_control.as_ref().is_some_and(|value| !value.is_bool()) {
+            return Err(format!(
+                "interfaces[{index}].flow_control must be a boolean for kiss_tcp_client"
+            ));
         }
         self.validate_id_beacon(index, "kiss_tcp_client")?;
         if let Some(mtu) = self.mtu {

@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::sync::{Arc, Mutex};
 
 #[cfg(feature = "rnode-ble")]
 use std::pin::Pin;
@@ -70,7 +71,17 @@ const RNODE_BLE_STARTUP_STABILIZATION_TIMEOUT: Duration = Duration::from_secs(2)
 const RNODE_BLE_STARTUP_NOTIFICATION_QUIET_TIMEOUT: Duration = Duration::from_millis(100);
 
 #[cfg(feature = "rnode-ble")]
+const RNODE_BLE_MANAGEMENT_CHANNEL_CAPACITY: usize = 64;
+
+#[cfg(feature = "rnode-ble")]
 type NativeNotificationStream = Pin<Box<dyn Stream<Item = ValueNotification> + Send>>;
+
+#[cfg(feature = "rnode-ble")]
+type RnodeBleManagementFrameSender = tokio::sync::mpsc::Sender<Vec<u8>>;
+
+#[cfg(feature = "rnode-ble")]
+type RnodeBleManagementFrameReceiver =
+    Arc<tokio::sync::Mutex<tokio::sync::mpsc::Receiver<Vec<u8>>>>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RnodeBleKissConfig {

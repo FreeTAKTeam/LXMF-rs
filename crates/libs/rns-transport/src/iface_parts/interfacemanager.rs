@@ -55,6 +55,8 @@ impl InterfaceManager {
             announce_allowed_at: Instant::now(),
             announce_bitrate_bps: DEFAULT_IFACE_BITRATE_BPS,
             announce_cap_percent: DEFAULT_ANNOUNCE_CAP_PERCENT,
+            shared_config: InterfaceSharedConfig::default(),
+            outgoing_pr_history: VecDeque::new(),
         });
 
         InterfaceChannel { rx_channel: self.rx_send.clone(), tx_channel: tx_recv, address, stop }
@@ -128,6 +130,27 @@ impl InterfaceManager {
         address
     }
 
+    pub fn spawn_as_with_mode_and_handle<T: Interface, F, R>(
+        &mut self,
+        inner: T,
+        worker: F,
+        role: IfaceRole,
+        mode: InterfaceMode,
+    ) -> (AddressHash, Arc<Mutex<T>>)
+    where
+        F: FnOnce(InterfaceContext<T>) -> R,
+        R: std::future::Future<Output = ()> + Send + 'static,
+        R::Output: Send + 'static,
+    {
+        let context = self.new_context_with_role_and_mode(inner, role, mode);
+        let address = *context.channel.address();
+        let handle = context.inner.clone();
+
+        task::spawn(worker(context));
+
+        (address, handle)
+    }
+
     pub fn role(&self, address: &AddressHash) -> Option<IfaceRole> {
         self.ifaces.iter().find(|i| i.address == *address).map(|i| i.role)
     }
@@ -149,6 +172,10 @@ impl InterfaceManager {
             .iter()
             .find(|i| i.address == *address)
             .map(|i| (i.announce_bitrate_bps, i.announce_cap_percent))
+    }
+
+    pub fn shared_config(&self, address: &AddressHash) -> Option<&InterfaceSharedConfig> {
+        self.ifaces.iter().find(|i| i.address == *address).map(|i| &i.shared_config)
     }
 
     pub fn full_hash(&self, address: &AddressHash) -> Option<Hash> {
@@ -190,6 +217,44 @@ impl InterfaceManager {
         } else {
             false
         }
+    }
+
+    pub fn set_shared_config(
+        &mut self,
+        address: AddressHash,
+        shared_config: InterfaceSharedConfig,
+    ) -> bool {
+        if let Some(iface) = self.ifaces.iter_mut().find(|i| i.address == address) {
+            iface.shared_config = shared_config;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn inherit_runtime_config(
+        &mut self,
+        source: AddressHash,
+        target: AddressHash,
+    ) -> bool {
+        let Some(source_iface) = self.ifaces.iter().find(|i| i.address == source) else {
+            return false;
+        };
+        let mode = source_iface.mode;
+        let outgoing = source_iface.outgoing;
+        let announce_bitrate_bps = source_iface.announce_bitrate_bps;
+        let announce_cap_percent = source_iface.announce_cap_percent;
+        let shared_config = source_iface.shared_config.clone();
+
+        let Some(target_iface) = self.ifaces.iter_mut().find(|i| i.address == target) else {
+            return false;
+        };
+        target_iface.mode = mode;
+        target_iface.outgoing = outgoing;
+        target_iface.announce_bitrate_bps = announce_bitrate_bps;
+        target_iface.announce_cap_percent = announce_cap_percent;
+        target_iface.shared_config = shared_config;
+        true
     }
 
     /// Register a virtual iface that shares its tx channel with an
@@ -244,6 +309,8 @@ impl InterfaceManager {
             announce_allowed_at: Instant::now(),
             announce_bitrate_bps: host_iface.announce_bitrate_bps,
             announce_cap_percent: host_iface.announce_cap_percent,
+            shared_config: host_iface.shared_config.clone(),
+            outgoing_pr_history: VecDeque::new(),
         });
 
         Some(address)
@@ -374,6 +441,46 @@ impl InterfaceManager {
         iface.announce_queue.remove(index).map(|entry| entry.message)
     }
 
+    fn outgoing_pr_frequency(iface: &mut LocalInterface, now: Instant) -> f64 {
+        while let Some(oldest) = iface.outgoing_pr_history.front().copied() {
+            if now.duration_since(oldest) > OUTGOING_PR_FREQ_DECAY {
+                iface.outgoing_pr_history.pop_front();
+            } else {
+                break;
+            }
+        }
+
+        let Some(oldest) = iface.outgoing_pr_history.front().copied() else {
+            return 0.0;
+        };
+        let span = now.duration_since(oldest);
+        if span.is_zero() {
+            0.0
+        } else {
+            iface.outgoing_pr_history.len() as f64 / span.as_secs_f64()
+        }
+    }
+
+    fn should_egress_limit_pr(iface: &mut LocalInterface, now: Instant) -> bool {
+        if iface.shared_config.egress_control != Some(true) {
+            return false;
+        }
+        let threshold = iface
+            .shared_config
+            .ec_pr_freq
+            .filter(|value| value.is_finite() && *value >= 0.0)
+            .unwrap_or(DEFAULT_EGRESS_PR_FREQ_HZ);
+        Self::outgoing_pr_frequency(iface, now) > threshold
+            && iface.outgoing_pr_history.len() >= OUTGOING_PR_MIN_LIMIT_SAMPLES
+    }
+
+    fn record_outgoing_pr(iface: &mut LocalInterface, now: Instant) {
+        iface.outgoing_pr_history.push_back(now);
+        while iface.outgoing_pr_history.len() > OUTGOING_PR_FREQ_SAMPLES {
+            iface.outgoing_pr_history.pop_front();
+        }
+    }
+
     pub async fn release_queued_announces(&mut self) -> TxDispatchTrace {
         let mut trace = TxDispatchTrace::default();
         let now = Instant::now();
@@ -417,6 +524,19 @@ impl InterfaceManager {
         message: TxMessage,
         announce_policy: Option<AnnounceBroadcastPolicy>,
     ) -> TxDispatchTrace {
+        self.send_with_options(message, announce_policy, false).await
+    }
+
+    pub async fn send_recursive_path_request(&mut self, message: TxMessage) -> TxDispatchTrace {
+        self.send_with_options(message, None, true).await
+    }
+
+    async fn send_with_options(
+        &mut self,
+        message: TxMessage,
+        announce_policy: Option<AnnounceBroadcastPolicy>,
+        apply_egress_control: bool,
+    ) -> TxDispatchTrace {
         let mut trace = TxDispatchTrace::default();
         for iface in &mut self.ifaces {
             let should_send = match message.tx_type {
@@ -447,10 +567,16 @@ impl InterfaceManager {
 
             if should_send && iface.outgoing && !iface.stop.is_cancelled() {
                 trace.matched_ifaces += 1;
+                let now = Instant::now();
+                let is_path_request =
+                    apply_egress_control && matches!(message.tx_type, TxMessageType::Broadcast(_));
+                if is_path_request && Self::should_egress_limit_pr(iface, now) {
+                    trace.failed_ifaces += 1;
+                    continue;
+                }
                 let is_paced_announce = message.packet.header.packet_type == PacketType::Announce
                     && message.packet.header.hops > 0
                     && matches!(message.tx_type, TxMessageType::Broadcast(_));
-                let now = Instant::now();
                 if is_paced_announce
                     && (!iface.announce_queue.is_empty() || now < iface.announce_allowed_at)
                 {
@@ -473,6 +599,9 @@ impl InterfaceManager {
 
                 if Self::send_to_iface(iface, message.clone()).await {
                     trace.sent_ifaces += 1;
+                    if is_path_request {
+                        Self::record_outgoing_pr(iface, now);
+                    }
                 } else {
                     trace.failed_ifaces += 1;
                 }

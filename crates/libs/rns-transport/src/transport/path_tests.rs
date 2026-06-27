@@ -63,12 +63,35 @@ mod tests {
             None,
         );
 
-        let decision = route_outbound_packet(&table, &packet);
+        let decision = route_outbound_packet(&table, &packet, false);
 
         assert_eq!(decision.next_iface, Some(iface));
         assert_eq!(decision.packet.header.ifac_flag, IfacFlag::Open);
         assert_eq!(decision.packet.header.header_type, HeaderType::Type1);
         assert_eq!(decision.packet.transport, None);
+    }
+
+    #[test]
+    fn outbound_direct_hop_behind_shared_instance_promotes_to_type2_transport() {
+        let destination = AddressHash::new_from_hash(&Hash::new_from_slice(b"destination"));
+        let iface = AddressHash::new_from_hash(&Hash::new_from_slice(b"iface"));
+        let table = path_table_with_route(destination, destination, 1, iface);
+        let packet = packet_for_route(
+            destination,
+            HeaderType::Type1,
+            PropagationType::Broadcast,
+            PacketType::Data,
+            0,
+            None,
+        );
+
+        let decision = route_outbound_packet(&table, &packet, true);
+
+        assert_eq!(decision.next_iface, Some(iface));
+        assert_eq!(decision.packet.header.ifac_flag, IfacFlag::Open);
+        assert_eq!(decision.packet.header.header_type, HeaderType::Type2);
+        assert_eq!(decision.packet.header.propagation_type, PropagationType::Transport);
+        assert_eq!(decision.packet.transport, Some(destination));
     }
 
     #[test]
@@ -86,7 +109,7 @@ mod tests {
             None,
         );
 
-        let decision = route_outbound_packet(&table, &packet);
+        let decision = route_outbound_packet(&table, &packet, false);
 
         assert_eq!(decision.next_iface, Some(iface));
         assert_eq!(decision.packet.header.ifac_flag, IfacFlag::Open);
@@ -110,7 +133,7 @@ mod tests {
             None,
         );
 
-        let decision = route_outbound_packet(&table, &packet);
+        let decision = route_outbound_packet(&table, &packet, false);
 
         assert_eq!(decision.next_iface, Some(iface));
         assert_eq!(decision.packet.header.header_type, HeaderType::Type2);

@@ -1,4 +1,5 @@
 use super::*;
+use crate::iface::InterfaceMode;
 use crate::packet::{DestinationType, Header, HeaderType, PacketType, PropagationType};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -61,6 +62,7 @@ pub(super) fn route_inbound_packet(
 pub(super) fn route_outbound_packet(
     path_table: &PathTable,
     original_packet: &Packet,
+    connected_to_shared_instance: bool,
 ) -> RouteDecision {
     if original_packet.header.header_type == HeaderType::Type2 {
         return RouteDecision { packet: original_packet.clone(), next_iface: None };
@@ -80,7 +82,10 @@ pub(super) fn route_outbound_packet(
         return RouteDecision { packet: original_packet.clone(), next_iface: None };
     };
 
-    if entry.hops <= 1 && entry.received_from == original_packet.destination {
+    if entry.hops <= 1
+        && entry.received_from == original_packet.destination
+        && !connected_to_shared_instance
+    {
         return RouteDecision { packet: original_packet.clone(), next_iface: Some(entry.iface) };
     }
 
@@ -181,8 +186,12 @@ pub(super) async fn handle_path_request<'a>(
 
         if handler.config.retransmit {
             if let Some(entry) = handler.path_table.get(&request.destination) {
+                let next_hop = entry.received_from;
+                let learned_iface = entry.iface;
+                let hops = entry.hops;
+
                 if let Some(requestor_id) = request.requesting_transport {
-                    if requestor_id == entry.received_from {
+                    if requestor_id == next_hop {
                         log::trace!(
                             "tp({}): dropping circular path request from {}",
                             handler.config.name,
@@ -192,7 +201,15 @@ pub(super) async fn handle_path_request<'a>(
                     }
                 }
 
-                let hops = entry.hops;
+                let incoming_iface_mode = handler.iface_manager.lock().await.mode(&iface);
+                if incoming_iface_mode == Some(InterfaceMode::Roaming) && learned_iface == iface {
+                    log::trace!(
+                        "tp({}): suppressing roaming same-iface path response for {}",
+                        handler.config.name,
+                        request.destination
+                    );
+                    return;
+                }
 
                 handler.announce_table.add_response(request.destination, iface, hops);
 
@@ -215,7 +232,10 @@ pub(super) async fn handle_path_request<'a>(
                 Some(request.tag_bytes.clone()),
             ) {
                 handler
-                    .send(TxMessage { tx_type: TxMessageType::Broadcast(Some(iface)), packet })
+                    .send_recursive_path_request(TxMessage {
+                        tx_type: TxMessageType::Broadcast(Some(iface)),
+                        packet,
+                    })
                     .await;
             }
         }

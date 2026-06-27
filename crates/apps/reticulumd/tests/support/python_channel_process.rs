@@ -62,6 +62,84 @@ pub(super) struct ReadyLine {
     pub(super) destination_hash: String,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum PythonInteropInterfaceKind {
+    Tcp,
+    Backbone,
+}
+
+impl PythonInteropInterfaceKind {
+    fn server_config(self, port: u16) -> String {
+        match self {
+            Self::Tcp => format!(
+                "[reticulum]\n\
+                 enable_transport = no\n\
+                 share_instance = no\n\
+                 \n\
+                 [logging]\n\
+                 loglevel = 7\n\
+                 \n\
+                 [interfaces]\n\
+                   [[TCP Server Interface]]\n\
+                     type = TCPServerInterface\n\
+                     enabled = yes\n\
+                     listen_ip = 127.0.0.1\n\
+                     listen_port = {port}\n"
+            ),
+            Self::Backbone => format!(
+                "[reticulum]\n\
+                 enable_transport = no\n\
+                 share_instance = no\n\
+                 \n\
+                 [logging]\n\
+                 loglevel = 7\n\
+                 \n\
+                 [interfaces]\n\
+                   [[Backbone Interface]]\n\
+                     type = BackboneInterface\n\
+                     enabled = yes\n\
+                     listen_ip = 127.0.0.1\n\
+                     listen_port = {port}\n"
+            ),
+        }
+    }
+
+    fn client_config(self, port: u16) -> String {
+        match self {
+            Self::Tcp => format!(
+                "[reticulum]\n\
+                 enable_transport = no\n\
+                 share_instance = no\n\
+                 \n\
+                 [logging]\n\
+                 loglevel = 7\n\
+                 \n\
+                 [interfaces]\n\
+                   [[TCP Client Interface]]\n\
+                     type = TCPClientInterface\n\
+                     enabled = yes\n\
+                     target_host = 127.0.0.1\n\
+                     target_port = {port}\n"
+            ),
+            Self::Backbone => format!(
+                "[reticulum]\n\
+                 enable_transport = no\n\
+                 share_instance = no\n\
+                 \n\
+                 [logging]\n\
+                 loglevel = 7\n\
+                 \n\
+                 [interfaces]\n\
+                   [[Backbone Client Interface]]\n\
+                     type = BackboneClientInterface\n\
+                     enabled = yes\n\
+                     target_host = 127.0.0.1\n\
+                     target_port = {port}\n"
+            ),
+        }
+    }
+}
+
 pub(super) async fn python_interop_guard() -> tokio::sync::MutexGuard<'static, ()> {
     PYTHON_INTEROP_LOCK.lock().await
 }
@@ -155,41 +233,27 @@ pub(super) async fn wait_for_port(port: u16, duration: Duration) {
 }
 
 pub(super) fn write_python_config(dir: &Path, port: u16) {
-    let config = format!(
-        "[reticulum]\n\
-         enable_transport = no\n\
-         share_instance = no\n\
-         \n\
-         [logging]\n\
-         loglevel = 7\n\
-         \n\
-         [interfaces]\n\
-           [[TCP Server Interface]]\n\
-             type = TCPServerInterface\n\
-             enabled = yes\n\
-             listen_ip = 127.0.0.1\n\
-             listen_port = {port}\n"
-    );
-    fs::write(dir.join("config"), config).expect("write python config");
+    write_python_config_for_kind(dir, port, PythonInteropInterfaceKind::Tcp);
+}
+
+pub(super) fn write_python_config_for_kind(
+    dir: &Path,
+    port: u16,
+    kind: PythonInteropInterfaceKind,
+) {
+    fs::write(dir.join("config"), kind.server_config(port)).expect("write python config");
 }
 
 pub(super) fn write_python_client_config(dir: &Path, port: u16) {
-    let config = format!(
-        "[reticulum]\n\
-         enable_transport = no\n\
-         share_instance = no\n\
-         \n\
-         [logging]\n\
-         loglevel = 7\n\
-         \n\
-         [interfaces]\n\
-           [[TCP Client Interface]]\n\
-             type = TCPClientInterface\n\
-             enabled = yes\n\
-             target_host = 127.0.0.1\n\
-             target_port = {port}\n"
-    );
-    fs::write(dir.join("config"), config).expect("write python client config");
+    write_python_client_config_for_kind(dir, port, PythonInteropInterfaceKind::Tcp);
+}
+
+pub(super) fn write_python_client_config_for_kind(
+    dir: &Path,
+    port: u16,
+    kind: PythonInteropInterfaceKind,
+) {
+    fs::write(dir.join("config"), kind.client_config(port)).expect("write python client config");
 }
 
 pub(super) fn free_tcp_port() -> u16 {

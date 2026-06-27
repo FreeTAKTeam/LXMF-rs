@@ -63,6 +63,42 @@ pub struct AnnounceBroadcastPolicy {
     pub next_hop_iface_mode: Option<InterfaceMode>,
 }
 
+#[derive(Debug, Default, PartialEq, Clone)]
+pub struct InterfaceSharedConfig {
+    pub announce_rate_target: Option<u64>,
+    pub announce_rate_grace: Option<u64>,
+    pub announce_rate_penalty: Option<u64>,
+    pub bootstrap_only: Option<bool>,
+    pub ifac_size: Option<u64>,
+    pub network_name: Option<String>,
+    pub passphrase: Option<String>,
+    pub ingress_control: Option<bool>,
+    pub egress_control: Option<bool>,
+    pub ic_max_held_announces: Option<u64>,
+    pub ic_burst_hold: Option<f64>,
+    pub ic_burst_freq_new: Option<f64>,
+    pub ic_burst_freq: Option<f64>,
+    pub ic_pr_burst_freq_new: Option<f64>,
+    pub ic_pr_burst_freq: Option<f64>,
+    pub ec_pr_freq: Option<f64>,
+    pub ic_new_time: Option<f64>,
+    pub ic_burst_penalty: Option<f64>,
+    pub ic_held_release_interval: Option<f64>,
+    pub discoverable: Option<bool>,
+    pub announce_interval: Option<u64>,
+    pub discovery_stamp_value: Option<u64>,
+    pub discovery_name: Option<String>,
+    pub discovery_encrypt: Option<bool>,
+    pub reachable_on: Option<String>,
+    pub publish_ifac: Option<bool>,
+    pub latitude: Option<f64>,
+    pub longitude: Option<f64>,
+    pub height: Option<f64>,
+    pub discovery_frequency: Option<u64>,
+    pub discovery_bandwidth: Option<u64>,
+    pub discovery_modulation: Option<u64>,
+}
+
 /// Where a received packet came from at the wire level.
 ///
 /// Packets arriving over a stream/serial medium have `None`; UDP packets
@@ -160,6 +196,8 @@ struct LocalInterface {
     announce_allowed_at: Instant,
     announce_bitrate_bps: u64,
     announce_cap_percent: u64,
+    shared_config: InterfaceSharedConfig,
+    outgoing_pr_history: VecDeque<Instant>,
 }
 
 #[derive(Debug, Clone)]

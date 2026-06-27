@@ -7,6 +7,7 @@ async fn process_announce<'a>(
     iface: AddressHash,
     source: IfaceSource,
     announce: crate::destination::AnnounceInfo<'_>,
+    shared_config: crate::iface::InterfaceSharedConfig,
 ) -> MutexGuard<'a, TransportHandler> {
     let destination_known = handler.has_destination(&packet.destination);
 
@@ -55,7 +56,15 @@ async fn process_announce<'a>(
             handler.single_out_destinations.insert(packet.destination, destination.clone());
         }
 
-        handler.announce_table.add(packet, dest_hash, route_iface);
+        if handler.announce_limits.should_suppress_rebroadcast(packet, &shared_config) {
+            log::debug!(
+                "tp({}): suppressing announce rebroadcast for {} due to announce_rate_target",
+                handler.config.name,
+                packet.destination
+            );
+        } else {
+            handler.announce_table.add(packet, dest_hash, route_iface);
+        }
 
         handler.path_table.handle_announce(packet, packet.transport, route_iface);
         handler.tunnel_table.note_path(
@@ -115,9 +124,17 @@ pub(super) async fn handle_announce<'a>(
 
     let destination_known = handler.has_destination(&packet.destination)
         || handler.knows_destination(&packet.destination);
-    if let AnnounceLimitAction::Hold(delay) =
-        handler.announce_limits.check(iface, packet, source, destination_known)
-    {
+    let shared_config = {
+        let manager = handler.iface_manager.lock().await;
+        manager.shared_config(&iface).cloned().unwrap_or_default()
+    };
+    if let AnnounceLimitAction::Hold(delay) = handler.announce_limits.check_with_shared_config(
+        iface,
+        packet,
+        source,
+        destination_known,
+        &shared_config,
+    ) {
         log::debug!(
             "tp({}): holding announce for {} for {:?}",
             handler.config.name,
@@ -127,7 +144,7 @@ pub(super) async fn handle_announce<'a>(
         return;
     }
 
-    let _ = process_announce(packet, handler, iface, source, announce).await;
+    let _ = process_announce(packet, handler, iface, source, announce, shared_config).await;
 }
 
 pub(super) async fn retransmit_announces<'a>(mut handler: MutexGuard<'a, TransportHandler>) {
@@ -159,6 +176,11 @@ pub(super) async fn release_held_announces<'a>(handler: MutexGuard<'a, Transport
             }
         };
 
-        handler = process_announce(&packet, handler, iface, source, announce).await;
+        let shared_config = {
+            let manager = handler.iface_manager.lock().await;
+            manager.shared_config(&iface).cloned().unwrap_or_default()
+        };
+
+        handler = process_announce(&packet, handler, iface, source, announce, shared_config).await;
     }
 }

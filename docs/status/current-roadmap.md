@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last reassessed: 2026-06-19
+Last reassessed: 2026-06-27
 
 This file is the repository-level source of truth for parity posture, release
 confidence, and execution order. Detailed row-level status lives in:
@@ -36,17 +36,231 @@ The project is best described by capability level:
   behavior are the strongest RNS areas.
 - Link establishment, proof validation, interface binding, watchdog timing,
   teardown, receipts, and resource lifecycle have active regression coverage.
-- `reticulumd` supports TCP client/server, UDP, serial, KISS, AutoInterface,
-  LoRa/RNode, feature-gated RNode BLE, and feature-gated VR-N76 KISS-over-BLE.
+- Cached remote path responses now keep the cached announce payload while
+  stamping the direct response packet as `PATH_RESPONSE`, aligning another
+  Python announce/path discovery edge policy.
+- Known-path requests on roaming interfaces also suppress direct path answers
+  when the learned next-hop iface is the same roaming iface, matching Python's
+  loop-avoidance behavior.
+- Restored Reticulum path-table announces are now cache-only lookup material at
+  startup, not fresh rebroadcast work, while still serving known-path response
+  requests from the restored cache.
+- Shared-instance clients skip local Reticulum path-table save and restore
+  work, matching Python's shared-instance bootstrap/persistence boundary.
+- Tunnel-only restored announces are retained as cache material so paths
+  restored on tunnel reappearance can answer later known-path requests.
+- `reticulumd` supports TCP client/server, including Python-style
+  TCP-over-I2P `i2p_tunneled` socket tuning for outbound clients and accepted
+  server streams and Python-style `fixed_mtu` falsey/default and Reticulum
+  MTU lower-bound validation, TCP/Backbone listener `SO_REUSEADDR` parity,
+  Backbone TCP/HDLC listener/client compatibility with Backbone MTU defaults
+  and Reticulum-style Backbone socket tuning
+  (`TCP_NODELAY`, Linux/Android keepalive probes, and TCP user timeout) plus
+  Backbone-only HDLC stream liveness keepalives, stale detection, and
+  read-timeout reconnects, local slow-reader HDLC tx backpressure evidence
+  paired with Python selector/epoll and live Python Reticulum
+  `BackboneClientInterface` slow-reader probes in the pinned Python interop
+  workflow, and ignored live Rust/Python Backbone channel, link-data,
+  request/response, and resource roundtrips in both directions over Python
+  `BackboneInterface`/`BackboneClientInterface`,
+  TCP/Backbone client reconnect tunnel re-synthesis, TCP/Backbone listener
+  daemon/RPC runtime status with accept counters and latest accepted stream
+  snapshots, Python `BackboneInterface` `remote` alias
+  parse-to-bootstrap/status coverage as `backbone_client`, LocalInterface
+  TCP-loopback plus Unix filesystem
+  and Linux/Android abstract AF_UNIX shared-instance listener/client-attach
+  compatibility, including Unix client-attach reconnect after startup failures
+  or later disconnects and TCP/Unix attach reconnect signals that
+  re-synthesize tunnel state, Python-style global `[reticulum] share_instance`
+  synthesis when no explicit local shared-instance interface is configured,
+  implicit shared local TCP listener coexistence with configured TCP/Backbone
+  listeners through a sidecar startup path,
+  Python-style `force_shared_instance_bitrate` stream pacing, plus
+  shared-instance one-hop transport wrapping,
+  Pipe subprocess HDLC with a software fake-subprocess smoke for strict daemon
+  startup and refreshed `rnstatus-rs` JSON/human runtime status, UDP
+  unicast/multicast plus
+  Python-style UDP `device` broadcast-address defaults, IPv4 broadcast socket
+  sends, shared-`port` forward fallback semantics, and a software loopback
+  smoke for strict startup, bind status, and receive-side decode telemetry,
+  serial, KISS, AX.25
+  KISS with Android-style beacon alias compatibility plus a software fake-PTY
+  smoke for serial KISS/AX.25 KISS startup frames, READY handling, and
+  `rnstatus-rs` reporting, Python
+  `TCPClientInterface` `kiss_framing = true` parse-to-bootstrap/status
+  coverage as `kiss_tcp_client` plus a software fake-TCP smoke for KISS TCP
+  startup frames, READY handling, and `rnstatus-rs` reporting, AutoInterface with
+  Python-style multicast address type fallback, polling adopted-address
+  reconciliation, adopted-interface add/remove/change diff planning,
+  daemon-side add/remove lifecycle application for active AutoInterface
+  runtimes, supervised discovery receive loops, and supervised link-local
+  data-listener restart with tracked replacement shutdown, LoRa/RNode,
+  feature-gated RNode BLE, feature-gated VR-N76 KISS-over-BLE, and the
+  in-progress shared serial/TCP RNodeMulti baseline with nested vport virtual
+  children, a shared-serial Weave WDCL/HDLC endpoint baseline, and an
+  outbound I2P SAM peer baseline. Enabled unknown interface kinds remain
+  parseable for operator visibility but are covered as explicit failed startup
+  records with `unsupported interface kind` runtime metadata.
+- RNodeMultiInterface has a transport-side vport slice: a single serial or TCP
+  RNode endpoint can host nested subinterfaces, select virtual ports with KISS
+  `CMD_SEL_INT`, route direct sends to the matching virtual child, and fan out
+  broadcasts to children that remain marked outgoing. Startup probe validation
+  covers detect, firmware `>= 1.74`, platform, MCU, `CMD_INTERFACES`
+  discovery, and configured vports reported by the hardware. Parent-level
+  Python `id_callsign`/`id_interval` beacons are carried into the transport and
+  fan out as raw callsign data on outgoing subinterfaces after first traffic.
+  Runtime status bookkeeping applies selected-vport radio command/status
+  responses to the matching child status record, and daemon/RPC snapshots
+  refresh the `_runtime.rnode_multi.radio_status` schema from the
+  transport-side runtime handle, including stream/probe state, last error
+  reporting for absent or failing hardware, accepted or partial startup-probe
+  firmware/platform/MCU/interface metadata from non-cancelled probe attempts,
+  and the ordinary RNode radio-status fields for each vport. Daemon/RPC can
+  queue safe RNode management commands
+  through the parent interface with explicit configured child `vport`
+  validation; the transport writes `CMD_SEL_INT` before each queued management
+  command frame. Software fake-TCP and fake-PTY smokes now exercise strict
+  daemon startup, startup-probe status refresh, `rnstatus-rs` JSON/human output,
+  and `rnodeconf-rs` vport blink dispatch through the real TCP and serial PTY
+  parent paths without hardware. Display-capable ESP32/NRF52 devices get Python-style
+  external-framebuffer disable during teardown before per-vport radio-off and
+  leave-host payload `0xff` frames. Clean stream EOF and software stop now
+  report `stream_state = "closed"` without masking read/write/probe failure
+  states or `last_error`. In strict startup mode, the daemon
+  preflights the configured serial port or TCP endpoint and fails closed before
+  registering RNodeMulti management targets if the parent endpoint is
+  unavailable.
+- Ordinary serial/TCP and feature-gated BLE RNodeInterface status now refreshes
+  the transport-side RNode probe/radio state into daemon/RPC
+  `_runtime.lora.rnode_status`; compact `rnstatus-rs` output summarizes
+  bearer, online/detected state, firmware, radio configuration, counters,
+  battery, hardware errors, and last command error. Python `RNodeInterface`
+  alias configs now have parse-to-bootstrap/status coverage as `lora` with
+  `_runtime.lora.rnode_status`. An opt-in prepared-host
+  smoke harness records serial/TCP/BLE RNode lifecycle evidence under
+  `target/rnode-hil/`. Display-capable BLE RNode shutdown now disables the
+  external framebuffer before radio-off/leave frames. Serial/TCP RNode streams
+  now expose a transport-local management dispatch handle that writes
+  pre-encoded KISS command frames through the live KISS runtime; feature-gated
+  BLE RNode streams expose the same management dispatch through the Nordic UART
+  write path with BLE chunking. The first covered operations are radio-state
+  query and blink indication, backed by duplex/mock tests, daemon
+  `rnode_management` RPC dispatch, reticulumd bridge dispatch tests, and
+  `rnodeconf-rs` mock-RPC CLI tests. The daemon/tool path now also queues safe
+  config/ROM read, display, NeoPixel, and interference-avoidance controls.
+  Daemon RPC and `rnodeconf-rs` also queue guarded persistent/destructive RNode
+  controls for Bluetooth, config save/delete, ROM write/wipe, hard reset,
+  firmware metadata, and Wi-Fi settings, with explicit persistent/destructive
+  confirmation params.
+  Frame-level helpers exist for Bluetooth control,
+  display/NeoPixel controls, interference-avoidance control, Wi-Fi settings,
+  config save/delete, firmware-update metadata, and ROM/EEPROM read/write/wipe
+  requests.
+- WeaveInterface has a transport-side WDCL/HDLC slice: a shared serial parent
+  can answer discovery, learn endpoint events, register virtual endpoint
+  children, receive endpoint packets, write direct endpoint commands, and expose
+  refreshed `_runtime.weave.status` metadata with switch, endpoint, log-event,
+  byte/frame, target-scoped remote display-frame, and CPU/task/memory
+  device-stat fields. Display-frame completion is based on received byte
+  coverage rather than highest observed offset, and software cancellation/stop
+  now marks the runtime link closed while clearing WDCL connection and endpoint
+  state. `rnstatus-rs` renders remote switch ID, byte/frame counters,
+  invalid-frame and last-log diagnostics, display dimensions, completion, byte
+  progress, color format, CPU/memory, and task-stat counts for operator status
+  views, and `rnstatus-rs --weave-display <interface-name>` provides a
+  display-focused framebuffer/status subset for operators. The transport has a
+  Python-compatible WDCL remote-display service control frame primitive
+  (`WDCL_CMD_REMOTE_DISPLAY` enable/disable) covered by software tests, and
+  `reticulumd` exposes live dispatch through the
+  `weave_remote_display_control` RPC bridge with `weaveconf-rs`
+  enable/disable commands. A software fake-PTY smoke now proves signed WDCL
+  discovery, connected runtime status refresh, endpoint/display/device-stat
+  reporting, `rnstatus-rs --weave-display`, and live `weaveconf-rs`
+  enable/disable dispatch through the real daemon path without hardware. An
+  opt-in prepared-host smoke harness records
+  connected serial evidence under `target/weave-hil/` and can optionally prove
+  the live `weaveconf-rs` remote-display enable/disable dispatch against that
+  connected device.
+- I2PInterface has a transport-side SAM slice: configured peers get virtual
+  unicast children, transient SAM stream sessions, name lookup, HDLC packet
+  framing, direct peer sends, broadcast fanout, and transient connectable
+  `STREAM ACCEPT` support for incoming peers with private-key persistence when
+  `state_path`/`storagepath` is configured. Missing explicit SAM host/port
+  config honors Python's `I2P_SAM_ADDRESS` `host:port` environment default
+  before falling back to `127.0.0.1:7656`. Persisted private destination keys
+  use Python-compatible hashed `.i2p` filenames, prefer existing old-format
+  interface-name keys when present, and otherwise use the identity-bound
+  new-format key name. Daemon runtime metadata reports the derived `.b32.i2p`
+  endpoint for persisted keys and keys generated during startup, plus refreshed
+  `tunnel_status` metadata for tunnel state, reconnect attempts, errors,
+  counters, keepalive/stale/read-timeout bookkeeping, and bounded recent
+  history for closed incoming peers. Local fake-SAM coverage now exercises the
+  outbound peer loop through session creation, lookup, stream connect, HDLC
+  writes, and refreshed runtime counters, plus the connectable accept loop
+  through incoming `STREAM ACCEPT`, virtual child registration, HDLC ingress,
+  direct outbound egress over the accepted stream, runtime counters, and
+  cleanup.
 - AutoInterface has a live daemon runtime, including discovery, peer lifecycle,
-  peer-data sockets, transport ingress, outbound routing, and multicast proof
-  fallback.
-- Known but unsupported Python interface families now fail config parsing with
-  deterministic unsupported-family diagnostics instead of silently becoming
-  inert unknown interface entries.
+  peer-data sockets, transport ingress, outbound routing, multicast proof
+  fallback, supervised discovery/data receive loops, transport-side
+  adopted-interface diff planning, daemon-side add/remove lifecycle
+  application for active and zero-initial runtimes, and polling link-local
+  replacement reconciliation for already adopted interfaces. Replacement-stop
+  tasks for dynamically swapped discovery/data listeners are tracked and
+  drained during restart, removal, or runtime shutdown. Loopback peer-data
+  tests now prove direct per-peer outbound routes stop emitting after
+  listener removal/restart and refresh only after a new accepted peer datagram.
+  An opt-in Linux
+  namespace prepared-host smoke now records zero-initial add, link-local
+  replacement, and removal churn evidence through refreshed `_runtime.auto`
+  status; remaining follow-up is broader prepared-host interface churn evidence
+  across real devices and platforms.
+- I2P transport-side tunnel watchdog/status bookkeeping is refreshed into
+  daemon/RPC interface status, and `rnstatus-rs` now summarizes outbound,
+  incoming, closed, and aggregate byte counters for the tunnel rows. The
+  software fake-SAM smoke exercises strict daemon startup, destination
+  persistence, a transient outbound `NAMING LOOKUP` failure followed by
+  recovered connected peer state with cleared last error, connectable accept
+  status, accepted incoming peer visibility, and `rnstatus-rs` JSON/human
+  output without a real I2P router. The
+  prepared-host smoke can now optionally require configured outbound peers to
+  reach `connected` state when `I2P_PEERS` is supplied; prepared-host
+  production evidence remains pending until that harness is run against a real
+  SAM router and reachable peer set.
+- Feature-gated VR-N76 KISS-over-BLE now refreshes transport-side runtime
+  status into daemon/RPC `_runtime.vrn76.status`; `rnstatus-rs` summarizes
+  connected, subscribed, ready, startup-write failure, and queue counters. An
+  opt-in prepared-host smoke harness records daemon startup, connected,
+  subscribed, ready, and counter evidence under `target/vrn76-hil/`; execution
+  against real VR-N76 hardware remains pending.
+- UDP now refreshes live bind state, role, last observed peer-route count,
+  packet, byte, drop, and error counters in daemon/RPC metadata and
+  `rnstatus-rs`. A software loopback smoke now proves Python-style
+  `UDPInterface` alias parsing, strict daemon startup, bound loopback status,
+  and malformed-datagram `bytes_rx`/`decode_errors` telemetry without external
+  network services. Serial now refreshes live open/reconnect, HDLC frame, packet,
+  byte, EOF, queue, decode, serialize, read, and write-error counters.
+  KISS/AX.25 KISS and KISS TCP now refresh live packet, data-frame,
+  command-frame, byte, flow-control, queue, AX.25 drop, and error counters. A
+  software fake-PTY smoke now proves Python-style `KISSInterface` and
+  `AX25KISSInterface` alias parsing, strict daemon startup, KISS startup command
+  emission, fake READY handling, refreshed `_runtime.kiss.status`, and
+  `rnstatus-rs` JSON/human output without attached modem hardware.
+  A software fake-TCP smoke now proves Python-style `TCPClientInterface`
+  `kiss_framing = true` alias parsing, strict daemon startup, KISS startup
+  command emission, fake READY handling, refreshed `_runtime.kiss_tcp.status`,
+  and `rnstatus-rs` JSON/human output without a real Wi-Fi KISS bridge or TCP
+  modem.
+  BLE GATT now refreshes live connection/subscription, packet, HDLC frame,
+  notification byte, payload byte, write-chunk, reconnect, startup phase,
+  queue, decode, serialize, read/write, buffer-drop, cleanup, and last-error
+  counters alongside configured BLE UUID and lifecycle timeout metadata.
 - `rnstatus-rs` now provides a local daemon status utility over the existing
-  RPC status surface, including JSON output plus human interface runtime
-  startup state and propagation peer state.
+  RPC status surface, including JSON output plus human interface endpoint
+  details across configured interface families, runtime startup state, Auto
+  carrier/link-local state, TCP/Backbone listener state, plus UDP, serial,
+  KISS, BLE GATT, I2P, RNodeMulti, Weave, and VR-N76 status rows and
+  propagation peer state.
 
 ### LXMF
 
@@ -758,9 +972,15 @@ the implemented subset.
    - Finish resolver/bootstrap, announce/path edge behavior, and runtime
      mutation parity.
 3. **Operational breadth**
-   - Add prepared-host hardware evidence for BLE/RNode paths.
-   - Implement or explicitly defer missing Python interface families and
-     utility commands.
+   - Add broader prepared-host hardware evidence for BLE/RNode paths; ordinary
+     serial/TCP/BLE RNode now has an opt-in prepared-host smoke gate.
+   - Complete RNodeMulti prepared-host hardware validation/evidence and
+     remaining broader production parity before treating that family as
+     production-complete.
+   - Capture I2P prepared-host evidence, and implement utility commands where
+     product demand justifies them.
+   - Capture broader prepared-host Weave hardware evidence before treating that
+     family as production-complete.
 
 ## Active Execution Order
 

@@ -13,6 +13,8 @@ the Reticulum defaults in interface status:
 - `discovery_port`: defaults to `29716`
 - `data_port`: defaults to `42671`
 - `multicast_address_type`: defaults to `temporary`
+  - valid values are `temporary` and `permanent`; Python-compatible parsing
+    falls back to `temporary` for unknown values
 - `discovery_multicast_address`: derived with the Python `AutoInterface`
   algorithm from `group_id`, `discovery_scope`, and
   `multicast_address_type`; the default is
@@ -92,7 +94,7 @@ The reusable transport layer now also includes Python-compatible helpers for:
   lost/recovered events occur or link-local address replacement requires a
   listener restart
 - updating adopted link-local address state when an interface address changes
-  and returning the replacement listener binding the runtime must restart
+  and returning the replacement listener binding for runtime restart
 - verifying incoming discovery packets against the sender address before they
   update local echo or remote peer state, including Python's behavior of
   comparing only the first full-hash bytes of the packet payload
@@ -149,10 +151,43 @@ The reusable transport layer now also includes Python-compatible helpers for:
   duplicate-suppression state, and reports accepted/duplicate/unknown decisions
   through a channel
 - daemon startup that binds native-scope discovery sockets, starts the receive
-  loops, repeat multicast peer-announce scheduler, peer-job scheduler, and
-  peer-data receive loops, injects accepted peer-data packets into transport,
-  routes direct/broadcast transport sends to peer UDP data sockets, and records
-  discovery/data runtime counts
+  loops under a discovery listener supervisor, starts the repeat multicast
+  peer-announce scheduler, peer-job scheduler, and peer-data receive loops,
+  injects accepted peer-data packets into transport, routes direct/broadcast
+  transport sends to peer UDP data sockets, and records discovery/data runtime
+  counts
+- a supervised discovery listener primitive that groups the unicast and
+  multicast discovery receive loops for each adopted interface, lets startup
+  manage listener tasks per interface, cleanly stops managed loops, and tracks
+  replacement-stop tasks so daemon shutdown drains dynamically replaced
+  listeners
+- a supervised peer-data listener restart primitive that stops only the
+  affected interface listener, binds the replacement link-local data listener,
+  prunes stale outbound routes that referenced the old socket, and records the
+  link-local update in carrier runtime status. Loopback bridge tests prove that
+  direct per-peer sends stop after listener removal/restart and resume only
+  after the peer is accepted on the replacement socket. Replaced peer-data
+  listeners are retained as daemon-owned stop tasks until restart, removal, or
+  runtime shutdown awaits them.
+- a polling OS interface-address reconciler that re-enumerates link-local
+  candidates for already adopted devices, invokes the supervised listener
+  restart when an adopted address changes, and commits the new discovery state
+  only after the replacement listener restart succeeds
+- transport-side adopted-interface change planning for added, removed, and
+  link-local-replaced devices, with explicit apply semantics that clear stale
+  echo, timeout, announce, and removed-peer state only after the daemon has
+  completed the required listener lifecycle work
+- daemon-side polling reconciliation for adopted-interface add/remove changes
+  while the AutoInterface runtime is active: added interfaces bind discovery
+  and data listeners before state is committed, and removed interfaces stop the
+  supervised listeners before stale peer/interface state is cleared
+- zero-initial AutoInterface startup keeps the polling reconciler and
+  multicast/reverse announce schedulers alive even when no devices are adopted
+  at startup, so a later matching link-local device can be adopted by the live
+  daemon runtime
+- live `_runtime.auto.carrier_runtime` reporting for Python-style `online`,
+  `final_init_done`, `carrier_changed`, multicast carrier events, and staged
+  link-local listener restart metadata
 - classifying local multicast echoes separately from remote peers so discovery
   packets from this node's own link-local addresses update echo state instead
   of spawning peer state
@@ -179,8 +214,41 @@ interfaces = [
 ]
 ```
 
+## Prepared-Host Churn Smoke
+
+The opt-in prepared-host smoke exercises the live AutoInterface reconciler on a
+Linux host with `ip netns`, dummy interfaces, and permission to manage network
+namespaces. It starts `reticulumd` in an isolated namespace with a zero-initial
+`AutoInterface`, then churns one link-local interface through add, link-local
+replacement, and removal.
+
+```bash
+AUTO_CHURN_DEVICE=lxauto0 \
+AUTO_CHURN_INITIAL_ADDR=fe80::1200 \
+AUTO_CHURN_REPLACEMENT_ADDR=fe80::1201 \
+./tools/scripts/auto-interface-prepared-host-smoke.sh
+```
+
+The script validates refreshed RPC status with `rnstatus-rs --json` after each
+phase. Required evidence fields include:
+
+- `_runtime.auto.carrier_runtime.adopted_add_count`
+- `_runtime.auto.carrier_runtime.adopted_remove_count`
+- `_runtime.auto.carrier_runtime.link_local_replacement_count`
+- `_runtime.auto.carrier_runtime.last_adopted_change`
+- `_runtime.auto.carrier_runtime.adopted_devices`
+
+Artifacts are written under `target/auto-interface-hil/`, including
+`report.json`, the daemon log, the last `rnstatus-rs` JSON payload, and phase snapshots
+for zero-initial startup, add, replacement, and removal. The nightly
+HIL workflow exposes this as `auto-interface-prepared-host-artifacts` when
+`HIL_AUTO_INTERFACE_ENABLED=true`.
+
 ## Operational Follow-Up
 
-- Restart per-interface UDP listeners from the link-local replacement helper
-  when the live address for an adopted interface changes.
-- Wire the runtime `carrier_changed` flag into live status/reporting.
+- AutoInterface dynamic add/remove now has daemon-side lifecycle application,
+  including zero-initial startup polling and tracked shutdown for dynamically
+  replaced discovery/data listeners. The Linux namespace prepared-host churn
+  smoke records add/remove/link-local replacement evidence, while broader
+  prepared-host evidence across real Wi-Fi/Ethernet devices and platforms
+  remains follow-up.

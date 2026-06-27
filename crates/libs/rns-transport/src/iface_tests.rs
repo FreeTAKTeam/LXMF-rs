@@ -66,6 +66,31 @@ mod tests {
     }
 
     #[test]
+    fn set_shared_config_updates_registered_iface_and_virtual_copy() {
+        let mut mgr = InterfaceManager::new(16);
+        let channel = mgr.new_channel(16);
+        let config = InterfaceSharedConfig {
+            bootstrap_only: Some(true),
+            ifac_size: Some(16),
+            network_name: Some("field-net".to_string()),
+            passphrase: Some("shared-secret".to_string()),
+            ingress_control: Some(false),
+            discoverable: Some(true),
+            discovery_name: Some("field node".to_string()),
+            latitude: Some(45.5),
+            ..InterfaceSharedConfig::default()
+        };
+
+        assert!(mgr.set_shared_config(*channel.address(), config.clone()));
+        assert_eq!(mgr.shared_config(channel.address()), Some(&config));
+
+        let virtual_iface = mgr
+            .register_virtual_iface(*channel.address(), IfaceRole::Unicast)
+            .expect("virtual iface");
+        assert_eq!(mgr.shared_config(&virtual_iface), Some(&config));
+    }
+
+    #[test]
     fn set_mode_updates_registered_iface() {
         let mut mgr = InterfaceManager::new(16);
         let channel = mgr.new_channel(16);
@@ -160,6 +185,34 @@ mod tests {
     }
 
     #[test]
+    fn accepted_child_can_inherit_parent_runtime_config() {
+        let mut mgr = InterfaceManager::new(16);
+        let parent = *mgr
+            .new_channel_with_role_and_mode(16, IfaceRole::Unicast, InterfaceMode::Gateway)
+            .address();
+        let child = *mgr.new_channel(16).address();
+        let shared_config = InterfaceSharedConfig {
+            announce_rate_target: Some(120),
+            announce_rate_grace: Some(2),
+            announce_rate_penalty: Some(30),
+            ingress_control: Some(false),
+            egress_control: Some(true),
+            ..Default::default()
+        };
+
+        assert!(mgr.set_outgoing(parent, false));
+        assert!(mgr.set_announce_pacing(parent, 1200, 5));
+        assert!(mgr.set_shared_config(parent, shared_config.clone()));
+
+        assert!(mgr.inherit_runtime_config(parent, child));
+
+        assert_eq!(mgr.mode(&child), Some(InterfaceMode::Gateway));
+        assert_eq!(mgr.outgoing(&child), Some(false));
+        assert_eq!(mgr.announce_pacing(&child), Some((1200, 5)));
+        assert_eq!(mgr.shared_config(&child), Some(&shared_config));
+    }
+
+    #[test]
     fn virtual_iface_inherits_host_mtu() {
         let mut mgr = InterfaceManager::new(16);
         let host = *mgr.new_channel_with_role_mode_mtu(
@@ -225,6 +278,95 @@ mod tests {
         assert_eq!(trace.sent_ifaces, 0);
         assert_eq!(trace.matched_ifaces, 0);
         assert!(rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn egress_control_limits_rapid_path_request_broadcasts() {
+        let mut mgr = InterfaceManager::new(16);
+        let mut rx = mgr.new_channel(16).tx_channel;
+        let iface = mgr.ifaces[0].address;
+        assert!(mgr.set_shared_config(
+            iface,
+            InterfaceSharedConfig {
+                egress_control: Some(true),
+                ec_pr_freq: Some(0.1),
+                ..Default::default()
+            },
+        ));
+
+        for _ in 0..OUTGOING_PR_MIN_LIMIT_SAMPLES {
+            let trace = mgr
+                .send_recursive_path_request(TxMessage {
+                    tx_type: TxMessageType::Broadcast(None),
+                    packet: path_request_packet(),
+                })
+                .await;
+            assert_eq!(trace.sent_ifaces, 1);
+            assert!(rx.try_recv().is_ok());
+        }
+
+        let limited = mgr
+            .send_recursive_path_request(TxMessage {
+                tx_type: TxMessageType::Broadcast(None),
+                packet: path_request_packet(),
+            })
+            .await;
+        assert_eq!(limited.matched_ifaces, 1);
+        assert_eq!(limited.sent_ifaces, 0);
+        assert_eq!(limited.failed_ifaces, 1);
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn egress_control_false_does_not_limit_path_request_broadcasts() {
+        let mut mgr = InterfaceManager::new(16);
+        let mut rx = mgr.new_channel(16).tx_channel;
+        let iface = mgr.ifaces[0].address;
+        assert!(mgr.set_shared_config(
+            iface,
+            InterfaceSharedConfig {
+                egress_control: Some(false),
+                ec_pr_freq: Some(0.1),
+                ..Default::default()
+            },
+        ));
+
+        for _ in 0..=OUTGOING_PR_MIN_LIMIT_SAMPLES {
+            let trace = mgr
+                .send_recursive_path_request(TxMessage {
+                    tx_type: TxMessageType::Broadcast(None),
+                    packet: path_request_packet(),
+                })
+                .await;
+            assert_eq!(trace.sent_ifaces, 1);
+            assert!(rx.try_recv().is_ok());
+        }
+    }
+
+    #[tokio::test]
+    async fn egress_control_does_not_limit_regular_path_request_broadcasts() {
+        let mut mgr = InterfaceManager::new(16);
+        let mut rx = mgr.new_channel(16).tx_channel;
+        let iface = mgr.ifaces[0].address;
+        assert!(mgr.set_shared_config(
+            iface,
+            InterfaceSharedConfig {
+                egress_control: Some(true),
+                ec_pr_freq: Some(0.1),
+                ..Default::default()
+            },
+        ));
+
+        for _ in 0..=OUTGOING_PR_MIN_LIMIT_SAMPLES {
+            let trace = mgr
+                .send(TxMessage {
+                    tx_type: TxMessageType::Broadcast(None),
+                    packet: path_request_packet(),
+                })
+                .await;
+            assert_eq!(trace.sent_ifaces, 1);
+            assert!(rx.try_recv().is_ok());
+        }
     }
 
     #[tokio::test]
@@ -392,6 +534,10 @@ mod tests {
             },
             ..Default::default()
         }
+    }
+
+    fn path_request_packet() -> Packet {
+        Packet::default()
     }
 
     fn announce_packet_with(hops: u8, seed: &[u8], emitted: u64) -> Packet {

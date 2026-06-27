@@ -7,9 +7,10 @@ use tokio::time::Duration;
 use tokio::time::Instant;
 
 use crate::hash::AddressHash;
-use crate::iface::IfaceSource;
+use crate::iface::{IfaceSource, InterfaceSharedConfig};
 use crate::packet::{Packet, PacketContext};
 
+#[derive(Clone)]
 pub struct AnnounceRateLimit {
     #[allow(dead_code)]
     pub incoming_freq_samples: usize,
@@ -220,6 +221,13 @@ impl AnnounceLimitEntry {
     }
 }
 
+#[derive(Clone)]
+struct AnnounceRateTargetEntry {
+    last: Instant,
+    rate_violations: u64,
+    blocked_until: Instant,
+}
+
 pub struct ReleasedAnnounce {
     pub iface: AddressHash,
     pub packet: Packet,
@@ -228,7 +236,9 @@ pub struct ReleasedAnnounce {
 
 pub struct AnnounceLimits {
     limits: BTreeMap<AddressHash, AnnounceLimitEntry>,
+    announce_rate_targets: BTreeMap<AddressHash, AnnounceRateTargetEntry>,
     rate_limit: AnnounceRateLimit,
+    interface_rate_limits: BTreeMap<AddressHash, AnnounceRateLimit>,
 }
 
 impl AnnounceLimits {
@@ -237,7 +247,12 @@ impl AnnounceLimits {
     }
 
     pub(crate) fn with_rate_limit(rate_limit: AnnounceRateLimit) -> Self {
-        Self { limits: BTreeMap::new(), rate_limit }
+        Self {
+            limits: BTreeMap::new(),
+            announce_rate_targets: BTreeMap::new(),
+            rate_limit,
+            interface_rate_limits: BTreeMap::new(),
+        }
     }
 
     #[allow(dead_code)]
@@ -248,9 +263,34 @@ impl AnnounceLimits {
         source: IfaceSource,
         destination_known: bool,
     ) -> AnnounceLimitAction {
-        self.check_at(iface, packet, source, destination_known, Instant::now())
+        self.check_with_shared_config(
+            iface,
+            packet,
+            source,
+            destination_known,
+            &InterfaceSharedConfig::default(),
+        )
     }
 
+    pub fn check_with_shared_config(
+        &mut self,
+        iface: AddressHash,
+        packet: &Packet,
+        source: IfaceSource,
+        destination_known: bool,
+        shared_config: &InterfaceSharedConfig,
+    ) -> AnnounceLimitAction {
+        self.check_with_shared_config_at(
+            iface,
+            packet,
+            source,
+            destination_known,
+            shared_config,
+            Instant::now(),
+        )
+    }
+
+    #[allow(dead_code)]
     fn check_at(
         &mut self,
         iface: AddressHash,
@@ -259,24 +299,136 @@ impl AnnounceLimits {
         destination_known: bool,
         now: Instant,
     ) -> AnnounceLimitAction {
+        self.check_with_shared_config_at(
+            iface,
+            packet,
+            source,
+            destination_known,
+            &InterfaceSharedConfig::default(),
+            now,
+        )
+    }
+
+    fn check_with_shared_config_at(
+        &mut self,
+        iface: AddressHash,
+        packet: &Packet,
+        source: IfaceSource,
+        destination_known: bool,
+        shared_config: &InterfaceSharedConfig,
+        now: Instant,
+    ) -> AnnounceLimitAction {
         if packet.context == PacketContext::PathResponse {
             return AnnounceLimitAction::Allow;
         }
+        if shared_config.ingress_control == Some(false) {
+            self.interface_rate_limits.remove(&iface);
+            return AnnounceLimitAction::Allow;
+        }
 
+        let rate_limit = self.rate_limit_for(shared_config);
+        self.interface_rate_limits.insert(iface, rate_limit.clone());
         let entry = self.limits.entry(iface).or_insert_with(|| AnnounceLimitEntry::new(now));
-        entry.record_announce(now, &self.rate_limit);
+        entry.record_announce(now, &rate_limit);
 
         if destination_known {
             return AnnounceLimitAction::Allow;
         }
 
-        if entry.should_ingress_limit(now, &self.rate_limit)
-            && entry.hold(packet, source, now, &self.rate_limit)
+        if entry.should_ingress_limit(now, &rate_limit)
+            && entry.hold(packet, source, now, &rate_limit)
         {
-            return AnnounceLimitAction::Hold(entry.next_release_delay(now, &self.rate_limit));
+            return AnnounceLimitAction::Hold(entry.next_release_delay(now, &rate_limit));
         }
 
         AnnounceLimitAction::Allow
+    }
+
+    fn rate_limit_for(&self, shared_config: &InterfaceSharedConfig) -> AnnounceRateLimit {
+        let mut rate_limit = self.rate_limit.clone();
+        if let Some(value) =
+            shared_config.ic_max_held_announces.and_then(|value| usize::try_from(value).ok())
+        {
+            rate_limit.max_held_announces = value;
+        }
+        if let Some(value) = nonnegative_duration_secs(shared_config.ic_new_time) {
+            rate_limit.new_time = value;
+        }
+        if let Some(value) = nonnegative_f64(shared_config.ic_burst_freq_new) {
+            rate_limit.burst_freq_new = value;
+        }
+        if let Some(value) = nonnegative_f64(shared_config.ic_burst_freq) {
+            rate_limit.burst_freq = value;
+        }
+        if let Some(value) = nonnegative_duration_secs(shared_config.ic_burst_hold) {
+            rate_limit.burst_hold = value;
+        }
+        if let Some(value) = nonnegative_duration_secs(shared_config.ic_burst_penalty) {
+            rate_limit.burst_penalty = value;
+        }
+        if let Some(value) = nonnegative_duration_secs(shared_config.ic_held_release_interval) {
+            rate_limit.held_release_interval = value;
+        }
+        rate_limit
+    }
+
+    pub fn should_suppress_rebroadcast(
+        &mut self,
+        packet: &Packet,
+        shared_config: &InterfaceSharedConfig,
+    ) -> bool {
+        self.should_suppress_rebroadcast_at(packet, shared_config, Instant::now())
+    }
+
+    #[allow(dead_code)]
+    fn should_suppress_rebroadcast_at(
+        &mut self,
+        packet: &Packet,
+        shared_config: &InterfaceSharedConfig,
+        now: Instant,
+    ) -> bool {
+        if packet.context == PacketContext::PathResponse {
+            return false;
+        }
+
+        let Some(target) = shared_config
+            .announce_rate_target
+            .filter(|target| *target > 0)
+            .map(Duration::from_secs)
+        else {
+            return false;
+        };
+        let grace = shared_config.announce_rate_grace.unwrap_or(0);
+        let penalty = Duration::from_secs(shared_config.announce_rate_penalty.unwrap_or(0));
+
+        let Entry::Occupied(mut entry) = self.announce_rate_targets.entry(packet.destination)
+        else {
+            self.announce_rate_targets.insert(
+                packet.destination,
+                AnnounceRateTargetEntry { last: now, rate_violations: 0, blocked_until: now },
+            );
+            return false;
+        };
+
+        let entry = entry.get_mut();
+        if now <= entry.blocked_until {
+            return true;
+        }
+
+        let current_rate = now.saturating_duration_since(entry.last);
+        if current_rate < target {
+            entry.rate_violations = entry.rate_violations.saturating_add(1);
+        } else {
+            entry.rate_violations = entry.rate_violations.saturating_sub(1);
+        }
+
+        if entry.rate_violations > grace {
+            entry.blocked_until = entry.last + target + penalty;
+            true
+        } else {
+            entry.last = now;
+            false
+        }
     }
 
     pub fn release_ready(&mut self) -> Vec<ReleasedAnnounce> {
@@ -287,7 +439,8 @@ impl AnnounceLimits {
         let mut released = Vec::new();
 
         for (iface, entry) in self.limits.iter_mut() {
-            if let Some((packet, source)) = entry.release_one(now, &self.rate_limit) {
+            let rate_limit = self.interface_rate_limits.get(iface).unwrap_or(&self.rate_limit);
+            if let Some((packet, source)) = entry.release_one(now, rate_limit) {
                 released.push(ReleasedAnnounce { iface: *iface, packet, source });
             } else {
                 continue;
@@ -296,6 +449,14 @@ impl AnnounceLimits {
 
         released
     }
+}
+
+fn nonnegative_f64(value: Option<f64>) -> Option<f64> {
+    value.filter(|value| value.is_finite() && *value >= 0.0)
+}
+
+fn nonnegative_duration_secs(value: Option<f64>) -> Option<Duration> {
+    nonnegative_f64(value).map(Duration::from_secs_f64)
 }
 
 #[cfg(test)]
@@ -456,5 +617,165 @@ mod tests {
         let released = limits.release_ready_at(now + Duration::from_millis(90));
         assert_eq!(released.len(), 1);
         assert_eq!(released[0].packet.destination, AddressHash::new([3; 16]));
+    }
+
+    #[test]
+    fn shared_ingress_control_false_disables_announce_holding() {
+        let mut rate_limit = test_rate_limit();
+        rate_limit.burst_freq_new = 0.1;
+        rate_limit.burst_freq = 0.1;
+        let mut limits = AnnounceLimits::with_rate_limit(rate_limit);
+        let iface = AddressHash::new([0xEE; crate::hash::ADDRESS_HASH_SIZE]);
+        let config = InterfaceSharedConfig { ingress_control: Some(false), ..Default::default() };
+        let now = Instant::now();
+
+        assert_eq!(
+            limits.check_with_shared_config_at(
+                iface,
+                &announce_packet(AddressHash::new([1; 16]), 1),
+                IfaceSource::None,
+                false,
+                &config,
+                now,
+            ),
+            AnnounceLimitAction::Allow
+        );
+        assert_eq!(
+            limits.check_with_shared_config_at(
+                iface,
+                &announce_packet(AddressHash::new([2; 16]), 1),
+                IfaceSource::None,
+                false,
+                &config,
+                now + Duration::from_millis(1),
+            ),
+            AnnounceLimitAction::Allow
+        );
+        assert!(limits.release_ready_at(now + Duration::from_secs(1)).is_empty());
+    }
+
+    #[test]
+    fn shared_ingress_control_fields_override_default_limiter() {
+        let mut default_limit = test_rate_limit();
+        default_limit.burst_freq_new = 10_000.0;
+        default_limit.burst_freq = 10_000.0;
+        let mut limits = AnnounceLimits::with_rate_limit(default_limit);
+        let iface = AddressHash::new([0xEF; crate::hash::ADDRESS_HASH_SIZE]);
+        let config = InterfaceSharedConfig {
+            ic_max_held_announces: Some(1),
+            ic_burst_freq_new: Some(100.0),
+            ic_burst_freq: Some(100.0),
+            ic_burst_hold: Some(0.02),
+            ic_burst_penalty: Some(0.02),
+            ic_held_release_interval: Some(0.01),
+            ..Default::default()
+        };
+        let now = Instant::now();
+
+        assert_eq!(
+            limits.check_with_shared_config_at(
+                iface,
+                &announce_packet(AddressHash::new([1; 16]), 3),
+                IfaceSource::None,
+                false,
+                &config,
+                now,
+            ),
+            AnnounceLimitAction::Allow
+        );
+        assert!(matches!(
+            limits.check_with_shared_config_at(
+                iface,
+                &announce_packet(AddressHash::new([2; 16]), 5),
+                IfaceSource::None,
+                false,
+                &config,
+                now + Duration::from_millis(1),
+            ),
+            AnnounceLimitAction::Hold(_)
+        ));
+        assert!(matches!(
+            limits.check_with_shared_config_at(
+                iface,
+                &announce_packet(AddressHash::new([3; 16]), 1),
+                IfaceSource::None,
+                false,
+                &config,
+                now + Duration::from_millis(2),
+            ),
+            AnnounceLimitAction::Hold(_)
+        ));
+
+        assert!(limits.release_ready_at(now + Duration::from_millis(60)).is_empty());
+
+        let released = limits.release_ready_at(now + Duration::from_millis(90));
+        assert_eq!(released.len(), 1);
+        assert_eq!(released[0].packet.destination, AddressHash::new([3; 16]));
+    }
+
+    #[test]
+    fn announce_rate_target_suppresses_after_grace_is_exceeded() {
+        let mut limits = AnnounceLimits::new();
+        let destination = AddressHash::new([0x41; crate::hash::ADDRESS_HASH_SIZE]);
+        let packet = announce_packet(destination, 1);
+        let config = InterfaceSharedConfig {
+            announce_rate_target: Some(60),
+            announce_rate_grace: Some(1),
+            announce_rate_penalty: Some(30),
+            ..Default::default()
+        };
+        let now = Instant::now();
+
+        assert!(!limits.should_suppress_rebroadcast_at(&packet, &config, now));
+        assert!(!limits.should_suppress_rebroadcast_at(
+            &packet,
+            &config,
+            now + Duration::from_secs(1),
+        ));
+        assert!(limits.should_suppress_rebroadcast_at(
+            &packet,
+            &config,
+            now + Duration::from_secs(2),
+        ));
+        assert!(limits.should_suppress_rebroadcast_at(
+            &packet,
+            &config,
+            now + Duration::from_secs(89),
+        ));
+        assert!(!limits.should_suppress_rebroadcast_at(
+            &packet,
+            &config,
+            now + Duration::from_secs(92),
+        ));
+    }
+
+    #[test]
+    fn announce_rate_target_ignores_path_responses_and_zero_targets() {
+        let mut limits = AnnounceLimits::new();
+        let destination = AddressHash::new([0x42; crate::hash::ADDRESS_HASH_SIZE]);
+        let mut packet = announce_packet(destination, 1);
+        let now = Instant::now();
+
+        let zero_target =
+            InterfaceSharedConfig { announce_rate_target: Some(0), ..Default::default() };
+        assert!(!limits.should_suppress_rebroadcast_at(&packet, &zero_target, now));
+        assert!(!limits.should_suppress_rebroadcast_at(
+            &packet,
+            &zero_target,
+            now + Duration::from_secs(1),
+        ));
+
+        packet.context = PacketContext::PathResponse;
+        let config = InterfaceSharedConfig {
+            announce_rate_target: Some(60),
+            announce_rate_grace: Some(0),
+            ..Default::default()
+        };
+        assert!(!limits.should_suppress_rebroadcast_at(&packet, &config, now));
+        assert!(!limits.should_suppress_rebroadcast_at(
+            &packet,
+            &config,
+            now + Duration::from_secs(1),
+        ));
     }
 }

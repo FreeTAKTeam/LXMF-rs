@@ -32,6 +32,40 @@ interfaces = [
 }
 
 #[test]
+fn parses_android_kiss_beacon_aliases_as_python_id_beacon() {
+    let input = r#"
+interfaces = [
+  { type = "KISSInterface", enabled = true, name = "android-kiss", port = "/dev/ttyACM0", beacon_interval = 900, beacon_data = "ANDROID-1" }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse Android KISS beacon aliases");
+    let iface = &cfg.interfaces[0];
+
+    assert_eq!(iface.kind, "kiss");
+    assert_eq!(iface.id_interval, Some(900));
+    assert_eq!(iface.id_callsign.as_deref(), Some("ANDROID-1"));
+
+    let settings = iface.settings_json().expect("settings");
+    assert_eq!(settings["id_interval"], 900);
+    assert_eq!(settings["id_callsign"], "ANDROID-1");
+}
+
+#[test]
+fn android_kiss_beacon_aliases_preserve_canonical_id_beacon_precedence() {
+    let input = r#"
+interfaces = [
+  { type = "KISSInterface", enabled = true, name = "android-kiss", port = "/dev/ttyACM0", id_interval = 600, id_callsign = "PYTHON-0", beacon_interval = 900, beacon_data = "ANDROID-1" }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse mixed KISS beacon aliases");
+    let iface = &cfg.interfaces[0];
+
+    assert_eq!(iface.id_interval, Some(600));
+    assert_eq!(iface.id_callsign.as_deref(), Some("PYTHON-0"));
+    assert!(iface.extra.is_empty());
+}
+
+#[test]
 fn parses_reticulum_kiss_interface_default_speed() {
     let input = r#"
 interfaces = [
@@ -184,6 +218,22 @@ interfaces = [
     assert_eq!(settings["tx_tail_ms"], 20);
     assert_eq!(settings["slot_time_ms"], 20);
     assert_eq!(settings["kiss_flow_control"], false);
+}
+
+#[test]
+fn parses_vrn76_kiss_ble_short_reticulum_style_type_alias() {
+    let input = r#"
+interfaces = [
+  { type = "Vrn76KissBleInterface", enabled = true, name = "vrn76-main", device_name_filter = "VR-N76" }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse short Reticulum-style vrn76 config");
+    let iface = &cfg.interfaces[0];
+    assert_eq!(iface.kind, "vrn76_kiss_ble");
+    assert_eq!(iface.peripheral_id.as_deref(), Some("VR-N76"));
+
+    let settings = iface.settings_json().expect("settings");
+    assert_eq!(settings["peripheral_id"], "VR-N76");
 }
 
 #[test]
@@ -410,6 +460,91 @@ interfaces = [
 }
 
 #[test]
+fn parses_android_rnode_tcp_host_selector_alias() {
+    let input = r#"
+interfaces = [
+  { type = "RNodeInterface", enabled = true, name = "rnode-android-tcp", region = "US915", state_path = "/tmp/lora-state.json", tcp_host = "192.0.2.10", force_tcp = true, frequency = 915000000, bandwidth = 125000, spreadingfactor = 9, codingrate = 5, txpower = 17 }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse Android RNode tcp_host config");
+    let iface = &cfg.interfaces[0];
+    assert_eq!(iface.kind, "lora");
+    assert_eq!(iface.device.as_deref(), Some("tcp://192.0.2.10:7633"));
+    assert_eq!(iface.baud_rate, None);
+
+    let settings = iface.settings_json().expect("settings");
+    assert_eq!(settings["device"], "tcp://192.0.2.10:7633");
+}
+
+#[test]
+fn parses_android_rnode_ble_selector_aliases() {
+    let input = r#"
+interfaces = [
+  { type = "RNodeInterface", enabled = true, name = "rnode-android-ble", region = "US915", state_path = "/tmp/lora-state.json", ble_addr = "AA:BB:CC:DD:EE:FF", force_ble = true, frequency = 915000000, bandwidth = 125000, spreadingfactor = 9, codingrate = 5, txpower = 17 }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse Android RNode BLE selector config");
+    let iface = &cfg.interfaces[0];
+    assert_eq!(iface.kind, "lora");
+    assert_eq!(iface.device.as_deref(), Some("ble://AA:BB:CC:DD:EE:FF"));
+    assert_eq!(iface.baud_rate, None);
+
+    let settings = iface.settings_json().expect("settings");
+    assert_eq!(settings["device"], "ble://AA:BB:CC:DD:EE:FF");
+}
+
+#[test]
+fn parses_android_rnode_bluetooth_target_selector_aliases() {
+    let input = r#"
+interfaces = [
+  { type = "RNodeInterface", enabled = true, name = "rnode-android-bt", region = "US915", state_path = "/tmp/lora-state.json", allow_bluetooth = true, target_device_name = "RNode Classic", frequency = 915000000, bandwidth = 125000, spreadingfactor = 9, codingrate = 5, txpower = 17 }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input)
+        .expect("parse Android RNode Bluetooth target selector config");
+    let iface = &cfg.interfaces[0];
+    assert_eq!(iface.kind, "lora");
+    assert_eq!(iface.device.as_deref(), Some("ble://RNode Classic"));
+    assert_eq!(iface.baud_rate, None);
+
+    let settings = iface.settings_json().expect("settings");
+    assert_eq!(settings["device"], "ble://RNode Classic");
+}
+
+#[test]
+fn parses_android_rnode_bluetooth_address_before_name() {
+    let input = r#"
+interfaces = [
+  { type = "RNodeInterface", enabled = true, name = "rnode-android-bt", region = "US915", state_path = "/tmp/lora-state.json", allow_bluetooth = true, target_device_name = "RNode Classic", target_device_address = "AA:BB:CC:DD:EE:FF", frequency = 915000000, bandwidth = 125000, spreadingfactor = 9, codingrate = 5, txpower = 17 }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input)
+        .expect("parse Android RNode Bluetooth address selector config");
+    let iface = &cfg.interfaces[0];
+    assert_eq!(iface.kind, "lora");
+    assert_eq!(iface.device.as_deref(), Some("ble://AA:BB:CC:DD:EE:FF"));
+    assert_eq!(iface.baud_rate, None);
+
+    let settings = iface.settings_json().expect("settings");
+    assert_eq!(settings["device"], "ble://AA:BB:CC:DD:EE:FF");
+}
+
+#[test]
+fn rejects_android_rnode_bluetooth_without_target() {
+    let input = r#"
+interfaces = [
+  { type = "RNodeInterface", enabled = true, name = "rnode-android-bt", region = "US915", state_path = "/tmp/lora-state.json", allow_bluetooth = true, frequency = 915000000, bandwidth = 125000, spreadingfactor = 9, codingrate = 5, txpower = 17 }
+]
+"#;
+    let err = DaemonConfig::from_toml(input).expect_err("Bluetooth selector target must fail");
+    let message = err.to_string();
+    assert!(
+        message.contains("target_device_name"),
+        "unexpected parse error: {message}"
+    );
+}
+
+#[test]
 fn parses_lora_python_rnode_serial_default_speed() {
     let input = r#"
 interfaces = [
@@ -424,6 +559,120 @@ interfaces = [
 
     let settings = iface.settings_json().expect("settings");
     assert_eq!(settings["baud_rate"], 115_200);
+}
+
+#[test]
+fn parses_python_rnode_multi_interface_with_vport_subinterfaces() {
+    let input = r#"
+interfaces = [
+  { type = "RNodeMultiInterface", enabled = true, name = "rnode-multi", port = "/dev/ttyACM0", id_callsign = "MYCALL-0", id_interval = 600, flow_control = true, airtime_limit_short = 25, radio0 = { vport = 0, frequency = 915000000, bandwidth = 125000, spreadingfactor = 9, codingrate = 5, txpower = 17 }, radio1 = { vport = 3, frequency = 920000000, bandwidth = 125000, spreadingfactor = 10, codingrate = "4/6", txpower = 14, flow_control = false, airtime_limit_long = 75.5, outgoing = false } }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse Reticulum RNodeMultiInterface");
+    let iface = &cfg.interfaces[0];
+    assert_eq!(iface.kind, "rnode_multi");
+    assert_eq!(iface.device.as_deref(), Some("/dev/ttyACM0"));
+    assert_eq!(iface.baud_rate, Some(115_200));
+    assert_eq!(iface.mtu, Some(508));
+    assert_eq!(iface.id_callsign.as_deref(), Some("MYCALL-0"));
+    assert_eq!(iface.id_interval, Some(600));
+
+    let settings = iface.settings_json().expect("settings");
+    assert_eq!(settings["device"], "/dev/ttyACM0");
+    assert_eq!(settings["baud_rate"], 115_200);
+    assert_eq!(settings["id_callsign"], "MYCALL-0");
+    assert_eq!(settings["id_interval"], 600);
+    assert_eq!(settings["subinterfaces"][0]["vport"], 0);
+    assert_eq!(settings["subinterfaces"][0]["frequency_hz"], 915_000_000);
+    assert_eq!(settings["subinterfaces"][0]["bandwidth_hz"], 125_000);
+    assert_eq!(settings["subinterfaces"][0]["spreading_factor"], 9);
+    assert_eq!(settings["subinterfaces"][0]["coding_rate"], 5);
+    assert_eq!(settings["subinterfaces"][0]["tx_power_dbm"], 17);
+    assert_eq!(settings["subinterfaces"][0]["flow_control"], true);
+    assert_eq!(settings["subinterfaces"][0]["airtime_limit_short"], 25.0);
+    assert_eq!(settings["subinterfaces"][1]["vport"], 3);
+    assert_eq!(settings["subinterfaces"][1]["flow_control"], false);
+    assert_eq!(settings["subinterfaces"][1]["airtime_limit_short"], 25.0);
+    assert_eq!(settings["subinterfaces"][1]["airtime_limit_long"], 75.5);
+    assert_eq!(settings["subinterfaces"][1]["outgoing"], false);
+}
+
+#[test]
+fn parses_python_rnode_multi_tcp_interface() {
+    let input = r#"
+interfaces = [
+  { type = "RNodeMultiInterface", enabled = true, name = "rnode-multi-tcp", port = "tcp://192.0.2.10:8001", radio0 = { vport = 0, frequency = 915000000, bandwidth = 125000, spreadingfactor = 9, codingrate = 5, txpower = 17 } }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse Reticulum TCP RNodeMultiInterface");
+    let iface = &cfg.interfaces[0];
+
+    assert_eq!(iface.kind, "rnode_multi");
+    assert_eq!(iface.device.as_deref(), Some("tcp://192.0.2.10:8001"));
+    assert_eq!(iface.mtu, Some(508));
+
+    let settings = iface.settings_json().expect("settings");
+    assert_eq!(settings["device"], "tcp://192.0.2.10:8001");
+    assert_eq!(settings["subinterfaces"][0]["vport"], 0);
+}
+
+#[test]
+fn parses_python_rnode_multi_child_enabled_semantics_and_negative_txpower() {
+    let input = r#"
+interfaces = [
+  { type = "RNodeMultiInterface", interface_enabled = true, name = "rnode-multi", port = "/dev/ttyACM0", radio0 = { enabled = false, vport = 0, frequency = 915000000, bandwidth = 125000, spreadingfactor = 9, codingrate = 5, txpower = -9 }, radio1 = { enabled = true, vport = 1, frequency = 920000000, bandwidth = 125000, spreadingfactor = 10, codingrate = 5, txpower = 14 } }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input)
+        .expect("parse RNodeMultiInterface child enable semantics");
+    let iface = &cfg.interfaces[0];
+
+    assert!(iface.enabled());
+    let settings = iface.settings_json().expect("settings");
+    let subinterfaces =
+        settings["subinterfaces"].as_array().expect("subinterfaces array");
+    assert_eq!(subinterfaces.len(), 1);
+    assert_eq!(subinterfaces[0]["vport"], 1);
+    assert_eq!(subinterfaces[0]["tx_power_dbm"], 14);
+}
+
+#[test]
+fn rejects_python_rnode_multi_duplicate_vports() {
+    let input = r#"
+interfaces = [
+  { type = "RNodeMultiInterface", enabled = true, name = "rnode-multi", port = "/dev/ttyACM0", radio0 = { vport = 1, frequency = 915000000, bandwidth = 125000, spreadingfactor = 9, codingrate = 5, txpower = 17 }, radio1 = { vport = 1, frequency = 920000000, bandwidth = 125000, spreadingfactor = 10, codingrate = 5, txpower = 14 } }
+]
+"#;
+    let err = DaemonConfig::from_toml(input).expect_err("duplicate vports should fail");
+    let message = err.to_string();
+    assert!(message.contains("duplicated"), "unexpected parse error: {message}");
+}
+
+#[test]
+fn rejects_python_rnode_multi_invalid_subinterface_options() {
+    let input = r#"
+interfaces = [
+  { type = "RNodeMultiInterface", enabled = true, name = "rnode-multi", port = "/dev/ttyACM0", radio0 = { vport = 1, frequency = 915000000, bandwidth = 125000, spreadingfactor = 9, codingrate = 5, txpower = 17, flow_control = "yes" } }
+]
+"#;
+    let err = DaemonConfig::from_toml(input).expect_err("flow_control must be boolean");
+    let message = err.to_string();
+    assert!(
+        message.contains("radio0.flow_control must be a boolean"),
+        "unexpected parse error: {message}"
+    );
+
+    let input = r#"
+interfaces = [
+  { type = "RNodeMultiInterface", enabled = true, name = "rnode-multi", port = "/dev/ttyACM0", radio0 = { vport = 1, frequency = 915000000, bandwidth = 125000, spreadingfactor = 9, codingrate = 5, txpower = 17, airtime_limit_short = 125 } }
+]
+"#;
+    let err = DaemonConfig::from_toml(input).expect_err("airtime limit must be in range");
+    let message = err.to_string();
+    assert!(
+        message.contains("radio0.airtime_limit_short must be between 0 and 100"),
+        "unexpected parse error: {message}"
+    );
 }
 
 #[test]

@@ -76,8 +76,23 @@ where
         self.write_all(writes, "write_id_beacon").await
     }
 
+    pub async fn send_management_frame(
+        &mut self,
+        frame: Vec<u8>,
+    ) -> Result<(), RnodeBleKissError> {
+        let writes = self.session.management_frame_writes(frame);
+        self.write_all(writes, "write_management_frame").await
+    }
+
     pub async fn shutdown(&mut self) -> Result<(), RnodeBleKissError> {
-        let writes = self.session.shutdown_frames();
+        self.shutdown_with_prefix_frames(Vec::new()).await
+    }
+
+    pub async fn shutdown_with_prefix_frames(
+        &mut self,
+        prefix_frames: Vec<Vec<u8>>,
+    ) -> Result<(), RnodeBleKissError> {
+        let writes = self.session.shutdown_frames_with_prefix(prefix_frames);
         self.write_all(writes, "shutdown_write").await
     }
 
@@ -131,10 +146,13 @@ pub struct NativeRnodeBleKissInterface {
     settings: NativeRnodeBleSettings,
     config: RnodeBleKissConfig,
     rnode_config: Option<LoraConfig>,
+    rnode_status: Option<Arc<Mutex<serde_json::Value>>>,
     startup_response_timeout: Duration,
     reconnect_backoff: Duration,
     max_reconnect_backoff: Duration,
     detection_fallback_timeout: Option<Duration>,
+    management_frame_tx: RnodeBleManagementFrameSender,
+    management_frame_rx: RnodeBleManagementFrameReceiver,
 }
 
 #[cfg(feature = "rnode-ble")]
@@ -145,11 +163,13 @@ impl NativeRnodeBleKissInterface {
         settings: NativeRnodeBleSettings,
         config: RnodeBleKissConfig,
     ) -> Self {
+        let (management_frame_tx, management_frame_rx) = rnode_ble_management_channel();
         Self {
             label: label.into(),
             settings,
             config,
             rnode_config: None,
+            rnode_status: None,
             // TODO: startup_response_timeout should not exist. The device should send an
             //       explicit "ready" notification after completing startup, removing the
             //       need for a client-side deadline entirely. Consider raising a firmware
@@ -159,6 +179,8 @@ impl NativeRnodeBleKissInterface {
             reconnect_backoff: Duration::from_millis(500),
             max_reconnect_backoff: Duration::from_millis(5_000),
             detection_fallback_timeout: None,
+            management_frame_tx,
+            management_frame_rx,
         }
     }
 
@@ -168,9 +190,24 @@ impl NativeRnodeBleKissInterface {
         rnode_config: LoraConfig,
         startup_response_timeout: Duration,
     ) -> Self {
+        let endpoint = format!("ble://{}", self.settings.peripheral_id);
+        self.rnode_status = Some(Arc::new(Mutex::new(rnode_ble_initial_runtime_status_json(
+            rnode_config,
+            endpoint.as_str(),
+        ))));
         self.rnode_config = Some(rnode_config);
         self.startup_response_timeout = startup_response_timeout;
         self
+    }
+
+    #[must_use]
+    pub fn runtime_status_handle(&self) -> Option<RnodeBleRuntimeStatusHandle> {
+        self.rnode_status.as_ref().map(|inner| RnodeBleRuntimeStatusHandle::new(inner.clone()))
+    }
+
+    #[must_use]
+    pub fn rnode_management_handle(&self) -> RnodeBleManagementHandle {
+        RnodeBleManagementHandle { tx: self.management_frame_tx.clone() }
     }
 
     #[must_use]
@@ -206,10 +243,12 @@ impl NativeRnodeBleKissInterface {
             settings,
             config,
             rnode_config,
+            rnode_status,
             startup_response_timeout,
             reconnect_backoff,
             max_reconnect_backoff,
             detection_fallback_timeout,
+            management_frame_rx,
         ) = {
             let guard = context.inner.lock().expect("RNode BLE interface mutex poisoned");
             (
@@ -217,10 +256,12 @@ impl NativeRnodeBleKissInterface {
                 guard.settings.clone(),
                 guard.config.clone(),
                 guard.rnode_config,
+                guard.rnode_status.clone(),
                 guard.startup_response_timeout,
                 guard.reconnect_backoff,
                 guard.max_reconnect_backoff,
                 guard.detection_fallback_timeout,
+                guard.management_frame_rx.clone(),
             )
         };
         let mut active_backoff = reconnect_backoff;
@@ -271,6 +312,12 @@ impl NativeRnodeBleKissInterface {
             let mut reconnect_needed = false;
             let mut command_monitor = rnode_config
                 .map(|config| RnodeBleCommandMonitor::new(config, startup_response_timeout));
+            if let (Some(monitor), Some(status)) =
+                (command_monitor.as_ref(), rnode_status.as_ref())
+            {
+                *status.lock().expect("RNode BLE status mutex poisoned") =
+                    monitor.runtime_status_json(format!("ble://{}", settings.peripheral_id).as_str());
+            }
             let mut radio_config_sent = command_monitor.is_none();
             log::info!(
                 "RNode BLE session ready: command_monitor={} radio_config_sent={} iface={}",
@@ -312,6 +359,34 @@ impl NativeRnodeBleKissInterface {
                 if reconnect_needed {
                     break;
                 }
+                if radio_config_sent {
+                    let management_frames = {
+                        let mut rx = management_frame_rx.lock().await;
+                        let mut frames = Vec::new();
+                        while let Ok(frame) = rx.try_recv() {
+                            frames.push(frame);
+                        }
+                        frames
+                    };
+                    for frame in management_frames {
+                        if let Err(err) = runtime.send_management_frame(frame).await {
+                            log::warn!(
+                                "RNode BLE management frame write failed iface={} err={:?}",
+                                label,
+                                err
+                            );
+                            reconnect_needed = true;
+                            break;
+                        }
+                        if first_tx_at.is_none() {
+                            first_tx_at = Some(TokioInstant::now());
+                        }
+                    }
+                }
+                if reconnect_needed {
+                    break;
+                }
+
                 if radio_config_sent {
                     while let Ok(message) = tx_channel.try_recv() {
                         let mut output = OutputBuffer::new(&mut tx_buffer[..]);
@@ -374,6 +449,12 @@ impl NativeRnodeBleKissInterface {
                                 );
                                 reconnect_needed = true;
                                 break;
+                            }
+                            if let Some(status) = rnode_status.as_ref() {
+                                *status.lock().expect("RNode BLE status mutex poisoned") = monitor
+                                    .runtime_status_json(
+                                        format!("ble://{}", settings.peripheral_id).as_str(),
+                                    );
                             }
                             if !radio_config_sent && monitor.is_detected() {
                                 log::info!(
@@ -447,10 +528,19 @@ impl NativeRnodeBleKissInterface {
                         reconnect_needed = true;
                         break;
                     }
+                    if let Some(status) = rnode_status.as_ref() {
+                        *status.lock().expect("RNode BLE status mutex poisoned") = monitor
+                            .runtime_status_json(format!("ble://{}", settings.peripheral_id).as_str());
+                    }
                 }
             }
 
-            let _ = runtime.shutdown().await;
+            let shutdown_prefix_frames = command_monitor
+                .as_ref()
+                .and_then(|monitor| monitor.external_framebuffer_frame(false))
+                .into_iter()
+                .collect::<Vec<_>>();
+            let _ = runtime.shutdown_with_prefix_frames(shutdown_prefix_frames).await;
             let mut backend = runtime.into_backend();
             let _ = backend.cleanup().await;
             if context.cancel.is_cancelled() || iface_stop.is_cancelled() {

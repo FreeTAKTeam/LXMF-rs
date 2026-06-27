@@ -1,6 +1,8 @@
 impl AutoDaemonStartupPlan {
 
     pub(crate) fn runtime_json(&self) -> JsonValue {
+        let initial_runtime_state =
+            AutoRuntimeState::from_startup_plan(&self.startup_plan, core::time::Duration::ZERO);
         let mut initial_peer_announces = Vec::new();
         let _ = self.send_initial_peer_announces(|datagram| {
             initial_peer_announces.push(peering_datagram_json(datagram));
@@ -13,9 +15,11 @@ impl AutoDaemonStartupPlan {
             "candidate_devices": self.candidates.iter().map(candidate_json).collect::<Vec<_>>(),
             "adopted_devices": self.adopted_devices.iter().map(adopted_json).collect::<Vec<_>>(),
             "startup_plan": startup_plan_json(&self.startup_plan),
+            "carrier_runtime": auto_carrier_runtime_json(&initial_runtime_state, &[], None),
             "planned_initial_peer_announce_count": initial_peer_announces.len(),
-            "planned_repeat_peer_announce_scheduler_count": usize::from(!self.adopted_devices.is_empty()),
-            "planned_peer_job_scheduler_count": usize::from(!self.adopted_devices.is_empty()),
+            "planned_repeat_peer_announce_scheduler_count": 1,
+            "planned_peer_job_scheduler_count": 1,
+            "planned_adopted_interface_reconciler_count": 1,
             "initial_peer_announces": initial_peer_announces,
             "native_scope_id_source": "if-addrs interface index",
             "planned_discovery_receive_loop_count": self.discovery_socket_bind_targets().len(),
@@ -36,10 +40,11 @@ impl AutoDaemonStartupPlan {
         now: core::time::Duration,
     ) -> Vec<AutoPeerAnnounceDatagram> {
         let timing = AutoInterfaceTiming::for_platform(self.platform);
+        let adopted_devices = state.adopted_devices();
         state
             .run_multicast_announce_job(
                 &self.config,
-                &self.adopted_devices,
+                &adopted_devices,
                 now,
                 timing.announce_interval,
             )
@@ -146,9 +151,10 @@ impl AutoDaemonStartupPlan {
         now: core::time::Duration,
     ) -> (AutoPeerJobRuntimeSummary, Vec<AutoPeerAnnounceDatagram>) {
         let timing = AutoInterfaceTiming::for_platform(self.platform);
+        let adopted_devices = state.adopted_devices();
         let run = state.run_peer_job(
             &self.config,
-            &self.adopted_devices,
+            &adopted_devices,
             now,
             timing.multicast_echo_timeout,
         );
@@ -162,7 +168,9 @@ impl AutoDaemonStartupPlan {
                 expired_peer_count: run.expired_peers.len(),
                 reverse_peer_announce_count: datagrams.len(),
                 missing_initial_echo_count: run.missing_initial_echo_interfaces.len(),
+                carrier_changed: !run.carrier_events.is_empty(),
                 carrier_event_count: run.carrier_events.len(),
+                carrier_events: run.carrier_events,
             },
             datagrams,
         )
@@ -284,13 +292,14 @@ impl AutoDaemonStartupPlan {
     pub(crate) async fn spawn_discovery_runtime_with_native_scope_ids(
         &self,
     ) -> Result<AutoDiscoveryRuntimeSummary, String> {
-        self.spawn_discovery_runtime_with_native_scope_ids_and_transport(None).await
+        self.spawn_discovery_runtime_with_native_scope_ids_and_transport(None, None).await
     }
 
     #[allow(dead_code)]
     pub(crate) async fn spawn_discovery_runtime_with_native_scope_ids_and_transport(
         &self,
         transport_runtime: Option<AutoInterfaceTransportRuntime>,
+        runtime_status: Option<AutoRuntimeStatusHandle>,
     ) -> Result<AutoDiscoveryRuntimeSummary, String> {
         let (transport_bridge, transport_tx_channel) = match transport_runtime {
             Some(runtime) => {
@@ -307,52 +316,53 @@ impl AutoDaemonStartupPlan {
         let dedupe = Arc::new(tokio::sync::Mutex::new(AutoInboundPacketDeduplicator::from_timing(
             AutoInterfaceTiming::for_platform(self.platform),
         )));
-        let announce_socket = if self.adopted_devices.is_empty() {
-            None
-        } else {
-            Some(self.bind_peer_announce_runtime_socket().await?)
-        };
-        let initial_peer_announce_count = if let Some(socket) = &announce_socket {
-            self.send_due_multicast_peer_announces_with_runtime_socket(
+        let announce_socket = self.bind_peer_announce_runtime_socket().await?;
+        let initial_peer_announce_count = self
+            .send_due_multicast_peer_announces_with_runtime_socket(
                 Arc::clone(&state),
-                Arc::clone(socket),
+                Arc::clone(&announce_socket),
                 core::time::Duration::ZERO,
             )
-            .await?
-        } else {
-            0
-        };
-        if sockets.is_empty() {
-            return Ok(AutoDiscoveryRuntimeSummary {
-                bound_socket_count,
-                receive_loop_count: 0,
-                initial_peer_announce_count,
-                repeat_peer_announce_scheduler_count: 0,
-                peer_job_scheduler_count: 0,
-                data_socket_count,
-                data_receive_loop_count: 0,
-            });
-        }
-        let (events_tx, mut events_rx) = tokio::sync::mpsc::channel(bound_socket_count * 8);
+            .await?;
+        let discovery_events_capacity = usize::max(bound_socket_count * 8, 1);
+        let (events_tx, mut events_rx) = tokio::sync::mpsc::channel(discovery_events_capacity);
         let data_events_capacity = usize::max(data_socket_count * 8, 1);
         let (data_events_tx, mut data_events_rx) = tokio::sync::mpsc::channel(data_events_capacity);
         let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
-        let handles = self.spawn_discovery_receive_loops(
-            sockets,
+        let discovery_listener_supervisor = Arc::new(tokio::sync::Mutex::new(
+            AutoDiscoveryListenerSupervisor::new(
+                self.clone(),
+                Arc::clone(&state),
+                shutdown_rx.clone(),
+            ),
+        ));
+        discovery_listener_supervisor.lock().await.spawn_sockets(sockets, &events_tx);
+        let receive_loop_count = discovery_listener_supervisor.lock().await.receive_loop_count();
+        let data_listener_supervisor = Arc::new(tokio::sync::Mutex::new(
+            AutoPeerDataListenerSupervisor::new(
+                self.clone(),
+                Arc::clone(&state),
+                dedupe,
+                transport_bridge.clone(),
+                shutdown_rx.clone(),
+            ),
+        ));
+        data_listener_supervisor.lock().await.spawn_sockets(data_sockets, &data_events_tx);
+        let data_receive_loop_count = data_listener_supervisor.lock().await.len();
+        let runtime_loop_handles = AutoInterfaceRuntimeLoopHandles {
+            discovery_supervisor: Arc::clone(&discovery_listener_supervisor),
+            data_supervisor: Arc::clone(&data_listener_supervisor),
+            discovery_events: events_tx.clone(),
+            data_events: data_events_tx.clone(),
+        };
+        let link_local_reconciler_handle = self.spawn_link_local_address_reconciler(
             Arc::clone(&state),
-            events_tx,
+            runtime_loop_handles,
+            runtime_status.clone(),
             shutdown_rx.clone(),
         );
-        let receive_loop_count = handles.len();
-        let data_handles = self.spawn_peer_data_receive_loops(
-            data_sockets,
-            Arc::clone(&state),
-            dedupe,
-            transport_bridge.clone(),
-            data_events_tx,
-            shutdown_rx.clone(),
-        );
-        let data_receive_loop_count = data_handles.len();
+        drop(events_tx);
+        drop(data_events_tx);
         let transport_tx_handle = transport_tx_channel.map(|tx_channel| {
             self.spawn_peer_data_transport_tx_loop(
                 transport_bridge.expect("transport bridge exists with tx channel"),
@@ -360,61 +370,76 @@ impl AutoDaemonStartupPlan {
                 shutdown_rx.clone(),
             )
         });
-        let scheduler_handle = announce_socket.as_ref().map(|socket| {
-            self.spawn_repeat_peer_announce_scheduler(
-                Arc::clone(&state),
-                Arc::clone(socket),
-                shutdown_rx.clone(),
-            )
-        });
-        let repeat_peer_announce_scheduler_count = usize::from(scheduler_handle.is_some());
-        let peer_job_scheduler_handle = announce_socket.as_ref().map(|socket| {
-            self.spawn_peer_job_scheduler(
-                Arc::clone(&state),
-                Arc::clone(socket),
-                shutdown_rx.clone(),
-            )
-        });
-        let peer_job_scheduler_count = usize::from(peer_job_scheduler_handle.is_some());
+        let scheduler_handle = self.spawn_repeat_peer_announce_scheduler(
+            Arc::clone(&state),
+            Arc::clone(&announce_socket),
+            shutdown_rx.clone(),
+        );
+        let repeat_peer_announce_scheduler_count = 1;
+        let peer_job_scheduler_handle = self.spawn_peer_job_scheduler(
+            Arc::clone(&state),
+            Arc::clone(&announce_socket),
+            runtime_status.clone(),
+            shutdown_rx.clone(),
+        );
+        let peer_job_scheduler_count = 1;
         tokio::spawn(async move {
-            let _shutdown_guard = shutdown_tx;
+            let shutdown_tx = shutdown_tx;
+            let mut shutdown_sent = false;
             let mut discovery_events_open = true;
             let mut data_events_open = true;
             while discovery_events_open || data_events_open {
                 tokio::select! {
                     event = events_rx.recv(), if discovery_events_open => {
                         match event {
-                            Some(event) => log_auto_discovery_loop_event(event),
-                            None => discovery_events_open = false,
+                            Some(event) => {
+                                let receive_failed = matches!(
+                                    &event,
+                                    AutoDiscoveryLoopEvent::ReceiveFailed { .. }
+                                );
+                                log_auto_discovery_loop_event(event);
+                                if receive_failed && !shutdown_sent {
+                                    let _ = shutdown_tx.send(true);
+                                    shutdown_sent = true;
+                                }
+                            }
+                            None => {
+                                discovery_events_open = false;
+                                if !shutdown_sent {
+                                    let _ = shutdown_tx.send(true);
+                                    shutdown_sent = true;
+                                }
+                            }
                         }
                     }
                     event = data_events_rx.recv(), if data_events_open => {
                         match event {
-                            Some(event) => log_auto_peer_data_loop_event(event),
+                            Some(event) => {
+                                let receive_failed = matches!(
+                                    &event,
+                                    AutoPeerDataLoopEvent::ReceiveFailed { .. }
+                                );
+                                log_auto_peer_data_loop_event(event);
+                                if receive_failed && !shutdown_sent {
+                                    let _ = shutdown_tx.send(true);
+                                    shutdown_sent = true;
+                                }
+                            }
                             None => data_events_open = false,
                         }
                     }
                 }
             }
-            for handle in handles {
-                if let Err(err) = handle.await {
-                    log::warn!("[daemon-auto] discovery receive loop task stopped: {err}");
-                }
+            discovery_listener_supervisor.lock().await.shutdown_all().await;
+            data_listener_supervisor.lock().await.shutdown_all().await;
+            if let Err(err) = link_local_reconciler_handle.await {
+                log::warn!("[daemon-auto] link-local reconciler stopped: {err}");
             }
-            for handle in data_handles {
-                if let Err(err) = handle.await {
-                    log::warn!("[daemon-auto] peer data receive loop task stopped: {err}");
-                }
+            if let Err(err) = scheduler_handle.await {
+                log::warn!("[daemon-auto] repeat peer-announce scheduler stopped: {err}");
             }
-            if let Some(handle) = scheduler_handle {
-                if let Err(err) = handle.await {
-                    log::warn!("[daemon-auto] repeat peer-announce scheduler stopped: {err}");
-                }
-            }
-            if let Some(handle) = peer_job_scheduler_handle {
-                if let Err(err) = handle.await {
-                    log::warn!("[daemon-auto] peer-job scheduler stopped: {err}");
-                }
+            if let Err(err) = peer_job_scheduler_handle.await {
+                log::warn!("[daemon-auto] peer-job scheduler stopped: {err}");
             }
             if let Some(handle) = transport_tx_handle {
                 if let Err(err) = handle.await {
@@ -428,6 +453,7 @@ impl AutoDaemonStartupPlan {
             initial_peer_announce_count,
             repeat_peer_announce_scheduler_count,
             peer_job_scheduler_count,
+            adopted_interface_reconciler_count: 1,
             data_socket_count,
             data_receive_loop_count,
         })

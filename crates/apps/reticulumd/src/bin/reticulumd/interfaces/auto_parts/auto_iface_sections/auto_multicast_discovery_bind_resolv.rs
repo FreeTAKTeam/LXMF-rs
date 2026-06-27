@@ -159,6 +159,7 @@
         let plan = AutoDaemonStartupPlan {
             config: AutoInterfaceConfig::default(),
             platform: AutoInterfacePlatform::Other,
+            device_filter: AutoInterfaceDeviceFilter::default(),
             candidates: Vec::new(),
             adopted_devices: Vec::new(),
             peering_packets: vec![AutoPeeringPacket {
@@ -274,6 +275,101 @@
         assert_eq!(datagram.multicast_group_addr, None);
         assert_eq!(datagram.source_addr.ip(), sender.local_addr().expect("sender addr").ip());
         assert_eq!(datagram.payload, payload);
+    }
+
+    #[tokio::test]
+    async fn auto_discovery_listener_supervisor_stops_managed_listener() {
+        let plan = plan_with_discovery_listener(AutoDiscoveryListenerBinding {
+            ifname: "lo".to_string(),
+            link_local_address: "127.0.0.1".to_string(),
+            unicast_bind_address: "127.0.0.1".to_string(),
+            unicast_bind_port: 0,
+            multicast_group_address: "239.255.0.1".to_string(),
+            multicast_bind_address: "239.255.0.1".to_string(),
+            multicast_bind_port: 0,
+        });
+        let sockets = plan
+            .bind_unicast_discovery_sockets(|_| panic!("IPv4 unicast bind is unscoped"))
+            .await
+            .expect("bind unicast discovery socket");
+        let bind_addr = sockets[0].bind_addr;
+        let state = Arc::new(tokio::sync::Mutex::new(plan.discovery_state()));
+        let (events_tx, mut events_rx) = tokio::sync::mpsc::channel(4);
+        let (_shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+        let mut supervisor =
+            AutoDiscoveryListenerSupervisor::new(plan.clone(), Arc::clone(&state), shutdown_rx);
+        supervisor.spawn_sockets(sockets, &events_tx);
+        assert_eq!(supervisor.receive_loop_count(), 1);
+
+        let sender = tokio::net::UdpSocket::bind("127.0.0.1:0").await.expect("bind sender");
+        let source_address = sender.local_addr().expect("sender addr").ip().to_string();
+        let payload = rns_transport::iface::auto::peering_token(
+            plan.config.group_id.as_bytes(),
+            &source_address,
+        );
+
+        sender.send_to(&payload, bind_addr).await.expect("send valid discovery datagram");
+        let accepted = tokio::time::timeout(std::time::Duration::from_secs(1), events_rx.recv())
+            .await
+            .expect("accepted event timeout")
+            .expect("accepted event");
+        assert!(matches!(
+            accepted,
+            AutoDiscoveryLoopEvent::Processed(AutoProcessedDiscoveryDatagram {
+                event: AutoDiscoveryEvent::Peer(_),
+                ..
+            })
+        ));
+
+        supervisor.shutdown_all().await;
+        sender
+            .send_to(&payload, bind_addr)
+            .await
+            .expect("send after supervised shutdown");
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(100), events_rx.recv())
+                .await
+                .is_err(),
+            "stopped discovery listener should not emit events"
+        );
+    }
+
+    #[tokio::test]
+    async fn auto_discovery_listener_supervisor_tracks_replaced_listener_shutdown() {
+        let plan = plan_with_discovery_listener(AutoDiscoveryListenerBinding {
+            ifname: "lo".to_string(),
+            link_local_address: "127.0.0.1".to_string(),
+            unicast_bind_address: "127.0.0.1".to_string(),
+            unicast_bind_port: 0,
+            multicast_group_address: "239.255.0.1".to_string(),
+            multicast_bind_address: "239.255.0.1".to_string(),
+            multicast_bind_port: 0,
+        });
+        let first_sockets = plan
+            .bind_unicast_discovery_sockets(|_| panic!("IPv4 unicast bind is unscoped"))
+            .await
+            .expect("bind first unicast discovery socket");
+        let second_sockets = plan
+            .bind_unicast_discovery_sockets(|_| panic!("IPv4 unicast bind is unscoped"))
+            .await
+            .expect("bind second unicast discovery socket");
+        let state = Arc::new(tokio::sync::Mutex::new(plan.discovery_state()));
+        let (events_tx, _events_rx) = tokio::sync::mpsc::channel(4);
+        let (_shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+        let mut supervisor =
+            AutoDiscoveryListenerSupervisor::new(plan.clone(), Arc::clone(&state), shutdown_rx);
+
+        supervisor.spawn_sockets(first_sockets, &events_tx);
+        assert_eq!(supervisor.receive_loop_count(), 1);
+        assert_eq!(supervisor.pending_stop_count(), 0);
+
+        supervisor.spawn_sockets(second_sockets, &events_tx);
+        assert_eq!(supervisor.receive_loop_count(), 1);
+        assert_eq!(supervisor.pending_stop_count(), 1);
+
+        supervisor.shutdown_all().await;
+        assert_eq!(supervisor.receive_loop_count(), 0);
+        assert_eq!(supervisor.pending_stop_count(), 0);
     }
 
     #[tokio::test]
@@ -421,4 +517,49 @@
                 .expect("peer data loop shutdown timeout")
                 .expect("peer data loop task");
         }
+    }
+
+    #[tokio::test]
+    async fn auto_peer_data_listener_supervisor_tracks_replaced_listener_shutdown() {
+        let plan = plan_with_data_listener(AutoDataListenerBinding {
+            ifname: "lo".to_string(),
+            link_local_address: "127.0.0.1".to_string(),
+            bind_address: "127.0.0.1".to_string(),
+            bind_port: 0,
+        });
+        let first_socket = plan
+            .bind_data_sockets(|_| panic!("IPv4 data bind is unscoped"))
+            .await
+            .expect("bind first peer data socket")
+            .remove(0);
+        let second_socket = plan
+            .bind_data_sockets(|_| panic!("IPv4 data bind is unscoped"))
+            .await
+            .expect("bind second peer data socket")
+            .remove(0);
+        let state = Arc::new(tokio::sync::Mutex::new(plan.discovery_state()));
+        let dedupe = Arc::new(tokio::sync::Mutex::new(AutoInboundPacketDeduplicator::from_timing(
+            AutoInterfaceTiming::for_platform(AutoInterfacePlatform::Other),
+        )));
+        let (events_tx, _events_rx) = tokio::sync::mpsc::channel(4);
+        let (_shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+        let mut supervisor = AutoPeerDataListenerSupervisor::new(
+            plan.clone(),
+            Arc::clone(&state),
+            dedupe,
+            None,
+            shutdown_rx,
+        );
+
+        supervisor.spawn_bound_socket(first_socket, &events_tx);
+        assert_eq!(supervisor.len(), 1);
+        assert_eq!(supervisor.pending_stop_count(), 0);
+
+        supervisor.spawn_bound_socket(second_socket, &events_tx);
+        assert_eq!(supervisor.len(), 1);
+        assert_eq!(supervisor.pending_stop_count(), 1);
+
+        supervisor.shutdown_all().await;
+        assert_eq!(supervisor.len(), 0);
+        assert_eq!(supervisor.pending_stop_count(), 0);
     }

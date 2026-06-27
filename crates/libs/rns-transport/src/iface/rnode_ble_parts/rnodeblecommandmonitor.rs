@@ -77,6 +77,16 @@ impl RnodeBleCommandMonitor {
         self.lora.reported_bitrate_bps()
     }
 
+    #[must_use]
+    pub fn external_framebuffer_frame(&self, enable: bool) -> Option<Vec<u8>> {
+        self.lora.probe_status().external_framebuffer_frame(enable)
+    }
+
+    #[must_use]
+    pub fn runtime_status_json(&self, endpoint: &str) -> serde_json::Value {
+        rnode_ble_runtime_status_json(&self.lora, endpoint)
+    }
+
     pub fn validate_startup_deadline(&mut self) -> Result<(), String> {
         let Some(deadline) = self.startup_deadline else {
             return Ok(());
@@ -86,6 +96,77 @@ impl RnodeBleCommandMonitor {
         }
         self.startup_deadline = None;
         self.lora.validate_startup_responses()
+    }
+}
+
+#[must_use]
+pub fn rnode_ble_initial_runtime_status_json(
+    config: LoraConfig,
+    endpoint: &str,
+) -> serde_json::Value {
+    let mut lora = LoraInterface::new_tcp(endpoint.to_string(), config);
+    lora.begin_startup_response_collection();
+    rnode_ble_runtime_status_json(&lora, endpoint)
+}
+
+#[must_use]
+pub fn rnode_ble_runtime_status_json(
+    lora: &LoraInterface,
+    endpoint: &str,
+) -> serde_json::Value {
+    let mut value = lora.runtime_status_json();
+    if let Some(object) = value.as_object_mut() {
+        object.insert("endpoint".to_string(), serde_json::Value::String(endpoint.to_string()));
+        object.insert("bearer".to_string(), serde_json::Value::String("ble".to_string()));
+        object.insert("baud_rate".to_string(), serde_json::Value::Null);
+    }
+    value
+}
+
+#[derive(Clone)]
+pub struct RnodeBleRuntimeStatusHandle {
+    inner: Arc<Mutex<serde_json::Value>>,
+}
+
+impl RnodeBleRuntimeStatusHandle {
+    #[must_use]
+    pub fn new(inner: Arc<Mutex<serde_json::Value>>) -> Self {
+        Self { inner }
+    }
+
+    #[must_use]
+    pub fn to_json(&self) -> serde_json::Value {
+        self.inner.lock().expect("RNode BLE status mutex poisoned").clone()
+    }
+}
+
+#[cfg(feature = "rnode-ble")]
+fn rnode_ble_management_channel(
+) -> (RnodeBleManagementFrameSender, RnodeBleManagementFrameReceiver) {
+    let (tx, rx) = tokio::sync::mpsc::channel(RNODE_BLE_MANAGEMENT_CHANNEL_CAPACITY);
+    (tx, Arc::new(tokio::sync::Mutex::new(rx)))
+}
+
+#[cfg(feature = "rnode-ble")]
+#[derive(Debug, Clone)]
+pub struct RnodeBleManagementHandle {
+    tx: RnodeBleManagementFrameSender,
+}
+
+#[cfg(feature = "rnode-ble")]
+impl RnodeBleManagementHandle {
+    pub fn try_dispatch_frame(
+        &self,
+        frame: Vec<u8>,
+    ) -> Result<(), tokio::sync::mpsc::error::TrySendError<Vec<u8>>> {
+        self.tx.try_send(frame)
+    }
+
+    pub async fn dispatch_frame(
+        &self,
+        frame: Vec<u8>,
+    ) -> Result<(), tokio::sync::mpsc::error::SendError<Vec<u8>>> {
+        self.tx.send(frame).await
     }
 }
 
@@ -168,10 +249,17 @@ impl RnodeBleKissSession {
 
     #[must_use]
     pub fn shutdown_frames(&self) -> Vec<RnodeBleWrite> {
-        self.config
-            .shutdown_frames
-            .iter()
-            .cloned()
+        self.shutdown_frames_with_prefix(std::iter::empty::<Vec<u8>>())
+    }
+
+    #[must_use]
+    pub fn shutdown_frames_with_prefix(
+        &self,
+        prefix_frames: impl IntoIterator<Item = Vec<u8>>,
+    ) -> Vec<RnodeBleWrite> {
+        prefix_frames
+            .into_iter()
+            .chain(self.config.shutdown_frames.iter().cloned())
             .flat_map(|frame| self.kiss_writes(frame))
             .collect()
     }
@@ -217,6 +305,11 @@ impl RnodeBleKissSession {
             self.interface_ready = false;
         }
         writes
+    }
+
+    #[must_use]
+    pub fn management_frame_writes(&self, frame: Vec<u8>) -> Vec<RnodeBleWrite> {
+        self.kiss_writes(frame)
     }
 
     pub fn accept_notification(

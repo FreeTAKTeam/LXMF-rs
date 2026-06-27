@@ -148,7 +148,11 @@ impl Transport {
     pub async fn outbound(&self, packet: &Packet) {
         let decision = {
             let handler = self.handler.lock().await;
-            super::path::route_outbound_packet(&handler.path_table, packet)
+            super::path::route_outbound_packet(
+                &handler.path_table,
+                packet,
+                handler.config.connected_to_shared_instance,
+            )
         };
         let packet = decision.packet;
         let maybe_iface = decision.next_iface;
@@ -171,6 +175,10 @@ impl Transport {
         self.iface_manager.clone()
     }
 
+    pub async fn set_connected_to_shared_instance(&self, connected: bool) {
+        self.handler.lock().await.config.set_connected_to_shared_instance(connected);
+    }
+
     /// Spawn a multicast UDP interface with per-peer routing.
     ///
     /// Announces and path requests broadcast to the multicast group
@@ -190,12 +198,26 @@ impl Transport {
         bind_addr: String,
         forward_addr: Option<String>,
     ) -> AddressHash {
-        let (iface_hash, peer_routing) = {
+        self.add_multicast_udp_interface_with_status(bind_addr, forward_addr).await.0
+    }
+
+    pub async fn add_multicast_udp_interface_with_status(
+        &self,
+        bind_addr: String,
+        forward_addr: Option<String>,
+    ) -> (AddressHash, crate::iface::udp::UdpRuntimeStatusHandle) {
+        let (iface_hash, peer_routing, status) = {
             let mut mgr = self.iface_manager.lock().await;
-            crate::iface::udp::spawn_multicast_udp(&mut mgr, bind_addr, forward_addr)
+            let (iface_hash, peer_routing, status) =
+                crate::iface::udp::spawn_multicast_udp_with_status(
+                    &mut mgr,
+                    bind_addr,
+                    forward_addr,
+                );
+            (iface_hash, peer_routing, status)
         };
         self.handler.lock().await.register_multicast_peer_routing(iface_hash, peer_routing);
-        iface_hash
+        (iface_hash, status)
     }
 
     pub fn channel(&self, link_id: AddressHash) -> TransportChannel {

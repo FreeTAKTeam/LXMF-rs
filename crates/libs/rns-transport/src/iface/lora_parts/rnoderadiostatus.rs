@@ -238,6 +238,50 @@ impl RNodeRadioStatus {
                 * (bandwidth_hz / f64::from(symbol_divisor)),
         )
     }
+
+    #[must_use]
+    pub fn to_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "frequency_hz": self.frequency_hz,
+            "bandwidth_hz": self.bandwidth_hz,
+            "tx_power_dbm": self.tx_power_dbm,
+            "spreading_factor": self.spreading_factor,
+            "coding_rate": self.coding_rate,
+            "radio_state": self.radio_state,
+            "radio_lock": self.radio_lock,
+            "stat_rx": self.stat_rx,
+            "stat_tx": self.stat_tx,
+            "rssi_dbm": self.rssi_dbm,
+            "snr_db": self.snr_db,
+            "signal_quality_percent": self.signal_quality_percent,
+            "short_airtime_limit_percent": self.short_airtime_limit_percent,
+            "long_airtime_limit_percent": self.long_airtime_limit_percent,
+            "airtime_short_percent": self.airtime_short_percent,
+            "airtime_long_percent": self.airtime_long_percent,
+            "channel_load_short_percent": self.channel_load_short_percent,
+            "channel_load_long_percent": self.channel_load_long_percent,
+            "current_rssi_dbm": self.current_rssi_dbm,
+            "noise_floor_dbm": self.noise_floor_dbm,
+            "interference_dbm": self.interference_dbm,
+            "symbol_time_ms": self.symbol_time_ms,
+            "symbol_rate_baud": self.symbol_rate_baud,
+            "preamble_symbols": self.preamble_symbols,
+            "preamble_time_ms": self.preamble_time_ms,
+            "csma_slot_time_ms": self.csma_slot_time_ms,
+            "csma_difs_ms": self.csma_difs_ms,
+            "csma_cw_band": self.csma_cw_band,
+            "csma_cw_min": self.csma_cw_min,
+            "csma_cw_max": self.csma_cw_max,
+            "battery_state": self.battery_state,
+            "battery_state_label": self.battery_state_string(),
+            "battery_percent": self.battery_percent,
+            "temperature_c": self.temperature_c,
+            "framebuffer_bytes": self.framebuffer.as_ref().map(Vec::len),
+            "display_bytes": self.display.as_ref().map(Vec::len),
+            "random_byte": self.random_byte,
+            "reported_bitrate_bps": self.reported_bitrate_bps(),
+        })
+    }
 }
 
 fn u32_from_payload(command: u8, payload: &[u8], name: &str) -> Result<u32, String> {
@@ -316,6 +360,18 @@ impl LoraConfig {
     }
 
     pub fn validate(self) -> Result<(), String> {
+        self.validate_with_bounds(0, 255)
+    }
+
+    pub fn validate_rnode_multi(self) -> Result<(), String> {
+        self.validate_with_bounds(-9, 255)
+    }
+
+    pub fn validate_rnode(self) -> Result<(), String> {
+        self.validate_with_bounds(0, 508)
+    }
+
+    fn validate_with_bounds(self, tx_power_min: i8, max_payload_limit: u16) -> Result<(), String> {
         if !(FREQ_MIN..=FREQ_MAX).contains(&self.frequency_hz) {
             return Err(format!("lora.frequency_hz must be between {FREQ_MIN} and {FREQ_MAX}"));
         }
@@ -328,11 +384,13 @@ impl LoraConfig {
         if !(5..=8).contains(&self.coding_rate) {
             return Err("lora.coding_rate must be between 5 and 8".to_string());
         }
-        if !(0..=37).contains(&self.tx_power_dbm) {
-            return Err("lora.tx_power_dbm must be between 0 and 37".to_string());
+        if !(tx_power_min..=37).contains(&self.tx_power_dbm) {
+            return Err(format!("lora.tx_power_dbm must be between {tx_power_min} and 37"));
         }
-        if !(1..=255).contains(&self.max_payload_bytes) {
-            return Err("lora.max_payload_bytes must be between 1 and 255".to_string());
+        if !(1..=max_payload_limit).contains(&self.max_payload_bytes) {
+            return Err(format!(
+                "lora.max_payload_bytes must be between 1 and {max_payload_limit}"
+            ));
         }
         if self.airtime_limit_short_hundredths.is_some_and(|value| value > 10_000) {
             return Err("lora.airtime_limit_short must be between 0 and 100".to_string());
@@ -389,6 +447,153 @@ impl LoraConfig {
     pub fn radio_state_query_frame() -> Vec<u8> {
         encode_command_frame(CMD_RADIO_STATE, &[RADIO_STATE_ASK])
     }
+
+    #[must_use]
+    pub fn blink_frame(pattern: u8) -> Vec<u8> {
+        encode_command_frame(CMD_BLINK, &[pattern])
+    }
+
+    #[must_use]
+    pub fn bluetooth_control_frame(control: RNodeBluetoothControl) -> Vec<u8> {
+        encode_command_frame(CMD_BT_CTRL, &[control.as_byte()])
+    }
+
+    #[must_use]
+    pub fn bluetooth_enable_frame() -> Vec<u8> {
+        Self::bluetooth_control_frame(RNodeBluetoothControl::Enable)
+    }
+
+    #[must_use]
+    pub fn bluetooth_disable_frame() -> Vec<u8> {
+        Self::bluetooth_control_frame(RNodeBluetoothControl::Disable)
+    }
+
+    #[must_use]
+    pub fn bluetooth_pair_frame() -> Vec<u8> {
+        Self::bluetooth_control_frame(RNodeBluetoothControl::Pair)
+    }
+
+    #[must_use]
+    pub fn rom_read_frame() -> Vec<u8> {
+        encode_command_frame(CMD_ROM_READ, &[0x00])
+    }
+
+    #[must_use]
+    pub fn config_read_frame() -> Vec<u8> {
+        encode_command_frame(CMD_CFG_READ, &[0x00])
+    }
+
+    #[must_use]
+    pub fn config_save_frame() -> Vec<u8> {
+        encode_command_frame(CMD_CONF_SAVE, &[0x00])
+    }
+
+    #[must_use]
+    pub fn config_delete_frame() -> Vec<u8> {
+        encode_command_frame(CMD_CONF_DELETE, &[0x00])
+    }
+
+    #[must_use]
+    pub fn rom_wipe_frame() -> Vec<u8> {
+        encode_command_frame(CMD_ROM_WIPE, &[RESET_ESP32])
+    }
+
+    #[must_use]
+    pub fn rom_write_frame(addr: u8, byte: u8) -> Vec<u8> {
+        encode_command_frame(CMD_ROM_WRITE, &[addr, byte])
+    }
+
+    #[must_use]
+    pub fn display_intensity_frame(intensity: u8) -> Vec<u8> {
+        encode_command_frame(CMD_DISP_INT, &[intensity])
+    }
+
+    #[must_use]
+    pub fn display_blanking_frame(blanking_timeout: u8) -> Vec<u8> {
+        encode_command_frame(CMD_DISP_BLNK, &[blanking_timeout])
+    }
+
+    #[must_use]
+    pub fn display_rotation_frame(rotation: u8) -> Vec<u8> {
+        encode_command_frame(CMD_DISP_ROT, &[rotation])
+    }
+
+    #[must_use]
+    pub fn display_recondition_frame() -> Vec<u8> {
+        encode_command_frame(CMD_DISP_RCND, &[0x01])
+    }
+
+    #[must_use]
+    pub fn disable_interference_avoidance_frame(disabled: bool) -> Vec<u8> {
+        encode_command_frame(CMD_DIS_IA, &[u8::from(disabled)])
+    }
+
+    #[must_use]
+    pub fn neopixel_intensity_frame(intensity: u8) -> Vec<u8> {
+        encode_command_frame(CMD_NP_INT, &[intensity])
+    }
+
+    #[must_use]
+    pub fn display_address_frame(address: u8) -> Vec<u8> {
+        encode_command_frame(CMD_DISP_ADR, &[address])
+    }
+
+    #[must_use]
+    pub fn firmware_update_indicator_frame() -> Vec<u8> {
+        encode_command_frame(CMD_FW_UPD, &[0x01])
+    }
+
+    #[must_use]
+    pub fn firmware_hash_frame(hash: &[u8]) -> Vec<u8> {
+        encode_command_frame(CMD_FW_HASH, hash)
+    }
+
+    #[must_use]
+    pub fn wifi_mode_frame(mode: u8) -> Vec<u8> {
+        encode_command_frame(CMD_WIFI_MODE, &[mode])
+    }
+
+    pub fn wifi_channel_frame(channel: u8) -> Result<Vec<u8>, String> {
+        if !(1..=14).contains(&channel) {
+            return Err("rnode wifi channel must be between 1 and 14".to_string());
+        }
+        Ok(encode_command_frame(CMD_WIFI_CHN, &[channel]))
+    }
+
+    #[must_use]
+    pub fn wifi_ip_frame(ip: Option<Ipv4Addr>) -> Vec<u8> {
+        encode_command_frame(CMD_WIFI_IP, &ip.map_or([0; 4], |ip| ip.octets()))
+    }
+
+    #[must_use]
+    pub fn wifi_netmask_frame(netmask: Option<Ipv4Addr>) -> Vec<u8> {
+        encode_command_frame(CMD_WIFI_NM, &netmask.map_or([0; 4], |netmask| netmask.octets()))
+    }
+
+    pub fn wifi_ssid_frame(ssid: Option<&str>) -> Result<Vec<u8>, String> {
+        Ok(encode_command_frame(CMD_WIFI_SSID, &nul_terminated_wifi_field(ssid, 0, 33, "ssid")?))
+    }
+
+    pub fn wifi_psk_frame(psk: Option<&str>) -> Result<Vec<u8>, String> {
+        Ok(encode_command_frame(CMD_WIFI_PSK, &nul_terminated_wifi_field(psk, 8, 33, "psk")?))
+    }
+}
+
+fn nul_terminated_wifi_field(
+    value: Option<&str>,
+    min_len: usize,
+    max_len: usize,
+    field: &str,
+) -> Result<Vec<u8>, String> {
+    let Some(value) = value else {
+        return Ok(vec![0x00]);
+    };
+    let mut bytes = value.as_bytes().to_vec();
+    bytes.push(0x00);
+    if bytes.len() < min_len || bytes.len() > max_len {
+        return Err(format!("rnode wifi {field} length must be between {min_len} and {max_len} bytes including terminator"));
+    }
+    Ok(bytes)
 }
 
 fn u32_be_bytes(value: u64) -> [u8; 4] {

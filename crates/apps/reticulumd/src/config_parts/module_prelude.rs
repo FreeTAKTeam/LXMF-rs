@@ -26,6 +26,8 @@ struct DaemonConfigRaw {
     announce_capabilities: Vec<String>,
     #[serde(default)]
     propagation_node: Option<PropagationNodeConfig>,
+    #[serde(default)]
+    reticulum: Option<ReticulumConfigRaw>,
     #[serde(default, deserialize_with = "deserialize_interfaces")]
     interfaces: Vec<InterfaceConfig>,
 }
@@ -37,6 +39,11 @@ impl<'de> Deserialize<'de> for DaemonConfig {
     {
         let raw = DaemonConfigRaw::deserialize(deserializer)?;
         let mut interfaces = raw.interfaces;
+        if should_synthesize_global_shared_instance(raw.reticulum.as_ref(), &interfaces) {
+            if let Some(reticulum) = raw.reticulum.as_ref() {
+                interfaces.push(reticulum.global_shared_instance_interface());
+            }
+        }
         for (index, iface) in interfaces.iter_mut().enumerate() {
             let original_kind = iface.kind.trim().to_string();
             iface.kind = normalize_interface_kind(iface.kind.trim());
@@ -50,6 +57,84 @@ impl<'de> Deserialize<'de> for DaemonConfig {
             interfaces,
         })
     }
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[allow(dead_code)]
+struct ReticulumConfigRaw {
+    #[serde(default)]
+    share_instance: Option<bool>,
+    #[serde(default)]
+    shared_instance_type: Option<String>,
+    #[serde(default)]
+    shared_instance_port: Option<u16>,
+    #[serde(default)]
+    instance_name: Option<String>,
+    #[serde(default)]
+    force_shared_instance_bitrate: Option<u64>,
+    #[serde(default)]
+    instance_control_port: Option<u16>,
+    #[serde(default)]
+    rpc_key: Option<String>,
+}
+
+impl ReticulumConfigRaw {
+    fn global_shared_instance_interface(&self) -> InterfaceConfig {
+        let shared_instance_type = self
+            .shared_instance_type
+            .as_deref()
+            .map(str::trim)
+            .map(str::to_ascii_lowercase)
+            .filter(|value| matches!(value.as_str(), "tcp" | "unix"))
+            .unwrap_or_else(default_global_shared_instance_type);
+        let instance_name = self
+            .instance_name
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned);
+        let is_tcp = shared_instance_type == "tcp";
+        InterfaceConfig {
+            kind: "local".to_string(),
+            enabled: Some(true),
+            name: Some("shared-instance".to_string()),
+            synthetic_shared_instance: true,
+            shared_instance_type: Some(shared_instance_type),
+            host: is_tcp.then(|| "127.0.0.1".to_string()),
+            port: is_tcp.then_some(self.shared_instance_port.unwrap_or(37_428)),
+            instance_name,
+            force_shared_instance_bitrate: self.force_shared_instance_bitrate,
+            ..InterfaceConfig::default()
+        }
+    }
+}
+
+fn should_synthesize_global_shared_instance(
+    reticulum: Option<&ReticulumConfigRaw>,
+    interfaces: &[InterfaceConfig],
+) -> bool {
+    let Some(reticulum) = reticulum else {
+        return false;
+    };
+    if reticulum.share_instance == Some(false) {
+        return false;
+    }
+    !interfaces.iter().any(|iface| {
+        matches!(
+            normalize_interface_kind(iface.kind.trim()).as_str(),
+            "local" | "local_client"
+        )
+    })
+}
+
+#[cfg(any(target_family = "unix", target_os = "android"))]
+fn default_global_shared_instance_type() -> String {
+    "unix".to_string()
+}
+
+#[cfg(not(any(target_family = "unix", target_os = "android")))]
+fn default_global_shared_instance_type() -> String {
+    "tcp".to_string()
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -84,6 +169,12 @@ pub struct InterfaceConfig {
     #[serde(default)]
     pub enabled: Option<bool>,
     #[serde(default)]
+    pub interface_enabled: Option<bool>,
+    #[serde(skip)]
+    pub rnode_profile: bool,
+    #[serde(skip)]
+    pub synthetic_shared_instance: bool,
+    #[serde(default)]
     pub interface_mode: Option<String>,
     #[serde(default)]
     pub mode: Option<String>,
@@ -94,7 +185,79 @@ pub struct InterfaceConfig {
     #[serde(default)]
     pub bitrate: Option<u64>,
     #[serde(default)]
+    pub force_shared_instance_bitrate: Option<u64>,
+    #[serde(default)]
     pub announce_cap: Option<u64>,
+    #[serde(default)]
+    pub announce_rate_target: Option<u64>,
+    #[serde(default)]
+    pub announce_rate_grace: Option<u64>,
+    #[serde(default)]
+    pub announce_rate_penalty: Option<u64>,
+    #[serde(default)]
+    pub bootstrap_only: Option<bool>,
+    #[serde(default)]
+    pub ignore_config_warnings: Option<bool>,
+    #[serde(default)]
+    pub ifac_size: Option<u64>,
+    #[serde(default)]
+    pub networkname: Option<String>,
+    #[serde(default)]
+    pub network_name: Option<String>,
+    #[serde(default)]
+    pub passphrase: Option<String>,
+    #[serde(default)]
+    pub pass_phrase: Option<String>,
+    #[serde(default)]
+    pub ingress_control: Option<bool>,
+    #[serde(default)]
+    pub egress_control: Option<bool>,
+    #[serde(default)]
+    pub ic_max_held_announces: Option<u64>,
+    #[serde(default)]
+    pub ic_burst_hold: Option<f64>,
+    #[serde(default)]
+    pub ic_burst_freq_new: Option<f64>,
+    #[serde(default)]
+    pub ic_burst_freq: Option<f64>,
+    #[serde(default)]
+    pub ic_pr_burst_freq_new: Option<f64>,
+    #[serde(default)]
+    pub ic_pr_burst_freq: Option<f64>,
+    #[serde(default)]
+    pub ec_pr_freq: Option<f64>,
+    #[serde(default)]
+    pub ic_new_time: Option<f64>,
+    #[serde(default)]
+    pub ic_burst_penalty: Option<f64>,
+    #[serde(default)]
+    pub ic_held_release_interval: Option<f64>,
+    #[serde(default)]
+    pub discoverable: Option<bool>,
+    #[serde(default)]
+    pub announce_interval: Option<u64>,
+    #[serde(default)]
+    pub discovery_stamp_value: Option<u64>,
+    #[serde(default)]
+    pub discovery_name: Option<String>,
+    #[serde(default)]
+    pub discovery_encrypt: Option<bool>,
+    #[serde(default)]
+    pub reachable_on: Option<String>,
+    #[serde(default)]
+    pub publish_ifac: Option<bool>,
+    #[serde(default)]
+    pub latitude: Option<f64>,
+    #[serde(default)]
+    pub longitude: Option<f64>,
+    #[serde(default)]
+    pub height: Option<f64>,
+    #[serde(default)]
+    pub discovery_frequency: Option<u64>,
+    #[serde(default)]
+    pub discovery_bandwidth: Option<u64>,
+    #[serde(default)]
+    pub discovery_modulation: Option<u64>,
     #[serde(default)]
     pub host: Option<String>,
     #[serde(skip)]
@@ -105,6 +268,24 @@ pub struct InterfaceConfig {
     pub target_host: Option<String>,
     #[serde(default)]
     pub target_port: Option<u16>,
+    #[serde(default)]
+    pub prefer_ipv6: Option<bool>,
+    #[serde(default)]
+    pub i2p_tunneled: Option<bool>,
+    #[serde(default)]
+    pub connect_timeout: Option<u64>,
+    #[serde(default)]
+    pub max_reconnect_tries: Option<u64>,
+    #[serde(default)]
+    pub command: Option<String>,
+    #[serde(default)]
+    pub respawn_delay: Option<f64>,
+    #[serde(default)]
+    pub shared_instance_type: Option<String>,
+    #[serde(default)]
+    pub instance_name: Option<String>,
+    #[serde(default)]
+    pub socket_path: Option<String>,
     #[serde(default)]
     pub device: Option<String>,
     #[serde(default)]
@@ -121,6 +302,14 @@ pub struct InterfaceConfig {
     pub devices: Option<Vec<String>>,
     #[serde(default, deserialize_with = "deserialize_optional_string_list")]
     pub ignored_devices: Option<Vec<String>>,
+    #[serde(default, deserialize_with = "deserialize_optional_string_list")]
+    pub peers: Option<Vec<String>>,
+    #[serde(default)]
+    pub connectable: Option<bool>,
+    #[serde(default)]
+    pub sam_host: Option<String>,
+    #[serde(default)]
+    pub sam_port: Option<u16>,
     #[serde(default)]
     pub baud_rate: Option<u32>,
     #[serde(default)]
@@ -150,6 +339,10 @@ pub struct InterfaceConfig {
     #[serde(default)]
     pub id_interval: Option<u64>,
     #[serde(default)]
+    pub callsign: Option<String>,
+    #[serde(default)]
+    pub ssid: Option<u8>,
+    #[serde(default)]
     pub reconnect_backoff_ms: Option<u64>,
     #[serde(default)]
     pub max_reconnect_backoff_ms: Option<u64>,
@@ -159,6 +352,22 @@ pub struct InterfaceConfig {
     pub adapter: Option<String>,
     #[serde(default)]
     pub peripheral_id: Option<String>,
+    #[serde(default)]
+    pub allow_bluetooth: Option<bool>,
+    #[serde(default)]
+    pub target_device_name: Option<String>,
+    #[serde(default)]
+    pub target_device_address: Option<String>,
+    #[serde(default)]
+    pub ble_name: Option<String>,
+    #[serde(default)]
+    pub ble_addr: Option<String>,
+    #[serde(default)]
+    pub tcp_host: Option<String>,
+    #[serde(default)]
+    pub force_ble: Option<bool>,
+    #[serde(default)]
+    pub force_tcp: Option<bool>,
     #[serde(default)]
     pub service_uuid: Option<String>,
     #[serde(default)]
@@ -213,7 +422,7 @@ impl DaemonConfig {
     pub fn enabled_tcp_clients(&self) -> Vec<&InterfaceConfig> {
         self.interfaces
             .iter()
-            .filter(|iface| iface.enabled.unwrap_or(false) && iface.kind == "tcp_client")
+            .filter(|iface| iface.enabled() && iface.kind == "tcp_client")
             .collect()
     }
 
@@ -231,7 +440,7 @@ impl DaemonConfig {
     pub fn enabled_tcp_servers(&self) -> Vec<&InterfaceConfig> {
         self.interfaces
             .iter()
-            .filter(|iface| iface.enabled.unwrap_or(false) && iface.kind == "tcp_server")
+            .filter(|iface| iface.enabled() && iface.kind == "tcp_server")
             .collect()
     }
 

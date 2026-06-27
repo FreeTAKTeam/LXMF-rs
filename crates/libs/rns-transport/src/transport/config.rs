@@ -8,6 +8,7 @@ impl TransportConfig {
             identity: identity.clone(),
             broadcast,
             retransmit: false,
+            connected_to_shared_instance: false,
             announce_cache_capacity: 100_000,
             announce_retry_limit: 1,
             announce_queue_len: 64,
@@ -24,6 +25,11 @@ impl TransportConfig {
     pub fn set_retransmit(&mut self, retransmit: bool) {
         self.retransmit = retransmit;
     }
+
+    pub fn set_connected_to_shared_instance(&mut self, connected: bool) {
+        self.connected_to_shared_instance = connected;
+    }
+
     pub fn set_broadcast(&mut self, broadcast: bool) {
         self.broadcast = broadcast;
     }
@@ -77,6 +83,7 @@ impl Default for TransportConfig {
             identity: PrivateIdentity::new_from_rand(OsRng),
             broadcast: false,
             retransmit: false,
+            connected_to_shared_instance: false,
             announce_cache_capacity: 100_000,
             announce_retry_limit: 1,
             announce_queue_len: 64,

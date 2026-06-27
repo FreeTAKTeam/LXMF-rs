@@ -159,6 +159,26 @@ All methods below are required for full CLI feature coverage.
 - `set_interfaces`
 : Params keys: `interfaces`
 - `reload_config` (no params)
+- `rnode_management`
+: Params keys: `iface`, `command`; command-specific keys include `pattern`,
+  display/NeoPixel fields, interference-avoidance flags, and, for
+  `RNodeMultiInterface`, required child `vport`. Supported commands are
+  `radio_state_query`/`query_radio_state`, `blink`,
+  `config_read`/`read_config`, `rom_read`/`read_rom`, display
+  intensity/blanking/rotation/recondition/address controls, NeoPixel
+  intensity, interference-avoidance enable/disable controls, Bluetooth
+  enable/disable/pair controls, config save/delete, ROM write/wipe, hard
+  reset, firmware update/hash metadata, and Wi-Fi mode/channel/IP/netmask/
+  SSID/PSK set or clear controls. Persistent/disruptive commands require
+  `confirm_persistent=true`; destructive commands require
+  `confirm_destructive=true` and `confirm_command` exactly matching the
+  canonical command. Serial/TCP RNodeInterface handles, plus feature-gated BLE
+  RNodeInterface handles when `reticulumd` is built with `rnode-ble`, are
+  selected by runtime iface id or an unambiguous configured interface name.
+  RNodeMulti handles are selected by parent runtime iface id or unambiguous
+  configured parent name, then validate the requested child `vport`; missing
+  or unconfigured vports are rejected. Successful responses report that the
+  management frame was queued, not that the radio has completed the operation.
 
 `list_interfaces` response notes:
 
@@ -184,7 +204,7 @@ Startup policy notes:
 The following contract is mandatory in v1:
 
 1. `set_interfaces` accepts only legacy hot-apply kinds (`tcp_client`, `tcp_server`).
-2. If any startup-only kind is present (`serial`, `ble_gatt`, `lora`, or unknown future kinds),
+2. If any startup-only kind is present (`local`, `serial`, `ble_gatt`, `lora`, or unknown future kinds),
    the request is rejected atomically with:
    - `error.code = "CONFIG_RESTART_REQUIRED"`
    - `error.machine_code = "UNSUPPORTED_MUTATION_KIND_REQUIRES_RESTART"`
