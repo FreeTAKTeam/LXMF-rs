@@ -218,6 +218,20 @@ pub(super) async fn manage_transport(
                             log::debug!("<< rx({}) = {} {}", message.address, packet, packet.hash());
                         }
 
+                        log::info!(
+                            "[tp-diag] inbound_packet node={} iface={} src={:?} dst={} type={:?} dest_type={:?} propagation={:?} ctx={:?} len={} hash={}",
+                            handler.config.name,
+                            message.address,
+                            message.source,
+                            packet.destination,
+                            packet.header.packet_type,
+                            packet.header.destination_type,
+                            packet.header.propagation_type,
+                            packet.context,
+                            packet.data.len(),
+                            packet.hash()
+                        );
+
                         if handle_fixed_destinations(
                             &packet,
                             &mut handler,

@@ -260,6 +260,11 @@ impl Transport {
         handler.send_packet_with_trace(packet).await
     }
 
+    pub async fn send_packet_broadcast_with_trace(&self, packet: Packet) -> SendPacketTrace {
+        let mut handler = self.handler.lock().await;
+        handler.send_packet_broadcast_with_trace(packet).await
+    }
+
     pub async fn send_prepared_packet_broadcast_with_trace(
         &self,
         packet: Packet,

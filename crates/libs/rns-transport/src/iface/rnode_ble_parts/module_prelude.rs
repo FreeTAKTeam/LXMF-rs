@@ -323,6 +323,7 @@ impl NativeRnodeBleBackend {
     async fn scan_for_peripheral(
         adapter: &Adapter,
         settings: &NativeRnodeBleSettings,
+        exclude_exact_identifier: Option<&str>,
         allow_service_uuid_match: bool,
     ) -> Result<Peripheral, String> {
         adapter
@@ -342,6 +343,7 @@ impl NativeRnodeBleBackend {
                     &peripheral,
                     &settings.peripheral_id,
                     &settings.peripheral_aliases,
+                    exclude_exact_identifier,
                     settings.service_uuid,
                     allow_service_uuid_match,
                 )
@@ -501,6 +503,7 @@ impl RnodeBleBackend for NativeRnodeBleBackend {
                         let scanned = Self::scan_for_peripheral(
                             &adapter,
                             &self.settings,
+                            Some(&self.settings.peripheral_id),
                             false,
                         )
                         .await
@@ -520,7 +523,7 @@ impl RnodeBleBackend for NativeRnodeBleBackend {
             }
             None => {
                 let scanned =
-                    Self::scan_for_peripheral(&adapter, &self.settings, false).await?;
+                    Self::scan_for_peripheral(&adapter, &self.settings, None, false).await?;
                 Self::connect_selected_peripheral(&scanned, self.settings.connect_timeout).await?;
                 scanned
             }

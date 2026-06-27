@@ -370,6 +370,22 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn closed_tx_queue_stops_and_cleans_up_iface() {
+        let mut mgr = InterfaceManager::new(16);
+        let rx = mgr.new_channel(16).tx_channel;
+        let iface = mgr.ifaces[0].address;
+        drop(rx);
+
+        let trace =
+            mgr.send(TxMessage { tx_type: TxMessageType::Direct(iface), packet: Packet::default() }).await;
+
+        assert_eq!(trace.matched_ifaces, 1);
+        assert_eq!(trace.sent_ifaces, 0);
+        assert_eq!(trace.failed_ifaces, 1);
+        assert_eq!(mgr.iface_count(), 0);
+    }
+
+    #[tokio::test]
     async fn saturated_broadcast_queue_returns_without_enqueue_timeout() {
         let mut mgr = InterfaceManager::new(16);
         let mut rx = mgr.new_channel(1).tx_channel;

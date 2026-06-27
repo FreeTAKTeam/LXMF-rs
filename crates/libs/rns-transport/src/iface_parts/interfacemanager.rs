@@ -381,6 +381,7 @@ impl InterfaceManager {
                             iface.address,
                             tx_type
                         );
+                        iface.stop.cancel();
                         false
                     }
                     Err(_) => {
@@ -395,6 +396,7 @@ impl InterfaceManager {
             }
             Err(mpsc::error::TrySendError::Closed(_)) => {
                 log::warn!("tx queue closed on {} for {:?}", iface.address, tx_type);
+                iface.stop.cancel();
                 false
             }
         }
@@ -486,6 +488,7 @@ impl InterfaceManager {
     }
 
     pub async fn release_queued_announces(&mut self) -> TxDispatchTrace {
+        self.cleanup();
         let mut trace = TxDispatchTrace::default();
         let now = Instant::now();
 
@@ -516,6 +519,7 @@ impl InterfaceManager {
             }
         }
 
+        self.cleanup();
         trace
     }
 
@@ -541,6 +545,7 @@ impl InterfaceManager {
         announce_policy: Option<AnnounceBroadcastPolicy>,
         apply_egress_control: bool,
     ) -> TxDispatchTrace {
+        self.cleanup();
         let mut trace = TxDispatchTrace::default();
         for iface in &mut self.ifaces {
             let should_send = match message.tx_type {
@@ -612,6 +617,7 @@ impl InterfaceManager {
             }
         }
 
+        self.cleanup();
         trace
     }
 }

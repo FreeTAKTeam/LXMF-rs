@@ -426,6 +426,17 @@ pub(super) async fn handle_data<'a>(
     }
 
     if packet.header.destination_type == DestinationType::Single {
+        let has_local_destination =
+            handler.single_in_destinations.contains_key(&packet.destination);
+        log::info!(
+            "[tp-diag] inbound_single_data node={} dst={} iface={} local_destination={} ctx={:02x} len={}",
+            handler.config.name,
+            packet.destination,
+            iface,
+            has_local_destination,
+            packet.context as u8,
+            packet.data.len(),
+        );
         if let Some(destination) = handler.single_in_destinations.get(&packet.destination).cloned()
         {
             data_handled = true;
