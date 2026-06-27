@@ -22,6 +22,7 @@ fn weave_prepared_host_smoke_preserves_evidence_contract() {
         "WEAVE_REQUIRE_CONNECTED",
         "WEAVE_REMOTE_DISPLAY_CONTROL",
         "WEAVE_TIMEOUT_SECS",
+        "[[interfaces]]",
         "WeaveInterface",
         "weave-prepared-host",
         "--strict-interface-startup",

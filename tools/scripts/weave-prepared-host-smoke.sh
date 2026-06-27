@@ -175,17 +175,14 @@ if [[ ! -e "$WEAVE_PORT" ]]; then
 fi
 
 cat >"$CONFIG_PATH" <<EOF
-interfaces = [
-  {
-    type = "WeaveInterface",
-    enabled = true,
-    name = "weave-prepared-host",
-    port = "${WEAVE_PORT}",
-    speed = ${WEAVE_BAUD_RATE},
-    mtu = ${WEAVE_MTU},
-    configured_bitrate = ${WEAVE_CONFIGURED_BITRATE}
-  }
-]
+[[interfaces]]
+type = "WeaveInterface"
+enabled = true
+name = "weave-prepared-host"
+port = "${WEAVE_PORT}"
+speed = ${WEAVE_BAUD_RATE}
+mtu = ${WEAVE_MTU}
+configured_bitrate = ${WEAVE_CONFIGURED_BITRATE}
 EOF
 
 cargo build -p reticulumd --bin reticulumd --quiet

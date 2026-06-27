@@ -277,11 +277,8 @@ fields.extend(
         f"state_path = {json.dumps(str(pathlib.Path(config_path).parent / 'lora-state.json'))}",
     ]
 )
-lines = [
-    "interfaces = [",
-    f"  {{ {', '.join(fields)} }}",
-    "]",
-]
+lines = ["[[interfaces]]"]
+lines.extend(fields)
 pathlib.Path(config_path).write_text("\n".join(lines) + "\n", encoding="utf-8")
 PY
 

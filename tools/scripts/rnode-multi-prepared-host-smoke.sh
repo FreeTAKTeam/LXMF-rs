@@ -210,37 +210,31 @@ tx_powers = expand("RNODE_MULTI_TX_POWERS", txs_raw, count)
 outgoing = expand("RNODE_MULTI_OUTGOING", outgoing_raw, count)
 
 lines = [
-    "interfaces = [",
-    "  {",
-    '    type = "RNodeMultiInterface",',
-    "    enabled = true,",
-    '    name = "rnode-multi-prepared-host",',
-    f'    port = "{port}",',
+    "[[interfaces]]",
+    'type = "RNodeMultiInterface"',
+    "enabled = true",
+    'name = "rnode-multi-prepared-host"',
+    f'port = "{port}"',
 ]
 if not port.lower().startswith("tcp://"):
-    lines.append(f"    speed = {int(baud_rate)},")
-lines.append("    configured_bitrate = 1200,")
+    lines.append(f"speed = {int(baud_rate)}")
+lines.append("configured_bitrate = 1200")
 for index, vport in enumerate(vports):
     enabled = "true" if outgoing[index].lower() in {"1", "true", "yes", "on"} else "false"
     coding_rate = coding_rates[index]
     coding_rate_value = coding_rate if coding_rate.isdigit() else f'"{coding_rate}"'
-    comma = "," if index + 1 < count else ""
-    lines.extend(
-        [
-            f"    radio{index} = {{",
-            f'      name = "rnode-multi-v{vport}",',
-            f"      vport = {vport},",
-            f'      region = "{region}",',
-            f"      frequency = {int(frequencies[index])},",
-            f"      bandwidth = {int(bandwidths[index])},",
-            f"      spreadingfactor = {int(spreading_factors[index])},",
-            f"      codingrate = {coding_rate_value},",
-            f"      txpower = {int(tx_powers[index])},",
-            f"      outgoing = {enabled}",
-            f"    }}{comma}",
-        ]
-    )
-lines.extend(["  }", "]"])
+    radio_fields = [
+        f'name = "rnode-multi-v{vport}"',
+        f"vport = {vport}",
+        f'region = "{region}"',
+        f"frequency = {int(frequencies[index])}",
+        f"bandwidth = {int(bandwidths[index])}",
+        f"spreadingfactor = {int(spreading_factors[index])}",
+        f"codingrate = {coding_rate_value}",
+        f"txpower = {int(tx_powers[index])}",
+        f"outgoing = {enabled}",
+    ]
+    lines.append(f"radio{index} = {{ {', '.join(radio_fields)} }}")
 text = "\n".join(lines) + "\n"
 pathlib.Path(config_path).write_text(text, encoding="utf-8")
 PY

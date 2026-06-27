@@ -23,6 +23,7 @@ fn rnode_multi_prepared_host_smoke_preserves_evidence_contract() {
         "RNODE_MULTI_CODING_RATES",
         "RNODE_MULTI_TX_POWERS",
         "RNODE_MULTI_OUTGOING",
+        "[[interfaces]]",
         "RNodeMultiInterface",
         "rnode-multi-prepared-host",
         "radio{index}",

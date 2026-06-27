@@ -146,14 +146,8 @@ entries = [
 ]
 if peers:
     entries.append("peers = [" + ", ".join(json.dumps(peer) for peer in peers) + "]")
-lines = [
-    "interfaces = [",
-    "  {",
-]
-for index, entry in enumerate(entries):
-    comma = "," if index + 1 < len(entries) else ""
-    lines.append(f"    {entry}{comma}")
-lines.extend(["  }", "]"])
+lines = ["[[interfaces]]"]
+lines.extend(entries)
 pathlib.Path(config_path).write_text("\n".join(lines) + "\n", encoding="utf-8")
 PY
 

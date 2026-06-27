@@ -30,6 +30,7 @@ fn rnode_prepared_host_smoke_preserves_evidence_contract() {
         "RNODE_BLE_MAX_WRITE_LEN",
         "ble://",
         "--features rnode-ble",
+        "[[interfaces]]",
         "RNodeInterface",
         "rnode-prepared-host",
         "baud_rate",

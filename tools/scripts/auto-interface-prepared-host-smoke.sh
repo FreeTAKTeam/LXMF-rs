@@ -155,15 +155,12 @@ if int(timeout) <= 0 or int(poll) <= 0:
 PY
 
 cat >"$CONFIG_PATH" <<EOF
-interfaces = [
-  {
-    type = "AutoInterface",
-    enabled = true,
-    name = "${AUTO_IFACE_NAME}",
-    group_id = "${AUTO_CHURN_GROUP_ID}",
-    devices = ["${AUTO_CHURN_DEVICE}"]
-  }
-]
+[[interfaces]]
+type = "AutoInterface"
+enabled = true
+name = "${AUTO_IFACE_NAME}"
+group_id = "${AUTO_CHURN_GROUP_ID}"
+devices = ["${AUTO_CHURN_DEVICE}"]
 EOF
 
 cargo build -p reticulumd --bin reticulumd --quiet

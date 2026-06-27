@@ -18,6 +18,7 @@ fn auto_interface_prepared_host_smoke_preserves_evidence_contract() {
         "AUTO_CHURN_DEVICE",
         "AUTO_CHURN_INITIAL_ADDR",
         "AUTO_CHURN_REPLACEMENT_ADDR",
+        "[[interfaces]]",
         "AutoInterface",
         "auto-churn-prepared-host",
         "devices = [\"${AUTO_CHURN_DEVICE}\"]",
