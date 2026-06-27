@@ -258,7 +258,8 @@ Python key is present. Missing explicit SAM host/port config now uses Python's
 `rnstatus-rs` human output summarizes the live I2P tunnel status for
 operators, including outbound, incoming, closed, and aggregate byte counters.
 The software fake-SAM smoke exercises strict daemon startup, destination
-persistence, connectable accept status, outbound peer connection state,
+persistence, a transient outbound `NAMING LOOKUP` failure followed by recovered
+connected peer state with cleared last error, connectable accept status,
 accepted incoming peer visibility, and `rnstatus-rs` JSON/human output without
 a real I2P router. The opt-in
 prepared-host smoke can also require configured outbound peers to reach

@@ -161,6 +161,7 @@ impl InterfaceConfig {
                 insert_opt_string(&mut settings, "sam_host", self.sam_host.as_ref());
                 insert_opt_u64(&mut settings, "sam_port", self.sam_port.map(u64::from));
                 insert_opt_u64(&mut settings, "mtu", self.mtu.map(|value| value as u64));
+                insert_opt_u64(&mut settings, "reconnect_backoff_ms", self.reconnect_backoff_ms);
                 insert_opt_string(&mut settings, "state_path", self.state_path.as_ref());
             }
             "udp" => {

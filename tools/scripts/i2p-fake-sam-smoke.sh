@@ -105,6 +105,14 @@ if json_path.exists():
                 for row in peer_rows
                 if row.get("direction") == "outbound" and row.get("state") == "connected"
             ]
+            report["recovered_outbound_peers"] = [
+                row.get("peer")
+                for row in peer_rows
+                if row.get("direction") == "outbound"
+                and row.get("state") == "connected"
+                and (row.get("reconnect_attempts") or 0) >= 1
+                and row.get("last_error") is None
+            ]
             report["connected_incoming_peers"] = [
                 row.get("peer")
                 for row in peer_rows
@@ -156,6 +164,7 @@ import threading
 port_path, log_path = sys.argv[1:3]
 lock = threading.Lock()
 accepted_streams = 0
+naming_lookups = {}
 
 
 def log(message):
@@ -226,6 +235,14 @@ class SamHandler(socketserver.StreamRequestHandler):
             self.drain()
         elif command.startswith("NAMING LOOKUP NAME="):
             name = command.split("NAME=", 1)[1]
+            with lock:
+                lookup_count = naming_lookups.get(name, 0) + 1
+                naming_lookups[name] = lookup_count
+            if lookup_count == 1:
+                self.write_line(
+                    f"NAMING REPLY RESULT=KEY_NOT_FOUND NAME={name} MESSAGE=transient-lookup-failure"
+                )
+                return
             self.write_line(f"NAMING REPLY RESULT=OK NAME={name} VALUE={safe_peer_value(name)}")
         elif command.startswith("STREAM CONNECT "):
             self.write_line("STREAM STATUS RESULT=OK")
@@ -306,6 +323,7 @@ entries = [
     f"sam_port = {int(sam_port)}",
     f"storagepath = {json.dumps(f'{run_dir}/i2p-state')}",
     "configured_bitrate = 256000",
+    "reconnect_backoff_ms = 100",
 ]
 if peers:
     entries.append("peers = [" + ", ".join(json.dumps(peer) for peer in peers) + "]")
@@ -376,6 +394,10 @@ rows_by_peer = {
 for peer in expected_peers:
     row = rows_by_peer.get(peer)
     if not row or row.get("state") != "connected" or not row.get("iface"):
+        raise SystemExit(1)
+    if (row.get("reconnect_attempts") or 0) < 1:
+        raise SystemExit(1)
+    if row.get("last_error") is not None:
         raise SystemExit(1)
 incoming_rows = [
     row

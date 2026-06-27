@@ -20,11 +20,16 @@ pub(crate) fn build_adapter(
     let name =
         iface.name.as_deref().map(str::trim).filter(|value| !value.is_empty()).unwrap_or("i2p");
 
+    let reconnect_wait = iface
+        .reconnect_backoff_ms
+        .map(Duration::from_millis)
+        .unwrap_or_else(|| Duration::from_secs(15));
+
     Ok(I2pInterface::new(name.to_string(), iface_manager)
         .with_sam_endpoint(sam_endpoint)
         .with_peers(peers)
         .with_connectable(iface.connectable.unwrap_or(false))
         .with_state_path(iface.state_path.clone())
         .with_mtu(iface.mtu.unwrap_or(I2pInterface::DEFAULT_MTU))
-        .with_reconnect_wait(Duration::from_secs(15)))
+        .with_reconnect_wait(reconnect_wait))
 }

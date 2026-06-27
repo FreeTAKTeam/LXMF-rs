@@ -1078,7 +1078,7 @@ interfaces = [
 fn parses_reticulum_i2p_interface_defaults() {
     let input = r#"
 interfaces = [
-  { type = "I2PInterface", enabled = true, name = "i2p-main", peers = "peer-one.b32.i2p, peer-two.b32.i2p", storagepath = "/tmp/rns", configured_bitrate = 128000, ifac_netname = "i2p-field", ifac_netkey = "i2p-secret" }
+  { type = "I2PInterface", enabled = true, name = "i2p-main", peers = "peer-one.b32.i2p, peer-two.b32.i2p", storagepath = "/tmp/rns", configured_bitrate = 128000, reconnect_backoff_ms = 100, ifac_netname = "i2p-field", ifac_netkey = "i2p-secret" }
 ]
 "#;
     let cfg = DaemonConfig::from_toml(input).expect("parse Python I2PInterface config");
@@ -1093,6 +1093,7 @@ interfaces = [
     assert_eq!(iface.sam_port, Some(expected_sam_port));
     assert_eq!(iface.mtu, Some(1064));
     assert_eq!(iface.bitrate, Some(128_000));
+    assert_eq!(iface.reconnect_backoff_ms, Some(100));
     assert_eq!(iface.state_path.as_deref(), Some("/tmp/rns"));
     assert_eq!(iface.network_name.as_deref(), Some("i2p-field"));
     assert_eq!(iface.passphrase.as_deref(), Some("i2p-secret"));
@@ -1102,6 +1103,7 @@ interfaces = [
     assert_eq!(settings["sam_host"], expected_sam_host);
     assert_eq!(settings["sam_port"], expected_sam_port);
     assert_eq!(settings["mtu"], 1064);
+    assert_eq!(settings["reconnect_backoff_ms"], 100);
     assert_eq!(settings["state_path"], "/tmp/rns");
     assert_eq!(settings["network_name"], "i2p-field");
     assert_eq!(settings["passphrase"], "i2p-secret");

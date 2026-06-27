@@ -146,7 +146,10 @@ The script starts a local fake SAM bridge on `127.0.0.1:0`, validates the SAM
 `HELLO`, `DEST GENERATE`, `SESSION CREATE`, `NAMING LOOKUP`, `STREAM CONNECT`,
 and `STREAM ACCEPT` command paths, then starts `reticulumd` with
 `--strict-interface-startup` and polls both `rnstatus-rs --json` and human
-`rnstatus-rs` output. A passing run requires:
+`rnstatus-rs` output. The fake SAM bridge intentionally fails the first
+`NAMING LOOKUP` for each configured outbound peer, then succeeds on retry; the
+generated config sets `reconnect_backoff_ms = 100` so this recovery evidence is
+fast and deterministic. A passing run requires:
 
 - `_runtime.startup_status = "spawned"`
 - `_runtime.i2p.reachable_endpoint` ending in `.b32.i2p`
@@ -155,6 +158,8 @@ and `STREAM ACCEPT` command paths, then starts `reticulumd` with
 - `_runtime.i2p.tunnel_status.configured_peer_count` matching `I2P_PEERS`
 - connected outbound peer rows with `direction = "outbound"` and non-empty
   `iface`
+- recovered outbound peer rows with `reconnect_attempts >= 1` and
+  `last_error = null`
 - a connected incoming peer row for the fake `STREAM ACCEPT` remote
   destination, with `direction = "incoming"` and non-empty `iface`
 - human `rnstatus-rs` output containing the I2P tunnel summary
