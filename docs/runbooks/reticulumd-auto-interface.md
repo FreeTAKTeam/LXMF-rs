@@ -164,9 +164,11 @@ The reusable transport layer now also includes Python-compatible helpers for:
 - a supervised peer-data listener restart primitive that stops only the
   affected interface listener, binds the replacement link-local data listener,
   prunes stale outbound routes that referenced the old socket, and records the
-  link-local update in carrier runtime status. Replaced peer-data listeners are
-  retained as daemon-owned stop tasks until restart, removal, or runtime
-  shutdown awaits them.
+  link-local update in carrier runtime status. Loopback bridge tests prove that
+  direct per-peer sends stop after listener removal/restart and resume only
+  after the peer is accepted on the replacement socket. Replaced peer-data
+  listeners are retained as daemon-owned stop tasks until restart, removal, or
+  runtime shutdown awaits them.
 - a polling OS interface-address reconciler that re-enumerates link-local
   candidates for already adopted devices, invokes the supervised listener
   restart when an adopted address changes, and commits the new discovery state

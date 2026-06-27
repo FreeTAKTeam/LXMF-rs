@@ -182,7 +182,10 @@ The project is best described by capability level:
   application for active and zero-initial runtimes, and polling link-local
   replacement reconciliation for already adopted interfaces. Replacement-stop
   tasks for dynamically swapped discovery/data listeners are tracked and
-  drained during restart, removal, or runtime shutdown. An opt-in Linux
+  drained during restart, removal, or runtime shutdown. Loopback peer-data
+  tests now prove direct per-peer outbound routes stop emitting after
+  listener removal/restart and refresh only after a new accepted peer datagram.
+  An opt-in Linux
   namespace prepared-host smoke now records zero-initial add, link-local
   replacement, and removal churn evidence through refreshed `_runtime.auto`
   status; remaining follow-up is broader prepared-host interface churn evidence

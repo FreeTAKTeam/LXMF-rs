@@ -115,6 +115,308 @@
             .expect("tx loop task");
     }
 
+    #[tokio::test]
+    async fn auto_peer_data_listener_removal_prunes_direct_tx_route() {
+        let plan = plan_with_data_listener(AutoDataListenerBinding {
+            ifname: "lo".to_string(),
+            link_local_address: "127.0.0.1".to_string(),
+            bind_address: "127.0.0.1".to_string(),
+            bind_port: 0,
+        });
+        let sockets = plan
+            .bind_data_sockets(|_| panic!("IPv4 data bind is unscoped"))
+            .await
+            .expect("bind peer data socket");
+        let bind_addr = sockets[0].bind_addr;
+        let iface_manager = Arc::new(tokio::sync::Mutex::new(InterfaceManager::new(8)));
+        let rx_recv = iface_manager.lock().await.receiver();
+        let channel = iface_manager.lock().await.new_channel_with_role(8, IfaceRole::Multicast);
+        let runtime =
+            AutoInterfaceTransportRuntime::from_channel(channel, Arc::clone(&iface_manager));
+        let (bridge, tx_channel) = runtime.split();
+        let state = Arc::new(tokio::sync::Mutex::new(plan.discovery_state()));
+        let dedupe = Arc::new(tokio::sync::Mutex::new(AutoInboundPacketDeduplicator::from_timing(
+            AutoInterfaceTiming::for_platform(AutoInterfacePlatform::Other),
+        )));
+        let (events_tx, mut events_rx) = tokio::sync::mpsc::channel(4);
+        let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+        let tx_handle =
+            plan.spawn_peer_data_transport_tx_loop(bridge.clone(), tx_channel, shutdown_rx.clone());
+        let mut data_supervisor = AutoPeerDataListenerSupervisor::new(
+            plan,
+            Arc::clone(&state),
+            dedupe,
+            Some(bridge),
+            shutdown_rx,
+        );
+        data_supervisor.spawn_sockets(sockets, &events_tx);
+        let sender = tokio::net::UdpSocket::bind("127.0.0.1:0").await.expect("bind sender");
+        let source_address = sender.local_addr().expect("sender addr").ip().to_string();
+        state.lock().await.observe_discovery_packet(
+            &source_address,
+            "lo",
+            core::time::Duration::ZERO,
+        );
+        let inbound_packet = Packet {
+            destination: AddressHash::new_from_slice(
+                &[0x44; rns_transport::hash::ADDRESS_HASH_SIZE],
+            ),
+            data: rns_transport::packet::PacketDataBuffer::new_from_slice(b"inbound"),
+            ..Default::default()
+        };
+        let inbound_payload = inbound_packet.to_bytes().expect("serialize inbound packet");
+
+        sender.send_to(&inbound_payload, bind_addr).await.expect("send peer data datagram");
+        let processed = tokio::time::timeout(std::time::Duration::from_secs(1), events_rx.recv())
+            .await
+            .expect("processed event timeout")
+            .expect("processed event");
+        assert!(matches!(
+            processed,
+            AutoPeerDataLoopEvent::Processed(AutoProcessedPeerDataDatagram {
+                decision: AutoPeerInboundDecision::Accepted { .. },
+                ..
+            })
+        ));
+
+        let rx_message =
+            tokio::time::timeout(std::time::Duration::from_secs(1), rx_recv.lock().await.recv())
+                .await
+                .expect("rx message timeout")
+                .expect("rx message");
+        assert_eq!(rx_message.packet, inbound_packet);
+        assert_eq!(rx_message.source, IfaceSource::Udp(sender.local_addr().expect("sender addr")));
+        assert_eq!(
+            iface_manager.lock().await.role(&rx_message.address),
+            Some(IfaceRole::VirtualUnicast)
+        );
+
+        let outbound_packet = Packet {
+            destination: AddressHash::new_from_slice(
+                &[0x55; rns_transport::hash::ADDRESS_HASH_SIZE],
+            ),
+            data: rns_transport::packet::PacketDataBuffer::new_from_slice(b"outbound"),
+            ..Default::default()
+        };
+        iface_manager
+            .lock()
+            .await
+            .send(TxMessage {
+                tx_type: TxMessageType::Direct(rx_message.address),
+                packet: outbound_packet.clone(),
+            })
+            .await;
+        let mut outbound_payload = [0u8; 512];
+        let (received, _) = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            sender.recv_from(&mut outbound_payload),
+        )
+        .await
+        .expect("outbound receive timeout")
+        .expect("outbound receive");
+        let decoded = Packet::deserialize(&mut InputBuffer::new(&outbound_payload[..received]))
+            .expect("decode outbound packet");
+        assert_eq!(decoded, outbound_packet);
+
+        assert!(data_supervisor.remove_listener("lo").await);
+
+        iface_manager
+            .lock()
+            .await
+            .send(TxMessage {
+                tx_type: TxMessageType::Direct(rx_message.address),
+                packet: outbound_packet,
+            })
+            .await;
+        let stale_result = tokio::time::timeout(
+            std::time::Duration::from_millis(200),
+            sender.recv_from(&mut outbound_payload),
+        )
+        .await;
+        assert!(stale_result.is_err(), "stale peer-data route still emitted direct Tx");
+
+        shutdown_tx.send(true).expect("send shutdown");
+        data_supervisor.shutdown_all().await;
+        tokio::time::timeout(std::time::Duration::from_secs(1), tx_handle)
+            .await
+            .expect("tx loop shutdown timeout")
+            .expect("tx loop task");
+    }
+
+    #[tokio::test]
+    async fn auto_peer_data_listener_restart_prunes_and_refreshes_direct_tx_route() {
+        let plan = plan_with_data_listener(AutoDataListenerBinding {
+            ifname: "lo".to_string(),
+            link_local_address: "127.0.0.1".to_string(),
+            bind_address: "127.0.0.1".to_string(),
+            bind_port: 0,
+        });
+        let sockets = plan
+            .bind_data_sockets(|_| panic!("IPv4 data bind is unscoped"))
+            .await
+            .expect("bind peer data socket");
+        let old_bind_addr = sockets[0].bind_addr;
+        let iface_manager = Arc::new(tokio::sync::Mutex::new(InterfaceManager::new(8)));
+        let rx_recv = iface_manager.lock().await.receiver();
+        let channel = iface_manager.lock().await.new_channel_with_role(8, IfaceRole::Multicast);
+        let runtime =
+            AutoInterfaceTransportRuntime::from_channel(channel, Arc::clone(&iface_manager));
+        let (bridge, tx_channel) = runtime.split();
+        let state = Arc::new(tokio::sync::Mutex::new(plan.discovery_state()));
+        let dedupe = Arc::new(tokio::sync::Mutex::new(AutoInboundPacketDeduplicator::from_timing(
+            AutoInterfaceTiming::for_platform(AutoInterfacePlatform::Other),
+        )));
+        let (events_tx, mut events_rx) = tokio::sync::mpsc::channel(8);
+        let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+        let tx_handle =
+            plan.spawn_peer_data_transport_tx_loop(bridge.clone(), tx_channel, shutdown_rx.clone());
+        let mut data_supervisor = AutoPeerDataListenerSupervisor::new(
+            plan,
+            Arc::clone(&state),
+            dedupe,
+            Some(bridge),
+            shutdown_rx,
+        );
+        data_supervisor.spawn_sockets(sockets, &events_tx);
+        let sender = tokio::net::UdpSocket::bind("127.0.0.1:0").await.expect("bind sender");
+        let source_address = sender.local_addr().expect("sender addr").ip().to_string();
+        state.lock().await.observe_discovery_packet(
+            &source_address,
+            "lo",
+            core::time::Duration::ZERO,
+        );
+        let inbound_packet = Packet {
+            destination: AddressHash::new_from_slice(
+                &[0x66; rns_transport::hash::ADDRESS_HASH_SIZE],
+            ),
+            data: rns_transport::packet::PacketDataBuffer::new_from_slice(b"restart-before"),
+            ..Default::default()
+        };
+        let inbound_payload = inbound_packet.to_bytes().expect("serialize inbound packet");
+
+        sender.send_to(&inbound_payload, old_bind_addr).await.expect("send peer data datagram");
+        let processed = tokio::time::timeout(std::time::Duration::from_secs(1), events_rx.recv())
+            .await
+            .expect("processed event timeout")
+            .expect("processed event");
+        assert!(matches!(
+            processed,
+            AutoPeerDataLoopEvent::Processed(AutoProcessedPeerDataDatagram {
+                decision: AutoPeerInboundDecision::Accepted { .. },
+                ..
+            })
+        ));
+        let rx_message =
+            tokio::time::timeout(std::time::Duration::from_secs(1), rx_recv.lock().await.recv())
+                .await
+                .expect("rx message timeout")
+                .expect("rx message");
+        let virtual_iface = rx_message.address;
+        assert_eq!(rx_message.packet, inbound_packet);
+
+        let outbound_packet = Packet {
+            destination: AddressHash::new_from_slice(
+                &[0x77; rns_transport::hash::ADDRESS_HASH_SIZE],
+            ),
+            data: rns_transport::packet::PacketDataBuffer::new_from_slice(b"restart-route"),
+            ..Default::default()
+        };
+        let update = AutoLinkLocalAddressUpdate {
+            ifname: "lo".to_string(),
+            old_link_local_address: "127.0.0.1".to_string(),
+            new_link_local_address: "127.0.0.2".to_string(),
+            listener_binding: AutoDataListenerBinding {
+                ifname: "lo".to_string(),
+                link_local_address: "127.0.0.2".to_string(),
+                bind_address: "127.0.0.1".to_string(),
+                bind_port: 0,
+            },
+        };
+        let new_bind_addr = data_supervisor
+            .restart_link_local_listener(
+                &update,
+                None,
+                &events_tx,
+                |_| panic!("IPv4 data bind is unscoped"),
+            )
+            .await
+            .expect("restart link-local data listener");
+        assert_ne!(new_bind_addr, old_bind_addr);
+
+        iface_manager
+            .lock()
+            .await
+            .send(TxMessage {
+                tx_type: TxMessageType::Direct(virtual_iface),
+                packet: outbound_packet.clone(),
+            })
+            .await;
+        let mut outbound_payload = [0u8; 512];
+        let stale_result = tokio::time::timeout(
+            std::time::Duration::from_millis(200),
+            sender.recv_from(&mut outbound_payload),
+        )
+        .await;
+        assert!(stale_result.is_err(), "stale restarted peer-data route still emitted direct Tx");
+
+        let refreshed_packet = Packet {
+            destination: AddressHash::new_from_slice(
+                &[0x88; rns_transport::hash::ADDRESS_HASH_SIZE],
+            ),
+            data: rns_transport::packet::PacketDataBuffer::new_from_slice(b"restart-after"),
+            ..Default::default()
+        };
+        let refreshed_payload = refreshed_packet.to_bytes().expect("serialize refreshed packet");
+        sender
+            .send_to(&refreshed_payload, new_bind_addr)
+            .await
+            .expect("send refreshed peer data datagram");
+        let refreshed = tokio::time::timeout(std::time::Duration::from_secs(1), events_rx.recv())
+            .await
+            .expect("refreshed event timeout")
+            .expect("refreshed event");
+        assert!(matches!(
+            refreshed,
+            AutoPeerDataLoopEvent::Processed(AutoProcessedPeerDataDatagram {
+                decision: AutoPeerInboundDecision::Accepted { .. },
+                ..
+            })
+        ));
+        let refreshed_rx =
+            tokio::time::timeout(std::time::Duration::from_secs(1), rx_recv.lock().await.recv())
+                .await
+                .expect("refreshed rx message timeout")
+                .expect("refreshed rx message");
+        assert_eq!(refreshed_rx.address, virtual_iface);
+        assert_eq!(refreshed_rx.packet, refreshed_packet);
+
+        iface_manager
+            .lock()
+            .await
+            .send(TxMessage {
+                tx_type: TxMessageType::Direct(virtual_iface),
+                packet: outbound_packet.clone(),
+            })
+            .await;
+        let (received, _) = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            sender.recv_from(&mut outbound_payload),
+        )
+        .await
+        .expect("refreshed outbound receive timeout")
+        .expect("refreshed outbound receive");
+        let decoded = Packet::deserialize(&mut InputBuffer::new(&outbound_payload[..received]))
+            .expect("decode refreshed outbound packet");
+        assert_eq!(decoded, outbound_packet);
+
+        shutdown_tx.send(true).expect("send shutdown");
+        data_supervisor.shutdown_all().await;
+        tokio::time::timeout(std::time::Duration::from_secs(1), tx_handle)
+            .await
+            .expect("tx loop shutdown timeout")
+            .expect("tx loop task");
+    }
+
     #[test]
     fn auto_process_discovery_datagram_authenticates_local_echo() {
         let plan = build_startup_plan_from_candidates(
