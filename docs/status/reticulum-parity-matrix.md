@@ -153,8 +153,9 @@ placeholders:
   disable during teardown before per-vport radio-off and leave-host payload
   `0xff` frames. Daemon/RPC snapshots refresh over the `radio_status` runtime
   metadata schema, including stream/probe state, last-error reporting, and
-  accepted startup-probe firmware/platform/MCU/interface metadata, with an
-  opt-in prepared-host smoke harness for serial or TCP RNodeMulti devices.
+  accepted or partial startup-probe firmware/platform/MCU/interface metadata
+  from non-cancelled probe attempts, with an opt-in prepared-host smoke harness
+  for serial or TCP RNodeMulti devices.
 - Shared serial Weave baseline with WDCL over HDLC framing, discovery
   handshake response, endpoint event learning, virtual peer child interfaces,
   inbound endpoint packet routing, direct endpoint command writes,
@@ -274,8 +275,9 @@ shared serial/TCP vport routing slice exists and startup validates detect,
 firmware `>= 1.74`, platform, MCU, `CMD_INTERFACES`, and hardware-reported
 configured vports. Selected-vport radio status bookkeeping and live daemon/RPC
 `radio_status` refresh exist, including stream/probe state, last-error
-reporting, accepted startup-probe firmware/platform/MCU/interface metadata, and
-the ordinary RNode radio-status schema for each vport,
+reporting, accepted or partial startup-probe firmware/platform/MCU/interface
+metadata from non-cancelled probe attempts, and the ordinary RNode radio-status
+schema for each vport,
 strict startup preflights the parent serial/TCP endpoint before registering
 management targets, display-capable teardown disables the external framebuffer
 before per-vport radio-off/leave frames, clean stream EOF/software stop reports

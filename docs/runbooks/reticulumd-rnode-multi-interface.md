@@ -176,9 +176,10 @@ hardware has reported live values. While the daemon is running,
 `radio_status` object from the transport-side runtime handle. The refreshed
 object includes `stream_state`, `last_error`, and `startup_probe`, so absent
 hardware or a failed probe is visible to RPC consumers instead of appearing as
-successful telemetry. After a successful startup probe, `startup_probe` records
-`detected`, firmware version, platform, MCU, hardware-reported vport interface
-types, and an `interface_summary` string for prepared-host evidence capture.
+successful telemetry. After a non-cancelled startup-probe attempt,
+`startup_probe` records the accepted or partial `detected`, firmware version,
+platform, MCU, hardware-reported vport interface types, and an
+`interface_summary` string for prepared-host evidence capture.
 Each subinterface uses the ordinary RNode radio-status JSON schema, including
 battery labels, framebuffer/display byte counts, random byte, and derived
 reported bitrate when the selected vport has reported enough radio parameters.
@@ -229,7 +230,8 @@ The `running` state is reached only after the transport-side startup probe has
 accepted detect, firmware `>= 1.74`, platform, MCU, `CMD_INTERFACES`, and
 configured-vport validation. The smoke records those raw probe details in JSON
 so firmware/platform/MCU/interface assertions can be made directly from
-`rnstatus-rs --json`.
+`rnstatus-rs --json`, including failed probe attempts where the hardware
+reported enough metadata before validation failed.
 
 Nightly HIL exposes the same smoke behind repository variables:
 

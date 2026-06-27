@@ -833,6 +833,22 @@ pub(crate) struct RNodeMultiStartupProbe {
     timeout: Duration,
 }
 
+#[derive(Debug, Clone)]
+struct RNodeMultiStartupProbeError {
+    message: String,
+    status: RNodeMultiProbeStatus,
+}
+
+impl RNodeMultiStartupProbeError {
+    fn new(message: impl Into<String>, status: RNodeMultiProbeStatus) -> Self {
+        Self { message: message.into(), status }
+    }
+
+    fn is_cancel_or_stop(&self) -> bool {
+        self.message == "startup cancelled" || self.message == "interface stopped"
+    }
+}
+
 impl RNodeMultiStartupProbe {
     fn from_subinterfaces(subinterfaces: &[RNodeMultiSubInterfaceConfig]) -> Self {
         let mut required_vports = subinterfaces.iter().map(|sub| sub.vport).collect::<Vec<_>>();
@@ -899,15 +915,21 @@ pub(crate) async fn run_rnode_multi_stream<IO>(
                     "RNodeMulti startup probe failed iface={} device={} err={}",
                     options.parent_iface,
                     options.device,
-                    err
+                    err.message
                 );
-                if err == "startup cancelled" || err == "interface stopped" {
+                if err.is_cancel_or_stop() {
                     update_rnode_multi_runtime_state(&options.runtime_status, "closed", None);
                 } else {
+                    let message = err.message;
+                    options
+                        .runtime_status
+                        .lock()
+                        .expect("rnode multi runtime status mutex poisoned")
+                        .set_startup_probe(err.status);
                     update_rnode_multi_runtime_state(
                         &options.runtime_status,
                         "probe_failed",
-                        Some(err),
+                        Some(message),
                     );
                 }
                 return;
@@ -1088,16 +1110,20 @@ async fn run_rnode_multi_startup_probe<IO>(
     read_buffer: &mut [u8],
     cancel: &CancellationToken,
     iface_stop: &CancellationToken,
-) -> Result<RNodeMultiProbeStatus, String>
+) -> Result<RNodeMultiProbeStatus, RNodeMultiStartupProbeError>
 where
     IO: AsyncRead + AsyncWrite + Unpin,
 {
-    for frame in &probe.frames {
-        stream.write_all(frame).await.map_err(|err| format!("probe write failed: {err}"))?;
-    }
-    stream.flush().await.map_err(|err| format!("probe flush failed: {err}"))?;
-
     let mut status = RNodeMultiProbeStatus::default();
+    for frame in &probe.frames {
+        stream.write_all(frame).await.map_err(|err| {
+            RNodeMultiStartupProbeError::new(format!("probe write failed: {err}"), status.clone())
+        })?;
+    }
+    stream.flush().await.map_err(|err| {
+        RNodeMultiStartupProbeError::new(format!("probe flush failed: {err}"), status.clone())
+    })?;
+
     let deadline = tokio::time::Instant::now() + probe.timeout;
 
     loop {
@@ -1107,27 +1133,43 @@ where
 
         tokio::select! {
             _ = cancel.cancelled() => {
-                return Err("startup cancelled".to_string());
+                return Err(RNodeMultiStartupProbeError::new("startup cancelled", status));
             }
             _ = iface_stop.cancelled() => {
-                return Err("interface stopped".to_string());
+                return Err(RNodeMultiStartupProbeError::new("interface stopped", status));
             }
             _ = tokio::time::sleep_until(deadline) => {
-                return Err(status
+                let message = status
                     .validate_startup_probe(&probe.required_vports)
-                    .unwrap_err());
+                    .unwrap_err();
+                return Err(RNodeMultiStartupProbeError::new(message, status));
             }
             result = stream.read(read_buffer) => {
-                let n = result.map_err(|err| format!("probe read failed: {err}"))?;
+                let n = result.map_err(|err| {
+                    RNodeMultiStartupProbeError::new(
+                        format!("probe read failed: {err}"),
+                        status.clone(),
+                    )
+                })?;
                 if n == 0 {
-                    return Err("probe stream closed".to_string());
+                    return Err(RNodeMultiStartupProbeError::new(
+                        "probe stream closed",
+                        status,
+                    ));
                 }
                 let frames = decoder
                     .push_bytes(&read_buffer[..n])
-                    .map_err(|err| format!("probe KISS decode failed: {err:?}"))?;
+                    .map_err(|err| {
+                        RNodeMultiStartupProbeError::new(
+                            format!("probe KISS decode failed: {err:?}"),
+                            status.clone(),
+                        )
+                    })?;
                 for frame in frames {
                     if let KissFrame::Command(KissCommand::Unknown(command, payload)) = frame {
-                        let _ = status.accept_command(command, &payload)?;
+                        let _ = status.accept_command(command, &payload).map_err(|err| {
+                            RNodeMultiStartupProbeError::new(err, status.clone())
+                        })?;
                     }
                 }
             }
@@ -1787,6 +1829,64 @@ mod tests {
                 KissFrame::Command(KissCommand::Unknown(CMD_LEAVE, vec![0xff])),
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn rnode_multi_stream_probe_failure_preserves_partial_probe_metadata() {
+        let child = AddressHash::new([0x07; 16]);
+        let (stream, mut peer) = duplex(4096);
+        let (rx_tx, rx_rx) = tokio::sync::mpsc::channel(4);
+        drop(rx_rx);
+        let (_tx_tx, tx_rx) = tokio::sync::mpsc::channel(4);
+        let cancel = CancellationToken::new();
+        let mut options = test_options(child, 1);
+        let runtime_status = Arc::clone(&options.runtime_status);
+        options.startup_probe = Some(RNodeMultiStartupProbe {
+            frames: rnode_multi_probe_frames(),
+            required_vports: vec![1],
+            timeout: Duration::from_millis(25),
+        });
+        let task = tokio::spawn(run_rnode_multi_stream(
+            stream,
+            options,
+            cancel,
+            CancellationToken::new(),
+            rx_tx,
+            Arc::new(tokio::sync::Mutex::new(tx_rx)),
+        ));
+
+        let mut bytes = vec![0_u8; 256];
+        let _ = peer.read(&mut bytes).await.expect("read probe frames");
+        peer.write_all(&encode_command_frame(CMD_DETECT, &[DETECT_RESP]))
+            .await
+            .expect("write detect");
+        peer.write_all(&encode_command_frame(CMD_FW_VERSION, &[1, 52]))
+            .await
+            .expect("write old firmware");
+        peer.write_all(&encode_command_frame(CMD_PLATFORM, &[0x80])).await.expect("write platform");
+        peer.write_all(&encode_command_frame(CMD_MCU, &[0x01])).await.expect("write mcu");
+        peer.write_all(&encode_command_frame(CMD_INTERFACES, &[1, 0x21]))
+            .await
+            .expect("write interfaces");
+
+        tokio::time::timeout(Duration::from_secs(1), task)
+            .await
+            .expect("rnode multi probe failure timeout")
+            .expect("rnode multi stream task");
+
+        let snapshot =
+            runtime_status.lock().expect("rnode multi runtime status mutex poisoned").to_json();
+        assert_eq!(snapshot["stream_state"].as_str(), Some("probe_failed"));
+        assert_eq!(
+            snapshot["last_error"].as_str(),
+            Some("rnode multi firmware version 1.52 is below required 1.74")
+        );
+        assert_eq!(snapshot["startup_probe"]["detected"].as_bool(), Some(true));
+        assert_eq!(snapshot["startup_probe"]["firmware_version"]["label"].as_str(), Some("1.52"));
+        assert_eq!(snapshot["startup_probe"]["platform"].as_u64(), Some(0x80));
+        assert_eq!(snapshot["startup_probe"]["mcu"].as_u64(), Some(0x01));
+        assert_eq!(snapshot["startup_probe"]["interfaces"]["1"].as_str(), Some("SX128X"));
+        assert_eq!(snapshot["startup_probe"]["interface_summary"].as_str(), Some("1:SX128X"));
     }
 
     #[tokio::test]

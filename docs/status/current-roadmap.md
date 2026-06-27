@@ -101,9 +101,10 @@ The project is best described by capability level:
   responses to the matching child status record, and daemon/RPC snapshots
   refresh the `_runtime.rnode_multi.radio_status` schema from the
   transport-side runtime handle, including stream/probe state, last error
-  reporting for absent or failing hardware, accepted startup-probe
-  firmware/platform/MCU/interface metadata, and the ordinary RNode radio-status
-  fields for each vport. Daemon/RPC can queue safe RNode management commands
+  reporting for absent or failing hardware, accepted or partial startup-probe
+  firmware/platform/MCU/interface metadata from non-cancelled probe attempts,
+  and the ordinary RNode radio-status fields for each vport. Daemon/RPC can
+  queue safe RNode management commands
   through the parent interface with explicit configured child `vport`
   validation; the transport writes `CMD_SEL_INT` before each queued management
   command frame. Display-capable ESP32/NRF52 devices get Python-style

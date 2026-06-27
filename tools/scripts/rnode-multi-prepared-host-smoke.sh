@@ -108,6 +108,7 @@ if status_path.exists():
             report["last_error"] = radio.get("last_error")
             report["selected_vport"] = radio.get("selected_vport")
             report["runtime_vports"] = radio.get("vports")
+            report["startup_probe"] = radio.get("startup_probe")
             report["runtime_subinterfaces"] = sorted((radio.get("subinterfaces") or {}).keys())
             report["radio_status"] = radio.get("subinterfaces")
     except Exception as exc:  # best-effort artifact enrichment
@@ -292,6 +293,19 @@ if radio.get("stream_state") != "running":
 if radio.get("last_error") is not None:
     raise SystemExit(1)
 if radio.get("vports") != expected_vports:
+    raise SystemExit(1)
+probe = radio.get("startup_probe") or {}
+firmware = probe.get("firmware_version") or {}
+if not probe.get("detected"):
+    raise SystemExit(1)
+if not firmware.get("label"):
+    raise SystemExit(1)
+if probe.get("platform") is None:
+    raise SystemExit(1)
+if probe.get("mcu") is None:
+    raise SystemExit(1)
+probe_interfaces = probe.get("interfaces") or {}
+if sorted(probe_interfaces.keys()) != [str(vport) for vport in expected_vports]:
     raise SystemExit(1)
 subinterfaces = radio.get("subinterfaces") or {}
 if sorted(subinterfaces.keys()) != [str(vport) for vport in expected_vports]:
