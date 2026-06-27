@@ -181,16 +181,34 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
                                         "link_state": "reconnecting",
                                         "endpoint_count": 2,
                                         "wdcl_connected": false,
+                                        "remote_switch_id": "0011223344556677",
                                         "bytes_rx": 120,
                                         "bytes_tx": 80,
+                                        "frames_rx": 9,
+                                        "frames_tx": 7,
+                                        "invalid_frames": 1,
+                                        "last_log_event": "0xe003",
                                         "display": {
+                                            "color_format": 1,
                                             "width": 128,
                                             "height": 64,
+                                            "total_size": 1024,
+                                            "received_size": 512,
                                             "complete": false
                                         },
                                         "device_stats": {
                                             "cpu_load": 42,
-                                            "memory_used_percent_bp": 5125
+                                            "memory_used_percent_bp": 5125,
+                                            "task_cpu": {
+                                                "wdcl": {
+                                                    "cpu_load": 7,
+                                                    "samples": 3
+                                                },
+                                                "ui": {
+                                                    "cpu_load": 5,
+                                                    "samples": 1
+                                                }
+                                            }
                                         },
                                         "last_error": "synthetic weave write failure"
                                     }
@@ -441,16 +459,34 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
                                         "link_state": "reconnecting",
                                         "endpoint_count": 2,
                                         "wdcl_connected": false,
+                                        "remote_switch_id": "0011223344556677",
                                         "bytes_rx": 120,
                                         "bytes_tx": 80,
+                                        "frames_rx": 9,
+                                        "frames_tx": 7,
+                                        "invalid_frames": 1,
+                                        "last_log_event": "0xe003",
                                         "display": {
+                                            "color_format": 1,
                                             "width": 128,
                                             "height": 64,
+                                            "total_size": 1024,
+                                            "received_size": 512,
                                             "complete": false
                                         },
                                         "device_stats": {
                                             "cpu_load": 42,
-                                            "memory_used_percent_bp": 5125
+                                            "memory_used_percent_bp": 5125,
+                                            "task_cpu": {
+                                                "wdcl": {
+                                                    "cpu_load": 7,
+                                                    "samples": 3
+                                                },
+                                                "ui": {
+                                                    "cpu_load": 5,
+                                                    "samples": 1
+                                                }
+                                            }
                                         },
                                         "last_error": "synthetic weave write failure"
                                     }
@@ -759,9 +795,17 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
     assert!(stdout.contains("latest_tx=78"), "stdout: {stdout}");
     assert!(stdout.contains("weave-main"), "stdout: {stdout}");
     assert!(stdout.contains("weave link=reconnecting endpoints=2 wdcl=false"), "stdout: {stdout}");
+    assert!(stdout.contains("remote=0011223344556677"), "stdout: {stdout}");
+    assert!(stdout.contains("rx_frames=9"), "stdout: {stdout}");
+    assert!(stdout.contains("tx_frames=7"), "stdout: {stdout}");
+    assert!(stdout.contains("invalid_frames=1"), "stdout: {stdout}");
+    assert!(stdout.contains("last_log=0xe003"), "stdout: {stdout}");
     assert!(stdout.contains("display=128x64/false"), "stdout: {stdout}");
+    assert!(stdout.contains("display_bytes=512/1024"), "stdout: {stdout}");
+    assert!(stdout.contains("color=1"), "stdout: {stdout}");
     assert!(stdout.contains("cpu=42"), "stdout: {stdout}");
     assert!(stdout.contains("mem=51.25%"), "stdout: {stdout}");
+    assert!(stdout.contains("tasks=2"), "stdout: {stdout}");
     assert!(stdout.contains("err=synthetic weave write failure"), "stdout: {stdout}");
     assert!(stdout.contains("rnode-multi"), "stdout: {stdout}");
     assert!(

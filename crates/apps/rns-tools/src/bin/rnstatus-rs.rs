@@ -443,13 +443,22 @@ fn weave_runtime_summary(status: &Value) -> Option<String> {
         value_u64(status, "endpoint_count"),
         value_bool(status, "wdcl_connected")
     );
+    append_optional_str(&mut summary, "remote", status.get("remote_switch_id"));
     append_optional_u64(&mut summary, "rx", status.get("bytes_rx"));
     append_optional_u64(&mut summary, "tx", status.get("bytes_tx"));
+    append_optional_u64(&mut summary, "rx_frames", status.get("frames_rx"));
+    append_optional_u64(&mut summary, "tx_frames", status.get("frames_tx"));
+    append_optional_u64(&mut summary, "invalid_frames", status.get("invalid_frames"));
+    append_optional_str(&mut summary, "last_log", status.get("last_log_event"));
     if let Some(display) = status.get("display").filter(|display| display.is_object()) {
         let width = value_u64(display, "width");
         let height = value_u64(display, "height");
         let complete = value_bool(display, "complete");
         summary.push_str(&format!(" display={width}x{height}/{complete}"));
+        let received = value_u64(display, "received_size");
+        let total = value_u64(display, "total_size");
+        summary.push_str(&format!(" display_bytes={received}/{total}"));
+        append_optional_u64(&mut summary, "color", display.get("color_format"));
     }
     if let Some(stats) = status.get("device_stats").filter(|stats| stats.is_object()) {
         append_optional_u64(&mut summary, "cpu", stats.get("cpu_load"));
@@ -459,6 +468,11 @@ fn weave_runtime_summary(status: &Value) -> Option<String> {
             .map(format_basis_points_percent)
         {
             summary.push_str(&format!(" mem={percent}"));
+        }
+        if let Some(task_count) =
+            stats.get("task_cpu").and_then(Value::as_object).map(serde_json::Map::len)
+        {
+            append_count(&mut summary, "tasks", task_count);
         }
     }
     append_optional_str(&mut summary, "err", status.get("last_error"));
@@ -918,16 +932,30 @@ mod tests {
                                     "link_state": "connected",
                                     "endpoint_count": 2,
                                     "wdcl_connected": true,
+                                    "remote_switch_id": "0011223344556677",
                                     "bytes_rx": 120,
                                     "bytes_tx": 80,
+                                    "frames_rx": 9,
+                                    "frames_tx": 7,
+                                    "invalid_frames": 1,
+                                    "last_log_event": "0xe003",
                                     "display": {
+                                        "color_format": 1,
                                         "width": 128,
                                         "height": 64,
+                                        "total_size": 1024,
+                                        "received_size": 1024,
                                         "complete": true
                                     },
                                     "device_stats": {
                                         "cpu_load": 42,
-                                        "memory_used_percent_bp": 5125
+                                        "memory_used_percent_bp": 5125,
+                                        "task_cpu": {
+                                            "wdcl": {
+                                                "cpu_load": 7,
+                                                "samples": 3
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -1259,9 +1287,17 @@ mod tests {
         assert!(output.contains("latest_rx=56"));
         assert!(output.contains("latest_tx=78"));
         assert!(output.contains("weave link=connected endpoints=2 wdcl=true"));
+        assert!(output.contains("remote=0011223344556677"));
+        assert!(output.contains("rx_frames=9"));
+        assert!(output.contains("tx_frames=7"));
+        assert!(output.contains("invalid_frames=1"));
+        assert!(output.contains("last_log=0xe003"));
         assert!(output.contains("display=128x64/true"));
+        assert!(output.contains("display_bytes=1024/1024"));
+        assert!(output.contains("color=1"));
         assert!(output.contains("cpu=42"));
         assert!(output.contains("mem=51.25%"));
+        assert!(output.contains("tasks=1"));
         assert!(output.contains("rnode bearer=serial online=true detected=true"));
         assert!(output.contains("fw=1.52"));
         assert!(output.contains("freq=915000000"));

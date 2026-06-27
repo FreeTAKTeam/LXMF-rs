@@ -56,8 +56,10 @@ counts. `reticulumd` seeds this under `_runtime.weave.status` during startup
 and periodically refreshes it into the cached interface records returned by
 `daemon_status_ex` and `list_interfaces`.
 `rnstatus-rs` also renders this runtime state in human output, including link
-state, endpoint count, WDCL connection state, byte counters, display progress,
-CPU load, and memory usage when the daemon has reported those fields.
+state, endpoint count, WDCL connection state, remote switch ID, byte and frame
+counters, invalid-frame count, last log event, display completion and byte
+progress, display color format, CPU load, memory usage, and task-stat counts
+when the daemon has reported those fields.
 Incoming WDCL display frames addressed to the local switch update
 `_runtime.weave.status.display` with the remote framebuffer color format, fixed
 128x64 dimensions, total size, received size, completion flag, and a hex
@@ -112,5 +114,6 @@ Artifacts are uploaded as `weave-prepared-host-artifacts`, including
 
 - Broader prepared-host Weave hardware evidence across devices and firmware
   combinations is still required.
-- Remote display/status UI integration is not complete.
+- Dedicated remote display/control UI integration is not complete; current
+  operator visibility is through daemon/RPC status and `rnstatus-rs` summaries.
 - I2PInterface has a separate in-progress outbound SAM peer slice.

@@ -144,7 +144,10 @@ The project is best described by capability level:
   device-stat fields. Display-frame completion is based on received byte
   coverage rather than highest observed offset, and software cancellation/stop
   now marks the runtime link closed while clearing WDCL connection and endpoint
-  state. An opt-in prepared-host smoke harness records connected serial
+  state. `rnstatus-rs` renders remote switch ID, byte/frame counters,
+  invalid-frame and last-log diagnostics, display dimensions, completion, byte
+  progress, color format, CPU/memory, and task-stat counts for operator status
+  views. An opt-in prepared-host smoke harness records connected serial
   evidence under `target/weave-hil/`.
 - I2PInterface has a transport-side SAM slice: configured peers get virtual
   unicast children, transient SAM stream sessions, name lookup, HDLC packet
@@ -920,8 +923,9 @@ the implemented subset.
      production-complete.
    - Capture I2P prepared-host evidence, and implement utility commands where
      product demand justifies them.
-   - Complete Weave UI integration and broader prepared-host hardware evidence
-     before treating that family as production-complete.
+   - Complete dedicated Weave remote display/control UI integration and broader
+     prepared-host hardware evidence before treating that family as
+     production-complete.
 
 ## Active Execution Order
 
