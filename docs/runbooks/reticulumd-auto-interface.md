@@ -158,11 +158,15 @@ The reusable transport layer now also includes Python-compatible helpers for:
   counts
 - a supervised discovery listener primitive that groups the unicast and
   multicast discovery receive loops for each adopted interface, lets startup
-  manage listener tasks per interface, and cleanly stops managed loops
+  manage listener tasks per interface, cleanly stops managed loops, and tracks
+  replacement-stop tasks so daemon shutdown drains dynamically replaced
+  listeners
 - a supervised peer-data listener restart primitive that stops only the
   affected interface listener, binds the replacement link-local data listener,
   prunes stale outbound routes that referenced the old socket, and records the
-  link-local update in carrier runtime status
+  link-local update in carrier runtime status. Replaced peer-data listeners are
+  retained as daemon-owned stop tasks until restart, removal, or runtime
+  shutdown awaits them.
 - a polling OS interface-address reconciler that re-enumerates link-local
   candidates for already adopted devices, invokes the supervised listener
   restart when an adopted address changes, and commits the new discovery state
@@ -211,7 +215,6 @@ interfaces = [
 ## Operational Follow-Up
 
 - AutoInterface dynamic add/remove now has daemon-side lifecycle application,
-  including zero-initial startup polling. Remaining follow-up is to keep
-  hardening explicit daemon-owned shutdown for dynamically spawned listeners
-  beyond terminal receive-failure shutdown, and gather broader prepared-host
-  evidence for interface churn.
+  including zero-initial startup polling and tracked shutdown for dynamically
+  replaced discovery/data listeners. Remaining follow-up is broader
+  prepared-host evidence for interface churn.

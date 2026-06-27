@@ -657,7 +657,7 @@ impl AutoDiscoveryListenerSupervisor {
         state: Arc<tokio::sync::Mutex<AutoDiscoveryState>>,
         shutdown: tokio::sync::watch::Receiver<bool>,
     ) -> Self {
-        Self { plan, state, shutdown, listeners: BTreeMap::new() }
+        Self { plan, state, shutdown, listeners: BTreeMap::new(), pending_stops: Vec::new() }
     }
 
     pub(crate) fn spawn_sockets(
@@ -692,9 +692,9 @@ impl AutoDiscoveryListenerSupervisor {
             })
             .collect();
         if let Some(old) = self.listeners.insert(ifname, AutoDiscoveryListenerHandle { joins }) {
-            tokio::spawn(async move {
+            self.pending_stops.push(tokio::spawn(async move {
                 old.stop().await;
-            });
+            }));
         }
     }
 
@@ -729,6 +729,7 @@ impl AutoDiscoveryListenerSupervisor {
             return false;
         };
         old.stop().await;
+        self.await_pending_stops().await;
         true
     }
 
@@ -738,10 +739,27 @@ impl AutoDiscoveryListenerSupervisor {
     }
 
     #[allow(dead_code)]
+    pub(crate) fn pending_stop_count(&self) -> usize {
+        self.pending_stops.len()
+    }
+
+    #[allow(dead_code)]
     pub(crate) async fn shutdown_all(&mut self) {
         let listeners = std::mem::take(&mut self.listeners);
         for handle in listeners.into_values() {
             handle.stop().await;
+        }
+        self.await_pending_stops().await;
+    }
+
+    async fn await_pending_stops(&mut self) {
+        let pending_stops = std::mem::take(&mut self.pending_stops);
+        for stop in pending_stops {
+            if let Err(err) = stop.await {
+                if !err.is_cancelled() {
+                    log::warn!("[daemon-auto] discovery replacement-stop task failed: {err}");
+                }
+            }
         }
     }
 }
@@ -768,7 +786,15 @@ impl AutoPeerDataListenerSupervisor {
         transport: Option<AutoInterfaceTransportBridge>,
         shutdown: tokio::sync::watch::Receiver<bool>,
     ) -> Self {
-        Self { plan, state, dedupe, transport, shutdown, listeners: BTreeMap::new() }
+        Self {
+            plan,
+            state,
+            dedupe,
+            transport,
+            shutdown,
+            listeners: BTreeMap::new(),
+            pending_stops: Vec::new(),
+        }
     }
 
     pub(crate) fn spawn_sockets(
@@ -799,9 +825,9 @@ impl AutoPeerDataListenerSupervisor {
         if let Some(old) =
             self.listeners.insert(ifname, AutoPeerDataListenerHandle { socket: socket_handle, join })
         {
-            tokio::spawn(async move {
+            self.pending_stops.push(tokio::spawn(async move {
                 old.stop().await;
-            });
+            }));
         }
     }
 
@@ -839,12 +865,18 @@ impl AutoPeerDataListenerSupervisor {
         if let Some(transport) = &self.transport {
             transport.remove_outbound_routes_for_socket(&old_socket).await;
         }
+        self.await_pending_stops().await;
         true
     }
 
     #[allow(dead_code)]
     pub(crate) fn len(&self) -> usize {
         self.listeners.len()
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn pending_stop_count(&self) -> usize {
+        self.pending_stops.len()
     }
 
     #[allow(dead_code)]
@@ -869,6 +901,7 @@ impl AutoPeerDataListenerSupervisor {
                 transport.remove_outbound_routes_for_socket(&old_socket).await;
             }
         }
+        self.await_pending_stops().await;
         if let Some(runtime_status) = runtime_status {
             runtime_status.record_link_local_update(Some(update));
         }
@@ -880,6 +913,18 @@ impl AutoPeerDataListenerSupervisor {
         let listeners = std::mem::take(&mut self.listeners);
         for handle in listeners.into_values() {
             handle.stop().await;
+        }
+        self.await_pending_stops().await;
+    }
+
+    async fn await_pending_stops(&mut self) {
+        let pending_stops = std::mem::take(&mut self.pending_stops);
+        for stop in pending_stops {
+            if let Err(err) = stop.await {
+                if !err.is_cancelled() {
+                    log::warn!("[daemon-auto] peer-data replacement-stop task failed: {err}");
+                }
+            }
         }
     }
 }

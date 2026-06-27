@@ -172,6 +172,7 @@ pub(crate) struct AutoDiscoveryListenerSupervisor {
     state: Arc<tokio::sync::Mutex<AutoDiscoveryState>>,
     shutdown: tokio::sync::watch::Receiver<bool>,
     listeners: BTreeMap<String, AutoDiscoveryListenerHandle>,
+    pending_stops: Vec<tokio::task::JoinHandle<()>>,
 }
 
 #[allow(dead_code)]
@@ -187,6 +188,7 @@ pub(crate) struct AutoPeerDataListenerSupervisor {
     transport: Option<AutoInterfaceTransportBridge>,
     shutdown: tokio::sync::watch::Receiver<bool>,
     listeners: BTreeMap<String, AutoPeerDataListenerHandle>,
+    pending_stops: Vec<tokio::task::JoinHandle<()>>,
 }
 
 #[allow(dead_code)]

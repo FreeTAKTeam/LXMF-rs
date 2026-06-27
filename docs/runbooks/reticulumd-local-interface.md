@@ -117,19 +117,19 @@ interfaces = [
 
 ## Runtime Behavior
 
-In TCP mode, when enabled without `--transport`, `local` is selected as the
-active TCP listener and uses accepted per-client HDLC streams. If the configured
-TCP shared-instance endpoint is already bound by another local process,
-`reticulumd` attaches to it as a stream client and reports the interface as
-attached. In Unix mode, `local` starts as its own configured listener and does
-not consume the TCP bind selection. If the Unix endpoint is already bound,
-`reticulumd` attaches to it as a local Unix client and retries the connection
-after startup connect failures or later disconnects. TCP and Unix
-shared-instance attach clients emit reconnect signals after a previously active
-connection reappears; `reticulumd` responds by synthesizing the local Reticulum
-tunnel packet again on that interface. The listener itself is reported as active
-in `list_interfaces`; accepted client streams are handled by the shared stream
-runtime.
+In TCP mode, an explicit `local` listener enabled without `--transport` is
+selected as the active TCP listener and uses accepted per-client HDLC streams
+when no other TCP listener is selected. If the configured TCP shared-instance
+endpoint is already bound by another local process, `reticulumd` attaches to it
+as a stream client and reports the interface as attached. In Unix mode, `local`
+starts as its own configured listener and does not consume the TCP bind
+selection. If the Unix endpoint is already bound, `reticulumd` attaches to it as
+a local Unix client and retries the connection after startup connect failures or
+later disconnects. TCP and Unix shared-instance attach clients emit reconnect
+signals after a previously active connection reappears; `reticulumd` responds by
+synthesizing the local Reticulum tunnel packet again on that interface. The
+listener itself is reported as active in `list_interfaces`; accepted client
+streams are handled by the shared stream runtime.
 
 When a Python-style `[reticulum]` section enables sharing and no explicit local
 shared-instance interface is configured, config loading creates the equivalent
@@ -153,6 +153,7 @@ instance's transport path with Type 2 transport headers.
 Expected startup log:
 
 - `local enabled iface=<iface> bind=<host>:<port>`
+- `synthetic local tcp sidecar enabled iface=<iface> name=<name> bind=<host>:<port>`
 - `local attached iface=<iface> name=<name> endpoint=<host>:<port>`
 - `local unix enabled iface=<iface> name=<name> socket_path=<path>`
 - `local unix attached iface=<iface> name=<name> socket_path=<path>`

@@ -335,6 +335,44 @@
     }
 
     #[tokio::test]
+    async fn auto_discovery_listener_supervisor_tracks_replaced_listener_shutdown() {
+        let plan = plan_with_discovery_listener(AutoDiscoveryListenerBinding {
+            ifname: "lo".to_string(),
+            link_local_address: "127.0.0.1".to_string(),
+            unicast_bind_address: "127.0.0.1".to_string(),
+            unicast_bind_port: 0,
+            multicast_group_address: "239.255.0.1".to_string(),
+            multicast_bind_address: "239.255.0.1".to_string(),
+            multicast_bind_port: 0,
+        });
+        let first_sockets = plan
+            .bind_unicast_discovery_sockets(|_| panic!("IPv4 unicast bind is unscoped"))
+            .await
+            .expect("bind first unicast discovery socket");
+        let second_sockets = plan
+            .bind_unicast_discovery_sockets(|_| panic!("IPv4 unicast bind is unscoped"))
+            .await
+            .expect("bind second unicast discovery socket");
+        let state = Arc::new(tokio::sync::Mutex::new(plan.discovery_state()));
+        let (events_tx, _events_rx) = tokio::sync::mpsc::channel(4);
+        let (_shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+        let mut supervisor =
+            AutoDiscoveryListenerSupervisor::new(plan.clone(), Arc::clone(&state), shutdown_rx);
+
+        supervisor.spawn_sockets(first_sockets, &events_tx);
+        assert_eq!(supervisor.receive_loop_count(), 1);
+        assert_eq!(supervisor.pending_stop_count(), 0);
+
+        supervisor.spawn_sockets(second_sockets, &events_tx);
+        assert_eq!(supervisor.receive_loop_count(), 1);
+        assert_eq!(supervisor.pending_stop_count(), 1);
+
+        supervisor.shutdown_all().await;
+        assert_eq!(supervisor.receive_loop_count(), 0);
+        assert_eq!(supervisor.pending_stop_count(), 0);
+    }
+
+    #[tokio::test]
     async fn auto_discovery_receive_loop_authenticates_datagrams_and_reports_events() {
         let plan = plan_with_discovery_listener(AutoDiscoveryListenerBinding {
             ifname: "lo".to_string(),
@@ -479,4 +517,49 @@
                 .expect("peer data loop shutdown timeout")
                 .expect("peer data loop task");
         }
+    }
+
+    #[tokio::test]
+    async fn auto_peer_data_listener_supervisor_tracks_replaced_listener_shutdown() {
+        let plan = plan_with_data_listener(AutoDataListenerBinding {
+            ifname: "lo".to_string(),
+            link_local_address: "127.0.0.1".to_string(),
+            bind_address: "127.0.0.1".to_string(),
+            bind_port: 0,
+        });
+        let first_socket = plan
+            .bind_data_sockets(|_| panic!("IPv4 data bind is unscoped"))
+            .await
+            .expect("bind first peer data socket")
+            .remove(0);
+        let second_socket = plan
+            .bind_data_sockets(|_| panic!("IPv4 data bind is unscoped"))
+            .await
+            .expect("bind second peer data socket")
+            .remove(0);
+        let state = Arc::new(tokio::sync::Mutex::new(plan.discovery_state()));
+        let dedupe = Arc::new(tokio::sync::Mutex::new(AutoInboundPacketDeduplicator::from_timing(
+            AutoInterfaceTiming::for_platform(AutoInterfacePlatform::Other),
+        )));
+        let (events_tx, _events_rx) = tokio::sync::mpsc::channel(4);
+        let (_shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+        let mut supervisor = AutoPeerDataListenerSupervisor::new(
+            plan.clone(),
+            Arc::clone(&state),
+            dedupe,
+            None,
+            shutdown_rx,
+        );
+
+        supervisor.spawn_bound_socket(first_socket, &events_tx);
+        assert_eq!(supervisor.len(), 1);
+        assert_eq!(supervisor.pending_stop_count(), 0);
+
+        supervisor.spawn_bound_socket(second_socket, &events_tx);
+        assert_eq!(supervisor.len(), 1);
+        assert_eq!(supervisor.pending_stop_count(), 1);
+
+        supervisor.shutdown_all().await;
+        assert_eq!(supervisor.len(), 0);
+        assert_eq!(supervisor.pending_stop_count(), 0);
     }

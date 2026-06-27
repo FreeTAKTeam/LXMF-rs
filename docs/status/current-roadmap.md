@@ -77,7 +77,7 @@ The project is best described by capability level:
   reconciliation, adopted-interface add/remove/change diff planning,
   daemon-side add/remove lifecycle application for active AutoInterface
   runtimes, supervised discovery receive loops, and supervised link-local
-  data-listener restart, LoRa/RNode,
+  data-listener restart with tracked replacement shutdown, LoRa/RNode,
   feature-gated RNode BLE, feature-gated VR-N76 KISS-over-BLE, and the
   in-progress shared serial/TCP RNodeMulti baseline with nested vport virtual
   children, a shared-serial Weave WDCL/HDLC endpoint baseline, and an
