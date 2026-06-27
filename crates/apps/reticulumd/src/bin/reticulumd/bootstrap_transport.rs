@@ -14,7 +14,7 @@ use crate::Args;
 pub(super) use interface_startup::LoraRuntimeStatusSource;
 pub(super) use interface_startup::{
     AutoRuntimeRefresh, I2pRuntimeRefresh, LoraRuntimeRefresh, PipeRuntimeRefresh,
-    RNodeManagementBinding, RNodeMultiRuntimeRefresh, WeaveRuntimeRefresh,
+    RNodeManagementBinding, RNodeMultiRuntimeRefresh, TcpRuntimeRefresh, WeaveRuntimeRefresh,
 };
 use reticulum_daemon::announce_names::PropagationNodeAnnounceConfig;
 use reticulum_daemon::config::DaemonConfig;
@@ -47,6 +47,7 @@ pub(super) struct TransportStartupArtifacts {
     pub(super) auto_runtime_refreshes: Vec<AutoRuntimeRefresh>,
     pub(super) pipe_runtime_refreshes: Vec<PipeRuntimeRefresh>,
     pub(super) i2p_runtime_refreshes: Vec<I2pRuntimeRefresh>,
+    pub(super) tcp_runtime_refreshes: Vec<TcpRuntimeRefresh>,
     pub(super) weave_runtime_refreshes: Vec<WeaveRuntimeRefresh>,
     pub(super) rnode_multi_runtime_refreshes: Vec<RNodeMultiRuntimeRefresh>,
     pub(super) lora_runtime_refreshes: Vec<LoraRuntimeRefresh>,
@@ -155,6 +156,7 @@ pub(super) async fn start_transport_and_interfaces(
     let mut auto_runtime_refreshes = Vec::new();
     let mut pipe_runtime_refreshes = Vec::new();
     let mut i2p_runtime_refreshes = Vec::new();
+    let mut tcp_runtime_refreshes = Vec::new();
     let mut weave_runtime_refreshes = Vec::new();
     let mut rnode_multi_runtime_refreshes = Vec::new();
     let mut lora_runtime_refreshes = Vec::new();
@@ -228,6 +230,7 @@ pub(super) async fn start_transport_and_interfaces(
             auto_runtime_refreshes.extend(startup.auto_runtime_refreshes);
             pipe_runtime_refreshes.extend(startup.pipe_runtime_refreshes);
             i2p_runtime_refreshes.extend(startup.i2p_runtime_refreshes);
+            tcp_runtime_refreshes.extend(startup.tcp_runtime_refreshes);
             weave_runtime_refreshes.extend(startup.weave_runtime_refreshes);
             rnode_multi_runtime_refreshes.extend(startup.rnode_multi_runtime_refreshes);
             lora_runtime_refreshes.extend(startup.lora_runtime_refreshes);
@@ -337,6 +340,7 @@ pub(super) async fn start_transport_and_interfaces(
         auto_runtime_refreshes,
         pipe_runtime_refreshes,
         i2p_runtime_refreshes,
+        tcp_runtime_refreshes,
         weave_runtime_refreshes,
         rnode_multi_runtime_refreshes,
         lora_runtime_refreshes,

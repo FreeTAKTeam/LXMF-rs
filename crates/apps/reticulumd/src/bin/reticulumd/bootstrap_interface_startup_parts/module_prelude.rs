@@ -44,6 +44,7 @@ pub(super) struct InterfaceStartupBatch {
     pub(super) auto_runtime_refreshes: Vec<AutoRuntimeRefresh>,
     pub(super) pipe_runtime_refreshes: Vec<PipeRuntimeRefresh>,
     pub(super) i2p_runtime_refreshes: Vec<I2pRuntimeRefresh>,
+    pub(super) tcp_runtime_refreshes: Vec<TcpRuntimeRefresh>,
     pub(super) weave_runtime_refreshes: Vec<WeaveRuntimeRefresh>,
     pub(super) rnode_multi_runtime_refreshes: Vec<RNodeMultiRuntimeRefresh>,
     pub(super) lora_runtime_refreshes: Vec<LoraRuntimeRefresh>,
@@ -66,6 +67,12 @@ pub(crate) struct PipeRuntimeRefresh {
 pub(crate) struct I2pRuntimeRefresh {
     pub(crate) runtime_iface: AddressHash,
     pub(crate) status: rns_transport::iface::i2p::I2pRuntimeStatusHandle,
+}
+
+#[derive(Clone)]
+pub(crate) struct TcpRuntimeRefresh {
+    pub(crate) runtime_iface: AddressHash,
+    pub(crate) status: rns_transport::iface::tcp_client::TcpRuntimeStatusHandle,
 }
 
 #[derive(Clone)]
@@ -132,6 +139,7 @@ pub(super) async fn startup_configured_interfaces(
     let mut auto_runtime_refreshes = Vec::new();
     let mut pipe_runtime_refreshes = Vec::new();
     let mut i2p_runtime_refreshes = Vec::new();
+    let mut tcp_runtime_refreshes = Vec::new();
     let mut weave_runtime_refreshes = Vec::new();
     let mut rnode_multi_runtime_refreshes = Vec::new();
     let mut lora_runtime_refreshes = Vec::new();
@@ -289,6 +297,7 @@ pub(super) async fn startup_configured_interfaces(
                     &mut configured_interfaces[index],
                     &mut startup_failures,
                     &mut seeded_tcp_interfaces,
+                    &mut tcp_runtime_refreshes,
                     shared_reconnect_events.clone(),
                 )
                 .await
@@ -495,6 +504,7 @@ pub(super) async fn startup_configured_interfaces(
         auto_runtime_refreshes,
         pipe_runtime_refreshes,
         i2p_runtime_refreshes,
+        tcp_runtime_refreshes,
         weave_runtime_refreshes,
         rnode_multi_runtime_refreshes,
         lora_runtime_refreshes,
@@ -1319,6 +1329,7 @@ async fn startup_tcp_client(
     record: &mut InterfaceRecord,
     startup_failures: &mut Vec<InterfaceStartupFailure>,
     seeded_tcp_interfaces: &mut Vec<(String, InterfaceRecord, AddressHash)>,
+    tcp_runtime_refreshes: &mut Vec<TcpRuntimeRefresh>,
     stream_reconnect_events: Option<tokio::sync::mpsc::UnboundedSender<AddressHash>>,
 ) -> Option<AddressHash> {
     let (Some(host), Some(port)) = (iface.host.as_ref(), iface.port) else {
@@ -1348,6 +1359,7 @@ async fn startup_tcp_client(
 
     let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
     let adapter = build_tcp_client_adapter(endpoint, iface, stream_reconnect_events);
+    let runtime_status = adapter.runtime_status_handle();
     let client_iface = iface_manager.lock().await.spawn_as_with_mode(
         adapter,
         TcpClient::spawn,
@@ -1368,6 +1380,7 @@ async fn startup_tcp_client(
     );
     let runtime_iface = client_iface.to_string();
     mark_interface_startup_status(record, "spawned", None, Some(runtime_iface.as_str()));
+    tcp_runtime_refreshes.push(TcpRuntimeRefresh { runtime_iface: client_iface, status: runtime_status });
     if let Some(key) = tcp_interface_key(record) {
         seeded_tcp_interfaces.push((key, record.clone(), client_iface));
     }

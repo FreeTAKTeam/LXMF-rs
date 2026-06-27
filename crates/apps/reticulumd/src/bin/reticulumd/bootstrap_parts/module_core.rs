@@ -181,6 +181,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     let auto_runtime_refreshes = startup.auto_runtime_refreshes;
     let pipe_runtime_refreshes = startup.pipe_runtime_refreshes;
     let i2p_runtime_refreshes = startup.i2p_runtime_refreshes;
+    let tcp_runtime_refreshes = startup.tcp_runtime_refreshes;
     let weave_runtime_refreshes = startup.weave_runtime_refreshes;
     let rnode_multi_runtime_refreshes = startup.rnode_multi_runtime_refreshes;
     let lora_runtime_refreshes = startup.lora_runtime_refreshes;
@@ -296,6 +297,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     spawn_auto_runtime_status_refresher(daemon.clone(), auto_runtime_refreshes);
     spawn_pipe_runtime_status_refresher(daemon.clone(), pipe_runtime_refreshes);
     spawn_i2p_runtime_status_refresher(daemon.clone(), i2p_runtime_refreshes);
+    spawn_tcp_runtime_status_refresher(daemon.clone(), tcp_runtime_refreshes);
     spawn_weave_runtime_status_refresher(daemon.clone(), weave_runtime_refreshes);
     spawn_rnode_multi_runtime_status_refresher(daemon.clone(), rnode_multi_runtime_refreshes);
     spawn_lora_runtime_status_refresher(daemon.clone(), lora_runtime_refreshes);
@@ -516,6 +518,40 @@ fn refresh_i2p_runtime_status_once(
                 refresh.runtime_iface.to_string().as_str(),
                 "i2p",
                 "tunnel_status",
+                refresh.status.to_json(),
+            )
+        })
+        .count()
+}
+
+fn spawn_tcp_runtime_status_refresher(
+    daemon: Arc<RpcDaemon>,
+    refreshes: Vec<transport_startup::TcpRuntimeRefresh>,
+) {
+    if refreshes.is_empty() {
+        return;
+    }
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(INTERFACE_RUNTIME_STATUS_REFRESH_INTERVAL);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            interval.tick().await;
+            refresh_tcp_runtime_status_once(&daemon, &refreshes);
+        }
+    });
+}
+
+fn refresh_tcp_runtime_status_once(
+    daemon: &RpcDaemon,
+    refreshes: &[transport_startup::TcpRuntimeRefresh],
+) -> usize {
+    refreshes
+        .iter()
+        .filter(|refresh| {
+            daemon.update_interface_runtime_metadata_by_iface(
+                refresh.runtime_iface.to_string().as_str(),
+                "tcp",
+                "stream_status",
                 refresh.status.to_json(),
             )
         })
@@ -915,6 +951,48 @@ mod tests {
         assert_eq!(status["pipe_is_open"].as_bool(), Some(false));
         assert_eq!(status["respawn_attempts"].as_u64(), Some(1));
         assert_eq!(status["last_error"].as_str(), Some("spawn cat failed"));
+    }
+
+    #[test]
+    fn tcp_runtime_status_refresh_updates_matching_interface_record() {
+        let daemon = RpcDaemon::test_instance();
+        let runtime_iface = AddressHash::new([0x1b; 16]);
+        daemon.replace_interfaces(vec![InterfaceRecord {
+            kind: "backbone_client".to_string(),
+            enabled: true,
+            host: Some("127.0.0.1".to_string()),
+            port: Some(4242),
+            name: Some("backbone-main".to_string()),
+            settings: Some(json!({
+                "_runtime": {
+                    "iface": runtime_iface.to_string(),
+                    "startup_status": "spawned",
+                    "tcp": {
+                        "stream_status": {
+                            "stream_state": "stale"
+                        }
+                    }
+                }
+            })),
+        }]);
+        let status = rns_transport::iface::tcp_client::TcpClient::new("127.0.0.1:4242")
+            .with_backbone_liveness()
+            .with_forced_bitrate(9_600)
+            .runtime_status_handle();
+        let refresh = transport_startup::TcpRuntimeRefresh { runtime_iface, status };
+
+        assert_eq!(refresh_tcp_runtime_status_once(&daemon, &[refresh]), 1);
+        let result = daemon
+            .handle_rpc(RpcRequest { id: 94, method: "daemon_status_ex".to_string(), params: None })
+            .expect("daemon status")
+            .result
+            .expect("daemon status result");
+        let status = &result["interfaces"][0]["settings"]["_runtime"]["tcp"]["stream_status"];
+
+        assert_eq!(status["endpoint"].as_str(), Some("127.0.0.1:4242"));
+        assert_eq!(status["stream_state"].as_str(), Some("configured"));
+        assert_eq!(status["liveness_enabled"].as_bool(), Some(true));
+        assert_eq!(status["forced_bitrate_bps"].as_u64(), Some(9_600));
     }
 
     #[test]

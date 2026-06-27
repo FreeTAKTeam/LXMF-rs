@@ -25,7 +25,7 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
                 "identity_hash": "0123456789abcdef0123456789abcdef",
                 "running": true,
                 "peer_count": 2,
-                "interface_count": 4,
+                "interface_count": 5,
                 "propagation": {
                     "enabled": true,
                     "selected_node": "cafebabe",
@@ -75,6 +75,33 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
                                                 "bytes_tx": 0
                                             }
                                         ]
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "name": "backbone-main",
+                        "type": "backbone_client",
+                        "enabled": true,
+                        "settings": {
+                            "_runtime": {
+                                "startup_status": "spawned",
+                                "tcp": {
+                                    "stream_status": {
+                                        "endpoint": "127.0.0.1:4242",
+                                        "stream_state": "reconnecting",
+                                        "reconnect_attempts": 3,
+                                        "bytes_rx": 12,
+                                        "bytes_tx": 34,
+                                        "keepalives_sent": 2,
+                                        "stale_events": 1,
+                                        "read_timeouts": 1,
+                                        "closed_events": 1,
+                                        "error_events": 1,
+                                        "liveness_enabled": true,
+                                        "forced_bitrate_bps": 9600,
+                                        "last_error": "tcp stream read timeout"
                                     }
                                 }
                             }
@@ -169,7 +196,7 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
                 "identity_hash": "0123456789abcdef0123456789abcdef",
                 "running": true,
                 "peer_count": 2,
-                "interface_count": 4,
+                "interface_count": 5,
                 "propagation": {
                     "enabled": true,
                     "selected_node": "cafebabe",
@@ -219,6 +246,33 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
                                                 "bytes_tx": 0
                                             }
                                         ]
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "name": "backbone-main",
+                        "type": "backbone_client",
+                        "enabled": true,
+                        "settings": {
+                            "_runtime": {
+                                "startup_status": "spawned",
+                                "tcp": {
+                                    "stream_status": {
+                                        "endpoint": "127.0.0.1:4242",
+                                        "stream_state": "reconnecting",
+                                        "reconnect_attempts": 3,
+                                        "bytes_rx": 12,
+                                        "bytes_tx": 34,
+                                        "keepalives_sent": 2,
+                                        "stale_events": 1,
+                                        "read_timeouts": 1,
+                                        "closed_events": 1,
+                                        "error_events": 1,
+                                        "liveness_enabled": true,
+                                        "forced_bitrate_bps": 9600,
+                                        "last_error": "tcp stream read timeout"
                                     }
                                 }
                             }
@@ -301,6 +355,18 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
     assert!(stdout.contains("incoming=1"), "stdout: {stdout}");
     assert!(stdout.contains("rx=14"), "stdout: {stdout}");
     assert!(stdout.contains("tx=7"), "stdout: {stdout}");
+    assert!(stdout.contains("backbone-main"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("tcp stream=reconnecting endpoint=127.0.0.1:4242 reconnects=3"),
+        "stdout: {stdout}"
+    );
+    assert!(stdout.contains("keepalives=2"), "stdout: {stdout}");
+    assert!(stdout.contains("stale=1"), "stdout: {stdout}");
+    assert!(stdout.contains("timeouts=1"), "stdout: {stdout}");
+    assert!(stdout.contains("errors=1"), "stdout: {stdout}");
+    assert!(stdout.contains("liveness=true"), "stdout: {stdout}");
+    assert!(stdout.contains("bitrate=9600"), "stdout: {stdout}");
+    assert!(stdout.contains("err=tcp stream read timeout"), "stdout: {stdout}");
     assert!(stdout.contains("weave-main"), "stdout: {stdout}");
     assert!(stdout.contains("weave link=reconnecting endpoints=2 wdcl=false"), "stdout: {stdout}");
     assert!(stdout.contains("display=128x64/false"), "stdout: {stdout}");

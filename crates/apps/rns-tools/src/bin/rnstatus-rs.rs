@@ -187,6 +187,13 @@ fn interface_runtime(interface: &Value) -> String {
     {
         parts.push(summary);
     }
+    if let Some(summary) = runtime
+        .get("tcp")
+        .and_then(|value| value.get("stream_status"))
+        .and_then(tcp_runtime_summary)
+    {
+        parts.push(summary);
+    }
     if let Some(summary) =
         runtime.get("pipe").and_then(|value| value.get("status")).and_then(pipe_runtime_summary)
     {
@@ -243,6 +250,31 @@ fn i2p_runtime_summary(status: &Value) -> Option<String> {
     append_nonzero_u64(&mut summary, "rx", bytes_rx);
     append_nonzero_u64(&mut summary, "tx", bytes_tx);
     append_optional_str(&mut summary, "err", status.get("last_accept_error"));
+    Some(summary)
+}
+
+fn tcp_runtime_summary(status: &Value) -> Option<String> {
+    if !status.is_object() {
+        return None;
+    }
+    let mut summary = format!(
+        "tcp stream={} endpoint={} reconnects={}",
+        value_str(status, "stream_state"),
+        value_str(status, "endpoint"),
+        value_u64(status, "reconnect_attempts")
+    );
+    append_optional_u64(&mut summary, "rx", status.get("bytes_rx"));
+    append_optional_u64(&mut summary, "tx", status.get("bytes_tx"));
+    append_optional_u64(&mut summary, "keepalives", status.get("keepalives_sent"));
+    append_optional_u64(&mut summary, "stale", status.get("stale_events"));
+    append_optional_u64(&mut summary, "timeouts", status.get("read_timeouts"));
+    append_optional_u64(&mut summary, "closed", status.get("closed_events"));
+    append_optional_u64(&mut summary, "errors", status.get("error_events"));
+    if status.get("liveness_enabled").and_then(Value::as_bool) == Some(true) {
+        summary.push_str(" liveness=true");
+    }
+    append_optional_u64(&mut summary, "bitrate", status.get("forced_bitrate_bps"));
+    append_optional_str(&mut summary, "err", status.get("last_error"));
     Some(summary)
 }
 
@@ -422,7 +454,7 @@ mod tests {
         let status = json!({
             "identity_hash": "abc",
             "running": true,
-            "interface_count": 4,
+            "interface_count": 5,
             "interfaces": [
                 {
                     "name": "i2p-main",
@@ -457,6 +489,33 @@ mod tests {
                                             "bytes_tx": 0
                                         }
                                     ]
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "backbone-main",
+                    "type": "backbone_client",
+                    "enabled": true,
+                    "settings": {
+                        "_runtime": {
+                            "startup_status": "spawned",
+                            "tcp": {
+                                "stream_status": {
+                                    "endpoint": "127.0.0.1:4242",
+                                    "stream_state": "reconnecting",
+                                    "reconnect_attempts": 3,
+                                    "bytes_rx": 12,
+                                    "bytes_tx": 34,
+                                    "keepalives_sent": 2,
+                                    "stale_events": 1,
+                                    "read_timeouts": 1,
+                                    "closed_events": 1,
+                                    "error_events": 1,
+                                    "liveness_enabled": true,
+                                    "forced_bitrate_bps": 9600,
+                                    "last_error": "tcp stream read timeout"
                                 }
                             }
                         }
@@ -574,6 +633,14 @@ mod tests {
         assert!(output.contains("incoming=2"));
         assert!(output.contains("rx=45"));
         assert!(output.contains("tx=60"));
+        assert!(output.contains("tcp stream=reconnecting endpoint=127.0.0.1:4242 reconnects=3"));
+        assert!(output.contains("keepalives=2"));
+        assert!(output.contains("stale=1"));
+        assert!(output.contains("timeouts=1"));
+        assert!(output.contains("errors=1"));
+        assert!(output.contains("liveness=true"));
+        assert!(output.contains("bitrate=9600"));
+        assert!(output.contains("err=tcp stream read timeout"));
         assert!(output.contains("weave link=connected endpoints=2 wdcl=true"));
         assert!(output.contains("display=128x64/true"));
         assert!(output.contains("cpu=42"));
