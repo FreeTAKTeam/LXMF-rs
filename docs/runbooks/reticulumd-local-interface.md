@@ -5,7 +5,10 @@
 This runbook documents the supported `LocalInterface` subset in `reticulumd`.
 The current implementation provides Python-compatible TCP-loopback shared
 instance listener/client-attach behavior plus Unix shared-instance listener and
-client-attach behavior over the existing stream/HDLC runtime.
+client-attach behavior over the existing stream/HDLC runtime. Python-style
+global `[reticulum] share_instance` config can also synthesize the shared local
+interface when no explicit `LocalInterface` or `LocalClientInterface` entry is
+configured.
 
 ## Scope
 
@@ -31,6 +34,17 @@ interfaces = [
     shared_instance_port = 37428
   }
 ]
+```
+
+Python-style global shared instance:
+
+```toml
+[reticulum]
+share_instance = true
+shared_instance_type = "tcp"
+shared_instance_port = 37428
+instance_name = "default"
+force_shared_instance_bitrate = 1000000
 ```
 
 Native `reticulumd` form:
@@ -79,7 +93,13 @@ interfaces = [
 
 ## Validation Rules
 
-- `shared_instance_type` supports `tcp` and `unix`; the default is `tcp`.
+- `shared_instance_type` supports `tcp` and `unix`; explicit interface entries
+  default to `tcp`. Global `[reticulum] share_instance` follows Python's shared
+  instance default: Unix on AF_UNIX-capable platforms unless
+  `shared_instance_type = "tcp"` is configured, otherwise TCP.
+- `[reticulum] share_instance = false` disables the implicit shared local
+  interface. Without a `[reticulum]` section, `reticulumd` preserves native
+  behavior and does not synthesize an implicit local interface.
 - TCP mode: `host` defaults to `127.0.0.1` and must be loopback:
   `127.0.0.1`, `::1`, or `localhost`.
 - TCP mode: `port`, `listen_port`, or `shared_instance_port` select the
@@ -110,6 +130,15 @@ connection reappears; `reticulumd` responds by synthesizing the local Reticulum
 tunnel packet again on that interface. The listener itself is reported as active
 in `list_interfaces`; accepted client streams are handled by the shared stream
 runtime.
+
+When a Python-style `[reticulum]` section enables sharing and no explicit local
+shared-instance interface is configured, config loading creates the equivalent
+enabled `local` interface named `shared-instance`. That synthetic entry then
+uses the same listener-or-attach startup path and reports normal
+`list_interfaces` runtime status. Current `reticulumd` TCP listener startup is
+still single-bind; full Python behavior where the implicit shared local TCP
+listener coexists with other configured TCP listener interfaces remains a
+broader runtime parity item.
 
 When attached to an existing shared instance, outbound one-hop packets are
 transport-wrapped before they are sent to the shared instance. This matches

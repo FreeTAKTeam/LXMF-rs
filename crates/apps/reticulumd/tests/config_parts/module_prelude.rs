@@ -338,6 +338,58 @@ interfaces = [
 }
 
 #[test]
+fn parses_reticulum_global_share_instance_as_implicit_local() {
+    let input = r#"
+[reticulum]
+share_instance = true
+shared_instance_type = "tcp"
+shared_instance_port = 0
+instance_name = "mesh"
+force_shared_instance_bitrate = 1000000
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse global shared instance config");
+    assert_eq!(cfg.interfaces.len(), 1);
+    let iface = &cfg.interfaces[0];
+    assert_eq!(iface.kind, "local");
+    assert_eq!(iface.name.as_deref(), Some("shared-instance"));
+    assert_eq!(iface.shared_instance_type.as_deref(), Some("tcp"));
+    assert_eq!(iface.host.as_deref(), Some("127.0.0.1"));
+    assert_eq!(iface.port, Some(0));
+    assert_eq!(iface.instance_name.as_deref(), Some("mesh"));
+    assert_eq!(iface.force_shared_instance_bitrate, Some(1_000_000));
+    assert_eq!(iface.bitrate, Some(1_000_000));
+}
+
+#[test]
+fn parses_reticulum_global_share_instance_false_without_implicit_local() {
+    let input = r#"
+[reticulum]
+share_instance = false
+shared_instance_type = "tcp"
+shared_instance_port = 37428
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse disabled global shared instance config");
+    assert!(cfg.interfaces.is_empty());
+}
+
+#[test]
+fn explicit_local_interface_suppresses_reticulum_global_implicit_local() {
+    let input = r#"
+interfaces = [
+  { type = "LocalInterface", enabled = true, name = "explicit-local", shared_instance_type = "tcp", shared_instance_port = 0 }
+]
+
+[reticulum]
+share_instance = true
+shared_instance_type = "tcp"
+shared_instance_port = 37428
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse explicit local plus global config");
+    assert_eq!(cfg.interfaces.len(), 1);
+    assert_eq!(cfg.interfaces[0].name.as_deref(), Some("explicit-local"));
+}
+
+#[test]
 fn parses_reticulum_local_server_interface_alias() {
     let input = r#"
 interfaces = [

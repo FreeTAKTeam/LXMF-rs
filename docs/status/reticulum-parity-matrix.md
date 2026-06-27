@@ -65,14 +65,18 @@ placeholders:
 - LocalInterface TCP-loopback listener/client-attach plus Unix filesystem and
   Linux/Android abstract AF_UNIX shared-instance listener/client-attach
   compatibility over the existing stream/HDLC runtime, including Python's
-  default `127.0.0.1:37428` endpoint, `@rns/<instance_name>` Unix naming, and
+  global `[reticulum] share_instance` synthesis when no explicit local
+  shared-instance interface is configured, Python's default
+  `127.0.0.1:37428` endpoint, `@rns/<instance_name>` Unix naming, and
   262144-byte local MTU. Python-style `force_shared_instance_bitrate` pacing
   delays outbound shared-instance packet writes before HDLC framing on TCP and
   Unix client streams. Unix client-attach retries after initial connect
   failures and reconnects after stream disconnects; TCP and Unix attach
   reconnect signals re-synthesize tunnel state through `reticulumd`, and
   attached shared-instance clients wrap one-hop outbound packets in transport
-  headers before handing them to the shared instance.
+  headers before handing them to the shared instance. Full Python parity for an
+  implicit shared local TCP listener coexisting with other configured TCP
+  listeners remains outside the current single-bind daemon startup path.
 - PipeInterface subprocess stdin/stdout transport with Python-style command
   parsing, HDLC packet framing, respawn delay, default MTU, and live subprocess
   status reporting through daemon/RPC `_runtime.pipe.status`.

@@ -62,8 +62,10 @@ The project is best described by capability level:
   and Linux/Android abstract AF_UNIX shared-instance listener/client-attach
   compatibility, including Unix client-attach reconnect after startup failures
   or later disconnects and TCP/Unix attach reconnect signals that
-  re-synthesize tunnel state, Python-style `force_shared_instance_bitrate`
-  stream pacing, plus shared-instance one-hop transport wrapping,
+  re-synthesize tunnel state, Python-style global `[reticulum] share_instance`
+  synthesis when no explicit local shared-instance interface is configured,
+  Python-style `force_shared_instance_bitrate` stream pacing, plus
+  shared-instance one-hop transport wrapping,
   Pipe subprocess HDLC, UDP unicast/multicast plus
   Python-style UDP `device` broadcast-address defaults, IPv4 broadcast socket
   sends, and shared-`port` forward fallback semantics, serial, KISS, AX.25

@@ -26,6 +26,8 @@ struct DaemonConfigRaw {
     announce_capabilities: Vec<String>,
     #[serde(default)]
     propagation_node: Option<PropagationNodeConfig>,
+    #[serde(default)]
+    reticulum: Option<ReticulumConfigRaw>,
     #[serde(default, deserialize_with = "deserialize_interfaces")]
     interfaces: Vec<InterfaceConfig>,
 }
@@ -37,6 +39,11 @@ impl<'de> Deserialize<'de> for DaemonConfig {
     {
         let raw = DaemonConfigRaw::deserialize(deserializer)?;
         let mut interfaces = raw.interfaces;
+        if should_synthesize_global_shared_instance(raw.reticulum.as_ref(), &interfaces) {
+            if let Some(reticulum) = raw.reticulum.as_ref() {
+                interfaces.push(reticulum.global_shared_instance_interface());
+            }
+        }
         for (index, iface) in interfaces.iter_mut().enumerate() {
             let original_kind = iface.kind.trim().to_string();
             iface.kind = normalize_interface_kind(iface.kind.trim());
@@ -50,6 +57,83 @@ impl<'de> Deserialize<'de> for DaemonConfig {
             interfaces,
         })
     }
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[allow(dead_code)]
+struct ReticulumConfigRaw {
+    #[serde(default)]
+    share_instance: Option<bool>,
+    #[serde(default)]
+    shared_instance_type: Option<String>,
+    #[serde(default)]
+    shared_instance_port: Option<u16>,
+    #[serde(default)]
+    instance_name: Option<String>,
+    #[serde(default)]
+    force_shared_instance_bitrate: Option<u64>,
+    #[serde(default)]
+    instance_control_port: Option<u16>,
+    #[serde(default)]
+    rpc_key: Option<String>,
+}
+
+impl ReticulumConfigRaw {
+    fn global_shared_instance_interface(&self) -> InterfaceConfig {
+        let shared_instance_type = self
+            .shared_instance_type
+            .as_deref()
+            .map(str::trim)
+            .map(str::to_ascii_lowercase)
+            .filter(|value| matches!(value.as_str(), "tcp" | "unix"))
+            .unwrap_or_else(default_global_shared_instance_type);
+        let instance_name = self
+            .instance_name
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned);
+        let is_tcp = shared_instance_type == "tcp";
+        InterfaceConfig {
+            kind: "local".to_string(),
+            enabled: Some(true),
+            name: Some("shared-instance".to_string()),
+            shared_instance_type: Some(shared_instance_type),
+            host: is_tcp.then(|| "127.0.0.1".to_string()),
+            port: is_tcp.then_some(self.shared_instance_port.unwrap_or(37_428)),
+            instance_name,
+            force_shared_instance_bitrate: self.force_shared_instance_bitrate,
+            ..InterfaceConfig::default()
+        }
+    }
+}
+
+fn should_synthesize_global_shared_instance(
+    reticulum: Option<&ReticulumConfigRaw>,
+    interfaces: &[InterfaceConfig],
+) -> bool {
+    let Some(reticulum) = reticulum else {
+        return false;
+    };
+    if reticulum.share_instance == Some(false) {
+        return false;
+    }
+    !interfaces.iter().any(|iface| {
+        matches!(
+            normalize_interface_kind(iface.kind.trim()).as_str(),
+            "local" | "local_client"
+        )
+    })
+}
+
+#[cfg(any(target_family = "unix", target_os = "android"))]
+fn default_global_shared_instance_type() -> String {
+    "unix".to_string()
+}
+
+#[cfg(not(any(target_family = "unix", target_os = "android")))]
+fn default_global_shared_instance_type() -> String {
+    "tcp".to_string()
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]

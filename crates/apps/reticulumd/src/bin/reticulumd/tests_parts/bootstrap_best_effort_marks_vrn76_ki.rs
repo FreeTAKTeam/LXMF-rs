@@ -297,6 +297,97 @@ interfaces = [
 }
 
 #[test]
+fn bootstrap_starts_reticulum_global_shared_instance_without_local_interface_entry() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let config_path = temp.path().join("daemon.toml");
+    fs::write(
+        &config_path,
+        r#"
+[reticulum]
+share_instance = true
+shared_instance_type = "tcp"
+shared_instance_port = 0
+"#,
+    )
+    .expect("write config");
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let context = runtime.block_on(async {
+        bootstrap::bootstrap(test_args(db_path.clone(), Some(config_path.clone()), None, false))
+            .await
+    });
+    let response = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 1, method: "list_interfaces".to_string(), params: None })
+        .expect("list_interfaces");
+    let interfaces = response
+        .result
+        .expect("result")
+        .get("interfaces")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .expect("interfaces array");
+
+    let local = interfaces
+        .iter()
+        .find(|entry| entry.get("type").and_then(|value| value.as_str()) == Some("local"))
+        .expect("implicit local entry");
+    assert_eq!(local.get("name").and_then(|value| value.as_str()), Some("shared-instance"));
+    assert_eq!(
+        local
+            .get("settings")
+            .and_then(|value| value.get("_runtime"))
+            .and_then(|value| value.get("startup_status"))
+            .and_then(|value| value.as_str()),
+        Some("active")
+    );
+}
+
+#[test]
+fn bootstrap_reticulum_global_share_instance_false_does_not_start_implicit_local() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let config_path = temp.path().join("daemon.toml");
+    fs::write(
+        &config_path,
+        r#"
+[reticulum]
+share_instance = false
+shared_instance_type = "tcp"
+shared_instance_port = 0
+"#,
+    )
+    .expect("write config");
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let context = runtime.block_on(async {
+        bootstrap::bootstrap(test_args(db_path.clone(), Some(config_path.clone()), None, false))
+            .await
+    });
+    let response = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 1, method: "list_interfaces".to_string(), params: None })
+        .expect("list_interfaces");
+    let interfaces = response
+        .result
+        .expect("result")
+        .get("interfaces")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .expect("interfaces array");
+
+    assert!(
+        interfaces
+            .iter()
+            .all(|entry| entry.get("type").and_then(|value| value.as_str()) != Some("local")),
+        "share_instance=false should not synthesize local interface: {interfaces:?}"
+    );
+}
+
+#[test]
 fn bootstrap_attaches_local_interface_when_shared_instance_is_already_listening() {
     let shared_listener =
         std::net::TcpListener::bind("127.0.0.1:0").expect("bind shared local instance");
