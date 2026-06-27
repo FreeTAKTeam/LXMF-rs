@@ -107,6 +107,10 @@ jobs:
           python tools/scripts/backbone_selector_backpressure_probe.py \
             --require-epoll \
             --json-out target/backbone-selector/backpressure.json
+          python tools/scripts/backbone_python_reference_backpressure_probe.py \
+            --python-rns-path "${{ github.workspace }}/Reticulum" \
+            --require-epoll \
+            --json-out target/backbone-selector/python-reference-backpressure.json
           cargo test -p reticulum-rs-transport \
             iface::tcp_client::tests::backbone_hdlc_stream_backpressures_when_peer_stops_reading \
             -- --nocapture

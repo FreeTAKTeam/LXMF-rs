@@ -58,8 +58,9 @@ The project is best described by capability level:
   (`TCP_NODELAY`, Linux/Android keepalive probes, and TCP user timeout) plus
   Backbone-only HDLC stream liveness keepalives, stale detection, and
   read-timeout reconnects, local slow-reader HDLC tx backpressure evidence
-  paired with a Python selector/epoll slow-reader probe in the pinned Python
-  interop workflow,
+  paired with Python selector/epoll and live Python Reticulum
+  `BackboneClientInterface` slow-reader probes in the pinned Python interop
+  workflow,
   TCP/Backbone client reconnect tunnel re-synthesis, TCP/Backbone listener
   daemon/RPC runtime status with accept counters and latest accepted stream
   snapshots, LocalInterface
