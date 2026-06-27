@@ -91,8 +91,10 @@ placeholders:
   Python-style `device` broadcast-address defaults via host interface lookup,
   IPv4 broadcast socket sends, and Python `UDPInterface` alias semantics where
   shared `port` can default both listen and forward ports but `listen_port`
-  alone does not imply forwarding. Daemon/RPC status now records configured UDP
-  bind/forward role metadata and `rnstatus-rs` renders it for operators.
+  alone does not imply forwarding. Daemon/RPC status now refreshes UDP bind
+  state, role, last observed peer-route count, packet, byte, drop, and error
+  counters into `_runtime.udp.status`, and `rnstatus-rs` renders those rows for
+  operators.
 - Serial, serial KISS, and AX.25 KISS with Python-compatible AX.25 UI header
   wrapping over the serial KISS runtime. Android-style KISS beacon aliases
   `beacon_interval` and `beacon_data` feed the same ID beacon runtime as
@@ -100,8 +102,8 @@ placeholders:
   configured serial, KISS, AX.25 KISS, KISS TCP, and BLE GATT bearer metadata
   such as device/endpoint, baud, MTU, KISS timing, AX.25 callsign/SSID, BLE
   UUIDs, and BLE lifecycle timeouts; `rnstatus-rs` renders those configured
-  status rows. Live byte/error counters for these quiet bearers remain a
-  follow-up.
+  status rows. Live byte/error counters for serial, KISS/AX.25 KISS, KISS TCP,
+  and BLE GATT remain a follow-up.
 - AutoInterface discovery, authenticated peering, peer lifecycle, duplicate
   suppression, multicast announcements, data sockets, transport bridging, and
   live carrier-runtime status reporting, including polling reconciliation for

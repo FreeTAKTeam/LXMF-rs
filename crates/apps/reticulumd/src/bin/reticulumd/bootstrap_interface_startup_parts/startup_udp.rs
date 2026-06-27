@@ -5,14 +5,14 @@ async fn startup_udp(
     transport: &Transport,
     iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
     record: &mut InterfaceRecord,
-    startup_failures: &mut Vec<InterfaceStartupFailure>,
+    sinks: &mut UdpStartupSinks<'_>,
 ) -> bool {
     let (bind_addr, forward_addr) = match udp::bind_and_forward_addr(iface) {
         Ok(addrs) => addrs,
         Err(err) => {
             record_startup_failure(
                 record,
-                startup_failures,
+                sinks.startup_failures,
                 label.to_string(),
                 iface.kind.clone(),
                 err,
@@ -25,7 +25,7 @@ async fn startup_udp(
         if let Err(err) = udp::strict_preflight(bind_addr.as_str()).await {
             record_startup_failure(
                 record,
-                startup_failures,
+                sinks.startup_failures,
                 label.to_string(),
                 iface.kind.clone(),
                 err,
@@ -36,18 +36,24 @@ async fn startup_udp(
 
     let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
     let adapter = UdpInterface::new(bind_addr.clone(), forward_addr.clone());
-    let udp_iface = if adapter.is_multicast() {
-        let udp_iface =
-            transport.add_multicast_udp_interface(bind_addr.clone(), forward_addr.clone()).await;
+    let status = adapter.runtime_status_handle();
+    let is_multicast = adapter.is_multicast();
+    let udp_iface = if is_multicast {
+        let (udp_iface, status) = transport
+            .add_multicast_udp_interface_with_status(bind_addr.clone(), forward_addr.clone())
+            .await;
         iface_manager.lock().await.set_mode(udp_iface, mode);
+        sinks.runtime_refreshes.push(UdpRuntimeRefresh { runtime_iface: udp_iface, status });
         udp_iface
     } else {
-        iface_manager.lock().await.spawn_as_with_mode(
+        let udp_iface = iface_manager.lock().await.spawn_as_with_mode(
             adapter,
             UdpInterface::spawn,
             IfaceRole::Unicast,
             mode,
-        )
+        );
+        sinks.runtime_refreshes.push(UdpRuntimeRefresh { runtime_iface: udp_iface, status });
+        udp_iface
     };
     {
         let mut manager = iface_manager.lock().await;
@@ -62,7 +68,13 @@ async fn startup_udp(
     );
     let runtime_iface = udp_iface.to_string();
     mark_interface_startup_status(record, "spawned", None, Some(runtime_iface.as_str()));
-    mark_udp_runtime_status(record, bind_addr.as_str(), forward_addr.as_deref(), udp_iface);
+    mark_udp_runtime_status(
+        record,
+        bind_addr.as_str(),
+        forward_addr.as_deref(),
+        is_multicast,
+        udp_iface,
+    );
     true
 }
 
@@ -397,15 +409,23 @@ fn mark_udp_runtime_status(
     record: &mut InterfaceRecord,
     bind_addr: &str,
     forward_addr: Option<&str>,
+    is_multicast: bool,
     runtime_iface: AddressHash,
 ) {
+    let role = if is_multicast {
+        "multicast"
+    } else if forward_addr.is_some() {
+        "peer"
+    } else {
+        "listener"
+    };
     with_interface_runtime_metadata(record, |runtime| {
         runtime.insert(
             "udp".to_string(),
             serde_json::json!({
                 "status": {
                     "link_state": "configured",
-                    "role": if forward_addr.is_some() { "peer" } else { "listener" },
+                    "role": role,
                     "bind_addr": bind_addr,
                     "forward_addr": forward_addr,
                     "iface": runtime_iface.to_string(),

@@ -17,7 +17,7 @@ pub(super) use interface_startup::Vrn76RuntimeRefresh;
 pub(super) use interface_startup::{
     AutoRuntimeRefresh, I2pRuntimeRefresh, LoraRuntimeRefresh, PipeRuntimeRefresh,
     RNodeManagementBinding, RNodeMultiRuntimeRefresh, TcpRuntimeRefresh, TcpRuntimeStatusSource,
-    WeaveRuntimeRefresh,
+    UdpRuntimeRefresh, WeaveRuntimeRefresh,
 };
 use reticulum_daemon::announce_names::PropagationNodeAnnounceConfig;
 use reticulum_daemon::config::DaemonConfig;
@@ -49,6 +49,7 @@ pub(super) struct TransportStartupArtifacts {
     pub(super) seeded_tcp_interfaces: Vec<(String, InterfaceRecord, AddressHash)>,
     pub(super) auto_runtime_refreshes: Vec<AutoRuntimeRefresh>,
     pub(super) pipe_runtime_refreshes: Vec<PipeRuntimeRefresh>,
+    pub(super) udp_runtime_refreshes: Vec<UdpRuntimeRefresh>,
     pub(super) i2p_runtime_refreshes: Vec<I2pRuntimeRefresh>,
     pub(super) tcp_runtime_refreshes: Vec<TcpRuntimeRefresh>,
     pub(super) weave_runtime_refreshes: Vec<WeaveRuntimeRefresh>,
@@ -160,6 +161,7 @@ pub(super) async fn start_transport_and_interfaces(
     let mut seeded_tcp_interfaces = Vec::new();
     let mut auto_runtime_refreshes = Vec::new();
     let mut pipe_runtime_refreshes = Vec::new();
+    let mut udp_runtime_refreshes = Vec::new();
     let mut i2p_runtime_refreshes = Vec::new();
     let mut tcp_runtime_refreshes = Vec::new();
     let mut weave_runtime_refreshes = Vec::new();
@@ -241,6 +243,7 @@ pub(super) async fn start_transport_and_interfaces(
             seeded_tcp_interfaces.extend(startup.seeded_tcp_interfaces);
             auto_runtime_refreshes.extend(startup.auto_runtime_refreshes);
             pipe_runtime_refreshes.extend(startup.pipe_runtime_refreshes);
+            udp_runtime_refreshes.extend(startup.udp_runtime_refreshes);
             i2p_runtime_refreshes.extend(startup.i2p_runtime_refreshes);
             tcp_runtime_refreshes.extend(startup.tcp_runtime_refreshes);
             weave_runtime_refreshes.extend(startup.weave_runtime_refreshes);
@@ -353,6 +356,7 @@ pub(super) async fn start_transport_and_interfaces(
         seeded_tcp_interfaces,
         auto_runtime_refreshes,
         pipe_runtime_refreshes,
+        udp_runtime_refreshes,
         i2p_runtime_refreshes,
         tcp_runtime_refreshes,
         weave_runtime_refreshes,

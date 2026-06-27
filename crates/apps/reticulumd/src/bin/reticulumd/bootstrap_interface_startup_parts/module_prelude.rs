@@ -43,6 +43,7 @@ pub(super) struct InterfaceStartupBatch {
     pub(super) connected_to_shared_instance: bool,
     pub(super) auto_runtime_refreshes: Vec<AutoRuntimeRefresh>,
     pub(super) pipe_runtime_refreshes: Vec<PipeRuntimeRefresh>,
+    pub(super) udp_runtime_refreshes: Vec<UdpRuntimeRefresh>,
     pub(super) i2p_runtime_refreshes: Vec<I2pRuntimeRefresh>,
     pub(super) tcp_runtime_refreshes: Vec<TcpRuntimeRefresh>,
     pub(super) weave_runtime_refreshes: Vec<WeaveRuntimeRefresh>,
@@ -63,6 +64,17 @@ pub(crate) struct AutoRuntimeRefresh {
 pub(crate) struct PipeRuntimeRefresh {
     pub(crate) runtime_iface: AddressHash,
     pub(crate) status: rns_transport::iface::pipe::PipeRuntimeStatusHandle,
+}
+
+#[derive(Clone)]
+pub(crate) struct UdpRuntimeRefresh {
+    pub(crate) runtime_iface: AddressHash,
+    pub(crate) status: rns_transport::iface::udp::UdpRuntimeStatusHandle,
+}
+
+struct UdpStartupSinks<'a> {
+    startup_failures: &'a mut Vec<InterfaceStartupFailure>,
+    runtime_refreshes: &'a mut Vec<UdpRuntimeRefresh>,
 }
 
 #[derive(Clone)]
@@ -171,6 +183,7 @@ pub(super) async fn startup_configured_interfaces(
     let mut connected_to_shared_instance = false;
     let mut auto_runtime_refreshes = Vec::new();
     let mut pipe_runtime_refreshes = Vec::new();
+    let mut udp_runtime_refreshes = Vec::new();
     let mut i2p_runtime_refreshes = Vec::new();
     let mut tcp_runtime_refreshes = Vec::new();
     let mut weave_runtime_refreshes = Vec::new();
@@ -342,6 +355,10 @@ pub(super) async fn startup_configured_interfaces(
                 }
             }
             "udp" => {
+                let mut sinks = UdpStartupSinks {
+                    startup_failures: &mut startup_failures,
+                    runtime_refreshes: &mut udp_runtime_refreshes,
+                };
                 if startup_udp(
                     args,
                     iface,
@@ -349,7 +366,7 @@ pub(super) async fn startup_configured_interfaces(
                     transport,
                     iface_manager,
                     &mut configured_interfaces[index],
-                    &mut startup_failures,
+                    &mut sinks,
                 )
                 .await
                 {
@@ -542,6 +559,7 @@ pub(super) async fn startup_configured_interfaces(
         connected_to_shared_instance,
         auto_runtime_refreshes,
         pipe_runtime_refreshes,
+        udp_runtime_refreshes,
         i2p_runtime_refreshes,
         tcp_runtime_refreshes,
         weave_runtime_refreshes,
@@ -1651,7 +1669,7 @@ mod tests {
     use super::{
         apply_interface_runtime_config, build_tcp_client_adapter, mark_ble_spawn_success,
         startup_i2p, startup_kiss, startup_kiss_tcp_client, startup_pipe, startup_rnode_multi,
-        startup_configured_interfaces, startup_serial, startup_udp, startup_weave,
+        startup_configured_interfaces, startup_serial, startup_udp, startup_weave, UdpStartupSinks,
     };
     use crate::Args;
     use crate::bridge_rnode_management::DaemonRNodeManagementHandle;
@@ -2008,6 +2026,11 @@ interfaces = [
             settings: iface.settings_json(),
         };
         let mut startup_failures = Vec::new();
+        let mut udp_runtime_refreshes = Vec::new();
+        let mut sinks = UdpStartupSinks {
+            startup_failures: &mut startup_failures,
+            runtime_refreshes: &mut udp_runtime_refreshes,
+        };
 
         let started = startup_udp(
             &args,
@@ -2016,12 +2039,13 @@ interfaces = [
             &transport,
             &manager,
             &mut record,
-            &mut startup_failures,
+            &mut sinks,
         )
         .await;
 
         assert!(started);
         assert!(startup_failures.is_empty());
+        assert_eq!(udp_runtime_refreshes.len(), 1);
         let runtime_iface = record
             .settings
             .as_ref()
@@ -2037,7 +2061,7 @@ interfaces = [
             .as_ref()
             .expect("settings")["_runtime"]["udp"]["status"];
         assert_eq!(udp_status["link_state"].as_str(), Some("configured"));
-        assert_eq!(udp_status["role"].as_str(), Some("peer"));
+        assert_eq!(udp_status["role"].as_str(), Some("multicast"));
         assert!(udp_status["bind_addr"].as_str().expect("bind").ends_with(":0"));
         assert_eq!(udp_status["forward_addr"].as_str(), Some("239.255.0.1:4242"));
         assert_eq!(udp_status["iface"].as_str(), Some(runtime_iface.to_string().as_str()));

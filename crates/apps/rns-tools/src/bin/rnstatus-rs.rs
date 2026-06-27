@@ -505,6 +505,17 @@ fn udp_runtime_summary(status: &Value) -> Option<String> {
         value_str(status, "bind_addr")
     );
     append_optional_str(&mut summary, "forward", status.get("forward_addr"));
+    append_optional_u64(&mut summary, "peers", status.get("peer_routes"));
+    append_optional_u64(&mut summary, "rxp", status.get("packets_rx"));
+    append_optional_u64(&mut summary, "txp", status.get("packets_tx"));
+    append_optional_u64(&mut summary, "rx", status.get("bytes_rx"));
+    append_optional_u64(&mut summary, "tx", status.get("bytes_tx"));
+    append_optional_u64(&mut summary, "decode_errors", status.get("decode_errors"));
+    append_optional_u64(&mut summary, "rx_queue_errors", status.get("rx_queue_errors"));
+    append_optional_u64(&mut summary, "socket_errors", status.get("socket_errors"));
+    append_optional_u64(&mut summary, "tx_errors", status.get("tx_errors"));
+    append_optional_u64(&mut summary, "dropped_direct", status.get("dropped_direct"));
+    append_optional_str(&mut summary, "err", status.get("last_error"));
     Some(summary)
 }
 
@@ -924,7 +935,18 @@ mod tests {
                                     "link_state": "configured",
                                     "role": "peer",
                                     "bind_addr": "127.0.0.1:4242",
-                                    "forward_addr": "192.0.2.1:4242"
+                                    "forward_addr": "192.0.2.1:4242",
+                                    "peer_routes": 2,
+                                    "packets_rx": 3,
+                                    "packets_tx": 4,
+                                    "bytes_rx": 120,
+                                    "bytes_tx": 80,
+                                    "decode_errors": 1,
+                                    "rx_queue_errors": 2,
+                                    "socket_errors": 3,
+                                    "tx_errors": 4,
+                                    "dropped_direct": 5,
+                                    "last_error": "simulated udp decode failure"
                                 }
                             }
                         }
@@ -1088,6 +1110,17 @@ mod tests {
         assert!(output.contains("pending_packets=4"));
         assert!(output.contains("udp state=configured role=peer bind=127.0.0.1:4242"));
         assert!(output.contains("forward=192.0.2.1:4242"));
+        assert!(output.contains("peers=2"));
+        assert!(output.contains("rxp=3"));
+        assert!(output.contains("txp=4"));
+        assert!(output.contains("rx=120"));
+        assert!(output.contains("tx=80"));
+        assert!(output.contains("decode_errors=1"));
+        assert!(output.contains("rx_queue_errors=2"));
+        assert!(output.contains("socket_errors=3"));
+        assert!(output.contains("tx_errors=4"));
+        assert!(output.contains("dropped_direct=5"));
+        assert!(output.contains("err=simulated udp decode failure"));
         assert!(output.contains("serial state=configured device=/dev/ttyUSB0 baud=19200"));
         assert!(output.contains("data_bits=7"));
         assert!(output.contains("flow=hardware"));

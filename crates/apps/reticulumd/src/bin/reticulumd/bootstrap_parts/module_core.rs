@@ -180,6 +180,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     let seeded_tcp_interfaces = startup.seeded_tcp_interfaces;
     let auto_runtime_refreshes = startup.auto_runtime_refreshes;
     let pipe_runtime_refreshes = startup.pipe_runtime_refreshes;
+    let udp_runtime_refreshes = startup.udp_runtime_refreshes;
     let i2p_runtime_refreshes = startup.i2p_runtime_refreshes;
     let tcp_runtime_refreshes = startup.tcp_runtime_refreshes;
     let weave_runtime_refreshes = startup.weave_runtime_refreshes;
@@ -298,6 +299,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     daemon.replace_interfaces(configured_interfaces);
     spawn_auto_runtime_status_refresher(daemon.clone(), auto_runtime_refreshes);
     spawn_pipe_runtime_status_refresher(daemon.clone(), pipe_runtime_refreshes);
+    spawn_udp_runtime_status_refresher(daemon.clone(), udp_runtime_refreshes);
     spawn_i2p_runtime_status_refresher(daemon.clone(), i2p_runtime_refreshes);
     spawn_tcp_runtime_status_refresher(daemon.clone(), tcp_runtime_refreshes);
     spawn_weave_runtime_status_refresher(daemon.clone(), weave_runtime_refreshes);
@@ -487,6 +489,40 @@ fn refresh_pipe_runtime_status_once(
             daemon.update_interface_runtime_metadata_by_iface(
                 refresh.runtime_iface.to_string().as_str(),
                 "pipe",
+                "status",
+                refresh.status.to_json(),
+            )
+        })
+        .count()
+}
+
+fn spawn_udp_runtime_status_refresher(
+    daemon: Arc<RpcDaemon>,
+    refreshes: Vec<transport_startup::UdpRuntimeRefresh>,
+) {
+    if refreshes.is_empty() {
+        return;
+    }
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(INTERFACE_RUNTIME_STATUS_REFRESH_INTERVAL);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            interval.tick().await;
+            refresh_udp_runtime_status_once(&daemon, &refreshes);
+        }
+    });
+}
+
+fn refresh_udp_runtime_status_once(
+    daemon: &RpcDaemon,
+    refreshes: &[transport_startup::UdpRuntimeRefresh],
+) -> usize {
+    refreshes
+        .iter()
+        .filter(|refresh| {
+            daemon.update_interface_runtime_metadata_by_iface(
+                refresh.runtime_iface.to_string().as_str(),
+                "udp",
                 "status",
                 refresh.status.to_json(),
             )
@@ -991,6 +1027,74 @@ mod tests {
         assert_eq!(status["pipe_is_open"].as_bool(), Some(false));
         assert_eq!(status["respawn_attempts"].as_u64(), Some(1));
         assert_eq!(status["last_error"].as_str(), Some("spawn cat failed"));
+    }
+
+    #[test]
+    fn udp_runtime_status_refresh_updates_matching_interface_record() {
+        let daemon = RpcDaemon::test_instance();
+        let runtime_iface = AddressHash::new([0x25; 16]);
+        daemon.replace_interfaces(vec![InterfaceRecord {
+            kind: "udp".to_string(),
+            enabled: true,
+            host: Some("127.0.0.1".to_string()),
+            port: Some(4242),
+            name: Some("udp-main".to_string()),
+            settings: Some(json!({
+                "_runtime": {
+                    "iface": runtime_iface.to_string(),
+                    "startup_status": "spawned",
+                    "udp": {
+                        "status": {
+                            "link_state": "configured"
+                        }
+                    }
+                }
+            })),
+        }]);
+        let status =
+            rns_transport::iface::udp::UdpInterface::new("127.0.0.1:4242", Some("192.0.2.1:4242"))
+                .runtime_status_handle();
+        status.update(|status| {
+            status.link_state = "bound".to_string();
+            status.iface = Some(runtime_iface.to_string());
+            status.peer_routes = 3;
+            status.packets_rx = 2;
+            status.packets_tx = 1;
+            status.bytes_rx = 120;
+            status.bytes_tx = 64;
+            status.decode_errors = 1;
+            status.rx_queue_errors = 2;
+            status.socket_errors = 3;
+            status.tx_errors = 4;
+            status.dropped_direct = 5;
+            status.last_error = Some("simulated udp decode failure".to_string());
+        });
+        let refresh = transport_startup::UdpRuntimeRefresh { runtime_iface, status };
+
+        assert_eq!(refresh_udp_runtime_status_once(&daemon, &[refresh]), 1);
+        let result = daemon
+            .handle_rpc(RpcRequest { id: 94, method: "daemon_status_ex".to_string(), params: None })
+            .expect("daemon status")
+            .result
+            .expect("daemon status result");
+        let status = &result["interfaces"][0]["settings"]["_runtime"]["udp"]["status"];
+
+        assert_eq!(status["link_state"].as_str(), Some("bound"));
+        assert_eq!(status["role"].as_str(), Some("peer"));
+        assert_eq!(status["bind_addr"].as_str(), Some("127.0.0.1:4242"));
+        assert_eq!(status["forward_addr"].as_str(), Some("192.0.2.1:4242"));
+        assert_eq!(status["iface"].as_str(), Some(runtime_iface.to_string().as_str()));
+        assert_eq!(status["peer_routes"].as_u64(), Some(3));
+        assert_eq!(status["packets_rx"].as_u64(), Some(2));
+        assert_eq!(status["packets_tx"].as_u64(), Some(1));
+        assert_eq!(status["bytes_rx"].as_u64(), Some(120));
+        assert_eq!(status["bytes_tx"].as_u64(), Some(64));
+        assert_eq!(status["decode_errors"].as_u64(), Some(1));
+        assert_eq!(status["rx_queue_errors"].as_u64(), Some(2));
+        assert_eq!(status["socket_errors"].as_u64(), Some(3));
+        assert_eq!(status["tx_errors"].as_u64(), Some(4));
+        assert_eq!(status["dropped_direct"].as_u64(), Some(5));
+        assert_eq!(status["last_error"].as_str(), Some("simulated udp decode failure"));
     }
 
     #[test]

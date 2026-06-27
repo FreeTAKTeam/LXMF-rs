@@ -499,7 +499,18 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
                                         "link_state": "configured",
                                         "role": "peer",
                                         "bind_addr": "127.0.0.1:4242",
-                                        "forward_addr": "192.0.2.1:4242"
+                                        "forward_addr": "192.0.2.1:4242",
+                                        "peer_routes": 2,
+                                        "packets_rx": 3,
+                                        "packets_tx": 4,
+                                        "bytes_rx": 120,
+                                        "bytes_tx": 80,
+                                        "decode_errors": 1,
+                                        "rx_queue_errors": 2,
+                                        "socket_errors": 3,
+                                        "tx_errors": 4,
+                                        "dropped_direct": 5,
+                                        "last_error": "simulated udp decode failure"
                                     }
                                 }
                             }
@@ -679,6 +690,17 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
         "stdout: {stdout}"
     );
     assert!(stdout.contains("forward=192.0.2.1:4242"), "stdout: {stdout}");
+    assert!(stdout.contains("peers=2"), "stdout: {stdout}");
+    assert!(stdout.contains("rxp=3"), "stdout: {stdout}");
+    assert!(stdout.contains("txp=4"), "stdout: {stdout}");
+    assert!(stdout.contains("rx=120"), "stdout: {stdout}");
+    assert!(stdout.contains("tx=80"), "stdout: {stdout}");
+    assert!(stdout.contains("decode_errors=1"), "stdout: {stdout}");
+    assert!(stdout.contains("rx_queue_errors=2"), "stdout: {stdout}");
+    assert!(stdout.contains("socket_errors=3"), "stdout: {stdout}");
+    assert!(stdout.contains("tx_errors=4"), "stdout: {stdout}");
+    assert!(stdout.contains("dropped_direct=5"), "stdout: {stdout}");
+    assert!(stdout.contains("err=simulated udp decode failure"), "stdout: {stdout}");
     assert!(stdout.contains("serial-main"), "stdout: {stdout}");
     assert!(
         stdout.contains("serial state=configured device=/dev/ttyUSB0 baud=19200"),
