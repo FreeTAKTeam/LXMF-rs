@@ -332,7 +332,7 @@ impl RnodeBleKissSession {
         {
             return Err(RnodeBleKissError::Backend {
                 operation: "accept_notification_events",
-                message: "incomplete 20-byte RNode BLE notification; likely ATT MTU 23 / 20-byte notification payload, and btleplug cannot request a larger MTU before notifications in this backend".to_string(),
+                message: "incomplete 20-byte RNode BLE notification; likely ATT MTU 23 / 20-byte notification payload. The BLE host/backend did not report a usable negotiated MTU before notifications; verify btleplug 0.12+ platform MTU support or configure a host adapter that negotiates a larger ATT MTU.".to_string(),
             });
         }
         let mut notification = RnodeBleNotification::default();
@@ -406,7 +406,8 @@ mod tests {
             RnodeBleKissError::Backend { operation, message } => {
                 assert_eq!(operation, "accept_notification_events");
                 assert!(message.contains("likely ATT MTU 23"));
-                assert!(message.contains("btleplug cannot request a larger MTU"));
+                assert!(message.contains("did not report a usable negotiated MTU"));
+                assert!(message.contains("btleplug 0.12+"));
             }
             other => panic!("unexpected error: {other:?}"),
         }

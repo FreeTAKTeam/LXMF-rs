@@ -168,11 +168,17 @@ write/notification characteristics, subscribes to notifications, and writes
 raw KISS payload chunks to the backend characteristic writer. Outbound BLE
 packet writes are rejected before backend I/O when they exceed the configured
 RNode BLE MTU, and encoded raw-KISS bytes are chunked by the configured maximum
-BLE write length before they reach the backend. The RNode BLE notification path
-also preserves non-READY KISS command responses alongside decoded packet
-payloads, and its command monitor exposes retained probe status, radio status,
-non-fatal hardware errors, fatal command error, online state, and reported
-bitrate. Daemon `RNodeInterface` `ble://` startup appends the same RNode
+BLE write length before they reach the backend. The native backend reads the
+negotiated ATT MTU exposed by `btleplug` 0.12 after connect/service discovery,
+raises the default write chunk size when the platform reports a larger payload,
+and warns when a reported MTU remains below the 173-byte LXMF notification
+minimum. A 20-byte partial notification is diagnosed as likely ATT MTU 23 /
+20-byte payload evidence, which means the host/backend did not report a usable
+larger negotiated MTU before notifications. The RNode BLE notification path also
+preserves non-READY KISS command responses alongside decoded packet payloads,
+and its command monitor exposes retained probe status, radio status, non-fatal
+hardware errors, fatal command error, online state, and reported bitrate.
+Daemon `RNodeInterface` `ble://` startup appends the same RNode
 detect, firmware, platform, MCU, radio configuration, airtime-lock, and
 radio-on command frames used by serial/TCP RNode startup and validates startup
 and fatal command responses through the same RNode protocol state. If startup

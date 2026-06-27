@@ -283,6 +283,7 @@ mod tests {
             .expect_err("20-byte notification should fail lifecycle with MTU diagnostic");
 
         assert!(err.contains("likely ATT MTU 23"));
-        assert!(err.contains("btleplug cannot request a larger MTU"));
+        assert!(err.contains("did not report a usable negotiated MTU"));
+        assert!(err.contains("btleplug 0.12+"));
     }
 }
