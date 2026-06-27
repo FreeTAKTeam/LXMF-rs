@@ -66,7 +66,11 @@ placeholders:
   without changing ordinary TCP client/server defaults; focused watchdog tests
   now cover keepalive, stale, active-after-read, and read-timeout event order,
   and local slow-reader evidence proves the bounded HDLC tx queue backpressures
-  instead of draining unbounded work while a Backbone peer stops reading.
+  instead of draining unbounded work while a Backbone peer stops reading. The
+  pinned Python interop workflow now also runs a stdlib Python selector/epoll
+  slow-reader probe with `backbone_selector_backpressure_probe.py`, requiring
+  `EpollSelector` on Linux and comparing the result with the Rust
+  `backbone_hdlc_stream_backpressures_when_peer_stops_reading` proof.
 - LocalInterface TCP-loopback listener/client-attach plus Unix filesystem and
   Linux/Android abstract AF_UNIX shared-instance listener/client-attach
   compatibility over the existing stream/HDLC runtime, including Python's
@@ -203,8 +207,9 @@ record.
 
 `RNS/Interfaces/*` remains `partial` because parity is measured against the
 whole Python family, not because the implemented interfaces are stubs. Backbone
-still needs a live Python selector/epoll comparison for the same slow-reader
-workload before the backpressure evidence is considered complete. AutoInterface
+now has a Python selector/epoll slow-reader probe for the same qualitative
+backpressure workload, but still needs live Python Reticulum BackboneInterface
+comparison evidence before the backpressure evidence is considered complete. AutoInterface
 now has daemon-side dynamic add/remove reconciliation for an active runtime
 using the implemented diff plan plus discovery and data listener supervisors.
 Zero-initial startup now keeps the polling reconciler and scheduler runtime
@@ -296,6 +301,7 @@ integration and broader prepared-host hardware evidence remain pending.
 - Workspace unit and integration tests cover core, transport, daemon, serial,
   BLE, LoRa, AutoInterface, link, channel, buffer, and resource behavior.
 - `.github/workflows/python-interop.yml` runs pinned live Python channel and
-  LXMF compatibility scenarios.
+  LXMF compatibility scenarios plus the Python selector/epoll slow-reader probe
+  for Backbone backpressure evidence.
 - Nightly mesh, soak, and embedded HIL workflows provide additional operational
   evidence, but do not promote unsupported interface families to `done`.
