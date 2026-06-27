@@ -168,7 +168,11 @@ The project is best described by capability level:
   (`WDCL_CMD_REMOTE_DISPLAY` enable/disable) covered by software tests, and
   `reticulumd` exposes live dispatch through the
   `weave_remote_display_control` RPC bridge with `weaveconf-rs`
-  enable/disable commands. An opt-in prepared-host smoke harness records
+  enable/disable commands. A software fake-PTY smoke now proves signed WDCL
+  discovery, connected runtime status refresh, endpoint/display/device-stat
+  reporting, `rnstatus-rs --weave-display`, and live `weaveconf-rs`
+  enable/disable dispatch through the real daemon path without hardware. An
+  opt-in prepared-host smoke harness records
   connected serial evidence under `target/weave-hil/` and can optionally prove
   the live `weaveconf-rs` remote-display enable/disable dispatch against that
   connected device.

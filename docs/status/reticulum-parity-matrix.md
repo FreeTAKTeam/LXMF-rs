@@ -181,8 +181,12 @@ placeholders:
   `WDCL_CMD_REMOTE_DISPLAY` enable/disable frame primitive, live
   `weave_remote_display_control` RPC dispatch, and `weaveconf-rs`
   enable/disable commands, including software cancel/stop closure of link,
-  WDCL-connected, and endpoint state, with an opt-in prepared-host smoke
-  harness for connected serial Weave devices.
+  WDCL-connected, and endpoint state. A software fake-PTY smoke now proves
+  signed WDCL discovery, connected status refresh, endpoint/display/device-stat
+  reporting, `rnstatus-rs --weave-display`, and live `weaveconf-rs`
+  remote-display enable/disable dispatch through the real daemon path without
+  hardware, with an opt-in prepared-host smoke harness for connected serial
+  Weave devices.
 - I2P SAM baseline, with transient stream sessions, `.i2p` name lookup, HDLC
   framing, virtual peer child interfaces, direct peer sends, broadcast fanout
   across configured peers, `STREAM ACCEPT` connectable sessions, and private

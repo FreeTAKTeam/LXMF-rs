@@ -57,6 +57,46 @@ fn weave_prepared_host_smoke_preserves_evidence_contract() {
 }
 
 #[test]
+fn weave_fake_pty_smoke_preserves_software_evidence_contract() {
+    let root = repo_root();
+    let script_path = root.join("tools/scripts/weave-fake-pty-smoke.sh");
+    let script = fs::read_to_string(&script_path).expect("read Weave fake PTY smoke script");
+
+    for required in [
+        "target/weave-fake-pty-smoke",
+        "WeaveInterface",
+        "weave-fake-pty",
+        "pty.openpty",
+        "cryptography.hazmat.primitives.asymmetric.ed25519",
+        "WDCL_T_DISCOVER",
+        "WDCL_T_CONNECT",
+        "WDCL_T_CMD",
+        "WDCL_T_LOG",
+        "WDCL_T_DISP",
+        "WDCL_CMD_REMOTE_DISPLAY",
+        "ET_PROTO_WDCL_CONNECTION",
+        "--strict-interface-startup",
+        "rnstatus-rs",
+        "--weave-display weave-fake-pty",
+        "weaveconf-rs",
+        "enable-remote-display",
+        "disable-remote-display",
+        "remote_display_enable_seen",
+        "remote_display_disable_seen",
+        "display_frame_sent",
+        "device_stats_sent",
+        "buffer_hex",
+        "aabbccdd",
+        "report.json",
+    ] {
+        assert!(
+            script.contains(required),
+            "Weave fake PTY smoke should include required token {required:?}"
+        );
+    }
+}
+
+#[test]
 fn nightly_hil_workflow_exposes_weave_prepared_host_job() {
     let root = repo_root();
     let workflow_path = root.join(".github/workflows/nightly-embedded-hil.yml");
@@ -110,6 +150,33 @@ fn weave_runbook_documents_prepared_host_smoke_artifacts() {
         assert!(
             runbook.contains(required),
             "Weave runbook should document required token {required:?}"
+        );
+    }
+}
+
+#[test]
+fn weave_runbook_documents_fake_pty_smoke_artifacts() {
+    let root = repo_root();
+    let runbook_path = root.join("docs/runbooks/reticulumd-weave-interface.md");
+    let runbook = fs::read_to_string(&runbook_path).expect("read Weave runbook");
+
+    for required in [
+        "Software Fake-PTY Smoke",
+        "./tools/scripts/weave-fake-pty-smoke.sh",
+        "target/weave-fake-pty-smoke/",
+        "signed WDCL discovery response",
+        "_runtime.weave.status.link_state = \"connected\"",
+        "_runtime.weave.status.display.buffer_hex = \"aabbccdd\"",
+        "rnstatus-rs --weave-display weave-fake-pty",
+        "`weaveconf-rs enable-remote-display --interface weave-fake-pty`",
+        "`weaveconf-rs disable-remote-display --interface weave-fake-pty`",
+        "remote_display_enable_seen",
+        "remote_display_disable_seen",
+        "device_stats_sent",
+    ] {
+        assert!(
+            runbook.contains(required),
+            "Weave runbook should document fake PTY token {required:?}"
         );
     }
 }

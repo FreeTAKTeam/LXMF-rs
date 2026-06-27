@@ -94,6 +94,47 @@ weaveconf-rs --rpc 127.0.0.1:4243 enable-remote-display \
   --remote-switch-id-hex 10203040
 ```
 
+## Software Fake-PTY Smoke
+
+The software fake-PTY smoke validates the daemon and operator tooling without
+attached Weave hardware:
+
+```sh
+./tools/scripts/weave-fake-pty-smoke.sh
+```
+
+The script starts a local pseudo-terminal fake Weave peer, configures
+`reticulumd` with `WeaveInterface` on the generated PTY slave, and runs
+`--strict-interface-startup`. The fake peer decodes HDLC/WDCL frames, captures
+the daemon discovery broadcast, returns a signed WDCL discovery response,
+observes the daemon connect handshake, and emits connection, endpoint,
+display-frame, CPU, task, and memory log/status frames. A passing run requires:
+
+- `_runtime.startup_status = "spawned"`
+- `_runtime.weave.status.link_state = "connected"`
+- `_runtime.weave.status.wdcl_connected = true`
+- `_runtime.weave.status.remote_switch_id` populated from the signed fake peer
+- `_runtime.weave.status.local_endpoint_id` populated
+- `_runtime.weave.status.endpoint_count = 1`
+- `_runtime.weave.status.display.buffer_hex = "aabbccdd"`
+- `_runtime.weave.status.device_stats.cpu_load = 37`
+- human `rnstatus-rs` output summarizing the same Weave runtime metadata
+- `rnstatus-rs --weave-display weave-fake-pty` reporting the captured display
+  framebuffer and device stats
+- `weaveconf-rs enable-remote-display --interface weave-fake-pty`
+- `weaveconf-rs disable-remote-display --interface weave-fake-pty`
+- the fake peer recording `remote_display_enable_seen` and
+  `remote_display_disable_seen` from `WDCL_CMD_REMOTE_DISPLAY` command frames
+
+The smoke writes structured evidence under `target/weave-fake-pty-smoke/`,
+including `report.json`, fake-peer state with `device_stats_sent`,
+`remote_display_enable_seen`, and `remote_display_disable_seen`, daemon logs,
+`rnstatus-rs` JSON/human output, `rnstatus-rs --weave-display` JSON/human
+output, and both `weaveconf-rs` command responses. This proves signed
+discovery, WDCL connection status refresh, display/status rendering, and live
+remote-display control dispatch through the real daemon path. It is still not a
+substitute for prepared-host execution against real Weave hardware.
+
 ## Prepared-Host Smoke
 
 The opt-in prepared-host smoke validates the daemon against a host with a
