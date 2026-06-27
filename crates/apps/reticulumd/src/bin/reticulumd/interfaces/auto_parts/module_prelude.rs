@@ -165,6 +165,19 @@ pub(crate) enum AutoPeerDataLoopEvent {
 }
 
 #[allow(dead_code)]
+pub(crate) struct AutoDiscoveryListenerSupervisor {
+    plan: AutoDaemonStartupPlan,
+    state: Arc<tokio::sync::Mutex<AutoDiscoveryState>>,
+    shutdown: tokio::sync::watch::Receiver<bool>,
+    listeners: BTreeMap<String, AutoDiscoveryListenerHandle>,
+}
+
+#[allow(dead_code)]
+struct AutoDiscoveryListenerHandle {
+    joins: Vec<tokio::task::JoinHandle<()>>,
+}
+
+#[allow(dead_code)]
 pub(crate) struct AutoPeerDataListenerSupervisor {
     plan: AutoDaemonStartupPlan,
     state: Arc<tokio::sync::Mutex<AutoDiscoveryState>>,

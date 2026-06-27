@@ -345,13 +345,16 @@ impl AutoDaemonStartupPlan {
         let data_events_capacity = usize::max(data_socket_count * 8, 1);
         let (data_events_tx, mut data_events_rx) = tokio::sync::mpsc::channel(data_events_capacity);
         let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
-        let handles = self.spawn_discovery_receive_loops(
-            sockets,
-            Arc::clone(&state),
-            events_tx,
-            shutdown_rx.clone(),
-        );
-        let receive_loop_count = handles.len();
+        let discovery_listener_supervisor = Arc::new(tokio::sync::Mutex::new(
+            AutoDiscoveryListenerSupervisor::new(
+                self.clone(),
+                Arc::clone(&state),
+                shutdown_rx.clone(),
+            ),
+        ));
+        discovery_listener_supervisor.lock().await.spawn_sockets(sockets, &events_tx);
+        let receive_loop_count = discovery_listener_supervisor.lock().await.receive_loop_count();
+        drop(events_tx);
         let data_listener_supervisor = Arc::new(tokio::sync::Mutex::new(
             AutoPeerDataListenerSupervisor::new(
                 self.clone(),
@@ -426,11 +429,7 @@ impl AutoDaemonStartupPlan {
                     }
                 }
             }
-            for handle in handles {
-                if let Err(err) = handle.await {
-                    log::warn!("[daemon-auto] discovery receive loop task stopped: {err}");
-                }
-            }
+            discovery_listener_supervisor.lock().await.shutdown_all().await;
             data_listener_supervisor.lock().await.shutdown_all().await;
             if let Some(handle) = link_local_reconciler_handle {
                 if let Err(err) = handle.await {

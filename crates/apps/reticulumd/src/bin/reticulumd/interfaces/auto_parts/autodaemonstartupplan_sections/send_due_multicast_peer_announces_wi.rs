@@ -282,27 +282,101 @@ impl AutoDaemonStartupPlan {
             .into_iter()
             .filter(|target| target.kind == AutoDiscoverySocketKind::Unicast)
         {
-            let bind_addr = target.resolve_bind_addr(&mut scope_id_for_ifname).map_err(|err| {
-                format!(
-                    "resolve auto discovery unicast bind {} failed: {err}",
-                    target.display_bind_addr()
-                )
-            })?;
-            let socket = tokio::net::UdpSocket::bind(bind_addr).await.map_err(|err| {
-                format!(
-                    "bind auto discovery unicast socket {} failed: {err}",
-                    target.display_bind_addr()
-                )
-            })?;
-            sockets.push(AutoBoundDiscoverySocket {
-                kind: target.kind,
-                ifname: target.ifname,
-                bind_addr: socket.local_addr().unwrap_or(bind_addr),
-                multicast_group_addr: None,
-                socket,
-            });
+            sockets.push(self.bind_discovery_socket_target(target, &mut scope_id_for_ifname).await?);
         }
         Ok(sockets)
+    }
+
+    #[allow(dead_code)]
+    pub(crate) async fn bind_discovery_sockets_for_listener(
+        &self,
+        listener: &AutoDiscoveryListenerBinding,
+        mut scope_id_for_ifname: impl FnMut(&str) -> Result<u32, String>,
+    ) -> Result<Vec<AutoBoundDiscoverySocket>, String> {
+        let mut sockets = Vec::new();
+        for target in [
+            AutoDiscoverySocketBindTarget::unicast(listener),
+            AutoDiscoverySocketBindTarget::multicast(listener),
+        ] {
+            sockets.push(self.bind_discovery_socket_target(target, &mut scope_id_for_ifname).await?);
+        }
+        Ok(sockets)
+    }
+
+    async fn bind_discovery_socket_target(
+        &self,
+        target: AutoDiscoverySocketBindTarget,
+        mut scope_id_for_ifname: impl FnMut(&str) -> Result<u32, String>,
+    ) -> Result<AutoBoundDiscoverySocket, String> {
+        match target.kind {
+            AutoDiscoverySocketKind::Unicast => {
+                let bind_addr = target.resolve_bind_addr(&mut scope_id_for_ifname).map_err(|err| {
+                    format!(
+                        "resolve auto discovery unicast bind {} failed: {err}",
+                        target.display_bind_addr()
+                    )
+                })?;
+                let socket = tokio::net::UdpSocket::bind(bind_addr).await.map_err(|err| {
+                    format!(
+                        "bind auto discovery unicast socket {} failed: {err}",
+                        target.display_bind_addr()
+                    )
+                })?;
+                Ok(AutoBoundDiscoverySocket {
+                    kind: target.kind,
+                    ifname: target.ifname,
+                    bind_addr: socket.local_addr().unwrap_or(bind_addr),
+                    multicast_group_addr: None,
+                    socket,
+                })
+            }
+            AutoDiscoverySocketKind::Multicast => {
+                let resolved =
+                    target.resolve_multicast_bind(&mut scope_id_for_ifname).map_err(|err| {
+                        format!(
+                            "resolve auto discovery multicast bind {} failed: {err}",
+                            target.display_bind_addr()
+                        )
+                    })?;
+                let std_socket = std::net::UdpSocket::bind(resolved.bind_addr).map_err(|err| {
+                    format!(
+                        "bind auto discovery multicast socket {} failed: {err}",
+                        target.display_bind_addr()
+                    )
+                })?;
+                match resolved.multicast_group_addr.ip() {
+                    IpAddr::V6(group) => std_socket
+                        .join_multicast_v6(&group, resolved.multicast_scope_id)
+                        .map_err(|err| {
+                            format!(
+                                "join auto discovery multicast group {} on ifindex {} failed: {err}",
+                                resolved.multicast_group_addr, resolved.multicast_scope_id
+                            )
+                        })?,
+                    IpAddr::V4(group) => std_socket
+                        .join_multicast_v4(&group, &std::net::Ipv4Addr::UNSPECIFIED)
+                        .map_err(|err| {
+                            format!(
+                                "join auto discovery multicast group {} failed: {err}",
+                                resolved.multicast_group_addr
+                            )
+                        })?,
+                }
+                std_socket.set_nonblocking(true).map_err(|err| {
+                    format!("set auto discovery multicast socket nonblocking failed: {err}")
+                })?;
+                let socket = tokio::net::UdpSocket::from_std(std_socket).map_err(|err| {
+                    format!("convert auto discovery multicast socket to tokio failed: {err}")
+                })?;
+                Ok(AutoBoundDiscoverySocket {
+                    kind: target.kind,
+                    ifname: target.ifname,
+                    bind_addr: socket.local_addr().unwrap_or(resolved.bind_addr),
+                    multicast_group_addr: Some(resolved.multicast_group_addr),
+                    socket,
+                })
+            }
+        }
     }
 
     #[allow(dead_code)]
@@ -361,50 +435,7 @@ impl AutoDaemonStartupPlan {
             .into_iter()
             .filter(|target| target.kind == AutoDiscoverySocketKind::Multicast)
         {
-            let resolved =
-                target.resolve_multicast_bind(&mut scope_id_for_ifname).map_err(|err| {
-                    format!(
-                        "resolve auto discovery multicast bind {} failed: {err}",
-                        target.display_bind_addr()
-                    )
-                })?;
-            let std_socket = std::net::UdpSocket::bind(resolved.bind_addr).map_err(|err| {
-                format!(
-                    "bind auto discovery multicast socket {} failed: {err}",
-                    target.display_bind_addr()
-                )
-            })?;
-            match resolved.multicast_group_addr.ip() {
-                IpAddr::V6(group) => std_socket
-                    .join_multicast_v6(&group, resolved.multicast_scope_id)
-                    .map_err(|err| {
-                        format!(
-                            "join auto discovery multicast group {} on ifindex {} failed: {err}",
-                            resolved.multicast_group_addr, resolved.multicast_scope_id
-                        )
-                    })?,
-                IpAddr::V4(group) => std_socket
-                    .join_multicast_v4(&group, &std::net::Ipv4Addr::UNSPECIFIED)
-                    .map_err(|err| {
-                        format!(
-                            "join auto discovery multicast group {} failed: {err}",
-                            resolved.multicast_group_addr
-                        )
-                    })?,
-            }
-            std_socket.set_nonblocking(true).map_err(|err| {
-                format!("set auto discovery multicast socket nonblocking failed: {err}")
-            })?;
-            let socket = tokio::net::UdpSocket::from_std(std_socket).map_err(|err| {
-                format!("convert auto discovery multicast socket to tokio failed: {err}")
-            })?;
-            sockets.push(AutoBoundDiscoverySocket {
-                kind: target.kind,
-                ifname: target.ifname,
-                bind_addr: socket.local_addr().unwrap_or(resolved.bind_addr),
-                multicast_group_addr: Some(resolved.multicast_group_addr),
-                socket,
-            });
+            sockets.push(self.bind_discovery_socket_target(target, &mut scope_id_for_ifname).await?);
         }
         Ok(sockets)
     }
@@ -523,6 +554,81 @@ impl AutoDaemonStartupPlan {
                 )
             })
             .collect()
+    }
+}
+
+impl AutoDiscoveryListenerSupervisor {
+    #[allow(dead_code)]
+    pub(crate) fn new(
+        plan: AutoDaemonStartupPlan,
+        state: Arc<tokio::sync::Mutex<AutoDiscoveryState>>,
+        shutdown: tokio::sync::watch::Receiver<bool>,
+    ) -> Self {
+        Self { plan, state, shutdown, listeners: BTreeMap::new() }
+    }
+
+    pub(crate) fn spawn_sockets(
+        &mut self,
+        sockets: Vec<AutoBoundDiscoverySocket>,
+        events: &tokio::sync::mpsc::Sender<AutoDiscoveryLoopEvent>,
+    ) {
+        let mut by_ifname = BTreeMap::<String, Vec<AutoBoundDiscoverySocket>>::new();
+        for socket in sockets {
+            by_ifname.entry(socket.ifname.clone()).or_default().push(socket);
+        }
+        for (ifname, sockets) in by_ifname {
+            self.spawn_listener(ifname, sockets, events);
+        }
+    }
+
+    fn spawn_listener(
+        &mut self,
+        ifname: String,
+        sockets: Vec<AutoBoundDiscoverySocket>,
+        events: &tokio::sync::mpsc::Sender<AutoDiscoveryLoopEvent>,
+    ) {
+        let joins = sockets
+            .into_iter()
+            .map(|socket| {
+                self.plan.spawn_discovery_receive_loop(
+                    socket,
+                    Arc::clone(&self.state),
+                    events.clone(),
+                    self.shutdown.clone(),
+                )
+            })
+            .collect();
+        if let Some(old) = self.listeners.insert(ifname, AutoDiscoveryListenerHandle { joins }) {
+            tokio::spawn(async move {
+                old.stop().await;
+            });
+        }
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn receive_loop_count(&self) -> usize {
+        self.listeners.values().map(|listener| listener.joins.len()).sum()
+    }
+
+    #[allow(dead_code)]
+    pub(crate) async fn shutdown_all(&mut self) {
+        let listeners = std::mem::take(&mut self.listeners);
+        for handle in listeners.into_values() {
+            handle.stop().await;
+        }
+    }
+}
+
+impl AutoDiscoveryListenerHandle {
+    async fn stop(self) {
+        for join in self.joins {
+            join.abort();
+            if let Err(err) = join.await {
+                if !err.is_cancelled() {
+                    log::warn!("[daemon-auto] discovery receive loop task stopped: {err}");
+                }
+            }
+        }
     }
 }
 

@@ -151,10 +151,14 @@ The reusable transport layer now also includes Python-compatible helpers for:
   duplicate-suppression state, and reports accepted/duplicate/unknown decisions
   through a channel
 - daemon startup that binds native-scope discovery sockets, starts the receive
-  loops, repeat multicast peer-announce scheduler, peer-job scheduler, and
-  peer-data receive loops, injects accepted peer-data packets into transport,
-  routes direct/broadcast transport sends to peer UDP data sockets, and records
-  discovery/data runtime counts
+  loops under a discovery listener supervisor, starts the repeat multicast
+  peer-announce scheduler, peer-job scheduler, and peer-data receive loops,
+  injects accepted peer-data packets into transport, routes direct/broadcast
+  transport sends to peer UDP data sockets, and records discovery/data runtime
+  counts
+- a supervised discovery listener primitive that groups the unicast and
+  multicast discovery receive loops for each adopted interface, lets startup
+  manage listener tasks per interface, and cleanly stops managed loops
 - a supervised peer-data listener restart primitive that stops only the
   affected interface listener, binds the replacement link-local data listener,
   prunes stale outbound routes that referenced the old socket, and records the
@@ -195,5 +199,6 @@ interfaces = [
 ## Operational Follow-Up
 
 - Add/remove supervision for newly appearing or disappearing adopted interfaces
-  remains separate follow-up work because it also requires discovery socket
-  listener supervision, not only data-listener restart.
+  remains separate follow-up work: the discovery and data listener supervisors
+  are now present, but the reconciler still needs adopted-interface diff
+  planning and ordered add/remove lifecycle application.
