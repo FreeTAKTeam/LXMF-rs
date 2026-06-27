@@ -98,7 +98,9 @@ placeholders:
   primary single-bind selector.
 - PipeInterface subprocess stdin/stdout transport with Python-style command
   parsing, HDLC packet framing, respawn delay, default MTU, and live subprocess
-  status reporting through daemon/RPC `_runtime.pipe.status`.
+  status reporting through daemon/RPC `_runtime.pipe.status`. A software
+  fake-subprocess smoke now proves strict daemon startup and `rnstatus-rs`
+  JSON/human reporting for a running `cat` subprocess without external devices.
 - UDP unicast and multicast with peer routing, multicast proof fallback,
   Python-style `device` broadcast-address defaults via host interface lookup,
   IPv4 broadcast socket sends, and Python `UDPInterface` alias semantics where

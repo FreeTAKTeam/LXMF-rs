@@ -77,7 +77,9 @@ The project is best described by capability level:
   listeners through a sidecar startup path,
   Python-style `force_shared_instance_bitrate` stream pacing, plus
   shared-instance one-hop transport wrapping,
-  Pipe subprocess HDLC, UDP unicast/multicast plus
+  Pipe subprocess HDLC with a software fake-subprocess smoke for strict daemon
+  startup and refreshed `rnstatus-rs` JSON/human runtime status, UDP
+  unicast/multicast plus
   Python-style UDP `device` broadcast-address defaults, IPv4 broadcast socket
   sends, and shared-`port` forward fallback semantics, serial, KISS, AX.25
   KISS with Android-style beacon alias compatibility, Python
