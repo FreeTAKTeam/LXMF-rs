@@ -68,8 +68,8 @@
     },
     {
       "path": "docs/contracts/mobile-ble-host-contract.md",
-      "bytes": 2838,
-      "sha256": "4d25c8e2ac0b839f08120bcccd175baf955f28e8225a9831c5ebbf157f4b8409"
+      "bytes": 2866,
+      "sha256": "27444acb71adb1ade6e01c0ffa3951c90598a08cafd54d21d5322ab5554ee822"
     },
     {
       "path": "docs/contracts/native-embedded-interop-profile-v1.md",
