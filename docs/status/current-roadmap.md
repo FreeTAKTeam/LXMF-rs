@@ -88,7 +88,8 @@ The project is best described by capability level:
   smoke for serial KISS/AX.25 KISS startup frames, READY handling, and
   `rnstatus-rs` reporting, Python
   `TCPClientInterface` `kiss_framing = true` parse-to-bootstrap/status
-  coverage as `kiss_tcp_client`, AutoInterface with
+  coverage as `kiss_tcp_client` plus a software fake-TCP smoke for KISS TCP
+  startup frames, READY handling, and `rnstatus-rs` reporting, AutoInterface with
   Python-style multicast address type fallback, polling adopted-address
   reconciliation, adopted-interface add/remove/change diff planning,
   daemon-side add/remove lifecycle application for active AutoInterface
@@ -245,6 +246,11 @@ The project is best described by capability level:
   `AX25KISSInterface` alias parsing, strict daemon startup, KISS startup command
   emission, fake READY handling, refreshed `_runtime.kiss.status`, and
   `rnstatus-rs` JSON/human output without attached modem hardware.
+  A software fake-TCP smoke now proves Python-style `TCPClientInterface`
+  `kiss_framing = true` alias parsing, strict daemon startup, KISS startup
+  command emission, fake READY handling, refreshed `_runtime.kiss_tcp.status`,
+  and `rnstatus-rs` JSON/human output without a real Wi-Fi KISS bridge or TCP
+  modem.
   BLE GATT now refreshes live connection/subscription, packet, HDLC frame,
   notification byte, payload byte, write-chunk, reconnect, startup phase,
   queue, decode, serialize, read/write, buffer-drop, cleanup, and last-error

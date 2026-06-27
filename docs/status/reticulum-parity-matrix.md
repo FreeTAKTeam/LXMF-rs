@@ -124,9 +124,12 @@ placeholders:
   `AX25KISSInterface` configs, strict startup, KISS startup command emission,
   fake READY handling, and refreshed daemon/operator status without attached
   modem hardware. Python
-  `TCPClientInterface` configs with `kiss_framing = true` now have focused daemon
-  parse-to-bootstrap/status coverage as `kiss_tcp_client` with
-  `_runtime.kiss_tcp.status`. BLE GATT now
+  `TCPClientInterface` configs with `kiss_framing = true` now have focused
+  daemon parse-to-bootstrap/status coverage as `kiss_tcp_client` with
+  `_runtime.kiss_tcp.status`, plus a software fake-TCP smoke proving strict
+  startup, KISS startup command emission, fake READY handling, and refreshed
+  daemon/operator status without a real Wi-Fi KISS bridge or TCP modem.
+  BLE GATT now
   refreshes live daemon/RPC status with connection/subscription, packet, HDLC
   frame, notification byte, payload byte, write-chunk, reconnect, startup
   phase, queue, decode, serialize, read/write, buffer-drop, cleanup, and

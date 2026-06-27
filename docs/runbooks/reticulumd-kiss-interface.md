@@ -266,11 +266,51 @@ strict daemon startup, KISS startup frame emission, READY command handling, and
 refreshed operator status through the real daemon path. It is local-only
 evidence, not a substitute for real TNC or modem hardware evidence.
 
+## Software Fake-TCP Smoke
+
+The software fake-TCP smoke validates the Python `TCPClientInterface`
+`kiss_framing = true` daemon path, normalized to `kiss_tcp_client`, without a
+real Wi-Fi KISS bridge or TCP-attached modem:
+
+```bash
+./tools/scripts/kiss-fake-tcp-smoke.sh
+```
+
+The script starts a local fake TCP KISS server, waits for its listener port, and
+starts `reticulumd` with a Python-style `TCPClientInterface` config using
+`kiss_framing = true`. Strict startup first proves the configured endpoint is
+reachable, then the runtime KISS TCP client connects, emits startup commands,
+and receives a fake `CMD_READY` response. A passing run requires:
+
+- `_runtime.startup_status = "spawned"`
+- `_runtime.kiss_tcp.status.link_state = "running"`
+- `_runtime.kiss_tcp.status.bearer = "tcp"`
+- `_runtime.kiss_tcp.status.endpoint` to match the fake TCP server
+- `_runtime.kiss_tcp.status.interface_ready = true`
+- `_runtime.kiss_tcp.status.init_frames_tx >= 5`
+- `_runtime.kiss_tcp.status.command_frames_rx >= 1`
+- `_runtime.kiss_tcp.status.ready_frames_rx >= 1`
+- `_runtime.kiss_tcp.status.bytes_tx` to cover the startup command frames
+- `_runtime.kiss_tcp.status.bytes_rx` to cover the fake READY response
+- human `rnstatus-rs` output to summarize the running TCP KISS row
+- the fake server recording all KISS startup command frames:
+  `CMD_TXDELAY`, `CMD_TXTAIL`, `CMD_P`, `CMD_SLOTTIME`, and `CMD_READY`
+
+The smoke writes structured evidence under `target/kiss-fake-tcp-smoke/`,
+including `report.json`, fake-server frame state, daemon logs, and
+`rnstatus-rs` JSON/human output. This proves Python-style TCP KISS alias
+normalization, strict daemon startup, KISS startup frame emission, READY command
+handling, and refreshed operator status through the real daemon path. It is
+local-only evidence, not a substitute for real Wi-Fi KISS bridge or modem
+hardware evidence.
+
 ## Verification Commands
 
 ```bash
 cargo test -p reticulumd --test kiss_fake_pty_smoke_contract
+cargo test -p reticulumd --test kiss_fake_tcp_smoke_contract
 ./tools/scripts/kiss-fake-pty-smoke.sh
+./tools/scripts/kiss-fake-tcp-smoke.sh
 cargo test -p reticulum-rs-transport --test kiss_codec
 cargo test -p reticulum-rs-transport ax25_payload
 cargo test -p reticulumd --test config kiss
