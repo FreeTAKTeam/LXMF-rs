@@ -65,6 +65,7 @@ pub struct RpcDaemon {
     interface_mutation_bridge: Mutex<Option<Arc<dyn InterfaceMutationBridge>>>,
     remote_control_bridge: Mutex<Option<Arc<dyn RemoteControlBridge>>>,
     rnode_management_bridge: Mutex<Option<Arc<dyn RNodeManagementBridge>>>,
+    weave_display_control_bridge: Mutex<Option<Arc<dyn WeaveDisplayControlBridge>>>,
     started_at: std::time::Instant,
 }
 
@@ -116,6 +117,15 @@ pub trait RNodeManagementBridge: Send + Sync {
         iface: &str,
         command: &str,
         params: &JsonValue,
+    ) -> Result<JsonValue, std::io::Error>;
+}
+
+pub trait WeaveDisplayControlBridge: Send + Sync {
+    fn set_weave_remote_display(
+        &self,
+        iface: &str,
+        enable: bool,
+        remote_switch_id_hex: Option<&str>,
     ) -> Result<JsonValue, std::io::Error>;
 }
 

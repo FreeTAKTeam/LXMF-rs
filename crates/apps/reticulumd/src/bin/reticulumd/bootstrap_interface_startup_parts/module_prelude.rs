@@ -55,6 +55,7 @@ pub(super) struct InterfaceStartupBatch {
     #[cfg(feature = "vrn76-kiss-ble")]
     pub(super) vrn76_runtime_refreshes: Vec<Vrn76RuntimeRefresh>,
     pub(super) rnode_management_bindings: Vec<RNodeManagementBinding>,
+    pub(super) weave_control_bindings: Vec<WeaveControlBinding>,
 }
 
 #[derive(Clone)]
@@ -139,6 +140,14 @@ impl TcpRuntimeStatusSource {
 pub(crate) struct WeaveRuntimeRefresh {
     pub(crate) runtime_iface: AddressHash,
     pub(crate) status: rns_transport::iface::weave::WeaveRuntimeStatusHandle,
+    pub(crate) handle: rns_transport::iface::weave::WeaveManagementHandle,
+}
+
+#[derive(Clone)]
+pub(crate) struct WeaveControlBinding {
+    pub(crate) runtime_iface: AddressHash,
+    pub(crate) name: String,
+    pub(crate) handle: rns_transport::iface::weave::WeaveManagementHandle,
 }
 
 #[derive(Clone)]
@@ -217,6 +226,7 @@ pub(super) async fn startup_configured_interfaces(
     #[cfg(feature = "vrn76-kiss-ble")]
     let mut vrn76_runtime_refreshes = Vec::new();
     let mut rnode_management_bindings = Vec::new();
+    let mut weave_control_bindings = Vec::new();
 
     for (index, iface) in config.interfaces.iter().enumerate() {
         if !iface.enabled() {
@@ -439,6 +449,11 @@ pub(super) async fn startup_configured_interfaces(
                 .await
                 {
                     startup_successes += 1;
+                    weave_control_bindings.push(WeaveControlBinding {
+                        runtime_iface: refresh.runtime_iface,
+                        name: label.clone(),
+                        handle: refresh.handle.clone(),
+                    });
                     weave_runtime_refreshes.push(refresh);
                 }
             }
@@ -600,6 +615,7 @@ pub(super) async fn startup_configured_interfaces(
         #[cfg(feature = "vrn76-kiss-ble")]
         vrn76_runtime_refreshes,
         rnode_management_bindings,
+        weave_control_bindings,
     }
 }
 
@@ -1377,6 +1393,7 @@ async fn startup_weave(
 
     let weave_metadata = weave_runtime_metadata_json(&adapter);
     let runtime_status = adapter.runtime_status_handle();
+    let control_handle = adapter.weave_management_handle();
     let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
     let weave_iface = iface_manager.lock().await.spawn_as_with_mode(
         adapter,
@@ -1400,7 +1417,11 @@ async fn startup_weave(
     with_interface_runtime_metadata(record, |runtime| {
         runtime.insert("weave".to_string(), weave_metadata);
     });
-    Some(WeaveRuntimeRefresh { runtime_iface: weave_iface, status: runtime_status })
+    Some(WeaveRuntimeRefresh {
+        runtime_iface: weave_iface,
+        status: runtime_status,
+        handle: control_handle,
+    })
 }
 
 fn weave_runtime_metadata_json(
@@ -2385,7 +2406,7 @@ interfaces = [
         )
         .await;
 
-        assert!(started.is_some());
+        let refresh = started.expect("rnode multi should start");
         assert!(startup_failures.is_empty());
         assert_eq!(rnode_management_bindings.len(), 1);
         assert_eq!(rnode_management_bindings[0].name, "rnode-multi");
@@ -2403,6 +2424,7 @@ interfaces = [
             .expect("runtime iface");
         let runtime_iface =
             AddressHash::new_from_hex_string(runtime_iface.trim_matches('/')).expect("iface hash");
+        assert_eq!(refresh.runtime_iface, runtime_iface);
         assert_eq!(manager.lock().await.role(&runtime_iface), Some(IfaceRole::Multicast));
         assert_eq!(rnode_management_bindings[0].runtime_iface, runtime_iface);
         let rnode_multi_runtime = record
@@ -2526,7 +2548,7 @@ interfaces = [
         )
         .await;
 
-        assert!(started.is_some());
+        let refresh = started.expect("weave should start");
         assert!(startup_failures.is_empty());
         let runtime_iface = record
             .settings
@@ -2537,6 +2559,11 @@ interfaces = [
             .expect("runtime iface");
         let runtime_iface =
             AddressHash::new_from_hex_string(runtime_iface.trim_matches('/')).expect("iface hash");
+        assert_eq!(refresh.runtime_iface, runtime_iface);
+        assert!(refresh
+            .handle
+            .try_set_remote_display(Some([0x10, 0x20, 0x30, 0x40]), true)
+            .is_ok());
         assert_eq!(manager.lock().await.role(&runtime_iface), Some(IfaceRole::Multicast));
         let weave_runtime = record
             .settings

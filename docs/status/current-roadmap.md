@@ -151,9 +151,11 @@ The project is best described by capability level:
   views, and `rnstatus-rs --weave-display <interface-name>` provides a
   display-focused framebuffer/status subset for operators. The transport has a
   Python-compatible WDCL remote-display service control frame primitive
-  (`WDCL_CMD_REMOTE_DISPLAY` enable/disable) covered by software tests, but the
-  daemon/RPC control bridge remains pending. An opt-in prepared-host smoke
-  harness records connected serial evidence under `target/weave-hil/`.
+  (`WDCL_CMD_REMOTE_DISPLAY` enable/disable) covered by software tests, and
+  `reticulumd` exposes live dispatch through the
+  `weave_remote_display_control` RPC bridge with `weaveconf-rs`
+  enable/disable commands. An opt-in prepared-host smoke harness records
+  connected serial evidence under `target/weave-hil/`.
 - I2PInterface has a transport-side SAM slice: configured peers get virtual
   unicast children, transient SAM stream sessions, name lookup, HDLC packet
   framing, direct peer sends, broadcast fanout, and transient connectable
@@ -929,9 +931,8 @@ the implemented subset.
      production-complete.
    - Capture I2P prepared-host evidence, and implement utility commands where
      product demand justifies them.
-   - Complete dedicated Weave remote display control UI integration and broader
-     prepared-host hardware evidence before treating that family as
-     production-complete.
+   - Capture broader prepared-host Weave hardware evidence before treating that
+     family as production-complete.
 
 ## Active Execution Order
 

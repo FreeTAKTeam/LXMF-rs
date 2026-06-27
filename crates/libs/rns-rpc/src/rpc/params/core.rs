@@ -170,6 +170,14 @@ struct RNodeManagementParams {
     command: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct WeaveRemoteDisplayControlParams {
+    iface: String,
+    enable: bool,
+    #[serde(default)]
+    remote_switch_id_hex: Option<String>,
+}
+
 #[derive(Debug, Deserialize, Default)]
 struct ListMessagesParams {
     #[serde(default)]

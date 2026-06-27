@@ -311,6 +311,14 @@ impl RpcDaemon {
         *guard = Some(bridge);
     }
 
+    pub fn set_weave_display_control_bridge(&self, bridge: Arc<dyn WeaveDisplayControlBridge>) {
+        let mut guard = self
+            .weave_display_control_bridge
+            .lock()
+            .expect("weave_display_control_bridge mutex poisoned");
+        *guard = Some(bridge);
+    }
+
     pub fn set_propagation_state(
         &self,
         enabled: bool,

@@ -11,6 +11,7 @@ use reticulum_daemon::identity_store::load_or_create_identity;
 use crate::bridge_rnode_management::{
     DaemonRNodeManagementBinding, DaemonRNodeManagementBridge,
 };
+use crate::bridge_weave_control::{DaemonWeaveControlBinding, DaemonWeaveDisplayControlBridge};
 
 use rns_rpc::{
     AnnounceBridge, InterfaceRecord, MessagesStore, OutboundBridge, RemoteControlBridge,
@@ -192,6 +193,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     #[cfg(feature = "vrn76-kiss-ble")]
     let vrn76_runtime_refreshes = startup.vrn76_runtime_refreshes;
     let rnode_management_bindings = startup.rnode_management_bindings;
+    let weave_control_bindings = startup.weave_control_bindings;
     let selected_tcp_server = startup.selected_tcp_server;
 
     if !startup_failures.is_empty() {
@@ -292,6 +294,19 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
             })
             .collect();
         daemon.set_rnode_management_bridge(Arc::new(DaemonRNodeManagementBridge::new(bindings)));
+    }
+    if !weave_control_bindings.is_empty() {
+        let bindings = weave_control_bindings
+            .into_iter()
+            .map(|binding| DaemonWeaveControlBinding {
+                runtime_iface: binding.runtime_iface,
+                name: binding.name,
+                handle: binding.handle,
+            })
+            .collect();
+        daemon.set_weave_display_control_bridge(Arc::new(DaemonWeaveDisplayControlBridge::new(
+            bindings,
+        )));
     }
     if let Some(bridge) = bridge.as_ref() {
         bridge.set_daemon(daemon.clone());
@@ -1713,9 +1728,10 @@ mod tests {
         let manager = Arc::new(tokio::sync::Mutex::new(
             rns_transport::iface::InterfaceManager::new(8),
         ));
-        let status = rns_transport::iface::weave::WeaveInterface::new("test", manager)
-            .runtime_status_handle();
-        let refresh = transport_startup::WeaveRuntimeRefresh { runtime_iface, status };
+        let iface = rns_transport::iface::weave::WeaveInterface::new("test", manager);
+        let status = iface.runtime_status_handle();
+        let handle = iface.weave_management_handle();
+        let refresh = transport_startup::WeaveRuntimeRefresh { runtime_iface, status, handle };
 
         assert_eq!(refresh_weave_runtime_status_once(&daemon, &[refresh]), 1);
         let result = daemon

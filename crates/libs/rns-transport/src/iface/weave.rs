@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::io;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -47,6 +48,10 @@ const READ_CAPACITY: usize = 1500;
 const RECONNECT_WAIT: Duration = Duration::from_secs(5);
 const WEAVE_ENDPOINT_IDLE_TIMEOUT: Duration = Duration::from_secs(1800);
 const WEAVE_ENDPOINT_CLEANUP_INTERVAL: Duration = Duration::from_secs(10);
+const WEAVE_MANAGEMENT_CHANNEL_CAPACITY: usize = 16;
+
+type WeaveManagementFrameSender = tokio::sync::mpsc::Sender<Vec<u8>>;
+type WeaveManagementFrameReceiver = Arc<tokio::sync::Mutex<tokio::sync::mpsc::Receiver<Vec<u8>>>>;
 
 #[derive(Clone)]
 pub struct WeaveInterface {
@@ -56,6 +61,8 @@ pub struct WeaveInterface {
     switch_identity: PrivateIdentity,
     runtime_status: Arc<std::sync::Mutex<WeaveRuntimeStatus>>,
     iface_manager: Arc<tokio::sync::Mutex<InterfaceManager>>,
+    management_frame_tx: WeaveManagementFrameSender,
+    management_frame_rx: WeaveManagementFrameReceiver,
 }
 
 impl WeaveInterface {
@@ -67,6 +74,7 @@ impl WeaveInterface {
         let device = device.into();
         let switch_identity = PrivateIdentity::new_from_name(&format!("weave:{device}"));
         let local_switch_id = switch_id_for_identity(&switch_identity);
+        let (management_frame_tx, management_frame_rx) = weave_management_channel();
         Self {
             runtime_status: Arc::new(std::sync::Mutex::new(WeaveRuntimeStatus::new(
                 device.clone(),
@@ -79,6 +87,8 @@ impl WeaveInterface {
             baud_rate: DEFAULT_BAUD_RATE,
             mtu: DEFAULT_MTU,
             iface_manager,
+            management_frame_tx,
+            management_frame_rx,
         }
     }
 
@@ -127,6 +137,14 @@ impl WeaveInterface {
         WeaveRuntimeStatusHandle { inner: self.runtime_status.clone() }
     }
 
+    #[must_use]
+    pub fn weave_management_handle(&self) -> WeaveManagementHandle {
+        WeaveManagementHandle {
+            tx: self.management_frame_tx.clone(),
+            runtime_status: self.runtime_status.clone(),
+        }
+    }
+
     pub fn preflight_open(&self) -> Result<(), String> {
         tokio_serial::new(self.device.clone(), self.baud_rate)
             .data_bits(DataBits::Eight)
@@ -146,7 +164,15 @@ impl WeaveInterface {
     pub async fn spawn(context: InterfaceContext<Self>) {
         let iface_stop = context.channel.stop.clone();
         let parent_iface = context.channel.address;
-        let (device, baud_rate, mtu, switch_identity, runtime_status, iface_manager) = {
+        let (
+            device,
+            baud_rate,
+            mtu,
+            switch_identity,
+            runtime_status,
+            iface_manager,
+            management_frame_rx,
+        ) = {
             let guard = context.inner.lock().expect("weave interface mutex poisoned");
             (
                 guard.device.clone(),
@@ -155,6 +181,7 @@ impl WeaveInterface {
                 guard.switch_identity.clone(),
                 guard.runtime_status.clone(),
                 guard.iface_manager.clone(),
+                guard.management_frame_rx.clone(),
             )
         };
         let (rx_channel, tx_channel) = context.channel.split();
@@ -220,6 +247,7 @@ impl WeaveInterface {
                 iface_stop.clone(),
                 rx_channel.clone(),
                 tx_channel.clone(),
+                management_frame_rx.clone(),
             )
             .await;
         }
@@ -251,6 +279,47 @@ pub(crate) struct WeaveStreamOptions {
     iface_manager: Arc<tokio::sync::Mutex<InterfaceManager>>,
     switch_identity: PrivateIdentity,
     runtime_status: Arc<std::sync::Mutex<WeaveRuntimeStatus>>,
+}
+
+fn weave_management_channel() -> (WeaveManagementFrameSender, WeaveManagementFrameReceiver) {
+    let (tx, rx) = tokio::sync::mpsc::channel(WEAVE_MANAGEMENT_CHANNEL_CAPACITY);
+    (tx, Arc::new(tokio::sync::Mutex::new(rx)))
+}
+
+#[derive(Clone)]
+pub struct WeaveManagementHandle {
+    tx: WeaveManagementFrameSender,
+    runtime_status: Arc<std::sync::Mutex<WeaveRuntimeStatus>>,
+}
+
+impl WeaveManagementHandle {
+    pub fn try_set_remote_display(
+        &self,
+        remote_switch_id: Option<[u8; SWITCH_ID_LEN]>,
+        enable: bool,
+    ) -> io::Result<[u8; SWITCH_ID_LEN]> {
+        let remote_switch_id = remote_switch_id
+            .or_else(|| {
+                self.runtime_status
+                    .lock()
+                    .expect("weave runtime status mutex poisoned")
+                    .remote_switch_id
+            })
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "remote_switch_id is required before Weave discovery has learned a switch",
+                )
+            })?;
+        let frame = weave_wire_frame(&weave_remote_display_command_frame(remote_switch_id, enable));
+        self.tx.try_send(frame).map_err(|err| {
+            io::Error::new(
+                io::ErrorKind::WouldBlock,
+                format!("queue Weave remote display command failed: {err}"),
+            )
+        })?;
+        Ok(remote_switch_id)
+    }
 }
 
 #[derive(Debug, Default)]
@@ -727,6 +796,7 @@ pub(crate) async fn run_weave_stream<IO>(
     iface_stop: CancellationToken,
     rx_channel: tokio::sync::mpsc::Sender<RxMessage>,
     tx_channel: Arc<tokio::sync::Mutex<tokio::sync::mpsc::Receiver<TxMessage>>>,
+    management_frame_rx: WeaveManagementFrameReceiver,
 ) where
     IO: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
@@ -764,6 +834,7 @@ pub(crate) async fn run_weave_stream<IO>(
 
     'stream_loop: loop {
         let mut tx_channel = tx_channel.lock().await;
+        let mut management_frame_rx = management_frame_rx.lock().await;
         tokio::select! {
             _ = cancel.cancelled() => {
                 stopped_by_control = true;
@@ -862,6 +933,28 @@ pub(crate) async fn run_weave_stream<IO>(
                         status.frames_tx = status.frames_tx.saturating_add(1);
                     });
                 }
+            }
+            Some(frame) = management_frame_rx.recv() => {
+                if let Err(err) = stream.write_all(&frame).await {
+                    update_weave_status(&options.runtime_status, |status| {
+                        status.mark_reconnecting(format!(
+                            "weave management write failed iface={} device={} err={}",
+                            options.parent_iface, options.device, err
+                        ));
+                    });
+                    log::warn!(
+                        "Weave management write error iface={} device={} err={}",
+                        options.parent_iface,
+                        options.device,
+                        err
+                    );
+                    break 'stream_loop;
+                }
+                let _ = stream.flush().await;
+                update_weave_status(&options.runtime_status, |status| {
+                    status.bytes_tx = status.bytes_tx.saturating_add(frame.len() as u64);
+                    status.frames_tx = status.frames_tx.saturating_add(1);
+                });
             }
         }
     }
@@ -1398,6 +1491,11 @@ mod tests {
         )
     }
 
+    fn unused_weave_management_rx() -> WeaveManagementFrameReceiver {
+        let (_tx, rx) = weave_management_channel();
+        rx
+    }
+
     #[tokio::test]
     async fn weave_endpoint_gc_removes_stale_virtual_iface_and_status() {
         let (options, manager, _parent) = test_options().await;
@@ -1584,6 +1682,7 @@ mod tests {
             CancellationToken::new(),
             rx_tx,
             Arc::new(tokio::sync::Mutex::new(tx_rx)),
+            unused_weave_management_rx(),
         ));
 
         let mut drain = vec![0_u8; 128];
@@ -1638,6 +1737,7 @@ mod tests {
             CancellationToken::new(),
             rx_tx,
             Arc::new(tokio::sync::Mutex::new(tx_rx)),
+            unused_weave_management_rx(),
         ));
 
         let mut drain = vec![0_u8; 128];
@@ -1688,6 +1788,7 @@ mod tests {
             CancellationToken::new(),
             rx_tx,
             Arc::new(tokio::sync::Mutex::new(tx_rx)),
+            unused_weave_management_rx(),
         ));
 
         let mut bytes = vec![0_u8; 512];
@@ -1733,6 +1834,75 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn weave_management_handle_writes_remote_display_control_frames() {
+        let (options, _manager, _parent) = test_options().await;
+        let runtime_status = options.runtime_status.clone();
+        let learned_switch = [0x10, 0x20, 0x30, 0x40];
+        let explicit_switch = [0x50, 0x60, 0x70, 0x80];
+        runtime_status.lock().expect("weave runtime status").remote_switch_id =
+            Some(learned_switch);
+        let (management_tx, management_rx) = weave_management_channel();
+        let handle =
+            WeaveManagementHandle { tx: management_tx, runtime_status: runtime_status.clone() };
+
+        let (stream, mut peer) = duplex(8192);
+        let (rx_tx, _rx_rx) = tokio::sync::mpsc::channel(4);
+        let (_tx_tx, tx_rx) = tokio::sync::mpsc::channel(4);
+        let cancel = CancellationToken::new();
+        let task = tokio::spawn(run_weave_stream(
+            stream,
+            options,
+            cancel.clone(),
+            CancellationToken::new(),
+            rx_tx,
+            Arc::new(tokio::sync::Mutex::new(tx_rx)),
+            management_rx,
+        ));
+
+        let mut bytes = vec![0_u8; 512];
+        let _ = peer.read(&mut bytes).await.expect("discover frame");
+
+        let used_switch =
+            handle.try_set_remote_display(None, true).expect("queue learned switch enable");
+        assert_eq!(used_switch, learned_switch);
+        let n = tokio::time::timeout(Duration::from_secs(1), peer.read(&mut bytes))
+            .await
+            .expect("enable frame timeout")
+            .expect("enable frame");
+        let enable = decode_one_wire_frame(&bytes[..n]);
+        assert_eq!(enable[..SWITCH_ID_LEN], learned_switch);
+        assert_eq!(enable[SWITCH_ID_LEN], WDCL_T_CMD);
+        assert_eq!(
+            &enable[SWITCH_ID_LEN + 1..SWITCH_ID_LEN + 3],
+            &WDCL_CMD_REMOTE_DISPLAY.to_be_bytes()
+        );
+        assert_eq!(enable[SWITCH_ID_LEN + 3], 1);
+
+        let used_switch = handle
+            .try_set_remote_display(Some(explicit_switch), false)
+            .expect("queue explicit switch disable");
+        assert_eq!(used_switch, explicit_switch);
+        let n = tokio::time::timeout(Duration::from_secs(1), peer.read(&mut bytes))
+            .await
+            .expect("disable frame timeout")
+            .expect("disable frame");
+        let disable = decode_one_wire_frame(&bytes[..n]);
+        assert_eq!(disable[..SWITCH_ID_LEN], explicit_switch);
+        assert_eq!(disable[SWITCH_ID_LEN], WDCL_T_CMD);
+        assert_eq!(
+            &disable[SWITCH_ID_LEN + 1..SWITCH_ID_LEN + 3],
+            &WDCL_CMD_REMOTE_DISPLAY.to_be_bytes()
+        );
+        assert_eq!(disable[SWITCH_ID_LEN + 3], 0);
+
+        let status = runtime_status.lock().expect("weave runtime status").clone();
+        cancel.cancel();
+        task.await.expect("stream task");
+        assert!(status.frames_tx >= 3);
+        assert!(status.bytes_tx > 0);
+    }
+
+    #[tokio::test]
     async fn weave_stream_routes_direct_tx_to_endpoint_command() {
         let (options, _manager, _parent) = test_options().await;
         let local_switch = switch_id_for_identity(&options.switch_identity);
@@ -1755,6 +1925,7 @@ mod tests {
             CancellationToken::new(),
             rx_tx,
             Arc::new(tokio::sync::Mutex::new(tx_rx)),
+            unused_weave_management_rx(),
         ));
 
         let mut bytes = vec![0_u8; 4096];
@@ -1836,6 +2007,7 @@ mod tests {
                 CancellationToken::new(),
                 rx_tx,
                 Arc::new(tokio::sync::Mutex::new(tx_rx)),
+                unused_weave_management_rx(),
             ),
         )
         .await
@@ -1893,6 +2065,7 @@ mod tests {
             CancellationToken::new(),
             rx_tx,
             Arc::new(tokio::sync::Mutex::new(tx_rx)),
+            unused_weave_management_rx(),
         ));
 
         let message = tokio::time::timeout(Duration::from_secs(1), rx_rx.recv())
@@ -1971,6 +2144,7 @@ mod tests {
             CancellationToken::new(),
             rx_tx,
             Arc::new(tokio::sync::Mutex::new(tx_rx)),
+            unused_weave_management_rx(),
         ));
 
         let mut drain = vec![0_u8; 128];
@@ -2028,6 +2202,7 @@ mod tests {
             CancellationToken::new(),
             rx_tx,
             Arc::new(tokio::sync::Mutex::new(tx_rx)),
+            unused_weave_management_rx(),
         ));
 
         let mut drain = vec![0_u8; 128];
@@ -2071,6 +2246,7 @@ mod tests {
             CancellationToken::new(),
             rx_tx,
             Arc::new(tokio::sync::Mutex::new(tx_rx)),
+            unused_weave_management_rx(),
         ));
 
         let mut drain = vec![0_u8; 128];

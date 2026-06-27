@@ -163,9 +163,11 @@ placeholders:
   switch ID, byte/frame counters, invalid-frame and last-log diagnostics,
   display progress/color, CPU/memory, and task-stat counts plus a
   `--weave-display` display-focused view and a Python-compatible
-  `WDCL_CMD_REMOTE_DISPLAY` enable/disable frame primitive, including software
-  cancel/stop closure of link, WDCL-connected, and endpoint state, with an
-  opt-in prepared-host smoke harness for connected serial Weave devices.
+  `WDCL_CMD_REMOTE_DISPLAY` enable/disable frame primitive, live
+  `weave_remote_display_control` RPC dispatch, and `weaveconf-rs`
+  enable/disable commands, including software cancel/stop closure of link,
+  WDCL-connected, and endpoint state, with an opt-in prepared-host smoke
+  harness for connected serial Weave devices.
 - I2P SAM baseline, with transient stream sessions, `.i2p` name lookup, HDLC
   framing, virtual peer child interfaces, direct peer sends, broadcast fanout
   across configured peers, `STREAM ACCEPT` connectable sessions, and private
@@ -288,12 +290,12 @@ completion, CPU/task/memory stat parsing, daemon/RPC status refresh, and compact
 `rnstatus-rs` human summaries with remote switch, frame/log, display progress,
 device-stat detail, and a `rnstatus-rs --weave-display` framebuffer/status view
 exist. A Python-compatible WDCL remote-display enable/disable command frame
-primitive is covered in transport tests, but daemon/RPC or CLI dispatch for
-issuing it on a live stream remains pending. Software cancel/stop now marks the
-runtime closed and clears endpoint children. An opt-in prepared-host smoke
-harness records connected serial evidence under `target/weave-hil/`, while
-dedicated remote display control UI integration and broader prepared-host
-hardware evidence remain pending.
+primitive is covered in transport tests, and `reticulumd` now wires live
+dispatch through `weave_remote_display_control` with `weaveconf-rs`
+enable/disable commands. Software cancel/stop now marks the runtime closed and
+clears endpoint children. An opt-in prepared-host smoke harness records
+connected serial evidence under `target/weave-hil/`, while broader
+prepared-host hardware evidence remains pending.
 
 ## Highest-Priority Gaps
 

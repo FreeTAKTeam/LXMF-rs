@@ -18,7 +18,7 @@ pub(super) use interface_startup::{
     AutoRuntimeRefresh, BleGattRuntimeRefresh, I2pRuntimeRefresh, KissRuntimeRefresh,
     LoraRuntimeRefresh, PipeRuntimeRefresh, RNodeManagementBinding, RNodeMultiRuntimeRefresh,
     SerialRuntimeRefresh, TcpRuntimeRefresh, TcpRuntimeStatusSource, UdpRuntimeRefresh,
-    WeaveRuntimeRefresh,
+    WeaveControlBinding, WeaveRuntimeRefresh,
 };
 use reticulum_daemon::announce_names::PropagationNodeAnnounceConfig;
 use reticulum_daemon::config::DaemonConfig;
@@ -62,6 +62,7 @@ pub(super) struct TransportStartupArtifacts {
     #[cfg(feature = "vrn76-kiss-ble")]
     pub(super) vrn76_runtime_refreshes: Vec<Vrn76RuntimeRefresh>,
     pub(super) rnode_management_bindings: Vec<RNodeManagementBinding>,
+    pub(super) weave_control_bindings: Vec<WeaveControlBinding>,
 }
 
 pub(super) struct TransportStartupInput<'a> {
@@ -177,6 +178,7 @@ pub(super) async fn start_transport_and_interfaces(
     #[cfg(feature = "vrn76-kiss-ble")]
     let mut vrn76_runtime_refreshes = Vec::new();
     let mut rnode_management_bindings = Vec::new();
+    let mut weave_control_bindings = Vec::new();
 
     if transport_required {
         if let Some(addr) = selected_tcp_server.bind_addr.as_ref() {
@@ -262,6 +264,7 @@ pub(super) async fn start_transport_and_interfaces(
             #[cfg(feature = "vrn76-kiss-ble")]
             vrn76_runtime_refreshes.extend(startup.vrn76_runtime_refreshes);
             rnode_management_bindings.extend(startup.rnode_management_bindings);
+            weave_control_bindings.extend(startup.weave_control_bindings);
         }
 
         match transport_instance.restore_reticulum_path_table(reticulum_storage_path).await {
@@ -378,6 +381,7 @@ pub(super) async fn start_transport_and_interfaces(
         #[cfg(feature = "vrn76-kiss-ble")]
         vrn76_runtime_refreshes,
         rnode_management_bindings,
+        weave_control_bindings,
     }
 }
 

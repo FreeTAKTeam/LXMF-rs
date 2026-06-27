@@ -74,8 +74,25 @@ memory log events update `_runtime.weave.status.device_stats`; off-target
 display and log frames are ignored.
 The transport also has the Python-compatible WDCL remote-display service
 control frame primitive (`WDCL_CMD_REMOTE_DISPLAY`, payload `0x01` to enable
-and `0x00` to disable) covered by software tests; daemon/RPC or CLI control
-dispatch for issuing that command on a live stream remains a follow-up.
+and `0x00` to disable) covered by software tests. `reticulumd` exposes live
+dispatch through the `weave_remote_display_control` RPC bridge, resolving the
+Weave interface by runtime interface hash or configured name. The
+`weaveconf-rs` helper queues those controls against the active stream:
+
+```sh
+weaveconf-rs --rpc 127.0.0.1:4243 enable-remote-display --interface weave-main
+weaveconf-rs --rpc 127.0.0.1:4243 disable-remote-display --interface weave-main
+```
+
+By default the daemon uses the remote switch ID learned during WDCL discovery.
+For bench diagnostics before discovery has populated runtime state, pass an
+explicit four-byte switch ID:
+
+```sh
+weaveconf-rs --rpc 127.0.0.1:4243 enable-remote-display \
+  --interface weave-main \
+  --remote-switch-id-hex 10203040
+```
 
 ## Prepared-Host Smoke
 
@@ -122,8 +139,8 @@ Artifacts are uploaded as `weave-prepared-host-artifacts`, including
 
 - Broader prepared-host Weave hardware evidence across devices and firmware
   combinations is still required.
-- Dedicated remote display control UI integration is not complete; current
-  operator visibility is through daemon/RPC status, `rnstatus-rs` summaries,
-  and `rnstatus-rs --weave-display`, while the transport-side WDCL control
-  frame primitive is covered.
+- Current operator visibility is through daemon/RPC status, `rnstatus-rs`
+  summaries, `rnstatus-rs --weave-display`, and `weaveconf-rs` display-service
+  controls; broader hardware evidence is still needed before a
+  production-complete Weave claim.
 - I2PInterface has a separate in-progress outbound SAM peer slice.
