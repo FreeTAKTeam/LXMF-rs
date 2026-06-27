@@ -604,6 +604,19 @@ fn rnode_multi_runtime_summary(status: &Value) -> Option<String> {
         value_str(status, "stream_state"),
         value_u64(status, "selected_vport")
     );
+    if let Some(probe) = status.get("startup_probe").filter(|value| value.is_object()) {
+        append_optional_bool(&mut summary, "detected", probe.get("detected"));
+        if let Some(firmware) = probe
+            .get("firmware_version")
+            .and_then(|value| value.get("label"))
+            .and_then(Value::as_str)
+        {
+            summary.push_str(&format!(" fw={firmware}"));
+        }
+        append_optional_u64(&mut summary, "platform", probe.get("platform"));
+        append_optional_u64(&mut summary, "mcu", probe.get("mcu"));
+        append_optional_str(&mut summary, "probe", probe.get("interface_summary"));
+    }
     append_optional_str(&mut summary, "err", status.get("last_error"));
     Some(summary)
 }
@@ -1167,6 +1180,21 @@ mod tests {
                                     "stream_state": "running",
                                     "selected_vport": 2,
                                     "last_error": null,
+                                    "startup_probe": {
+                                        "detected": true,
+                                        "firmware_version": {
+                                            "major": 1,
+                                            "minor": 74,
+                                            "label": "1.74"
+                                        },
+                                        "platform": 128,
+                                        "mcu": 1,
+                                        "interfaces": {
+                                            "2": "SX126X",
+                                            "3": "SX128X"
+                                        },
+                                        "interface_summary": "2:SX126X,3:SX128X"
+                                    },
                                     "vports": [2, 3]
                                 }
                             }
@@ -1464,6 +1492,11 @@ mod tests {
         assert!(output.contains("freq=915000000"));
         assert!(output.contains("bat=88"));
         assert!(output.contains("rnode_multi stream=running selected=2 vports=2"));
+        assert!(output.contains("detected=true"));
+        assert!(output.contains("fw=1.74"));
+        assert!(output.contains("platform=128"));
+        assert!(output.contains("mcu=1"));
+        assert!(output.contains("probe=2:SX126X,3:SX128X"));
         assert!(output.contains("vrn76 connected=true subscribed=true ready=true"));
         assert!(output.contains("startup_write_failures=1"));
         assert!(output.contains("pending_payloads=2"));

@@ -152,8 +152,9 @@ placeholders:
   Display-capable ESP32/NRF52 devices get Python-style external-framebuffer
   disable during teardown before per-vport radio-off and leave-host payload
   `0xff` frames. Daemon/RPC snapshots refresh over the `radio_status` runtime
-  metadata schema, including stream/probe state and last-error reporting, with
-  an opt-in prepared-host smoke harness for serial or TCP RNodeMulti devices.
+  metadata schema, including stream/probe state, last-error reporting, and
+  accepted startup-probe firmware/platform/MCU/interface metadata, with an
+  opt-in prepared-host smoke harness for serial or TCP RNodeMulti devices.
 - Shared serial Weave baseline with WDCL over HDLC framing, discovery
   handshake response, endpoint event learning, virtual peer child interfaces,
   inbound endpoint packet routing, direct endpoint command writes,
@@ -272,15 +273,16 @@ remain pending.
 shared serial/TCP vport routing slice exists and startup validates detect,
 firmware `>= 1.74`, platform, MCU, `CMD_INTERFACES`, and hardware-reported
 configured vports. Selected-vport radio status bookkeeping and live daemon/RPC
-`radio_status` refresh exist, including stream/probe state and last-error
-reporting plus the ordinary RNode radio-status schema for each vport,
+`radio_status` refresh exist, including stream/probe state, last-error
+reporting, accepted startup-probe firmware/platform/MCU/interface metadata, and
+the ordinary RNode radio-status schema for each vport,
 strict startup preflights the parent serial/TCP endpoint before registering
 management targets, display-capable teardown disables the external framebuffer
 before per-vport radio-off/leave frames, clean stream EOF/software stop reports
 closed without masking read/write/probe failures, daemon RPC binds the parent
 interface to the vport-aware management queue with explicit child `vport`
-validation, and `rnstatus-rs` renders a compact human summary of that state. An
-opt-in
+validation, and `rnstatus-rs` renders a compact human summary of that state
+including the accepted probe metadata. An opt-in
 prepared-host smoke harness now records serial/TCP RNodeMulti evidence under
 `target/rnode-multi-hil/`. Full prepared-host hardware validation and broader
 production parity are still pending.

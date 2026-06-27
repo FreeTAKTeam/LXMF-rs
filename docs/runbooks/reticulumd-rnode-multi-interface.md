@@ -24,7 +24,8 @@ production-complete RNodeMulti parity claim.
   shutdown frames
 - Runtime status: selected-vport command responses update per-vport radio
   status bookkeeping in the transport runtime; the same status payload reports
-  stream/probe state and the last open/probe/init/read error
+  stream/probe state, accepted startup-probe firmware/platform/MCU/interface
+  metadata, and the last open/probe/init/read error
 - Management dispatch: daemon/RPC callers select the parent RNodeMulti
   interface by runtime iface id or unambiguous configured name, then pass the
   child `vport`; the transport queue writes KISS `CMD_SEL_INT` before each
@@ -173,14 +174,18 @@ keys for `selected_vport`, known `vports`, and per-vport radio fields before
 hardware has reported live values. While the daemon is running,
 `daemon_status_ex` and interface listing snapshots refresh that
 `radio_status` object from the transport-side runtime handle. The refreshed
-object includes `stream_state` and `last_error`, so absent hardware or a failed
-probe is visible to RPC consumers instead of appearing as successful telemetry.
+object includes `stream_state`, `last_error`, and `startup_probe`, so absent
+hardware or a failed probe is visible to RPC consumers instead of appearing as
+successful telemetry. After a successful startup probe, `startup_probe` records
+`detected`, firmware version, platform, MCU, hardware-reported vport interface
+types, and an `interface_summary` string for prepared-host evidence capture.
 Each subinterface uses the ordinary RNode radio-status JSON schema, including
 battery labels, framebuffer/display byte counts, random byte, and derived
 reported bitrate when the selected vport has reported enough radio parameters.
 `rnstatus-rs` human output summarizes the same runtime state with the stream
-state, selected vport, vport count, and last error so operators can see failed
-open/probe/read states without switching to JSON output.
+state, selected vport, vport count, startup-probe firmware/platform/MCU/interface
+details, and last error so operators can see failed open/probe/read states
+without switching to JSON output.
 
 ## Prepared-Host Smoke
 
@@ -211,14 +216,20 @@ The script starts `reticulumd` with `--strict-interface-startup`, waits for
 - `_runtime.rnode_multi.radio_status.stream_state = "running"`
 - `_runtime.rnode_multi.radio_status.vports` exactly matches
   `RNODE_MULTI_VPORTS`
+- `_runtime.rnode_multi.radio_status.startup_probe.firmware_version.label`
+  is present
+- `_runtime.rnode_multi.radio_status.startup_probe.platform` and
+  `_runtime.rnode_multi.radio_status.startup_probe.mcu` are present
+- `_runtime.rnode_multi.radio_status.startup_probe.interfaces` includes each
+  configured vport
 - one exported `radio_status.subinterfaces` record per configured vport
 - `last_error = null`
 
 The `running` state is reached only after the transport-side startup probe has
 accepted detect, firmware `>= 1.74`, platform, MCU, `CMD_INTERFACES`, and
-configured-vport validation. The smoke does not require firmware/platform/MCU
-fields in JSON because the current runtime status schema exposes the resulting
-stream and radio status rather than raw probe details.
+configured-vport validation. The smoke records those raw probe details in JSON
+so firmware/platform/MCU/interface assertions can be made directly from
+`rnstatus-rs --json`.
 
 Nightly HIL exposes the same smoke behind repository variables:
 

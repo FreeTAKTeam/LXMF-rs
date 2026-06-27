@@ -455,6 +455,7 @@ pub struct RNodeMultiRuntimeStatus {
     pub stream_state: String,
     pub last_error: Option<String>,
     pub selected_vport: u8,
+    pub startup_probe: Option<RNodeMultiProbeStatus>,
     pub radio_status: BTreeMap<u8, RNodeRadioStatus>,
 }
 
@@ -510,6 +511,7 @@ impl RNodeMultiRuntimeStatus {
             stream_state: "configured".to_string(),
             last_error: None,
             selected_vport: subinterfaces.first().map_or(0, |subinterface| subinterface.vport),
+            startup_probe: None,
             radio_status,
         }
     }
@@ -535,6 +537,10 @@ impl RNodeMultiRuntimeStatus {
         accept_rnode_multi_radio_status_command(status, command, payload)
     }
 
+    pub fn set_startup_probe(&mut self, status: RNodeMultiProbeStatus) {
+        self.startup_probe = Some(status);
+    }
+
     #[must_use]
     pub fn status_for_vport(&self, vport: u8) -> Option<&RNodeRadioStatus> {
         self.radio_status.get(&vport)
@@ -557,6 +563,13 @@ impl RNodeMultiRuntimeStatus {
         root.insert(
             "selected_vport".to_string(),
             serde_json::Value::Number(u64::from(self.selected_vport).into()),
+        );
+        root.insert(
+            "startup_probe".to_string(),
+            self.startup_probe
+                .as_ref()
+                .map(RNodeMultiProbeStatus::to_json)
+                .unwrap_or(serde_json::Value::Null),
         );
         root.insert(
             "vports".to_string(),
@@ -764,6 +777,50 @@ impl RNodeMultiProbeStatus {
     }
 
     #[must_use]
+    pub fn to_json(&self) -> serde_json::Value {
+        let mut root = serde_json::Map::new();
+        root.insert("detected".to_string(), serde_json::Value::Bool(self.detected));
+        root.insert(
+            "firmware_version".to_string(),
+            self.firmware_version.map_or(serde_json::Value::Null, |(major, minor)| {
+                serde_json::json!({
+                    "major": major,
+                    "minor": minor,
+                    "label": format!("{major}.{minor:02}"),
+                })
+            }),
+        );
+        root.insert(
+            "platform".to_string(),
+            self.platform
+                .map(|value| serde_json::Value::Number(u64::from(value).into()))
+                .unwrap_or(serde_json::Value::Null),
+        );
+        root.insert(
+            "mcu".to_string(),
+            self.mcu
+                .map(|value| serde_json::Value::Number(u64::from(value).into()))
+                .unwrap_or(serde_json::Value::Null),
+        );
+        root.insert(
+            "interfaces".to_string(),
+            serde_json::Value::Object(
+                self.interfaces
+                    .iter()
+                    .map(|(vport, kind)| {
+                        (vport.to_string(), serde_json::Value::String(kind.as_str().to_string()))
+                    })
+                    .collect(),
+            ),
+        );
+        root.insert(
+            "interface_summary".to_string(),
+            serde_json::Value::String(self.interface_summary()),
+        );
+        serde_json::Value::Object(root)
+    }
+
+    #[must_use]
     pub fn has_display(&self) -> bool {
         matches!(self.platform, Some(PLATFORM_ESP32 | PLATFORM_NRF52))
     }
@@ -822,6 +879,11 @@ pub(crate) async fn run_rnode_multi_stream<IO>(
         {
             Ok(status) => {
                 display_capable = status.has_display();
+                options
+                    .runtime_status
+                    .lock()
+                    .expect("rnode multi runtime status mutex poisoned")
+                    .set_startup_probe(status.clone());
                 log::info!(
                     "RNodeMulti startup probe accepted iface={} device={} firmware={:?} platform={:?} mcu={:?} interfaces={}",
                     options.parent_iface,
@@ -1571,6 +1633,7 @@ mod tests {
         assert_eq!(snapshot["stream_state"].as_str(), Some("configured"));
         assert!(snapshot["last_error"].is_null());
         assert_eq!(snapshot["selected_vport"].as_u64(), Some(3));
+        assert!(snapshot["startup_probe"].is_null());
         assert_eq!(snapshot["subinterfaces"]["2"]["bandwidth_hz"].as_u64(), Some(125_000));
         assert_eq!(snapshot["subinterfaces"]["2"]["spreading_factor"].as_u64(), Some(9));
         assert_eq!(snapshot["subinterfaces"]["2"]["coding_rate"].as_u64(), Some(5));
@@ -1601,6 +1664,7 @@ mod tests {
         let (_tx_tx, tx_rx) = tokio::sync::mpsc::channel(4);
         let cancel = CancellationToken::new();
         let mut options = test_options(child, 1);
+        let runtime_status = Arc::clone(&options.runtime_status);
         options.startup_probe = Some(RNodeMultiStartupProbe {
             frames: rnode_multi_probe_frames(),
             required_vports: vec![1],
@@ -1651,6 +1715,18 @@ mod tests {
 
         let frames = decode_frames(&bytes[..n], 512).expect("decode initial frame");
         assert_eq!(frames, vec![KissFrame::Command(KissCommand::Unknown(CMD_SEL_INT, vec![1]))]);
+        let snapshot =
+            runtime_status.lock().expect("rnode multi runtime status mutex poisoned").to_json();
+        assert_eq!(snapshot["startup_probe"]["detected"].as_bool(), Some(true));
+        assert_eq!(snapshot["startup_probe"]["firmware_version"]["label"].as_str(), Some("1.74"));
+        assert_eq!(snapshot["startup_probe"]["platform"].as_u64(), Some(0x80));
+        assert_eq!(snapshot["startup_probe"]["mcu"].as_u64(), Some(0x01));
+        assert_eq!(snapshot["startup_probe"]["interfaces"]["0"].as_str(), Some("SX126X"));
+        assert_eq!(snapshot["startup_probe"]["interfaces"]["1"].as_str(), Some("SX128X"));
+        assert_eq!(
+            snapshot["startup_probe"]["interface_summary"].as_str(),
+            Some("0:SX126X,1:SX128X")
+        );
     }
 
     #[tokio::test]

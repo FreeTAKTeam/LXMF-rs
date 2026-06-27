@@ -228,6 +228,21 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
                                         "stream_state": "write_failed",
                                         "selected_vport": 2,
                                         "last_error": "data frame write failed",
+                                        "startup_probe": {
+                                            "detected": true,
+                                            "firmware_version": {
+                                                "major": 1,
+                                                "minor": 74,
+                                                "label": "1.74"
+                                            },
+                                            "platform": 128,
+                                            "mcu": 1,
+                                            "interfaces": {
+                                                "2": "SX126X",
+                                                "3": "SX128X"
+                                            },
+                                            "interface_summary": "2:SX126X,3:SX128X"
+                                        },
                                         "vports": [2, 3]
                                     }
                                 }
@@ -506,6 +521,21 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
                                         "stream_state": "write_failed",
                                         "selected_vport": 2,
                                         "last_error": "data frame write failed",
+                                        "startup_probe": {
+                                            "detected": true,
+                                            "firmware_version": {
+                                                "major": 1,
+                                                "minor": 74,
+                                                "label": "1.74"
+                                            },
+                                            "platform": 128,
+                                            "mcu": 1,
+                                            "interfaces": {
+                                                "2": "SX126X",
+                                                "3": "SX128X"
+                                            },
+                                            "interface_summary": "2:SX126X,3:SX128X"
+                                        },
                                         "vports": [2, 3]
                                     }
                                 }
@@ -812,6 +842,11 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
         stdout.contains("rnode_multi stream=write_failed selected=2 vports=2"),
         "stdout: {stdout}"
     );
+    assert!(stdout.contains("detected=true"), "stdout: {stdout}");
+    assert!(stdout.contains("fw=1.74"), "stdout: {stdout}");
+    assert!(stdout.contains("platform=128"), "stdout: {stdout}");
+    assert!(stdout.contains("mcu=1"), "stdout: {stdout}");
+    assert!(stdout.contains("probe=2:SX126X,3:SX128X"), "stdout: {stdout}");
     assert!(stdout.contains("err=data frame write failed"), "stdout: {stdout}");
     assert!(stdout.contains("vrn76-main"), "stdout: {stdout}");
     assert!(stdout.contains("vrn76 connected=true subscribed=true ready=true"), "stdout: {stdout}");
