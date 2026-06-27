@@ -255,6 +255,7 @@ pub(crate) fn discovery_runtime_summary_json(summary: &AutoDiscoveryRuntimeSumma
         "initial_peer_announce_count": summary.initial_peer_announce_count,
         "repeat_peer_announce_scheduler_count": summary.repeat_peer_announce_scheduler_count,
         "peer_job_scheduler_count": summary.peer_job_scheduler_count,
+        "adopted_interface_reconciler_count": summary.adopted_interface_reconciler_count,
         "data_socket_count": summary.data_socket_count,
         "data_receive_loop_count": summary.data_receive_loop_count,
     })

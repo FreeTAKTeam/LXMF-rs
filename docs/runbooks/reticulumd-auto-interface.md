@@ -175,6 +175,10 @@ The reusable transport layer now also includes Python-compatible helpers for:
   while the AutoInterface runtime is active: added interfaces bind discovery
   and data listeners before state is committed, and removed interfaces stop the
   supervised listeners before stale peer/interface state is cleared
+- zero-initial AutoInterface startup keeps the polling reconciler and
+  multicast/reverse announce schedulers alive even when no devices are adopted
+  at startup, so a later matching link-local device can be adopted by the live
+  daemon runtime
 - live `_runtime.auto.carrier_runtime` reporting for Python-style `online`,
   `final_init_done`, `carrier_changed`, multicast carrier events, and staged
   link-local listener restart metadata
@@ -206,8 +210,8 @@ interfaces = [
 
 ## Operational Follow-Up
 
-- AutoInterface dynamic add/remove now has daemon-side lifecycle application
-  for an active runtime. Remaining follow-up is to keep the polling reconciler
-  alive when startup initially adopts zero devices, replace the closure-driven
-  cleanup assumptions with an explicit shutdown path for dynamically spawned
-  listeners, and gather broader prepared-host evidence for interface churn.
+- AutoInterface dynamic add/remove now has daemon-side lifecycle application,
+  including zero-initial startup polling. Remaining follow-up is to keep
+  hardening explicit daemon-owned shutdown for dynamically spawned listeners
+  beyond terminal receive-failure shutdown, and gather broader prepared-host
+  evidence for interface churn.

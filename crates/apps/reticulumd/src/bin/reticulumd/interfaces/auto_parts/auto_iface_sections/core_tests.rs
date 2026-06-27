@@ -209,6 +209,10 @@
             Some(1)
         );
         assert_eq!(
+            runtime.get("planned_adopted_interface_reconciler_count").and_then(JsonValue::as_u64),
+            Some(1)
+        );
+        assert_eq!(
             runtime
                 .get("planned_discovery_socket_binds")
                 .and_then(JsonValue::as_array)
@@ -260,6 +264,58 @@
                 .and_then(|value| value.get("link_local_update")),
             Some(&JsonValue::Null)
         );
+    }
+
+    #[test]
+    fn auto_runtime_json_keeps_zero_initial_runtime_schedulers_planned() {
+        let plan =
+            build_startup_plan_from_candidates(&auto_iface(), Vec::new()).expect("startup plan");
+        let runtime = plan.runtime_json();
+
+        assert_eq!(
+            runtime.get("planned_initial_peer_announce_count").and_then(JsonValue::as_u64),
+            Some(0)
+        );
+        assert_eq!(
+            runtime.get("planned_discovery_receive_loop_count").and_then(JsonValue::as_u64),
+            Some(0)
+        );
+        assert_eq!(
+            runtime.get("planned_data_receive_loop_count").and_then(JsonValue::as_u64),
+            Some(0)
+        );
+        assert_eq!(
+            runtime.get("planned_repeat_peer_announce_scheduler_count").and_then(JsonValue::as_u64),
+            Some(1)
+        );
+        assert_eq!(
+            runtime.get("planned_peer_job_scheduler_count").and_then(JsonValue::as_u64),
+            Some(1)
+        );
+        assert_eq!(
+            runtime.get("planned_adopted_interface_reconciler_count").and_then(JsonValue::as_u64),
+            Some(1)
+        );
+    }
+
+    #[tokio::test]
+    async fn auto_zero_initial_runtime_starts_reconciliation_schedulers() {
+        let plan =
+            build_startup_plan_from_candidates(&auto_iface(), Vec::new()).expect("startup plan");
+
+        let summary = plan
+            .spawn_discovery_runtime_with_native_scope_ids()
+            .await
+            .expect("start zero-initial runtime");
+
+        assert_eq!(summary.bound_socket_count, 0);
+        assert_eq!(summary.receive_loop_count, 0);
+        assert_eq!(summary.initial_peer_announce_count, 0);
+        assert_eq!(summary.data_socket_count, 0);
+        assert_eq!(summary.data_receive_loop_count, 0);
+        assert_eq!(summary.repeat_peer_announce_scheduler_count, 1);
+        assert_eq!(summary.peer_job_scheduler_count, 1);
+        assert_eq!(summary.adopted_interface_reconciler_count, 1);
     }
 
     #[test]
@@ -630,6 +686,34 @@
                 shutdown_rx,
             ),
         ));
+        let discovery_socket =
+            tokio::net::UdpSocket::bind("127.0.0.1:0").await.expect("bind discovery socket");
+        let discovery_bind_addr = discovery_socket.local_addr().expect("discovery bind addr");
+        discovery_supervisor.lock().await.spawn_bound_listener(
+            "eth0".to_string(),
+            vec![AutoBoundDiscoverySocket {
+                kind: AutoDiscoverySocketKind::Unicast,
+                ifname: "eth0".to_string(),
+                bind_addr: discovery_bind_addr,
+                multicast_group_addr: None,
+                socket: discovery_socket,
+            }],
+            &discovery_events_tx,
+        );
+        let data_socket = Arc::new(
+            tokio::net::UdpSocket::bind("127.0.0.1:0").await.expect("bind data socket"),
+        );
+        let data_bind_addr = data_socket.local_addr().expect("data bind addr");
+        data_supervisor.lock().await.spawn_bound_socket(
+            AutoBoundDataSocket {
+                ifname: "eth0".to_string(),
+                bind_addr: data_bind_addr,
+                socket: data_socket,
+            },
+            &data_events_tx,
+        );
+        assert_eq!(discovery_supervisor.lock().await.receive_loop_count(), 1);
+        assert_eq!(data_supervisor.lock().await.len(), 1);
         let runtime_loop_handles = AutoInterfaceRuntimeLoopHandles {
             discovery_supervisor: Arc::clone(&discovery_supervisor),
             data_supervisor: Arc::clone(&data_supervisor),
@@ -650,6 +734,8 @@
         assert_eq!(applied, 1);
         assert!(state.lock().await.adopted_devices().is_empty());
         assert!(state.lock().await.peer("fe80::aaaa").is_none());
+        assert_eq!(discovery_supervisor.lock().await.receive_loop_count(), 0);
+        assert_eq!(data_supervisor.lock().await.len(), 0);
     }
 
     #[test]

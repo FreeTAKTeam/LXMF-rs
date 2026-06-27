@@ -154,10 +154,10 @@ The project is best described by capability level:
   peer-data sockets, transport ingress, outbound routing, multicast proof
   fallback, supervised discovery/data receive loops, transport-side
   adopted-interface diff planning, daemon-side add/remove lifecycle
-  application for active runtimes, and polling link-local replacement
-  reconciliation for already adopted interfaces. Remaining dynamic-runtime
-  hardening includes zero-initial-device polling startup, explicit shutdown for
-  dynamically spawned listeners, and prepared-host interface churn evidence.
+  application for active and zero-initial runtimes, and polling link-local
+  replacement reconciliation for already adopted interfaces. Remaining
+  dynamic-runtime hardening includes broader explicit shutdown for dynamically
+  spawned listeners and prepared-host interface churn evidence.
 - I2P transport-side tunnel watchdog/status bookkeeping is refreshed into
   daemon/RPC interface status; prepared-host production evidence remains
   pending.

@@ -97,9 +97,9 @@ placeholders:
   already adopted link-local address replacements, supervised per-interface
   discovery and data-listener receive loops, adopted-interface add/remove/change
   diff planning with explicit state apply semantics, daemon-side add/remove
-  lifecycle application for an active AutoInterface runtime, stale outbound
-  route pruning after restart/removal, dynamic multicast/reverse announce
-  source refresh after replacement, and Python-style fallback from unknown
+  lifecycle application for active and zero-initial AutoInterface runtimes,
+  stale outbound route pruning after restart/removal, dynamic multicast/reverse
+  announce source refresh after replacement, and Python-style fallback from unknown
   `multicast_address_type` values to `temporary`.
 - Serial, TCP/Wi-Fi, and feature-gated BLE LoRa/RNode with startup probes,
   Python and Android-style selector aliases, configuration validation,
@@ -182,10 +182,10 @@ still needs a live Python selector/epoll comparison for the same slow-reader
 workload before the backpressure evidence is considered complete. AutoInterface
 now has daemon-side dynamic add/remove reconciliation for an active runtime
 using the implemented diff plan plus discovery and data listener supervisors.
-It still needs the polling reconciler to run when startup initially adopts zero
-devices, an explicit shutdown path that does not depend on event-channel
-closure for dynamically spawned listeners, and broader prepared-host interface
-churn evidence.
+Zero-initial startup now keeps the polling reconciler and scheduler runtime
+alive for later adopted devices. It still needs broader explicit daemon-owned
+shutdown hardening for dynamically spawned listeners and prepared-host
+interface churn evidence.
 
 `I2PInterface` is tracked as an in-progress family: configured outbound peers
 and connectable sessions can run through SAM, and transport-side tunnel

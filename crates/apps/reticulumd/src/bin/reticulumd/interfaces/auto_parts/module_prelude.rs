@@ -203,6 +203,7 @@ pub(crate) struct AutoDiscoveryRuntimeSummary {
     pub(crate) initial_peer_announce_count: usize,
     pub(crate) repeat_peer_announce_scheduler_count: usize,
     pub(crate) peer_job_scheduler_count: usize,
+    pub(crate) adopted_interface_reconciler_count: usize,
     pub(crate) data_socket_count: usize,
     pub(crate) data_receive_loop_count: usize,
 }

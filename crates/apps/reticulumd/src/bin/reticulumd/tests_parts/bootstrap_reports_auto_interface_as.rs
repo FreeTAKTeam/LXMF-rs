@@ -91,11 +91,17 @@ interfaces = [
         discovery_runtime
             .get("repeat_peer_announce_scheduler_count")
             .and_then(|value| value.as_u64()),
-        Some(0)
+        Some(1)
     );
     assert_eq!(
         discovery_runtime.get("peer_job_scheduler_count").and_then(|value| value.as_u64()),
-        Some(0)
+        Some(1)
+    );
+    assert_eq!(
+        discovery_runtime
+            .get("adopted_interface_reconciler_count")
+            .and_then(|value| value.as_u64()),
+        Some(1)
     );
     assert_eq!(
         discovery_runtime.get("data_socket_count").and_then(|value| value.as_u64()),
