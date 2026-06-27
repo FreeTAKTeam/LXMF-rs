@@ -67,13 +67,16 @@ placeholders:
   now cover keepalive, stale, active-after-read, and read-timeout event order,
   and local slow-reader evidence proves the bounded HDLC tx queue backpressures
   instead of draining unbounded work while a Backbone peer stops reading. The
-  pinned Python interop workflow now also runs a Python selector/epoll slow-reader probe
-  with `backbone_selector_backpressure_probe.py`, requiring `EpollSelector` on
-  Linux, plus a live pinned Python Reticulum
+  pinned Python interop workflow now also runs a Python selector/epoll
+  slow-reader probe with `backbone_selector_backpressure_probe.py`, requiring
+  `EpollSelector` on Linux, plus a live pinned Python Reticulum
   `BackboneClientInterface` transmit-buffer probe with
   `backbone_python_reference_backpressure_probe.py`, comparing those results
   with the Rust `backbone_hdlc_stream_backpressures_when_peer_stops_reading`
-  proof.
+  proof. The same ignored `python_channel_interop` workflow now also includes
+  focused live Backbone channel roundtrips in both directions between Rust's
+  Backbone-tuned TCP/HDLC path and Python `BackboneInterface`/
+  `BackboneClientInterface`.
 - LocalInterface TCP-loopback listener/client-attach plus Unix filesystem and
   Linux/Android abstract AF_UNIX shared-instance listener/client-attach
   compatibility over the existing stream/HDLC runtime, including Python's
@@ -223,8 +226,9 @@ record.
 `RNS/Interfaces/*` remains `partial` because parity is measured against the
 whole Python family, not because the implemented interfaces are stubs. Backbone
 now has Python selector/epoll and live Python Reticulum BackboneClientInterface
-slow-reader probes for the same qualitative backpressure workload, while broader
-live end-to-end Backbone comparison evidence remains pending. AutoInterface
+slow-reader probes for the same qualitative backpressure workload, plus focused
+live Rust/Python Backbone channel roundtrips in both directions, while broader
+Backbone link/resource comparison evidence remains pending. AutoInterface
 now has daemon-side dynamic add/remove reconciliation for an active runtime
 using the implemented diff plan plus discovery and data listener supervisors.
 Zero-initial startup now keeps the polling reconciler and scheduler runtime

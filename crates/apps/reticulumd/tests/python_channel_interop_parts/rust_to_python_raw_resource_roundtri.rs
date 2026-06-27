@@ -153,6 +153,100 @@ async fn python_to_rust_channel_roundtrip() {
 
 #[tokio::test]
 #[ignore = "requires local Python Reticulum checkout"]
+async fn python_to_rust_backbone_channel_roundtrip() {
+    let _interop_guard = python_interop_guard().await;
+    let paths = python_channel_interop_paths();
+
+    let server_port = free_tcp_port();
+    let temp = tempfile::tempdir().expect("tempdir");
+    let py_config_dir = temp.path().join("python-rns-backbone-client");
+    fs::create_dir_all(&py_config_dir).expect("python config dir");
+    write_python_client_config_for_kind(
+        &py_config_dir,
+        server_port,
+        PythonInteropInterfaceKind::Backbone,
+    );
+
+    let rust_identity = PrivateIdentity::new_from_rand(OsRng);
+    let rust_identity = to_transport_private_identity(&rust_identity);
+    let mut config =
+        TransportConfig::new("python-backbone-channel-interop-rust-server", &rust_identity, true);
+    config.set_path_request_timeout_secs(2);
+    let mut transport = Transport::new(config);
+    let iface_manager = transport.iface_manager();
+    transport.iface_manager().lock().await.spawn(
+        rust_server_for_python_interop(
+            PythonInteropInterfaceKind::Backbone,
+            server_port,
+            iface_manager,
+        ),
+        TcpServer::spawn,
+    );
+    wait_for_port(server_port, Duration::from_secs(5)).await;
+
+    let destination = transport
+        .add_destination(rust_identity.clone(), DestinationName::new("test", "channel"))
+        .await;
+    let destination_hash = {
+        let destination = destination.lock().await;
+        hex::encode(destination.desc.address_hash.as_slice())
+    };
+
+    let child = paths.spawn_channel_client(&py_config_dir, &destination_hash, "channel");
+    let mut guard = ChildGuard { child: Some(child) };
+
+    let mut in_events = transport.in_link_events();
+    let link_id = wait_for_in_link_active_with_announces(
+        &transport,
+        &destination,
+        &mut in_events,
+        Duration::from_secs(8),
+    )
+    .await;
+    sleep(Duration::from_millis(50)).await;
+
+    let channel = transport.channel(link_id);
+    let seen = Arc::new(StdMutex::new(Vec::<(String, String)>::new()));
+    let seen_clone = seen.clone();
+    channel
+        .register_handler(MSG_TYPE, move |envelope| {
+            if let Ok(decoded) = rmp_serde::from_slice::<(String, String)>(&envelope.payload) {
+                seen_clone.lock().expect("seen lock").push(decoded);
+                true
+            } else {
+                false
+            }
+        })
+        .await
+        .expect("register channel handler");
+
+    wait_for_python_message(&seen, Duration::from_secs(8)).await;
+    let payload =
+        rmp_serde::to_vec(&(String::from("python-1"), String::from("reply:hello-rust")))
+            .expect("encode Backbone channel reply");
+    channel.send(MSG_TYPE, payload).await.expect("send Backbone channel reply");
+
+    let child = guard.child.take().expect("python child");
+    let output = tokio::task::spawn_blocking(move || child.wait_with_output())
+        .await
+        .expect("join python client")
+        .expect("wait for python client");
+    if !output.status.success() {
+        panic!(
+            "python Backbone channel client failed\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("\"reply:hello-rust\""),
+        "python Backbone client did not report Rust channel reply: {stdout}"
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires local Python Reticulum checkout"]
 async fn python_to_rust_channel_sequence_callbacks_are_ordered() {
     let _interop_guard = python_interop_guard().await;
     let paths = python_channel_interop_paths();
