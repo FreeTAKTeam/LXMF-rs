@@ -83,6 +83,16 @@ pub(super) async fn wait_for_reply(
     .await;
 }
 
+pub(super) async fn wait_for_backbone_reply(
+    seen: &Arc<StdMutex<Vec<(String, String)>>>,
+    duration: Duration,
+) {
+    wait_for_seen_tuple(seen, duration, "Python channel reply", |id, data| {
+        id == "rust-backbone" && data == "reply:hello-python-backbone"
+    })
+    .await;
+}
+
 pub(super) async fn wait_for_python_message(
     seen: &Arc<StdMutex<Vec<(String, String)>>>,
     duration: Duration,
