@@ -194,8 +194,8 @@ placeholders:
   fake-SAM tests now cover outbound peer-loop session creation, lookup, stream
   connect, HDLC writes, connectable accept-loop incoming `STREAM ACCEPT`,
   virtual child registration, HDLC ingress, direct outbound egress over accepted
-  streams, cleanup, and daemon/RPC status refresh without requiring a prepared
-  I2P router. The config parser accepts
+  streams, cleanup, and daemon/RPC status refresh for connected outbound and
+  incoming peer rows without requiring a prepared I2P router. The config parser accepts
   I2P-local IFAC aliases `ifac_netname` and `ifac_netkey`.
 - Feature-gated native RNode BLE and VR-N76 KISS-over-BLE. The VR-N76 native
   interface now exposes live daemon/RPC `_runtime.vrn76.status` metadata with
@@ -258,8 +258,9 @@ Python key is present. Missing explicit SAM host/port config now uses Python's
 `rnstatus-rs` human output summarizes the live I2P tunnel status for
 operators, including outbound, incoming, closed, and aggregate byte counters.
 The software fake-SAM smoke exercises strict daemon startup, destination
-persistence, connectable accept status, outbound peer connection state, and
-`rnstatus-rs` JSON/human output without a real I2P router. The opt-in
+persistence, connectable accept status, outbound peer connection state,
+accepted incoming peer visibility, and `rnstatus-rs` JSON/human output without
+a real I2P router. The opt-in
 prepared-host smoke can also require configured outbound peers to reach
 `connected` state when `I2P_PEERS` is supplied. Prepared-host production
 evidence is still pending until the harness is run against a real SAM router and

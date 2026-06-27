@@ -155,13 +155,16 @@ and `STREAM ACCEPT` command paths, then starts `reticulumd` with
 - `_runtime.i2p.tunnel_status.configured_peer_count` matching `I2P_PEERS`
 - connected outbound peer rows with `direction = "outbound"` and non-empty
   `iface`
+- a connected incoming peer row for the fake `STREAM ACCEPT` remote
+  destination, with `direction = "incoming"` and non-empty `iface`
 - human `rnstatus-rs` output containing the I2P tunnel summary
+  (`outbound=<I2P_PEERS count>` and `incoming=1`)
 
 Evidence is written under `target/i2p-fake-sam-smoke/`, including
 `report.json`, fake-SAM logs, daemon logs, generated config, captured JSON
 status, and captured human status. This smoke is software-only evidence for
-daemon integration and status refresh; it does not replace the prepared-host
-router evidence below.
+daemon integration, connectable incoming-peer visibility, and status refresh;
+it does not replace the prepared-host router evidence below.
 
 ## Prepared-Host Smoke
 

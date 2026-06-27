@@ -105,6 +105,11 @@ if json_path.exists():
                 for row in peer_rows
                 if row.get("direction") == "outbound" and row.get("state") == "connected"
             ]
+            report["connected_incoming_peers"] = [
+                row.get("peer")
+                for row in peer_rows
+                if row.get("direction") == "incoming" and row.get("state") == "connected"
+            ]
     except Exception as exc:
         report["status_parse_error"] = str(exc)
 human_path = pathlib.Path(rnstatus_human)
@@ -372,10 +377,19 @@ for peer in expected_peers:
     row = rows_by_peer.get(peer)
     if not row or row.get("state") != "connected" or not row.get("iface"):
         raise SystemExit(1)
+incoming_rows = [
+    row
+    for row in tunnel.get("peers", [])
+    if row.get("direction") == "incoming" and row.get("state") == "connected"
+]
+if not any(row.get("peer") == "fake-remote-destination" and row.get("iface") for row in incoming_rows):
+    raise SystemExit(1)
 human = open(human_path, "r", encoding="utf-8", errors="replace").read()
 if f"i2p sam={sam_endpoint} accept=listening" not in human:
     raise SystemExit(1)
 if f"outbound={len(expected_peers)}" not in human:
+    raise SystemExit(1)
+if "incoming=1" not in human:
     raise SystemExit(1)
 PY
     then
