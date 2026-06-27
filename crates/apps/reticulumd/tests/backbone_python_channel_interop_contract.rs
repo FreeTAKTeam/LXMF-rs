@@ -37,6 +37,8 @@ fn python_channel_interop_preserves_backbone_variants() {
 
     for required in [
         "rust_to_python_backbone_channel_roundtrip",
+        "rust_to_python_backbone_link_data_roundtrip",
+        "rust_to_python_backbone_request_response_roundtrip",
         "rust_client_for_python_interop",
         "rust_server_for_python_interop",
         "TcpSocketTuning::backbone",
@@ -51,11 +53,17 @@ fn python_channel_interop_preserves_backbone_variants() {
         );
     }
 
-    for required in ["python_to_rust_backbone_channel_roundtrip", "rust_server_for_python_interop"]
-    {
+    for required in [
+        "rust_to_python_backbone_raw_resource_roundtrip",
+        "python_to_rust_backbone_channel_roundtrip",
+        "python_to_rust_backbone_link_data_roundtrip",
+        "python_to_rust_backbone_request_response_roundtrip",
+        "python_to_rust_backbone_resource_backed_request_response_roundtrip",
+        "rust_server_for_python_interop",
+    ] {
         assert!(
             python_to_rust.contains(required),
-            "Python-to-Rust channel interop should preserve Backbone token {required:?}"
+            "Python-to-Rust interop should preserve Backbone token {required:?}"
         );
     }
 

@@ -60,8 +60,9 @@ The project is best described by capability level:
   read-timeout reconnects, local slow-reader HDLC tx backpressure evidence
   paired with Python selector/epoll and live Python Reticulum
   `BackboneClientInterface` slow-reader probes in the pinned Python interop
-  workflow, and ignored live Rust/Python Backbone channel roundtrips in both
-  directions over Python `BackboneInterface`/`BackboneClientInterface`,
+  workflow, and ignored live Rust/Python Backbone channel, link-data,
+  request/response, and resource roundtrips in both directions over Python
+  `BackboneInterface`/`BackboneClientInterface`,
   TCP/Backbone client reconnect tunnel re-synthesis, TCP/Backbone listener
   daemon/RPC runtime status with accept counters and latest accepted stream
   snapshots, Python `BackboneInterface` `remote` alias
