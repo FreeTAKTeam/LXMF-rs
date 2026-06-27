@@ -10,6 +10,10 @@ impl Transport {
         &self,
         storage_path: P,
     ) -> io::Result<usize> {
+        if self.handler.lock().await.config.connected_to_shared_instance {
+            return Ok(0);
+        }
+
         let storage_path = storage_path.as_ref().to_path_buf();
         let now = std::time::Instant::now();
         let now_unix_secs = now_unix_secs();
@@ -74,6 +78,10 @@ impl Transport {
         &self,
         storage_path: P,
     ) -> io::Result<usize> {
+        if self.handler.lock().await.config.connected_to_shared_instance {
+            return Ok(0);
+        }
+
         let storage_path = storage_path.as_ref().to_path_buf();
         let path = storage_path.join("destination_table");
         let announce_cache = ReticulumAnnounceCache::new(&storage_path);

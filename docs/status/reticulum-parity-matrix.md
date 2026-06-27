@@ -24,7 +24,7 @@ Workspace paths are used for navigation. Published package names are
 | `RNS/Identity.py` | `crates/libs/rns-core` | done | Identity material, hashing, signing, encryption, recall, and key conversion. | No confirmed parity blocker. |
 | `RNS/Destination.py` | `crates/libs/rns-core`, `crates/libs/rns-transport` | done | Destination hashing, descriptors, announces, proof validation, ratchets, and known-key stability checks. | No confirmed parity blocker. |
 | `RNS/Packet.py` | `crates/libs/rns-core`, `crates/libs/rns-transport` | done | Framing, serialization, contexts, proofs, receipts, Python-default link proof context, and header semantics. | No confirmed parity blocker. |
-| `RNS/Transport.py` | `crates/libs/rns-transport`, `crates/apps/reticulumd` | partial | Path and announce handling, including direct cached remote path responses stamped as `PATH_RESPONSE`, Python-style roaming same-interface known-path response suppression, and path-table restore from cached announces without startup rebroadcast, link routing, resources, receipts, interface-aware sending, pacing, and duplicate suppression. | Remaining announce/path edge policy and full runtime behavior require live parity evidence. |
+| `RNS/Transport.py` | `crates/libs/rns-transport`, `crates/apps/reticulumd` | partial | Path and announce handling, including direct cached remote path responses stamped as `PATH_RESPONSE`, Python-style roaming same-interface known-path response suppression, path-table restore from cached announces without startup rebroadcast, and shared-instance path-table save/restore suppression, link routing, resources, receipts, interface-aware sending, pacing, and duplicate suppression. | Remaining announce/path edge policy and full runtime behavior require live parity evidence. |
 | `RNS/Link.py` | `crates/libs/rns-transport` | done | Establishment, proof validation, bound-interface enforcement, RTT-derived liveness, protocol close, and cleanup. | Continue live regression coverage; no confirmed blocker. |
 | `RNS/Resource.py` | `crates/libs/rns-transport` | done | Bounded receive allocation, advertisement validation, retries, adaptive fragment scheduling, timeout/failure events, cancellation, and cleanup. | Split/segmented resources remain intentionally unsupported and rejected. |
 | `RNS/Channel.py` | `crates/libs/rns-transport` | done | Channel packet handling, retry scheduling, buffering, ordered receive delivery, callback ordering/short-circuit/panic containment, delivery-on-proof, timeout retry, exhaustion cleanup, and live Rust/Python channel sequence tests. | No confirmed channel parity blocker. |
@@ -149,7 +149,8 @@ when the learned next-hop interface for that path is the same interface,
 matching Python's roaming-interface loop suppression.
 Restored path-table cached announces are now kept as lookup/cache material
 rather than scheduled as fresh announce rebroadcasts at startup, while still
-serving known-path responses.
+serving known-path responses. Shared-instance clients now skip local path-table
+save and restore work like Python Reticulum.
 
 Enabled unknown interface kinds still parse so operators can see them in daemon
 status, but daemon startup marks them as failed with explicit
@@ -215,7 +216,7 @@ integration and broader prepared-host hardware evidence remain pending.
    cached remote path-response `PATH_RESPONSE` and roaming same-interface
    suppression slices.
 2. Complete resolver/bootstrap behavior beyond cache-only restored path-table
-   announce material.
+   announce material and shared-instance path-table persistence suppression.
 3. Capture broader prepared-host BLE/RNode lifecycle evidence.
 4. Capture I2P prepared-host evidence, or explicitly document its product
    boundary.

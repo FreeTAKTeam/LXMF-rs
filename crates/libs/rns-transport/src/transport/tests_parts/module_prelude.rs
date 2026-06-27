@@ -431,6 +431,81 @@ async fn reticulum_path_table_persistence_restores_route_and_identity_from_cache
 }
 
 #[tokio::test]
+async fn reticulum_path_table_restore_skips_when_connected_to_shared_instance() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut config = TransportConfig::new("test", &local_identity, true);
+    config.set_retransmit(true);
+    let transport = Transport::new(config);
+    let iface = *transport.iface_manager().lock().await.new_channel(16).address();
+
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut remote_destination =
+        SingleInputDestination::new(remote_identity, DestinationName::new("lxmf", "delivery"));
+    let announce = remote_destination.announce(OsRng, None).expect("valid announce packet");
+    let destination = announce.destination;
+
+    handle_announce(
+        &announce,
+        transport.get_handler().lock().await,
+        iface,
+        crate::iface::IfaceSource::None,
+    )
+    .await;
+
+    assert_eq!(transport.save_reticulum_path_table(temp.path()).await.expect("save"), 1);
+
+    let mut restored_config = TransportConfig::new("shared-instance-client", &local_identity, true);
+    restored_config.set_retransmit(true);
+    restored_config.set_connected_to_shared_instance(true);
+    let restored = Transport::new(restored_config);
+    let restored_iface = *restored.iface_manager().lock().await.new_channel(16).address();
+    assert_eq!(restored_iface, iface, "test relies on deterministic iface hashes");
+
+    assert_eq!(restored.restore_reticulum_path_table(temp.path()).await.expect("restore"), 0);
+    assert!(
+        !restored.has_path(&destination).await,
+        "shared-instance clients should not restore local path-table entries from storage"
+    );
+}
+
+#[tokio::test]
+async fn reticulum_path_table_save_skips_when_connected_to_shared_instance() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut config = TransportConfig::new("shared-instance-client", &local_identity, true);
+    config.set_retransmit(true);
+    config.set_connected_to_shared_instance(true);
+    let transport = Transport::new(config);
+    let iface = *transport.iface_manager().lock().await.new_channel(16).address();
+
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut remote_destination =
+        SingleInputDestination::new(remote_identity, DestinationName::new("lxmf", "delivery"));
+    let announce = remote_destination.announce(OsRng, None).expect("valid announce packet");
+    let destination = announce.destination;
+
+    handle_announce(
+        &announce,
+        transport.get_handler().lock().await,
+        iface,
+        crate::iface::IfaceSource::None,
+    )
+    .await;
+
+    assert!(transport.has_path(&destination).await, "test should have an in-memory path");
+    assert_eq!(transport.save_reticulum_path_table(temp.path()).await.expect("save"), 0);
+    assert!(
+        !temp.path().join("destination_table").exists(),
+        "shared-instance clients should not persist destination_table"
+    );
+    assert!(
+        !temp.path().join("tunnels").exists(),
+        "shared-instance clients should not persist tunnel table"
+    );
+}
+
+#[tokio::test]
 async fn reticulum_tunnel_table_persistence_restores_tunnel_paths_after_reappearance() {
     let temp = tempfile::tempdir().expect("tempdir");
     let local_identity = PrivateIdentity::new_from_rand(OsRng);
