@@ -9,8 +9,7 @@ fn repo_root() -> PathBuf {
 fn vrn76_prepared_host_smoke_preserves_evidence_contract() {
     let root = repo_root();
     let script_path = root.join("tools/scripts/vrn76-kiss-ble-prepared-host-smoke.sh");
-    let script =
-        fs::read_to_string(&script_path).expect("read VR-N76 prepared-host smoke script");
+    let script = fs::read_to_string(&script_path).expect("read VR-N76 prepared-host smoke script");
 
     for required in [
         "target/vrn76-hil",
