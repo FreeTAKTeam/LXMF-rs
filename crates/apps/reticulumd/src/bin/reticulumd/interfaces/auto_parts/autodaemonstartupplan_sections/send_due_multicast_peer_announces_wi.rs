@@ -153,6 +153,122 @@ impl AutoDaemonStartupPlan {
         })
     }
 
+    async fn detect_link_local_updates_from_candidates(
+        &self,
+        state: Arc<tokio::sync::Mutex<AutoDiscoveryState>>,
+        candidates: Vec<AutoInterfaceDeviceCandidate>,
+    ) -> Vec<AutoLinkLocalAddressUpdate> {
+        let allowed = self
+            .adopted_devices
+            .iter()
+            .map(|device| device.ifname.clone())
+            .collect::<Vec<_>>();
+        let filter = AutoInterfaceDeviceFilter { allowed, ignored: Vec::new() };
+        let adopted = filter.adopt_devices(&candidates, self.platform);
+        let mut updates = Vec::new();
+        let state = state.lock().await;
+        for device in adopted {
+            if let Some(update) = state.plan_adopted_link_local_address_update(
+                &self.config,
+                &device.ifname,
+                &device.link_local_address,
+            ) {
+                updates.push(update);
+            }
+        }
+        updates
+    }
+
+    async fn reconcile_link_local_addresses(
+        &self,
+        state: Arc<tokio::sync::Mutex<AutoDiscoveryState>>,
+        supervisor: Arc<tokio::sync::Mutex<AutoPeerDataListenerSupervisor>>,
+        runtime_status: Option<&AutoRuntimeStatusHandle>,
+        events: &tokio::sync::mpsc::Sender<AutoPeerDataLoopEvent>,
+        candidates: Vec<AutoInterfaceDeviceCandidate>,
+        mut scope_id_for_ifname: impl FnMut(&str) -> Result<u32, String>,
+    ) -> Result<usize, String> {
+        let updates =
+            self.detect_link_local_updates_from_candidates(Arc::clone(&state), candidates).await;
+        let mut restarted = 0;
+        for update in updates {
+            supervisor
+                .lock()
+                .await
+                .restart_link_local_listener(&update, None, events, &mut scope_id_for_ifname)
+                .await?;
+            state.lock().await.apply_adopted_link_local_address_update(&update);
+            if let Some(runtime_status) = runtime_status {
+                runtime_status.record_link_local_update(Some(&update));
+            }
+            restarted += 1;
+        }
+        Ok(restarted)
+    }
+
+    fn spawn_link_local_address_reconciler(
+        &self,
+        state: Arc<tokio::sync::Mutex<AutoDiscoveryState>>,
+        supervisor: Arc<tokio::sync::Mutex<AutoPeerDataListenerSupervisor>>,
+        runtime_status: Option<AutoRuntimeStatusHandle>,
+        events: tokio::sync::mpsc::Sender<AutoPeerDataLoopEvent>,
+        mut shutdown: tokio::sync::watch::Receiver<bool>,
+    ) -> tokio::task::JoinHandle<()> {
+        let plan = self.clone();
+        let timing = AutoInterfaceTiming::for_platform(self.platform);
+        tokio::spawn(async move {
+            if *shutdown.borrow() {
+                return;
+            }
+            let mut interval = tokio::time::interval(timing.peer_job_interval);
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            loop {
+                tokio::select! {
+                    changed = shutdown.changed() => {
+                        if changed.is_err() || *shutdown.borrow() {
+                            break;
+                        }
+                    }
+                    _ = interval.tick() => {
+                        let candidates = match enumerate_link_local_candidates() {
+                            Ok(candidates) => candidates,
+                            Err(err) => {
+                                log::warn!("[daemon-auto] link-local reconciler failed to enumerate interfaces: {err}");
+                                continue;
+                            }
+                        };
+                        let resolver = match AutoInterfaceIndexResolver::from_system() {
+                            Ok(resolver) => resolver,
+                            Err(err) => {
+                                log::warn!("[daemon-auto] link-local reconciler failed to resolve interface indexes: {err}");
+                                continue;
+                            }
+                        };
+                        match plan
+                            .reconcile_link_local_addresses(
+                                Arc::clone(&state),
+                                Arc::clone(&supervisor),
+                                runtime_status.as_ref(),
+                                &events,
+                                candidates,
+                                |ifname| resolver.resolve(ifname),
+                            )
+                            .await
+                        {
+                            Ok(restarted) if restarted > 0 => {
+                                log::debug!("[daemon-auto] link-local reconciler restarted {restarted} peer data listener(s)");
+                            }
+                            Ok(_) => {}
+                            Err(err) => {
+                                log::warn!("[daemon-auto] link-local reconciler failed: {err}");
+                            }
+                        }
+                    }
+                }
+            }
+        })
+    }
+
     // Binds only the unicast side of discovery; startup combines these sockets
     // with multicast sockets before spawning receive loops.
     #[allow(dead_code)]
@@ -490,8 +606,9 @@ impl AutoPeerDataListenerSupervisor {
     }
 
     #[allow(dead_code)]
-    pub(crate) async fn shutdown_all(self) {
-        for handle in self.listeners.into_values() {
+    pub(crate) async fn shutdown_all(&mut self) {
+        let listeners = std::mem::take(&mut self.listeners);
+        for handle in listeners.into_values() {
             handle.stop().await;
         }
     }

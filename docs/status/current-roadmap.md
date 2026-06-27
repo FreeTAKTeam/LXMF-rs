@@ -71,8 +71,8 @@ The project is best described by capability level:
   Python-style UDP `device` broadcast-address defaults, IPv4 broadcast socket
   sends, and shared-`port` forward fallback semantics, serial, KISS, AX.25
   KISS with Android-style beacon alias compatibility, AutoInterface with
-  Python-style multicast address type fallback and supervised link-local
-  data-listener restart, LoRa/RNode,
+  Python-style multicast address type fallback, polling adopted-address
+  reconciliation, and supervised link-local data-listener restart, LoRa/RNode,
   feature-gated RNode BLE, feature-gated VR-N76 KISS-over-BLE, and the
   in-progress shared serial/TCP RNodeMulti baseline with nested vport virtual
   children, a shared-serial Weave WDCL/HDLC endpoint baseline, and an
@@ -148,8 +148,9 @@ The project is best described by capability level:
   counters, keepalive/stale/read-timeout bookkeeping, and bounded recent
   history for closed incoming peers.
 - AutoInterface has a live daemon runtime, including discovery, peer lifecycle,
-  peer-data sockets, transport ingress, outbound routing, and multicast proof
-  fallback.
+  peer-data sockets, transport ingress, outbound routing, multicast proof
+  fallback, and polling link-local replacement reconciliation for already
+  adopted interfaces.
 - I2P transport-side tunnel watchdog/status bookkeeping is refreshed into
   daemon/RPC interface status; prepared-host production evidence remains
   pending.

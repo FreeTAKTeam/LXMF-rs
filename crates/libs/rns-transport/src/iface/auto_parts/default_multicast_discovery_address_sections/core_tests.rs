@@ -432,6 +432,50 @@
     }
 
     #[test]
+    fn link_local_update_plan_is_non_mutating_until_applied() {
+        let config = AutoInterfaceConfig::default();
+        let mut state = AutoDiscoveryState::from_timing(
+            vec![AutoInterfaceAdoptedDevice {
+                ifname: "eth0".to_string(),
+                link_local_address: "fe80::1111".to_string(),
+            }],
+            AutoInterfaceTiming::for_platform(AutoInterfacePlatform::Other),
+        );
+
+        let update = state
+            .plan_adopted_link_local_address_update(&config, "eth0", "fe80::2222%eth0")
+            .expect("planned link-local replacement");
+
+        assert_eq!(
+            state.observe_discovery_packet(
+                "fe80::1111",
+                "eth0",
+                core::time::Duration::from_secs(3),
+            ),
+            AutoDiscoveryEvent::LocalMulticastEcho { ifname: "eth0".to_string() }
+        );
+        assert_eq!(
+            state.observe_discovery_packet(
+                "fe80::2222",
+                "eth0",
+                core::time::Duration::from_secs(4),
+            ),
+            AutoDiscoveryEvent::Peer(AutoPeerEvent::Added)
+        );
+
+        state.apply_adopted_link_local_address_update(&update);
+
+        assert_eq!(
+            state.observe_discovery_packet(
+                "fe80::2222",
+                "eth0",
+                core::time::Duration::from_secs(5),
+            ),
+            AutoDiscoveryEvent::LocalMulticastEcho { ifname: "eth0".to_string() }
+        );
+    }
+
+    #[test]
     fn link_local_update_is_noop_for_same_or_unknown_interface() {
         let config = AutoInterfaceConfig::default();
         let mut state = AutoDiscoveryState::from_timing(
@@ -447,4 +491,12 @@
             None
         );
         assert_eq!(state.update_adopted_link_local_address(&config, "wlan0", "fe80::2222"), None);
+        assert_eq!(
+            state.plan_adopted_link_local_address_update(&config, "eth0", "fe80::1111%eth0"),
+            None
+        );
+        assert_eq!(
+            state.plan_adopted_link_local_address_update(&config, "wlan0", "fe80::2222"),
+            None
+        );
     }

@@ -159,6 +159,10 @@ The reusable transport layer now also includes Python-compatible helpers for:
   affected interface listener, binds the replacement link-local data listener,
   prunes stale outbound routes that referenced the old socket, and records the
   link-local update in carrier runtime status
+- a polling OS interface-address reconciler that re-enumerates link-local
+  candidates for already adopted devices, invokes the supervised listener
+  restart when an adopted address changes, and commits the new discovery state
+  only after the replacement listener restart succeeds
 - live `_runtime.auto.carrier_runtime` reporting for Python-style `online`,
   `final_init_done`, `carrier_changed`, multicast carrier events, and staged
   link-local listener restart metadata
@@ -190,6 +194,6 @@ interfaces = [
 
 ## Operational Follow-Up
 
-- Wire an OS interface-address watcher/reconciler to call the supervised
-  per-interface UDP listener restart primitive when the live address for an
-  adopted interface changes.
+- Add/remove supervision for newly appearing or disappearing adopted interfaces
+  remains separate follow-up work because it also requires discovery socket
+  listener supervision, not only data-listener restart.

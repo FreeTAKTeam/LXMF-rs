@@ -319,6 +319,31 @@
         );
     }
 
+    #[test]
+    fn auto_multicast_announces_use_reconciled_link_local_address() {
+        let plan = build_startup_plan_from_candidates(
+            &default_link_auto_iface(),
+            vec![AutoInterfaceDeviceCandidate {
+                ifname: "eth0".to_string(),
+                ipv6_addresses: vec!["fe80::1234".to_string()],
+            }],
+        )
+        .expect("startup plan");
+        let mut state = plan.discovery_state();
+        let update = state
+            .plan_adopted_link_local_address_update(&plan.config, "eth0", "fe80::5678%eth0")
+            .expect("planned link-local replacement");
+        state.apply_adopted_link_local_address_update(&update);
+
+        let datagrams = plan.due_multicast_peer_announce_datagrams(
+            &mut state,
+            core::time::Duration::from_secs(2),
+        );
+
+        assert_eq!(datagrams.len(), 1);
+        assert_eq!(datagrams[0].source_link_local_address, "fe80::5678");
+    }
+
     #[tokio::test]
     async fn auto_peer_data_listener_supervisor_restarts_link_local_listener() {
         let plan = plan_with_data_listener(AutoDataListenerBinding {
@@ -452,6 +477,64 @@
         );
 
         supervisor.shutdown_all().await;
+    }
+
+    #[tokio::test]
+    async fn auto_link_local_reconciler_failed_restart_does_not_commit_state() {
+        let plan = build_startup_plan_from_candidates(
+            &auto_iface(),
+            vec![AutoInterfaceDeviceCandidate {
+                ifname: "eth0".to_string(),
+                ipv6_addresses: vec!["fe80::1111".to_string()],
+            }],
+        )
+        .expect("startup plan");
+        let state = Arc::new(tokio::sync::Mutex::new(plan.discovery_state()));
+        let dedupe = Arc::new(tokio::sync::Mutex::new(AutoInboundPacketDeduplicator::from_timing(
+            AutoInterfaceTiming::for_platform(AutoInterfacePlatform::Other),
+        )));
+        let (events_tx, _events_rx) = tokio::sync::mpsc::channel(8);
+        let (_shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+        let supervisor = Arc::new(tokio::sync::Mutex::new(AutoPeerDataListenerSupervisor::new(
+            plan.clone(),
+            Arc::clone(&state),
+            dedupe,
+            None,
+            shutdown_rx,
+        )));
+        let runtime_status = AutoRuntimeStatusHandle::from_startup_plan(&plan.startup_plan);
+
+        let err = plan
+            .reconcile_link_local_addresses(
+                Arc::clone(&state),
+                Arc::clone(&supervisor),
+                Some(&runtime_status),
+                &events_tx,
+                vec![AutoInterfaceDeviceCandidate {
+                    ifname: "eth0".to_string(),
+                    ipv6_addresses: vec!["fe80::2222".to_string()],
+                }],
+                |_| Err("missing interface index".to_string()),
+            )
+            .await
+            .expect_err("restart should fail before state commit");
+
+        assert!(err.contains("missing interface index"));
+        assert_eq!(
+            state
+                .lock()
+                .await
+                .adopted_devices()
+                .into_iter()
+                .map(|device| device.link_local_address)
+                .collect::<Vec<_>>(),
+            vec!["fe80::1111".to_string()]
+        );
+        assert_eq!(
+            runtime_status.to_json().get("link_local_update"),
+            Some(&JsonValue::Null)
+        );
+        supervisor.lock().await.shutdown_all().await;
     }
 
     #[test]

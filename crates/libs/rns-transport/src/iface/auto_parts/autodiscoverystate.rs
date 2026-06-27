@@ -82,8 +82,18 @@ impl AutoDiscoveryState {
         AutoPeerInboundDecision::Accepted { peer }
     }
 
-    pub fn update_adopted_link_local_address(
-        &mut self,
+    pub fn adopted_devices(&self) -> Vec<AutoInterfaceAdoptedDevice> {
+        self.adopted_devices
+            .iter()
+            .map(|(ifname, link_local_address)| AutoInterfaceAdoptedDevice {
+                ifname: ifname.clone(),
+                link_local_address: link_local_address.clone(),
+            })
+            .collect()
+    }
+
+    pub fn plan_adopted_link_local_address_update(
+        &self,
         config: &AutoInterfaceConfig,
         ifname: &str,
         link_local_address: &str,
@@ -94,7 +104,6 @@ impl AutoDiscoveryState {
             return None;
         }
 
-        self.adopted_devices.insert(ifname.to_string(), new_link_local_address.clone());
         let adopted = AutoInterfaceAdoptedDevice {
             ifname: ifname.to_string(),
             link_local_address: new_link_local_address.clone(),
@@ -106,6 +115,23 @@ impl AutoDiscoveryState {
             new_link_local_address,
             listener_binding: config.data_listener_binding(&adopted),
         })
+    }
+
+    pub fn apply_adopted_link_local_address_update(&mut self, update: &AutoLinkLocalAddressUpdate) {
+        self.adopted_devices
+            .insert(update.ifname.clone(), update.new_link_local_address.clone());
+    }
+
+    pub fn update_adopted_link_local_address(
+        &mut self,
+        config: &AutoInterfaceConfig,
+        ifname: &str,
+        link_local_address: &str,
+    ) -> Option<AutoLinkLocalAddressUpdate> {
+        let update =
+            self.plan_adopted_link_local_address_update(config, ifname, link_local_address)?;
+        self.apply_adopted_link_local_address_update(&update);
+        Some(update)
     }
 
     pub fn peer_count(&self) -> usize {
