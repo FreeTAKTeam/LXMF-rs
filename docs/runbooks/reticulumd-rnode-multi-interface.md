@@ -252,6 +252,10 @@ The shutdown sequence is best-effort; the stream is flushed before the shared
 serial session closes. When the parent RNodeMulti interface stops, configured
 virtual vport children are also stopped and removed from the interface manager
 so stale child routes do not remain after parent shutdown.
+Clean stream EOF and software cancellation/stop mark
+`_runtime.rnode_multi.radio_status.stream_state = "closed"` without a terminal
+error, while read/write/probe failures keep their failure state and
+`last_error` for operators and `rnstatus-rs`.
 
 ## Known Gaps
 

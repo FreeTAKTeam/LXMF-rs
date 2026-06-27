@@ -839,11 +839,15 @@ pub(crate) async fn run_rnode_multi_stream<IO>(
                     options.device,
                     err
                 );
-                update_rnode_multi_runtime_state(
-                    &options.runtime_status,
-                    "probe_failed",
-                    Some(err),
-                );
+                if err == "startup cancelled" || err == "interface stopped" {
+                    update_rnode_multi_runtime_state(&options.runtime_status, "closed", None);
+                } else {
+                    update_rnode_multi_runtime_state(
+                        &options.runtime_status,
+                        "probe_failed",
+                        Some(err),
+                    );
+                }
                 return;
             }
         }
@@ -871,14 +875,21 @@ pub(crate) async fn run_rnode_multi_stream<IO>(
     let mut last_read_at = tokio::time::Instant::now();
     let mut first_tx_at: Option<tokio::time::Instant> = None;
     let mut id_tick = tokio::time::interval(Duration::from_millis(250));
+    let mut mark_closed_on_exit = false;
     update_rnode_multi_runtime_state(&options.runtime_status, "running", None);
 
     loop {
         let mut tx_channel = tx_channel.lock().await;
         let mut management_frame_rx = options.management_frame_rx.lock().await;
         tokio::select! {
-            _ = cancel.cancelled() => break,
-            _ = iface_stop.cancelled() => break,
+            _ = cancel.cancelled() => {
+                mark_closed_on_exit = true;
+                break;
+            }
+            _ = iface_stop.cancelled() => {
+                mark_closed_on_exit = true;
+                break;
+            }
             _ = id_tick.tick(), if options.id_beacon.is_some() && first_tx_at.is_some() => {
                 let Some(beacon) = options.id_beacon.as_ref() else {
                     continue;
@@ -894,7 +905,10 @@ pub(crate) async fn run_rnode_multi_stream<IO>(
             }
             result = stream.read(&mut read_buffer[..]) => {
                 match result {
-                    Ok(0) => break,
+                    Ok(0) => {
+                        mark_closed_on_exit = true;
+                        break;
+                    }
                     Ok(n) => {
                         if decoder.has_partial_frame()
                             && last_read_at.elapsed() >= KISS_READ_FRAME_TIMEOUT
@@ -989,7 +1003,9 @@ pub(crate) async fn run_rnode_multi_stream<IO>(
         let _ = stream.write_all(frame).await;
     }
     let _ = stream.flush().await;
-    update_rnode_multi_runtime_state(&options.runtime_status, "closed", None);
+    if mark_closed_on_exit {
+        update_rnode_multi_runtime_state(&options.runtime_status, "closed", None);
+    }
 }
 
 async fn run_rnode_multi_startup_probe<IO>(
@@ -1229,9 +1245,12 @@ fn rnode_multi_data_command_vport(command: u8) -> Option<u8> {
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
+    use std::io;
+    use std::pin::Pin;
     use std::sync::Arc;
+    use std::task::{Context, Poll};
 
-    use tokio::io::{duplex, AsyncReadExt, AsyncWriteExt};
+    use tokio::io::{duplex, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf};
     use tokio_util::sync::CancellationToken;
 
     use crate::buffer::OutputBuffer;
@@ -1252,6 +1271,40 @@ mod tests {
         let mut output = OutputBuffer::new(&mut buffer);
         packet.serialize(&mut output).expect("serialize packet");
         output.as_slice().to_vec()
+    }
+
+    #[derive(Default)]
+    struct FailingReadStream {
+        writes: Vec<u8>,
+    }
+
+    impl AsyncRead for FailingReadStream {
+        fn poll_read(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            _buf: &mut ReadBuf<'_>,
+        ) -> Poll<io::Result<()>> {
+            Poll::Ready(Err(io::Error::other("synthetic rnode multi read failure")))
+        }
+    }
+
+    impl AsyncWrite for FailingReadStream {
+        fn poll_write(
+            mut self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            buf: &[u8],
+        ) -> Poll<io::Result<usize>> {
+            self.writes.extend_from_slice(buf);
+            Poll::Ready(Ok(buf.len()))
+        }
+
+        fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+
+        fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
     }
 
     fn test_options(child: AddressHash, vport: u8) -> RNodeMultiStreamOptions {
@@ -1617,6 +1670,81 @@ mod tests {
                 KissFrame::Command(KissCommand::Unknown(CMD_LEAVE, vec![0xff])),
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn rnode_multi_stream_cancel_marks_runtime_closed_without_hardware() {
+        let child = AddressHash::new([0x08; 16]);
+        let (stream, _peer) = duplex(4096);
+        let (rx_tx, rx_rx) = tokio::sync::mpsc::channel(4);
+        drop(rx_rx);
+        let (_tx_tx, tx_rx) = tokio::sync::mpsc::channel(4);
+        let cancel = CancellationToken::new();
+        let options = test_options(child, 1);
+        let runtime_status = options.runtime_status.clone();
+        let task = tokio::spawn(run_rnode_multi_stream(
+            stream,
+            options,
+            cancel.clone(),
+            CancellationToken::new(),
+            rx_tx,
+            Arc::new(tokio::sync::Mutex::new(tx_rx)),
+        ));
+
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                let running = {
+                    let status =
+                        runtime_status.lock().expect("rnode multi runtime status mutex poisoned");
+                    status.stream_state == "running"
+                };
+                if running {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("runtime reached running");
+        cancel.cancel();
+        tokio::time::timeout(Duration::from_secs(1), task)
+            .await
+            .expect("rnode multi stream shutdown timeout")
+            .expect("rnode multi stream task");
+
+        let status = runtime_status.lock().expect("rnode multi runtime status mutex poisoned");
+        assert_eq!(status.stream_state, "closed");
+        assert!(status.last_error.is_none());
+    }
+
+    #[tokio::test]
+    async fn rnode_multi_stream_read_failure_preserves_failed_runtime_state() {
+        let child = AddressHash::new([0x09; 16]);
+        let stream = FailingReadStream::default();
+        let (rx_tx, rx_rx) = tokio::sync::mpsc::channel(4);
+        drop(rx_rx);
+        let (_tx_tx, tx_rx) = tokio::sync::mpsc::channel(4);
+        let cancel = CancellationToken::new();
+        let options = test_options(child, 1);
+        let runtime_status = options.runtime_status.clone();
+
+        tokio::time::timeout(
+            Duration::from_secs(1),
+            run_rnode_multi_stream(
+                stream,
+                options,
+                cancel,
+                CancellationToken::new(),
+                rx_tx,
+                Arc::new(tokio::sync::Mutex::new(tx_rx)),
+            ),
+        )
+        .await
+        .expect("rnode multi stream exits after read failure");
+
+        let status = runtime_status.lock().expect("rnode multi runtime status mutex poisoned");
+        assert_eq!(status.stream_state, "read_failed");
+        assert_eq!(status.last_error.as_deref(), Some("synthetic rnode multi read failure"));
     }
 
     #[tokio::test]

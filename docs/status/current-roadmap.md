@@ -102,7 +102,9 @@ The project is best described by capability level:
   validation; the transport writes `CMD_SEL_INT` before each queued management
   command frame. Display-capable ESP32/NRF52 devices get Python-style
   external-framebuffer disable during teardown before per-vport radio-off and
-  leave-host payload `0xff` frames. In strict startup mode, the daemon
+  leave-host payload `0xff` frames. Clean stream EOF and software stop now
+  report `stream_state = "closed"` without masking read/write/probe failure
+  states or `last_error`. In strict startup mode, the daemon
   preflights the configured serial port or TCP endpoint and fails closed before
   registering RNodeMulti management targets if the parent endpoint is
   unavailable.

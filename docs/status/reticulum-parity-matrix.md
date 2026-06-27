@@ -236,9 +236,11 @@ configured vports. Selected-vport radio status bookkeeping and live daemon/RPC
 reporting plus the ordinary RNode radio-status schema for each vport,
 strict startup preflights the parent serial/TCP endpoint before registering
 management targets, display-capable teardown disables the external framebuffer
-before per-vport radio-off/leave frames, daemon RPC binds the parent interface
-to the vport-aware management queue with explicit child `vport` validation, and
-`rnstatus-rs` renders a compact human summary of that state. An opt-in
+before per-vport radio-off/leave frames, clean stream EOF/software stop reports
+closed without masking read/write/probe failures, daemon RPC binds the parent
+interface to the vport-aware management queue with explicit child `vport`
+validation, and `rnstatus-rs` renders a compact human summary of that state. An
+opt-in
 prepared-host smoke harness now records serial/TCP RNodeMulti evidence under
 `target/rnode-multi-hil/`. Full prepared-host hardware validation and broader
 production parity are still pending.
