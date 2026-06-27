@@ -152,9 +152,10 @@ placeholders:
   read-timeout, per-peer counter bookkeeping, and bounded closed-incoming-peer
   history refreshed into daemon/RPC `tunnel_status` runtime metadata. Local
   fake-SAM tests now cover outbound peer-loop session creation, lookup, stream
-  connect, HDLC writes, and daemon/RPC status refresh without requiring a
-  prepared I2P router. The config parser accepts I2P-local IFAC aliases
-  `ifac_netname` and `ifac_netkey`.
+  connect, HDLC writes, connectable accept-loop incoming `STREAM ACCEPT`,
+  virtual child registration, HDLC ingress, cleanup, and daemon/RPC status
+  refresh without requiring a prepared I2P router. The config parser accepts
+  I2P-local IFAC aliases `ifac_netname` and `ifac_netkey`.
 - Feature-gated native RNode BLE and VR-N76 KISS-over-BLE.
 
 Python-style interface-driven `tcp_server` startup now works from config
@@ -195,8 +196,8 @@ evidence.
 `I2PInterface` is tracked as an in-progress family: configured outbound peers
 and connectable sessions can run through SAM, and transport-side tunnel
 watchdog/status bookkeeping is refreshed into daemon/RPC interface status, with
-fake-SAM coverage for outbound peer-loop writes and runtime counter/status
-updates.
+fake-SAM coverage for outbound peer-loop writes, connectable accept-loop HDLC
+ingress, cleanup, and runtime counter/status updates.
 Private destination keys now follow Python's default daemon-storage injection
 and hashed key-file naming, including old-format fallback when an existing
 Python key is present. Missing explicit SAM host/port config now uses Python's

@@ -1355,21 +1355,31 @@ mod tests {
         connectable_session_destination_with_identity, create_sam_session,
         i2p_b32_from_private_destination, i2p_new_format_key_stem, i2p_old_format_key_stem,
         i2p_private_key_new_format_path, i2p_private_key_old_format_path,
-        i2p_private_key_path_with_identity, open_sam_stream, run_i2p_peer_loop, HdlcStreamEvent,
-        I2pInterface, I2pRuntimeStatus, I2pTunnelState, I2P_CERT_LEN_OFFSET, I2P_DEST_PREFIX_LEN,
-        I2P_MAX_CLOSED_INCOMING_PEERS,
+        i2p_private_key_path_with_identity, open_sam_stream, run_i2p_accept_loop,
+        run_i2p_peer_loop, HdlcStreamEvent, I2pInterface, I2pRuntimeStatus, I2pTunnelState,
+        I2P_CERT_LEN_OFFSET, I2P_DEST_PREFIX_LEN, I2P_MAX_CLOSED_INCOMING_PEERS,
     };
     use std::collections::BTreeMap;
     use std::sync::Arc;
     use std::time::Duration;
 
-    use crate::iface::{TxMessage, TxMessageType};
+    use crate::buffer::OutputBuffer;
+    use crate::iface::{hdlc::Hdlc, IfaceRole, TxMessage, TxMessageType};
     use crate::packet::Packet;
     use base64::Engine;
     use sha2::Digest;
     use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
     use tokio::net::TcpListener;
+    use tokio::sync::oneshot;
     use tokio_util::sync::CancellationToken;
+
+    fn hdlc_frame_for_packet(packet: &Packet) -> Vec<u8> {
+        let raw = packet.to_bytes().expect("serialize packet");
+        let mut buffer = vec![0_u8; raw.len().saturating_mul(2).saturating_add(2)];
+        let mut output = OutputBuffer::new(&mut buffer);
+        Hdlc::encode(&raw, &mut output).expect("encode hdlc frame");
+        output.as_slice().to_vec()
+    }
 
     #[test]
     fn i2p_defaults_match_python_slice() {
@@ -1718,6 +1728,147 @@ mod tests {
             .await
             .expect("peer loop shutdown timeout")
             .expect("peer loop task");
+    }
+
+    #[tokio::test]
+    async fn i2p_accept_loop_registers_incoming_peer_through_fake_sam_stream() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind fake SAM");
+        let sam_addr = listener.local_addr().expect("local addr").to_string();
+        let packet = Packet::default();
+        let hdlc_frame = hdlc_frame_for_packet(&packet);
+        let (release_stream_tx, release_stream_rx) = oneshot::channel::<()>();
+        let server = tokio::spawn(async move {
+            let (session_socket, _) = listener.accept().await.expect("accept session");
+            let mut session_reader = BufReader::new(session_socket);
+            for response in [
+                "HELLO REPLY RESULT=OK VERSION=3.3\n",
+                "SESSION STATUS RESULT=OK DESTINATION=fake-accept.b32.i2p\n",
+            ] {
+                let mut line = String::new();
+                session_reader.read_line(&mut line).await.expect("read session command");
+                session_reader
+                    .get_mut()
+                    .write_all(response.as_bytes())
+                    .await
+                    .expect("write session response");
+            }
+
+            let (accept_socket, _) = listener.accept().await.expect("accept stream");
+            let mut accept_reader = BufReader::new(accept_socket);
+            for response in ["HELLO REPLY RESULT=OK VERSION=3.3\n", "STREAM STATUS RESULT=OK\n"] {
+                let mut line = String::new();
+                accept_reader.read_line(&mut line).await.expect("read accept command");
+                accept_reader
+                    .get_mut()
+                    .write_all(response.as_bytes())
+                    .await
+                    .expect("write accept response");
+            }
+            let mut accepted_stream = accept_reader.into_inner();
+            accepted_stream
+                .write_all(b"incoming-destination\n")
+                .await
+                .expect("write remote destination");
+            accepted_stream.write_all(&hdlc_frame).await.expect("write incoming packet");
+
+            let _ = release_stream_rx.await;
+            drop(accepted_stream);
+
+            if let Ok(Ok((second_accept_socket, _))) =
+                tokio::time::timeout(Duration::from_secs(1), listener.accept()).await
+            {
+                drop(second_accept_socket);
+            }
+        });
+
+        let mut manager = crate::iface::InterfaceManager::new(8);
+        let parent_channel = manager.new_channel_with_role(8, IfaceRole::Multicast);
+        let parent_iface = parent_channel.address;
+        let iface_stop = parent_channel.stop.clone();
+        let manager = Arc::new(tokio::sync::Mutex::new(manager));
+        let runtime_status =
+            Arc::new(std::sync::Mutex::new(I2pRuntimeStatus::new(sam_addr.clone(), true, &[])));
+        let cancel = CancellationToken::new();
+        let (rx_channel, mut rx_messages) = tokio::sync::mpsc::channel(8);
+        let peer_routes = Arc::new(tokio::sync::Mutex::new(BTreeMap::new()));
+        let accept_loop = tokio::spawn(run_i2p_accept_loop(
+            parent_iface,
+            "i2p-main".to_string(),
+            sam_addr,
+            None,
+            None,
+            I2pInterface::DEFAULT_MTU,
+            Duration::from_millis(10),
+            Arc::clone(&runtime_status),
+            cancel.clone(),
+            iface_stop.clone(),
+            rx_channel,
+            Arc::clone(&manager),
+            Arc::clone(&peer_routes),
+        ));
+
+        let rx_message = tokio::time::timeout(Duration::from_secs(1), rx_messages.recv())
+            .await
+            .expect("incoming packet deadline")
+            .expect("incoming packet");
+        assert_eq!(rx_message.packet, packet);
+        assert_eq!(rx_message.source, crate::iface::IfaceSource::None);
+
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                let ready = {
+                    let status = runtime_status.lock().expect("i2p runtime status");
+                    status.accept_state == I2pTunnelState::Listening
+                        && status.peers.values().any(|peer| {
+                            peer.peer == "incoming-destination"
+                                && peer.direction == "incoming"
+                                && peer.state == I2pTunnelState::Connected
+                                && peer.bytes_rx > 0
+                        })
+                };
+                if ready {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("incoming runtime status");
+        assert_eq!(manager.lock().await.iface_count(), 2);
+        assert_eq!(peer_routes.lock().await.len(), 1);
+
+        cancel.cancel();
+        iface_stop.cancel();
+        let _ = release_stream_tx.send(());
+        tokio::time::timeout(Duration::from_secs(2), accept_loop)
+            .await
+            .expect("accept loop shutdown timeout")
+            .expect("accept loop task");
+        tokio::time::timeout(Duration::from_secs(2), server)
+            .await
+            .expect("fake SAM shutdown timeout")
+            .expect("fake SAM server");
+
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                let cleaned = {
+                    let status = runtime_status.lock().expect("i2p runtime status");
+                    status.peers.values().any(|peer| {
+                        peer.peer == "incoming-destination"
+                            && peer.direction == "incoming"
+                            && peer.state == I2pTunnelState::Closed
+                    })
+                };
+                if cleaned {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("incoming runtime cleanup");
+        assert_eq!(manager.lock().await.iface_count(), 0);
+        assert!(peer_routes.lock().await.is_empty());
     }
 
     #[tokio::test]
