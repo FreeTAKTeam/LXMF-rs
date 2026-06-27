@@ -6,6 +6,7 @@ cd "$ROOT_DIR"
 
 SAM_HOST="${SAM_HOST:-127.0.0.1}"
 SAM_PORT="${SAM_PORT:-7656}"
+I2P_PEERS="${I2P_PEERS:-}"
 TIMEOUT_SECS="${TIMEOUT_SECS:-180}"
 if [[ -z "$SAM_HOST" ]]; then
   SAM_HOST="127.0.0.1"
@@ -44,15 +45,17 @@ fi
 write_report() {
   local status="$1"
   local reason="${2:-}"
-  python3 - <<'PY' "$REPORT_PATH" "$status" "$reason" "$SAM_ENDPOINT" "$RPC_ADDR" "$RUN_DIR" "$RETICULUMD_LOG" "$RNSTATUS_JSON"
+  python3 - <<'PY' "$REPORT_PATH" "$status" "$reason" "$SAM_ENDPOINT" "$I2P_PEERS" "$RPC_ADDR" "$RUN_DIR" "$RETICULUMD_LOG" "$RNSTATUS_JSON"
 import json
 import pathlib
 import sys
 
-report_path, status, reason, sam_endpoint, rpc_addr, run_dir, log_path, rnstatus_path = sys.argv[1:9]
+report_path, status, reason, sam_endpoint, peers_raw, rpc_addr, run_dir, log_path, rnstatus_path = sys.argv[1:10]
+expected_peers = [item.strip() for item in peers_raw.split(",") if item.strip()]
 report = {
     "status": status,
     "sam_endpoint": sam_endpoint,
+    "expected_outbound_peers": expected_peers,
     "rpc_addr": rpc_addr,
     "run_dir": run_dir,
     "reticulumd_log": log_path,
@@ -73,6 +76,13 @@ if status_path.exists():
             report["private_key_persisted"] = runtime.get("private_key_persisted")
             report["accept_state"] = tunnel.get("accept_state")
             report["configured_peer_count"] = tunnel.get("configured_peer_count")
+            peer_rows = tunnel.get("peers") or []
+            report["peer_rows"] = peer_rows
+            report["connected_outbound_peers"] = [
+                row.get("peer")
+                for row in peer_rows
+                if row.get("direction") == "outbound" and row.get("state") == "connected"
+            ]
     except Exception as exc:  # best-effort artifact enrichment
         report["status_parse_error"] = str(exc)
 pathlib.Path(report_path).write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -117,20 +127,35 @@ if "HELLO REPLY" not in text or "RESULT=OK" not in text:
     raise SystemExit(f"unexpected SAM HELLO response: {text!r}")
 PY
 
-cat >"$CONFIG_PATH" <<EOF
-interfaces = [
-  {
-    type = "I2PInterface",
-    enabled = true,
-    name = "i2p-prepared-host",
-    connectable = true,
-    sam_host = "${SAM_HOST}",
-    sam_port = ${SAM_PORT},
-    storagepath = "${RUN_DIR}/i2p-state",
-    configured_bitrate = 256000
-  }
+python3 - <<'PY' "$CONFIG_PATH" "$SAM_HOST" "$SAM_PORT" "$RUN_DIR" "$I2P_PEERS" || fail "failed to generate I2P config"
+import json
+import pathlib
+import sys
+
+config_path, sam_host, sam_port, run_dir, peers_raw = sys.argv[1:6]
+peers = [item.strip() for item in peers_raw.split(",") if item.strip()]
+entries = [
+    'type = "I2PInterface"',
+    "enabled = true",
+    'name = "i2p-prepared-host"',
+    "connectable = true",
+    f"sam_host = {json.dumps(sam_host)}",
+    f"sam_port = {int(sam_port)}",
+    f"storagepath = {json.dumps(f'{run_dir}/i2p-state')}",
+    "configured_bitrate = 256000",
 ]
-EOF
+if peers:
+    entries.append("peers = [" + ", ".join(json.dumps(peer) for peer in peers) + "]")
+lines = [
+    "interfaces = [",
+    "  {",
+]
+for index, entry in enumerate(entries):
+    comma = "," if index + 1 < len(entries) else ""
+    lines.append(f"    {entry}{comma}")
+lines.extend(["  }", "]"])
+pathlib.Path(config_path).write_text("\n".join(lines) + "\n", encoding="utf-8")
+PY
 
 cargo build -p reticulumd --bin reticulumd --quiet
 cargo build -p rns-tools --bin rnstatus-rs --quiet
@@ -149,11 +174,12 @@ while (( SECONDS < deadline )); do
     fail "reticulumd exited before I2P status became healthy"
   fi
   if "${ROOT_DIR}/target/debug/rnstatus-rs" --rpc "$RPC_ADDR" --json >"$RNSTATUS_JSON" 2>>"$RETICULUMD_LOG"; then
-    if python3 - <<'PY' "$RNSTATUS_JSON" "$SAM_ENDPOINT"
+    if python3 - <<'PY' "$RNSTATUS_JSON" "$SAM_ENDPOINT" "$I2P_PEERS"
 import json
 import sys
 
-path, sam_endpoint = sys.argv[1:3]
+path, sam_endpoint, peers_raw = sys.argv[1:4]
+expected_peers = [item.strip() for item in peers_raw.split(",") if item.strip()]
 payload = json.load(open(path, "r", encoding="utf-8"))
 rows = payload.get("interfaces") or []
 i2p = next((row for row in rows if row.get("type") == "i2p" and row.get("name") == "i2p-prepared-host"), None)
@@ -175,6 +201,18 @@ if tunnel.get("connectable") is not True:
     raise SystemExit(1)
 if tunnel.get("accept_state") != "listening":
     raise SystemExit(1)
+if expected_peers:
+    if tunnel.get("configured_peer_count") != len(expected_peers):
+        raise SystemExit(1)
+    rows_by_peer = {
+        row.get("peer"): row
+        for row in tunnel.get("peers", [])
+        if row.get("direction") == "outbound"
+    }
+    for peer in expected_peers:
+        row = rows_by_peer.get(peer)
+        if not row or row.get("state") != "connected" or not row.get("iface"):
+            raise SystemExit(1)
 PY
     then
       write_report "pass"

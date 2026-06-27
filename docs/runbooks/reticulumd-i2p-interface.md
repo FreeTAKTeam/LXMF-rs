@@ -139,16 +139,31 @@ enabled:
 SAM_HOST=127.0.0.1 SAM_PORT=7656 ./tools/scripts/i2p-prepared-host-smoke.sh
 ```
 
+To also collect outbound configured-peer evidence, provide one or more
+comma-separated destinations that the prepared I2P router can connect to:
+
+```bash
+SAM_HOST=127.0.0.1 \
+SAM_PORT=7656 \
+I2P_PEERS=peer-one.b32.i2p \
+./tools/scripts/i2p-prepared-host-smoke.sh
+```
+
 The harness starts `reticulumd` with `strict_interface_startup = true`
 semantics via `--strict-interface-startup`, configures a connectable
 `I2PInterface`, verifies the SAM `HELLO`, polls `rnstatus-rs --json`, and
 requires `_runtime.i2p.reachable_endpoint`,
 `_runtime.i2p.tunnel_status.accept_state = "listening"`, and persisted private
-destination key metadata before passing. Evidence is written under
+destination key metadata before passing. When `I2P_PEERS` is set, the harness
+also requires `_runtime.i2p.tunnel_status.configured_peer_count` to match and
+requires connected outbound peer rows for every configured destination.
+Evidence is written under
 `target/i2p-hil/`, including `report.json`, daemon logs, the generated config,
-and the captured `rnstatus-rs` JSON.
+and the captured `rnstatus-rs` JSON. The report includes the expected outbound
+peers, connected outbound peers, configured peer count, and raw peer rows.
 
 The nightly HIL workflow can run the same harness when
 `HIL_I2P_ENABLED=true`. Set `HIL_I2P_SAM_HOST`, `HIL_I2P_SAM_PORT`, and
-`HIL_I2P_TIMEOUT_SECS` as needed for the prepared runner; unset host/port
-values fall back to the local SAM default.
+`HIL_I2P_TIMEOUT_SECS` as needed for the prepared runner; set `HIL_I2P_PEERS`
+to enable configured outbound-peer proof. Unset host/port values fall back to
+the local SAM default.

@@ -176,8 +176,11 @@ The project is best described by capability level:
   across real devices and platforms.
 - I2P transport-side tunnel watchdog/status bookkeeping is refreshed into
   daemon/RPC interface status, and `rnstatus-rs` now summarizes outbound,
-  incoming, closed, and aggregate byte counters for the tunnel rows;
-  prepared-host production evidence remains pending.
+  incoming, closed, and aggregate byte counters for the tunnel rows. The
+  prepared-host smoke can now optionally require configured outbound peers to
+  reach `connected` state when `I2P_PEERS` is supplied; prepared-host
+  production evidence remains pending until that harness is run against a real
+  SAM router and reachable peer set.
 - Feature-gated VR-N76 KISS-over-BLE now refreshes transport-side runtime
   status into daemon/RPC `_runtime.vrn76.status`; `rnstatus-rs` summarizes
   connected, subscribed, ready, startup-write failure, and queue counters.
