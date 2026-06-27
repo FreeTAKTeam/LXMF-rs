@@ -192,6 +192,167 @@ interfaces = [
 }
 
 #[test]
+fn bootstrap_python_backbone_remote_alias_reports_backbone_client_status() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let config_path = temp.path().join("daemon.toml");
+    fs::write(
+        &config_path,
+        r#"
+interfaces = [
+  { type = "BackboneInterface", enabled = true, name = "backbone-remote", remote = "127.0.0.1", port = 65535 }
+]
+"#,
+    )
+    .expect("write config");
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let context = runtime.block_on(async {
+        bootstrap::bootstrap(test_args(db_path.clone(), Some(config_path.clone()), None, false))
+            .await
+    });
+    let response = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 1, method: "list_interfaces".to_string(), params: None })
+        .expect("list_interfaces");
+    let interfaces = response
+        .result
+        .expect("result")
+        .get("interfaces")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .expect("interfaces array");
+
+    let backbone = interfaces
+        .iter()
+        .find(|entry| entry.get("type").and_then(|value| value.as_str()) == Some("backbone_client"))
+        .expect("backbone_client entry");
+    assert_eq!(backbone.get("host").and_then(|value| value.as_str()), Some("127.0.0.1"));
+    assert_eq!(backbone.get("port").and_then(|value| value.as_u64()), Some(65535));
+    let runtime = backbone
+        .get("settings")
+        .and_then(|value| value.get("_runtime"))
+        .expect("backbone client runtime");
+    assert_eq!(runtime.get("startup_status").and_then(|value| value.as_str()), Some("spawned"));
+    assert!(runtime.get("iface").and_then(|value| value.as_str()).is_some());
+}
+
+#[test]
+fn bootstrap_python_tcp_client_kiss_framing_alias_reports_kiss_tcp_status() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let config_path = temp.path().join("daemon.toml");
+    fs::write(
+        &config_path,
+        r#"
+interfaces = [
+  { type = "TCPClientInterface", enabled = true, name = "python-kiss-tcp", target_host = "127.0.0.1", target_port = 65535, kiss_framing = true, flow_control = true, fixed_mtu = 512 }
+]
+"#,
+    )
+    .expect("write config");
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let context = runtime.block_on(async {
+        bootstrap::bootstrap(test_args(db_path.clone(), Some(config_path.clone()), None, false))
+            .await
+    });
+    let response = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 1, method: "list_interfaces".to_string(), params: None })
+        .expect("list_interfaces");
+    let interfaces = response
+        .result
+        .expect("result")
+        .get("interfaces")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .expect("interfaces array");
+
+    let kiss_tcp = interfaces
+        .iter()
+        .find(|entry| entry.get("type").and_then(|value| value.as_str()) == Some("kiss_tcp_client"))
+        .expect("kiss_tcp_client entry");
+    let runtime = kiss_tcp
+        .get("settings")
+        .and_then(|value| value.get("_runtime"))
+        .expect("kiss tcp runtime");
+    assert_eq!(runtime.get("startup_status").and_then(|value| value.as_str()), Some("spawned"));
+    assert!(runtime.get("iface").and_then(|value| value.as_str()).is_some());
+    let status = &runtime["kiss_tcp"]["status"];
+    assert_eq!(status["bearer"].as_str(), Some("tcp"));
+    assert_eq!(status["endpoint"].as_str(), Some("127.0.0.1:65535"));
+    assert_eq!(status["kiss_flow_control"].as_bool(), Some(true));
+    assert_eq!(status["mtu"].as_u64(), Some(512));
+}
+
+#[test]
+fn bootstrap_python_rnode_alias_reports_lora_rnode_status() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let config_path = temp.path().join("daemon.toml");
+    let state_path = temp.path().join("lora-state.json");
+    let device_path = temp.path().join("not-a-real-rnode-serial");
+    fs::write(
+        &config_path,
+        format!(
+            r#"
+interfaces = [
+  {{ type = "RNodeInterface", enabled = true, name = "python-rnode", region = "US915", state_path = "{}", port = "{}", baud_rate = 115200, frequency = 915000000, bandwidth = 125000, spreadingfactor = 9, codingrate = 5, txpower = 17 }}
+]
+"#,
+            state_path.to_string_lossy().replace('\\', "\\\\"),
+            device_path.to_string_lossy().replace('\\', "\\\\"),
+        ),
+    )
+    .expect("write config");
+
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    let local = tokio::task::LocalSet::new();
+    let context = runtime.block_on(local.run_until(async {
+        bootstrap::bootstrap(test_args(db_path.clone(), Some(config_path.clone()), None, false))
+            .await
+    }));
+    let response = context
+        .daemon
+        .handle_rpc(RpcRequest { id: 1, method: "list_interfaces".to_string(), params: None })
+        .expect("list_interfaces");
+    let interfaces = response
+        .result
+        .expect("result")
+        .get("interfaces")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .expect("interfaces array");
+
+    let lora = interfaces
+        .iter()
+        .find(|entry| entry.get("type").and_then(|value| value.as_str()) == Some("lora"))
+        .unwrap_or_else(|| panic!("lora entry, interfaces={interfaces:?}"));
+    let runtime = lora
+        .get("settings")
+        .and_then(|value| value.get("_runtime"))
+        .expect("lora runtime");
+    assert_eq!(runtime.get("startup_status").and_then(|value| value.as_str()), Some("spawned"));
+    assert!(runtime.get("iface").and_then(|value| value.as_str()).is_some());
+    let rnode_status = &runtime["lora"]["rnode_status"];
+    assert_eq!(
+        rnode_status.get("endpoint").and_then(|value| value.as_str()),
+        Some(device_path.to_string_lossy().as_ref())
+    );
+    assert_eq!(rnode_status.get("bearer").and_then(|value| value.as_str()), Some("serial"));
+    assert_eq!(rnode_status.get("baud_rate").and_then(|value| value.as_u64()), Some(115_200));
+    assert_eq!(
+        rnode_status["configured"]["frequency_hz"].as_u64(),
+        Some(915_000_000)
+    );
+    assert_eq!(rnode_status["configured"]["spreading_factor"].as_u64(), Some(9));
+}
+
+#[test]
 fn bootstrap_starts_pipe_interface_from_config() {
     let temp = TempDir::new().expect("temp dir");
     let db_path = temp.path().join("reticulum.db");

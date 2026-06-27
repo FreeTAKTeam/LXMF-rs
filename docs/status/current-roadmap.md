@@ -64,7 +64,8 @@ The project is best described by capability level:
   directions over Python `BackboneInterface`/`BackboneClientInterface`,
   TCP/Backbone client reconnect tunnel re-synthesis, TCP/Backbone listener
   daemon/RPC runtime status with accept counters and latest accepted stream
-  snapshots, LocalInterface
+  snapshots, Python `BackboneInterface` `remote` alias
+  parse-to-bootstrap/status coverage as `backbone_client`, LocalInterface
   TCP-loopback plus Unix filesystem
   and Linux/Android abstract AF_UNIX shared-instance listener/client-attach
   compatibility, including Unix client-attach reconnect after startup failures
@@ -78,7 +79,9 @@ The project is best described by capability level:
   Pipe subprocess HDLC, UDP unicast/multicast plus
   Python-style UDP `device` broadcast-address defaults, IPv4 broadcast socket
   sends, and shared-`port` forward fallback semantics, serial, KISS, AX.25
-  KISS with Android-style beacon alias compatibility, AutoInterface with
+  KISS with Android-style beacon alias compatibility, Python
+  `TCPClientInterface` `kiss_framing = true` parse-to-bootstrap/status
+  coverage as `kiss_tcp_client`, AutoInterface with
   Python-style multicast address type fallback, polling adopted-address
   reconciliation, adopted-interface add/remove/change diff planning,
   daemon-side add/remove lifecycle application for active AutoInterface
@@ -120,7 +123,9 @@ The project is best described by capability level:
   the transport-side RNode probe/radio state into daemon/RPC
   `_runtime.lora.rnode_status`; compact `rnstatus-rs` output summarizes
   bearer, online/detected state, firmware, radio configuration, counters,
-  battery, hardware errors, and last command error. An opt-in prepared-host
+  battery, hardware errors, and last command error. Python `RNodeInterface`
+  alias configs now have parse-to-bootstrap/status coverage as `lora` with
+  `_runtime.lora.rnode_status`. An opt-in prepared-host
   smoke harness records serial/TCP/BLE RNode lifecycle evidence under
   `target/rnode-hil/`. Display-capable BLE RNode shutdown now disables the
   external framebuffer before radio-off/leave frames. Serial/TCP RNode streams

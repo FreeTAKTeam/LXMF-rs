@@ -76,7 +76,9 @@ placeholders:
   proof. The same ignored `python_channel_interop` workflow now also includes
   focused live Backbone channel roundtrips in both directions between Rust's
   Backbone-tuned TCP/HDLC path and Python `BackboneInterface`/
-  `BackboneClientInterface`.
+  `BackboneClientInterface`. Python `BackboneInterface` configs using
+  `remote` now have focused daemon parse-to-bootstrap/status coverage as
+  `backbone_client`.
 - LocalInterface TCP-loopback listener/client-attach plus Unix filesystem and
   Linux/Android abstract AF_UNIX shared-instance listener/client-attach
   compatibility over the existing stream/HDLC runtime, including Python's
@@ -113,7 +115,10 @@ placeholders:
   Python `id_interval` and `id_callsign`. KISS/AX.25 KISS and KISS TCP now
   refresh live daemon/RPC status with packet, data-frame, command-frame, byte,
   flow-control, queue, AX.25 drop, and error counters, and `rnstatus-rs`
-  renders those counters alongside configured bearer metadata. BLE GATT now
+  renders those counters alongside configured bearer metadata. Python
+  `TCPClientInterface` configs with `kiss_framing = true` now have focused daemon
+  parse-to-bootstrap/status coverage as `kiss_tcp_client` with
+  `_runtime.kiss_tcp.status`. BLE GATT now
   refreshes live daemon/RPC status with connection/subscription, packet, HDLC
   frame, notification byte, payload byte, write-chunk, reconnect, startup
   phase, queue, decode, serialize, read/write, buffer-drop, cleanup, and
@@ -260,7 +265,9 @@ evidence is still pending until the harness is run against a real SAM router and
 reachable peer set.
 Ordinary serial/TCP and feature-gated BLE `RNodeInterface` now refresh transport-side probe/radio
 state into daemon/RPC `_runtime.lora.rnode_status`, and `rnstatus-rs` renders a
-compact human summary for operators. An opt-in prepared-host smoke harness now
+compact human summary for operators. Python `RNodeInterface` alias configs now
+have daemon parse-to-bootstrap/status coverage as `lora` with
+`_runtime.lora.rnode_status`. An opt-in prepared-host smoke harness now
 records serial/TCP/BLE RNode lifecycle evidence under `target/rnode-hil/`.
 Display-capable BLE RNode shutdown now disables the external framebuffer before
 radio-off/leave frames. Serial/TCP RNode streams now expose a transport-local
