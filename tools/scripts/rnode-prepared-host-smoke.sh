@@ -89,6 +89,12 @@ if transport_kind == "tcp":
     expected_endpoint = parsed.netloc
 report = {
     "status": status,
+    "evidence_scope": f"prepared_host_{transport_kind}_rnode",
+    "product_boundary": (
+        "This proves one prepared RNode endpoint for the selected bearer; broader hardware parity "
+        "still requires evidence across serial, TCP/Wi-Fi, BLE, device, firmware, and radio "
+        "combinations."
+    ),
     "rnode_port": rnode_port,
     "transport_kind": transport_kind,
     "expected_endpoint": expected_endpoint,

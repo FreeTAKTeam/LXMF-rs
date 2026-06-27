@@ -6,11 +6,14 @@ async fn rnode_peripheral_matches(
     exclude_exact_identifier: Option<&str>,
     service_uuid: Uuid,
     allow_service_uuid_match: bool,
+    excluded_identifiers: &[String],
 ) -> Result<bool, String> {
     let peripheral_id = peripheral.id().to_string();
-    if !identifier_is_excluded(&peripheral_id, exclude_exact_identifier)
-        && rnode_identifier_matches_any(&peripheral_id, configured_id, aliases)
+    if rnode_identifier_is_excluded(&peripheral_id, exclude_exact_identifier, excluded_identifiers)
     {
+        return Ok(false);
+    }
+    if native_rnode_identifier_matches_any(&peripheral_id, configured_id, aliases) {
         return Ok(true);
     }
     let properties = peripheral
@@ -19,25 +22,27 @@ async fn rnode_peripheral_matches(
         .map_err(|err| format!("read peripheral properties: {err}"))?;
     if let Some(properties) = properties {
         let address = properties.address.to_string();
-        if !identifier_is_excluded(&address, exclude_exact_identifier)
-            && rnode_identifier_matches_any(&address, configured_id, aliases)
-        {
+        if rnode_identifier_is_excluded(&address, exclude_exact_identifier, excluded_identifiers) {
+            return Ok(false);
+        }
+        if native_rnode_identifier_matches_any(&address, configured_id, aliases) {
             return Ok(true);
         }
-        if let Some(local_name) = properties.local_name {
-            if rnode_identifier_matches_any(&local_name, configured_id, aliases) {
-                return Ok(true);
+        if let Some(local_name) = properties.local_name.as_deref() {
+            if rnode_identifier_is_excluded(local_name, exclude_exact_identifier, excluded_identifiers) {
+                return Ok(false);
             }
-            if aliases.iter().any(|alias| native_rnode_identifier_matches(alias, &local_name)) {
+            if native_rnode_identifier_matches_any(local_name, configured_id, aliases) {
                 return Ok(true);
             }
         }
         if allow_service_uuid_match && properties.services.contains(&service_uuid) {
-            log::info!(
-                "RNode BLE fallback matched advertised service uuid={} address={} configured_id={}",
-                service_uuid,
+            log::warn!(
+                "RNode BLE fallback matched advertised service without configured identifier peripheral_id={} address={} local_name={:?} service_uuid={}",
+                peripheral_id,
                 address,
-                configured_id
+                properties.local_name,
+                service_uuid
             );
             return Ok(true);
         }
@@ -46,14 +51,34 @@ async fn rnode_peripheral_matches(
 }
 
 #[cfg(feature = "rnode-ble")]
-fn rnode_identifier_matches_any(candidate: &str, configured_id: &str, aliases: &[String]) -> bool {
-    native_rnode_identifier_matches(configured_id, candidate)
-        || aliases.iter().any(|alias| native_rnode_identifier_matches(alias, candidate))
+pub fn native_rnode_identifier_matches_any(
+    discovered: &str,
+    configured_id: &str,
+    aliases: &[String],
+) -> bool {
+    native_rnode_identifier_matches(configured_id, discovered)
+        || aliases.iter().any(|alias| native_rnode_identifier_matches(alias, discovered))
 }
 
 #[cfg(feature = "rnode-ble")]
-fn identifier_is_excluded(candidate: &str, excluded: Option<&str>) -> bool {
-    excluded.is_some_and(|excluded| native_rnode_identifier_matches(excluded, candidate))
+pub fn native_rnode_identifier_is_excluded(
+    discovered: &str,
+    excluded_identifiers: &[String],
+) -> bool {
+    excluded_identifiers
+        .iter()
+        .any(|excluded| native_rnode_identifier_matches(excluded, discovered))
+}
+
+#[cfg(feature = "rnode-ble")]
+fn rnode_identifier_is_excluded(
+    discovered: &str,
+    exclude_exact_identifier: Option<&str>,
+    excluded_identifiers: &[String],
+) -> bool {
+    exclude_exact_identifier
+        .is_some_and(|excluded| native_rnode_identifier_matches(excluded, discovered))
+        || native_rnode_identifier_is_excluded(discovered, excluded_identifiers)
 }
 
 #[cfg(feature = "rnode-ble")]

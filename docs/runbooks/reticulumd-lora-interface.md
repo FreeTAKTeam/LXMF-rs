@@ -433,7 +433,12 @@ under `target/rnode-hil/`. A passing run requires:
 
 Reports are written to `report.json` and include the latest endpoint, bearer,
 probe status, radio status, reported bitrate, hardware errors, and command
-error fields.
+error fields. The report also records a bearer-specific `evidence_scope`:
+`prepared_host_serial_rnode`, `prepared_host_tcp_rnode`, or
+`prepared_host_ble_rnode`. A passing run proves one prepared endpoint for that
+bearer; the `product_boundary` note records that broader hardware parity still
+requires evidence across serial, TCP/Wi-Fi, BLE, device, firmware, and radio
+combinations.
 
 Nightly HIL exposes the same smoke through `HIL_RNODE_ENABLED=true` with
 `HIL_RNODE_PORT`, optional `HIL_RNODE_BAUD_RATE`, optional `HIL_RNODE_REGION`,

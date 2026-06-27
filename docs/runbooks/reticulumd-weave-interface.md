@@ -165,9 +165,15 @@ under `target/weave-hil/`. A passing default run requires:
 Set `WEAVE_REQUIRE_CONNECTED=false` only for bench bring-up where the desired
 evidence is limited to serial open plus discovery transmission; full
 prepared-host evidence should keep the default connected gate. Reports are
-written to `report.json` and include the latest link state, WDCL connection
-flag, switch IDs, endpoint counters, byte/frame counters, display status, and
-device stats when the prepared host emits them.
+written to `report.json` and include `evidence_scope`. A default connected
+run records `evidence_scope = "prepared_host_connected_serial"`. A
+`WEAVE_REQUIRE_CONNECTED=false` run records
+`evidence_scope = "prepared_host_serial_discovery_only"` and should not be used
+as connected-device parity evidence. Reports also include a `product_boundary`
+note that broader production parity still requires evidence across devices,
+firmware, display/status payloads, and operator workflows; latest link state,
+WDCL connection flag, switch IDs, endpoint counters, byte/frame counters,
+display status, and device stats when the prepared host emits them.
 
 Set `WEAVE_REMOTE_DISPLAY_CONTROL=true` to additionally prove the live
 `weaveconf-rs enable-remote-display` and `weaveconf-rs disable-remote-display`

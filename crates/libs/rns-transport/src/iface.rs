@@ -41,4 +41,6 @@ include!("iface_runtime.rs");
 
 include!("iface_parts/interfacemanager.rs");
 
+include!("iface_parts/interfacemanager_send.rs");
+
 include!("iface_tests.rs");

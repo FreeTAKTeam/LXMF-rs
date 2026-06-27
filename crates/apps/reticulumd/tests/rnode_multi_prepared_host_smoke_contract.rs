@@ -31,6 +31,10 @@ fn rnode_multi_prepared_host_smoke_preserves_evidence_contract() {
         "--strict-interface-startup",
         "rnstatus-rs",
         "rnstatus_json",
+        "evidence_scope",
+        "prepared_host_single_device_vport_probe",
+        "product_boundary",
+        "not broad production parity",
         "rnode_multi",
         "radio_status",
         "stream_state",
@@ -240,6 +244,10 @@ fn rnode_multi_runbook_documents_prepared_host_smoke_artifacts() {
         "_runtime.rnode_multi.radio_status.startup_probe.interfaces",
         "target/rnode-multi-hil/",
         "report.json",
+        "evidence_scope",
+        "prepared_host_single_device_vport_probe",
+        "product_boundary",
+        "not broad production parity",
         "HIL_RNODE_MULTI_ENABLED",
     ] {
         assert!(

@@ -79,6 +79,12 @@ import sys
 ) = sys.argv[1:14]
 report = {
     "status": status,
+    "evidence_scope": "linux_namespace_dummy_churn",
+    "product_boundary": (
+        "This proves AutoInterface add, link-local replacement, and removal "
+        "inside a Linux network namespace with a dummy interface; broader prepared-host parity "
+        "still requires evidence across real Wi-Fi, Ethernet, and platform interface churn."
+    ),
     "interface_name": iface_name,
     "netns": netns,
     "device": device,

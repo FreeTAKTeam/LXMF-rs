@@ -224,8 +224,10 @@ placeholders:
   connection, subscription, readiness, startup-write failure, and queued packet
   counters, and `rnstatus-rs` renders a compact human summary. An opt-in
   prepared-host smoke harness records VR-N76 daemon startup,
-  connected/subscribed/ready, and counter evidence under `target/vrn76-hil/`;
-  execution against real VR-N76 hardware remains pending.
+  connected/subscribed/ready, and counter evidence under `target/vrn76-hil/`
+  with `evidence_scope = "prepared_host_vrn76_ble_readiness"`; broader write,
+  indication, disconnect, reconnect, adapter, firmware, and channel-ID
+  hardware evidence remains pending.
 
 Python-style interface-driven `tcp_server` startup now works from config
 without Rust-only transport overrides.
@@ -264,8 +266,9 @@ alive for later adopted devices, and the supervisors track replacement-stop
 tasks so dynamically replaced listeners are drained during restart, removal, or
 runtime shutdown. An opt-in Linux namespace prepared-host smoke now records
 zero-initial add, link-local replacement, and removal churn evidence through
-refreshed `_runtime.auto` status; broader prepared-host interface churn
-evidence across real devices and platforms remains pending.
+refreshed `_runtime.auto` status with `evidence_scope =
+"linux_namespace_dummy_churn"`; broader prepared-host interface churn evidence
+across real Wi-Fi, Ethernet, and platform combinations remains pending.
 
 `I2PInterface` is tracked as an in-progress family: configured outbound peers
 and connectable sessions can run through SAM, and transport-side tunnel
@@ -285,20 +288,29 @@ connected peer state with cleared last error, connectable accept status,
 accepted incoming peer visibility, and `rnstatus-rs` JSON/human output without
 a real I2P router. The opt-in
 prepared-host smoke can also require configured outbound peers to reach
-`connected` state when `I2P_PEERS` is supplied. Prepared-host production
-evidence is still pending until the harness is run against a real SAM router and
-reachable peer set.
+`connected` state when `I2P_PEERS` is supplied. Its report explicitly records
+whether the run proved only `sam_connectable_only` behavior or
+`sam_connectable_with_outbound_peers` behavior, so no-peer runs are not
+mistaken for outbound peer production parity. Prepared-host connected-peer
+production evidence is still pending until the harness is run against a real
+SAM router and reachable peer set.
 Ordinary serial/TCP and feature-gated BLE `RNodeInterface` now refresh transport-side probe/radio
 state into daemon/RPC `_runtime.lora.rnode_status`, and `rnstatus-rs` renders a
 compact human summary for operators. Python `RNodeInterface` alias configs now
 have daemon parse-to-bootstrap/status coverage as `lora` with
 `_runtime.lora.rnode_status`. An opt-in prepared-host smoke harness now
-records serial/TCP/BLE RNode lifecycle evidence under `target/rnode-hil/`.
+records serial/TCP/BLE RNode lifecycle evidence under `target/rnode-hil/` with
+bearer-scoped `evidence_scope` values (`prepared_host_serial_rnode`,
+`prepared_host_tcp_rnode`, and `prepared_host_ble_rnode`) so one prepared
+endpoint is not mistaken for broad hardware parity.
 Display-capable BLE RNode shutdown now disables the external framebuffer before
-radio-off/leave frames. Serial/TCP RNode streams now expose a transport-local
-management dispatch handle that writes pre-encoded KISS command frames through
-the live KISS runtime; feature-gated BLE RNode streams expose the same
-management dispatch through the Nordic UART write path with BLE chunking.
+radio-off/leave frames. Android configured RNode BLE reconnect now excludes
+the failed configured peripheral from fallback scan matching, with shared alias
+matching helpers and stable service-UUID fallback log context. Serial/TCP RNode
+streams now expose a transport-local management dispatch handle that writes
+pre-encoded KISS command frames through the live KISS runtime; feature-gated
+BLE RNode streams expose the same management dispatch through the Nordic UART
+write path with BLE chunking.
 Radio-state query and blink dispatch are covered by local duplex/mock tests,
 daemon `rnode_management` RPC dispatch, and `rnodeconf-rs` query/blink CLI
 tests. Daemon RPC and `rnodeconf-rs` also queue safe config read, ROM read,
@@ -310,8 +322,10 @@ reset, firmware metadata, and Wi-Fi settings.
 Frame-level helpers now cover Bluetooth disable/enable/pair control,
 display/NeoPixel controls, interference-avoidance control, Wi-Fi settings,
 config save/delete, firmware-update metadata, and ROM/EEPROM read/write/wipe
-requests. BLE management hardware evidence and full Python `rnodeconf` parity
-remain pending.
+requests. Shared transport dispatch also removes interface records whose TX
+queues have closed, including shared virtual-interface queues, preventing stale
+closed paths from lingering after failed dispatch. BLE management hardware
+evidence and full Python `rnodeconf` parity remain pending.
 `RNodeMultiInterface` is tracked separately as an in-progress family: the
 shared serial/TCP vport routing slice exists and startup validates detect,
 firmware `>= 1.74`, platform, MCU, `CMD_INTERFACES`, and hardware-reported
@@ -328,8 +342,11 @@ interface to the vport-aware management queue with explicit child `vport`
 validation, and `rnstatus-rs` renders a compact human summary of that state
 including the accepted probe metadata. An opt-in
 prepared-host smoke harness now records serial/TCP RNodeMulti evidence under
-`target/rnode-multi-hil/`. Full prepared-host hardware validation and broader
-production parity are still pending.
+`target/rnode-multi-hil/` with `evidence_scope =
+"prepared_host_single_device_vport_probe"`, making clear that a passing run
+proves one configured endpoint and vport set rather than broad production
+parity across device, firmware, and radio combinations. Broader prepared-host
+hardware validation and production parity are still pending.
 `WeaveInterface` is also tracked as an in-progress family: WDCL/HDLC endpoint
 packet routing, target-scoped display-frame capture with byte-coverage
 completion, CPU/task/memory stat parsing, daemon/RPC status refresh, and compact
@@ -342,8 +359,10 @@ enable/disable commands. Software cancel/stop now marks the runtime closed and
 clears endpoint children. An opt-in prepared-host smoke harness records
 connected serial evidence under `target/weave-hil/` and can optionally prove
 the live `weaveconf-rs` remote-display enable/disable dispatch against that
-connected device, while broader prepared-host hardware evidence remains
-pending.
+connected device. Its report distinguishes `prepared_host_connected_serial`
+evidence from `prepared_host_serial_discovery_only` bring-up evidence, while
+broader prepared-host hardware evidence across device, firmware,
+display/status payload, and operator-workflow combinations remains pending.
 
 ## Highest-Priority Gaps
 
@@ -353,11 +372,12 @@ pending.
 2. Complete resolver/bootstrap behavior beyond cache-only restored path-table
    announce material, tunnel restored-cache lookup, and shared-instance
    path-table persistence suppression.
-3. Capture broader prepared-host BLE/RNode lifecycle evidence.
-4. Capture I2P prepared-host evidence, or explicitly document its product
-   boundary.
-5. Complete or explicitly defer RNodeMulti prepared-host hardware validation
-   and broader production parity.
+3. Capture broader prepared-host BLE/RNode lifecycle evidence across bearer,
+   device, firmware, and radio combinations.
+4. Capture I2P prepared-host connected-peer evidence when claiming outbound
+   peer production parity.
+5. Capture broader RNodeMulti prepared-host hardware validation across device,
+   firmware, and radio combinations.
 6. Implement real utility equivalents only where product demand justifies them.
 
 ## Evidence

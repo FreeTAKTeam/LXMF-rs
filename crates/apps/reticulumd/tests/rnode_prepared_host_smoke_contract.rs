@@ -40,6 +40,10 @@ fn rnode_prepared_host_smoke_preserves_evidence_contract() {
         "--strict-interface-startup",
         "rnstatus-rs",
         "rnstatus_json",
+        "evidence_scope",
+        "prepared_host_{transport_kind}_rnode",
+        "product_boundary",
+        "broader hardware parity",
         "lora",
         "rnode_status",
         "probe_status",
@@ -113,6 +117,12 @@ fn lora_runbook_documents_rnode_prepared_host_smoke_artifacts() {
         "_runtime.lora.rnode_status.last_command_error = null",
         "target/rnode-hil/",
         "report.json",
+        "evidence_scope",
+        "prepared_host_serial_rnode",
+        "prepared_host_tcp_rnode",
+        "prepared_host_ble_rnode",
+        "product_boundary",
+        "broader hardware parity",
         "HIL_RNODE_ENABLED",
     ] {
         assert!(

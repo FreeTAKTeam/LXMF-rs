@@ -196,7 +196,10 @@ Passing evidence requires the `vrn76-prepared-host` row to report
 `_runtime.vrn76.status.subscribed = true`, and
 `_runtime.vrn76.status.interface_ready = true`. The report also records
 `startup_write_failures`, `pending_payloads`, `pending_writes`, and
-`pending_packets` as non-negative runtime counters.
+`pending_packets` as non-negative runtime counters. It also records
+`evidence_scope = "prepared_host_vrn76_ble_readiness"` plus a
+`product_boundary` note that broader hardware parity still requires write,
+indication, disconnect, reconnect, adapter, firmware, and channel-ID evidence.
 
 The nightly HIL workflow exposes the same harness behind `HIL_VRN76_ENABLED`.
 Repository variables can provide `HIL_VRN76_PERIPHERAL_ID`,

@@ -327,6 +327,11 @@ Nightly HIL exposes the same smoke behind repository variables:
 Artifacts are uploaded as `rnode-multi-prepared-host-artifacts`, including
 `target/rnode-multi-hil/report.json` and the latest `target/rnode-multi-hil/run.*`
 directory.
+The report records `evidence_scope =
+"prepared_host_single_device_vport_probe"` and a `product_boundary` note: a
+passing run proves the configured serial/TCP endpoint, startup probe, and vport
+status for that prepared host, not broad production parity across device,
+firmware, and radio combinations.
 
 ## Shutdown Behavior
 
