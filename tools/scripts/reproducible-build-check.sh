@@ -4,9 +4,9 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
-REPORT_PATH="target/supply-chain/reproducible/reproducible-build-report.txt"
-BUILD_A_DIR="target/reproducible/build-a"
-BUILD_B_DIR="target/reproducible/build-b"
+REPORT_PATH="${ROOT_DIR}/target/supply-chain/reproducible/reproducible-build-report.txt"
+BUILD_A_DIR="${ROOT_DIR}/target/reproducible/build-a"
+BUILD_B_DIR="${ROOT_DIR}/target/reproducible/build-b"
 
 BINARIES=(
   "lxmf-cli"
@@ -31,12 +31,15 @@ sha256_file() {
 build_once() {
   local target_dir="$1"
   local rustflags="${RUSTFLAGS:-} --remap-path-prefix=${target_dir}=/target --remap-path-prefix=${ROOT_DIR}=/workspace"
+  mkdir -p "${target_dir}/zig-local-cache" "${ROOT_DIR}/target/reproducible/zig-global-cache"
   CARGO_TARGET_DIR="$target_dir" \
   CARGO_INCREMENTAL=0 \
   SOURCE_DATE_EPOCH=1 \
   TZ=UTC \
   LC_ALL=C \
   LANG=C \
+  ZIG_LOCAL_CACHE_DIR="${target_dir}/zig-local-cache" \
+  ZIG_GLOBAL_CACHE_DIR="${ROOT_DIR}/target/reproducible/zig-global-cache" \
   RUSTFLAGS="${rustflags}" \
   cargo build --release --workspace --bins --locked
 }
@@ -48,6 +51,35 @@ normalized_copy() {
 
   local canonical_target_prefix="${ROOT_DIR}/target/reproducible/build-x"
   local canonical_workspace_target="/workspace/target/reproducible/build-x"
+
+  python3 - "$output" "$BUILD_A_DIR" "$BUILD_B_DIR" "$canonical_target_prefix" "$canonical_workspace_target" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+build_a_dir = sys.argv[2].encode()
+build_b_dir = sys.argv[3].encode()
+canonical_target_prefix = sys.argv[4].encode()
+canonical_workspace_target = sys.argv[5].encode()
+data = path.read_bytes()
+
+for old, new in (
+    (build_a_dir, canonical_target_prefix),
+    (build_b_dir, canonical_target_prefix),
+    (b"/workspace/target/reproducible/build-a", canonical_workspace_target),
+    (b"/workspace/target/reproducible/build-b", canonical_workspace_target),
+):
+    data = data.replace(old, new)
+
+data = re.sub(
+    rb"(/release/deps/rustc)[A-Za-z0-9_]{6}(/raw-dylibs)",
+    rb"\g<1>000000\g<2>",
+    data,
+)
+
+path.write_bytes(data)
+PY
 
   case "$(uname -s)" in
     Darwin)

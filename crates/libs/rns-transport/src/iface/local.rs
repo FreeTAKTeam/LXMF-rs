@@ -299,7 +299,7 @@ pub struct LocalUnixClient {
     mtu: usize,
     forced_bitrate_bps: Option<u64>,
     reconnect_wait: Duration,
-    reconnect_events: Option<tokio::sync::mpsc::UnboundedSender<crate::hash::AddressHash>>,
+    reconnect_events: Option<tokio::sync::mpsc::Sender<crate::hash::AddressHash>>,
 }
 
 impl LocalUnixClient {
@@ -351,7 +351,7 @@ impl LocalUnixClient {
     #[must_use]
     pub fn with_reconnect_events(
         mut self,
-        events: tokio::sync::mpsc::UnboundedSender<crate::hash::AddressHash>,
+        events: tokio::sync::mpsc::Sender<crate::hash::AddressHash>,
     ) -> Self {
         self.reconnect_events = Some(events);
         self
@@ -418,7 +418,14 @@ impl LocalUnixClient {
             log::info!("connected to local unix client <{}>", addr);
             if has_connected {
                 if let Some(events) = reconnect_events.as_ref() {
-                    let _ = events.send(iface_address);
+                    if let Err(err) = events.try_send(iface_address) {
+                        log::debug!(
+                            "dropped local unix reconnect event iface={} endpoint={} err={}",
+                            iface_address,
+                            addr,
+                            err
+                        );
+                    }
                 }
             } else {
                 has_connected = true;
@@ -577,7 +584,7 @@ mod tests {
         let path = temp.path().join("reticulum-local.sock");
         let endpoint = LocalUnixEndpoint::filesystem(path.clone());
         let mut manager = InterfaceManager::new(8);
-        let (reconnect_tx, mut reconnect_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (reconnect_tx, mut reconnect_rx) = tokio::sync::mpsc::channel(32);
         let context = manager.new_context(
             LocalUnixClient::new_connect(endpoint.clone())
                 .with_reconnect_wait(Duration::from_millis(20))

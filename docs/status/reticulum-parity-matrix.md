@@ -67,8 +67,8 @@ placeholders:
   now cover keepalive, stale, active-after-read, and read-timeout event order,
   and local slow-reader evidence proves the bounded HDLC tx queue backpressures
   instead of draining unbounded work while a Backbone peer stops reading. The
-  pinned Python interop workflow now also runs a Python selector/epoll
-  slow-reader probe with `backbone_selector_backpressure_probe.py`, requiring
+  pinned Python interop workflow now also runs a Python selector/epoll slow-reader probe
+  with `backbone_selector_backpressure_probe.py`, requiring
   `EpollSelector` on Linux, plus a live pinned Python Reticulum
   `BackboneClientInterface` transmit-buffer probe with
   `backbone_python_reference_backpressure_probe.py`, comparing those results

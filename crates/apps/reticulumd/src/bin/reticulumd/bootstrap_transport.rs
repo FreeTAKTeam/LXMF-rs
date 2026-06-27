@@ -33,6 +33,8 @@ use rns_transport::transport::{Transport, TransportConfig};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+const STREAM_RECONNECT_EVENT_CHANNEL_CAPACITY: usize = 32;
+
 pub(super) struct TransportStartupArtifacts {
     pub(super) selected_tcp_server: TcpServerSelection,
     pub(super) transport: Option<Arc<Transport>>,
@@ -83,7 +85,7 @@ pub(super) struct TransportStartupInput<'a> {
 
 fn spawn_stream_reconnect_tunnel_synthesizer(
     transport: Arc<Transport>,
-    mut reconnect_rx: tokio::sync::mpsc::UnboundedReceiver<AddressHash>,
+    mut reconnect_rx: tokio::sync::mpsc::Receiver<AddressHash>,
 ) {
     tokio::spawn(async move {
         while let Some(iface) = reconnect_rx.recv().await {
@@ -201,7 +203,7 @@ pub(super) async fn start_transport_and_interfaces(
             .await;
         let iface_manager = transport_instance.iface_manager();
         let (stream_reconnect_tx, stream_reconnect_rx) =
-            tokio::sync::mpsc::unbounded_channel::<AddressHash>();
+            tokio::sync::mpsc::channel::<AddressHash>(STREAM_RECONNECT_EVENT_CHANNEL_CAPACITY);
         let mut server_iface = None;
         if let Some(addr) = selected_tcp_server.bind_addr.as_ref() {
             let server = build_selected_tcp_server_adapter(

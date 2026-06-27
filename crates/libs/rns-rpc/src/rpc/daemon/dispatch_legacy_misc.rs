@@ -174,10 +174,8 @@ impl RpcDaemon {
                 let params = request.params.ok_or_else(|| {
                     std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing params")
                 })?;
-                let parsed: WeaveRemoteDisplayControlParams =
-                    serde_json::from_value(params.clone()).map_err(|err| {
-                        std::io::Error::new(std::io::ErrorKind::InvalidInput, err)
-                    })?;
+                let parsed: WeaveRemoteDisplayControlParams = serde_json::from_value(params)
+                    .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
                 let iface = parsed.iface.trim();
                 if iface.is_empty() {
                     return Err(std::io::Error::new(

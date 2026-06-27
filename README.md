@@ -13,16 +13,16 @@ Reticulum/LXMF behavior.
 
 - Contributor workflow: `CONTRIBUTING.md`
 - Current status and execution order: `docs/status/current-roadmap.md`
-- Release notes: `docs/release-notes-v0.5.1.md`
+- Release notes: `docs/release-notes-v0.5.2.md`
 - Docs map and retention rules: `docs/README.md`
 - SDK guide: `docs/sdk/README.md`
 - Support policy: `docs/contracts/support-policy.md`
 
 ## Release Status
 
-Current release train: `0.5.1`.
+Current release train: `0.5.2`.
 
-Use `docs/release-notes-v0.5.1.md` for the release summary and
+Use `docs/release-notes-v0.5.2.md` for the release summary and
 `docs/runbooks/release-readiness.md` for the release gate record. The
 repository-level parity source of truth remains
 `docs/status/current-roadmap.md`; the detailed parity supplements are
@@ -31,12 +31,11 @@ repository-level parity source of truth remains
 
 The `0.5.x` release scope covers the Rust libraries, SDK entry points, `lxmd`,
 `reticulumd`, and `rns-tools`, plus host-native GitHub bundles for all
-implemented user-facing tools. Its main release-train addition is the
-communication parity milestone across propagation router lifecycle, peer
-lifecycle, deferred stamp lifecycle, and RNS Channel ordered delivery/callback
-behavior. Operational substitutability is usable but still partial.
-External-client compatibility claims for Sideband, MeshChatX, Columba, or other
-third-party clients require separate interop gate evidence.
+implemented user-facing tools. The `0.5.2` train focuses on improved Reticulum
+interface management, especially LoRa/RNode operator workflows for REM-style
+deployments. Operational substitutability is usable but still partial.
+External-client compatibility claims for REM, RCH, Sideband, MeshChatX,
+Columba, or other third-party clients require separate interop gate evidence.
 
 ## Workspace Layout
 
@@ -183,7 +182,7 @@ cargo run -p xtask -- architecture-checks
 cargo run -p xtask -- sdk-docs-check
 cargo run -p xtask -- sdk-migration-check
 cargo xtask release-check
-cargo xtask package-daemon-bundle --version 0.5.1
+cargo xtask package-daemon-bundle --version 0.5.2
 cargo xtask api-diff
 cargo xtask python-impl-bench-compare
 cargo xtask python-impl-bench-compare --profile report
@@ -195,7 +194,7 @@ For fast local iteration on one binary, prefer narrow commands:
 ```bash
 make check-bin PKG=lxmf-cli BIN=lxmd
 make run-bin PKG=rns-tools BIN=rnsd ARGS="--help"
-make package-daemon-bundle VERSION=0.5.1
+make package-daemon-bundle VERSION=0.5.2
 make python-lxmd-smoke
 ```
 
@@ -243,16 +242,16 @@ workspace directory names:
 
 ```toml
 [dependencies]
-lxmf = "0.5.1"
-reticulum-rs = "0.5.1"
+lxmf = "0.5.2"
+reticulum-rs = "0.5.2"
 ```
 
 Or depend on the component crates directly:
 
 ```toml
 [dependencies]
-lxmf-sdk = "0.5.1"
-reticulum-rs-rpc = "0.5.1"
+lxmf-sdk = "0.5.2"
+reticulum-rs-rpc = "0.5.2"
 ```
 
 ## SDK Guide
@@ -383,9 +382,9 @@ Release artifacts are published on the GitHub releases page:
 
 [https://github.com/FreeTAKTeam/LXMF-rs/releases](https://github.com/FreeTAKTeam/LXMF-rs/releases)
 
-For `v0.5.1`, use the release at:
+For `v0.5.2`, use the release at:
 
-[https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.5.1](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.5.1)
+[https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.5.2](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.5.2)
 
 1. Open the release page and download the package and matching `.sha256` file
    for your platform.
@@ -393,19 +392,19 @@ For `v0.5.1`, use the release at:
 2. Linux/macOS
 
 ```bash
-sha256sum -c lxmf-rs-tools-v0.5.1-linux-x64.tar.gz.sha256
-tar -xzf lxmf-rs-tools-v0.5.1-linux-x64.tar.gz
+sha256sum -c lxmf-rs-tools-v0.5.2-linux-x64.tar.gz.sha256
+tar -xzf lxmf-rs-tools-v0.5.2-linux-x64.tar.gz
 
-sha256sum -c lxmf-rs-tools-v0.5.1-macos-arm64.tar.gz.sha256
-tar -xzf lxmf-rs-tools-v0.5.1-macos-arm64.tar.gz
+sha256sum -c lxmf-rs-tools-v0.5.2-macos-arm64.tar.gz.sha256
+tar -xzf lxmf-rs-tools-v0.5.2-macos-arm64.tar.gz
 ```
 
 3. Windows
 
 ```powershell
-Get-FileHash .\lxmf-rs-tools-v0.5.1-windows-x64.zip -Algorithm SHA256
-Get-Content .\lxmf-rs-tools-v0.5.1-windows-x64.zip.sha256
-Expand-Archive .\lxmf-rs-tools-v0.5.1-windows-x64.zip .
+Get-FileHash .\lxmf-rs-tools-v0.5.2-windows-x64.zip -Algorithm SHA256
+Get-Content .\lxmf-rs-tools-v0.5.2-windows-x64.zip.sha256
+Expand-Archive .\lxmf-rs-tools-v0.5.2-windows-x64.zip .
 ```
 
 4. Run directly for validation

@@ -14,6 +14,7 @@ use tokio_util::sync::CancellationToken;
 use crate::hash::AddressHash;
 use crate::iface::tcp_client::{
     run_hdlc_stream_with_runtime, HdlcStreamEvent, HdlcStreamRuntime, HdlcStreamWatchdog,
+    HDLC_STREAM_EVENT_CHANNEL_CAPACITY,
 };
 
 use super::{
@@ -736,7 +737,7 @@ async fn run_i2p_peer_loop(
             .expect("i2p runtime status mutex poisoned")
             .mark_outbound_connected(&peer, iface_address);
         log::info!("I2P SAM stream connected peer={} iface={}", peer, iface_address);
-        let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (event_tx, event_rx) = tokio::sync::mpsc::channel(HDLC_STREAM_EVENT_CHANNEL_CAPACITY);
         let status_task =
             tokio::spawn(track_i2p_stream_events(peer.clone(), runtime_status.clone(), event_rx));
         let (read_stream, write_stream) = stream.into_split();
@@ -987,7 +988,7 @@ async fn run_i2p_accepted_stream(
 ) {
     let peer_rx = Arc::new(tokio::sync::Mutex::new(peer_rx));
     let status_key = format!("incoming:{child_iface}");
-    let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (event_tx, event_rx) = tokio::sync::mpsc::channel(HDLC_STREAM_EVENT_CHANNEL_CAPACITY);
     let status_task =
         tokio::spawn(track_i2p_stream_events(status_key, runtime_status.clone(), event_rx));
     let (read_stream, write_stream) = stream.into_split();
@@ -1014,9 +1015,7 @@ async fn run_i2p_accepted_stream(
     log::info!("I2P SAM incoming stream closed peer={} iface={}", remote_destination, child_iface);
 }
 
-fn i2p_hdlc_runtime(
-    events: tokio::sync::mpsc::UnboundedSender<HdlcStreamEvent>,
-) -> HdlcStreamRuntime {
+fn i2p_hdlc_runtime(events: tokio::sync::mpsc::Sender<HdlcStreamEvent>) -> HdlcStreamRuntime {
     HdlcStreamRuntime::new()
         .with_watchdog(HdlcStreamWatchdog {
             keepalive_after: I2P_PROBE_AFTER,
@@ -1029,7 +1028,7 @@ fn i2p_hdlc_runtime(
 async fn track_i2p_stream_events(
     peer_key: String,
     runtime_status: Arc<std::sync::Mutex<I2pRuntimeStatus>>,
-    mut events: tokio::sync::mpsc::UnboundedReceiver<HdlcStreamEvent>,
+    mut events: tokio::sync::mpsc::Receiver<HdlcStreamEvent>,
 ) {
     while let Some(event) = events.recv().await {
         runtime_status

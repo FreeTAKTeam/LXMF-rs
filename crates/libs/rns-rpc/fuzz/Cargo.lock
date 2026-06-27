@@ -295,8 +295,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "log"
+version = "0.4.33"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
+
+[[package]]
 name = "lxmf-reference"
-version = "0.1.0"
+version = "0.5.2"
 
 [[package]]
 name = "memchr"
@@ -403,13 +409,14 @@ dependencies = [
 
 [[package]]
 name = "reticulum-rs-rpc"
-version = "0.3.0"
+version = "0.5.2"
 dependencies = [
  "base64",
  "ciborium",
  "hex",
  "hkdf",
  "hmac",
+ "log",
  "lxmf-reference",
  "rand_core",
  "rmp-serde",

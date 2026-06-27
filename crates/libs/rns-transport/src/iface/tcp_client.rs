@@ -22,6 +22,7 @@ use super::{Interface, InterfaceContext, InterfaceRxSender, InterfaceTxReceiver}
 // TCP packet tracing is kept off by default and gated by diagnostics env flags.
 const PACKET_TRACE: bool = false;
 const HDLC_KEEPALIVE_FRAME: &[u8] = &[0x7e, 0x7e];
+pub(crate) const HDLC_STREAM_EVENT_CHANNEL_CAPACITY: usize = 128;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct TcpSocketTuning {
@@ -134,7 +135,7 @@ pub(crate) struct HdlcStreamWatchdog {
 #[derive(Clone)]
 pub(crate) struct HdlcStreamRuntime {
     pub watchdog: Option<HdlcStreamWatchdog>,
-    pub events: Option<tokio::sync::mpsc::UnboundedSender<HdlcStreamEvent>>,
+    pub events: Option<tokio::sync::mpsc::Sender<HdlcStreamEvent>>,
     pub forced_bitrate_bps: Option<u64>,
 }
 
@@ -153,7 +154,7 @@ impl HdlcStreamRuntime {
     #[must_use]
     pub(crate) fn with_events(
         mut self,
-        events: tokio::sync::mpsc::UnboundedSender<HdlcStreamEvent>,
+        events: tokio::sync::mpsc::Sender<HdlcStreamEvent>,
     ) -> Self {
         self.events = Some(events);
         self
@@ -336,7 +337,7 @@ impl TcpRuntimeStatusHandle {
 
 async fn track_tcp_stream_events(
     runtime_status: Arc<std::sync::Mutex<TcpRuntimeStatus>>,
-    mut event_rx: tokio::sync::mpsc::UnboundedReceiver<HdlcStreamEvent>,
+    mut event_rx: tokio::sync::mpsc::Receiver<HdlcStreamEvent>,
 ) {
     while let Some(event) = event_rx.recv().await {
         runtime_status.lock().expect("tcp runtime status mutex poisoned").apply_event(event);
@@ -710,11 +711,13 @@ pub(crate) async fn run_hdlc_stream_with_runtime<R, W>(
 }
 
 fn send_hdlc_stream_event(
-    events: &Option<tokio::sync::mpsc::UnboundedSender<HdlcStreamEvent>>,
+    events: &Option<tokio::sync::mpsc::Sender<HdlcStreamEvent>>,
     event: HdlcStreamEvent,
 ) {
     if let Some(events) = events {
-        let _ = events.send(event);
+        if let Err(err) = events.try_send(event) {
+            log::debug!("dropped HDLC stream event: {err}");
+        }
     }
 }
 
@@ -725,7 +728,7 @@ pub struct TcpClient {
     socket_tuning: TcpSocketTuning,
     hdlc_watchdog: Option<HdlcStreamWatchdog>,
     forced_bitrate_bps: Option<u64>,
-    reconnect_events: Option<tokio::sync::mpsc::UnboundedSender<crate::hash::AddressHash>>,
+    reconnect_events: Option<tokio::sync::mpsc::Sender<crate::hash::AddressHash>>,
     connect_timeout: Duration,
     max_reconnect_tries: Option<u64>,
     prefer_ipv6: bool,
@@ -813,7 +816,7 @@ impl TcpClient {
     #[must_use]
     pub fn with_reconnect_events(
         mut self,
-        events: tokio::sync::mpsc::UnboundedSender<crate::hash::AddressHash>,
+        events: tokio::sync::mpsc::Sender<crate::hash::AddressHash>,
     ) -> Self {
         self.reconnect_events = Some(events);
         self
@@ -1001,13 +1004,21 @@ impl TcpClient {
             log::info!("connected to <{}>", addr);
             if has_connected {
                 if let Some(events) = reconnect_events.as_ref() {
-                    let _ = events.send(iface_address);
+                    if let Err(err) = events.try_send(iface_address) {
+                        log::debug!(
+                            "dropped TCP reconnect event iface={} endpoint={} err={}",
+                            iface_address,
+                            addr,
+                            err
+                        );
+                    }
                 }
             } else {
                 has_connected = true;
             }
 
-            let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
+            let (event_tx, event_rx) =
+                tokio::sync::mpsc::channel(HDLC_STREAM_EVENT_CHANNEL_CAPACITY);
             let status_task =
                 tokio::spawn(track_tcp_stream_events(runtime_status.clone(), event_rx));
             let runtime =
@@ -1091,7 +1102,7 @@ mod tests {
     use super::{
         forced_bitrate_delay, prefer_ipv6_socket_addrs, run_hdlc_stream_with_runtime,
         tcp_wire_buffer_capacity, HdlcStreamEvent, HdlcStreamRuntime, HdlcStreamWatchdog,
-        TcpClient, TcpSocketTuning,
+        TcpClient, TcpSocketTuning, HDLC_STREAM_EVENT_CHANNEL_CAPACITY,
     };
     use crate::buffer::OutputBuffer;
     use crate::hash::AddressHash;
@@ -1267,7 +1278,8 @@ mod tests {
         let iface_stop = CancellationToken::new();
         let (rx_channel, _rx_messages) = tokio::sync::mpsc::channel(1);
         let (_tx_sender, tx_receiver) = tokio::sync::mpsc::channel(1);
-        let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (event_tx, mut event_rx) =
+            tokio::sync::mpsc::channel(HDLC_STREAM_EVENT_CHANNEL_CAPACITY);
 
         let handle = tokio::spawn(run_hdlc_stream_with_runtime(
             "test".to_string(),
@@ -1321,7 +1333,8 @@ mod tests {
         let iface_stop = CancellationToken::new();
         let (rx_channel, _rx_messages) = tokio::sync::mpsc::channel(1);
         let (_tx_sender, tx_receiver) = tokio::sync::mpsc::channel(1);
-        let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (event_tx, mut event_rx) =
+            tokio::sync::mpsc::channel(HDLC_STREAM_EVENT_CHANNEL_CAPACITY);
 
         let handle = tokio::spawn(run_hdlc_stream_with_runtime(
             "test".to_string(),
@@ -1556,7 +1569,7 @@ mod tests {
     async fn tcp_client_reports_reconnect_events_after_initial_connection() {
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind listener");
         let addr = listener.local_addr().expect("listener addr");
-        let (reconnect_tx, mut reconnect_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (reconnect_tx, mut reconnect_rx) = tokio::sync::mpsc::channel(32);
         let mut manager = InterfaceManager::new(8);
         let context = manager
             .new_context(TcpClient::new(addr.to_string()).with_reconnect_events(reconnect_tx));

@@ -204,7 +204,7 @@ pub(super) async fn startup_configured_interfaces(
     server_iface: Option<&AddressHash>,
     configured_interfaces: &mut [InterfaceRecord],
     reticulum_storage_path: &std::path::Path,
-    shared_reconnect_events: Option<tokio::sync::mpsc::UnboundedSender<AddressHash>>,
+    shared_reconnect_events: Option<tokio::sync::mpsc::Sender<AddressHash>>,
     transport_identity_hash: Option<[u8; 16]>,
 ) -> InterfaceStartupBatch {
     let mut startup_successes = 0usize;
@@ -695,7 +695,7 @@ async fn startup_synthetic_local_tcp_sidecar(
     iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
     record: &mut InterfaceRecord,
     startup_failures: &mut Vec<InterfaceStartupFailure>,
-    shared_reconnect_events: Option<tokio::sync::mpsc::UnboundedSender<AddressHash>>,
+    shared_reconnect_events: Option<tokio::sync::mpsc::Sender<AddressHash>>,
 ) -> LocalTcpSidecarStartup {
     let Some(port) = iface.port else {
         record_startup_failure(
@@ -776,7 +776,7 @@ async fn startup_local_unix(
     iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
     record: &mut InterfaceRecord,
     startup_failures: &mut Vec<InterfaceStartupFailure>,
-    shared_reconnect_events: Option<tokio::sync::mpsc::UnboundedSender<AddressHash>>,
+    shared_reconnect_events: Option<tokio::sync::mpsc::Sender<AddressHash>>,
 ) -> LocalUnixStartup {
     let Some(socket_path) = iface
         .socket_path
@@ -864,7 +864,7 @@ async fn startup_local_unix_attach(
     iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
     record: &mut InterfaceRecord,
     startup_failures: &mut Vec<InterfaceStartupFailure>,
-    shared_reconnect_events: Option<tokio::sync::mpsc::UnboundedSender<AddressHash>>,
+    shared_reconnect_events: Option<tokio::sync::mpsc::Sender<AddressHash>>,
 ) -> LocalUnixStartup {
     if args.strict_interface_startup {
         if let Err(err) = rns_transport::iface::local::preflight_unix_connect(&endpoint).await {
@@ -917,7 +917,7 @@ async fn startup_local_unix(
     _iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
     record: &mut InterfaceRecord,
     startup_failures: &mut Vec<InterfaceStartupFailure>,
-    _shared_reconnect_events: Option<tokio::sync::mpsc::UnboundedSender<AddressHash>>,
+    _shared_reconnect_events: Option<tokio::sync::mpsc::Sender<AddressHash>>,
 ) -> LocalUnixStartup {
     record_startup_failure(
         record,
@@ -1442,7 +1442,7 @@ async fn startup_tcp_client(
     startup_failures: &mut Vec<InterfaceStartupFailure>,
     seeded_tcp_interfaces: &mut Vec<(String, InterfaceRecord, AddressHash)>,
     tcp_runtime_refreshes: &mut Vec<TcpRuntimeRefresh>,
-    stream_reconnect_events: Option<tokio::sync::mpsc::UnboundedSender<AddressHash>>,
+    stream_reconnect_events: Option<tokio::sync::mpsc::Sender<AddressHash>>,
 ) -> Option<AddressHash> {
     let (Some(host), Some(port)) = (iface.host.as_ref(), iface.port) else {
         record_startup_failure(
@@ -1505,7 +1505,7 @@ async fn startup_tcp_client(
 fn build_tcp_client_adapter(
     endpoint: String,
     iface: &InterfaceConfig,
-    stream_reconnect_events: Option<tokio::sync::mpsc::UnboundedSender<AddressHash>>,
+    stream_reconnect_events: Option<tokio::sync::mpsc::Sender<AddressHash>>,
 ) -> TcpClient {
     let mut adapter = TcpClient::new(endpoint);
     if iface.kind == "backbone_client" {
@@ -1549,7 +1549,7 @@ async fn startup_local_tcp_attach(
     iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
     record: &mut InterfaceRecord,
     startup_failures: &mut Vec<InterfaceStartupFailure>,
-    shared_reconnect_events: Option<tokio::sync::mpsc::UnboundedSender<AddressHash>>,
+    shared_reconnect_events: Option<tokio::sync::mpsc::Sender<AddressHash>>,
 ) -> Option<AddressHash> {
     let Some(endpoint) = selected_tcp_server.local_attach_addr.as_deref() else {
         record_startup_failure(
@@ -1582,7 +1582,7 @@ async fn startup_local_tcp_client_attach(
     iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
     record: &mut InterfaceRecord,
     startup_failures: &mut Vec<InterfaceStartupFailure>,
-    shared_reconnect_events: Option<tokio::sync::mpsc::UnboundedSender<AddressHash>>,
+    shared_reconnect_events: Option<tokio::sync::mpsc::Sender<AddressHash>>,
 ) -> Option<AddressHash> {
     let (Some(host), Some(port)) = (iface.host.as_deref(), iface.port) else {
         record_startup_failure(
@@ -1617,7 +1617,7 @@ async fn startup_local_tcp_attach_endpoint(
     iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
     record: &mut InterfaceRecord,
     startup_failures: &mut Vec<InterfaceStartupFailure>,
-    shared_reconnect_events: Option<tokio::sync::mpsc::UnboundedSender<AddressHash>>,
+    shared_reconnect_events: Option<tokio::sync::mpsc::Sender<AddressHash>>,
 ) -> Option<AddressHash> {
     if args.strict_interface_startup {
         if let Err(err) = strict_tcp_client_preflight(endpoint).await {
@@ -1666,7 +1666,7 @@ async fn startup_local_unix_client_attach(
     iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
     record: &mut InterfaceRecord,
     startup_failures: &mut Vec<InterfaceStartupFailure>,
-    shared_reconnect_events: Option<tokio::sync::mpsc::UnboundedSender<AddressHash>>,
+    shared_reconnect_events: Option<tokio::sync::mpsc::Sender<AddressHash>>,
 ) -> LocalUnixStartup {
     let Some(socket_path) = iface
         .socket_path
@@ -1705,7 +1705,7 @@ async fn startup_local_unix_client_attach(
     _iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
     record: &mut InterfaceRecord,
     startup_failures: &mut Vec<InterfaceStartupFailure>,
-    _shared_reconnect_events: Option<tokio::sync::mpsc::UnboundedSender<AddressHash>>,
+    _shared_reconnect_events: Option<tokio::sync::mpsc::Sender<AddressHash>>,
 ) -> LocalUnixStartup {
     record_startup_failure(
         record,
@@ -1896,7 +1896,7 @@ interfaces = [
             ..InterfaceConfig::default()
         };
 
-        let (reconnect_tx, _reconnect_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (reconnect_tx, _reconnect_rx) = tokio::sync::mpsc::channel(32);
         let adapter =
             build_tcp_client_adapter("rmap.world:4242".to_string(), &iface, Some(reconnect_tx));
 
@@ -1934,7 +1934,7 @@ interfaces = [
             ..InterfaceConfig::default()
         };
 
-        let (reconnect_tx, _reconnect_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (reconnect_tx, _reconnect_rx) = tokio::sync::mpsc::channel(32);
         let adapter =
             build_tcp_client_adapter("rmap.world:4242".to_string(), &iface, Some(reconnect_tx));
 

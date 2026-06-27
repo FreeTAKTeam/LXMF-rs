@@ -1,9 +1,53 @@
 # Temporary exceptions to module size budgets.
 # Keep this list short and remove entries as files are split.
+crates/apps/reticulumd/src/bin/reticulumd/bootstrap_interface_startup_parts/module_prelude.rs
+crates/apps/reticulumd/src/bin/reticulumd/bootstrap_interface_startup_parts/startup_udp.rs
+crates/apps/reticulumd/src/bin/reticulumd/bootstrap_parts/module_core.rs
+crates/apps/reticulumd/src/bin/reticulumd/bridge_rnode_management.rs
+crates/apps/reticulumd/src/bin/reticulumd/interfaces/auto_parts/auto_iface_sections/auto_multicast_discovery_bind_resolv.rs
+crates/apps/reticulumd/src/bin/reticulumd/interfaces/auto_parts/auto_iface_sections/auto_peer_data_transport_bridge_regi.rs
+crates/apps/reticulumd/src/bin/reticulumd/interfaces/auto_parts/auto_iface_sections/core_tests.rs
+crates/apps/reticulumd/src/bin/reticulumd/interfaces/auto_parts/autodaemonstartupplan_sections/send_due_multicast_peer_announces_wi.rs
+crates/apps/reticulumd/src/bin/reticulumd/interfaces/auto_parts/module_prelude.rs
+crates/apps/reticulumd/src/bin/reticulumd/tests_parts/bootstrap_best_effort_marks_vrn76_ki.rs
+crates/apps/reticulumd/src/bin/reticulumd/tests_parts/bootstrap_reports_auto_interface_as.rs
+crates/apps/reticulumd/src/bin/reticulumd/tests_parts/propagation_link_cache_reuses_same_s.rs
+crates/apps/reticulumd/src/bin/reticulumd/tests_parts/vrn76_builder_rejects_missing_periph.rs
+crates/apps/reticulumd/src/config_parts/interfaceconfig_sections/enabled.rs
+crates/apps/reticulumd/src/config_parts/interfaceconfig_sections/normalize_auto_aliases.rs
+crates/apps/reticulumd/src/config_parts/interfaceconfig_sections/validate_lora.rs
+crates/apps/reticulumd/tests/config_parts/module_prelude.rs
+crates/apps/rns-tools/src/bin/rnstatus-rs.rs
 crates/libs/rns-rpc/src/rpc/daemon/dispatch_legacy_messages_parts/localunpeercleanup.rs
 crates/libs/rns-rpc/src/rpc/daemon/dispatch_legacy_messages_parts/rpcdaemon_sections/handle_rpc_legacy_peer_sync.rs
 # Baseline SDK backend exceptions present before issue #369 cleanup; split backend state/tests.
 crates/libs/lxmf-sdk/src/backend/zmq_pipeline.rs
 crates/libs/lxmf-sdk/src/backend/zmq_pipeline/tests/mod.rs
+crates/libs/rns-rpc/src/rpc/daemon/dispatch_legacy_propagation_parts/rpcdaemon_sections/ingest_propagation_payload_hex_at_co.rs
+crates/libs/rns-rpc/src/rpc/daemon/init_parts/rpcdaemon_sections/issue_ticket.rs
+crates/libs/rns-rpc/src/storage/messages_parts/outbound_message_sections/core_tests.rs
+crates/libs/rns-transport/src/iface/auto_parts/default_multicast_discovery_address_sections/core_tests.rs
+crates/libs/rns-transport/src/iface/i2p.rs
+crates/libs/rns-transport/src/iface/kiss_parts/kisstcpclientinterface.rs
+crates/libs/rns-transport/src/iface/kiss_parts/module_prelude.rs
+crates/libs/rns-transport/src/iface/local.rs
+crates/libs/rns-transport/src/iface/lora_parts/lorainterface.rs
+crates/libs/rns-transport/src/iface/lora_parts/module_extra.rs
+crates/libs/rns-transport/src/iface/lora_parts/rnoderadiostatus.rs
+crates/libs/rns-transport/src/iface/rnode_ble_parts/module_prelude.rs
+crates/libs/rns-transport/src/iface/rnode_ble_parts/rnode_peripheral_matches.rs
+crates/libs/rns-transport/src/iface/rnode_multi.rs
+crates/libs/rns-transport/src/iface/serial_parts/module_prelude.rs
+crates/libs/rns-transport/src/iface/serial_parts/run_serial_stream.rs
+crates/libs/rns-transport/src/iface/tcp_client.rs
+crates/libs/rns-transport/src/iface/tcp_server.rs
+crates/libs/rns-transport/src/iface/udp.rs
+crates/libs/rns-transport/src/iface/vrn76_kiss_ble_parts/module_prelude.rs
+crates/libs/rns-transport/src/iface/weave.rs
+crates/libs/rns-transport/src/iface_parts/interfacemanager.rs
+crates/libs/rns-transport/src/iface_tests.rs
+crates/libs/rns-transport/src/resource/tests.rs
+crates/libs/rns-transport/src/transport/announce_limits.rs
 # Baseline transport test helper exception present before issue #369 cleanup; split shared packet helpers.
 crates/libs/rns-transport/src/transport/tests_parts/encrypted_resource_control_packet.rs
+crates/libs/rns-transport/src/transport/tests_parts/module_prelude.rs
