@@ -129,7 +129,11 @@ impl Transport {
                     continue;
                 }
                 if let Some(cached) = announce_cache.restore(path.packet_hash).await? {
-                    tunnel_announces.insert(path.packet_hash, cached);
+                    let iface = path
+                        .interface_hash
+                        .map(|hash| AddressHash::new_from_hash(&hash))
+                        .unwrap_or(path.destination);
+                    tunnel_announces.insert(path.packet_hash, (cached, iface));
                 }
             }
         }
@@ -160,14 +164,16 @@ impl Transport {
         }
 
         let mut valid_tunnel_announces = HashSet::new();
-        for (packet_hash, cached) in tunnel_announces {
+        for (packet_hash, (cached, iface)) in tunnel_announces {
             if !cached_announce_compatible(&handler, &cached.packet, &cached.destination) {
                 continue;
             }
+            let dest_hash = cached.destination.desc.address_hash;
             handler
                 .single_out_destinations
                 .entry(cached.packet.destination)
                 .or_insert_with(|| Arc::new(Mutex::new(cached.destination)));
+            handler.announce_table.add_cached(&cached.packet, dest_hash, iface);
             valid_tunnel_announces.insert(packet_hash);
         }
 

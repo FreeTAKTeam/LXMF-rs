@@ -572,6 +572,26 @@ async fn reticulum_tunnel_table_persistence_restores_tunnel_paths_after_reappear
         "tunnel reappearance should restore the persisted tunnel path"
     );
     assert!(restored.destination_identity(&destination).await.is_some());
+
+    let requesting_iface = *restored.iface_manager().lock().await.new_channel(16).address();
+    let restored_handler = restored.get_handler();
+    let path_request = {
+        let mut guard = restored_handler.lock().await;
+        guard.path_requests.generate(&destination, Some(vec![0x88; crate::hash::ADDRESS_HASH_SIZE]))
+    };
+
+    {
+        let mut guard = restored_handler.lock().await;
+        handle_path_request(&path_request, &mut guard, requesting_iface).await;
+    }
+
+    let guard = restored_handler.lock().await;
+    let response = guard
+        .announce_table
+        .pending_response_for_destination(&destination)
+        .expect("restored tunnel cached announce should answer known-path requests");
+    assert_eq!(response.response_to_iface, Some(requesting_iface));
+    assert_eq!(response.packet.context, PacketContext::PathResponse);
 }
 
 #[tokio::test]
