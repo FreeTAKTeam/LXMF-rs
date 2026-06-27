@@ -25,7 +25,7 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
                 "identity_hash": "0123456789abcdef0123456789abcdef",
                 "running": true,
                 "peer_count": 2,
-                "interface_count": 7,
+                "interface_count": 8,
                 "propagation": {
                     "enabled": true,
                     "selected_node": "cafebabe",
@@ -205,6 +205,27 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
                                         "selected_vport": 2,
                                         "last_error": "data frame write failed",
                                         "vports": [2, 3]
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "name": "vrn76-main",
+                        "type": "vrn76_kiss_ble",
+                        "enabled": true,
+                        "settings": {
+                            "_runtime": {
+                                "startup_status": "spawned",
+                                "vrn76": {
+                                    "status": {
+                                        "connected": true,
+                                        "subscribed": true,
+                                        "interface_ready": true,
+                                        "startup_write_failures": 1,
+                                        "pending_payloads": 2,
+                                        "pending_writes": 3,
+                                        "pending_packets": 4
                                     }
                                 }
                             }
@@ -239,6 +260,10 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
         value["interfaces"][4]["settings"]["_runtime"]["tcp"]["listener_status"]["listener_state"],
         "listening"
     );
+    assert_eq!(
+        value["interfaces"][7]["settings"]["_runtime"]["vrn76"]["status"]["interface_ready"],
+        true
+    );
 
     server.join().expect("mock rpc server");
 
@@ -256,7 +281,7 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
                 "identity_hash": "0123456789abcdef0123456789abcdef",
                 "running": true,
                 "peer_count": 2,
-                "interface_count": 7,
+                "interface_count": 8,
                 "propagation": {
                     "enabled": true,
                     "selected_node": "cafebabe",
@@ -436,6 +461,27 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
                                         "selected_vport": 2,
                                         "last_error": "data frame write failed",
                                         "vports": [2, 3]
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "name": "vrn76-main",
+                        "type": "vrn76_kiss_ble",
+                        "enabled": true,
+                        "settings": {
+                            "_runtime": {
+                                "startup_status": "spawned",
+                                "vrn76": {
+                                    "status": {
+                                        "connected": true,
+                                        "subscribed": true,
+                                        "interface_ready": true,
+                                        "startup_write_failures": 1,
+                                        "pending_payloads": 2,
+                                        "pending_writes": 3,
+                                        "pending_packets": 4
                                     }
                                 }
                             }
@@ -514,6 +560,12 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
         "stdout: {stdout}"
     );
     assert!(stdout.contains("err=data frame write failed"), "stdout: {stdout}");
+    assert!(stdout.contains("vrn76-main"), "stdout: {stdout}");
+    assert!(stdout.contains("vrn76 connected=true subscribed=true ready=true"), "stdout: {stdout}");
+    assert!(stdout.contains("startup_write_failures=1"), "stdout: {stdout}");
+    assert!(stdout.contains("pending_payloads=2"), "stdout: {stdout}");
+    assert!(stdout.contains("pending_writes=3"), "stdout: {stdout}");
+    assert!(stdout.contains("pending_packets=4"), "stdout: {stdout}");
     assert!(stdout.contains("Propagation: enabled=true"), "stdout: {stdout}");
     assert!(stdout.contains("peers=2"), "stdout: {stdout}");
     assert!(stdout.contains("selected=cafebabe"), "stdout: {stdout}");

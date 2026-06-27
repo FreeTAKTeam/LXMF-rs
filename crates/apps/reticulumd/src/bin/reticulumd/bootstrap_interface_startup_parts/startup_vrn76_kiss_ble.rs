@@ -4,7 +4,7 @@ async fn startup_vrn76_kiss_ble(
     iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
     record: &mut InterfaceRecord,
     startup_failures: &mut Vec<InterfaceStartupFailure>,
-) -> bool {
+) -> Vrn76StartupResult {
     let config = match vrn76_kiss_ble::build_config(iface) {
         Ok(config) => config,
         Err(err) => {
@@ -15,13 +15,14 @@ async fn startup_vrn76_kiss_ble(
                 iface.kind.clone(),
                 err,
             );
-            return false;
+            return Vrn76StartupResult::failed();
         }
     };
 
     #[cfg(feature = "vrn76-kiss-ble")]
     {
         let adapter = vrn76_kiss_ble::build_native_interface(iface, config);
+        let runtime_status = adapter.runtime_status_handle();
         let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
         let vrn76_iface = iface_manager.lock().await.spawn_as_with_mode(
             adapter,
@@ -44,7 +45,10 @@ async fn startup_vrn76_kiss_ble(
         );
         let runtime_iface = vrn76_iface.to_string();
         mark_interface_startup_status(record, "spawned", None, Some(runtime_iface.as_str()));
-        true
+        Vrn76StartupResult {
+            started: true,
+            refresh: Some(Vrn76RuntimeRefresh { runtime_iface: vrn76_iface, status: runtime_status }),
+        }
     }
 
     #[cfg(not(feature = "vrn76-kiss-ble"))]
@@ -71,7 +75,23 @@ async fn startup_vrn76_kiss_ble(
             iface.kind.clone(),
             "vrn76_kiss_ble requires reticulumd feature vrn76-kiss-ble".to_string(),
         );
-        false
+        Vrn76StartupResult::failed()
+    }
+}
+
+struct Vrn76StartupResult {
+    started: bool,
+    #[cfg(feature = "vrn76-kiss-ble")]
+    refresh: Option<Vrn76RuntimeRefresh>,
+}
+
+impl Vrn76StartupResult {
+    fn failed() -> Self {
+        Self {
+            started: false,
+            #[cfg(feature = "vrn76-kiss-ble")]
+            refresh: None,
+        }
     }
 }
 

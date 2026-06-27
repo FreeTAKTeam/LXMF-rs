@@ -430,4 +430,5 @@ pub struct NativeVrn76KissBleInterface {
     config: Vrn76KissBleConfig,
     reconnect_backoff: Duration,
     max_reconnect_backoff: Duration,
+    runtime_status: Vrn76KissBleStatusHandle,
 }

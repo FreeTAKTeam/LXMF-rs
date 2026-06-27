@@ -119,7 +119,7 @@ pub struct BleWrite {
     pub payload: Vec<u8>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Vrn76KissBleStatus {
     pub connected: bool,
     pub subscribed: bool,
@@ -128,6 +128,55 @@ pub struct Vrn76KissBleStatus {
     pub pending_payloads: usize,
     pub pending_writes: usize,
     pub pending_packets: usize,
+}
+
+impl Vrn76KissBleStatus {
+    #[must_use]
+    pub fn to_json(self) -> serde_json::Value {
+        serde_json::json!({
+            "connected": self.connected,
+            "subscribed": self.subscribed,
+            "interface_ready": self.interface_ready,
+            "startup_write_failures": self.startup_write_failures,
+            "pending_payloads": self.pending_payloads,
+            "pending_writes": self.pending_writes,
+            "pending_packets": self.pending_packets,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Vrn76KissBleStatusHandle {
+    inner: std::sync::Arc<std::sync::Mutex<Vrn76KissBleStatus>>,
+}
+
+impl Vrn76KissBleStatusHandle {
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            inner: std::sync::Arc::new(std::sync::Mutex::new(Vrn76KissBleStatus::default())),
+        }
+    }
+
+    pub fn update(&self, status: Vrn76KissBleStatus) {
+        *self.inner.lock().expect("VR-N76 runtime status mutex poisoned") = status;
+    }
+
+    #[must_use]
+    pub fn snapshot(&self) -> Vrn76KissBleStatus {
+        *self.inner.lock().expect("VR-N76 runtime status mutex poisoned")
+    }
+
+    #[must_use]
+    pub fn to_json(&self) -> serde_json::Value {
+        self.snapshot().to_json()
+    }
+}
+
+impl Default for Vrn76KissBleStatusHandle {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[allow(async_fn_in_trait)]

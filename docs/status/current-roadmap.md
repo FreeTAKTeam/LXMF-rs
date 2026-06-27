@@ -175,10 +175,14 @@ The project is best described by capability level:
   daemon/RPC interface status, and `rnstatus-rs` now summarizes outbound,
   incoming, closed, and aggregate byte counters for the tunnel rows;
   prepared-host production evidence remains pending.
+- Feature-gated VR-N76 KISS-over-BLE now refreshes transport-side runtime
+  status into daemon/RPC `_runtime.vrn76.status`; `rnstatus-rs` summarizes
+  connected, subscribed, ready, startup-write failure, and queue counters.
 - `rnstatus-rs` now provides a local daemon status utility over the existing
-  RPC status surface, including JSON output plus human interface runtime
-  startup state, Auto carrier/link-local state, TCP/Backbone listener state,
-  and propagation peer state.
+  RPC status surface, including JSON output plus human interface endpoint
+  details across configured interface families, runtime startup state, Auto
+  carrier/link-local state, TCP/Backbone listener state, plus I2P, RNodeMulti,
+  Weave, and VR-N76 status rows and propagation peer state.
 
 ### LXMF
 

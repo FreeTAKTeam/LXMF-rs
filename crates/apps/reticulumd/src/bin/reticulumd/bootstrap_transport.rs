@@ -12,6 +12,8 @@ use crate::interfaces::common::interface_label;
 use crate::Args;
 #[cfg(test)]
 pub(super) use interface_startup::LoraRuntimeStatusSource;
+#[cfg(feature = "vrn76-kiss-ble")]
+pub(super) use interface_startup::Vrn76RuntimeRefresh;
 pub(super) use interface_startup::{
     AutoRuntimeRefresh, I2pRuntimeRefresh, LoraRuntimeRefresh, PipeRuntimeRefresh,
     RNodeManagementBinding, RNodeMultiRuntimeRefresh, TcpRuntimeRefresh, TcpRuntimeStatusSource,
@@ -52,6 +54,8 @@ pub(super) struct TransportStartupArtifacts {
     pub(super) weave_runtime_refreshes: Vec<WeaveRuntimeRefresh>,
     pub(super) rnode_multi_runtime_refreshes: Vec<RNodeMultiRuntimeRefresh>,
     pub(super) lora_runtime_refreshes: Vec<LoraRuntimeRefresh>,
+    #[cfg(feature = "vrn76-kiss-ble")]
+    pub(super) vrn76_runtime_refreshes: Vec<Vrn76RuntimeRefresh>,
     pub(super) rnode_management_bindings: Vec<RNodeManagementBinding>,
 }
 
@@ -161,6 +165,8 @@ pub(super) async fn start_transport_and_interfaces(
     let mut weave_runtime_refreshes = Vec::new();
     let mut rnode_multi_runtime_refreshes = Vec::new();
     let mut lora_runtime_refreshes = Vec::new();
+    #[cfg(feature = "vrn76-kiss-ble")]
+    let mut vrn76_runtime_refreshes = Vec::new();
     let mut rnode_management_bindings = Vec::new();
 
     if transport_required {
@@ -240,6 +246,8 @@ pub(super) async fn start_transport_and_interfaces(
             weave_runtime_refreshes.extend(startup.weave_runtime_refreshes);
             rnode_multi_runtime_refreshes.extend(startup.rnode_multi_runtime_refreshes);
             lora_runtime_refreshes.extend(startup.lora_runtime_refreshes);
+            #[cfg(feature = "vrn76-kiss-ble")]
+            vrn76_runtime_refreshes.extend(startup.vrn76_runtime_refreshes);
             rnode_management_bindings.extend(startup.rnode_management_bindings);
         }
 
@@ -350,6 +358,8 @@ pub(super) async fn start_transport_and_interfaces(
         weave_runtime_refreshes,
         rnode_multi_runtime_refreshes,
         lora_runtime_refreshes,
+        #[cfg(feature = "vrn76-kiss-ble")]
+        vrn76_runtime_refreshes,
         rnode_management_bindings,
     }
 }

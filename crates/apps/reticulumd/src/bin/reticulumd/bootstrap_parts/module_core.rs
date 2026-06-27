@@ -185,6 +185,8 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     let weave_runtime_refreshes = startup.weave_runtime_refreshes;
     let rnode_multi_runtime_refreshes = startup.rnode_multi_runtime_refreshes;
     let lora_runtime_refreshes = startup.lora_runtime_refreshes;
+    #[cfg(feature = "vrn76-kiss-ble")]
+    let vrn76_runtime_refreshes = startup.vrn76_runtime_refreshes;
     let rnode_management_bindings = startup.rnode_management_bindings;
     let selected_tcp_server = startup.selected_tcp_server;
 
@@ -301,6 +303,8 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     spawn_weave_runtime_status_refresher(daemon.clone(), weave_runtime_refreshes);
     spawn_rnode_multi_runtime_status_refresher(daemon.clone(), rnode_multi_runtime_refreshes);
     spawn_lora_runtime_status_refresher(daemon.clone(), lora_runtime_refreshes);
+    #[cfg(feature = "vrn76-kiss-ble")]
+    spawn_vrn76_runtime_status_refresher(daemon.clone(), vrn76_runtime_refreshes);
     daemon.set_propagation_state(transport.is_some(), None, 0);
     daemon.configure_propagation_node(
         propagation_node_config.enabled,
@@ -654,6 +658,42 @@ fn refresh_lora_runtime_status_once(
                 refresh.runtime_iface.to_string().as_str(),
                 "lora",
                 "rnode_status",
+                refresh.status.to_json(),
+            )
+        })
+        .count()
+}
+
+#[cfg(feature = "vrn76-kiss-ble")]
+fn spawn_vrn76_runtime_status_refresher(
+    daemon: Arc<RpcDaemon>,
+    refreshes: Vec<transport_startup::Vrn76RuntimeRefresh>,
+) {
+    if refreshes.is_empty() {
+        return;
+    }
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(INTERFACE_RUNTIME_STATUS_REFRESH_INTERVAL);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            interval.tick().await;
+            refresh_vrn76_runtime_status_once(&daemon, &refreshes);
+        }
+    });
+}
+
+#[cfg(feature = "vrn76-kiss-ble")]
+fn refresh_vrn76_runtime_status_once(
+    daemon: &RpcDaemon,
+    refreshes: &[transport_startup::Vrn76RuntimeRefresh],
+) -> usize {
+    refreshes
+        .iter()
+        .filter(|refresh| {
+            daemon.update_interface_runtime_metadata_by_iface(
+                refresh.runtime_iface.to_string().as_str(),
+                "vrn76",
+                "status",
                 refresh.status.to_json(),
             )
         })
@@ -1221,6 +1261,58 @@ mod tests {
         assert_eq!(status["bearer"].as_str(), Some("serial"));
         assert_eq!(status["probe_status"]["detected"].as_bool(), Some(true));
         assert_eq!(status["probe_status"]["firmware_version"]["label"].as_str(), Some("1.52"));
+    }
+
+    #[cfg(feature = "vrn76-kiss-ble")]
+    #[test]
+    fn vrn76_runtime_status_refresh_updates_matching_interface_record() {
+        let daemon = RpcDaemon::test_instance();
+        let runtime_iface = AddressHash::new([0x24; 16]);
+        daemon.replace_interfaces(vec![InterfaceRecord {
+            kind: "vrn76_kiss_ble".to_string(),
+            enabled: true,
+            host: None,
+            port: None,
+            name: Some("vrn76-main".to_string()),
+            settings: Some(json!({
+                "_runtime": {
+                    "iface": runtime_iface.to_string(),
+                    "startup_status": "spawned",
+                    "vrn76": {
+                        "status": {
+                            "connected": false
+                        }
+                    }
+                }
+            })),
+        }]);
+        let status = rns_transport::iface::vrn76_kiss_ble::Vrn76KissBleStatusHandle::new();
+        status.update(rns_transport::iface::vrn76_kiss_ble::Vrn76KissBleStatus {
+            connected: true,
+            subscribed: true,
+            interface_ready: true,
+            startup_write_failures: 1,
+            pending_payloads: 2,
+            pending_writes: 3,
+            pending_packets: 4,
+        });
+        let refresh = transport_startup::Vrn76RuntimeRefresh { runtime_iface, status };
+
+        assert_eq!(refresh_vrn76_runtime_status_once(&daemon, &[refresh]), 1);
+        let result = daemon
+            .handle_rpc(RpcRequest { id: 96, method: "daemon_status_ex".to_string(), params: None })
+            .expect("daemon status")
+            .result
+            .expect("daemon status result");
+        let status = &result["interfaces"][0]["settings"]["_runtime"]["vrn76"]["status"];
+
+        assert_eq!(status["connected"].as_bool(), Some(true));
+        assert_eq!(status["subscribed"].as_bool(), Some(true));
+        assert_eq!(status["interface_ready"].as_bool(), Some(true));
+        assert_eq!(status["startup_write_failures"].as_u64(), Some(1));
+        assert_eq!(status["pending_payloads"].as_u64(), Some(2));
+        assert_eq!(status["pending_writes"].as_u64(), Some(3));
+        assert_eq!(status["pending_packets"].as_u64(), Some(4));
     }
 
     #[cfg(feature = "rnode-ble")]

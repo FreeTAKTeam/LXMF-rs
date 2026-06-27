@@ -33,7 +33,7 @@ Workspace paths are used for navigation. Published package names are
 | `RNS/Discovery.py` | `crates/libs/rns-transport`, `crates/apps/reticulumd` | partial | Announce/path discovery plus live AutoInterface discovery and peer runtime. | Public bootstrap/discovery breadth remains narrower than Python. |
 | `RNS/Resolver.py` | `crates/libs/rns-transport` | partial | Resolver helpers, cached lookup behavior, and restored path-table identity lookup from cached announces exist. | Full resolver/discovery surface parity is not established. |
 | `RNS/Cryptography/*` | `crates/libs/rns-core` | done | Required Reticulum primitives used by identities, packets, links, and receipts. | No confirmed parity blocker. |
-| `RNS/Utilities/*` | `crates/apps/rns-tools` | partial | `rnx` is substantial; `rnsd` delegates to `reticulumd`; `rnstatus-rs` reports local daemon/interface and propagation peer status from RPC with JSON and human output, including Auto carrier/link-local runtime summaries and TCP/Backbone stream/listener runtime summaries; `rnodeconf-rs` covers serial/TCP, feature-gated BLE, and RNodeMulti parent/vport RNode radio-state query, blink, safe read/display/local-radio commands, and guarded persistent/destructive management commands over daemon RPC. | Full equivalents for retired `rncp`, `rnid`, `rnir`, `rnpath`, `rnpkg`, and `rnprobe` remain absent; `rnodeconf-rs` is not a full Python `rnodeconf` equivalent; `rnstatus-rs` is local status only. |
+| `RNS/Utilities/*` | `crates/apps/rns-tools` | partial | `rnx` is substantial; `rnsd` delegates to `reticulumd`; `rnstatus-rs` reports local daemon/interface and propagation peer status from RPC with JSON and human output, including configured endpoints for host/port, UDP target, Unix local socket, serial/KISS/RNode/Weave/VR-N76 devices, Pipe command, I2P SAM/peer count, and Auto group rows, plus Auto carrier/link-local, TCP/Backbone stream/listener, I2P, RNode/LoRa, RNodeMulti, Weave, and VR-N76 runtime summaries; `rnodeconf-rs` covers serial/TCP, feature-gated BLE, and RNodeMulti parent/vport RNode radio-state query, blink, safe read/display/local-radio commands, and guarded persistent/destructive management commands over daemon RPC. | Full equivalents for retired `rncp`, `rnid`, `rnir`, `rnpath`, `rnpkg`, and `rnprobe` remain absent; `rnodeconf-rs` is not a full Python `rnodeconf` equivalent; `rnstatus-rs` is local status only. |
 | `CRNS/*` | `crates/apps/rns-tools` | partial | Selected command workflows exist. | The Python command ecosystem is not reproduced. |
 
 ## Interface Detail
@@ -160,7 +160,10 @@ placeholders:
   virtual child registration, HDLC ingress, cleanup, and daemon/RPC status
   refresh without requiring a prepared I2P router. The config parser accepts
   I2P-local IFAC aliases `ifac_netname` and `ifac_netkey`.
-- Feature-gated native RNode BLE and VR-N76 KISS-over-BLE.
+- Feature-gated native RNode BLE and VR-N76 KISS-over-BLE. The VR-N76 native
+  interface now exposes live daemon/RPC `_runtime.vrn76.status` metadata with
+  connection, subscription, readiness, startup-write failure, and queued packet
+  counters, and `rnstatus-rs` renders a compact human summary.
 
 Python-style interface-driven `tcp_server` startup now works from config
 without Rust-only transport overrides.

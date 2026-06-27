@@ -87,6 +87,30 @@ fn vrn76_session_status_reports_subscription_flow_control_and_queues() {
 }
 
 #[test]
+fn vrn76_status_handle_exports_json() {
+    let handle = rns_transport::iface::vrn76_kiss_ble::Vrn76KissBleStatusHandle::new();
+    handle.update(rns_transport::iface::vrn76_kiss_ble::Vrn76KissBleStatus {
+        connected: true,
+        subscribed: true,
+        interface_ready: true,
+        startup_write_failures: 1,
+        pending_payloads: 2,
+        pending_writes: 3,
+        pending_packets: 4,
+    });
+
+    let status = handle.to_json();
+
+    assert_eq!(status["connected"].as_bool(), Some(true));
+    assert_eq!(status["subscribed"].as_bool(), Some(true));
+    assert_eq!(status["interface_ready"].as_bool(), Some(true));
+    assert_eq!(status["startup_write_failures"].as_u64(), Some(1));
+    assert_eq!(status["pending_payloads"].as_u64(), Some(2));
+    assert_eq!(status["pending_writes"].as_u64(), Some(3));
+    assert_eq!(status["pending_packets"].as_u64(), Some(4));
+}
+
+#[test]
 fn vrn76_benshi_mode_wraps_outgoing_kiss_frames_as_ht_send_data() {
     let mut session = Vrn76KissBleSession::new(Vrn76KissBleConfig::default());
     let payload = [0x01, 0xC0, 0xDB, 0x02];

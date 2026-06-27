@@ -48,6 +48,8 @@ pub(super) struct InterfaceStartupBatch {
     pub(super) weave_runtime_refreshes: Vec<WeaveRuntimeRefresh>,
     pub(super) rnode_multi_runtime_refreshes: Vec<RNodeMultiRuntimeRefresh>,
     pub(super) lora_runtime_refreshes: Vec<LoraRuntimeRefresh>,
+    #[cfg(feature = "vrn76-kiss-ble")]
+    pub(super) vrn76_runtime_refreshes: Vec<Vrn76RuntimeRefresh>,
     pub(super) rnode_management_bindings: Vec<RNodeManagementBinding>,
 }
 
@@ -117,6 +119,13 @@ pub(crate) struct LoraRuntimeRefresh {
     pub(crate) status: LoraRuntimeStatusSource,
 }
 
+#[cfg(feature = "vrn76-kiss-ble")]
+#[derive(Clone)]
+pub(crate) struct Vrn76RuntimeRefresh {
+    pub(crate) runtime_iface: AddressHash,
+    pub(crate) status: rns_transport::iface::vrn76_kiss_ble::Vrn76KissBleStatusHandle,
+}
+
 #[derive(Clone)]
 pub(crate) struct RNodeManagementBinding {
     pub(crate) runtime_iface: AddressHash,
@@ -167,6 +176,8 @@ pub(super) async fn startup_configured_interfaces(
     let mut weave_runtime_refreshes = Vec::new();
     let mut rnode_multi_runtime_refreshes = Vec::new();
     let mut lora_runtime_refreshes = Vec::new();
+    #[cfg(feature = "vrn76-kiss-ble")]
+    let mut vrn76_runtime_refreshes = Vec::new();
     let mut rnode_management_bindings = Vec::new();
 
     for (index, iface) in config.interfaces.iter().enumerate() {
@@ -461,16 +472,20 @@ pub(super) async fn startup_configured_interfaces(
                 }
             }
             "vrn76_kiss_ble" => {
-                if startup_vrn76_kiss_ble(
+                let startup = startup_vrn76_kiss_ble(
                     iface,
                     &label,
                     iface_manager,
                     &mut configured_interfaces[index],
                     &mut startup_failures,
                 )
-                .await
-                {
+                .await;
+                if startup.started {
                     startup_successes += 1;
+                    #[cfg(feature = "vrn76-kiss-ble")]
+                    if let Some(refresh) = startup.refresh {
+                        vrn76_runtime_refreshes.push(refresh);
+                    }
                 }
             }
             "lora" => {
@@ -532,6 +547,8 @@ pub(super) async fn startup_configured_interfaces(
         weave_runtime_refreshes,
         rnode_multi_runtime_refreshes,
         lora_runtime_refreshes,
+        #[cfg(feature = "vrn76-kiss-ble")]
+        vrn76_runtime_refreshes,
         rnode_management_bindings,
     }
 }

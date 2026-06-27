@@ -158,14 +158,60 @@ fn value_str(value: &Value, key: &str) -> String {
 }
 
 fn interface_endpoint(interface: &Value) -> String {
-    match (
-        interface.get("host").and_then(Value::as_str),
-        interface.get("port").and_then(Value::as_u64),
+    let settings = interface.get("settings").unwrap_or(&Value::Null);
+    if let Some(endpoint) = host_port_endpoint(
+        interface
+            .get("host")
+            .and_then(Value::as_str)
+            .or_else(|| settings.get("host").and_then(Value::as_str)),
+        interface
+            .get("port")
+            .and_then(Value::as_u64)
+            .or_else(|| settings.get("port").and_then(Value::as_u64)),
     ) {
-        (Some(host), Some(port)) => format!("{host}:{port}"),
-        (Some(host), None) => host.to_string(),
-        (None, Some(port)) => port.to_string(),
-        (None, None) => "-".to_string(),
+        if let Some(target) = host_port_endpoint(
+            settings.get("target_host").and_then(Value::as_str),
+            settings.get("target_port").and_then(Value::as_u64),
+        ) {
+            return format!("{endpoint}->{target}");
+        }
+        return endpoint;
+    }
+
+    if let Some(socket_path) = settings.get("socket_path").and_then(Value::as_str) {
+        return socket_path.to_string();
+    }
+    if let Some(device) = settings.get("device").and_then(Value::as_str) {
+        return device.to_string();
+    }
+    if let Some(peripheral_id) = settings.get("peripheral_id").and_then(Value::as_str) {
+        return format!("ble:{peripheral_id}");
+    }
+    if let Some(command) = settings.get("command").and_then(Value::as_str) {
+        return command.to_string();
+    }
+    if let Some(sam) = host_port_endpoint(
+        settings.get("sam_host").and_then(Value::as_str),
+        settings.get("sam_port").and_then(Value::as_u64),
+    ) {
+        return format!("sam:{sam}");
+    }
+    if let Some(peers) = settings.get("peers").and_then(Value::as_array) {
+        return format!("peers:{}", peers.len());
+    }
+    if let Some(group) = settings.get("group_id").and_then(Value::as_str) {
+        return format!("group:{group}");
+    }
+    "-".to_string()
+}
+
+fn host_port_endpoint(host: Option<&str>, port: Option<u64>) -> Option<String> {
+    let host = host.map(str::trim).filter(|value| !value.is_empty());
+    match (host, port) {
+        (Some(host), Some(port)) => Some(format!("{host}:{port}")),
+        (Some(host), None) => Some(host.to_string()),
+        (None, Some(port)) => Some(port.to_string()),
+        (None, None) => None,
     }
 }
 
@@ -229,6 +275,11 @@ fn interface_runtime(interface: &Value) -> String {
         .get("rnode_multi")
         .and_then(|value| value.get("radio_status"))
         .and_then(rnode_multi_runtime_summary)
+    {
+        parts.push(summary);
+    }
+    if let Some(summary) =
+        runtime.get("vrn76").and_then(|value| value.get("status")).and_then(vrn76_runtime_summary)
     {
         parts.push(summary);
     }
@@ -395,6 +446,27 @@ fn rnode_multi_runtime_summary(status: &Value) -> Option<String> {
     Some(summary)
 }
 
+fn vrn76_runtime_summary(status: &Value) -> Option<String> {
+    if !status.is_object() {
+        return None;
+    }
+    let mut summary = format!(
+        "vrn76 connected={} subscribed={} ready={}",
+        value_bool(status, "connected"),
+        value_bool(status, "subscribed"),
+        value_bool(status, "interface_ready")
+    );
+    append_optional_u64(
+        &mut summary,
+        "startup_write_failures",
+        status.get("startup_write_failures"),
+    );
+    append_optional_u64(&mut summary, "pending_payloads", status.get("pending_payloads"));
+    append_optional_u64(&mut summary, "pending_writes", status.get("pending_writes"));
+    append_optional_u64(&mut summary, "pending_packets", status.get("pending_packets"));
+    Some(summary)
+}
+
 fn lora_rnode_runtime_summary(status: &Value) -> Option<String> {
     if !status.is_object() {
         return None;
@@ -511,7 +583,7 @@ mod tests {
         let status = json!({
             "identity_hash": "abc",
             "running": true,
-            "interface_count": 7,
+            "interface_count": 8,
             "interfaces": [
                 {
                     "name": "auto-main",
@@ -713,6 +785,28 @@ mod tests {
                     }
                 },
                 {
+                    "name": "vrn76-main",
+                    "type": "vrn76_kiss_ble",
+                    "enabled": true,
+                    "settings": {
+                        "peripheral_id": "VR-N76",
+                        "_runtime": {
+                            "startup_status": "spawned",
+                            "vrn76": {
+                                "status": {
+                                    "connected": true,
+                                    "subscribed": true,
+                                    "interface_ready": true,
+                                    "startup_write_failures": 1,
+                                    "pending_payloads": 2,
+                                    "pending_writes": 3,
+                                    "pending_packets": 4
+                                }
+                            }
+                        }
+                    }
+                },
+                {
                     "name": "pipe-main",
                     "type": "pipe",
                     "enabled": true,
@@ -774,8 +868,85 @@ mod tests {
         assert!(output.contains("freq=915000000"));
         assert!(output.contains("bat=88"));
         assert!(output.contains("rnode_multi stream=running selected=2 vports=2"));
+        assert!(output.contains("vrn76 connected=true subscribed=true ready=true"));
+        assert!(output.contains("startup_write_failures=1"));
+        assert!(output.contains("pending_payloads=2"));
+        assert!(output.contains("pending_writes=3"));
+        assert!(output.contains("pending_packets=4"));
         assert!(output.contains("pipe state=respawning open=false respawns=2"));
         assert!(output.contains("err=spawn cat failed"));
+    }
+
+    #[test]
+    fn interface_endpoint_uses_family_specific_settings() {
+        assert_eq!(
+            interface_endpoint(&json!({
+                "host": "127.0.0.1",
+                "port": 4242,
+                "settings": {
+                    "target_host": "192.0.2.10",
+                    "target_port": 4242
+                }
+            })),
+            "127.0.0.1:4242->192.0.2.10:4242"
+        );
+        assert_eq!(
+            interface_endpoint(&json!({
+                "settings": {
+                    "socket_path": "@rns/default"
+                }
+            })),
+            "@rns/default"
+        );
+        assert_eq!(
+            interface_endpoint(&json!({
+                "settings": {
+                    "device": "/dev/ttyACM0"
+                }
+            })),
+            "/dev/ttyACM0"
+        );
+        assert_eq!(
+            interface_endpoint(&json!({
+                "settings": {
+                    "peripheral_id": "VR-N76"
+                }
+            })),
+            "ble:VR-N76"
+        );
+        assert_eq!(
+            interface_endpoint(&json!({
+                "settings": {
+                    "command": "cat"
+                }
+            })),
+            "cat"
+        );
+        assert_eq!(
+            interface_endpoint(&json!({
+                "settings": {
+                    "sam_host": "127.0.0.1",
+                    "sam_port": 7656
+                }
+            })),
+            "sam:127.0.0.1:7656"
+        );
+        assert_eq!(
+            interface_endpoint(&json!({
+                "settings": {
+                    "peers": ["alpha.b32.i2p", "beta.b32.i2p"]
+                }
+            })),
+            "peers:2"
+        );
+        assert_eq!(
+            interface_endpoint(&json!({
+                "settings": {
+                    "group_id": "field-net"
+                }
+            })),
+            "group:field-net"
+        );
     }
 
     #[test]

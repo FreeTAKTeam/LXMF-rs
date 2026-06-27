@@ -166,6 +166,14 @@ Supported settings are:
 - KISS slot time: `20 ms`
 - KISS flow control: `false`
 
+## Runtime Visibility
+
+With `reticulumd --features vrn76-kiss-ble`, the native interface refreshes
+daemon/RPC `_runtime.vrn76.status` metadata while it runs. `rnstatus-rs`
+renders the same status as a compact row with connection, subscription,
+readiness, startup KISS write failure, pending payload, pending write, and
+pending packet counters.
+
 ## Current Verification
 
 ```powershell
@@ -174,6 +182,8 @@ cargo test -p reticulum-rs-transport --features vrn76-kiss-ble --test vrn76_kiss
 cargo check -p reticulum-rs-transport --features vrn76-kiss-ble --example vrn76_kiss_ble_probe
 cargo test -p reticulumd --test config vrn76
 cargo test -p reticulumd --features vrn76-kiss-ble --bin reticulumd vrn76_builder
+cargo test -p reticulumd --features vrn76-kiss-ble --bin reticulumd vrn76_runtime_status_refresh_updates_matching_interface_record
+cargo test -p rns-tools --bin rnstatus-rs human_status_includes_interface_runtime_detail
 ```
 
 The current tests cover profile constants, Benshi `HT_SEND_DATA` wrapping,
@@ -188,7 +198,9 @@ failures. They also cover Python-compatible KISS station-ID beacon config,
 VR-N76 BLE frame mode. Outbound Benshi writes are covered for configured
 maximum BLE write length fragmentation. Stale partial inbound KISS frames are
 discarded after the Python BLE read timeout before later Benshi or raw KISS
-indication bytes are decoded.
+indication bytes are decoded. Daemon/RPC runtime status refresh and
+`rnstatus-rs` summary rendering are covered without requiring Bluetooth
+hardware.
 
 The probe example covers argument parsing, lifecycle setup, KISS configuration
 submission, startup command failure counting, runtime status printing, and

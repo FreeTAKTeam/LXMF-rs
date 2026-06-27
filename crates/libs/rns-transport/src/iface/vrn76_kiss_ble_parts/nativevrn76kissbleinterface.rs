@@ -12,7 +12,13 @@ impl NativeVrn76KissBleInterface {
             config,
             reconnect_backoff: Duration::from_millis(500),
             max_reconnect_backoff: Duration::from_millis(5_000),
+            runtime_status: Vrn76KissBleStatusHandle::new(),
         }
+    }
+
+    #[must_use]
+    pub fn runtime_status_handle(&self) -> Vrn76KissBleStatusHandle {
+        self.runtime_status.clone()
     }
 
     #[must_use]
@@ -34,7 +40,7 @@ impl NativeVrn76KissBleInterface {
         let iface_stop = context.channel.stop.clone();
         let iface_address = context.channel.address;
         let (rx_channel, mut tx_channel) = context.channel.split();
-        let (label, settings, config, reconnect_backoff, max_reconnect_backoff) = {
+        let (label, settings, config, reconnect_backoff, max_reconnect_backoff, runtime_status) = {
             let guard = context.inner.lock().expect("VR-N76 interface mutex poisoned");
             (
                 guard.label.clone(),
@@ -42,6 +48,7 @@ impl NativeVrn76KissBleInterface {
                 guard.config.clone(),
                 guard.reconnect_backoff,
                 guard.max_reconnect_backoff,
+                guard.runtime_status.clone(),
             )
         };
         let mut active_backoff = reconnect_backoff;
@@ -53,7 +60,9 @@ impl NativeVrn76KissBleInterface {
 
             let backend = NativeVrn76BleBackend::new(settings.clone());
             let mut runtime = Vrn76KissBleRuntime::new(backend, config.clone());
+            runtime_status.update(runtime.status());
             if let Err(err) = runtime.connect_and_configure().await {
+                runtime_status.update(runtime.status());
                 log::warn!(
                     "VR-N76 KISS-over-BLE session setup failed iface={} addr={} err={:?}",
                     label,
@@ -67,6 +76,7 @@ impl NativeVrn76KissBleInterface {
                 continue;
             }
             let status = runtime.status();
+            runtime_status.update(status);
             if status.startup_write_failures > 0 {
                 log::warn!(
                     "VR-N76 KISS-over-BLE startup command write failures iface={} addr={} failures={}",
@@ -107,10 +117,12 @@ impl NativeVrn76KissBleInterface {
                         continue;
                     }
                     if let Err(err) = runtime.send_packet(output.as_slice()).await {
+                        runtime_status.update(runtime.status());
                         log::warn!("VR-N76 packet write failed iface={} err={:?}", label, err);
                         reconnect_needed = true;
                         break;
                     }
+                    runtime_status.update(runtime.status());
                     if first_tx_at.is_none() {
                         first_tx_at = Some(Instant::now());
                     }
@@ -124,6 +136,7 @@ impl NativeVrn76KissBleInterface {
                 {
                     if first_tx.elapsed() >= beacon.interval {
                         if let Err(err) = runtime.send_id_beacon().await {
+                            runtime_status.update(runtime.status());
                             log::warn!(
                                 "VR-N76 station ID write failed iface={} err={:?}",
                                 label,
@@ -132,12 +145,14 @@ impl NativeVrn76KissBleInterface {
                             reconnect_needed = true;
                             break;
                         }
+                        runtime_status.update(runtime.status());
                         first_tx_at = None;
                     }
                 }
 
                 match timeout(Duration::from_millis(100), runtime.poll_next_packet()).await {
                     Ok(Ok(Some(payload))) => {
+                        runtime_status.update(runtime.status());
                         if let Ok(packet) = Packet::deserialize(&mut InputBuffer::new(&payload)) {
                             let _ = rx_channel
                                 .send(RxMessage {
@@ -148,8 +163,11 @@ impl NativeVrn76KissBleInterface {
                                 .await;
                         }
                     }
-                    Ok(Ok(None)) | Err(_) => {}
+                    Ok(Ok(None)) | Err(_) => {
+                        runtime_status.update(runtime.status());
+                    }
                     Ok(Err(err)) => {
+                        runtime_status.update(runtime.status());
                         log::warn!("VR-N76 packet read failed iface={} err={:?}", label, err);
                         reconnect_needed = true;
                         break;
@@ -159,6 +177,7 @@ impl NativeVrn76KissBleInterface {
 
             let mut backend = runtime.into_backend();
             let _ = backend.cleanup().await;
+            runtime_status.update(Vrn76KissBleStatus::default());
             if context.cancel.is_cancelled() || iface_stop.is_cancelled() {
                 break;
             }

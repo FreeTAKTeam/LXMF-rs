@@ -221,6 +221,22 @@ interfaces = [
 }
 
 #[test]
+fn parses_vrn76_kiss_ble_short_reticulum_style_type_alias() {
+    let input = r#"
+interfaces = [
+  { type = "Vrn76KissBleInterface", enabled = true, name = "vrn76-main", device_name_filter = "VR-N76" }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse short Reticulum-style vrn76 config");
+    let iface = &cfg.interfaces[0];
+    assert_eq!(iface.kind, "vrn76_kiss_ble");
+    assert_eq!(iface.peripheral_id.as_deref(), Some("VR-N76"));
+
+    let settings = iface.settings_json().expect("settings");
+    assert_eq!(settings["peripheral_id"], "VR-N76");
+}
+
+#[test]
 fn parses_vrn76_kiss_ble_python_kiss_id_beacon_settings() {
     let input = r#"
 interfaces = [
