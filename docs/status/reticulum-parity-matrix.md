@@ -33,7 +33,7 @@ Workspace paths are used for navigation. Published package names are
 | `RNS/Discovery.py` | `crates/libs/rns-transport`, `crates/apps/reticulumd` | partial | Announce/path discovery plus live AutoInterface discovery and peer runtime. | Public bootstrap/discovery breadth remains narrower than Python. |
 | `RNS/Resolver.py` | `crates/libs/rns-transport` | partial | Resolver helpers, cached lookup behavior, and restored path-table identity lookup from cached announces exist. | Full resolver/discovery surface parity is not established. |
 | `RNS/Cryptography/*` | `crates/libs/rns-core` | done | Required Reticulum primitives used by identities, packets, links, and receipts. | No confirmed parity blocker. |
-| `RNS/Utilities/*` | `crates/apps/rns-tools` | partial | `rnx` is substantial; `rnsd` delegates to `reticulumd`; `rnstatus-rs` reports local daemon/interface and propagation peer status from RPC with JSON and human output, including configured endpoints for host/port, UDP target, Unix local socket, serial/KISS/RNode/Weave/VR-N76 devices, Pipe command, I2P SAM/peer count, and Auto group rows, plus Auto carrier/link-local, TCP/Backbone stream/listener, I2P, RNode/LoRa, RNodeMulti, Weave, and VR-N76 runtime summaries; `rnodeconf-rs` covers serial/TCP, feature-gated BLE, and RNodeMulti parent/vport RNode radio-state query, blink, safe read/display/local-radio commands, and guarded persistent/destructive management commands over daemon RPC. | Full equivalents for retired `rncp`, `rnid`, `rnir`, `rnpath`, `rnpkg`, and `rnprobe` remain absent; `rnodeconf-rs` is not a full Python `rnodeconf` equivalent; `rnstatus-rs` is local status only. |
+| `RNS/Utilities/*` | `crates/apps/rns-tools` | partial | `rnx` is substantial; `rnsd` delegates to `reticulumd`; `rnstatus-rs` reports local daemon/interface and propagation peer status from RPC with JSON and human output, including configured endpoints for host/port, UDP target, Unix local socket, serial/KISS/RNode/Weave/VR-N76 devices, Pipe command, I2P SAM/peer count, and Auto group rows, plus Auto carrier/link-local, TCP/Backbone stream/listener, UDP, serial, KISS/AX.25 KISS, KISS TCP, BLE GATT, I2P, RNode/LoRa, RNodeMulti, Weave, and VR-N76 runtime summaries; `rnodeconf-rs` covers serial/TCP, feature-gated BLE, and RNodeMulti parent/vport RNode radio-state query, blink, safe read/display/local-radio commands, and guarded persistent/destructive management commands over daemon RPC. | Full equivalents for retired `rncp`, `rnid`, `rnir`, `rnpath`, `rnpkg`, and `rnprobe` remain absent; `rnodeconf-rs` is not a full Python `rnodeconf` equivalent; `rnstatus-rs` is local status only. |
 | `CRNS/*` | `crates/apps/rns-tools` | partial | Selected command workflows exist. | The Python command ecosystem is not reproduced. |
 
 ## Interface Detail
@@ -91,11 +91,17 @@ placeholders:
   Python-style `device` broadcast-address defaults via host interface lookup,
   IPv4 broadcast socket sends, and Python `UDPInterface` alias semantics where
   shared `port` can default both listen and forward ports but `listen_port`
-  alone does not imply forwarding.
+  alone does not imply forwarding. Daemon/RPC status now records configured UDP
+  bind/forward role metadata and `rnstatus-rs` renders it for operators.
 - Serial, serial KISS, and AX.25 KISS with Python-compatible AX.25 UI header
   wrapping over the serial KISS runtime. Android-style KISS beacon aliases
   `beacon_interval` and `beacon_data` feed the same ID beacon runtime as
-  Python `id_interval` and `id_callsign`.
+  Python `id_interval` and `id_callsign`. Daemon/RPC status now records
+  configured serial, KISS, AX.25 KISS, KISS TCP, and BLE GATT bearer metadata
+  such as device/endpoint, baud, MTU, KISS timing, AX.25 callsign/SSID, BLE
+  UUIDs, and BLE lifecycle timeouts; `rnstatus-rs` renders those configured
+  status rows. Live byte/error counters for these quiet bearers remain a
+  follow-up.
 - AutoInterface discovery, authenticated peering, peer lifecycle, duplicate
   suppression, multicast announcements, data sockets, transport bridging, and
   live carrier-runtime status reporting, including polling reconciliation for

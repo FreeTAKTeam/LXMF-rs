@@ -281,7 +281,7 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
                 "identity_hash": "0123456789abcdef0123456789abcdef",
                 "running": true,
                 "peer_count": 2,
-                "interface_count": 8,
+                "interface_count": 13,
                 "propagation": {
                     "enabled": true,
                     "selected_node": "cafebabe",
@@ -486,6 +486,113 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
                                 }
                             }
                         }
+                    },
+                    {
+                        "name": "udp-main",
+                        "type": "udp",
+                        "enabled": true,
+                        "settings": {
+                            "_runtime": {
+                                "startup_status": "spawned",
+                                "udp": {
+                                    "status": {
+                                        "link_state": "configured",
+                                        "role": "peer",
+                                        "bind_addr": "127.0.0.1:4242",
+                                        "forward_addr": "192.0.2.1:4242"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "name": "serial-main",
+                        "type": "serial",
+                        "enabled": true,
+                        "settings": {
+                            "_runtime": {
+                                "startup_status": "spawned",
+                                "serial": {
+                                    "status": {
+                                        "link_state": "configured",
+                                        "device": "/dev/ttyUSB0",
+                                        "baud_rate": 19200,
+                                        "data_bits": 7,
+                                        "parity": "even",
+                                        "stop_bits": 2,
+                                        "flow_control": "hardware",
+                                        "mtu": 1024
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "name": "kiss-main",
+                        "type": "ax25_kiss",
+                        "enabled": true,
+                        "settings": {
+                            "_runtime": {
+                                "startup_status": "spawned",
+                                "kiss": {
+                                    "status": {
+                                        "link_state": "configured",
+                                        "bearer": "serial",
+                                        "device": "/dev/ttyKISS0",
+                                        "baud_rate": 1200,
+                                        "mtu": 564,
+                                        "preamble_ms": 350,
+                                        "tx_tail_ms": 20,
+                                        "kiss_flow_control": true,
+                                        "ax25": true,
+                                        "callsign": "N0CALL",
+                                        "ssid": 1,
+                                        "id_callsign": "MYCALL-0",
+                                        "id_interval": 600
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "name": "kiss-wifi",
+                        "type": "kiss_tcp_client",
+                        "enabled": true,
+                        "settings": {
+                            "_runtime": {
+                                "startup_status": "spawned",
+                                "kiss_tcp": {
+                                    "status": {
+                                        "link_state": "configured",
+                                        "bearer": "tcp",
+                                        "endpoint": "127.0.0.1:8001",
+                                        "kiss_flow_control": false,
+                                        "ax25": false
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "name": "ble-main",
+                        "type": "ble_gatt",
+                        "enabled": true,
+                        "settings": {
+                            "_runtime": {
+                                "startup_status": "spawned",
+                                "ble_gatt": {
+                                    "status": {
+                                        "link_state": "configured",
+                                        "adapter": "Bluetooth",
+                                        "peripheral_id": "AA:BB:CC:DD:EE:FF",
+                                        "service_uuid": "12345678-1234-1234-1234-1234567890ab",
+                                        "mtu": 128,
+                                        "scan_timeout_ms": 10000,
+                                        "connect_timeout_ms": 3000
+                                    }
+                                }
+                            }
+                        }
                     }
                 ]
             })),
@@ -566,6 +673,35 @@ fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
     assert!(stdout.contains("pending_payloads=2"), "stdout: {stdout}");
     assert!(stdout.contains("pending_writes=3"), "stdout: {stdout}");
     assert!(stdout.contains("pending_packets=4"), "stdout: {stdout}");
+    assert!(stdout.contains("udp-main"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("udp state=configured role=peer bind=127.0.0.1:4242"),
+        "stdout: {stdout}"
+    );
+    assert!(stdout.contains("forward=192.0.2.1:4242"), "stdout: {stdout}");
+    assert!(stdout.contains("serial-main"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("serial state=configured device=/dev/ttyUSB0 baud=19200"),
+        "stdout: {stdout}"
+    );
+    assert!(stdout.contains("flow=hardware"), "stdout: {stdout}");
+    assert!(stdout.contains("kiss-main"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("kiss state=configured bearer=serial device=/dev/ttyKISS0"),
+        "stdout: {stdout}"
+    );
+    assert!(stdout.contains("ax25=true"), "stdout: {stdout}");
+    assert!(stdout.contains("callsign=N0CALL"), "stdout: {stdout}");
+    assert!(stdout.contains("kiss-wifi"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("kiss state=configured bearer=tcp endpoint=127.0.0.1:8001"),
+        "stdout: {stdout}"
+    );
+    assert!(stdout.contains("ble-main"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("ble_gatt state=configured peripheral=AA:BB:CC:DD:EE:FF"),
+        "stdout: {stdout}"
+    );
     assert!(stdout.contains("Propagation: enabled=true"), "stdout: {stdout}");
     assert!(stdout.contains("peers=2"), "stdout: {stdout}");
     assert!(stdout.contains("selected=cafebabe"), "stdout: {stdout}");

@@ -178,11 +178,17 @@ The project is best described by capability level:
 - Feature-gated VR-N76 KISS-over-BLE now refreshes transport-side runtime
   status into daemon/RPC `_runtime.vrn76.status`; `rnstatus-rs` summarizes
   connected, subscribed, ready, startup-write failure, and queue counters.
+- UDP, serial, KISS/AX.25 KISS, KISS TCP, and BLE GATT now expose configured
+  bearer status in daemon/RPC metadata and `rnstatus-rs`, including
+  bind/forward role, device/endpoint, baud, KISS timing, AX.25 callsign/SSID,
+  BLE UUIDs, and BLE lifecycle timeout fields. Live byte/error counters for
+  these quieter bearers remain a follow-up.
 - `rnstatus-rs` now provides a local daemon status utility over the existing
   RPC status surface, including JSON output plus human interface endpoint
   details across configured interface families, runtime startup state, Auto
-  carrier/link-local state, TCP/Backbone listener state, plus I2P, RNodeMulti,
-  Weave, and VR-N76 status rows and propagation peer state.
+  carrier/link-local state, TCP/Backbone listener state, plus UDP, serial,
+  KISS, BLE GATT, I2P, RNodeMulti, Weave, and VR-N76 status rows and
+  propagation peer state.
 
 ### LXMF
 

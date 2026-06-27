@@ -283,6 +283,33 @@ fn interface_runtime(interface: &Value) -> String {
     {
         parts.push(summary);
     }
+    if let Some(summary) =
+        runtime.get("udp").and_then(|value| value.get("status")).and_then(udp_runtime_summary)
+    {
+        parts.push(summary);
+    }
+    if let Some(summary) =
+        runtime.get("serial").and_then(|value| value.get("status")).and_then(serial_runtime_summary)
+    {
+        parts.push(summary);
+    }
+    if let Some(summary) =
+        runtime.get("kiss").and_then(|value| value.get("status")).and_then(kiss_runtime_summary)
+    {
+        parts.push(summary);
+    }
+    if let Some(summary) =
+        runtime.get("kiss_tcp").and_then(|value| value.get("status")).and_then(kiss_runtime_summary)
+    {
+        parts.push(summary);
+    }
+    if let Some(summary) = runtime
+        .get("ble_gatt")
+        .and_then(|value| value.get("status"))
+        .and_then(ble_gatt_runtime_summary)
+    {
+        parts.push(summary);
+    }
     parts.join("; ")
 }
 
@@ -467,6 +494,79 @@ fn vrn76_runtime_summary(status: &Value) -> Option<String> {
     Some(summary)
 }
 
+fn udp_runtime_summary(status: &Value) -> Option<String> {
+    if !status.is_object() {
+        return None;
+    }
+    let mut summary = format!(
+        "udp state={} role={} bind={}",
+        value_str(status, "link_state"),
+        value_str(status, "role"),
+        value_str(status, "bind_addr")
+    );
+    append_optional_str(&mut summary, "forward", status.get("forward_addr"));
+    Some(summary)
+}
+
+fn serial_runtime_summary(status: &Value) -> Option<String> {
+    if !status.is_object() {
+        return None;
+    }
+    let mut summary = format!(
+        "serial state={} device={} baud={}",
+        value_str(status, "link_state"),
+        value_str(status, "device"),
+        value_u64(status, "baud_rate")
+    );
+    append_optional_u64(&mut summary, "data_bits", status.get("data_bits"));
+    append_optional_str(&mut summary, "parity", status.get("parity"));
+    append_optional_u64(&mut summary, "stop_bits", status.get("stop_bits"));
+    append_optional_str(&mut summary, "flow", status.get("flow_control"));
+    append_optional_u64(&mut summary, "mtu", status.get("mtu"));
+    Some(summary)
+}
+
+fn kiss_runtime_summary(status: &Value) -> Option<String> {
+    if !status.is_object() {
+        return None;
+    }
+    let mut summary = format!(
+        "kiss state={} bearer={}",
+        value_str(status, "link_state"),
+        value_str(status, "bearer")
+    );
+    append_optional_str(&mut summary, "device", status.get("device"));
+    append_optional_str(&mut summary, "endpoint", status.get("endpoint"));
+    append_optional_u64(&mut summary, "baud", status.get("baud_rate"));
+    append_optional_u64(&mut summary, "mtu", status.get("mtu"));
+    append_optional_u64(&mut summary, "preamble", status.get("preamble_ms"));
+    append_optional_u64(&mut summary, "txtail", status.get("tx_tail_ms"));
+    append_optional_bool(&mut summary, "flow", status.get("kiss_flow_control"));
+    append_optional_bool(&mut summary, "ax25", status.get("ax25"));
+    append_optional_str(&mut summary, "callsign", status.get("callsign"));
+    append_optional_u64(&mut summary, "ssid", status.get("ssid"));
+    append_optional_str(&mut summary, "id", status.get("id_callsign"));
+    append_optional_u64(&mut summary, "id_interval", status.get("id_interval"));
+    Some(summary)
+}
+
+fn ble_gatt_runtime_summary(status: &Value) -> Option<String> {
+    if !status.is_object() {
+        return None;
+    }
+    let mut summary = format!(
+        "ble_gatt state={} peripheral={}",
+        value_str(status, "link_state"),
+        value_str(status, "peripheral_id")
+    );
+    append_optional_str(&mut summary, "adapter", status.get("adapter"));
+    append_optional_str(&mut summary, "service", status.get("service_uuid"));
+    append_optional_u64(&mut summary, "mtu", status.get("mtu"));
+    append_optional_u64(&mut summary, "scan_ms", status.get("scan_timeout_ms"));
+    append_optional_u64(&mut summary, "connect_ms", status.get("connect_timeout_ms"));
+    Some(summary)
+}
+
 fn lora_rnode_runtime_summary(status: &Value) -> Option<String> {
     if !status.is_object() {
         return None;
@@ -533,6 +633,12 @@ fn append_optional_u64(summary: &mut String, label: &str, value: Option<&Value>)
     }
 }
 
+fn append_optional_bool(summary: &mut String, label: &str, value: Option<&Value>) {
+    if let Some(value) = value.and_then(Value::as_bool) {
+        summary.push_str(&format!(" {label}={value}"));
+    }
+}
+
 fn append_optional_str(summary: &mut String, label: &str, value: Option<&Value>) {
     if let Some(value) = value.and_then(Value::as_str).filter(|value| !value.is_empty()) {
         summary.push_str(&format!(" {label}={value}"));
@@ -583,7 +689,7 @@ mod tests {
         let status = json!({
             "identity_hash": "abc",
             "running": true,
-            "interface_count": 8,
+            "interface_count": 14,
             "interfaces": [
                 {
                     "name": "auto-main",
@@ -807,6 +913,113 @@ mod tests {
                     }
                 },
                 {
+                    "name": "udp-main",
+                    "type": "udp",
+                    "enabled": true,
+                    "settings": {
+                        "_runtime": {
+                            "startup_status": "spawned",
+                            "udp": {
+                                "status": {
+                                    "link_state": "configured",
+                                    "role": "peer",
+                                    "bind_addr": "127.0.0.1:4242",
+                                    "forward_addr": "192.0.2.1:4242"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "serial-main",
+                    "type": "serial",
+                    "enabled": true,
+                    "settings": {
+                        "_runtime": {
+                            "startup_status": "spawned",
+                            "serial": {
+                                "status": {
+                                    "link_state": "configured",
+                                    "device": "/dev/ttyUSB0",
+                                    "baud_rate": 19200,
+                                    "data_bits": 7,
+                                    "parity": "even",
+                                    "stop_bits": 2,
+                                    "flow_control": "hardware",
+                                    "mtu": 1024
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "kiss-main",
+                    "type": "ax25_kiss",
+                    "enabled": true,
+                    "settings": {
+                        "_runtime": {
+                            "startup_status": "spawned",
+                            "kiss": {
+                                "status": {
+                                    "link_state": "configured",
+                                    "bearer": "serial",
+                                    "device": "/dev/ttyKISS0",
+                                    "baud_rate": 1200,
+                                    "mtu": 564,
+                                    "preamble_ms": 350,
+                                    "tx_tail_ms": 20,
+                                    "kiss_flow_control": true,
+                                    "ax25": true,
+                                    "callsign": "N0CALL",
+                                    "ssid": 1,
+                                    "id_callsign": "MYCALL-0",
+                                    "id_interval": 600
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "kiss-wifi",
+                    "type": "kiss_tcp_client",
+                    "enabled": true,
+                    "settings": {
+                        "_runtime": {
+                            "startup_status": "spawned",
+                            "kiss_tcp": {
+                                "status": {
+                                    "link_state": "configured",
+                                    "bearer": "tcp",
+                                    "endpoint": "127.0.0.1:8001",
+                                    "kiss_flow_control": false,
+                                    "ax25": false
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "ble-main",
+                    "type": "ble_gatt",
+                    "enabled": true,
+                    "settings": {
+                        "_runtime": {
+                            "startup_status": "spawned",
+                            "ble_gatt": {
+                                "status": {
+                                    "link_state": "configured",
+                                    "adapter": "Bluetooth",
+                                    "peripheral_id": "AA:BB:CC:DD:EE:FF",
+                                    "service_uuid": "12345678-1234-1234-1234-1234567890ab",
+                                    "mtu": 128,
+                                    "scan_timeout_ms": 10000,
+                                    "connect_timeout_ms": 3000
+                                }
+                            }
+                        }
+                    }
+                },
+                {
                     "name": "pipe-main",
                     "type": "pipe",
                     "enabled": true,
@@ -873,6 +1086,17 @@ mod tests {
         assert!(output.contains("pending_payloads=2"));
         assert!(output.contains("pending_writes=3"));
         assert!(output.contains("pending_packets=4"));
+        assert!(output.contains("udp state=configured role=peer bind=127.0.0.1:4242"));
+        assert!(output.contains("forward=192.0.2.1:4242"));
+        assert!(output.contains("serial state=configured device=/dev/ttyUSB0 baud=19200"));
+        assert!(output.contains("data_bits=7"));
+        assert!(output.contains("flow=hardware"));
+        assert!(output.contains("kiss state=configured bearer=serial device=/dev/ttyKISS0"));
+        assert!(output.contains("ax25=true"));
+        assert!(output.contains("callsign=N0CALL"));
+        assert!(output.contains("kiss state=configured bearer=tcp endpoint=127.0.0.1:8001"));
+        assert!(output.contains("ble_gatt state=configured peripheral=AA:BB:CC:DD:EE:FF"));
+        assert!(output.contains("service=12345678-1234-1234-1234-1234567890ab"));
         assert!(output.contains("pipe state=respawning open=false respawns=2"));
         assert!(output.contains("err=spawn cat failed"));
     }

@@ -1651,7 +1651,7 @@ mod tests {
     use super::{
         apply_interface_runtime_config, build_tcp_client_adapter, mark_ble_spawn_success,
         startup_i2p, startup_kiss, startup_kiss_tcp_client, startup_pipe, startup_rnode_multi,
-        startup_configured_interfaces, startup_udp, startup_weave,
+        startup_configured_interfaces, startup_serial, startup_udp, startup_weave,
     };
     use crate::Args;
     use crate::bridge_rnode_management::DaemonRNodeManagementHandle;
@@ -1746,6 +1746,72 @@ interfaces = [
             runtime["startup_error"].as_str(),
             Some("unsupported interface kind 'FutureReticulumInterface'")
         );
+    }
+
+    #[tokio::test]
+    async fn startup_configured_interfaces_routes_python_style_aliases_to_real_branches() {
+        let config = DaemonConfig::from_toml(
+            r#"
+interfaces = [
+  { type = "UDPInterface", enabled = true, name = "udp-alias", listen_ip = "127.0.0.1", listen_port = 0, forward_ip = "127.0.0.1", forward_port = 4242 },
+  { type = "SerialInterface", enabled = true, name = "serial-alias", port = "/dev/does-not-exist-serial-alias", speed = 9600 },
+  { type = "KISSInterface", enabled = true, name = "kiss-alias", port = "/dev/does-not-exist-kiss-alias", speed = 1200 },
+  { type = "TCPClientInterface", enabled = true, name = "tcp-client-alias", target_host = "127.0.0.1", target_port = 65535 },
+  { type = "BackboneClientInterface", enabled = true, name = "backbone-client-alias", target_host = "127.0.0.1", target_port = 65535 },
+  { type = "LocalServerInterface", enabled = true, name = "local-server-alias", listen_ip = "127.0.0.1", listen_port = 0 },
+  { type = "Vrn76KissBluetoothInterface", enabled = true, name = "vrn76-alias", device_name_filter = "VR-N76" }
+]
+"#,
+        )
+        .expect("python-style aliases should parse");
+        let identity = rns_core::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let transport_identity = to_transport_private_identity(&identity);
+        let transport = Transport::new(TransportConfig::new("test", &transport_identity, true));
+        let manager = transport.iface_manager();
+        let mut records = config
+            .interfaces
+            .iter()
+            .map(|iface| InterfaceRecord {
+                kind: iface.kind.clone(),
+                enabled: iface.enabled(),
+                host: iface.host.clone(),
+                port: iface.port,
+                name: iface.name.clone(),
+                settings: iface.settings_json(),
+            })
+            .collect::<Vec<_>>();
+
+        let batch = startup_configured_interfaces(
+            &test_args(),
+            &config,
+            &super::super::TcpServerSelection::default(),
+            &transport,
+            &manager,
+            None,
+            &mut records,
+            std::path::Path::new("."),
+            None,
+            None,
+        )
+        .await;
+
+        assert!(
+            batch
+                .startup_failures
+                .iter()
+                .all(|failure| !failure.error.contains("unsupported interface kind")),
+            "aliases should route to real startup branches, failures={:?}",
+            batch.startup_failures
+        );
+        assert!(records.iter().all(|record| {
+            record
+                .settings
+                .as_ref()
+                .and_then(|settings| settings.get("_runtime"))
+                .and_then(|runtime| runtime.get("startup_error"))
+                .and_then(serde_json::Value::as_str)
+                .is_none_or(|error| !error.contains("unsupported interface kind"))
+        }));
     }
 
     #[test]
@@ -1966,6 +2032,70 @@ interfaces = [
         let runtime_iface =
             AddressHash::new_from_hex_string(runtime_iface.trim_matches('/')).expect("iface hash");
         assert_eq!(manager.lock().await.role(&runtime_iface), Some(IfaceRole::Multicast));
+        let udp_status = &record
+            .settings
+            .as_ref()
+            .expect("settings")["_runtime"]["udp"]["status"];
+        assert_eq!(udp_status["link_state"].as_str(), Some("configured"));
+        assert_eq!(udp_status["role"].as_str(), Some("peer"));
+        assert!(udp_status["bind_addr"].as_str().expect("bind").ends_with(":0"));
+        assert_eq!(udp_status["forward_addr"].as_str(), Some("239.255.0.1:4242"));
+        assert_eq!(udp_status["iface"].as_str(), Some(runtime_iface.to_string().as_str()));
+    }
+
+    #[tokio::test]
+    async fn serial_startup_embeds_configured_runtime_status_without_strict_preflight() {
+        let cfg = reticulum_daemon::config::DaemonConfig::from_toml(
+            r#"
+interfaces = [
+  { type = "SerialInterface", enabled = true, name = "serial-main", port = "/dev/does-not-exist-serial", speed = 19200, databits = 7, parity = "even", stopbits = 2, flow_control = "hardware", mtu = 1024 }
+]
+"#,
+        )
+        .expect("parse serial config");
+        let args = test_args();
+        let iface = &cfg.interfaces[0];
+        let identity = rns_core::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let transport_identity = to_transport_private_identity(&identity);
+        let transport = Transport::new(TransportConfig::new("test", &transport_identity, true));
+        let manager = transport.iface_manager();
+        let mut record = InterfaceRecord {
+            kind: iface.kind.clone(),
+            enabled: true,
+            host: None,
+            port: None,
+            name: iface.name.clone(),
+            settings: iface.settings_json(),
+        };
+        let mut startup_failures = Vec::new();
+
+        let started =
+            startup_serial(&args, iface, "serial-main", &manager, &mut record, &mut startup_failures)
+                .await;
+
+        assert!(started);
+        assert!(startup_failures.is_empty());
+        let runtime = record
+            .settings
+            .as_ref()
+            .and_then(|settings| settings.get("_runtime"))
+            .expect("runtime settings");
+        assert_eq!(runtime["startup_status"].as_str(), Some("spawned"));
+        let runtime_iface =
+            runtime["iface"].as_str().expect("runtime iface").trim_matches('/').to_string();
+        let runtime_iface =
+            AddressHash::new_from_hex_string(&runtime_iface).expect("iface hash");
+        assert_eq!(manager.lock().await.role(&runtime_iface), Some(IfaceRole::Unicast));
+        let serial_status = &runtime["serial"]["status"];
+        assert_eq!(serial_status["link_state"].as_str(), Some("configured"));
+        assert_eq!(serial_status["device"].as_str(), Some("/dev/does-not-exist-serial"));
+        assert_eq!(serial_status["baud_rate"].as_u64(), Some(19_200));
+        assert_eq!(serial_status["data_bits"].as_u64(), Some(7));
+        assert_eq!(serial_status["parity"].as_str(), Some("even"));
+        assert_eq!(serial_status["stop_bits"].as_u64(), Some(2));
+        assert_eq!(serial_status["flow_control"].as_str(), Some("hardware"));
+        assert_eq!(serial_status["mtu"].as_u64(), Some(1024));
+        assert_eq!(serial_status["iface"].as_str(), Some(runtime_iface.to_string().as_str()));
     }
 
     #[tokio::test]
@@ -2017,6 +2147,15 @@ interfaces = [
         let runtime_iface =
             AddressHash::new_from_hex_string(&runtime_iface).expect("iface hash");
         assert_eq!(manager.lock().await.role(&runtime_iface), Some(IfaceRole::Unicast));
+        let kiss_status = &runtime["kiss"]["status"];
+        assert_eq!(kiss_status["link_state"].as_str(), Some("configured"));
+        assert_eq!(kiss_status["bearer"].as_str(), Some("serial"));
+        assert_eq!(kiss_status["device"].as_str(), Some("/dev/does-not-exist-ax25"));
+        assert_eq!(kiss_status["baud_rate"].as_u64(), Some(1200));
+        assert_eq!(kiss_status["ax25"].as_bool(), Some(true));
+        assert_eq!(kiss_status["callsign"].as_str(), Some("N0CALL"));
+        assert_eq!(kiss_status["ssid"].as_u64(), Some(1));
+        assert_eq!(kiss_status["iface"].as_str(), Some(runtime_iface.to_string().as_str()));
     }
 
     #[tokio::test]
@@ -2068,6 +2207,13 @@ interfaces = [
         let runtime_iface =
             AddressHash::new_from_hex_string(&runtime_iface).expect("iface hash");
         assert_eq!(manager.lock().await.role(&runtime_iface), Some(IfaceRole::Unicast));
+        let kiss_status = &runtime["kiss_tcp"]["status"];
+        assert_eq!(kiss_status["link_state"].as_str(), Some("configured"));
+        assert_eq!(kiss_status["bearer"].as_str(), Some("tcp"));
+        assert_eq!(kiss_status["endpoint"].as_str(), Some("127.0.0.1:65535"));
+        assert_eq!(kiss_status["kiss_flow_control"].as_bool(), Some(true));
+        assert_eq!(kiss_status["ax25"].as_bool(), Some(false));
+        assert_eq!(kiss_status["iface"].as_str(), Some(runtime_iface.to_string().as_str()));
     }
 
     #[tokio::test]
@@ -2112,6 +2258,16 @@ interfaces = [
             AddressHash::new_from_hex_string(&runtime_iface).expect("iface hash");
         let manager = manager.lock().await;
         assert_eq!(runtime_iface, ble_iface);
+        let ble_status = &runtime["ble_gatt"]["status"];
+        assert_eq!(ble_status["link_state"].as_str(), Some("configured"));
+        assert_eq!(ble_status["peripheral_id"].as_str(), Some("AA:BB:CC:DD:EE:FF"));
+        assert_eq!(
+            ble_status["service_uuid"].as_str(),
+            Some("12345678-1234-1234-1234-1234567890ab")
+        );
+        assert_eq!(ble_status["write_char_uuid"].as_str(), Some("2A37"));
+        assert_eq!(ble_status["notify_char_uuid"].as_str(), Some("2A38"));
+        assert_eq!(ble_status["iface"].as_str(), Some(runtime_iface.to_string().as_str()));
         assert_eq!(manager.role(&runtime_iface), Some(IfaceRole::Unicast));
         assert_eq!(manager.mode(&runtime_iface), Some(InterfaceMode::AccessPoint));
     }

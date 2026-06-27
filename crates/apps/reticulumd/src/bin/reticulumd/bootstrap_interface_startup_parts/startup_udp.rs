@@ -62,6 +62,7 @@ async fn startup_udp(
     );
     let runtime_iface = udp_iface.to_string();
     mark_interface_startup_status(record, "spawned", None, Some(runtime_iface.as_str()));
+    mark_udp_runtime_status(record, bind_addr.as_str(), forward_addr.as_deref(), udp_iface);
     true
 }
 
@@ -214,6 +215,7 @@ async fn startup_serial(
     );
     let runtime_iface = serial_iface.to_string();
     mark_interface_startup_status(record, "spawned", None, Some(runtime_iface.as_str()));
+    mark_serial_runtime_status(record, iface, serial_iface);
     true
 }
 
@@ -277,6 +279,7 @@ async fn startup_kiss(
     );
     let runtime_iface = kiss_iface.to_string();
     mark_interface_startup_status(record, "spawned", None, Some(runtime_iface.as_str()));
+    mark_kiss_runtime_status(record, iface, kiss_iface);
     true
 }
 
@@ -337,6 +340,7 @@ async fn startup_kiss_tcp_client(
     );
     let runtime_iface = kiss_iface.to_string();
     mark_interface_startup_status(record, "spawned", None, Some(runtime_iface.as_str()));
+    mark_kiss_tcp_runtime_status(record, iface, kiss_iface);
     true
 }
 
@@ -386,4 +390,138 @@ async fn mark_ble_spawn_success(
     let runtime_iface = ble_iface.to_string();
     mark_interface_startup_status(record, "spawned", None, Some(runtime_iface.as_str()));
     mark_interface_runtime_fields(record, "running", 0);
+    mark_ble_gatt_runtime_status(record, iface, ble_iface);
+}
+
+fn mark_udp_runtime_status(
+    record: &mut InterfaceRecord,
+    bind_addr: &str,
+    forward_addr: Option<&str>,
+    runtime_iface: AddressHash,
+) {
+    with_interface_runtime_metadata(record, |runtime| {
+        runtime.insert(
+            "udp".to_string(),
+            serde_json::json!({
+                "status": {
+                    "link_state": "configured",
+                    "role": if forward_addr.is_some() { "peer" } else { "listener" },
+                    "bind_addr": bind_addr,
+                    "forward_addr": forward_addr,
+                    "iface": runtime_iface.to_string(),
+                }
+            }),
+        );
+    });
+}
+
+fn mark_serial_runtime_status(
+    record: &mut InterfaceRecord,
+    iface: &InterfaceConfig,
+    runtime_iface: AddressHash,
+) {
+    with_interface_runtime_metadata(record, |runtime| {
+        runtime.insert(
+            "serial".to_string(),
+            serde_json::json!({
+                "status": {
+                    "link_state": "configured",
+                    "device": iface.device.as_deref(),
+                    "baud_rate": iface.baud_rate,
+                    "data_bits": iface.data_bits,
+                    "parity": iface.parity.as_deref(),
+                    "stop_bits": iface.stop_bits,
+                    "flow_control": iface.flow_control_name(),
+                    "mtu": iface.mtu,
+                    "iface": runtime_iface.to_string(),
+                }
+            }),
+        );
+    });
+}
+
+fn mark_kiss_runtime_status(
+    record: &mut InterfaceRecord,
+    iface: &InterfaceConfig,
+    runtime_iface: AddressHash,
+) {
+    with_interface_runtime_metadata(record, |runtime| {
+        runtime.insert(
+            "kiss".to_string(),
+            serde_json::json!({
+                "status": kiss_runtime_status_json(iface, runtime_iface, None),
+            }),
+        );
+    });
+}
+
+fn mark_kiss_tcp_runtime_status(
+    record: &mut InterfaceRecord,
+    iface: &InterfaceConfig,
+    runtime_iface: AddressHash,
+) {
+    with_interface_runtime_metadata(record, |runtime| {
+        runtime.insert(
+            "kiss_tcp".to_string(),
+            serde_json::json!({
+                "status": kiss_runtime_status_json(iface, runtime_iface, Some(format!(
+                    "{}:{}",
+                    iface.host.as_deref().unwrap_or("<unset>"),
+                    iface.port.unwrap_or_default()
+                ))),
+            }),
+        );
+    });
+}
+
+fn kiss_runtime_status_json(
+    iface: &InterfaceConfig,
+    runtime_iface: AddressHash,
+    endpoint: Option<String>,
+) -> serde_json::Value {
+    serde_json::json!({
+        "link_state": "configured",
+        "bearer": if endpoint.is_some() { "tcp" } else { "serial" },
+        "device": iface.device.as_deref(),
+        "endpoint": endpoint,
+        "baud_rate": iface.baud_rate,
+        "mtu": iface.mtu,
+        "preamble_ms": iface.preamble_ms,
+        "tx_tail_ms": iface.tx_tail_ms,
+        "persistence": iface.persistence,
+        "slot_time_ms": iface.slot_time_ms,
+        "kiss_flow_control": iface.kiss_flow_control,
+        "ax25": iface.kind == "ax25_kiss",
+        "callsign": iface.callsign.as_deref(),
+        "ssid": iface.ssid,
+        "id_callsign": iface.id_callsign.as_deref(),
+        "id_interval": iface.id_interval,
+        "iface": runtime_iface.to_string(),
+    })
+}
+
+fn mark_ble_gatt_runtime_status(
+    record: &mut InterfaceRecord,
+    iface: &InterfaceConfig,
+    runtime_iface: AddressHash,
+) {
+    with_interface_runtime_metadata(record, |runtime| {
+        runtime.insert(
+            "ble_gatt".to_string(),
+            serde_json::json!({
+                "status": {
+                    "link_state": "configured",
+                    "adapter": iface.adapter.as_deref(),
+                    "peripheral_id": iface.peripheral_id.as_deref(),
+                    "service_uuid": iface.service_uuid.as_deref(),
+                    "write_char_uuid": iface.write_char_uuid.as_deref(),
+                    "notify_char_uuid": iface.notify_char_uuid.as_deref(),
+                    "mtu": iface.mtu,
+                    "scan_timeout_ms": iface.scan_timeout_ms,
+                    "connect_timeout_ms": iface.ble_connect_timeout_ms.or(iface.connect_timeout_ms),
+                    "iface": runtime_iface.to_string(),
+                }
+            }),
+        );
+    });
 }
