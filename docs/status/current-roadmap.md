@@ -84,7 +84,9 @@ The project is best described by capability level:
   sends, shared-`port` forward fallback semantics, and a software loopback
   smoke for strict startup, bind status, and receive-side decode telemetry,
   serial, KISS, AX.25
-  KISS with Android-style beacon alias compatibility, Python
+  KISS with Android-style beacon alias compatibility plus a software fake-PTY
+  smoke for serial KISS/AX.25 KISS startup frames, READY handling, and
+  `rnstatus-rs` reporting, Python
   `TCPClientInterface` `kiss_framing = true` parse-to-bootstrap/status
   coverage as `kiss_tcp_client`, AutoInterface with
   Python-style multicast address type fallback, polling adopted-address
@@ -238,7 +240,11 @@ The project is best described by capability level:
   network services. Serial now refreshes live open/reconnect, HDLC frame, packet,
   byte, EOF, queue, decode, serialize, read, and write-error counters.
   KISS/AX.25 KISS and KISS TCP now refresh live packet, data-frame,
-  command-frame, byte, flow-control, queue, AX.25 drop, and error counters.
+  command-frame, byte, flow-control, queue, AX.25 drop, and error counters. A
+  software fake-PTY smoke now proves Python-style `KISSInterface` and
+  `AX25KISSInterface` alias parsing, strict daemon startup, KISS startup command
+  emission, fake READY handling, refreshed `_runtime.kiss.status`, and
+  `rnstatus-rs` JSON/human output without attached modem hardware.
   BLE GATT now refreshes live connection/subscription, packet, HDLC frame,
   notification byte, payload byte, write-chunk, reconnect, startup phase,
   queue, decode, serialize, read/write, buffer-drop, cleanup, and last-error

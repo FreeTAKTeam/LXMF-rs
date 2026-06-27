@@ -229,9 +229,48 @@ Runtime status visibility:
 - `list_interfaces` includes `_runtime.startup_status = "spawned"`.
 - `list_interfaces` includes `_runtime.iface` with the active interface hash.
 
+## Software Fake-PTY Smoke
+
+The software fake-PTY smoke validates the serial KISS daemon path without
+attached TNC or modem hardware:
+
+```bash
+./tools/scripts/kiss-fake-pty-smoke.sh
+```
+
+The script starts two raw pseudo-terminal fake peers, keeps their PTY slave
+devices available across strict-startup preflight and runtime serial opens, and
+starts `reticulumd` with Python-style `KISSInterface` and `AX25KISSInterface`
+configs. The fake peers decode KISS frames, record the startup command
+sequence, and send a `CMD_READY` frame back to the daemon. A passing run
+requires:
+
+- `_runtime.startup_status = "spawned"`
+- `_runtime.kiss.status.link_state = "running"`
+- `_runtime.kiss.status.bearer = "serial"`
+- `_runtime.kiss.status.interface_ready = true`
+- `_runtime.kiss.status.init_frames_tx >= 5`
+- `_runtime.kiss.status.command_frames_rx >= 1`
+- `_runtime.kiss.status.ready_frames_rx >= 1`
+- `_runtime.kiss.status.bytes_tx` to cover the startup command frames
+- `_runtime.kiss.status.bytes_rx` to cover the fake READY response
+- the AX.25 row to report `_runtime.kiss.status.ax25 = true`
+- human `rnstatus-rs` output to summarize the running serial KISS rows
+- the fake peer recording all KISS startup command frames:
+  `CMD_TXDELAY`, `CMD_TXTAIL`, `CMD_P`, `CMD_SLOTTIME`, and `CMD_READY`
+
+The smoke writes structured evidence under `target/kiss-fake-pty-smoke/`,
+including `report.json`, fake-peer frame state, daemon logs, and `rnstatus-rs`
+JSON/human output. This proves Python-style serial KISS and AX.25 KISS config,
+strict daemon startup, KISS startup frame emission, READY command handling, and
+refreshed operator status through the real daemon path. It is local-only
+evidence, not a substitute for real TNC or modem hardware evidence.
+
 ## Verification Commands
 
 ```bash
+cargo test -p reticulumd --test kiss_fake_pty_smoke_contract
+./tools/scripts/kiss-fake-pty-smoke.sh
 cargo test -p reticulum-rs-transport --test kiss_codec
 cargo test -p reticulum-rs-transport ax25_payload
 cargo test -p reticulumd --test config kiss

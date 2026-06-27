@@ -119,7 +119,11 @@ placeholders:
   Python `id_interval` and `id_callsign`. KISS/AX.25 KISS and KISS TCP now
   refresh live daemon/RPC status with packet, data-frame, command-frame, byte,
   flow-control, queue, AX.25 drop, and error counters, and `rnstatus-rs`
-  renders those counters alongside configured bearer metadata. Python
+  renders those counters alongside configured bearer metadata. A software
+  fake-PTY smoke now proves Python-style serial `KISSInterface` and
+  `AX25KISSInterface` configs, strict startup, KISS startup command emission,
+  fake READY handling, and refreshed daemon/operator status without attached
+  modem hardware. Python
   `TCPClientInterface` configs with `kiss_framing = true` now have focused daemon
   parse-to-bootstrap/status coverage as `kiss_tcp_client` with
   `_runtime.kiss_tcp.status`. BLE GATT now
