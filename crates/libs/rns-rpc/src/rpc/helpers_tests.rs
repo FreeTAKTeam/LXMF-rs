@@ -176,6 +176,31 @@ fn treats_nil_delivery_stamp_cost_as_absent_not_malformed() {
 }
 
 #[test]
+fn announce_costs_keep_valid_siblings_when_one_slot_is_bad() {
+    // entries[5] holds the cost array [stamp, flexibility, peering]; a bad stamp slot must
+    // not erase the valid flexibility/peering costs (the caller collapses Err to all-None).
+    let costs = rmpv::Value::Array(vec![
+        rmpv::Value::String("not-a-number".into()),
+        rmpv::Value::from(7),
+        rmpv::Value::from(9),
+    ]);
+    let announce = rmp_serde::to_vec_named(&rmpv::Value::Array(vec![
+        rmpv::Value::Nil,
+        rmpv::Value::Nil,
+        rmpv::Value::Nil,
+        rmpv::Value::Nil,
+        rmpv::Value::Nil,
+        costs,
+    ]))
+    .expect("encode announce");
+    assert_eq!(
+        parse_announce_costs_from_app_data_hex(Some(hex::encode(announce).as_str()))
+            .expect("structural decode succeeds"),
+        (None, Some(7), Some(9))
+    );
+}
+
+#[test]
 fn parse_fuzzy_u32_rejects_negative_integer() {
     // A negative advertised cost must be rejected, not clamped to 0 (which would be stored
     // as a real zero cost and confuse None-vs-Some(0) policy checks).

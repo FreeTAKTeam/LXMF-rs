@@ -420,9 +420,9 @@ fn parse_announce_costs_from_app_data_hex(
     };
     if let MsgPackValue::Array(values) = costs {
         return Ok((
-            values.first().map(parse_fuzzy_u32).transpose()?,
-            values.get(1).map(parse_fuzzy_u32).transpose()?,
-            values.get(2).map(parse_fuzzy_u32).transpose()?,
+            parse_announce_cost_slot(values.first(), "stamp"),
+            parse_announce_cost_slot(values.get(1), "stamp flexibility"),
+            parse_announce_cost_slot(values.get(2), "peering"),
         ));
     }
     let MsgPackValue::Map(entries) = costs else {
@@ -436,16 +436,33 @@ fn parse_announce_costs_from_app_data_hex(
             continue;
         };
         if key == "stamp_cost" {
-            stamp_cost = Some(parse_fuzzy_u32(value)?);
+            stamp_cost = parse_announce_cost_slot(Some(value), "stamp");
         }
         if key == "stamp_cost_flexibility" {
-            stamp_cost_flexibility = Some(parse_fuzzy_u32(value)?);
+            stamp_cost_flexibility = parse_announce_cost_slot(Some(value), "stamp flexibility");
         }
         if key == "peering_cost" {
-            peering_cost = Some(parse_fuzzy_u32(value)?);
+            peering_cost = parse_announce_cost_slot(Some(value), "peering");
         }
     }
     Ok((stamp_cost, stamp_cost_flexibility, peering_cost))
+}
+
+fn parse_announce_cost_slot(slot: Option<&MsgPackValue>, label: &str) -> Option<u32> {
+    let raw = slot?;
+    // A missing or nil slot is a legitimate absence; only genuinely malformed/unsupported
+    // values are logged. Parsing each slot independently keeps a valid sibling cost from
+    // being discarded when one optional slot is bad (the caller collapses Err to all-None).
+    if matches!(raw, MsgPackValue::Nil) {
+        return None;
+    }
+    match parse_fuzzy_u32(raw) {
+        Ok(cost) => Some(cost),
+        Err(err) => {
+            log::warn!("[daemon] ignoring malformed announce {label} cost: {err}");
+            None
+        }
+    }
 }
 
 fn parse_propagation_limits_from_app_data_hex(
