@@ -761,7 +761,7 @@ pub(crate) async fn run_weave_stream<IO>(
     let mut cleanup_interval = tokio::time::interval(WEAVE_ENDPOINT_CLEANUP_INTERVAL);
     let mut stopped_by_control = false;
 
-    loop {
+    'stream_loop: loop {
         let mut tx_channel = tx_channel.lock().await;
         tokio::select! {
             _ = cancel.cancelled() => {
@@ -796,14 +796,17 @@ pub(crate) async fn run_weave_stream<IO>(
                                 update_weave_status(&options.runtime_status, |status| {
                                     status.frames_rx = status.frames_rx.saturating_add(1);
                                 });
-                                process_weave_frame(
+                                if !process_weave_frame(
                                     output.as_slice(),
                                     &options,
                                     state.clone(),
                                     &rx_channel,
                                     &mut stream,
                                 )
-                                .await;
+                                .await
+                                {
+                                    break 'stream_loop;
+                                }
                             } else {
                                 update_weave_status(&options.runtime_status, |status| {
                                     status.invalid_frames = status.invalid_frames.saturating_add(1);
@@ -850,7 +853,7 @@ pub(crate) async fn run_weave_stream<IO>(
                             options.device,
                             err
                         );
-                        break;
+                        break 'stream_loop;
                     }
                     let _ = stream.flush().await;
                     update_weave_status(&options.runtime_status, |status| {
@@ -877,11 +880,12 @@ async fn process_weave_frame<IO>(
     state: Arc<tokio::sync::Mutex<WeaveRuntimeState>>,
     rx_channel: &tokio::sync::mpsc::Sender<RxMessage>,
     stream: &mut IO,
-) where
+) -> bool
+where
     IO: AsyncWrite + Unpin,
 {
     if frame.len() <= SWITCH_ID_LEN {
-        return;
+        return true;
     }
     let target = switch_id_from_slice(&frame[..SWITCH_ID_LEN]);
     let packet_type = frame[SWITCH_ID_LEN];
@@ -918,6 +922,13 @@ async fn process_weave_frame<IO>(
                                     options.parent_iface, options.device, err
                                 ));
                             });
+                            log::warn!(
+                                "Weave handshake write error iface={} device={} err={}",
+                                options.parent_iface,
+                                options.device,
+                                err
+                            );
+                            return false;
                         }
                     }
                 }
@@ -953,6 +964,7 @@ async fn process_weave_frame<IO>(
         }
         _ => {}
     }
+    true
 }
 
 fn process_weave_display(payload: &[u8], options: &WeaveStreamOptions) {
@@ -1245,9 +1257,13 @@ fn switch_id_from_slice(value: &[u8]) -> [u8; SWITCH_ID_LEN] {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::VecDeque;
+    use std::io;
+    use std::pin::Pin;
     use std::sync::Arc;
+    use std::task::{Context, Poll};
 
-    use tokio::io::{duplex, AsyncReadExt, AsyncWriteExt};
+    use tokio::io::{duplex, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf};
     use tokio_util::sync::CancellationToken;
 
     use crate::buffer::OutputBuffer;
@@ -1293,6 +1309,59 @@ mod tests {
         let mut output = OutputBuffer::new(&mut decoded);
         let len = Hdlc::decode(&bytes[start..=end], &mut output).expect("decode frame");
         output.as_slice()[..len].to_vec()
+    }
+
+    struct FailingWeaveWriteStream {
+        read_chunks: VecDeque<Vec<u8>>,
+        successful_writes: usize,
+        write_attempts: usize,
+    }
+
+    impl FailingWeaveWriteStream {
+        fn new(read_chunks: Vec<Vec<u8>>, successful_writes: usize) -> Self {
+            Self { read_chunks: read_chunks.into(), successful_writes, write_attempts: 0 }
+        }
+    }
+
+    impl AsyncRead for FailingWeaveWriteStream {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            buf: &mut ReadBuf<'_>,
+        ) -> Poll<io::Result<()>> {
+            let Some(mut chunk) = self.read_chunks.pop_front() else {
+                return Poll::Pending;
+            };
+            let len = chunk.len().min(buf.remaining());
+            buf.put_slice(&chunk[..len]);
+            if len < chunk.len() {
+                chunk.drain(..len);
+                self.read_chunks.push_front(chunk);
+            }
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    impl AsyncWrite for FailingWeaveWriteStream {
+        fn poll_write(
+            mut self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            buf: &[u8],
+        ) -> Poll<io::Result<usize>> {
+            self.write_attempts = self.write_attempts.saturating_add(1);
+            if self.write_attempts > self.successful_writes {
+                return Poll::Ready(Err(io::Error::other("synthetic weave command write failure")));
+            }
+            Poll::Ready(Ok(buf.len()))
+        }
+
+        fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+
+        fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
     }
 
     async fn test_options(
@@ -1707,6 +1776,141 @@ mod tests {
         assert!(status.wdcl_connected);
         assert!(status.bytes_tx > 0);
         assert!(status.bytes_rx > 0);
+    }
+
+    #[tokio::test]
+    async fn weave_stream_handshake_write_failure_exits_for_reconnect() {
+        let (options, _manager, _parent) = test_options().await;
+        let local_switch = switch_id_for_identity(&options.switch_identity);
+        let runtime_status = options.runtime_status.clone();
+        let remote = PrivateIdentity::new_from_name("remote-weave-handshake-failure");
+        let mut discovery_payload = Vec::new();
+        discovery_payload.extend_from_slice(remote.as_identity().verifying_key_bytes());
+        discovery_payload.extend_from_slice(&remote.sign(&local_switch).to_bytes());
+        let stream = FailingWeaveWriteStream::new(
+            vec![weave_wire_frame(&weave_wdcl_frame(
+                local_switch,
+                WDCL_T_DISCOVER,
+                &discovery_payload,
+            ))],
+            1,
+        );
+        let (rx_tx, _rx_rx) = tokio::sync::mpsc::channel(4);
+        let (_tx_tx, tx_rx) = tokio::sync::mpsc::channel(4);
+        let cancel = CancellationToken::new();
+
+        tokio::time::timeout(
+            Duration::from_secs(1),
+            run_weave_stream(
+                stream,
+                options,
+                cancel,
+                CancellationToken::new(),
+                rx_tx,
+                Arc::new(tokio::sync::Mutex::new(tx_rx)),
+            ),
+        )
+        .await
+        .expect("weave stream exits after handshake write failure");
+
+        let status = runtime_status.lock().expect("weave runtime status").clone();
+        assert_eq!(status.link_state, WeaveLinkState::Reconnecting);
+        assert!(!status.wdcl_connected);
+        assert!(
+            status
+                .last_error
+                .as_deref()
+                .is_some_and(|err| err.contains("synthetic weave command write failure")),
+            "unexpected last_error {:?}",
+            status.last_error
+        );
+        assert!(status.endpoints.is_empty());
+    }
+
+    #[tokio::test]
+    async fn weave_stream_command_write_failure_exits_for_reconnect() {
+        let (options, _manager, _parent) = test_options().await;
+        let local_switch = switch_id_for_identity(&options.switch_identity);
+        let runtime_status = options.runtime_status.clone();
+        let remote = PrivateIdentity::new_from_name("remote-weave-write-failure");
+        let endpoint = [0x25_u8; ENDPOINT_ID_LEN];
+        let mut discovery_payload = Vec::new();
+        discovery_payload.extend_from_slice(remote.as_identity().verifying_key_bytes());
+        discovery_payload.extend_from_slice(&remote.sign(&local_switch).to_bytes());
+        let mut endpoint_payload = packet_payload(&Packet::default());
+        endpoint_payload.extend_from_slice(&endpoint);
+        let stream = FailingWeaveWriteStream::new(
+            vec![
+                weave_wire_frame(&weave_wdcl_frame(
+                    local_switch,
+                    WDCL_T_DISCOVER,
+                    &discovery_payload,
+                )),
+                weave_wire_frame(&weave_wdcl_frame(
+                    local_switch,
+                    WDCL_T_ENDPOINT_PKT,
+                    &endpoint_payload,
+                )),
+                log_frame(local_switch, ET_PROTO_WDCL_CONNECTION, &[]),
+            ],
+            2,
+        );
+        let (rx_tx, mut rx_rx) = tokio::sync::mpsc::channel(4);
+        let (tx_tx, tx_rx) = tokio::sync::mpsc::channel(4);
+        let cancel = CancellationToken::new();
+        let task = tokio::spawn(run_weave_stream(
+            stream,
+            options,
+            cancel,
+            CancellationToken::new(),
+            rx_tx,
+            Arc::new(tokio::sync::Mutex::new(tx_rx)),
+        ));
+
+        let message = tokio::time::timeout(Duration::from_secs(1), rx_rx.recv())
+            .await
+            .expect("endpoint rx timeout")
+            .expect("endpoint rx");
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                let connected = {
+                    let status = runtime_status.lock().expect("weave runtime status");
+                    status.link_state == WeaveLinkState::Connected && status.wdcl_connected
+                };
+                if connected {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("runtime connected");
+
+        tx_tx
+            .send(TxMessage {
+                tx_type: TxMessageType::Direct(message.address),
+                packet: Packet::default(),
+            })
+            .await
+            .expect("queue tx");
+
+        tokio::time::timeout(Duration::from_secs(1), task)
+            .await
+            .expect("weave stream write failure timeout")
+            .expect("weave stream task");
+
+        let status = runtime_status.lock().expect("weave runtime status").clone();
+        assert_eq!(status.link_state, WeaveLinkState::Reconnecting);
+        assert!(!status.wdcl_connected);
+        assert!(
+            status
+                .last_error
+                .as_deref()
+                .is_some_and(|err| err.contains("synthetic weave command write failure")),
+            "unexpected last_error {:?}",
+            status.last_error
+        );
+        assert!(status.endpoints.is_empty());
     }
 
     #[tokio::test]
