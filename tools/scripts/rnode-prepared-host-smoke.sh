@@ -14,16 +14,22 @@ RNODE_CODING_RATE="${RNODE_CODING_RATE:-5}"
 RNODE_TX_POWER="${RNODE_TX_POWER:-17}"
 RNODE_BITRATE="${RNODE_BITRATE:-${RNODE_CONFIGURED_BITRATE:-1200}}"
 RNODE_COMMAND_TIMEOUT_MS="${RNODE_COMMAND_TIMEOUT_MS:-1500}"
+RNODE_MAX_PAYLOAD_BYTES="${RNODE_MAX_PAYLOAD_BYTES:-}"
 RNODE_BLE_ADAPTER="${RNODE_BLE_ADAPTER:-}"
 RNODE_BLE_SCAN_TIMEOUT_MS="${RNODE_BLE_SCAN_TIMEOUT_MS:-2000}"
 RNODE_BLE_CONNECT_TIMEOUT_MS="${RNODE_BLE_CONNECT_TIMEOUT_MS:-5000}"
 RNODE_BLE_MAX_WRITE_LEN="${RNODE_BLE_MAX_WRITE_LEN:-20}"
+RNODE_MANAGEMENT_TIMEOUT_SECS="${RNODE_MANAGEMENT_TIMEOUT_SECS:-20}"
+RNODE_BLINK_PATTERN="${RNODE_BLINK_PATTERN:-3}"
 TIMEOUT_SECS="${RNODE_TIMEOUT_SECS:-${TIMEOUT_SECS:-180}}"
 if [[ -z "$RNODE_BAUD_RATE" ]]; then
   RNODE_BAUD_RATE="115200"
 fi
 if [[ -z "$TIMEOUT_SECS" ]]; then
   TIMEOUT_SECS="180"
+fi
+if [[ -z "$RNODE_MANAGEMENT_TIMEOUT_SECS" ]]; then
+  RNODE_MANAGEMENT_TIMEOUT_SECS="20"
 fi
 
 LOG_DIR="${LOG_DIR:-${ROOT_DIR}/target/rnode-hil}"
@@ -36,6 +42,9 @@ DB_PATH="${RUN_DIR}/reticulum.db"
 RPC_UNIX="${RUN_DIR}/rpc.sock"
 RETICULUMD_LOG="${RUN_DIR}/reticulumd.log"
 RNSTATUS_JSON="${RUN_DIR}/rnstatus.json"
+RNODE_QUERY_JSON="${RUN_DIR}/rnodeconf-query-radio-state.json"
+RNODE_BLINK_JSON="${RUN_DIR}/rnodeconf-blink.json"
+POST_MANAGEMENT_RNSTATUS_JSON="${RUN_DIR}/rnstatus-post-management.json"
 
 : >"$RETICULUMD_LOG"
 
@@ -53,10 +62,12 @@ fi
 write_report() {
   local status="$1"
   local reason="${2:-}"
-  python3 - <<'PY' "$REPORT_PATH" "$status" "$reason" "$RNODE_PORT" "$RNODE_BAUD_RATE" "$RNODE_FREQUENCY" "$RNODE_BANDWIDTH" "$RNODE_SPREADING_FACTOR" "$RNODE_CODING_RATE" "$RNODE_TX_POWER" "$RPC_ADDR" "$RUN_DIR" "$CONFIG_PATH" "$RETICULUMD_LOG" "$RNSTATUS_JSON"
+  python3 - <<'PY' "$REPORT_PATH" "$status" "$reason" "$RNODE_PORT" "$RNODE_BAUD_RATE" "$RNODE_FREQUENCY" "$RNODE_BANDWIDTH" "$RNODE_SPREADING_FACTOR" "$RNODE_CODING_RATE" "$RNODE_TX_POWER" "$RPC_ADDR" "$RUN_DIR" "$CONFIG_PATH" "$RETICULUMD_LOG" "$RNSTATUS_JSON" "$RNODE_QUERY_JSON" "$RNODE_BLINK_JSON" "$POST_MANAGEMENT_RNSTATUS_JSON"
 import json
 import pathlib
+import socket
 import sys
+from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 (
@@ -75,7 +86,10 @@ from urllib.parse import urlparse
     config_path,
     log_path,
     rnstatus_path,
-) = sys.argv[1:16]
+    rnode_query_path,
+    rnode_blink_path,
+    post_management_status_path,
+) = sys.argv[1:19]
 port_lower = rnode_port.lower()
 if port_lower.startswith("tcp://"):
     transport_kind = "tcp"
@@ -89,6 +103,10 @@ if transport_kind == "tcp":
     expected_endpoint = parsed.netloc
 report = {
     "status": status,
+    "report_schema": "rnode_prepared_host_smoke.v1",
+    "captured_at_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    "captured_by_host": socket.gethostname(),
+    "script": "tools/scripts/rnode-prepared-host-smoke.sh",
     "evidence_scope": f"prepared_host_{transport_kind}_rnode",
     "product_boundary": (
         "This proves one prepared RNode endpoint for the selected bearer; broader hardware parity "
@@ -109,6 +127,9 @@ report = {
     "config_path": config_path,
     "reticulumd_log": log_path,
     "rnstatus_json": rnstatus_path,
+    "rnodeconf_query_radio_state_json": rnode_query_path,
+    "rnodeconf_blink_json": rnode_blink_path,
+    "post_management_rnstatus_json": post_management_status_path,
 }
 if reason:
     report["reason"] = reason
@@ -151,6 +172,57 @@ if status_path.exists():
             report["last_command_error"] = status_root.get("last_command_error")
     except Exception as exc:  # best-effort artifact enrichment
         report["status_parse_error"] = str(exc)
+management_commands = []
+for command_path, expected in [
+    (rnode_query_path, "radio_state_query"),
+    (rnode_blink_path, "blink"),
+]:
+    path = pathlib.Path(command_path)
+    if not path.exists():
+        continue
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        management_commands.append(
+            {
+                "command": payload.get("command"),
+                "expected_command": expected,
+                "queued": payload.get("queued"),
+                "iface": payload.get("iface"),
+                "name": payload.get("name"),
+                "pattern": payload.get("pattern"),
+                "artifact": command_path,
+            }
+        )
+    except Exception as exc:  # best-effort artifact enrichment
+        management_commands.append({"expected_command": expected, "artifact": command_path, "parse_error": str(exc)})
+if management_commands:
+    report["management_commands"] = management_commands
+post_path = pathlib.Path(post_management_status_path)
+if post_path.exists():
+    try:
+        payload = json.loads(post_path.read_text(encoding="utf-8"))
+        rows = payload.get("interfaces") or []
+        row = next(
+            (
+                item
+                for item in rows
+                if item.get("type") == "lora"
+                and item.get("name") == "rnode-prepared-host"
+            ),
+            None,
+        )
+        if row:
+            runtime = ((row.get("settings") or {}).get("_runtime") or {})
+            status_root = (runtime.get("lora") or {}).get("rnode_status") or {}
+            report["post_management_status"] = {
+                "startup_status": runtime.get("startup_status"),
+                "online": status_root.get("online"),
+                "radio_state": (status_root.get("radio_status") or {}).get("radio_state"),
+                "hardware_errors": status_root.get("hardware_errors"),
+                "last_command_error": status_root.get("last_command_error"),
+            }
+    except Exception as exc:  # best-effort artifact enrichment
+        report["post_management_status_parse_error"] = str(exc)
 pathlib.Path(report_path).write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 PY
 }
@@ -178,7 +250,7 @@ if [[ -z "$RNODE_PORT" ]]; then
   fail "RNODE_PORT must name a serial device, tcp://host:port endpoint, or ble://peripheral endpoint"
 fi
 
-python3 - <<'PY' "$RNODE_BAUD_RATE" "$TIMEOUT_SECS" "$RNODE_FREQUENCY" "$RNODE_BANDWIDTH" "$RNODE_SPREADING_FACTOR" "$RNODE_CODING_RATE" "$RNODE_TX_POWER" "$RNODE_BITRATE" "$RNODE_COMMAND_TIMEOUT_MS" "$RNODE_BLE_SCAN_TIMEOUT_MS" "$RNODE_BLE_CONNECT_TIMEOUT_MS" "$RNODE_BLE_MAX_WRITE_LEN" || fail "RNode numeric environment is invalid"
+python3 - <<'PY' "$RNODE_BAUD_RATE" "$TIMEOUT_SECS" "$RNODE_FREQUENCY" "$RNODE_BANDWIDTH" "$RNODE_SPREADING_FACTOR" "$RNODE_CODING_RATE" "$RNODE_TX_POWER" "$RNODE_BITRATE" "$RNODE_COMMAND_TIMEOUT_MS" "$RNODE_BLE_SCAN_TIMEOUT_MS" "$RNODE_BLE_CONNECT_TIMEOUT_MS" "$RNODE_BLE_MAX_WRITE_LEN" "$RNODE_MANAGEMENT_TIMEOUT_SECS" "$RNODE_BLINK_PATTERN" "$RNODE_MAX_PAYLOAD_BYTES" || fail "RNode numeric environment is invalid"
 import sys
 (
     baud_rate,
@@ -193,7 +265,41 @@ import sys
     ble_scan_timeout_ms,
     ble_connect_timeout_ms,
     ble_max_write_len,
-) = (int(value) for value in sys.argv[1:13])
+    management_timeout_secs,
+    blink_pattern,
+    max_payload_bytes,
+) = sys.argv[1:16]
+(
+    baud_rate,
+    timeout_secs,
+    frequency,
+    bandwidth,
+    spreading_factor,
+    coding_rate,
+    tx_power,
+    bitrate,
+    command_timeout_ms,
+    ble_scan_timeout_ms,
+    ble_connect_timeout_ms,
+    ble_max_write_len,
+    management_timeout_secs,
+    blink_pattern,
+) = (
+    int(baud_rate),
+    int(timeout_secs),
+    int(frequency),
+    int(bandwidth),
+    int(spreading_factor),
+    int(coding_rate),
+    int(tx_power),
+    int(bitrate),
+    int(command_timeout_ms),
+    int(ble_scan_timeout_ms),
+    int(ble_connect_timeout_ms),
+    int(ble_max_write_len),
+    int(management_timeout_secs),
+    int(blink_pattern),
+)
 if (
     baud_rate <= 0
     or timeout_secs <= 0
@@ -202,8 +308,15 @@ if (
     or ble_scan_timeout_ms <= 0
     or ble_connect_timeout_ms <= 0
     or ble_max_write_len <= 0
+    or management_timeout_secs <= 0
 ):
     raise SystemExit(1)
+if not 0 <= blink_pattern <= 255:
+    raise SystemExit(1)
+if max_payload_bytes:
+    max_payload = int(max_payload_bytes)
+    if not 1 <= max_payload <= 508:
+        raise SystemExit(1)
 if not 137_000_000 <= frequency <= 3_000_000_000:
     raise SystemExit(1)
 if not 7_800 <= bandwidth <= 1_625_000:
@@ -234,7 +347,7 @@ elif [[ ! -e "$RNODE_PORT" ]]; then
   fail "RNode serial device ${RNODE_PORT} does not exist"
 fi
 
-python3 - <<'PY' "$CONFIG_PATH" "$RNODE_PORT" "$RNODE_BAUD_RATE" "$RNODE_REGION" "$RNODE_FREQUENCY" "$RNODE_BANDWIDTH" "$RNODE_SPREADING_FACTOR" "$RNODE_CODING_RATE" "$RNODE_TX_POWER" "$RNODE_BITRATE" "$RNODE_COMMAND_TIMEOUT_MS" "$RNODE_BLE_ADAPTER" "$RNODE_BLE_SCAN_TIMEOUT_MS" "$RNODE_BLE_CONNECT_TIMEOUT_MS" "$RNODE_BLE_MAX_WRITE_LEN" || fail "failed to generate RNode config"
+python3 - <<'PY' "$CONFIG_PATH" "$RNODE_PORT" "$RNODE_BAUD_RATE" "$RNODE_REGION" "$RNODE_FREQUENCY" "$RNODE_BANDWIDTH" "$RNODE_SPREADING_FACTOR" "$RNODE_CODING_RATE" "$RNODE_TX_POWER" "$RNODE_BITRATE" "$RNODE_COMMAND_TIMEOUT_MS" "$RNODE_MAX_PAYLOAD_BYTES" "$RNODE_BLE_ADAPTER" "$RNODE_BLE_SCAN_TIMEOUT_MS" "$RNODE_BLE_CONNECT_TIMEOUT_MS" "$RNODE_BLE_MAX_WRITE_LEN" || fail "failed to generate RNode config"
 import json
 import pathlib
 import sys
@@ -251,11 +364,12 @@ import sys
     tx_power,
     bitrate,
     command_timeout_ms,
+    max_payload_bytes,
     ble_adapter,
     ble_scan_timeout_ms,
     ble_connect_timeout_ms,
     ble_max_write_len,
-) = sys.argv[1:16]
+) = sys.argv[1:17]
 fields = [
     'type = "RNodeInterface"',
     "enabled = true",
@@ -267,6 +381,8 @@ if not (port_lower.startswith("tcp://") or port_lower.startswith("ble://")):
     fields.append(f"baud_rate = {int(baud_rate)}")
 if port_lower.startswith("ble://") and ble_adapter:
     fields.append(f"adapter = {json.dumps(ble_adapter)}")
+if not max_payload_bytes and (port_lower.startswith("tcp://") or port_lower.startswith("ble://")):
+    max_payload_bytes = "220"
 fields.extend(
     [
         f"region = {json.dumps(region)}",
@@ -277,6 +393,7 @@ fields.extend(
         f"txpower = {int(tx_power)}",
         f"bitrate = {int(bitrate)}",
         f"command_timeout_ms = {int(command_timeout_ms)}",
+        *([f"max_payload_bytes = {int(max_payload_bytes)}"] if max_payload_bytes else []),
         f"scan_timeout_ms = {int(ble_scan_timeout_ms)}",
         f"ble_connect_timeout_ms = {int(ble_connect_timeout_ms)}",
         f"max_write_len = {int(ble_max_write_len)}",
@@ -294,6 +411,89 @@ else
   cargo build -p reticulumd --bin reticulumd --quiet
 fi
 cargo build -p rns-tools --bin rnstatus-rs --quiet
+cargo build -p rns-tools --bin rnodeconf-rs --quiet
+
+run_management_smoke() {
+  if ! "${ROOT_DIR}/target/debug/rnodeconf-rs" \
+    --rpc "$RPC_ADDR" \
+    query-radio-state \
+    --interface rnode-prepared-host >"$RNODE_QUERY_JSON" 2>>"$RETICULUMD_LOG"; then
+    fail "rnodeconf-rs query-radio-state failed"
+  fi
+  if ! "${ROOT_DIR}/target/debug/rnodeconf-rs" \
+    --rpc "$RPC_ADDR" \
+    blink \
+    --interface rnode-prepared-host \
+    --pattern "$RNODE_BLINK_PATTERN" >"$RNODE_BLINK_JSON" 2>>"$RETICULUMD_LOG"; then
+    fail "rnodeconf-rs blink failed"
+  fi
+  python3 - <<'PY' "$RNODE_QUERY_JSON" "$RNODE_BLINK_JSON" "$RNODE_BLINK_PATTERN" || fail "RNode management command responses were invalid"
+import json
+import sys
+
+query_path, blink_path, blink_pattern = sys.argv[1:4]
+expected = [
+    (query_path, "radio_state_query", None),
+    (blink_path, "blink", int(blink_pattern)),
+]
+for path, command, pattern in expected:
+    payload = json.load(open(path, "r", encoding="utf-8"))
+    if payload.get("queued") is not True:
+        raise SystemExit(1)
+    if payload.get("command") != command:
+        raise SystemExit(1)
+    if payload.get("name") != "rnode-prepared-host":
+        raise SystemExit(1)
+    if not isinstance(payload.get("iface"), str) or not payload.get("iface"):
+        raise SystemExit(1)
+    if pattern is not None and payload.get("pattern") != pattern:
+        raise SystemExit(1)
+PY
+
+  local management_deadline=$((SECONDS + RNODE_MANAGEMENT_TIMEOUT_SECS))
+  while (( SECONDS < management_deadline )); do
+    if ! kill -0 "$RET_PID" >/dev/null 2>&1; then
+      fail "reticulumd exited after RNode management dispatch"
+    fi
+    if "${ROOT_DIR}/target/debug/rnstatus-rs" --rpc "$RPC_ADDR" --json >"$POST_MANAGEMENT_RNSTATUS_JSON" 2>>"$RETICULUMD_LOG"; then
+      if python3 - <<'PY' "$POST_MANAGEMENT_RNSTATUS_JSON"
+import json
+import sys
+
+payload = json.load(open(sys.argv[1], "r", encoding="utf-8"))
+rows = payload.get("interfaces") or []
+row = next(
+    (
+        item
+        for item in rows
+        if item.get("type") == "lora"
+        and item.get("name") == "rnode-prepared-host"
+    ),
+    None,
+)
+if row is None:
+    raise SystemExit(1)
+runtime_root = (row.get("settings") or {}).get("_runtime") or {}
+if runtime_root.get("startup_status") != "spawned":
+    raise SystemExit(1)
+status = (runtime_root.get("lora") or {}).get("rnode_status") or {}
+if status.get("online") is not True:
+    raise SystemExit(1)
+if (status.get("radio_status") or {}).get("radio_state") != 1:
+    raise SystemExit(1)
+if status.get("last_command_error") is not None:
+    raise SystemExit(1)
+if status.get("hardware_errors") not in (None, []):
+    raise SystemExit(1)
+PY
+      then
+        return 0
+      fi
+    fi
+    sleep 1
+  done
+  fail "timed out waiting for healthy RNode status after management dispatch"
+}
 
 "${ROOT_DIR}/target/debug/reticulumd" \
   --rpc "$RPC_ADDR" \
@@ -392,6 +592,7 @@ if status.get("hardware_errors") not in (None, []):
     raise SystemExit(1)
 PY
     then
+      run_management_smoke
       write_report "pass"
       echo "[rnode-prepared-host-smoke] pass"
       echo "[rnode-prepared-host-smoke] report=${REPORT_PATH}"

@@ -163,7 +163,20 @@ class ChannelEndpoint:
         )
         if links:
             reply = MessageTest(message.id, f"reply:{message.data}")
-            links[-1].get_channel().send(reply)
+            try:
+                links[-1].get_channel().send(reply)
+                print(
+                    f"python_channel_endpoint: sent channel reply {reply.id} {reply.data}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+            except Exception as exc:
+                print(
+                    f"python_channel_endpoint: failed to send channel reply: {exc}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                raise
         return True
 
 

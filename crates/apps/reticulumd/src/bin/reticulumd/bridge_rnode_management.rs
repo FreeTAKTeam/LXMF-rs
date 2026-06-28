@@ -925,4 +925,59 @@ mod tests {
         assert_eq!(result["vport"].as_u64(), Some(2));
         assert_eq!(result["confirmation"].as_str(), Some("persistent"));
     }
+
+    #[cfg(feature = "rnode-ble")]
+    #[test]
+    fn bridge_dispatches_native_rnode_ble_management_commands() {
+        let runtime_iface = rns_transport::hash::AddressHash::new([0x71; 16]);
+        let iface = rns_transport::iface::rnode_ble::NativeRnodeBleKissInterface::new(
+            "rnode-ble",
+            rns_transport::iface::rnode_ble::NativeRnodeBleSettings::for_peripheral("RNode BLE"),
+            rns_transport::iface::rnode_ble::RnodeBleKissConfig::default(),
+        );
+        let bridge = DaemonRNodeManagementBridge::new(vec![DaemonRNodeManagementBinding {
+            runtime_iface,
+            name: "rnode-ble-main".to_string(),
+            handle: DaemonRNodeManagementHandle::RnodeBle(iface.rnode_management_handle()),
+        }]);
+
+        for (command, params, canonical, confirmation) in [
+            ("query-radio-state", json!({}), "radio_state_query", None),
+            ("blink", json!({ "pattern": 5 }), "blink", None),
+            (
+                "enable-bluetooth",
+                json!({ "confirm_persistent": true }),
+                "bluetooth_enable",
+                Some("persistent"),
+            ),
+            (
+                "set-wifi-channel",
+                json!({ "channel": 11, "confirm_persistent": true }),
+                "wifi_channel",
+                Some("persistent"),
+            ),
+            (
+                "wipe-rom",
+                json!({ "confirm_destructive": true, "confirm_command": "rom_wipe" }),
+                "rom_wipe",
+                Some("destructive"),
+            ),
+        ] {
+            let result = bridge
+                .dispatch_rnode_management("rnode-ble-main", command, &params)
+                .expect("BLE management command should queue");
+            assert_eq!(result["queued"].as_bool(), Some(true), "{command}");
+            assert_eq!(result["command"].as_str(), Some(canonical), "{command}");
+            assert_eq!(result["iface"].as_str(), Some(runtime_iface.to_string().as_str()));
+            if let Some(confirmation) = confirmation {
+                assert_eq!(result["confirmation"].as_str(), Some(confirmation), "{command}");
+            }
+        }
+
+        let err = bridge
+            .dispatch_rnode_management("rnode-ble-main", "save-config", &json!({}))
+            .expect_err("BLE persistent command should require confirmation");
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+        assert!(err.to_string().contains("confirm_persistent=true"));
+    }
 }

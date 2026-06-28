@@ -205,7 +205,10 @@ save/delete, ROM write/wipe, hard reset, firmware update/hash metadata, and
 Wi-Fi mode/channel/IP/netmask/SSID/PSK set or clear. Persistent commands
 require `confirm_persistent = true`; destructive commands require
 `confirm_destructive = true` plus `confirm_command` matching the canonical
-command. BLE hardware evidence for management operations remains pending.
+command. Prepared-host RNode runs now exercise safe `query-radio-state` and
+`blink` management dispatch against the selected serial, TCP/Wi-Fi, or BLE
+bearer and record post-dispatch status; broader BLE management hardware
+coverage still requires device-matrix evidence.
 
 ## Validation Rules
 
@@ -392,6 +395,59 @@ last command error when present. The JSON status includes:
 This status surface is the evidence foundation for prepared-host serial, TCP,
 and feature-gated BLE RNode lifecycle smoke tests.
 
+## RNode BLE Software Smoke
+
+The software-only RNode BLE smoke keeps the host-side `#385` behavior
+reproducible without requiring a prepared BLE RNode:
+
+```sh
+./tools/scripts/rnode-ble-software-smoke.sh
+```
+
+The script runs the feature-gated RNode BLE regression target, the
+feature-gated `reticulumd` native RNode BLE management bridge regression, the
+`rnodeconf-rs` extended management CLI matrix, and the shared transport
+closed-queue cleanup regression, then writes artifacts under
+`target/rnode-ble-software-smoke/`. A passing report records
+`evidence_scope = "software_rnode_ble_fallback_management"` and covers:
+
+- Python Nordic UART profile defaults
+- configured RNode BLE identifier and alias matching
+- configured Android peripheral exclusion during fallback scan
+- RNode BLE command-monitor startup, degraded fallback, and runtime status JSON
+- RNode BLE packet, shutdown, and management-frame chunking
+- RNode BLE management handle queueing
+- reticulumd daemon RnodeBle management bridge dispatch
+- `rnodeconf-rs` extended management command-to-RPC matrix
+- persistent and destructive RNode management CLI guard enforcement
+- shared transport cleanup of closed TX queues
+
+This is software regressions only. BLE hardware, firmware, radio, and management operation evidence still requires prepared-host devices.
+
+## RNode Fake TCP Smoke
+
+The fake TCP RNode smoke runs the ordinary prepared-host RNode path against a
+local fake KISS TCP peer:
+
+```sh
+./tools/scripts/rnode-fake-tcp-smoke.sh
+```
+
+The wrapper starts a fake RNode TCP endpoint, runs
+`./tools/scripts/rnode-prepared-host-smoke.sh` with `RNODE_PORT=tcp://...`,
+and writes artifacts under `target/rnode-fake-tcp-smoke/`. A passing report
+records `evidence_scope = "software_fake_tcp_rnode_prepared_host_management"`
+and embeds the prepared-host `prepared_host_tcp_rnode` report. The fake KISS
+TCP peer verifies startup probe and radio configuration frames, the
+`rnodeconf-query-radio-state.json` and `rnodeconf-blink.json` command artifacts,
+`management_commands`, `post_management_status`, `radio_query_seen`, and
+`management_blink_seen`.
+
+This is not prepared hardware. It proves the live daemon, `rnstatus-rs`,
+`rnodeconf-rs`, and TCP KISS management dispatch path against deterministic
+software, while broad serial/TCP/BLE hardware parity still requires prepared
+devices.
+
 ## Prepared-Host Smoke
 
 The opt-in prepared-host smoke validates `reticulumd` against a host with a
@@ -419,9 +475,10 @@ For BLE RNodes, use `RNODE_PORT=ble://RNode 1234`. The script builds
 endpoint. `RNODE_BLE_ADAPTER`, `RNODE_BLE_SCAN_TIMEOUT_MS`,
 `RNODE_BLE_CONNECT_TIMEOUT_MS`, and `RNODE_BLE_MAX_WRITE_LEN` are optional.
 
-The script builds `reticulumd` and `rnstatus-rs`, starts the daemon with
-`--strict-interface-startup`, polls `rnstatus-rs --json`, and writes artifacts
-under `target/rnode-hil/`. A passing run requires:
+The script builds `reticulumd`, `rnstatus-rs`, and `rnodeconf-rs`, starts the
+daemon with `--strict-interface-startup`, polls `rnstatus-rs --json`, dispatches
+safe `rnodeconf-rs` management commands through the live daemon binding, and
+writes artifacts under `target/rnode-hil/`. A passing run requires:
 
 - `_runtime.startup_status = "spawned"`
 - `_runtime.iface` populated with the runtime interface hash
@@ -436,10 +493,22 @@ under `target/rnode-hil/`. A passing run requires:
 - `_runtime.lora.rnode_status.online = true`
 - `_runtime.lora.rnode_status.last_command_error = null`
 - `_runtime.lora.rnode_status.hardware_errors` is empty
+- `rnodeconf-rs query-radio-state --interface rnode-prepared-host` returns
+  `queued = true` and `command = "radio_state_query"`
+- `rnodeconf-rs blink --interface rnode-prepared-host --pattern` with the
+  configured pattern returns
+  `queued = true`, `command = "blink"`, and the configured pattern
+- post-management `rnstatus-rs --json` still reports the RNode online, radio
+  on, no command error, and no hardware errors
 
 Reports are written to `report.json` and include the latest endpoint, bearer,
 probe status, radio status, reported bitrate, hardware errors, and command
-error fields. The report also records a bearer-specific `evidence_scope`:
+error fields. The report also records `rnodeconf-query-radio-state.json`,
+`rnodeconf-blink.json`, `rnstatus-post-management.json`,
+`management_commands`, and `post_management_status`. For archived HIL evidence,
+the report also records `report_schema = "rnode_prepared_host_smoke.v1"`,
+`captured_at_utc`, `captured_by_host`, and the producing script path. The report
+also records a bearer-specific `evidence_scope`:
 `prepared_host_serial_rnode`, `prepared_host_tcp_rnode`, or
 `prepared_host_ble_rnode`. A passing run proves one prepared endpoint for that
 bearer; the `product_boundary` note records that broader hardware parity still
@@ -451,13 +520,93 @@ Nightly HIL exposes the same smoke through `HIL_RNODE_ENABLED=true` with
 optional `HIL_RNODE_FREQUENCY`, optional `HIL_RNODE_BANDWIDTH`, optional
 `HIL_RNODE_SPREADING_FACTOR`, optional `HIL_RNODE_CODING_RATE`, optional
 `HIL_RNODE_TX_POWER`, optional `HIL_RNODE_BITRATE`, optional
-`HIL_RNODE_COMMAND_TIMEOUT_MS`, optional `HIL_RNODE_BLE_ADAPTER`, optional
+`HIL_RNODE_COMMAND_TIMEOUT_MS`, optional `HIL_RNODE_MAX_PAYLOAD_BYTES`, optional
+`HIL_RNODE_BLE_ADAPTER`, optional
 `HIL_RNODE_BLE_SCAN_TIMEOUT_MS`, optional `HIL_RNODE_BLE_CONNECT_TIMEOUT_MS`,
-optional `HIL_RNODE_BLE_MAX_WRITE_LEN`, and optional
-`HIL_RNODE_TIMEOUT_SECS`.
+optional `HIL_RNODE_BLE_MAX_WRITE_LEN`, optional
+`HIL_RNODE_MANAGEMENT_TIMEOUT_SECS`, optional `HIL_RNODE_BLINK_PATTERN`, and
+optional `HIL_RNODE_TIMEOUT_SECS`.
 Artifacts are uploaded as
 `rnode-prepared-host-artifacts`, including
 `target/rnode-hil/report.json` and `target/rnode-hil/run.*`.
+
+## Reticulum Interface Parity Audit
+
+```sh
+./tools/scripts/reticulum-interface-parity-audit.sh
+```
+
+The audit reads the LocalInterface #384 evidence and the RNode BLE #385
+evidence, then writes `target/reticulum-interface-parity-audit/report.json`
+with `evidence_scope = "reticulum_interfaces_384_385_parity_audit"`. For the
+RNode side it requires the software BLE fallback/management smoke, the fake TCP
+prepared-host path smoke, and serial, TCP/Wi-Fi, and BLE prepared-host RNode
+hardware reports. Hardware reports must use `prepared_host_serial_rnode`,
+`prepared_host_tcp_rnode`, and `prepared_host_ble_rnode`, include queued
+`management_commands`, and include `post_management_status` that remains
+online, radio-on, command-error free, and hardware-error free. The strict audit
+also requires each report to identify the hardware path with `endpoint`,
+`transport_kind`, `bearer`, `detected`, `firmware_version.label`, `platform`,
+and `mcu`, plus provenance fields `report_schema`, `captured_at_utc`,
+`captured_by_host`, and `script`.
+
+By default the audit writes a machine-readable summary even when full parity is
+still incomplete. Use `./tools/scripts/reticulum-interface-parity-audit.sh --require-full`
+for a strict gate; it exits non-zero while `missing_full_parity` lists missing
+or failing hardware evidence. If prepared-host reports are archived outside
+`target/rnode-hil/`, pass a colon-separated `RNODE_HIL_REPORTS` list.
+
+To collect the missing serial/TCP/BLE hardware reports in one pass, run:
+
+```sh
+RIF_RNODE_SERIAL_PORT=/dev/ttyACM0 \
+RIF_RNODE_TCP_PORT=tcp://192.0.2.10:8001 \
+RIF_RNODE_BLE_PORT='ble://RNode 1234' \
+./tools/scripts/reticulum-interface-hil-matrix.sh
+```
+
+The matrix runner executes `rnode-prepared-host-smoke.sh` once per bearer,
+writes `target/reticulum-interface-hil-matrix/report.json` with
+`evidence_scope = "reticulum_interfaces_384_385_hil_matrix"`, stores the
+bearer reports at `target/rnode-hil/matrix/serial.report.json`,
+`target/rnode-hil/matrix/tcp.report.json`, and
+`target/rnode-hil/matrix/ble.report.json`, then invokes the strict parity audit.
+It also writes `target/reticulum-interface-hil-matrix/artifact-manifest.json`
+with `schema = "reticulum_interface_hil_matrix_artifacts.v1"` and SHA-256
+digests for the matrix report, strict audit report, and each bearer report.
+To re-run the strict audit against archived HIL artifacts with digest
+verification, set
+`RNODE_HIL_ARTIFACT_MANIFEST=target/reticulum-interface-hil-matrix/artifact-manifest.json`
+or the `RIF_HIL_ARTIFACT_MANIFEST` / `RIF_ARTIFACT_MANIFEST` aliases; the audit
+verifies the `rnode_serial_report`, `rnode_tcp_report`, and `rnode_ble_report`
+SHA-256 digests before using those reports.
+It accepts legacy aliases `RNODE_SERIAL_PORT`, `RNODE_TCP_PORT`, and
+`RNODE_BLE_PORT`. Strict matrix runs refresh the LocalInterface #384 smokes by
+default before the final `--require-full` audit, so clean HIL runners collect
+the full evidence set in one pass. Use `--allow-partial` for diagnostics when
+only some devices are attached and `--audit-existing` to re-check archived
+reports without touching devices or refreshing smokes; partial mode skips local
+smokes unless `--run-local-smokes` or `RIF_RUN_LOCAL_SMOKES=true` is set.
+
+The matrix inherits the ordinary `RNODE_*` radio, timeout, management, and BLE
+settings for every bearer, but each bearer can override them with
+`RIF_RNODE_SERIAL_*`, `RIF_RNODE_TCP_*`, or `RIF_RNODE_BLE_*`. For example,
+`RIF_RNODE_SERIAL_FREQUENCY`, `RIF_RNODE_TCP_FREQUENCY`,
+`RIF_RNODE_BLE_FREQUENCY`, `RIF_RNODE_BLE_ADAPTER`,
+`RIF_RNODE_BLE_MAX_WRITE_LEN`, and `RIF_RNODE_BLE_TIMEOUT_SECS` override only
+the selected bearer while the others keep the shared `RNODE_*` default.
+
+Nightly HIL exposes the same matrix through `HIL_RNODE_MATRIX_ENABLED=true`.
+Set `HIL_RNODE_MATRIX_SERIAL_PORT`, `HIL_RNODE_MATRIX_TCP_PORT`, and
+`HIL_RNODE_MATRIX_BLE_PORT`; the job reuses the ordinary `HIL_RNODE_*` radio,
+timeout, BLE adapter, and management variables documented above unless a
+bearer-specific `HIL_RNODE_MATRIX_SERIAL_*`, `HIL_RNODE_MATRIX_TCP_*`, or
+`HIL_RNODE_MATRIX_BLE_*` variable is set. Artifacts are uploaded as
+`reticulum-interface-hil-matrix-artifacts`, including
+`target/reticulum-interface-hil-matrix/report.json`,
+`target/reticulum-interface-hil-matrix/parity-audit-report.json`,
+`target/reticulum-interface-hil-matrix/artifact-manifest.json`, and
+`target/rnode-hil/matrix/*.report.json`.
 
 When `device` and `baud_rate` are absent, the interface remains
 `validated_startup_only` and only the compliance state gate runs.

@@ -116,8 +116,12 @@ fn parse_http_request_line(headers: &[u8]) -> Result<(&str, &str), &'static str>
 }
 
 fn parse_status_code(response: &[u8]) -> Result<u16, &'static str> {
-    let text =
-        decode_utf8(response, "RPC response status").map_err(|_| "invalid UTF-8 in response")?;
+    let line_end = response
+        .windows(2)
+        .position(|window| window == b"\r\n")
+        .ok_or("no response status line")?;
+    let text = decode_utf8(&response[..line_end], "RPC response status")
+        .map_err(|_| "invalid UTF-8 in response")?;
     let line = text.lines().next().ok_or("no response status line")?;
     let mut parts = line.split_whitespace();
     let _http_version = parts.next().ok_or("no HTTP version")?;
@@ -279,6 +283,12 @@ mod tests {
     #[test]
     fn parse_status_code_extracts_numeric_status() {
         let response = b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
+        assert_eq!(parse_status_code(response), Ok(200));
+    }
+
+    #[test]
+    fn parse_status_code_ignores_binary_rpc_body() {
+        let response = b"HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\n\xff\x00\x91";
         assert_eq!(parse_status_code(response), Ok(200));
     }
 

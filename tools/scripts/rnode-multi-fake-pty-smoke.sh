@@ -59,6 +59,12 @@ import sys
 ) = sys.argv[1:13]
 report = {
     "status": status,
+    "evidence_scope": "software_fake_pty_rnode_multi",
+    "product_boundary": (
+        "This proves the RNodeMulti serial parent software path, startup probe, "
+        "runtime status, and vport management dispatch against a local PTY fake "
+        "peer; it is not prepared-host or broad hardware production parity."
+    ),
     "reason": reason or None,
     "rpc_addr": rpc_addr,
     "run_dir": run_dir,

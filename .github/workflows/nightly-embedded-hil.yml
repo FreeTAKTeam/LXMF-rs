@@ -123,10 +123,13 @@ jobs:
           RNODE_TX_POWER: ${{ vars.HIL_RNODE_TX_POWER }}
           RNODE_BITRATE: ${{ vars.HIL_RNODE_BITRATE }}
           RNODE_COMMAND_TIMEOUT_MS: ${{ vars.HIL_RNODE_COMMAND_TIMEOUT_MS }}
+          RNODE_MAX_PAYLOAD_BYTES: ${{ vars.HIL_RNODE_MAX_PAYLOAD_BYTES }}
           RNODE_BLE_ADAPTER: ${{ vars.HIL_RNODE_BLE_ADAPTER }}
           RNODE_BLE_SCAN_TIMEOUT_MS: ${{ vars.HIL_RNODE_BLE_SCAN_TIMEOUT_MS }}
           RNODE_BLE_CONNECT_TIMEOUT_MS: ${{ vars.HIL_RNODE_BLE_CONNECT_TIMEOUT_MS }}
           RNODE_BLE_MAX_WRITE_LEN: ${{ vars.HIL_RNODE_BLE_MAX_WRITE_LEN }}
+          RNODE_MANAGEMENT_TIMEOUT_SECS: ${{ vars.HIL_RNODE_MANAGEMENT_TIMEOUT_SECS }}
+          RNODE_BLINK_PATTERN: ${{ vars.HIL_RNODE_BLINK_PATTERN }}
           RNODE_TIMEOUT_SECS: ${{ vars.HIL_RNODE_TIMEOUT_SECS }}
         run: ./tools/scripts/rnode-prepared-host-smoke.sh
       - uses: actions/upload-artifact@v4
@@ -136,6 +139,95 @@ jobs:
           path: |
             target/rnode-hil/report.json
             target/rnode-hil/run.*
+
+  reticulum-interface-hil-matrix:
+    if: ${{ vars.HIL_RNODE_MATRIX_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Linux BLE build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libdbus-1-dev
+      - name: Reticulum Interface #384/#385 HIL matrix
+        env:
+          RIF_RNODE_SERIAL_PORT: ${{ vars.HIL_RNODE_MATRIX_SERIAL_PORT }}
+          RIF_RNODE_TCP_PORT: ${{ vars.HIL_RNODE_MATRIX_TCP_PORT }}
+          RIF_RNODE_BLE_PORT: ${{ vars.HIL_RNODE_MATRIX_BLE_PORT }}
+          RIF_RUN_LOCAL_SMOKES: ${{ vars.HIL_RNODE_MATRIX_RUN_LOCAL_SMOKES }}
+          RIF_RNODE_SERIAL_BAUD_RATE: ${{ vars.HIL_RNODE_MATRIX_SERIAL_BAUD_RATE }}
+          RIF_RNODE_SERIAL_REGION: ${{ vars.HIL_RNODE_MATRIX_SERIAL_REGION }}
+          RIF_RNODE_SERIAL_FREQUENCY: ${{ vars.HIL_RNODE_MATRIX_SERIAL_FREQUENCY }}
+          RIF_RNODE_SERIAL_BANDWIDTH: ${{ vars.HIL_RNODE_MATRIX_SERIAL_BANDWIDTH }}
+          RIF_RNODE_SERIAL_SPREADING_FACTOR: ${{ vars.HIL_RNODE_MATRIX_SERIAL_SPREADING_FACTOR }}
+          RIF_RNODE_SERIAL_CODING_RATE: ${{ vars.HIL_RNODE_MATRIX_SERIAL_CODING_RATE }}
+          RIF_RNODE_SERIAL_TX_POWER: ${{ vars.HIL_RNODE_MATRIX_SERIAL_TX_POWER }}
+          RIF_RNODE_SERIAL_BITRATE: ${{ vars.HIL_RNODE_MATRIX_SERIAL_BITRATE }}
+          RIF_RNODE_SERIAL_COMMAND_TIMEOUT_MS: ${{ vars.HIL_RNODE_MATRIX_SERIAL_COMMAND_TIMEOUT_MS }}
+          RIF_RNODE_SERIAL_MAX_PAYLOAD_BYTES: ${{ vars.HIL_RNODE_MATRIX_SERIAL_MAX_PAYLOAD_BYTES }}
+          RIF_RNODE_SERIAL_MANAGEMENT_TIMEOUT_SECS: ${{ vars.HIL_RNODE_MATRIX_SERIAL_MANAGEMENT_TIMEOUT_SECS }}
+          RIF_RNODE_SERIAL_BLINK_PATTERN: ${{ vars.HIL_RNODE_MATRIX_SERIAL_BLINK_PATTERN }}
+          RIF_RNODE_SERIAL_TIMEOUT_SECS: ${{ vars.HIL_RNODE_MATRIX_SERIAL_TIMEOUT_SECS }}
+          RIF_RNODE_TCP_BAUD_RATE: ${{ vars.HIL_RNODE_MATRIX_TCP_BAUD_RATE }}
+          RIF_RNODE_TCP_REGION: ${{ vars.HIL_RNODE_MATRIX_TCP_REGION }}
+          RIF_RNODE_TCP_FREQUENCY: ${{ vars.HIL_RNODE_MATRIX_TCP_FREQUENCY }}
+          RIF_RNODE_TCP_BANDWIDTH: ${{ vars.HIL_RNODE_MATRIX_TCP_BANDWIDTH }}
+          RIF_RNODE_TCP_SPREADING_FACTOR: ${{ vars.HIL_RNODE_MATRIX_TCP_SPREADING_FACTOR }}
+          RIF_RNODE_TCP_CODING_RATE: ${{ vars.HIL_RNODE_MATRIX_TCP_CODING_RATE }}
+          RIF_RNODE_TCP_TX_POWER: ${{ vars.HIL_RNODE_MATRIX_TCP_TX_POWER }}
+          RIF_RNODE_TCP_BITRATE: ${{ vars.HIL_RNODE_MATRIX_TCP_BITRATE }}
+          RIF_RNODE_TCP_COMMAND_TIMEOUT_MS: ${{ vars.HIL_RNODE_MATRIX_TCP_COMMAND_TIMEOUT_MS }}
+          RIF_RNODE_TCP_MAX_PAYLOAD_BYTES: ${{ vars.HIL_RNODE_MATRIX_TCP_MAX_PAYLOAD_BYTES }}
+          RIF_RNODE_TCP_MANAGEMENT_TIMEOUT_SECS: ${{ vars.HIL_RNODE_MATRIX_TCP_MANAGEMENT_TIMEOUT_SECS }}
+          RIF_RNODE_TCP_BLINK_PATTERN: ${{ vars.HIL_RNODE_MATRIX_TCP_BLINK_PATTERN }}
+          RIF_RNODE_TCP_TIMEOUT_SECS: ${{ vars.HIL_RNODE_MATRIX_TCP_TIMEOUT_SECS }}
+          RIF_RNODE_BLE_BAUD_RATE: ${{ vars.HIL_RNODE_MATRIX_BLE_BAUD_RATE }}
+          RIF_RNODE_BLE_REGION: ${{ vars.HIL_RNODE_MATRIX_BLE_REGION }}
+          RIF_RNODE_BLE_FREQUENCY: ${{ vars.HIL_RNODE_MATRIX_BLE_FREQUENCY }}
+          RIF_RNODE_BLE_BANDWIDTH: ${{ vars.HIL_RNODE_MATRIX_BLE_BANDWIDTH }}
+          RIF_RNODE_BLE_SPREADING_FACTOR: ${{ vars.HIL_RNODE_MATRIX_BLE_SPREADING_FACTOR }}
+          RIF_RNODE_BLE_CODING_RATE: ${{ vars.HIL_RNODE_MATRIX_BLE_CODING_RATE }}
+          RIF_RNODE_BLE_TX_POWER: ${{ vars.HIL_RNODE_MATRIX_BLE_TX_POWER }}
+          RIF_RNODE_BLE_BITRATE: ${{ vars.HIL_RNODE_MATRIX_BLE_BITRATE }}
+          RIF_RNODE_BLE_COMMAND_TIMEOUT_MS: ${{ vars.HIL_RNODE_MATRIX_BLE_COMMAND_TIMEOUT_MS }}
+          RIF_RNODE_BLE_MAX_PAYLOAD_BYTES: ${{ vars.HIL_RNODE_MATRIX_BLE_MAX_PAYLOAD_BYTES }}
+          RIF_RNODE_BLE_ADAPTER: ${{ vars.HIL_RNODE_MATRIX_BLE_ADAPTER }}
+          RIF_RNODE_BLE_SCAN_TIMEOUT_MS: ${{ vars.HIL_RNODE_MATRIX_BLE_SCAN_TIMEOUT_MS }}
+          RIF_RNODE_BLE_CONNECT_TIMEOUT_MS: ${{ vars.HIL_RNODE_MATRIX_BLE_CONNECT_TIMEOUT_MS }}
+          RIF_RNODE_BLE_MAX_WRITE_LEN: ${{ vars.HIL_RNODE_MATRIX_BLE_MAX_WRITE_LEN }}
+          RIF_RNODE_BLE_MANAGEMENT_TIMEOUT_SECS: ${{ vars.HIL_RNODE_MATRIX_BLE_MANAGEMENT_TIMEOUT_SECS }}
+          RIF_RNODE_BLE_BLINK_PATTERN: ${{ vars.HIL_RNODE_MATRIX_BLE_BLINK_PATTERN }}
+          RIF_RNODE_BLE_TIMEOUT_SECS: ${{ vars.HIL_RNODE_MATRIX_BLE_TIMEOUT_SECS }}
+          RNODE_BAUD_RATE: ${{ vars.HIL_RNODE_BAUD_RATE }}
+          RNODE_REGION: ${{ vars.HIL_RNODE_REGION }}
+          RNODE_FREQUENCY: ${{ vars.HIL_RNODE_FREQUENCY }}
+          RNODE_BANDWIDTH: ${{ vars.HIL_RNODE_BANDWIDTH }}
+          RNODE_SPREADING_FACTOR: ${{ vars.HIL_RNODE_SPREADING_FACTOR }}
+          RNODE_CODING_RATE: ${{ vars.HIL_RNODE_CODING_RATE }}
+          RNODE_TX_POWER: ${{ vars.HIL_RNODE_TX_POWER }}
+          RNODE_BITRATE: ${{ vars.HIL_RNODE_BITRATE }}
+          RNODE_COMMAND_TIMEOUT_MS: ${{ vars.HIL_RNODE_COMMAND_TIMEOUT_MS }}
+          RNODE_MAX_PAYLOAD_BYTES: ${{ vars.HIL_RNODE_MAX_PAYLOAD_BYTES }}
+          RNODE_BLE_ADAPTER: ${{ vars.HIL_RNODE_BLE_ADAPTER }}
+          RNODE_BLE_SCAN_TIMEOUT_MS: ${{ vars.HIL_RNODE_BLE_SCAN_TIMEOUT_MS }}
+          RNODE_BLE_CONNECT_TIMEOUT_MS: ${{ vars.HIL_RNODE_BLE_CONNECT_TIMEOUT_MS }}
+          RNODE_BLE_MAX_WRITE_LEN: ${{ vars.HIL_RNODE_BLE_MAX_WRITE_LEN }}
+          RNODE_MANAGEMENT_TIMEOUT_SECS: ${{ vars.HIL_RNODE_MANAGEMENT_TIMEOUT_SECS }}
+          RNODE_BLINK_PATTERN: ${{ vars.HIL_RNODE_BLINK_PATTERN }}
+          RNODE_TIMEOUT_SECS: ${{ vars.HIL_RNODE_TIMEOUT_SECS }}
+        run: ./tools/scripts/reticulum-interface-hil-matrix.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reticulum-interface-hil-matrix-artifacts
+          path: |
+            target/reticulum-interface-hil-matrix/report.json
+            target/reticulum-interface-hil-matrix/parity-audit-report.json
+            target/reticulum-interface-hil-matrix/artifact-manifest.json
+            target/reticulum-interface-hil-matrix/rnode-*
+            target/rnode-hil/matrix/*.report.json
 
   weave-prepared-host:
     if: ${{ vars.HIL_WEAVE_ENABLED == 'true' }}
@@ -194,8 +286,8 @@ jobs:
             target/vrn76-hil/run.*
 
   hil-disabled:
-    if: ${{ vars.HIL_ESP32_ENABLED != 'true' && vars.HIL_I2P_ENABLED != 'true' && vars.HIL_AUTO_INTERFACE_ENABLED != 'true' && vars.HIL_RNODE_MULTI_ENABLED != 'true' && vars.HIL_RNODE_ENABLED != 'true' && vars.HIL_WEAVE_ENABLED != 'true' && vars.HIL_VRN76_ENABLED != 'true' }}
+    if: ${{ vars.HIL_ESP32_ENABLED != 'true' && vars.HIL_I2P_ENABLED != 'true' && vars.HIL_AUTO_INTERFACE_ENABLED != 'true' && vars.HIL_RNODE_MULTI_ENABLED != 'true' && vars.HIL_RNODE_ENABLED != 'true' && vars.HIL_RNODE_MATRIX_ENABLED != 'true' && vars.HIL_WEAVE_ENABLED != 'true' && vars.HIL_VRN76_ENABLED != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: HIL disabled
-        run: echo "HIL_ESP32_ENABLED, HIL_I2P_ENABLED, HIL_AUTO_INTERFACE_ENABLED, HIL_RNODE_MULTI_ENABLED, HIL_RNODE_ENABLED, HIL_WEAVE_ENABLED, and HIL_VRN76_ENABLED are not set to true; skipping nightly HIL runs."
+        run: echo "HIL_ESP32_ENABLED, HIL_I2P_ENABLED, HIL_AUTO_INTERFACE_ENABLED, HIL_RNODE_MULTI_ENABLED, HIL_RNODE_ENABLED, HIL_RNODE_MATRIX_ENABLED, HIL_WEAVE_ENABLED, and HIL_VRN76_ENABLED are not set to true; skipping nightly HIL runs."

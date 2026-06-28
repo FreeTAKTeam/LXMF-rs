@@ -69,6 +69,11 @@ both already-persisted keys and keys generated in the same run. Each accepted
 stream strips the remote-destination line that SAM prepends, registers a
 virtual unicast child, and then hands the stream to the same HDLC packet
 runtime.
+SAM stream session IDs include the transport identity hash when available, so
+multiple local daemons can share one SAM router without colliding on the same
+interface-derived session ID. If a SAM bridge reports that an accept-loop ID is
+no longer a stream session, the accept loop recreates the connectable session
+instead of retrying a dead ID indefinitely.
 
 Once the SAM stream is open, packets use the same HDLC framing as Reticulum's
 stream interfaces. Direct outbound sends to a peer child use that peer's SAM
@@ -135,6 +140,12 @@ Current states are `configured`, `connecting`, `connected`, `listening`,
 - Full outbound peer production evidence requires a prepared-host run with
   reachable `I2P_PEERS` and connected outbound peer rows for every configured
   destination.
+- The pair smoke below proves a single real-SAM router can connect two local
+  daemon destinations. It does not replace broader public I2P peer-set or
+  long-running production evidence.
+- The pair smoke can optionally run a bounded soak with
+  `I2P_PAIR_SOAK_SECS`; this proves the single-router connected rows remained
+  stable for that requested local duration, not broad public peer-set parity.
 
 ## Software Fake-SAM Smoke
 
@@ -212,6 +223,47 @@ peers, connected outbound peers, configured peer count, raw peer rows, and an
 it is not outbound peer production parity. A run with reachable peers records
 `evidence_scope = "sam_connectable_with_outbound_peers"` after all configured
 outbound peer rows reach `connected`.
+
+## Prepared-Host Pair Smoke
+
+Use the pair smoke when a real local I2P router is available but no external
+prepared peer set is ready:
+
+```bash
+SAM_HOST=127.0.0.1 \
+SAM_PORT=7656 \
+./tools/scripts/i2p-prepared-host-pair-smoke.sh
+```
+
+To keep the connected rows under observation for a bounded local soak, set
+`I2P_PAIR_SOAK_SECS`:
+
+```bash
+SAM_HOST=127.0.0.1 \
+SAM_PORT=7656 \
+I2P_PAIR_SOAK_SECS=300 \
+./tools/scripts/i2p-prepared-host-pair-smoke.sh
+```
+
+The harness starts two `reticulumd` instances against the same SAM endpoint.
+The acceptor starts a connectable `I2PInterface` and publishes its
+`_runtime.i2p.reachable_endpoint`; the dialer then starts a second connectable
+`I2PInterface` with that live endpoint configured as its only peer. A passing
+run requires the acceptor to show a connected incoming peer row and the dialer
+to show a connected outbound peer row for the acceptor's `.b32.i2p`
+destination. Evidence is written under `target/i2p-hil-pair/`, including both
+daemon logs, both generated configs, both `rnstatus-rs` JSON snapshots, and a
+combined `report.json`. The report records
+`evidence_scope = "sam_connectable_with_outbound_peers_real_pair"` and a
+`product_boundary` note that the run proves single-router prepared-host
+connectivity, not broader public peer-set parity. When `I2P_PAIR_SOAK_SECS` is
+greater than zero, the harness periodically refreshes both `rnstatus-rs` JSON
+snapshots, requires the acceptor incoming row and dialer outbound row to remain
+connected for the requested duration, writes `soak_samples` and
+`soak_samples_jsonl`, and records
+`evidence_scope = "sam_connectable_with_outbound_peers_real_pair_soak"`.
+This is stronger local prepared-host stability evidence, but it still does not
+replace broader public I2P peer-set or long-running production evidence.
 
 The nightly HIL workflow can run the same harness when
 `HIL_I2P_ENABLED=true`. Set `HIL_I2P_SAM_HOST`, `HIL_I2P_SAM_PORT`, and

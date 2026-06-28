@@ -29,7 +29,7 @@ Workspace paths are used for navigation. Published package names are
 | `RNS/Resource.py` | `crates/libs/rns-transport` | done | Bounded receive allocation, advertisement validation, retries, adaptive fragment scheduling, timeout/failure events, cancellation, and cleanup. | Split/segmented resources remain intentionally unsupported and rejected. |
 | `RNS/Channel.py` | `crates/libs/rns-transport` | done | Channel packet handling, retry scheduling, buffering, ordered receive delivery, callback ordering/short-circuit/panic containment, delivery-on-proof, timeout retry, exhaustion cleanup, and live Rust/Python channel sequence tests. | No confirmed channel parity blocker. |
 | `RNS/Buffer.py` | `crates/libs/rns-core`, `crates/libs/rns-transport` | done | Packet buffers, readers/writers, and callback baseline. | No confirmed parity blocker. |
-| `RNS/Interfaces/*` | `crates/libs/rns-transport`, `crates/apps/reticulumd` | partial | TCP client/server, including Python-style TCP-over-I2P `i2p_tunneled` socket tuning for outbound clients and accepted server streams, TCP/Backbone client reconnect tunnel re-synthesis, TCP/Backbone listener runtime status refresh into daemon/RPC status with accept counters and latest accepted stream snapshot, Backbone TCP/HDLC listener/client compatibility with Backbone MTU defaults, Reticulum-style Backbone socket tuning for Backbone client and accepted listener streams (`TCP_NODELAY`, Linux/Android `SO_KEEPALIVE`, TCP keepalive idle/interval/count, and TCP user timeout), Backbone-only HDLC liveness keepalives/stale/read-timeout reconnects, and local slow-reader HDLC tx backpressure evidence paired with Python selector/epoll and live Python Reticulum `BackboneClientInterface` slow-reader probes plus focused live channel/link/request/resource roundtrips, LocalInterface TCP-loopback listener/client-attach plus Unix filesystem and Linux/Android abstract AF_UNIX shared-instance listener/client-attach compatibility, including implicit shared local TCP sidecar coexistence with configured TCP/Backbone listeners, Unix client-attach reconnect after initial connect failures or later disconnects, TCP/Unix attach reconnect signals that re-synthesize tunnel state, and shared-instance one-hop transport wrapping, Pipe subprocess HDLC, UDP unicast/multicast with Python-style UDP `device` broadcast-address defaults and IPv4 broadcast socket sends, serial, KISS, AX.25 KISS, AutoInterface, LoRa/RNode with serial/TCP and feature-gated BLE radio-state query, blink, safe read/display/local-radio management through daemon RPC, guarded persistent/destructive RNode management through daemon RPC, feature-gated RNode BLE, VR-N76 KISS-over-BLE, the in-progress shared serial/TCP RNodeMulti baseline with nested vport virtual children plus startup probe validation for detect, firmware `>= 1.74`, platform, MCU, `CMD_INTERFACES`, configured hardware vports, selected-vport radio status bookkeeping, vport-aware transport and daemon/RPC management queueing through parent iface plus child `vport` selection, parent-level Python ID beacon fanout to outgoing subinterfaces, and live daemon/RPC `radio_status` refresh over the transport-side runtime schema with stream/probe state and last-error reporting, the in-progress shared-serial Weave WDCL/HDLC endpoint baseline with live daemon/RPC status refresh over the transport-side endpoint, display-frame, and CPU/task/memory stat schema, and the in-progress I2P SAM peer/connectable baseline with Python-compatible persisted private-destination key filenames and live daemon/RPC tunnel status refresh over the transport-side watchdog/counter schema. | I2P full production evidence, broader live Backbone production comparison evidence, full RNodeMulti prepared-host hardware validation/evidence, broader RNodeMulti production parity, Weave UI and hardware evidence, BLE RNode management hardware evidence, and prepared-host hardware evidence remain. |
+| `RNS/Interfaces/*` | `crates/libs/rns-transport`, `crates/apps/reticulumd` | partial | TCP client/server, including Python-style TCP-over-I2P `i2p_tunneled` socket tuning for outbound clients and accepted server streams, TCP/Backbone client reconnect tunnel re-synthesis, TCP/Backbone listener runtime status refresh into daemon/RPC status with accept counters and latest accepted stream snapshot, Backbone TCP/HDLC listener/client compatibility with Backbone MTU defaults, Reticulum-style Backbone socket tuning for Backbone client and accepted listener streams (`TCP_NODELAY`, Linux/Android `SO_KEEPALIVE`, TCP keepalive idle/interval/count, and TCP user timeout), Backbone-only HDLC liveness keepalives/stale/read-timeout reconnects, and local slow-reader HDLC tx backpressure evidence paired with Python selector/epoll and live Python Reticulum `BackboneClientInterface` slow-reader probes plus focused live channel/link/request/resource roundtrips against the pinned Python reference, LocalInterface TCP-loopback listener/client-attach plus Unix filesystem and Linux/Android abstract AF_UNIX shared-instance listener/client-attach compatibility, including implicit shared local TCP sidecar coexistence with configured TCP/Backbone listeners, Unix client-attach reconnect after initial connect failures or later disconnects, TCP/Unix attach reconnect signals that re-synthesize tunnel state, and shared-instance one-hop transport wrapping, Pipe subprocess HDLC, UDP unicast/multicast with Python-style UDP `device` broadcast-address defaults and IPv4 broadcast socket sends, serial, KISS, AX.25 KISS, AutoInterface, LoRa/RNode with serial/TCP and feature-gated BLE radio-state query, blink, safe read/display/local-radio management through daemon RPC, guarded persistent/destructive RNode management through daemon RPC, feature-gated RNode BLE, VR-N76 KISS-over-BLE, the in-progress shared serial/TCP RNodeMulti baseline with nested vport virtual children plus startup probe validation for detect, firmware `>= 1.74`, platform, MCU, `CMD_INTERFACES`, configured hardware vports, selected-vport radio status bookkeeping, vport-aware transport and daemon/RPC management queueing through parent iface plus child `vport` selection, parent-level Python ID beacon fanout to outgoing subinterfaces, and live daemon/RPC `radio_status` refresh over the transport-side runtime schema with stream/probe state and last-error reporting, the in-progress shared-serial Weave WDCL/HDLC endpoint baseline with live daemon/RPC status refresh over the transport-side endpoint, display-frame, and CPU/task/memory stat schema, and the in-progress I2P SAM peer/connectable baseline with Python-compatible persisted private-destination key filenames, live daemon/RPC tunnel status refresh over the transport-side watchdog/counter schema, and real-SAM pair connected-peer evidence. | I2P full production evidence, full RNodeMulti prepared-host hardware validation/evidence, broader RNodeMulti production parity, Weave UI and hardware evidence, broad BLE/RNode management hardware matrix evidence, and broader prepared-host hardware evidence remain. |
 | `RNS/Discovery.py` | `crates/libs/rns-transport`, `crates/apps/reticulumd` | partial | Announce/path discovery plus live AutoInterface discovery and peer runtime. | Public bootstrap/discovery breadth remains narrower than Python. |
 | `RNS/Resolver.py` | `crates/libs/rns-transport` | partial | Resolver helpers, cached lookup behavior, and restored path-table identity lookup from cached announces exist. | Full resolver/discovery surface parity is not established. |
 | `RNS/Cryptography/*` | `crates/libs/rns-core` | done | Required Reticulum primitives used by identities, packets, links, and receipts. | No confirmed parity blocker. |
@@ -95,10 +95,28 @@ placeholders:
   `share_instance` synthesizes an implicit TCP `LocalInterface`, that listener
   can now coexist with another configured TCP or Backbone listener by starting
   as a daemon sidecar while explicit multi-listener TCP configs still use the
-  primary single-bind selector. A software TCP shared-instance smoke now proves
-  strict daemon startup, loopback listener status, attach-client status,
+  primary single-bind selector. Software TCP and Unix shared-instance smokes now
+  prove strict daemon startup, loopback listener status, attach-client status,
+  filesystem Unix listener startup, Linux abstract Unix listener/client attach,
   Python local MTU and bitrate alias reporting, fake shared-instance attach,
   and `rnstatus-rs` JSON/human output without another local Reticulum process.
+  The Unix report records
+  `evidence_scope = "software_unix_shared_instance_local"` so it is not
+  mistaken for multi-process Python shared-instance interop evidence. A pinned
+  Python shared-instance smoke now records
+  `evidence_scope = "python_shared_instance_tcp_unix_attach_and_announce_forward"` after
+  `reticulumd` attaches to real Python Reticulum shared instances over TCP and
+  Linux abstract Unix sockets, then observes Python-origin announce fanout
+  through those shared instances with traffic-client `announced_count` and
+  shared-server `local_client_rxb_total`/`local_client_txb_total` counters; that
+  report remains scoped to attach plus announce fanout and not broad
+  application-level shared-instance traffic parity. LocalInterface #384 evidence
+  is included in the executable Reticulum interface parity audit at
+  `target/reticulum-interface-parity-audit/report.json`, which records
+  `evidence_scope = "reticulum_interfaces_384_385_parity_audit"`, accepts
+  `RNODE_HIL_ARTIFACT_MANIFEST` for
+  `schema = "reticulum_interface_hil_matrix_artifacts.v1"` SHA-256 checking,
+  and lists `missing_full_parity` when paired RNode evidence is incomplete.
 - PipeInterface subprocess stdin/stdout transport with Python-style command
   parsing, HDLC packet framing, respawn delay, default MTU, and live subprocess
   status reporting through daemon/RPC `_runtime.pipe.status`. A software
@@ -217,8 +235,12 @@ placeholders:
   connect, HDLC writes, connectable accept-loop incoming `STREAM ACCEPT`,
   virtual child registration, HDLC ingress, direct outbound egress over accepted
   streams, cleanup, and daemon/RPC status refresh for connected outbound and
-  incoming peer rows without requiring a prepared I2P router. The config parser accepts
-  I2P-local IFAC aliases `ifac_netname` and `ifac_netkey`.
+  incoming peer rows without requiring a prepared I2P router. SAM session IDs
+  now include the daemon transport identity when available to avoid
+  cross-process ID collisions on a shared router, and expired accept-session IDs
+  recreate the connectable session instead of retrying a dead ID indefinitely.
+  The config parser accepts I2P-local IFAC aliases `ifac_netname` and
+  `ifac_netkey`.
 - Feature-gated native RNode BLE and VR-N76 KISS-over-BLE. The VR-N76 native
   interface now exposes live daemon/RPC `_runtime.vrn76.status` metadata with
   connection, subscription, readiness, startup-write failure, and queued packet
@@ -257,8 +279,8 @@ whole Python family, not because the implemented interfaces are stubs. Backbone
 now has Python selector/epoll and live Python Reticulum BackboneClientInterface
 slow-reader probes for the same qualitative backpressure workload, plus focused
 live Rust/Python Backbone channel, link-data, request/response, and resource
-roundtrips in both directions, while broader Backbone production comparison
-evidence remains pending. AutoInterface
+roundtrips in both directions against the pinned Python Reticulum reference.
+AutoInterface
 now has daemon-side dynamic add/remove reconciliation for an active runtime
 using the implemented diff plan plus discovery and data listener supervisors.
 Zero-initial startup now keeps the polling reconciler and scheduler runtime
@@ -286,14 +308,17 @@ The software fake-SAM smoke exercises strict daemon startup, destination
 persistence, a transient outbound `NAMING LOOKUP` failure followed by recovered
 connected peer state with cleared last error, connectable accept status,
 accepted incoming peer visibility, and `rnstatus-rs` JSON/human output without
-a real I2P router. The opt-in
-prepared-host smoke can also require configured outbound peers to reach
-`connected` state when `I2P_PEERS` is supplied. Its report explicitly records
-whether the run proved only `sam_connectable_only` behavior or
-`sam_connectable_with_outbound_peers` behavior, so no-peer runs are not
-mistaken for outbound peer production parity. Prepared-host connected-peer
-production evidence is still pending until the harness is run against a real
-SAM router and reachable peer set.
+a real I2P router. The opt-in prepared-host smoke can also require configured
+outbound peers to reach `connected` state when `I2P_PEERS` is supplied. Its
+report explicitly records whether the run proved only `sam_connectable_only`
+behavior or `sam_connectable_with_outbound_peers` behavior, so no-peer runs are
+not mistaken for outbound peer production parity. The real-SAM pair smoke now
+records `evidence_scope = "sam_connectable_with_outbound_peers_real_pair"`
+with connected dialer outbound and acceptor incoming peer rows for two local
+daemons sharing one router, and can optionally record
+`sam_connectable_with_outbound_peers_real_pair_soak` with periodic
+`rnstatus-rs` samples for bounded single-router stability. Broader public I2P
+peer-set and long-running production evidence remain pending.
 Ordinary serial/TCP and feature-gated BLE `RNodeInterface` now refresh transport-side probe/radio
 state into daemon/RPC `_runtime.lora.rnode_status`, and `rnstatus-rs` renders a
 compact human summary for operators. Python `RNodeInterface` alias configs now
@@ -302,7 +327,35 @@ have daemon parse-to-bootstrap/status coverage as `lora` with
 records serial/TCP/BLE RNode lifecycle evidence under `target/rnode-hil/` with
 bearer-scoped `evidence_scope` values (`prepared_host_serial_rnode`,
 `prepared_host_tcp_rnode`, and `prepared_host_ble_rnode`) so one prepared
-endpoint is not mistaken for broad hardware parity.
+endpoint is not mistaken for broad hardware parity. The prepared-host gate also
+queues safe `rnodeconf-rs query-radio-state` and `blink` management dispatch
+through the live daemon binding, records the command JSON artifacts, and
+requires a post-management status snapshot that remains online, radio-on, and
+free of command or hardware errors.
+Software-only RNode BLE fallback/management evidence now writes
+`evidence_scope = "software_rnode_ble_fallback_management"` under
+`target/rnode-ble-software-smoke/`, covering feature-gated identifier/alias
+matching, configured Android peripheral fallback exclusion, command-monitor
+status/degraded fallback, management-frame chunking/queueing, `rnodeconf-rs`
+extended management command-to-RPC coverage, feature-gated `reticulumd` daemon
+`RnodeBle` management bridge dispatch, persistent/destructive CLI guard enforcement,
+and shared closed-queue cleanup regressions. A fake TCP RNode smoke now records
+`evidence_scope = "software_fake_tcp_rnode_prepared_host_management"` by
+running the ordinary prepared-host path against a deterministic local KISS TCP
+peer and verifying startup, radio configuration, radio-state query, and blink
+management frames reached the peer. RNode BLE #385 is covered by the executable
+Reticulum interface parity audit, which requires the software evidence plus
+serial, TCP/Wi-Fi, and BLE prepared-host RNode hardware reports before strict
+full-parity mode can pass. The hardware reports are collected by
+`tools/scripts/reticulum-interface-hil-matrix.sh` into
+`target/rnode-hil/matrix/{serial,tcp,ble}.report.json` and summarized in
+`target/reticulum-interface-hil-matrix/report.json` with
+`evidence_scope = "reticulum_interfaces_384_385_hil_matrix"` plus
+`target/reticulum-interface-hil-matrix/artifact-manifest.json` with SHA-256
+digests. Nightly HIL
+exposes this collection path as `reticulum-interface-hil-matrix` behind
+`HIL_RNODE_MATRIX_ENABLED=true`; strict hardware reports must include endpoint,
+bearer, firmware, platform, MCU identity, and capture provenance fields.
 Display-capable BLE RNode shutdown now disables the external framebuffer before
 radio-off/leave frames. Android configured RNode BLE reconnect now excludes
 the failed configured peripheral from fallback scan matching, with shared alias
@@ -312,8 +365,9 @@ pre-encoded KISS command frames through the live KISS runtime; feature-gated
 BLE RNode streams expose the same management dispatch through the Nordic UART
 write path with BLE chunking.
 Radio-state query and blink dispatch are covered by local duplex/mock tests,
-daemon `rnode_management` RPC dispatch, and `rnodeconf-rs` query/blink CLI
-tests. Daemon RPC and `rnodeconf-rs` also queue safe config read, ROM read,
+daemon `rnode_management` RPC dispatch, `rnodeconf-rs` query/blink CLI tests,
+and prepared-host safe-management artifacts when the serial/TCP/BLE HIL gate is
+enabled. Daemon RPC and `rnodeconf-rs` also queue safe config read, ROM read,
 display intensity/blanking/rotation/recondition/address, NeoPixel intensity,
 and interference-avoidance enable/disable controls. Daemon RPC and
 `rnodeconf-rs` additionally
@@ -324,8 +378,9 @@ display/NeoPixel controls, interference-avoidance control, Wi-Fi settings,
 config save/delete, firmware-update metadata, and ROM/EEPROM read/write/wipe
 requests. Shared transport dispatch also removes interface records whose TX
 queues have closed, including shared virtual-interface queues, preventing stale
-closed paths from lingering after failed dispatch. BLE management hardware
-evidence and full Python `rnodeconf` parity remain pending.
+closed paths from lingering after failed dispatch. Broad BLE management
+hardware evidence across device, firmware, and operator workflows plus full
+Python `rnodeconf` parity remain pending.
 `RNodeMultiInterface` is tracked separately as an in-progress family: the
 shared serial/TCP vport routing slice exists and startup validates detect,
 firmware `>= 1.74`, platform, MCU, `CMD_INTERFACES`, and hardware-reported
@@ -340,7 +395,10 @@ before per-vport radio-off/leave frames, clean stream EOF/software stop reports
 closed without masking read/write/probe failures, daemon RPC binds the parent
 interface to the vport-aware management queue with explicit child `vport`
 validation, and `rnstatus-rs` renders a compact human summary of that state
-including the accepted probe metadata. An opt-in
+including the accepted probe metadata. Software fake TCP/PTY smokes now record
+`software_fake_tcp_rnode_multi` and `software_fake_pty_rnode_multi` evidence
+scopes with product-boundary notes so they are not mistaken for hardware
+parity. An opt-in
 prepared-host smoke harness now records serial/TCP RNodeMulti evidence under
 `target/rnode-multi-hil/` with `evidence_scope =
 "prepared_host_single_device_vport_probe"`, making clear that a passing run
@@ -356,7 +414,10 @@ exist. A Python-compatible WDCL remote-display enable/disable command frame
 primitive is covered in transport tests, and `reticulumd` now wires live
 dispatch through `weave_remote_display_control` with `weaveconf-rs`
 enable/disable commands. Software cancel/stop now marks the runtime closed and
-clears endpoint children. An opt-in prepared-host smoke harness records
+clears endpoint children. The software fake-PTY smoke now records
+`software_fake_pty_weave` evidence scope with a product-boundary note so it
+remains distinct from prepared-host hardware evidence. An opt-in prepared-host
+smoke harness records
 connected serial evidence under `target/weave-hil/` and can optionally prove
 the live `weaveconf-rs` remote-display enable/disable dispatch against that
 connected device. Its report distinguishes `prepared_host_connected_serial`
@@ -372,10 +433,10 @@ display/status payload, and operator-workflow combinations remains pending.
 2. Complete resolver/bootstrap behavior beyond cache-only restored path-table
    announce material, tunnel restored-cache lookup, and shared-instance
    path-table persistence suppression.
-3. Capture broader prepared-host BLE/RNode lifecycle evidence across bearer,
-   device, firmware, and radio combinations.
-4. Capture I2P prepared-host connected-peer evidence when claiming outbound
-   peer production parity.
+3. Capture broader prepared-host BLE/RNode lifecycle and safe-management
+   evidence across bearer, device, firmware, and radio combinations.
+4. Capture broader public I2P peer-set and long-running prepared-host evidence
+   before claiming complete outbound peer production parity.
 5. Capture broader RNodeMulti prepared-host hardware validation across device,
    firmware, and radio combinations.
 6. Implement real utility equivalents only where product demand justifies them.
