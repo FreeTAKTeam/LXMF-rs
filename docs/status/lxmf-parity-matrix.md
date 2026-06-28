@@ -1,6 +1,6 @@
 # LXMF Parity Matrix
 
-Last reassessed: 2026-06-19
+Last reassessed: 2026-06-28
 
 This is the maintained row-level status for Python LXMF compatibility.
 Repository-level posture and execution order live in
@@ -20,7 +20,7 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 
 | Python module | Rust surface | Status | Implemented baseline | Residual gap |
 | --- | --- | --- | --- | --- |
-| `LXMF/LXMF.py` | `crates/libs/lxmf-core` | partial | Constants, payload fields, message identity, inbound decoding, and wire helpers. | The complete convenience/module surface is not mirrored. |
+| `LXMF/LXMF.py` | `crates/libs/lxmf-core` | done | Pinned module constants, payload fields, message identity, inbound decoding, wire helpers, delivery app-data helpers, compression support detection, and propagation-node announce helper validation. | No confirmed `LXMF.py` blocker in the pinned Python reference. |
 | `LXMF/LXMessage.py` | `crates/libs/lxmf-core` | done | Wire, storage, propagation, paper, signatures, message IDs, binary fidelity, and timestamp precision metadata. | No confirmed base-message blocker. |
 | `LXMF/LXMPeer.py` | `crates/libs/rns-rpc`, `crates/apps/reticulumd` | done | Persistent peers, queue marks, offer selection, policy gates, peering keys, throttling, maintenance, source accounting, cumulative acceptance, serialized restored queue snapshots, boolean/list/numeric offer responses, transfer/retry/restart recovery, and unpeer cleanup. | No confirmed `LXMPeer.py` blocker in the pinned Python-only coverage. |
 | `LXMF/LXMRouter.py` | `crates/libs/rns-rpc`, `crates/apps/reticulumd` | partial | Outbound modes, selected propagation nodes, direct/propagated resources, cancellation, fetch/download/sync RPCs, receipts, persistence, propagation-node side effects, retry/failure handling, and Python live remote lifecycle coverage. | No confirmed propagation-router lifecycle blocker remains; broader non-propagation router convenience surface remains narrower than Python. |
@@ -38,6 +38,7 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - PARITY_ITEM id=message.file_unpack_helpers status=done
 - PARITY_ITEM id=message.signature_verify status=done
 - PARITY_ITEM id=message.object_accessors status=done
+- PARITY_ITEM id=module.app_data_helpers status=done
 - PARITY_ITEM id=stamper.validate_pn_stamp status=done
 - PARITY_ITEM id=stamper.generate_stamp status=done
 - PARITY_ITEM id=stamper.cancel_work status=done
@@ -75,6 +76,12 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - The typed ZeroMQ SDK send and batch-send paths map payload `body` into the
   LXMF message content when `content` is absent, while retaining the original
   `body` field for clients that store or render direct-chat bodies.
+- The pinned Python `LXMF.py` convenience constants and app-data helpers are
+  exposed from `lxmf-wire`: delivery display names, delivery stamp cost,
+  compression support defaults, propagation-node names, propagation-node stamp
+  cost, and propagation-node announce validation. Rust callers also get a
+  typed propagation-node validation error for diagnostics instead of only the
+  Python-style boolean result.
 
 ### Delivery and receipts
 

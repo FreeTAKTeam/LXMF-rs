@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last reassessed: 2026-06-27
+Last reassessed: 2026-06-28
 
 This file is the repository-level source of truth for parity posture, release
 confidence, and execution order. Detailed row-level status lives in:
@@ -339,6 +339,10 @@ The project is best described by capability level:
 - Documented basic LXMF field IDs are exported through `lxmf-wire`, and the
   typed ZeroMQ SDK send path preserves those field keys plus
   `_lxmf_fields_msgpack_b64` for REM/RCH payload compatibility.
+- The pinned Python `LXMF.py` module helper surface is now exposed in
+  `lxmf-wire`, including delivery app-data display-name and stamp-cost parsing,
+  compression support defaults, and propagation-node announce name/cost
+  validation with both Python-style boolean and typed Rust diagnostic paths.
 - The typed ZeroMQ SDK send and batch-send paths now treat payload `body` as
   message content when `content` is absent, while still preserving `body` in
   fields, so direct-chat links/body text do not get JSON-stringified.
