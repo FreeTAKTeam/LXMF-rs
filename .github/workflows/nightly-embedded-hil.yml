@@ -52,6 +52,29 @@ jobs:
             target/i2p-hil/report.json
             target/i2p-hil/run.*
 
+  i2p-prepared-host-pair:
+    if: ${{ vars.HIL_I2P_PAIR_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: I2P prepared-host pair smoke
+        env:
+          SAM_HOST: ${{ vars.HIL_I2P_PAIR_SAM_HOST }}
+          SAM_PORT: ${{ vars.HIL_I2P_PAIR_SAM_PORT }}
+          TIMEOUT_SECS: ${{ vars.HIL_I2P_PAIR_TIMEOUT_SECS }}
+          I2P_PAIR_SOAK_SECS: ${{ vars.HIL_I2P_PAIR_SOAK_SECS }}
+          I2P_PAIR_SOAK_POLL_SECS: ${{ vars.HIL_I2P_PAIR_SOAK_POLL_SECS }}
+        run: ./tools/scripts/i2p-prepared-host-pair-smoke.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: i2p-prepared-host-pair-artifacts
+          path: |
+            target/i2p-hil-pair/report.json
+            target/i2p-hil-pair/run.*
+
   auto-interface-prepared-host:
     if: ${{ vars.HIL_AUTO_INTERFACE_ENABLED == 'true' }}
     runs-on: ubuntu-latest
@@ -286,8 +309,8 @@ jobs:
             target/vrn76-hil/run.*
 
   hil-disabled:
-    if: ${{ vars.HIL_ESP32_ENABLED != 'true' && vars.HIL_I2P_ENABLED != 'true' && vars.HIL_AUTO_INTERFACE_ENABLED != 'true' && vars.HIL_RNODE_MULTI_ENABLED != 'true' && vars.HIL_RNODE_ENABLED != 'true' && vars.HIL_RNODE_MATRIX_ENABLED != 'true' && vars.HIL_WEAVE_ENABLED != 'true' && vars.HIL_VRN76_ENABLED != 'true' }}
+    if: ${{ vars.HIL_ESP32_ENABLED != 'true' && vars.HIL_I2P_ENABLED != 'true' && vars.HIL_I2P_PAIR_ENABLED != 'true' && vars.HIL_AUTO_INTERFACE_ENABLED != 'true' && vars.HIL_RNODE_MULTI_ENABLED != 'true' && vars.HIL_RNODE_ENABLED != 'true' && vars.HIL_RNODE_MATRIX_ENABLED != 'true' && vars.HIL_WEAVE_ENABLED != 'true' && vars.HIL_VRN76_ENABLED != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: HIL disabled
-        run: echo "HIL_ESP32_ENABLED, HIL_I2P_ENABLED, HIL_AUTO_INTERFACE_ENABLED, HIL_RNODE_MULTI_ENABLED, HIL_RNODE_ENABLED, HIL_RNODE_MATRIX_ENABLED, HIL_WEAVE_ENABLED, and HIL_VRN76_ENABLED are not set to true; skipping nightly HIL runs."
+        run: echo "HIL_ESP32_ENABLED, HIL_I2P_ENABLED, HIL_I2P_PAIR_ENABLED, HIL_AUTO_INTERFACE_ENABLED, HIL_RNODE_MULTI_ENABLED, HIL_RNODE_ENABLED, HIL_RNODE_MATRIX_ENABLED, HIL_WEAVE_ENABLED, and HIL_VRN76_ENABLED are not set to true; skipping nightly HIL runs."

@@ -279,7 +279,8 @@ The project is best described by capability level:
   persistence, a transient outbound `NAMING LOOKUP` failure followed by
   recovered connected peer state with cleared last error, connectable accept
   status, accepted incoming peer visibility, and `rnstatus-rs` JSON/human
-  output without a real I2P router. The
+  output without a real I2P router, with
+  `evidence_scope = "software_fake_sam_i2p_runtime"`. The
   prepared-host smoke can now optionally require configured outbound peers to
   reach `connected` state when `I2P_PEERS` is supplied; its report explicitly
   distinguishes no-peer `sam_connectable_only` evidence from
@@ -289,8 +290,10 @@ The project is best described by capability level:
   connected dialer outbound and acceptor incoming peer rows for two local
   daemons sharing one router, and can optionally record
   `sam_connectable_with_outbound_peers_real_pair_soak` with periodic
-  `rnstatus-rs` samples for bounded single-router stability. Broader public I2P
-  peer-set and long-running production evidence remain pending.
+  `rnstatus-rs` samples for bounded single-router stability. Nightly HIL exposes
+  that pair path with `HIL_I2P_PAIR_ENABLED=true` and uploads
+  `i2p-prepared-host-pair-artifacts`. Broader public I2P peer-set and
+  long-running production evidence remain pending.
 - Feature-gated VR-N76 KISS-over-BLE now refreshes transport-side runtime
   status into daemon/RPC `_runtime.vrn76.status`; `rnstatus-rs` summarizes
   connected, subscribed, ready, startup-write failure, and queue counters. An

@@ -65,6 +65,12 @@ import sys
 expected_peers = [item.strip() for item in peers_raw.split(",") if item.strip()]
 report = {
     "status": status,
+    "evidence_scope": "software_fake_sam_i2p_runtime",
+    "product_boundary": (
+        "Software fake-SAM evidence proves daemon integration, connectable "
+        "incoming-peer visibility, outbound retry recovery, and status refresh "
+        "without a prepared I2P router; prepared-host router evidence remains separate."
+    ),
     "reason": reason or None,
     "sam_endpoint": sam_endpoint,
     "expected_outbound_peers": expected_peers,

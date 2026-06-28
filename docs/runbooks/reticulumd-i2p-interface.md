@@ -183,9 +183,11 @@ fast and deterministic. A passing run requires:
 
 Evidence is written under `target/i2p-fake-sam-smoke/`, including
 `report.json`, fake-SAM logs, daemon logs, generated config, captured JSON
-status, and captured human status. This smoke is software-only evidence for
-daemon integration, connectable incoming-peer visibility, and status refresh;
-it does not replace the prepared-host router evidence below.
+status, and captured human status. The report records
+`evidence_scope = "software_fake_sam_i2p_runtime"` plus a `product_boundary`
+note. This smoke is software-only evidence for daemon integration, connectable
+incoming-peer visibility, outbound retry recovery, and status refresh; it does
+not replace the prepared-host router evidence below.
 
 ## Prepared-Host Smoke
 
@@ -270,3 +272,11 @@ The nightly HIL workflow can run the same harness when
 `HIL_I2P_TIMEOUT_SECS` as needed for the prepared runner; set `HIL_I2P_PEERS`
 to enable configured outbound-peer proof. Unset host/port values fall back to
 the local SAM default.
+
+Nightly HIL can also run the two-daemon real-SAM pair with
+`HIL_I2P_PAIR_ENABLED=true`. Configure `HIL_I2P_PAIR_SAM_HOST`,
+`HIL_I2P_PAIR_SAM_PORT`, and `HIL_I2P_PAIR_TIMEOUT_SECS` for the runner's SAM
+router, and set `HIL_I2P_PAIR_SOAK_SECS` plus
+`HIL_I2P_PAIR_SOAK_POLL_SECS` when bounded connected-row stability samples are
+required. Artifacts are uploaded as `i2p-prepared-host-pair-artifacts`,
+including `target/i2p-hil-pair/report.json` and `target/i2p-hil-pair/run.*`.

@@ -308,7 +308,8 @@ The software fake-SAM smoke exercises strict daemon startup, destination
 persistence, a transient outbound `NAMING LOOKUP` failure followed by recovered
 connected peer state with cleared last error, connectable accept status,
 accepted incoming peer visibility, and `rnstatus-rs` JSON/human output without
-a real I2P router. The opt-in prepared-host smoke can also require configured
+a real I2P router, with `evidence_scope = "software_fake_sam_i2p_runtime"`.
+The opt-in prepared-host smoke can also require configured
 outbound peers to reach `connected` state when `I2P_PEERS` is supplied. Its
 report explicitly records whether the run proved only `sam_connectable_only`
 behavior or `sam_connectable_with_outbound_peers` behavior, so no-peer runs are
@@ -317,8 +318,10 @@ records `evidence_scope = "sam_connectable_with_outbound_peers_real_pair"`
 with connected dialer outbound and acceptor incoming peer rows for two local
 daemons sharing one router, and can optionally record
 `sam_connectable_with_outbound_peers_real_pair_soak` with periodic
-`rnstatus-rs` samples for bounded single-router stability. Broader public I2P
-peer-set and long-running production evidence remain pending.
+`rnstatus-rs` samples for bounded single-router stability. Nightly HIL exposes
+that pair path with `HIL_I2P_PAIR_ENABLED=true` and uploads
+`i2p-prepared-host-pair-artifacts`. Broader public I2P peer-set and
+long-running production evidence remain pending.
 Ordinary serial/TCP and feature-gated BLE `RNodeInterface` now refresh transport-side probe/radio
 state into daemon/RPC `_runtime.lora.rnode_status`, and `rnstatus-rs` renders a
 compact human summary for operators. Python `RNodeInterface` alias configs now
