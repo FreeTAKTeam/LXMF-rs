@@ -117,6 +117,15 @@ pub trait PathLookupBridge: Send + Sync {
 
     fn request_path(&self, destination: &str) -> Result<(), std::io::Error>;
 
+    fn request_path_scoped(
+        &self,
+        destination: &str,
+        _on_iface: Option<&str>,
+        _tag: Option<&[u8]>,
+    ) -> Result<(), std::io::Error> {
+        self.request_path(destination)
+    }
+
     fn path_status(&self, destination: &str) -> Result<JsonValue, std::io::Error> {
         let path_found = self.has_path(destination)?;
         Ok(json!({

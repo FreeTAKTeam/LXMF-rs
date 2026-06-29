@@ -171,6 +171,8 @@ impl RpcDaemon {
                 let parsed: PathLookupParams = serde_json::from_value(params)
                     .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
                 let destination = normalize_destination_hash_param(&parsed.destination)?;
+                let on_iface = normalize_optional_iface_hash_param(parsed.on_iface.as_deref())?;
+                let tag = normalize_optional_tag_hex_param(parsed.tag_hex.as_deref())?;
                 let Some(bridge) = self
                     .path_lookup_bridge
                     .lock()
@@ -199,7 +201,11 @@ impl RpcDaemon {
                 let mut path_found = path_found_from_status(&status_fields);
                 let mut requested = false;
                 if !path_found {
-                    if let Err(err) = bridge.request_path(destination.as_str()) {
+                    if let Err(err) = bridge.request_path_scoped(
+                        destination.as_str(),
+                        on_iface.as_deref(),
+                        tag.as_deref(),
+                    ) {
                         return Ok(RpcResponse {
                             id: request.id,
                             result: None,
@@ -246,16 +252,10 @@ impl RpcDaemon {
                 } else {
                     "unknown"
                 };
-                Ok(RpcResponse {
-                    id: request.id,
-                    result: Some(path_lookup_result(
-                        destination,
-                        status_fields,
-                        Some(requested),
-                        status,
-                    )),
-                    error: None,
-                })
+                let mut result =
+                    path_lookup_result(destination, status_fields, Some(requested), status);
+                add_path_request_scope_fields(&mut result, on_iface.as_deref(), tag.as_deref());
+                Ok(RpcResponse { id: request.id, result: Some(result), error: None })
             }
             "rnode_management" => {
                 let params = request.params.ok_or_else(|| {

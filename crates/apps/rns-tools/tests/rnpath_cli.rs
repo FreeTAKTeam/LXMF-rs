@@ -18,6 +18,8 @@ fn rnpath_help_exposes_path_discovery_rpc_options() {
     assert!(stdout.contains("--rpc"));
     assert!(stdout.contains("--timeout"));
     assert!(stdout.contains("--json"));
+    assert!(stdout.contains("--on-iface"));
+    assert!(stdout.contains("--tag-hex"));
 }
 
 #[test]
@@ -68,6 +70,46 @@ fn rnpath_sends_request_path_rpc_and_renders_human_summary() {
 }
 
 #[test]
+fn rnpath_sends_scoped_request_options() {
+    let rpc = spawn_mock_rpc(|request| {
+        assert_eq!(request.method, "request_path");
+        let params = request.params.expect("params");
+        assert_eq!(params["destination_hash"].as_str(), Some("00112233445566778899aabbccddeeff"));
+        assert_eq!(params["on_iface"].as_str(), Some("aabbccddeeff00112233445566778899"));
+        assert_eq!(params["tag_hex"].as_str(), Some("01020304"));
+        RpcResponse {
+            id: request.id,
+            result: Some(json!({
+                "destination_hash": "00112233445566778899aabbccddeeff",
+                "status": "found",
+                "requested": true,
+                "path_found": true,
+                "on_iface": "aabbccddeeff00112233445566778899",
+                "tag_hex": "01020304",
+            })),
+            error: None,
+        }
+    });
+
+    let output = Command::new(rnpath_bin())
+        .arg("00112233445566778899aabbccddeeff")
+        .arg("--rpc")
+        .arg(rpc.addr)
+        .arg("--on-iface")
+        .arg("AABBCCDDEEFF00112233445566778899")
+        .arg("--tag-hex")
+        .arg("01020304")
+        .output()
+        .expect("run rnpath-rs");
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
+    assert!(stdout.contains("on_iface=aabbccddeeff00112233445566778899"));
+    assert!(stdout.contains("tag_hex=01020304"));
+    rpc.thread.join().expect("mock rpc server");
+}
+
+#[test]
 fn rnpath_json_prints_daemon_result_verbatim() {
     let rpc = spawn_mock_rpc(|request| RpcResponse {
         id: request.id,
@@ -95,6 +137,20 @@ fn rnpath_json_prints_daemon_result_verbatim() {
     assert_eq!(value["status"].as_str(), Some("found"));
     assert_eq!(value["hops"].as_u64(), Some(2));
     rpc.thread.join().expect("mock rpc server");
+}
+
+#[test]
+fn rnpath_rejects_malformed_tag_before_backend_work() {
+    let output = Command::new(rnpath_bin())
+        .arg("00112233445566778899aabbccddeeff")
+        .arg("--tag-hex")
+        .arg("not-hex")
+        .output()
+        .expect("run rnpath-rs");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).expect("utf8 stderr");
+    assert!(stderr.contains("tag must be hexadecimal"));
 }
 
 #[test]

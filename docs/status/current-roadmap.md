@@ -339,6 +339,10 @@ The project is best described by capability level:
   rnpath-smoke`, which starts a local four-node mesh and verifies a
   non-neighbor destination resolves with next-hop/interface metadata over the
   software RPC path.
+- Daemon-backed path requests now preserve optional interface scope and request
+  tag bytes from RPC through `reticulumd` into the transport path-request
+  generator, and `rnpath-rs` exposes matching `--on-iface` and `--tag-hex`
+  flags for software-only parity checks.
 
 ### LXMF
 

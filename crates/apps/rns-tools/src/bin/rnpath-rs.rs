@@ -24,6 +24,12 @@ struct Cli {
 
     #[arg(long)]
     json: bool,
+
+    #[arg(long, value_name = "IFACE_HASH", value_parser = parse_destination_hash)]
+    on_iface: Option<String>,
+
+    #[arg(long, value_name = "TAG_HEX", value_parser = parse_request_tag_hex)]
+    tag_hex: Option<String>,
 }
 
 fn main() -> std::process::ExitCode {
@@ -41,6 +47,8 @@ fn run(cli: &Cli, output: &mut dyn Write) -> io::Result<()> {
     let params = json!({
         "destination_hash": cli.destination_hash,
         "timeout_secs": cli.timeout,
+        "on_iface": cli.on_iface,
+        "tag_hex": cli.tag_hex,
     });
     let response = rpc_call(&cli.rpc, 1, REQUEST_PATH_METHOD, Some(params), cli.rpc_timeout())?;
     let result = ensure_rpc_ok(response, REQUEST_PATH_METHOD)?.ok_or_else(|| {
@@ -116,6 +124,8 @@ fn write_human_path_result(
         "next_hop",
         "via",
         "interface",
+        "on_iface",
+        "tag_hex",
         "hops",
         "cost",
     ] {
@@ -150,6 +160,14 @@ fn parse_destination_hash(value: &str) -> Result<String, String> {
     let bytes = hex::decode(value).map_err(|_| "destination hash must be hexadecimal")?;
     if bytes.len() != DESTINATION_HASH_BYTES {
         return Err(format!("destination hash must decode to {DESTINATION_HASH_BYTES} bytes"));
+    }
+    Ok(value.to_ascii_lowercase())
+}
+
+fn parse_request_tag_hex(value: &str) -> Result<String, String> {
+    let bytes = hex::decode(value).map_err(|_| "tag must be hexadecimal")?;
+    if bytes.is_empty() || bytes.len() > DESTINATION_HASH_BYTES {
+        return Err(format!("tag must decode to 1..={DESTINATION_HASH_BYTES} bytes"));
     }
     Ok(value.to_ascii_lowercase())
 }

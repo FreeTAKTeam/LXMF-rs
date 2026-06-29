@@ -1,7 +1,15 @@
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ScopedPathRequest {
+    destination: String,
+    on_iface: Option<String>,
+    tag_hex: Option<String>,
+}
+
 struct RecordingPathLookupBridge {
     known: std::sync::Mutex<bool>,
     discover_on_request: bool,
     requests: std::sync::Mutex<Vec<String>>,
+    scoped_requests: std::sync::Mutex<Vec<ScopedPathRequest>>,
 }
 
 impl RecordingPathLookupBridge {
@@ -10,6 +18,7 @@ impl RecordingPathLookupBridge {
             known: std::sync::Mutex::new(known),
             discover_on_request: false,
             requests: std::sync::Mutex::new(Vec::new()),
+            scoped_requests: std::sync::Mutex::new(Vec::new()),
         }
     }
 
@@ -18,11 +27,16 @@ impl RecordingPathLookupBridge {
             known: std::sync::Mutex::new(false),
             discover_on_request: true,
             requests: std::sync::Mutex::new(Vec::new()),
+            scoped_requests: std::sync::Mutex::new(Vec::new()),
         }
     }
 
     fn requests(&self) -> Vec<String> {
         self.requests.lock().expect("requests mutex poisoned").clone()
+    }
+
+    fn scoped_requests(&self) -> Vec<ScopedPathRequest> {
+        self.scoped_requests.lock().expect("scoped requests mutex poisoned").clone()
     }
 }
 
@@ -40,6 +54,22 @@ impl PathLookupBridge for RecordingPathLookupBridge {
             *self.known.lock().expect("known mutex poisoned") = true;
         }
         Ok(())
+    }
+
+    fn request_path_scoped(
+        &self,
+        destination: &str,
+        on_iface: Option<&str>,
+        tag: Option<&[u8]>,
+    ) -> Result<(), std::io::Error> {
+        self.scoped_requests.lock().expect("scoped requests mutex poisoned").push(
+            ScopedPathRequest {
+                destination: destination.to_string(),
+                on_iface: on_iface.map(ToOwned::to_owned),
+                tag_hex: tag.map(hex::encode),
+            },
+        );
+        self.request_path(destination)
     }
 }
 
@@ -171,6 +201,41 @@ fn request_path_reports_found_when_path_appears_after_request() {
 }
 
 #[test]
+fn request_path_forwards_scoped_iface_and_tag() {
+    let daemon = RpcDaemon::test_instance();
+    let bridge = Arc::new(RecordingPathLookupBridge::new(false));
+    daemon.set_path_lookup_bridge(bridge.clone());
+
+    let response = daemon
+        .handle_rpc(rpc_request(
+            9,
+            "request_path",
+            json!({
+                "destination_hash": "00112233445566778899aabbccddeeff",
+                "interface": "AABBCCDDEEFF00112233445566778899",
+                "tag": "01020304"
+            }),
+        ))
+        .expect("request path response");
+
+    assert!(response.error.is_none());
+    let result = response.result.expect("request path result");
+    assert_eq!(result["path_found"].as_bool(), Some(false));
+    assert_eq!(result["requested"].as_bool(), Some(true));
+    assert_eq!(result["on_iface"].as_str(), Some("aabbccddeeff00112233445566778899"));
+    assert_eq!(result["interface_scope"].as_str(), Some("aabbccddeeff00112233445566778899"));
+    assert_eq!(result["tag_hex"].as_str(), Some("01020304"));
+    assert_eq!(
+        bridge.scoped_requests(),
+        vec![ScopedPathRequest {
+            destination: "00112233445566778899aabbccddeeff".to_string(),
+            on_iface: Some("aabbccddeeff00112233445566778899".to_string()),
+            tag_hex: Some("01020304".to_string()),
+        }]
+    );
+}
+
+#[test]
 fn request_path_skips_dispatch_when_already_known() {
     let daemon = RpcDaemon::test_instance();
     let bridge = Arc::new(RecordingPathLookupBridge::new(true));
@@ -221,6 +286,53 @@ fn path_rpc_rejects_invalid_destination_before_bridge() {
 
     assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
     assert_eq!(err.to_string(), "destination must decode to a 16-byte RNS destination hash");
+}
+
+#[test]
+fn path_rpc_rejects_invalid_scoped_iface_before_bridge() {
+    let daemon = RpcDaemon::test_instance();
+    let bridge = Arc::new(RecordingPathLookupBridge::new(false));
+    daemon.set_path_lookup_bridge(bridge.clone());
+
+    let err = daemon
+        .handle_rpc(rpc_request(
+            10,
+            "request_path",
+            json!({
+                "destination_hash": "00112233445566778899aabbccddeeff",
+                "on_iface": "abcd"
+            }),
+        ))
+        .expect_err("short interface hash should be invalid input");
+
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+    assert_eq!(
+        err.to_string(),
+        "on_iface destination must decode to a 16-byte RNS destination hash"
+    );
+    assert!(bridge.requests().is_empty());
+}
+
+#[test]
+fn path_rpc_rejects_oversized_tag_before_bridge() {
+    let daemon = RpcDaemon::test_instance();
+    let bridge = Arc::new(RecordingPathLookupBridge::new(false));
+    daemon.set_path_lookup_bridge(bridge.clone());
+
+    let err = daemon
+        .handle_rpc(rpc_request(
+            11,
+            "request_path",
+            json!({
+                "destination_hash": "00112233445566778899aabbccddeeff",
+                "tag_hex": "00112233445566778899aabbccddeeff00"
+            }),
+        ))
+        .expect_err("oversized request tag should be invalid input");
+
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+    assert_eq!(err.to_string(), "tag_hex must decode to 1..=16 bytes");
+    assert!(bridge.requests().is_empty());
 }
 
 #[test]

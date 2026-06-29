@@ -20,6 +20,16 @@ impl DaemonPathLookupBridge {
             .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))
     }
 
+    fn optional_hash(
+        value: Option<&str>,
+        field: &str,
+    ) -> Result<Option<AddressHash>, std::io::Error> {
+        value
+            .map(Self::destination_hash)
+            .transpose()
+            .map_err(|err| std::io::Error::new(err.kind(), format!("{field} {err}")))
+    }
+
     fn run_transport<F, T>(&self, f: F) -> Result<T, std::io::Error>
     where
         F: FnOnce(Arc<Transport>) -> Result<T, std::io::Error> + Send + 'static,
@@ -47,7 +57,18 @@ impl PathLookupBridge for DaemonPathLookupBridge {
     }
 
     fn request_path(&self, destination: &str) -> Result<(), std::io::Error> {
+        self.request_path_scoped(destination, None, None)
+    }
+
+    fn request_path_scoped(
+        &self,
+        destination: &str,
+        on_iface: Option<&str>,
+        tag: Option<&[u8]>,
+    ) -> Result<(), std::io::Error> {
         let destination = Self::destination_hash(destination)?;
+        let on_iface = Self::optional_hash(on_iface, "on_iface")?;
+        let tag = tag.map(Vec::from);
         self.run_transport(move |transport| {
             let runtime = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
@@ -56,7 +77,7 @@ impl PathLookupBridge for DaemonPathLookupBridge {
                     std::io::Error::other(format!("failed to build path request runtime: {err}"))
                 })?;
             runtime.block_on(async move {
-                transport.request_path(&destination, None, None).await;
+                transport.request_path(&destination, on_iface, tag).await;
             });
             Ok(())
         })
@@ -113,5 +134,34 @@ mod tests {
         let bridge = bridge();
 
         bridge.request_path("00112233445566778899aabbccddeeff").expect("dispatch path request");
+    }
+
+    #[test]
+    fn path_lookup_bridge_dispatches_scoped_request_path() {
+        let bridge = bridge();
+
+        bridge
+            .request_path_scoped(
+                "00112233445566778899aabbccddeeff",
+                Some("aabbccddeeff00112233445566778899"),
+                Some(&[1, 2, 3, 4]),
+            )
+            .expect("dispatch scoped path request");
+    }
+
+    #[test]
+    fn path_lookup_bridge_rejects_invalid_scoped_iface() {
+        let bridge = bridge();
+
+        let err = bridge
+            .request_path_scoped(
+                "00112233445566778899aabbccddeeff",
+                Some("abcd"),
+                Some(&[1, 2, 3, 4]),
+            )
+            .expect_err("invalid scoped iface should fail");
+
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+        assert!(err.to_string().contains("on_iface"));
     }
 }
