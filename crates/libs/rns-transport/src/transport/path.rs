@@ -146,7 +146,7 @@ pub(super) async fn handle_path_request<'a>(
     handler: &mut MutexGuard<'a, TransportHandler>,
     iface: AddressHash,
 ) {
-    if let Some(request) = handler.path_requests.decode(packet.data.as_slice()) {
+    if let Some(request) = handler.path_requests.decode(packet.data.as_slice(), iface) {
         if let Some(dest) = handler.single_in_destinations.get(&request.destination).cloned() {
             let app_data =
                 handler.single_in_destination_app_data.get(&request.destination).cloned();

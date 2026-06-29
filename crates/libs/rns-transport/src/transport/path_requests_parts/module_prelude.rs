@@ -43,7 +43,7 @@ pub fn create_path_request_destination() -> PlainInputDestination {
 
 pub type TagBytes = Vec<u8>;
 
-type DuplicateKey = (AddressHash, TagBytes);
+type DuplicateKey = (AddressHash, Option<AddressHash>, TagBytes, AddressHash);
 
 type DiscoveryKey = (AddressHash, Option<AddressHash>);
 
@@ -79,8 +79,9 @@ impl PathRequest {
         let mut tag_end = data.len();
 
         if data.len() > ADDRESS_HASH_SIZE * 2 {
-            requesting_transport =
-                Some(AddressHash::new_from_slice(&data[ADDRESS_HASH_SIZE..2 * ADDRESS_HASH_SIZE]));
+            let mut raw_requester = [0u8; ADDRESS_HASH_SIZE];
+            raw_requester.copy_from_slice(&data[ADDRESS_HASH_SIZE..2 * ADDRESS_HASH_SIZE]);
+            requesting_transport = Some(AddressHash::new(raw_requester));
             tag_start = ADDRESS_HASH_SIZE * 2;
         }
 
@@ -209,16 +210,21 @@ impl PathRequests {
         self.outgoing_request_queue.push_back((*destination, now));
     }
 
-    pub fn decode(&mut self, data: &[u8]) -> Option<PathRequest> {
-        self.decode_at(data, Instant::now())
+    pub fn decode(&mut self, data: &[u8], on_iface: AddressHash) -> Option<PathRequest> {
+        self.decode_at(data, on_iface, Instant::now())
     }
 
-    fn decode_at(&mut self, data: &[u8], now: Instant) -> Option<PathRequest> {
+    fn decode_at(&mut self, data: &[u8], on_iface: AddressHash, now: Instant) -> Option<PathRequest> {
         let path_request = PathRequest::decode(data, &self.name);
         self.prune_cache(now);
 
         if let Some(ref request) = path_request {
-            let key = (request.destination, request.tag_bytes.clone());
+            let key = (
+                request.destination,
+                request.requesting_transport,
+                request.tag_bytes.clone(),
+                on_iface,
+            );
             let expires_at = now + self.request_timeout;
             let is_new = self.cache.insert(key.clone(), expires_at).is_none();
 

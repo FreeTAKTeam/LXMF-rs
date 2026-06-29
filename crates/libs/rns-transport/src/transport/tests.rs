@@ -1,5 +1,7 @@
 include!("tests_parts/module_prelude.rs");
 
+include!("tests_parts/path_request_duplicate_scoping.rs");
+
 include!("tests_parts/unknown_path_request_answered_by_announce.rs");
 
 include!("tests_parts/pending_out_link_rediscovery.rs");

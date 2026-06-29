@@ -54,6 +54,14 @@ The project is best described by capability level:
   queued announces or an active announce cap block the request, while a
   recursive request admitted by the gate advances the next allowed
   announce/path slot.
+- Path-request duplicate/throttle state now has bounded software coverage:
+  inbound duplicate request suppression is scoped by destination, requesting
+  transport, request tag, and ingress interface and expires after the request
+  timeout; local path-response suppression is scoped by destination, requesting
+  transport, request tag, and egress interface; and recursive discovery capacity
+  is tracked per source interface and released after the request timeout. This
+  is path-request policy evidence only, not a full transport-runtime parity
+  claim.
 - Unknown recursive path discovery now follows Python's `DISCOVER_PATHS_FOR`
   interface-mode gate: only access-point, gateway, and roaming interfaces
   forward unknown-path discovery, while full, point-to-point, and boundary
