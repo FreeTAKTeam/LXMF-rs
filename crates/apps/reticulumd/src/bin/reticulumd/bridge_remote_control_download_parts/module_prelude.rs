@@ -12,10 +12,13 @@ use super::*;
 use lxmf::inbound_decode::InboundPayloadMode;
 
 use reticulum_daemon::inbound_delivery::{
-    annotate_inbound_record_stamp_status, decode_inbound_payload, evaluate_inbound_stamp_policy,
-    inbound_record_allowed_by_delivery_policy,
+    annotate_inbound_record_stamp_status, decode_inbound_payload_with_diagnostics,
+    evaluate_inbound_stamp_policy, inbound_record_allowed_by_delivery_policy,
 };
 
+use crate::inbound_worker::delivery_events::{
+    emit_inbound_drop_event, InboundDeliveryKind, InboundDropEvent,
+};
 use rns_transport::identity::DecryptIdentity;
 
 use x25519_dalek::PublicKey;
@@ -341,24 +344,70 @@ async fn accept_downloaded_propagation_payload(
         (destination_hash, wire)
     };
 
-    let stamp_status = evaluate_inbound_stamp_policy(
-        daemon,
-        destination_hash,
-        &wire,
-        InboundPayloadMode::FullWire,
-    )
-    .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
-    let Some(mut record) =
-        decode_inbound_payload(destination_hash, &wire, InboundPayloadMode::FullWire)
+    let raw_destination_hex = hex::encode(destination_hash);
+    let (record, diagnostics) =
+        decode_inbound_payload_with_diagnostics(destination_hash, &wire, InboundPayloadMode::FullWire);
+    let Some(mut record) = record
     else {
+        emit_inbound_drop_event(
+            daemon,
+            InboundDropEvent {
+                reason: "decode_failed",
+                delivery_kind: InboundDeliveryKind::Propagation,
+                raw_destination_hex: raw_destination_hex.as_str(),
+                destination: destination_hash,
+                payload_mode: InboundPayloadMode::FullWire,
+                bytes_len: wire.len(),
+                detail: Some(diagnostics.summary()),
+                record: None,
+            },
+        );
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
             "failed to decode downloaded propagated LXMF payload",
         ));
     };
 
+    let stamp_status = match evaluate_inbound_stamp_policy(
+        daemon,
+        destination_hash,
+        &wire,
+        InboundPayloadMode::FullWire,
+    ) {
+        Ok(status) => status,
+        Err(error) => {
+            emit_inbound_drop_event(
+                daemon,
+                InboundDropEvent {
+                    reason: "stamp_policy_rejected",
+                    delivery_kind: InboundDeliveryKind::Propagation,
+                    raw_destination_hex: raw_destination_hex.as_str(),
+                    destination: destination_hash,
+                    payload_mode: InboundPayloadMode::FullWire,
+                    bytes_len: wire.len(),
+                    detail: Some(error.to_string()),
+                    record: Some(&record),
+                },
+            );
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, error));
+        }
+    };
+
     annotate_inbound_record_stamp_status(&mut record, stamp_status);
     if !inbound_record_allowed_by_delivery_policy(daemon, &record) {
+        emit_inbound_drop_event(
+            daemon,
+            InboundDropEvent {
+                reason: "delivery_policy_rejected",
+                delivery_kind: InboundDeliveryKind::Propagation,
+                raw_destination_hex: raw_destination_hex.as_str(),
+                destination: destination_hash,
+                payload_mode: InboundPayloadMode::FullWire,
+                bytes_len: wire.len(),
+                detail: None,
+                record: Some(&record),
+            },
+        );
         return Ok(DownloadAcceptOutcome::Rejected);
     }
     if daemon.message_exists(record.id.as_str())? {

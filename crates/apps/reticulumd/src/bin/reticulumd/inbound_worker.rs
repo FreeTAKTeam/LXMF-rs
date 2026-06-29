@@ -4,7 +4,7 @@ include!("inbound_worker_parts/module_prelude.rs");
 mod control;
 
 #[path = "inbound_delivery_events.rs"]
-mod delivery_events;
+pub(crate) mod delivery_events;
 
 #[path = "inbound_propagation.rs"]
 mod propagation;

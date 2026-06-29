@@ -906,7 +906,11 @@ The project is best described by capability level:
   drops now emit bounded raw `inbound_dropped` RPC/SDK event-stream entries
   without storing messages or updating peer activity; identifier fields use the
   existing event redaction path by default and events distinguish `packet`,
-  `resource`, and `propagation` delivery kinds.
+  `resource`, and `propagation` delivery kinds. The propagated local-delivery
+  coverage includes local envelope ingest plus decryptable remote fetched and
+  remote downloaded propagation payloads that reach local decode, stamp, or
+  delivery-policy handling, so those router-coupled drops remain
+  observer-visible instead of only counted as rejected imports.
 - The typed propagation branch now also exposes
   `ZmqPipelineBackendClient::propagation_recovery_state`, projecting
   `app.propagation.status` into structured sync state, selected-node,

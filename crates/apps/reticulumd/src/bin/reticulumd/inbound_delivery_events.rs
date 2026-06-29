@@ -196,25 +196,25 @@ pub(super) async fn accept_delivery_packet(
     let _ = daemon.accept_inbound_with_raw(record, data);
 }
 
-pub(super) struct InboundDropEvent<'a> {
-    pub(super) reason: &'a str,
-    pub(super) delivery_kind: InboundDeliveryKind,
-    pub(super) raw_destination_hex: &'a str,
-    pub(super) destination: [u8; 16],
-    pub(super) payload_mode: InboundPayloadMode,
-    pub(super) bytes_len: usize,
-    pub(super) detail: Option<String>,
-    pub(super) record: Option<&'a MessageRecord>,
+pub(crate) struct InboundDropEvent<'a> {
+    pub(crate) reason: &'a str,
+    pub(crate) delivery_kind: InboundDeliveryKind,
+    pub(crate) raw_destination_hex: &'a str,
+    pub(crate) destination: [u8; 16],
+    pub(crate) payload_mode: InboundPayloadMode,
+    pub(crate) bytes_len: usize,
+    pub(crate) detail: Option<String>,
+    pub(crate) record: Option<&'a MessageRecord>,
 }
 
 #[derive(Clone, Copy)]
-pub(super) enum InboundDeliveryKind {
+pub(crate) enum InboundDeliveryKind {
     Packet,
     Propagation,
     Resource,
 }
 
-pub(super) fn emit_inbound_drop_event(daemon: &RpcDaemon, event: InboundDropEvent<'_>) {
+pub(crate) fn emit_inbound_drop_event(daemon: &RpcDaemon, event: InboundDropEvent<'_>) {
     let mut payload = json!({
         "reason": event.reason,
         "delivery_kind": inbound_delivery_kind_name(event.delivery_kind),
@@ -223,7 +223,7 @@ pub(super) fn emit_inbound_drop_event(daemon: &RpcDaemon, event: InboundDropEven
         "payload_mode": inbound_payload_mode_name(event.payload_mode),
         "bytes_len": event.bytes_len,
     });
-    if let Some(detail) = event.detail.filter(|value| !value.is_empty()) {
+    if let Some(detail) = inbound_drop_detail(event.reason, event.detail) {
         payload["detail"] = Value::String(detail);
     }
     if let Some(record) = event.record {
@@ -272,6 +272,14 @@ fn inbound_delivery_kind_name(kind: InboundDeliveryKind) -> &'static str {
         InboundDeliveryKind::Propagation => "propagation",
         InboundDeliveryKind::Resource => "resource",
     }
+}
+
+fn inbound_drop_detail(reason: &str, detail: Option<String>) -> Option<String> {
+    let detail = detail.filter(|value| !value.is_empty())?;
+    if reason == "stamp_policy_rejected" {
+        return Some("invalid LXMF stamp".to_string());
+    }
+    Some(detail)
 }
 
 async fn annotate_inbound_signature_status(

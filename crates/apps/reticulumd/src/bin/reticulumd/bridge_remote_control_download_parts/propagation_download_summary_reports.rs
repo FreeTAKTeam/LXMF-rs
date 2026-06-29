@@ -7,6 +7,7 @@ mod tests {
     use rns_transport::destination::DestinationName;
     use rns_transport::identity::PrivateIdentity;
     use rns_transport::identity_bridge::{to_core_identity, to_core_private_identity};
+    use rns_transport::ratchets::encrypt_for_public_key;
     use tokio::sync::Mutex as TokioMutex;
 
     #[test]
@@ -204,6 +205,143 @@ mod tests {
             DownloadAcceptOutcome::Rejected,
             "policy-rejected downloads are not local haves and must not be acked"
         );
+
+        assert_downloaded_drop_event(
+            &daemon,
+            "delivery_policy_rejected",
+            destination_hash,
+            wire.len(),
+            |event| {
+                assert!(event.payload["source_hash"].as_str().is_some_and(
+                    |value| value.starts_with("sha256:") && value != hex::encode(source_hash)
+                ));
+                assert!(event.payload.get("detail").is_none());
+            },
+        );
+        assert!(daemon.take_event().is_none(), "rejected downloaded payload should emit one event");
+    }
+
+    #[tokio::test]
+    async fn malformed_downloaded_payload_emits_bounded_decode_drop_event() {
+        let daemon = RpcDaemon::test_instance();
+        let delivery_private = PrivateIdentity::new_from_rand(OsRng);
+        let delivery_destination = Arc::new(TokioMutex::new(SingleInputDestination::new(
+            delivery_private,
+            DestinationName::new("lxmf", "delivery"),
+        )));
+        let (destination_hash, transient_payload, wire_len) = {
+            let destination = delivery_destination.lock().await;
+            let mut destination_hash = [0u8; 16];
+            destination_hash.copy_from_slice(destination.desc.address_hash.as_slice());
+            let plaintext = b"not-a-valid-downloaded-lxmf-payload";
+            (
+                destination_hash,
+                encrypted_downloaded_transient(&destination, plaintext),
+                destination_hash.len() + plaintext.len(),
+            )
+        };
+
+        let err = accept_downloaded_propagation_payload(
+            &daemon,
+            &delivery_destination,
+            transient_payload.as_slice(),
+        )
+        .await
+        .expect_err("malformed downloaded payload should fail");
+
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+        assert_downloaded_drop_event(&daemon, "decode_failed", destination_hash, wire_len, |event| {
+            assert!(
+                event.payload["detail"]
+                    .as_str()
+                    .is_some_and(|detail| detail.contains("full_wire")),
+                "downloaded decode drop should include bounded diagnostics: {:?}",
+                event.payload
+            );
+        });
+        assert!(daemon.take_event().is_none(), "malformed downloaded payload should emit one event");
+    }
+
+    #[tokio::test]
+    async fn unstamped_downloaded_payload_emits_stamp_policy_drop_event() {
+        let daemon = RpcDaemon::test_instance();
+        daemon
+            .handle_rpc(RpcRequest {
+                id: 71,
+                method: "stamp_policy_set".to_string(),
+                params: Some(json!({"target_cost": 4, "flexibility": 0})),
+            })
+            .expect("set stamp policy");
+        let delivery_private = PrivateIdentity::new_from_rand(OsRng);
+        let source_private = PrivateIdentity::new_from_rand(OsRng);
+        let delivery_destination = Arc::new(TokioMutex::new(SingleInputDestination::new(
+            delivery_private.clone(),
+            DestinationName::new("lxmf", "delivery"),
+        )));
+        let source_destination = SingleInputDestination::new(
+            source_private.clone(),
+            DestinationName::new("lxmf", "delivery"),
+        );
+        let mut destination_hash = [0u8; 16];
+        {
+            let destination = delivery_destination.lock().await;
+            destination_hash.copy_from_slice(destination.desc.address_hash.as_slice());
+        }
+        let mut source_hash = [0u8; 16];
+        source_hash.copy_from_slice(source_destination.desc.address_hash.as_slice());
+        let wire = build_wire_message_with_options(
+            source_hash,
+            destination_hash,
+            "unstamped remote title",
+            "unstamped remote content",
+            None,
+            &to_core_private_identity(&source_private),
+            None,
+            None,
+            None,
+        )
+        .expect("wire");
+        let transient_payload = {
+            let destination = delivery_destination.lock().await;
+            let message = WireMessage::unpack(&wire).expect("wire unpack");
+            message
+                .pack_propagation_transient_with_rng(
+                    &to_core_identity(destination.identity.as_identity()),
+                    OsRng,
+                )
+                .expect("propagation transient")
+                .0
+        };
+
+        let err = accept_downloaded_propagation_payload(
+            &daemon,
+            &delivery_destination,
+            transient_payload.as_slice(),
+        )
+        .await
+        .expect_err("unstamped downloaded payload should fail stamp policy");
+
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+        assert_downloaded_drop_event(
+            &daemon,
+            "stamp_policy_rejected",
+            destination_hash,
+            wire.len(),
+            |event| {
+                let raw_source = hex::encode(source_hash);
+                assert!(
+                    event.payload["detail"].as_str().is_some_and(
+                        |detail| detail == "invalid LXMF stamp" && !detail.contains(raw_source.as_str())
+                    ),
+                    "stamp drop should include policy detail: {:?}",
+                    event.payload
+                );
+                assert!(event.payload["source_hash"]
+                    .as_str()
+                    .is_some_and(|value| value.starts_with("sha256:") && value != raw_source));
+            },
+        );
+        assert!(daemon.take_event().is_none(), "unstamped downloaded payload should emit one event");
     }
 
     #[test]
@@ -213,5 +351,46 @@ mod tests {
 
         assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
         assert!(err.to_string().contains("rejected"));
+    }
+
+    fn encrypted_downloaded_transient(
+        destination: &SingleInputDestination,
+        plaintext: &[u8],
+    ) -> Vec<u8> {
+        let identity = destination.identity.as_identity();
+        let encrypted = encrypt_for_public_key(
+            &identity.public_key,
+            identity.address_hash.as_slice(),
+            plaintext,
+            OsRng,
+        )
+        .expect("encrypt downloaded transient");
+        let mut transient = Vec::with_capacity(destination.desc.address_hash.as_slice().len() + encrypted.len());
+        transient.extend_from_slice(destination.desc.address_hash.as_slice());
+        transient.extend_from_slice(encrypted.as_slice());
+        transient
+    }
+
+    fn assert_downloaded_drop_event(
+        daemon: &RpcDaemon,
+        reason: &str,
+        destination_hash: [u8; 16],
+        bytes_len: usize,
+        extra: impl FnOnce(&rns_rpc::RpcEvent),
+    ) {
+        let event = daemon.take_event().expect("downloaded drop event");
+        assert_eq!(event.event_type, "inbound_dropped");
+        assert_eq!(event.payload["reason"], json!(reason));
+        assert_eq!(event.payload["delivery_kind"], json!("propagation"));
+        let raw_destination = hex::encode(destination_hash);
+        assert!(event.payload["raw_destination_hash"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("sha256:") && value != raw_destination));
+        assert!(event.payload["resolved_destination_hash"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("sha256:") && value != raw_destination));
+        assert_eq!(event.payload["payload_mode"], json!("full_wire"));
+        assert_eq!(event.payload["bytes_len"], json!(bytes_len));
+        extra(&event);
     }
 }
