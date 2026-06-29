@@ -171,6 +171,7 @@ impl AutoDaemonStartupPlan {
                 carrier_changed: !run.carrier_events.is_empty(),
                 carrier_event_count: run.carrier_events.len(),
                 carrier_events: run.carrier_events,
+                peer_count_after: state.peer_count(),
             },
             datagrams,
         )

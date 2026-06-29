@@ -949,6 +949,59 @@
     }
 
     #[test]
+    fn auto_runtime_status_records_last_peer_job_lifecycle_summary() {
+        let mut iface = auto_iface();
+        iface.devices = Some(vec!["eth0".to_string(), "wlan0".to_string()]);
+        let plan = build_startup_plan_from_candidates(
+            &iface,
+            vec![
+                AutoInterfaceDeviceCandidate {
+                    ifname: "eth0".to_string(),
+                    ipv6_addresses: vec!["fe80::1111".to_string()],
+                },
+                AutoInterfaceDeviceCandidate {
+                    ifname: "wlan0".to_string(),
+                    ipv6_addresses: vec!["fe80::3333".to_string()],
+                },
+            ],
+        )
+        .expect("startup plan");
+        let status = AutoRuntimeStatusHandle::from_startup_plan(&plan.startup_plan);
+        let mut state = plan.discovery_state();
+        state.observe_discovery_packet(
+            "fe80::1111%eth0",
+            "eth0",
+            core::time::Duration::ZERO,
+        );
+        state.observe_discovery_packet("fe80::2222%eth0", "eth0", core::time::Duration::ZERO);
+
+        let live = plan
+            .run_peer_job(&mut state, core::time::Duration::from_millis(5_201), |_| Ok(()))
+            .expect("live peer job");
+        status.record_peer_job_summary(&live);
+        let runtime = status.to_json();
+        let peer_job = runtime.get("last_peer_job").expect("last peer job");
+        assert_eq!(peer_job.get("peer_count_after").and_then(JsonValue::as_u64), Some(1));
+        assert_eq!(
+            peer_job.get("reverse_peer_announce_count").and_then(JsonValue::as_u64),
+            Some(1)
+        );
+        assert_eq!(
+            peer_job.get("missing_initial_echo_count").and_then(JsonValue::as_u64),
+            Some(1)
+        );
+
+        let stale = plan
+            .run_peer_job(&mut state, core::time::Duration::from_millis(22_001), |_| Ok(()))
+            .expect("stale peer job");
+        status.record_peer_job_summary(&stale);
+        let runtime = status.to_json();
+        let peer_job = runtime.get("last_peer_job").expect("last peer job");
+        assert_eq!(peer_job.get("expired_peer_count").and_then(JsonValue::as_u64), Some(1));
+        assert_eq!(peer_job.get("peer_count_after").and_then(JsonValue::as_u64), Some(0));
+    }
+
+    #[test]
     fn auto_discovery_socket_bind_targets_format_unicast_and_multicast_scopes() {
         let plan = plan_with_discovery_listener(AutoDiscoveryListenerBinding {
             ifname: "eth0".to_string(),

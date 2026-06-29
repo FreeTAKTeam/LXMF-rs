@@ -218,6 +218,7 @@ pub(crate) struct AutoPeerJobRuntimeSummary {
     pub(crate) carrier_changed: bool,
     pub(crate) carrier_event_count: usize,
     pub(crate) carrier_events: Vec<AutoMulticastCarrierEvent>,
+    pub(crate) peer_count_after: usize,
 }
 
 #[derive(Clone)]
@@ -230,6 +231,7 @@ struct AutoRuntimeStatus {
     state: AutoRuntimeState,
     started_at: Instant,
     carrier_events: Vec<AutoMulticastCarrierEvent>,
+    last_peer_job: Option<AutoPeerJobRuntimeSummary>,
     link_local_update: Option<AutoLinkLocalAddressUpdate>,
     adopted_devices: Vec<AutoInterfaceAdoptedDevice>,
     adopted_add_count: u64,

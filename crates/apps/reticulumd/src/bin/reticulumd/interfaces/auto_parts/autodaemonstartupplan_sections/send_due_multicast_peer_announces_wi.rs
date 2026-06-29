@@ -87,10 +87,10 @@ impl AutoDaemonStartupPlan {
             let mut state = state.lock().await;
             self.run_peer_job_datagrams(&mut state, now)
         };
-        if let Some(runtime_status) = runtime_status {
-            runtime_status.record_carrier_events(&summary.carrier_events);
-        }
         if datagrams.is_empty() {
+            if let Some(runtime_status) = runtime_status {
+                runtime_status.record_peer_job_summary(&summary);
+            }
             return Ok(summary);
         }
         let resolver = AutoInterfaceIndexResolver::from_system()?;
@@ -101,6 +101,9 @@ impl AutoDaemonStartupPlan {
             |ifname| resolver.resolve(ifname),
         )
         .await?;
+        if let Some(runtime_status) = runtime_status {
+            runtime_status.record_peer_job_summary(&summary);
+        }
         Ok(summary)
     }
 

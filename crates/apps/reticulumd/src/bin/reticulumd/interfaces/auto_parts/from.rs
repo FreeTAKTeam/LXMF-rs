@@ -195,6 +195,7 @@ impl AutoRuntimeStatusHandle {
                 ),
                 started_at: Instant::now(),
                 carrier_events: Vec::new(),
+                last_peer_job: None,
                 link_local_update: None,
                 adopted_devices,
                 adopted_add_count: 0,
@@ -203,15 +204,6 @@ impl AutoRuntimeStatusHandle {
                 last_adopted_change: None,
             })),
         }
-    }
-
-    pub(crate) fn record_carrier_events(&self, events: &[AutoMulticastCarrierEvent]) -> bool {
-        let mut guard = self.inner.lock().expect("auto runtime status mutex poisoned");
-        if !guard.state.record_carrier_events(events) {
-            return false;
-        }
-        guard.carrier_events = events.to_vec();
-        true
     }
 
     #[allow(dead_code)]
@@ -301,6 +293,14 @@ impl AutoRuntimeStatusHandle {
                     .last_adopted_change
                     .as_ref()
                     .map(adopted_change_json)
+                    .unwrap_or(JsonValue::Null),
+            );
+            object.insert(
+                "last_peer_job".to_string(),
+                guard
+                    .last_peer_job
+                    .as_ref()
+                    .map(peer_job_summary_json)
                     .unwrap_or(JsonValue::Null),
             );
         }

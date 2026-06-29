@@ -315,6 +315,12 @@ The project is best described by capability level:
   drained during restart, removal, or runtime shutdown. Loopback peer-data
   tests now prove direct per-peer outbound routes stop emitting after
   listener removal/restart and refresh only after a new accepted peer datagram.
+  Daemon `_runtime.auto.carrier_runtime.last_peer_job` status now records the
+  last AutoInterface peer lifecycle job's expired-peer count, reverse peer
+  announce count, missing initial multicast echo count, carrier event summary,
+  and post-job peer count in focused software tests. This is local runtime
+  observability evidence, not broader Wi-Fi/Ethernet/public-network discovery
+  parity.
   An opt-in Linux
   namespace prepared-host smoke now records zero-initial add, link-local
   replacement, and removal churn evidence through refreshed `_runtime.auto`

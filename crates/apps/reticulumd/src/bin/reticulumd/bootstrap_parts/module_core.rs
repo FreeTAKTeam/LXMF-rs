@@ -998,11 +998,18 @@ mod tests {
             initial_peering_wait: core::time::Duration::ZERO,
         };
         let status = crate::interfaces::auto::AutoRuntimeStatusHandle::from_startup_plan(&plan);
-        status.record_carrier_events(&[
-            rns_transport::iface::auto::AutoMulticastCarrierEvent::CarrierLost {
-                ifname: "eth0".to_string(),
-            },
-        ]);
+        let carrier_events = vec![rns_transport::iface::auto::AutoMulticastCarrierEvent::CarrierLost {
+            ifname: "eth0".to_string(),
+        }];
+        status.record_peer_job_summary(&crate::interfaces::auto::AutoPeerJobRuntimeSummary {
+            expired_peer_count: 2,
+            reverse_peer_announce_count: 1,
+            missing_initial_echo_count: 3,
+            carrier_changed: true,
+            carrier_event_count: carrier_events.len(),
+            carrier_events,
+            peer_count_after: 4,
+        });
         let refresh = transport_startup::AutoRuntimeRefresh { runtime_iface, status };
 
         assert_eq!(refresh_auto_runtime_status_once(&daemon, &[refresh]), 1);
@@ -1019,6 +1026,22 @@ mod tests {
         assert_eq!(carrier_runtime["carrier_changed"].as_bool(), Some(true));
         assert_eq!(carrier_runtime["carrier_event_count"].as_u64(), Some(1));
         assert_eq!(carrier_runtime["carrier_events"][0]["event"].as_str(), Some("carrier_lost"));
+        assert_eq!(carrier_runtime["last_peer_job"]["expired_peer_count"].as_u64(), Some(2));
+        assert_eq!(
+            carrier_runtime["last_peer_job"]["reverse_peer_announce_count"].as_u64(),
+            Some(1)
+        );
+        assert_eq!(
+            carrier_runtime["last_peer_job"]["missing_initial_echo_count"].as_u64(),
+            Some(3)
+        );
+        assert_eq!(carrier_runtime["last_peer_job"]["carrier_changed"].as_bool(), Some(true));
+        assert_eq!(carrier_runtime["last_peer_job"]["carrier_event_count"].as_u64(), Some(1));
+        assert_eq!(
+            carrier_runtime["last_peer_job"]["carrier_events"][0]["event"].as_str(),
+            Some("carrier_lost")
+        );
+        assert_eq!(carrier_runtime["last_peer_job"]["peer_count_after"].as_u64(), Some(4));
     }
 
     #[test]
