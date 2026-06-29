@@ -365,4 +365,27 @@ impl PathRequests {
             None
         }
     }
+
+    pub fn take_discovery_requesters(&mut self, destination: &AddressHash) -> Vec<AddressHash> {
+        self.prune_discovery(Instant::now());
+
+        let keys: Vec<DiscoveryKey> = self
+            .discovery
+            .keys()
+            .copied()
+            .filter(|(queued_destination, _)| queued_destination == destination)
+            .collect();
+        let mut requesters = Vec::new();
+
+        for key in keys {
+            if self.discovery.remove(&key).is_some() {
+                self.decrement_pending_recursive_count(key.1);
+                if let Some(iface) = key.1 {
+                    requesters.push(iface);
+                }
+            }
+        }
+
+        requesters
+    }
 }

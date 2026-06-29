@@ -1,5 +1,6 @@
 use super::announce_limits::AnnounceLimitAction;
 use super::*;
+use crate::packet::{Header, HeaderType, PropagationType};
 
 async fn process_announce<'a>(
     packet: &Packet,
@@ -85,6 +86,35 @@ async fn process_announce<'a>(
         name_hash
     };
     let interface = route_iface.as_slice().to_vec();
+
+    let waiting_discovery_requesters = handler.path_requests.take_discovery_requesters(&dest_hash);
+    for requesting_iface in waiting_discovery_requesters {
+        log::debug!(
+            "tp({}): answering waiting discovery path request for {} on {}",
+            handler.config.name,
+            dest_hash,
+            requesting_iface
+        );
+        let response = Packet {
+            header: Header {
+                ifac_flag: packet.header.ifac_flag,
+                header_type: HeaderType::Type2,
+                context_flag: packet.header.context_flag,
+                propagation_type: PropagationType::Transport,
+                destination_type: packet.header.destination_type,
+                packet_type: packet.header.packet_type,
+                hops: packet.header.hops,
+            },
+            ifac: None,
+            destination: packet.destination,
+            transport: Some(*handler.config.identity.address_hash()),
+            context: PacketContext::PathResponse,
+            data: packet.data.clone(),
+        };
+        handler
+            .send(TxMessage { tx_type: TxMessageType::Direct(requesting_iface), packet: response })
+            .await;
+    }
 
     log::debug!(
         "[announce-debug] accepted dst={} app_data_hex={}",

@@ -58,6 +58,26 @@ mod tests {
     }
 
     #[test]
+    fn matching_announce_consumes_waiting_discovery_requesters() {
+        let mut testee = PathRequests::new("", None, 1, 1, 30);
+        let destination = AddressHash::new_from_rand(OsRng);
+        let other_destination = AddressHash::new_from_rand(OsRng);
+        let iface_a = AddressHash::new_from_rand(OsRng);
+        let iface_b = AddressHash::new_from_rand(OsRng);
+
+        assert!(testee.generate_recursive(&destination, Some(iface_a), None).is_some());
+        assert!(testee.generate_recursive(&other_destination, Some(iface_a), None).is_none());
+
+        assert_eq!(testee.take_discovery_requesters(&destination), vec![iface_a]);
+        assert!(testee.generate_recursive(&other_destination, Some(iface_a), None).is_some());
+        assert_eq!(testee.take_discovery_requesters(&other_destination), vec![iface_a]);
+        assert!(testee.take_discovery_requesters(&destination).is_empty());
+
+        assert!(testee.generate_recursive(&destination, Some(iface_b), None).is_some());
+        assert_eq!(testee.take_discovery_requesters(&destination), vec![iface_b]);
+    }
+
+    #[test]
     fn local_responses_are_throttled_per_interface() {
         let mut testee = PathRequests::new("", None, 16, 16, 30);
         let destination = AddressHash::new_from_rand(OsRng);

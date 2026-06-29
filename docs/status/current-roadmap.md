@@ -47,6 +47,9 @@ The project is best described by capability level:
 - Known-path `PATH_RESPONSE` work now preempts any due ordinary announce for
   the same destination and then releases the ordinary announce on the next
   retransmission drain, matching Python's `held_announces` edge ordering.
+- Unknown path requests now retain the requesting interface while recursive
+  discovery runs, then send an immediate direct `PATH_RESPONSE` when a matching
+  announce arrives, matching Python's waiting discovery request behavior.
 - Known-path requests on roaming interfaces also suppress direct path answers
   when the learned next-hop iface is the same roaming iface, matching Python's
   loop-avoidance behavior.

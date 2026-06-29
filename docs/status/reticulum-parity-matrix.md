@@ -261,6 +261,9 @@ separate from path-response delivery.
 When an ordinary announce is already queued for the same destination, a due
 known-path `PATH_RESPONSE` now drains first and the ordinary announce
 rebroadcasts afterward, matching Python's `held_announces` ordering.
+Unknown-path discovery requests now retain the requesting interface while
+recursive discovery is forwarded, then answer that requester with an immediate
+direct `PATH_RESPONSE` when a matching announce arrives.
 Known-path requests received on a roaming-mode interface are no longer answered
 when the learned next-hop interface for that path is the same interface,
 matching Python's roaming-interface loop suppression.
