@@ -1,9 +1,8 @@
 use crate::bridge_helpers::payload_preview;
 use lxmf::{inbound_decode::InboundPayloadMode, WireMessage};
 use reticulum_daemon::inbound_delivery::{
-    annotate_inbound_record_stamp_status, decode_inbound_payload,
-    decode_inbound_payload_with_diagnostics, evaluate_inbound_stamp_policy,
-    inbound_record_allowed_by_delivery_policy,
+    annotate_inbound_record_stamp_status, decode_inbound_payload_with_diagnostics,
+    evaluate_inbound_stamp_policy, inbound_record_allowed_by_delivery_policy,
 };
 use rns_rpc::{MessageRecord, RpcDaemon, RpcEvent};
 use rns_transport::hash::AddressHash;
@@ -18,6 +17,31 @@ pub(super) async fn accept_delivery_resource(
     destination: [u8; 16],
     data: &[u8],
 ) {
+    let raw_destination_hex = hex::encode(destination);
+    let (record, diagnostics) =
+        decode_inbound_payload_with_diagnostics(destination, data, InboundPayloadMode::FullWire);
+    let Some(mut record) = record else {
+        let diagnostics_summary = diagnostics.summary();
+        log::debug!(
+            "[daemon-rx] resource decode-failed raw_dst={} attempts={}",
+            raw_destination_hex,
+            diagnostics_summary
+        );
+        emit_inbound_drop_event(
+            daemon,
+            InboundDropEvent {
+                reason: "decode_failed",
+                delivery_kind: InboundDeliveryKind::Resource,
+                raw_destination_hex: raw_destination_hex.as_str(),
+                destination,
+                payload_mode: InboundPayloadMode::FullWire,
+                bytes_len: data.len(),
+                detail: Some(diagnostics_summary),
+                record: None,
+            },
+        );
+        return;
+    };
     let stamp_status = match evaluate_inbound_stamp_policy(
         daemon,
         destination,
@@ -27,27 +51,49 @@ pub(super) async fn accept_delivery_resource(
         Ok(status) => status,
         Err(error) => {
             log::warn!("[daemon-rx] dropping inbound resource due to stamp policy: {}", error);
+            emit_inbound_drop_event(
+                daemon,
+                InboundDropEvent {
+                    reason: "stamp_policy_rejected",
+                    delivery_kind: InboundDeliveryKind::Resource,
+                    raw_destination_hex: raw_destination_hex.as_str(),
+                    destination,
+                    payload_mode: InboundPayloadMode::FullWire,
+                    bytes_len: data.len(),
+                    detail: Some(error.to_string()),
+                    record: Some(&record),
+                },
+            );
             return;
         }
     };
-    if let Some(mut record) =
-        decode_inbound_payload(destination, data, InboundPayloadMode::FullWire)
-    {
-        annotate_inbound_record_stamp_status(&mut record, stamp_status);
-        annotate_inbound_signature_status(
-            transport,
-            &mut record,
-            destination,
-            data,
-            InboundPayloadMode::FullWire,
-        )
-        .await;
-        annotate_direct_delivery_transport_metadata(&mut record, 2);
-        if !inbound_record_allowed_by_delivery_policy(daemon, &record) {
-            return;
-        }
-        let _ = daemon.accept_inbound_with_raw(record, data);
+    annotate_inbound_record_stamp_status(&mut record, stamp_status);
+    annotate_inbound_signature_status(
+        transport,
+        &mut record,
+        destination,
+        data,
+        InboundPayloadMode::FullWire,
+    )
+    .await;
+    annotate_direct_delivery_transport_metadata(&mut record, 2);
+    if !inbound_record_allowed_by_delivery_policy(daemon, &record) {
+        emit_inbound_drop_event(
+            daemon,
+            InboundDropEvent {
+                reason: "delivery_policy_rejected",
+                delivery_kind: InboundDeliveryKind::Resource,
+                raw_destination_hex: raw_destination_hex.as_str(),
+                destination,
+                payload_mode: InboundPayloadMode::FullWire,
+                bytes_len: data.len(),
+                detail: None,
+                record: Some(&record),
+            },
+        );
+        return;
     }
+    let _ = daemon.accept_inbound_with_raw(record, data);
 }
 
 pub(super) async fn accept_delivery_packet(
@@ -82,6 +128,7 @@ pub(super) async fn accept_delivery_packet(
             daemon,
             InboundDropEvent {
                 reason: "decode_failed",
+                delivery_kind: InboundDeliveryKind::Packet,
                 raw_destination_hex,
                 destination,
                 payload_mode,
@@ -106,6 +153,7 @@ pub(super) async fn accept_delivery_packet(
                 daemon,
                 InboundDropEvent {
                     reason: "stamp_policy_rejected",
+                    delivery_kind: InboundDeliveryKind::Packet,
                     raw_destination_hex,
                     destination,
                     payload_mode,
@@ -130,6 +178,7 @@ pub(super) async fn accept_delivery_packet(
             daemon,
             InboundDropEvent {
                 reason: "delivery_policy_rejected",
+                delivery_kind: InboundDeliveryKind::Packet,
                 raw_destination_hex,
                 destination,
                 payload_mode,
@@ -149,6 +198,7 @@ pub(super) async fn accept_delivery_packet(
 
 struct InboundDropEvent<'a> {
     reason: &'a str,
+    delivery_kind: InboundDeliveryKind,
     raw_destination_hex: &'a str,
     destination: [u8; 16],
     payload_mode: InboundPayloadMode,
@@ -157,9 +207,16 @@ struct InboundDropEvent<'a> {
     record: Option<&'a MessageRecord>,
 }
 
+#[derive(Clone, Copy)]
+enum InboundDeliveryKind {
+    Packet,
+    Resource,
+}
+
 fn emit_inbound_drop_event(daemon: &RpcDaemon, event: InboundDropEvent<'_>) {
     let mut payload = json!({
         "reason": event.reason,
+        "delivery_kind": inbound_delivery_kind_name(event.delivery_kind),
         "raw_destination_hash": event.raw_destination_hex,
         "resolved_destination_hash": hex::encode(event.destination),
         "payload_mode": inbound_payload_mode_name(event.payload_mode),
@@ -205,6 +262,13 @@ fn inbound_payload_mode_name(mode: InboundPayloadMode) -> &'static str {
     match mode {
         InboundPayloadMode::FullWire => "full_wire",
         InboundPayloadMode::DestinationStripped => "destination_stripped",
+    }
+}
+
+fn inbound_delivery_kind_name(kind: InboundDeliveryKind) -> &'static str {
+    match kind {
+        InboundDeliveryKind::Packet => "packet",
+        InboundDeliveryKind::Resource => "resource",
     }
 }
 
