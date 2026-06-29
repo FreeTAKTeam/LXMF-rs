@@ -341,6 +341,75 @@ async fn roaming_iface_suppresses_known_path_response_when_next_hop_is_same_ifac
 }
 
 #[tokio::test]
+async fn roaming_iface_delays_known_path_response_when_next_hop_differs() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut config = TransportConfig::new("test", &local_identity, true);
+    config.set_retransmit(true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+
+    let (learned_iface, requesting_iface) = {
+        let manager = transport.iface_manager();
+        let mut manager = manager.lock().await;
+        let learned_iface = *manager
+            .new_channel_with_role_and_mode(
+                16,
+                crate::iface::IfaceRole::Unicast,
+                crate::iface::InterfaceMode::Full,
+            )
+            .address();
+        let requesting_iface = *manager
+            .new_channel_with_role_and_mode(
+                16,
+                crate::iface::IfaceRole::Unicast,
+                crate::iface::InterfaceMode::Roaming,
+            )
+            .address();
+        (learned_iface, requesting_iface)
+    };
+
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut remote_destination =
+        SingleInputDestination::new(remote_identity, DestinationName::new("lxmf", "delivery"));
+    let mut announce = remote_destination.announce(OsRng, None).expect("valid announce packet");
+    announce.header.hops = 2;
+    let destination = announce.destination;
+
+    handle_announce(
+        &announce,
+        handler.lock().await,
+        learned_iface,
+        crate::iface::IfaceSource::None,
+    )
+    .await;
+
+    let path_request = {
+        let mut guard = handler.lock().await;
+        guard.path_requests.generate(&destination, Some(vec![0x77; crate::hash::ADDRESS_HASH_SIZE]))
+    };
+
+    let before_request = Instant::now();
+    {
+        let mut guard = handler.lock().await;
+        handle_path_request(&path_request, &mut guard, requesting_iface).await;
+    }
+
+    let guard = handler.lock().await;
+    let response = guard
+        .announce_table
+        .pending_response_for_destination(&destination)
+        .expect("roaming iface should schedule delayed known-path response");
+    assert_eq!(response.response_to_iface, Some(requesting_iface));
+    assert_eq!(response.hops, 2);
+    assert_eq!(response.packet.context, PacketContext::PathResponse);
+    let response_delay = response.timeout.checked_duration_since(before_request).unwrap_or_default();
+    assert!(
+        response_delay >= super::announce_table::PATH_RESPONSE_ROAMING_GRACE,
+        "roaming known-path responses should wait the extra Python roaming grace"
+    );
+}
+
+#[tokio::test]
 async fn reticulum_path_table_persistence_restores_route_and_identity_from_cached_announce() {
     let temp = tempfile::tempdir().expect("tempdir");
     let local_identity = PrivateIdentity::new_from_rand(OsRng);

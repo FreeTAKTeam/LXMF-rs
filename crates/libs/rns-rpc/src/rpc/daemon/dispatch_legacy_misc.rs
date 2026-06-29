@@ -200,7 +200,8 @@ impl RpcDaemon {
                 };
                 let mut path_found = path_found_from_status(&status_fields);
                 let mut requested = false;
-                if !path_found {
+                let needs_scoped_refresh = on_iface.is_some() || tag.is_some();
+                if !path_found || needs_scoped_refresh {
                     if let Err(err) = bridge.request_path_scoped(
                         destination.as_str(),
                         on_iface.as_deref(),

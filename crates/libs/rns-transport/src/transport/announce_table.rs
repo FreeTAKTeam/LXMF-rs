@@ -10,6 +10,7 @@ use crate::packet::{Header, HeaderType, Packet, PacketContext, PropagationType};
 const PATHFINDER_RETRY_GRACE: Duration = Duration::from_secs(5);
 const PATHFINDER_RETRY_WINDOW: Duration = Duration::from_millis(500);
 const PATH_RESPONSE_GRACE: Duration = Duration::from_millis(400);
+pub(super) const PATH_RESPONSE_ROAMING_GRACE: Duration = Duration::from_millis(1500);
 
 #[derive(Clone)]
 pub struct AnnounceEntry {
@@ -184,10 +185,11 @@ impl AnnounceTable {
         destination: AddressHash,
         to_iface: AddressHash,
         hops: u8,
+        extra_grace: Duration,
     ) {
         response.retries = self.retry_limit;
         response.hops = hops;
-        response.timeout = Instant::now() + PATH_RESPONSE_GRACE;
+        response.timeout = Instant::now() + PATH_RESPONSE_GRACE + extra_grace;
         response.response_to_iface = Some(to_iface);
         response.packet.context = PacketContext::PathResponse;
 
@@ -200,13 +202,23 @@ impl AnnounceTable {
         to_iface: AddressHash,
         hops: u8,
     ) -> bool {
+        self.add_response_with_extra_grace(destination, to_iface, hops, Duration::ZERO)
+    }
+
+    pub fn add_response_with_extra_grace(
+        &mut self,
+        destination: AddressHash,
+        to_iface: AddressHash,
+        hops: u8,
+        extra_grace: Duration,
+    ) -> bool {
         if let Some(entry) = self.map.get(&destination) {
-            self.do_add_response(entry.clone(), destination, to_iface, hops);
+            self.do_add_response(entry.clone(), destination, to_iface, hops, extra_grace);
             return true;
         }
 
         if let Some(entry) = self.cache.get(&destination) {
-            self.do_add_response(entry, destination, to_iface, hops);
+            self.do_add_response(entry, destination, to_iface, hops, extra_grace);
             return true;
         }
 
@@ -404,6 +416,47 @@ mod tests {
         assert_eq!(messages[0].packet.context, PacketContext::PathResponse);
         assert!(table.responses.is_empty());
         assert!(table.map.contains_key(&destination));
+    }
+
+    #[test]
+    fn path_response_entries_can_apply_extra_roaming_grace() {
+        let mut table = AnnounceTable::new(16, 1);
+        let destination = AddressHash::new_from_rand(OsRng);
+        let received_from = AddressHash::new_from_rand(OsRng);
+        let to_iface = AddressHash::new_from_rand(OsRng);
+        let packet = Packet { destination, context: PacketContext::None, ..Packet::default() };
+
+        table.add(&packet, destination, received_from);
+        let before_response = Instant::now();
+        assert!(table.add_response_with_extra_grace(
+            destination,
+            to_iface,
+            3,
+            PATH_RESPONSE_ROAMING_GRACE
+        ));
+
+        let response = table.responses.get(&destination).expect("response entry inserted");
+        let response_delay =
+            response.timeout.checked_duration_since(before_response).unwrap_or_default();
+        assert!(
+            response_delay >= PATH_RESPONSE_GRACE + PATH_RESPONSE_ROAMING_GRACE,
+            "roaming path responses should include Python's extra roaming grace"
+        );
+        assert!(
+            response_delay
+                <= PATH_RESPONSE_GRACE + PATH_RESPONSE_ROAMING_GRACE + Duration::from_millis(250),
+            "roaming grace should not add extra delay beyond scheduling jitter"
+        );
+        assert!(
+            table.drain_retransmissions(&AddressHash::new_from_rand(OsRng)).is_empty(),
+            "roaming path response must not drain before its delayed timeout"
+        );
+
+        table.responses.get_mut(&destination).expect("response entry").timeout =
+            Instant::now() - Duration::from_millis(1);
+        let messages = table.drain_retransmissions(&AddressHash::new_from_rand(OsRng));
+        assert_eq!(messages.len(), 1);
+        assert!(matches!(messages[0].tx_type, TxMessageType::Direct(iface) if iface == to_iface));
     }
 
     #[test]

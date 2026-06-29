@@ -24,7 +24,7 @@ Workspace paths are used for navigation. Published package names are
 | `RNS/Identity.py` | `crates/libs/rns-core` | done | Identity material, hashing, signing, encryption, recall, and key conversion. | No confirmed parity blocker. |
 | `RNS/Destination.py` | `crates/libs/rns-core`, `crates/libs/rns-transport` | done | Destination hashing, descriptors, announces, proof validation, ratchets, and known-key stability checks. | No confirmed parity blocker. |
 | `RNS/Packet.py` | `crates/libs/rns-core`, `crates/libs/rns-transport` | done | Framing, serialization, contexts, proofs, receipts, Python-default link proof context, and header semantics. | No confirmed parity blocker. |
-| `RNS/Transport.py` | `crates/libs/rns-transport`, `crates/apps/reticulumd` | partial | Path and announce handling, including direct cached remote path responses stamped as `PATH_RESPONSE`, Python-style roaming same-interface known-path response suppression, path-table restore from cached announces without startup rebroadcast, restored tunnel-path announce cache lookup for later path responses, shared-instance path-table save/restore suppression, and daemon path requests that preserve optional interface scope and request tags into the transport path-request generator, plus link routing, resources, receipts, interface-aware sending, pacing, and duplicate suppression. | Remaining announce/path edge policy and full runtime behavior require live parity evidence. |
+| `RNS/Transport.py` | `crates/libs/rns-transport`, `crates/apps/reticulumd` | partial | Path and announce handling, including direct cached remote path responses stamped as `PATH_RESPONSE`, Python-style roaming same-interface known-path response suppression, extra roaming grace for non-loop known-path responses, path-table restore from cached announces without startup rebroadcast, restored tunnel-path announce cache lookup for later path responses, shared-instance path-table save/restore suppression, and daemon path requests that preserve optional interface scope and request tags into targeted transport path-request broadcasts, plus link routing, resources, receipts, interface-aware sending, pacing, and duplicate suppression. | Remaining announce/path edge policy and full runtime behavior require live parity evidence. |
 | `RNS/Link.py` | `crates/libs/rns-transport` | done | Establishment, proof validation, bound-interface enforcement, RTT-derived liveness, protocol close, and cleanup. | Continue live regression coverage; no confirmed blocker. |
 | `RNS/Resource.py` | `crates/libs/rns-transport` | done | Bounded receive allocation, advertisement validation, retries, adaptive fragment scheduling, timeout/failure events, cancellation, and cleanup. | Split/segmented resources remain intentionally unsupported and rejected. |
 | `RNS/Channel.py` | `crates/libs/rns-transport` | done | Channel packet handling, retry scheduling, buffering, ordered receive delivery, callback ordering/short-circuit/panic containment, delivery-on-proof, timeout retry, exhaustion cleanup, and live Rust/Python channel sequence tests. | No confirmed channel parity blocker. |
@@ -261,6 +261,12 @@ separate from path-response delivery.
 Known-path requests received on a roaming-mode interface are no longer answered
 when the learned next-hop interface for that path is the same interface,
 matching Python's roaming-interface loop suppression.
+Known-path requests that arrive on roaming-mode interfaces through a different
+learned next-hop now apply Python's extra roaming response grace before sending
+the direct path response.
+Scoped daemon path requests now keep broadcast packet semantics while selecting
+only the requested interface at dispatch time, and scoped/tagged refreshes still
+issue when an unscoped cached path is already known.
 Restored path-table cached announces are now kept as lookup/cache material
 rather than scheduled as fresh announce rebroadcasts at startup, while still
 serving known-path responses. Path-table save filters routes without cached

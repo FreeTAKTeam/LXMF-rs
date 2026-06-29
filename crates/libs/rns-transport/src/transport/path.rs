@@ -211,7 +211,16 @@ pub(super) async fn handle_path_request<'a>(
                     return;
                 }
 
-                handler.announce_table.add_response(request.destination, iface, hops);
+                if incoming_iface_mode == Some(InterfaceMode::Roaming) {
+                    handler.announce_table.add_response_with_extra_grace(
+                        request.destination,
+                        iface,
+                        hops,
+                        super::announce_table::PATH_RESPONSE_ROAMING_GRACE,
+                    );
+                } else {
+                    handler.announce_table.add_response(request.destination, iface, hops);
+                }
 
                 log::trace!(
                     "tp({}): scheduled remote path response to {} ({} hops) over {}",

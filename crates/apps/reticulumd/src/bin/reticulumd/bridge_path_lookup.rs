@@ -77,9 +77,15 @@ impl PathLookupBridge for DaemonPathLookupBridge {
                     std::io::Error::other(format!("failed to build path request runtime: {err}"))
                 })?;
             runtime.block_on(async move {
-                transport.request_path(&destination, on_iface, tag).await;
-            });
-            Ok(())
+                let dispatch = transport.request_path(&destination, on_iface, tag).await;
+                if on_iface.is_some() && dispatch.matched_ifaces == 0 {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        "scoped path request interface did not match an outgoing interface",
+                    ));
+                }
+                Ok(())
+            })
         })
     }
 
@@ -121,6 +127,23 @@ mod tests {
         DaemonPathLookupBridge::new(Arc::new(Transport::new(config)))
     }
 
+    fn bridge_with_iface() -> (DaemonPathLookupBridge, AddressHash) {
+        let identity = PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let config = TransportConfig::new("path-lookup-bridge-test", &identity, true);
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("transport construction runtime");
+        let _guard = runtime.enter();
+        let transport = Arc::new(Transport::new(config));
+        let iface = runtime.block_on(async {
+            let manager = transport.iface_manager();
+            let mut manager = manager.lock().await;
+            *manager.new_channel(16).address()
+        });
+        (DaemonPathLookupBridge::new(transport), iface)
+    }
+
     #[test]
     fn path_lookup_bridge_reports_missing_path_without_rpc_transport_leak() {
         let bridge = bridge();
@@ -138,15 +161,31 @@ mod tests {
 
     #[test]
     fn path_lookup_bridge_dispatches_scoped_request_path() {
-        let bridge = bridge();
+        let (bridge, iface) = bridge_with_iface();
 
         bridge
+            .request_path_scoped(
+                "00112233445566778899aabbccddeeff",
+                Some(&hex::encode(iface.as_slice())),
+                Some(&[1, 2, 3, 4]),
+            )
+            .expect("dispatch scoped path request");
+    }
+
+    #[test]
+    fn path_lookup_bridge_rejects_unknown_scoped_iface() {
+        let bridge = bridge();
+
+        let err = bridge
             .request_path_scoped(
                 "00112233445566778899aabbccddeeff",
                 Some("aabbccddeeff00112233445566778899"),
                 Some(&[1, 2, 3, 4]),
             )
-            .expect("dispatch scoped path request");
+            .expect_err("unknown scoped iface should fail");
+
+        assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
+        assert!(err.to_string().contains("scoped path request interface"));
     }
 
     #[test]

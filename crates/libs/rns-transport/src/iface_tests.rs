@@ -283,6 +283,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn scoped_broadcast_targets_only_selected_iface_but_keeps_broadcast_tx_type() {
+        let mut mgr = InterfaceManager::new(16);
+        let mut first_rx = mgr.new_channel(16).tx_channel;
+        let mut second_rx = mgr.new_channel(16).tx_channel;
+        let first_iface = mgr.ifaces[0].address;
+        let second_iface = mgr.ifaces[1].address;
+
+        let trace = mgr
+            .send_broadcast_on_iface(second_iface, path_request_packet())
+            .await;
+
+        assert_eq!(trace.matched_ifaces, 1);
+        assert_eq!(trace.sent_ifaces, 1);
+        assert!(first_rx.try_recv().is_err());
+        let sent = second_rx.try_recv().expect("selected iface should receive scoped broadcast");
+        assert_eq!(sent.tx_type, TxMessageType::Broadcast(None));
+
+        let second_trace = mgr
+            .send_broadcast_on_iface(first_iface, path_request_packet())
+            .await;
+        assert_eq!(second_trace.matched_ifaces, 1);
+        assert_eq!(second_trace.sent_ifaces, 1);
+        assert!(first_rx.try_recv().is_ok());
+    }
+
+    #[tokio::test]
     async fn egress_control_limits_rapid_path_request_broadcasts() {
         let mut mgr = InterfaceManager::new(16);
         let mut rx = mgr.new_channel(16).tx_channel;

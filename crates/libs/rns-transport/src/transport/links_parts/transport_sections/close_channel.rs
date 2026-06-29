@@ -122,7 +122,7 @@ impl Transport {
         destination: &AddressHash,
         on_iface: Option<AddressHash>,
         tag: Option<TagBytes>,
-    ) {
+    ) -> TxDispatchTrace {
         let packet = {
             let mut handler = self.handler.lock().await;
             handler.path_requests.generate(destination, tag)
@@ -132,15 +132,18 @@ impl Transport {
             destination,
             on_iface.map(|iface| iface.to_string()).unwrap_or_else(|| "-".to_string())
         );
-        let dispatch = self
-            .iface_manager
-            .lock()
-            .await
-            .send_with_announce_policy(
-                TxMessage { tx_type: TxMessageType::Broadcast(on_iface), packet },
-                None,
-            )
-            .await;
+        let dispatch = if let Some(iface) = on_iface {
+            self.iface_manager.lock().await.send_broadcast_on_iface(iface, packet).await
+        } else {
+            self.iface_manager
+                .lock()
+                .await
+                .send_with_announce_policy(
+                    TxMessage { tx_type: TxMessageType::Broadcast(None), packet },
+                    None,
+                )
+                .await
+        };
         log::debug!(
             "[tp-diag] path_request_broadcast_done dst={} matched={} sent={} failed={}",
             destination,
@@ -148,6 +151,7 @@ impl Transport {
             dispatch.sent_ifaces,
             dispatch.failed_ifaces
         );
+        dispatch
     }
 
     pub fn out_link_events(&self) -> broadcast::Receiver<LinkEventData> {

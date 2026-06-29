@@ -47,6 +47,9 @@ The project is best described by capability level:
 - Known-path requests on roaming interfaces also suppress direct path answers
   when the learned next-hop iface is the same roaming iface, matching Python's
   loop-avoidance behavior.
+- Roaming-interface known-path responses that are not same-interface loops now
+  wait Python's extra roaming grace before answering, keeping opportunistic
+  path discovery from racing roaming peers too aggressively.
 - Restored Reticulum path-table announces are now cache-only lookup material at
   startup, not fresh rebroadcast work, while still serving known-path response
   requests from the restored cache.
@@ -345,8 +348,12 @@ The project is best described by capability level:
   software RPC path.
 - Daemon-backed path requests now preserve optional interface scope and request
   tag bytes from RPC through `reticulumd` into the transport path-request
-  generator, and `rnpath-rs` exposes matching `--on-iface` and `--tag-hex`
-  flags for software-only parity checks.
+  generator. Scoped requests dispatch as broadcast path requests on exactly the
+  selected interface, and scoped/tagged refreshes still issue even when an
+  unscoped cached path already exists; a syntactically valid but non-matching
+  interface scope is surfaced as a request failure instead of a silent no-op.
+  `rnpath-rs` exposes matching
+  `--on-iface` and `--tag-hex` flags for software-only parity checks.
 
 ### LXMF
 

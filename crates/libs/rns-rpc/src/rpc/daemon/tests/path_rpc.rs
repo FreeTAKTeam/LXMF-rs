@@ -259,6 +259,40 @@ fn request_path_skips_dispatch_when_already_known() {
 }
 
 #[test]
+fn request_path_dispatches_scoped_refresh_when_already_known() {
+    let daemon = RpcDaemon::test_instance();
+    let bridge = Arc::new(RecordingPathLookupBridge::new(true));
+    daemon.set_path_lookup_bridge(bridge.clone());
+
+    let response = daemon
+        .handle_rpc(rpc_request(
+            10,
+            "request_path",
+            json!({
+                "destination": "00112233445566778899aabbccddeeff",
+                "on_iface": "aabbccddeeff00112233445566778899",
+                "tag_hex": "01020304"
+            }),
+        ))
+        .expect("request path response");
+
+    assert!(response.error.is_none());
+    let result = response.result.expect("request path result");
+    assert_eq!(result["known"].as_bool(), Some(true));
+    assert_eq!(result["path_found"].as_bool(), Some(true));
+    assert_eq!(result["requested"].as_bool(), Some(true));
+    assert_eq!(result["status"].as_str(), Some("found"));
+    assert_eq!(
+        bridge.scoped_requests(),
+        vec![ScopedPathRequest {
+            destination: "00112233445566778899aabbccddeeff".to_string(),
+            on_iface: Some("aabbccddeeff00112233445566778899".to_string()),
+            tag_hex: Some("01020304".to_string()),
+        }]
+    );
+}
+
+#[test]
 fn path_rpc_reports_missing_bridge() {
     let daemon = RpcDaemon::test_instance();
 

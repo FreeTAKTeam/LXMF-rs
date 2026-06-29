@@ -1,4 +1,37 @@
 impl InterfaceManager {
+    pub(crate) async fn send_broadcast_on_iface(
+        &mut self,
+        address: AddressHash,
+        packet: Packet,
+    ) -> TxDispatchTrace {
+        self.cleanup();
+        let mut trace = TxDispatchTrace::default();
+        let mut saw_closed_queue = false;
+        let message = TxMessage { tx_type: TxMessageType::Broadcast(None), packet };
+
+        for iface in &mut self.ifaces {
+            if iface.address != address || !iface.outgoing || iface.stop.is_cancelled() {
+                continue;
+            }
+
+            trace.matched_ifaces += 1;
+            match Self::send_to_iface(iface, message.clone()).await {
+                TxIfaceSendResult::Sent => trace.sent_ifaces += 1,
+                TxIfaceSendResult::Failed => trace.failed_ifaces += 1,
+                TxIfaceSendResult::Closed => {
+                    trace.failed_ifaces += 1;
+                    saw_closed_queue = true;
+                }
+            }
+        }
+
+        if saw_closed_queue {
+            self.cleanup_closed_tx_queues();
+        }
+        self.cleanup();
+        trace
+    }
+
     fn cleanup_closed_tx_queues(&mut self) {
         let before = self.ifaces.len();
         self.ifaces.retain(|iface| !iface.tx_send.is_closed());
