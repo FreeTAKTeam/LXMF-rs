@@ -79,6 +79,8 @@ fn sdk_release_c_domain_methods_roundtrip() {
         .any(|entry| entry["id"] == json!("app.propagation.peer_maintenance")));
     assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.propagation.ingest")));
     assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.propagation.fetch")));
+    assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.paper.encode")));
+    assert!(registry_entries.iter().any(|entry| entry["id"] == json!("app.paper.decode")));
 
     let list_before =
         daemon.handle_rpc(rpc_request(120, "sdk_identity_list_v2", json!({}))).expect("list");
@@ -756,6 +758,66 @@ fn sdk_release_c_domain_methods_roundtrip() {
         .expect("paper decode");
     assert!(paper_decode.error.is_none());
     assert_eq!(paper_decode.result.expect("result")["accepted"], json!(true));
+
+    let _ = daemon
+        .handle_rpc(rpc_request(
+            12601,
+            "send_message_v2",
+            json!({
+                "id": "paper-msg-2",
+                "source": "src",
+                "destination": "dst",
+                "title": "",
+                "content": "paper envelope body"
+            }),
+        ))
+        .expect("send message for paper envelope");
+    let paper_encode_envelope = daemon
+        .handle_rpc(rpc_request(
+            12602,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "sdk_paper_encode_v2",
+                "kind": "command",
+                "correlation_id": "paper-corr-1",
+                "payload": { "message_id": "paper-msg-2" },
+            }),
+        ))
+        .expect("paper encode envelope");
+    assert!(paper_encode_envelope.error.is_none());
+    let paper_encode_result = paper_encode_envelope.result.expect("paper encode result");
+    assert_eq!(
+        paper_encode_result["response"]["operation_id"],
+        json!("app.paper.encode")
+    );
+    assert_eq!(
+        paper_encode_result["response"]["correlation_id"],
+        json!("paper-corr-1")
+    );
+    let envelope_uri = paper_encode_result["response"]["payload"]["uri"]
+        .as_str()
+        .expect("envelope paper uri")
+        .to_owned();
+    assert!(envelope_uri.starts_with("lxm://"));
+
+    let paper_decode_envelope = daemon
+        .handle_rpc(rpc_request(
+            12603,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "app.paper.decode",
+                "kind": "command",
+                "payload": { "uri": envelope_uri },
+            }),
+        ))
+        .expect("paper decode envelope");
+    assert!(paper_decode_envelope.error.is_none());
+    let paper_decode_result = paper_decode_envelope.result.expect("paper decode result");
+    assert_eq!(
+        paper_decode_result["response"]["operation_id"],
+        json!("app.paper.decode")
+    );
+    assert_eq!(paper_decode_result["response"]["payload"]["accepted"], json!(true));
 
     let pre_command_poll = daemon
         .handle_rpc(rpc_request(

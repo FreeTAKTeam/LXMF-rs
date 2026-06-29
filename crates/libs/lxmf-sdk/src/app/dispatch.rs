@@ -3,7 +3,7 @@ use super::errors::Error;
 use super::node::Client;
 use super::runtime::{Config, SendRequest};
 use crate::domain::RemoteCommandRequest;
-use crate::{EventCursor, SdkBackend, ShutdownMode};
+use crate::{EventCursor, MessageId, SdkBackend, ShutdownMode};
 use serde_json::Value as JsonValue;
 use std::collections::BTreeMap;
 
@@ -180,6 +180,47 @@ impl<B: SdkBackend> Client<B> {
             | "app.voice.session.update"
             | "app.voice.session.close" => {
                 self.dispatch_content_envelope(canonical_id, correlation_id, payload)
+            }
+            "app.paper.encode" => {
+                let message_id = payload
+                    .get("message_id")
+                    .and_then(JsonValue::as_str)
+                    .filter(|value| !value.trim().is_empty())
+                    .ok_or_else(|| {
+                        invalid_envelope(
+                            "paper encode envelope requires payload.message_id",
+                            canonical_id.as_str(),
+                        )
+                    })?;
+                let envelope = self.backend.paper_encode(MessageId(message_id.to_owned()))?;
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::to_value(envelope).expect("paper envelope should serialize"),
+                ))
+            }
+            "app.paper.decode" => {
+                let _ = payload
+                    .get("uri")
+                    .and_then(JsonValue::as_str)
+                    .filter(|value| !value.trim().is_empty())
+                    .ok_or_else(|| {
+                        invalid_envelope(
+                            "paper decode envelope requires payload.uri",
+                            canonical_id.as_str(),
+                        )
+                    })?;
+                self.backend
+                    .envelope_execute(Envelope {
+                        operation_id: canonical_id,
+                        kind: EnvelopeKind::Command,
+                        target,
+                        correlation_id,
+                        timeout_ms,
+                        payload,
+                        extensions,
+                    })
+                    .map_err(Error::from)
             }
             _ if matches!(entry.kind, super::operations::OperationKind::Query) => self
                 .backend

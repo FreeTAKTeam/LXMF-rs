@@ -669,6 +669,10 @@ The project is best described by capability level:
   `app.delivery.destination_hash`, so REM/RCH direct-chat history and runtime
   delivery-destination lookups can stay on `ZmqPipelineBackendClient` instead
   of constructing raw RPC/HTTP envelopes.
+- Paper-message encode/decode now ride the registered SDK envelope path as
+  `app.paper.encode` and `app.paper.decode` in both the daemon and SDK app
+  registries, with typed envelope payloads for `sdk_paper_encode_v2` and
+  `sdk_paper_decode_v2` aliases.
 - The typed ZeroMQ SDK backend now exposes durable direct-chat history through
   `ZmqPipelineBackendClient::list_message_history`, preserving message bodies
   with links, receipt status, basic LXMF fields, one-to-one

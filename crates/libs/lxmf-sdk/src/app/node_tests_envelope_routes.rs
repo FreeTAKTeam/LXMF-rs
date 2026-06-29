@@ -165,6 +165,56 @@ fn execute_envelope_routes_topic_operations_locally() {
 }
 
 #[test]
+fn execute_envelope_routes_paper_operations_locally() {
+    let backend = MockBackend::new();
+    backend.queue_envelope_result(Ok(crate::app::EnvelopeResponse {
+        operation_id: "app.paper.decode".into(),
+        kind: EnvelopeKind::Result,
+        accepted: true,
+        correlation_id: None,
+        payload: json!({
+            "accepted": true,
+            "duplicate": false,
+            "transient_id": "paper-msg-1",
+            "destination_hint": "dest",
+            "bytes_len": 72
+        }),
+        extensions: BTreeMap::new(),
+    }));
+    let app = Client::new(backend);
+
+    let encoded =
+        app.command("sdk_paper_encode_v2", json!({ "message_id": "msg-1" })).expect("paper encode");
+    assert_eq!(encoded.operation_id.as_str(), "app.paper.encode");
+    assert_eq!(encoded.payload["uri"], json!("lxm://msg-1"));
+    assert_eq!(encoded.payload["transient_id"], json!("paper-msg-1"));
+
+    let decoded = app
+        .command(
+            "app.paper.decode",
+            json!({
+                "uri": "lxm://msg-1",
+                "transient_id": "paper-msg-1",
+                "destination_hint": "dest"
+            }),
+        )
+        .expect("paper decode");
+    assert_eq!(decoded.operation_id.as_str(), "app.paper.decode");
+    assert_eq!(decoded.payload["accepted"], json!(true));
+    assert_eq!(decoded.payload["duplicate"], json!(false));
+    assert_eq!(decoded.payload["transient_id"], json!("paper-msg-1"));
+    assert_eq!(decoded.payload["bytes_len"], json!(72));
+}
+
+#[test]
+fn execute_envelope_rejects_malformed_paper_payloads() {
+    let app = Client::new(MockBackend::new());
+
+    assert!(app.command("app.paper.encode", json!({})).is_err());
+    assert!(app.command("app.paper.decode", json!({ "transient_id": "paper-msg-1" })).is_err());
+}
+
+#[test]
 fn execute_envelope_routes_workflow_operations_locally() {
     let app = Client::new(MockBackend::new());
     app.start(Config::testing_default()).expect("start");

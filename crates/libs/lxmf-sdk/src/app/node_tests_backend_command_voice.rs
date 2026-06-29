@@ -40,6 +40,25 @@ macro_rules! mock_backend_command_voice_methods {
         })
     }
 
+    fn paper_encode(
+        &self,
+        message_id: crate::MessageId,
+    ) -> Result<crate::domain::PaperMessageEnvelope, SdkError> {
+        Ok(crate::domain::PaperMessageEnvelope {
+            uri: format!("lxm://{}", message_id.0),
+            transient_id: Some(format!("paper-{}", message_id.0)),
+            destination_hint: Some("dest".to_owned()),
+            extensions: BTreeMap::new(),
+        })
+    }
+
+    fn paper_decode(
+        &self,
+        _envelope: crate::domain::PaperMessageEnvelope,
+    ) -> Result<Ack, SdkError> {
+        Ok(Ack { accepted: true, revision: Some(1) })
+    }
+
     fn voice_session_open(
         &self,
         _req: crate::domain::VoiceSessionOpenRequest,

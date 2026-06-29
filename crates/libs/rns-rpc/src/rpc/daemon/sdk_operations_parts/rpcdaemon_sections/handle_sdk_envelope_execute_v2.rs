@@ -108,6 +108,7 @@ impl RpcDaemon {
             "sdk_marker_list_v2" => parsed.payload,
             "sdk_marker_update_position_v2" => parsed.payload,
             "sdk_marker_delete_v2" => parsed.payload,
+            "sdk_paper_encode_v2" | "sdk_paper_decode_v2" => parsed.payload,
             "sdk_voice_session_open_v2" => parsed.payload,
             "sdk_voice_session_update_v2" => parsed.payload,
             "sdk_voice_session_close_v2" => parsed.payload,

@@ -17,6 +17,14 @@ mod tests {
             registry.get("sdk_poll_events_v2").expect("entry").id.as_str(),
             "app.event.poll"
         );
+        assert_eq!(
+            registry.get("sdk_paper_encode_v2").expect("entry").id.as_str(),
+            "app.paper.encode"
+        );
+        assert_eq!(
+            registry.canonicalize("sdk_paper_decode_v2").expect("canonical id").as_str(),
+            "app.paper.decode"
+        );
     }
 
     #[test]
@@ -97,6 +105,7 @@ mod tests {
         assert!(grouped.contains_key("runtime"));
         assert!(grouped.contains_key("attachments"));
         assert!(grouped.contains_key("markers"));
+        assert!(grouped.contains_key("paper"));
         assert!(grouped.contains_key("telemetry"));
         assert!(grouped.contains_key("topics"));
         assert!(grouped.contains_key("voice"));
@@ -125,6 +134,11 @@ mod tests {
             .expect("markers group")
             .iter()
             .any(|entry| entry.id.as_str() == "app.marker.create"));
+        assert!(grouped
+            .get("paper")
+            .expect("paper group")
+            .iter()
+            .any(|entry| entry.id.as_str() == "app.paper.encode"));
         assert!(grouped
             .get("voice")
             .expect("voice group")

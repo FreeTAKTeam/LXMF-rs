@@ -365,6 +365,16 @@ impl RpcDaemon {
                 method: method.to_owned(),
                 params: Some(params),
             })?,
+            "sdk_paper_encode_v2" => self.handle_sdk_paper_encode_v2(RpcRequest {
+                id: request_id,
+                method: method.to_owned(),
+                params: Some(params),
+            })?,
+            "sdk_paper_decode_v2" => self.handle_sdk_paper_decode_v2(RpcRequest {
+                id: request_id,
+                method: method.to_owned(),
+                params: Some(params),
+            })?,
             "sdk_voice_session_open_v2" => self.handle_sdk_voice_session_open_v2(RpcRequest {
                 id: request_id,
                 method: method.to_owned(),
@@ -467,6 +477,8 @@ impl RpcDaemon {
                 raw.get("marker").cloned().unwrap_or(JsonValue::Null)
             }
             "sdk_marker_delete_v2" => raw,
+            "sdk_paper_encode_v2" => raw.get("envelope").cloned().unwrap_or(JsonValue::Null),
+            "sdk_paper_decode_v2" => raw,
             "sdk_voice_session_open_v2" => {
                 raw.get("session_id").cloned().unwrap_or(JsonValue::Null)
             }

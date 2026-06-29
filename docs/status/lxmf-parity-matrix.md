@@ -367,6 +367,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   `app.delivery.destination_hash` operations used by direct-chat history and
   runtime delivery-destination queries, so REM/RCH can keep those flows on the
   `ZmqPipelineBackendClient` path instead of requiring raw RPC/HTTP envelopes.
+- Paper-message encode/decode now appears in both the daemon and SDK app
+  operation registries as `app.paper.encode`/`app.paper.decode`, preserving
+  the `sdk_paper_encode_v2`/`sdk_paper_decode_v2` aliases and typed envelope
+  payloads instead of falling through to generic remote-command dispatch.
 - The typed ZeroMQ SDK backend also exposes durable direct-chat history as
   `ZmqPipelineBackendClient::list_message_history`, preserving link-bearing
   message bodies, receipt status, basic LXMF fields, one-to-one
@@ -836,9 +840,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   `propagation_offer_duplicate_wanted_source_completed_python_to_rust` cases
   for haves-only `/get` side effects, offer side effects, duplicate wanted-ID
   handling, and peer queue lifecycle evidence.
-- Focused daemon/RPC tests cover delivery modes, propagation offers, peer
-  maintenance, queue policy, source accounting, stamps, tickets, receipts, and
-  cancellation.
+- Focused daemon/RPC tests cover delivery modes, propagation offers, paper
+  operation registry/envelope dispatch, peer maintenance, queue policy, source
+  accounting, stamps, tickets, receipts, and cancellation.
 - Focused daemon bridge tests cover deferred normal-stamp queue ownership,
   cancellation, retry metadata, and propagation-stamp preparation before
   delivery handoff.

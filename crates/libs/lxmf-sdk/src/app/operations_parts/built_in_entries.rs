@@ -358,6 +358,24 @@ fn built_in_entries() -> Vec<OperationEntry> {
         .with_alias("sdk_marker_delete_v2")
         .with_required_capability("sdk.capability.markers"),
         OperationEntry::new(
+            "app.paper.encode",
+            "paper",
+            OperationKind::Command,
+            TransportVariant::Rpc,
+            "Generate a paper-message URI envelope for an outbound message.",
+        )
+        .with_alias("sdk_paper_encode_v2")
+        .with_required_capability("sdk.capability.paper_messages"),
+        OperationEntry::new(
+            "app.paper.decode",
+            "paper",
+            OperationKind::Command,
+            TransportVariant::Rpc,
+            "Decode and ingest a paper-message URI envelope.",
+        )
+        .with_alias("sdk_paper_decode_v2")
+        .with_required_capability("sdk.capability.paper_messages"),
+        OperationEntry::new(
             "app.workflow.peer_ready",
             "workflow",
             OperationKind::Command,

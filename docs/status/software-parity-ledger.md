@@ -124,7 +124,7 @@ ledger and should be tracked in roadmap or matrix residual gaps instead:
 - RNS tools agent owns `rns-tools`, `rnstatus-rs`, `rnodeconf-rs`, `rnx`,
   `rnsd`, and selected CRNS command workflows.
 - LXMF router agent owns daemon/RPC/SDK router behavior, outbound policies,
-  direct/opportunistic/propagated/paper routing, selected propagation nodes,
-  persistence, retries, and cancellation.
+  direct/opportunistic/propagated/paper routing, paper operation envelopes,
+  selected propagation nodes, persistence, retries, and cancellation.
 - LXMF handlers agent owns delivery, receipt, announce, propagation app-data,
   inbound bridge, negative/drop, and event observability behavior.

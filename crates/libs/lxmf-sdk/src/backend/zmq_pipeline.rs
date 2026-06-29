@@ -4,14 +4,14 @@ use crate::capability::{NegotiationRequest, NegotiationResponse};
 use crate::domain::{
     ContactListRequest, ContactListResult, ContactRecord, ContactUpdateRequest,
     IdentityAnnounceRequest, IdentityAnnounceResult, IdentityBootstrapRequest, IdentityBundle,
-    IdentityImportRequest, IdentityRef, IdentityResolveRequest, PeerConnectionRequest,
-    PeerConnectionResult, PresenceListRequest, PresenceListResult,
+    IdentityImportRequest, IdentityRef, IdentityResolveRequest, PaperMessageEnvelope,
+    PeerConnectionRequest, PeerConnectionResult, PresenceListRequest, PresenceListResult,
 };
 use crate::error::{code, ErrorCategory, SdkError};
 use crate::event::{EventBatch, EventCursor, SdkEvent, Severity};
 use crate::types::{
     Ack, CancelResult, ConfigPatch, DeliverySnapshot, DeliveryState, MessageId, RuntimeSnapshot,
-    RuntimeState, SendRequest, ShutdownMode,
+    SendRequest, ShutdownMode,
 };
 use hmac::{Hmac, Mac};
 use rns_rpc::e2e_harness::{build_rpc_frame, parse_rpc_frame};
@@ -39,6 +39,8 @@ mod history;
 mod identity;
 #[path = "zmq_pipeline/negotiation.rs"]
 mod negotiation;
+#[path = "zmq_pipeline/operations.rs"]
+mod operations;
 #[path = "zmq_pipeline/parsing.rs"]
 mod parsing;
 #[path = "zmq_pipeline/peer.rs"]
@@ -430,46 +432,23 @@ impl SdkBackend for ZmqPipelineBackendClient {
         ZmqPipelineBackendClient::peer_reconnect(self, req)
     }
     fn operation_registry(&self) -> Result<OperationRegistry, SdkError> {
-        let result = self.call_rpc("sdk_operation_registry_v2", Some(json!({})))?;
-        Self::decode_field_or_root(&result, "registry", "operation_registry response")
+        ZmqPipelineBackendClient::operation_registry(self)
     }
     fn envelope_execute(&self, envelope: Envelope) -> Result<EnvelopeResponse, SdkError> {
-        let params = serde_json::to_value(envelope).map_err(|err| {
-            SdkError::new(code::INTERNAL, ErrorCategory::Internal, err.to_string())
-        })?;
-        let result = self.call_rpc("sdk_envelope_execute_v2", Some(params))?;
-        Self::decode_field_or_root(&result, "response", "envelope_execute response")
+        ZmqPipelineBackendClient::envelope_execute(self, envelope)
+    }
+    fn paper_encode(&self, message_id: MessageId) -> Result<PaperMessageEnvelope, SdkError> {
+        ZmqPipelineBackendClient::paper_encode(self, message_id)
+    }
+    fn paper_decode(&self, envelope: PaperMessageEnvelope) -> Result<Ack, SdkError> {
+        ZmqPipelineBackendClient::paper_decode(self, envelope)
     }
     fn snapshot(&self) -> Result<RuntimeSnapshot, SdkError> {
-        let result = self.call_rpc("sdk_snapshot_v2", Some(json!({ "include_counts": true })))?;
-        Ok(RuntimeSnapshot {
-            runtime_id: Self::parse_required_string(&result, "runtime_id")?,
-            state: result
-                .get("state")
-                .and_then(JsonValue::as_str)
-                .map(Self::parse_runtime_state)
-                .unwrap_or(RuntimeState::Running),
-            active_contract_version: Self::parse_required_u16(&result, "active_contract_version")?,
-            event_stream_position: Self::parse_required_u64(&result, "event_stream_position")?,
-            config_revision: Self::parse_required_u64(&result, "config_revision")?,
-            queued_messages: result.get("queued_messages").and_then(JsonValue::as_u64).unwrap_or(0),
-            in_flight_messages: result
-                .get("in_flight_messages")
-                .and_then(JsonValue::as_u64)
-                .unwrap_or(0),
-        })
+        ZmqPipelineBackendClient::snapshot(self)
     }
 
     fn shutdown(&self, mode: ShutdownMode) -> Result<Ack, SdkError> {
-        let mode = match mode {
-            ShutdownMode::Graceful => "graceful",
-            ShutdownMode::Immediate => "immediate",
-        };
-        let result = self.call_rpc("sdk_shutdown_v2", Some(json!({ "mode": mode })))?;
-        Ok(Ack {
-            accepted: result.get("accepted").and_then(JsonValue::as_bool).unwrap_or(false),
-            revision: None,
-        })
+        ZmqPipelineBackendClient::shutdown(self, mode)
     }
 }
 
