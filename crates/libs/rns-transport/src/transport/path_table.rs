@@ -24,10 +24,17 @@ pub struct PathEntry {
     pub iface: AddressHash,
     pub packet_hash: Hash,
     random_blobs: Vec<[u8; RAND_HASH_LENGTH]>,
+    state: PathState,
 }
 
 pub struct PathTable {
     map: HashMap<AddressHash, PathEntry>,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+enum PathState {
+    Unknown,
+    Unresponsive,
 }
 
 #[derive(Debug, PartialEq)]
@@ -62,6 +69,19 @@ impl PathTable {
 
     pub fn expire_path(&mut self, destination: &AddressHash) -> bool {
         self.map.remove(destination).is_some()
+    }
+
+    pub fn mark_path_unresponsive(&mut self, destination: &AddressHash) -> bool {
+        let Some(entry) = self.map.get_mut(destination) else {
+            return false;
+        };
+        entry.state = PathState::Unresponsive;
+        true
+    }
+
+    #[cfg(test)]
+    pub fn path_is_unresponsive(&self, destination: &AddressHash) -> bool {
+        self.map.get(destination).is_some_and(|entry| entry.state == PathState::Unresponsive)
     }
 
     pub fn handle_announce(
@@ -107,6 +127,7 @@ impl PathTable {
             iface,
             packet_hash: announce.hash(),
             random_blobs,
+            state: PathState::Unknown,
         };
 
         self.map.insert(announce.destination, new_entry);
@@ -145,6 +166,7 @@ impl PathTable {
                 iface,
                 packet_hash,
                 random_blobs: Vec::new(),
+                state: PathState::Unknown,
             },
         );
         true
@@ -192,6 +214,7 @@ impl PathTable {
                 iface: entry.iface,
                 packet_hash: entry.packet_hash,
                 random_blobs: bounded_random_blobs(entry.random_blobs),
+                state: PathState::Unknown,
             },
         );
     }
@@ -296,7 +319,10 @@ fn should_replace_path(
     mut mode_for_iface: impl FnMut(&AddressHash) -> Option<InterfaceMode>,
 ) -> bool {
     if existing.random_blobs.contains(random_blob) {
-        return false;
+        let path_emitted = newest_random_blob_timebase(&existing.random_blobs);
+        return existing.state == PathState::Unresponsive
+            && hops > existing.hops
+            && announce_emitted == path_emitted;
     }
 
     let path_emitted = newest_random_blob_timebase(&existing.random_blobs);

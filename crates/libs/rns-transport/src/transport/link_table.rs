@@ -18,6 +18,13 @@ pub struct LinkEntry {
     pub validated: bool,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct ExpiredUnvalidatedLink {
+    pub received_from: AddressHash,
+    pub original_destination: AddressHash,
+    pub taken_hops: u8,
+}
+
 fn send_backwards(packet: &Packet, entry: &LinkEntry) -> (Packet, AddressHash) {
     let propagated = Packet {
         header: packet.header,
@@ -116,8 +123,9 @@ impl LinkTable {
         Some(send_backwards(packet, entry))
     }
 
-    pub fn remove_stale(&mut self) {
+    pub fn remove_stale(&mut self) -> Vec<ExpiredUnvalidatedLink> {
         let mut stale = vec![];
+        let mut expired_unvalidated = vec![];
         let now = Instant::now();
 
         for (link_id, entry) in &self.entries {
@@ -126,6 +134,11 @@ impl LinkTable {
                     stale.push(*link_id);
                 }
             } else if entry.proof_timeout <= now {
+                expired_unvalidated.push(ExpiredUnvalidatedLink {
+                    received_from: entry.received_from,
+                    original_destination: entry.original_destination,
+                    taken_hops: entry.taken_hops,
+                });
                 stale.push(*link_id);
             }
         }
@@ -133,5 +146,7 @@ impl LinkTable {
         for link_id in stale {
             self.entries.remove(&link_id);
         }
+
+        expired_unvalidated
     }
 }

@@ -8,6 +8,8 @@ use crate::destination::link::LinkWatchdogAction;
 const MIN_LINKS_CHECK_DELAY: Duration = Duration::from_millis(10);
 const PATH_REQUEST_MI: Duration = Duration::from_secs(20);
 
+include!("jobs_parts/link_table_cleanup.rs");
+
 #[allow(dead_code)]
 fn link_check_delay_from_deadline(
     now: std::time::Instant,
@@ -373,7 +375,7 @@ pub(super) async fn manage_transport(
                         break;
                     },
                     _ = time::sleep(INTERVAL_PACKET_CACHE_CLEANUP) => {
-                        let mut handler = handler.lock().await;
+                        let handler = handler.lock().await;
 
                         handler
                             .packet_cache
@@ -381,7 +383,7 @@ pub(super) async fn manage_transport(
                             .await
                             .release(INTERVAL_KEEP_PACKET_CACHED);
 
-                        handler.link_table.remove_stale();
+                        handle_link_table_cleanup(handler).await;
                     },
                 }
             }

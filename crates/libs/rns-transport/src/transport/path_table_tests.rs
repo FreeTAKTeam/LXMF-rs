@@ -30,6 +30,7 @@ fn add_path(table: &mut PathTable, destination: AddressHash, timestamp: Instant)
             iface: addr(b"iface"),
             packet_hash: hash(b"packet"),
             random_blobs: Vec::new(),
+            state: PathState::Unknown,
         },
     );
 }
@@ -164,6 +165,40 @@ fn handle_announce_replacement_matches_python_freshness_rules() {
     assert_eq!(entry.hops, 4);
     assert_eq!(entry.iface, second_iface);
     assert_eq!(entry.random_blobs.len(), 2);
+
+    let mut table = PathTable::new();
+    assert!(table.handle_announce(
+        &announce(destination, 1, b"first", 100),
+        None,
+        first_iface,
+        random_blob(b"first", 100),
+        |_| Some(InterfaceMode::Full),
+    ));
+    assert!(!table.handle_announce(
+        &announce(destination, 4, b"first", 100),
+        None,
+        second_iface,
+        random_blob(b"first", 100),
+        |_| Some(InterfaceMode::Full),
+    ));
+    let entry = table.get(&destination).expect("initial route should remain responsive");
+    assert_eq!(entry.hops, 1);
+    assert_eq!(entry.iface, first_iface);
+
+    assert!(table.mark_path_unresponsive(&destination));
+    assert!(table.path_is_unresponsive(&destination));
+    assert!(table.handle_announce(
+        &announce(destination, 4, b"first", 100),
+        Some(second_transport),
+        second_iface,
+        random_blob(b"first", 100),
+        |_| Some(InterfaceMode::Full),
+    ));
+    let entry = table.get(&destination).expect("unresponsive route should be replaced");
+    assert_eq!(entry.hops, 4);
+    assert_eq!(entry.received_from, second_transport);
+    assert_eq!(entry.iface, second_iface);
+    assert!(!table.path_is_unresponsive(&destination));
 }
 
 #[test]

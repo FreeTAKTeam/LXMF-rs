@@ -66,6 +66,10 @@ The project is best described by capability level:
   the stale path is expired, rediscovery requests are throttled by the
   `PATH_REQUEST_MI` window, and shared-instance clients leave rediscovery to
   the shared instance.
+- Routed link-table proof timeouts now model Python's unresponsive-path
+  exception: one-hop or topology-change routes are marked unresponsive,
+  rediscovery requests avoid the ingress interface, and equal-timebase
+  higher-hop announces can replace the unresponsive path.
 - Known-path requests on roaming interfaces also suppress direct path answers
   when the learned next-hop iface is the same roaming iface, matching Python's
   loop-avoidance behavior.
