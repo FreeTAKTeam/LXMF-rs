@@ -14,6 +14,11 @@ pub mod payload_fields;
 #[cfg(feature = "std")]
 pub mod wire_fields;
 
+pub use announce::{
+    compression_support_from_app_data, display_name_from_app_data, pn_announce_data_is_valid,
+    pn_name_from_app_data, pn_stamp_cost_from_app_data, stamp_cost_from_app_data,
+    validate_pn_announce_data, PnAnnounceParseError,
+};
 pub use error::LxmfError;
 pub use message::{
     decide_delivery, DeliveryDecision, Message, MessageMethod, MessageState, Payload,

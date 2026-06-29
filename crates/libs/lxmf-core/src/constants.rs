@@ -1,9 +1,72 @@
+pub const APP_NAME: &str = "lxmf";
+
+pub const FIELD_EMBEDDED_LXMS: u8 = 0x01;
 pub const FIELD_TELEMETRY: u8 = 0x02;
+pub const FIELD_TELEMETRY_STREAM: u8 = 0x03;
+pub const FIELD_ICON_APPEARANCE: u8 = 0x04;
 pub const FIELD_FILE_ATTACHMENTS: u8 = 0x05;
+pub const FIELD_IMAGE: u8 = 0x06;
+pub const FIELD_AUDIO: u8 = 0x07;
+pub const FIELD_THREAD: u8 = 0x08;
 pub const FIELD_COMMANDS: u8 = 0x09;
+pub const FIELD_RESULTS: u8 = 0x0A;
+pub const FIELD_GROUP: u8 = 0x0B;
 pub const FIELD_TICKET: u8 = 0x0C;
+pub const FIELD_EVENT: u8 = 0x0D;
 pub const FIELD_RNR_REFS: u8 = 0x0E;
+pub const FIELD_RENDERER: u8 = 0x0F;
 pub const FIELD_APP_EXTENSIONS: u8 = 0x10;
+pub const FIELD_REPLY_TO: u8 = 0x30;
+pub const FIELD_REPLY_QUOTE: u8 = 0x31;
+pub const FIELD_REACTION: u8 = 0x40;
+pub const FIELD_COMMENT: u8 = 0x41;
+pub const FIELD_CONTINUATION: u8 = 0x42;
+pub const FIELD_CUSTOM_TYPE: u8 = 0xFB;
+pub const FIELD_CUSTOM_DATA: u8 = 0xFC;
+pub const FIELD_CUSTOM_META: u8 = 0xFD;
+pub const FIELD_NON_SPECIFIC: u8 = 0xFE;
+pub const FIELD_DEBUG: u8 = 0xFF;
+
+pub const AM_CODEC2_450PWB: u8 = 0x01;
+pub const AM_CODEC2_450: u8 = 0x02;
+pub const AM_CODEC2_700C: u8 = 0x03;
+pub const AM_CODEC2_1200: u8 = 0x04;
+pub const AM_CODEC2_1300: u8 = 0x05;
+pub const AM_CODEC2_1400: u8 = 0x06;
+pub const AM_CODEC2_1600: u8 = 0x07;
+pub const AM_CODEC2_2400: u8 = 0x08;
+pub const AM_CODEC2_3200: u8 = 0x09;
+pub const AM_OPUS_OGG: u8 = 0x10;
+pub const AM_OPUS_LBW: u8 = 0x11;
+pub const AM_OPUS_MBW: u8 = 0x12;
+pub const AM_OPUS_PTT: u8 = 0x13;
+pub const AM_OPUS_RT_HDX: u8 = 0x14;
+pub const AM_OPUS_RT_FDX: u8 = 0x15;
+pub const AM_OPUS_STANDARD: u8 = 0x16;
+pub const AM_OPUS_HQ: u8 = 0x17;
+pub const AM_OPUS_BROADCAST: u8 = 0x18;
+pub const AM_OPUS_LOSSLESS: u8 = 0x19;
+pub const AM_CUSTOM: u8 = 0xFF;
+
+pub const RENDERER_PLAIN: u8 = 0x00;
+pub const RENDERER_MICRON: u8 = 0x01;
+pub const RENDERER_MARKDOWN: u8 = 0x02;
+pub const RENDERER_BBCODE: u8 = 0x03;
+
+pub const REACTION_TO: u8 = 0x00;
+pub const REACTION_CONTENT: u8 = 0x01;
+pub const COMMENT_FOR: u8 = 0x00;
+pub const CONTINUATION_OF: u8 = 0x00;
+
+pub const PN_META_VERSION: u8 = 0x00;
+pub const PN_META_NAME: u8 = 0x01;
+pub const PN_META_SYNC_STRATUM: u8 = 0x02;
+pub const PN_META_SYNC_THROTTLE: u8 = 0x03;
+pub const PN_META_AUTH_BAND: u8 = 0x04;
+pub const PN_META_UTIL_PRESSURE: u8 = 0x05;
+pub const PN_META_CUSTOM: u8 = 0xFF;
+
+pub const SF_COMPRESSION: u8 = 0x00;
 
 pub const DESTINATION_LENGTH: usize = 16;
 pub const SIGNATURE_LENGTH: usize = 64;
