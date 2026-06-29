@@ -431,6 +431,55 @@ async fn reticulum_path_table_persistence_restores_route_and_identity_from_cache
 }
 
 #[tokio::test]
+async fn reticulum_path_table_save_filters_entries_without_cached_announces() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut config = TransportConfig::new("test", &local_identity, true);
+    config.set_retransmit(true);
+    let transport = Transport::new(config);
+    let iface = *transport.iface_manager().lock().await.new_channel(16).address();
+
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut remote_destination =
+        SingleInputDestination::new(remote_identity, DestinationName::new("lxmf", "delivery"));
+    let announce = remote_destination.announce(OsRng, None).expect("valid announce packet");
+    let destination = announce.destination;
+
+    handle_announce(
+        &announce,
+        transport.get_handler().lock().await,
+        iface,
+        crate::iface::IfaceSource::None,
+    )
+    .await;
+
+    let stale_destination = AddressHash::new_from_hash(&Hash::new_from_slice(b"stale-destination"));
+    {
+        let handler = transport.get_handler();
+        let mut handler = handler.lock().await;
+        assert!(handler.path_table.restore_tunnel_path(
+            stale_destination,
+            stale_destination,
+            1,
+            iface,
+            Hash::new_from_slice(b"stale-packet"),
+            std::time::Instant::now(),
+        ));
+    }
+
+    assert_eq!(transport.save_reticulum_path_table(temp.path()).await.expect("save"), 1);
+
+    let payload = std::fs::read(temp.path().join("destination_table")).expect("read");
+    let entries = super::path_table::PathTable::decode_python_entries(&payload).expect("decode");
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].destination, destination);
+    assert!(
+        !entries.iter().any(|entry| entry.destination == stale_destination),
+        "path entries without cached announce material must not be persisted"
+    );
+}
+
+#[tokio::test]
 async fn reticulum_path_table_restore_skips_when_connected_to_shared_instance() {
     let temp = tempfile::tempdir().expect("tempdir");
     let local_identity = PrivateIdentity::new_from_rand(OsRng);
@@ -466,6 +515,59 @@ async fn reticulum_path_table_restore_skips_when_connected_to_shared_instance() 
     assert!(
         !restored.has_path(&destination).await,
         "shared-instance clients should not restore local path-table entries from storage"
+    );
+}
+
+#[tokio::test]
+async fn reticulum_path_table_restore_skips_expired_python_path_entries() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut config = TransportConfig::new("test", &local_identity, true);
+    config.set_retransmit(true);
+    let transport = Transport::new(config);
+    let iface = *transport.iface_manager().lock().await.new_channel(16).address();
+
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut remote_destination =
+        SingleInputDestination::new(remote_identity, DestinationName::new("lxmf", "delivery"));
+    let announce = remote_destination.announce(OsRng, None).expect("valid announce packet");
+    let destination = announce.destination;
+
+    handle_announce(
+        &announce,
+        transport.get_handler().lock().await,
+        iface,
+        crate::iface::IfaceSource::None,
+    )
+    .await;
+
+    assert_eq!(transport.save_reticulum_path_table(temp.path()).await.expect("save"), 1);
+    let table_path = temp.path().join("destination_table");
+    let payload = std::fs::read(&table_path).expect("read destination table");
+    let mut entries =
+        super::path_table::PathTable::decode_python_entries(&payload).expect("decode entries");
+    assert_eq!(entries.len(), 1);
+    entries[0].expires_secs = 0.0;
+    std::fs::write(
+        &table_path,
+        super::path_table::PathTable::encode_python_entries(&entries).expect("encode entries"),
+    )
+    .expect("write expired destination table");
+
+    let mut restored_config = TransportConfig::new("test", &local_identity, true);
+    restored_config.set_retransmit(true);
+    let restored = Transport::new(restored_config);
+    let restored_iface = *restored.iface_manager().lock().await.new_channel(16).address();
+    assert_eq!(restored_iface, iface, "test relies on deterministic iface hashes");
+
+    assert_eq!(restored.restore_reticulum_path_table(temp.path()).await.expect("restore"), 0);
+    assert!(
+        !restored.has_path(&destination).await,
+        "expired Python path-table entry must not restore stale route state"
+    );
+    assert!(
+        restored.destination_identity(&destination).await.is_none(),
+        "expired Python path-table entry must not restore cached identity material"
     );
 }
 
@@ -624,6 +726,85 @@ async fn reticulum_tunnel_table_persistence_restores_tunnel_paths_after_reappear
         .expect("restored tunnel cached announce should answer known-path requests");
     assert_eq!(response.response_to_iface, Some(requesting_iface));
     assert_eq!(response.packet.context, PacketContext::PathResponse);
+}
+
+#[tokio::test]
+async fn reticulum_tunnel_table_restore_skips_expired_python_tunnel_paths() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut config = TransportConfig::new("test", &local_identity, true);
+    config.set_retransmit(true);
+    let transport = Transport::new(config);
+    let iface = *transport.iface_manager().lock().await.new_channel(16).address();
+    let iface_hash = transport.iface_manager().lock().await.full_hash(&iface).expect("iface hash");
+
+    let tunnel_identity = PrivateIdentity::new_from_rand(OsRng);
+    let tunnel_synth = super::tunnels::synthesize_tunnel_packet(&tunnel_identity, iface_hash);
+    {
+        let handler = transport.get_handler();
+        let mut handler = handler.lock().await;
+        super::tunnels::handle_tunnel_synthesize_packet(&tunnel_synth, &mut handler, iface).await;
+    }
+
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut remote_destination =
+        SingleInputDestination::new(remote_identity, DestinationName::new("lxmf", "delivery"));
+    let announce = remote_destination.announce(OsRng, None).expect("valid announce packet");
+    let destination = announce.destination;
+    handle_announce(
+        &announce,
+        transport.get_handler().lock().await,
+        iface,
+        crate::iface::IfaceSource::None,
+    )
+    .await;
+
+    assert_eq!(transport.save_reticulum_path_table(temp.path()).await.expect("save"), 1);
+    std::fs::remove_file(temp.path().join("destination_table")).expect("remove active path table");
+    let tunnel_path = temp.path().join("tunnels");
+    let payload = std::fs::read(&tunnel_path).expect("read tunnels");
+    let mut tunnels =
+        super::tunnels::TunnelTable::decode_python_entries(&payload).expect("decode tunnels");
+    assert_eq!(tunnels.len(), 1);
+    assert_eq!(tunnels[0].paths.len(), 1);
+    tunnels[0].paths[0].expires_secs = 0.0;
+    std::fs::write(
+        &tunnel_path,
+        super::tunnels::TunnelTable::encode_python_entries(&tunnels).expect("encode tunnels"),
+    )
+    .expect("write expired tunnel path");
+
+    let mut restored_config = TransportConfig::new("test", &local_identity, true);
+    restored_config.set_retransmit(true);
+    let restored = Transport::new(restored_config);
+    let restored_iface = *restored.iface_manager().lock().await.new_channel(16).address();
+    let restored_iface_hash =
+        restored.iface_manager().lock().await.full_hash(&restored_iface).expect("iface hash");
+    assert_eq!(restored_iface_hash, iface_hash, "test relies on deterministic iface hashes");
+
+    assert_eq!(restored.restore_reticulum_path_table(temp.path()).await.expect("restore"), 0);
+
+    let tunnel_synth =
+        super::tunnels::synthesize_tunnel_packet(&tunnel_identity, restored_iface_hash);
+    {
+        let handler = restored.get_handler();
+        let mut handler = handler.lock().await;
+        super::tunnels::handle_tunnel_synthesize_packet(
+            &tunnel_synth,
+            &mut handler,
+            restored_iface,
+        )
+        .await;
+    }
+
+    assert!(
+        !restored.has_path(&destination).await,
+        "expired Python tunnel path must not restore stale route state"
+    );
+    assert!(
+        restored.destination_identity(&destination).await.is_none(),
+        "expired Python tunnel path must not restore cached identity material"
+    );
 }
 
 #[tokio::test]

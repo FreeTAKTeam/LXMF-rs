@@ -17,7 +17,7 @@ impl Transport {
         let storage_path = storage_path.as_ref().to_path_buf();
         let now = std::time::Instant::now();
         let now_unix_secs = now_unix_secs();
-        let (entries, tunnel_entries, packets) = {
+        let (kept_entries, tunnel_entries, packets) = {
             let handler = self.handler.lock().await;
             let iface_manager = self.iface_manager.lock().await;
             let entries = handler.path_table.export_python_entries(now, now_unix_secs, |iface| {
@@ -27,7 +27,7 @@ impl Transport {
             let mut packets = Vec::new();
             for entry in entries {
                 if let Some(packet) =
-                    handler.announce_table.packet_for_destination(&entry.destination)
+                    handler.announce_table.cached_packet_for_destination(&entry.destination)
                 {
                     packets.push((entry.packet_hash, entry.iface, packet));
                     kept_entries.push(entry);
@@ -40,7 +40,7 @@ impl Transport {
             for tunnel in &mut tunnel_entries {
                 tunnel.paths.retain(|path| {
                     let Some(packet) =
-                        handler.announce_table.packet_for_destination(&path.destination)
+                        handler.announce_table.cached_packet_for_destination(&path.destination)
                     else {
                         return false;
                     };
@@ -56,7 +56,7 @@ impl Transport {
             (kept_entries, tunnel_entries, packets)
         };
 
-        let payload = PathTable::encode_python_entries(&entries)
+        let payload = PathTable::encode_python_entries(&kept_entries)
             .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "encode path table"))?;
         let tunnel_payload = TunnelTable::encode_python_entries(&tunnel_entries)
             .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "encode tunnel table"))?;
@@ -71,7 +71,7 @@ impl Transport {
 
         tokio::fs::write(storage_path.join("destination_table"), payload).await?;
         tokio::fs::write(storage_path.join("tunnels"), tunnel_payload).await?;
-        Ok(entries.len())
+        Ok(kept_entries.len())
     }
 
     pub async fn restore_reticulum_path_table<P: AsRef<Path>>(
@@ -109,6 +109,9 @@ impl Transport {
 
         let mut path_candidates = Vec::new();
         for entry in mapped_entries {
+            if python_path_entry_expired(&entry, now_unix_secs) {
+                continue;
+            }
             if let Some(cached) = announce_cache.restore(entry.packet_hash).await? {
                 path_candidates.push(PathRestoreCandidate { entry, cached });
             }
@@ -121,6 +124,10 @@ impl Transport {
             Err(err) if err.kind() == io::ErrorKind::NotFound => Vec::new(),
             Err(err) => return Err(err),
         };
+        for tunnel in &mut tunnels {
+            tunnel.paths.retain(|path| !python_tunnel_path_entry_expired(path, now_unix_secs));
+        }
+        tunnels.retain(|entry| !entry.paths.is_empty());
 
         let mut tunnel_announces = HashMap::new();
         for tunnel in &tunnels {
@@ -214,4 +221,18 @@ fn cached_announce_compatible(
 
 fn now_unix_secs() -> f64 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs_f64()
+}
+
+fn python_path_entry_expired(
+    entry: &super::path_table::PythonPathEntry,
+    now_unix_secs: f64,
+) -> bool {
+    !entry.expires_secs.is_finite() || entry.expires_secs <= now_unix_secs
+}
+
+fn python_tunnel_path_entry_expired(
+    entry: &super::tunnels::PythonTunnelPathEntry,
+    now_unix_secs: f64,
+) -> bool {
+    !entry.expires_secs.is_finite() || entry.expires_secs <= now_unix_secs
 }

@@ -213,12 +213,20 @@ impl AnnounceTable {
         false
     }
 
+    #[cfg(test)]
     pub fn packet_for_destination(&self, destination: &AddressHash) -> Option<Packet> {
         self.map
             .get(destination)
             .map(|entry| entry.packet.clone())
             .or_else(|| self.cache.get(destination).map(|entry| entry.packet))
             .or_else(|| self.responses.get(destination).map(|entry| entry.packet.clone()))
+    }
+
+    pub fn cached_packet_for_destination(&self, destination: &AddressHash) -> Option<Packet> {
+        self.map
+            .get(destination)
+            .map(|entry| entry.packet.clone())
+            .or_else(|| self.cache.get(destination).map(|entry| entry.packet))
     }
 
     #[cfg(test)]

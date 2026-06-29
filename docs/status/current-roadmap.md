@@ -50,6 +50,10 @@ The project is best described by capability level:
 - Restored Reticulum path-table announces are now cache-only lookup material at
   startup, not fresh rebroadcast work, while still serving known-path response
   requests from the restored cache.
+- Reticulum path-table persistence now writes only routes with cached announce
+  material and restore hardens Python-format active and tunnel path-table rows
+  by ignoring stale/expired path rows, so restart bootstrap cannot revive
+  resolver routes without usable identity/cache material.
 - Shared-instance clients skip local Reticulum path-table save and restore
   work, matching Python's shared-instance bootstrap/persistence boundary.
 - Tunnel-only restored announces are retained as cache material so paths
