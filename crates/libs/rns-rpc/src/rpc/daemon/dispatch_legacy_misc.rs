@@ -146,16 +146,15 @@ impl RpcDaemon {
                         )),
                     });
                 };
-                match bridge.has_path(destination.as_str()) {
-                    Ok(known) => Ok(RpcResponse {
+                match bridge.path_status(destination.as_str()) {
+                    Ok(status_fields) => Ok(RpcResponse {
                         id: request.id,
-                        result: Some(json!({
-                            "destination": destination,
-                            "destination_hash": destination,
-                            "known": known,
-                            "path_found": known,
-                            "status": if known { "found" } else { "unknown" },
-                        })),
+                        result: Some(path_lookup_result(
+                            destination,
+                            status_fields,
+                            None,
+                            "unknown",
+                        )),
                         error: None,
                     }),
                     Err(err) => Ok(RpcResponse {
@@ -187,8 +186,8 @@ impl RpcDaemon {
                         )),
                     });
                 };
-                let known = match bridge.has_path(destination.as_str()) {
-                    Ok(known) => known,
+                let mut status_fields = match bridge.path_status(destination.as_str()) {
+                    Ok(status_fields) => status_fields,
                     Err(err) => {
                         return Ok(RpcResponse {
                             id: request.id,
@@ -197,7 +196,7 @@ impl RpcDaemon {
                         });
                     }
                 };
-                let mut path_found = known;
+                let mut path_found = path_found_from_status(&status_fields);
                 let mut requested = false;
                 if !path_found {
                     if let Err(err) = bridge.request_path(destination.as_str()) {
@@ -208,8 +207,8 @@ impl RpcDaemon {
                         });
                     }
                     requested = true;
-                    path_found = match bridge.has_path(destination.as_str()) {
-                        Ok(known) => known,
+                    status_fields = match bridge.path_status(destination.as_str()) {
+                        Ok(status_fields) => status_fields,
                         Err(err) => {
                             return Ok(RpcResponse {
                                 id: request.id,
@@ -218,13 +217,14 @@ impl RpcDaemon {
                             });
                         }
                     };
+                    path_found = path_found_from_status(&status_fields);
                     let timeout_secs = parsed.timeout_secs.unwrap_or(0).min(3600);
                     let deadline =
                         std::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
                     while !path_found && std::time::Instant::now() < deadline {
                         std::thread::sleep(std::time::Duration::from_millis(250));
-                        path_found = match bridge.has_path(destination.as_str()) {
-                            Ok(known) => known,
+                        status_fields = match bridge.path_status(destination.as_str()) {
+                            Ok(status_fields) => status_fields,
                             Err(err) => {
                                 return Ok(RpcResponse {
                                     id: request.id,
@@ -236,6 +236,7 @@ impl RpcDaemon {
                                 });
                             }
                         };
+                        path_found = path_found_from_status(&status_fields);
                     }
                 }
                 let status = if path_found {
@@ -247,14 +248,12 @@ impl RpcDaemon {
                 };
                 Ok(RpcResponse {
                     id: request.id,
-                    result: Some(json!({
-                        "destination": destination,
-                        "destination_hash": destination,
-                        "known": path_found,
-                        "path_found": path_found,
-                        "requested": requested,
-                        "status": status,
-                    })),
+                    result: Some(path_lookup_result(
+                        destination,
+                        status_fields,
+                        Some(requested),
+                        status,
+                    )),
                     error: None,
                 })
             }
@@ -446,27 +445,4 @@ impl RpcDaemon {
     }
 }
 
-#[derive(Debug, Deserialize)]
-struct PathLookupParams {
-    #[serde(alias = "destination_hash", alias = "hash")]
-    destination: String,
-    #[serde(default)]
-    timeout_secs: Option<u64>,
-}
-
-fn normalize_destination_hash_param(destination: &str) -> Result<String, std::io::Error> {
-    let destination = destination.trim();
-    let decoded = hex::decode(destination).map_err(|err| {
-        std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            format!("destination must be hex-encoded: {err}"),
-        )
-    })?;
-    if decoded.len() != 16 {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "destination must decode to a 16-byte RNS destination hash",
-        ));
-    }
-    Ok(destination.to_ascii_lowercase())
-}
+include!("dispatch_legacy_misc_parts/path_lookup.rs");

@@ -55,6 +55,27 @@ impl PathLookupBridge for FailingPathLookupBridge {
     }
 }
 
+struct MetadataPathLookupBridge;
+
+impl PathLookupBridge for MetadataPathLookupBridge {
+    fn has_path(&self, _destination: &str) -> Result<bool, std::io::Error> {
+        Ok(true)
+    }
+
+    fn request_path(&self, _destination: &str) -> Result<(), std::io::Error> {
+        Ok(())
+    }
+
+    fn path_status(&self, _destination: &str) -> Result<JsonValue, std::io::Error> {
+        Ok(json!({
+            "path_found": true,
+            "next_hop": "8899aabbccddeeff0011223344556677",
+            "interface": "fedcba98765432100123456789abcdef",
+            "hops": 2,
+        }))
+    }
+}
+
 #[test]
 fn path_status_reports_known_path() {
     let daemon = RpcDaemon::test_instance();
@@ -75,6 +96,27 @@ fn path_status_reports_known_path() {
     assert_eq!(result["known"].as_bool(), Some(true));
     assert_eq!(result["path_found"].as_bool(), Some(true));
     assert_eq!(result["status"].as_str(), Some("found"));
+}
+
+#[test]
+fn path_status_preserves_bridge_route_metadata() {
+    let daemon = RpcDaemon::test_instance();
+    daemon.set_path_lookup_bridge(Arc::new(MetadataPathLookupBridge));
+
+    let response = daemon
+        .handle_rpc(rpc_request(
+            8,
+            "path_status",
+            json!({ "destination": "00112233445566778899aabbccddeeff" }),
+        ))
+        .expect("path status response");
+
+    assert!(response.error.is_none());
+    let result = response.result.expect("path status result");
+    assert_eq!(result["status"].as_str(), Some("found"));
+    assert_eq!(result["next_hop"].as_str(), Some("8899aabbccddeeff0011223344556677"));
+    assert_eq!(result["interface"].as_str(), Some("fedcba98765432100123456789abcdef"));
+    assert_eq!(result["hops"].as_u64(), Some(2));
 }
 
 #[test]

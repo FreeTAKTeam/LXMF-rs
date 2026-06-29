@@ -2,6 +2,7 @@ use rns_rpc::PathLookupBridge;
 use rns_transport::destination_hash::parse_destination_hash_required;
 use rns_transport::hash::AddressHash;
 use rns_transport::transport::Transport;
+use serde_json::{json, Value as JsonValue};
 use std::sync::Arc;
 
 pub(crate) struct DaemonPathLookupBridge {
@@ -58,6 +59,26 @@ impl PathLookupBridge for DaemonPathLookupBridge {
                 transport.request_path(&destination, None, None).await;
             });
             Ok(())
+        })
+    }
+
+    fn path_status(&self, destination: &str) -> Result<JsonValue, std::io::Error> {
+        let destination = Self::destination_hash(destination)?;
+        self.run_transport(move |transport| {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|err| {
+                    std::io::Error::other(format!("failed to build path status runtime: {err}"))
+                })?;
+            let status = runtime.block_on(async move { transport.path_status(&destination).await });
+            Ok(json!({
+                "destination_hash": status.destination.to_string(),
+                "path_found": status.path_found,
+                "next_hop": status.next_hop.map(|value| value.to_string()),
+                "interface": status.interface.map(|value| value.to_string()),
+                "hops": status.hops,
+            }))
         })
     }
 }

@@ -294,6 +294,15 @@ pub struct SendPacketTrace {
     pub dispatch: TxDispatchTrace,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TransportPathStatus {
+    pub destination: AddressHash,
+    pub path_found: bool,
+    pub next_hop: Option<AddressHash>,
+    pub interface: Option<AddressHash>,
+    pub hops: Option<u8>,
+}
+
 // Transport internals are decomposed by concern for testability and bounded change sets.
 // announce: announce handling and retransmit scheduling primitives.
 mod announce;

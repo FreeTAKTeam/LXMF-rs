@@ -191,6 +191,27 @@ impl Transport {
         self.handler.lock().await.path_table.get(address).is_some()
     }
 
+    pub async fn path_status(&self, address: &AddressHash) -> crate::transport::TransportPathStatus {
+        let handler = self.handler.lock().await;
+        if let Some(entry) = handler.path_table.get(address) {
+            crate::transport::TransportPathStatus {
+                destination: *address,
+                path_found: true,
+                next_hop: Some(entry.received_from),
+                interface: Some(entry.iface),
+                hops: Some(entry.hops),
+            }
+        } else {
+            crate::transport::TransportPathStatus {
+                destination: *address,
+                path_found: false,
+                next_hop: None,
+                interface: None,
+                hops: None,
+            }
+        }
+    }
+
     pub async fn destination_identity(&self, address: &AddressHash) -> Option<Identity> {
         let destination =
             { self.handler.lock().await.single_out_destinations.get(address).cloned() }?;

@@ -116,6 +116,13 @@ pub trait PathLookupBridge: Send + Sync {
     fn has_path(&self, destination: &str) -> Result<bool, std::io::Error>;
 
     fn request_path(&self, destination: &str) -> Result<(), std::io::Error>;
+
+    fn path_status(&self, destination: &str) -> Result<JsonValue, std::io::Error> {
+        let path_found = self.has_path(destination)?;
+        Ok(json!({
+            "path_found": path_found,
+        }))
+    }
 }
 
 pub trait RNodeManagementBridge: Send + Sync {

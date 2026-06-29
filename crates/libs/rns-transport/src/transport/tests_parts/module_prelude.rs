@@ -506,6 +506,38 @@ async fn reticulum_path_table_save_skips_when_connected_to_shared_instance() {
 }
 
 #[tokio::test]
+async fn transport_path_status_reports_known_route_metadata() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut config = TransportConfig::new("test", &local_identity, true);
+    config.set_retransmit(true);
+    let transport = Transport::new(config);
+    let destination = AddressHash::new_from_hash(&Hash::new_from_slice(b"destination"));
+    let next_hop = AddressHash::new_from_hash(&Hash::new_from_slice(b"next-hop"));
+    let iface = *transport.iface_manager().lock().await.new_channel(16).address();
+
+    {
+        let handler = transport.get_handler();
+        let mut handler = handler.lock().await;
+        assert!(handler.path_table.restore_tunnel_path(
+            destination,
+            next_hop,
+            3,
+            iface,
+            Hash::new_from_slice(b"packet"),
+            std::time::Instant::now(),
+        ));
+    }
+
+    let status = transport.path_status(&destination).await;
+
+    assert!(status.path_found);
+    assert_eq!(status.destination, destination);
+    assert_eq!(status.next_hop, Some(next_hop));
+    assert_eq!(status.interface, Some(iface));
+    assert_eq!(status.hops, Some(3));
+}
+
+#[tokio::test]
 async fn reticulum_tunnel_table_persistence_restores_tunnel_paths_after_reappearance() {
     let temp = tempfile::tempdir().expect("tempdir");
     let local_identity = PrivateIdentity::new_from_rand(OsRng);
