@@ -398,6 +398,106 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn recursive_path_request_waits_for_queued_announces_like_python() {
+        let mut mgr = InterfaceManager::new(16);
+        let mut source_rx = mgr.new_channel(16).tx_channel;
+        let mut target_rx = mgr.new_channel(16).tx_channel;
+        let source_iface = mgr.ifaces[0].address;
+        let queued_announce = announce_packet_with(1, b"queued-paced-announce", 1);
+        mgr.ifaces[0].announce_queue.push_back(QueuedAnnounce {
+            message: TxMessage {
+                tx_type: TxMessageType::Broadcast(None),
+                packet: queued_announce,
+            },
+            queued_at: Instant::now(),
+            emitted: 0,
+        });
+
+        let blocked = mgr
+            .send_recursive_path_request(TxMessage {
+                tx_type: TxMessageType::Broadcast(Some(source_iface)),
+                packet: path_request_packet_with_data(),
+            })
+            .await;
+        assert_eq!(blocked.matched_ifaces, 1);
+        assert_eq!(blocked.sent_ifaces, 0);
+        assert_eq!(blocked.failed_ifaces, 1);
+        assert!(source_rx.try_recv().is_err());
+        assert!(target_rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn recursive_path_request_waits_for_active_announce_cap_like_python() {
+        let mut mgr = InterfaceManager::new(16);
+        let mut source_rx = mgr.new_channel(16).tx_channel;
+        let mut target_rx = mgr.new_channel(16).tx_channel;
+        let source_iface = mgr.ifaces[0].address;
+        mgr.ifaces[0].announce_allowed_at = Instant::now() + Duration::from_secs(30);
+
+        let blocked = mgr
+            .send_recursive_path_request(TxMessage {
+                tx_type: TxMessageType::Broadcast(Some(source_iface)),
+                packet: path_request_packet_with_data(),
+            })
+            .await;
+        assert_eq!(blocked.matched_ifaces, 1);
+        assert_eq!(blocked.sent_ifaces, 0);
+        assert_eq!(blocked.failed_ifaces, 1);
+        assert!(source_rx.try_recv().is_err());
+        assert!(target_rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn recursive_path_request_advances_announce_cap_like_python() {
+        let mut mgr = InterfaceManager::new(16);
+        let mut source_rx = mgr.new_channel(16).tx_channel;
+        let mut target_rx = mgr.new_channel(16).tx_channel;
+        let source_iface = mgr.ifaces[0].address;
+        mgr.ifaces[0].announce_bitrate_bps = 1;
+        mgr.ifaces[0].announce_cap_percent = 1;
+
+        let before = Instant::now();
+        let packet = path_request_packet_with_data();
+        let sent = mgr
+            .send_recursive_path_request(TxMessage {
+                tx_type: TxMessageType::Broadcast(Some(source_iface)),
+                packet: packet.clone(),
+            })
+            .await;
+        assert_eq!(sent.matched_ifaces, 1);
+        assert_eq!(sent.sent_ifaces, 1);
+        assert!(source_rx.try_recv().is_err());
+        assert_eq!(target_rx.try_recv().expect("recursive request sent").packet, packet);
+        assert!(
+            mgr.ifaces[0].announce_allowed_at > before,
+            "recursive path requests should advance the source iface announce cap window"
+        );
+    }
+
+    #[tokio::test]
+    async fn recursive_path_request_uses_source_iface_pacing_like_python() {
+        let mut mgr = InterfaceManager::new(16);
+        let mut source_rx = mgr.new_channel(16).tx_channel;
+        let mut target_rx = mgr.new_channel(16).tx_channel;
+        let source_iface = mgr.ifaces[0].address;
+        mgr.ifaces[1].announce_allowed_at = Instant::now() + Duration::from_secs(30);
+
+        let packet = path_request_packet_with_data();
+        let sent = mgr
+            .send_recursive_path_request(TxMessage {
+                tx_type: TxMessageType::Broadcast(Some(source_iface)),
+                packet: packet.clone(),
+            })
+            .await;
+
+        assert_eq!(sent.matched_ifaces, 1);
+        assert_eq!(sent.sent_ifaces, 1);
+        assert_eq!(sent.failed_ifaces, 0);
+        assert!(source_rx.try_recv().is_err());
+        assert_eq!(target_rx.try_recv().expect("recursive request sent").packet, packet);
+    }
+
+    #[tokio::test]
     async fn saturated_broadcast_queue_returns_without_enqueue_timeout() {
         let mut mgr = InterfaceManager::new(16);
         let mut rx = mgr.new_channel(1).tx_channel;
@@ -566,6 +666,13 @@ mod tests {
 
     fn path_request_packet() -> Packet {
         Packet::default()
+    }
+
+    fn path_request_packet_with_data() -> Packet {
+        Packet {
+            data: crate::packet::PacketDataBuffer::new_from_slice(b"path-request"),
+            ..Packet::default()
+        }
     }
 
     fn announce_packet_with(hops: u8, seed: &[u8], emitted: u64) -> Packet {

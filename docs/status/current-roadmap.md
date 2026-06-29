@@ -50,6 +50,10 @@ The project is best described by capability level:
 - Unknown path requests now retain the requesting interface while recursive
   discovery runs, then send an immediate direct `PATH_RESPONSE` when a matching
   announce arrives, matching Python's waiting discovery request behavior.
+- Recursive path requests now obey Python's interface announce pacing gates:
+  queued announces or an active announce cap block the request, while a
+  recursive request admitted by the gate advances the next allowed
+  announce/path slot.
 - Known-path requests on roaming interfaces also suppress direct path answers
   when the learned next-hop iface is the same roaming iface, matching Python's
   loop-avoidance behavior.
