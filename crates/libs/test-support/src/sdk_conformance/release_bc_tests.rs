@@ -232,14 +232,32 @@ fn sdk_conformance_release_bc_domain_methods_work_through_rpc_adapter() {
 
     let sent = client.send(send_request("paper", None)).expect("send");
     let envelope = client.paper_encode(sent.clone()).expect("paper_encode");
-    client
+    let paper_uri = envelope.uri;
+    let paper_transient_id = envelope.transient_id;
+    let paper_destination_hint = envelope.destination_hint;
+    let paper_ack = client
         .paper_decode(PaperMessageEnvelope {
-            uri: envelope.uri,
-            transient_id: envelope.transient_id,
-            destination_hint: envelope.destination_hint,
+            uri: paper_uri.clone(),
+            transient_id: paper_transient_id.clone(),
+            destination_hint: paper_destination_hint.clone(),
             extensions: BTreeMap::new(),
         })
         .expect("paper_decode");
+    assert!(paper_ack.accepted);
+    let paper_metadata = client
+        .paper_decode_with_metadata(PaperMessageEnvelope {
+            uri: paper_uri,
+            transient_id: paper_transient_id,
+            destination_hint: paper_destination_hint,
+            extensions: BTreeMap::new(),
+        })
+        .expect("paper_decode_with_metadata");
+    assert!(paper_metadata.accepted);
+    assert!(paper_metadata.duplicate, "second paper decode should report duplicate");
+    assert!(!paper_metadata.transient_id.is_empty());
+    assert!(!paper_metadata.destination.is_empty());
+    assert_eq!(paper_metadata.destination_hint, paper_metadata.destination);
+    assert!(paper_metadata.bytes_len > 0);
 
     let command_response = client
         .command_invoke(RemoteCommandRequest {

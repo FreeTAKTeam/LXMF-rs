@@ -15,11 +15,12 @@ use crate::domain::{
     ContactUpdateRequest, IdentityBootstrapRequest, IdentityBundle, IdentityImportRequest,
     IdentityRef, IdentityResolveRequest, MarkerCreateRequest, MarkerDeleteRequest,
     MarkerListRequest, MarkerListResult, MarkerRecord, MarkerUpdatePositionRequest,
-    PaperMessageEnvelope, PresenceListRequest, PresenceListResult, RemoteCommandRequest,
-    RemoteCommandResponse, RemoteCommandSession, RemoteCommandSessionListRequest,
-    RemoteCommandSessionListResult, TelemetryPoint, TelemetryQuery, TopicCreateRequest, TopicId,
-    TopicListRequest, TopicListResult, TopicPublishRequest, TopicRecord, TopicSubscriptionRequest,
-    VoiceSessionId, VoiceSessionOpenRequest, VoiceSessionState, VoiceSessionUpdateRequest,
+    PaperDecodeResult, PaperMessageEnvelope, PresenceListRequest, PresenceListResult,
+    RemoteCommandRequest, RemoteCommandResponse, RemoteCommandSession,
+    RemoteCommandSessionListRequest, RemoteCommandSessionListResult, TelemetryPoint,
+    TelemetryQuery, TopicCreateRequest, TopicId, TopicListRequest, TopicListResult,
+    TopicPublishRequest, TopicRecord, TopicSubscriptionRequest, VoiceSessionId,
+    VoiceSessionOpenRequest, VoiceSessionState, VoiceSessionUpdateRequest,
 };
 use crate::error::{code, ErrorCategory, SdkError};
 use crate::event::{EventBatch, EventCursor, SdkEvent, Severity};
@@ -336,6 +337,13 @@ impl SdkBackend for RpcBackendClient {
 
     fn paper_decode(&self, envelope: PaperMessageEnvelope) -> Result<Ack, SdkError> {
         self.paper_decode_impl(envelope)
+    }
+
+    fn paper_decode_with_metadata(
+        &self,
+        envelope: PaperMessageEnvelope,
+    ) -> Result<PaperDecodeResult, SdkError> {
+        self.paper_decode_with_metadata_impl(envelope)
     }
 
     fn command_invoke(&self, req: RemoteCommandRequest) -> Result<RemoteCommandResponse, SdkError> {

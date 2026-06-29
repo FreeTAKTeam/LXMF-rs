@@ -53,7 +53,7 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - PARITY_ITEM id=router.outbound_queue status=partial
 - PARITY_ITEM id=router.handle_outbound_policy status=partial
 - PARITY_ITEM id=router.adapter_transport status=partial
-- PARITY_ITEM id=router.paper_uri_ingest status=partial
+- PARITY_ITEM id=router.paper_uri_ingest status=done
 - PARITY_ITEM id=router.cancel_outbound status=partial
 - PARITY_ITEM id=router.propagation_ingest_fetch status=done
 - PARITY_ITEM id=router.transfer_state_lifecycle status=done
@@ -378,6 +378,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   operation registries as `app.paper.encode`/`app.paper.decode`, preserving
   the `sdk_paper_encode_v2`/`sdk_paper_decode_v2` aliases and typed envelope
   payloads instead of falling through to generic remote-command dispatch.
+- The typed SDK paper decode surface now keeps the legacy `paper_decode` Ack
+  path while adding `paper_decode_with_metadata`, exposing daemon paper-ingest
+  metadata (`transient_id`, duplicate state, destination, destination hint, and
+  byte length) through the RPC and ZeroMQ backends.
 - The typed ZeroMQ SDK backend also exposes durable direct-chat history as
   `ZmqPipelineBackendClient::list_message_history`, preserving link-bearing
   message bodies, receipt status, basic LXMF fields, one-to-one

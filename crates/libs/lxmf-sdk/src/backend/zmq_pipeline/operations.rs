@@ -1,6 +1,6 @@
 use super::ZmqPipelineBackendClient;
 use crate::app::{Envelope, EnvelopeResponse, OperationRegistry};
-use crate::domain::PaperMessageEnvelope;
+use crate::domain::{PaperDecodeResult, PaperMessageEnvelope};
 use crate::error::{code, ErrorCategory, SdkError};
 use crate::types::{Ack, MessageId, RuntimeSnapshot, RuntimeState, ShutdownMode};
 use serde_json::{json, Value as JsonValue};
@@ -26,11 +26,26 @@ impl ZmqPipelineBackendClient {
     }
 
     pub fn paper_decode(&self, envelope: PaperMessageEnvelope) -> Result<Ack, SdkError> {
+        let result = self.paper_decode_rpc_result(envelope)?;
+        Ok(Self::parse_ack(&result))
+    }
+
+    pub fn paper_decode_with_metadata(
+        &self,
+        envelope: PaperMessageEnvelope,
+    ) -> Result<PaperDecodeResult, SdkError> {
+        let result = self.paper_decode_rpc_result(envelope)?;
+        Self::decode_field_or_root(&result, "paper", "paper_decode response")
+    }
+
+    fn paper_decode_rpc_result(
+        &self,
+        envelope: PaperMessageEnvelope,
+    ) -> Result<JsonValue, SdkError> {
         let params = serde_json::to_value(envelope).map_err(|err| {
             SdkError::new(code::INTERNAL, ErrorCategory::Internal, err.to_string())
         })?;
-        let result = self.call_rpc("sdk_paper_decode_v2", Some(params))?;
-        Ok(Self::parse_ack(&result))
+        self.call_rpc("sdk_paper_decode_v2", Some(params))
     }
 
     pub fn snapshot(&self) -> Result<RuntimeSnapshot, SdkError> {

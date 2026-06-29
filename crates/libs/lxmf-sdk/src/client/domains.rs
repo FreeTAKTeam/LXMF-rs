@@ -255,6 +255,13 @@ impl<B: SdkBackend> LxmfSdkPaper for Client<B> {
     fn paper_decode(&self, envelope: crate::domain::PaperMessageEnvelope) -> Result<Ack, SdkError> {
         self.backend.paper_decode(envelope)
     }
+
+    fn paper_decode_with_metadata(
+        &self,
+        envelope: crate::domain::PaperMessageEnvelope,
+    ) -> Result<crate::domain::PaperDecodeResult, SdkError> {
+        self.backend.paper_decode_with_metadata(envelope)
+    }
 }
 
 impl<B: SdkBackend> LxmfSdkRemoteCommands for Client<B> {

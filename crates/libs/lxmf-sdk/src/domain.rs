@@ -1,5 +1,7 @@
 include!("domain_parts/support_types.rs");
 
+include!("domain_parts/paperdecoderesult.rs");
+
 include!("domain_parts/identityannouncerequest.rs");
 
 include!("domain_parts/peerconnectionrequest.rs");

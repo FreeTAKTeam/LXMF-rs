@@ -4,8 +4,9 @@ use crate::capability::{NegotiationRequest, NegotiationResponse};
 use crate::domain::{
     ContactListRequest, ContactListResult, ContactRecord, ContactUpdateRequest,
     IdentityAnnounceRequest, IdentityAnnounceResult, IdentityBootstrapRequest, IdentityBundle,
-    IdentityImportRequest, IdentityRef, IdentityResolveRequest, PaperMessageEnvelope,
-    PeerConnectionRequest, PeerConnectionResult, PresenceListRequest, PresenceListResult,
+    IdentityImportRequest, IdentityRef, IdentityResolveRequest, PaperDecodeResult,
+    PaperMessageEnvelope, PeerConnectionRequest, PeerConnectionResult, PresenceListRequest,
+    PresenceListResult,
 };
 use crate::error::{code, ErrorCategory, SdkError};
 use crate::event::{EventBatch, EventCursor, SdkEvent, Severity};
@@ -442,6 +443,12 @@ impl SdkBackend for ZmqPipelineBackendClient {
     }
     fn paper_decode(&self, envelope: PaperMessageEnvelope) -> Result<Ack, SdkError> {
         ZmqPipelineBackendClient::paper_decode(self, envelope)
+    }
+    fn paper_decode_with_metadata(
+        &self,
+        envelope: PaperMessageEnvelope,
+    ) -> Result<PaperDecodeResult, SdkError> {
+        ZmqPipelineBackendClient::paper_decode_with_metadata(self, envelope)
     }
     fn snapshot(&self) -> Result<RuntimeSnapshot, SdkError> {
         ZmqPipelineBackendClient::snapshot(self)

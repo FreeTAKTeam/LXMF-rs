@@ -728,7 +728,10 @@ The project is best described by capability level:
 - Paper-message encode/decode now ride the registered SDK envelope path as
   `app.paper.encode` and `app.paper.decode` in both the daemon and SDK app
   registries, with typed envelope payloads for `sdk_paper_encode_v2` and
-  `sdk_paper_decode_v2` aliases.
+  `sdk_paper_decode_v2` aliases. The typed SDK also exposes
+  `paper_decode_with_metadata` while preserving legacy `paper_decode` Ack
+  compatibility, so paper-ingest duplicate/transient/destination/size metadata
+  is available over both RPC and ZeroMQ backend paths.
 - The typed ZeroMQ SDK backend now exposes durable direct-chat history through
   `ZmqPipelineBackendClient::list_message_history`, preserving message bodies
   with links, receipt status, basic LXMF fields, one-to-one

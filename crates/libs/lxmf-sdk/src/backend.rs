@@ -8,9 +8,9 @@ use crate::domain::{
     ContactUpdateRequest, IdentityAnnounceRequest, IdentityAnnounceResult,
     IdentityBootstrapRequest, IdentityBundle, IdentityImportRequest, IdentityRef,
     IdentityResolveRequest, MarkerCreateRequest, MarkerDeleteRequest, MarkerListRequest,
-    MarkerListResult, MarkerRecord, MarkerUpdatePositionRequest, PaperMessageEnvelope,
-    PeerConnectionRequest, PeerConnectionResult, PresenceListRequest, PresenceListResult,
-    RemoteCommandRequest, RemoteCommandResponse, RemoteCommandSession,
+    MarkerListResult, MarkerRecord, MarkerUpdatePositionRequest, PaperDecodeResult,
+    PaperMessageEnvelope, PeerConnectionRequest, PeerConnectionResult, PresenceListRequest,
+    PresenceListResult, RemoteCommandRequest, RemoteCommandResponse, RemoteCommandSession,
     RemoteCommandSessionListRequest, RemoteCommandSessionListResult, TelemetryPoint,
     TelemetryQuery, TopicCreateRequest, TopicId, TopicListRequest, TopicListResult,
     TopicPublishRequest, TopicRecord, TopicSubscriptionRequest, VoiceSessionId,
@@ -317,6 +317,13 @@ pub trait SdkBackend: Send + Sync {
     }
 
     fn paper_decode(&self, _envelope: PaperMessageEnvelope) -> Result<Ack, SdkError> {
+        Err(SdkError::capability_disabled("sdk.capability.paper_messages"))
+    }
+
+    fn paper_decode_with_metadata(
+        &self,
+        _envelope: PaperMessageEnvelope,
+    ) -> Result<PaperDecodeResult, SdkError> {
         Err(SdkError::capability_disabled("sdk.capability.paper_messages"))
     }
 

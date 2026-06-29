@@ -62,6 +62,38 @@ impl OutboundBridge for PaperDestinationBridge {
     }
 }
 
+#[derive(Debug)]
+struct PaperRecordBridge;
+
+impl OutboundBridge for PaperRecordBridge {
+    fn deliver(
+        &self,
+        _record: &MessageRecord,
+        _options: &OutboundDeliveryOptions,
+    ) -> Result<(), std::io::Error> {
+        Ok(())
+    }
+
+    fn decode_paper_uri(&self, _uri: &str) -> Result<Option<PaperDecodeOutcome>, std::io::Error> {
+        Ok(Some(PaperDecodeOutcome {
+            transient_id: "decoded-record-transient-id".to_owned(),
+            destination_hint: "decoded-record-destination".to_owned(),
+            record: Some(MessageRecord {
+                id: "paper-record-message-1".to_owned(),
+                source: "paper-source".to_owned(),
+                destination: "decoded-record-destination".to_owned(),
+                title: "paper title".to_owned(),
+                content: "paper body".to_owned(),
+                timestamp: now_i64(),
+                direction: "in".to_owned(),
+                fields: Some(json!({ "paper": true })),
+                receipt_status: None,
+            }),
+            raw_lxmf_bytes: Some(vec![0x10, 0x20, 0x30]),
+        }))
+    }
+}
+
 #[test]
 fn sdk_paper_decode_prefers_bridge_destination_over_request_hint() {
     let daemon = RpcDaemon::with_store_and_bridge(
@@ -85,6 +117,79 @@ fn sdk_paper_decode_prefers_bridge_destination_over_request_hint() {
     assert_eq!(result["destination"], json!("decoded-destination"));
     assert_eq!(result["destination_hint"], json!("decoded-destination"));
     assert_eq!(result["bytes_len"], json!(3));
+}
+
+#[test]
+fn sdk_paper_decode_bridge_record_persists_and_emits_raw_inbound_event() {
+    let daemon = RpcDaemon::with_store_and_bridge(
+        MessagesStore::in_memory().expect("store"),
+        "paper-record-node".to_owned(),
+        Arc::new(PaperRecordBridge),
+    );
+
+    let pre_poll = daemon
+        .handle_rpc(rpc_request(
+            1,
+            "sdk_poll_events_v2",
+            json!({ "cursor": null, "max": 50 }),
+        ))
+        .expect("pre poll");
+    assert!(pre_poll.error.is_none());
+    let pre_cursor = pre_poll.result.expect("pre poll result")["next_cursor"]
+        .as_str()
+        .expect("pre cursor")
+        .to_owned();
+
+    let response = daemon
+        .handle_rpc(rpc_request(
+            2,
+            "sdk_paper_decode_v2",
+            json!({
+                "uri": "lxm://placeholder/record",
+                "destination_hint": "caller-destination",
+            }),
+        ))
+        .expect("paper decode");
+    assert!(response.error.is_none());
+    let result = response.result.expect("paper result");
+    assert_eq!(result["accepted"], json!(true));
+    assert_eq!(result["duplicate"], json!(false));
+    assert_eq!(result["transient_id"], json!("decoded-record-transient-id"));
+    assert_eq!(result["destination"], json!("decoded-record-destination"));
+    assert_eq!(result["bytes_len"], json!(3));
+    assert!(
+        daemon.message_exists("paper-record-message-1").expect("message exists"),
+        "bridge-backed paper decode should persist the decoded inbound record"
+    );
+
+    let poll = daemon
+        .handle_rpc(rpc_request(
+            3,
+            "sdk_poll_events_v2",
+            json!({ "cursor": pre_cursor, "max": 50 }),
+        ))
+        .expect("poll events");
+    assert!(poll.error.is_none());
+    let poll_result = poll.result.expect("poll result");
+    let events = poll_result["events"].as_array().expect("events");
+    let inbound = events
+        .iter()
+        .find(|event| event["event_type"] == json!("inbound"))
+        .expect("inbound paper event");
+    assert_eq!(inbound["payload"]["message"]["id"], json!("paper-record-message-1"));
+    assert_eq!(inbound["payload"]["lxmf_bytes_hex"], json!("102030"));
+
+    let duplicate = daemon
+        .handle_rpc(rpc_request(
+            4,
+            "sdk_paper_decode_v2",
+            json!({ "uri": "lxm://placeholder/record" }),
+        ))
+        .expect("duplicate paper decode");
+    assert!(duplicate.error.is_none());
+    let duplicate = duplicate.result.expect("duplicate paper result");
+    assert_eq!(duplicate["duplicate"], json!(true));
+    assert_eq!(duplicate["transient_id"], json!("decoded-record-transient-id"));
 }
 
 #[test]
