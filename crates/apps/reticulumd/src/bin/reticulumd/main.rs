@@ -6,6 +6,7 @@ mod announce_worker;
 mod bootstrap;
 mod bridge;
 mod bridge_helpers;
+mod bridge_path_lookup;
 mod bridge_rnode_management;
 mod bridge_weave_control;
 mod inbound_worker;

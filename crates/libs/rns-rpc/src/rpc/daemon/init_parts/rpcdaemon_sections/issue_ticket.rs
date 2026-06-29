@@ -297,6 +297,11 @@ impl RpcDaemon {
         *guard = Some(bridge);
     }
 
+    pub fn set_path_lookup_bridge(&self, bridge: Arc<dyn PathLookupBridge>) {
+        let mut guard = self.path_lookup_bridge.lock().expect("path_lookup_bridge mutex poisoned");
+        *guard = Some(bridge);
+    }
+
     pub fn set_remote_control_bridge(&self, bridge: Arc<dyn RemoteControlBridge>) {
         let mut guard =
             self.remote_control_bridge.lock().expect("remote_control_bridge mutex poisoned");

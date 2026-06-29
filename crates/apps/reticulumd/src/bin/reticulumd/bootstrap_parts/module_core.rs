@@ -8,6 +8,7 @@ use reticulum_daemon::config::{DaemonConfig, InterfaceConfig};
 
 use reticulum_daemon::identity_store::load_or_create_identity;
 
+use crate::bridge_path_lookup::DaemonPathLookupBridge;
 use crate::bridge_rnode_management::{
     DaemonRNodeManagementBinding, DaemonRNodeManagementBridge,
 };
@@ -283,6 +284,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     configure_startup_rpc_token_auth(&args, daemon.as_ref());
     enforce_rpc_bind_security(rpc_addr.as_ref(), rpc_tls.as_ref(), daemon.as_ref());
     if let Some(transport) = transport.as_ref() {
+        daemon.set_path_lookup_bridge(Arc::new(DaemonPathLookupBridge::new(transport.clone())));
         daemon.set_interface_mutation_bridge(Arc::new(TcpInterfaceMutationBridge::spawn(
             transport.iface_manager(),
             seeded_tcp_interfaces,

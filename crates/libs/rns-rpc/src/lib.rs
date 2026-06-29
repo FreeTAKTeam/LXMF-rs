@@ -13,8 +13,8 @@ pub use rpc::http;
 pub use rpc::{
     AnnounceBridge, DeliveryPolicy, DeliveryTraceEntry, EventSinkBridge, InterfaceMutationBridge,
     InterfaceRecord, OutboundBridge, OutboundDeliveryOptions, PaperDecodeOutcome,
-    PaperEncodeEnvelope, PeerRecord, PropagationState, RNodeManagementBridge, RemoteControlBridge,
-    RpcDaemon, RpcError, RpcEvent, RpcEventSinkEnvelope, RpcRequest, RpcResponse,
-    SdkCustomOperationSpec, StampPolicy, TicketRecord, WeaveDisplayControlBridge,
+    PaperEncodeEnvelope, PathLookupBridge, PeerRecord, PropagationState, RNodeManagementBridge,
+    RemoteControlBridge, RpcDaemon, RpcError, RpcEvent, RpcEventSinkEnvelope, RpcRequest,
+    RpcResponse, SdkCustomOperationSpec, StampPolicy, TicketRecord, WeaveDisplayControlBridge,
 };
 pub use storage::messages::{AnnounceRecord, MessageRecord, MessagesStore};

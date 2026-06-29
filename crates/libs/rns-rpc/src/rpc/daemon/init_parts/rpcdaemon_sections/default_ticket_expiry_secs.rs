@@ -346,6 +346,7 @@ impl RpcDaemon {
             event_sink_bridges,
             event_sink_tx,
             interface_mutation_bridge: Mutex::new(None),
+            path_lookup_bridge: Mutex::new(None),
             remote_control_bridge: Mutex::new(None),
             rnode_management_bridge: Mutex::new(None),
             weave_display_control_bridge: Mutex::new(None),

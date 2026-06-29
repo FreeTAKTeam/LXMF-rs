@@ -44,7 +44,9 @@ impl RpcDaemon {
             | "propagation_acknowledge_sync_completion"
             | "propagation_remote_unpeer" => self.handle_rpc_legacy_propagation(request),
             "paper_ingest_uri" | "stamp_policy_get" | "stamp_policy_set" | "ticket_generate"
-            | "announce_now" | "announce_received" => self.handle_rpc_legacy_misc(request),
+            | "path_status" | "request_path" | "announce_now" | "announce_received" => {
+                self.handle_rpc_legacy_misc(request)
+            }
             "rnode_management" | "weave_remote_display_control" => {
                 self.handle_rpc_legacy_misc(request)
             }

@@ -14,6 +14,7 @@ mod tests {
     include!("tests/store_forward_policy.rs");
     include!("tests/event_sink_bridges.rs");
     include!("tests/interface_mutation_policy.rs");
+    include!("tests/path_rpc.rs");
     include!("tests/rnode_management.rs");
     include!("tests/weave_display_control.rs");
     include!("tests/status_snapshot.rs");
