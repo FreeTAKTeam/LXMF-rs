@@ -235,6 +235,22 @@ pub(super) async fn handle_path_request<'a>(
         }
 
         if handler.config.retransmit {
+            let should_search_for_unknown = handler
+                .iface_manager
+                .lock()
+                .await
+                .mode(&iface)
+                .map(InterfaceMode::discovers_unknown_paths)
+                .unwrap_or(false);
+            if !should_search_for_unknown {
+                log::trace!(
+                    "tp({}): not searching for unknown path {} from non-discovery iface {}",
+                    handler.config.name,
+                    request.destination,
+                    iface
+                );
+                return;
+            }
             if let Some(packet) = handler.path_requests.generate_recursive(
                 &request.destination,
                 Some(iface),

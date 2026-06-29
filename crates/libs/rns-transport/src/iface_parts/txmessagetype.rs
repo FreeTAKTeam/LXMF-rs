@@ -55,6 +55,10 @@ impl InterfaceMode {
             Self::Gateway => "gateway",
         }
     }
+
+    pub fn discovers_unknown_paths(self) -> bool {
+        matches!(self, Self::AccessPoint | Self::Gateway | Self::Roaming)
+    }
 }
 
 #[derive(Debug, Default, PartialEq, Eq, Copy, Clone)]

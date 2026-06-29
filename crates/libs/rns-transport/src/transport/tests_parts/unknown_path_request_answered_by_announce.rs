@@ -1,3 +1,4 @@
+use crate::iface::InterfaceMode;
 use crate::packet::PropagationType;
 
 #[tokio::test]
@@ -15,6 +16,11 @@ async fn unknown_path_request_is_answered_when_matching_announce_arrives() {
     };
     let learned_iface = *learned_channel.address();
     let requester_iface = *requester_channel.address();
+    assert!(transport
+        .iface_manager()
+        .lock()
+        .await
+        .set_mode(requester_iface, InterfaceMode::AccessPoint));
 
     let remote_identity = PrivateIdentity::new_from_rand(OsRng);
     let mut remote_destination =
@@ -87,4 +93,105 @@ async fn unknown_path_request_is_answered_when_matching_announce_arrives() {
         ),
         "a consumed discovery request should not be answered again"
     );
+}
+
+#[tokio::test]
+async fn unknown_path_recursive_discovery_obeys_python_interface_modes() {
+    for mode in [InterfaceMode::AccessPoint, InterfaceMode::Gateway, InterfaceMode::Roaming] {
+        let local_identity = PrivateIdentity::new_from_rand(OsRng);
+        let mut config = TransportConfig::new("test", &local_identity, true);
+        config.set_retransmit(true);
+        let transport = Transport::new(config);
+        let handler = transport.get_handler();
+
+        let (mut learned_channel, requester_iface) = {
+            let manager = transport.iface_manager();
+            let mut manager = manager.lock().await;
+            let learned_channel = manager.new_channel(16);
+            let requester_channel = manager.new_channel(16);
+            let requester_iface = *requester_channel.address();
+            assert!(manager.set_mode(requester_iface, mode));
+            (learned_channel, requester_iface)
+        };
+
+        let destination = AddressHash::new_from_hash(&Hash::new_from_slice(b"allowed-unknown"));
+        let path_request = {
+            let mut guard = handler.lock().await;
+            guard
+                .path_requests
+                .generate(&destination, Some(vec![0xAA; crate::hash::ADDRESS_HASH_SIZE]))
+        };
+
+        {
+            let mut guard = handler.lock().await;
+            handle_path_request(&path_request, &mut guard, requester_iface).await;
+        }
+
+        let recursive = timeout(Duration::from_millis(200), learned_channel.tx_channel.recv())
+            .await
+            .expect("allowed mode should forward recursive unknown-path discovery")
+            .expect("recursive unknown-path discovery");
+        assert!(
+            matches!(recursive.tx_type, TxMessageType::Broadcast(Some(iface)) if iface == requester_iface),
+            "{mode:?} should forward recursive discovery excluding the requester"
+        );
+    }
+
+    for mode in [InterfaceMode::Full, InterfaceMode::PointToPoint, InterfaceMode::Boundary] {
+        let local_identity = PrivateIdentity::new_from_rand(OsRng);
+        let mut config = TransportConfig::new("test", &local_identity, true);
+        config.set_retransmit(true);
+        let transport = Transport::new(config);
+        let handler = transport.get_handler();
+
+        let (mut learned_channel, mut requester_channel, requester_iface) = {
+            let manager = transport.iface_manager();
+            let mut manager = manager.lock().await;
+            let learned_channel = manager.new_channel(16);
+            let requester_channel = manager.new_channel(16);
+            let requester_iface = *requester_channel.address();
+            assert!(manager.set_mode(requester_iface, mode));
+            (learned_channel, requester_channel, requester_iface)
+        };
+
+        let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+        let mut remote_destination =
+            SingleInputDestination::new(remote_identity, DestinationName::new("lxmf", "delivery"));
+        let announce = remote_destination.announce(OsRng, None).expect("valid announce packet");
+        let destination = announce.destination;
+        let path_request = {
+            let mut guard = handler.lock().await;
+            guard
+                .path_requests
+                .generate(&destination, Some(vec![0xAA; crate::hash::ADDRESS_HASH_SIZE]))
+        };
+
+        {
+            let mut guard = handler.lock().await;
+            handle_path_request(&path_request, &mut guard, requester_iface).await;
+        }
+
+        assert!(
+            matches!(
+                learned_channel.tx_channel.try_recv(),
+                Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+            ),
+            "{mode:?} must not trigger recursive unknown-path discovery"
+        );
+
+        handle_announce(
+            &announce,
+            handler.lock().await,
+            *learned_channel.address(),
+            crate::iface::IfaceSource::None,
+        )
+        .await;
+        assert!(
+            matches!(
+                requester_channel.tx_channel.try_recv(),
+                Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+            ),
+            "{mode:?} must not be retained as a waiting discovery requester"
+        );
+    }
 }

@@ -164,6 +164,16 @@ mod tests {
     }
 
     #[test]
+    fn interface_mode_discovers_unknown_paths_matches_python_constant() {
+        assert!(!InterfaceMode::Full.discovers_unknown_paths());
+        assert!(InterfaceMode::AccessPoint.discovers_unknown_paths());
+        assert!(!InterfaceMode::PointToPoint.discovers_unknown_paths());
+        assert!(InterfaceMode::Roaming.discovers_unknown_paths());
+        assert!(!InterfaceMode::Boundary.discovers_unknown_paths());
+        assert!(InterfaceMode::Gateway.discovers_unknown_paths());
+    }
+
+    #[test]
     fn virtual_iface_inherits_host_mode() {
         let mut mgr = InterfaceManager::new(16);
         let host = *mgr
