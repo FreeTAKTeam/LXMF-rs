@@ -69,6 +69,7 @@ pub struct AnnounceInfo<'a> {
     pub destination: SingleOutputDestination,
     pub app_data: &'a [u8],
     pub ratchet: Option<[u8; RATCHET_LENGTH]>,
+    pub random_blob: [u8; RAND_HASH_LENGTH],
 }
 
 impl DestinationAnnounce {
@@ -105,6 +106,8 @@ impl DestinationAnnounce {
         let name_hash = &announce_data[offset..(offset + NAME_HASH_LENGTH)];
         offset += NAME_HASH_LENGTH;
         let rand_hash = &announce_data[offset..(offset + RAND_HASH_LENGTH)];
+        let mut random_blob = [0u8; RAND_HASH_LENGTH];
+        random_blob.copy_from_slice(rand_hash);
         offset += RAND_HASH_LENGTH;
         let destination = &packet.destination;
         let expected_hash =
@@ -163,6 +166,7 @@ impl DestinationAnnounce {
                 ),
                 app_data,
                 ratchet: Some(ratchet_bytes),
+                random_blob,
             })
         };
 
@@ -178,6 +182,7 @@ impl DestinationAnnounce {
                 ),
                 app_data,
                 ratchet: None,
+                random_blob,
             })
         };
 

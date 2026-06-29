@@ -24,7 +24,7 @@ Workspace paths are used for navigation. Published package names are
 | `RNS/Identity.py` | `crates/libs/rns-core` | done | Identity material, hashing, signing, encryption, recall, and key conversion. | No confirmed parity blocker. |
 | `RNS/Destination.py` | `crates/libs/rns-core`, `crates/libs/rns-transport` | done | Destination hashing, descriptors, announces, proof validation, ratchets, and known-key stability checks. | No confirmed parity blocker. |
 | `RNS/Packet.py` | `crates/libs/rns-core`, `crates/libs/rns-transport` | done | Framing, serialization, contexts, proofs, receipts, Python-default link proof context, and header semantics. | No confirmed parity blocker. |
-| `RNS/Transport.py` | `crates/libs/rns-transport`, `crates/apps/reticulumd` | partial | Path and announce handling, including direct cached remote path responses stamped as `PATH_RESPONSE`, Python-style roaming same-interface known-path response suppression, extra roaming grace for non-loop known-path responses, path-table restore from cached announces without startup rebroadcast, restored tunnel-path announce cache lookup for later path responses, shared-instance path-table save/restore suppression, and daemon path requests that preserve optional interface scope and request tags into targeted transport path-request broadcasts, plus link routing, resources, receipts, interface-aware sending, pacing, and duplicate suppression. | Remaining announce/path edge policy and full runtime behavior require live parity evidence. |
+| `RNS/Transport.py` | `crates/libs/rns-transport`, `crates/apps/reticulumd` | partial | Path and announce handling, including direct cached remote path responses stamped as `PATH_RESPONSE`, Python-style roaming same-interface known-path response suppression, extra roaming grace for non-loop known-path responses, random-blob announce freshness/path replacement, path-table restore from cached announces without startup rebroadcast, restored tunnel-path announce cache lookup for later path responses, shared-instance path-table save/restore suppression, and daemon path requests that preserve optional interface scope and request tags into targeted transport path-request broadcasts, plus link routing, resources, receipts, interface-aware sending, pacing, and duplicate suppression. | Remaining announce/path edge policy, including unresponsive-path edge cases and full runtime behavior, requires live parity evidence. |
 | `RNS/Link.py` | `crates/libs/rns-transport` | done | Establishment, proof validation, bound-interface enforcement, RTT-derived liveness, protocol close, and cleanup. | Continue live regression coverage; no confirmed blocker. |
 | `RNS/Resource.py` | `crates/libs/rns-transport` | done | Bounded receive allocation, advertisement validation, retries, adaptive fragment scheduling, timeout/failure events, cancellation, and cleanup. | Split/segmented resources remain intentionally unsupported and rejected. |
 | `RNS/Channel.py` | `crates/libs/rns-transport` | done | Channel packet handling, retry scheduling, buffering, ordered receive delivery, callback ordering/short-circuit/panic containment, delivery-on-proof, timeout retry, exhaustion cleanup, and live Rust/Python channel sequence tests. | No confirmed channel parity blocker. |
@@ -271,6 +271,13 @@ Unknown recursive path discovery now also respects Python's
 `DISCOVER_PATHS_FOR` interface-mode gate, forwarding only from access-point,
 gateway, and roaming interfaces and suppressing waiting discovery requester
 state for full, point-to-point, and boundary interfaces.
+Incoming announces now carry their Python-format random blob through validation
+into the path table. The table preserves bounded random-blob history for
+Python-format persistence, ignores duplicate/stale blobs, refreshes known paths
+from fresh same-hop or better announces, and allows expired or newer higher-hop
+announces to replace the route and downstream announce side effects.
+The Python unresponsive-path exception remains a residual edge because the
+current Rust path table does not yet model that state.
 Never-activated outbound links now expire their stale destination path and
 schedule Python-style rediscovery path requests, with the 20-second
 `PATH_REQUEST_MI` throttle and shared-instance client suppression.

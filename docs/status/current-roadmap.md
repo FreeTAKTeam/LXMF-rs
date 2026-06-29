@@ -58,6 +58,10 @@ The project is best described by capability level:
   interface-mode gate: only access-point, gateway, and roaming interfaces
   forward unknown-path discovery, while full, point-to-point, and boundary
   interfaces do not retain waiting discovery requesters.
+- Incoming announces now retain Python's random-blob emission time for path
+  replacement: duplicate/stale blobs are ignored, fresh same-hop or better
+  announces can refresh known routes, and expired or newer higher-hop announces
+  can replace the active path in software-only transport tests.
 - Never-activated outbound links now trigger Python-style path rediscovery:
   the stale path is expired, rediscovery requests are throttled by the
   `PATH_REQUEST_MI` window, and shared-instance clients leave rediscovery to

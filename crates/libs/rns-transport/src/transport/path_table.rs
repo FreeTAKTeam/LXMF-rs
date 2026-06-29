@@ -4,6 +4,7 @@ use std::{
 };
 
 use crate::{
+    destination::RAND_HASH_LENGTH,
     error::RnsError,
     hash::{AddressHash, Hash, ADDRESS_HASH_SIZE, HASH_SIZE},
     iface::InterfaceMode,
@@ -14,6 +15,7 @@ use rmpv::Value as RmpValue;
 const DESTINATION_TIMEOUT: Duration = Duration::from_secs(60 * 60 * 24 * 7);
 const AP_PATH_TIME: Duration = Duration::from_secs(60 * 60 * 24);
 const ROAMING_PATH_TIME: Duration = Duration::from_secs(60 * 60 * 6);
+const MAX_RANDOM_BLOBS: usize = 64;
 
 pub struct PathEntry {
     pub timestamp: Instant,
@@ -21,6 +23,7 @@ pub struct PathEntry {
     pub hops: u8,
     pub iface: AddressHash,
     pub packet_hash: Hash,
+    random_blobs: Vec<[u8; RAND_HASH_LENGTH]>,
 }
 
 pub struct PathTable {
@@ -34,6 +37,7 @@ pub struct PythonPathEntry {
     pub received_from: AddressHash,
     pub hops: u8,
     pub expires_secs: f64,
+    pub random_blobs: Vec<[u8; RAND_HASH_LENGTH]>,
     pub iface: AddressHash,
     pub interface_hash: Hash,
     pub packet_hash: Hash,
@@ -65,22 +69,44 @@ impl PathTable {
         announce: &Packet,
         transport_id: Option<AddressHash>,
         iface: AddressHash,
-    ) {
+        random_blob: [u8; RAND_HASH_LENGTH],
+        mode_for_iface: impl FnMut(&AddressHash) -> Option<InterfaceMode>,
+    ) -> bool {
         let hops = announce.header.hops;
+        let announce_emitted = random_blob_timebase(&random_blob);
+        let now = Instant::now();
+        let mut random_blobs = Vec::new();
 
         if let Some(existing_entry) = self.map.get(&announce.destination) {
-            if hops >= existing_entry.hops {
-                return;
+            random_blobs.clone_from(&existing_entry.random_blobs);
+            if !should_replace_path(
+                existing_entry,
+                hops,
+                &random_blob,
+                announce_emitted,
+                now,
+                mode_for_iface,
+            ) {
+                return false;
+            }
+        }
+
+        if !random_blobs.contains(&random_blob) {
+            random_blobs.push(random_blob);
+            let remove = random_blobs.len().saturating_sub(MAX_RANDOM_BLOBS);
+            if remove > 0 {
+                random_blobs.drain(..remove);
             }
         }
 
         let received_from = transport_id.unwrap_or(announce.destination);
         let new_entry = PathEntry {
-            timestamp: Instant::now(),
+            timestamp: now,
             received_from,
             hops,
             iface,
             packet_hash: announce.hash(),
+            random_blobs,
         };
 
         self.map.insert(announce.destination, new_entry);
@@ -92,6 +118,7 @@ impl PathTable {
             received_from,
             iface,
         );
+        true
     }
 
     pub fn restore_tunnel_path(
@@ -111,7 +138,14 @@ impl PathTable {
 
         self.map.insert(
             destination,
-            PathEntry { timestamp: now, received_from, hops, iface, packet_hash },
+            PathEntry {
+                timestamp: now,
+                received_from,
+                hops,
+                iface,
+                packet_hash,
+                random_blobs: Vec::new(),
+            },
         );
         true
     }
@@ -157,6 +191,7 @@ impl PathTable {
                 hops: entry.hops,
                 iface: entry.iface,
                 packet_hash: entry.packet_hash,
+                random_blobs: bounded_random_blobs(entry.random_blobs),
             },
         );
     }
@@ -182,6 +217,7 @@ impl PathTable {
                     received_from: entry.received_from,
                     hops: entry.hops,
                     expires_secs: timestamp_secs + path_timeout_for_mode(mode).as_secs_f64(),
+                    random_blobs: entry.random_blobs.clone(),
                     iface: entry.iface,
                     interface_hash,
                     packet_hash: entry.packet_hash,
@@ -201,7 +237,14 @@ impl PathTable {
                         RmpValue::Binary(entry.received_from.as_slice().to_vec()),
                         RmpValue::from(u64::from(entry.hops)),
                         RmpValue::F64(entry.expires_secs),
-                        RmpValue::Array(vec![]),
+                        RmpValue::Array(
+                            entry
+                                .random_blobs
+                                .iter()
+                                .skip(entry.random_blobs.len().saturating_sub(MAX_RANDOM_BLOBS))
+                                .map(|blob| RmpValue::Binary(blob.to_vec()))
+                                .collect(),
+                        ),
                         RmpValue::Binary(entry.interface_hash.as_slice().to_vec()),
                         RmpValue::Binary(entry.packet_hash.as_slice().to_vec()),
                     ])
@@ -237,10 +280,60 @@ fn decode_python_entry(value: &RmpValue) -> Result<PythonPathEntry, RnsError> {
         received_from: decode_address_hash(&fields[2])?,
         hops: decode_u8(&fields[3])?,
         expires_secs: decode_f64(&fields[4])?,
+        random_blobs: decode_random_blobs(&fields[5])?,
         iface: AddressHash::new_from_hash(&interface_hash),
         interface_hash,
         packet_hash: decode_hash(&fields[7])?,
     })
+}
+
+fn should_replace_path(
+    existing: &PathEntry,
+    hops: u8,
+    random_blob: &[u8; RAND_HASH_LENGTH],
+    announce_emitted: u64,
+    now: Instant,
+    mut mode_for_iface: impl FnMut(&AddressHash) -> Option<InterfaceMode>,
+) -> bool {
+    if existing.random_blobs.contains(random_blob) {
+        return false;
+    }
+
+    let path_emitted = newest_random_blob_timebase(&existing.random_blobs);
+    if hops <= existing.hops {
+        return announce_emitted > path_emitted;
+    }
+
+    path_expired(existing, now, &mut mode_for_iface) || announce_emitted > path_emitted
+}
+
+fn path_expired(
+    entry: &PathEntry,
+    now: Instant,
+    mut mode_for_iface: impl FnMut(&AddressHash) -> Option<InterfaceMode>,
+) -> bool {
+    let mode = mode_for_iface(&entry.iface).unwrap_or(InterfaceMode::Full);
+    now.checked_duration_since(entry.timestamp).unwrap_or_default() >= path_timeout_for_mode(mode)
+}
+
+fn random_blob_timebase(random_blob: &[u8; RAND_HASH_LENGTH]) -> u64 {
+    let mut emitted = [0u8; 8];
+    emitted[3..].copy_from_slice(&random_blob[5..]);
+    u64::from_be_bytes(emitted)
+}
+
+fn newest_random_blob_timebase(random_blobs: &[[u8; RAND_HASH_LENGTH]]) -> u64 {
+    random_blobs.iter().map(random_blob_timebase).max().unwrap_or(0)
+}
+
+fn bounded_random_blobs(
+    mut random_blobs: Vec<[u8; RAND_HASH_LENGTH]>,
+) -> Vec<[u8; RAND_HASH_LENGTH]> {
+    let remove = random_blobs.len().saturating_sub(MAX_RANDOM_BLOBS);
+    if remove > 0 {
+        random_blobs.drain(..remove);
+    }
+    random_blobs
 }
 
 fn decode_address_hash(value: &RmpValue) -> Result<AddressHash, RnsError> {
@@ -261,6 +354,26 @@ fn decode_hash(value: &RmpValue) -> Result<Hash, RnsError> {
     let mut out = [0u8; HASH_SIZE];
     out.copy_from_slice(bytes);
     Ok(Hash::new(out))
+}
+
+fn decode_random_blobs(value: &RmpValue) -> Result<Vec<[u8; RAND_HASH_LENGTH]>, RnsError> {
+    let RmpValue::Array(blobs) = value else {
+        return Err(RnsError::InvalidArgument);
+    };
+
+    blobs
+        .iter()
+        .map(|value| {
+            let bytes = decode_bytes(value)?;
+            if bytes.len() != RAND_HASH_LENGTH {
+                return Err(RnsError::IncorrectHash);
+            }
+            let mut blob = [0u8; RAND_HASH_LENGTH];
+            blob.copy_from_slice(bytes);
+            Ok(blob)
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map(bounded_random_blobs)
 }
 
 fn decode_bytes(value: &RmpValue) -> Result<&[u8], RnsError> {
@@ -308,119 +421,5 @@ impl Default for PathTable {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
-    fn test_now() -> Instant {
-        Instant::now() + DESTINATION_TIMEOUT + Duration::from_secs(1)
-    }
-
-    #[test]
-    fn remove_stale_uses_shorter_access_point_timeout() {
-        let now = test_now();
-        let destination = AddressHash::new_from_hash(&Hash::new_from_slice(b"destination"));
-        let iface = AddressHash::new_from_hash(&Hash::new_from_slice(b"iface"));
-        let mut table = PathTable::new();
-        table.map.insert(
-            destination,
-            PathEntry {
-                timestamp: now - AP_PATH_TIME - Duration::from_secs(1),
-                received_from: destination,
-                hops: 1,
-                iface,
-                packet_hash: Hash::new_from_slice(b"packet"),
-            },
-        );
-
-        assert_eq!(table.remove_stale(now, |_| Some(InterfaceMode::AccessPoint)), 1);
-        assert!(table.get(&destination).is_none());
-    }
-
-    #[test]
-    fn remove_stale_keeps_full_mode_until_destination_timeout() {
-        let now = test_now();
-        let destination = AddressHash::new_from_hash(&Hash::new_from_slice(b"destination"));
-        let iface = AddressHash::new_from_hash(&Hash::new_from_slice(b"iface"));
-        let mut table = PathTable::new();
-        table.map.insert(
-            destination,
-            PathEntry {
-                timestamp: now - AP_PATH_TIME - Duration::from_secs(1),
-                received_from: destination,
-                hops: 1,
-                iface,
-                packet_hash: Hash::new_from_slice(b"packet"),
-            },
-        );
-
-        assert_eq!(table.remove_stale(now, |_| Some(InterfaceMode::Full)), 0);
-        assert!(table.get(&destination).is_some());
-    }
-
-    #[test]
-    fn remove_stale_uses_roaming_timeout() {
-        let now = test_now();
-        let destination = AddressHash::new_from_hash(&Hash::new_from_slice(b"destination"));
-        let iface = AddressHash::new_from_hash(&Hash::new_from_slice(b"iface"));
-        let mut table = PathTable::new();
-        table.map.insert(
-            destination,
-            PathEntry {
-                timestamp: now - ROAMING_PATH_TIME - Duration::from_secs(1),
-                received_from: destination,
-                hops: 1,
-                iface,
-                packet_hash: Hash::new_from_slice(b"packet"),
-            },
-        );
-
-        assert_eq!(table.remove_stale(now, |_| Some(InterfaceMode::Roaming)), 1);
-        assert!(table.get(&destination).is_none());
-    }
-
-    #[test]
-    fn remove_stale_drops_paths_for_missing_iface() {
-        let now = test_now();
-        let destination = AddressHash::new_from_hash(&Hash::new_from_slice(b"destination"));
-        let iface = AddressHash::new_from_hash(&Hash::new_from_slice(b"iface"));
-        let mut table = PathTable::new();
-        table.map.insert(
-            destination,
-            PathEntry {
-                timestamp: now,
-                received_from: destination,
-                hops: 1,
-                iface,
-                packet_hash: Hash::new_from_slice(b"packet"),
-            },
-        );
-
-        assert_eq!(table.remove_stale(now, |_| None), 1);
-        assert!(table.get(&destination).is_none());
-    }
-
-    #[test]
-    fn expire_path_removes_exact_destination() {
-        let now = test_now();
-        let destination = AddressHash::new_from_hash(&Hash::new_from_slice(b"destination"));
-        let other_destination = AddressHash::new_from_hash(&Hash::new_from_slice(b"other"));
-        let iface = AddressHash::new_from_hash(&Hash::new_from_slice(b"iface"));
-        let mut table = PathTable::new();
-        for destination in [destination, other_destination] {
-            table.map.insert(
-                destination,
-                PathEntry {
-                    timestamp: now,
-                    received_from: destination,
-                    hops: 1,
-                    iface,
-                    packet_hash: Hash::new_from_slice(b"packet"),
-                },
-            );
-        }
-
-        assert!(table.expire_path(&destination));
-        assert!(!table.expire_path(&destination));
-        assert!(table.get(&destination).is_none());
-        assert!(table.get(&other_destination).is_some());
-    }
+    include!("path_table_tests.rs");
 }

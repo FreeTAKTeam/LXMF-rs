@@ -122,14 +122,70 @@ async fn learned_announces_are_not_held_after_route_is_known() {
         .expect("first announce should emit")
         .expect("broadcast receive");
 
-    tokio::time::sleep(Duration::from_millis(5)).await;
-    handle_announce(&announce, handler.lock().await, iface, crate::iface::IfaceSource::None).await;
+    tokio::time::sleep(Duration::from_millis(1100)).await;
+    let repeated_announce = destination.announce(OsRng, None).expect("fresh announce");
+    handle_announce(
+        &repeated_announce,
+        handler.lock().await,
+        iface,
+        crate::iface::IfaceSource::None,
+    )
+    .await;
 
     let repeated = timeout(Duration::from_millis(200), announce_rx.recv())
         .await
         .expect("known announce should bypass ingress hold")
         .expect("broadcast receive");
-    assert_eq!(repeated.hops, announce.header.hops);
+    assert_eq!(repeated.hops, repeated_announce.header.hops);
+}
+
+#[tokio::test]
+async fn fresh_equal_hop_announce_refreshes_known_path_iface() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut config = TransportConfig::new("test", &local_identity, true);
+    config.set_retransmit(true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+
+    let (first_iface, second_iface) = {
+        let manager = transport.iface_manager();
+        let mut manager = manager.lock().await;
+        (*manager.new_channel(16).address(), *manager.new_channel(16).address())
+    };
+
+    let mut destination = SingleInputDestination::new(
+        PrivateIdentity::new_from_rand(OsRng),
+        DestinationName::new("lxmf", "delivery"),
+    );
+    let first_announce = destination.announce(OsRng, None).expect("first announce");
+    let announced_destination = first_announce.destination;
+    handle_announce(
+        &first_announce,
+        handler.lock().await,
+        first_iface,
+        crate::iface::IfaceSource::None,
+    )
+    .await;
+    assert_eq!(
+        handler.lock().await.path_table.next_hop_iface(&announced_destination),
+        Some(first_iface)
+    );
+
+    tokio::time::sleep(Duration::from_millis(1100)).await;
+    let second_announce = destination.announce(OsRng, None).expect("fresh announce");
+    handle_announce(
+        &second_announce,
+        handler.lock().await,
+        second_iface,
+        crate::iface::IfaceSource::None,
+    )
+    .await;
+
+    assert_eq!(
+        handler.lock().await.path_table.next_hop_iface(&announced_destination),
+        Some(second_iface),
+        "fresh equal-hop announces should update an already-known route"
+    );
 }
 
 #[tokio::test]
