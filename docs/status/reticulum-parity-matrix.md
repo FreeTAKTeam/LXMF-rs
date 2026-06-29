@@ -293,6 +293,10 @@ the direct path response.
 Scoped daemon path requests now keep broadcast packet semantics while selecting
 only the requested interface at dispatch time, and scoped/tagged refreshes still
 issue when an unscoped cached path is already known.
+Pinned Python path-discovery interop now covers Rust `reticulumd` requesting a
+previously unknown Python delivery path over loopback TCP, observing found
+route metadata through `path_status`, and confirming the route through
+`rnpath-rs --json`.
 Restored path-table cached announces are now kept as lookup/cache material
 rather than scheduled as fresh announce rebroadcasts at startup, while still
 serving known-path responses. Path-table save filters routes without cached

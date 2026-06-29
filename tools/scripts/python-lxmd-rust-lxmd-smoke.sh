@@ -12,6 +12,7 @@ LXMF_PY_REPO="${LXMF_PY_REPO:-${REPO_ROOT}/../lxmf}"
 LOG_DIR="${LOG_DIR:-${REPO_ROOT}/target/interop/python-lxmd-rust-lxmd}"
 REPORT_PATH="${REPORT_PATH:-${LOG_DIR}/report.json}"
 TIMEOUT_SECS="${TIMEOUT_SECS:-45}"
+PATH_DISCOVERY_TIMEOUT_SECS="${PATH_DISCOVERY_TIMEOUT_SECS:-20}"
 REMOTE_STATUS_TIMEOUT_SECS="${REMOTE_STATUS_TIMEOUT_SECS:-300}"
 REMOTE_STATUS_ATTEMPTS="${REMOTE_STATUS_ATTEMPTS:-2}"
 REMOTE_CONTROL_PATH_TIMEOUT_SECS="${REMOTE_CONTROL_PATH_TIMEOUT_SECS:-120}"
@@ -19,6 +20,12 @@ REMOTE_CONTROL_SETTLE_SECS="${REMOTE_CONTROL_SETTLE_SECS:-2}"
 REMOTE_STATUS_PREFLIGHT="${REMOTE_STATUS_PREFLIGHT:-0}"
 COMPAT_CASE="${COMPAT_CASE:-direct_python_to_rust}"
 PROPAGATION_PEERING_COST="${PROPAGATION_PEERING_COST:-8}"
+PY_ANNOUNCE_AT_START="yes"
+PY_ANNOUNCE_INTERVAL="1"
+if [[ "${COMPAT_CASE}" == "rns_path_request_rust_to_python" ]]; then
+  PY_ANNOUNCE_AT_START="no"
+  PY_ANNOUNCE_INTERVAL="3600"
+fi
 
 RUST_RPC_ADDR="${RUST_RPC_ADDR:-127.0.0.1:$((42430 + ($$ % 1000)))}"
 RUST_TRANSPORT_ADDR="${RUST_TRANSPORT_ADDR:-127.0.0.1:$((37430 + ($$ % 1000)))}"
@@ -475,6 +482,33 @@ wait_for_rust_peer() {
   for _ in $(seq 1 "${TIMEOUT_SECS}"); do
     if rpc_call "${RUST_RPC_ADDR}" "list_peers" "null" | grep -Eq "\"peer\": *\"${peer_hash}\""; then
       return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+wait_for_rust_tcp_client_accept() {
+  local status_json=""
+  for _ in $(seq 1 "${TIMEOUT_SECS}"); do
+    if status_json="$(rpc_call "${RUST_RPC_ADDR}" "daemon_status_ex" "null" 2>/dev/null)"; then
+      if "${PYTHON_BIN}" - <<'PY' "${status_json}" >/dev/null 2>&1
+import json
+import sys
+
+payload = json.loads(sys.argv[1])
+for iface in payload.get("interfaces") or []:
+    settings = iface.get("settings") or {}
+    runtime = settings.get("_runtime") or {}
+    tcp = runtime.get("tcp") or {}
+    listener = tcp.get("listener_status") or {}
+    if int(listener.get("accepted_connections") or 0) > 0:
+        raise SystemExit(0)
+raise SystemExit(1)
+PY
+      then
+        return 0
+      fi
     fi
     sleep 1
   done
@@ -1188,8 +1222,8 @@ fi
 cat > "${PY_DIR}/config" <<EOF
 [propagation]
 enable_node = yes
-announce_at_start = yes
-announce_interval = 1
+announce_at_start = ${PY_ANNOUNCE_AT_START}
+announce_interval = ${PY_ANNOUNCE_INTERVAL}
 propagation_stamp_cost_target = 0
 propagation_stamp_cost_flexibility = 0
 autopeer = yes
@@ -1199,8 +1233,8 @@ control_allowed = ${RUST_CONTROL_IDENTITY_HASH}
 
 [lxmf]
 display_name = Python Smoke Node
-announce_at_start = yes
-announce_interval = 1
+announce_at_start = ${PY_ANNOUNCE_AT_START}
+announce_interval = ${PY_ANNOUNCE_INTERVAL}
 on_inbound = ${PY_DIR}/on_inbound.sh
 
 [logging]
@@ -1214,6 +1248,108 @@ fi
 
 PY_DELIVERY_HASH="$(destination_hash_from_identity "${PY_DIR}/identity" "lxmf" "delivery")"
 PY_PROPAGATION_HASH="$(destination_hash_from_identity "${PY_DIR}/identity" "lxmf" "propagation")"
+
+if [[ "${COMPAT_CASE}" == "rns_path_request_rust_to_python" ]]; then
+  cargo build -p rns-tools --bin rnpath-rs --quiet
+
+  if ! wait_for_rust_tcp_client_accept; then
+    echo "Rust daemon did not accept Python TCP client before path request case" >&2
+    exit 1
+  fi
+
+  PATH_STATUS_BEFORE="$(rpc_call "${RUST_RPC_ADDR}" "path_status" "{\"destination\":\"${PY_DELIVERY_HASH}\"}")"
+  "${PYTHON_BIN}" - <<'PY' "${PATH_STATUS_BEFORE}" "${PY_DELIVERY_HASH}"
+import json
+import sys
+
+status = json.loads(sys.argv[1])
+destination_hash = sys.argv[2]
+assert status["destination_hash"] == destination_hash, status
+assert status.get("path_found") is False, status
+assert status.get("known") is False, status
+assert status.get("status") == "unknown", status
+PY
+
+  PATH_REQUEST_RESULT="$(rpc_call "${RUST_RPC_ADDR}" "request_path" "{\"destination_hash\":\"${PY_DELIVERY_HASH}\",\"timeout_secs\":${PATH_DISCOVERY_TIMEOUT_SECS}}")"
+  PATH_STATUS_AFTER="$(rpc_call "${RUST_RPC_ADDR}" "path_status" "{\"destination\":\"${PY_DELIVERY_HASH}\"}")"
+  RNPATH_JSON="${TMP_ROOT}/rnpath-rs.json"
+  "${REPO_ROOT}/target/debug/rnpath-rs" \
+    "${PY_DELIVERY_HASH}" \
+    --rpc "${RUST_RPC_ADDR}" \
+    --timeout "${PATH_DISCOVERY_TIMEOUT_SECS}" \
+    --json >"${RNPATH_JSON}"
+
+  "${PYTHON_BIN}" - <<'PY' \
+    "${REPORT_PATH}" \
+    "${TMP_ROOT}" \
+    "${RUST_LXMD_LOG}" \
+    "${PY_LOG}" \
+    "${PY_DELIVERY_HASH}" \
+    "${PATH_STATUS_BEFORE}" \
+    "${PATH_REQUEST_RESULT}" \
+    "${PATH_STATUS_AFTER}" \
+    "${RNPATH_JSON}" \
+    "${COMPAT_CASE}"
+import json
+import sys
+from pathlib import Path
+
+(
+    report_path,
+    tmp_root,
+    rust_log,
+    py_log,
+    py_delivery_hash,
+    path_status_before_raw,
+    path_request_raw,
+    path_status_after_raw,
+    rnpath_json,
+    compat_case,
+) = sys.argv[1:11]
+
+path_status_before = json.loads(path_status_before_raw)
+path_request = json.loads(path_request_raw)
+path_status_after = json.loads(path_status_after_raw)
+rnpath_result = json.loads(Path(rnpath_json).read_text(encoding="utf-8"))
+
+for payload in (path_request, path_status_after, rnpath_result):
+    assert payload["destination_hash"] == py_delivery_hash, payload
+    assert payload["path_found"] is True, payload
+    assert payload["status"] == "found", payload
+    assert payload.get("next_hop"), payload
+    assert payload.get("interface"), payload
+    assert isinstance(payload.get("hops"), int), payload
+
+assert path_request["requested"] is True, path_request
+
+with open(report_path, "w", encoding="utf-8") as handle:
+    json.dump({
+        "status": "pass",
+        "case": compat_case,
+        "proof": {
+            "path_status_before": path_status_before,
+            "request_path": path_request,
+            "path_status_after": path_status_after,
+            "rnpath_json": rnpath_result,
+        },
+        "hashes": {
+            "python_delivery": py_delivery_hash,
+        },
+        "logs": {
+            "tmp_root": tmp_root,
+            "rust_lxmd": rust_log,
+            "python_lxmd": py_log,
+            "rnpath_json": rnpath_json,
+        },
+    }, handle, indent=2)
+    handle.write("\n")
+PY
+
+  echo "[python-lxmd-rust-lxmd-smoke] pass"
+  echo "[python-lxmd-rust-lxmd-smoke] report=${REPORT_PATH}"
+  echo "[python-lxmd-rust-lxmd-smoke] logs=${TMP_ROOT}"
+  exit 0
+fi
 
 write_report() {
   "${PYTHON_BIN}" - <<'PY' \

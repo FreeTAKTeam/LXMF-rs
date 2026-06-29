@@ -28,6 +28,7 @@ SUPPORTED_CASES = {
     "link_teardown_python_to_rust",
     "resource_transfer",
     "lxm_interchange",
+    "rns_path_request_rust_to_python",
 }
 
 SMOKE_SCRIPT_CASES = {
@@ -51,6 +52,7 @@ SMOKE_SCRIPT_CASES = {
     "link_teardown_python_to_rust",
     "resource_transfer",
     "lxm_interchange",
+    "rns_path_request_rust_to_python",
 }
 
 

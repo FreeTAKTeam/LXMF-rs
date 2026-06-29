@@ -15,6 +15,7 @@ enum CompatibilityMode {
     LinkLifecycle,
     Resource,
     LxmInterchange,
+    PathDiscovery,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -24,7 +25,7 @@ struct CompatibilityCase {
     description: &'static str,
 }
 
-const COMPATIBILITY_CASES: [CompatibilityCase; 20] = [
+const COMPATIBILITY_CASES: [CompatibilityCase; 21] = [
     CompatibilityCase {
         id: "direct_rust_to_python",
         mode: CompatibilityMode::Direct,
@@ -125,11 +126,16 @@ const COMPATIBILITY_CASES: [CompatibilityCase; 20] = [
         mode: CompatibilityMode::LxmInterchange,
         description: "Python .lxm storage payload round-trips through Rust decode/encode path",
     },
+    CompatibilityCase {
+        id: "rns_path_request_rust_to_python",
+        mode: CompatibilityMode::PathDiscovery,
+        description: "Rust daemon path RPC resolves a Python Reticulum destination over loopback TCP",
+    },
 ];
 
 pub(crate) fn assert_required_modes_covered() {
     assert!(
-        COMPATIBILITY_CASES.len() >= 20,
+        COMPATIBILITY_CASES.len() >= 21,
         "matrix should cover the documented required scenarios"
     );
     assert_case_present("direct_rust_to_python");
@@ -152,6 +158,7 @@ pub(crate) fn assert_required_modes_covered() {
     assert_case_present("link_teardown_python_to_rust");
     assert_case_present("resource_transfer");
     assert_case_present("lxm_interchange");
+    assert_case_present("rns_path_request_rust_to_python");
     assert!(COMPATIBILITY_CASES.iter().any(|case| case.mode == CompatibilityMode::Direct));
     assert!(COMPATIBILITY_CASES.iter().any(|case| case.mode == CompatibilityMode::Opportunistic));
     assert!(COMPATIBILITY_CASES.iter().any(|case| case.mode == CompatibilityMode::Propagated));
@@ -161,6 +168,7 @@ pub(crate) fn assert_required_modes_covered() {
     assert!(COMPATIBILITY_CASES.iter().any(|case| case.mode == CompatibilityMode::LinkLifecycle));
     assert!(COMPATIBILITY_CASES.iter().any(|case| case.mode == CompatibilityMode::Resource));
     assert!(COMPATIBILITY_CASES.iter().any(|case| case.mode == CompatibilityMode::LxmInterchange));
+    assert!(COMPATIBILITY_CASES.iter().any(|case| case.mode == CompatibilityMode::PathDiscovery));
 }
 
 pub(crate) fn run_case(case_id: &str) {

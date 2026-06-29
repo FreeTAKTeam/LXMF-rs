@@ -372,6 +372,11 @@ The project is best described by capability level:
   rnpath-smoke`, which starts a local four-node mesh and verifies a
   non-neighbor destination resolves with next-hop/interface metadata over the
   software RPC path.
+- The pinned Python compatibility matrix now includes
+  `rns_path_request_rust_to_python`, a loopback TCP case where Rust
+  `reticulumd` starts with an unknown Python delivery path, resolves it through
+  `request_path`, reports route metadata through `path_status`, and confirms
+  the same path through `rnpath-rs --json`.
 - Daemon-backed path requests now preserve optional interface scope and request
   tag bytes from RPC through `reticulumd` into the transport path-request
   generator. Scoped requests dispatch as broadcast path requests on exactly the
