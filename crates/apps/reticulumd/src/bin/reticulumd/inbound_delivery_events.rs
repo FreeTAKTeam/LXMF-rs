@@ -5,11 +5,11 @@ use reticulum_daemon::inbound_delivery::{
     decode_inbound_payload_with_diagnostics, evaluate_inbound_stamp_policy,
     inbound_record_allowed_by_delivery_policy,
 };
-use rns_rpc::{MessageRecord, RpcDaemon};
+use rns_rpc::{MessageRecord, RpcDaemon, RpcEvent};
 use rns_transport::hash::AddressHash;
 use rns_transport::identity_bridge::to_core_identity;
 use rns_transport::transport::{ReceivedPayloadMode, Transport};
-use serde_json::{Map, Value};
+use serde_json::{json, Map, Value};
 use std::borrow::Cow;
 
 pub(super) async fn accept_delivery_resource(
@@ -59,65 +59,121 @@ pub(super) async fn accept_delivery_packet(
     payload_mode: ReceivedPayloadMode,
 ) {
     let payload_mode = inbound_payload_mode(payload_mode);
-    let record = if log::log_enabled!(log::Level::Debug) {
-        let (record, diagnostics) =
-            decode_inbound_payload_with_diagnostics(destination, data, payload_mode);
-        if let Some(ref decoded) = record {
-            log::debug!(
-                "[daemon-rx] decoded msg_id={} src={} dst={} title_len={} content_len={}",
-                decoded.id,
-                decoded.source,
-                decoded.destination,
-                decoded.title.len(),
-                decoded.content.len()
-            );
-        } else {
-            log::debug!(
-                "[daemon-rx] decode-failed raw_dst={} resolved_dst={} attempts={}",
+    let (record, diagnostics) =
+        decode_inbound_payload_with_diagnostics(destination, data, payload_mode);
+    if let Some(ref decoded) = record {
+        log::debug!(
+            "[daemon-rx] decoded msg_id={} src={} dst={} title_len={} content_len={}",
+            decoded.id,
+            decoded.source,
+            decoded.destination,
+            decoded.title.len(),
+            decoded.content.len()
+        );
+    } else {
+        let diagnostics_summary = diagnostics.summary();
+        log::debug!(
+            "[daemon-rx] decode-failed raw_dst={} resolved_dst={} attempts={}",
+            raw_destination_hex,
+            hex::encode(destination),
+            diagnostics_summary
+        );
+        emit_inbound_drop_event(
+            daemon,
+            InboundDropEvent {
+                reason: "decode_failed",
                 raw_destination_hex,
-                hex::encode(destination),
-                diagnostics.summary()
-            );
-        }
-        record
-    } else {
-        decode_inbound_payload(destination, data, payload_mode)
-    };
-    let stamp_status = if record.is_some() {
-        match evaluate_inbound_stamp_policy(daemon, destination, data, payload_mode) {
-            Ok(status) => Some(status),
-            Err(_) => {
-                log::warn!(
-                    "[daemon-rx] dropping inbound payload due to stamp policy: raw_dst={} resolved_dst={}",
-                    raw_destination_hex,
-                    hex::encode(destination)
-                );
-                return;
-            }
-        }
-    } else {
-        None
-    };
-    if let Some(mut record) = record {
-        if let Some(stamp_status) = stamp_status {
-            annotate_inbound_record_stamp_status(&mut record, stamp_status);
-        }
-        annotate_inbound_signature_status(transport, &mut record, destination, data, payload_mode)
-            .await;
-        let method = match payload_mode {
-            InboundPayloadMode::DestinationStripped => 1,
-            InboundPayloadMode::FullWire => 2,
-        };
-        annotate_direct_delivery_transport_metadata(&mut record, method);
-        if !inbound_record_allowed_by_delivery_policy(daemon, &record) {
-            return;
-        }
-        if matches!(daemon.message_exists(record.id.as_str()), Ok(true)) {
-            return;
-        }
-        daemon.record_inbound_peer_activity(&record.source, data.len());
-        let _ = daemon.accept_inbound_with_raw(record, data);
+                destination,
+                payload_mode,
+                bytes_len: data.len(),
+                detail: Some(diagnostics_summary),
+                record: None,
+            },
+        );
+        return;
     }
+    let mut record = record.expect("decode success checked before policy evaluation");
+    let stamp_status = match evaluate_inbound_stamp_policy(daemon, destination, data, payload_mode)
+    {
+        Ok(status) => status,
+        Err(error) => {
+            log::warn!(
+                "[daemon-rx] dropping inbound payload due to stamp policy: raw_dst={} resolved_dst={}",
+                raw_destination_hex,
+                hex::encode(destination)
+            );
+            emit_inbound_drop_event(
+                daemon,
+                InboundDropEvent {
+                    reason: "stamp_policy_rejected",
+                    raw_destination_hex,
+                    destination,
+                    payload_mode,
+                    bytes_len: data.len(),
+                    detail: Some(error.to_string()),
+                    record: Some(&record),
+                },
+            );
+            return;
+        }
+    };
+    annotate_inbound_record_stamp_status(&mut record, stamp_status);
+    annotate_inbound_signature_status(transport, &mut record, destination, data, payload_mode)
+        .await;
+    let method = match payload_mode {
+        InboundPayloadMode::DestinationStripped => 1,
+        InboundPayloadMode::FullWire => 2,
+    };
+    annotate_direct_delivery_transport_metadata(&mut record, method);
+    if !inbound_record_allowed_by_delivery_policy(daemon, &record) {
+        emit_inbound_drop_event(
+            daemon,
+            InboundDropEvent {
+                reason: "delivery_policy_rejected",
+                raw_destination_hex,
+                destination,
+                payload_mode,
+                bytes_len: data.len(),
+                detail: None,
+                record: Some(&record),
+            },
+        );
+        return;
+    }
+    if matches!(daemon.message_exists(record.id.as_str()), Ok(true)) {
+        return;
+    }
+    daemon.record_inbound_peer_activity(&record.source, data.len());
+    let _ = daemon.accept_inbound_with_raw(record, data);
+}
+
+struct InboundDropEvent<'a> {
+    reason: &'a str,
+    raw_destination_hex: &'a str,
+    destination: [u8; 16],
+    payload_mode: InboundPayloadMode,
+    bytes_len: usize,
+    detail: Option<String>,
+    record: Option<&'a MessageRecord>,
+}
+
+fn emit_inbound_drop_event(daemon: &RpcDaemon, event: InboundDropEvent<'_>) {
+    let mut payload = json!({
+        "reason": event.reason,
+        "raw_destination_hash": event.raw_destination_hex,
+        "resolved_destination_hash": hex::encode(event.destination),
+        "payload_mode": inbound_payload_mode_name(event.payload_mode),
+        "bytes_len": event.bytes_len,
+    });
+    if let Some(detail) = event.detail.filter(|value| !value.is_empty()) {
+        payload["detail"] = Value::String(detail);
+    }
+    if let Some(record) = event.record {
+        payload["dropped_message_id"] = Value::String(record.id.clone());
+        payload["source_hash"] = Value::String(record.source.clone());
+        payload["destination_hash"] = Value::String(record.destination.clone());
+    }
+    daemon.publish_event(RpcEvent { event_type: "inbound_dropped".to_string(), payload });
 }
 
 pub(super) fn log_resolved_packet(
@@ -142,6 +198,13 @@ fn inbound_payload_mode(mode: ReceivedPayloadMode) -> InboundPayloadMode {
     match mode {
         ReceivedPayloadMode::FullWire => InboundPayloadMode::FullWire,
         ReceivedPayloadMode::DestinationStripped => InboundPayloadMode::DestinationStripped,
+    }
+}
+
+fn inbound_payload_mode_name(mode: InboundPayloadMode) -> &'static str {
+    match mode {
+        InboundPayloadMode::FullWire => "full_wire",
+        InboundPayloadMode::DestinationStripped => "destination_stripped",
     }
 }
 

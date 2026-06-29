@@ -35,6 +35,10 @@ impl RpcDaemon {
             key.to_ascii_lowercase().as_str(),
             "peer_id"
                 | "destination_hash"
+                | "raw_destination_hash"
+                | "resolved_destination_hash"
+                | "source_hash"
+                | "dropped_message_id"
                 | "correlation_id"
                 | "trace_id"
                 | "source_ip"
@@ -101,5 +105,32 @@ impl RpcDaemon {
         let transform = self.redaction_transform();
         Self::redact_json_value(&mut event.payload, transform);
         event
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn inbound_drop_identifier_fields_are_redacted() {
+        let mut value = json!({
+            "raw_destination_hash": "raw-destination",
+            "resolved_destination_hash": "resolved-destination",
+            "source_hash": "source",
+            "destination_hash": "destination",
+            "dropped_message_id": "message",
+            "reason": "decode_failed",
+        });
+
+        RpcDaemon::redact_json_value(&mut value, "redact");
+
+        assert_eq!(value["raw_destination_hash"], json!("[redacted]"));
+        assert_eq!(value["resolved_destination_hash"], json!("[redacted]"));
+        assert_eq!(value["source_hash"], json!("[redacted]"));
+        assert_eq!(value["destination_hash"], json!("[redacted]"));
+        assert_eq!(value["dropped_message_id"], json!("[redacted]"));
+        assert_eq!(value["reason"], json!("decode_failed"));
     }
 }

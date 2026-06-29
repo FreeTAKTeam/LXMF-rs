@@ -885,6 +885,10 @@ The project is best described by capability level:
   typed `policy_state`, so propagation-first clients can inspect auth-required
   mode plus allowed, denied, ignored, and prioritised destination sets without
   parsing raw policy JSON.
+- Direct inbound LXMF packet drops now emit bounded raw `inbound_dropped`
+  RPC/SDK event-stream entries for malformed payloads, stamp-policy rejections,
+  and delivery-policy rejections without storing messages or updating peer
+  activity; identifier fields use the existing event redaction path by default.
 - The typed propagation branch now also exposes
   `ZmqPipelineBackendClient::propagation_recovery_state`, projecting
   `app.propagation.status` into structured sync state, selected-node,
