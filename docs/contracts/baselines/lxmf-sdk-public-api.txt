@@ -826,6 +826,16 @@ pub lxmf_sdk::domain::MarkerUpdatePositionRequest::expected_revision: u64
 pub lxmf_sdk::domain::MarkerUpdatePositionRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
 pub lxmf_sdk::domain::MarkerUpdatePositionRequest::marker_id: lxmf_sdk::domain::MarkerId
 pub lxmf_sdk::domain::MarkerUpdatePositionRequest::position: lxmf_sdk::domain::GeoPoint
+pub struct lxmf_sdk::domain::PaperDecodeResult
+pub lxmf_sdk::domain::PaperDecodeResult::accepted: bool
+pub lxmf_sdk::domain::PaperDecodeResult::bytes_len: u64
+pub lxmf_sdk::domain::PaperDecodeResult::destination: alloc::string::String
+pub lxmf_sdk::domain::PaperDecodeResult::destination_hint: alloc::string::String
+pub lxmf_sdk::domain::PaperDecodeResult::duplicate: bool
+pub lxmf_sdk::domain::PaperDecodeResult::revision: core::option::Option<u64>
+pub lxmf_sdk::domain::PaperDecodeResult::transient_id: alloc::string::String
+impl lxmf_sdk::domain::PaperDecodeResult
+pub fn lxmf_sdk::domain::PaperDecodeResult::ack(&self) -> lxmf_sdk::Ack
 pub struct lxmf_sdk::domain::PaperMessageEnvelope
 pub lxmf_sdk::domain::PaperMessageEnvelope::destination_hint: core::option::Option<alloc::string::String>
 pub lxmf_sdk::domain::PaperMessageEnvelope::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
@@ -2219,6 +2229,7 @@ pub fn lxmf_sdk::Client<B>::envelope_execute(&self, envelope: lxmf_sdk::app::Env
 pub fn lxmf_sdk::Client<B>::operation_registry(&self) -> core::result::Result<lxmf_sdk::app::OperationRegistry, lxmf_sdk::SdkError>
 impl<B: lxmf_sdk::SdkBackend> lxmf_sdk::LxmfSdkPaper for lxmf_sdk::Client<B>
 pub fn lxmf_sdk::Client<B>::paper_decode(&self, envelope: lxmf_sdk::domain::PaperMessageEnvelope) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::paper_decode_with_metadata(&self, envelope: lxmf_sdk::domain::PaperMessageEnvelope) -> core::result::Result<lxmf_sdk::domain::PaperDecodeResult, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::Client<B>::paper_encode(&self, message_id: lxmf_sdk::MessageId) -> core::result::Result<lxmf_sdk::domain::PaperMessageEnvelope, lxmf_sdk::SdkError>
 impl<B: lxmf_sdk::SdkBackend> lxmf_sdk::LxmfSdkPeerLifecycle for lxmf_sdk::Client<B>
 pub fn lxmf_sdk::Client<B>::peer_connect(&self, req: lxmf_sdk::domain::PeerConnectionRequest) -> core::result::Result<lxmf_sdk::domain::PeerConnectionResult, lxmf_sdk::SdkError>
@@ -2589,6 +2600,16 @@ pub lxmf_sdk::NegotiationResponse::python_reference: lxmf_sdk::capability::Parit
 pub lxmf_sdk::NegotiationResponse::runtime_id: alloc::string::String
 pub lxmf_sdk::NegotiationResponse::schema_namespace: alloc::string::String
 pub lxmf_sdk::NegotiationResponse::sdk_version: alloc::string::String
+pub struct lxmf_sdk::PaperDecodeResult
+pub lxmf_sdk::PaperDecodeResult::accepted: bool
+pub lxmf_sdk::PaperDecodeResult::bytes_len: u64
+pub lxmf_sdk::PaperDecodeResult::destination: alloc::string::String
+pub lxmf_sdk::PaperDecodeResult::destination_hint: alloc::string::String
+pub lxmf_sdk::PaperDecodeResult::duplicate: bool
+pub lxmf_sdk::PaperDecodeResult::revision: core::option::Option<u64>
+pub lxmf_sdk::PaperDecodeResult::transient_id: alloc::string::String
+impl lxmf_sdk::domain::PaperDecodeResult
+pub fn lxmf_sdk::domain::PaperDecodeResult::ack(&self) -> lxmf_sdk::Ack
 pub struct lxmf_sdk::PaperMessageEnvelope
 pub lxmf_sdk::PaperMessageEnvelope::destination_hint: core::option::Option<alloc::string::String>
 pub lxmf_sdk::PaperMessageEnvelope::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
@@ -3004,6 +3025,7 @@ pub fn lxmf_sdk::RpcBackendClient::marker_update_position(&self, req: lxmf_sdk::
 pub fn lxmf_sdk::RpcBackendClient::negotiate(&self, req: lxmf_sdk::capability::NegotiationRequest) -> core::result::Result<lxmf_sdk::capability::NegotiationResponse, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::RpcBackendClient::operation_registry(&self) -> core::result::Result<lxmf_sdk::app::OperationRegistry, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::RpcBackendClient::paper_decode(&self, envelope: lxmf_sdk::domain::PaperMessageEnvelope) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::paper_decode_with_metadata(&self, envelope: lxmf_sdk::domain::PaperMessageEnvelope) -> core::result::Result<lxmf_sdk::domain::PaperDecodeResult, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::RpcBackendClient::paper_encode(&self, message_id: lxmf_sdk::MessageId) -> core::result::Result<lxmf_sdk::domain::PaperMessageEnvelope, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::RpcBackendClient::poll_events(&self, cursor: core::option::Option<lxmf_sdk::event::EventCursor>, max: usize) -> core::result::Result<lxmf_sdk::event::EventBatch, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::RpcBackendClient::send(&self, req: lxmf_sdk::SendRequest) -> core::result::Result<lxmf_sdk::MessageId, lxmf_sdk::SdkError>
@@ -3347,9 +3369,11 @@ pub fn lxmf_sdk::Client<B>::envelope_execute(&self, envelope: lxmf_sdk::app::Env
 pub fn lxmf_sdk::Client<B>::operation_registry(&self) -> core::result::Result<lxmf_sdk::app::OperationRegistry, lxmf_sdk::SdkError>
 pub trait lxmf_sdk::LxmfSdkPaper
 pub fn lxmf_sdk::LxmfSdkPaper::paper_decode(&self, _envelope: lxmf_sdk::domain::PaperMessageEnvelope) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdkPaper::paper_decode_with_metadata(&self, _envelope: lxmf_sdk::domain::PaperMessageEnvelope) -> core::result::Result<lxmf_sdk::domain::PaperDecodeResult, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::LxmfSdkPaper::paper_encode(&self, _message_id: lxmf_sdk::MessageId) -> core::result::Result<lxmf_sdk::domain::PaperMessageEnvelope, lxmf_sdk::SdkError>
 impl<B: lxmf_sdk::SdkBackend> lxmf_sdk::LxmfSdkPaper for lxmf_sdk::Client<B>
 pub fn lxmf_sdk::Client<B>::paper_decode(&self, envelope: lxmf_sdk::domain::PaperMessageEnvelope) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::paper_decode_with_metadata(&self, envelope: lxmf_sdk::domain::PaperMessageEnvelope) -> core::result::Result<lxmf_sdk::domain::PaperDecodeResult, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::Client<B>::paper_encode(&self, message_id: lxmf_sdk::MessageId) -> core::result::Result<lxmf_sdk::domain::PaperMessageEnvelope, lxmf_sdk::SdkError>
 pub trait lxmf_sdk::LxmfSdkPeerLifecycle
 pub fn lxmf_sdk::LxmfSdkPeerLifecycle::peer_connect(&self, _req: lxmf_sdk::domain::PeerConnectionRequest) -> core::result::Result<lxmf_sdk::domain::PeerConnectionResult, lxmf_sdk::SdkError>
@@ -3441,6 +3465,7 @@ pub fn lxmf_sdk::SdkBackend::marker_update_position(&self, _req: lxmf_sdk::domai
 pub fn lxmf_sdk::SdkBackend::negotiate(&self, req: lxmf_sdk::capability::NegotiationRequest) -> core::result::Result<lxmf_sdk::capability::NegotiationResponse, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::SdkBackend::operation_registry(&self) -> core::result::Result<lxmf_sdk::app::OperationRegistry, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::SdkBackend::paper_decode(&self, _envelope: lxmf_sdk::domain::PaperMessageEnvelope) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::paper_decode_with_metadata(&self, _envelope: lxmf_sdk::domain::PaperMessageEnvelope) -> core::result::Result<lxmf_sdk::domain::PaperDecodeResult, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::SdkBackend::paper_encode(&self, _message_id: lxmf_sdk::MessageId) -> core::result::Result<lxmf_sdk::domain::PaperMessageEnvelope, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::SdkBackend::peer_connect(&self, _req: lxmf_sdk::domain::PeerConnectionRequest) -> core::result::Result<lxmf_sdk::domain::PeerConnectionResult, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::SdkBackend::peer_disconnect(&self, _req: lxmf_sdk::domain::PeerConnectionRequest) -> core::result::Result<lxmf_sdk::domain::PeerConnectionResult, lxmf_sdk::SdkError>
@@ -3497,6 +3522,7 @@ pub fn lxmf_sdk::RpcBackendClient::marker_update_position(&self, req: lxmf_sdk::
 pub fn lxmf_sdk::RpcBackendClient::negotiate(&self, req: lxmf_sdk::capability::NegotiationRequest) -> core::result::Result<lxmf_sdk::capability::NegotiationResponse, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::RpcBackendClient::operation_registry(&self) -> core::result::Result<lxmf_sdk::app::OperationRegistry, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::RpcBackendClient::paper_decode(&self, envelope: lxmf_sdk::domain::PaperMessageEnvelope) -> core::result::Result<lxmf_sdk::Ack, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::paper_decode_with_metadata(&self, envelope: lxmf_sdk::domain::PaperMessageEnvelope) -> core::result::Result<lxmf_sdk::domain::PaperDecodeResult, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::RpcBackendClient::paper_encode(&self, message_id: lxmf_sdk::MessageId) -> core::result::Result<lxmf_sdk::domain::PaperMessageEnvelope, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::RpcBackendClient::poll_events(&self, cursor: core::option::Option<lxmf_sdk::event::EventCursor>, max: usize) -> core::result::Result<lxmf_sdk::event::EventBatch, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::RpcBackendClient::send(&self, req: lxmf_sdk::SendRequest) -> core::result::Result<lxmf_sdk::MessageId, lxmf_sdk::SdkError>
