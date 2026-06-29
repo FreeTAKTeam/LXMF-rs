@@ -42,11 +42,19 @@ impl OutboundBridge for TransportBridge {
             .expect("transport bridge daemon mutex poisoned")
             .clone()
             .ok_or_else(|| std::io::Error::other("daemon bridge unavailable"))?;
+        let local_delivery_identity = (destination == self.delivery_source_hash).then(|| {
+            let signer_identity = self.signer.as_identity();
+            Identity::new_from_slices(
+                signer_identity.public_key_bytes(),
+                signer_identity.verifying_key_bytes(),
+            )
+        });
         let peer_identity = outbound_peer_identity(
             daemon.as_ref(),
             &self.peer_crypto,
             record.destination.as_str(),
             destination,
+            local_delivery_identity,
         );
 
         let include_ticket = if options.include_ticket {
@@ -175,7 +183,11 @@ fn outbound_peer_identity(
     peer_crypto: &Mutex<HashMap<String, PeerCrypto>>,
     destination_hex: &str,
     destination: [u8; 16],
+    local_delivery_identity: Option<Identity>,
 ) -> Option<Identity> {
+    if let Some(local_delivery_identity) = local_delivery_identity {
+        return Some(local_delivery_identity);
+    }
     peer_crypto
         .lock()
         .expect("peer map")
@@ -219,11 +231,44 @@ mod tests {
             .expect("record announce identity");
         let peer_crypto = Mutex::new(HashMap::new());
 
-        let identity =
-            outbound_peer_identity(&daemon, &peer_crypto, destination_hex.as_str(), destination)
-                .expect("persisted identity");
+        let identity = outbound_peer_identity(
+            &daemon,
+            &peer_crypto,
+            destination_hex.as_str(),
+            destination,
+            None,
+        )
+        .expect("persisted identity");
 
         assert_eq!(identity.public_key_bytes(), remote.as_identity().public_key_bytes());
         assert_eq!(identity.verifying_key_bytes(), remote.as_identity().verifying_key_bytes());
+    }
+
+    #[test]
+    fn outbound_peer_identity_uses_local_delivery_identity_without_announce() {
+        let store = MessagesStore::in_memory().expect("store");
+        let daemon = RpcDaemon::with_store(store, "test-node".to_string());
+        let local = rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let delivery_hash = SingleOutputDestination::new(
+            *local.as_identity(),
+            DestinationName::new("lxmf", "delivery"),
+        )
+        .desc
+        .address_hash;
+        let mut destination = [0u8; 16];
+        destination.copy_from_slice(delivery_hash.as_slice());
+        let peer_crypto = Mutex::new(HashMap::new());
+
+        let identity = outbound_peer_identity(
+            &daemon,
+            &peer_crypto,
+            hex::encode(destination).as_str(),
+            destination,
+            Some(*local.as_identity()),
+        )
+        .expect("local identity");
+
+        assert_eq!(identity.public_key_bytes(), local.as_identity().public_key_bytes());
+        assert_eq!(identity.verifying_key_bytes(), local.as_identity().verifying_key_bytes());
     }
 }
