@@ -106,6 +106,8 @@ pub struct PathRequests {
     announce_cap: usize,
     request_timeout: Duration,
     queue: VecDeque<(DiscoveryKey, Instant)>,
+    outgoing_requests: BTreeMap<AddressHash, Instant>,
+    outgoing_request_queue: VecDeque<(AddressHash, Instant)>,
     local_response_cache: BTreeMap<LocalResponseKey, Instant>,
     local_response_queue: VecDeque<(LocalResponseKey, Instant)>,
     local_response_cooldown: Duration,
@@ -131,6 +133,8 @@ impl PathRequests {
             announce_cap,
             request_timeout: Duration::from_secs(request_timeout_secs.max(1)),
             queue: alloc::collections::VecDeque::new(),
+            outgoing_requests: BTreeMap::new(),
+            outgoing_request_queue: VecDeque::new(),
             local_response_cache: BTreeMap::new(),
             local_response_queue: VecDeque::new(),
             local_response_cooldown: super::LOCAL_PATH_RESPONSE_COOLDOWN,
@@ -169,6 +173,40 @@ impl PathRequests {
                 self.local_response_cache.remove(&key);
             }
         }
+    }
+
+    fn prune_outgoing_requests(&mut self, now: Instant, cooldown: Duration) {
+        while let Some((destination, requested_at)) = self.outgoing_request_queue.front().copied() {
+            if now.duration_since(requested_at) < cooldown {
+                break;
+            }
+            self.outgoing_request_queue.pop_front();
+            if self.outgoing_requests.get(&destination).copied() == Some(requested_at) {
+                self.outgoing_requests.remove(&destination);
+            }
+        }
+    }
+
+    pub fn outgoing_request_recently_sent(
+        &mut self,
+        destination: &AddressHash,
+        now: Instant,
+        cooldown: Duration,
+    ) -> bool {
+        self.prune_outgoing_requests(now, cooldown);
+        self.outgoing_requests
+            .get(destination)
+            .map(|requested_at| now.duration_since(*requested_at) < cooldown)
+            .unwrap_or(false)
+    }
+
+    pub fn record_outgoing_request(&mut self, destination: &AddressHash) {
+        self.record_outgoing_request_at(destination, Instant::now());
+    }
+
+    fn record_outgoing_request_at(&mut self, destination: &AddressHash, now: Instant) {
+        self.outgoing_requests.insert(*destination, now);
+        self.outgoing_request_queue.push_back((*destination, now));
     }
 
     pub fn decode(&mut self, data: &[u8]) -> Option<PathRequest> {

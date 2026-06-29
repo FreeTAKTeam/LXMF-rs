@@ -295,7 +295,11 @@ impl TransportHandler {
     ) {
         let packet = self.path_requests.generate(address, tag);
 
-        self.send(TxMessage { tx_type: TxMessageType::Broadcast(on_iface), packet }).await;
+        let trace =
+            self.send(TxMessage { tx_type: TxMessageType::Broadcast(on_iface), packet }).await;
+        if trace.sent_ifaces > 0 || trace.queued_ifaces > 0 {
+            self.path_requests.record_outgoing_request(address);
+        }
     }
 
     /// Register (or refresh) the *virtual* unicast iface that the

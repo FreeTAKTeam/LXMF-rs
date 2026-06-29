@@ -151,6 +151,9 @@ impl Transport {
             dispatch.sent_ifaces,
             dispatch.failed_ifaces
         );
+        if dispatch.sent_ifaces > 0 || dispatch.queued_ifaces > 0 {
+            self.handler.lock().await.path_requests.record_outgoing_request(destination);
+        }
         dispatch
     }
 

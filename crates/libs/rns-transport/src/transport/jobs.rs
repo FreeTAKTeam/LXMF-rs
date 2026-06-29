@@ -6,6 +6,7 @@ use crate::destination::link::LinkWatchdogAction;
 
 #[allow(dead_code)]
 const MIN_LINKS_CHECK_DELAY: Duration = Duration::from_millis(10);
+const PATH_REQUEST_MI: Duration = Duration::from_secs(20);
 
 #[allow(dead_code)]
 fn link_check_delay_from_deadline(
@@ -67,6 +68,8 @@ pub(super) async fn handle_check_links<'a>(mut handler: MutexGuard<'a, Transport
     let mut closed_link_ids: Vec<AddressHash> = Vec::new();
     let mut pending_packets: Vec<Packet> = Vec::new();
     let mut direct_messages: Vec<TxMessage> = Vec::new();
+    let mut closed_pending_destinations: Vec<AddressHash> = Vec::new();
+    let mut rediscovery_requests: Vec<AddressHash> = Vec::new();
     let now = std::time::Instant::now();
 
     // Clean up input links
@@ -121,8 +124,13 @@ pub(super) async fn handle_check_links<'a>(mut handler: MutexGuard<'a, Transport
         }
         match link.status() {
             LinkStatus::Closed => {
+                let destination = link.destination().address_hash;
+                let rediscover_closed_pending = !handler.config.retransmit && !link.was_activated();
                 links_to_remove.push(*link_entry.0);
                 closed_link_ids.push(*link.id());
+                if rediscover_closed_pending {
+                    closed_pending_destinations.push(destination);
+                }
             }
             LinkStatus::Active | LinkStatus::Stale => match link.check_watchdog(true) {
                 LinkWatchdogAction::SendKeepAlive => {
@@ -159,9 +167,39 @@ pub(super) async fn handle_check_links<'a>(mut handler: MutexGuard<'a, Transport
     for link_id in &closed_link_ids {
         handler.resource_manager.remove_link_state(*link_id);
     }
+    closed_pending_destinations.sort();
+    closed_pending_destinations.dedup();
+    for destination in closed_pending_destinations {
+        if handler.path_table.expire_path(&destination) {
+            log::debug!(
+                "tp({}): expired path to {} after pending link never activated",
+                handler.config.name,
+                destination
+            );
+        }
+        if !handler.config.connected_to_shared_instance
+            && !handler.path_requests.outgoing_request_recently_sent(
+                &destination,
+                now.into(),
+                PATH_REQUEST_MI,
+            )
+        {
+            rediscovery_requests.push(destination);
+        }
+    }
 
     for packet in pending_packets {
         handler.send_packet(packet).await;
+    }
+    rediscovery_requests.sort();
+    rediscovery_requests.dedup();
+    for destination in rediscovery_requests {
+        log::debug!(
+            "tp({}): trying to rediscover path for {} since a pending link never activated",
+            handler.config.name,
+            destination
+        );
+        handler.request_path(&destination, None, None).await;
     }
     for message in direct_messages {
         handler.send(message).await;

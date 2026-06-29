@@ -267,6 +267,9 @@ direct `PATH_RESPONSE` when a matching announce arrives.
 Recursive path-request forwarding now respects Python's interface announce
 pacing gates: queued announces and active announce-cap windows block recursive
 requests, and admitted recursive requests advance the cap window.
+Never-activated outbound links now expire their stale destination path and
+schedule Python-style rediscovery path requests, with the 20-second
+`PATH_REQUEST_MI` throttle and shared-instance client suppression.
 Known-path requests received on a roaming-mode interface are no longer answered
 when the learned next-hop interface for that path is the same interface,
 matching Python's roaming-interface loop suppression.

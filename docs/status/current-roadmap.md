@@ -54,6 +54,10 @@ The project is best described by capability level:
   queued announces or an active announce cap block the request, while a
   recursive request admitted by the gate advances the next allowed
   announce/path slot.
+- Never-activated outbound links now trigger Python-style path rediscovery:
+  the stale path is expired, rediscovery requests are throttled by the
+  `PATH_REQUEST_MI` window, and shared-instance clients leave rediscovery to
+  the shared instance.
 - Known-path requests on roaming interfaces also suppress direct path answers
   when the learned next-hop iface is the same roaming iface, matching Python's
   loop-avoidance behavior.

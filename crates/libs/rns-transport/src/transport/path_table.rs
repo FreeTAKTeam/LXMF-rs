@@ -56,6 +56,10 @@ impl PathTable {
         self.map.get(destination).map(|entry| entry.iface)
     }
 
+    pub fn expire_path(&mut self, destination: &AddressHash) -> bool {
+        self.map.remove(destination).is_some()
+    }
+
     pub fn handle_announce(
         &mut self,
         announce: &Packet,
@@ -392,5 +396,31 @@ mod tests {
 
         assert_eq!(table.remove_stale(now, |_| None), 1);
         assert!(table.get(&destination).is_none());
+    }
+
+    #[test]
+    fn expire_path_removes_exact_destination() {
+        let now = test_now();
+        let destination = AddressHash::new_from_hash(&Hash::new_from_slice(b"destination"));
+        let other_destination = AddressHash::new_from_hash(&Hash::new_from_slice(b"other"));
+        let iface = AddressHash::new_from_hash(&Hash::new_from_slice(b"iface"));
+        let mut table = PathTable::new();
+        for destination in [destination, other_destination] {
+            table.map.insert(
+                destination,
+                PathEntry {
+                    timestamp: now,
+                    received_from: destination,
+                    hops: 1,
+                    iface,
+                    packet_hash: Hash::new_from_slice(b"packet"),
+                },
+            );
+        }
+
+        assert!(table.expire_path(&destination));
+        assert!(!table.expire_path(&destination));
+        assert!(table.get(&destination).is_none());
+        assert!(table.get(&other_destination).is_some());
     }
 }

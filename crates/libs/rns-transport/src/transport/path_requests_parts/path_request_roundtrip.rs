@@ -168,6 +168,45 @@ mod tests {
     }
 
     #[test]
+    fn outgoing_path_requests_are_throttled_like_python() {
+        let mut testee = PathRequests::new("", None, 16, 16, 30);
+        let destination = AddressHash::new_from_rand(OsRng);
+        let cooldown = Duration::from_secs(20);
+        let now = Instant::now();
+
+        assert!(!testee.outgoing_request_recently_sent(&destination, now, cooldown));
+        testee.record_outgoing_request_at(&destination, now);
+        assert!(testee.outgoing_request_recently_sent(
+            &destination,
+            now + Duration::from_secs(19),
+            cooldown
+        ));
+        assert!(!testee.outgoing_request_recently_sent(
+            &destination,
+            now + cooldown + Duration::from_millis(1),
+            cooldown
+        ));
+    }
+
+    #[test]
+    fn refreshing_outgoing_path_request_survives_stale_queue_entry() {
+        let mut testee = PathRequests::new("", None, 16, 16, 30);
+        let destination = AddressHash::new_from_rand(OsRng);
+        let cooldown = Duration::from_secs(20);
+        let now = Instant::now();
+        let refresh_at = now + cooldown + Duration::from_millis(1);
+
+        testee.record_outgoing_request_at(&destination, now);
+        testee.record_outgoing_request_at(&destination, refresh_at);
+
+        assert!(testee.outgoing_request_recently_sent(
+            &destination,
+            refresh_at + Duration::from_millis(1),
+            cooldown
+        ));
+    }
+
+    #[test]
     fn recursive_request_caps_are_scoped_per_interface() {
         let mut testee = PathRequests::new("", None, 16, 1, 30);
         let destination_a = AddressHash::new_from_rand(OsRng);

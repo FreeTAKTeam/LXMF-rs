@@ -326,6 +326,15 @@ impl Link {
         &self.destination
     }
 
+    pub fn was_activated(&self) -> bool {
+        self.activated_at.is_some()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_request_time_for_test(&mut self, request_time: Instant) {
+        self.request_time = request_time;
+    }
+
     pub fn ingress_iface(&self) -> Option<AddressHash> {
         self.ingress_iface
     }
