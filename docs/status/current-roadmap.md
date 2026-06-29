@@ -335,6 +335,10 @@ The project is best described by capability level:
   carrier/link-local state, TCP/Backbone listener state, plus UDP, serial,
   KISS, BLE GATT, I2P, RNodeMulti, Weave, and VR-N76 status rows and
   propagation peer state.
+- `rnpath-rs` now exercises daemon-backed path lookup through `rnx
+  rnpath-smoke`, which starts a local four-node mesh and verifies a
+  non-neighbor destination resolves with next-hop/interface metadata over the
+  software RPC path.
 
 ### LXMF
 

@@ -23,6 +23,9 @@ fn run(cli: Cli) -> io::Result<()> {
         Command::MeshSim { nodes, base_rpc_port, timeout_secs, keep, modes } => {
             scenario_mesh::run_mesh_sim(nodes, base_rpc_port, timeout_secs, keep, modes)
         }
+        Command::RnpathSmoke { nodes, base_rpc_port, timeout_secs, keep } => {
+            scenario_mesh::run_rnpath_smoke(nodes, base_rpc_port, timeout_secs, keep)
+        }
         Command::Replay { trace, capture_out, identity_hash } => {
             scenario::run_replay(trace, capture_out, identity_hash)
         }

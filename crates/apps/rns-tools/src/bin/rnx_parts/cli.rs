@@ -50,6 +50,16 @@ enum Command {
         #[arg(long = "mode", value_enum)]
         modes: Vec<DeliveryMode>,
     },
+    RnpathSmoke {
+        #[arg(long, default_value_t = 4)]
+        nodes: usize,
+        #[arg(long, default_value_t = 4440)]
+        base_rpc_port: u16,
+        #[arg(long, default_value_t = 45)]
+        timeout_secs: u64,
+        #[arg(long, default_value_t = false)]
+        keep: bool,
+    },
     Replay {
         #[arg(long)]
         trace: PathBuf,
