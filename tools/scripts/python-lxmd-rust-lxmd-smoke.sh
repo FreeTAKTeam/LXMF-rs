@@ -13,6 +13,7 @@ LOG_DIR="${LOG_DIR:-${REPO_ROOT}/target/interop/python-lxmd-rust-lxmd}"
 REPORT_PATH="${REPORT_PATH:-${LOG_DIR}/report.json}"
 TIMEOUT_SECS="${TIMEOUT_SECS:-45}"
 PATH_DISCOVERY_TIMEOUT_SECS="${PATH_DISCOVERY_TIMEOUT_SECS:-20}"
+PATH_DISCOVERY_QUIET_SECS="${PATH_DISCOVERY_QUIET_SECS:-2}"
 REMOTE_STATUS_TIMEOUT_SECS="${REMOTE_STATUS_TIMEOUT_SECS:-300}"
 REMOTE_STATUS_ATTEMPTS="${REMOTE_STATUS_ATTEMPTS:-2}"
 REMOTE_CONTROL_PATH_TIMEOUT_SECS="${REMOTE_CONTROL_PATH_TIMEOUT_SECS:-120}"
@@ -20,11 +21,17 @@ REMOTE_CONTROL_SETTLE_SECS="${REMOTE_CONTROL_SETTLE_SECS:-2}"
 REMOTE_STATUS_PREFLIGHT="${REMOTE_STATUS_PREFLIGHT:-0}"
 COMPAT_CASE="${COMPAT_CASE:-direct_python_to_rust}"
 PROPAGATION_PEERING_COST="${PROPAGATION_PEERING_COST:-8}"
+RUST_ANNOUNCE_AT_START="yes"
+RUST_ANNOUNCE_INTERVAL_LINE="announce_interval = 1"
 PY_ANNOUNCE_AT_START="yes"
-PY_ANNOUNCE_INTERVAL="1"
+PY_ANNOUNCE_INTERVAL_LINE="announce_interval = 1"
+if [[ "${COMPAT_CASE}" == "rns_path_request_python_to_rust" ]]; then
+  RUST_ANNOUNCE_AT_START="no"
+  RUST_ANNOUNCE_INTERVAL_LINE=""
+fi
 if [[ "${COMPAT_CASE}" == "rns_path_request_rust_to_python" ]]; then
   PY_ANNOUNCE_AT_START="no"
-  PY_ANNOUNCE_INTERVAL="3600"
+  PY_ANNOUNCE_INTERVAL_LINE=""
 fi
 
 RUST_RPC_ADDR="${RUST_RPC_ADDR:-127.0.0.1:$((42430 + ($$ % 1000)))}"
@@ -578,6 +585,77 @@ raise SystemExit(f"timed out waiting for Python path to {destination_hash_hex}")
 PY
 }
 
+request_python_destination_path_json() {
+  local destination_hash="$1"
+  local timeout_secs="${2:-${PATH_DISCOVERY_TIMEOUT_SECS}}"
+  local quiet_secs="${3:-${PATH_DISCOVERY_QUIET_SECS}}"
+  "${PYTHON_BIN}" - <<'PY' "${PY_RNS_DIR}" "${destination_hash}" "${timeout_secs}" "${quiet_secs}"
+import json
+import sys
+import time
+
+import RNS
+
+rns_config, destination_hash_hex, timeout_secs, quiet_secs = sys.argv[1:5]
+timeout_secs = max(float(timeout_secs), 1.0)
+quiet_secs = max(float(quiet_secs), 0.0)
+destination_hash = bytes.fromhex(destination_hash_hex)
+
+RNS.Reticulum(configdir=rns_config, loglevel=0)
+quiet_started = time.time()
+quiet_deadline = quiet_started + quiet_secs
+quiet_checks = 0
+while time.time() < quiet_deadline:
+    if RNS.Transport.has_path(destination_hash):
+        print(json.dumps({
+            "destination_hash": destination_hash_hex,
+            "path_found_before": True,
+            "path_found": True,
+            "requested": False,
+            "identity_recalled": RNS.Identity.recall(destination_hash) is not None,
+            "quiet_seconds": round(time.time() - quiet_started, 3),
+            "quiet_checks": quiet_checks,
+            "elapsed_seconds": 0.0,
+        }, sort_keys=True))
+        raise SystemExit(0)
+    quiet_checks += 1
+    time.sleep(0.25)
+
+started = time.time()
+before = RNS.Transport.has_path(destination_hash)
+requested = False
+deadline = started + timeout_secs
+while time.time() < deadline:
+    if RNS.Transport.has_path(destination_hash):
+        print(json.dumps({
+            "destination_hash": destination_hash_hex,
+            "path_found_before": before,
+            "path_found": True,
+            "requested": requested,
+            "identity_recalled": RNS.Identity.recall(destination_hash) is not None,
+            "quiet_seconds": round(started - quiet_started, 3),
+            "quiet_checks": quiet_checks,
+            "elapsed_seconds": round(time.time() - started, 3),
+        }, sort_keys=True))
+        raise SystemExit(0)
+    RNS.Transport.request_path(destination_hash)
+    requested = True
+    time.sleep(0.5)
+
+print(json.dumps({
+    "destination_hash": destination_hash_hex,
+    "path_found_before": before,
+    "path_found": False,
+    "requested": requested,
+    "identity_recalled": RNS.Identity.recall(destination_hash) is not None,
+    "quiet_seconds": round(started - quiet_started, 3),
+    "quiet_checks": quiet_checks,
+    "elapsed_seconds": round(time.time() - started, 3),
+}, sort_keys=True))
+raise SystemExit(1)
+PY
+}
+
 start_python_lxmd() {
   local redirect="${1:->}"
   if [[ "${redirect}" == ">>" ]]; then
@@ -847,8 +925,8 @@ EOF
 cat > "${RUST_DIR}/config" <<EOF
 [propagation]
 enable_node = yes
-announce_at_start = yes
-announce_interval = 1
+announce_at_start = ${RUST_ANNOUNCE_AT_START}
+${RUST_ANNOUNCE_INTERVAL_LINE}
 propagation_stamp_cost_target = 0
 propagation_stamp_cost_flexibility = 0
 autopeer = yes
@@ -858,8 +936,8 @@ control_allowed = ${PY_CONTROL_IDENTITY_HASH}
 
 [lxmf]
 display_name = Rust Smoke Node
-announce_at_start = yes
-announce_interval = 1
+announce_at_start = ${RUST_ANNOUNCE_AT_START}
+${RUST_ANNOUNCE_INTERVAL_LINE}
 ${RUST_ON_INBOUND_LINE}
 
 [logging]
@@ -1223,7 +1301,7 @@ cat > "${PY_DIR}/config" <<EOF
 [propagation]
 enable_node = yes
 announce_at_start = ${PY_ANNOUNCE_AT_START}
-announce_interval = ${PY_ANNOUNCE_INTERVAL}
+${PY_ANNOUNCE_INTERVAL_LINE}
 propagation_stamp_cost_target = 0
 propagation_stamp_cost_flexibility = 0
 autopeer = yes
@@ -1234,7 +1312,7 @@ control_allowed = ${RUST_CONTROL_IDENTITY_HASH}
 [lxmf]
 display_name = Python Smoke Node
 announce_at_start = ${PY_ANNOUNCE_AT_START}
-announce_interval = ${PY_ANNOUNCE_INTERVAL}
+${PY_ANNOUNCE_INTERVAL_LINE}
 on_inbound = ${PY_DIR}/on_inbound.sh
 
 [logging]
@@ -1248,6 +1326,66 @@ fi
 
 PY_DELIVERY_HASH="$(destination_hash_from_identity "${PY_DIR}/identity" "lxmf" "delivery")"
 PY_PROPAGATION_HASH="$(destination_hash_from_identity "${PY_DIR}/identity" "lxmf" "propagation")"
+
+if [[ "${COMPAT_CASE}" == "rns_path_request_python_to_rust" ]]; then
+  if ! wait_for_rust_tcp_client_accept; then
+    echo "Rust daemon did not accept Python TCP client before Python path request case" >&2
+    exit 1
+  fi
+
+  PYTHON_PATH_REQUEST_RESULT="$(request_python_destination_path_json "${RUST_DELIVERY_HASH}" "${PATH_DISCOVERY_TIMEOUT_SECS}" "${PATH_DISCOVERY_QUIET_SECS}")"
+  "${PYTHON_BIN}" - <<'PY' \
+    "${REPORT_PATH}" \
+    "${TMP_ROOT}" \
+    "${RUST_LXMD_LOG}" \
+    "${PY_LOG}" \
+    "${RUST_DELIVERY_HASH}" \
+    "${PYTHON_PATH_REQUEST_RESULT}" \
+    "${COMPAT_CASE}"
+import json
+import sys
+
+(
+    report_path,
+    tmp_root,
+    rust_log,
+    py_log,
+    rust_delivery_hash,
+    python_path_request_raw,
+    compat_case,
+) = sys.argv[1:8]
+
+python_path_request = json.loads(python_path_request_raw)
+assert python_path_request["destination_hash"] == rust_delivery_hash, python_path_request
+assert python_path_request["path_found_before"] is False, python_path_request
+assert python_path_request["path_found"] is True, python_path_request
+assert python_path_request["requested"] is True, python_path_request
+assert python_path_request["identity_recalled"] is True, python_path_request
+
+with open(report_path, "w", encoding="utf-8") as handle:
+    json.dump({
+        "status": "pass",
+        "case": compat_case,
+        "proof": {
+            "python_request_path": python_path_request,
+        },
+        "hashes": {
+            "rust_delivery": rust_delivery_hash,
+        },
+        "logs": {
+            "tmp_root": tmp_root,
+            "rust_lxmd": rust_log,
+            "python_lxmd": py_log,
+        },
+    }, handle, indent=2)
+    handle.write("\n")
+PY
+
+  echo "[python-lxmd-rust-lxmd-smoke] pass"
+  echo "[python-lxmd-rust-lxmd-smoke] report=${REPORT_PATH}"
+  echo "[python-lxmd-rust-lxmd-smoke] logs=${TMP_ROOT}"
+  exit 0
+fi
 
 if [[ "${COMPAT_CASE}" == "rns_path_request_rust_to_python" ]]; then
   cargo build -p rns-tools --bin rnpath-rs --quiet

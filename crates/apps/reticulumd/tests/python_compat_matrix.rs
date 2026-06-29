@@ -138,6 +138,12 @@ fn python_compat_rns_path_request_rust_to_python() {
 }
 
 #[test]
+#[ignore = "requires live Python compatibility harness environment"]
+fn python_compat_rns_path_request_python_to_rust() {
+    run_case("rns_path_request_python_to_rust");
+}
+
+#[test]
 fn compatibility_cases_are_dispatchable_by_harness_and_smoke_script() {
     assert_cases_are_dispatchable_by_harness_and_smoke_script();
 }

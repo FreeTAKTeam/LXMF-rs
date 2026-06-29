@@ -25,7 +25,7 @@ struct CompatibilityCase {
     description: &'static str,
 }
 
-const COMPATIBILITY_CASES: [CompatibilityCase; 21] = [
+const COMPATIBILITY_CASES: [CompatibilityCase; 22] = [
     CompatibilityCase {
         id: "direct_rust_to_python",
         mode: CompatibilityMode::Direct,
@@ -131,11 +131,16 @@ const COMPATIBILITY_CASES: [CompatibilityCase; 21] = [
         mode: CompatibilityMode::PathDiscovery,
         description: "Rust daemon path RPC resolves a Python Reticulum destination over loopback TCP",
     },
+    CompatibilityCase {
+        id: "rns_path_request_python_to_rust",
+        mode: CompatibilityMode::PathDiscovery,
+        description: "Python Reticulum path request resolves a Rust daemon destination over loopback TCP",
+    },
 ];
 
 pub(crate) fn assert_required_modes_covered() {
     assert!(
-        COMPATIBILITY_CASES.len() >= 21,
+        COMPATIBILITY_CASES.len() >= 22,
         "matrix should cover the documented required scenarios"
     );
     assert_case_present("direct_rust_to_python");
@@ -159,6 +164,7 @@ pub(crate) fn assert_required_modes_covered() {
     assert_case_present("resource_transfer");
     assert_case_present("lxm_interchange");
     assert_case_present("rns_path_request_rust_to_python");
+    assert_case_present("rns_path_request_python_to_rust");
     assert!(COMPATIBILITY_CASES.iter().any(|case| case.mode == CompatibilityMode::Direct));
     assert!(COMPATIBILITY_CASES.iter().any(|case| case.mode == CompatibilityMode::Opportunistic));
     assert!(COMPATIBILITY_CASES.iter().any(|case| case.mode == CompatibilityMode::Propagated));
