@@ -2,6 +2,7 @@ use std::io::{Read, Write};
 use std::net::{Shutdown, TcpListener};
 use std::process::Command;
 use std::thread;
+use std::time::Duration;
 
 use rns_rpc::rpc::codec;
 use rns_rpc::{RpcError, RpcResponse};
@@ -181,6 +182,41 @@ fn rnpath_times_out_when_daemon_does_not_find_path() {
     assert!(!output.status.success());
     let stderr = String::from_utf8(output.stderr).expect("utf8 stderr");
     assert!(stderr.contains("did not complete: timeout"));
+    rpc.thread.join().expect("mock rpc server");
+}
+
+#[test]
+fn rnpath_read_timeout_has_headroom_for_daemon_path_wait() {
+    let rpc = spawn_mock_rpc(|request| {
+        assert_eq!(request.method, "request_path");
+        thread::sleep(Duration::from_millis(1_200));
+        RpcResponse {
+            id: request.id,
+            result: Some(json!({
+                "destination_hash": "00112233445566778899aabbccddeeff",
+                "status": "timeout",
+                "requested": true,
+                "path_found": false,
+            })),
+            error: None,
+        }
+    });
+
+    let output = Command::new(rnpath_bin())
+        .arg("00112233445566778899aabbccddeeff")
+        .arg("--rpc")
+        .arg(rpc.addr)
+        .arg("--timeout")
+        .arg("1")
+        .output()
+        .expect("run rnpath-rs");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).expect("utf8 stderr");
+    assert!(
+        stderr.contains("did not complete: timeout"),
+        "stderr should report daemon timeout result instead of a socket read timeout: {stderr}"
+    );
     rpc.thread.join().expect("mock rpc server");
 }
 

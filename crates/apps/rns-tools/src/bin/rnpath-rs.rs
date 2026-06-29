@@ -9,6 +9,7 @@ use serde_json::{json, Value};
 const DESTINATION_HASH_BYTES: usize = 16;
 const DESTINATION_HASH_HEX_LEN: usize = DESTINATION_HASH_BYTES * 2;
 const REQUEST_PATH_METHOD: &str = "request_path";
+const RPC_READ_HEADROOM: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Parser)]
 #[command(name = "rnpath-rs", about = "Request Reticulum path discovery through daemon RPC.")]
@@ -50,7 +51,14 @@ fn run(cli: &Cli, output: &mut dyn Write) -> io::Result<()> {
         "on_iface": cli.on_iface,
         "tag_hex": cli.tag_hex,
     });
-    let response = rpc_call(&cli.rpc, 1, REQUEST_PATH_METHOD, Some(params), cli.rpc_timeout())?;
+    let response = rpc_call(
+        &cli.rpc,
+        1,
+        REQUEST_PATH_METHOD,
+        Some(params),
+        cli.rpc_timeout(),
+        cli.rpc_read_timeout(),
+    )?;
     let result = ensure_rpc_ok(response, REQUEST_PATH_METHOD)?.ok_or_else(|| {
         io::Error::new(io::ErrorKind::InvalidData, "missing path discovery result")
     })?;
@@ -76,6 +84,7 @@ fn rpc_call(
     method: &str,
     params: Option<serde_json::Value>,
     timeout: Duration,
+    read_timeout: Duration,
 ) -> io::Result<rns_rpc::RpcResponse> {
     let frame = build_rpc_frame(id, method, params)?;
     let request = build_http_post("/rpc", rpc, &frame);
@@ -83,7 +92,7 @@ fn rpc_call(
         io::Error::new(io::ErrorKind::InvalidInput, "RPC address did not resolve")
     })?;
     let mut stream = TcpStream::connect_timeout(&addr, timeout)?;
-    stream.set_read_timeout(Some(timeout))?;
+    stream.set_read_timeout(Some(read_timeout))?;
     stream.set_write_timeout(Some(timeout))?;
     stream.write_all(&request)?;
     stream.shutdown(Shutdown::Write)?;
@@ -175,5 +184,9 @@ fn parse_request_tag_hex(value: &str) -> Result<String, String> {
 impl Cli {
     fn rpc_timeout(&self) -> Duration {
         Duration::from_secs(self.timeout.max(1))
+    }
+
+    fn rpc_read_timeout(&self) -> Duration {
+        self.rpc_timeout() + RPC_READ_HEADROOM
     }
 }
