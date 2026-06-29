@@ -44,6 +44,9 @@ The project is best described by capability level:
 - Cached remote path responses now keep the cached announce payload while
   stamping the direct response packet as `PATH_RESPONSE`, aligning another
   Python announce/path discovery edge policy.
+- Known-path `PATH_RESPONSE` work now preempts any due ordinary announce for
+  the same destination and then releases the ordinary announce on the next
+  retransmission drain, matching Python's `held_announces` edge ordering.
 - Known-path requests on roaming interfaces also suppress direct path answers
   when the learned next-hop iface is the same roaming iface, matching Python's
   loop-avoidance behavior.

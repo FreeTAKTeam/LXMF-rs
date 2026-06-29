@@ -242,6 +242,81 @@ async fn known_remote_path_request_sends_path_response_context() {
 }
 
 #[tokio::test]
+async fn path_response_holds_due_ordinary_announce_until_response_served() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut config = TransportConfig::new("test", &local_identity, true);
+    config.set_retransmit(true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+
+    let (learned_iface, requesting_iface) = {
+        let manager = transport.iface_manager();
+        let mut manager = manager.lock().await;
+        let learned_iface = *manager.new_channel(16).address();
+        let requesting_iface = *manager.new_channel(16).address();
+        (learned_iface, requesting_iface)
+    };
+
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut remote_destination =
+        SingleInputDestination::new(remote_identity, DestinationName::new("lxmf", "delivery"));
+    let mut announce = remote_destination.announce(OsRng, None).expect("valid announce packet");
+    announce.header.hops = 2;
+    let destination = announce.destination;
+    let cached_data = announce.data.clone();
+
+    handle_announce(
+        &announce,
+        handler.lock().await,
+        learned_iface,
+        crate::iface::IfaceSource::None,
+    )
+    .await;
+
+    let path_request = {
+        let mut guard = handler.lock().await;
+        guard.path_requests.generate(&destination, Some(vec![0x45; crate::hash::ADDRESS_HASH_SIZE]))
+    };
+
+    {
+        let mut guard = handler.lock().await;
+        handle_path_request(&path_request, &mut guard, requesting_iface).await;
+    }
+
+    tokio::time::sleep(Duration::from_millis(650)).await;
+
+    let first = {
+        let mut guard = handler.lock().await;
+        let transport_id = *guard.config.identity.address_hash();
+        guard.announce_table.drain_retransmissions(&transport_id)
+    };
+
+    assert_eq!(first.len(), 1);
+    assert!(
+        matches!(first[0].tx_type, TxMessageType::Direct(iface) if iface == requesting_iface),
+        "known path responses should be served before a due ordinary announce"
+    );
+    assert_eq!(first[0].packet.destination, destination);
+    assert_eq!(first[0].packet.context, PacketContext::PathResponse);
+    assert_eq!(first[0].packet.data.as_slice(), cached_data.as_slice());
+
+    let second = {
+        let mut guard = handler.lock().await;
+        let transport_id = *guard.config.identity.address_hash();
+        guard.announce_table.drain_retransmissions(&transport_id)
+    };
+
+    assert_eq!(second.len(), 1);
+    assert!(
+        matches!(second[0].tx_type, TxMessageType::Broadcast(Some(iface)) if iface == learned_iface),
+        "the held ordinary announce should rebroadcast after the path response"
+    );
+    assert_eq!(second[0].packet.destination, destination);
+    assert_eq!(second[0].packet.context, PacketContext::None);
+    assert_eq!(second[0].packet.data.as_slice(), cached_data.as_slice());
+}
+
+#[tokio::test]
 async fn full_iface_answers_known_path_request_when_next_hop_is_same_iface() {
     let local_identity = PrivateIdentity::new_from_rand(OsRng);
     let mut config = TransportConfig::new("test", &local_identity, true);

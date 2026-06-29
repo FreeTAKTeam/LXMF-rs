@@ -258,6 +258,9 @@ Cached remote path-response announces now carry `PacketContext::PathResponse`
 when scheduled from a known path, matching Python's `PATH_RESPONSE` treatment
 for direct path answers and keeping ordinary announce rebroadcast policy
 separate from path-response delivery.
+When an ordinary announce is already queued for the same destination, a due
+known-path `PATH_RESPONSE` now drains first and the ordinary announce
+rebroadcasts afterward, matching Python's `held_announces` ordering.
 Known-path requests received on a roaming-mode interface are no longer answered
 when the learned next-hop interface for that path is the same interface,
 matching Python's roaming-interface loop suppression.
