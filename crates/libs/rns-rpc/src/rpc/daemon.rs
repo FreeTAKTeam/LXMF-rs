@@ -27,6 +27,7 @@ mod sdk_markers;
 mod sdk_negotiate_poll;
 mod sdk_operations;
 mod sdk_outbound;
+mod sdk_outbound_worker;
 mod sdk_paper_command;
 mod sdk_runtime;
 mod sdk_topics;

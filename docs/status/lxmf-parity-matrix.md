@@ -54,7 +54,7 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - PARITY_ITEM id=router.handle_outbound_policy status=partial
 - PARITY_ITEM id=router.adapter_transport status=partial
 - PARITY_ITEM id=router.paper_uri_ingest status=done
-- PARITY_ITEM id=router.cancel_outbound status=partial
+- PARITY_ITEM id=router.cancel_outbound status=done
 - PARITY_ITEM id=router.propagation_ingest_fetch status=done
 - PARITY_ITEM id=router.transfer_state_lifecycle status=done
 - PARITY_ITEM id=router.node_app_data status=done
@@ -420,6 +420,13 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   cancellation through both `ZmqPipelineBackendClient::cancel` and
   `app.delivery.cancel` envelope execution, preserving daemon cancellation
   outcomes for REM/RCH without raw RPC envelopes.
+- `app.delivery.cancel` now covers queued/pre-handoff outbound work: accepted
+  cancellation persists `receipt_status = cancelled`, records delivery trace
+  and event state, exposes cancel metadata through both delegated
+  `sdk_cancel_message_v2` and `sdk_envelope_execute_v2` lifecycle traces, and
+  prevents a later outbound bridge handoff after worker lanes resume. ZeroMQ
+  tests cover all cancel result variants plus non-accepted envelope payload and
+  extension preservation.
 - The typed ZeroMQ SDK backend starts the final propagation-first branch with
   `ZmqPipelineBackendClient::propagation_peer_sync`, routing
   `app.propagation.peer_sync` over `sdk_envelope_execute_v2` to the daemon's

@@ -56,6 +56,7 @@ pub struct RpcDaemon {
     delivery_traces: Arc<Mutex<HashMap<String, Vec<DeliveryTraceEntry>>>>,
     daemon_status_snapshot: std::sync::RwLock<DaemonStatusSnapshot>,
     delivery_status_lock: Arc<Mutex<()>>,
+    outbound_delivery_handoffs: Arc<Mutex<HashSet<String>>>,
     sdk_metrics: Arc<Mutex<RpcMetrics>>,
     outbound_bridge: Option<Arc<dyn OutboundBridge>>,
     outbound_delivery_tx: Option<mpsc::SyncSender<OutboundDeliveryCommand>>,

@@ -53,6 +53,16 @@ impl RpcDaemon {
             }
         }
 
+        if cancel_result == "Accepted"
+            && self
+                .outbound_delivery_handoffs
+                .lock()
+                .expect("outbound delivery handoffs mutex poisoned")
+                .contains(message_id)
+        {
+            cancel_result = "TooLateToCancel";
+        }
+
         for transition in &transitions {
             if cancel_result != "Accepted" {
                 break;

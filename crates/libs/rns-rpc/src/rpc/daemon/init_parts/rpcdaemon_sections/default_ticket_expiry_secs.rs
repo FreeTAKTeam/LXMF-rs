@@ -265,11 +265,13 @@ impl RpcDaemon {
         let sdk_metrics = Arc::new(Mutex::new(RpcMetrics::default()));
         let delivery_traces = Arc::new(Mutex::new(HashMap::new()));
         let delivery_status_lock = Arc::new(Mutex::new(()));
+        let outbound_delivery_handoffs = Arc::new(Mutex::new(HashSet::new()));
         let outbound_delivery_tx = Self::spawn_outbound_delivery_worker(
             outbound_bridge.clone(),
             Arc::clone(&store),
             Arc::clone(&delivery_traces),
             Arc::clone(&delivery_status_lock),
+            Arc::clone(&outbound_delivery_handoffs),
         );
         let event_sink_tx = if !event_sink_bridges.is_empty() {
             Self::spawn_event_sink_worker(Arc::clone(&sdk_metrics))
@@ -339,6 +341,7 @@ impl RpcDaemon {
             delivery_traces,
             daemon_status_snapshot: std::sync::RwLock::new(DaemonStatusSnapshot::default()),
             delivery_status_lock,
+            outbound_delivery_handoffs,
             sdk_metrics,
             outbound_bridge,
             outbound_delivery_tx,

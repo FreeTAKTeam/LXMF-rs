@@ -288,6 +288,7 @@ impl RpcDaemon {
                 | "send_message"
                 | "send_message_v2"
                 | "sdk_cancel_message_v2"
+                | "sdk_envelope_execute_v2"
                 | "sdk_configure_v2"
                 | "sdk_shutdown_v2"
         )
@@ -356,6 +357,37 @@ impl RpcDaemon {
                         "cancel_result".to_string(),
                         JsonValue::String(cancel_result.to_string()),
                     );
+                }
+            }
+            "sdk_envelope_execute_v2" => {
+                if let Some(response) = result.get("response") {
+                    let operation_id = response.get("operation_id").and_then(JsonValue::as_str);
+                    if let Some(operation_id) = operation_id {
+                        details.insert(
+                            "operation_id".to_string(),
+                            JsonValue::String(operation_id.to_string()),
+                        );
+                    }
+                    if let Some(payload) = response.get("payload") {
+                        if let Some(message_id) =
+                            payload.get("message_id").and_then(JsonValue::as_str)
+                        {
+                            details.insert(
+                                "message_id".to_string(),
+                                JsonValue::String(message_id.to_string()),
+                            );
+                        }
+                        if operation_id == Some("app.delivery.cancel") {
+                            if let Some(cancel_result) =
+                                payload.get("result").and_then(JsonValue::as_str)
+                            {
+                                details.insert(
+                                    "cancel_result".to_string(),
+                                    JsonValue::String(cancel_result.to_string()),
+                                );
+                            }
+                        }
+                    }
                 }
             }
             "sdk_poll_events_v2" => {

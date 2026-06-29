@@ -9,6 +9,7 @@ impl RpcDaemon {
         store: Arc<MessagesStore>,
         delivery_traces: Arc<Mutex<HashMap<String, Vec<DeliveryTraceEntry>>>>,
         delivery_status_lock: Arc<Mutex<()>>,
+        outbound_delivery_handoffs: Arc<Mutex<HashSet<String>>>,
     ) -> Option<mpsc::SyncSender<OutboundDeliveryCommand>> {
         let bridge = bridge?;
         let (tx, rx) =
@@ -19,6 +20,7 @@ impl RpcDaemon {
             let store = Arc::clone(&store);
             let delivery_traces = Arc::clone(&delivery_traces);
             let delivery_status_lock = Arc::clone(&delivery_status_lock);
+            let outbound_delivery_handoffs = Arc::clone(&outbound_delivery_handoffs);
             let rx = Arc::clone(&rx);
             std::thread::Builder::new()
                 .name(format!("rpc-outbound-delivery-worker-{lane}"))
@@ -35,40 +37,13 @@ impl RpcDaemon {
                         &store,
                         &delivery_traces,
                         &delivery_status_lock,
+                        &outbound_delivery_handoffs,
                         command,
                     );
                 })
                 .expect("spawn rpc outbound delivery worker");
         }
         Some(tx)
-    }
-
-    fn process_outbound_delivery_command(
-        bridge: &Arc<dyn OutboundBridge>,
-        store: &Arc<MessagesStore>,
-        delivery_traces: &Arc<Mutex<HashMap<String, Vec<DeliveryTraceEntry>>>>,
-        delivery_status_lock: &Arc<Mutex<()>>,
-        command: OutboundDeliveryCommand,
-    ) {
-        let mut record = command.record;
-        record.fields = outbound_wire_fields(record.fields)
-            .inspect_err(|err| log::warn!("[daemon] invalid outbound fields format: {err}"))
-            .ok()
-            .flatten();
-        if let Err(err) = bridge.deliver(&record, &command.options) {
-            let status = format!("failed: {err}");
-            let resolved_status = {
-                let _status_guard =
-                    delivery_status_lock.lock().expect("delivery_status_lock mutex poisoned");
-                store
-                    .resolve_receipt_status(record.id.as_str(), status.as_str())
-                    .unwrap_or_else(|_| Some(status.clone()))
-                    .unwrap_or_else(|| status.clone())
-            };
-            if resolved_status == status {
-                Self::append_delivery_trace_to(delivery_traces, record.id.as_str(), status);
-            }
-        }
     }
 
     #[allow(clippy::too_many_arguments)]
