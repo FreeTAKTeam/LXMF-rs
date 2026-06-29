@@ -196,24 +196,25 @@ pub(super) async fn accept_delivery_packet(
     let _ = daemon.accept_inbound_with_raw(record, data);
 }
 
-struct InboundDropEvent<'a> {
-    reason: &'a str,
-    delivery_kind: InboundDeliveryKind,
-    raw_destination_hex: &'a str,
-    destination: [u8; 16],
-    payload_mode: InboundPayloadMode,
-    bytes_len: usize,
-    detail: Option<String>,
-    record: Option<&'a MessageRecord>,
+pub(super) struct InboundDropEvent<'a> {
+    pub(super) reason: &'a str,
+    pub(super) delivery_kind: InboundDeliveryKind,
+    pub(super) raw_destination_hex: &'a str,
+    pub(super) destination: [u8; 16],
+    pub(super) payload_mode: InboundPayloadMode,
+    pub(super) bytes_len: usize,
+    pub(super) detail: Option<String>,
+    pub(super) record: Option<&'a MessageRecord>,
 }
 
 #[derive(Clone, Copy)]
-enum InboundDeliveryKind {
+pub(super) enum InboundDeliveryKind {
     Packet,
+    Propagation,
     Resource,
 }
 
-fn emit_inbound_drop_event(daemon: &RpcDaemon, event: InboundDropEvent<'_>) {
+pub(super) fn emit_inbound_drop_event(daemon: &RpcDaemon, event: InboundDropEvent<'_>) {
     let mut payload = json!({
         "reason": event.reason,
         "delivery_kind": inbound_delivery_kind_name(event.delivery_kind),
@@ -268,6 +269,7 @@ fn inbound_payload_mode_name(mode: InboundPayloadMode) -> &'static str {
 fn inbound_delivery_kind_name(kind: InboundDeliveryKind) -> &'static str {
     match kind {
         InboundDeliveryKind::Packet => "packet",
+        InboundDeliveryKind::Propagation => "propagation",
         InboundDeliveryKind::Resource => "resource",
     }
 }

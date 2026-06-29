@@ -262,6 +262,24 @@
             .expect("ingest propagation envelope");
         assert_eq!(ingested, 1);
 
+        let event = daemon.take_event().expect("propagated drop event");
+        assert_eq!(event.event_type, "inbound_dropped");
+        assert_eq!(event.payload["reason"], json!("delivery_policy_rejected"));
+        assert_eq!(event.payload["delivery_kind"], json!("propagation"));
+        let raw_destination = hex::encode(destination_hash);
+        assert!(event.payload["raw_destination_hash"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("sha256:") && value != raw_destination));
+        assert!(event.payload["resolved_destination_hash"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("sha256:") && value != raw_destination));
+        assert!(event.payload["source_hash"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("sha256:") && value != hex::encode(source_hash)));
+        assert_eq!(event.payload["payload_mode"], json!("full_wire"));
+        assert_eq!(event.payload["bytes_len"], json!(wire.len()));
+        assert!(daemon.take_event().is_none(), "ignored propagated payload should emit one event");
+
         let messages = daemon
             .handle_rpc(RpcRequest { id: 43, method: "list_messages".to_string(), params: None })
             .expect("list messages")

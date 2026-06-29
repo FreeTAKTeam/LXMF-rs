@@ -24,7 +24,7 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 | `LXMF/LXMessage.py` | `crates/libs/lxmf-core` | done | Wire, storage, propagation, paper, signatures, message IDs, binary fidelity, and timestamp precision metadata. | No confirmed base-message blocker. |
 | `LXMF/LXMPeer.py` | `crates/libs/rns-rpc`, `crates/apps/reticulumd` | done | Persistent peers, queue marks, offer selection, policy gates, peering keys, throttling, maintenance, source accounting, cumulative acceptance, serialized restored queue snapshots, boolean/list/numeric offer responses, transfer/retry/restart recovery, and unpeer cleanup. | No confirmed `LXMPeer.py` blocker in the pinned Python-only coverage. |
 | `LXMF/LXMRouter.py` | `crates/libs/rns-rpc`, `crates/apps/reticulumd` | partial | Outbound modes, selected propagation nodes, direct/propagated resources, cancellation, fetch/download/sync RPCs, receipts, persistence, propagation-node side effects, retry/failure handling, and Python live remote lifecycle coverage. | No confirmed propagation-router lifecycle blocker remains; broader non-propagation router convenience surface remains narrower than Python. |
-| `LXMF/Handlers.py` | `crates/apps/reticulumd`, `crates/libs/rns-rpc` | partial | Delivery, announce, propagation app-data, receipt, inbound bridge handling, and structured raw event-stream signals for direct packet and resource delivery drops. | Some router-coupled side effects and broader propagated/drop observability remain narrower. |
+| `LXMF/Handlers.py` | `crates/apps/reticulumd`, `crates/libs/rns-rpc` | partial | Delivery, announce, propagation app-data, receipt, inbound bridge handling, structured raw event-stream signals for direct packet/resource delivery drops, and propagated local delivery-policy drop events. | Some router-coupled side effects and broader propagated/drop observability remain narrower. |
 | `LXMF/LXStamper.py` | `crates/libs/lxmf-core`, `crates/libs/rns-rpc`, `crates/apps/reticulumd` | done | Validation, generation, ticket-derived stamps, cancellation-aware task work, background deferred worker queue ownership, retry state, cancellation, propagation-stamp pre-handoff preparation, and progress metadata. | No confirmed deferred-stamp lifecycle blocker. |
 
 ## Method Checklist
@@ -858,5 +858,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   including default identifier redaction and `delivery_kind` classification,
   without storing a message or updating peer activity. Direct stamp-policy and
   delivery-policy rejections route through the same bounded drop-event helper.
+- Focused propagated local-delivery tests cover ignored-source delivery-policy
+  rejections emitting bounded raw `inbound_dropped` events with
+  `delivery_kind = "propagation"` while preserving Python-style no-store
+  behavior and default identifier redaction.
 - `interop.python_live_gate` means the configured scenarios run successfully;
   it does not imply every partial row is complete.
