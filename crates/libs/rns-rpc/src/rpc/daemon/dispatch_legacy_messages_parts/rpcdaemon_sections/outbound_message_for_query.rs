@@ -312,7 +312,7 @@ impl RpcDaemon {
         );
         details.insert(
             "legacy_hot_apply_supported_kinds".to_string(),
-            json!(["tcp_client", "tcp_server"]),
+            json!(["tcp_client"]),
         );
         error.details = Some(Box::new(details));
 
@@ -320,7 +320,7 @@ impl RpcDaemon {
     }
 
     pub(super) fn is_legacy_hot_apply_kind(kind: &str) -> bool {
-        matches!(kind, "tcp_client" | "tcp_server")
+        kind == "tcp_client"
     }
 
     pub(super) fn interface_identifier(iface: &InterfaceRecord, index: usize) -> String {

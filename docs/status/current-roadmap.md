@@ -7,6 +7,11 @@ confidence, and execution order. Detailed row-level status lives in:
 
 - `docs/status/reticulum-parity-matrix.md`
 - `docs/status/lxmf-parity-matrix.md`
+- `docs/status/software-parity-ledger.md`
+
+The software parity ledger maps current software/protocol/runtime partial rows
+into implementation-ready work packets and explicitly defers hardware/HIL and
+external-client evidence.
 
 Historical plans and issue lists explain how work was approached; they do not
 override these status files.

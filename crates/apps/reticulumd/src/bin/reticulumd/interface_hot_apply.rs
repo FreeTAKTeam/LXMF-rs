@@ -35,6 +35,7 @@ impl InterfaceMutationBridge for TcpInterfaceMutationBridge {
         &self,
         interfaces: Vec<InterfaceRecord>,
     ) -> Result<Vec<InterfaceRecord>, io::Error> {
+        validate_hot_apply_tcp_uniqueness(&interfaces)?;
         let effective = interfaces
             .iter()
             .cloned()
@@ -148,6 +149,22 @@ async fn apply_tcp_interface_records(
         };
         managed.insert(key, ManagedTcpInterface { record, address });
     }
+}
+
+fn validate_hot_apply_tcp_uniqueness(interfaces: &[InterfaceRecord]) -> Result<(), io::Error> {
+    let mut seen = std::collections::HashSet::new();
+    for record in interfaces {
+        let Some(key) = tcp_interface_key(record) else {
+            continue;
+        };
+        if !seen.insert(key.clone()) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("duplicate hot-apply tcp interface key '{key}'"),
+            ));
+        }
+    }
+    Ok(())
 }
 
 pub(super) fn tcp_interface_key(record: &InterfaceRecord) -> Option<String> {

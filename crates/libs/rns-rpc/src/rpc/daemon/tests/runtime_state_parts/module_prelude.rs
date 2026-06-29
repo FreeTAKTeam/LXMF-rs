@@ -128,6 +128,71 @@ fn sdk_cancel_message_v2_distinguishes_not_found_and_too_late() {
 }
 
 #[test]
+fn sdk_cancel_message_v2_exposes_negative_results_in_lifecycle_trace() {
+    let daemon = RpcDaemon::test_instance();
+
+    let not_found = daemon
+        .handle_rpc(rpc_request(
+            60,
+            "sdk_cancel_message_v2",
+            json!({ "message_id": "missing-observable" }),
+        ))
+        .expect("cancel missing");
+    assert_eq!(not_found.result.expect("not found result")["result"], json!("NotFound"));
+
+    let send = daemon
+        .handle_rpc(rpc_request(
+            61,
+            "send_message_v2",
+            json!({
+                "id": "sent-observable",
+                "source": "src",
+                "destination": "dst",
+                "title": "",
+                "content": "hello"
+            }),
+        ))
+        .expect("send");
+    assert!(send.error.is_none());
+
+    let too_late = daemon
+        .handle_rpc(rpc_request(
+            62,
+            "sdk_cancel_message_v2",
+            json!({ "message_id": "sent-observable" }),
+        ))
+        .expect("cancel sent");
+    assert_eq!(too_late.result.expect("too late result")["result"], json!("TooLateToCancel"));
+
+    let mut cancel_results = Vec::new();
+    while let Some(event) = daemon.take_event() {
+        if event.event_type != "sdk_lifecycle_trace" {
+            continue;
+        }
+        if event.payload["method"] != json!("sdk_cancel_message_v2")
+            || event.payload["phase"] != json!("finish")
+            || event.payload["outcome"] != json!("ok")
+        {
+            continue;
+        }
+        if let Some(cancel_result) =
+            event.payload["details"]["cancel_result"].as_str().map(ToOwned::to_owned)
+        {
+            cancel_results.push(cancel_result);
+        }
+    }
+
+    assert!(
+        cancel_results.iter().any(|result| result == "NotFound"),
+        "missing-message cancellation should be observable as NotFound"
+    );
+    assert!(
+        cancel_results.iter().any(|result| result == "TooLateToCancel"),
+        "sent-message cancellation should be observable as TooLateToCancel"
+    );
+}
+
+#[test]
 fn sdk_cancel_message_v2_preserves_detailed_failed_status() {
     let daemon = RpcDaemon::test_instance();
     daemon
@@ -163,6 +228,22 @@ fn sdk_cancel_message_v2_preserves_detailed_failed_status() {
     assert_eq!(
         status.result.expect("status result")["message"]["receipt_status"],
         json!("failed: no path")
+    );
+
+    let mut saw_already_terminal = false;
+    while let Some(event) = daemon.take_event() {
+        if event.event_type == "sdk_lifecycle_trace"
+            && event.payload["method"] == json!("sdk_cancel_message_v2")
+            && event.payload["phase"] == json!("finish")
+            && event.payload["details"]["cancel_result"] == json!("AlreadyTerminal")
+        {
+            saw_already_terminal = true;
+            break;
+        }
+    }
+    assert!(
+        saw_already_terminal,
+        "terminal cancellation should be visible without status rewrite"
     );
 }
 

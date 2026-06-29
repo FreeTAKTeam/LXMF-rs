@@ -9,6 +9,17 @@
         }
     }
 
+    fn tcp_server_interface(name: &str, host: &str, port: u16) -> InterfaceRecord {
+        InterfaceRecord {
+            kind: "tcp_server".to_string(),
+            enabled: true,
+            host: Some(host.to_string()),
+            port: Some(port),
+            name: Some(name.to_string()),
+            settings: None,
+        }
+    }
+
     struct RecordingInterfaceMutationBridge {
         applied: std::sync::Mutex<Vec<Vec<InterfaceRecord>>>,
     }
@@ -159,6 +170,38 @@
     }
 
     #[test]
+    fn set_interfaces_reports_tcp_server_mutation_requires_restart() {
+        let daemon = RpcDaemon::test_instance();
+
+        let response = daemon
+            .handle_rpc(rpc_request(
+                27,
+                "set_interfaces",
+                json!({
+                    "interfaces": [
+                        {
+                            "type": "tcp_server",
+                            "enabled": true,
+                            "host": "127.0.0.1",
+                            "port": 4242,
+                            "name": "listener"
+                        }
+                    ]
+                }),
+            ))
+            .expect("set_interfaces response");
+
+        let error = response.error.expect("expected restart-required error");
+        assert_eq!(error.code, "CONFIG_RESTART_REQUIRED");
+        assert_eq!(
+            error.machine_code.as_deref(),
+            Some("UNSUPPORTED_MUTATION_KIND_REQUIRES_RESTART")
+        );
+        let details = error.details.expect("restart details");
+        assert_eq!(details["legacy_hot_apply_supported_kinds"], json!(["tcp_client"]));
+    }
+
+    #[test]
     fn set_interfaces_keeps_stored_interfaces_unchanged_when_bridge_fails() {
         let daemon = RpcDaemon::test_instance();
         daemon.replace_interfaces(vec![tcp_interface("primary", "127.0.0.1", 4242)]);
@@ -289,6 +332,75 @@
 
         let interfaces = daemon.interfaces.lock().expect("interfaces mutex poisoned").clone();
         assert_eq!(interfaces[0].port, Some(4248));
+    }
+
+    #[test]
+    fn reload_config_reports_tcp_server_only_diff_requires_restart() {
+        let daemon = RpcDaemon::test_instance();
+        daemon.replace_interfaces(vec![tcp_server_interface("listener", "127.0.0.1", 4242)]);
+
+        let response = daemon
+            .handle_rpc(rpc_request(
+                28,
+                "reload_config",
+                json!({
+                    "interfaces": [
+                        {
+                            "type": "tcp_server",
+                            "enabled": true,
+                            "host": "127.0.0.1",
+                            "port": 4248,
+                            "name": "listener"
+                        }
+                    ]
+                }),
+            ))
+            .expect("reload_config response");
+
+        let error = response.error.expect("expected restart-required error");
+        assert_eq!(error.code, "CONFIG_RESTART_REQUIRED");
+        assert_eq!(
+            error.machine_code.as_deref(),
+            Some("UNSUPPORTED_MUTATION_KIND_REQUIRES_RESTART")
+        );
+
+        let interfaces = daemon.interfaces.lock().expect("interfaces mutex poisoned").clone();
+        assert_eq!(interfaces[0].kind, "tcp_server");
+        assert_eq!(interfaces[0].port, Some(4242));
+    }
+
+    #[test]
+    fn reload_config_rejects_tcp_kind_swap_as_restart_required() {
+        let daemon = RpcDaemon::test_instance();
+        daemon.replace_interfaces(vec![tcp_interface("primary", "127.0.0.1", 4242)]);
+
+        let response = daemon
+            .handle_rpc(rpc_request(
+                29,
+                "reload_config",
+                json!({
+                    "interfaces": [
+                        {
+                            "type": "tcp_server",
+                            "enabled": true,
+                            "host": "127.0.0.1",
+                            "port": 4242,
+                            "name": "primary"
+                        }
+                    ]
+                }),
+            ))
+            .expect("reload_config response");
+
+        let error = response.error.expect("expected restart-required error");
+        assert_eq!(error.code, "CONFIG_RESTART_REQUIRED");
+        assert_eq!(
+            error.machine_code.as_deref(),
+            Some("UNSUPPORTED_MUTATION_KIND_REQUIRES_RESTART")
+        );
+
+        let interfaces = daemon.interfaces.lock().expect("interfaces mutex poisoned").clone();
+        assert_eq!(interfaces, vec![tcp_interface("primary", "127.0.0.1", 4242)]);
     }
 
     #[test]
