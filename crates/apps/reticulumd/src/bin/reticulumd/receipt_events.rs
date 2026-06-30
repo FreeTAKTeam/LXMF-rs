@@ -70,7 +70,13 @@ mod tests {
 
     #[test]
     fn in_progress_receipt_states_keep_correlation_maps() {
-        for status in ["sending", "sent: link resource", "sent: direct link", "queued"] {
+        for status in [
+            "sending",
+            "sent: link resource",
+            "sent: direct link",
+            "queued",
+            "queued: waiting for announce",
+        ] {
             assert_eq!(ReceiptDeliveryState::from_status(status), ReceiptDeliveryState::InProgress);
             assert!(!ReceiptDeliveryState::from_status(status).should_prune_correlations());
         }

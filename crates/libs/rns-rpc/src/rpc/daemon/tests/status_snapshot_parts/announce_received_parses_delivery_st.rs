@@ -97,6 +97,12 @@ fn announce_received_wakes_pending_direct_and_opportunistic_outbound() {
     for record in [
         queued_outbound("pending-direct", "peer-delivery-wake", Some("direct"), Some("queued")),
         queued_outbound(
+            "pending-deferred-direct",
+            "peer-delivery-wake",
+            Some("direct"),
+            Some("queued: waiting for announce"),
+        ),
+        queued_outbound(
             "pending-opportunistic",
             "peer-delivery-wake",
             Some("opportunistic"),
@@ -152,7 +158,7 @@ fn announce_received_wakes_pending_direct_and_opportunistic_outbound() {
     assert!(announce.error.is_none());
 
     let mut delivered = Vec::new();
-    for _ in 0..3 {
+    for _ in 0..4 {
         delivered.push(rx.recv_timeout(std::time::Duration::from_secs(1)).expect("woken delivery"));
     }
     assert!(
@@ -164,6 +170,7 @@ fn announce_received_wakes_pending_direct_and_opportunistic_outbound() {
         delivered,
         vec![
             ("pending-default-direct".to_string(), None),
+            ("pending-deferred-direct".to_string(), Some("direct".to_string())),
             ("pending-direct".to_string(), Some("direct".to_string())),
             ("pending-opportunistic".to_string(), Some("opportunistic".to_string())),
         ]
@@ -188,6 +195,7 @@ fn announce_received_wakes_pending_direct_and_opportunistic_outbound() {
 
     for (message_id, expected_status) in [
         ("pending-direct", "sending"),
+        ("pending-deferred-direct", "sending"),
         ("pending-opportunistic", "sending"),
         ("pending-default-direct", "sending"),
         ("pending-propagated", "queued"),
@@ -206,6 +214,83 @@ fn announce_received_wakes_pending_direct_and_opportunistic_outbound() {
             .expect("receipt status");
         assert_eq!(status, expected_status, "{message_id}");
     }
+}
+
+#[test]
+fn announce_received_does_not_wake_cancelled_deferred_outbound() {
+    struct RecordingOutboundBridge {
+        tx: mpsc::Sender<String>,
+    }
+
+    impl OutboundBridge for RecordingOutboundBridge {
+        fn deliver(
+            &self,
+            record: &MessageRecord,
+            _options: &OutboundDeliveryOptions,
+        ) -> Result<(), std::io::Error> {
+            let _ = self.tx.send(record.id.clone());
+            Ok(())
+        }
+    }
+
+    let store = MessagesStore::in_memory().expect("in-memory store");
+    store
+        .insert_message(&MessageRecord {
+            id: "cancelled-deferred-direct".to_string(),
+            source: "source-peer".to_string(),
+            destination: "peer-delivery-cancel".to_string(),
+            title: String::new(),
+            content: "pending outbound".to_string(),
+            timestamp: 1_700_000_000,
+            direction: "out".to_string(),
+            fields: Some(json!({ "_lxmf": { "method": "direct" } })),
+            receipt_status: Some("queued: waiting for announce".to_string()),
+        })
+        .expect("seed deferred message");
+
+    let (tx, rx) = mpsc::channel();
+    let daemon = RpcDaemon::with_store_and_bridges(
+        store,
+        "local-node".to_string(),
+        Some(Arc::new(RecordingOutboundBridge { tx })),
+        None,
+    );
+
+    let cancel = daemon
+        .handle_rpc(rpc_request(
+            49,
+            "sdk_cancel_message_v2",
+            json!({ "message_id": "cancelled-deferred-direct" }),
+        ))
+        .expect("cancel deferred");
+    assert!(cancel.error.is_none());
+    assert_eq!(cancel.result.expect("cancel result")["result"], json!("Accepted"));
+
+    let announce = daemon
+        .handle_rpc(rpc_request(
+            50,
+            "announce_received",
+            json!({
+                "peer": "peer-delivery-cancel",
+                "timestamp": 1_700_000_014i64,
+                "aspect": "lxmf.delivery",
+            }),
+        ))
+        .expect("delivery announce received");
+    assert!(announce.error.is_none());
+    assert!(
+        rx.recv_timeout(std::time::Duration::from_millis(150)).is_err(),
+        "cancelled deferred messages must not wake after delivery announce"
+    );
+
+    let status = daemon
+        .store
+        .get_message("cancelled-deferred-direct")
+        .expect("lookup message")
+        .expect("message exists")
+        .receipt_status
+        .expect("receipt status");
+    assert_eq!(status, "cancelled");
 }
 
 #[test]

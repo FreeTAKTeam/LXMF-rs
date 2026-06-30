@@ -1,4 +1,5 @@
 impl DeliveryTask {
+    pub(super) const DEFERRED_PEER_IDENTITY_STATUS: &'static str = "queued: waiting for announce";
 
     async fn resolve_or_create_propagation_link(
         &self,
@@ -131,17 +132,37 @@ impl DeliveryTask {
         }
 
         let Some(identity) = identity else {
+            if self.abort_if_cancelled(stage) {
+                return Ok(None);
+            }
+            let status = self.identity_miss_status(failure_status);
             let detail = destination_hex.unwrap_or(self.destination_hex.as_str());
             log_delivery_trace(&self.message_id, detail, stage, "not found");
             emit_receipt_event(&self.receipt_tx, ReceiptEvent {
                 message_id: self.message_id.clone(),
-                status: failure_status.to_string(),
+                status: status.to_string(),
             });
-            return Err(failure_status);
+            if status == Self::DEFERRED_PEER_IDENTITY_STATUS {
+                return Ok(None);
+            }
+            return Err(status);
         };
 
         let detail = destination_hex.unwrap_or(self.destination_hex.as_str());
         log_delivery_trace(&self.message_id, detail, stage, "resolved");
         Ok(Some(identity))
+    }
+
+    pub(super) fn identity_miss_status(&self, failure_status: &'static str) -> &'static str {
+        if failure_status == "failed: peer not announced"
+            && matches!(
+                self.requested_method,
+                RequestedDeliveryMethod::Direct | RequestedDeliveryMethod::Opportunistic
+            )
+        {
+            Self::DEFERRED_PEER_IDENTITY_STATUS
+        } else {
+            failure_status
+        }
     }
 }

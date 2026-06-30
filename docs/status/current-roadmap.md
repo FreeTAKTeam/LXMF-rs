@@ -470,9 +470,10 @@ The project is best described by capability level:
 - RPC daemon `lxmf.delivery` announce ingestion now wakes stored pending
   direct/default-direct and opportunistic outbound messages for the announced
   destination while leaving propagated, paper, terminal, already-sending, and
-  other-destination records untouched. A remaining bridge-side parity gap is
-  making reticulumd identity/path misses enter a nonterminal deferred queue
-  instead of terminal failure before a later announce arrives.
+  other-destination records untouched. Reticulumd direct/opportunistic peer
+  identity misses after delivery path-request timeout now enter nonterminal
+  `queued: waiting for announce` state, so later delivery announces can requeue
+  them instead of leaving a terminal `failed:*` receipt.
 - Direct and propagated resource sends support receipt-state separation,
   timeout/failure propagation, and active resource cancellation.
 - Link sends now register packet/resource receipt tracking before handoff and
