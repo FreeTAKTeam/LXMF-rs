@@ -113,8 +113,8 @@
     },
     {
       "path": "docs/contracts/rpc-contract.md",
-      "bytes": 15007,
-      "sha256": "fe8614aa808684f8c62a498a6594d88189021f5b7de4c3f96a5ecbf0ba4a8717"
+      "bytes": 15098,
+      "sha256": "67d250d788beb4d1f5b12cc848e68c79895fc14e38d2a4c41338d54e003dbfbe"
     },
     {
       "path": "docs/contracts/schema-driven-clients.md",
