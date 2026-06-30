@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last reassessed: 2026-06-29
+Last reassessed: 2026-06-30
 
 This file is the repository-level source of truth for parity posture, release
 confidence, and execution order. Detailed row-level status lives in:
@@ -930,6 +930,12 @@ The project is best described by capability level:
   `signature_checked = false`, `signature_valid = false`, and
   `signature_status = "source_identity_unknown"` instead of omitting signature
   status from handler-facing state.
+- Focused local propagated-delivery tests now also feed a real source announce
+  through a transport interface channel before delivery, covering known-source
+  propagated messages surface `signature_checked = true` with
+  `signature_status = "verified"` for valid LXMF signatures and
+  `signature_status = "signature_invalid"` for corrupted signatures in both
+  stored records and raw inbound events.
 - The typed propagation branch now also exposes
   `ZmqPipelineBackendClient::propagation_recovery_state`, projecting
   `app.propagation.status` into structured sync state, selected-node,
