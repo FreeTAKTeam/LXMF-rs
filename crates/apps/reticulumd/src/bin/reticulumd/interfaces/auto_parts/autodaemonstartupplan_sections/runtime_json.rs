@@ -111,11 +111,15 @@ impl AutoDaemonStartupPlan {
         dedupe: &mut AutoInboundPacketDeduplicator,
         datagram: AutoPeerDataDatagram,
         now: core::time::Duration,
-    ) -> AutoProcessedPeerDataDatagram {
+    ) -> Option<AutoProcessedPeerDataDatagram> {
+        if now < self.startup_plan.initial_peering_wait {
+            return None;
+        }
+
         let peer_address = peer_data_source_address(&datagram);
         let decision =
             state.handle_spawned_peer_inbound(dedupe, &peer_address, &datagram.payload, now);
-        AutoProcessedPeerDataDatagram { datagram, peer_address, decision }
+        Some(AutoProcessedPeerDataDatagram { datagram, peer_address, decision })
     }
 
     pub(crate) fn send_initial_peer_announces(

@@ -320,9 +320,9 @@ The project is best described by capability level:
   drained during restart, removal, or runtime shutdown. Loopback peer-data
   tests now prove direct per-peer outbound routes stop emitting after
   listener removal/restart and refresh only after a new accepted peer datagram.
-  Discovery datagrams processed before Python's final-init peering wait has
-  elapsed are now ignored, so packets handled before AutoInterface comes online
-  cannot create peers or rejection events.
+  Discovery and peer-data datagrams processed before Python's final-init peering
+  wait has elapsed are now ignored, so packets handled before AutoInterface
+  comes online cannot create peers, peer-data routes, or rejection events.
   Daemon `_runtime.auto.carrier_runtime.last_peer_job` status now records the
   last AutoInterface peer lifecycle job's expired-peer count, reverse peer
   announce count, missing initial multicast echo count, carrier event summary,

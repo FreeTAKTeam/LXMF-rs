@@ -4,18 +4,21 @@ impl AutoDaemonStartupPlan {
     fn spawn_peer_data_receive_loop(
         &self,
         socket: AutoBoundDataSocket,
-        state: Arc<tokio::sync::Mutex<AutoDiscoveryState>>,
-        dedupe: Arc<tokio::sync::Mutex<AutoInboundPacketDeduplicator>>,
-        transport: Option<AutoInterfaceTransportBridge>,
-        events: tokio::sync::mpsc::Sender<AutoPeerDataLoopEvent>,
-        mut shutdown: tokio::sync::watch::Receiver<bool>,
+        runtime: AutoPeerDataReceiveLoopRuntime,
     ) -> tokio::task::JoinHandle<()> {
         let plan = self.clone();
         tokio::spawn(async move {
+            let AutoPeerDataReceiveLoopRuntime {
+                state,
+                dedupe,
+                transport,
+                events,
+                mut shutdown,
+                started_at,
+            } = runtime;
             if *shutdown.borrow() {
                 return;
             }
-            let started_at = Instant::now();
             loop {
                 tokio::select! {
                     changed = shutdown.changed() => {
@@ -37,7 +40,7 @@ impl AutoDaemonStartupPlan {
                                 break;
                             }
                         };
-                        let processed = {
+                        let Some(processed) = ({
                             let mut state = state.lock().await;
                             let mut dedupe = dedupe.lock().await;
                             plan.process_peer_data_datagram(
@@ -46,6 +49,8 @@ impl AutoDaemonStartupPlan {
                                 datagram,
                                 started_at.elapsed(),
                             )
+                        }) else {
+                            continue;
                         };
                         if let Some(transport) = &transport {
                             transport

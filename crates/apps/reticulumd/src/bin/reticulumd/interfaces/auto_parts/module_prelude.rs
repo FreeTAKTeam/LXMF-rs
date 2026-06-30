@@ -167,6 +167,17 @@ pub(crate) enum AutoPeerDataLoopEvent {
 }
 
 #[allow(dead_code)]
+#[derive(Clone)]
+struct AutoPeerDataReceiveLoopRuntime {
+    state: Arc<tokio::sync::Mutex<AutoDiscoveryState>>,
+    dedupe: Arc<tokio::sync::Mutex<AutoInboundPacketDeduplicator>>,
+    transport: Option<AutoInterfaceTransportBridge>,
+    events: tokio::sync::mpsc::Sender<AutoPeerDataLoopEvent>,
+    shutdown: tokio::sync::watch::Receiver<bool>,
+    started_at: Instant,
+}
+
+#[allow(dead_code)]
 pub(crate) struct AutoDiscoveryListenerSupervisor {
     plan: AutoDaemonStartupPlan,
     state: Arc<tokio::sync::Mutex<AutoDiscoveryState>>,
@@ -188,6 +199,7 @@ pub(crate) struct AutoPeerDataListenerSupervisor {
     dedupe: Arc<tokio::sync::Mutex<AutoInboundPacketDeduplicator>>,
     transport: Option<AutoInterfaceTransportBridge>,
     shutdown: tokio::sync::watch::Receiver<bool>,
+    started_at: Instant,
     listeners: BTreeMap<String, AutoPeerDataListenerHandle>,
     pending_stops: Vec<tokio::task::JoinHandle<()>>,
 }

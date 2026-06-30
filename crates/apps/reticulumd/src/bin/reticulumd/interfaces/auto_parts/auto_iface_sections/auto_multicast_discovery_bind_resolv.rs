@@ -214,12 +214,13 @@
 
     #[tokio::test]
     async fn auto_bind_peer_data_socket_receives_typed_datagram() {
-        let plan = plan_with_data_listener(AutoDataListenerBinding {
+        let mut plan = plan_with_data_listener(AutoDataListenerBinding {
             ifname: "lo".to_string(),
             link_local_address: "127.0.0.1".to_string(),
             bind_address: "127.0.0.1".to_string(),
             bind_port: 0,
         });
+        plan.startup_plan.initial_peering_wait = core::time::Duration::ZERO;
         let sockets = plan
             .bind_data_sockets(|_| panic!("IPv4 data bind is unscoped"))
             .await
@@ -636,6 +637,133 @@
                 .expect("peer data loop shutdown timeout")
                 .expect("peer data loop task");
         }
+    }
+
+    #[tokio::test]
+    async fn auto_peer_data_receive_loop_ignores_datagrams_before_final_init_wait() {
+        let mut plan = plan_with_data_listener(AutoDataListenerBinding {
+            ifname: "lo".to_string(),
+            link_local_address: "127.0.0.1".to_string(),
+            bind_address: "127.0.0.1".to_string(),
+            bind_port: 0,
+        });
+        plan.startup_plan.initial_peering_wait = core::time::Duration::from_millis(500);
+        let sockets = plan
+            .bind_data_sockets(|_| panic!("IPv4 data bind is unscoped"))
+            .await
+            .expect("bind peer data socket");
+        let bind_addr = sockets[0].bind_addr;
+        let state = Arc::new(tokio::sync::Mutex::new(plan.discovery_state()));
+        let dedupe = Arc::new(tokio::sync::Mutex::new(AutoInboundPacketDeduplicator::from_timing(
+            AutoInterfaceTiming::for_platform(AutoInterfacePlatform::Other),
+        )));
+        let (events_tx, mut events_rx) = tokio::sync::mpsc::channel(4);
+        let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+        let handles = plan.spawn_peer_data_receive_loops(
+            sockets,
+            Arc::clone(&state),
+            Arc::clone(&dedupe),
+            None,
+            events_tx,
+            shutdown_rx,
+        );
+        let sender = tokio::net::UdpSocket::bind("127.0.0.1:0").await.expect("bind sender");
+        let source_address = sender.local_addr().expect("sender addr").ip().to_string();
+        state.lock().await.observe_discovery_packet(
+            &source_address,
+            "lo",
+            core::time::Duration::ZERO,
+        );
+
+        sender.send_to(b"packet", bind_addr).await.expect("send early peer data datagram");
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(100), events_rx.recv())
+                .await
+                .is_err(),
+            "pre-final-init peer-data datagrams should not emit processed events"
+        );
+
+        tokio::time::sleep(std::time::Duration::from_millis(450)).await;
+        sender.send_to(b"packet", bind_addr).await.expect("send post-final-init peer data datagram");
+        let accepted = tokio::time::timeout(std::time::Duration::from_secs(1), events_rx.recv())
+            .await
+            .expect("accepted event timeout")
+            .expect("accepted event");
+        assert!(matches!(
+            accepted,
+            AutoPeerDataLoopEvent::Processed(AutoProcessedPeerDataDatagram {
+                decision: AutoPeerInboundDecision::Accepted { .. },
+                ..
+            })
+        ));
+
+        shutdown_tx.send(true).expect("send shutdown");
+        for handle in handles {
+            tokio::time::timeout(std::time::Duration::from_secs(1), handle)
+                .await
+                .expect("peer data loop shutdown timeout")
+                .expect("peer data loop task");
+        }
+    }
+
+    #[tokio::test]
+    async fn auto_peer_data_listener_replacement_does_not_restart_final_init_wait() {
+        let mut plan = plan_with_data_listener(AutoDataListenerBinding {
+            ifname: "lo".to_string(),
+            link_local_address: "127.0.0.1".to_string(),
+            bind_address: "127.0.0.1".to_string(),
+            bind_port: 0,
+        });
+        plan.startup_plan.initial_peering_wait = core::time::Duration::from_millis(50);
+        let first_socket = plan
+            .bind_data_sockets(|_| panic!("IPv4 data bind is unscoped"))
+            .await
+            .expect("bind first peer data socket")
+            .remove(0);
+        let second_socket = plan
+            .bind_data_sockets(|_| panic!("IPv4 data bind is unscoped"))
+            .await
+            .expect("bind second peer data socket")
+            .remove(0);
+        let second_bind_addr = second_socket.bind_addr;
+        let state = Arc::new(tokio::sync::Mutex::new(plan.discovery_state()));
+        let dedupe = Arc::new(tokio::sync::Mutex::new(AutoInboundPacketDeduplicator::from_timing(
+            AutoInterfaceTiming::for_platform(AutoInterfacePlatform::Other),
+        )));
+        let (events_tx, mut events_rx) = tokio::sync::mpsc::channel(4);
+        let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+        let mut supervisor =
+            AutoPeerDataListenerSupervisor::new(plan.clone(), Arc::clone(&state), dedupe, None, shutdown_rx);
+        supervisor.spawn_bound_socket(first_socket, &events_tx);
+        tokio::time::sleep(std::time::Duration::from_millis(75)).await;
+        supervisor.spawn_bound_socket(second_socket, &events_tx);
+
+        let sender = tokio::net::UdpSocket::bind("127.0.0.1:0").await.expect("bind sender");
+        let source_address = sender.local_addr().expect("sender addr").ip().to_string();
+        state.lock().await.observe_discovery_packet(
+            &source_address,
+            "lo",
+            core::time::Duration::ZERO,
+        );
+        sender
+            .send_to(b"replacement", second_bind_addr)
+            .await
+            .expect("send to replacement peer data listener");
+
+        let accepted = tokio::time::timeout(std::time::Duration::from_secs(1), events_rx.recv())
+            .await
+            .expect("replacement accepted event timeout")
+            .expect("replacement accepted event");
+        assert!(matches!(
+            accepted,
+            AutoPeerDataLoopEvent::Processed(AutoProcessedPeerDataDatagram {
+                decision: AutoPeerInboundDecision::Accepted { .. },
+                ..
+            })
+        ));
+
+        shutdown_tx.send(true).expect("send shutdown");
+        supervisor.shutdown_all().await;
     }
 
     #[tokio::test]

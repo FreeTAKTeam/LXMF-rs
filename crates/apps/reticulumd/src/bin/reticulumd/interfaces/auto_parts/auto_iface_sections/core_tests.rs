@@ -481,12 +481,13 @@
 
     #[tokio::test]
     async fn auto_peer_data_listener_supervisor_restarts_link_local_listener() {
-        let plan = plan_with_data_listener(AutoDataListenerBinding {
+        let mut plan = plan_with_data_listener(AutoDataListenerBinding {
             ifname: "lo".to_string(),
             link_local_address: "127.0.0.1".to_string(),
             bind_address: "127.0.0.1".to_string(),
             bind_port: 0,
         });
+        plan.startup_plan.initial_peering_wait = core::time::Duration::ZERO;
         let sockets = plan
             .bind_data_sockets(|_| panic!("IPv4 data bind is unscoped"))
             .await

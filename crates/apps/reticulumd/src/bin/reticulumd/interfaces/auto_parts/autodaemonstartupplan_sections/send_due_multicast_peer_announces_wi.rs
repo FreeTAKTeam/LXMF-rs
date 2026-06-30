@@ -652,18 +652,18 @@ impl AutoDaemonStartupPlan {
         events: tokio::sync::mpsc::Sender<AutoPeerDataLoopEvent>,
         shutdown: tokio::sync::watch::Receiver<bool>,
     ) -> Vec<tokio::task::JoinHandle<()>> {
+        let started_at = Instant::now();
+        let runtime = AutoPeerDataReceiveLoopRuntime {
+            state,
+            dedupe,
+            transport,
+            events,
+            shutdown,
+            started_at,
+        };
         sockets
             .into_iter()
-            .map(|socket| {
-                self.spawn_peer_data_receive_loop(
-                    socket,
-                    Arc::clone(&state),
-                    Arc::clone(&dedupe),
-                    transport.clone(),
-                    events.clone(),
-                    shutdown.clone(),
-                )
-            })
+            .map(|socket| self.spawn_peer_data_receive_loop(socket, runtime.clone()))
             .collect()
     }
 }
@@ -818,6 +818,7 @@ impl AutoPeerDataListenerSupervisor {
             dedupe,
             transport,
             shutdown,
+            started_at: Instant::now(),
             listeners: BTreeMap::new(),
             pending_stops: Vec::new(),
         }
@@ -840,14 +841,15 @@ impl AutoPeerDataListenerSupervisor {
     ) {
         let ifname = socket.ifname.clone();
         let socket_handle = Arc::clone(&socket.socket);
-        let join = self.plan.spawn_peer_data_receive_loop(
-            socket,
-            Arc::clone(&self.state),
-            Arc::clone(&self.dedupe),
-            self.transport.clone(),
-            events.clone(),
-            self.shutdown.clone(),
-        );
+        let runtime = AutoPeerDataReceiveLoopRuntime {
+            state: Arc::clone(&self.state),
+            dedupe: Arc::clone(&self.dedupe),
+            transport: self.transport.clone(),
+            events: events.clone(),
+            shutdown: self.shutdown.clone(),
+            started_at: self.started_at,
+        };
+        let join = self.plan.spawn_peer_data_receive_loop(socket, runtime);
         if let Some(old) =
             self.listeners.insert(ifname, AutoPeerDataListenerHandle { socket: socket_handle, join })
         {

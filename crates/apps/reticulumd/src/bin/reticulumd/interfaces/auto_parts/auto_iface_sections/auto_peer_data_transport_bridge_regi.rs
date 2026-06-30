@@ -1,11 +1,12 @@
     #[tokio::test]
     async fn auto_peer_data_transport_bridge_registers_virtual_iface_and_routes_direct_tx() {
-        let plan = plan_with_data_listener(AutoDataListenerBinding {
+        let mut plan = plan_with_data_listener(AutoDataListenerBinding {
             ifname: "lo".to_string(),
             link_local_address: "127.0.0.1".to_string(),
             bind_address: "127.0.0.1".to_string(),
             bind_port: 0,
         });
+        plan.startup_plan.initial_peering_wait = core::time::Duration::ZERO;
         let sockets = plan
             .bind_data_sockets(|_| panic!("IPv4 data bind is unscoped"))
             .await
@@ -117,12 +118,13 @@
 
     #[tokio::test]
     async fn auto_peer_data_listener_removal_prunes_direct_tx_route() {
-        let plan = plan_with_data_listener(AutoDataListenerBinding {
+        let mut plan = plan_with_data_listener(AutoDataListenerBinding {
             ifname: "lo".to_string(),
             link_local_address: "127.0.0.1".to_string(),
             bind_address: "127.0.0.1".to_string(),
             bind_port: 0,
         });
+        plan.startup_plan.initial_peering_wait = core::time::Duration::ZERO;
         let sockets = plan
             .bind_data_sockets(|_| panic!("IPv4 data bind is unscoped"))
             .await
@@ -245,12 +247,13 @@
 
     #[tokio::test]
     async fn auto_peer_data_listener_restart_prunes_and_refreshes_direct_tx_route() {
-        let plan = plan_with_data_listener(AutoDataListenerBinding {
+        let mut plan = plan_with_data_listener(AutoDataListenerBinding {
             ifname: "lo".to_string(),
             link_local_address: "127.0.0.1".to_string(),
             bind_address: "127.0.0.1".to_string(),
             bind_port: 0,
         });
+        plan.startup_plan.initial_peering_wait = core::time::Duration::ZERO;
         let sockets = plan
             .bind_data_sockets(|_| panic!("IPv4 data bind is unscoped"))
             .await
@@ -531,6 +534,56 @@
             AutoDiscoveryEvent::Peer(rns_transport::iface::auto::AutoPeerEvent::Added)
         );
         assert!(state.peer("fe80::2222").is_some());
+    }
+
+    #[test]
+    fn auto_process_peer_data_datagram_ignores_before_final_init() {
+        let plan = build_startup_plan_from_candidates(
+            &auto_iface(),
+            vec![AutoInterfaceDeviceCandidate {
+                ifname: "eth0".to_string(),
+                ipv6_addresses: vec!["fe80::1234".to_string()],
+            }],
+        )
+        .expect("startup plan");
+        let mut state = plan.discovery_state();
+        state.observe_discovery_packet(
+            "fe80::2222",
+            "eth0",
+            plan.startup_plan.initial_peering_wait,
+        );
+        let mut dedupe = AutoInboundPacketDeduplicator::from_timing(
+            AutoInterfaceTiming::for_platform(AutoInterfacePlatform::Other),
+        );
+        let datagram = AutoPeerDataDatagram {
+            ifname: "eth0".to_string(),
+            bind_addr: "[fe80::1234]:48557".parse().expect("bind addr"),
+            source_addr: "[fe80::2222]:48557".parse().expect("source addr"),
+            payload: b"packet".to_vec(),
+        };
+        let before_final_init =
+            plan.startup_plan.initial_peering_wait - core::time::Duration::from_millis(1);
+
+        assert_eq!(
+            plan.process_peer_data_datagram(
+                &mut state,
+                &mut dedupe,
+                datagram.clone(),
+                before_final_init,
+            ),
+            None
+        );
+
+        let processed = plan
+            .process_peer_data_datagram(
+                &mut state,
+                &mut dedupe,
+                datagram,
+                plan.startup_plan.initial_peering_wait,
+            )
+            .expect("final init should allow peer data processing");
+        assert_eq!(processed.peer_address, "fe80::2222");
+        assert!(matches!(processed.decision, AutoPeerInboundDecision::Accepted { .. }));
     }
 
     #[test]
