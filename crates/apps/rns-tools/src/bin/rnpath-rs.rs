@@ -1,13 +1,20 @@
 use std::io::{self, Read, Write};
 use std::net::{Shutdown, TcpStream, ToSocketAddrs};
+#[cfg(unix)]
+use std::os::unix::net::UnixStream;
+#[cfg(unix)]
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use clap::Parser;
 use rns_rpc::e2e_harness::{build_http_post, build_rpc_frame, parse_http_response_body};
 use serde_json::{json, Value};
+#[cfg(unix)]
+use socket2::{Domain, SockAddr, Socket, Type};
 
 const DESTINATION_HASH_BYTES: usize = 16;
 const DESTINATION_HASH_HEX_LEN: usize = DESTINATION_HASH_BYTES * 2;
+const DEFAULT_RPC_ADDR: &str = "127.0.0.1:4243";
 const REQUEST_PATH_METHOD: &str = "request_path";
 const RPC_READ_HEADROOM: Duration = Duration::from_secs(2);
 
@@ -17,8 +24,12 @@ struct Cli {
     #[arg(value_name = "DESTINATION_HASH", value_parser = parse_destination_hash)]
     destination_hash: String,
 
-    #[arg(long, default_value = "127.0.0.1:4243")]
-    rpc: String,
+    #[arg(long, value_name = "ADDR", help = "Daemon TCP RPC address (default: 127.0.0.1:4243)")]
+    rpc: Option<String>,
+
+    #[cfg(unix)]
+    #[arg(long, value_name = "PATH", conflicts_with = "rpc")]
+    rpc_unix: Option<PathBuf>,
 
     #[arg(long, default_value_t = 30, value_parser = clap::value_parser!(u64).range(1..=3600))]
     timeout: u64,
@@ -51,14 +62,7 @@ fn run(cli: &Cli, output: &mut dyn Write) -> io::Result<()> {
         "on_iface": cli.on_iface,
         "tag_hex": cli.tag_hex,
     });
-    let response = rpc_call(
-        &cli.rpc,
-        1,
-        REQUEST_PATH_METHOD,
-        Some(params),
-        cli.rpc_timeout(),
-        cli.rpc_read_timeout(),
-    )?;
+    let response = rpc_call(cli, 1, REQUEST_PATH_METHOD, Some(params))?;
     let result = ensure_rpc_ok(response, REQUEST_PATH_METHOD)?.ok_or_else(|| {
         io::Error::new(io::ErrorKind::InvalidData, "missing path discovery result")
     })?;
@@ -79,23 +83,80 @@ fn run(cli: &Cli, output: &mut dyn Write) -> io::Result<()> {
 }
 
 fn rpc_call(
-    rpc: &str,
+    cli: &Cli,
     id: u64,
     method: &str,
     params: Option<serde_json::Value>,
-    timeout: Duration,
-    read_timeout: Duration,
 ) -> io::Result<rns_rpc::RpcResponse> {
     let frame = build_rpc_frame(id, method, params)?;
+    #[cfg(unix)]
+    if let Some(path) = cli.rpc_unix.as_ref() {
+        let request = build_http_post("/rpc", "localhost", &frame);
+        let stream = connect_unix_with_timeout(path, cli.rpc_timeout())?;
+        return rpc_call_with_stream(stream, &request, cli.rpc_timeout(), cli.rpc_read_timeout());
+    }
+
+    let rpc = cli.rpc_addr();
     let request = build_http_post("/rpc", rpc, &frame);
     let addr = rpc.to_socket_addrs()?.next().ok_or_else(|| {
         io::Error::new(io::ErrorKind::InvalidInput, "RPC address did not resolve")
     })?;
-    let mut stream = TcpStream::connect_timeout(&addr, timeout)?;
-    stream.set_read_timeout(Some(read_timeout))?;
-    stream.set_write_timeout(Some(timeout))?;
-    stream.write_all(&request)?;
-    stream.shutdown(Shutdown::Write)?;
+    let stream = TcpStream::connect_timeout(&addr, cli.rpc_timeout())?;
+    rpc_call_with_stream(stream, &request, cli.rpc_timeout(), cli.rpc_read_timeout())
+}
+
+#[cfg(unix)]
+fn connect_unix_with_timeout(path: &Path, timeout: Duration) -> io::Result<UnixStream> {
+    let socket = Socket::new(Domain::UNIX, Type::STREAM, None)?;
+    socket.connect_timeout(&SockAddr::unix(path)?, timeout)?;
+    Ok(socket.into())
+}
+
+trait RpcStream: Read + Write {
+    fn shutdown_write(&self) -> io::Result<()>;
+    fn set_rpc_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()>;
+    fn set_rpc_write_timeout(&self, timeout: Option<Duration>) -> io::Result<()>;
+}
+
+impl RpcStream for TcpStream {
+    fn shutdown_write(&self) -> io::Result<()> {
+        self.shutdown(Shutdown::Write)
+    }
+
+    fn set_rpc_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
+        self.set_read_timeout(timeout)
+    }
+
+    fn set_rpc_write_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
+        self.set_write_timeout(timeout)
+    }
+}
+
+#[cfg(unix)]
+impl RpcStream for UnixStream {
+    fn shutdown_write(&self) -> io::Result<()> {
+        self.shutdown(Shutdown::Write)
+    }
+
+    fn set_rpc_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
+        self.set_read_timeout(timeout)
+    }
+
+    fn set_rpc_write_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
+        self.set_write_timeout(timeout)
+    }
+}
+
+fn rpc_call_with_stream<S: RpcStream>(
+    mut stream: S,
+    request: &[u8],
+    write_timeout: Duration,
+    read_timeout: Duration,
+) -> io::Result<rns_rpc::RpcResponse> {
+    stream.set_rpc_read_timeout(Some(read_timeout))?;
+    stream.set_rpc_write_timeout(Some(write_timeout))?;
+    stream.write_all(request)?;
+    stream.shutdown_write()?;
     let mut response = Vec::new();
     stream.read_to_end(&mut response)?;
     let body = parse_http_response_body(&response)?;
@@ -182,11 +243,36 @@ fn parse_request_tag_hex(value: &str) -> Result<String, String> {
 }
 
 impl Cli {
+    fn rpc_addr(&self) -> &str {
+        self.rpc.as_deref().unwrap_or(DEFAULT_RPC_ADDR)
+    }
+
     fn rpc_timeout(&self) -> Duration {
         Duration::from_secs(self.timeout.max(1))
     }
 
     fn rpc_read_timeout(&self) -> Duration {
         self.rpc_timeout() + RPC_READ_HEADROOM
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const DESTINATION_HASH: &str = "00112233445566778899aabbccddeeff";
+
+    #[test]
+    fn cli_defaults_to_standard_tcp_rpc_addr_at_runtime() {
+        let cli = Cli::parse_from(["rnpath-rs", DESTINATION_HASH]);
+
+        assert_eq!(cli.rpc_addr(), DEFAULT_RPC_ADDR);
+    }
+
+    #[test]
+    fn cli_uses_explicit_tcp_rpc_addr_when_supplied() {
+        let cli = Cli::parse_from(["rnpath-rs", DESTINATION_HASH, "--rpc", "127.0.0.1:4444"]);
+
+        assert_eq!(cli.rpc_addr(), "127.0.0.1:4444");
     }
 }

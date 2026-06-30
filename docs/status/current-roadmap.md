@@ -386,9 +386,10 @@ The project is best described by capability level:
   state, plus UDP, serial, KISS, BLE GATT, I2P, RNodeMulti, Weave, and VR-N76
   status rows and propagation peer state.
 - `rnpath-rs` now exercises daemon-backed path lookup through `rnx
-  rnpath-smoke`, which starts a local four-node mesh and verifies a
-  non-neighbor destination resolves with next-hop/interface metadata over the
-  software RPC path.
+  rnpath-smoke`, and its CLI request-path path has mock-RPC coverage for both
+  the default TCP endpoint and Unix-domain transport. The smoke starts a local
+  four-node mesh and verifies a non-neighbor destination resolves with
+  next-hop/interface metadata over the software RPC path.
 - The pinned Python compatibility matrix now includes
   `rns_path_request_rust_to_python`, a loopback TCP case where Rust
   `reticulumd` starts with an unknown Python delivery path, resolves it through

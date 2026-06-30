@@ -15,6 +15,7 @@ serde_json.workspace = true
 base64.workspace = true
 sha2.workspace = true
 hex.workspace = true
+socket2 = { version = "0.5", features = ["all"] }
 log = { workspace = true }
 tracing-subscriber = { workspace = true }
 rns-embedded-core = { path = "../../libs/rns-embedded-core", version = "0.5.2" }
