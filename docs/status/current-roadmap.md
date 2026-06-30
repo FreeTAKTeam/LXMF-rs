@@ -1016,6 +1016,11 @@ The project is best described by capability level:
   `signature_checked = false`, `signature_valid = false`, and
   `signature_status = "source_identity_unknown"` instead of omitting signature
   status from handler-facing state.
+- Successful direct packet/resource LXMF deliveries now have focused
+  SDK-pollable inbound callback evidence: `sdk_poll_events_v2` returns raw
+  `lxmf_bytes_hex`, stored/event identity, content, and metadata consistency,
+  direct Curve25519 transport metadata, and verified signature metadata for
+  both packet and resource delivery paths.
 - Focused local propagated-delivery tests now also feed a real source announce
   through a transport interface channel before delivery, covering known-source
   propagated messages surface `signature_checked = true` with
