@@ -348,7 +348,7 @@ impl RpcDaemon {
         })
     }
 
-    fn schedule_bridge_delivery(
+    pub(super) fn schedule_bridge_delivery(
         &self,
         record: MessageRecord,
         options: OutboundDeliveryOptions,

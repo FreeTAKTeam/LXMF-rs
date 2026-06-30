@@ -467,6 +467,12 @@ The project is best described by capability level:
   fields, so direct-chat links/body text do not get JSON-stringified.
 - Delivery modes are honored by the daemon; the old claim that requested modes
   are ignored is obsolete.
+- RPC daemon `lxmf.delivery` announce ingestion now wakes stored pending
+  direct/default-direct and opportunistic outbound messages for the announced
+  destination while leaving propagated, paper, terminal, already-sending, and
+  other-destination records untouched. A remaining bridge-side parity gap is
+  making reticulumd identity/path misses enter a nonterminal deferred queue
+  instead of terminal failure before a later announce arrives.
 - Direct and propagated resource sends support receipt-state separation,
   timeout/failure propagation, and active resource cancellation.
 - Link sends now register packet/resource receipt tracking before handoff and

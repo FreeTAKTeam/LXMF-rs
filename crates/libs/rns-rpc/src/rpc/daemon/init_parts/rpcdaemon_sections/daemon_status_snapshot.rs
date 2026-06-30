@@ -378,6 +378,15 @@ impl RpcDaemon {
             peering_cost,
         };
         self.store.insert_announce(&announce_record).map_err(std::io::Error::other)?;
+        if is_lxmf_delivery_aspect(aspect.as_deref()) {
+            let woken = self.wake_lxmf_delivery_outbound_for_announce(record.peer.as_str())?;
+            if woken > 0 {
+                log::debug!(
+                    "[daemon] delivery announce woke {woken} pending outbound message(s) for {}",
+                    record.peer
+                );
+            }
+        }
 
         let event = RpcEvent {
             event_type: "announce_received".into(),

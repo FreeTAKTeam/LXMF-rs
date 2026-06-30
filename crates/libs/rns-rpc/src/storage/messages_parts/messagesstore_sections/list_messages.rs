@@ -96,6 +96,37 @@ impl MessagesStore {
         })
     }
 
+    pub fn list_retryable_outbound_for_destination(
+        &self,
+        destination: &str,
+    ) -> rusqlite::Result<Vec<MessageRecord>> {
+        self.with_read_conn(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id, source, destination, title, content, timestamp, direction, fields, receipt_status
+                 FROM messages
+                 WHERE LOWER(destination) = LOWER(?1)
+                   AND direction = 'out'
+                   AND (
+                        receipt_status IS NULL
+                        OR TRIM(receipt_status) = ''
+                        OR (
+                            LOWER(TRIM(receipt_status)) NOT LIKE 'sent%'
+                            AND LOWER(TRIM(receipt_status)) NOT LIKE 'sending%'
+                            AND LOWER(TRIM(receipt_status)) NOT LIKE 'failed%'
+                            AND LOWER(TRIM(receipt_status)) NOT IN ('cancelled', 'delivered', 'failed', 'expired', 'rejected')
+                        )
+                   )
+                 ORDER BY timestamp ASC, id ASC",
+            )?;
+            let mut rows = stmt.query(params![destination])?;
+            let mut records = Vec::new();
+            while let Some(row) = rows.next()? {
+                records.push(message_record_from_row(row)?);
+            }
+            Ok(records)
+        })
+    }
+
     pub fn message_count(&self) -> rusqlite::Result<u64> {
         Ok(self.write_state.message_count_cache.load(Ordering::Relaxed))
     }
