@@ -234,6 +234,30 @@ pub(crate) fn emit_inbound_drop_event(daemon: &RpcDaemon, event: InboundDropEven
     daemon.publish_event(RpcEvent { event_type: "inbound_dropped".to_string(), payload });
 }
 
+pub(crate) fn emit_propagation_predecode_drop_event(
+    daemon: &RpcDaemon,
+    destination: [u8; 16],
+    transient_payload: &[u8],
+    reason: &'static str,
+    detail: impl Into<String>,
+) {
+    let raw_destination_hex =
+        propagated_transient_raw_destination_hex(destination, transient_payload);
+    emit_inbound_drop_event(
+        daemon,
+        InboundDropEvent {
+            reason,
+            delivery_kind: InboundDeliveryKind::Propagation,
+            raw_destination_hex: raw_destination_hex.as_str(),
+            destination,
+            payload_mode: InboundPayloadMode::FullWire,
+            bytes_len: transient_payload.len(),
+            detail: Some(detail.into()),
+            record: None,
+        },
+    );
+}
+
 pub(super) fn log_resolved_packet(
     raw_destination_hex: &str,
     resolved_destination: impl std::fmt::Debug,
@@ -256,6 +280,17 @@ fn inbound_payload_mode(mode: ReceivedPayloadMode) -> InboundPayloadMode {
     match mode {
         ReceivedPayloadMode::FullWire => InboundPayloadMode::FullWire,
         ReceivedPayloadMode::DestinationStripped => InboundPayloadMode::DestinationStripped,
+    }
+}
+
+fn propagated_transient_raw_destination_hex(
+    destination: [u8; 16],
+    transient_payload: &[u8],
+) -> String {
+    if transient_payload.len() >= 16 {
+        hex::encode(&transient_payload[..16])
+    } else {
+        hex::encode(destination)
     }
 }
 

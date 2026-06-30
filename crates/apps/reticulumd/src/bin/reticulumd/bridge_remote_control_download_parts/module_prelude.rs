@@ -17,7 +17,8 @@ use reticulum_daemon::inbound_delivery::{
 };
 
 use crate::inbound_worker::delivery_events::{
-    emit_inbound_drop_event, InboundDeliveryKind, InboundDropEvent,
+    emit_inbound_drop_event, emit_propagation_predecode_drop_event, InboundDeliveryKind,
+    InboundDropEvent,
 };
 use rns_transport::identity::DecryptIdentity;
 
@@ -326,22 +327,7 @@ async fn accept_downloaded_propagation_payload(
 ) -> Result<DownloadAcceptOutcome, std::io::Error> {
     let (destination_hash, wire) = {
         let destination = delivery_destination.lock().await;
-        if transient_payload.len() <= 16 + 32 {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "propagated LXMF payload too short",
-            ));
-        }
-        if &transient_payload[..16] != destination.desc.address_hash.as_slice() {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::PermissionDenied,
-                "propagated LXMF payload is not addressed to local delivery destination",
-            ));
-        }
-        let wire = decrypt_local_propagated_wire(&destination, transient_payload)?;
-        let mut destination_hash = [0u8; 16];
-        destination_hash.copy_from_slice(destination.desc.address_hash.as_slice());
-        (destination_hash, wire)
+        prepare_downloaded_propagation_wire(daemon, &destination, transient_payload)?
     };
 
     let raw_destination_hex = hex::encode(destination_hash);

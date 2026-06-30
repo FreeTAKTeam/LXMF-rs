@@ -138,6 +138,81 @@
     }
 
     #[tokio::test]
+    async fn fetched_predecode_failures_emit_drop_events() {
+        let daemon = RpcDaemon::test_instance();
+        let delivery_private = PrivateIdentity::new_from_rand(OsRng);
+        let delivery_destination = Arc::new(TokioMutex::new(SingleInputDestination::new(
+            delivery_private,
+            DestinationName::new("lxmf", "delivery"),
+        )));
+        let mut destination_hash = [0u8; 16];
+        {
+            let destination = delivery_destination.lock().await;
+            destination_hash.copy_from_slice(destination.desc.address_hash.as_slice());
+        }
+
+        let too_short = vec![0x11_u8; 8];
+        let err = accept_local_propagated_payload_inner(
+            &daemon,
+            delivery_destination.clone(),
+            too_short.as_slice(),
+        )
+        .await
+        .expect_err("too-short fetched payload should fail");
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+        assert_fetched_drop_event(&daemon, "payload_too_short", destination_hash, too_short.len(), |event| {
+            assert_eq!(event.payload["detail"], json!("propagated LXMF payload too short"));
+        });
+
+        let mut mismatch = vec![0x22_u8; 16 + 33];
+        mismatch[..16].copy_from_slice(&[0x99_u8; 16]);
+        let err = accept_local_propagated_payload_inner(
+            &daemon,
+            delivery_destination.clone(),
+            mismatch.as_slice(),
+        )
+        .await
+        .expect_err("mismatched fetched payload should fail");
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+        assert_fetched_drop_event(
+            &daemon,
+            "destination_mismatch",
+            destination_hash,
+            mismatch.len(),
+            |event| {
+                assert_eq!(
+                    event.payload["detail"],
+                    json!("propagated LXMF payload is not addressed to the local delivery destination")
+                );
+            },
+        );
+
+        let mut undecryptable = vec![0x33_u8; 16 + 33];
+        undecryptable[..16].copy_from_slice(&destination_hash);
+        let err = accept_local_propagated_payload_inner(
+            &daemon,
+            delivery_destination,
+            undecryptable.as_slice(),
+        )
+        .await
+        .expect_err("undecryptable fetched payload should fail");
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+        assert_fetched_drop_event(
+            &daemon,
+            "decrypt_failed",
+            destination_hash,
+            undecryptable.len(),
+            |event| {
+                assert_eq!(
+                    event.payload["detail"],
+                    json!("failed to decrypt propagated LXMF payload for local delivery")
+                );
+            },
+        );
+        assert!(daemon.take_event().is_none(), "predecode fetched failures should emit one event each");
+    }
+
+    #[tokio::test]
     async fn unstamped_fetched_payload_emits_stamp_policy_drop_event() {
         let daemon = RpcDaemon::test_instance();
         daemon

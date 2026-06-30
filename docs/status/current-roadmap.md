@@ -917,8 +917,11 @@ The project is best described by capability level:
   `resource`, and `propagation` delivery kinds. The propagated local-delivery
   coverage includes local envelope ingest plus decryptable remote fetched and
   remote downloaded propagation payloads that reach local decode, stamp, or
-  delivery-policy handling, so those router-coupled drops remain
-  observer-visible instead of only counted as rejected imports.
+  delivery-policy handling, plus local-addressed pre-decode rejects for short
+  or undecryptable local envelopes and strict remote fetch/download local-import
+  rejects for short payloads, destination mismatches, and decrypt failures, so
+  those router-coupled drops remain observer-visible instead of only counted as
+  rejected imports.
 - The typed propagation branch now also exposes
   `ZmqPipelineBackendClient::propagation_recovery_state`, projecting
   `app.propagation.status` into structured sync state, selected-node,

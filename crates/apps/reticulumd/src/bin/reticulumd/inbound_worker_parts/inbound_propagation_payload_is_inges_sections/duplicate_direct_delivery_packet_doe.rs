@@ -289,6 +289,147 @@
         assert!(items.is_empty());
     }
 
+    #[tokio::test]
+    async fn local_propagation_predecode_drop_is_visible_to_sdk_poll_events() {
+        let daemon = RpcDaemon::test_instance();
+        let delivery_private = PrivateIdentity::new_from_rand(OsRng);
+        let delivery_destination = Arc::new(TokioMutex::new(SingleInputDestination::new(
+            delivery_private,
+            DestinationName::new("lxmf", "delivery"),
+        )));
+        let mut destination_hash = [0u8; 16];
+        {
+            let destination = delivery_destination.lock().await;
+            destination_hash.copy_from_slice(destination.desc.address_hash.as_slice());
+        }
+        daemon.set_delivery_destination_hash(Some(hex::encode(destination_hash)));
+        let pre_poll = daemon
+            .handle_rpc(RpcRequest {
+                id: 44,
+                method: "sdk_poll_events_v2".to_string(),
+                params: Some(json!({ "cursor": null, "max": 20 })),
+            })
+            .expect("pre poll sdk events")
+            .result
+            .expect("pre poll result");
+        let pre_cursor = pre_poll["next_cursor"].as_str().expect("pre cursor").to_owned();
+        let mut transient_payload = destination_hash.to_vec();
+        transient_payload.extend_from_slice(&[0xA5_u8; 8]);
+        let envelope = rmp_serde::to_vec(&(1.0_f64, vec![transient_payload.clone()]))
+            .expect("propagation envelope");
+
+        let ingested = ingest_propagation_envelope(&daemon, &envelope, Some(&delivery_destination))
+            .await
+            .expect("ingest predecode propagation envelope");
+        assert_eq!(ingested, 1);
+
+        let poll = daemon
+            .handle_rpc(RpcRequest {
+                id: 45,
+                method: "sdk_poll_events_v2".to_string(),
+                params: Some(json!({ "cursor": pre_cursor, "max": 20 })),
+            })
+            .expect("poll sdk events")
+            .result
+            .expect("poll result");
+        let events = poll["events"].as_array().expect("event rows");
+        let event = events
+            .iter()
+            .find(|event| event["event_type"] == json!("inbound_dropped"))
+            .expect("sdk propagated drop event");
+        assert_eq!(event["payload"]["reason"], json!("payload_too_short"));
+        assert_eq!(event["payload"]["delivery_kind"], json!("propagation"));
+        assert_eq!(event["payload"]["payload_mode"], json!("full_wire"));
+        assert_eq!(event["payload"]["bytes_len"], json!(transient_payload.len()));
+        assert!(
+            event["payload"]["raw_destination_hash"]
+                .as_str()
+                .is_some_and(|value| value.starts_with("sha256:") && value != hex::encode(destination_hash))
+        );
+        assert!(
+            event["payload"]["detail"]
+                .as_str()
+                .is_some_and(|detail| detail == "propagated LXMF payload too short")
+        );
+
+        let messages = daemon
+            .handle_rpc(RpcRequest { id: 46, method: "list_messages".to_string(), params: None })
+            .expect("list messages")
+            .result
+            .expect("list messages result");
+        assert!(messages["messages"].as_array().expect("message items").is_empty());
+        let peers = daemon
+            .handle_rpc(RpcRequest { id: 47, method: "list_peers".to_string(), params: None })
+            .expect("list peers")
+            .result
+            .expect("list peers result");
+        assert!(peers["peers"].as_array().expect("peer rows").is_empty());
+    }
+
+    #[tokio::test]
+    async fn peer_local_propagation_predecode_drop_does_not_relay_or_mark_completed() {
+        let daemon = RpcDaemon::test_instance();
+        let delivery_private = PrivateIdentity::new_from_rand(OsRng);
+        let delivery_destination = Arc::new(TokioMutex::new(SingleInputDestination::new(
+            delivery_private,
+            DestinationName::new("lxmf", "delivery"),
+        )));
+        let mut destination_hash = [0u8; 16];
+        {
+            let destination = delivery_destination.lock().await;
+            destination_hash.copy_from_slice(destination.desc.address_hash.as_slice());
+        }
+        daemon.set_delivery_destination_hash(Some(hex::encode(destination_hash)));
+        let source_peer = hex::encode([0x81_u8; 16]);
+        let relay_peer = hex::encode([0x82_u8; 16]);
+        for (id, peer) in [(48, &source_peer), (49, &relay_peer)] {
+            daemon
+                .handle_rpc(RpcRequest {
+                    id,
+                    method: "peer_sync".to_string(),
+                    params: Some(json!({ "peer": peer })),
+                })
+                .expect("seed propagation peer");
+        }
+        while daemon.take_event().is_some() {}
+        let mut transient_payload = destination_hash.to_vec();
+        transient_payload.extend_from_slice(&[0xB5_u8; 8]);
+        let transient_id = hex::encode(Sha256::digest(&transient_payload));
+        let envelope = rmp_serde::to_vec(&(1.0_f64, vec![transient_payload.clone()]))
+            .expect("propagation envelope");
+
+        let ingested = ingest_propagation_envelope_from_peer(
+            &daemon,
+            &envelope,
+            Some(&delivery_destination),
+            Some(&source_peer),
+        )
+        .await
+        .expect("ingest peer predecode propagation envelope");
+        assert_eq!(ingested, 1);
+
+        let event = daemon.take_event().expect("peer predecode drop event");
+        assert_eq!(event.event_type, "inbound_dropped");
+        assert_eq!(event.payload["reason"], json!("payload_too_short"));
+        assert_eq!(event.payload["delivery_kind"], json!("propagation"));
+        assert!(daemon.take_event().is_none(), "peer predecode drop should emit one event");
+        assert!(
+            !daemon
+                .has_peer_completed_propagation_mark(source_peer.as_str(), transient_id.as_str())
+                .expect("completed propagation mark lookup"),
+            "dropped predecode peer payloads must not mark the source peer handled"
+        );
+        let source = peer_row(&daemon, source_peer.as_str(), 50);
+        assert_eq!(source["messages"]["incoming"].as_u64(), Some(0));
+        assert_eq!(source["messages"]["unhandled_ids"], json!([]));
+        let relay = peer_row(&daemon, relay_peer.as_str(), 51);
+        assert_eq!(
+            relay["messages"]["unhandled_ids"],
+            json!([]),
+            "dropped predecode peer payloads must not fan out to relay peers"
+        );
+    }
+
     fn peer_row(daemon: &RpcDaemon, peer: &str, id: u64) -> serde_json::Value {
         let peers = daemon
             .handle_rpc(RpcRequest { id, method: "list_peers".to_string(), params: None })

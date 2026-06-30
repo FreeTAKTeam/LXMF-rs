@@ -1,4 +1,7 @@
-use super::delivery_events::{emit_inbound_drop_event, InboundDeliveryKind, InboundDropEvent};
+use super::delivery_events::{
+    emit_inbound_drop_event, emit_propagation_predecode_drop_event, InboundDeliveryKind,
+    InboundDropEvent,
+};
 use super::*;
 use lxmf::inbound_decode::InboundPayloadMode;
 use reticulum_daemon::inbound_delivery::{
@@ -77,7 +80,7 @@ pub(super) async fn ingest_propagation_envelope_from_peer(
                 continue;
             }
         };
-        if try_accept_local_propagated_message(
+        match try_accept_local_propagated_message(
             daemon,
             delivery_destination,
             message,
@@ -85,17 +88,21 @@ pub(super) async fn ingest_propagation_envelope_from_peer(
         )
         .await?
         {
-            if let Some(peer) = remote_propagation_peer {
-                daemon.relay_accepted_peer_propagation_payload_bytes_at_cost(
-                    message,
-                    Some(transient_id.as_str()),
-                    accepted_stamp_cost,
-                    peer,
-                )?;
-            } else {
-                daemon.note_client_propagation_messages_received(1);
+            LocalPropagationOutcome::Accepted => {
+                if let Some(peer) = remote_propagation_peer {
+                    daemon.relay_accepted_peer_propagation_payload_bytes_at_cost(
+                        message,
+                        Some(transient_id.as_str()),
+                        accepted_stamp_cost,
+                        peer,
+                    )?;
+                } else {
+                    daemon.note_client_propagation_messages_received(1);
+                }
+                continue;
             }
-            continue;
+            LocalPropagationOutcome::Dropped => continue,
+            LocalPropagationOutcome::NotLocal => {}
         }
         if let Some(peer) = remote_propagation_peer {
             daemon.ingest_peer_propagation_payload_bytes_at_cost(
@@ -118,6 +125,13 @@ pub(super) async fn ingest_propagation_envelope_from_peer(
     Ok(messages.len())
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum LocalPropagationOutcome {
+    Accepted,
+    Dropped,
+    NotLocal,
+}
+
 fn propagation_envelope_message_count(payload: &[u8]) -> Result<usize, std::io::Error> {
     let (_timestamp, messages): (f64, Vec<Vec<u8>>) =
         rmp_serde::from_slice(payload).map_err(|err| {
@@ -134,22 +148,45 @@ async fn try_accept_local_propagated_message(
     delivery_destination: Option<&Arc<tokio::sync::Mutex<SingleInputDestination>>>,
     transient_payload: &[u8],
     remote_propagation_peer: Option<&str>,
-) -> Result<bool, std::io::Error> {
+) -> Result<LocalPropagationOutcome, std::io::Error> {
     let Some(delivery_destination) = delivery_destination else {
-        return Ok(false);
+        return Ok(LocalPropagationOutcome::NotLocal);
     };
-    if transient_payload.len() <= 16 + 32 {
-        return Ok(false);
-    }
-
     let (destination_hash, wire) = {
         let destination = delivery_destination.lock().await;
-        if &transient_payload[..16] != destination.desc.address_hash.as_slice() {
-            return Ok(false);
-        }
-        let wire = decrypt_local_propagated_wire(&destination, transient_payload)?;
         let mut destination_hash = [0u8; 16];
         destination_hash.copy_from_slice(destination.desc.address_hash.as_slice());
+        if transient_payload.len() <= 16 + 32 {
+            if transient_payload.len() >= 16
+                && &transient_payload[..16] == destination.desc.address_hash.as_slice()
+            {
+                emit_propagation_predecode_drop_event(
+                    daemon,
+                    destination_hash,
+                    transient_payload,
+                    "payload_too_short",
+                    "propagated LXMF payload too short",
+                );
+                return Ok(LocalPropagationOutcome::Dropped);
+            }
+            return Ok(LocalPropagationOutcome::NotLocal);
+        }
+        if &transient_payload[..16] != destination.desc.address_hash.as_slice() {
+            return Ok(LocalPropagationOutcome::NotLocal);
+        }
+        let wire = match decrypt_local_propagated_wire(&destination, transient_payload) {
+            Ok(wire) => wire,
+            Err(error) => {
+                emit_propagation_predecode_drop_event(
+                    daemon,
+                    destination_hash,
+                    transient_payload,
+                    "decrypt_failed",
+                    error.to_string(),
+                );
+                return Err(error);
+            }
+        };
         (destination_hash, wire)
     };
     let raw_destination_hex = hex::encode(destination_hash);
@@ -232,16 +269,16 @@ async fn try_accept_local_propagated_message(
                 record: Some(&record),
             },
         );
-        return Ok(true);
+        return Ok(LocalPropagationOutcome::Accepted);
     }
     if daemon.message_exists(record.id.as_str())? {
-        return Ok(true);
+        return Ok(LocalPropagationOutcome::Accepted);
     }
     if remote_propagation_peer.is_none() {
         daemon.record_inbound_peer_activity(&record.source, wire.len());
     }
     daemon.accept_inbound_with_raw(record, &wire)?;
-    Ok(true)
+    Ok(LocalPropagationOutcome::Accepted)
 }
 
 fn annotate_inbound_record_propagation_stamp_status(

@@ -1,6 +1,7 @@
 use super::*;
 use crate::inbound_worker::delivery_events::{
-    emit_inbound_drop_event, InboundDeliveryKind, InboundDropEvent,
+    emit_inbound_drop_event, emit_propagation_predecode_drop_event, InboundDeliveryKind,
+    InboundDropEvent,
 };
 use lxmf::inbound_decode::InboundPayloadMode;
 use reticulum_daemon::inbound_delivery::{
@@ -80,24 +81,49 @@ async fn accept_local_propagated_payload_inner(
     delivery_destination: Arc<tokio::sync::Mutex<SingleInputDestination>>,
     transient_payload: &[u8],
 ) -> Result<LocalPropagationImportOutcome, std::io::Error> {
-    if transient_payload.len() <= 16 + 32 {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            "propagated LXMF payload too short",
-        ));
-    }
-
     let (destination_hash, wire) = {
         let destination = delivery_destination.lock().await;
+        let mut destination_hash = [0u8; 16];
+        destination_hash.copy_from_slice(destination.desc.address_hash.as_slice());
+        if transient_payload.len() <= 16 + 32 {
+            emit_propagation_predecode_drop_event(
+                daemon,
+                destination_hash,
+                transient_payload,
+                "payload_too_short",
+                "propagated LXMF payload too short",
+            );
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "propagated LXMF payload too short",
+            ));
+        }
         if &transient_payload[..16] != destination.desc.address_hash.as_slice() {
+            emit_propagation_predecode_drop_event(
+                daemon,
+                destination_hash,
+                transient_payload,
+                "destination_mismatch",
+                "propagated LXMF payload is not addressed to the local delivery destination",
+            );
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 "propagated LXMF payload is not addressed to the local delivery destination",
             ));
         }
-        let wire = decrypt_local_propagated_wire(&destination, transient_payload)?;
-        let mut destination_hash = [0u8; 16];
-        destination_hash.copy_from_slice(destination.desc.address_hash.as_slice());
+        let wire = match decrypt_local_propagated_wire(&destination, transient_payload) {
+            Ok(wire) => wire,
+            Err(error) => {
+                emit_propagation_predecode_drop_event(
+                    daemon,
+                    destination_hash,
+                    transient_payload,
+                    "decrypt_failed",
+                    error.to_string(),
+                );
+                return Err(error);
+            }
+        };
         (destination_hash, wire)
     };
 
