@@ -46,7 +46,9 @@ The project is best described by capability level:
   Python announce/path discovery edge policy.
 - Known-path `PATH_RESPONSE` work now preempts any due ordinary announce for
   the same destination and then releases the ordinary announce on the next
-  retransmission drain, matching Python's `held_announces` edge ordering.
+  retransmission drain, matching Python's `held_announces` edge ordering; this
+  is now covered by both a deterministic announce-table regression and a
+  harness-dispatchable local transport-policy evidence case.
 - Unknown path requests now retain the requesting interface while recursive
   discovery runs, then send an immediate direct `PATH_RESPONSE` when a matching
   announce arrives, matching Python's waiting discovery request behavior.

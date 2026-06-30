@@ -25,6 +25,13 @@ struct CompatibilityCase {
     description: &'static str,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct LocalEvidenceCase {
+    id: &'static str,
+    test_target: &'static str,
+    description: &'static str,
+}
+
 const COMPATIBILITY_CASES: [CompatibilityCase; 23] = [
     CompatibilityCase {
         id: "direct_rust_to_python",
@@ -143,6 +150,12 @@ const COMPATIBILITY_CASES: [CompatibilityCase; 23] = [
     },
 ];
 
+const LOCAL_EVIDENCE_CASES: [LocalEvidenceCase; 1] = [LocalEvidenceCase {
+    id: "rns_path_request_transport_policy",
+    test_target: "transport_policy_evidence",
+    description: "Deterministic local transport evidence for scoped path-request dispatch and known-path PATH_RESPONSE ordering",
+}];
+
 pub(crate) fn assert_required_modes_covered() {
     assert!(
         COMPATIBILITY_CASES.len() >= 23,
@@ -181,6 +194,33 @@ pub(crate) fn assert_required_modes_covered() {
     assert!(COMPATIBILITY_CASES.iter().any(|case| case.mode == CompatibilityMode::Resource));
     assert!(COMPATIBILITY_CASES.iter().any(|case| case.mode == CompatibilityMode::LxmInterchange));
     assert!(COMPATIBILITY_CASES.iter().any(|case| case.mode == CompatibilityMode::PathDiscovery));
+}
+
+pub(crate) fn assert_local_evidence_cases_are_dispatchable_by_harness() {
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let harness = fs::read_to_string(repo_root.join("tools/scripts/python_compat_harness.py"))
+        .expect("python harness should be readable");
+
+    for case in LOCAL_EVIDENCE_CASES {
+        let case_literal = format!("\"{}\"", case.id);
+        let test_target_literal = format!("\"{}\"", case.test_target);
+        assert!(
+            !case.description.is_empty(),
+            "local evidence case '{}' should describe the deterministic evidence",
+            case.id
+        );
+        assert!(
+            harness.contains(&case_literal),
+            "python harness does not advertise local evidence case '{}'",
+            case.id
+        );
+        assert!(
+            harness.contains(&test_target_literal),
+            "python harness does not dispatch local evidence case '{}' to '{}'",
+            case.id,
+            case.test_target
+        );
+    }
 }
 
 pub(crate) fn run_case(case_id: &str) {

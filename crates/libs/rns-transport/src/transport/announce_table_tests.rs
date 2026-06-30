@@ -86,6 +86,48 @@ fn path_response_entries_use_shorter_window_without_later_broadcast() {
 }
 
 #[test]
+fn due_path_response_preempts_same_destination_ordinary_announce_once() {
+    let mut table = AnnounceTable::new(16, 1);
+    let destination = AddressHash::new_from_rand(OsRng);
+    let received_from = AddressHash::new_from_rand(OsRng);
+    let transport_id = AddressHash::new_from_rand(OsRng);
+    let to_iface = AddressHash::new_from_rand(OsRng);
+    let mut packet = Packet { destination, context: PacketContext::None, ..Packet::default() };
+    packet.header.hops = 2;
+
+    table.add(&packet, destination, received_from);
+    assert!(table.add_response(destination, to_iface, 3));
+    table.map.get_mut(&destination).expect("ordinary entry").timeout =
+        Instant::now() - Duration::from_millis(1);
+    table.responses.get_mut(&destination).expect("response entry").timeout =
+        Instant::now() - Duration::from_millis(1);
+
+    let first = table.drain_retransmissions(&transport_id);
+    assert_eq!(first.len(), 1);
+    assert!(matches!(first[0].tx_type, TxMessageType::Direct(iface) if iface == to_iface));
+    assert_eq!(first[0].packet.destination, destination);
+    assert_eq!(first[0].packet.context, PacketContext::PathResponse);
+    assert_eq!(first[0].packet.header.hops, 3);
+    assert!(
+        table.map.contains_key(&destination),
+        "same-destination ordinary announce must remain queued while response drains"
+    );
+    assert!(
+        table.responses.is_empty(),
+        "completed path response must not keep suppressing the ordinary announce"
+    );
+
+    let second = table.drain_retransmissions(&transport_id);
+    assert_eq!(second.len(), 1);
+    assert!(
+        matches!(second[0].tx_type, TxMessageType::Broadcast(Some(iface)) if iface == received_from)
+    );
+    assert_eq!(second[0].packet.destination, destination);
+    assert_eq!(second[0].packet.context, PacketContext::None);
+    assert_eq!(second[0].packet.header.hops, 2);
+}
+
+#[test]
 fn path_response_entries_can_apply_extra_roaming_grace() {
     let mut table = AnnounceTable::new(16, 1);
     let destination = AddressHash::new_from_rand(OsRng);
