@@ -1,33 +1,75 @@
-use rns_rpc::{InterfaceMutationBridge, InterfaceRecord};
+use rns_rpc::{InterfaceMutationBridge, InterfaceRecord, RpcDaemon};
 use rns_transport::hash::AddressHash;
 use rns_transport::iface::tcp_client::TcpClient;
-use rns_transport::iface::udp::UdpInterface;
+use rns_transport::iface::udp::{UdpInterface, UdpRuntimeStatusHandle};
 use rns_transport::iface::{IfaceRole, InterfaceManager, InterfaceMode, InterfaceSharedConfig};
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
 use std::io;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex, Weak};
 use tokio::sync::mpsc::{channel, error::TrySendError, Receiver, Sender};
 
 use crate::bootstrap::{
     mark_interface_runtime_fields, mark_interface_runtime_managed, mark_interface_startup_status,
 };
+#[cfg(test)]
+use interface_hot_apply_parts::udp_runtime_refresh::refresh_hot_apply_udp_runtime_status_once;
+use interface_hot_apply_parts::udp_runtime_refresh::{
+    attach_hot_apply_udp_runtime_status, spawn_hot_apply_udp_runtime_status_refresher,
+    HotApplyUdpRefresh,
+};
+
+#[path = "interface_hot_apply_parts.rs"]
+mod interface_hot_apply_parts;
 
 #[derive(Clone)]
 pub(super) struct InterfaceHotApplyBridge {
     tx: Sender<InterfaceHotApplyCommand>,
+    #[cfg(test)]
+    udp_refreshes: Arc<StdMutex<HashMap<String, HotApplyUdpRefresh>>>,
 }
 
 const INTERFACE_HOT_APPLY_QUEUE_CAPACITY: usize = 64;
 
 impl InterfaceHotApplyBridge {
+    #[cfg(test)]
     pub(super) fn spawn(
         iface_manager: Arc<tokio::sync::Mutex<InterfaceManager>>,
         seeded: Vec<(String, InterfaceRecord, AddressHash)>,
     ) -> Self {
+        Self::spawn_inner(iface_manager, seeded, None)
+    }
+
+    pub(super) fn spawn_with_daemon(
+        iface_manager: Arc<tokio::sync::Mutex<InterfaceManager>>,
+        seeded: Vec<(String, InterfaceRecord, AddressHash)>,
+        daemon: Weak<RpcDaemon>,
+    ) -> Self {
+        Self::spawn_inner(iface_manager, seeded, Some(daemon))
+    }
+
+    fn spawn_inner(
+        iface_manager: Arc<tokio::sync::Mutex<InterfaceManager>>,
+        seeded: Vec<(String, InterfaceRecord, AddressHash)>,
+        daemon: Option<Weak<RpcDaemon>>,
+    ) -> Self {
         let (tx, rx) = channel(INTERFACE_HOT_APPLY_QUEUE_CAPACITY);
-        tokio::spawn(run_interface_mutation_worker(iface_manager, rx, seeded));
-        Self { tx }
+        let udp_refreshes = Arc::new(StdMutex::new(HashMap::new()));
+        if let Some(daemon) = daemon.clone() {
+            spawn_hot_apply_udp_runtime_status_refresher(daemon, udp_refreshes.clone());
+        }
+        tokio::spawn(run_interface_mutation_worker(
+            iface_manager,
+            rx,
+            seeded,
+            udp_refreshes.clone(),
+            daemon,
+        ));
+        Self {
+            tx,
+            #[cfg(test)]
+            udp_refreshes,
+        }
     }
 }
 
@@ -81,6 +123,8 @@ async fn run_interface_mutation_worker(
     iface_manager: Arc<tokio::sync::Mutex<InterfaceManager>>,
     mut rx: Receiver<InterfaceHotApplyCommand>,
     seeded: Vec<(String, InterfaceRecord, AddressHash)>,
+    udp_refreshes: Arc<StdMutex<HashMap<String, HotApplyUdpRefresh>>>,
+    daemon: Option<Weak<RpcDaemon>>,
 ) {
     let mut managed = seeded
         .into_iter()
@@ -90,7 +134,14 @@ async fn run_interface_mutation_worker(
     while let Some(command) = rx.recv().await {
         match command {
             InterfaceHotApplyCommand::Apply { interfaces } => {
-                apply_hot_apply_interface_records(&iface_manager, &mut managed, interfaces).await;
+                apply_hot_apply_interface_records(
+                    &iface_manager,
+                    &mut managed,
+                    interfaces,
+                    &udp_refreshes,
+                    daemon.as_ref(),
+                )
+                .await;
             }
         }
     }
@@ -100,6 +151,8 @@ async fn apply_hot_apply_interface_records(
     iface_manager: &Arc<tokio::sync::Mutex<InterfaceManager>>,
     managed: &mut HashMap<String, ManagedHotApplyInterface>,
     interfaces: Vec<InterfaceRecord>,
+    udp_refreshes: &Arc<StdMutex<HashMap<String, HotApplyUdpRefresh>>>,
+    daemon: Option<&Weak<RpcDaemon>>,
 ) {
     let desired = interfaces
         .into_iter()
@@ -120,6 +173,7 @@ async fn apply_hot_apply_interface_records(
         };
         if should_remove {
             if let Some(current) = managed.remove(&key) {
+                udp_refreshes.lock().expect("udp refresh mutex poisoned").remove(&key);
                 let mut guard = iface_manager.lock().await;
                 let _ = guard.stop_interface(current.address);
             }
@@ -136,7 +190,18 @@ async fn apply_hot_apply_interface_records(
             current.record = record;
             continue;
         }
-        if let Some(address) = spawn_hot_apply_interface(iface_manager, &record).await {
+        if let Some((address, udp_status)) = spawn_hot_apply_interface(iface_manager, &record).await
+        {
+            if let Some(status) = udp_status {
+                status.update(|status| {
+                    status.iface = Some(address.to_string());
+                });
+                attach_hot_apply_udp_runtime_status(daemon, &record, address, &status);
+                udp_refreshes.lock().expect("udp refresh mutex poisoned").insert(
+                    key.clone(),
+                    HotApplyUdpRefresh { record: record.clone(), runtime_iface: address, status },
+                );
+            }
             managed.insert(key, ManagedHotApplyInterface { record, address });
         }
     }
@@ -171,15 +236,18 @@ fn validate_hot_apply_uniqueness(interfaces: &[InterfaceRecord]) -> Result<(), i
 async fn spawn_hot_apply_interface(
     iface_manager: &Arc<tokio::sync::Mutex<InterfaceManager>>,
     record: &InterfaceRecord,
-) -> Option<AddressHash> {
+) -> Option<(AddressHash, Option<UdpRuntimeStatusHandle>)> {
     let mut guard = iface_manager.lock().await;
     let mode = interface_record_mode(record);
-    let address = match record.kind.as_str() {
-        "tcp_client" => guard.spawn_as_with_mode(
-            TcpClient::new(tcp_endpoint(record)?),
-            TcpClient::spawn,
-            IfaceRole::Unicast,
-            mode,
+    let (address, udp_status) = match record.kind.as_str() {
+        "tcp_client" => (
+            guard.spawn_as_with_mode(
+                TcpClient::new(tcp_endpoint(record)?),
+                TcpClient::spawn,
+                IfaceRole::Unicast,
+                mode,
+            ),
+            None,
         ),
         "udp" => {
             let (bind_addr, forward_addr) = udp_bind_and_forward_addr(record).ok()?;
@@ -187,12 +255,16 @@ async fn spawn_hot_apply_interface(
             if adapter.is_multicast() {
                 return None;
             }
-            guard.spawn_as_with_mode(adapter, UdpInterface::spawn, IfaceRole::Unicast, mode)
+            let status = adapter.runtime_status_handle();
+            (
+                guard.spawn_as_with_mode(adapter, UdpInterface::spawn, IfaceRole::Unicast, mode),
+                Some(status),
+            )
         }
         _ => return None,
     };
     apply_record_runtime_config(&mut guard, address, record);
-    Some(address)
+    Some((address, udp_status))
 }
 
 fn hot_apply_interface_key(record: &InterfaceRecord) -> Option<String> {

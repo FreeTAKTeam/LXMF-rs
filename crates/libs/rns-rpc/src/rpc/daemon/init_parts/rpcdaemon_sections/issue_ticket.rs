@@ -255,6 +255,31 @@ impl RpcDaemon {
         true
     }
 
+    pub fn update_interface_runtime_metadata_by_record(
+        &self,
+        selector: &InterfaceRecord,
+        runtime_iface: &str,
+        namespace: &str,
+        key: &str,
+        value: JsonValue,
+    ) -> bool {
+        let mut guard = self.interfaces.lock().expect("interfaces mutex poisoned");
+        let Some(record) =
+            guard.iter_mut().find(|record| Self::interface_record_matches(record, selector))
+        else {
+            return false;
+        };
+
+        Self::upsert_interface_runtime_iface(record, runtime_iface);
+        Self::upsert_interface_runtime_metadata(record, namespace, key, value);
+        let interfaces = guard.clone();
+        drop(guard);
+        self.update_daemon_status_snapshot(|snapshot| {
+            snapshot.interfaces = interfaces;
+        });
+        true
+    }
+
     fn interface_runtime_iface(record: &InterfaceRecord) -> Option<&str> {
         record
             .settings
@@ -262,6 +287,33 @@ impl RpcDaemon {
             .and_then(|settings| settings.get("_runtime"))
             .and_then(|runtime| runtime.get("iface"))
             .and_then(JsonValue::as_str)
+    }
+
+    fn interface_record_matches(record: &InterfaceRecord, selector: &InterfaceRecord) -> bool {
+        if record.kind != selector.kind {
+            return false;
+        }
+        let record_name = record.name.as_deref().map(str::trim).filter(|value| !value.is_empty());
+        let selector_name =
+            selector.name.as_deref().map(str::trim).filter(|value| !value.is_empty());
+        if record_name.is_some() || selector_name.is_some() {
+            return record_name == selector_name;
+        }
+        record.host == selector.host && record.port == selector.port
+    }
+
+    fn upsert_interface_runtime_iface(record: &mut InterfaceRecord, runtime_iface: &str) {
+        let mut settings = match record.settings.take() {
+            Some(JsonValue::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        };
+        let mut runtime = match settings.remove("_runtime") {
+            Some(JsonValue::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        };
+        runtime.insert("iface".to_string(), JsonValue::String(runtime_iface.to_string()));
+        settings.insert("_runtime".to_string(), JsonValue::Object(runtime));
+        record.settings = Some(JsonValue::Object(settings));
     }
 
     fn upsert_interface_runtime_metadata(

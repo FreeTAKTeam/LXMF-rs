@@ -367,8 +367,10 @@ The project is best described by capability level:
   network services. `set_interfaces` and `reload_config` now hot-apply explicit
   unicast UDP listener/peer records alongside TCP clients, with tests proving
   multicast, `device`-bound, partial-target, and out-of-range-target UDP shapes
-  remain restart-required and duplicate UDP binds are rejected before mutation;
-  live counter refresh for hot-applied UDP interfaces is not yet claimed. Serial
+  remain restart-required and duplicate UDP binds are rejected before mutation.
+  Hot-applied explicit unicast UDP records now attach the runtime iface and
+  refresh live daemon/RPC `_runtime.udp.status` counters under focused software
+  tests. Serial
   now refreshes live open/reconnect, HDLC frame, packet, byte, EOF, queue,
   decode, serialize, read, and write-error counters.
   KISS/AX.25 KISS and KISS TCP now refresh live packet, data-frame,

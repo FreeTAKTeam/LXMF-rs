@@ -1,7 +1,9 @@
 use super::{
-    apply_hot_apply_interface_records, InterfaceHotApplyBridge, InterfaceManager,
-    InterfaceMutationBridge, InterfaceRecord, ManagedHotApplyInterface,
+    apply_hot_apply_interface_records, refresh_hot_apply_udp_runtime_status_once,
+    HotApplyUdpRefresh, InterfaceHotApplyBridge, InterfaceManager, InterfaceMutationBridge,
+    InterfaceRecord, ManagedHotApplyInterface,
 };
+use rns_rpc::{RpcDaemon, RpcRequest};
 use rns_transport::iface::{IfaceRole, InterfaceMode, InterfaceSharedConfig};
 use serde_json::json;
 use std::collections::HashMap;
@@ -45,6 +47,16 @@ fn udp_peer_record(
         "target_port": target_port
     }));
     record
+}
+
+fn udp_refreshes() -> Arc<std::sync::Mutex<HashMap<String, HotApplyUdpRefresh>>> {
+    Arc::new(std::sync::Mutex::new(HashMap::new()))
+}
+
+fn test_bridge(
+    tx: tokio::sync::mpsc::Sender<super::InterfaceHotApplyCommand>,
+) -> InterfaceHotApplyBridge {
+    InterfaceHotApplyBridge { tx, udp_refreshes: udp_refreshes() }
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -91,7 +103,9 @@ async fn hot_apply_spawns_tcp_client_with_record_runtime_settings() {
         "announce_interval": 21600
     }));
 
-    apply_hot_apply_interface_records(&iface_manager, &mut managed, vec![record]).await;
+    let refreshes = udp_refreshes();
+    apply_hot_apply_interface_records(&iface_manager, &mut managed, vec![record], &refreshes, None)
+        .await;
 
     let address = managed.get("loopback").expect("managed tcp client").address;
     let manager = iface_manager.lock().await;
@@ -131,7 +145,9 @@ async fn hot_apply_updates_existing_tcp_client_runtime_settings() {
         "publish_ifac": true
     }));
 
-    apply_hot_apply_interface_records(&iface_manager, &mut managed, vec![record]).await;
+    let refreshes = udp_refreshes();
+    apply_hot_apply_interface_records(&iface_manager, &mut managed, vec![record], &refreshes, None)
+        .await;
 
     let manager = iface_manager.lock().await;
     assert_eq!(manager.mode(&address), Some(InterfaceMode::AccessPoint));
@@ -153,7 +169,15 @@ async fn hot_apply_spawns_udp_unicast_listener_with_runtime_metadata() {
     let mut managed = HashMap::new();
     let record = udp_record("udp-loopback", "127.0.0.1", 0);
 
-    apply_hot_apply_interface_records(&iface_manager, &mut managed, vec![record.clone()]).await;
+    let refreshes = udp_refreshes();
+    apply_hot_apply_interface_records(
+        &iface_manager,
+        &mut managed,
+        vec![record.clone()],
+        &refreshes,
+        None,
+    )
+    .await;
     let applied = bridge.apply_interfaces(vec![record]).expect("apply udp interface");
     let runtime = applied[0]
         .settings
@@ -175,6 +199,67 @@ async fn hot_apply_spawns_udp_unicast_listener_with_runtime_metadata() {
     assert_eq!(manager.role(&address), Some(IfaceRole::Unicast));
     assert_eq!(manager.mode(&address), Some(InterfaceMode::Full));
     assert_eq!(managed.len(), 1);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn hot_apply_udp_refresh_attaches_runtime_iface_and_live_status() {
+    let daemon = Arc::new(RpcDaemon::test_instance());
+    let iface_manager = Arc::new(tokio::sync::Mutex::new(InterfaceManager::new(8)));
+    let bridge = InterfaceHotApplyBridge::spawn_with_daemon(
+        iface_manager,
+        Vec::new(),
+        Arc::downgrade(&daemon),
+    );
+    let record = udp_record("udp-loopback", "127.0.0.1", 0);
+
+    let applied = bridge.apply_interfaces(vec![record]).expect("apply udp");
+    daemon.replace_interfaces(applied);
+
+    let (runtime_iface, refresh) = wait_for_hot_apply_udp_refresh(&bridge).await;
+    refresh.status.update(|status| {
+        status.link_state = "bound".to_string();
+        status.bytes_rx = 12;
+        status.decode_errors = 1;
+        status.last_error = Some("couldn't decode packet".to_string());
+    });
+
+    assert_eq!(refresh_hot_apply_udp_runtime_status_once(&daemon, &bridge.udp_refreshes), 1);
+    let result = daemon
+        .handle_rpc(RpcRequest { id: 771, method: "daemon_status_ex".to_string(), params: None })
+        .expect("daemon status")
+        .result
+        .expect("daemon status result");
+    let status = &result["interfaces"][0]["settings"]["_runtime"]["udp"]["status"];
+
+    assert_eq!(
+        result["interfaces"][0]["settings"]["_runtime"]["iface"].as_str(),
+        Some(runtime_iface.to_string().as_str())
+    );
+    assert_eq!(status["link_state"].as_str(), Some("bound"));
+    assert_eq!(status["role"].as_str(), Some("listener"));
+    assert_eq!(status["iface"].as_str(), Some(runtime_iface.to_string().as_str()));
+    assert_eq!(status["bytes_rx"].as_u64(), Some(12));
+    assert_eq!(status["decode_errors"].as_u64(), Some(1));
+    assert_eq!(status["last_error"].as_str(), Some("couldn't decode packet"));
+}
+
+async fn wait_for_hot_apply_udp_refresh(
+    bridge: &InterfaceHotApplyBridge,
+) -> (rns_transport::hash::AddressHash, HotApplyUdpRefresh) {
+    for _ in 0..20 {
+        if let Some(refresh) = bridge
+            .udp_refreshes
+            .lock()
+            .expect("udp refresh mutex poisoned")
+            .values()
+            .next()
+            .cloned()
+        {
+            return (refresh.runtime_iface, refresh);
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    panic!("hot-applied udp refresh was not registered");
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -205,10 +290,13 @@ async fn hot_apply_replaces_udp_when_bind_changes() {
     let iface_manager = Arc::new(tokio::sync::Mutex::new(InterfaceManager::new(8)));
     let mut managed = HashMap::new();
 
+    let refreshes = udp_refreshes();
     apply_hot_apply_interface_records(
         &iface_manager,
         &mut managed,
         vec![udp_record("udp-loopback", "127.0.0.1", 0)],
+        &refreshes,
+        None,
     )
     .await;
     let first = managed.get("udp-loopback").expect("first udp").address;
@@ -216,6 +304,8 @@ async fn hot_apply_replaces_udp_when_bind_changes() {
         &iface_manager,
         &mut managed,
         vec![udp_record("udp-loopback", "127.0.0.2", 0)],
+        &refreshes,
+        None,
     )
     .await;
 
@@ -243,10 +333,13 @@ async fn hot_apply_replaces_startup_seeded_udp_when_bind_changes() {
         },
     )]);
 
+    let refreshes = udp_refreshes();
     apply_hot_apply_interface_records(
         &iface_manager,
         &mut managed,
         vec![udp_record("udp-loopback", "127.0.0.2", 0)],
+        &refreshes,
+        None,
     )
     .await;
 
@@ -273,7 +366,15 @@ async fn hot_apply_removes_startup_seeded_udp_when_disabled() {
     let mut disabled = udp_record("udp-loopback", "127.0.0.1", 4242);
     disabled.enabled = false;
 
-    apply_hot_apply_interface_records(&iface_manager, &mut managed, vec![disabled]).await;
+    let refreshes = udp_refreshes();
+    apply_hot_apply_interface_records(
+        &iface_manager,
+        &mut managed,
+        vec![disabled],
+        &refreshes,
+        None,
+    )
+    .await;
 
     assert!(managed.is_empty());
     let manager = iface_manager.lock().await;
@@ -283,7 +384,7 @@ async fn hot_apply_removes_startup_seeded_udp_when_disabled() {
 #[test]
 fn hot_apply_rejects_multicast_udp_records() {
     let (tx, _rx) = tokio::sync::mpsc::channel(1);
-    let bridge = InterfaceHotApplyBridge { tx };
+    let bridge = test_bridge(tx);
 
     let err = bridge
         .apply_interfaces(vec![udp_record("udp-mcast", "239.255.0.1", 4242)])
@@ -296,7 +397,7 @@ fn hot_apply_rejects_multicast_udp_records() {
 #[test]
 fn hot_apply_rejects_partial_udp_forward_target() {
     let (tx, _rx) = tokio::sync::mpsc::channel(1);
-    let bridge = InterfaceHotApplyBridge { tx };
+    let bridge = test_bridge(tx);
     let mut record = udp_record("udp-partial", "127.0.0.1", 4242);
     record.settings = Some(json!({ "target_host": "127.0.0.1" }));
 
@@ -309,7 +410,7 @@ fn hot_apply_rejects_partial_udp_forward_target() {
 #[test]
 fn hot_apply_rejects_device_bound_udp_records() {
     let (tx, _rx) = tokio::sync::mpsc::channel(1);
-    let bridge = InterfaceHotApplyBridge { tx };
+    let bridge = test_bridge(tx);
     let mut record = udp_record("udp-device", "127.0.0.1", 4242);
     record.settings = Some(json!({ "device": "eth0" }));
 
@@ -323,7 +424,7 @@ fn hot_apply_rejects_device_bound_udp_records() {
 #[test]
 fn hot_apply_rejects_duplicate_udp_bind_addresses() {
     let (tx, _rx) = tokio::sync::mpsc::channel(1);
-    let bridge = InterfaceHotApplyBridge { tx };
+    let bridge = test_bridge(tx);
 
     let err = bridge
         .apply_interfaces(vec![
@@ -339,7 +440,7 @@ fn hot_apply_rejects_duplicate_udp_bind_addresses() {
 #[test]
 fn hot_apply_queue_is_bounded_and_reports_pressure() {
     let (tx, _rx) = tokio::sync::mpsc::channel(1);
-    let bridge = InterfaceHotApplyBridge { tx };
+    let bridge = test_bridge(tx);
 
     bridge
         .apply_interfaces(vec![tcp_record("first", "127.0.0.1", 1)])

@@ -285,9 +285,10 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     enforce_rpc_bind_security(rpc_addr.as_ref(), rpc_tls.as_ref(), daemon.as_ref());
     if let Some(transport) = transport.as_ref() {
         daemon.set_path_lookup_bridge(Arc::new(DaemonPathLookupBridge::new(transport.clone())));
-        daemon.set_interface_mutation_bridge(Arc::new(InterfaceHotApplyBridge::spawn(
+        daemon.set_interface_mutation_bridge(Arc::new(InterfaceHotApplyBridge::spawn_with_daemon(
             transport.iface_manager(),
             seeded_hot_apply_interfaces,
+            Arc::downgrade(&daemon),
         )));
     }
     if !rnode_management_bindings.is_empty() {

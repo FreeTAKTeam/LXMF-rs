@@ -135,9 +135,10 @@ placeholders:
   Runtime interface mutation now hot-applies explicit unicast UDP listener/peer
   records through `set_interfaces` and `reload_config`, while multicast,
   `device`-bound, partial-target, and out-of-range-target records remain
-  restart-required, and duplicate UDP binds are rejected before mutation; live
-  counter refresh for hot-applied UDP interfaces is not yet claimed by this
-  evidence.
+  restart-required, and duplicate UDP binds are rejected before mutation.
+  Hot-applied explicit unicast UDP records now attach the runtime iface and
+  refresh live daemon/RPC `_runtime.udp.status` counters under focused software
+  tests.
 - Serial now refreshes live daemon/RPC status with open/reconnect, HDLC frame,
   packet, byte, EOF, queue, decode, serialize, read, and write-error counters.
   Serial KISS and AX.25 KISS retain Python-compatible AX.25 UI header wrapping
