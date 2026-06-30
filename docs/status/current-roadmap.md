@@ -83,6 +83,10 @@ The project is best described by capability level:
   exception: one-hop or topology-change routes are marked unresponsive,
   rediscovery requests avoid the ingress interface, and equal-timebase
   higher-hop announces can replace the unresponsive path.
+- Intermediate-hop `LINKREQUEST` forwarding now rewrites existing configured
+  software link MTU signalling by preserving mode bits and clamping to the
+  software ingress/next-hop interface MTU ceiling, while Python-default
+  500-byte signalling and un-signalled requests remain unmodified.
 - Known-path requests on roaming interfaces also suppress direct path answers
   when the learned next-hop iface is the same roaming iface, matching Python's
   loop-avoidance behavior; this now has harness-dispatchable local

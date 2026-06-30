@@ -57,12 +57,12 @@
         let mut inbound =
             Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
                 .expect("link request should parse");
-        assert_eq!(inbound.signalling, Some([0x20, 0x01, 0xF3]));
+        assert_eq!(inbound.signalling, Some([0x20, 0x01, 0xF4]));
 
         let proof = inbound.prove();
         assert_eq!(
             &proof.data.as_slice()[SIGNATURE_LENGTH + PUBLIC_KEY_LENGTH..],
-            &[0x20, 0x01, 0xF3]
+            &[0x20, 0x01, 0xF4]
         );
     }
 

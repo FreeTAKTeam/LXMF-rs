@@ -382,6 +382,248 @@ async fn routed_link_request_proof_requires_matching_iface_and_signature() {
     }
 }
 
+#[tokio::test]
+async fn routed_link_request_clamps_forwarded_mtu_signalling_to_next_hop_iface() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut config = TransportConfig::new("test", &local_identity, true);
+    config.set_retransmit(true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+    let (ingress_iface, mut next_hop_channel) = {
+        let iface_manager = transport.iface_manager();
+        let mut manager = iface_manager.lock().await;
+        let ingress = manager.new_channel_with_role_mode_mtu(
+            16,
+            crate::iface::IfaceRole::Unicast,
+            crate::iface::InterfaceMode::Full,
+            448,
+        );
+        let next_hop = manager.new_channel_with_role_mode_mtu(
+            16,
+            crate::iface::IfaceRole::Unicast,
+            crate::iface::InterfaceMode::Full,
+            384,
+        );
+        (*ingress.address(), next_hop)
+    };
+    let next_hop_iface = *next_hop_channel.address();
+
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let remote_destination =
+        SingleInputDestination::new(remote_identity, DestinationName::new("lxmf", "delivery"));
+    let destination_hash = remote_destination.desc.address_hash;
+    let next_hop = AddressHash::new_from_rand(OsRng);
+    {
+        let mut guard = handler.lock().await;
+        assert!(guard.path_table.restore_tunnel_path(
+            destination_hash,
+            next_hop,
+            2,
+            next_hop_iface,
+            Hash::new_from_slice(b"packet"),
+            std::time::Instant::now(),
+        ));
+    }
+
+    let requester = PrivateIdentity::new_from_rand(OsRng);
+    let mut data = PacketDataBuffer::new();
+    data.safe_write(requester.as_identity().public_key.as_bytes());
+    data.safe_write(requester.as_identity().verifying_key.as_bytes());
+    data.safe_write(&[0x20, 0x20, 0x00]);
+    let request = Packet {
+        header: Header { packet_type: PacketType::LinkRequest, ..Default::default() },
+        destination: destination_hash,
+        context: PacketContext::None,
+        data,
+        ..Default::default()
+    };
+    let key_material_len = crate::identity::PUBLIC_KEY_LENGTH * 2;
+    let original_key_material = request.data.as_slice()[..key_material_len].to_vec();
+
+    handle_link_request_as_intermediate(
+        ingress_iface,
+        next_hop,
+        next_hop_iface,
+        &request,
+        handler.lock().await,
+    )
+    .await;
+
+    let forwarded = timeout(Duration::from_millis(200), next_hop_channel.tx_channel.recv())
+        .await
+        .expect("link request should forward to next-hop iface")
+        .expect("tx channel open");
+    assert_eq!(forwarded.tx_type, TxMessageType::Direct(next_hop_iface));
+    assert_eq!(forwarded.packet.header.packet_type, PacketType::LinkRequest);
+    assert_eq!(&forwarded.packet.data.as_slice()[..key_material_len], original_key_material);
+    assert_eq!(
+        &forwarded.packet.data.as_slice()[key_material_len..key_material_len + 3],
+        &[0x20, 0x01, 0x80],
+        "forwarded MTU signalling should preserve mode bits and clamp to the next-hop iface MTU"
+    );
+    assert_eq!(
+        &request.data.as_slice()[key_material_len..key_material_len + 3],
+        &[0x20, 0x20, 0x00],
+        "intermediate forwarding must not mutate the caller-owned packet"
+    );
+}
+
+#[tokio::test]
+async fn routed_link_request_preserves_python_default_mtu_signalling_when_ifaces_allow() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut config = TransportConfig::new("test", &local_identity, true);
+    config.set_retransmit(true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+    let (ingress_iface, mut next_hop_channel) = {
+        let iface_manager = transport.iface_manager();
+        let mut manager = iface_manager.lock().await;
+        let ingress = manager.new_channel_with_role_mode_mtu(
+            16,
+            crate::iface::IfaceRole::Unicast,
+            crate::iface::InterfaceMode::Full,
+            500,
+        );
+        let next_hop = manager.new_channel_with_role_mode_mtu(
+            16,
+            crate::iface::IfaceRole::Unicast,
+            crate::iface::InterfaceMode::Full,
+            500,
+        );
+        (*ingress.address(), next_hop)
+    };
+    let next_hop_iface = *next_hop_channel.address();
+
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let remote_destination =
+        SingleInputDestination::new(remote_identity, DestinationName::new("lxmf", "delivery"));
+    let destination_hash = remote_destination.desc.address_hash;
+    let next_hop = AddressHash::new_from_rand(OsRng);
+    {
+        let mut guard = handler.lock().await;
+        assert!(guard.path_table.restore_tunnel_path(
+            destination_hash,
+            next_hop,
+            2,
+            next_hop_iface,
+            Hash::new_from_slice(b"packet"),
+            std::time::Instant::now(),
+        ));
+    }
+
+    let requester = PrivateIdentity::new_from_rand(OsRng);
+    let mut data = PacketDataBuffer::new();
+    data.safe_write(requester.as_identity().public_key.as_bytes());
+    data.safe_write(requester.as_identity().verifying_key.as_bytes());
+    data.safe_write(&[0x20, 0x01, 0xF4]);
+    let request = Packet {
+        header: Header {
+            packet_type: PacketType::LinkRequest,
+            ..Default::default()
+        },
+        destination: destination_hash,
+        context: PacketContext::None,
+        data,
+        ..Default::default()
+    };
+    let key_material_len = crate::identity::PUBLIC_KEY_LENGTH * 2;
+
+    handle_link_request_as_intermediate(
+        ingress_iface,
+        next_hop,
+        next_hop_iface,
+        &request,
+        handler.lock().await,
+    )
+    .await;
+
+    let forwarded = timeout(Duration::from_millis(200), next_hop_channel.tx_channel.recv())
+        .await
+        .expect("link request should forward to next-hop iface")
+        .expect("tx channel open");
+    assert_eq!(forwarded.tx_type, TxMessageType::Direct(next_hop_iface));
+    assert_eq!(
+        &forwarded.packet.data.as_slice()[key_material_len..key_material_len + 3],
+        &[0x20, 0x01, 0xF4],
+        "Python default 500-byte MTU signalling must not be rewritten to 499"
+    );
+}
+
+#[tokio::test]
+async fn routed_link_request_without_mtu_signalling_forwards_without_appending_bytes() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut config = TransportConfig::new("test", &local_identity, true);
+    config.set_retransmit(true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+    let (ingress_iface, mut next_hop_channel) = {
+        let iface_manager = transport.iface_manager();
+        let mut manager = iface_manager.lock().await;
+        let ingress = manager.new_channel_with_role_mode_mtu(
+            16,
+            crate::iface::IfaceRole::Unicast,
+            crate::iface::InterfaceMode::Full,
+            448,
+        );
+        let next_hop = manager.new_channel_with_role_mode_mtu(
+            16,
+            crate::iface::IfaceRole::Unicast,
+            crate::iface::InterfaceMode::Full,
+            384,
+        );
+        (*ingress.address(), next_hop)
+    };
+    let next_hop_iface = *next_hop_channel.address();
+
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let remote_destination =
+        SingleInputDestination::new(remote_identity, DestinationName::new("lxmf", "delivery"));
+    let destination_hash = remote_destination.desc.address_hash;
+    let next_hop = AddressHash::new_from_rand(OsRng);
+    {
+        let mut guard = handler.lock().await;
+        assert!(guard.path_table.restore_tunnel_path(
+            destination_hash,
+            next_hop,
+            2,
+            next_hop_iface,
+            Hash::new_from_slice(b"packet"),
+            std::time::Instant::now(),
+        ));
+    }
+
+    let requester = PrivateIdentity::new_from_rand(OsRng);
+    let mut data = PacketDataBuffer::new();
+    data.safe_write(requester.as_identity().public_key.as_bytes());
+    data.safe_write(requester.as_identity().verifying_key.as_bytes());
+    let request = Packet {
+        header: Header { packet_type: PacketType::LinkRequest, ..Default::default() },
+        destination: destination_hash,
+        context: PacketContext::None,
+        data,
+        ..Default::default()
+    };
+    let original_data = request.data.as_slice().to_vec();
+
+    handle_link_request_as_intermediate(
+        ingress_iface,
+        next_hop,
+        next_hop_iface,
+        &request,
+        handler.lock().await,
+    )
+    .await;
+
+    let forwarded = timeout(Duration::from_millis(200), next_hop_channel.tx_channel.recv())
+        .await
+        .expect("link request should forward to next-hop iface")
+        .expect("tx channel open");
+    assert_eq!(forwarded.tx_type, TxMessageType::Direct(next_hop_iface));
+    assert_eq!(forwarded.packet.header.packet_type, PacketType::LinkRequest);
+    assert_eq!(forwarded.packet.data.as_slice(), original_data);
+    assert_eq!(request.data.as_slice(), original_data);
+}
+
 #[test]
 fn link_request_proof_starts_with_zero_hops() {
     let signer = PrivateIdentity::new_from_rand(OsRng);

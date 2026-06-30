@@ -1,4 +1,5 @@
 use super::*;
+use crate::destination::link::clamp_link_request_signalling_mtu;
 use crate::iface::InterfaceMode;
 use crate::packet::{DestinationType, Header, HeaderType, PacketType, PropagationType};
 
@@ -350,9 +351,35 @@ pub(super) async fn handle_link_request_as_intermediate<'a>(
         next_hop_iface,
         packet
     );
-    handler.link_table.add(packet, packet.destination, received_from, next_hop, next_hop_iface);
+    let mut packet = packet.clone();
+    clamp_forwarded_link_request_mtu(&mut packet, &handler, received_from, next_hop_iface).await;
+    handler.link_table.add(&packet, packet.destination, received_from, next_hop, next_hop_iface);
 
-    send_to_next_hop(packet, &handler, None).await;
+    send_to_next_hop(&packet, &handler, None).await;
+}
+
+async fn clamp_forwarded_link_request_mtu<'a>(
+    packet: &mut Packet,
+    handler: &MutexGuard<'a, TransportHandler>,
+    received_from: AddressHash,
+    next_hop_iface: AddressHash,
+) {
+    if packet.header.packet_type != PacketType::LinkRequest {
+        return;
+    }
+
+    let mut max_mtu = usize::MAX;
+    {
+        let manager = handler.iface_manager.lock().await;
+        if let Some(mtu) = manager.mtu(&received_from) {
+            max_mtu = max_mtu.min(mtu);
+        }
+        if let Some(mtu) = manager.mtu(&next_hop_iface) {
+            max_mtu = max_mtu.min(mtu);
+        }
+    }
+
+    clamp_link_request_signalling_mtu(packet, max_mtu);
 }
 
 pub(super) async fn handle_link_request<'a>(
