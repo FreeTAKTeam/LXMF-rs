@@ -225,6 +225,7 @@ impl AutoDaemonStartupPlan {
         runtime: &AutoInterfaceRuntimeLoopHandles,
         candidates: Vec<AutoInterfaceDeviceCandidate>,
         runtime_status: Option<&AutoRuntimeStatusHandle>,
+        now: core::time::Duration,
         mut scope_id_for_ifname: impl FnMut(&str) -> Result<u32, String>,
     ) -> Result<usize, String> {
         let desired = self.device_filter.adopt_devices(&candidates, self.platform);
@@ -261,7 +262,7 @@ impl AutoDaemonStartupPlan {
                         .lock()
                         .await
                         .spawn_bound_socket(data_socket, &runtime.data_events);
-                    state.lock().await.apply_adopted_interface_change(&change);
+                    state.lock().await.apply_adopted_interface_change_at(&change, now);
                     if let Some(runtime_status) = runtime_status {
                         runtime_status.record_adopted_interface_change(&change);
                     }
@@ -280,7 +281,7 @@ impl AutoDaemonStartupPlan {
                         .await
                         .remove_listener(&adopted.ifname)
                         .await;
-                    state.lock().await.apply_adopted_interface_change(&change);
+                    state.lock().await.apply_adopted_interface_change_at(&change, now);
                     if let Some(runtime_status) = runtime_status {
                         runtime_status.record_adopted_interface_change(&change);
                     }
@@ -305,6 +306,7 @@ impl AutoDaemonStartupPlan {
             if *shutdown.borrow() {
                 return;
             }
+            let started_at = Instant::now();
             let mut interval = tokio::time::interval(timing.peer_job_interval);
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
             loop {
@@ -335,6 +337,7 @@ impl AutoDaemonStartupPlan {
                                 &runtime,
                                 candidates.clone(),
                                 runtime_status.as_ref(),
+                                started_at.elapsed(),
                                 |ifname| resolver.resolve(ifname),
                             )
                             .await

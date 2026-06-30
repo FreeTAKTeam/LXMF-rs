@@ -179,11 +179,23 @@ impl AutoDiscoveryState {
         self.clear_interface_runtime_state(&update.ifname);
     }
 
+    #[deprecated(
+        note = "use apply_adopted_interface_change_at so runtime additions seed multicast freshness with the current runtime time"
+    )]
     pub fn apply_adopted_interface_change(&mut self, change: &AutoAdoptedInterfaceChange) {
+        self.apply_adopted_interface_change_at(change, core::time::Duration::ZERO);
+    }
+
+    pub fn apply_adopted_interface_change_at(
+        &mut self,
+        change: &AutoAdoptedInterfaceChange,
+        now: core::time::Duration,
+    ) {
         match change {
             AutoAdoptedInterfaceChange::Added { adopted, .. } => {
                 self.adopted_devices
                     .insert(adopted.ifname.clone(), descope_link_local(&adopted.link_local_address));
+                self.multicast_echoes.insert(adopted.ifname.clone(), now);
             }
             AutoAdoptedInterfaceChange::Removed { adopted, .. } => {
                 self.adopted_devices.remove(&adopted.ifname);

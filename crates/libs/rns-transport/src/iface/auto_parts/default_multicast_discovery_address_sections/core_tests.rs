@@ -477,7 +477,7 @@
     }
 
     #[test]
-    fn adopted_interface_change_add_plans_listener_bindings_without_runtime_state() {
+    fn adopted_interface_change_add_seeds_python_multicast_echo_freshness() {
         let config = AutoInterfaceConfig::default();
         let mut state = AutoDiscoveryState::from_timing(
             Vec::new(),
@@ -506,12 +506,23 @@
         }
 
         assert!(state.adopted_devices().is_empty());
-        state.apply_adopted_interface_change(&changes[0]);
+        state.apply_adopted_interface_change_at(
+            &changes[0],
+            core::time::Duration::from_secs(10),
+        );
         assert_eq!(state.adopted_devices(), desired);
         assert_eq!(state.peer_count(), 0);
-        assert_eq!(state.last_multicast_echo("eth0"), None);
+        assert_eq!(state.last_multicast_echo("eth0"), Some(core::time::Duration::from_secs(10)));
         assert_eq!(state.initial_multicast_echo("eth0"), None);
         assert_eq!(state.multicast_echo_timed_out("eth0"), None);
+        assert_eq!(
+            state.update_multicast_echo_timeouts(
+                core::time::Duration::from_millis(16_500),
+                core::time::Duration::from_millis(6_500),
+            ),
+            Vec::<AutoMulticastCarrierEvent>::new()
+        );
+        assert_eq!(state.multicast_echo_timed_out("eth0"), Some(false));
     }
 
     #[test]
@@ -577,7 +588,7 @@
             change => panic!("unexpected change: {change:?}"),
         }
 
-        state.apply_adopted_interface_change(&changes[0]);
+        state.apply_adopted_interface_change_at(&changes[0], core::time::Duration::from_secs(10));
 
         assert_eq!(state.adopted_devices(), desired);
         assert_eq!(state.last_multicast_echo("eth0"), None);
@@ -627,7 +638,7 @@
 
         assert_eq!(changes.len(), 1);
         assert!(matches!(changes[0], AutoAdoptedInterfaceChange::LinkLocalChanged(_)));
-        state.apply_adopted_interface_change(&changes[0]);
+        state.apply_adopted_interface_change_at(&changes[0], core::time::Duration::from_secs(10));
 
         assert_eq!(state.last_multicast_echo("eth0"), None);
         assert_eq!(state.initial_multicast_echo("eth0"), None);

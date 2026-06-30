@@ -123,7 +123,8 @@ The project is best described by capability level:
   restored on tunnel reappearance can answer later known-path requests, and
   tunnel path restore now carries Python-format random-blob windows while
   respecting active-path freshness, hop count, and expiry before replacing a
-  route.
+  route, including explicit evidence for both preserving a fresher active route
+  and replacing it with fresher restored tunnel state.
 - `reticulumd` supports TCP client/server, including Python-style
   TCP-over-I2P `i2p_tunneled` socket tuning for outbound clients and accepted
   server streams and Python-style `fixed_mtu` falsey/default and Reticulum

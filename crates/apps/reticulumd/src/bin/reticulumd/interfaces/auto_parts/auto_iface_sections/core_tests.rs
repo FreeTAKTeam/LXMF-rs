@@ -716,6 +716,7 @@
                     ipv6_addresses: vec!["fe80::1111".to_string()],
                 }],
                 None,
+                core::time::Duration::from_secs(8),
                 |_| Err("missing interface index".to_string()),
             )
             .await
@@ -806,6 +807,7 @@
                 &runtime_loop_handles,
                 Vec::new(),
                 None,
+                core::time::Duration::from_secs(12),
                 |_| panic!("remove should not resolve scope ids"),
             )
             .await

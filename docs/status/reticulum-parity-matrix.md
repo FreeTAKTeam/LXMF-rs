@@ -174,9 +174,10 @@ placeholders:
   discovery and data-listener receive loops, adopted-interface add/remove/change
   diff planning with explicit state apply semantics, daemon-side add/remove
   lifecycle application for active and zero-initial AutoInterface runtimes,
-  stale outbound route pruning after restart/removal, dynamic multicast/reverse
-  announce source refresh after replacement, and Python-style fallback from unknown
-  `multicast_address_type` values to `temporary`.
+  Python-style multicast echo freshness seeding when adopted interfaces are
+  added at runtime, stale outbound route pruning after restart/removal, dynamic
+  multicast/reverse announce source refresh after replacement, and Python-style
+  fallback from unknown `multicast_address_type` values to `temporary`.
 - Serial, TCP/Wi-Fi, and feature-gated BLE LoRa/RNode with startup probes,
   Python and Android-style selector aliases, configuration validation,
   telemetry, flow control, teardown, display-capable BLE external-framebuffer
@@ -341,7 +342,8 @@ direct `PATH_RESPONSE` packets. Restored tunnel paths now preserve bounded
 Python-format random-blob windows and compare them with any active path, so a
 reappearing tunnel cannot replace a fresher active route unless the existing
 path is expired or the tunnel path is at least as fresh under Python's
-timebase rules.
+timebase rules, with active-preservation and fresher-tunnel replacement
+evidence.
 
 Enabled unknown interface kinds still parse so operators can see them in daemon
 status, but daemon startup marks them as failed with explicit
