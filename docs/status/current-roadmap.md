@@ -408,7 +408,9 @@ The project is best described by capability level:
   rnpath-smoke`, and its CLI request-path path has mock-RPC coverage for both
   the default TCP endpoint and Unix-domain transport. The smoke starts a local
   four-node mesh and verifies a non-neighbor destination resolves with
-  next-hop/interface metadata over the software RPC path.
+  next-hop/interface metadata over the software RPC path, then reissues the
+  lookup as a scoped/tagged path request on the learned outgoing interface and
+  verifies the daemon echoes the scope fields.
 - The pinned Python compatibility matrix now includes
   `rns_path_request_rust_to_python`, a loopback TCP case where Rust
   `reticulumd` starts with an unknown Python delivery path, resolves it through
@@ -424,8 +426,9 @@ The project is best described by capability level:
   selected interface, and scoped/tagged refreshes still issue even when an
   unscoped cached path already exists; a syntactically valid but non-matching
   interface scope is surfaced as a request failure instead of a silent no-op.
-  `rnpath-rs` exposes matching
-  `--on-iface` and `--tag-hex` flags for software-only parity checks.
+  `rnpath-rs` exposes matching `--on-iface` and `--tag-hex` flags, and `rnx
+  rnpath-smoke` now exercises them against the local daemon mesh after learning
+  the non-neighbor path's outgoing interface.
 
 ### LXMF
 

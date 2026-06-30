@@ -14,6 +14,8 @@ use crate::DeliveryMode;
 
 use crate::scenario::{run_delivery_mode, run_paper_workflow, selected_mesh_delivery_modes};
 
+const RNPATH_SMOKE_TAG_HEX: &str = "01020304";
+
 struct MeshNodeProcess {
     rpc: String,
     destination_hash: String,
@@ -139,17 +141,36 @@ pub(crate) fn run_rnpath_smoke(
         let target = nodes / 2;
         let target_hash = &node_processes[target].destination_hash;
         let rnpath_output =
-            run_rnpath_binary(&node_processes[source].rpc, target_hash, timeout_secs)?;
+            run_rnpath_binary(&node_processes[source].rpc, target_hash, timeout_secs, None, None)?;
         let path_result = parse_rnpath_output(&rnpath_output, target_hash)?;
         let hops = path_result.get("hops").and_then(serde_json::Value::as_u64);
         let next_hop = required_path_field(&path_result, "next_hop")?;
-        let interface = required_path_field(&path_result, "interface")?;
+        let interface = normalized_hash_field(&path_result, "interface")?;
+        let scoped_output = run_rnpath_binary(
+            &node_processes[source].rpc,
+            target_hash,
+            timeout_secs,
+            Some(&interface),
+            Some(RNPATH_SMOKE_TAG_HEX),
+        )?;
+        let scoped_result = parse_rnpath_output(&scoped_output, target_hash)?;
+        validate_scoped_rnpath_result(
+            &scoped_result,
+            &interface,
+            RNPATH_SMOKE_TAG_HEX,
+            next_hop,
+            hops,
+        )?;
 
         let hop_display =
             hops.map(|value| value.to_string()).unwrap_or_else(|| "unknown".to_owned());
         println!(
             "RNPATH ok: node={} target={} destination={} next_hop={} interface={} reported_hops={}",
             source, target, target_hash, next_hop, interface, hop_display
+        );
+        println!(
+            "RNPATH ok: scoped request on_iface={} tag_hex={} echoed by daemon",
+            interface, RNPATH_SMOKE_TAG_HEX
         );
         println!("RNPATH ok: local non-neighbor mesh daemon path smoke completed");
         Ok(())
@@ -282,15 +303,28 @@ fn wait_for_mesh_peer_visibility(
     Ok(())
 }
 
-fn run_rnpath_binary(rpc: &str, destination_hash: &str, timeout_secs: u64) -> io::Result<Vec<u8>> {
-    let output = ProcessCommand::new(rnpath_rs_path()?)
+fn run_rnpath_binary(
+    rpc: &str,
+    destination_hash: &str,
+    timeout_secs: u64,
+    on_iface: Option<&str>,
+    tag_hex: Option<&str>,
+) -> io::Result<Vec<u8>> {
+    let mut command = ProcessCommand::new(rnpath_rs_path()?);
+    command
         .arg(destination_hash)
         .arg("--rpc")
         .arg(rpc)
         .arg("--timeout")
         .arg(timeout_secs.to_string())
-        .arg("--json")
-        .output()?;
+        .arg("--json");
+    if let Some(on_iface) = on_iface {
+        command.arg("--on-iface").arg(on_iface);
+    }
+    if let Some(tag_hex) = tag_hex {
+        command.arg("--tag-hex").arg(tag_hex);
+    }
+    let output = command.output()?;
 
     if !output.status.success() {
         return Err(io::Error::other(format!(
@@ -324,6 +358,70 @@ fn parse_rnpath_output(output: &[u8], destination_hash: &str) -> io::Result<serd
         ));
     }
     Ok(result)
+}
+
+fn validate_scoped_rnpath_result(
+    result: &serde_json::Value,
+    on_iface: &str,
+    tag_hex: &str,
+    expected_next_hop: &str,
+    expected_hops: Option<u64>,
+) -> io::Result<()> {
+    let reported_iface = required_path_field(result, "on_iface")?;
+    if reported_iface != on_iface {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("rnpath-rs reported unexpected on_iface: {result}"),
+        ));
+    }
+    let interface_scope = required_path_field(result, "interface_scope")?;
+    if interface_scope != on_iface {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("rnpath-rs reported unexpected interface_scope: {result}"),
+        ));
+    }
+    let reported_tag = required_path_field(result, "tag_hex")?;
+    if reported_tag != tag_hex {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("rnpath-rs reported unexpected tag_hex: {result}"),
+        ));
+    }
+    let next_hop = required_path_field(result, "next_hop")?;
+    if next_hop != expected_next_hop {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("scoped rnpath-rs result changed next_hop: {result}"),
+        ));
+    }
+    let interface = normalized_hash_field(result, "interface")?;
+    if interface != on_iface {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("scoped rnpath-rs result changed interface metadata: {result}"),
+        ));
+    }
+    if result.get("hops").and_then(serde_json::Value::as_u64) != expected_hops {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("scoped rnpath-rs result changed hop metadata: {result}"),
+        ));
+    }
+    Ok(())
+}
+
+fn normalized_hash_field(result: &serde_json::Value, key: &str) -> io::Result<String> {
+    let value = required_path_field(result, key)?;
+    let normalized =
+        value.strip_prefix('/').and_then(|stripped| stripped.strip_suffix('/')).unwrap_or(value);
+    if normalized.len() != 32 || !normalized.as_bytes().iter().all(u8::is_ascii_hexdigit) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("rnpath-rs reported non-hash {key}: {result}"),
+        ));
+    }
+    Ok(normalized.to_ascii_lowercase())
 }
 
 fn required_path_field<'a>(result: &'a serde_json::Value, key: &str) -> io::Result<&'a str> {
