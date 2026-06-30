@@ -657,6 +657,7 @@ impl AutoDaemonStartupPlan {
             state,
             dedupe,
             transport,
+            runtime_status: None,
             events,
             shutdown,
             started_at,
@@ -817,11 +818,20 @@ impl AutoPeerDataListenerSupervisor {
             state,
             dedupe,
             transport,
+            runtime_status: None,
             shutdown,
             started_at: Instant::now(),
             listeners: BTreeMap::new(),
             pending_stops: Vec::new(),
         }
+    }
+
+    pub(crate) fn with_runtime_status(
+        mut self,
+        runtime_status: Option<AutoRuntimeStatusHandle>,
+    ) -> Self {
+        self.runtime_status = runtime_status;
+        self
     }
 
     pub(crate) fn spawn_sockets(
@@ -845,6 +855,7 @@ impl AutoPeerDataListenerSupervisor {
             state: Arc::clone(&self.state),
             dedupe: Arc::clone(&self.dedupe),
             transport: self.transport.clone(),
+            runtime_status: self.runtime_status.clone(),
             events: events.clone(),
             shutdown: self.shutdown.clone(),
             started_at: self.started_at,

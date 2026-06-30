@@ -52,6 +52,39 @@ fn auto_interface_prepared_host_smoke_preserves_evidence_contract() {
 }
 
 #[test]
+fn auto_interface_software_smoke_preserves_evidence_contract() {
+    let root = repo_root();
+    let script_path = root.join("tools/scripts/auto-interface-software-smoke.sh");
+    let script =
+        fs::read_to_string(&script_path).expect("read AutoInterface software smoke script");
+
+    for required in [
+        "target/auto-interface-software-smoke",
+        "cargo test -p reticulum-rs-transport auto --lib",
+        "cargo test -p reticulumd auto_ --bin reticulumd",
+        "software_auto_interface_runtime",
+        "product_boundary",
+        "software-only Rust tests",
+        "Linux namespace churn",
+        "real Wi-Fi/Ethernet churn",
+        "external-client evidence",
+        "transport_auto_interface_protocol_helpers",
+        "reticulumd_auto_interface_runtime",
+        "Python final-init gating",
+        "peer-data routing",
+        "carrier runtime status",
+        "zero-initial startup",
+        "last peer-job status",
+        "report.json",
+    ] {
+        assert!(
+            script.contains(required),
+            "AutoInterface software smoke should include required token {required:?}"
+        );
+    }
+}
+
+#[test]
 fn nightly_hil_workflow_exposes_auto_interface_prepared_host_job() {
     let root = repo_root();
     let workflow_path = root.join(".github/workflows/nightly-embedded-hil.yml");

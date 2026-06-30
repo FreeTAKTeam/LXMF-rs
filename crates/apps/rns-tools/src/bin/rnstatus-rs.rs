@@ -519,6 +519,29 @@ fn auto_runtime_summary(status: &Value) -> Option<String> {
     append_optional_u64(&mut summary, "added", status.get("adopted_add_count"));
     append_optional_u64(&mut summary, "removed", status.get("adopted_remove_count"));
     append_optional_u64(&mut summary, "replaced", status.get("link_local_replacement_count"));
+    append_optional_u64(&mut summary, "peer_data_admitted", status.get("peer_data_admitted_count"));
+    append_optional_u64(&mut summary, "peer_data_dup", status.get("peer_data_duplicate_count"));
+    append_optional_u64(&mut summary, "peer_data_unknown", status.get("peer_data_unknown_count"));
+    append_optional_u64(
+        &mut summary,
+        "peer_data_delivered",
+        status.get("peer_data_delivered_count"),
+    );
+    append_optional_u64(
+        &mut summary,
+        "peer_data_decode_failed",
+        status.get("peer_data_decode_failed_count"),
+    );
+    append_optional_u64(
+        &mut summary,
+        "peer_data_rx_closed",
+        status.get("peer_data_rx_closed_count"),
+    );
+    if let Some(peer_data) = status.get("last_peer_data").and_then(Value::as_object) {
+        append_optional_str(&mut summary, "last_peer_data", peer_data.get("decision"));
+        append_optional_str(&mut summary, "forwarding", peer_data.get("forwarding"));
+        append_optional_str(&mut summary, "peer", peer_data.get("peer_address"));
+    }
     if let Some(link_local) = status.get("link_local_update").and_then(Value::as_object) {
         append_optional_str(&mut summary, "link_local", link_local.get("ifname"));
         append_optional_str(&mut summary, "new_ll", link_local.get("new_link_local_address"));
@@ -1027,6 +1050,18 @@ mod tests {
                                     "adopted_add_count": 2,
                                     "adopted_remove_count": 1,
                                     "link_local_replacement_count": 1,
+                                    "peer_data_admitted_count": 3,
+                                    "peer_data_duplicate_count": 1,
+                                    "peer_data_unknown_count": 2,
+                                    "peer_data_delivered_count": 2,
+                                    "peer_data_decode_failed_count": 1,
+                                    "peer_data_rx_closed_count": 1,
+                                    "last_peer_data": {
+                                        "ifname": "eth0",
+                                        "peer_address": "fe80::2222",
+                                        "decision": "accepted",
+                                        "forwarding": "rx_channel_closed"
+                                    },
                                     "carrier_events": [
                                         {
                                             "event": "carrier_recovered",
@@ -1491,6 +1526,15 @@ mod tests {
         assert!(output.contains("added=2"));
         assert!(output.contains("removed=1"));
         assert!(output.contains("replaced=1"));
+        assert!(output.contains("peer_data_admitted=3"));
+        assert!(output.contains("peer_data_dup=1"));
+        assert!(output.contains("peer_data_unknown=2"));
+        assert!(output.contains("peer_data_delivered=2"));
+        assert!(output.contains("peer_data_decode_failed=1"));
+        assert!(output.contains("peer_data_rx_closed=1"));
+        assert!(output.contains("last_peer_data=accepted"));
+        assert!(output.contains("forwarding=rx_channel_closed"));
+        assert!(output.contains("peer=fe80::2222"));
         assert!(output.contains("link_local=eth0"));
         assert!(output.contains("new_ll=fe80::5678%eth0"));
         assert!(output.contains("i2p sam=127.0.0.1:7656 accept=listening peers=3"));

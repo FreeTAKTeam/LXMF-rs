@@ -354,7 +354,8 @@ impl AutoDaemonStartupPlan {
                 dedupe,
                 transport_bridge.clone(),
                 shutdown_rx.clone(),
-            ),
+            )
+            .with_runtime_status(runtime_status.clone()),
         ));
         data_listener_supervisor.lock().await.spawn_sockets(data_sockets, &data_events_tx);
         let data_receive_loop_count = data_listener_supervisor.lock().await.len();

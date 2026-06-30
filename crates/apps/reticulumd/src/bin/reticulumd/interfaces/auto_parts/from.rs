@@ -202,6 +202,13 @@ impl AutoRuntimeStatusHandle {
                 adopted_remove_count: 0,
                 link_local_replacement_count: 0,
                 last_adopted_change: None,
+                peer_data_admitted_count: 0,
+                peer_data_duplicate_count: 0,
+                peer_data_unknown_count: 0,
+                peer_data_delivered_count: 0,
+                peer_data_decode_failed_count: 0,
+                peer_data_rx_closed_count: 0,
+                last_peer_data: None,
             })),
         }
     }
@@ -263,6 +270,51 @@ impl AutoRuntimeStatusHandle {
         guard.last_adopted_change = Some(change.clone());
     }
 
+    pub(crate) fn record_peer_data(
+        &self,
+        processed: &AutoProcessedPeerDataDatagram,
+        forwarding: Option<AutoPeerDataForwardResult>,
+    ) {
+        let mut guard = self.inner.lock().expect("auto runtime status mutex poisoned");
+        let decision = peer_data_decision_name(&processed.decision);
+        match processed.decision {
+            AutoPeerInboundDecision::Accepted { .. } => {
+                guard.peer_data_admitted_count = guard.peer_data_admitted_count.saturating_add(1);
+            }
+            AutoPeerInboundDecision::Duplicate => {
+                guard.peer_data_duplicate_count = guard.peer_data_duplicate_count.saturating_add(1);
+            }
+            AutoPeerInboundDecision::UnknownPeer => {
+                guard.peer_data_unknown_count = guard.peer_data_unknown_count.saturating_add(1);
+            }
+        }
+        match forwarding {
+            Some(AutoPeerDataForwardResult::Delivered) => {
+                guard.peer_data_delivered_count =
+                    guard.peer_data_delivered_count.saturating_add(1);
+            }
+            Some(AutoPeerDataForwardResult::DecodeFailed) => {
+                guard.peer_data_decode_failed_count =
+                    guard.peer_data_decode_failed_count.saturating_add(1);
+            }
+            Some(AutoPeerDataForwardResult::RxChannelClosed) => {
+                guard.peer_data_rx_closed_count =
+                    guard.peer_data_rx_closed_count.saturating_add(1);
+            }
+            Some(
+                AutoPeerDataForwardResult::NotForwarded
+                | AutoPeerDataForwardResult::VirtualIfaceUnavailable,
+            )
+            | None => {}
+        }
+        guard.last_peer_data = Some(AutoPeerDataRuntimeSummary {
+            ifname: processed.datagram.ifname.clone(),
+            peer_address: processed.peer_address.clone(),
+            decision: decision.to_string(),
+            forwarding: forwarding.map(peer_data_forward_result_name).map(str::to_string),
+        });
+    }
+
     pub(crate) fn to_json(&self) -> JsonValue {
         let mut guard = self.inner.lock().expect("auto runtime status mutex poisoned");
         let elapsed = guard.started_at.elapsed();
@@ -303,196 +355,66 @@ impl AutoRuntimeStatusHandle {
                     .map(peer_job_summary_json)
                     .unwrap_or(JsonValue::Null),
             );
+            object.insert(
+                "peer_data_admitted_count".to_string(),
+                json!(guard.peer_data_admitted_count),
+            );
+            object.insert(
+                "peer_data_duplicate_count".to_string(),
+                json!(guard.peer_data_duplicate_count),
+            );
+            object.insert(
+                "peer_data_unknown_count".to_string(),
+                json!(guard.peer_data_unknown_count),
+            );
+            object.insert(
+                "peer_data_delivered_count".to_string(),
+                json!(guard.peer_data_delivered_count),
+            );
+            object.insert(
+                "peer_data_decode_failed_count".to_string(),
+                json!(guard.peer_data_decode_failed_count),
+            );
+            object.insert(
+                "peer_data_rx_closed_count".to_string(),
+                json!(guard.peer_data_rx_closed_count),
+            );
+            object.insert(
+                "last_peer_data".to_string(),
+                guard
+                    .last_peer_data
+                    .as_ref()
+                    .map(peer_data_summary_json)
+                    .unwrap_or(JsonValue::Null),
+            );
         }
         value
     }
 }
 
-fn adopted_change_json(change: &AutoAdoptedInterfaceChange) -> JsonValue {
-    match change {
-        AutoAdoptedInterfaceChange::Added { adopted, .. } => json!({
-            "event": "added",
-            "ifname": adopted.ifname,
-            "link_local_address": adopted.link_local_address,
-        }),
-        AutoAdoptedInterfaceChange::Removed { adopted, .. } => json!({
-            "event": "removed",
-            "ifname": adopted.ifname,
-            "link_local_address": adopted.link_local_address,
-        }),
-        AutoAdoptedInterfaceChange::LinkLocalChanged(update) => json!({
-            "event": "link_local_changed",
-            "ifname": update.ifname,
-            "old_link_local_address": update.old_link_local_address,
-            "new_link_local_address": update.new_link_local_address,
-        }),
+fn peer_data_decision_name(decision: &AutoPeerInboundDecision) -> &'static str {
+    match decision {
+        AutoPeerInboundDecision::Accepted { .. } => "accepted",
+        AutoPeerInboundDecision::Duplicate => "duplicate",
+        AutoPeerInboundDecision::UnknownPeer => "unknown_peer",
     }
 }
 
-fn carrier_event_json(event: &AutoMulticastCarrierEvent) -> JsonValue {
-    match event {
-        AutoMulticastCarrierEvent::CarrierLost { ifname } => {
-            json!({
-                "event": "carrier_lost",
-                "ifname": ifname,
-            })
-        }
-        AutoMulticastCarrierEvent::CarrierRecovered { ifname } => {
-            json!({
-                "event": "carrier_recovered",
-                "ifname": ifname,
-            })
-        }
+fn peer_data_forward_result_name(result: AutoPeerDataForwardResult) -> &'static str {
+    match result {
+        AutoPeerDataForwardResult::NotForwarded => "not_forwarded",
+        AutoPeerDataForwardResult::Delivered => "delivered",
+        AutoPeerDataForwardResult::VirtualIfaceUnavailable => "virtual_iface_unavailable",
+        AutoPeerDataForwardResult::DecodeFailed => "decode_failed",
+        AutoPeerDataForwardResult::RxChannelClosed => "rx_channel_closed",
     }
 }
 
-fn link_local_update_json(update: &AutoLinkLocalAddressUpdate) -> JsonValue {
+fn peer_data_summary_json(summary: &AutoPeerDataRuntimeSummary) -> JsonValue {
     json!({
-        "ifname": update.ifname,
-        "old_link_local_address": update.old_link_local_address,
-        "new_link_local_address": update.new_link_local_address,
-        "restart_data_listener": data_listener_json(&update.listener_binding),
+        "ifname": summary.ifname,
+        "peer_address": summary.peer_address,
+        "decision": summary.decision,
+        "forwarding": summary.forwarding,
     })
-}
-
-pub(crate) fn discovery_runtime_summary_json(summary: &AutoDiscoveryRuntimeSummary) -> JsonValue {
-    json!({
-        "bound_socket_count": summary.bound_socket_count,
-        "receive_loop_count": summary.receive_loop_count,
-        "initial_peer_announce_count": summary.initial_peer_announce_count,
-        "repeat_peer_announce_scheduler_count": summary.repeat_peer_announce_scheduler_count,
-        "peer_job_scheduler_count": summary.peer_job_scheduler_count,
-        "adopted_interface_reconciler_count": summary.adopted_interface_reconciler_count,
-        "data_socket_count": summary.data_socket_count,
-        "data_receive_loop_count": summary.data_receive_loop_count,
-    })
-}
-
-fn discovery_source_address(datagram: &AutoDiscoveryDatagram) -> String {
-    datagram.source_addr.ip().to_string()
-}
-
-fn peer_data_source_address(datagram: &AutoPeerDataDatagram) -> String {
-    datagram.source_addr.ip().to_string()
-}
-
-fn log_auto_discovery_loop_event(event: AutoDiscoveryLoopEvent) {
-    match event {
-        AutoDiscoveryLoopEvent::Processed(processed) => {
-            log::debug!(
-                "[daemon-auto] discovery accepted iface={} source={} event={:?}",
-                processed.datagram.ifname,
-                processed.source_address,
-                processed.event
-            );
-        }
-        AutoDiscoveryLoopEvent::Rejected { datagram, source_address, reason } => {
-            log::debug!(
-                "[daemon-auto] discovery rejected iface={} source={} reason={:?}",
-                datagram.ifname,
-                source_address,
-                reason
-            );
-        }
-        AutoDiscoveryLoopEvent::ReceiveFailed { ifname, kind, bind_addr, error } => {
-            log::warn!(
-                "[daemon-auto] discovery receive failed iface={} kind={} bind={} err={}",
-                ifname,
-                discovery_socket_kind(kind),
-                bind_addr,
-                error
-            );
-        }
-    }
-}
-
-fn log_auto_peer_data_loop_event(event: AutoPeerDataLoopEvent) {
-    match event {
-        AutoPeerDataLoopEvent::Processed(processed) => {
-            log::debug!(
-                "[daemon-auto] peer data processed iface={} peer={} decision={:?}",
-                processed.datagram.ifname,
-                processed.peer_address,
-                processed.decision
-            );
-        }
-        AutoPeerDataLoopEvent::ReceiveFailed { ifname, bind_addr, error } => {
-            log::warn!(
-                "[daemon-auto] peer data receive failed iface={} bind={} err={}",
-                ifname,
-                bind_addr,
-                error
-            );
-        }
-    }
-}
-
-fn peering_packet_kind(kind: AutoPeeringPacketKind) -> &'static str {
-    match kind {
-        AutoPeeringPacketKind::Multicast => "multicast",
-        AutoPeeringPacketKind::ReverseUnicast => "reverse_unicast",
-    }
-}
-
-fn discovery_socket_kind(kind: AutoDiscoverySocketKind) -> &'static str {
-    match kind {
-        AutoDiscoverySocketKind::Unicast => "unicast",
-        AutoDiscoverySocketKind::Multicast => "multicast",
-    }
-}
-
-fn current_platform() -> AutoInterfacePlatform {
-    if cfg!(target_os = "windows") {
-        AutoInterfacePlatform::Windows
-    } else if cfg!(target_os = "macos") {
-        AutoInterfacePlatform::Darwin
-    } else if cfg!(target_os = "android") {
-        AutoInterfacePlatform::Android
-    } else {
-        AutoInterfacePlatform::Other
-    }
-}
-
-fn platform_name(platform: AutoInterfacePlatform) -> &'static str {
-    match platform {
-        AutoInterfacePlatform::Other => "other",
-        AutoInterfacePlatform::Darwin => "darwin",
-        AutoInterfacePlatform::Windows => "windows",
-        AutoInterfacePlatform::Android => "android",
-    }
-}
-
-fn socket_target(host: &str, port: u16) -> String {
-    if host.contains(':') && !host.starts_with('[') {
-        format!("[{host}]:{port}")
-    } else {
-        format!("{host}:{port}")
-    }
-}
-
-fn is_link_scope_ipv6_multicast(address: &str) -> bool {
-    let first_segment = address.split(':').next().unwrap_or_default();
-    let bytes = first_segment.as_bytes();
-    bytes.len() >= 4
-        && bytes[0].eq_ignore_ascii_case(&b'f')
-        && bytes[1].eq_ignore_ascii_case(&b'f')
-        && bytes[3] == b'2'
-}
-
-fn split_ipv6_scope(address: &str) -> (&str, Option<&str>) {
-    match address.split_once('%') {
-        Some((host, scope)) => (host, Some(scope)),
-        None => (address, None),
-    }
-}
-
-fn bind_host_and_scope(address: &str, fallback_scope_ifname: &str) -> (String, Option<String>) {
-    if address.trim().is_empty() {
-        return ("::".to_string(), None);
-    }
-    let (host, explicit_scope) = split_ipv6_scope(address);
-    let scope_ifname = explicit_scope
-        .map(str::to_string)
-        .or_else(|| is_link_scope_ipv6_multicast(host).then(|| fallback_scope_ifname.to_string()));
-    (host.to_string(), scope_ifname)
 }

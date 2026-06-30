@@ -323,10 +323,14 @@ The project is best described by capability level:
   Discovery and peer-data datagrams processed before Python's final-init peering
   wait has elapsed are now ignored, so packets handled before AutoInterface
   comes online cannot create peers, peer-data routes, or rejection events.
-  Daemon `_runtime.auto.carrier_runtime.last_peer_job` status now records the
-  last AutoInterface peer lifecycle job's expired-peer count, reverse peer
-  announce count, missing initial multicast echo count, carrier event summary,
-  and post-job peer count in focused software tests. This is local runtime
+  Daemon `_runtime.auto.carrier_runtime` status now records the last
+  AutoInterface peer lifecycle job's expired-peer count, reverse peer announce
+  count, missing initial multicast echo count, carrier event summary, post-job
+  peer count, and peer-data admitted/delivered/decode-failed/RX-closed outcome
+  counters in focused software tests. A software-only smoke now records those
+  existing transport and daemon AutoInterface regressions under
+  `target/auto-interface-software-smoke/` with
+  `evidence_scope = "software_auto_interface_runtime"`. This is local runtime
   observability evidence, not broader Wi-Fi/Ethernet/public-network discovery
   parity.
   An opt-in Linux

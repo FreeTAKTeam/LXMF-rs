@@ -12,6 +12,7 @@ impl AutoDaemonStartupPlan {
                 state,
                 dedupe,
                 transport,
+                runtime_status,
                 events,
                 mut shutdown,
                 started_at,
@@ -52,10 +53,15 @@ impl AutoDaemonStartupPlan {
                         }) else {
                             continue;
                         };
-                        if let Some(transport) = &transport {
-                            transport
+                        let forwarding = if let Some(transport) = &transport {
+                            Some(transport
                                 .forward_peer_data(&processed, Arc::clone(&socket.socket))
-                                .await;
+                                .await)
+                        } else {
+                            None
+                        };
+                        if let Some(runtime_status) = &runtime_status {
+                            runtime_status.record_peer_data(&processed, forwarding);
                         }
                         if events.send(AutoPeerDataLoopEvent::Processed(processed)).await.is_err() {
                             break;
