@@ -20,7 +20,7 @@ Workspace paths are used for navigation. Published package names are
 
 | Python surface | Rust surface | Status | Implemented baseline | Residual gap |
 | --- | --- | --- | --- | --- |
-| `RNS/Reticulum.py` | `crates/libs/rns-transport`, `crates/apps/reticulumd` | partial | Deployable daemon, configuration, propagation-node activation, persistence, RPC, graceful shutdown, unified legacy `status`/`daemon_status_ex` daemon runtime snapshot visibility, daemon/RPC runtime status for Reticulum path-table restore success or failure, multiple live interfaces, and runtime `set_interfaces`/`reload_config` hot-apply for TCP clients, explicit loopback TCP server listeners, and explicit UDP listener, peer, and multicast-bind records. | Python runtime/config mutation remains wider for device-bound, multicast-forward, non-loopback listener, and broader interface shapes; interface breadth remains wider. |
+| `RNS/Reticulum.py` | `crates/libs/rns-transport`, `crates/apps/reticulumd` | partial | Deployable daemon, configuration, propagation-node activation, persistence, RPC, graceful shutdown, unified legacy `status`/`daemon_status_ex` daemon runtime snapshot visibility, daemon/RPC runtime status for Reticulum path-table restore success or failure, multiple live interfaces, and runtime `set_interfaces`/`reload_config` hot-apply for TCP clients, explicit loopback TCP server listeners including `localhost`, and explicit UDP listener, peer, and multicast-bind records. | Python runtime/config mutation remains wider for device-bound, multicast-forward, non-local listener, and broader interface shapes; interface breadth remains wider. |
 | `RNS/Identity.py` | `crates/libs/rns-core` | done | Identity material, hashing, signing, encryption, recall, and key conversion. | No confirmed parity blocker. |
 | `RNS/Destination.py` | `crates/libs/rns-core`, `crates/libs/rns-transport` | done | Destination hashing, descriptors, announces, proof validation, ratchets, and known-key stability checks. | No confirmed parity blocker. |
 | `RNS/Packet.py` | `crates/libs/rns-core`, `crates/libs/rns-transport` | done | Framing, serialization, contexts, proofs, receipts, Python-default link proof context, and header semantics. | No confirmed parity blocker. |
@@ -133,9 +133,9 @@ placeholders:
   strict startup, bound loopback status, and malformed-datagram
   `bytes_rx`/`decode_errors` telemetry without external network services.
   Runtime interface mutation now hot-applies explicit loopback TCP server
-  listeners plus explicit UDP listener, peer, and multicast-bind records
-  through `set_interfaces` and `reload_config`, while `device`-bound,
-  non-loopback, and broader TCP server listener shapes, plus UDP
+  listeners, including `localhost`, plus explicit UDP listener, peer, and
+  multicast-bind records through `set_interfaces` and `reload_config`, while
+  `device`-bound, non-local, and broader TCP server listener shapes, plus UDP
   `device`-bound, partial-target, out-of-range-target, and multicast-forward
   records, remain restart-required or invalid. Duplicate TCP server and UDP
   binds are rejected before mutation. Hot-applied explicit TCP server records

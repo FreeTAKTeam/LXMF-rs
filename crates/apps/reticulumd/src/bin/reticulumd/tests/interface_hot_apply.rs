@@ -142,6 +142,47 @@ async fn hot_apply_spawns_tcp_server_loopback_listener() {
         .expect("runtime metadata");
     assert_eq!(runtime.get("startup_status").and_then(|value| value.as_str()), Some("spawned"));
     assert_eq!(runtime.get("runtime_status").and_then(|value| value.as_str()), Some("running"));
+    let expected_bind_addr = format!("127.0.0.1:{port}");
+    assert_eq!(
+        runtime
+            .get("tcp")
+            .and_then(|value| value.get("listener_status"))
+            .and_then(|value| value.get("bind_addr"))
+            .and_then(|value| value.as_str()),
+        Some(expected_bind_addr.as_str())
+    );
+
+    let _stream = wait_for_tcp_server_connect("127.0.0.1", port).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn hot_apply_spawns_tcp_server_localhost_listener() {
+    let reserved = TcpListener::bind("127.0.0.1:0").await.expect("reserve listener port");
+    let port = reserved.local_addr().expect("reserved listener addr").port();
+    drop(reserved);
+    let iface_manager = Arc::new(tokio::sync::Mutex::new(InterfaceManager::new(8)));
+    let bridge = InterfaceHotApplyBridge::spawn(iface_manager, Vec::new());
+
+    let applied = bridge
+        .apply_interfaces(vec![tcp_server_record("listener", "localhost", port)])
+        .expect("apply localhost tcp_server interface");
+    assert_eq!(applied.len(), 1);
+    let runtime = applied[0]
+        .settings
+        .as_ref()
+        .and_then(|value| value.get("_runtime"))
+        .expect("runtime metadata");
+    assert_eq!(runtime.get("startup_status").and_then(|value| value.as_str()), Some("spawned"));
+    assert_eq!(runtime.get("runtime_status").and_then(|value| value.as_str()), Some("running"));
+    let expected_bind_addr = format!("127.0.0.1:{port}");
+    assert_eq!(
+        runtime
+            .get("tcp")
+            .and_then(|value| value.get("listener_status"))
+            .and_then(|value| value.get("bind_addr"))
+            .and_then(|value| value.as_str()),
+        Some(expected_bind_addr.as_str())
+    );
 
     let _stream = wait_for_tcp_server_connect("127.0.0.1", port).await;
 }
@@ -611,13 +652,13 @@ fn hot_apply_rejects_non_loopback_tcp_server_records() {
 }
 
 #[test]
-fn hot_apply_rejects_hostname_tcp_server_records() {
+fn hot_apply_rejects_non_local_hostname_tcp_server_records() {
     let (tx, _rx) = tokio::sync::mpsc::channel(1);
     let bridge = test_bridge(tx);
 
     let err = bridge
-        .apply_interfaces(vec![tcp_server_record("listener", "localhost", 4242)])
-        .expect_err("hostname tcp_server should require restart");
+        .apply_interfaces(vec![tcp_server_record("listener", "example.invalid", 4242)])
+        .expect_err("non-local hostname tcp_server should require restart");
 
     assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
     assert!(err.to_string().contains("loopback"));
@@ -648,6 +689,22 @@ fn hot_apply_rejects_duplicate_tcp_server_bind_addresses() {
             tcp_server_record("listener-b", "127.0.0.1", 4242),
         ])
         .expect_err("duplicate tcp_server binds should fail before queueing");
+
+    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    assert!(err.to_string().contains("duplicate tcp_server bind address"));
+}
+
+#[test]
+fn hot_apply_rejects_duplicate_localhost_tcp_server_alias_bind_addresses() {
+    let (tx, _rx) = tokio::sync::mpsc::channel(1);
+    let bridge = test_bridge(tx);
+
+    let err = bridge
+        .apply_interfaces(vec![
+            tcp_server_record("listener-a", "localhost", 4242),
+            tcp_server_record("listener-b", "127.0.0.1", 4242),
+        ])
+        .expect_err("duplicate tcp_server localhost alias binds should fail before queueing");
 
     assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
     assert!(err.to_string().contains("duplicate tcp_server bind address"));

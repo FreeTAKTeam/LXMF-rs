@@ -214,7 +214,7 @@ impl RpcDaemon {
         }
         let host = iface.host.as_deref()?.trim();
         let port = iface.port?;
-        Some(Self::format_endpoint(host, port))
+        Some(Self::format_endpoint(Self::tcp_server_hot_apply_host(host), port))
     }
 
     fn interface_setting<'a>(iface: &'a InterfaceRecord, key: &str) -> Option<&'a JsonValue> {
@@ -246,7 +246,14 @@ impl RpcDaemon {
     fn host_is_loopback(host: &str) -> bool {
         let host = host.trim();
         let host = host.strip_prefix('[').and_then(|value| value.strip_suffix(']')).unwrap_or(host);
-        host.parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_loopback())
+        host.eq_ignore_ascii_case("localhost")
+            || host.parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_loopback())
+    }
+
+    fn tcp_server_hot_apply_host(host: &str) -> &str {
+        let host = host.trim();
+        let host = host.strip_prefix('[').and_then(|value| value.strip_suffix(']')).unwrap_or(host);
+        if host.eq_ignore_ascii_case("localhost") { "127.0.0.1" } else { host }
     }
 
     fn host_is_multicast(host: Option<&str>) -> bool {

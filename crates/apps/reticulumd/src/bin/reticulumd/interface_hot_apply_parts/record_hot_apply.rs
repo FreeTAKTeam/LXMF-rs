@@ -156,7 +156,7 @@ pub(crate) fn tcp_server_bind_addr(record: &InterfaceRecord) -> Result<String, i
     let port = record.port.ok_or_else(|| {
         io::Error::new(io::ErrorKind::InvalidInput, "tcp_server hot-apply requires port")
     })?;
-    Ok(format_endpoint(host, port))
+    Ok(format_endpoint(tcp_server_hot_apply_host(host), port))
 }
 
 pub(crate) fn tcp_server_client_mtu(record: &InterfaceRecord) -> Option<usize> {
@@ -176,7 +176,18 @@ fn format_endpoint(host: &str, port: u16) -> String {
 fn host_is_loopback(host: &str) -> bool {
     let host = host.trim();
     let host = host.strip_prefix('[').and_then(|value| value.strip_suffix(']')).unwrap_or(host);
-    host.parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_loopback())
+    host.eq_ignore_ascii_case("localhost")
+        || host.parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_loopback())
+}
+
+fn tcp_server_hot_apply_host(host: &str) -> &str {
+    let host = host.trim();
+    let host = host.strip_prefix('[').and_then(|value| value.strip_suffix(']')).unwrap_or(host);
+    if host.eq_ignore_ascii_case("localhost") {
+        "127.0.0.1"
+    } else {
+        host
+    }
 }
 
 pub(crate) fn udp_bind_and_forward_addr(
