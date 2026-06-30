@@ -99,7 +99,10 @@ The project is best described by capability level:
 - Shared-instance clients skip local Reticulum path-table save and restore
   work, matching Python's shared-instance bootstrap/persistence boundary.
 - Tunnel-only restored announces are retained as cache material so paths
-  restored on tunnel reappearance can answer later known-path requests.
+  restored on tunnel reappearance can answer later known-path requests, and
+  tunnel path restore now carries Python-format random-blob windows while
+  respecting active-path freshness, hop count, and expiry before replacing a
+  route.
 - `reticulumd` supports TCP client/server, including Python-style
   TCP-over-I2P `i2p_tunneled` socket tuning for outbound clients and accepted
   server streams and Python-style `fixed_mtu` falsey/default and Reticulum

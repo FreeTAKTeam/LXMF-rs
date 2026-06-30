@@ -17,13 +17,15 @@ const AP_PATH_TIME: Duration = Duration::from_secs(60 * 60 * 24);
 const ROAMING_PATH_TIME: Duration = Duration::from_secs(60 * 60 * 6);
 const MAX_RANDOM_BLOBS: usize = 64;
 
+pub(super) type RandomBlob = [u8; RAND_HASH_LENGTH];
+
 pub struct PathEntry {
     pub timestamp: Instant,
     pub received_from: AddressHash,
     pub hops: u8,
     pub iface: AddressHash,
     pub packet_hash: Hash,
-    random_blobs: Vec<[u8; RAND_HASH_LENGTH]>,
+    random_blobs: Vec<RandomBlob>,
     state: PathState,
 }
 
@@ -44,7 +46,7 @@ pub struct PythonPathEntry {
     pub received_from: AddressHash,
     pub hops: u8,
     pub expires_secs: f64,
-    pub random_blobs: Vec<[u8; RAND_HASH_LENGTH]>,
+    pub random_blobs: Vec<RandomBlob>,
     pub iface: AddressHash,
     pub interface_hash: Hash,
     pub packet_hash: Hash,
@@ -89,7 +91,7 @@ impl PathTable {
         announce: &Packet,
         transport_id: Option<AddressHash>,
         iface: AddressHash,
-        random_blob: [u8; RAND_HASH_LENGTH],
+        random_blob: RandomBlob,
         mode_for_iface: impl FnMut(&AddressHash) -> Option<InterfaceMode>,
     ) -> bool {
         let hops = announce.header.hops;
@@ -113,10 +115,7 @@ impl PathTable {
 
         if !random_blobs.contains(&random_blob) {
             random_blobs.push(random_blob);
-            let remove = random_blobs.len().saturating_sub(MAX_RANDOM_BLOBS);
-            if remove > 0 {
-                random_blobs.drain(..remove);
-            }
+            random_blobs = bounded_random_blobs(random_blobs);
         }
 
         let received_from = transport_id.unwrap_or(announce.destination);
@@ -142,6 +141,7 @@ impl PathTable {
         true
     }
 
+    #[cfg(test)]
     pub fn restore_tunnel_path(
         &mut self,
         destination: AddressHash,
@@ -217,6 +217,10 @@ impl PathTable {
                 state: PathState::Unknown,
             },
         );
+    }
+
+    pub(super) fn random_blobs_for(&self, destination: &AddressHash) -> Vec<RandomBlob> {
+        self.map.get(destination).map(|entry| entry.random_blobs.clone()).unwrap_or_default()
     }
 
     pub fn export_python_entries<F>(
@@ -313,7 +317,7 @@ fn decode_python_entry(value: &RmpValue) -> Result<PythonPathEntry, RnsError> {
 fn should_replace_path(
     existing: &PathEntry,
     hops: u8,
-    random_blob: &[u8; RAND_HASH_LENGTH],
+    random_blob: &RandomBlob,
     announce_emitted: u64,
     now: Instant,
     mut mode_for_iface: impl FnMut(&AddressHash) -> Option<InterfaceMode>,
@@ -339,22 +343,24 @@ fn path_expired(
     mut mode_for_iface: impl FnMut(&AddressHash) -> Option<InterfaceMode>,
 ) -> bool {
     let mode = mode_for_iface(&entry.iface).unwrap_or(InterfaceMode::Full);
+    path_expired_for_mode(entry, now, mode)
+}
+
+fn path_expired_for_mode(entry: &PathEntry, now: Instant, mode: InterfaceMode) -> bool {
     now.checked_duration_since(entry.timestamp).unwrap_or_default() >= path_timeout_for_mode(mode)
 }
 
-fn random_blob_timebase(random_blob: &[u8; RAND_HASH_LENGTH]) -> u64 {
+pub(super) fn random_blob_timebase(random_blob: &RandomBlob) -> u64 {
     let mut emitted = [0u8; 8];
     emitted[3..].copy_from_slice(&random_blob[5..]);
     u64::from_be_bytes(emitted)
 }
 
-fn newest_random_blob_timebase(random_blobs: &[[u8; RAND_HASH_LENGTH]]) -> u64 {
+pub(super) fn newest_random_blob_timebase(random_blobs: &[RandomBlob]) -> u64 {
     random_blobs.iter().map(random_blob_timebase).max().unwrap_or(0)
 }
 
-fn bounded_random_blobs(
-    mut random_blobs: Vec<[u8; RAND_HASH_LENGTH]>,
-) -> Vec<[u8; RAND_HASH_LENGTH]> {
+pub(super) fn bounded_random_blobs(mut random_blobs: Vec<RandomBlob>) -> Vec<RandomBlob> {
     let remove = random_blobs.len().saturating_sub(MAX_RANDOM_BLOBS);
     if remove > 0 {
         random_blobs.drain(..remove);
@@ -382,7 +388,7 @@ fn decode_hash(value: &RmpValue) -> Result<Hash, RnsError> {
     Ok(Hash::new(out))
 }
 
-fn decode_random_blobs(value: &RmpValue) -> Result<Vec<[u8; RAND_HASH_LENGTH]>, RnsError> {
+pub(super) fn decode_random_blobs(value: &RmpValue) -> Result<Vec<RandomBlob>, RnsError> {
     let RmpValue::Array(blobs) = value else {
         return Err(RnsError::InvalidArgument);
     };
@@ -394,7 +400,7 @@ fn decode_random_blobs(value: &RmpValue) -> Result<Vec<[u8; RAND_HASH_LENGTH]>, 
             if bytes.len() != RAND_HASH_LENGTH {
                 return Err(RnsError::IncorrectHash);
             }
-            let mut blob = [0u8; RAND_HASH_LENGTH];
+            let mut blob = RandomBlob::default();
             blob.copy_from_slice(bytes);
             Ok(blob)
         })
@@ -444,6 +450,8 @@ impl Default for PathTable {
         Self::new()
     }
 }
+
+include!("path_table_tunnel_restore.rs");
 
 #[cfg(test)]
 mod tests {

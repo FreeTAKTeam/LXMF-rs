@@ -6,6 +6,8 @@ include!("tests_parts/unknown_path_request_answered_by_announce.rs");
 
 include!("tests_parts/pending_out_link_rediscovery.rs");
 
+include!("tests_parts/tunnel_restore_freshness.rs");
+
 include!("tests_parts/held_udp_announce_preserves_peer_sou.rs");
 
 include!("tests_parts/encrypted_resource_control_packet.rs");

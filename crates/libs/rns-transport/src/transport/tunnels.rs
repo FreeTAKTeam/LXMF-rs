@@ -1,3 +1,4 @@
+use super::path_table::{bounded_random_blobs, decode_random_blobs, RandomBlob, TunnelPathRestore};
 use super::*;
 use crate::destination::PlainInputDestination;
 use crate::hash::ADDRESS_HASH_SIZE;
@@ -62,11 +63,12 @@ struct TunnelEntry {
     paths: HashMap<AddressHash, TunnelPathEntry>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct TunnelPathEntry {
     timestamp: Instant,
     received_from: AddressHash,
     hops: u8,
+    random_blobs: Vec<RandomBlob>,
     packet_hash: Hash,
 }
 
@@ -85,8 +87,19 @@ pub(super) struct PythonTunnelPathEntry {
     pub received_from: AddressHash,
     pub hops: u8,
     pub expires_secs: f64,
+    pub random_blobs: Vec<RandomBlob>,
     pub interface_hash: Option<Hash>,
     pub packet_hash: Hash,
+}
+
+pub(super) struct TunnelPathNote {
+    pub iface: AddressHash,
+    pub destination: AddressHash,
+    pub received_from: AddressHash,
+    pub hops: u8,
+    pub random_blobs: Vec<RandomBlob>,
+    pub packet_hash: Hash,
+    pub now: Instant,
 }
 
 impl TunnelTable {
@@ -123,6 +136,7 @@ impl TunnelTable {
                     destination,
                     received_from: path.received_from,
                     hops: path.hops,
+                    random_blobs: path.random_blobs,
                     iface,
                     packet_hash: path.packet_hash,
                 })
@@ -130,15 +144,16 @@ impl TunnelTable {
             .collect()
     }
 
-    pub fn note_path(
-        &mut self,
-        iface: AddressHash,
-        destination: AddressHash,
-        received_from: AddressHash,
-        hops: u8,
-        packet_hash: Hash,
-        now: Instant,
-    ) {
+    pub fn note_path(&mut self, note: TunnelPathNote) {
+        let TunnelPathNote {
+            iface,
+            destination,
+            received_from,
+            hops,
+            random_blobs,
+            packet_hash,
+            now,
+        } = note;
         let Some(tunnel_id) = self.iface_tunnels.get(&iface).copied() else {
             return;
         };
@@ -148,7 +163,13 @@ impl TunnelTable {
         tunnel.expires = now + TUNNEL_TIMEOUT;
         tunnel.paths.insert(
             destination,
-            TunnelPathEntry { timestamp: now, received_from, hops, packet_hash },
+            TunnelPathEntry {
+                timestamp: now,
+                received_from,
+                hops,
+                random_blobs: bounded_random_blobs(random_blobs),
+                packet_hash,
+            },
         );
     }
 
@@ -194,6 +215,7 @@ impl TunnelTable {
                             received_from: path.received_from,
                             hops: path.hops,
                             expires_secs: timestamp_secs + TUNNEL_PATH_TIMEOUT.as_secs_f64(),
+                            random_blobs: path.random_blobs.clone(),
                             interface_hash,
                             packet_hash: path.packet_hash,
                         }
@@ -232,6 +254,7 @@ impl TunnelTable {
                         timestamp: now.checked_sub(age).unwrap_or(now),
                         received_from: path.received_from,
                         hops: path.hops,
+                        random_blobs: bounded_random_blobs(path.random_blobs),
                         packet_hash: path.packet_hash,
                     },
                 );
@@ -266,7 +289,12 @@ impl TunnelTable {
                                         RmpValue::Binary(path.received_from.as_slice().to_vec()),
                                         RmpValue::from(u64::from(path.hops)),
                                         RmpValue::F64(path.expires_secs),
-                                        RmpValue::Array(vec![]),
+                                        RmpValue::Array(
+                                            path.random_blobs
+                                                .iter()
+                                                .map(|blob| RmpValue::Binary(blob.to_vec()))
+                                                .collect(),
+                                        ),
                                         optional_hash_value(path.interface_hash),
                                         RmpValue::Binary(path.packet_hash.as_slice().to_vec()),
                                     ])
@@ -297,6 +325,7 @@ struct TunnelRestorePath {
     destination: AddressHash,
     received_from: AddressHash,
     hops: u8,
+    random_blobs: Vec<RandomBlob>,
     iface: AddressHash,
     packet_hash: Hash,
 }
@@ -321,14 +350,21 @@ pub(super) async fn handle_tunnel_synthesize_packet<'a>(
     let restore_paths = handler.tunnel_table.handle_tunnel(tunnel_id, iface, Instant::now());
     let mut restored = 0usize;
     for path in restore_paths {
-        if handler.path_table.restore_tunnel_path(
-            path.destination,
-            path.received_from,
-            path.hops,
-            path.iface,
-            path.packet_hash,
-            Instant::now(),
-        ) {
+        let existing_iface = handler.path_table.get(&path.destination).map(|entry| entry.iface);
+        let existing_mode = match existing_iface {
+            Some(iface) => handler.iface_manager.lock().await.mode(&iface),
+            None => None,
+        };
+        if handler.path_table.restore_tunnel_path_with_random_blobs(TunnelPathRestore {
+            destination: path.destination,
+            received_from: path.received_from,
+            hops: path.hops,
+            iface: path.iface,
+            packet_hash: path.packet_hash,
+            random_blobs: path.random_blobs,
+            existing_mode,
+            now: Instant::now(),
+        }) {
             restored += 1;
         }
     }
@@ -402,6 +438,7 @@ fn decode_python_tunnel_path_entry(value: &RmpValue) -> Result<PythonTunnelPathE
         received_from: decode_address_hash(&fields[2])?,
         hops: decode_u8(&fields[3])?,
         expires_secs: decode_f64(&fields[4])?,
+        random_blobs: decode_random_blobs(&fields[5])?,
         interface_hash: decode_optional_hash(&fields[6])?,
         packet_hash: decode_hash(&fields[7])?,
     })

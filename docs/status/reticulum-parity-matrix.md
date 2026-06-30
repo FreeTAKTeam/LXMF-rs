@@ -325,7 +325,11 @@ Shared-instance clients now skip local path-table save and restore work like
 Python Reticulum.
 Tunnel-only restored announces are also retained as cache material, so paths
 restored when a tunnel reappears can answer later known-path requests with
-direct `PATH_RESPONSE` packets.
+direct `PATH_RESPONSE` packets. Restored tunnel paths now preserve bounded
+Python-format random-blob windows and compare them with any active path, so a
+reappearing tunnel cannot replace a fresher active route unless the existing
+path is expired or the tunnel path is at least as fresh under Python's
+timebase rules.
 
 Enabled unknown interface kinds still parse so operators can see them in daemon
 status, but daemon startup marks them as failed with explicit

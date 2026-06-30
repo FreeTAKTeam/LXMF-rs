@@ -2,6 +2,13 @@
 mod tests {
     use super::*;
 
+    fn random_blob(emitted: u64) -> RandomBlob {
+        let mut blob = RandomBlob::default();
+        blob[..5].copy_from_slice(b"tnnl!");
+        blob[5..].copy_from_slice(&emitted.to_be_bytes()[3..]);
+        blob
+    }
+
     #[test]
     fn tunnel_synthesize_packet_validates_to_python_tunnel_id() {
         let identity = PrivateIdentity::new_from_name("tunnel-test");
@@ -41,12 +48,13 @@ mod tests {
             paths: vec![PythonTunnelPathEntry {
                 destination,
                 timestamp_secs: 10.0,
-                received_from,
-                hops: 2,
-                expires_secs: 20.0,
-                interface_hash: Some(interface_hash),
-                packet_hash,
-            }],
+                    received_from,
+                    hops: 2,
+                    expires_secs: 20.0,
+                    random_blobs: vec![random_blob(10), random_blob(11)],
+                    interface_hash: Some(interface_hash),
+                    packet_hash,
+                }],
             expires_secs: 30.0,
         }];
 
@@ -76,6 +84,7 @@ mod tests {
                     received_from,
                     hops: 3,
                     expires_secs: 199.0,
+                    random_blobs: vec![random_blob(42)],
                     interface_hash: None,
                     packet_hash,
                 }],
@@ -93,6 +102,7 @@ mod tests {
         assert_eq!(paths[0].received_from, received_from);
         assert_eq!(paths[0].hops, 3);
         assert_eq!(paths[0].iface, iface);
+        assert_eq!(paths[0].random_blobs, vec![random_blob(42)]);
         assert_eq!(paths[0].packet_hash, packet_hash);
     }
 }

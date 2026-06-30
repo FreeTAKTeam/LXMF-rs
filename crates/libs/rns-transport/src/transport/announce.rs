@@ -89,14 +89,16 @@ async fn process_announce<'a>(
             handler.announce_table.add(packet, dest_hash, route_iface);
         }
 
-        handler.tunnel_table.note_path(
-            route_iface,
-            packet.destination,
-            packet.transport.unwrap_or(packet.destination),
-            packet.header.hops,
-            packet.hash(),
-            std::time::Instant::now(),
-        );
+        let random_blobs = handler.path_table.random_blobs_for(&packet.destination);
+        handler.tunnel_table.note_path(super::tunnels::TunnelPathNote {
+            iface: route_iface,
+            destination: packet.destination,
+            received_from: packet.transport.unwrap_or(packet.destination),
+            hops: packet.header.hops,
+            random_blobs,
+            packet_hash: packet.hash(),
+            now: std::time::Instant::now(),
+        });
     } else if remote_destination_known {
         log::trace!(
             "tp({}): ignored stale announce path refresh for {}",
