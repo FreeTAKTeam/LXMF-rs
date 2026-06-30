@@ -127,6 +127,125 @@ fn bootstrap_restores_python_path_table_for_path_lookup_rpc() {
 }
 
 #[test]
+fn bootstrap_skips_malformed_cached_announce_entry_without_restore_error() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    let mut identity_path = db_path.clone();
+    identity_path.set_extension("identity");
+    let local_identity =
+        reticulum_daemon::identity_store::load_or_create_identity(&identity_path)
+            .expect("seed daemon identity");
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+
+    let (destination_hex, bad_destination_hex) = runtime.block_on(async {
+        let transport_identity =
+            rns_transport::identity_bridge::to_transport_private_identity(&local_identity);
+        let mut config =
+            TransportConfig::new("bootstrap-path-restore-bad-cache-seed", &transport_identity, true);
+        config.set_retransmit(true);
+        let seed_transport = Transport::new(config);
+        let iface_channel = seed_transport.iface_manager().lock().await.new_channel(16);
+        let iface = *iface_channel.address();
+
+        let remote_identity =
+            rns_transport::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let mut remote_destination = rns_transport::destination::SingleInputDestination::new(
+            remote_identity,
+            DestinationName::new("lxmf", "delivery"),
+        );
+        let announce = remote_destination
+            .announce(rand_core::OsRng, None)
+            .expect("valid announce packet");
+        let destination = announce.destination;
+
+        iface_channel
+            .rx_channel
+            .send(rns_transport::iface::RxMessage {
+                address: iface,
+                packet: announce,
+                source: rns_transport::iface::IfaceSource::None,
+            })
+            .await
+            .expect("seed announce");
+
+        for _ in 0..20 {
+            if seed_transport.has_path(&destination).await {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        assert!(
+            seed_transport.has_path(&destination).await,
+            "seed transport should learn remote path before saving"
+        );
+        assert_eq!(
+            seed_transport
+                .save_reticulum_path_table(temp.path())
+                .await
+                .expect("save path cache"),
+            1
+        );
+
+        let bad_destination = AddressHash::new_from_hash(&rns_transport::hash::Hash::new_from_slice(
+            b"bad-cache-destination",
+        ));
+        let bad_packet_hash =
+            rns_transport::hash::Hash::new_from_slice(b"bad-cache-packet");
+        append_corrupt_cache_path_row(temp.path(), bad_destination, bad_packet_hash);
+        fs::write(
+            cached_announce_path(temp.path(), &bad_packet_hash),
+            b"not-msgpack-cached-announce",
+        )
+        .expect("write corrupt cached announce");
+
+        (hex::encode(destination.as_slice()), hex::encode(bad_destination.as_slice()))
+    });
+
+    let context = runtime.block_on(async {
+        bootstrap::bootstrap(test_args(
+            db_path.clone(),
+            None,
+            Some("127.0.0.1:0".to_string()),
+            false,
+        ))
+        .await
+    });
+
+    let status = context
+        .daemon
+        .handle_rpc(RpcRequest {
+            id: 601,
+            method: "path_status".to_string(),
+            params: Some(json!({ "destination": destination_hex })),
+        })
+        .expect("path_status rpc");
+    assert!(status.error.is_none(), "path_status should succeed: {:?}", status.error);
+    let result = status.result.expect("path_status result");
+    assert_eq!(result["known"].as_bool(), Some(true));
+    assert_eq!(result["path_found"].as_bool(), Some(true));
+    assert_eq!(result["status"].as_str(), Some("found"));
+
+    let skipped = context
+        .daemon
+        .handle_rpc(RpcRequest {
+            id: 602,
+            method: "path_status".to_string(),
+            params: Some(json!({ "destination": bad_destination_hex })),
+        })
+        .expect("skipped path_status rpc");
+    assert!(skipped.error.is_none(), "path_status should succeed: {:?}", skipped.error);
+    let result = skipped.result.expect("skipped path_status result");
+    assert_eq!(result["known"].as_bool(), Some(false));
+    assert_eq!(result["path_found"].as_bool(), Some(false));
+    assert_eq!(result["status"].as_str(), Some("unknown"));
+
+    let restore_status = path_table_restore_runtime_status(&context.daemon);
+    assert_eq!(restore_status["status"].as_str(), Some("ok"));
+    assert_eq!(restore_status["restored_active_paths"].as_u64(), Some(1));
+}
+
+#[test]
 fn bootstrap_reports_path_table_restore_error_in_daemon_status() {
     let temp = TempDir::new().expect("temp dir");
     let db_path = temp.path().join("reticulum.db");
@@ -148,6 +267,40 @@ fn bootstrap_reports_path_table_restore_error_in_daemon_status() {
     let restore_status = path_table_restore_runtime_status(&context.daemon);
     assert_eq!(restore_status["status"].as_str(), Some("error"));
     assert_eq!(restore_status["error"].as_str(), Some("decode path table"));
+}
+
+fn append_corrupt_cache_path_row(
+    storage_path: &std::path::Path,
+    destination: AddressHash,
+    packet_hash: rns_transport::hash::Hash,
+) {
+    let table_path = storage_path.join("destination_table");
+    let payload = fs::read(&table_path).expect("read destination table");
+    let value: rmpv::Value =
+        rmpv::decode::read_value(&mut std::io::Cursor::new(payload)).expect("decode msgpack");
+    let rmpv::Value::Array(mut entries) = value else {
+        panic!("destination_table must be an array");
+    };
+    let rmpv::Value::Array(mut bad_entry) =
+        entries.first().expect("seed path row").clone()
+    else {
+        panic!("destination_table row must be an array");
+    };
+    bad_entry[0] = rmpv::Value::Binary(destination.as_slice().to_vec());
+    bad_entry[2] = rmpv::Value::Binary(destination.as_slice().to_vec());
+    bad_entry[7] = rmpv::Value::Binary(packet_hash.as_slice().to_vec());
+    entries.push(rmpv::Value::Array(bad_entry));
+
+    let mut out = Vec::new();
+    rmpv::encode::write_value(&mut out, &rmpv::Value::Array(entries)).expect("encode msgpack");
+    fs::write(table_path, out).expect("write destination table");
+}
+
+fn cached_announce_path(
+    storage_path: &std::path::Path,
+    packet_hash: &rns_transport::hash::Hash,
+) -> std::path::PathBuf {
+    storage_path.join("cache").join("announces").join(hex::encode(packet_hash.as_slice()))
 }
 
 fn path_table_restore_runtime_status(daemon: &RpcDaemon) -> serde_json::Value {

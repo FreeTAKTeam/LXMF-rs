@@ -46,17 +46,17 @@ impl ReticulumAnnounceCache {
             Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
             Err(err) => return Err(err),
         };
-        let value: RmpValue = rmpv::decode::read_value(&mut std::io::Cursor::new(payload))
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "decode cached announce"))?;
+        let value: RmpValue = match rmpv::decode::read_value(&mut std::io::Cursor::new(payload)) {
+            Ok(value) => value,
+            Err(_) => return Ok(None),
+        };
         let RmpValue::Array(fields) = value else {
             return Ok(None);
         };
         let Some(raw) = fields.first().and_then(rmp_bytes) else {
             return Ok(None);
         };
-        Packet::from_bytes(raw).map(Some).map_err(|_| {
-            io::Error::new(io::ErrorKind::InvalidData, "decode cached announce packet")
-        })
+        Ok(Packet::from_bytes(raw).ok())
     }
 
     fn path(&self, packet_hash: Hash) -> PathBuf {
