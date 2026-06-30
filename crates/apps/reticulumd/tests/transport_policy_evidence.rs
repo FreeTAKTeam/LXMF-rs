@@ -148,6 +148,43 @@ async fn roaming_same_iface_known_path_request_is_suppressed_at_transport_bounda
 }
 
 #[tokio::test]
+async fn roaming_diff_iface_known_path_response_waits_extra_grace_at_transport_boundary() {
+    let transport = retransmitting_transport("transport-roaming-diff-iface-path-response");
+    let learned_iface = new_probe_iface_with_mode(&transport, InterfaceMode::Full).await;
+    let mut requesting_iface = new_probe_iface_with_mode(&transport, InterfaceMode::Roaming).await;
+
+    let mut remote_destination = SingleInputDestination::new(
+        PrivateIdentity::new_from_rand(OsRng),
+        DestinationName::new("lxmf", "delivery"),
+    );
+    let mut announce = remote_destination.announce(OsRng, None).expect("valid announce");
+    announce.header.hops = 2;
+    let destination = announce.destination;
+    let cached_announce_data = announce.data.clone();
+    let path_request = path_request_packet(&destination).await;
+
+    feed_iface_packet(&learned_iface, announce).await;
+    wait_for_known_path(&transport, &destination).await;
+    feed_iface_packet(&requesting_iface, path_request).await;
+
+    assert!(
+        timeout(Duration::from_millis(450), requesting_iface.tx_channel.recv()).await.is_err(),
+        "roaming different-iface known-path response should wait the extra Python grace"
+    );
+
+    let response =
+        recv_tx(&mut requesting_iface, "roaming different-iface delayed path response").await;
+    assert!(matches!(
+        response.tx_type,
+        TxMessageType::Direct(iface) if iface == *requesting_iface.address()
+    ));
+    assert_eq!(response.packet.destination, destination);
+    assert_eq!(response.packet.context, PacketContext::PathResponse);
+    assert_eq!(response.packet.header.hops, 2);
+    assert_eq!(response.packet.data.as_slice(), cached_announce_data.as_slice());
+}
+
+#[tokio::test]
 async fn known_path_response_precedes_due_ordinary_announce_at_transport_boundary() {
     let responder = retransmitting_transport("transport-known-path-response-order");
     let learned_iface = new_probe_iface(&responder).await;

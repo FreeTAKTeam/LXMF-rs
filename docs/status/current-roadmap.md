@@ -89,7 +89,9 @@ The project is best described by capability level:
   transport-policy evidence alongside the focused transport regression.
 - Roaming-interface known-path responses that are not same-interface loops now
   wait Python's extra roaming grace before answering, keeping opportunistic
-  path discovery from racing roaming peers too aggressively.
+  path discovery from racing roaming peers too aggressively; this now has
+  harness-dispatchable local transport-policy evidence at the transport
+  boundary.
 - Pending ordinary announce rebroadcasts now complete early when a later
   incoming transport announce proves the rebroadcast has already been passed
   onward, while retaining cached announce material for known-path responses.

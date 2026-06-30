@@ -150,7 +150,7 @@ const COMPATIBILITY_CASES: [CompatibilityCase; 23] = [
     },
 ];
 
-const LOCAL_EVIDENCE_CASES: [LocalEvidenceCase; 2] = [
+const LOCAL_EVIDENCE_CASES: [LocalEvidenceCase; 3] = [
     LocalEvidenceCase {
         id: "rns_path_request_transport_policy",
         test_target: "transport_policy_evidence",
@@ -160,6 +160,11 @@ const LOCAL_EVIDENCE_CASES: [LocalEvidenceCase; 2] = [
         id: "rns_path_request_roaming_transport_policy",
         test_target: "transport_policy_evidence",
         description: "Deterministic local transport evidence for Transport.py roaming same-iface path-response suppression",
+    },
+    LocalEvidenceCase {
+        id: "rns_path_request_roaming_grace_transport_policy",
+        test_target: "transport_policy_evidence",
+        description: "Deterministic local transport evidence for Transport.py roaming different-iface path-response grace",
     },
 ];
 
