@@ -184,6 +184,75 @@ async fn reticulum_tunnel_table_restore_skips_malformed_cached_announce_entry() 
 }
 
 #[tokio::test]
+async fn reticulum_tunnel_table_restore_skips_missing_cached_announce_entry() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut config = TransportConfig::new("test", &local_identity, true);
+    config.set_retransmit(true);
+    let transport = Transport::new(config);
+    let iface = *transport.iface_manager().lock().await.new_channel(16).address();
+    let iface_hash = transport.iface_manager().lock().await.full_hash(&iface).expect("iface hash");
+
+    let tunnel_identity = PrivateIdentity::new_from_rand(OsRng);
+    let tunnel_synth = super::tunnels::synthesize_tunnel_packet(&tunnel_identity, iface_hash);
+    {
+        let handler = transport.get_handler();
+        let mut handler = handler.lock().await;
+        super::tunnels::handle_tunnel_synthesize_packet(&tunnel_synth, &mut handler, iface).await;
+    }
+
+    let good = learn_cached_path(&transport, iface, "tunnel-missing-good").await;
+    let missing_destination =
+        AddressHash::new_from_hash(&Hash::new_from_slice(b"missing-tunnel-dest"));
+    let missing_packet_hash = Hash::new_from_slice(b"missing-tunnel-packet");
+
+    assert_eq!(transport.save_reticulum_path_table(temp.path()).await.expect("save"), 1);
+    std::fs::remove_file(temp.path().join("destination_table")).expect("remove active path table");
+    append_bad_tunnel_path_entry(temp.path(), missing_destination, missing_packet_hash);
+    assert!(
+        !cached_announce_path(temp.path(), &missing_packet_hash).exists(),
+        "test must exercise a tunnel row whose cached announce file is absent"
+    );
+
+    let mut restored_config = TransportConfig::new("test", &local_identity, true);
+    restored_config.set_retransmit(true);
+    let restored = Transport::new(restored_config);
+    let restored_iface = *restored.iface_manager().lock().await.new_channel(16).address();
+    let restored_iface_hash =
+        restored.iface_manager().lock().await.full_hash(&restored_iface).expect("iface hash");
+    assert_eq!(restored_iface_hash, iface_hash, "test relies on deterministic iface hashes");
+
+    let restore_report = restored
+        .restore_reticulum_path_table_report(temp.path())
+        .await
+        .expect("restore");
+    assert_eq!(restore_report.restored_active_paths, 0);
+    assert_eq!(restore_report.restored_identities.len(), 1);
+    assert_eq!(restore_report.restored_identities[0].destination, good.destination);
+
+    let tunnel_synth =
+        super::tunnels::synthesize_tunnel_packet(&tunnel_identity, restored_iface_hash);
+    {
+        let handler = restored.get_handler();
+        let mut handler = handler.lock().await;
+        super::tunnels::handle_tunnel_synthesize_packet(
+            &tunnel_synth,
+            &mut handler,
+            restored_iface,
+        )
+        .await;
+    }
+
+    assert!(restored.has_path(&good.destination).await, "valid tunnel row should restore");
+    assert!(restored.destination_identity(&good.destination).await.is_some());
+    assert!(
+        !restored.has_path(&missing_destination).await,
+        "missing tunnel cached announce row should be skipped"
+    );
+    assert!(restored.destination_identity(&missing_destination).await.is_none());
+}
+
+#[tokio::test]
 async fn reticulum_tunnel_table_restore_skips_mismatched_cached_announce_destination() {
     let temp = tempfile::tempdir().expect("tempdir");
     let local_identity = PrivateIdentity::new_from_rand(OsRng);

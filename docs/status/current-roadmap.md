@@ -112,10 +112,11 @@ The project is best described by capability level:
   material and restore hardens Python-format active and tunnel path-table rows
   by ignoring stale/expired path rows, so restart bootstrap cannot revive
   resolver routes without usable identity/cache material.
-- Reticulum path-table restore now treats active path-table rows with missing
-  cached announce files, active and tunnel path-table rows with malformed cached
-  announce files, and active/tunnel rows whose cached announce belongs to a
-  different destination as unusable rows instead of aborting the whole restore.
+- Reticulum path-table restore now treats active and tunnel path-table rows
+  with missing cached announce files, active and tunnel path-table rows with
+  malformed cached announce files, and active/tunnel rows whose cached announce
+  belongs to a different destination as unusable rows instead of aborting the
+  whole restore.
   Malformed `destination_table` and `tunnels` files remain observable daemon
   restore errors.
 - Shared-instance clients skip local Reticulum path-table save and restore
