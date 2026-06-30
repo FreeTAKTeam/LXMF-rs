@@ -171,6 +171,7 @@ pub(crate) struct AutoDiscoveryListenerSupervisor {
     plan: AutoDaemonStartupPlan,
     state: Arc<tokio::sync::Mutex<AutoDiscoveryState>>,
     shutdown: tokio::sync::watch::Receiver<bool>,
+    started_at: Instant,
     listeners: BTreeMap<String, AutoDiscoveryListenerHandle>,
     pending_stops: Vec<tokio::task::JoinHandle<()>>,
 }

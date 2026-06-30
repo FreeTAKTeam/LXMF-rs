@@ -447,6 +447,125 @@
     }
 
     #[tokio::test]
+    async fn auto_discovery_receive_loop_ignores_datagrams_before_final_init_wait() {
+        let mut plan = plan_with_discovery_listener(AutoDiscoveryListenerBinding {
+            ifname: "lo".to_string(),
+            link_local_address: "127.0.0.1".to_string(),
+            unicast_bind_address: "127.0.0.1".to_string(),
+            unicast_bind_port: 0,
+            multicast_group_address: "239.255.0.1".to_string(),
+            multicast_bind_address: "239.255.0.1".to_string(),
+            multicast_bind_port: 0,
+        });
+        plan.startup_plan.initial_peering_wait = core::time::Duration::from_millis(500);
+        let sockets = plan
+            .bind_unicast_discovery_sockets(|_| panic!("IPv4 unicast bind is unscoped"))
+            .await
+            .expect("bind unicast discovery socket");
+        let bind_addr = sockets[0].bind_addr;
+        let state = Arc::new(tokio::sync::Mutex::new(plan.discovery_state()));
+        let (events_tx, mut events_rx) = tokio::sync::mpsc::channel(4);
+        let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+        let handles =
+            plan.spawn_discovery_receive_loops(sockets, Arc::clone(&state), events_tx, shutdown_rx);
+        let sender = tokio::net::UdpSocket::bind("127.0.0.1:0").await.expect("bind sender");
+        let source_address = sender.local_addr().expect("sender addr").ip().to_string();
+        let payload = rns_transport::iface::auto::peering_token(
+            plan.config.group_id.as_bytes(),
+            &source_address,
+        );
+
+        sender.send_to(&payload, bind_addr).await.expect("send early valid discovery datagram");
+        sender
+            .send_to(&[0; rns_transport::hash::HASH_SIZE], bind_addr)
+            .await
+            .expect("send early invalid discovery datagram");
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(100), events_rx.recv())
+                .await
+                .is_err(),
+            "pre-final-init discovery datagrams should not emit processed or rejected events"
+        );
+        assert!(state.lock().await.peer(&source_address).is_none());
+
+        tokio::time::sleep(std::time::Duration::from_millis(450)).await;
+        sender.send_to(&payload, bind_addr).await.expect("send post-final-init datagram");
+        let accepted = tokio::time::timeout(std::time::Duration::from_secs(1), events_rx.recv())
+            .await
+            .expect("accepted event timeout")
+            .expect("accepted event");
+        assert!(matches!(
+            accepted,
+            AutoDiscoveryLoopEvent::Processed(AutoProcessedDiscoveryDatagram {
+                event: AutoDiscoveryEvent::Peer(_),
+                ..
+            })
+        ));
+
+        shutdown_tx.send(true).expect("send shutdown");
+        for handle in handles {
+            tokio::time::timeout(std::time::Duration::from_secs(1), handle)
+                .await
+                .expect("receive loop shutdown timeout")
+                .expect("receive loop task");
+        }
+    }
+
+    #[tokio::test]
+    async fn auto_discovery_listener_replacement_does_not_restart_final_init_wait() {
+        let mut plan = plan_with_discovery_listener(AutoDiscoveryListenerBinding {
+            ifname: "lo".to_string(),
+            link_local_address: "127.0.0.1".to_string(),
+            unicast_bind_address: "127.0.0.1".to_string(),
+            unicast_bind_port: 0,
+            multicast_group_address: "239.255.0.1".to_string(),
+            multicast_bind_address: "239.255.0.1".to_string(),
+            multicast_bind_port: 0,
+        });
+        plan.startup_plan.initial_peering_wait = core::time::Duration::from_millis(50);
+        let first_sockets = plan
+            .bind_unicast_discovery_sockets(|_| panic!("IPv4 unicast bind is unscoped"))
+            .await
+            .expect("bind first unicast discovery socket");
+        let second_sockets = plan
+            .bind_unicast_discovery_sockets(|_| panic!("IPv4 unicast bind is unscoped"))
+            .await
+            .expect("bind second unicast discovery socket");
+        let second_bind_addr = second_sockets[0].bind_addr;
+        let state = Arc::new(tokio::sync::Mutex::new(plan.discovery_state()));
+        let (events_tx, mut events_rx) = tokio::sync::mpsc::channel(4);
+        let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+        let mut supervisor =
+            AutoDiscoveryListenerSupervisor::new(plan.clone(), Arc::clone(&state), shutdown_rx);
+        supervisor.spawn_sockets(first_sockets, &events_tx);
+        tokio::time::sleep(std::time::Duration::from_millis(75)).await;
+        supervisor.spawn_sockets(second_sockets, &events_tx);
+
+        let sender = tokio::net::UdpSocket::bind("127.0.0.1:0").await.expect("bind sender");
+        let source_address = sender.local_addr().expect("sender addr").ip().to_string();
+        let payload = rns_transport::iface::auto::peering_token(
+            plan.config.group_id.as_bytes(),
+            &source_address,
+        );
+        sender.send_to(&payload, second_bind_addr).await.expect("send to replacement listener");
+
+        let accepted = tokio::time::timeout(std::time::Duration::from_secs(1), events_rx.recv())
+            .await
+            .expect("replacement accepted event timeout")
+            .expect("replacement accepted event");
+        assert!(matches!(
+            accepted,
+            AutoDiscoveryLoopEvent::Processed(AutoProcessedDiscoveryDatagram {
+                event: AutoDiscoveryEvent::Peer(_),
+                ..
+            })
+        ));
+
+        shutdown_tx.send(true).expect("send shutdown");
+        supervisor.shutdown_all().await;
+    }
+
+    #[tokio::test]
     async fn auto_peer_data_receive_loop_accepts_known_peer_and_suppresses_duplicate() {
         let plan = plan_with_data_listener(AutoDataListenerBinding {
             ifname: "lo".to_string(),

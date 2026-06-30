@@ -552,6 +552,7 @@ impl AutoDaemonStartupPlan {
         events: tokio::sync::mpsc::Sender<AutoDiscoveryLoopEvent>,
         shutdown: tokio::sync::watch::Receiver<bool>,
     ) -> Vec<tokio::task::JoinHandle<()>> {
+        let started_at = Instant::now();
         sockets
             .into_iter()
             .map(|socket| {
@@ -560,6 +561,7 @@ impl AutoDaemonStartupPlan {
                     Arc::clone(&state),
                     events.clone(),
                     shutdown.clone(),
+                    started_at,
                 )
             })
             .collect()
@@ -572,13 +574,14 @@ impl AutoDaemonStartupPlan {
         state: Arc<tokio::sync::Mutex<AutoDiscoveryState>>,
         events: tokio::sync::mpsc::Sender<AutoDiscoveryLoopEvent>,
         mut shutdown: tokio::sync::watch::Receiver<bool>,
+        started_at: Instant,
     ) -> tokio::task::JoinHandle<()> {
         let group_id = self.config.group_id.clone();
+        let initial_peering_wait = self.startup_plan.initial_peering_wait;
         tokio::spawn(async move {
             if *shutdown.borrow() {
                 return;
             }
-            let started_at = Instant::now();
             loop {
                 tokio::select! {
                     changed = shutdown.changed() => {
@@ -601,6 +604,10 @@ impl AutoDaemonStartupPlan {
                                 break;
                             }
                         };
+                        let elapsed = started_at.elapsed();
+                        if elapsed < initial_peering_wait {
+                            continue;
+                        }
                         let source_address = discovery_source_address(&datagram);
                         let event = {
                             let mut state = state.lock().await;
@@ -609,7 +616,7 @@ impl AutoDaemonStartupPlan {
                                 group_id.as_bytes(),
                                 &source_address,
                                 &datagram.ifname,
-                                started_at.elapsed(),
+                                elapsed,
                             )
                         };
                         let loop_event = match event {
@@ -668,7 +675,14 @@ impl AutoDiscoveryListenerSupervisor {
         state: Arc<tokio::sync::Mutex<AutoDiscoveryState>>,
         shutdown: tokio::sync::watch::Receiver<bool>,
     ) -> Self {
-        Self { plan, state, shutdown, listeners: BTreeMap::new(), pending_stops: Vec::new() }
+        Self {
+            plan,
+            state,
+            shutdown,
+            started_at: Instant::now(),
+            listeners: BTreeMap::new(),
+            pending_stops: Vec::new(),
+        }
     }
 
     pub(crate) fn spawn_sockets(
@@ -699,6 +713,7 @@ impl AutoDiscoveryListenerSupervisor {
                     Arc::clone(&self.state),
                     events.clone(),
                     self.shutdown.clone(),
+                    self.started_at,
                 )
             })
             .collect();

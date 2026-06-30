@@ -441,7 +441,8 @@
 
         let processed = plan
             .process_discovery_datagram(&mut state, datagram, core::time::Duration::from_secs(2))
-            .expect("authenticated local echo");
+            .expect("authenticated local echo")
+            .expect("final init should allow discovery processing");
 
         assert_eq!(processed.source_address, "fe80::1234");
         assert_eq!(
@@ -472,9 +473,59 @@
 
         let processed = plan
             .process_discovery_datagram(&mut state, datagram, core::time::Duration::from_secs(2))
-            .expect("authenticated remote peer");
+            .expect("authenticated remote peer")
+            .expect("final init should allow discovery processing");
 
         assert_eq!(processed.source_address, "fe80::2222");
+        assert_eq!(
+            processed.event,
+            AutoDiscoveryEvent::Peer(rns_transport::iface::auto::AutoPeerEvent::Added)
+        );
+        assert!(state.peer("fe80::2222").is_some());
+    }
+
+    #[test]
+    fn auto_process_discovery_datagram_ignores_before_final_init() {
+        let plan = build_startup_plan_from_candidates(
+            &auto_iface(),
+            vec![AutoInterfaceDeviceCandidate {
+                ifname: "eth0".to_string(),
+                ipv6_addresses: vec!["fe80::1234".to_string()],
+            }],
+        )
+        .expect("startup plan");
+        let mut state = plan.discovery_state();
+        let valid_datagram = AutoDiscoveryDatagram {
+            kind: AutoDiscoverySocketKind::Unicast,
+            ifname: "eth0".to_string(),
+            bind_addr: "[fe80::1234]:48556".parse().expect("bind addr"),
+            multicast_group_addr: None,
+            source_addr: "[fe80::2222]:48556".parse().expect("source addr"),
+            payload: rns_transport::iface::auto::peering_token(b"field-net", "fe80::2222").to_vec(),
+        };
+        let invalid_datagram =
+            AutoDiscoveryDatagram { payload: vec![0; rns_transport::hash::HASH_SIZE], ..valid_datagram.clone() };
+        let before_final_init =
+            plan.startup_plan.initial_peering_wait - core::time::Duration::from_millis(1);
+
+        assert_eq!(
+            plan.process_discovery_datagram(&mut state, valid_datagram.clone(), before_final_init),
+            Ok(None)
+        );
+        assert_eq!(
+            plan.process_discovery_datagram(&mut state, invalid_datagram, before_final_init),
+            Ok(None)
+        );
+        assert!(state.peer("fe80::2222").is_none());
+
+        let processed = plan
+            .process_discovery_datagram(
+                &mut state,
+                valid_datagram,
+                plan.startup_plan.initial_peering_wait,
+            )
+            .expect("authenticated remote peer")
+            .expect("final init should allow discovery processing");
         assert_eq!(
             processed.event,
             AutoDiscoveryEvent::Peer(rns_transport::iface::auto::AutoPeerEvent::Added)

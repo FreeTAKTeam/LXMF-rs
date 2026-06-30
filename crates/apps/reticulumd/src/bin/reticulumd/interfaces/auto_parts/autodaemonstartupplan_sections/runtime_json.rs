@@ -88,7 +88,11 @@ impl AutoDaemonStartupPlan {
         state: &mut AutoDiscoveryState,
         datagram: AutoDiscoveryDatagram,
         now: core::time::Duration,
-    ) -> Result<AutoProcessedDiscoveryDatagram, AutoDiscoveryRejectReason> {
+    ) -> Result<Option<AutoProcessedDiscoveryDatagram>, AutoDiscoveryRejectReason> {
+        if now < self.startup_plan.initial_peering_wait {
+            return Ok(None);
+        }
+
         let source_address = discovery_source_address(&datagram);
         let event = state.observe_authenticated_discovery_packet(
             &datagram.payload,
@@ -97,7 +101,7 @@ impl AutoDaemonStartupPlan {
             &datagram.ifname,
             now,
         )?;
-        Ok(AutoProcessedDiscoveryDatagram { datagram, source_address, event })
+        Ok(Some(AutoProcessedDiscoveryDatagram { datagram, source_address, event }))
     }
 
     #[allow(dead_code)]
