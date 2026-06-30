@@ -425,10 +425,7 @@ impl RpcDaemon {
         if iface.kind != "udp" || iface.host.as_deref().map(str::trim).is_none_or(str::is_empty) {
             return false;
         }
-        if iface.port.is_none()
-            || Self::host_is_multicast(iface.host.as_deref())
-            || Self::interface_setting_str(iface, "device").is_some()
-        {
+        if iface.port.is_none() || Self::interface_setting_str(iface, "device").is_some() {
             return false;
         }
         let target_host =

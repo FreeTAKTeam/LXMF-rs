@@ -98,6 +98,63 @@ async fn unicast_iface_for_source_registers_virtual_iface_and_peer_routing() {
 }
 
 #[tokio::test]
+async fn stop_interface_removes_multicast_peer_routing_and_virtual_ifaces() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let transport = Transport::new(TransportConfig::new("test", &identity, true));
+    let mc_iface = register_fake_multicast_iface(&transport).await;
+    let handler = transport.get_handler();
+    let peer = peer_addr(4242);
+    let virtual_hash = handler
+        .lock()
+        .await
+        .unicast_iface_for_source(mc_iface, crate::iface::IfaceSource::Udp(peer))
+        .await
+        .expect("virtual iface");
+
+    assert!(transport.stop_interface(mc_iface).await);
+
+    {
+        let iface_manager = transport.iface_manager();
+        let manager = iface_manager.lock().await;
+        assert_eq!(manager.role(&mc_iface), None);
+        assert_eq!(manager.role(&virtual_hash), None);
+    }
+    let guard = handler.lock().await;
+    assert!(!guard.multicast_peer_routings.contains_key(&mc_iface));
+    assert!(!guard.unicast_udp_ifaces.contains_key(&peer));
+}
+
+#[tokio::test]
+async fn stop_interface_removes_virtual_udp_peer_routing_entry() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let transport = Transport::new(TransportConfig::new("test", &identity, true));
+    let mc_iface = register_fake_multicast_iface(&transport).await;
+    let handler = transport.get_handler();
+    let peer = peer_addr(4242);
+    let virtual_hash = handler
+        .lock()
+        .await
+        .unicast_iface_for_source(mc_iface, crate::iface::IfaceSource::Udp(peer))
+        .await
+        .expect("virtual iface");
+
+    assert!(transport.stop_interface(virtual_hash).await);
+
+    {
+        let iface_manager = transport.iface_manager();
+        let manager = iface_manager.lock().await;
+        assert_eq!(manager.role(&mc_iface), Some(crate::iface::IfaceRole::Multicast));
+        assert_eq!(manager.role(&virtual_hash), None);
+    }
+    let guard = handler.lock().await;
+    assert!(guard.multicast_peer_routings.contains_key(&mc_iface));
+    assert!(!guard.unicast_udp_ifaces.contains_key(&peer));
+    let routing = guard.multicast_peer_routings.get(&mc_iface).expect("routing").lock().await;
+    assert_eq!(routing.hash_for_addr(&peer), None);
+    assert_eq!(routing.addr_for_hash(&virtual_hash), None);
+}
+
+#[tokio::test]
 async fn unicast_iface_for_source_reuses_existing_virtual_iface_for_same_peer() {
     let identity = PrivateIdentity::new_from_rand(OsRng);
     let transport = Transport::new(TransportConfig::new("test", &identity, true));

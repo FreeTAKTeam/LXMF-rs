@@ -3,8 +3,11 @@ use super::{
     HotApplyUdpRefresh, InterfaceHotApplyBridge, InterfaceManager, InterfaceMutationBridge,
     InterfaceRecord, ManagedHotApplyInterface,
 };
+use rand_core::OsRng;
 use rns_rpc::{RpcDaemon, RpcRequest};
+use rns_transport::identity::PrivateIdentity;
 use rns_transport::iface::{IfaceRole, InterfaceMode, InterfaceSharedConfig};
+use rns_transport::transport::{Transport, TransportConfig};
 use serde_json::json;
 use std::collections::HashMap;
 use std::io;
@@ -104,8 +107,15 @@ async fn hot_apply_spawns_tcp_client_with_record_runtime_settings() {
     }));
 
     let refreshes = udp_refreshes();
-    apply_hot_apply_interface_records(&iface_manager, &mut managed, vec![record], &refreshes, None)
-        .await;
+    apply_hot_apply_interface_records(
+        &iface_manager,
+        &mut managed,
+        vec![record],
+        None,
+        &refreshes,
+        None,
+    )
+    .await;
 
     let address = managed.get("loopback").expect("managed tcp client").address;
     let manager = iface_manager.lock().await;
@@ -146,8 +156,15 @@ async fn hot_apply_updates_existing_tcp_client_runtime_settings() {
     }));
 
     let refreshes = udp_refreshes();
-    apply_hot_apply_interface_records(&iface_manager, &mut managed, vec![record], &refreshes, None)
-        .await;
+    apply_hot_apply_interface_records(
+        &iface_manager,
+        &mut managed,
+        vec![record],
+        None,
+        &refreshes,
+        None,
+    )
+    .await;
 
     let manager = iface_manager.lock().await;
     assert_eq!(manager.mode(&address), Some(InterfaceMode::AccessPoint));
@@ -174,6 +191,7 @@ async fn hot_apply_spawns_udp_unicast_listener_with_runtime_metadata() {
         &iface_manager,
         &mut managed,
         vec![record.clone()],
+        None,
         &refreshes,
         None,
     )
@@ -295,6 +313,7 @@ async fn hot_apply_replaces_udp_when_bind_changes() {
         &iface_manager,
         &mut managed,
         vec![udp_record("udp-loopback", "127.0.0.1", 0)],
+        None,
         &refreshes,
         None,
     )
@@ -304,6 +323,7 @@ async fn hot_apply_replaces_udp_when_bind_changes() {
         &iface_manager,
         &mut managed,
         vec![udp_record("udp-loopback", "127.0.0.2", 0)],
+        None,
         &refreshes,
         None,
     )
@@ -338,6 +358,7 @@ async fn hot_apply_replaces_startup_seeded_udp_when_bind_changes() {
         &iface_manager,
         &mut managed,
         vec![udp_record("udp-loopback", "127.0.0.2", 0)],
+        None,
         &refreshes,
         None,
     )
@@ -371,6 +392,7 @@ async fn hot_apply_removes_startup_seeded_udp_when_disabled() {
         &iface_manager,
         &mut managed,
         vec![disabled],
+        None,
         &refreshes,
         None,
     )
@@ -381,17 +403,40 @@ async fn hot_apply_removes_startup_seeded_udp_when_disabled() {
     assert_eq!(manager.role(&address), None);
 }
 
-#[test]
-fn hot_apply_rejects_multicast_udp_records() {
-    let (tx, _rx) = tokio::sync::mpsc::channel(1);
-    let bridge = test_bridge(tx);
+#[tokio::test(flavor = "current_thread")]
+async fn hot_apply_spawns_udp_multicast_with_transport_peer_routing() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let transport =
+        Arc::new(Transport::new(TransportConfig::new("hot-apply-mcast", &identity, true)));
+    let daemon = Arc::new(RpcDaemon::test_instance());
+    let bridge = InterfaceHotApplyBridge::spawn_with_transport_and_daemon(
+        transport.clone(),
+        Vec::new(),
+        Arc::downgrade(&daemon),
+    );
+    let record = udp_record("udp-mcast", "239.255.0.1", 0);
 
-    let err = bridge
-        .apply_interfaces(vec![udp_record("udp-mcast", "239.255.0.1", 4242)])
-        .expect_err("multicast udp hot apply should be rejected");
+    let applied = bridge.apply_interfaces(vec![record]).expect("apply multicast udp");
+    daemon.replace_interfaces(applied);
+    let (runtime_iface, refresh) = wait_for_hot_apply_udp_refresh(&bridge).await;
 
-    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
-    assert!(err.to_string().contains("multicast"));
+    let manager = transport.iface_manager();
+    let manager = manager.lock().await;
+    assert_eq!(manager.role(&runtime_iface), Some(IfaceRole::Multicast));
+    let runtime = daemon
+        .handle_rpc(RpcRequest { id: 772, method: "daemon_status_ex".to_string(), params: None })
+        .expect("daemon status")
+        .result
+        .expect("daemon status result");
+    assert_eq!(
+        runtime["interfaces"][0]["settings"]["_runtime"]["iface"].as_str(),
+        Some(runtime_iface.to_string().as_str())
+    );
+    assert_eq!(
+        runtime["interfaces"][0]["settings"]["_runtime"]["udp"]["status"]["role"].as_str(),
+        Some("multicast")
+    );
+    assert_eq!(refresh.runtime_iface, runtime_iface);
 }
 
 #[test]

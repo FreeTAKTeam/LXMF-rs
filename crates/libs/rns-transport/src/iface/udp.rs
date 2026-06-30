@@ -238,6 +238,10 @@ impl PeerRouting {
         Some(addr)
     }
 
+    pub fn hashes(&self) -> Vec<AddressHash> {
+        self.by_hash.keys().copied().collect()
+    }
+
     pub fn len(&self) -> usize {
         self.by_hash.len()
     }

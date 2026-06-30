@@ -69,6 +69,15 @@
         }
     }
 
+    fn assert_restart_required(response: RpcResponse) {
+        let error = response.error.expect("expected restart-required error");
+        assert_eq!(error.code, "CONFIG_RESTART_REQUIRED");
+        assert_eq!(
+            error.machine_code.as_deref(),
+            Some("UNSUPPORTED_MUTATION_KIND_REQUIRES_RESTART")
+        );
+    }
+
     #[test]
     fn set_interfaces_rejects_startup_only_interface_kinds() {
         let daemon = RpcDaemon::test_instance();
@@ -239,8 +248,10 @@
     }
 
     #[test]
-    fn set_interfaces_reports_multicast_udp_requires_restart() {
+    fn set_interfaces_hot_applies_multicast_udp_records() {
         let daemon = RpcDaemon::test_instance();
+        let bridge = std::sync::Arc::new(RecordingInterfaceMutationBridge::new());
+        daemon.set_interface_mutation_bridge(bridge.clone());
 
         let response = daemon
             .handle_rpc(rpc_request(
@@ -258,9 +269,11 @@
             ))
             .expect("set_interfaces response");
 
-        let error = response.error.expect("expected restart-required error");
-        assert_eq!(error.code, "CONFIG_RESTART_REQUIRED");
-        assert_eq!(error.machine_code.as_deref(), Some("UNSUPPORTED_MUTATION_KIND_REQUIRES_RESTART"));
+        assert!(response.error.is_none(), "unexpected error: {response:?}");
+        assert_eq!(
+            bridge.applied(),
+            vec![vec![udp_interface("udp-mcast", "239.255.0.1", 4242)]]
+        );
     }
 
     #[test]
@@ -324,6 +337,59 @@
             error.machine_code.as_deref(),
             Some("UNSUPPORTED_MUTATION_KIND_REQUIRES_RESTART")
         );
+    }
+
+    #[test]
+    fn set_interfaces_reports_partial_udp_forward_target_requires_restart() {
+        let daemon = RpcDaemon::test_instance();
+
+        let response = daemon
+            .handle_rpc(rpc_request(
+                35,
+                "set_interfaces",
+                json!({
+                    "interfaces": [{
+                        "type": "udp",
+                        "enabled": true,
+                        "host": "127.0.0.1",
+                        "port": 4242,
+                        "name": "udp-peer",
+                        "settings": {
+                            "target_host": "127.0.0.1"
+                        }
+                    }]
+                }),
+            ))
+            .expect("set_interfaces response");
+
+        assert_restart_required(response);
+    }
+
+    #[test]
+    fn set_interfaces_reports_multicast_udp_forward_target_requires_restart() {
+        let daemon = RpcDaemon::test_instance();
+
+        let response = daemon
+            .handle_rpc(rpc_request(
+                36,
+                "set_interfaces",
+                json!({
+                    "interfaces": [{
+                        "type": "udp",
+                        "enabled": true,
+                        "host": "127.0.0.1",
+                        "port": 4242,
+                        "name": "udp-peer",
+                        "settings": {
+                            "target_host": "239.255.0.1",
+                            "target_port": 4242
+                        }
+                    }]
+                }),
+            ))
+            .expect("set_interfaces response");
+
+        assert_restart_required(response);
     }
 
     #[test]
@@ -519,6 +585,67 @@
         assert_eq!(result["hot_applied_legacy_tcp_only"], json!(false));
         assert_eq!(result["hot_applied_interface_mutation"], json!(true));
         assert_eq!(bridge.applied(), vec![vec![udp_interface("udp-main", "127.0.0.1", 4248)]]);
+    }
+
+    #[test]
+    fn reload_config_hot_applies_multicast_udp_only_diff() {
+        let daemon = RpcDaemon::test_instance();
+        daemon.replace_interfaces(vec![udp_interface("udp-mcast", "239.255.0.1", 4242)]);
+        let bridge = std::sync::Arc::new(RecordingInterfaceMutationBridge::new());
+        daemon.set_interface_mutation_bridge(bridge.clone());
+
+        let response = daemon
+            .handle_rpc(rpc_request(
+                34,
+                "reload_config",
+                json!({
+                    "interfaces": [{
+                        "type": "udp",
+                        "enabled": true,
+                        "host": "239.255.0.1",
+                        "port": 4248,
+                        "name": "udp-mcast"
+                    }]
+                }),
+            ))
+            .expect("reload_config response");
+
+        assert!(response.error.is_none(), "unexpected reload error: {response:?}");
+        let result = response.result.expect("result");
+        assert_eq!(result["hot_applied_legacy_tcp_only"], json!(false));
+        assert_eq!(result["hot_applied_interface_mutation"], json!(true));
+        assert_eq!(
+            bridge.applied(),
+            vec![vec![udp_interface("udp-mcast", "239.255.0.1", 4248)]]
+        );
+    }
+
+    #[test]
+    fn reload_config_reports_multicast_udp_forward_target_requires_restart() {
+        let daemon = RpcDaemon::test_instance();
+        daemon.replace_interfaces(vec![udp_interface("udp-peer", "127.0.0.1", 4242)]);
+
+        let response = daemon
+            .handle_rpc(rpc_request(
+                35,
+                "reload_config",
+                json!({
+                    "interfaces": [{
+                        "type": "udp",
+                        "enabled": true,
+                        "host": "127.0.0.1",
+                        "port": 4242,
+                        "name": "udp-peer",
+                        "settings": {
+                            "target_host": "239.255.0.1",
+                            "target_port": 4242
+                        }
+                    }]
+                }),
+            ))
+            .expect("reload_config response");
+
+        assert_restart_required(response);
     }
 
     #[test]

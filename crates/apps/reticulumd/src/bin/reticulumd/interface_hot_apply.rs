@@ -2,8 +2,8 @@ use rns_rpc::{InterfaceMutationBridge, InterfaceRecord, RpcDaemon};
 use rns_transport::hash::AddressHash;
 use rns_transport::iface::tcp_client::TcpClient;
 use rns_transport::iface::udp::{UdpInterface, UdpRuntimeStatusHandle};
-use rns_transport::iface::{IfaceRole, InterfaceManager, InterfaceMode, InterfaceSharedConfig};
-use serde_json::Value as JsonValue;
+use rns_transport::iface::{IfaceRole, InterfaceManager, InterfaceMode};
+use rns_transport::transport::Transport;
 use std::collections::HashMap;
 use std::io;
 use std::sync::{Arc, Mutex as StdMutex, Weak};
@@ -12,6 +12,8 @@ use tokio::sync::mpsc::{channel, error::TrySendError, Receiver, Sender};
 use crate::bootstrap::{
     mark_interface_runtime_fields, mark_interface_runtime_managed, mark_interface_startup_status,
 };
+use interface_hot_apply_parts::record_settings::interface_record_shared_config;
+use interface_hot_apply_parts::record_settings::{setting_bool, setting_str, setting_u64};
 #[cfg(test)]
 use interface_hot_apply_parts::udp_runtime_refresh::refresh_hot_apply_udp_runtime_status_once;
 use interface_hot_apply_parts::udp_runtime_refresh::{
@@ -37,20 +39,30 @@ impl InterfaceHotApplyBridge {
         iface_manager: Arc<tokio::sync::Mutex<InterfaceManager>>,
         seeded: Vec<(String, InterfaceRecord, AddressHash)>,
     ) -> Self {
-        Self::spawn_inner(iface_manager, seeded, None)
+        Self::spawn_inner(iface_manager, seeded, None, None)
     }
 
+    #[cfg(test)]
     pub(super) fn spawn_with_daemon(
         iface_manager: Arc<tokio::sync::Mutex<InterfaceManager>>,
         seeded: Vec<(String, InterfaceRecord, AddressHash)>,
         daemon: Weak<RpcDaemon>,
     ) -> Self {
-        Self::spawn_inner(iface_manager, seeded, Some(daemon))
+        Self::spawn_inner(iface_manager, seeded, None, Some(daemon))
+    }
+
+    pub(super) fn spawn_with_transport_and_daemon(
+        transport: Arc<Transport>,
+        seeded: Vec<(String, InterfaceRecord, AddressHash)>,
+        daemon: Weak<RpcDaemon>,
+    ) -> Self {
+        Self::spawn_inner(transport.iface_manager(), seeded, Some(transport), Some(daemon))
     }
 
     fn spawn_inner(
         iface_manager: Arc<tokio::sync::Mutex<InterfaceManager>>,
         seeded: Vec<(String, InterfaceRecord, AddressHash)>,
+        transport: Option<Arc<Transport>>,
         daemon: Option<Weak<RpcDaemon>>,
     ) -> Self {
         let (tx, rx) = channel(INTERFACE_HOT_APPLY_QUEUE_CAPACITY);
@@ -62,6 +74,7 @@ impl InterfaceHotApplyBridge {
             iface_manager,
             rx,
             seeded,
+            transport.clone(),
             udp_refreshes.clone(),
             daemon,
         ));
@@ -123,6 +136,7 @@ async fn run_interface_mutation_worker(
     iface_manager: Arc<tokio::sync::Mutex<InterfaceManager>>,
     mut rx: Receiver<InterfaceHotApplyCommand>,
     seeded: Vec<(String, InterfaceRecord, AddressHash)>,
+    transport: Option<Arc<Transport>>,
     udp_refreshes: Arc<StdMutex<HashMap<String, HotApplyUdpRefresh>>>,
     daemon: Option<Weak<RpcDaemon>>,
 ) {
@@ -138,6 +152,7 @@ async fn run_interface_mutation_worker(
                     &iface_manager,
                     &mut managed,
                     interfaces,
+                    transport.as_ref(),
                     &udp_refreshes,
                     daemon.as_ref(),
                 )
@@ -151,6 +166,7 @@ async fn apply_hot_apply_interface_records(
     iface_manager: &Arc<tokio::sync::Mutex<InterfaceManager>>,
     managed: &mut HashMap<String, ManagedHotApplyInterface>,
     interfaces: Vec<InterfaceRecord>,
+    transport: Option<&Arc<Transport>>,
     udp_refreshes: &Arc<StdMutex<HashMap<String, HotApplyUdpRefresh>>>,
     daemon: Option<&Weak<RpcDaemon>>,
 ) {
@@ -174,8 +190,7 @@ async fn apply_hot_apply_interface_records(
         if should_remove {
             if let Some(current) = managed.remove(&key) {
                 udp_refreshes.lock().expect("udp refresh mutex poisoned").remove(&key);
-                let mut guard = iface_manager.lock().await;
-                let _ = guard.stop_interface(current.address);
+                stop_hot_apply_interface(iface_manager, transport, current.address).await;
             }
         }
     }
@@ -190,7 +205,8 @@ async fn apply_hot_apply_interface_records(
             current.record = record;
             continue;
         }
-        if let Some((address, udp_status)) = spawn_hot_apply_interface(iface_manager, &record).await
+        if let Some((address, udp_status)) =
+            spawn_hot_apply_interface(iface_manager, transport, &record).await
         {
             if let Some(status) = udp_status {
                 status.update(|status| {
@@ -235,13 +251,13 @@ fn validate_hot_apply_uniqueness(interfaces: &[InterfaceRecord]) -> Result<(), i
 
 async fn spawn_hot_apply_interface(
     iface_manager: &Arc<tokio::sync::Mutex<InterfaceManager>>,
+    transport: Option<&Arc<Transport>>,
     record: &InterfaceRecord,
 ) -> Option<(AddressHash, Option<UdpRuntimeStatusHandle>)> {
-    let mut guard = iface_manager.lock().await;
     let mode = interface_record_mode(record);
     let (address, udp_status) = match record.kind.as_str() {
         "tcp_client" => (
-            guard.spawn_as_with_mode(
+            iface_manager.lock().await.spawn_as_with_mode(
                 TcpClient::new(tcp_endpoint(record)?),
                 TcpClient::spawn,
                 IfaceRole::Unicast,
@@ -251,20 +267,46 @@ async fn spawn_hot_apply_interface(
         ),
         "udp" => {
             let (bind_addr, forward_addr) = udp_bind_and_forward_addr(record).ok()?;
-            let adapter = UdpInterface::new(bind_addr, forward_addr);
+            let adapter = UdpInterface::new(bind_addr.clone(), forward_addr.clone());
             if adapter.is_multicast() {
-                return None;
+                let transport = transport?;
+                let (address, status) = transport
+                    .add_multicast_udp_interface_with_status(bind_addr, forward_addr)
+                    .await;
+                (address, Some(status))
+            } else {
+                let status = adapter.runtime_status_handle();
+                (
+                    iface_manager.lock().await.spawn_as_with_mode(
+                        adapter,
+                        UdpInterface::spawn,
+                        IfaceRole::Unicast,
+                        mode,
+                    ),
+                    Some(status),
+                )
             }
-            let status = adapter.runtime_status_handle();
-            (
-                guard.spawn_as_with_mode(adapter, UdpInterface::spawn, IfaceRole::Unicast, mode),
-                Some(status),
-            )
         }
         _ => return None,
     };
-    apply_record_runtime_config(&mut guard, address, record);
+    {
+        let mut guard = iface_manager.lock().await;
+        apply_record_runtime_config(&mut guard, address, record);
+    }
     Some((address, udp_status))
+}
+
+async fn stop_hot_apply_interface(
+    iface_manager: &Arc<tokio::sync::Mutex<InterfaceManager>>,
+    transport: Option<&Arc<Transport>>,
+    address: AddressHash,
+) {
+    if let Some(transport) = transport {
+        let _ = transport.stop_interface(address).await;
+    } else {
+        let mut guard = iface_manager.lock().await;
+        let _ = guard.stop_interface(address);
+    }
 }
 
 fn hot_apply_interface_key(record: &InterfaceRecord) -> Option<String> {
@@ -338,12 +380,6 @@ fn udp_bind_and_forward_addr(
             "udp hot-apply does not support device-bound records",
         ));
     }
-    if host_is_multicast(host) {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "udp hot-apply does not support multicast",
-        ));
-    }
     let port = record.port.ok_or_else(|| {
         io::Error::new(io::ErrorKind::InvalidInput, "udp hot-apply requires port")
     })?;
@@ -384,7 +420,13 @@ fn mark_udp_record_runtime_status(
     runtime_iface: Option<AddressHash>,
 ) {
     if let Ok((bind_addr, forward_addr)) = udp_bind_and_forward_addr(record) {
-        let role = if forward_addr.is_some() { "peer" } else { "listener" };
+        let role = if record.host.as_deref().is_some_and(host_is_multicast) {
+            "multicast"
+        } else if forward_addr.is_some() {
+            "peer"
+        } else {
+            "listener"
+        };
         let iface = runtime_iface.map(|value| value.to_string());
         crate::bootstrap::with_interface_runtime_metadata(record, |runtime| {
             runtime.insert(
@@ -427,69 +469,6 @@ fn interface_record_mode(record: &InterfaceRecord) -> InterfaceMode {
         .or_else(|| setting_str(record, "mode"))
         .and_then(|value| InterfaceMode::parse(value).ok().flatten())
         .unwrap_or(InterfaceMode::Full)
-}
-
-fn interface_record_shared_config(record: &InterfaceRecord) -> InterfaceSharedConfig {
-    InterfaceSharedConfig {
-        announce_rate_target: setting_u64(record, "announce_rate_target"),
-        announce_rate_grace: setting_u64(record, "announce_rate_grace"),
-        announce_rate_penalty: setting_u64(record, "announce_rate_penalty"),
-        bootstrap_only: setting_bool(record, "bootstrap_only"),
-        ifac_size: setting_u64(record, "ifac_size"),
-        network_name: setting_string(record, "network_name")
-            .or_else(|| setting_string(record, "networkname")),
-        passphrase: setting_string(record, "passphrase")
-            .or_else(|| setting_string(record, "pass_phrase")),
-        ingress_control: setting_bool(record, "ingress_control"),
-        egress_control: setting_bool(record, "egress_control"),
-        ic_max_held_announces: setting_u64(record, "ic_max_held_announces"),
-        ic_burst_hold: setting_f64(record, "ic_burst_hold"),
-        ic_burst_freq_new: setting_f64(record, "ic_burst_freq_new"),
-        ic_burst_freq: setting_f64(record, "ic_burst_freq"),
-        ic_pr_burst_freq_new: setting_f64(record, "ic_pr_burst_freq_new"),
-        ic_pr_burst_freq: setting_f64(record, "ic_pr_burst_freq"),
-        ec_pr_freq: setting_f64(record, "ec_pr_freq"),
-        ic_new_time: setting_f64(record, "ic_new_time"),
-        ic_burst_penalty: setting_f64(record, "ic_burst_penalty"),
-        ic_held_release_interval: setting_f64(record, "ic_held_release_interval"),
-        discoverable: setting_bool(record, "discoverable"),
-        announce_interval: setting_u64(record, "announce_interval"),
-        discovery_stamp_value: setting_u64(record, "discovery_stamp_value"),
-        discovery_name: setting_string(record, "discovery_name"),
-        discovery_encrypt: setting_bool(record, "discovery_encrypt"),
-        reachable_on: setting_string(record, "reachable_on"),
-        publish_ifac: setting_bool(record, "publish_ifac"),
-        latitude: setting_f64(record, "latitude"),
-        longitude: setting_f64(record, "longitude"),
-        height: setting_f64(record, "height"),
-        discovery_frequency: setting_u64(record, "discovery_frequency"),
-        discovery_bandwidth: setting_u64(record, "discovery_bandwidth"),
-        discovery_modulation: setting_u64(record, "discovery_modulation"),
-    }
-}
-
-fn setting<'a>(record: &'a InterfaceRecord, key: &str) -> Option<&'a JsonValue> {
-    record.settings.as_ref()?.as_object()?.get(key)
-}
-
-fn setting_str<'a>(record: &'a InterfaceRecord, key: &str) -> Option<&'a str> {
-    setting(record, key)?.as_str()
-}
-
-fn setting_string(record: &InterfaceRecord, key: &str) -> Option<String> {
-    setting_str(record, key).map(ToOwned::to_owned)
-}
-
-fn setting_bool(record: &InterfaceRecord, key: &str) -> Option<bool> {
-    setting(record, key)?.as_bool()
-}
-
-fn setting_u64(record: &InterfaceRecord, key: &str) -> Option<u64> {
-    setting(record, key)?.as_u64()
-}
-
-fn setting_f64(record: &InterfaceRecord, key: &str) -> Option<f64> {
-    setting(record, key)?.as_f64()
 }
 
 #[cfg(test)]

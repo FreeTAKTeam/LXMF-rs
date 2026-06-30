@@ -365,12 +365,13 @@ The project is best described by capability level:
   `UDPInterface` alias parsing, strict daemon startup, bound loopback status,
   and malformed-datagram `bytes_rx`/`decode_errors` telemetry without external
   network services. `set_interfaces` and `reload_config` now hot-apply explicit
-  unicast UDP listener/peer records alongside TCP clients, with tests proving
-  multicast, `device`-bound, partial-target, and out-of-range-target UDP shapes
-  remain restart-required and duplicate UDP binds are rejected before mutation.
-  Hot-applied explicit unicast UDP records now attach the runtime iface and
-  refresh live daemon/RPC `_runtime.udp.status` counters under focused software
-  tests. Serial
+  UDP listener, peer, and multicast-bind records alongside TCP clients, with
+  tests proving `device`-bound, partial-target, out-of-range-target, and
+  multicast-forward UDP shapes remain restart-required or invalid and duplicate
+  UDP binds are rejected before mutation. Hot-applied explicit UDP records now
+  attach the runtime iface and refresh live daemon/RPC `_runtime.udp.status`
+  counters under focused software tests, and multicast-bind hot-apply goes
+  through the transport peer-routing helper instead of a bare UDP spawn. Serial
   now refreshes live open/reconnect, HDLC frame, packet, byte, EOF, queue,
   decode, serialize, read, and write-error counters.
   KISS/AX.25 KISS and KISS TCP now refresh live packet, data-frame,
@@ -1182,7 +1183,8 @@ the implemented subset.
      client-specific compatibility claims.
 2. **Reticulum behavioral breadth**
    - Finish resolver/bootstrap, announce/path edge behavior, and broader runtime
-     mutation parity beyond TCP clients and explicit unicast UDP records.
+     mutation parity beyond TCP clients and explicit UDP listener, peer, and
+     multicast-bind records.
 3. **Operational breadth**
    - Add broader prepared-host hardware evidence across serial/TCP/BLE RNode
      device, firmware, management, and radio combinations; ordinary
