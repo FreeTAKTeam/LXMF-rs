@@ -936,6 +936,11 @@ The project is best described by capability level:
   `signature_status = "verified"` for valid LXMF signatures and
   `signature_status = "signature_invalid"` for corrupted signatures in both
   stored records and raw inbound events.
+- Local propagated-delivery accepts now also write the persistent processed
+  transient marker used by daemon propagation ingest, so replaying the same
+  stamped transient through `propagation_ingest` reports
+  `ingested_count = 0` / `duplicate_count = 1` and does not increment local
+  receive counters a second time.
 - The typed propagation branch now also exposes
   `ZmqPipelineBackendClient::propagation_recovery_state`, projecting
   `app.propagation.status` into structured sync state, selected-node,

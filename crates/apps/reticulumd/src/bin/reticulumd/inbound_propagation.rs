@@ -157,12 +157,13 @@ async fn ingest_propagation_envelope_from_peer_inner(
             daemon,
             delivery_destination,
             message,
+            transient_id.as_str(),
             remote_propagation_peer,
             signature_transport,
         )
         .await?
         {
-            LocalPropagationOutcome::Accepted => {
+            LocalPropagationOutcome::Accepted { counted } => {
                 if let Some(peer) = remote_propagation_peer {
                     daemon.relay_accepted_peer_propagation_payload_bytes_at_cost(
                         message,
@@ -171,7 +172,7 @@ async fn ingest_propagation_envelope_from_peer_inner(
                         peer,
                     )?;
                 } else {
-                    daemon.note_client_propagation_messages_received(1);
+                    daemon.note_client_propagation_messages_received(usize::from(counted));
                 }
                 continue;
             }
@@ -201,7 +202,7 @@ async fn ingest_propagation_envelope_from_peer_inner(
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum LocalPropagationOutcome {
-    Accepted,
+    Accepted { counted: bool },
     Dropped,
     NotLocal,
 }
@@ -221,6 +222,7 @@ async fn try_accept_local_propagated_message(
     daemon: &RpcDaemon,
     delivery_destination: Option<&Arc<tokio::sync::Mutex<SingleInputDestination>>>,
     transient_payload: &[u8],
+    transient_id: &str,
     remote_propagation_peer: Option<&str>,
     signature_transport: Option<&Transport>,
 ) -> Result<LocalPropagationOutcome, std::io::Error> {
@@ -248,6 +250,9 @@ async fn try_accept_local_propagated_message(
         }
         if &transient_payload[..16] != destination.desc.address_hash.as_slice() {
             return Ok(LocalPropagationOutcome::NotLocal);
+        }
+        if daemon.local_propagation_processed_mark_exists(transient_id)? {
+            return Ok(LocalPropagationOutcome::Accepted { counted: false });
         }
         let wire = match decrypt_local_propagated_wire(&destination, transient_payload) {
             Ok(wire) => wire,
@@ -352,16 +357,19 @@ async fn try_accept_local_propagated_message(
                 record: Some(&record),
             },
         );
-        return Ok(LocalPropagationOutcome::Accepted);
+        daemon.mark_local_propagation_processed(transient_id)?;
+        return Ok(LocalPropagationOutcome::Accepted { counted: true });
     }
     if daemon.message_exists(record.id.as_str())? {
-        return Ok(LocalPropagationOutcome::Accepted);
+        daemon.mark_local_propagation_processed(transient_id)?;
+        return Ok(LocalPropagationOutcome::Accepted { counted: false });
     }
     if remote_propagation_peer.is_none() {
         daemon.record_inbound_peer_activity(&record.source, wire.len());
     }
     daemon.accept_inbound_with_raw(record, &wire)?;
-    Ok(LocalPropagationOutcome::Accepted)
+    daemon.mark_local_propagation_processed(transient_id)?;
+    Ok(LocalPropagationOutcome::Accepted { counted: true })
 }
 
 fn annotate_inbound_record_propagation_stamp_status(

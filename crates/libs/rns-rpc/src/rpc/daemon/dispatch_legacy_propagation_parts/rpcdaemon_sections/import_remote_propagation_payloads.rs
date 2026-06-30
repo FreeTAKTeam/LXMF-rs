@@ -278,6 +278,24 @@ impl RpcDaemon {
         });
     }
 
+    pub fn mark_local_propagation_processed(
+        &self,
+        transient_id: &str,
+    ) -> Result<bool, std::io::Error> {
+        self.store
+            .mark_local_propagation_processed(transient_id)
+            .map_err(std::io::Error::other)
+    }
+
+    pub fn local_propagation_processed_mark_exists(
+        &self,
+        transient_id: &str,
+    ) -> Result<bool, std::io::Error> {
+        self.store
+            .local_propagation_processed_mark_exists(transient_id)
+            .map_err(std::io::Error::other)
+    }
+
     pub fn canonical_propagation_payload_hex(
         &self,
         payload_hex: &str,
