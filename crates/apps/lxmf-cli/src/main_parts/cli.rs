@@ -196,6 +196,18 @@ enum Command {
         #[arg(long)]
         message_id: String,
     },
+    PaperEncode {
+        #[arg(long)]
+        message_id: String,
+    },
+    PaperDecode {
+        #[arg(long)]
+        uri: String,
+        #[arg(long)]
+        transient_id: Option<String>,
+        #[arg(long)]
+        destination_hint: Option<String>,
+    },
     Poll {
         #[arg(long)]
         cursor: Option<String>,
@@ -310,6 +322,21 @@ fn run(cli: &Cli) -> Result<JsonValue, SdkError> {
             let snapshot = client.status(MessageId(message_id.clone()))?;
             Ok(json!({ "message": snapshot }))
         }
+        Command::PaperEncode { message_id } => {
+            ensure_started(&client, cli)?;
+            let envelope = client.paper_encode(MessageId(message_id.clone()))?;
+            Ok(json!({ "envelope": envelope }))
+        }
+        Command::PaperDecode {
+            uri,
+            transient_id,
+            destination_hint,
+        } => {
+            ensure_started(&client, cli)?;
+            let envelope = build_paper_decode_envelope(uri, transient_id.clone(), destination_hint.clone())?;
+            let result = client.paper_decode_with_metadata(envelope)?;
+            Ok(json!({ "paper": result }))
+        }
         Command::Poll { cursor, max } => {
             ensure_started(&client, cli)?;
             let batch = client.poll_events(cursor.clone().map(EventCursor), *max)?;
@@ -384,4 +411,21 @@ fn build_payload(
         "content": content,
         "title": title.unwrap_or_default(),
     }))
+}
+
+fn build_paper_decode_envelope(
+    uri: &str,
+    transient_id: Option<String>,
+    destination_hint: Option<String>,
+) -> Result<PaperMessageEnvelope, SdkError> {
+    let uri = uri.trim();
+    if !uri.starts_with("lxm://") {
+        return Err(invalid_argument("paper URI must start with lxm://"));
+    }
+    Ok(PaperMessageEnvelope {
+        uri: uri.to_owned(),
+        transient_id,
+        destination_hint,
+        extensions: Default::default(),
+    })
 }

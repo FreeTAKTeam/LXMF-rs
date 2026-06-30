@@ -214,6 +214,20 @@ fn emit_human_output(cli: &Cli, value: &JsonValue) {
                 println!("{value}");
             }
         }
+        Command::PaperEncode { .. } => {
+            if let Some(envelope) = value.get("envelope") {
+                println!("{envelope}");
+            } else {
+                println!("{value}");
+            }
+        }
+        Command::PaperDecode { .. } => {
+            if let Some(paper) = value.get("paper") {
+                println!("paper decode result: {paper}");
+            } else {
+                println!("{value}");
+            }
+        }
         Command::Poll { .. } => {
             let count = value
                 .get("events")
@@ -378,6 +392,55 @@ mod tests {
         assert_eq!(stamp_cost, Some(4));
         assert!(include_ticket);
         assert!(try_propagation_on_fail);
+    }
+
+    #[test]
+    fn paper_encode_command_accepts_message_id() {
+        let cli = parse_cli(&["lxmf-cli", "paper-encode", "--message-id", "msg-1"]);
+
+        let Command::PaperEncode { message_id } = cli.command else {
+            panic!("expected paper encode command");
+        };
+
+        assert_eq!(message_id, "msg-1");
+    }
+
+    #[test]
+    fn paper_decode_command_builds_envelope_from_uri() {
+        let cli = parse_cli(&[
+            "lxmf-cli",
+            "paper-decode",
+            "--uri",
+            "lxm://paper/v1/abc",
+            "--transient-id",
+            "paper-1",
+            "--destination-hint",
+            "dest",
+        ]);
+
+        let Command::PaperDecode {
+            uri,
+            transient_id,
+            destination_hint,
+        } = cli.command
+        else {
+            panic!("expected paper decode command");
+        };
+        let envelope = build_paper_decode_envelope(&uri, transient_id, destination_hint)
+            .expect("paper envelope should build");
+
+        assert_eq!(envelope.uri, "lxm://paper/v1/abc");
+        assert_eq!(envelope.transient_id.as_deref(), Some("paper-1"));
+        assert_eq!(envelope.destination_hint.as_deref(), Some("dest"));
+        assert!(envelope.extensions.is_empty());
+    }
+
+    #[test]
+    fn paper_decode_envelope_rejects_non_lxm_uri() {
+        let err = build_paper_decode_envelope("not-a-paper-uri", None, None)
+            .expect_err("invalid paper URI should fail");
+
+        assert_eq!(err.machine_code, error_code::VALIDATION_INVALID_ARGUMENT);
     }
 
     #[test]

@@ -9,7 +9,7 @@ entrypoint. This page is about `lxmf`, not `lxmd`.
 ## Invocation
 
 ```bash
-cargo run -p lxmf-cli -- --help
+cargo run -p lxmf-cli --bin lxmf -- --help
 cargo run -p lxmf-cli --bin lxmd -- --help
 ```
 
@@ -36,6 +36,8 @@ Auth-specific flags:
   `[--include-ticket] [--try-propagation-on-fail]`
 - `cancel --message-id`
 - `status --message-id`
+- `paper-encode --message-id`
+- `paper-decode --uri [--transient-id] [--destination-hint]`
 - `poll [--cursor] [--max]`
 - `snapshot`
 - `configure --expected-revision --patch-json`
@@ -48,8 +50,8 @@ Auth-specific flags:
 Start runtime and send a message:
 
 ```bash
-cargo run -p lxmf-cli -- start
-cargo run -p lxmf-cli -- send \
+cargo run -p lxmf-cli --bin lxmf -- start
+cargo run -p lxmf-cli --bin lxmf -- send \
   --source example.service \
   --destination example.peer \
   --content "hello from lxmf-cli"
@@ -58,7 +60,7 @@ cargo run -p lxmf-cli -- send \
 Send with explicit delivery options:
 
 ```bash
-cargo run -p lxmf-cli -- send \
+cargo run -p lxmf-cli --bin lxmf -- send \
   --source example.service \
   --destination example.peer \
   --content "hello from lxmf-cli" \
@@ -68,22 +70,30 @@ cargo run -p lxmf-cli -- send \
   --try-propagation-on-fail
 ```
 
+Encode and decode paper-message URIs through the SDK-backed daemon paper
+surface:
+
+```bash
+cargo run -p lxmf-cli --bin lxmf -- paper-encode --message-id queued-message-id
+cargo run -p lxmf-cli --bin lxmf -- paper-decode --uri "lxm://..."
+```
+
 Poll events in human mode:
 
 ```bash
-cargo run -p lxmf-cli -- poll --max 32
+cargo run -p lxmf-cli --bin lxmf -- poll --max 32
 ```
 
 Poll events in machine mode:
 
 ```bash
-cargo run -p lxmf-cli -- --output json poll --max 32
+cargo run -p lxmf-cli --bin lxmf -- --output json poll --max 32
 ```
 
 Generate shell completions:
 
 ```bash
-cargo run -p lxmf-cli -- completions --shell zsh > _lxmf
+cargo run -p lxmf-cli --bin lxmf -- completions --shell zsh > _lxmf
 ```
 
 Related references:

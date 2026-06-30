@@ -769,7 +769,9 @@ The project is best described by capability level:
   `sdk_paper_decode_v2` aliases. The typed SDK also exposes
   `paper_decode_with_metadata` while preserving legacy `paper_decode` Ack
   compatibility, so paper-ingest duplicate/transient/destination/size metadata
-  is available over both RPC and ZeroMQ backend paths.
+  is available over both RPC and ZeroMQ backend paths. The `lxmf`/`lxmf-cli`
+  command surface now exposes the same SDK-backed paper flow through
+  `paper-encode --message-id` and `paper-decode --uri`.
 - The typed ZeroMQ SDK backend now exposes durable direct-chat history through
   `ZmqPipelineBackendClient::list_message_history`, preserving message bodies
   with links, receipt status, basic LXMF fields, one-to-one
