@@ -1019,6 +1019,12 @@ The project is best described by capability level:
   fresh transient, now also emits one bounded `inbound_dropped` duplicate event
   with redacted destination identifiers and the transient ID, without storing a
   second message or incrementing receive counters.
+- Remote propagation imports from fetch, download, and sync now keep duplicate
+  payloads observer-visible by emitting bounded `inbound_dropped` duplicate
+  events with operation, transient, byte-length, and optional peer context while
+  preserving peer queue side effects for still-stored duplicates, avoiding
+  unservable peer marks for processed-only duplicates, and avoiding duplicate
+  storage/upsert work.
 - The typed propagation branch now also exposes
   `ZmqPipelineBackendClient::propagation_recovery_state`, projecting
   `app.propagation.status` into structured sync state, selected-node,

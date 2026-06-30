@@ -206,6 +206,24 @@ fn duplicate_propagation_remote_fetch_queues_known_payload_without_double_counti
     assert_eq!(second["result"]["duplicate_count"].as_u64(), Some(1));
     assert_eq!(second["result"]["imported_ids"], json!([]));
 
+    let duplicate_events: Vec<_> = std::iter::from_fn(|| daemon.take_event())
+        .filter(|event| {
+            event.event_type == "inbound_dropped" && event.payload["reason"] == json!("duplicate")
+        })
+        .collect();
+    assert_eq!(duplicate_events.len(), 1);
+    let duplicate_event = &duplicate_events[0];
+    assert_eq!(duplicate_event.payload["delivery_kind"], json!("propagation"));
+    assert_eq!(duplicate_event.payload["payload_mode"], json!("full_wire"));
+    assert_eq!(duplicate_event.payload["bytes_len"], json!(payload.len()));
+    assert_eq!(duplicate_event.payload["operation"], json!("propagation_remote_fetch"));
+    assert_eq!(duplicate_event.payload["transient_id"], json!(transient_id));
+    assert_eq!(
+        duplicate_event.payload["detail"],
+        json!("remote propagation payload already processed locally")
+    );
+    assert!(duplicate_event.payload.get("peer").is_none());
+
     let relay_pending = daemon
         .store
         .list_peer_unhandled_propagation("peer-fetch-known")
@@ -224,6 +242,118 @@ fn duplicate_propagation_remote_fetch_queues_known_payload_without_double_counti
     );
     assert_eq!(status["propagation"]["total_ingested"].as_u64(), Some(1));
     assert_eq!(status["propagation"]["last_ingest_count"].as_u64(), Some(0));
+}
+
+#[test]
+fn processed_only_remote_fetch_duplicate_emits_event_without_unservable_peer_marks() {
+    let destination = [0x62_u8; 16];
+    let destination_hex = hex::encode(destination);
+    let mut payload = destination.to_vec();
+    payload.extend_from_slice(b"processed-only-remote-fetch-payload");
+    let payload_hex = hex::encode(&payload);
+    let transient_id = hex::encode(Sha256::digest(&payload));
+    let source_peer = "remote-fetch-processed-only-source";
+    let relay_peer = "remote-fetch-processed-only-relay";
+    let daemon = RpcDaemon::test_instance();
+    daemon
+        .handle_rpc(rpc_request(72, "peer_sync", json!({ "peer": source_peer })))
+        .expect("seed source peer");
+    daemon
+        .handle_rpc(rpc_request(73, "peer_sync", json!({ "peer": relay_peer })))
+        .expect("seed relay peer");
+    daemon.set_remote_control_bridge(Arc::new(TestRemoteControlBridge {
+        result: Ok(json!({
+            "available_count": 1,
+            "fetched_count": 1,
+            "messages": [{
+                "transient_id": transient_id,
+                "destination": destination_hex,
+                "payload_hex": payload_hex,
+            }],
+        })),
+    }));
+
+    daemon
+        .handle_rpc(rpc_request(
+            74,
+            "propagation_remote_fetch",
+            json!({ "remote": source_peer }),
+        ))
+        .expect("initial remote fetch");
+    assert_eq!(
+        daemon
+            .store
+            .purge_propagation_entries_for_destination(
+                destination_hex.as_str(),
+                std::slice::from_ref(&transient_id),
+            )
+            .expect("purge stored propagation entry"),
+        1
+    );
+    daemon
+        .store
+        .clear_peer_propagation_marks(source_peer)
+        .expect("clear source peer marks");
+    daemon
+        .store
+        .clear_peer_propagation_marks(relay_peer)
+        .expect("clear relay peer marks");
+    while daemon.take_event().is_some() {}
+
+    let second = daemon
+        .handle_rpc(rpc_request(
+            75,
+            "propagation_remote_fetch",
+            json!({ "remote": source_peer }),
+        ))
+        .expect("processed-only duplicate remote fetch")
+        .result
+        .expect("processed-only duplicate remote fetch result");
+    assert_eq!(second["result"]["imported_count"].as_u64(), Some(0));
+    assert_eq!(second["result"]["duplicate_count"].as_u64(), Some(1));
+    assert_eq!(second["result"]["imported_ids"], json!([]));
+    assert_eq!(second["result"]["transferred_bytes"].as_u64(), Some(0));
+
+    assert!(
+        daemon
+            .store
+            .get_propagation_entry(transient_id.as_str())
+            .expect("lookup processed-only duplicate entry")
+            .is_none(),
+        "processed-only duplicate should not recreate storage"
+    );
+    assert!(
+        daemon
+            .store
+            .list_peer_unhandled_propagation(relay_peer)
+            .expect("relay pending")
+            .is_empty(),
+        "processed-only duplicate must not create an unservable relay mark"
+    );
+    assert!(
+        daemon
+            .store
+            .list_peer_handled_propagation_ids(source_peer)
+            .expect("source handled ids")
+            .is_empty(),
+        "processed-only duplicate must not create an unservable source mark"
+    );
+
+    let duplicate_event = std::iter::from_fn(|| daemon.take_event())
+        .find(|event| {
+            event.event_type == "inbound_dropped" && event.payload["reason"] == json!("duplicate")
+        })
+        .expect("processed-only duplicate drop event");
+    assert_eq!(duplicate_event.payload["delivery_kind"], json!("propagation"));
+    assert_eq!(duplicate_event.payload["payload_mode"], json!("full_wire"));
+    assert_eq!(duplicate_event.payload["bytes_len"], json!(payload.len()));
+    assert_eq!(duplicate_event.payload["operation"], json!("propagation_remote_fetch"));
+    assert_eq!(duplicate_event.payload["transient_id"], json!(transient_id));
+    assert_eq!(
+        duplicate_event.payload["detail"],
+        json!("remote propagation payload already processed locally")
+    );
+    assert!(duplicate_event.payload.get("peer").is_none());
 }
 
 #[test]

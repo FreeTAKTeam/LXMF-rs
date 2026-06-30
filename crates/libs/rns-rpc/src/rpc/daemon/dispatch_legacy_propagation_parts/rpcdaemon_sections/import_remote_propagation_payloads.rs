@@ -127,17 +127,30 @@ impl RpcDaemon {
                 .map_err(std::io::Error::other)?;
             let already_accepted =
                 accepted_ids.iter().any(|id| id.eq_ignore_ascii_case(transient_id.as_str()));
-            if !already_accepted {
+            let is_duplicate = already_known_store || already_processed || already_accepted;
+            let accept_for_peer_queue = !already_accepted && (!is_duplicate || already_known_store);
+            if accept_for_peer_queue {
                 transferred_bytes = transferred_bytes.saturating_add(normalized_payload_len);
                 accepted_ids.push(transient_id.clone());
             }
-            if already_known_store || already_processed || already_accepted {
+            if is_duplicate {
                 duplicate_count = duplicate_count.saturating_add(1);
+                self.emit_remote_duplicate_propagation_drop_event(
+                    normalized_payload.as_slice(),
+                    transient_id.as_str(),
+                    operation,
+                    peer,
+                    remote_duplicate_detail(
+                        already_known_store,
+                        already_processed,
+                        already_accepted,
+                    ),
+                );
             } else {
                 imported_count = imported_count.saturating_add(1);
                 imported_ids.push(transient_id.clone());
+                validated.push(record);
             }
-            validated.push(record);
         }
         for record in validated {
             self.store.upsert_propagation_entry(&record).map_err(std::io::Error::other)?;
@@ -477,5 +490,51 @@ impl RpcDaemon {
         let target_cost =
             self.propagation_state.lock().expect("propagation mutex poisoned").target_cost;
         self.ingest_propagation_payload_hex_at_cost(payload_hex, transient_id, target_cost)
+    }
+
+    fn emit_remote_duplicate_propagation_drop_event(
+        &self,
+        payload: &[u8],
+        transient_id: &str,
+        operation: &str,
+        peer: Option<&str>,
+        detail: &'static str,
+    ) {
+        let raw_destination_hex = payload.get(..16).map(hex::encode).unwrap_or_default();
+        let resolved_destination_hex = raw_destination_hex.clone();
+        let mut event_payload = json!({
+            "reason": "duplicate",
+            "delivery_kind": "propagation",
+            "raw_destination_hash": raw_destination_hex,
+            "resolved_destination_hash": resolved_destination_hex,
+            "payload_mode": "full_wire",
+            "bytes_len": payload.len(),
+            "detail": detail,
+            "operation": operation,
+            "transient_id": transient_id,
+        });
+        if let Some(peer) = peer.filter(|value| !value.trim().is_empty()) {
+            event_payload["peer"] = JsonValue::String(peer.to_string());
+        }
+        self.publish_event(RpcEvent {
+            event_type: "inbound_dropped".to_string(),
+            payload: event_payload,
+        });
+    }
+}
+
+fn remote_duplicate_detail(
+    already_known_store: bool,
+    already_processed: bool,
+    already_accepted: bool,
+) -> &'static str {
+    if already_accepted {
+        "duplicate propagation payload in remote response"
+    } else if already_processed {
+        "remote propagation payload already processed locally"
+    } else if already_known_store {
+        "remote propagation payload already stored locally"
+    } else {
+        "remote propagation payload duplicate"
     }
 }

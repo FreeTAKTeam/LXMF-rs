@@ -63,6 +63,29 @@ fn run_propagation_remote_import_success_side_effect_case(method: &str, case_tag
     assert_eq!(response["propagation"]["state_name"].as_str(), Some("completed"), "{method}");
     assert_eq!(response["propagation"]["last_sync_error"], JsonValue::Null, "{method}");
 
+    let duplicate_events: Vec<_> = std::iter::from_fn(|| daemon.take_event())
+        .filter(|event| {
+            event.event_type == "inbound_dropped" && event.payload["reason"] == json!("duplicate")
+        })
+        .collect();
+    assert_eq!(duplicate_events.len(), 1, "{method} duplicate drop event count");
+    let duplicate_event = &duplicate_events[0];
+    assert_eq!(duplicate_event.payload["delivery_kind"], json!("propagation"), "{method}");
+    assert_eq!(duplicate_event.payload["payload_mode"], json!("full_wire"), "{method}");
+    assert_eq!(duplicate_event.payload["bytes_len"], json!(payload.len()), "{method}");
+    assert_eq!(duplicate_event.payload["operation"], json!(method), "{method}");
+    assert_eq!(duplicate_event.payload["transient_id"], json!(transient_id), "{method}");
+    assert_eq!(
+        duplicate_event.payload["detail"],
+        json!("duplicate propagation payload in remote response"),
+        "{method}"
+    );
+    if method == "propagation_remote_sync" {
+        assert_eq!(duplicate_event.payload["peer"], json!(source_peer), "{method}");
+    } else {
+        assert!(duplicate_event.payload.get("peer").is_none(), "{method}");
+    }
+
     assert!(
         daemon
             .store
