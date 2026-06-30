@@ -181,7 +181,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     configured_interfaces = startup.configured_interfaces;
     let startup_successes = startup.startup_successes;
     let startup_failures = startup.startup_failures;
-    let seeded_tcp_interfaces = startup.seeded_tcp_interfaces;
+    let seeded_hot_apply_interfaces = startup.seeded_hot_apply_interfaces;
     let auto_runtime_refreshes = startup.auto_runtime_refreshes;
     let pipe_runtime_refreshes = startup.pipe_runtime_refreshes;
     let udp_runtime_refreshes = startup.udp_runtime_refreshes;
@@ -285,9 +285,9 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     enforce_rpc_bind_security(rpc_addr.as_ref(), rpc_tls.as_ref(), daemon.as_ref());
     if let Some(transport) = transport.as_ref() {
         daemon.set_path_lookup_bridge(Arc::new(DaemonPathLookupBridge::new(transport.clone())));
-        daemon.set_interface_mutation_bridge(Arc::new(TcpInterfaceMutationBridge::spawn(
+        daemon.set_interface_mutation_bridge(Arc::new(InterfaceHotApplyBridge::spawn(
             transport.iface_manager(),
-            seeded_tcp_interfaces,
+            seeded_hot_apply_interfaces,
         )));
     }
     if !rnode_management_bindings.is_empty() {

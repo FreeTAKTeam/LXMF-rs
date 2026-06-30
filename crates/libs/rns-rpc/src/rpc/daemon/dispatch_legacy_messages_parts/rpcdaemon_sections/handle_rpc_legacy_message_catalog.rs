@@ -190,7 +190,7 @@ impl RpcDaemon {
                     .interfaces
                     .iter()
                     .enumerate()
-                    .filter(|(_, iface)| !Self::is_legacy_hot_apply_kind(iface.kind.as_str()))
+                    .filter(|(_, iface)| !Self::is_legacy_hot_apply_record(iface))
                     .map(|(index, iface)| Self::interface_identifier(iface, index))
                     .collect::<Vec<_>>();
                 if !blocked.is_empty() {
@@ -243,6 +243,8 @@ impl RpcDaemon {
                 })
             }
             "reload_config" => {
+                let mut hot_applied_legacy_tcp_only = false;
+                let mut hot_applied_interface_mutation = false;
                 if let Some(params) = request.params.clone() {
                     let parsed: ReloadConfigParams =
                         serde_json::from_value(params).map_err(|err| {
@@ -278,9 +280,7 @@ impl RpcDaemon {
                             .interfaces
                             .iter()
                             .enumerate()
-                            .filter(|(_, iface)| {
-                                !Self::is_legacy_hot_apply_kind(iface.kind.as_str())
-                            })
+                            .filter(|(_, iface)| !Self::is_legacy_hot_apply_record(iface))
                             .map(|(index, iface)| Self::interface_identifier(iface, index))
                             .collect::<Vec<_>>();
                         if affected.is_empty() {
@@ -308,6 +308,9 @@ impl RpcDaemon {
                         ));
                     }
                     Self::validate_legacy_hot_apply_uniqueness(&parsed.interfaces)?;
+                    hot_applied_interface_mutation = true;
+                    hot_applied_legacy_tcp_only = !parsed.interfaces.is_empty()
+                        && parsed.interfaces.iter().all(|iface| iface.kind == "tcp_client");
                     let parsed_interfaces = parsed.interfaces;
 
                     let applied_interfaces = if let Some(bridge) = self
@@ -344,7 +347,8 @@ impl RpcDaemon {
                     result: Some(json!({
                         "reloaded": true,
                         "timestamp": timestamp,
-                        "hot_applied_legacy_tcp_only": request.params.is_some(),
+                        "hot_applied_legacy_tcp_only": hot_applied_legacy_tcp_only,
+                        "hot_applied_interface_mutation": hot_applied_interface_mutation,
                     })),
                     error: None,
                 })

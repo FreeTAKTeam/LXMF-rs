@@ -75,6 +75,9 @@ async fn startup_udp(
         is_multicast,
         udp_iface,
     );
+    if let Some(key) = hot_apply_interface_seed_key(record) {
+        sinks.seeded_hot_apply_interfaces.push((key, record.clone(), udp_iface));
+    }
     true
 }
 

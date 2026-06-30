@@ -55,7 +55,7 @@ pub(super) struct TransportStartupArtifacts {
     pub(super) configured_interfaces: Vec<InterfaceRecord>,
     pub(super) startup_successes: usize,
     pub(super) startup_failures: Vec<InterfaceStartupFailure>,
-    pub(super) seeded_tcp_interfaces: Vec<(String, InterfaceRecord, AddressHash)>,
+    pub(super) seeded_hot_apply_interfaces: Vec<(String, InterfaceRecord, AddressHash)>,
     pub(super) auto_runtime_refreshes: Vec<AutoRuntimeRefresh>,
     pub(super) pipe_runtime_refreshes: Vec<PipeRuntimeRefresh>,
     pub(super) udp_runtime_refreshes: Vec<UdpRuntimeRefresh>,
@@ -171,7 +171,7 @@ pub(super) async fn start_transport_and_interfaces(
     let mut delivery_source_hash = [0u8; 16];
     let mut startup_successes = 0usize;
     let mut startup_failures = Vec::new();
-    let mut seeded_tcp_interfaces = Vec::new();
+    let mut seeded_hot_apply_interfaces = Vec::new();
     let mut auto_runtime_refreshes = Vec::new();
     let mut pipe_runtime_refreshes = Vec::new();
     let mut udp_runtime_refreshes = Vec::new();
@@ -257,7 +257,7 @@ pub(super) async fn start_transport_and_interfaces(
             for iface in startup.tunnel_synth_ifaces {
                 transport_instance.synthesize_tunnel_on_interface(iface).await;
             }
-            seeded_tcp_interfaces.extend(startup.seeded_tcp_interfaces);
+            seeded_hot_apply_interfaces.extend(startup.seeded_hot_apply_interfaces);
             auto_runtime_refreshes.extend(startup.auto_runtime_refreshes);
             pipe_runtime_refreshes.extend(startup.pipe_runtime_refreshes);
             udp_runtime_refreshes.extend(startup.udp_runtime_refreshes);
@@ -384,7 +384,7 @@ pub(super) async fn start_transport_and_interfaces(
         configured_interfaces,
         startup_successes,
         startup_failures,
-        seeded_tcp_interfaces,
+        seeded_hot_apply_interfaces,
         auto_runtime_refreshes,
         pipe_runtime_refreshes,
         udp_runtime_refreshes,

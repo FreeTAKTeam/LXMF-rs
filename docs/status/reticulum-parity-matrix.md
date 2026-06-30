@@ -20,7 +20,7 @@ Workspace paths are used for navigation. Published package names are
 
 | Python surface | Rust surface | Status | Implemented baseline | Residual gap |
 | --- | --- | --- | --- | --- |
-| `RNS/Reticulum.py` | `crates/libs/rns-transport`, `crates/apps/reticulumd` | partial | Deployable daemon, configuration, propagation-node activation, persistence, RPC, graceful shutdown, daemon/RPC runtime status for Reticulum path-table restore success or failure, and multiple live interfaces. | Python runtime/config mutation and interface breadth remain wider. |
+| `RNS/Reticulum.py` | `crates/libs/rns-transport`, `crates/apps/reticulumd` | partial | Deployable daemon, configuration, propagation-node activation, persistence, RPC, graceful shutdown, daemon/RPC runtime status for Reticulum path-table restore success or failure, multiple live interfaces, and runtime `set_interfaces`/`reload_config` hot-apply for TCP clients plus explicit unicast UDP listener/peer records. | Python runtime/config mutation remains wider for multicast, device-bound, and broader interface shapes; interface breadth remains wider. |
 | `RNS/Identity.py` | `crates/libs/rns-core` | done | Identity material, hashing, signing, encryption, recall, and key conversion. | No confirmed parity blocker. |
 | `RNS/Destination.py` | `crates/libs/rns-core`, `crates/libs/rns-transport` | done | Destination hashing, descriptors, announces, proof validation, ratchets, and known-key stability checks. | No confirmed parity blocker. |
 | `RNS/Packet.py` | `crates/libs/rns-core`, `crates/libs/rns-transport` | done | Framing, serialization, contexts, proofs, receipts, Python-default link proof context, and header semantics. | No confirmed parity blocker. |
@@ -132,6 +132,12 @@ placeholders:
   operators. A software loopback smoke now proves Python-style alias parsing,
   strict startup, bound loopback status, and malformed-datagram
   `bytes_rx`/`decode_errors` telemetry without external network services.
+  Runtime interface mutation now hot-applies explicit unicast UDP listener/peer
+  records through `set_interfaces` and `reload_config`, while multicast,
+  `device`-bound, partial-target, and out-of-range-target records remain
+  restart-required, and duplicate UDP binds are rejected before mutation; live
+  counter refresh for hot-applied UDP interfaces is not yet claimed by this
+  evidence.
 - Serial now refreshes live daemon/RPC status with open/reconnect, HDLC frame,
   packet, byte, EOF, queue, decode, serialize, read, and write-error counters.
   Serial KISS and AX.25 KISS retain Python-compatible AX.25 UI header wrapping

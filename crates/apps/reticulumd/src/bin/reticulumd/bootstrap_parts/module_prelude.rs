@@ -4,7 +4,7 @@ use super::bridge::TransportBridge;
 
 use super::inbound_worker::spawn_inbound_worker;
 
-use super::interface_hot_apply::TcpInterfaceMutationBridge;
+use super::interface_hot_apply::InterfaceHotApplyBridge;
 
 use super::outbound_resources::OutboundResourceMap;
 

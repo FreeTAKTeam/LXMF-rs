@@ -20,6 +20,17 @@
         }
     }
 
+    fn udp_interface(name: &str, host: &str, port: u16) -> InterfaceRecord {
+        InterfaceRecord {
+            kind: "udp".to_string(),
+            enabled: true,
+            host: Some(host.to_string()),
+            port: Some(port),
+            name: Some(name.to_string()),
+            settings: None,
+        }
+    }
+
     struct RecordingInterfaceMutationBridge {
         applied: std::sync::Mutex<Vec<Vec<InterfaceRecord>>>,
     }
@@ -198,7 +209,121 @@
             Some("UNSUPPORTED_MUTATION_KIND_REQUIRES_RESTART")
         );
         let details = error.details.expect("restart details");
-        assert_eq!(details["legacy_hot_apply_supported_kinds"], json!(["tcp_client"]));
+        assert_eq!(details["legacy_hot_apply_supported_kinds"], json!(["tcp_client", "udp"]));
+    }
+
+    #[test]
+    fn set_interfaces_invokes_interface_mutation_bridge_for_udp() {
+        let daemon = RpcDaemon::test_instance();
+        let bridge = std::sync::Arc::new(RecordingInterfaceMutationBridge::new());
+        daemon.set_interface_mutation_bridge(bridge.clone());
+
+        let response = daemon
+            .handle_rpc(rpc_request(
+                30,
+                "set_interfaces",
+                json!({
+                    "interfaces": [{
+                        "type": "udp",
+                        "enabled": true,
+                        "host": "127.0.0.1",
+                        "port": 4242,
+                        "name": "udp-main"
+                    }]
+                }),
+            ))
+            .expect("set_interfaces response");
+
+        assert!(response.error.is_none(), "unexpected error: {response:?}");
+        assert_eq!(bridge.applied(), vec![vec![udp_interface("udp-main", "127.0.0.1", 4242)]]);
+    }
+
+    #[test]
+    fn set_interfaces_reports_multicast_udp_requires_restart() {
+        let daemon = RpcDaemon::test_instance();
+
+        let response = daemon
+            .handle_rpc(rpc_request(
+                31,
+                "set_interfaces",
+                json!({
+                    "interfaces": [{
+                        "type": "udp",
+                        "enabled": true,
+                        "host": "239.255.0.1",
+                        "port": 4242,
+                        "name": "udp-mcast"
+                    }]
+                }),
+            ))
+            .expect("set_interfaces response");
+
+        let error = response.error.expect("expected restart-required error");
+        assert_eq!(error.code, "CONFIG_RESTART_REQUIRED");
+        assert_eq!(error.machine_code.as_deref(), Some("UNSUPPORTED_MUTATION_KIND_REQUIRES_RESTART"));
+    }
+
+    #[test]
+    fn set_interfaces_reports_device_udp_requires_restart() {
+        let daemon = RpcDaemon::test_instance();
+
+        let response = daemon
+            .handle_rpc(rpc_request(
+                33,
+                "set_interfaces",
+                json!({
+                    "interfaces": [{
+                        "type": "udp",
+                        "enabled": true,
+                        "host": "127.0.0.1",
+                        "port": 4242,
+                        "name": "udp-device",
+                        "settings": {
+                            "device": "eth0"
+                        }
+                    }]
+                }),
+            ))
+            .expect("set_interfaces response");
+
+        let error = response.error.expect("expected restart-required error");
+        assert_eq!(error.code, "CONFIG_RESTART_REQUIRED");
+        assert_eq!(
+            error.machine_code.as_deref(),
+            Some("UNSUPPORTED_MUTATION_KIND_REQUIRES_RESTART")
+        );
+    }
+
+    #[test]
+    fn set_interfaces_reports_out_of_range_udp_forward_port_requires_restart() {
+        let daemon = RpcDaemon::test_instance();
+
+        let response = daemon
+            .handle_rpc(rpc_request(
+                34,
+                "set_interfaces",
+                json!({
+                    "interfaces": [{
+                        "type": "udp",
+                        "enabled": true,
+                        "host": "127.0.0.1",
+                        "port": 4242,
+                        "name": "udp-peer",
+                        "settings": {
+                            "target_host": "127.0.0.1",
+                            "target_port": 70000
+                        }
+                    }]
+                }),
+            ))
+            .expect("set_interfaces response");
+
+        let error = response.error.expect("expected restart-required error");
+        assert_eq!(error.code, "CONFIG_RESTART_REQUIRED");
+        assert_eq!(
+            error.machine_code.as_deref(),
+            Some("UNSUPPORTED_MUTATION_KIND_REQUIRES_RESTART")
+        );
     }
 
     #[test]
@@ -262,6 +387,38 @@
 
         let interfaces = daemon.interfaces.lock().expect("interfaces mutex poisoned").clone();
         assert!(interfaces.is_empty());
+    }
+
+    #[test]
+    fn set_interfaces_rejects_duplicate_udp_bind_addresses() {
+        let daemon = RpcDaemon::test_instance();
+
+        let err = daemon
+            .handle_rpc(rpc_request(
+                35,
+                "set_interfaces",
+                json!({
+                    "interfaces": [
+                        {
+                            "type": "udp",
+                            "enabled": true,
+                            "host": "127.0.0.1",
+                            "port": 4242,
+                            "name": "udp-a"
+                        },
+                        {
+                            "type": "udp",
+                            "enabled": true,
+                            "host": "127.0.0.1",
+                            "port": 4242,
+                            "name": "udp-b"
+                        }
+                    ]
+                }),
+            ))
+            .expect_err("duplicate udp binds should be rejected");
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+        assert!(err.to_string().contains("duplicate legacy udp bind address"));
     }
 
     #[test]
@@ -332,6 +489,36 @@
 
         let interfaces = daemon.interfaces.lock().expect("interfaces mutex poisoned").clone();
         assert_eq!(interfaces[0].port, Some(4248));
+    }
+
+    #[test]
+    fn reload_config_hot_applies_udp_only_diff() {
+        let daemon = RpcDaemon::test_instance();
+        daemon.replace_interfaces(vec![udp_interface("udp-main", "127.0.0.1", 4242)]);
+        let bridge = std::sync::Arc::new(RecordingInterfaceMutationBridge::new());
+        daemon.set_interface_mutation_bridge(bridge.clone());
+
+        let response = daemon
+            .handle_rpc(rpc_request(
+                32,
+                "reload_config",
+                json!({
+                    "interfaces": [{
+                        "type": "udp",
+                        "enabled": true,
+                        "host": "127.0.0.1",
+                        "port": 4248,
+                        "name": "udp-main"
+                    }]
+                }),
+            ))
+            .expect("reload_config response");
+
+        assert!(response.error.is_none(), "unexpected reload error: {response:?}");
+        let result = response.result.expect("result");
+        assert_eq!(result["hot_applied_legacy_tcp_only"], json!(false));
+        assert_eq!(result["hot_applied_interface_mutation"], json!(true));
+        assert_eq!(bridge.applied(), vec![vec![udp_interface("udp-main", "127.0.0.1", 4248)]]);
     }
 
     #[test]

@@ -364,8 +364,13 @@ The project is best described by capability level:
   `rnstatus-rs`. A software loopback smoke now proves Python-style
   `UDPInterface` alias parsing, strict daemon startup, bound loopback status,
   and malformed-datagram `bytes_rx`/`decode_errors` telemetry without external
-  network services. Serial now refreshes live open/reconnect, HDLC frame, packet,
-  byte, EOF, queue, decode, serialize, read, and write-error counters.
+  network services. `set_interfaces` and `reload_config` now hot-apply explicit
+  unicast UDP listener/peer records alongside TCP clients, with tests proving
+  multicast, `device`-bound, partial-target, and out-of-range-target UDP shapes
+  remain restart-required and duplicate UDP binds are rejected before mutation;
+  live counter refresh for hot-applied UDP interfaces is not yet claimed. Serial
+  now refreshes live open/reconnect, HDLC frame, packet, byte, EOF, queue,
+  decode, serialize, read, and write-error counters.
   KISS/AX.25 KISS and KISS TCP now refresh live packet, data-frame,
   command-frame, byte, flow-control, queue, AX.25 drop, and error counters. A
   software fake-PTY smoke now proves Python-style `KISSInterface` and
@@ -1174,8 +1179,8 @@ the implemented subset.
    - Capture release evidence for Sideband, MeshChatX, and Columba before making
      client-specific compatibility claims.
 2. **Reticulum behavioral breadth**
-   - Finish resolver/bootstrap, announce/path edge behavior, and runtime
-     mutation parity.
+   - Finish resolver/bootstrap, announce/path edge behavior, and broader runtime
+     mutation parity beyond TCP clients and explicit unicast UDP records.
 3. **Operational breadth**
    - Add broader prepared-host hardware evidence across serial/TCP/BLE RNode
      device, firmware, management, and radio combinations; ordinary
