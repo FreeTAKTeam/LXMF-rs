@@ -1,6 +1,6 @@
 # LXMF Parity Matrix
 
-Last reassessed: 2026-06-28
+Last reassessed: 2026-06-30
 
 This is the maintained row-level status for Python LXMF compatibility.
 Repository-level posture and execution order live in
@@ -24,7 +24,7 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 | `LXMF/LXMessage.py` | `crates/libs/lxmf-core` | done | Wire, storage, propagation, paper, signatures, message IDs, binary fidelity, and timestamp precision metadata. | No confirmed base-message blocker. |
 | `LXMF/LXMPeer.py` | `crates/libs/rns-rpc`, `crates/apps/reticulumd` | done | Persistent peers, queue marks, offer selection, policy gates, peering keys, throttling, maintenance, source accounting, cumulative acceptance, serialized restored queue snapshots, boolean/list/numeric offer responses, transfer/retry/restart recovery, and unpeer cleanup. | No confirmed `LXMPeer.py` blocker in the pinned Python-only coverage. |
 | `LXMF/LXMRouter.py` | `crates/libs/rns-rpc`, `crates/apps/reticulumd` | partial | Outbound modes, selected propagation nodes, direct/propagated resources, cancellation, fetch/download/sync RPCs, receipts, persistence, propagation-node side effects, retry/failure handling, and Python live remote lifecycle coverage. | No confirmed propagation-router lifecycle blocker remains; broader non-propagation router convenience surface remains narrower than Python. |
-| `LXMF/Handlers.py` | `crates/apps/reticulumd`, `crates/libs/rns-rpc` | partial | Delivery, announce, propagation app-data, receipt, inbound bridge handling, structured raw event-stream signals for direct packet/resource delivery drops, propagated local delivery-policy drops, decryptable remote fetched/downloaded propagated local-delivery decode/stamp/policy drops, and propagated local-delivery pre-decode drops for local-addressed short/undecryptable envelopes plus strict remote fetch/download local-import rejects. | Some router-coupled side effects and broader propagated/drop observability remain narrower. |
+| `LXMF/Handlers.py` | `crates/apps/reticulumd`, `crates/libs/rns-rpc` | partial | Delivery, announce, propagation app-data, receipt, inbound bridge handling, direct and propagated local-delivery signature metadata, structured raw event-stream signals for direct packet/resource delivery drops, propagated local delivery-policy drops, decryptable remote fetched/downloaded propagated local-delivery decode/stamp/policy drops, and propagated local-delivery pre-decode drops for local-addressed short/undecryptable envelopes plus strict remote fetch/download local-import rejects. | Some router-coupled side effects and broader propagated/drop observability remain narrower. |
 | `LXMF/LXStamper.py` | `crates/libs/lxmf-core`, `crates/libs/rns-rpc`, `crates/apps/reticulumd` | done | Validation, generation, ticket-derived stamps, cancellation-aware task work, background deferred worker queue ownership, retry state, cancellation, propagation-stamp pre-handoff preparation, and progress metadata. | No confirmed deferred-stamp lifecycle blocker. |
 
 ## Method Checklist
@@ -882,5 +882,11 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   local-import rejects for too-short payloads, destination mismatches, and
   decrypt failures. Local propagation envelope destination mismatches remain
   relay/store-forward candidates instead of local drop events.
+- Focused propagated local-delivery tests also cover handler-facing `_lxmf`
+  signature metadata on stored messages and raw inbound events for local
+  envelope ingest, remote fetch imports, and remote-control download imports.
+  Production imports pass through the shared transport-aware signature
+  annotation path when available, while unknown source identities are recorded as
+  `source_identity_unknown` instead of leaving signature status absent.
 - `interop.python_live_gate` means the configured scenarios run successfully;
   it does not imply every partial row is complete.

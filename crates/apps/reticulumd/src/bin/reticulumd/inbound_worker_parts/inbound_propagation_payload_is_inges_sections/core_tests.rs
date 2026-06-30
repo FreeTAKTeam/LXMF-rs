@@ -2,7 +2,7 @@
 
     use super::propagation::{
         ingest_propagation_envelope, ingest_propagation_envelope_from_peer,
-        ingest_propagation_resource_from_peer,
+        ingest_propagation_envelope_with_transport, ingest_propagation_resource_from_peer,
     };
 
     use hkdf::Hkdf;

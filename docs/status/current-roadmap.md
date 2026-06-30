@@ -922,6 +922,14 @@ The project is best described by capability level:
   rejects for short payloads, destination mismatches, and decrypt failures, so
   those router-coupled drops remain observer-visible instead of only counted as
   rejected imports.
+- Locally delivered propagated LXMF payloads now store the same `_lxmf`
+  signature metadata as direct packet/resource delivery paths and include it in
+  the emitted raw inbound event. Local envelope ingest, remote fetch imports,
+  and remote-control download imports pass through the shared transport-aware
+  signature annotation path when available. Unknown source identities now record
+  `signature_checked = false`, `signature_valid = false`, and
+  `signature_status = "source_identity_unknown"` instead of omitting signature
+  status from handler-facing state.
 - The typed propagation branch now also exposes
   `ZmqPipelineBackendClient::propagation_recovery_state`, projecting
   `app.propagation.status` into structured sync state, selected-node,

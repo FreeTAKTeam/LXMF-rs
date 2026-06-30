@@ -76,6 +76,8 @@
             .expect("enable propagation");
         let delivery_private = PrivateIdentity::new_from_rand(OsRng);
         let source_private = PrivateIdentity::new_from_rand(OsRng);
+        let transport_identity = to_transport_private_identity(&to_core_private_identity(&delivery_private));
+        let transport = Transport::new(TransportConfig::new("test", &transport_identity, true));
         let delivery_destination = Arc::new(TokioMutex::new(SingleInputDestination::new(
             delivery_private.clone(),
             DestinationName::new("lxmf", "delivery"),
@@ -118,10 +120,16 @@
             WireMessage::pack_propagation_envelope(1.0, &transient, Some(&stamp))
                 .expect("propagation envelope")
         };
+        while daemon.take_event().is_some() {}
 
-        let ingested = ingest_propagation_envelope(&daemon, &envelope, Some(&delivery_destination))
-            .await
-            .expect("ingest propagation envelope");
+        let ingested = ingest_propagation_envelope_with_transport(
+            &daemon,
+            &envelope,
+            Some(&delivery_destination),
+            Some(&transport),
+        )
+        .await
+        .expect("ingest propagation envelope");
         assert_eq!(ingested, 1);
 
         let messages = daemon
@@ -141,6 +149,21 @@
         assert!(items[0]["fields"]["_lxmf"]["propagation_stamp_value"]
             .as_u64()
             .is_some_and(|value| value >= 1));
+        assert_eq!(items[0]["fields"]["_lxmf"]["signature_checked"], json!(false));
+        assert_eq!(items[0]["fields"]["_lxmf"]["signature_valid"], json!(false));
+        assert_eq!(
+            items[0]["fields"]["_lxmf"]["signature_status"],
+            json!("source_identity_unknown")
+        );
+
+        let event = daemon.take_event().expect("propagated inbound event");
+        assert_eq!(event.event_type, "inbound");
+        assert_eq!(event.payload["message"]["fields"]["_lxmf"]["signature_checked"], json!(false));
+        assert_eq!(event.payload["message"]["fields"]["_lxmf"]["signature_valid"], json!(false));
+        assert_eq!(
+            event.payload["message"]["fields"]["_lxmf"]["signature_status"],
+            json!("source_identity_unknown")
+        );
     }
 
     #[tokio::test]

@@ -1,7 +1,7 @@
 use super::*;
 use crate::inbound_worker::delivery_events::{
-    emit_inbound_drop_event, emit_propagation_predecode_drop_event, InboundDeliveryKind,
-    InboundDropEvent,
+    annotate_inbound_signature_status, emit_inbound_drop_event,
+    emit_propagation_predecode_drop_event, InboundDeliveryKind, InboundDropEvent,
 };
 use lxmf::inbound_decode::InboundPayloadMode;
 use reticulum_daemon::inbound_delivery::{
@@ -53,6 +53,7 @@ impl TransportBridge {
         transient_payload: Vec<u8>,
     ) -> Result<LocalPropagationImportOutcome, std::io::Error> {
         let destination = self.announce_destination.clone();
+        let transport = self.transport.clone();
         std::thread::spawn(move || {
             let runtime = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
@@ -67,6 +68,7 @@ impl TransportBridge {
                     daemon.as_ref(),
                     destination,
                     transient_payload.as_slice(),
+                    Some(transport.as_ref()),
                 )
                 .await
             })
@@ -80,6 +82,7 @@ async fn accept_local_propagated_payload_inner(
     daemon: &RpcDaemon,
     delivery_destination: Arc<tokio::sync::Mutex<SingleInputDestination>>,
     transient_payload: &[u8],
+    signature_transport: Option<&Transport>,
 ) -> Result<LocalPropagationImportOutcome, std::io::Error> {
     let (destination_hash, wire) = {
         let destination = delivery_destination.lock().await;
@@ -179,6 +182,14 @@ async fn accept_local_propagated_payload_inner(
     };
 
     annotate_inbound_record_stamp_status(&mut record, stamp_status);
+    annotate_inbound_signature_status(
+        signature_transport,
+        &mut record,
+        destination_hash,
+        &wire,
+        InboundPayloadMode::FullWire,
+    )
+    .await;
     if !inbound_record_allowed_by_delivery_policy(daemon, &record) {
         emit_inbound_drop_event(
             daemon,

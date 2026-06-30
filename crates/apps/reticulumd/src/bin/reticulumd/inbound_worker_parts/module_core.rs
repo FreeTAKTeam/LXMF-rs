@@ -115,12 +115,13 @@ pub(super) fn spawn_inbound_worker(
                                             }
                                         };
                                     if let Err(error) =
-                                        propagation::ingest_propagation_resource_from_peer(
+                                        propagation::ingest_propagation_resource_from_peer_with_transport(
                                             daemon.as_ref(),
                                             &complete.data,
                                             resource_control.delivery_destination.as_ref(),
                                             remote_peer.as_deref(),
                                             peer_link_validated,
+                                            Some(transport.as_ref()),
                                         )
                                         .await
                                     {
@@ -303,10 +304,11 @@ fn spawn_packet_inbound_worker(
 
                     match resolved_destination {
                         InboundLxmfDestination::Propagation => {
-                            if let Err(error) = propagation::ingest_propagation_envelope(
+                            if let Err(error) = propagation::ingest_propagation_envelope_with_transport(
                                 daemon_inbound.as_ref(),
                                 data,
                                 control.delivery_destination.as_ref(),
+                                Some(inbound_transport.as_ref()),
                             )
                             .await
                             {

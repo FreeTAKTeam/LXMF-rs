@@ -196,6 +196,7 @@ mod tests {
             &daemon,
             &delivery_destination,
             transient_payload.as_slice(),
+            None,
         )
         .await
         .expect("accept downloaded payload");
@@ -245,6 +246,7 @@ mod tests {
             &daemon,
             &delivery_destination,
             transient_payload.as_slice(),
+            None,
         )
         .await
         .expect_err("malformed downloaded payload should fail");
@@ -281,6 +283,7 @@ mod tests {
             &daemon,
             &delivery_destination,
             too_short.as_slice(),
+            None,
         )
         .await
         .expect_err("too-short downloaded payload should fail");
@@ -295,6 +298,7 @@ mod tests {
             &daemon,
             &delivery_destination,
             mismatch.as_slice(),
+            None,
         )
         .await
         .expect_err("mismatched downloaded payload should fail");
@@ -318,6 +322,7 @@ mod tests {
             &daemon,
             &delivery_destination,
             undecryptable.as_slice(),
+            None,
         )
         .await
         .expect_err("undecryptable downloaded payload should fail");
@@ -392,6 +397,7 @@ mod tests {
             &daemon,
             &delivery_destination,
             transient_payload.as_slice(),
+            None,
         )
         .await
         .expect_err("unstamped downloaded payload should fail stamp policy");

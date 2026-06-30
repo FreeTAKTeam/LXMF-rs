@@ -1,6 +1,6 @@
 use super::delivery_events::{
-    emit_inbound_drop_event, emit_propagation_predecode_drop_event, InboundDeliveryKind,
-    InboundDropEvent,
+    annotate_inbound_signature_status, emit_inbound_drop_event,
+    emit_propagation_predecode_drop_event, InboundDeliveryKind, InboundDropEvent,
 };
 use super::*;
 use lxmf::inbound_decode::InboundPayloadMode;
@@ -20,14 +20,32 @@ pub(super) fn is_lxmf_propagation_destination(
     control.propagation_destination_hash_hex.as_deref() == Some(destination_hex.as_str())
 }
 
+#[cfg(test)]
 pub(super) async fn ingest_propagation_envelope(
     daemon: &RpcDaemon,
     payload: &[u8],
     delivery_destination: Option<&Arc<tokio::sync::Mutex<SingleInputDestination>>>,
 ) -> Result<usize, std::io::Error> {
-    ingest_propagation_envelope_from_peer(daemon, payload, delivery_destination, None).await
+    ingest_propagation_envelope_with_transport(daemon, payload, delivery_destination, None).await
 }
 
+pub(super) async fn ingest_propagation_envelope_with_transport(
+    daemon: &RpcDaemon,
+    payload: &[u8],
+    delivery_destination: Option<&Arc<tokio::sync::Mutex<SingleInputDestination>>>,
+    signature_transport: Option<&Transport>,
+) -> Result<usize, std::io::Error> {
+    ingest_propagation_envelope_from_peer_with_transport(
+        daemon,
+        payload,
+        delivery_destination,
+        None,
+        signature_transport,
+    )
+    .await
+}
+
+#[cfg(test)]
 pub(super) async fn ingest_propagation_resource_from_peer(
     daemon: &RpcDaemon,
     payload: &[u8],
@@ -35,26 +53,81 @@ pub(super) async fn ingest_propagation_resource_from_peer(
     remote_propagation_peer: Option<&str>,
     peer_link_validated: bool,
 ) -> Result<usize, std::io::Error> {
+    ingest_propagation_resource_from_peer_with_transport(
+        daemon,
+        payload,
+        delivery_destination,
+        remote_propagation_peer,
+        peer_link_validated,
+        None,
+    )
+    .await
+}
+
+pub(super) async fn ingest_propagation_resource_from_peer_with_transport(
+    daemon: &RpcDaemon,
+    payload: &[u8],
+    delivery_destination: Option<&Arc<tokio::sync::Mutex<SingleInputDestination>>>,
+    remote_propagation_peer: Option<&str>,
+    peer_link_validated: bool,
+    signature_transport: Option<&Transport>,
+) -> Result<usize, std::io::Error> {
     if !peer_link_validated && propagation_envelope_message_count(payload)? > 1 {
         return Err(std::io::Error::new(
             std::io::ErrorKind::PermissionDenied,
             "received multiple propagation messages without valid peering key",
         ));
     }
-    ingest_propagation_envelope_from_peer(
+    ingest_propagation_envelope_from_peer_with_transport(
         daemon,
         payload,
         delivery_destination,
         remote_propagation_peer,
+        signature_transport,
     )
     .await
 }
 
+async fn ingest_propagation_envelope_from_peer_with_transport(
+    daemon: &RpcDaemon,
+    payload: &[u8],
+    delivery_destination: Option<&Arc<tokio::sync::Mutex<SingleInputDestination>>>,
+    remote_propagation_peer: Option<&str>,
+    signature_transport: Option<&Transport>,
+) -> Result<usize, std::io::Error> {
+    ingest_propagation_envelope_from_peer_inner(
+        daemon,
+        payload,
+        delivery_destination,
+        remote_propagation_peer,
+        signature_transport,
+    )
+    .await
+}
+
+#[cfg(test)]
 pub(super) async fn ingest_propagation_envelope_from_peer(
     daemon: &RpcDaemon,
     payload: &[u8],
     delivery_destination: Option<&Arc<tokio::sync::Mutex<SingleInputDestination>>>,
     remote_propagation_peer: Option<&str>,
+) -> Result<usize, std::io::Error> {
+    ingest_propagation_envelope_from_peer_inner(
+        daemon,
+        payload,
+        delivery_destination,
+        remote_propagation_peer,
+        None,
+    )
+    .await
+}
+
+async fn ingest_propagation_envelope_from_peer_inner(
+    daemon: &RpcDaemon,
+    payload: &[u8],
+    delivery_destination: Option<&Arc<tokio::sync::Mutex<SingleInputDestination>>>,
+    remote_propagation_peer: Option<&str>,
+    signature_transport: Option<&Transport>,
 ) -> Result<usize, std::io::Error> {
     let (_timestamp, messages): (f64, Vec<Vec<u8>>) =
         rmp_serde::from_slice(payload).map_err(|err| {
@@ -85,6 +158,7 @@ pub(super) async fn ingest_propagation_envelope_from_peer(
             delivery_destination,
             message,
             remote_propagation_peer,
+            signature_transport,
         )
         .await?
         {
@@ -148,6 +222,7 @@ async fn try_accept_local_propagated_message(
     delivery_destination: Option<&Arc<tokio::sync::Mutex<SingleInputDestination>>>,
     transient_payload: &[u8],
     remote_propagation_peer: Option<&str>,
+    signature_transport: Option<&Transport>,
 ) -> Result<LocalPropagationOutcome, std::io::Error> {
     let Some(delivery_destination) = delivery_destination else {
         return Ok(LocalPropagationOutcome::NotLocal);
@@ -245,6 +320,14 @@ async fn try_accept_local_propagated_message(
         daemon.propagation_target_cost(),
         daemon.propagation_min_accepted_stamp_cost(),
     );
+    annotate_inbound_signature_status(
+        signature_transport,
+        &mut record,
+        destination_hash,
+        &wire,
+        InboundPayloadMode::FullWire,
+    )
+    .await;
     if let Some(peer) = remote_propagation_peer {
         let propagation_bytes = if daemon.propagation_target_cost() > 0 {
             transient_payload.len().saturating_sub(32)

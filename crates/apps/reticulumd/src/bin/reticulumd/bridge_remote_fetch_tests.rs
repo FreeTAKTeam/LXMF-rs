@@ -5,8 +5,11 @@
     use reticulum_daemon::lxmf_stamps::generate_propagation_stamp;
     use rns_transport::destination::DestinationName;
     use rns_transport::identity::PrivateIdentity;
-    use rns_transport::identity_bridge::{to_core_identity, to_core_private_identity};
+    use rns_transport::identity_bridge::{
+        to_core_identity, to_core_private_identity, to_transport_private_identity,
+    };
     use rns_transport::ratchets::encrypt_for_public_key;
+    use rns_transport::transport::{Transport, TransportConfig};
     use tokio::sync::Mutex as TokioMutex;
 
     #[tokio::test]
@@ -67,6 +70,7 @@
             &daemon,
             delivery_destination,
             &transient_payload,
+            None,
         )
         .await
         .expect("accept fetched payload");
@@ -122,6 +126,7 @@
             &daemon,
             delivery_destination,
             transient_payload.as_slice(),
+            None,
         )
         .await
         .expect_err("malformed fetched payload should fail");
@@ -156,6 +161,7 @@
             &daemon,
             delivery_destination.clone(),
             too_short.as_slice(),
+            None,
         )
         .await
         .expect_err("too-short fetched payload should fail");
@@ -170,6 +176,7 @@
             &daemon,
             delivery_destination.clone(),
             mismatch.as_slice(),
+            None,
         )
         .await
         .expect_err("mismatched fetched payload should fail");
@@ -193,6 +200,7 @@
             &daemon,
             delivery_destination,
             undecryptable.as_slice(),
+            None,
         )
         .await
         .expect_err("undecryptable fetched payload should fail");
@@ -267,6 +275,7 @@
             &daemon,
             delivery_destination,
             transient_payload.as_slice(),
+            None,
         )
         .await
         .expect_err("unstamped fetched payload should fail stamp policy");
@@ -299,6 +308,9 @@
         let daemon = RpcDaemon::test_instance();
         let delivery_private = PrivateIdentity::new_from_rand(OsRng);
         let source_private = PrivateIdentity::new_from_rand(OsRng);
+        let transport_identity =
+            to_transport_private_identity(&to_core_private_identity(&delivery_private));
+        let transport = Transport::new(TransportConfig::new("test", &transport_identity, true));
         let delivery_destination = Arc::new(TokioMutex::new(SingleInputDestination::new(
             delivery_private.clone(),
             DestinationName::new("lxmf", "delivery"),
@@ -343,6 +355,7 @@
             &daemon,
             delivery_destination.clone(),
             &transient_payload,
+            Some(&transport),
         )
         .await
         .expect("first fetch accept");
@@ -350,12 +363,34 @@
             &daemon,
             delivery_destination,
             &transient_payload,
+            None,
         )
         .await
         .expect("second fetch accept");
 
         assert_eq!(first, LocalPropagationImportOutcome::Imported);
         assert_eq!(second, LocalPropagationImportOutcome::Duplicate);
+        let messages = daemon
+            .handle_rpc(RpcRequest { id: 82, method: "list_messages".to_string(), params: None })
+            .expect("list messages")
+            .result
+            .expect("list messages result");
+        let items = messages["messages"].as_array().expect("message items");
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0]["fields"]["_lxmf"]["signature_checked"], json!(false));
+        assert_eq!(items[0]["fields"]["_lxmf"]["signature_valid"], json!(false));
+        assert_eq!(
+            items[0]["fields"]["_lxmf"]["signature_status"],
+            json!("source_identity_unknown")
+        );
+        let event = daemon.take_event().expect("fetched inbound event");
+        assert_eq!(event.event_type, "inbound");
+        assert_eq!(event.payload["message"]["fields"]["_lxmf"]["signature_checked"], json!(false));
+        assert_eq!(event.payload["message"]["fields"]["_lxmf"]["signature_valid"], json!(false));
+        assert_eq!(
+            event.payload["message"]["fields"]["_lxmf"]["signature_status"],
+            json!("source_identity_unknown")
+        );
     }
 
     #[test]

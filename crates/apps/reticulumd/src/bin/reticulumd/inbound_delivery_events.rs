@@ -69,7 +69,7 @@ pub(super) async fn accept_delivery_resource(
     };
     annotate_inbound_record_stamp_status(&mut record, stamp_status);
     annotate_inbound_signature_status(
-        transport,
+        Some(transport),
         &mut record,
         destination,
         data,
@@ -166,8 +166,14 @@ pub(super) async fn accept_delivery_packet(
         }
     };
     annotate_inbound_record_stamp_status(&mut record, stamp_status);
-    annotate_inbound_signature_status(transport, &mut record, destination, data, payload_mode)
-        .await;
+    annotate_inbound_signature_status(
+        Some(transport),
+        &mut record,
+        destination,
+        data,
+        payload_mode,
+    )
+    .await;
     let method = match payload_mode {
         InboundPayloadMode::DestinationStripped => 1,
         InboundPayloadMode::FullWire => 2,
@@ -317,8 +323,8 @@ fn inbound_drop_detail(reason: &str, detail: Option<String>) -> Option<String> {
     Some(detail)
 }
 
-async fn annotate_inbound_signature_status(
-    transport: &Transport,
+pub(crate) async fn annotate_inbound_signature_status(
+    transport: Option<&Transport>,
     record: &mut MessageRecord,
     destination: [u8; 16],
     payload: &[u8],
@@ -341,7 +347,10 @@ async fn annotate_inbound_signature_status(
     match WireMessage::unpack(wire.as_ref()) {
         Ok(message) => {
             let source_hash = AddressHash::new(message.source);
-            if let Some(identity) = transport.destination_identity(&source_hash).await {
+            if let Some(identity) = match transport {
+                Some(transport) => transport.destination_identity(&source_hash).await,
+                None => None,
+            } {
                 checked = true;
                 match message.verify(&to_core_identity(&identity)) {
                     Ok(true) => {

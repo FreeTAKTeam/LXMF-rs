@@ -17,8 +17,8 @@ use reticulum_daemon::inbound_delivery::{
 };
 
 use crate::inbound_worker::delivery_events::{
-    emit_inbound_drop_event, emit_propagation_predecode_drop_event, InboundDeliveryKind,
-    InboundDropEvent,
+    annotate_inbound_signature_status, emit_inbound_drop_event,
+    emit_propagation_predecode_drop_event, InboundDeliveryKind, InboundDropEvent,
 };
 use rns_transport::identity::DecryptIdentity;
 
@@ -132,7 +132,14 @@ pub(super) async fn propagation_download_request(
             .get(index)
             .cloned()
             .unwrap_or_else(|| propagation_payload_ack_transient_id(payload));
-        match accept_downloaded_propagation_payload(daemon, delivery_destination, payload).await? {
+        match accept_downloaded_propagation_payload(
+            daemon,
+            delivery_destination,
+            payload,
+            Some(transport),
+        )
+        .await?
+        {
             DownloadAcceptOutcome::Stored => {
                 downloaded += 1;
                 accepted_haves.push(transient_id);
@@ -324,6 +331,7 @@ async fn accept_downloaded_propagation_payload(
     daemon: &RpcDaemon,
     delivery_destination: &Arc<tokio::sync::Mutex<SingleInputDestination>>,
     transient_payload: &[u8],
+    signature_transport: Option<&Transport>,
 ) -> Result<DownloadAcceptOutcome, std::io::Error> {
     let (destination_hash, wire) = {
         let destination = delivery_destination.lock().await;
@@ -380,6 +388,14 @@ async fn accept_downloaded_propagation_payload(
     };
 
     annotate_inbound_record_stamp_status(&mut record, stamp_status);
+    annotate_inbound_signature_status(
+        signature_transport,
+        &mut record,
+        destination_hash,
+        &wire,
+        InboundPayloadMode::FullWire,
+    )
+    .await;
     if !inbound_record_allowed_by_delivery_policy(daemon, &record) {
         emit_inbound_drop_event(
             daemon,
