@@ -56,8 +56,52 @@ fn daemon_status_ex_reads_cached_status_snapshot() {
         .handle_rpc(RpcRequest { id: 13, method: "daemon_status_ex".to_string(), params: None })
         .expect("daemon status");
     let result = response.result.expect("daemon status result");
+    assert_status_snapshot_fields(&result);
+    assert_eq!(
+        daemon.metrics_snapshot()["counters"]["daemon_status_calls_total"].as_u64(),
+        Some(1),
+        "daemon_status_ex should record daemon-status wait metrics"
+    );
 
+    let legacy_response = daemon
+        .handle_rpc(RpcRequest { id: 14, method: "status".to_string(), params: None })
+        .expect("legacy status");
+    let legacy = legacy_response.result.expect("legacy status result");
+    assert_status_snapshot_fields(&legacy);
+    assert_eq!(legacy, result);
+    assert_eq!(
+        daemon.metrics_snapshot()["counters"]["daemon_status_calls_total"].as_u64(),
+        Some(1),
+        "legacy status should not inflate daemon_status_ex metrics"
+    );
+
+    let envelope_response = daemon
+        .handle_rpc(rpc_request(
+            15,
+            "sdk_envelope_execute_v2",
+            json!({
+                "operation_id": "app.delivery.destination_hash",
+                "kind": "query",
+                "payload": {},
+            }),
+        ))
+        .expect("destination hash envelope");
+    let envelope = envelope_response.result.expect("destination hash envelope result");
+    assert_eq!(envelope["response"]["operation_id"], json!("app.delivery.destination_hash"));
+    assert_status_snapshot_fields(&envelope["response"]["payload"]);
+    assert_eq!(
+        daemon.metrics_snapshot()["counters"]["daemon_status_calls_total"].as_u64(),
+        Some(1),
+        "delegated legacy status should not inflate daemon_status_ex metrics"
+    );
+}
+
+fn assert_status_snapshot_fields(result: &JsonValue) {
+    assert_eq!(result["identity_hash"].as_str(), Some("test-identity"));
+    assert_eq!(result["delivery_destination_hash"].as_str(), Some("test-identity"));
+    assert_eq!(result["running"].as_bool(), Some(true));
     assert_eq!(result["peer_count"].as_u64(), Some(1));
+    assert_eq!(result["message_count"].as_u64(), Some(0));
     assert_eq!(result["interface_count"].as_u64(), Some(1));
     assert_eq!(result["interfaces"][0]["name"].as_str(), Some("primary"));
     assert_eq!(result["delivery_policy"]["auth_required"].as_bool(), Some(true));
@@ -68,6 +112,10 @@ fn daemon_status_ex_reads_cached_status_snapshot() {
     assert_eq!(result["stamp_policy"]["target_cost"].as_u64(), Some(11));
     assert_eq!(result["stamp_policy"]["flexibility"].as_u64(), Some(3));
     assert_eq!(result["stamp_policy"]["enforce"].as_bool(), Some(true));
+    assert!(
+        result["capabilities"].as_array().is_some_and(|values| values.iter().any(|value| value == "daemon_status_ex")),
+        "status snapshot should include capability list: {result}"
+    );
 }
 
 #[test]

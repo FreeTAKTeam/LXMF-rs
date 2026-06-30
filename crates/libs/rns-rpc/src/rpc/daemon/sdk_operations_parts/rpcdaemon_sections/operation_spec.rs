@@ -399,11 +399,7 @@ impl RpcDaemon {
             })?,
             "status" => RpcResponse {
                 id: request_id,
-                result: Some(json!({
-                    "identity_hash": self.identity_hash,
-                    "delivery_destination_hash": self.local_delivery_hash(),
-                    "running": true,
-                })),
+                result: Some(self.daemon_status_result(false)?),
                 error: None,
             },
             "sdk_command_invoke_v2" => self.handle_sdk_command_invoke_v2(RpcRequest {

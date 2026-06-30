@@ -25,45 +25,15 @@ impl RpcDaemon {
         let response = match method.as_str() {
             "status" => Ok(RpcResponse {
                 id: request.id,
-                result: Some(json!({
-                    "identity_hash": self.identity_hash,
-                    "delivery_destination_hash": self.local_delivery_hash(),
-                    "running": true
-                })),
+                result: Some(self.daemon_status_result(false)?),
                 error: None,
             }),
             "sdk_negotiate_v2" => self.handle_sdk_negotiate_v2(request),
-            "daemon_status_ex" => {
-                let snapshot_started = std::time::Instant::now();
-                let snapshot = self.daemon_status_snapshot();
-                let snapshot_wait_ns =
-                    snapshot_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
-                let message_count_started = std::time::Instant::now();
-                let message_count =
-                    self.store.message_count().map_err(std::io::Error::other)? as usize;
-                let message_count_wait_ns =
-                    message_count_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
-                self.metrics_record_daemon_status_wait(snapshot_wait_ns, message_count_wait_ns);
-
-                Ok(RpcResponse {
-                    id: request.id,
-                    result: Some(json!({
-                        "identity_hash": self.identity_hash,
-                        "delivery_destination_hash": self.local_delivery_hash(),
-                        "running": true,
-                        "peer_count": snapshot.peer_count,
-                        "message_count": message_count,
-                        "interface_count": snapshot.interfaces.len(),
-                        "interfaces": snapshot.interfaces,
-                        "delivery_policy": snapshot.delivery_policy,
-                        "propagation": snapshot.propagation,
-                        "stamp_policy": snapshot.stamp_policy,
-                        "delivery_pipeline": self.outbound_bridge.as_ref().and_then(|bridge| bridge.delivery_pipeline_status()),
-                        "capabilities": Self::capabilities(),
-                    })),
-                    error: None,
-                })
-            }
+            "daemon_status_ex" => Ok(RpcResponse {
+                id: request.id,
+                result: Some(self.daemon_status_result(true)?),
+                error: None,
+            }),
             "sdk_snapshot_v2" => self.handle_sdk_snapshot_v2(request),
             "sdk_status_v2" => self.handle_sdk_status_v2(request),
             "sdk_cursor_hint_v2" => self.handle_sdk_cursor_hint_v2(request),
@@ -199,6 +169,39 @@ impl RpcDaemon {
             }
         }
     }
+
+    pub(super) fn daemon_status_result(
+        &self,
+        record_wait_metrics: bool,
+    ) -> Result<JsonValue, std::io::Error> {
+        let snapshot_started = std::time::Instant::now();
+        let snapshot = self.daemon_status_snapshot();
+        let snapshot_wait_ns =
+            snapshot_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
+        let message_count_started = std::time::Instant::now();
+        let message_count = self.store.message_count().map_err(std::io::Error::other)? as usize;
+        let message_count_wait_ns =
+            message_count_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
+        if record_wait_metrics {
+            self.metrics_record_daemon_status_wait(snapshot_wait_ns, message_count_wait_ns);
+        }
+
+        Ok(json!({
+            "identity_hash": self.identity_hash,
+            "delivery_destination_hash": self.local_delivery_hash(),
+            "running": true,
+            "peer_count": snapshot.peer_count,
+            "message_count": message_count,
+            "interface_count": snapshot.interfaces.len(),
+            "interfaces": snapshot.interfaces,
+            "delivery_policy": snapshot.delivery_policy,
+            "propagation": snapshot.propagation,
+            "stamp_policy": snapshot.stamp_policy,
+            "delivery_pipeline": self.outbound_bridge.as_ref().and_then(|bridge| bridge.delivery_pipeline_status()),
+            "capabilities": Self::capabilities(),
+        }))
+    }
+
     pub(super) fn append_delivery_trace_to(
         traces: &Mutex<HashMap<String, Vec<DeliveryTraceEntry>>>,
         message_id: &str,

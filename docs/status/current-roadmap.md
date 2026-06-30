@@ -415,7 +415,11 @@ The project is best described by capability level:
   plus human interface endpoint details across configured interface families,
   runtime startup state, Auto carrier/link-local state, TCP/Backbone listener
   state, plus UDP, serial, KISS, BLE GATT, I2P, RNodeMulti, Weave, and VR-N76
-  status rows and propagation peer state.
+  status rows and propagation peer state. The legacy `status` RPC projection
+  now exposes the same additive daemon/runtime snapshot fields as
+  `daemon_status_ex`, including interface, policy, propagation, stamp, delivery
+  pipeline, and capability metadata, while preserving the original identity and
+  running fields.
 - `rnsd` remains a compatibility shim for `reticulumd`, with CLI tests proving
   `RETICULUMD_BIN` override, forwarded arguments/output, and delegated exit
   success/failure status.

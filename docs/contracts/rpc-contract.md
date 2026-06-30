@@ -123,7 +123,9 @@ All methods below are required for full CLI feature coverage.
 - `daemon_status_ex` (no params)
 : Must include `identity_hash` when available.
 - `status` (no params)
-: Fallback status method; must include `identity_hash` when available.
+: Fallback status method; must include `identity_hash` when available and may
+  include the same additive daemon/runtime snapshot fields as
+  `daemon_status_ex`.
 
 ### Peers and interfaces
 - `list_peers` (no params)
