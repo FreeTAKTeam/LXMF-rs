@@ -275,4 +275,12 @@ mod tests {
 
         assert_eq!(cli.rpc_addr(), "127.0.0.1:4444");
     }
+
+    #[test]
+    fn cli_adds_read_headroom_beyond_path_timeout() {
+        let cli = Cli::parse_from(["rnpath-rs", DESTINATION_HASH, "--timeout", "1"]);
+
+        assert_eq!(cli.rpc_timeout(), Duration::from_secs(1));
+        assert_eq!(cli.rpc_read_timeout(), Duration::from_secs(3));
+    }
 }
