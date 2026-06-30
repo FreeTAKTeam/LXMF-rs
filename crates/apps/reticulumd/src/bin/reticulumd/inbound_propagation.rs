@@ -1,6 +1,7 @@
 use super::delivery_events::{
     annotate_inbound_signature_status, emit_inbound_drop_event,
-    emit_propagation_predecode_drop_event, InboundDeliveryKind, InboundDropEvent,
+    emit_propagation_duplicate_drop_event, emit_propagation_predecode_drop_event,
+    InboundDeliveryKind, InboundDropEvent,
 };
 use super::*;
 use lxmf::inbound_decode::InboundPayloadMode;
@@ -252,6 +253,13 @@ async fn try_accept_local_propagated_message(
             return Ok(LocalPropagationOutcome::NotLocal);
         }
         if daemon.local_propagation_processed_mark_exists(transient_id)? {
+            emit_propagation_duplicate_drop_event(
+                daemon,
+                destination_hash,
+                transient_payload,
+                transient_id,
+                "transient already processed locally",
+            );
             return Ok(LocalPropagationOutcome::Accepted { counted: false });
         }
         let wire = match decrypt_local_propagated_wire(&destination, transient_payload) {
@@ -362,6 +370,13 @@ async fn try_accept_local_propagated_message(
     }
     if daemon.message_exists(record.id.as_str())? {
         daemon.mark_local_propagation_processed(transient_id)?;
+        emit_propagation_duplicate_drop_event(
+            daemon,
+            destination_hash,
+            transient_payload,
+            transient_id,
+            "message already exists locally",
+        );
         return Ok(LocalPropagationOutcome::Accepted { counted: false });
     }
     if remote_propagation_peer.is_none() {

@@ -73,12 +73,119 @@ async fn local_propagated_delivery_marks_processed_transient_like_python() {
             .expect("processed mark lookup"),
         "local propagated delivery should mark the transient processed"
     );
+    while daemon.take_event().is_some() {}
 
     let local_replay =
         ingest_propagation_envelope(&daemon, &envelope, Some(&delivery_destination))
             .await
             .expect("replay local propagation envelope");
     assert_eq!(local_replay, 1);
+    let duplicate_event = daemon.take_event().expect("duplicate local propagation event");
+    assert_eq!(duplicate_event.event_type, "inbound_dropped");
+    assert_eq!(duplicate_event.payload["reason"], serde_json::json!("duplicate"));
+    assert_eq!(duplicate_event.payload["delivery_kind"], serde_json::json!("propagation"));
+    assert_eq!(duplicate_event.payload["payload_mode"], serde_json::json!("full_wire"));
+    assert_eq!(duplicate_event.payload["bytes_len"], serde_json::json!(stamped_transient.len()));
+    assert_eq!(duplicate_event.payload["transient_id"], serde_json::json!(transient_id));
+    assert_eq!(
+        duplicate_event.payload["detail"],
+        serde_json::json!("transient already processed locally")
+    );
+    let raw_destination = hex::encode(destination_hash);
+    assert!(
+        duplicate_event.payload["raw_destination_hash"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("sha256:") && value != raw_destination)
+    );
+    assert!(
+        duplicate_event.payload["resolved_destination_hash"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("sha256:") && value != raw_destination)
+    );
+    assert!(
+        daemon.take_event().is_none(),
+        "duplicate local propagation replay should emit one event"
+    );
+
+    let (
+        duplicate_record_envelope,
+        duplicate_record_transient_id,
+        duplicate_record_stamped_transient,
+    ) = {
+        let destination = delivery_destination.lock().await;
+        let message = WireMessage::unpack(&wire).expect("wire unpack");
+        let (transient, transient_id) = message
+            .pack_propagation_transient_with_rng(
+                &to_core_identity(destination.identity.as_identity()),
+                OsRng,
+            )
+            .expect("propagation transient");
+        let stamp = generate_propagation_stamp(&transient_id, 1).expect("propagation stamp");
+        let envelope = WireMessage::pack_propagation_envelope(1.0, &transient, Some(&stamp))
+            .expect("propagation envelope");
+        let (_timestamp, messages): (f64, Vec<Vec<u8>>) =
+            rmp_serde::from_slice(&envelope).expect("unpack propagation envelope");
+        (
+            envelope,
+            hex::encode(transient_id),
+            messages.into_iter().next().expect("stamped transient"),
+        )
+    };
+    assert_ne!(
+        duplicate_record_transient_id, transient_id,
+        "second local delivery replay must exercise message-id duplicate handling"
+    );
+
+    let duplicate_record =
+        ingest_propagation_envelope(&daemon, &duplicate_record_envelope, Some(&delivery_destination))
+            .await
+            .expect("duplicate-message local propagation envelope");
+    assert_eq!(duplicate_record, 1);
+    assert!(
+        daemon
+            .local_propagation_processed_mark_exists(duplicate_record_transient_id.as_str())
+            .expect("duplicate-message processed mark lookup"),
+        "message-id duplicate should still mark the new transient processed"
+    );
+    let duplicate_record_event =
+        daemon.take_event().expect("duplicate-message local propagation event");
+    assert_eq!(duplicate_record_event.event_type, "inbound_dropped");
+    assert_eq!(duplicate_record_event.payload["reason"], serde_json::json!("duplicate"));
+    assert_eq!(
+        duplicate_record_event.payload["delivery_kind"],
+        serde_json::json!("propagation")
+    );
+    assert_eq!(
+        duplicate_record_event.payload["payload_mode"],
+        serde_json::json!("full_wire")
+    );
+    assert_eq!(
+        duplicate_record_event.payload["bytes_len"],
+        serde_json::json!(duplicate_record_stamped_transient.len())
+    );
+    assert_eq!(
+        duplicate_record_event.payload["transient_id"],
+        serde_json::json!(duplicate_record_transient_id)
+    );
+    assert_eq!(
+        duplicate_record_event.payload["detail"],
+        serde_json::json!("message already exists locally")
+    );
+    assert!(
+        duplicate_record_event.payload["raw_destination_hash"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("sha256:") && value != raw_destination)
+    );
+    assert!(
+        duplicate_record_event.payload["resolved_destination_hash"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("sha256:") && value != raw_destination)
+    );
+    assert!(
+        daemon.take_event().is_none(),
+        "duplicate-message local propagation should emit one event"
+    );
+
     let replay_status = daemon
         .handle_rpc(RpcRequest {
             id: 56,

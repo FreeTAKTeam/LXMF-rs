@@ -220,7 +220,7 @@ pub(crate) enum InboundDeliveryKind {
     Resource,
 }
 
-pub(crate) fn emit_inbound_drop_event(daemon: &RpcDaemon, event: InboundDropEvent<'_>) {
+fn inbound_drop_event_payload(event: InboundDropEvent<'_>) -> Value {
     let mut payload = json!({
         "reason": event.reason,
         "delivery_kind": inbound_delivery_kind_name(event.delivery_kind),
@@ -237,6 +237,11 @@ pub(crate) fn emit_inbound_drop_event(daemon: &RpcDaemon, event: InboundDropEven
         payload["source_hash"] = Value::String(record.source.clone());
         payload["destination_hash"] = Value::String(record.destination.clone());
     }
+    payload
+}
+
+pub(crate) fn emit_inbound_drop_event(daemon: &RpcDaemon, event: InboundDropEvent<'_>) {
+    let payload = inbound_drop_event_payload(event);
     daemon.publish_event(RpcEvent { event_type: "inbound_dropped".to_string(), payload });
 }
 
@@ -262,6 +267,31 @@ pub(crate) fn emit_propagation_predecode_drop_event(
             record: None,
         },
     );
+}
+
+pub(crate) fn emit_propagation_duplicate_drop_event(
+    daemon: &RpcDaemon,
+    destination: [u8; 16],
+    transient_payload: &[u8],
+    transient_id: &str,
+    detail: &'static str,
+) {
+    let raw_destination_hex =
+        propagated_transient_raw_destination_hex(destination, transient_payload);
+    let mut payload = inbound_drop_event_payload(InboundDropEvent {
+        reason: "duplicate",
+        delivery_kind: InboundDeliveryKind::Propagation,
+        raw_destination_hex: raw_destination_hex.as_str(),
+        destination,
+        payload_mode: InboundPayloadMode::FullWire,
+        bytes_len: transient_payload.len(),
+        detail: Some(detail.to_string()),
+        record: None,
+    });
+    // Propagation transient IDs are protocol-visible content identifiers used by
+    // queue and duplicate-accounting APIs; keep them structured, not in detail.
+    payload["transient_id"] = Value::String(transient_id.to_string());
+    daemon.publish_event(RpcEvent { event_type: "inbound_dropped".to_string(), payload });
 }
 
 pub(super) fn log_resolved_packet(

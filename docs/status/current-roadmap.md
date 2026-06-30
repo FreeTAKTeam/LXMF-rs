@@ -1000,7 +1000,11 @@ The project is best described by capability level:
   transient marker used by daemon propagation ingest, so replaying the same
   stamped transient through `propagation_ingest` reports
   `ingested_count = 0` / `duplicate_count = 1` and does not increment local
-  receive counters a second time.
+  receive counters a second time. Replayed local propagated delivery of an
+  already processed transient, or of an already stored message carried by a
+  fresh transient, now also emits one bounded `inbound_dropped` duplicate event
+  with redacted destination identifiers and the transient ID, without storing a
+  second message or incrementing receive counters.
 - The typed propagation branch now also exposes
   `ZmqPipelineBackendClient::propagation_recovery_state`, projecting
   `app.propagation.status` into structured sync state, selected-node,

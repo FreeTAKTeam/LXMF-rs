@@ -913,6 +913,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   processed-transient side effect: accepted local propagated delivery marks the
   transient in `propagation_local_entries`, and later `propagation_ingest` of
   the same stamped transient reports duplicate accounting without incrementing
-  local receive counters again.
+  local receive counters again. Replayed local propagated delivery for an
+  already processed transient, or for an already stored message carried by a
+  fresh transient, emits one bounded `inbound_dropped` duplicate event while
+  preserving the same no-store/no-recount behavior.
 - `interop.python_live_gate` means the configured scenarios run successfully;
   it does not imply every partial row is complete.
