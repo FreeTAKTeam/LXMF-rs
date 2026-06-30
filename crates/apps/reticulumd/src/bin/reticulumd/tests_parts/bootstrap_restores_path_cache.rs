@@ -120,4 +120,46 @@ fn bootstrap_restores_python_path_table_for_path_lookup_rpc() {
     assert_eq!(result["known"].as_bool(), Some(true));
     assert_eq!(result["path_found"].as_bool(), Some(true));
     assert_eq!(result["requested"].as_bool(), Some(false));
+
+    let restore_status = path_table_restore_runtime_status(&context.daemon);
+    assert_eq!(restore_status["status"].as_str(), Some("ok"));
+    assert_eq!(restore_status["restored_active_paths"].as_u64(), Some(1));
+}
+
+#[test]
+fn bootstrap_reports_path_table_restore_error_in_daemon_status() {
+    let temp = TempDir::new().expect("temp dir");
+    let db_path = temp.path().join("reticulum.db");
+    fs::write(temp.path().join("destination_table"), b"not-msgpack-path-table")
+        .expect("write corrupt destination table");
+    let runtime =
+        tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+
+    let context = runtime.block_on(async {
+        bootstrap::bootstrap(test_args(
+            db_path.clone(),
+            None,
+            Some("127.0.0.1:0".to_string()),
+            false,
+        ))
+        .await
+    });
+
+    let restore_status = path_table_restore_runtime_status(&context.daemon);
+    assert_eq!(restore_status["status"].as_str(), Some("error"));
+    assert_eq!(restore_status["error"].as_str(), Some("decode path table"));
+}
+
+fn path_table_restore_runtime_status(daemon: &RpcDaemon) -> serde_json::Value {
+    let status = daemon
+        .handle_rpc(RpcRequest { id: 503, method: "daemon_status_ex".to_string(), params: None })
+        .expect("daemon_status_ex rpc");
+    assert!(status.error.is_none(), "daemon_status_ex should succeed: {:?}", status.error);
+    let result = status.result.expect("daemon_status_ex result");
+    let interfaces = result["interfaces"].as_array().expect("interfaces array");
+    let daemon_transport = interfaces
+        .iter()
+        .find(|interface| interface["settings"]["_runtime"]["managed_by"] == "daemon_transport")
+        .unwrap_or_else(|| panic!("daemon transport interface not found: {interfaces:?}"));
+    daemon_transport["settings"]["_runtime"]["reticulum"]["path_table_restore"].clone()
 }

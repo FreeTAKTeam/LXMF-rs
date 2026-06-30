@@ -89,7 +89,9 @@ The project is best described by capability level:
   requests from the restored cache.
 - `reticulumd` bootstrap now has software evidence that restored Python-format
   path-cache material is visible through daemon `path_status` and already-known
-  `request_path` RPC after restart.
+  `request_path` RPC after restart, and daemon status reports
+  `_runtime.reticulum.path_table_restore.status` as `ok` or `error` so corrupt
+  `destination_table` state remains observable without making startup fatal.
 - Reticulum path-table persistence now writes only routes with cached announce
   material and restore hardens Python-format active and tunnel path-table rows
   by ignoring stale/expired path rows, so restart bootstrap cannot revive

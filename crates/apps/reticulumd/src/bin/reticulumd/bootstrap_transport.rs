@@ -5,6 +5,8 @@ use super::{
 };
 #[path = "bootstrap_interface_startup.rs"]
 mod interface_startup;
+#[path = "bootstrap_transport_path_restore.rs"]
+mod path_restore;
 #[path = "bootstrap_transport_destinations.rs"]
 mod transport_destinations;
 use crate::bridge::PeerCrypto;
@@ -19,6 +21,10 @@ pub(super) use interface_startup::{
     LoraRuntimeRefresh, PipeRuntimeRefresh, RNodeManagementBinding, RNodeMultiRuntimeRefresh,
     SerialRuntimeRefresh, TcpRuntimeRefresh, TcpRuntimeStatusSource, UdpRuntimeRefresh,
     WeaveControlBinding, WeaveRuntimeRefresh,
+};
+use path_restore::{
+    mark_path_table_restore_status, mark_path_table_restore_status_on_enabled_interfaces,
+    PathTableRestoreStatus,
 };
 use reticulum_daemon::announce_names::PropagationNodeAnnounceConfig;
 use reticulum_daemon::config::DaemonConfig;
@@ -269,15 +275,24 @@ pub(super) async fn start_transport_and_interfaces(
             weave_control_bindings.extend(startup.weave_control_bindings);
         }
 
-        match transport_instance.restore_reticulum_path_table(reticulum_storage_path).await {
-            Ok(restored) if restored > 0 => {
-                log::info!("[daemon] restored {} Reticulum path table entries", restored);
-            }
-            Ok(_) => {}
-            Err(err) => {
-                log::error!("[daemon] failed to restore Reticulum path table: {}", err);
-            }
-        }
+        let path_table_restore_status =
+            match transport_instance.restore_reticulum_path_table(reticulum_storage_path).await {
+                Ok(restored) => {
+                    if restored > 0 {
+                        log::info!("[daemon] restored {} Reticulum path table entries", restored);
+                    }
+                    PathTableRestoreStatus::Ok { restored_active_paths: restored }
+                }
+                Err(err) => {
+                    let message = err.to_string();
+                    log::error!("[daemon] failed to restore Reticulum path table: {}", message);
+                    PathTableRestoreStatus::Error { message }
+                }
+            };
+        mark_path_table_restore_status_on_enabled_interfaces(
+            &mut configured_interfaces,
+            &path_table_restore_status,
+        );
 
         if selected_tcp_server.selected_index.is_none() {
             if let (Some(addr), Some(active_iface)) =
@@ -300,6 +315,7 @@ pub(super) async fn start_transport_and_interfaces(
                     Some(runtime_iface.as_str()),
                 );
                 mark_interface_runtime_managed(&mut server_record, "daemon_transport");
+                mark_path_table_restore_status(&mut server_record, &path_table_restore_status);
                 configured_interfaces.push(server_record);
             }
         }
