@@ -57,23 +57,24 @@ impl RpcDaemon {
                     false
                 };
                 let has_payload = normalized_payload.is_some();
-                if normalized_payload
+                let decoded_payload = normalized_payload
                     .as_ref()
-                    .and_then(|(_transient_id, payload_hex)| hex::decode(payload_hex).ok())
-                    .is_some_and(|payload| {
-                        self.propagation_payload_destination_is_ignored(&payload)
-                    })
-                {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::PermissionDenied,
-                        "ignored propagation destination",
-                    ));
+                    .and_then(|(_transient_id, payload_hex)| hex::decode(payload_hex).ok());
+                if let Some(payload) = decoded_payload.as_ref() {
+                    if self.propagation_payload_destination_is_ignored(payload.as_slice()) {
+                        self.emit_ignored_propagation_drop_event(
+                            payload.as_slice(),
+                            Some(transient_id.as_str()),
+                            "propagation_ingest",
+                            None,
+                        );
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::PermissionDenied,
+                            "ignored propagation destination",
+                        ));
+                    }
                 }
-                let payload_bytes = normalized_payload
-                    .as_ref()
-                    .and_then(|(_transient_id, payload_hex)| hex::decode(payload_hex).ok())
-                    .map(|payload| payload.len())
-                    .unwrap_or(0);
+                let payload_bytes = decoded_payload.as_ref().map(Vec::len).unwrap_or(0);
                 let ingested_count =
                     usize::from(has_payload && !transient_id.is_empty() && !already_known);
                 let duplicate_count =

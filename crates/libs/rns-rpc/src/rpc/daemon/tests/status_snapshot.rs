@@ -82,6 +82,8 @@ include!("status_snapshot_parts/propagation_remote_sync_marks_source.rs");
 
 include!("status_snapshot_parts/propagation_remote_sync_ignores_payl.rs");
 
+include!("status_snapshot_parts/propagation_remote_ignored_drop_events.rs");
+
 include!("status_snapshot_parts/propagation_remote_imports_match_sou.rs");
 
 include!("status_snapshot_parts/propagation_remote_fetch_updates_lif.rs");

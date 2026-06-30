@@ -108,6 +108,40 @@ fn propagation_ingest_rejects_ignored_destination_before_queueing() {
         .expect("propagation status result");
     assert_eq!(status["propagation"]["client_propagation_messages_received"].as_u64(), Some(0));
     assert_eq!(status["propagation"]["total_ingested"].as_u64(), Some(0));
+
+    let event = daemon.take_event().expect("ignored propagation drop event");
+    assert_eq!(event.event_type, "inbound_dropped");
+    assert_eq!(event.payload["reason"], json!("delivery_policy_rejected"));
+    assert_eq!(event.payload["delivery_kind"], json!("propagation"));
+    assert_ingest_redacted_identifier(&event.payload["raw_destination_hash"], destination_hex.as_str());
+    assert_ingest_redacted_identifier(
+        &event.payload["resolved_destination_hash"],
+        destination_hex.as_str(),
+    );
+    assert_eq!(event.payload["payload_mode"], json!("full_wire"));
+    assert_eq!(event.payload["bytes_len"], json!(payload.len()));
+    assert_eq!(event.payload["operation"], json!("propagation_ingest"));
+    assert_eq!(event.payload["transient_id"], json!(transient_id));
+
+    let sdk_events = daemon
+        .handle_rpc(rpc_request(86, "sdk_poll_events_v2", json!({ "cursor": null, "max": 10 })))
+        .expect("sdk poll events")
+        .result
+        .expect("sdk poll events result");
+    let sdk_drop = sdk_events["events"]
+        .as_array()
+        .expect("sdk events")
+        .iter()
+        .find(|event| event["event_type"] == json!("inbound_dropped"))
+        .expect("sdk inbound_dropped event");
+    assert_eq!(sdk_drop["payload"]["operation"], json!("propagation_ingest"));
+    assert_eq!(sdk_drop["payload"]["transient_id"], json!(transient_id));
+}
+
+fn assert_ingest_redacted_identifier(value: &JsonValue, raw: &str) {
+    let value = value.as_str().expect("redacted identifier");
+    assert!(value.starts_with("sha256:"), "identifier must use default hash redaction");
+    assert_ne!(value, raw, "identifier must not expose the raw value");
 }
 
 #[test]

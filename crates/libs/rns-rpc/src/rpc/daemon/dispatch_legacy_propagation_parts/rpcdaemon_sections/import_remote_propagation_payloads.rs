@@ -3,6 +3,8 @@ impl RpcDaemon {
     fn import_remote_propagation_payloads(
         &self,
         result: &JsonValue,
+        operation: &str,
+        peer: Option<&str>,
     ) -> Result<RemotePropagationImportSummary, std::io::Error> {
         let Some(messages) = [
             result.get("messages"),
@@ -77,6 +79,12 @@ impl RpcDaemon {
                 )
             })?;
             if self.propagation_payload_destination_is_ignored(normalized_payload.as_slice()) {
+                self.emit_ignored_propagation_drop_event(
+                    normalized_payload.as_slice(),
+                    Some(transient_id.as_str()),
+                    operation,
+                    peer,
+                );
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::PermissionDenied,
                     "ignored propagation destination",

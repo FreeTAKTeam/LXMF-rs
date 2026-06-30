@@ -76,7 +76,11 @@ impl RpcDaemon {
                             }
                             result
                         } else {
-                            let imported = match self.import_remote_propagation_payloads(&result) {
+                            let imported = match self.import_remote_propagation_payloads(
+                                &result,
+                                "propagation_remote_download",
+                                None,
+                            ) {
                                 Ok(imported) => imported,
                                 Err(err) => {
                                     self.update_propagation_sync_state(|state| {
@@ -312,7 +316,9 @@ impl RpcDaemon {
                         error: None,
                     });
                 }
-                let imported = match self.import_remote_propagation_payloads(&result) {
+                let imported = match self
+                    .import_remote_propagation_payloads(&result, "propagation_remote_fetch", None)
+                {
                     Ok(imported) => imported,
                     Err(err) => {
                         self.update_propagation_sync_state(|state| {

@@ -48,14 +48,19 @@ impl RpcDaemon {
         };
 
         if let Some((_canonical_transient_id, payload_hex)) = normalized_payload {
-            if hex::decode(payload_hex.as_str())
-                .ok()
-                .is_some_and(|payload| self.propagation_payload_destination_is_ignored(&payload))
-            {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::PermissionDenied,
-                    "ignored propagation destination",
-                ));
+            if let Ok(payload) = hex::decode(payload_hex.as_str()) {
+                if self.propagation_payload_destination_is_ignored(payload.as_slice()) {
+                    self.emit_ignored_propagation_drop_event(
+                        payload.as_slice(),
+                        Some(transient_id.as_str()),
+                        "ingest_propagation_payload",
+                        None,
+                    );
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::PermissionDenied,
+                        "ignored propagation destination",
+                    ));
+                }
             }
             self.store_propagation_payload_hex(transient_id.as_str(), payload_hex.as_str())?;
             self.queue_propagation_entry_for_active_peers(transient_id.as_str())?;
@@ -116,6 +121,12 @@ impl RpcDaemon {
         let transient_id =
             transient_id.map(normalize_propagation_transient_key).unwrap_or(canonical_transient_id);
         if self.propagation_payload_destination_is_ignored(normalized_payload) {
+            self.emit_ignored_propagation_drop_event(
+                normalized_payload,
+                Some(transient_id.as_str()),
+                "ingest_client_propagation_payload",
+                None,
+            );
             return Err(std::io::Error::new(
                 std::io::ErrorKind::PermissionDenied,
                 "ignored propagation destination",
@@ -186,6 +197,12 @@ impl RpcDaemon {
         let transient_id =
             transient_id.map(normalize_propagation_transient_key).unwrap_or(canonical_transient_id);
         if self.propagation_payload_destination_is_ignored(normalized_payload) {
+            self.emit_ignored_propagation_drop_event(
+                normalized_payload,
+                Some(transient_id.as_str()),
+                "ingest_peer_propagation_payload",
+                Some(source_peer.as_str()),
+            );
             return Err(std::io::Error::new(
                 std::io::ErrorKind::PermissionDenied,
                 "ignored propagation destination",
@@ -250,6 +267,12 @@ impl RpcDaemon {
         let transient_id =
             transient_id.map(normalize_propagation_transient_key).unwrap_or(canonical_transient_id);
         if self.propagation_payload_destination_is_ignored(normalized_payload) {
+            self.emit_ignored_propagation_drop_event(
+                normalized_payload,
+                Some(transient_id.as_str()),
+                "relay_accepted_peer_propagation_payload",
+                Some(source_peer.as_str()),
+            );
             return Err(std::io::Error::new(
                 std::io::ErrorKind::PermissionDenied,
                 "ignored propagation destination",

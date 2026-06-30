@@ -925,6 +925,12 @@ The project is best described by capability level:
   rejects for short payloads, destination mismatches, and decrypt failures, so
   those router-coupled drops remain observer-visible instead of only counted as
   rejected imports.
+- RPC-layer propagation rejects for ignored destination hashes now emit bounded
+  `inbound_dropped` events before returning `PermissionDenied` from
+  `propagation_ingest` and remote fetch/download/sync imports. The events use
+  `delivery_kind = "propagation"`, preserve transient/operation context, and
+  rely on the default event redaction path for destination identifiers, keeping
+  ignored payloads observer-visible without storing or queueing them.
 - Locally delivered propagated LXMF payloads now store the same `_lxmf`
   signature metadata as direct packet/resource delivery paths and include it in
   the emitted raw inbound event. Local envelope ingest, remote fetch imports,
@@ -1135,8 +1141,9 @@ The project is best described by capability level:
   from the same peer take the throttled response path even when the peer changes
   the offered transient-ID set.
 - Propagation ingest now rejects payloads for ignored destinations before
-  storing or queueing them, enforcing local replication policy before relay
-  state is created.
+  storing or queueing them, emits a bounded `inbound_dropped` event through the
+  RPC/SDK event stream, and enforces local replication policy before relay state
+  is created.
 - Inbound propagation message-get `haves` completion now applies only to
   locally known payloads or existing peer queue marks, preventing unknown haves
   from suppressing future propagation work for the declaring peer.

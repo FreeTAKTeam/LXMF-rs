@@ -208,7 +208,12 @@ impl RpcDaemon {
                                 error: None,
                             });
                         }
-                        let imported = match self.import_remote_propagation_payloads(&result) {
+                        let imported =
+                            match self.import_remote_propagation_payloads(
+                                &result,
+                                "propagation_remote_sync",
+                                Some(peer_key.as_str()),
+                            ) {
                             Ok(imported) => imported,
                             Err(err) => {
                                 self.update_propagation_sync_state(|state| {

@@ -1,4 +1,5 @@
 include!("rpcdaemon_sections/record_remote_unpeer_failure.rs");
+include!("rpcdaemon_sections/emit_ignored_propagation_drop_event.rs");
 include!("rpcdaemon_sections/import_remote_propagation_payloads.rs");
 include!("rpcdaemon_sections/ingest_propagation_payload_hex_at_co.rs");
 include!("rpcdaemon_sections/select_propagation_payloads_for_dest.rs");
