@@ -156,6 +156,11 @@ impl Transport {
                     continue;
                 }
                 if let Some(cached) = announce_cache.restore(path.packet_hash).await? {
+                    if cached.packet.destination != path.destination
+                        || cached.destination.desc.address_hash != path.destination
+                    {
+                        continue;
+                    }
                     let iface = path
                         .interface_hash
                         .map(|hash| AddressHash::new_from_hash(&hash))
@@ -173,6 +178,7 @@ impl Transport {
                 &handler,
                 &candidate.cached.packet,
                 &candidate.cached.destination,
+                candidate.entry.destination,
             ) {
                 continue;
             }
@@ -191,9 +197,14 @@ impl Transport {
             report.restored_active_paths += 1;
         }
 
-        let mut valid_tunnel_announces = HashSet::new();
+        let mut valid_tunnel_paths = HashSet::new();
         for (packet_hash, (cached, iface)) in tunnel_announces {
-            if !cached_announce_compatible(&handler, &cached.packet, &cached.destination) {
+            if !cached_announce_compatible(
+                &handler,
+                &cached.packet,
+                &cached.destination,
+                cached.packet.destination,
+            ) {
                 continue;
             }
             let dest_hash = cached.destination.desc.address_hash;
@@ -203,11 +214,13 @@ impl Transport {
                 .entry(cached.packet.destination)
                 .or_insert_with(|| Arc::new(Mutex::new(cached.destination)));
             handler.announce_table.add_cached(&cached.packet, dest_hash, iface);
-            valid_tunnel_announces.insert(packet_hash);
+            valid_tunnel_paths.insert((packet_hash, dest_hash));
         }
 
         for tunnel in &mut tunnels {
-            tunnel.paths.retain(|path| valid_tunnel_announces.contains(&path.packet_hash));
+            tunnel
+                .paths
+                .retain(|path| valid_tunnel_paths.contains(&(path.packet_hash, path.destination)));
         }
         tunnels.retain(|entry| !entry.paths.is_empty());
         if !tunnels.is_empty() {
@@ -244,7 +257,13 @@ fn cached_announce_compatible(
     handler: &TransportHandler,
     packet: &Packet,
     destination: &SingleOutputDestination,
+    expected_destination: AddressHash,
 ) -> bool {
+    if packet.destination != expected_destination
+        || destination.desc.address_hash != expected_destination
+    {
+        return false;
+    }
     if let Some(existing) = handler.single_out_destinations.get(&packet.destination) {
         let Ok(existing) = existing.try_lock() else {
             return false;
