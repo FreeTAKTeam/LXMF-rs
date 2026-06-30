@@ -139,6 +139,12 @@ fn python_compat_rns_path_request_rust_to_python() {
 
 #[test]
 #[ignore = "requires live Python compatibility harness environment"]
+fn python_compat_rns_path_request_rust_to_python_scoped_refresh() {
+    run_case("rns_path_request_rust_to_python_scoped_refresh");
+}
+
+#[test]
+#[ignore = "requires live Python compatibility harness environment"]
 fn python_compat_rns_path_request_python_to_rust() {
     run_case("rns_path_request_python_to_rust");
 }

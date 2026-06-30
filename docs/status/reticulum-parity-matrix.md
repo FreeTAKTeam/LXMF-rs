@@ -317,10 +317,14 @@ rnpath-smoke` daemon mesh now exercises that path with `rnpath-rs --on-iface
 Pinned Python path-discovery interop now covers Rust `reticulumd` requesting a
 previously unknown Python delivery path over loopback TCP, observing found
 route metadata through `path_status`, and confirming the route through
-`rnpath-rs --json`. The mirror Python-origin path-request case suppresses Rust
-startup/periodic announces, holds a quiet window where Python still has no Rust
-delivery path, and then proves Python `RNS.Transport.request_path()` can
-discover the Rust delivery destination over the same software loopback path.
+`rnpath-rs --json`. A sibling pinned Python case then reissues `rnpath-rs` with
+`--on-iface` and `--tag-hex` over the learned interface, proving the
+scoped/tagged daemon dispatch path and result metadata against a Python-learned
+route instead of only local Rust daemons.
+The mirror Python-origin path-request case suppresses Rust startup/periodic
+announces, holds a quiet window where Python still has no Rust delivery path,
+and then proves Python `RNS.Transport.request_path()` can discover the Rust
+delivery destination over the same software loopback path.
 Restored path-table cached announces are now kept as lookup/cache material
 rather than scheduled as fresh announce rebroadcasts at startup, while still
 serving known-path responses. Path-table save filters routes without cached

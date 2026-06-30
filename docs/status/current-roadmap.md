@@ -1196,6 +1196,10 @@ The project is best described by capability level:
   `/offer` peer-queue lifecycle case, covering post-sync handled IDs,
   absence of retryable missing IDs, and cleared sync backoff after the Rust
   peer row is created by transfer.
+- Pinned Python path-discovery interop now includes a scoped/tagged
+  `rnpath-rs --on-iface --tag-hex` refresh over a learned Python delivery
+  route, extending scoped daemon path-request dispatch/result evidence beyond
+  local Rust-only mesh smokes.
 
 ## Remaining Release Blockers
 

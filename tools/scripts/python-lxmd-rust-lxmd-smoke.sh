@@ -29,7 +29,7 @@ if [[ "${COMPAT_CASE}" == "rns_path_request_python_to_rust" ]]; then
   RUST_ANNOUNCE_AT_START="no"
   RUST_ANNOUNCE_INTERVAL_LINE=""
 fi
-if [[ "${COMPAT_CASE}" == "rns_path_request_rust_to_python" ]]; then
+if [[ "${COMPAT_CASE}" == "rns_path_request_rust_to_python" || "${COMPAT_CASE}" == "rns_path_request_rust_to_python_scoped_refresh" ]]; then
   PY_ANNOUNCE_AT_START="no"
   PY_ANNOUNCE_INTERVAL_LINE=""
 fi
@@ -910,7 +910,7 @@ PY
 )"
 
 RUST_ON_INBOUND_LINE="on_inbound = ${RUST_DIR}/on_inbound.sh"
-if [[ "${COMPAT_CASE}" == *_rust_to_python ]]; then
+if [[ "${COMPAT_CASE}" == *_rust_to_python || "${COMPAT_CASE}" == "rns_path_request_rust_to_python_scoped_refresh" ]]; then
   RUST_ON_INBOUND_LINE="# on_inbound disabled for rust_to_python compatibility lanes"
 fi
 
@@ -1387,7 +1387,7 @@ PY
   exit 0
 fi
 
-if [[ "${COMPAT_CASE}" == "rns_path_request_rust_to_python" ]]; then
+if [[ "${COMPAT_CASE}" == "rns_path_request_rust_to_python" || "${COMPAT_CASE}" == "rns_path_request_rust_to_python_scoped_refresh" ]]; then
   cargo build -p rns-tools --bin rnpath-rs --quiet
 
   if ! wait_for_rust_tcp_client_accept; then
@@ -1417,6 +1417,34 @@ PY
     --timeout "${PATH_DISCOVERY_TIMEOUT_SECS}" \
     --json >"${RNPATH_JSON}"
 
+  SCOPED_RNPATH_JSON=""
+  SCOPED_TAG_HEX="01020304"
+  if [[ "${COMPAT_CASE}" == "rns_path_request_rust_to_python_scoped_refresh" ]]; then
+    SCOPED_IFACE="$("${PYTHON_BIN}" - <<'PY' "${PATH_STATUS_AFTER}"
+import json
+import sys
+
+status = json.loads(sys.argv[1])
+iface = status.get("interface")
+if not isinstance(iface, str):
+    raise SystemExit(f"path status did not include a scoped interface: {status!r}")
+normalized = iface.strip().strip("/").lower()
+if len(normalized) != 32:
+    raise SystemExit(f"path status did not include a scoped interface: {status!r}")
+int(normalized, 16)
+print(normalized)
+PY
+)"
+    SCOPED_RNPATH_JSON="${TMP_ROOT}/rnpath-rs-scoped-refresh.json"
+    "${REPO_ROOT}/target/debug/rnpath-rs" \
+      "${PY_DELIVERY_HASH}" \
+      --rpc "${RUST_RPC_ADDR}" \
+      --timeout "${PATH_DISCOVERY_TIMEOUT_SECS}" \
+      --on-iface "${SCOPED_IFACE}" \
+      --tag-hex "${SCOPED_TAG_HEX}" \
+      --json >"${SCOPED_RNPATH_JSON}"
+  fi
+
   "${PYTHON_BIN}" - <<'PY' \
     "${REPORT_PATH}" \
     "${TMP_ROOT}" \
@@ -1427,6 +1455,8 @@ PY
     "${PATH_REQUEST_RESULT}" \
     "${PATH_STATUS_AFTER}" \
     "${RNPATH_JSON}" \
+    "${SCOPED_RNPATH_JSON}" \
+    "${SCOPED_TAG_HEX}" \
     "${COMPAT_CASE}"
 import json
 import sys
@@ -1442,8 +1472,10 @@ from pathlib import Path
     path_request_raw,
     path_status_after_raw,
     rnpath_json,
+    scoped_rnpath_json,
+    scoped_tag_hex,
     compat_case,
-) = sys.argv[1:11]
+) = sys.argv[1:13]
 
 path_status_before = json.loads(path_status_before_raw)
 path_request = json.loads(path_request_raw)
@@ -1459,6 +1491,20 @@ for payload in (path_request, path_status_after, rnpath_result):
     assert isinstance(payload.get("hops"), int), payload
 
 assert path_request["requested"] is True, path_request
+scoped_rnpath_result = None
+if compat_case == "rns_path_request_rust_to_python_scoped_refresh":
+    assert scoped_rnpath_json, "missing scoped rnpath result path"
+    scoped_rnpath_result = json.loads(Path(scoped_rnpath_json).read_text(encoding="utf-8"))
+    scoped_iface = path_status_after["interface"].strip().strip("/").lower()
+    assert scoped_rnpath_result["destination_hash"] == py_delivery_hash, scoped_rnpath_result
+    assert scoped_rnpath_result["path_found"] is True, scoped_rnpath_result
+    assert scoped_rnpath_result["status"] == "found", scoped_rnpath_result
+    assert scoped_rnpath_result["requested"] is True, scoped_rnpath_result
+    assert scoped_rnpath_result["on_iface"] == scoped_iface, scoped_rnpath_result
+    assert scoped_rnpath_result["interface_scope"] == scoped_iface, scoped_rnpath_result
+    assert scoped_rnpath_result["tag_hex"] == scoped_tag_hex, scoped_rnpath_result
+    assert scoped_rnpath_result.get("next_hop"), scoped_rnpath_result
+    assert isinstance(scoped_rnpath_result.get("hops"), int), scoped_rnpath_result
 
 with open(report_path, "w", encoding="utf-8") as handle:
     json.dump({
@@ -1469,6 +1515,7 @@ with open(report_path, "w", encoding="utf-8") as handle:
             "request_path": path_request,
             "path_status_after": path_status_after,
             "rnpath_json": rnpath_result,
+            "scoped_rnpath_dispatch": scoped_rnpath_result,
         },
         "hashes": {
             "python_delivery": py_delivery_hash,
@@ -1478,6 +1525,7 @@ with open(report_path, "w", encoding="utf-8") as handle:
             "rust_lxmd": rust_log,
             "python_lxmd": py_log,
             "rnpath_json": rnpath_json,
+            "scoped_rnpath_json": scoped_rnpath_json,
         },
     }, handle, indent=2)
     handle.write("\n")

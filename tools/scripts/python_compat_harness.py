@@ -29,6 +29,7 @@ SUPPORTED_CASES = {
     "resource_transfer",
     "lxm_interchange",
     "rns_path_request_rust_to_python",
+    "rns_path_request_rust_to_python_scoped_refresh",
     "rns_path_request_python_to_rust",
 }
 
@@ -54,6 +55,7 @@ SMOKE_SCRIPT_CASES = {
     "resource_transfer",
     "lxm_interchange",
     "rns_path_request_rust_to_python",
+    "rns_path_request_rust_to_python_scoped_refresh",
     "rns_path_request_python_to_rust",
 }
 
