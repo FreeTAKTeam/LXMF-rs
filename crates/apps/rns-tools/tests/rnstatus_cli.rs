@@ -2,12 +2,25 @@
 
 use std::io::{Read, Write};
 use std::net::{Shutdown, TcpListener};
+#[cfg(unix)]
+use std::os::unix::net::UnixListener;
 use std::process::Command;
 use std::thread;
 
 use rns_rpc::rpc::codec;
 use rns_rpc::RpcResponse;
 use serde_json::json;
+
+#[test]
+fn rnstatus_help_exposes_rpc_options() {
+    let output = Command::new(rnstatus_bin()).arg("--help").output().expect("run rnstatus-rs");
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
+    assert!(stdout.contains("--rpc <ADDR>"), "stdout: {stdout}");
+    assert!(stdout.contains("127.0.0.1:4243"), "stdout: {stdout}");
+    #[cfg(unix)]
+    assert!(stdout.contains("--rpc-unix"), "stdout: {stdout}");
+}
 
 #[test]
 fn rnstatus_fetches_daemon_status_and_renders_interface_runtime_state() {
@@ -1023,6 +1036,106 @@ fn rnstatus_weave_display_renders_display_focused_view() {
     server.join().expect("mock rpc server");
 }
 
+#[test]
+fn rnstatus_uses_default_tcp_rpc_when_no_transport_flag_is_supplied() {
+    let Ok(listener) = TcpListener::bind("127.0.0.1:4243") else {
+        eprintln!("skipping default TCP RPC test because 127.0.0.1:4243 is already in use");
+        return;
+    };
+    let server = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accept rpc request");
+        let mut request = Vec::new();
+        stream.read_to_end(&mut request).expect("read rpc request");
+        let request_text = String::from_utf8_lossy(&request);
+        assert!(request_text.contains("\r\nHost: 127.0.0.1:4243\r\n"), "request: {request_text}");
+        let body = http_body(&request);
+        let rpc_request = codec::decode_frame::<rns_rpc::RpcRequest>(body).expect("decode request");
+        assert_eq!(rpc_request.method, "daemon_status_ex");
+
+        let response = RpcResponse {
+            id: rpc_request.id,
+            result: Some(json!({
+                "identity_hash": "00110011001100110011001100110011",
+                "running": true,
+                "interface_count": 0,
+                "interfaces": []
+            })),
+            error: None,
+        };
+        write_rpc_response(&mut stream, &response);
+    });
+
+    let output = Command::new(rnstatus_bin()).arg("--json").output().expect("run rnstatus-rs");
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
+    let value: serde_json::Value = serde_json::from_str(&stdout).expect("json output");
+    assert_eq!(value["identity_hash"], "00110011001100110011001100110011");
+
+    server.join().expect("mock rpc server");
+}
+
+#[cfg(unix)]
+#[test]
+fn rnstatus_fetches_daemon_status_over_unix_rpc() {
+    let temp = tempfile::tempdir().expect("temp dir");
+    let socket_path = temp.path().join("rnstatus.sock");
+    let listener = UnixListener::bind(&socket_path).expect("bind mock unix rpc");
+    let server = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accept unix rpc request");
+        let mut request = Vec::new();
+        stream.read_to_end(&mut request).expect("read rpc request");
+        let request_text = String::from_utf8_lossy(&request);
+        assert!(request_text.starts_with("POST /rpc HTTP/1.1\r\n"), "request: {request_text}");
+        assert!(request_text.contains("\r\nHost: localhost\r\n"), "request: {request_text}");
+        let body = http_body(&request);
+        let rpc_request = codec::decode_frame::<rns_rpc::RpcRequest>(body).expect("decode request");
+        assert_eq!(rpc_request.id, 1);
+        assert_eq!(rpc_request.method, "daemon_status_ex");
+        assert!(rpc_request.params.is_none());
+
+        let response = RpcResponse {
+            id: rpc_request.id,
+            result: Some(json!({
+                "identity_hash": "fedcba9876543210fedcba9876543210",
+                "running": true,
+                "interface_count": 0,
+                "interfaces": []
+            })),
+            error: None,
+        };
+        write_rpc_response(&mut stream, &response);
+    });
+
+    let output = Command::new(rnstatus_bin())
+        .arg("--rpc-unix")
+        .arg(&socket_path)
+        .arg("--json")
+        .output()
+        .expect("run rnstatus-rs");
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
+    let value: serde_json::Value = serde_json::from_str(&stdout).expect("json output");
+    assert_eq!(value["identity_hash"], "fedcba9876543210fedcba9876543210");
+    assert_eq!(value["running"], true);
+
+    server.join().expect("mock unix rpc server");
+}
+
+#[cfg(unix)]
+#[test]
+fn rnstatus_rejects_tcp_and_unix_rpc_together() {
+    let output = Command::new(rnstatus_bin())
+        .arg("--rpc")
+        .arg("127.0.0.1:4243")
+        .arg("--rpc-unix")
+        .arg("/tmp/rnstatus.sock")
+        .output()
+        .expect("run rnstatus-rs");
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).expect("utf8 stderr");
+    assert!(stderr.contains("cannot be used with"), "stderr: {stderr}");
+}
+
 fn rnstatus_bin() -> String {
     env!("CARGO_BIN_EXE_rnstatus-rs").to_string()
 }
@@ -1035,4 +1148,14 @@ fn http_body(request: &[u8]) -> &[u8] {
         .map(|index| index + marker.len())
         .expect("request headers");
     &request[start..]
+}
+
+fn write_rpc_response(stream: &mut impl Write, response: &RpcResponse) {
+    let body = codec::encode_frame(response).expect("encode response");
+    let response = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: application/msgpack\r\nContent-Length: {}\r\n\r\n",
+        body.len()
+    );
+    stream.write_all(response.as_bytes()).expect("write response headers");
+    stream.write_all(&body).expect("write response body");
 }

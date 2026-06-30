@@ -2,16 +2,26 @@
 
 use std::io::{self, Read, Write};
 use std::net::{Shutdown, TcpStream};
+#[cfg(unix)]
+use std::os::unix::net::UnixStream;
+#[cfg(unix)]
+use std::path::PathBuf;
 
 use clap::Parser;
 use rns_rpc::e2e_harness::{build_http_post, build_rpc_frame, parse_http_response_body};
 use serde_json::{json, Value};
 
+const DEFAULT_RPC_ADDR: &str = "127.0.0.1:4243";
+
 #[derive(Debug, Parser)]
 #[command(name = "rnstatus-rs")]
 struct Cli {
-    #[arg(long, default_value = "127.0.0.1:4243")]
-    rpc: String,
+    #[arg(long, value_name = "ADDR", help = "Daemon TCP RPC address (default: 127.0.0.1:4243)")]
+    rpc: Option<String>,
+
+    #[cfg(unix)]
+    #[arg(long, value_name = "PATH", conflicts_with = "rpc")]
+    rpc_unix: Option<PathBuf>,
 
     #[arg(long)]
     json: bool,
@@ -32,7 +42,7 @@ fn main() -> std::process::ExitCode {
 }
 
 fn run(cli: &Cli, output: &mut dyn Write) -> io::Result<()> {
-    let response = rpc_call(&cli.rpc, 1, "daemon_status_ex")?;
+    let response = rpc_call(cli, 1, "daemon_status_ex")?;
     let status = ensure_rpc_ok(response, "daemon_status_ex")?
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing daemon status"))?;
     if let Some(interface_name) = cli.weave_display.as_deref() {
@@ -155,12 +165,44 @@ fn append_optional_str_line(
     Ok(())
 }
 
-fn rpc_call(rpc: &str, id: u64, method: &str) -> io::Result<rns_rpc::RpcResponse> {
+fn rpc_call(cli: &Cli, id: u64, method: &str) -> io::Result<rns_rpc::RpcResponse> {
     let frame = build_rpc_frame(id, method, None)?;
+    #[cfg(unix)]
+    if let Some(path) = cli.rpc_unix.as_ref() {
+        let request = build_http_post("/rpc", "localhost", &frame);
+        let stream = UnixStream::connect(path)?;
+        return rpc_call_with_stream(stream, &request);
+    }
+
+    let rpc = cli.rpc.as_deref().unwrap_or(DEFAULT_RPC_ADDR);
     let request = build_http_post("/rpc", rpc, &frame);
-    let mut stream = TcpStream::connect(rpc)?;
-    stream.write_all(&request)?;
-    stream.shutdown(Shutdown::Write)?;
+    let stream = TcpStream::connect(rpc)?;
+    rpc_call_with_stream(stream, &request)
+}
+
+trait RpcStream: Read + Write {
+    fn shutdown_write(&self) -> io::Result<()>;
+}
+
+impl RpcStream for TcpStream {
+    fn shutdown_write(&self) -> io::Result<()> {
+        self.shutdown(Shutdown::Write)
+    }
+}
+
+#[cfg(unix)]
+impl RpcStream for UnixStream {
+    fn shutdown_write(&self) -> io::Result<()> {
+        self.shutdown(Shutdown::Write)
+    }
+}
+
+fn rpc_call_with_stream<S: RpcStream>(
+    mut stream: S,
+    request: &[u8],
+) -> io::Result<rns_rpc::RpcResponse> {
+    stream.write_all(request)?;
+    stream.shutdown_write()?;
     let mut response = Vec::new();
     stream.read_to_end(&mut response)?;
     let body = parse_http_response_body(&response)?;

@@ -380,11 +380,11 @@ The project is best described by capability level:
   queue, decode, serialize, read/write, buffer-drop, cleanup, and last-error
   counters alongside configured BLE UUID and lifecycle timeout metadata.
 - `rnstatus-rs` now provides a local daemon status utility over the existing
-  RPC status surface, including JSON output plus human interface endpoint
-  details across configured interface families, runtime startup state, Auto
-  carrier/link-local state, TCP/Backbone listener state, plus UDP, serial,
-  KISS, BLE GATT, I2P, RNodeMulti, Weave, and VR-N76 status rows and
-  propagation peer state.
+  RPC status surface through TCP or Unix-domain sockets, including JSON output
+  plus human interface endpoint details across configured interface families,
+  runtime startup state, Auto carrier/link-local state, TCP/Backbone listener
+  state, plus UDP, serial, KISS, BLE GATT, I2P, RNodeMulti, Weave, and VR-N76
+  status rows and propagation peer state.
 - `rnpath-rs` now exercises daemon-backed path lookup through `rnx
   rnpath-smoke`, which starts a local four-node mesh and verifies a
   non-neighbor destination resolves with next-hop/interface metadata over the
