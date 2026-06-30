@@ -124,7 +124,9 @@ The project is best described by capability level:
   with missing cached announce files, active and tunnel path-table rows with
   malformed cached announce files, and active/tunnel rows whose cached announce
   belongs to a different destination as unusable rows instead of aborting the
-  whole restore.
+  whole restore; `reticulumd` bootstrap/status tests now cover the missing
+  active/tunnel cached-announce rows alongside the existing malformed-cache
+  daemon evidence.
   Malformed `destination_table` and `tunnels` files remain observable daemon
   restore errors.
 - Shared-instance clients skip local Reticulum path-table save and restore
