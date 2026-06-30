@@ -30,6 +30,10 @@ impl DaemonPathLookupBridge {
             .map_err(|err| std::io::Error::new(err.kind(), format!("{field} {err}")))
     }
 
+    fn hash_hex(value: AddressHash) -> String {
+        value.to_hex_string()
+    }
+
     fn run_transport<F, T>(&self, f: F) -> Result<T, std::io::Error>
     where
         F: FnOnce(Arc<Transport>) -> Result<T, std::io::Error> + Send + 'static,
@@ -100,10 +104,10 @@ impl PathLookupBridge for DaemonPathLookupBridge {
                 })?;
             let status = runtime.block_on(async move { transport.path_status(&destination).await });
             Ok(json!({
-                "destination_hash": status.destination.to_string(),
+                "destination_hash": Self::hash_hex(status.destination),
                 "path_found": status.path_found,
-                "next_hop": status.next_hop.map(|value| value.to_string()),
-                "interface": status.interface.map(|value| value.to_string()),
+                "next_hop": status.next_hop.map(Self::hash_hex),
+                "interface": status.interface.map(Self::hash_hex),
                 "hops": status.hops,
             }))
         })
@@ -150,6 +154,24 @@ mod tests {
         let known = bridge.has_path("00112233445566778899aabbccddeeff").expect("query path");
 
         assert!(!known);
+    }
+
+    #[test]
+    fn path_lookup_bridge_reports_bare_hex_path_status_hashes() {
+        let bridge = bridge();
+        let status = bridge.path_status("00112233445566778899aabbccddeeff").expect("path status");
+
+        assert_eq!(status["destination_hash"].as_str(), Some("00112233445566778899aabbccddeeff"));
+        assert_eq!(status["path_found"].as_bool(), Some(false));
+        assert_eq!(status["next_hop"], JsonValue::Null);
+        assert_eq!(status["interface"], JsonValue::Null);
+
+        let next_hop =
+            AddressHash::new_from_hex_string("8899aabbccddeeff0011223344556677").expect("hash");
+        let interface =
+            AddressHash::new_from_hex_string("fedcba98765432100123456789abcdef").expect("hash");
+        assert_eq!(DaemonPathLookupBridge::hash_hex(next_hop), "8899aabbccddeeff0011223344556677");
+        assert_eq!(DaemonPathLookupBridge::hash_hex(interface), "fedcba98765432100123456789abcdef");
     }
 
     #[test]
