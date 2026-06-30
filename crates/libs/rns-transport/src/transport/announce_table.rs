@@ -237,6 +237,28 @@ impl AnnounceTable {
             .or_else(|| self.cache.get(destination).map(|entry| entry.packet))
     }
 
+    pub fn observe_passed_rebroadcast(
+        &mut self,
+        destination: &AddressHash,
+        observed_hops: u8,
+    ) -> bool {
+        let Some(entry) = self.map.get(destination) else {
+            return false;
+        };
+        if entry.retries == 0 || Instant::now() >= entry.timeout {
+            return false;
+        }
+        if Some(observed_hops) != entry.hops.checked_add(1) {
+            return false;
+        }
+
+        if let Some(announce) = self.map.remove(destination) {
+            self.cache.insert(*destination, announce);
+            return true;
+        }
+        false
+    }
+
     #[cfg(test)]
     pub(crate) fn pending_response_for_destination(
         &self,

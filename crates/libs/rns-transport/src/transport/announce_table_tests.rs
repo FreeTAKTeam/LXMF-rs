@@ -184,3 +184,69 @@ fn restored_cached_announces_do_not_rebroadcast_but_can_answer_path_requests() {
     assert_eq!(response.packet.context, PacketContext::PathResponse);
     assert_eq!(response.hops, 2);
 }
+
+#[test]
+fn passed_on_rebroadcast_completes_pending_ordinary_announce() {
+    let mut table = AnnounceTable::new(16, 1);
+    let destination = AddressHash::new_from_rand(OsRng);
+    let received_from = AddressHash::new_from_rand(OsRng);
+    let transport_id = AddressHash::new_from_rand(OsRng);
+    let packet = Packet { destination, ..Packet::default() };
+
+    table.add(&packet, destination, received_from);
+    table.map.get_mut(&destination).expect("entry").timeout =
+        Instant::now() - Duration::from_millis(1);
+    assert_eq!(table.drain_retransmissions(&transport_id).len(), 1);
+    let entry = table.map.get(&destination).expect("entry after first rebroadcast");
+    assert_eq!(entry.retries, 1);
+    let observed_hops = entry.hops + 1;
+
+    assert!(
+        table.observe_passed_rebroadcast(&destination, observed_hops),
+        "Python removes a pending announce when a rebroadcast has been passed onward"
+    );
+    assert!(!table.map.contains_key(&destination));
+    assert!(
+        table.cached_packet_for_destination(&destination).is_some(),
+        "completed announce material should remain available for known-path responses"
+    );
+    assert!(table.drain_retransmissions(&transport_id).is_empty());
+}
+
+#[test]
+fn passed_on_rebroadcast_does_not_complete_before_local_retry() {
+    let mut table = AnnounceTable::new(16, 1);
+    let destination = AddressHash::new_from_rand(OsRng);
+    let received_from = AddressHash::new_from_rand(OsRng);
+    let packet = Packet { destination, ..Packet::default() };
+
+    table.add(&packet, destination, received_from);
+    let observed_hops = table.map.get(&destination).expect("entry").hops + 2;
+
+    assert!(
+        !table.observe_passed_rebroadcast(&destination, observed_hops),
+        "Python only completes passed-on announces after at least one local retry"
+    );
+    assert!(table.map.contains_key(&destination));
+}
+
+#[test]
+fn passed_on_rebroadcast_requires_next_hop_count() {
+    let mut table = AnnounceTable::new(16, 1);
+    let destination = AddressHash::new_from_rand(OsRng);
+    let received_from = AddressHash::new_from_rand(OsRng);
+    let transport_id = AddressHash::new_from_rand(OsRng);
+    let packet = Packet { destination, ..Packet::default() };
+
+    table.add(&packet, destination, received_from);
+    table.map.get_mut(&destination).expect("entry").timeout =
+        Instant::now() - Duration::from_millis(1);
+    assert_eq!(table.drain_retransmissions(&transport_id).len(), 1);
+    let observed_hops = table.map.get(&destination).expect("entry").hops;
+
+    assert!(
+        !table.observe_passed_rebroadcast(&destination, observed_hops),
+        "same-hop announces do not prove our rebroadcast was passed onward"
+    );
+    assert!(table.map.contains_key(&destination));
+}

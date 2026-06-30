@@ -43,6 +43,15 @@ async fn process_announce<'a>(
     // not the bare identity hash, otherwise peers learn only identity routes
     // and cannot resolve application destinations like `lxmf.delivery`.
     let dest_hash = announce.destination.desc.address_hash;
+    if packet.transport.is_some()
+        && handler.announce_table.observe_passed_rebroadcast(&dest_hash, packet.header.hops)
+    {
+        log::trace!(
+            "tp({}): completed announce processing for {}, rebroadcast was passed onward",
+            handler.config.name,
+            dest_hash
+        );
+    }
     let destination = Arc::new(Mutex::new(announce.destination));
 
     // Auto-unicast: if this announce arrived over a multicast iface from a

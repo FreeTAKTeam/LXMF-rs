@@ -84,6 +84,9 @@ The project is best described by capability level:
 - Roaming-interface known-path responses that are not same-interface loops now
   wait Python's extra roaming grace before answering, keeping opportunistic
   path discovery from racing roaming peers too aggressively.
+- Pending ordinary announce rebroadcasts now complete early when a later
+  incoming transport announce proves the rebroadcast has already been passed
+  onward, while retaining cached announce material for known-path responses.
 - Restored Reticulum path-table announces are now cache-only lookup material at
   startup, not fresh rebroadcast work, while still serving known-path response
   requests from the restored cache.
