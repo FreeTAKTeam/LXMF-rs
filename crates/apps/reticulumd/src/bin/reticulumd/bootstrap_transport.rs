@@ -35,7 +35,7 @@ use rns_transport::destination::SingleInputDestination;
 use rns_transport::hash::AddressHash;
 use rns_transport::iface::tcp_client::TcpSocketTuning;
 use rns_transport::iface::tcp_server::TcpServer;
-use rns_transport::transport::{Transport, TransportConfig};
+use rns_transport::transport::{RestoredReticulumPathIdentity, Transport, TransportConfig};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -53,6 +53,7 @@ pub(super) struct TransportStartupArtifacts {
     pub(super) control_destination_hash_hex: Option<String>,
     pub(super) delivery_source_hash: [u8; 16],
     pub(super) configured_interfaces: Vec<InterfaceRecord>,
+    pub(super) restored_path_identities: Vec<RestoredReticulumPathIdentity>,
     pub(super) startup_successes: usize,
     pub(super) startup_failures: Vec<InterfaceStartupFailure>,
     pub(super) seeded_hot_apply_interfaces: Vec<(String, InterfaceRecord, AddressHash)>,
@@ -169,6 +170,7 @@ pub(super) async fn start_transport_and_interfaces(
     let mut propagation_destination_hash_hex: Option<String> = None;
     let mut control_destination_hash_hex: Option<String> = None;
     let mut delivery_source_hash = [0u8; 16];
+    let mut restored_path_identities = Vec::new();
     let mut startup_successes = 0usize;
     let mut startup_failures = Vec::new();
     let mut seeded_hot_apply_interfaces = Vec::new();
@@ -275,20 +277,24 @@ pub(super) async fn start_transport_and_interfaces(
             weave_control_bindings.extend(startup.weave_control_bindings);
         }
 
-        let path_table_restore_status =
-            match transport_instance.restore_reticulum_path_table(reticulum_storage_path).await {
-                Ok(restored) => {
-                    if restored > 0 {
-                        log::info!("[daemon] restored {} Reticulum path table entries", restored);
-                    }
-                    PathTableRestoreStatus::Ok { restored_active_paths: restored }
+        let path_table_restore_status = match transport_instance
+            .restore_reticulum_path_table_report(reticulum_storage_path)
+            .await
+        {
+            Ok(report) => {
+                let restored = report.restored_active_paths;
+                restored_path_identities = report.restored_identities;
+                if restored > 0 {
+                    log::info!("[daemon] restored {} Reticulum path table entries", restored);
                 }
-                Err(err) => {
-                    let message = err.to_string();
-                    log::error!("[daemon] failed to restore Reticulum path table: {}", message);
-                    PathTableRestoreStatus::Error { message }
-                }
-            };
+                PathTableRestoreStatus::Ok { restored_active_paths: restored }
+            }
+            Err(err) => {
+                let message = err.to_string();
+                log::error!("[daemon] failed to restore Reticulum path table: {}", message);
+                PathTableRestoreStatus::Error { message }
+            }
+        };
         mark_path_table_restore_status_on_enabled_interfaces(
             &mut configured_interfaces,
             &path_table_restore_status,
@@ -382,6 +388,7 @@ pub(super) async fn start_transport_and_interfaces(
         control_destination_hash_hex,
         delivery_source_hash,
         configured_interfaces,
+        restored_path_identities,
         startup_successes,
         startup_failures,
         seeded_hot_apply_interfaces,

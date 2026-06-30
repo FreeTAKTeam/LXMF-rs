@@ -10,7 +10,8 @@ fn bootstrap_restores_python_path_table_for_path_lookup_rpc() {
     let runtime =
         tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
 
-    let (destination_hex, expected_iface_hex) = runtime.block_on(async {
+    let (destination_hex, expected_iface_hex, expected_public_key_hex, expected_verifying_key_hex) =
+        runtime.block_on(async {
         let transport_identity =
             rns_transport::identity_bridge::to_transport_private_identity(&local_identity);
         let mut config =
@@ -26,6 +27,7 @@ fn bootstrap_restores_python_path_table_for_path_lookup_rpc() {
             remote_identity,
             DestinationName::new("lxmf", "delivery"),
         );
+        let expected_identity = *remote_destination.identity.as_identity();
         let announce = remote_destination
             .announce(rand_core::OsRng, None)
             .expect("valid announce packet");
@@ -72,7 +74,12 @@ fn bootstrap_restores_python_path_table_for_path_lookup_rpc() {
             "seed should write Reticulum-compatible announce cache"
         );
 
-        (hex::encode(destination.as_slice()), hex::encode(iface.as_slice()))
+        (
+            hex::encode(destination.as_slice()),
+            hex::encode(iface.as_slice()),
+            hex::encode(expected_identity.public_key_bytes()),
+            hex::encode(expected_identity.verifying_key_bytes()),
+        )
     });
 
     let context = runtime.block_on(async {
@@ -124,6 +131,14 @@ fn bootstrap_restores_python_path_table_for_path_lookup_rpc() {
     let restore_status = path_table_restore_runtime_status(&context.daemon);
     assert_eq!(restore_status["status"].as_str(), Some("ok"));
     assert_eq!(restore_status["restored_active_paths"].as_u64(), Some(1));
+
+    let restored_keys = context
+        .daemon
+        .announce_identity_keys(destination_hex.as_str())
+        .expect("announce identity lookup")
+        .expect("restored announce identity keys");
+    assert_eq!(restored_keys.0, expected_public_key_hex);
+    assert_eq!(restored_keys.1, expected_verifying_key_hex);
 }
 
 #[test]

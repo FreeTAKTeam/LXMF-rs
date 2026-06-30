@@ -5,6 +5,19 @@ use std::io;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ReticulumPathTableRestoreReport {
+    pub restored_active_paths: usize,
+    pub restored_identities: Vec<RestoredReticulumPathIdentity>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RestoredReticulumPathIdentity {
+    pub destination: AddressHash,
+    pub public_key: [u8; crate::identity::PUBLIC_KEY_LENGTH],
+    pub verifying_key: [u8; crate::identity::PUBLIC_KEY_LENGTH],
+}
+
 impl Transport {
     pub async fn save_reticulum_path_table<P: AsRef<Path>>(
         &self,
@@ -78,8 +91,15 @@ impl Transport {
         &self,
         storage_path: P,
     ) -> io::Result<usize> {
+        Ok(self.restore_reticulum_path_table_report(storage_path).await?.restored_active_paths)
+    }
+
+    pub async fn restore_reticulum_path_table_report<P: AsRef<Path>>(
+        &self,
+        storage_path: P,
+    ) -> io::Result<ReticulumPathTableRestoreReport> {
         if self.handler.lock().await.config.connected_to_shared_instance {
-            return Ok(0);
+            return Ok(ReticulumPathTableRestoreReport::default());
         }
 
         let storage_path = storage_path.as_ref().to_path_buf();
@@ -145,7 +165,7 @@ impl Transport {
             }
         }
 
-        let mut restored = 0usize;
+        let mut report = ReticulumPathTableRestoreReport::default();
         let mut handler = self.handler.lock().await;
 
         for candidate in path_candidates {
@@ -157,6 +177,7 @@ impl Transport {
                 continue;
             }
             let dest_hash = candidate.cached.destination.desc.address_hash;
+            report.push_identity(&candidate.cached.destination);
             handler
                 .single_out_destinations
                 .entry(candidate.cached.packet.destination)
@@ -167,7 +188,7 @@ impl Transport {
                 candidate.entry.iface,
             );
             handler.path_table.restore_python_entry(candidate.entry, now, now_unix_secs);
-            restored += 1;
+            report.restored_active_paths += 1;
         }
 
         let mut valid_tunnel_announces = HashSet::new();
@@ -176,6 +197,7 @@ impl Transport {
                 continue;
             }
             let dest_hash = cached.destination.desc.address_hash;
+            report.push_identity(&cached.destination);
             handler
                 .single_out_destinations
                 .entry(cached.packet.destination)
@@ -192,7 +214,24 @@ impl Transport {
             handler.tunnel_table.restore_python_entries(tunnels, now, now_unix_secs);
         }
 
-        Ok(restored)
+        Ok(report)
+    }
+}
+
+impl ReticulumPathTableRestoreReport {
+    fn push_identity(&mut self, destination: &SingleOutputDestination) {
+        let restored = RestoredReticulumPathIdentity {
+            destination: destination.desc.address_hash,
+            public_key: *destination.desc.identity.public_key_bytes(),
+            verifying_key: *destination.desc.identity.verifying_key_bytes(),
+        };
+        if !self
+            .restored_identities
+            .iter()
+            .any(|existing| existing.destination == restored.destination)
+        {
+            self.restored_identities.push(restored);
+        }
     }
 }
 

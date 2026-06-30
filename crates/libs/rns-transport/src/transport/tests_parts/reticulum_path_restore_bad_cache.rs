@@ -21,7 +21,13 @@ async fn reticulum_path_table_restore_skips_malformed_cached_announce_entry() {
     let restored_iface = *restored.iface_manager().lock().await.new_channel(16).address();
     assert_eq!(restored_iface, iface, "test relies on deterministic iface hashes");
 
-    assert_eq!(restored.restore_reticulum_path_table(temp.path()).await.expect("restore"), 1);
+    let restore_report = restored
+        .restore_reticulum_path_table_report(temp.path())
+        .await
+        .expect("restore");
+    assert_eq!(restore_report.restored_active_paths, 1);
+    assert_eq!(restore_report.restored_identities.len(), 1);
+    assert_eq!(restore_report.restored_identities[0].destination, good.destination);
     assert!(restored.has_path(&good.destination).await, "valid cached row should restore");
     assert!(restored.destination_identity(&good.destination).await.is_some());
     assert!(
@@ -66,7 +72,13 @@ async fn reticulum_tunnel_table_restore_skips_malformed_cached_announce_entry() 
         restored.iface_manager().lock().await.full_hash(&restored_iface).expect("iface hash");
     assert_eq!(restored_iface_hash, iface_hash, "test relies on deterministic iface hashes");
 
-    assert_eq!(restored.restore_reticulum_path_table(temp.path()).await.expect("restore"), 0);
+    let restore_report = restored
+        .restore_reticulum_path_table_report(temp.path())
+        .await
+        .expect("restore");
+    assert_eq!(restore_report.restored_active_paths, 0);
+    assert_eq!(restore_report.restored_identities.len(), 1);
+    assert_eq!(restore_report.restored_identities[0].destination, good.destination);
 
     let tunnel_synth =
         super::tunnels::synthesize_tunnel_packet(&tunnel_identity, restored_iface_hash);

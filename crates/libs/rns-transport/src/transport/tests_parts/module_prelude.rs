@@ -535,7 +535,21 @@ async fn reticulum_path_table_persistence_restores_route_and_identity_from_cache
     let restored = Transport::new(restored_config);
     let restored_iface = *restored.iface_manager().lock().await.new_channel(16).address();
     assert_eq!(restored_iface, iface, "test relies on deterministic iface hashes");
-    assert_eq!(restored.restore_reticulum_path_table(temp.path()).await.expect("restore"), 1);
+    let restore_report = restored
+        .restore_reticulum_path_table_report(temp.path())
+        .await
+        .expect("restore");
+    assert_eq!(restore_report.restored_active_paths, 1);
+    assert_eq!(restore_report.restored_identities.len(), 1);
+    assert_eq!(restore_report.restored_identities[0].destination, destination);
+    assert_eq!(
+        restore_report.restored_identities[0].public_key.as_slice(),
+        expected_identity.public_key_bytes()
+    );
+    assert_eq!(
+        restore_report.restored_identities[0].verifying_key.as_slice(),
+        expected_identity.verifying_key_bytes()
+    );
     let restored_identity = restored.destination_identity(&destination).await.expect("identity");
     assert_eq!(restored_identity.public_key_bytes(), expected_identity.public_key_bytes());
     assert_eq!(restored_identity.verifying_key_bytes(), expected_identity.verifying_key_bytes());

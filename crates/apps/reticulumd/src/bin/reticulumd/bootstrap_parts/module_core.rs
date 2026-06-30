@@ -25,7 +25,7 @@ use rns_transport::hash::AddressHash;
 
 use rns_transport::identity::Identity;
 
-use rns_transport::transport::Transport;
+use rns_transport::transport::{RestoredReticulumPathIdentity, Transport};
 
 use serde_json::{json, Map as JsonMap, Value as JsonValue};
 
@@ -38,6 +38,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 
 use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use tokio::net::TcpStream;
 
@@ -198,6 +199,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     let rnode_management_bindings = startup.rnode_management_bindings;
     let weave_control_bindings = startup.weave_control_bindings;
     let selected_tcp_server = startup.selected_tcp_server;
+    let restored_path_identities = startup.restored_path_identities;
 
     if !startup_failures.is_empty() {
         log::warn!(
@@ -281,6 +283,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         outbound_bridge,
         announce_bridge,
     ));
+    record_restored_path_identities(daemon.as_ref(), &restored_path_identities);
     configure_startup_rpc_token_auth(&args, daemon.as_ref());
     enforce_rpc_bind_security(rpc_addr.as_ref(), rpc_tls.as_ref(), daemon.as_ref());
     if let Some(transport) = transport.as_ref() {
@@ -456,6 +459,36 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     }
 
     BootstrapContext { rpc_addr, rpc_unix, daemon, rpc_tls }
+}
+
+fn record_restored_path_identities(
+    daemon: &RpcDaemon,
+    restored_path_identities: &[RestoredReticulumPathIdentity],
+) {
+    if restored_path_identities.is_empty() {
+        return;
+    }
+    let updated_at = i64::try_from(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs(),
+    )
+    .unwrap_or(i64::MAX);
+    for identity in restored_path_identities {
+        if let Err(err) = daemon.record_announce_identity(
+            hex::encode(identity.destination.as_slice()).as_str(),
+            hex::encode(identity.public_key).as_str(),
+            hex::encode(identity.verifying_key).as_str(),
+            updated_at,
+        ) {
+            log::warn!(
+                "[daemon] failed to persist restored path identity destination={}: {}",
+                identity.destination,
+                err
+            );
+        }
+    }
 }
 
 fn spawn_auto_runtime_status_refresher(
