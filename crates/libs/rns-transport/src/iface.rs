@@ -10,6 +10,8 @@ pub mod kiss;
 
 pub mod lora;
 
+pub mod meshtastic;
+
 #[cfg(unix)]
 pub mod local;
 

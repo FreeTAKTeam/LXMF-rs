@@ -187,6 +187,11 @@ placeholders:
   requests, and live daemon/RPC `rnode_status` refresh plus compact
   `rnstatus-rs` human summaries for probe and radio state, with an opt-in
   prepared-host smoke harness for serial, TCP/Wi-Fi, or BLE RNode devices.
+- Meshtastic tunnel support is present in `rns-transport` as a Rust port of the
+  reference `RETICULUM_TUNNEL_APP` framing/reassembly layer, including modem
+  preset send pacing, missing-chunk request frames, node/destination route
+  learning, and an injectable bearer handle. It is not yet daemon config
+  startup or prepared-host Meshtastic hardware evidence.
 - Shared serial/TCP RNodeMulti baseline with nested vport subinterfaces,
   `CMD_SEL_INT` KISS vport selection, direct routing to virtual child
   interfaces, Python-style child enabled/interface-enabled handling, broadcast
