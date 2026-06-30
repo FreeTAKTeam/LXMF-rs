@@ -1147,10 +1147,10 @@ The project is best described by capability level:
   after peering-key and transient-ID validation, so repeated replication offers
   from the same peer take the throttled response path even when the peer changes
   the offered transient-ID set.
-- Propagation ingest now rejects payloads for ignored destinations before
-  storing or queueing them, emits a bounded `inbound_dropped` event through the
-  RPC/SDK event stream, and enforces local replication policy before relay state
-  is created.
+- Propagation ingest and Python-served alias ingest now reject payloads for
+  ignored destinations before storing or queueing them, emit bounded
+  `inbound_dropped` events through the RPC/SDK event stream, and enforce local
+  replication policy before relay state is created.
 - Inbound propagation message-get `haves` completion now applies only to
   locally known payloads or existing peer queue marks, preventing unknown haves
   from suppressing future propagation work for the declaring peer.

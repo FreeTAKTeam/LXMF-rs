@@ -24,7 +24,7 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 | `LXMF/LXMessage.py` | `crates/libs/lxmf-core` | done | Wire, storage, propagation, paper, signatures, message IDs, binary fidelity, and timestamp precision metadata. | No confirmed base-message blocker. |
 | `LXMF/LXMPeer.py` | `crates/libs/rns-rpc`, `crates/apps/reticulumd` | done | Persistent peers, queue marks, offer selection, policy gates, peering keys, throttling, maintenance, source accounting, cumulative acceptance, serialized restored queue snapshots, boolean/list/numeric offer responses, transfer/retry/restart recovery, and unpeer cleanup. | No confirmed `LXMPeer.py` blocker in the pinned Python-only coverage. |
 | `LXMF/LXMRouter.py` | `crates/libs/rns-rpc`, `crates/apps/reticulumd` | partial | Outbound modes, selected propagation nodes, direct/propagated resources, cancellation, fetch/download/sync RPCs, receipts, persistence, propagation-node side effects, retry/failure handling, and Python live remote lifecycle coverage. | No confirmed propagation-router lifecycle blocker remains; broader non-propagation router convenience surface remains narrower than Python. |
-| `LXMF/Handlers.py` | `crates/apps/reticulumd`, `crates/libs/rns-rpc` | partial | Delivery, announce, propagation app-data, receipt, inbound bridge handling, direct and propagated local-delivery signature metadata including unknown-source, verified, and invalid-signature states, local propagated-delivery processed-transient markers for later duplicate ingest accounting, structured raw event-stream signals for direct packet/resource delivery drops, propagated local delivery-policy drops, RPC-layer ignored-destination propagation rejects, decryptable remote fetched/downloaded propagated local-delivery decode/stamp/policy drops, and propagated local-delivery pre-decode drops for local-addressed short/undecryptable envelopes plus strict remote fetch/download local-import rejects. | Some router-coupled side effects and broader propagated/drop observability remain narrower. |
+| `LXMF/Handlers.py` | `crates/apps/reticulumd`, `crates/libs/rns-rpc` | partial | Delivery, announce, propagation app-data, receipt, inbound bridge handling, direct and propagated local-delivery signature metadata including unknown-source, verified, and invalid-signature states, local propagated-delivery processed-transient markers for later duplicate ingest accounting, structured raw event-stream signals for direct packet/resource delivery drops, propagated local delivery-policy drops, RPC-layer ignored-destination propagation rejects including Python-served alias ingest, decryptable remote fetched/downloaded propagated local-delivery decode/stamp/policy drops, and propagated local-delivery pre-decode drops for local-addressed short/undecryptable envelopes plus strict remote fetch/download local-import rejects. | Some router-coupled side effects and broader propagated/drop observability remain narrower. |
 | `LXMF/LXStamper.py` | `crates/libs/lxmf-core`, `crates/libs/rns-rpc`, `crates/apps/reticulumd` | done | Validation, generation, ticket-derived stamps, cancellation-aware task work, background deferred worker queue ownership, retry state, cancellation, propagation-stamp pre-handoff preparation, and progress metadata. | No confirmed deferred-stamp lifecycle blocker. |
 
 ## Method Checklist
@@ -884,10 +884,11 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   decrypt failures. Local propagation envelope destination mismatches remain
   relay/store-forward candidates instead of local drop events.
 - Focused RPC propagation tests cover ignored-destination rejects from
-  `propagation_ingest` plus remote fetch/download/sync imports, asserting no
-  payload storage, `PermissionDenied` preservation, bounded
-  `inbound_dropped` events, default identifier redaction, and SDK event-poll
-  visibility where the event stream is part of the ingest contract.
+  `propagation_ingest`, Python-served alias ingest, and remote
+  fetch/download/sync imports, asserting no payload storage, `PermissionDenied`
+  preservation, bounded `inbound_dropped` events, default identifier redaction,
+  and SDK event-poll visibility where the event stream is part of the ingest
+  contract.
 - Focused propagated local-delivery tests also cover handler-facing `_lxmf`
   signature metadata on stored messages and raw inbound events for local
   envelope ingest, remote fetch imports, and remote-control download imports.

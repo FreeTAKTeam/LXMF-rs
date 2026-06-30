@@ -138,6 +138,105 @@ fn propagation_ingest_rejects_ignored_destination_before_queueing() {
     assert_eq!(sdk_drop["payload"]["transient_id"], json!(transient_id));
 }
 
+#[test]
+fn propagation_alias_ingest_rejects_ignored_destination_emits_drop_event() {
+    use sha2::{Digest, Sha256};
+
+    let daemon = RpcDaemon::test_instance();
+    let destination = [0x9b_u8; 16];
+    let destination_hex = hex::encode(destination);
+    let mut payload = destination.to_vec();
+    payload.extend_from_slice(b" ignored propagation alias payload");
+    let transient_id = hex::encode(Sha256::digest(&payload));
+    let alias = "python-served-alias";
+
+    daemon
+        .handle_rpc(rpc_request(
+            87,
+            "set_delivery_policy",
+            json!({
+                "ignored_destinations": [destination_hex],
+            }),
+        ))
+        .expect("set ignored destination policy");
+
+    let err = daemon
+        .ingest_propagation_payload_bytes_with_aliases(
+            payload.as_slice(),
+            transient_id.as_str(),
+            &[alias.to_string()],
+        )
+        .expect_err("ignored alias-ingest destination must be rejected");
+    assert_eq!(err.kind(), std::io::ErrorKind::PermissionDenied);
+    assert!(err.to_string().contains("ignored propagation destination"));
+
+    assert!(
+        daemon
+            .store
+            .get_propagation_entry(transient_id.as_str())
+            .expect("load propagation entry")
+            .is_none(),
+        "ignored destination payload must not be stored by transient id"
+    );
+    assert!(
+        daemon
+            .store
+            .get_propagation_entry(alias)
+            .expect("load alias propagation entry")
+            .is_none(),
+        "ignored destination payload must not be stored by alias"
+    );
+    assert!(
+        daemon
+            .fetch_propagation_payloads_for_destination(
+                &destination,
+                &[Sha256::digest(&payload).to_vec()],
+                None,
+            )
+            .is_empty(),
+        "ignored destination payload must not be fetchable"
+    );
+
+    let status = daemon
+        .handle_rpc(RpcRequest { id: 88, method: "propagation_status".to_string(), params: None })
+        .expect("propagation status")
+        .result
+        .expect("propagation status result");
+    assert_eq!(status["propagation"]["client_propagation_messages_received"].as_u64(), Some(0));
+    assert_eq!(status["propagation"]["total_ingested"].as_u64(), Some(0));
+
+    let event = daemon.take_event().expect("ignored alias-ingest drop event");
+    assert_eq!(event.event_type, "inbound_dropped");
+    assert_eq!(event.payload["reason"], json!("delivery_policy_rejected"));
+    assert_eq!(event.payload["delivery_kind"], json!("propagation"));
+    assert_ingest_redacted_identifier(&event.payload["raw_destination_hash"], destination_hex.as_str());
+    assert_ingest_redacted_identifier(
+        &event.payload["resolved_destination_hash"],
+        destination_hex.as_str(),
+    );
+    assert_eq!(event.payload["payload_mode"], json!("full_wire"));
+    assert_eq!(event.payload["bytes_len"], json!(payload.len()));
+    assert_eq!(event.payload["operation"], json!("ingest_propagation_payload_with_aliases"));
+    assert_eq!(event.payload["transient_id"], json!(transient_id));
+
+    let sdk_events = daemon
+        .handle_rpc(rpc_request(89, "sdk_poll_events_v2", json!({ "cursor": null, "max": 10 })))
+        .expect("sdk poll events")
+        .result
+        .expect("sdk poll events result");
+    let sdk_drop = sdk_events["events"]
+        .as_array()
+        .expect("sdk events")
+        .iter()
+        .find(|event| event["event_type"] == json!("inbound_dropped"))
+        .expect("sdk inbound_dropped event");
+    assert_eq!(
+        sdk_drop["payload"]["operation"],
+        json!("ingest_propagation_payload_with_aliases")
+    );
+    assert_eq!(sdk_drop["payload"]["transient_id"], json!(transient_id));
+}
+
 fn assert_ingest_redacted_identifier(value: &JsonValue, raw: &str) {
     let value = value.as_str().expect("redacted identifier");
     assert!(value.starts_with("sha256:"), "identifier must use default hash redaction");

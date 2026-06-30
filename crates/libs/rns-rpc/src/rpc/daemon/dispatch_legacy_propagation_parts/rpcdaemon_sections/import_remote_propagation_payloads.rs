@@ -424,6 +424,12 @@ impl RpcDaemon {
         let has_payload = normalized.is_some();
         if let Some((_canonical_transient_id, payload)) = normalized {
             if self.propagation_payload_destination_is_ignored(payload) {
+                self.emit_ignored_propagation_drop_event(
+                    payload,
+                    Some(transient_id.as_str()),
+                    "ingest_propagation_payload_with_aliases",
+                    None,
+                );
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::PermissionDenied,
                     "ignored propagation destination",
