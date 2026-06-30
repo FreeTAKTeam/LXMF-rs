@@ -38,6 +38,49 @@ async fn reticulum_path_table_restore_skips_malformed_cached_announce_entry() {
 }
 
 #[tokio::test]
+async fn reticulum_path_table_restore_skips_missing_cached_announce_entry() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut config = TransportConfig::new("test", &local_identity, true);
+    config.set_retransmit(true);
+    let transport = Transport::new(config);
+    let iface = *transport.iface_manager().lock().await.new_channel(16).address();
+
+    let good = learn_cached_path(&transport, iface, "good-missing-cache").await;
+    let missing_destination =
+        AddressHash::new_from_hash(&Hash::new_from_slice(b"missing-cache-dest"));
+    let missing_packet_hash = Hash::new_from_slice(b"missing-cache-packet");
+
+    assert_eq!(transport.save_reticulum_path_table(temp.path()).await.expect("save"), 1);
+    append_bad_path_table_entry(temp.path(), missing_destination, missing_packet_hash);
+    assert!(
+        !cached_announce_path(temp.path(), &missing_packet_hash).exists(),
+        "test must exercise a path-table row whose cached announce file is absent"
+    );
+
+    let mut restored_config = TransportConfig::new("test", &local_identity, true);
+    restored_config.set_retransmit(true);
+    let restored = Transport::new(restored_config);
+    let restored_iface = *restored.iface_manager().lock().await.new_channel(16).address();
+    assert_eq!(restored_iface, iface, "test relies on deterministic iface hashes");
+
+    let restore_report = restored
+        .restore_reticulum_path_table_report(temp.path())
+        .await
+        .expect("restore");
+    assert_eq!(restore_report.restored_active_paths, 1);
+    assert_eq!(restore_report.restored_identities.len(), 1);
+    assert_eq!(restore_report.restored_identities[0].destination, good.destination);
+    assert!(restored.has_path(&good.destination).await, "valid cached row should restore");
+    assert!(restored.destination_identity(&good.destination).await.is_some());
+    assert!(
+        !restored.has_path(&missing_destination).await,
+        "missing cached announce row should be skipped without aborting restore"
+    );
+    assert!(restored.destination_identity(&missing_destination).await.is_none());
+}
+
+#[tokio::test]
 async fn reticulum_tunnel_table_restore_skips_malformed_cached_announce_entry() {
     let temp = tempfile::tempdir().expect("tempdir");
     let local_identity = PrivateIdentity::new_from_rand(OsRng);
