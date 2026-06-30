@@ -60,6 +60,15 @@ LOCAL_CARGO_TEST_CASES = {
         "transport_policy_evidence",
         "roaming_diff_iface_known_path_response_waits_extra_grace_at_transport_boundary",
     ],
+    "rns_announce_rebroadcast_transport_policy": [
+        "cargo",
+        "test",
+        "-p",
+        "reticulumd",
+        "--test",
+        "transport_policy_evidence",
+        "announce_rebroadcast_policy_uses_learned_next_hop_mode_at_transport_boundary",
+    ],
 }
 
 SUPPORTED_CASES = SMOKE_SCRIPT_CASES | set(LOCAL_CARGO_TEST_CASES)

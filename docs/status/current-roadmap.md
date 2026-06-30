@@ -96,9 +96,9 @@ The project is best described by capability level:
   incoming transport announce proves the rebroadcast has already been passed
   onward, while retaining cached announce material for known-path responses.
 - Transport announce rebroadcasts now have deterministic handler-boundary
-  evidence that the learned next-hop interface mode drives Python-style
-  outgoing mode policy, including access-point suppression and roaming/boundary
-  loop avoidance.
+  and local transport-policy evidence that the learned next-hop interface mode
+  drives Python-style outgoing mode policy, including access-point suppression
+  and roaming/boundary loop avoidance.
 - Restored Reticulum path-table announces are now cache-only lookup material at
   startup, not fresh rebroadcast work, while still serving known-path response
   requests from the restored cache.

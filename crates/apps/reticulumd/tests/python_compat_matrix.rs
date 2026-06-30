@@ -169,6 +169,12 @@ fn python_compat_rns_path_request_roaming_grace_transport_policy() {
 }
 
 #[test]
+#[ignore = "runs deterministic local announce rebroadcast policy evidence through the compatibility harness"]
+fn python_compat_rns_announce_rebroadcast_transport_policy() {
+    run_case("rns_announce_rebroadcast_transport_policy");
+}
+
+#[test]
 fn compatibility_cases_are_dispatchable_by_harness_and_smoke_script() {
     assert_cases_are_dispatchable_by_harness_and_smoke_script();
 }

@@ -5,7 +5,7 @@ use rns_transport::identity::PrivateIdentity;
 use rns_transport::iface::{
     IfaceRole, IfaceSource, InterfaceChannel, InterfaceMode, RxMessage, TxMessage, TxMessageType,
 };
-use rns_transport::packet::{Packet, PacketContext};
+use rns_transport::packet::{HeaderType, Packet, PacketContext, PropagationType};
 use rns_transport::transport::{Transport, TransportConfig};
 use tokio::time::{timeout, Duration};
 
@@ -53,6 +53,29 @@ async fn wait_for_known_path(transport: &Transport, destination: &AddressHash) {
     panic!("transport did not learn path for {destination}");
 }
 
+fn assert_no_tx(channel: &mut InterfaceChannel, label: &str) {
+    assert!(
+        matches!(channel.tx_channel.try_recv(), Err(tokio::sync::mpsc::error::TryRecvError::Empty)),
+        "{label} should not receive transport output"
+    );
+}
+
+fn assert_ordinary_rebroadcast(message: &TxMessage, source: &Packet, learned_iface: AddressHash) {
+    assert!(matches!(
+        message.tx_type,
+        TxMessageType::Broadcast(Some(iface)) if iface == learned_iface
+    ));
+    assert_eq!(message.packet.destination, source.destination);
+    assert_eq!(message.packet.context, PacketContext::None);
+    assert_eq!(message.packet.header.header_type, HeaderType::Type2);
+    assert_eq!(message.packet.header.propagation_type, PropagationType::Broadcast);
+    assert_eq!(message.packet.data.as_slice(), source.data.as_slice());
+    assert!(
+        message.packet.transport.is_some(),
+        "ordinary rebroadcast should stamp the local transport id"
+    );
+}
+
 async fn path_request_packet(destination: &AddressHash) -> Packet {
     let requester = retransmitting_transport("transport-path-request-origin");
     let mut requester_iface = new_probe_iface(&requester).await;
@@ -66,6 +89,23 @@ async fn path_request_packet(destination: &AddressHash) -> Packet {
     assert_eq!(&path_request.data.as_slice()[..ADDRESS_HASH_SIZE], destination.as_slice());
     assert_eq!(&path_request.data.as_slice()[path_request.data.len() - tag.len()..], tag);
     path_request
+}
+
+async fn learn_remote_announce(
+    transport: &Transport,
+    iface: &InterfaceChannel,
+    aspect: &str,
+) -> Packet {
+    let mut remote_destination = SingleInputDestination::new(
+        PrivateIdentity::new_from_rand(OsRng),
+        DestinationName::new("lxmf", aspect),
+    );
+    let mut announce = remote_destination.announce(OsRng, None).expect("valid announce");
+    announce.header.hops = 2;
+    let destination = announce.destination;
+    feed_iface_packet(iface, announce.clone()).await;
+    wait_for_known_path(transport, &destination).await;
+    announce
 }
 
 #[tokio::test]
@@ -95,6 +135,52 @@ async fn scoped_path_request_dispatches_only_on_requested_iface() {
         ),
         "path request should not dispatch on unscoped interface"
     );
+}
+
+#[tokio::test]
+async fn announce_rebroadcast_policy_uses_learned_next_hop_mode_at_transport_boundary() {
+    let full_transport = retransmitting_transport("transport-announce-policy-full");
+    let mut learned_full = new_probe_iface_with_mode(&full_transport, InterfaceMode::Full).await;
+    let mut access_point =
+        new_probe_iface_with_mode(&full_transport, InterfaceMode::AccessPoint).await;
+    let mut roaming = new_probe_iface_with_mode(&full_transport, InterfaceMode::Roaming).await;
+    let mut boundary = new_probe_iface_with_mode(&full_transport, InterfaceMode::Boundary).await;
+    let full_announce = learn_remote_announce(&full_transport, &learned_full, "fanout-full").await;
+
+    let roaming_rebroadcast = recv_tx(&mut roaming, "roaming ordinary rebroadcast").await;
+    let boundary_rebroadcast = recv_tx(&mut boundary, "boundary ordinary rebroadcast").await;
+    assert_ordinary_rebroadcast(&roaming_rebroadcast, &full_announce, *learned_full.address());
+    assert_ordinary_rebroadcast(&boundary_rebroadcast, &full_announce, *learned_full.address());
+    assert_no_tx(&mut learned_full, "learned full ingress");
+    assert_no_tx(&mut access_point, "access point");
+
+    let roaming_transport = retransmitting_transport("transport-announce-policy-roaming");
+    let mut learned_roaming =
+        new_probe_iface_with_mode(&roaming_transport, InterfaceMode::Roaming).await;
+    let mut full = new_probe_iface_with_mode(&roaming_transport, InterfaceMode::Full).await;
+    let mut blocked_boundary =
+        new_probe_iface_with_mode(&roaming_transport, InterfaceMode::Boundary).await;
+    let roaming_announce =
+        learn_remote_announce(&roaming_transport, &learned_roaming, "fanout-roaming").await;
+
+    let full_rebroadcast = recv_tx(&mut full, "full ordinary rebroadcast").await;
+    assert_ordinary_rebroadcast(&full_rebroadcast, &roaming_announce, *learned_roaming.address());
+    assert_no_tx(&mut learned_roaming, "learned roaming ingress");
+    assert_no_tx(&mut blocked_boundary, "boundary with roaming learned next-hop");
+
+    let boundary_transport = retransmitting_transport("transport-announce-policy-boundary");
+    let mut learned_boundary =
+        new_probe_iface_with_mode(&boundary_transport, InterfaceMode::Boundary).await;
+    let mut full = new_probe_iface_with_mode(&boundary_transport, InterfaceMode::Full).await;
+    let mut blocked_roaming =
+        new_probe_iface_with_mode(&boundary_transport, InterfaceMode::Roaming).await;
+    let boundary_announce =
+        learn_remote_announce(&boundary_transport, &learned_boundary, "fanout-boundary").await;
+
+    let full_rebroadcast = recv_tx(&mut full, "full ordinary rebroadcast").await;
+    assert_ordinary_rebroadcast(&full_rebroadcast, &boundary_announce, *learned_boundary.address());
+    assert_no_tx(&mut learned_boundary, "learned boundary ingress");
+    assert_no_tx(&mut blocked_roaming, "roaming with boundary learned next-hop");
 }
 
 #[tokio::test]
