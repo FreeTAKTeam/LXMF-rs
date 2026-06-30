@@ -398,6 +398,9 @@ The project is best described by capability level:
   runtime startup state, Auto carrier/link-local state, TCP/Backbone listener
   state, plus UDP, serial, KISS, BLE GATT, I2P, RNodeMulti, Weave, and VR-N76
   status rows and propagation peer state.
+- `rnsd` remains a compatibility shim for `reticulumd`, with CLI tests proving
+  `RETICULUMD_BIN` override, forwarded arguments/output, and delegated exit
+  success/failure status.
 - `rnpath-rs` now exercises daemon-backed path lookup through `rnx
   rnpath-smoke`, and its CLI request-path path has mock-RPC coverage for both
   the default TCP endpoint and Unix-domain transport. The smoke starts a local
