@@ -1,7 +1,7 @@
 use super::{
-    apply_hot_apply_interface_records, refresh_hot_apply_udp_runtime_status_once,
-    HotApplyUdpRefresh, InterfaceHotApplyBridge, InterfaceManager, InterfaceMutationBridge,
-    InterfaceRecord, ManagedHotApplyInterface,
+    apply_hot_apply_interface_records, refresh_hot_apply_tcp_listener_runtime_status_once,
+    refresh_hot_apply_udp_runtime_status_once, HotApplyUdpRefresh, InterfaceHotApplyBridge,
+    InterfaceManager, InterfaceMutationBridge, InterfaceRecord, ManagedHotApplyInterface,
 };
 use rand_core::OsRng;
 use rns_rpc::{RpcDaemon, RpcRequest};
@@ -12,12 +12,23 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::io;
 use std::sync::Arc;
-use tokio::net::TcpListener;
+use tokio::net::{TcpListener, TcpStream};
 use tokio::time::{timeout, Duration};
 
 fn tcp_record(name: &str, host: &str, port: u16) -> InterfaceRecord {
     InterfaceRecord {
         kind: "tcp_client".to_string(),
+        enabled: true,
+        host: Some(host.to_string()),
+        port: Some(port),
+        name: Some(name.to_string()),
+        settings: None,
+    }
+}
+
+fn tcp_server_record(name: &str, host: &str, port: u16) -> InterfaceRecord {
+    InterfaceRecord {
+        kind: "tcp_server".to_string(),
         enabled: true,
         host: Some(host.to_string()),
         port: Some(port),
@@ -56,10 +67,34 @@ fn udp_refreshes() -> Arc<std::sync::Mutex<HashMap<String, HotApplyUdpRefresh>>>
     Arc::new(std::sync::Mutex::new(HashMap::new()))
 }
 
+fn tcp_listener_refreshes(
+) -> Arc<std::sync::Mutex<HashMap<String, super::HotApplyTcpListenerRefresh>>> {
+    Arc::new(std::sync::Mutex::new(HashMap::new()))
+}
+
 fn test_bridge(
     tx: tokio::sync::mpsc::Sender<super::InterfaceHotApplyCommand>,
 ) -> InterfaceHotApplyBridge {
-    InterfaceHotApplyBridge { tx, udp_refreshes: udp_refreshes() }
+    InterfaceHotApplyBridge {
+        tx,
+        tcp_listener_refreshes: tcp_listener_refreshes(),
+        udp_refreshes: udp_refreshes(),
+    }
+}
+
+async fn wait_for_tcp_server_connect(host: &str, port: u16) -> TcpStream {
+    let endpoint = format!("{host}:{port}");
+    let mut last_error = None;
+    for _ in 0..40 {
+        match TcpStream::connect(&endpoint).await {
+            Ok(stream) => return stream,
+            Err(err) => {
+                last_error = Some(err);
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+        }
+    }
+    panic!("tcp_server hot-apply listener did not accept connections: {last_error:?}");
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -89,6 +124,29 @@ async fn hot_apply_spawns_tcp_client_connections() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn hot_apply_spawns_tcp_server_loopback_listener() {
+    let reserved = TcpListener::bind("127.0.0.1:0").await.expect("reserve listener port");
+    let port = reserved.local_addr().expect("reserved listener addr").port();
+    drop(reserved);
+    let iface_manager = Arc::new(tokio::sync::Mutex::new(InterfaceManager::new(8)));
+    let bridge = InterfaceHotApplyBridge::spawn(iface_manager, Vec::new());
+
+    let applied = bridge
+        .apply_interfaces(vec![tcp_server_record("listener", "127.0.0.1", port)])
+        .expect("apply tcp_server interface");
+    assert_eq!(applied.len(), 1);
+    let runtime = applied[0]
+        .settings
+        .as_ref()
+        .and_then(|value| value.get("_runtime"))
+        .expect("runtime metadata");
+    assert_eq!(runtime.get("startup_status").and_then(|value| value.as_str()), Some("spawned"));
+    assert_eq!(runtime.get("runtime_status").and_then(|value| value.as_str()), Some("running"));
+
+    let _stream = wait_for_tcp_server_connect("127.0.0.1", port).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn hot_apply_spawns_tcp_client_with_record_runtime_settings() {
     let iface_manager = Arc::new(tokio::sync::Mutex::new(InterfaceManager::new(8)));
     let mut managed = HashMap::new();
@@ -107,11 +165,13 @@ async fn hot_apply_spawns_tcp_client_with_record_runtime_settings() {
     }));
 
     let refreshes = udp_refreshes();
+    let tcp_refreshes = tcp_listener_refreshes();
     apply_hot_apply_interface_records(
         &iface_manager,
         &mut managed,
         vec![record],
         None,
+        &tcp_refreshes,
         &refreshes,
         None,
     )
@@ -156,11 +216,13 @@ async fn hot_apply_updates_existing_tcp_client_runtime_settings() {
     }));
 
     let refreshes = udp_refreshes();
+    let tcp_refreshes = tcp_listener_refreshes();
     apply_hot_apply_interface_records(
         &iface_manager,
         &mut managed,
         vec![record],
         None,
+        &tcp_refreshes,
         &refreshes,
         None,
     )
@@ -187,11 +249,13 @@ async fn hot_apply_spawns_udp_unicast_listener_with_runtime_metadata() {
     let record = udp_record("udp-loopback", "127.0.0.1", 0);
 
     let refreshes = udp_refreshes();
+    let tcp_refreshes = tcp_listener_refreshes();
     apply_hot_apply_interface_records(
         &iface_manager,
         &mut managed,
         vec![record.clone()],
         None,
+        &tcp_refreshes,
         &refreshes,
         None,
     )
@@ -280,6 +344,66 @@ async fn wait_for_hot_apply_udp_refresh(
     panic!("hot-applied udp refresh was not registered");
 }
 
+async fn wait_for_hot_apply_tcp_listener_refresh(
+    bridge: &InterfaceHotApplyBridge,
+) -> (rns_transport::hash::AddressHash, super::HotApplyTcpListenerRefresh) {
+    for _ in 0..20 {
+        if let Some(refresh) = bridge
+            .tcp_listener_refreshes
+            .lock()
+            .expect("tcp listener refresh mutex poisoned")
+            .values()
+            .next()
+            .cloned()
+        {
+            return (refresh.runtime_iface, refresh);
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    panic!("hot-applied tcp listener refresh was not registered");
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn hot_apply_tcp_server_refresh_attaches_listener_status() {
+    let reserved = TcpListener::bind("127.0.0.1:0").await.expect("reserve listener port");
+    let port = reserved.local_addr().expect("reserved listener addr").port();
+    drop(reserved);
+    let daemon = Arc::new(RpcDaemon::test_instance());
+    let iface_manager = Arc::new(tokio::sync::Mutex::new(InterfaceManager::new(8)));
+    let bridge = InterfaceHotApplyBridge::spawn_with_daemon(
+        iface_manager,
+        Vec::new(),
+        Arc::downgrade(&daemon),
+    );
+    let record = tcp_server_record("listener", "127.0.0.1", port);
+
+    let applied = bridge.apply_interfaces(vec![record]).expect("apply tcp_server");
+    daemon.replace_interfaces(applied);
+
+    let (runtime_iface, refresh) = wait_for_hot_apply_tcp_listener_refresh(&bridge).await;
+    assert_eq!(
+        refresh_hot_apply_tcp_listener_runtime_status_once(&daemon, &bridge.tcp_listener_refreshes),
+        1
+    );
+    let result = daemon
+        .handle_rpc(RpcRequest { id: 773, method: "daemon_status_ex".to_string(), params: None })
+        .expect("daemon status")
+        .result
+        .expect("daemon status result");
+    let status = &result["interfaces"][0]["settings"]["_runtime"]["tcp"]["listener_status"];
+
+    assert_eq!(
+        result["interfaces"][0]["settings"]["_runtime"]["iface"].as_str(),
+        Some(runtime_iface.to_string().as_str())
+    );
+    assert_eq!(status["bind_addr"].as_str(), Some(format!("127.0.0.1:{port}").as_str()));
+    assert!(matches!(
+        status["listener_state"].as_str(),
+        Some("configured" | "binding" | "listening")
+    ));
+    assert_eq!(refresh.runtime_iface, runtime_iface);
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn hot_apply_spawns_udp_unicast_peer_with_runtime_metadata() {
     let iface_manager = Arc::new(tokio::sync::Mutex::new(InterfaceManager::new(8)));
@@ -309,11 +433,13 @@ async fn hot_apply_replaces_udp_when_bind_changes() {
     let mut managed = HashMap::new();
 
     let refreshes = udp_refreshes();
+    let tcp_refreshes = tcp_listener_refreshes();
     apply_hot_apply_interface_records(
         &iface_manager,
         &mut managed,
         vec![udp_record("udp-loopback", "127.0.0.1", 0)],
         None,
+        &tcp_refreshes,
         &refreshes,
         None,
     )
@@ -324,6 +450,7 @@ async fn hot_apply_replaces_udp_when_bind_changes() {
         &mut managed,
         vec![udp_record("udp-loopback", "127.0.0.2", 0)],
         None,
+        &tcp_refreshes,
         &refreshes,
         None,
     )
@@ -354,11 +481,13 @@ async fn hot_apply_replaces_startup_seeded_udp_when_bind_changes() {
     )]);
 
     let refreshes = udp_refreshes();
+    let tcp_refreshes = tcp_listener_refreshes();
     apply_hot_apply_interface_records(
         &iface_manager,
         &mut managed,
         vec![udp_record("udp-loopback", "127.0.0.2", 0)],
         None,
+        &tcp_refreshes,
         &refreshes,
         None,
     )
@@ -388,11 +517,13 @@ async fn hot_apply_removes_startup_seeded_udp_when_disabled() {
     disabled.enabled = false;
 
     let refreshes = udp_refreshes();
+    let tcp_refreshes = tcp_listener_refreshes();
     apply_hot_apply_interface_records(
         &iface_manager,
         &mut managed,
         vec![disabled],
         None,
+        &tcp_refreshes,
         &refreshes,
         None,
     )
@@ -464,6 +595,62 @@ fn hot_apply_rejects_device_bound_udp_records() {
 
     assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
     assert!(err.to_string().contains("device-bound"));
+}
+
+#[test]
+fn hot_apply_rejects_non_loopback_tcp_server_records() {
+    let (tx, _rx) = tokio::sync::mpsc::channel(1);
+    let bridge = test_bridge(tx);
+
+    let err = bridge
+        .apply_interfaces(vec![tcp_server_record("listener", "192.0.2.1", 4242)])
+        .expect_err("non-loopback tcp_server should require restart");
+
+    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    assert!(err.to_string().contains("loopback"));
+}
+
+#[test]
+fn hot_apply_rejects_hostname_tcp_server_records() {
+    let (tx, _rx) = tokio::sync::mpsc::channel(1);
+    let bridge = test_bridge(tx);
+
+    let err = bridge
+        .apply_interfaces(vec![tcp_server_record("listener", "localhost", 4242)])
+        .expect_err("hostname tcp_server should require restart");
+
+    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    assert!(err.to_string().contains("loopback"));
+}
+
+#[test]
+fn hot_apply_rejects_device_bound_tcp_server_records() {
+    let (tx, _rx) = tokio::sync::mpsc::channel(1);
+    let bridge = test_bridge(tx);
+    let mut record = tcp_server_record("listener", "127.0.0.1", 4242);
+    record.settings = Some(json!({ "device": "eth0" }));
+
+    let err =
+        bridge.apply_interfaces(vec![record]).expect_err("device-bound tcp_server should fail");
+
+    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    assert!(err.to_string().contains("device-bound"));
+}
+
+#[test]
+fn hot_apply_rejects_duplicate_tcp_server_bind_addresses() {
+    let (tx, _rx) = tokio::sync::mpsc::channel(1);
+    let bridge = test_bridge(tx);
+
+    let err = bridge
+        .apply_interfaces(vec![
+            tcp_server_record("listener-a", "127.0.0.1", 4242),
+            tcp_server_record("listener-b", "127.0.0.1", 4242),
+        ])
+        .expect_err("duplicate tcp_server binds should fail before queueing");
+
+    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    assert!(err.to_string().contains("duplicate tcp_server bind address"));
 }
 
 #[test]

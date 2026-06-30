@@ -236,7 +236,7 @@ pub(super) async fn startup_configured_interfaces(
         let label = interface_label(iface, index);
         match iface.kind.as_str() {
             "tcp_server" | "backbone" => {
-                startup_tcp_server_record(
+                if let Some(seed) = startup_tcp_server_record(
                     index,
                     iface,
                     &label,
@@ -244,7 +244,9 @@ pub(super) async fn startup_configured_interfaces(
                     server_iface,
                     &mut configured_interfaces[index],
                     &mut startup_failures,
-                );
+                ) {
+                    seeded_hot_apply_interfaces.push(seed);
+                }
                 if selected_tcp_server.selected_index == Some(index) {
                     if let Some(active_iface) = server_iface {
                         let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
@@ -336,7 +338,7 @@ pub(super) async fn startup_configured_interfaces(
                         LocalTcpSidecarStartup::Failed => {}
                     }
                 } else {
-                    startup_tcp_server_record(
+                    if let Some(seed) = startup_tcp_server_record(
                         index,
                         iface,
                         &label,
@@ -344,7 +346,9 @@ pub(super) async fn startup_configured_interfaces(
                         server_iface,
                         &mut configured_interfaces[index],
                         &mut startup_failures,
-                    );
+                    ) {
+                        seeded_hot_apply_interfaces.push(seed);
+                    }
                 }
                 if selected_tcp_server.selected_index == Some(index) {
                     if let Some(active_iface) = server_iface {
@@ -629,7 +633,7 @@ fn startup_tcp_server_record(
     server_iface: Option<&AddressHash>,
     record: &mut InterfaceRecord,
     startup_failures: &mut Vec<InterfaceStartupFailure>,
-) {
+) -> Option<(String, InterfaceRecord, AddressHash)> {
     let selected_for_startup = selected_tcp_server.selected_index == Some(index);
     if !selected_for_startup {
         mark_interface_startup_status(
@@ -660,7 +664,7 @@ fn startup_tcp_server_record(
             endpoint,
             selected_tcp_server.bind_addr.as_deref().unwrap_or("<none>")
         );
-        return;
+        return None;
     }
 
     if iface.port.is_none() {
@@ -671,10 +675,13 @@ fn startup_tcp_server_record(
             iface.kind.clone(),
             format!("{} requires port for startup", iface.kind),
         );
-        return;
+        return None;
     }
     let runtime_iface = server_iface.map(ToString::to_string);
     mark_interface_startup_status(record, "active", None, runtime_iface.as_deref());
+    server_iface.and_then(|active_iface| {
+        hot_apply_interface_seed_key(record).map(|key| (key, record.clone(), *active_iface))
+    })
 }
 
 enum LocalUnixStartup {
@@ -1723,8 +1730,9 @@ async fn startup_local_unix_client_attach(
 mod tests {
     use super::{
         apply_interface_runtime_config, build_tcp_client_adapter, mark_ble_spawn_success,
-        startup_i2p, startup_kiss, startup_kiss_tcp_client, startup_pipe, startup_rnode_multi,
-        startup_configured_interfaces, startup_serial, startup_udp, startup_weave, UdpStartupSinks,
+        startup_configured_interfaces, startup_i2p, startup_kiss, startup_kiss_tcp_client,
+        startup_pipe, startup_rnode_multi, startup_serial, startup_tcp_server_record, startup_udp,
+        startup_weave, UdpStartupSinks,
     };
     use crate::Args;
     use crate::bridge_rnode_management::DaemonRNodeManagementHandle;
@@ -2171,6 +2179,89 @@ interfaces = [
         assert_eq!(seeded_hot_apply_interfaces[0].1.name.as_deref(), Some("udp-loopback"));
         assert_eq!(seeded_hot_apply_interfaces[0].1.kind, "udp");
         assert_eq!(seeded_hot_apply_interfaces[0].2, udp_runtime_refreshes[0].runtime_iface);
+    }
+
+    #[test]
+    fn tcp_server_startup_seeds_selected_loopback_config_for_hot_apply() {
+        let iface = InterfaceConfig {
+            kind: "tcp_server".to_string(),
+            enabled: Some(true),
+            name: Some("tcp-loopback".to_string()),
+            host: Some("127.0.0.1".to_string()),
+            port: Some(4242),
+            ..InterfaceConfig::default()
+        };
+        let selected_tcp_server = super::super::TcpServerSelection {
+            bind_addr: Some("127.0.0.1:4242".to_string()),
+            selected_index: Some(2),
+            kind: "tcp_server".to_string(),
+            ..super::super::TcpServerSelection::default()
+        };
+        let runtime_iface = AddressHash::new([0x42; 16]);
+        let mut startup_failures = Vec::new();
+        let mut record = InterfaceRecord {
+            kind: iface.kind.clone(),
+            enabled: true,
+            host: iface.host.clone(),
+            port: iface.port,
+            name: iface.name.clone(),
+            settings: iface.settings_json(),
+        };
+
+        let seed = startup_tcp_server_record(
+            2,
+            &iface,
+            "tcp-loopback",
+            &selected_tcp_server,
+            Some(&runtime_iface),
+            &mut record,
+            &mut startup_failures,
+        )
+        .expect("selected loopback TCP server should seed hot apply");
+
+        assert!(startup_failures.is_empty());
+        assert_eq!(seed.0, "tcp-loopback");
+        assert_eq!(seed.1.name.as_deref(), Some("tcp-loopback"));
+        assert_eq!(seed.1.kind, "tcp_server");
+        assert_eq!(seed.2, runtime_iface);
+        assert_eq!(
+            record
+                .settings
+                .as_ref()
+                .and_then(|settings| settings.get("_runtime"))
+                .and_then(|runtime| runtime.get("startup_status"))
+                .and_then(serde_json::Value::as_str),
+            Some("active")
+        );
+
+        let mut shadowed_record = InterfaceRecord {
+            kind: iface.kind.clone(),
+            enabled: true,
+            host: iface.host.clone(),
+            port: iface.port,
+            name: Some("shadowed-tcp".to_string()),
+            settings: iface.settings_json(),
+        };
+        let shadowed_seed = startup_tcp_server_record(
+            3,
+            &iface,
+            "shadowed-tcp",
+            &selected_tcp_server,
+            Some(&runtime_iface),
+            &mut shadowed_record,
+            &mut startup_failures,
+        );
+
+        assert!(shadowed_seed.is_none());
+        assert_eq!(
+            shadowed_record
+                .settings
+                .as_ref()
+                .and_then(|settings| settings.get("_runtime"))
+                .and_then(|runtime| runtime.get("startup_status"))
+                .and_then(serde_json::Value::as_str),
+            Some("shadowed_by_transport_override")
+        );
     }
 
     #[tokio::test]

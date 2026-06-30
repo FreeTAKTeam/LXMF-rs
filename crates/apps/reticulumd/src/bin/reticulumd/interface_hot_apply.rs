@@ -1,8 +1,9 @@
 use rns_rpc::{InterfaceMutationBridge, InterfaceRecord, RpcDaemon};
 use rns_transport::hash::AddressHash;
 use rns_transport::iface::tcp_client::TcpClient;
+use rns_transport::iface::tcp_server::{TcpListenerRuntimeStatusHandle, TcpServer};
 use rns_transport::iface::udp::{UdpInterface, UdpRuntimeStatusHandle};
-use rns_transport::iface::{IfaceRole, InterfaceManager, InterfaceMode};
+use rns_transport::iface::{IfaceRole, InterfaceManager};
 use rns_transport::transport::Transport;
 use std::collections::HashMap;
 use std::io;
@@ -12,8 +13,19 @@ use tokio::sync::mpsc::{channel, error::TrySendError, Receiver, Sender};
 use crate::bootstrap::{
     mark_interface_runtime_fields, mark_interface_runtime_managed, mark_interface_startup_status,
 };
-use interface_hot_apply_parts::record_settings::interface_record_shared_config;
-use interface_hot_apply_parts::record_settings::{setting_bool, setting_str, setting_u64};
+use interface_hot_apply_parts::record_hot_apply::{
+    apply_record_runtime_config, hot_apply_interface_key, hot_apply_interface_record_changed,
+    hot_apply_interface_seed_key as record_hot_apply_interface_seed_key, interface_record_mode,
+    mark_tcp_server_record_runtime_status, mark_udp_record_runtime_status, tcp_endpoint,
+    tcp_server_bind_addr, tcp_server_client_mtu, udp_bind_and_forward_addr,
+    validate_hot_apply_uniqueness,
+};
+#[cfg(test)]
+use interface_hot_apply_parts::tcp_runtime_refresh::refresh_hot_apply_tcp_listener_runtime_status_once;
+use interface_hot_apply_parts::tcp_runtime_refresh::{
+    attach_hot_apply_tcp_listener_runtime_status,
+    spawn_hot_apply_tcp_listener_runtime_status_refresher, HotApplyTcpListenerRefresh,
+};
 #[cfg(test)]
 use interface_hot_apply_parts::udp_runtime_refresh::refresh_hot_apply_udp_runtime_status_once;
 use interface_hot_apply_parts::udp_runtime_refresh::{
@@ -27,6 +39,8 @@ mod interface_hot_apply_parts;
 #[derive(Clone)]
 pub(super) struct InterfaceHotApplyBridge {
     tx: Sender<InterfaceHotApplyCommand>,
+    #[cfg(test)]
+    tcp_listener_refreshes: Arc<StdMutex<HashMap<String, HotApplyTcpListenerRefresh>>>,
     #[cfg(test)]
     udp_refreshes: Arc<StdMutex<HashMap<String, HotApplyUdpRefresh>>>,
 }
@@ -66,8 +80,13 @@ impl InterfaceHotApplyBridge {
         daemon: Option<Weak<RpcDaemon>>,
     ) -> Self {
         let (tx, rx) = channel(INTERFACE_HOT_APPLY_QUEUE_CAPACITY);
+        let tcp_listener_refreshes = Arc::new(StdMutex::new(HashMap::new()));
         let udp_refreshes = Arc::new(StdMutex::new(HashMap::new()));
         if let Some(daemon) = daemon.clone() {
+            spawn_hot_apply_tcp_listener_runtime_status_refresher(
+                daemon.clone(),
+                tcp_listener_refreshes.clone(),
+            );
             spawn_hot_apply_udp_runtime_status_refresher(daemon, udp_refreshes.clone());
         }
         tokio::spawn(run_interface_mutation_worker(
@@ -75,11 +94,14 @@ impl InterfaceHotApplyBridge {
             rx,
             seeded,
             transport.clone(),
+            tcp_listener_refreshes.clone(),
             udp_refreshes.clone(),
             daemon,
         ));
         Self {
             tx,
+            #[cfg(test)]
+            tcp_listener_refreshes,
             #[cfg(test)]
             udp_refreshes,
         }
@@ -96,12 +118,16 @@ impl InterfaceMutationBridge for InterfaceHotApplyBridge {
             .iter()
             .cloned()
             .map(|mut record| {
-                if matches!(record.kind.as_str(), "tcp_client" | "udp") && record.enabled {
+                if matches!(record.kind.as_str(), "tcp_client" | "tcp_server" | "udp")
+                    && record.enabled
+                {
                     mark_interface_startup_status(&mut record, "spawned", None, None);
                     mark_interface_runtime_managed(&mut record, "daemon_transport");
                     mark_interface_runtime_fields(&mut record, "running", 0);
-                    if record.kind == "udp" {
-                        mark_udp_record_runtime_status(&mut record, None);
+                    match record.kind.as_str() {
+                        "tcp_server" => mark_tcp_server_record_runtime_status(&mut record, None),
+                        "udp" => mark_udp_record_runtime_status(&mut record, None),
+                        _ => {}
                     }
                 }
                 record
@@ -137,6 +163,7 @@ async fn run_interface_mutation_worker(
     mut rx: Receiver<InterfaceHotApplyCommand>,
     seeded: Vec<(String, InterfaceRecord, AddressHash)>,
     transport: Option<Arc<Transport>>,
+    tcp_listener_refreshes: Arc<StdMutex<HashMap<String, HotApplyTcpListenerRefresh>>>,
     udp_refreshes: Arc<StdMutex<HashMap<String, HotApplyUdpRefresh>>>,
     daemon: Option<Weak<RpcDaemon>>,
 ) {
@@ -153,6 +180,7 @@ async fn run_interface_mutation_worker(
                     &mut managed,
                     interfaces,
                     transport.as_ref(),
+                    &tcp_listener_refreshes,
                     &udp_refreshes,
                     daemon.as_ref(),
                 )
@@ -167,6 +195,7 @@ async fn apply_hot_apply_interface_records(
     managed: &mut HashMap<String, ManagedHotApplyInterface>,
     interfaces: Vec<InterfaceRecord>,
     transport: Option<&Arc<Transport>>,
+    tcp_listener_refreshes: &Arc<StdMutex<HashMap<String, HotApplyTcpListenerRefresh>>>,
     udp_refreshes: &Arc<StdMutex<HashMap<String, HotApplyUdpRefresh>>>,
     daemon: Option<&Weak<RpcDaemon>>,
 ) {
@@ -189,6 +218,10 @@ async fn apply_hot_apply_interface_records(
         };
         if should_remove {
             if let Some(current) = managed.remove(&key) {
+                tcp_listener_refreshes
+                    .lock()
+                    .expect("tcp listener refresh mutex poisoned")
+                    .remove(&key);
                 udp_refreshes.lock().expect("udp refresh mutex poisoned").remove(&key);
                 stop_hot_apply_interface(iface_manager, transport, current.address).await;
             }
@@ -205,75 +238,112 @@ async fn apply_hot_apply_interface_records(
             current.record = record;
             continue;
         }
-        if let Some((address, udp_status)) =
+        if let Some((address, runtime_status)) =
             spawn_hot_apply_interface(iface_manager, transport, &record).await
         {
-            if let Some(status) = udp_status {
-                status.update(|status| {
-                    status.iface = Some(address.to_string());
-                });
-                attach_hot_apply_udp_runtime_status(daemon, &record, address, &status);
-                udp_refreshes.lock().expect("udp refresh mutex poisoned").insert(
-                    key.clone(),
-                    HotApplyUdpRefresh { record: record.clone(), runtime_iface: address, status },
-                );
+            match runtime_status {
+                Some(HotApplyRuntimeStatus::TcpListener(status)) => {
+                    attach_hot_apply_tcp_listener_runtime_status(daemon, &record, address, &status);
+                    tcp_listener_refreshes
+                        .lock()
+                        .expect("tcp listener refresh mutex poisoned")
+                        .insert(
+                            key.clone(),
+                            HotApplyTcpListenerRefresh {
+                                record: record.clone(),
+                                runtime_iface: address,
+                                status,
+                            },
+                        );
+                }
+                Some(HotApplyRuntimeStatus::Udp(status)) => {
+                    status.update(|status| {
+                        status.iface = Some(address.to_string());
+                    });
+                    attach_hot_apply_udp_runtime_status(daemon, &record, address, &status);
+                    udp_refreshes.lock().expect("udp refresh mutex poisoned").insert(
+                        key.clone(),
+                        HotApplyUdpRefresh {
+                            record: record.clone(),
+                            runtime_iface: address,
+                            status,
+                        },
+                    );
+                }
+                None => {}
             }
             managed.insert(key, ManagedHotApplyInterface { record, address });
         }
     }
 }
 
-fn validate_hot_apply_uniqueness(interfaces: &[InterfaceRecord]) -> Result<(), io::Error> {
-    let mut seen = std::collections::HashSet::new();
-    let mut seen_udp_bind_addresses = std::collections::HashSet::new();
-    for record in interfaces {
-        if record.kind == "udp" {
-            let (bind_addr, _) = udp_bind_and_forward_addr(record)?;
-            if record.enabled && !seen_udp_bind_addresses.insert(bind_addr.clone()) {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    format!("duplicate udp bind address '{bind_addr}'"),
-                ));
-            }
-        }
-        let Some(key) = hot_apply_interface_key(record) else {
-            continue;
-        };
-        if !seen.insert(key.clone()) {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!("duplicate hot-apply interface key '{key}'"),
-            ));
-        }
-    }
-    Ok(())
+enum HotApplyRuntimeStatus {
+    TcpListener(TcpListenerRuntimeStatusHandle),
+    Udp(UdpRuntimeStatusHandle),
+}
+
+pub(super) fn hot_apply_interface_seed_key(record: &InterfaceRecord) -> Option<String> {
+    record_hot_apply_interface_seed_key(record)
 }
 
 async fn spawn_hot_apply_interface(
     iface_manager: &Arc<tokio::sync::Mutex<InterfaceManager>>,
     transport: Option<&Arc<Transport>>,
     record: &InterfaceRecord,
-) -> Option<(AddressHash, Option<UdpRuntimeStatusHandle>)> {
+) -> Option<(AddressHash, Option<HotApplyRuntimeStatus>)> {
     let mode = interface_record_mode(record);
-    let (address, udp_status) = match record.kind.as_str() {
-        "tcp_client" => (
-            iface_manager.lock().await.spawn_as_with_mode(
-                TcpClient::new(tcp_endpoint(record)?),
-                TcpClient::spawn,
-                IfaceRole::Unicast,
-                mode,
-            ),
-            None,
-        ),
+    let (address, runtime_status) = match record.kind.as_str() {
+        "tcp_client" => {
+            let address = {
+                let mut manager = iface_manager.lock().await;
+                manager.spawn_as_with_mode(
+                    TcpClient::new(tcp_endpoint(record)?),
+                    TcpClient::spawn,
+                    IfaceRole::Unicast,
+                    mode,
+                )
+            };
+            (address, None)
+        }
+        "tcp_server" => {
+            let bind_addr = match tcp_server_bind_addr(record) {
+                Ok(bind_addr) => bind_addr,
+                Err(error) => {
+                    log::warn!(
+                        "[daemon] hot-apply tcp_server rejected invalid bind address: {}",
+                        error
+                    );
+                    return None;
+                }
+            };
+            let mut adapter = TcpServer::new(bind_addr, iface_manager.clone());
+            if let Some(client_mtu) = tcp_server_client_mtu(record) {
+                adapter = adapter.with_client_mtu(client_mtu);
+            }
+            let status = adapter.runtime_status_handle();
+            let address = {
+                let mut manager = iface_manager.lock().await;
+                manager.spawn_as_with_mode(adapter, TcpServer::spawn, IfaceRole::Unicast, mode)
+            };
+            (address, Some(HotApplyRuntimeStatus::TcpListener(status)))
+        }
         "udp" => {
-            let (bind_addr, forward_addr) = udp_bind_and_forward_addr(record).ok()?;
+            let (bind_addr, forward_addr) = match udp_bind_and_forward_addr(record) {
+                Ok(addresses) => addresses,
+                Err(error) => {
+                    log::warn!(
+                        "[daemon] hot-apply udp rejected invalid bind/forward address: {error}"
+                    );
+                    return None;
+                }
+            };
             let adapter = UdpInterface::new(bind_addr.clone(), forward_addr.clone());
             if adapter.is_multicast() {
                 let transport = transport?;
                 let (address, status) = transport
                     .add_multicast_udp_interface_with_status(bind_addr, forward_addr)
                     .await;
-                (address, Some(status))
+                (address, Some(HotApplyRuntimeStatus::Udp(status)))
             } else {
                 let status = adapter.runtime_status_handle();
                 (
@@ -283,7 +353,7 @@ async fn spawn_hot_apply_interface(
                         IfaceRole::Unicast,
                         mode,
                     ),
-                    Some(status),
+                    Some(HotApplyRuntimeStatus::Udp(status)),
                 )
             }
         }
@@ -293,7 +363,7 @@ async fn spawn_hot_apply_interface(
         let mut guard = iface_manager.lock().await;
         apply_record_runtime_config(&mut guard, address, record);
     }
-    Some((address, udp_status))
+    Some((address, runtime_status))
 }
 
 async fn stop_hot_apply_interface(
@@ -307,168 +377,6 @@ async fn stop_hot_apply_interface(
         let mut guard = iface_manager.lock().await;
         let _ = guard.stop_interface(address);
     }
-}
-
-fn hot_apply_interface_key(record: &InterfaceRecord) -> Option<String> {
-    match record.kind.as_str() {
-        "tcp_client" => tcp_interface_key(record),
-        "udp" => udp_interface_key(record),
-        _ => None,
-    }
-}
-
-pub(super) fn tcp_interface_key(record: &InterfaceRecord) -> Option<String> {
-    if record.kind != "tcp_client" {
-        return None;
-    }
-    if let Some(name) =
-        record.name.as_ref().map(|value| value.trim()).filter(|value| !value.is_empty())
-    {
-        return Some(name.to_string());
-    }
-    let host = record.host.as_ref()?.trim();
-    let port = record.port?;
-    Some(format!("{host}:{port}"))
-}
-
-pub(super) fn hot_apply_interface_seed_key(record: &InterfaceRecord) -> Option<String> {
-    match record.kind.as_str() {
-        "tcp_client" => tcp_interface_key(record),
-        "udp" => {
-            udp_bind_and_forward_addr(record).ok()?;
-            udp_interface_key(record)
-        }
-        _ => None,
-    }
-}
-
-fn udp_interface_key(record: &InterfaceRecord) -> Option<String> {
-    if record.kind != "udp" {
-        return None;
-    }
-    if let Some(name) =
-        record.name.as_ref().map(|value| value.trim()).filter(|value| !value.is_empty())
-    {
-        return Some(name.to_string());
-    }
-    let host = record.host.as_ref()?.trim();
-    let port = record.port?;
-    Some(format!("{host}:{port}"))
-}
-
-fn hot_apply_interface_record_changed(current: &InterfaceRecord, next: &InterfaceRecord) -> bool {
-    current.kind != next.kind
-        || current.enabled != next.enabled
-        || current.host != next.host
-        || current.port != next.port
-        || (current.kind == "udp" && udp_forward_addr(current) != udp_forward_addr(next))
-}
-
-fn tcp_endpoint(record: &InterfaceRecord) -> Option<String> {
-    Some(format!("{}:{}", record.host.as_ref()?, record.port?))
-}
-
-fn udp_bind_and_forward_addr(
-    record: &InterfaceRecord,
-) -> Result<(String, Option<String>), io::Error> {
-    let host = record.host.as_deref().map(str::trim).filter(|value| !value.is_empty()).ok_or_else(
-        || io::Error::new(io::ErrorKind::InvalidInput, "udp hot-apply requires host"),
-    )?;
-    if setting_str(record, "device").is_some() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "udp hot-apply does not support device-bound records",
-        ));
-    }
-    let port = record.port.ok_or_else(|| {
-        io::Error::new(io::ErrorKind::InvalidInput, "udp hot-apply requires port")
-    })?;
-    Ok((format!("{host}:{port}"), udp_forward_addr_result(record)?))
-}
-
-fn udp_forward_addr(record: &InterfaceRecord) -> Option<String> {
-    udp_forward_addr_result(record).ok().flatten()
-}
-
-fn udp_forward_addr_result(record: &InterfaceRecord) -> Result<Option<String>, io::Error> {
-    let host = setting_str(record, "target_host").or_else(|| setting_str(record, "forward_ip"));
-    let port = setting_u64(record, "target_port").or_else(|| setting_u64(record, "forward_port"));
-    let (host, port) = match (host, port) {
-        (Some(host), Some(port)) => (host, port),
-        (None, None) => return Ok(None),
-        _ => {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "udp hot-apply target_host and target_port must be provided together",
-            ))
-        }
-    };
-    if host_is_multicast(host) {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "udp hot-apply does not support multicast targets",
-        ));
-    }
-    let port = u16::try_from(port).map_err(|_| {
-        io::Error::new(io::ErrorKind::InvalidInput, "udp hot-apply target_port is out of range")
-    })?;
-    Ok(Some(format!("{host}:{port}")))
-}
-
-fn mark_udp_record_runtime_status(
-    record: &mut InterfaceRecord,
-    runtime_iface: Option<AddressHash>,
-) {
-    if let Ok((bind_addr, forward_addr)) = udp_bind_and_forward_addr(record) {
-        let role = if record.host.as_deref().is_some_and(host_is_multicast) {
-            "multicast"
-        } else if forward_addr.is_some() {
-            "peer"
-        } else {
-            "listener"
-        };
-        let iface = runtime_iface.map(|value| value.to_string());
-        crate::bootstrap::with_interface_runtime_metadata(record, |runtime| {
-            runtime.insert(
-                "udp".to_string(),
-                serde_json::json!({
-                    "status": {
-                        "link_state": "configured",
-                        "role": role,
-                        "bind_addr": bind_addr,
-                        "forward_addr": forward_addr,
-                        "iface": iface,
-                    }
-                }),
-            );
-        });
-    }
-}
-
-fn host_is_multicast(host: &str) -> bool {
-    host.parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_multicast())
-}
-
-fn apply_record_runtime_config(
-    manager: &mut InterfaceManager,
-    address: AddressHash,
-    record: &InterfaceRecord,
-) {
-    manager.set_mode(address, interface_record_mode(record));
-    manager.set_outgoing(address, setting_bool(record, "outgoing").unwrap_or(true));
-    manager.set_announce_pacing(
-        address,
-        setting_u64(record, "bitrate").unwrap_or(62_500),
-        setting_u64(record, "announce_cap").unwrap_or(2),
-    );
-    manager.set_shared_config(address, interface_record_shared_config(record));
-}
-
-fn interface_record_mode(record: &InterfaceRecord) -> InterfaceMode {
-    setting_str(record, "interface_mode")
-        .or_else(|| setting_str(record, "mode"))
-        .and_then(|value| InterfaceMode::parse(value).ok().flatten())
-        .unwrap_or(InterfaceMode::Full)
 }
 
 #[cfg(test)]

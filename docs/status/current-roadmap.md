@@ -371,10 +371,14 @@ The project is best described by capability level:
   `UDPInterface` alias parsing, strict daemon startup, bound loopback status,
   and malformed-datagram `bytes_rx`/`decode_errors` telemetry without external
   network services. `set_interfaces` and `reload_config` now hot-apply explicit
-  UDP listener, peer, and multicast-bind records alongside TCP clients, with
-  tests proving `device`-bound, partial-target, out-of-range-target, and
-  multicast-forward UDP shapes remain restart-required or invalid and duplicate
-  UDP binds are rejected before mutation. Hot-applied explicit UDP records now
+  loopback TCP server listeners alongside TCP clients and explicit UDP
+  listener, peer, and multicast-bind records, with tests proving
+  `device`-bound, non-loopback, and broader TCP server listener shapes stay
+  restart-required or invalid, UDP `device`-bound, partial-target,
+  out-of-range-target, and multicast-forward shapes remain restart-required or
+  invalid, and duplicate TCP server or UDP binds are rejected before mutation.
+  Hot-applied explicit TCP server records attach live daemon/RPC
+  `_runtime.tcp.listener_status` metadata, hot-applied explicit UDP records
   attach the runtime iface and refresh live daemon/RPC `_runtime.udp.status`
   counters under focused software tests, and multicast-bind hot-apply goes
   through the transport peer-routing helper instead of a bare UDP spawn. Serial
@@ -1195,8 +1199,8 @@ the implemented subset.
      client-specific compatibility claims.
 2. **Reticulum behavioral breadth**
    - Finish resolver/bootstrap, announce/path edge behavior, and broader runtime
-     mutation parity beyond TCP clients and explicit UDP listener, peer, and
-     multicast-bind records.
+     mutation parity beyond TCP clients, explicit loopback TCP server
+     listeners, and explicit UDP listener, peer, and multicast-bind records.
 3. **Operational breadth**
    - Add broader prepared-host hardware evidence across serial/TCP/BLE RNode
      device, firmware, management, and radio combinations; ordinary
