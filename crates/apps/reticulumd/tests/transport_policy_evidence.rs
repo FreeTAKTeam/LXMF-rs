@@ -2,7 +2,9 @@ use rand_core::OsRng;
 use rns_transport::destination::{DestinationName, SingleInputDestination};
 use rns_transport::hash::{AddressHash, ADDRESS_HASH_SIZE};
 use rns_transport::identity::PrivateIdentity;
-use rns_transport::iface::{IfaceSource, InterfaceChannel, RxMessage, TxMessage, TxMessageType};
+use rns_transport::iface::{
+    IfaceRole, IfaceSource, InterfaceChannel, InterfaceMode, RxMessage, TxMessage, TxMessageType,
+};
 use rns_transport::packet::{Packet, PacketContext};
 use rns_transport::transport::{Transport, TransportConfig};
 use tokio::time::{timeout, Duration};
@@ -16,6 +18,14 @@ fn retransmitting_transport(name: &str) -> Transport {
 
 async fn new_probe_iface(transport: &Transport) -> InterfaceChannel {
     transport.iface_manager().lock().await.new_channel(16)
+}
+
+async fn new_probe_iface_with_mode(transport: &Transport, mode: InterfaceMode) -> InterfaceChannel {
+    transport.iface_manager().lock().await.new_channel_with_role_and_mode(
+        16,
+        IfaceRole::Unicast,
+        mode,
+    )
 }
 
 async fn feed_iface_packet(channel: &InterfaceChannel, packet: Packet) {
@@ -41,6 +51,21 @@ async fn wait_for_known_path(transport: &Transport, destination: &AddressHash) {
         tokio::time::sleep(Duration::from_millis(25)).await;
     }
     panic!("transport did not learn path for {destination}");
+}
+
+async fn path_request_packet(destination: &AddressHash) -> Packet {
+    let requester = retransmitting_transport("transport-path-request-origin");
+    let mut requester_iface = new_probe_iface(&requester).await;
+    let tag = vec![0x52; ADDRESS_HASH_SIZE];
+    let request_trace = requester
+        .request_path(destination, Some(*requester_iface.address()), Some(tag.clone()))
+        .await;
+    assert_eq!(request_trace.sent_ifaces, 1);
+
+    let path_request = recv_tx(&mut requester_iface, "outbound path request").await.packet;
+    assert_eq!(&path_request.data.as_slice()[..ADDRESS_HASH_SIZE], destination.as_slice());
+    assert_eq!(&path_request.data.as_slice()[path_request.data.len() - tag.len()..], tag);
+    path_request
 }
 
 #[tokio::test]
@@ -69,6 +94,56 @@ async fn scoped_path_request_dispatches_only_on_requested_iface() {
             Err(tokio::sync::mpsc::error::TryRecvError::Empty)
         ),
         "path request should not dispatch on unscoped interface"
+    );
+}
+
+#[tokio::test]
+async fn roaming_same_iface_known_path_request_is_suppressed_at_transport_boundary() {
+    let full_transport = retransmitting_transport("transport-full-same-iface-path-response");
+    let mut full_iface = new_probe_iface_with_mode(&full_transport, InterfaceMode::Full).await;
+
+    let mut remote_destination = SingleInputDestination::new(
+        PrivateIdentity::new_from_rand(OsRng),
+        DestinationName::new("lxmf", "delivery"),
+    );
+    let mut announce = remote_destination.announce(OsRng, None).expect("valid announce");
+    announce.header.hops = 2;
+    let destination = announce.destination;
+    let cached_announce_data = announce.data.clone();
+    let path_request = path_request_packet(&destination).await;
+
+    feed_iface_packet(&full_iface, announce.clone()).await;
+    wait_for_known_path(&full_transport, &destination).await;
+    feed_iface_packet(&full_iface, path_request.clone()).await;
+
+    let full_response = recv_tx(&mut full_iface, "full-mode same-iface path response").await;
+    assert!(matches!(
+        full_response.tx_type,
+        TxMessageType::Direct(iface) if iface == *full_iface.address()
+    ));
+    assert_eq!(full_response.packet.destination, destination);
+    assert_eq!(full_response.packet.context, PacketContext::PathResponse);
+    assert_eq!(full_response.packet.header.hops, 2);
+    assert_eq!(full_response.packet.data.as_slice(), cached_announce_data.as_slice());
+
+    let roaming_transport = retransmitting_transport("transport-roaming-same-iface-path-response");
+    let mut roaming_iface =
+        new_probe_iface_with_mode(&roaming_transport, InterfaceMode::Roaming).await;
+
+    feed_iface_packet(&roaming_iface, announce).await;
+    wait_for_known_path(&roaming_transport, &destination).await;
+    feed_iface_packet(&roaming_iface, path_request).await;
+
+    assert!(
+        timeout(Duration::from_millis(100), roaming_iface.tx_channel.recv()).await.is_err(),
+        "roaming same-iface path requests should not emit a cached path response"
+    );
+    assert!(
+        matches!(
+            roaming_iface.tx_channel.try_recv(),
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+        ),
+        "roaming same-iface path requests should not emit a cached path response"
     );
 }
 

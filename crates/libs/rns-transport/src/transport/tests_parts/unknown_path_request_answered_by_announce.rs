@@ -96,6 +96,117 @@ async fn unknown_path_request_is_answered_when_matching_announce_arrives() {
 }
 
 #[tokio::test]
+async fn matched_unknown_path_announce_releases_discovery_capacity() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut config = TransportConfig::new("test", &local_identity, true);
+    config.set_retransmit(true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+
+    let (mut learned_channel, mut requester_channel) = {
+        let manager = transport.iface_manager();
+        let mut manager = manager.lock().await;
+        (manager.new_channel(16), manager.new_channel(16))
+    };
+    let learned_iface = *learned_channel.address();
+    let requester_iface = *requester_channel.address();
+    {
+        let manager = transport.iface_manager();
+        let mut manager = manager.lock().await;
+        assert!(manager.set_mode(requester_iface, InterfaceMode::AccessPoint));
+        assert!(manager.set_announce_pacing(requester_iface, 0, 0));
+    }
+
+    {
+        let mut guard = handler.lock().await;
+        guard.path_requests = super::path_requests::PathRequests::new(
+            "test",
+            Some(*local_identity.address_hash()),
+            1,
+            1,
+            30,
+        );
+    }
+
+    let mut first_remote = SingleInputDestination::new(
+        PrivateIdentity::new_from_rand(OsRng),
+        DestinationName::new("lxmf", "delivery"),
+    );
+    let first_announce = first_remote.announce(OsRng, None).expect("valid announce packet");
+    let first_destination = first_announce.destination;
+    let first_request = {
+        let mut guard = handler.lock().await;
+        guard
+            .path_requests
+            .generate(&first_destination, Some(vec![0x81; crate::hash::ADDRESS_HASH_SIZE]))
+    };
+
+    {
+        let mut guard = handler.lock().await;
+        handle_path_request(&first_request, &mut guard, requester_iface).await;
+    }
+    timeout(Duration::from_millis(200), learned_channel.tx_channel.recv())
+        .await
+        .expect("first discovery request should be forwarded")
+        .expect("first recursive discovery message");
+
+    let blocked_destination =
+        AddressHash::new_from_hash(&Hash::new_from_slice(b"blocked-while-pending"));
+    let blocked_request = {
+        let mut guard = handler.lock().await;
+        guard
+            .path_requests
+            .generate(&blocked_destination, Some(vec![0x82; crate::hash::ADDRESS_HASH_SIZE]))
+    };
+    {
+        let mut guard = handler.lock().await;
+        handle_path_request(&blocked_request, &mut guard, requester_iface).await;
+    }
+    assert!(
+        matches!(
+            learned_channel.tx_channel.try_recv(),
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+        ),
+        "per-interface discovery capacity should block a second pending unknown request"
+    );
+
+    handle_announce(
+        &first_announce,
+        handler.lock().await,
+        learned_iface,
+        crate::iface::IfaceSource::None,
+    )
+    .await;
+    timeout(Duration::from_millis(200), requester_channel.tx_channel.recv())
+        .await
+        .expect("matching announce should answer and consume the pending request")
+        .expect("path response message");
+
+    let released_destination =
+        AddressHash::new_from_hash(&Hash::new_from_slice(b"allowed-after-consume"));
+    let released_request = {
+        let mut guard = handler.lock().await;
+        guard
+            .path_requests
+            .generate(&released_destination, Some(vec![0x83; crate::hash::ADDRESS_HASH_SIZE]))
+    };
+    {
+        let mut guard = handler.lock().await;
+        handle_path_request(&released_request, &mut guard, requester_iface).await;
+    }
+
+    let released_recursive = timeout(Duration::from_millis(200), learned_channel.tx_channel.recv())
+        .await
+        .expect("consumed discovery request should release recursive capacity")
+        .expect("released recursive discovery message");
+    assert!(
+        matches!(released_recursive.tx_type, TxMessageType::Broadcast(Some(iface)) if iface == requester_iface),
+        "new recursive discovery should still exclude the original requester iface"
+    );
+    assert_eq!(released_recursive.packet.data.as_slice(), released_request.data.as_slice());
+}
+
+#[tokio::test]
 async fn unknown_path_recursive_discovery_obeys_python_interface_modes() {
     for mode in [InterfaceMode::AccessPoint, InterfaceMode::Gateway, InterfaceMode::Roaming] {
         let local_identity = PrivateIdentity::new_from_rand(OsRng);

@@ -150,11 +150,18 @@ const COMPATIBILITY_CASES: [CompatibilityCase; 23] = [
     },
 ];
 
-const LOCAL_EVIDENCE_CASES: [LocalEvidenceCase; 1] = [LocalEvidenceCase {
-    id: "rns_path_request_transport_policy",
-    test_target: "transport_policy_evidence",
-    description: "Deterministic local transport evidence for scoped path-request dispatch and known-path PATH_RESPONSE ordering",
-}];
+const LOCAL_EVIDENCE_CASES: [LocalEvidenceCase; 2] = [
+    LocalEvidenceCase {
+        id: "rns_path_request_transport_policy",
+        test_target: "transport_policy_evidence",
+        description: "Deterministic local transport evidence for scoped path-request dispatch and known-path PATH_RESPONSE ordering",
+    },
+    LocalEvidenceCase {
+        id: "rns_path_request_roaming_transport_policy",
+        test_target: "transport_policy_evidence",
+        description: "Deterministic local transport evidence for Transport.py roaming same-iface path-response suppression",
+    },
+];
 
 pub(crate) fn assert_required_modes_covered() {
     assert!(
@@ -214,8 +221,12 @@ pub(crate) fn assert_local_evidence_cases_are_dispatchable_by_harness() {
             "python harness does not advertise local evidence case '{}'",
             case.id
         );
+        let case_start = harness.find(&case_literal).unwrap_or_else(|| {
+            panic!("python harness does not advertise local evidence case '{}'", case.id)
+        });
+        let case_block = &harness[case_start..harness.len().min(case_start + 512)];
         assert!(
-            harness.contains(&test_target_literal),
+            case_block.contains(&test_target_literal),
             "python harness does not dispatch local evidence case '{}' to '{}'",
             case.id,
             case.test_target

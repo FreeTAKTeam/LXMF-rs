@@ -42,6 +42,15 @@ LOCAL_CARGO_TEST_CASES = {
         "--test",
         "transport_policy_evidence",
     ],
+    "rns_path_request_roaming_transport_policy": [
+        "cargo",
+        "test",
+        "-p",
+        "reticulumd",
+        "--test",
+        "transport_policy_evidence",
+        "roaming_same_iface_known_path_request_is_suppressed_at_transport_boundary",
+    ],
 }
 
 SUPPORTED_CASES = SMOKE_SCRIPT_CASES | set(LOCAL_CARGO_TEST_CASES)
