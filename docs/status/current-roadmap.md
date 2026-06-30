@@ -99,6 +99,10 @@ The project is best described by capability level:
   and local transport-policy evidence that the learned next-hop interface mode
   drives Python-style outgoing mode policy, including access-point suppression
   and roaming/boundary loop avoidance.
+- Unknown-announce ingress limiting now has harness-dispatchable local
+  transport-policy evidence for Python-style per-interface holding and
+  lowest-hop release, so bursty unknown announce traffic on one ingress no
+  longer stands in for all interfaces in the parity matrix.
 - Restored Reticulum path-table announces are now cache-only lookup material at
   startup, not fresh rebroadcast work, while still serving known-path response
   requests from the restored cache.

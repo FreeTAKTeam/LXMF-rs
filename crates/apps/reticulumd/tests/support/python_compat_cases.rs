@@ -150,7 +150,7 @@ const COMPATIBILITY_CASES: [CompatibilityCase; 23] = [
     },
 ];
 
-const LOCAL_EVIDENCE_CASES: [LocalEvidenceCase; 4] = [
+const LOCAL_EVIDENCE_CASES: [LocalEvidenceCase; 5] = [
     LocalEvidenceCase {
         id: "rns_path_request_transport_policy",
         test_target: "transport_policy_evidence",
@@ -170,6 +170,11 @@ const LOCAL_EVIDENCE_CASES: [LocalEvidenceCase; 4] = [
         id: "rns_announce_rebroadcast_transport_policy",
         test_target: "transport_policy_evidence",
         description: "Deterministic local transport evidence for Transport.py announce rebroadcast interface-mode policy",
+    },
+    LocalEvidenceCase {
+        id: "rns_unknown_announce_ingress_policy",
+        test_target: "reticulum-rs-transport",
+        description: "Deterministic local transport evidence for Transport.py per-interface unknown-announce holding and lowest-hop release policy",
     },
 ];
 

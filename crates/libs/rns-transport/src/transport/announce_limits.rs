@@ -574,6 +574,100 @@ mod tests {
     }
 
     #[test]
+    fn held_announces_release_one_lowest_hop_entry_per_interface() {
+        let mut limits = AnnounceLimits::with_rate_limit(test_rate_limit());
+        let iface_a = AddressHash::new([0xCA; crate::hash::ADDRESS_HASH_SIZE]);
+        let iface_b = AddressHash::new([0xCB; crate::hash::ADDRESS_HASH_SIZE]);
+        let now = Instant::now();
+
+        assert_eq!(
+            limits.check_at(
+                iface_a,
+                &announce_packet(AddressHash::new([0x11; 16]), 1),
+                IfaceSource::None,
+                false,
+                now,
+            ),
+            AnnounceLimitAction::Allow
+        );
+        assert!(matches!(
+            limits.check_at(
+                iface_a,
+                &announce_packet(AddressHash::new([0x12; 16]), 4),
+                IfaceSource::None,
+                false,
+                now + Duration::from_millis(5),
+            ),
+            AnnounceLimitAction::Hold(_)
+        ));
+        assert!(matches!(
+            limits.check_at(
+                iface_a,
+                &announce_packet(AddressHash::new([0x13; 16]), 2),
+                IfaceSource::None,
+                false,
+                now + Duration::from_millis(10),
+            ),
+            AnnounceLimitAction::Hold(_)
+        ));
+
+        assert_eq!(
+            limits.check_at(
+                iface_b,
+                &announce_packet(AddressHash::new([0x21; 16]), 1),
+                IfaceSource::None,
+                false,
+                now,
+            ),
+            AnnounceLimitAction::Allow
+        );
+        assert!(matches!(
+            limits.check_at(
+                iface_b,
+                &announce_packet(AddressHash::new([0x22; 16]), 5),
+                IfaceSource::None,
+                false,
+                now + Duration::from_millis(5),
+            ),
+            AnnounceLimitAction::Hold(_)
+        ));
+        assert!(matches!(
+            limits.check_at(
+                iface_b,
+                &announce_packet(AddressHash::new([0x23; 16]), 3),
+                IfaceSource::None,
+                false,
+                now + Duration::from_millis(10),
+            ),
+            AnnounceLimitAction::Hold(_)
+        ));
+
+        assert!(limits.release_ready_at(now + Duration::from_millis(65)).is_empty());
+
+        let mut released: Vec<_> = limits
+            .release_ready_at(now + Duration::from_millis(90))
+            .iter()
+            .map(|released| (released.iface, released.packet.destination))
+            .collect();
+        released.sort();
+        let mut expected =
+            vec![(iface_a, AddressHash::new([0x13; 16])), (iface_b, AddressHash::new([0x23; 16]))];
+        expected.sort();
+        assert_eq!(released, expected);
+
+        let mut released: Vec<_> = limits
+            .release_ready_at(now + Duration::from_millis(105))
+            .iter()
+            .map(|released| (released.iface, released.packet.destination))
+            .collect();
+        released.sort();
+        let mut expected =
+            vec![(iface_a, AddressHash::new([0x12; 16])), (iface_b, AddressHash::new([0x22; 16]))];
+        expected.sort();
+        assert_eq!(released, expected);
+    }
+
+    #[test]
     fn held_announces_evict_worst_entry_when_capacity_is_reached() {
         let mut rate_limit = test_rate_limit();
         rate_limit.max_held_announces = 1;

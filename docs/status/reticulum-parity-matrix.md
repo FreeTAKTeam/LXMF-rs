@@ -273,6 +273,10 @@ separate from path-response delivery.
 When an ordinary announce is already queued for the same destination, a due
 known-path `PATH_RESPONSE` now drains first and the ordinary announce
 rebroadcasts afterward, matching Python's `held_announces` ordering.
+Unknown-announce ingress limiting now has harness-dispatchable local evidence
+for Python-style per-interface holding and lowest-hop release, preventing one
+bursty ingress interface from masking independently releasable held announces
+on another software ingress.
 Unknown-path discovery requests now retain the requesting interface while
 recursive discovery is forwarded, then answer that requester with an immediate
 direct `PATH_RESPONSE` when a matching announce arrives.

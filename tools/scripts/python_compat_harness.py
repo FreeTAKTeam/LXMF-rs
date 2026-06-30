@@ -69,6 +69,13 @@ LOCAL_CARGO_TEST_CASES = {
         "transport_policy_evidence",
         "announce_rebroadcast_policy_uses_learned_next_hop_mode_at_transport_boundary",
     ],
+    "rns_unknown_announce_ingress_policy": [
+        "cargo",
+        "test",
+        "-p",
+        "reticulum-rs-transport",
+        "held_announces_release_one_lowest_hop_entry_per_interface",
+    ],
 }
 
 SUPPORTED_CASES = SMOKE_SCRIPT_CASES | set(LOCAL_CARGO_TEST_CASES)
