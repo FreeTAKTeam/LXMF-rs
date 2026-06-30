@@ -76,6 +76,14 @@ LOCAL_CARGO_TEST_CASES = {
         "reticulum-rs-transport",
         "held_announces_release_one_lowest_hop_entry_per_interface",
     ],
+    "rns_link_request_mtu_transport_policy": [
+        "cargo",
+        "test",
+        "-p",
+        "reticulum-rs-transport",
+        "--lib",
+        "mtu_signalling",
+    ],
 }
 
 SUPPORTED_CASES = SMOKE_SCRIPT_CASES | set(LOCAL_CARGO_TEST_CASES)
@@ -184,6 +192,64 @@ def run_with_timeout(command: list[str], env: dict[str, str], cwd: Path, timeout
         return 124
 
 
+def cargo_test_list_command(command: list[str]) -> list[str]:
+    if "--" in command:
+        separator = command.index("--")
+        return command[:separator] + ["--", "--list"] + command[separator + 1 :]
+    return command + ["--", "--list"]
+
+
+def matching_test_count(list_output: bytes) -> int:
+    return sum(
+        1
+        for line in list_output.decode(errors="replace").splitlines()
+        if line.endswith(": test")
+    )
+
+
+def run_local_cargo_test_case(
+    command: list[str], env: dict[str, str], cwd: Path, timeout: float
+) -> int:
+    list_command = cargo_test_list_command(command)
+    try:
+        completed = subprocess.run(
+            list_command,
+            cwd=cwd,
+            env=env,
+            timeout=timeout,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        print(
+            f"compatibility command {' '.join(list_command)!r} timed out after {timeout:g} seconds",
+            file=sys.stderr,
+        )
+        return 124
+
+    if completed.returncode != 0:
+        sys.stdout.buffer.write(completed.stdout)
+        sys.stdout.buffer.flush()
+        return completed.returncode
+
+    count = matching_test_count(completed.stdout)
+    if count == 0:
+        print(
+            f"local cargo compatibility case matched zero tests: {' '.join(command)!r}",
+            file=sys.stderr,
+        )
+        sys.stdout.buffer.write(completed.stdout)
+        sys.stdout.buffer.flush()
+        return 3
+
+    print(
+        f"local cargo compatibility case matched {count} test(s): {' '.join(command)!r}",
+        flush=True,
+    )
+    return run_with_timeout(command, env, cwd, timeout)
+
+
 def main() -> int:
     supported_cases = ", ".join(sorted(SUPPORTED_CASES))
     if len(sys.argv) != 2:
@@ -206,7 +272,9 @@ def main() -> int:
     timeout = case_timeout_seconds()
 
     if case_id in LOCAL_CARGO_TEST_CASES:
-        return run_with_timeout(LOCAL_CARGO_TEST_CASES[case_id], env, repo_root, timeout)
+        return run_local_cargo_test_case(
+            LOCAL_CARGO_TEST_CASES[case_id], env, repo_root, timeout
+        )
 
     smoke_script = repo_root / "tools" / "scripts" / "python-lxmd-rust-lxmd-smoke.sh"
     if case_id not in SMOKE_SCRIPT_CASES:

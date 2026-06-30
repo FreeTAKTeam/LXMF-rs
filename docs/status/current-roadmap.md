@@ -86,7 +86,8 @@ The project is best described by capability level:
 - Intermediate-hop `LINKREQUEST` forwarding now rewrites existing configured
   software link MTU signalling by preserving mode bits and clamping to the
   software ingress/next-hop interface MTU ceiling, while Python-default
-  500-byte signalling and un-signalled requests remain unmodified.
+  500-byte signalling and un-signalled requests remain unmodified; this now
+  has harness-dispatchable local transport-policy evidence.
 - Known-path requests on roaming interfaces also suppress direct path answers
   when the learned next-hop iface is the same roaming iface, matching Python's
   loop-avoidance behavior; this now has harness-dispatchable local

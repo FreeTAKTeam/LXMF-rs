@@ -29,6 +29,7 @@ struct CompatibilityCase {
 struct LocalEvidenceCase {
     id: &'static str,
     test_target: &'static str,
+    harness_filter: &'static str,
     description: &'static str,
 }
 
@@ -150,31 +151,42 @@ const COMPATIBILITY_CASES: [CompatibilityCase; 23] = [
     },
 ];
 
-const LOCAL_EVIDENCE_CASES: [LocalEvidenceCase; 5] = [
+const LOCAL_EVIDENCE_CASES: [LocalEvidenceCase; 6] = [
     LocalEvidenceCase {
         id: "rns_path_request_transport_policy",
         test_target: "transport_policy_evidence",
+        harness_filter: "transport_policy_evidence",
         description: "Deterministic local transport evidence for scoped path-request dispatch and known-path PATH_RESPONSE ordering",
     },
     LocalEvidenceCase {
         id: "rns_path_request_roaming_transport_policy",
         test_target: "transport_policy_evidence",
+        harness_filter: "roaming_same_iface_known_path_request_is_suppressed_at_transport_boundary",
         description: "Deterministic local transport evidence for Transport.py roaming same-iface path-response suppression",
     },
     LocalEvidenceCase {
         id: "rns_path_request_roaming_grace_transport_policy",
         test_target: "transport_policy_evidence",
+        harness_filter: "roaming_diff_iface_known_path_response_waits_extra_grace_at_transport_boundary",
         description: "Deterministic local transport evidence for Transport.py roaming different-iface path-response grace",
     },
     LocalEvidenceCase {
         id: "rns_announce_rebroadcast_transport_policy",
         test_target: "transport_policy_evidence",
+        harness_filter: "announce_rebroadcast_policy_uses_learned_next_hop_mode_at_transport_boundary",
         description: "Deterministic local transport evidence for Transport.py announce rebroadcast interface-mode policy",
     },
     LocalEvidenceCase {
         id: "rns_unknown_announce_ingress_policy",
         test_target: "reticulum-rs-transport",
+        harness_filter: "held_announces_release_one_lowest_hop_entry_per_interface",
         description: "Deterministic local transport evidence for Transport.py per-interface unknown-announce holding and lowest-hop release policy",
+    },
+    LocalEvidenceCase {
+        id: "rns_link_request_mtu_transport_policy",
+        test_target: "reticulum-rs-transport",
+        harness_filter: "mtu_signalling",
+        description: "Deterministic local transport evidence for Transport.py intermediate LINKREQUEST MTU signalling rewrite policy",
     },
 ];
 
@@ -226,6 +238,7 @@ pub(crate) fn assert_local_evidence_cases_are_dispatchable_by_harness() {
     for case in LOCAL_EVIDENCE_CASES {
         let case_literal = format!("\"{}\"", case.id);
         let test_target_literal = format!("\"{}\"", case.test_target);
+        let harness_filter_literal = format!("\"{}\"", case.harness_filter);
         assert!(
             !case.description.is_empty(),
             "local evidence case '{}' should describe the deterministic evidence",
@@ -245,6 +258,12 @@ pub(crate) fn assert_local_evidence_cases_are_dispatchable_by_harness() {
             "python harness does not dispatch local evidence case '{}' to '{}'",
             case.id,
             case.test_target
+        );
+        assert!(
+            case_block.contains(&harness_filter_literal),
+            "python harness does not dispatch local evidence case '{}' with filter '{}'",
+            case.id,
+            case.harness_filter
         );
     }
 }

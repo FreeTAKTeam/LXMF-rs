@@ -181,6 +181,12 @@ fn python_compat_rns_unknown_announce_ingress_policy() {
 }
 
 #[test]
+#[ignore = "runs deterministic local LINKREQUEST MTU signalling policy evidence through the compatibility harness"]
+fn python_compat_rns_link_request_mtu_transport_policy() {
+    run_case("rns_link_request_mtu_transport_policy");
+}
+
+#[test]
 fn compatibility_cases_are_dispatchable_by_harness_and_smoke_script() {
     assert_cases_are_dispatchable_by_harness_and_smoke_script();
 }
