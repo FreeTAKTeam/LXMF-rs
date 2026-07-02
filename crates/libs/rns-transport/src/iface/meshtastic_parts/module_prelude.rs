@@ -99,7 +99,7 @@ pub struct MeshtasticTransmitFrame {
     pub channel_index: u8,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct MeshtasticTunnelStatus {
     pub queued_transmissions: usize,
     pub destination_routes: usize,
@@ -126,21 +126,5 @@ impl MeshtasticTunnelStatus {
             "decode_errors": self.decode_errors,
             "last_error": self.last_error,
         })
-    }
-}
-
-impl Default for MeshtasticTunnelStatus {
-    fn default() -> Self {
-        Self {
-            queued_transmissions: 0,
-            destination_routes: 0,
-            packets_rx: 0,
-            packets_tx: 0,
-            chunks_rx: 0,
-            chunks_tx: 0,
-            requested_retransmits: 0,
-            decode_errors: 0,
-            last_error: None,
-        }
     }
 }
