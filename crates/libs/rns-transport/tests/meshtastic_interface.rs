@@ -58,6 +58,79 @@ fn tunnel_requests_missing_chunks_and_completes_after_repair() {
 }
 
 #[test]
+fn tunnel_requests_next_gap_after_repaired_non_final_chunk() {
+    let mut tunnel = MeshtasticTunnel::new(MeshtasticInterfaceConfig {
+        max_payload_bytes: 80,
+        ..MeshtasticInterfaceConfig::default()
+    });
+    let data = b"reticulum-over-meshtastic".repeat(12);
+    let handler =
+        MeshtasticPacketHandler::new_outgoing(&data, 9, 80).expect("split outgoing payload");
+
+    assert_eq!(handler.positions(), vec![1, 2, 3, -4]);
+    assert_eq!(
+        tunnel
+            .process_received(MeshtasticReceivedFrame::new(1001, handler.payload_at(1).unwrap()))
+            .unwrap(),
+        None
+    );
+    assert_eq!(
+        tunnel
+            .process_received(MeshtasticReceivedFrame::new(1001, handler.payload_at(4).unwrap()))
+            .unwrap(),
+        None
+    );
+
+    let first_request = tunnel.next_transmit().expect("first missing chunk request");
+    assert_eq!(MeshtasticPacketHandler::metadata(&first_request.payload[3..]), Ok((9, 2)));
+    assert_eq!(
+        tunnel
+            .process_received(MeshtasticReceivedFrame::new(1001, handler.payload_at(2).unwrap()))
+            .unwrap(),
+        None
+    );
+
+    let second_request = tunnel.next_transmit().expect("second missing chunk request");
+    assert_eq!(MeshtasticPacketHandler::metadata(&second_request.payload[3..]), Ok((9, 3)));
+    assert_eq!(
+        tunnel
+            .process_received(MeshtasticReceivedFrame::new(1001, handler.payload_at(3).unwrap()))
+            .unwrap(),
+        Some(data)
+    );
+}
+
+#[test]
+fn tunnel_rejects_packet_index_wrap_before_overwriting_queued_payloads() {
+    let mut tunnel = MeshtasticTunnel::new(MeshtasticInterfaceConfig::default());
+
+    for index in 0..=u8::MAX {
+        let payload = format!("packet-{index:03}");
+        tunnel.queue_outgoing_packet(payload.as_bytes()).expect("queue packet");
+    }
+    let err = tunnel.queue_outgoing_packet(b"overflow").expect_err("index space should be full");
+    assert_eq!(err, "meshtastic outgoing packet index space is full");
+
+    let first = tunnel.next_transmit().expect("first queued packet");
+    assert_eq!(first.payload[0], 0);
+    assert_eq!(first.payload[1] as i8, -1);
+    assert_eq!(&first.payload[2..], b"packet-000");
+    tunnel.queue_outgoing_packet(b"after-drain").expect("drained index can be reused");
+}
+
+#[test]
+fn tunnel_handles_empty_reassembled_payload_without_destination_panic() {
+    let mut tunnel = MeshtasticTunnel::new(MeshtasticInterfaceConfig::default());
+
+    let received = tunnel
+        .process_received(MeshtasticReceivedFrame::new(1001, &[7, 0xff]))
+        .expect("empty final payload should not panic");
+
+    assert_eq!(received, Some(Vec::new()));
+    assert_eq!(tunnel.status().destination_routes, 0);
+}
+
+#[test]
 fn tunnel_learns_link_destinations_for_direct_meshtastic_replies() {
     let learned_destination = [0x42; 16];
     let mut inbound = Vec::new();

@@ -36,20 +36,23 @@ impl MeshtasticTunnel {
     }
 
     pub fn queue_outgoing_packet(&mut self, data: &[u8]) -> Result<(), String> {
+        let packet_index = self
+            .next_available_packet_index()
+            .ok_or_else(|| "meshtastic outgoing packet index space is full".to_string())?;
         let destination = self.destination_for_packet(data);
         let handler = MeshtasticPacketHandler::new_outgoing(
             data,
-            self.packet_index,
+            packet_index,
             self.config.max_payload_bytes,
         )?;
         for position in handler.positions() {
             self.packet_queue.push_back(QueuedTransmission::Chunk {
-                index: self.packet_index,
+                index: packet_index,
                 position: position.unsigned_abs(),
             });
         }
-        self.outgoing_packet_storage.insert(self.packet_index, (destination, handler));
-        self.packet_index = calc_meshtastic_index(self.packet_index);
+        self.outgoing_packet_storage.insert(packet_index, (destination, handler));
+        self.packet_index = calc_meshtastic_index(packet_index);
         self.refresh_status();
         Ok(())
     }
@@ -67,38 +70,48 @@ impl MeshtasticTunnel {
 
         let (new_index, position) = MeshtasticPacketHandler::metadata(&frame.payload)?;
         let abs_position = position.unsigned_abs();
-        let expected = self.expected_index.entry(frame.from).or_default();
-        let requested = self.requested_index.entry(frame.from).or_default();
         let expected_key = (new_index, abs_position);
-        let mut expect_followup = true;
+        let mut missing_request = None;
 
-        if expected.iter().any(|entry| *entry == expected_key) {
-            expected.retain(|entry| *entry != expected_key);
-        } else if let Some(offset) = requested.iter().position(|entry| *entry == expected_key) {
-            requested.remove(offset);
-            expect_followup = false;
-        } else if let Some((missing_index, missing_position)) = expected.pop_front() {
-            requested.push_back((missing_index, missing_position));
-            while requested.len() > MAX_REQUESTED_CHUNKS_PER_NODE {
-                requested.pop_front();
+        {
+            let expected = self.expected_index.entry(frame.from).or_default();
+            let requested = self.requested_index.entry(frame.from).or_default();
+            let was_expected = expected.iter().any(|entry| *entry == expected_key);
+            let requested_offset = requested.iter().position(|entry| *entry == expected_key);
+            if was_expected {
+                expected.retain(|entry| *entry != expected_key);
             }
-            self.packet_queue.push_front(QueuedTransmission::Request(request_payload(
-                missing_index,
-                missing_position as i8,
-            )));
-            self.status.requested_retransmits = self.status.requested_retransmits.saturating_add(1);
+            if let Some(offset) = requested_offset {
+                requested.remove(offset);
+            } else if !was_expected {
+                missing_request = expected.pop_front();
+            }
+        }
+        if let Some((missing_index, missing_position)) = missing_request {
+            self.request_missing_chunk(frame.from, missing_index, missing_position);
         }
 
-        let complete = {
+        let (complete, first_missing_position) = {
             let by_index = self.assembly.entry(frame.from).or_default();
             let handler =
                 by_index.entry(new_index).or_insert_with(MeshtasticPacketHandler::new_inbound);
-            handler.process_payload(&frame.payload)?
+            let complete = handler.process_payload(&frame.payload)?;
+            let first_missing_position = handler.first_missing_position();
+            (complete, first_missing_position)
         };
         if position < 0 {
-            expected.push_front((calc_meshtastic_index(new_index), 1));
-        } else if expect_followup {
-            expected.push_front((new_index, abs_position.saturating_add(1)));
+            self.expected_index
+                .entry(frame.from)
+                .or_default()
+                .push_front((calc_meshtastic_index(new_index), 1));
+        } else {
+            self.expected_index
+                .entry(frame.from)
+                .or_default()
+                .push_front((new_index, abs_position.saturating_add(1)));
+        }
+        if let Some(missing_position) = first_missing_position {
+            self.request_missing_chunk(frame.from, new_index, missing_position);
         }
 
         if let Some(data) = complete {
@@ -167,6 +180,34 @@ impl MeshtasticTunnel {
         Ok(())
     }
 
+    fn request_missing_chunk(&mut self, from: u32, index: u8, position: u8) {
+        let requested = self.requested_index.entry(from).or_default();
+        if requested.iter().any(|entry| *entry == (index, position)) {
+            return;
+        }
+        requested.push_back((index, position));
+        while requested.len() > MAX_REQUESTED_CHUNKS_PER_NODE {
+            requested.pop_front();
+        }
+        self.packet_queue
+            .push_front(QueuedTransmission::Request(request_payload(index, position as i8)));
+        self.status.requested_retransmits = self.status.requested_retransmits.saturating_add(1);
+    }
+
+    fn next_available_packet_index(&self) -> Option<u8> {
+        (0..=usize::from(u8::MAX))
+            .map(|offset| self.packet_index.wrapping_add(offset as u8))
+            .find(|index| {
+                !self.outgoing_packet_storage.contains_key(index)
+                    || !self.packet_queue.iter().any(|queued| match queued {
+                        QueuedTransmission::Chunk { index: queued_index, .. } => {
+                            queued_index == index
+                        }
+                        QueuedTransmission::Request(_) => false,
+                    })
+            })
+    }
+
     fn transmit_frame(
         &self,
         destination: MeshtasticDestination,
@@ -219,6 +260,9 @@ fn request_payload(index: u8, position: i8) -> Vec<u8> {
 }
 
 fn packet_destination(data: &[u8]) -> Option<[u8; ADDRESS_HASH_SIZE]> {
+    if data.is_empty() {
+        return None;
+    }
     if data[0] & 0b1100_1100 != 0b0000_1100 {
         return None;
     }

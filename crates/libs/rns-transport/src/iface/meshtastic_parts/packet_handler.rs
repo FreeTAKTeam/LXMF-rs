@@ -56,6 +56,12 @@ impl MeshtasticPacketHandler {
         self.chunks.get(&abs_position).map(Vec::as_slice)
     }
 
+    #[must_use]
+    pub fn first_missing_position(&self) -> Option<u8> {
+        let final_position = self.positions.values().find(|position| **position < 0)?.unsigned_abs();
+        (1..final_position).find(|position| !self.chunks.contains_key(position))
+    }
+
     pub fn process_payload(&mut self, packet: &[u8]) -> Result<Option<Vec<u8>>, String> {
         let (index, position) = Self::metadata(packet)?;
         self.index = Some(index);
