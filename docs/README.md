@@ -15,6 +15,8 @@ These are the first places to update when behavior changes:
 - `docs/status/lxmf-parity-matrix.md`: maintained LXMF row-level parity status
 - `docs/contracts/`: public contracts, compatibility policy, support policy, API
   behavior, and protocol-facing guarantees
+- `docs/interfaces/`: interface-specific configuration and usage guidance for
+  transport surfaces that are not primarily operator runbooks
 - `docs/sdk/`: integration guidance for embedding `lxmf-sdk`
 - `docs/runbooks/`: operator and release procedures
 - `docs/architecture/`: active architecture policy and governance docs
@@ -47,6 +49,8 @@ are kept in Git history instead of the live documentation tree.
 - `docs/sdk/README.md`: starting point for SDK integrators
 - `docs/lxmf-rs-api.md`: API surface and stability summary
 - `docs/lxmf-cli.md`: operator CLI quick reference
+- `docs/interfaces/meshtastic.md`: Meshtastic tunnel configuration and library
+  integration guide
 - `docs/PerformancesComparison.html`: retained performance comparison snapshot;
   use the benchmarking runbook for current measurements
 - `docs/runbooks/release-readiness.md`: release gate checklist

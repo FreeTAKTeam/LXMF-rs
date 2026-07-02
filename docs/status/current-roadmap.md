@@ -204,8 +204,10 @@ The project is best described by capability level:
 - Meshtastic tunnel support now exists at the transport boundary with the
   reference `RETICULUM_TUNNEL_APP` chunk metadata, modem-preset pacing,
   missing-chunk request frames, node/destination route learning, and an
-  injectable bearer handle for serial/TCP/BLE adapters. Daemon config startup
-  and live Meshtastic hardware evidence remain future parity work.
+  injectable bearer handle for serial/TCP/BLE adapters. Configuration and
+  library integration guidance lives in `docs/interfaces/meshtastic.md`.
+  Daemon config startup and live Meshtastic hardware evidence remain future
+  parity work.
 - RNodeMultiInterface has a transport-side vport slice: a single serial or TCP
   RNode endpoint can host nested subinterfaces, select virtual ports with KISS
   `CMD_SEL_INT`, route direct sends to the matching virtual child, and fan out

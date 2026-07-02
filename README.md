@@ -224,6 +224,7 @@ cargo run -p rns-tools --bin rnx -- e2e --timeout-secs 20
 - CLI quick reference: `docs/lxmf-cli.md`
 - Architecture overview: `docs/architecture/overview.md`
 - JSON and wire-field mapping: `docs/architecture/json-lxmf-fields.md`
+- Meshtastic tunnel interface: `docs/interfaces/meshtastic.md`
 - Compatibility contract: `docs/contracts/compatibility-contract.md`
 - Compatibility matrix: `docs/contracts/compatibility-matrix.md`
 - Third-party compatibility kit: `docs/contracts/third-party-compatibility-kit.md`
