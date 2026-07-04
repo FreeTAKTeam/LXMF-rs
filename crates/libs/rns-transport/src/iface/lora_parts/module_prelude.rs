@@ -95,6 +95,8 @@ pub const CMD_ROM_WIPE: u8 = 0x59;
 
 pub const CMD_FW_UPD: u8 = 0x61;
 
+pub const CMD_BT_PIN: u8 = 0x62;
+
 pub const CMD_DISP_ADR: u8 = 0x63;
 
 pub const CMD_DISP_BLNK: u8 = 0x64;
@@ -184,6 +186,22 @@ impl RNodeBluetoothControl {
             Self::Enable => 0x01,
             Self::Pair => 0x02,
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RNodeBluetoothControlEvent {
+    Pin { code: String },
+}
+
+impl RNodeBluetoothControlEvent {
+    #[must_use]
+    pub fn from_command(command: u8, payload: &[u8]) -> Option<Self> {
+        if command != CMD_BT_PIN || payload.len() < 4 {
+            return None;
+        }
+        let pin_value = u32::from_be_bytes([payload[0], payload[1], payload[2], payload[3]]);
+        Some(Self::Pin { code: format!("{pin_value:06}") })
     }
 }
 

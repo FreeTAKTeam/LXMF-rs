@@ -3,17 +3,17 @@ use std::net::Ipv4Addr;
 use rns_transport::iface::lora::{
     LoraConfig, LoraInterface, RNodeHardwareError, RNodeProbeStatus, RNodeRadioStatus,
     RNodeBluetoothControl, BATTERY_STATE_CHARGED, BATTERY_STATE_CHARGING, BATTERY_STATE_DISCHARGING,
-    BATTERY_STATE_UNKNOWN, CMD_BANDWIDTH, CMD_BLINK, CMD_BT_CTRL, CMD_CFG_READ, CMD_CONF_DELETE,
-    CMD_CONF_SAVE, CMD_CR, CMD_DETECT, CMD_DISP_ADR, CMD_DISP_BLNK, CMD_DISP_INT, CMD_DISP_RCND,
-    CMD_DISP_READ, CMD_DISP_ROT, CMD_DIS_IA, CMD_ERROR, CMD_FB_EXT, CMD_FB_READ, CMD_FB_WRITE,
-    CMD_FREQUENCY, CMD_FW_HASH, CMD_FW_UPD, CMD_FW_VERSION, CMD_LEAVE, CMD_LT_ALOCK, CMD_MCU,
-    CMD_NP_INT, CMD_PLATFORM, CMD_RADIO_LOCK, CMD_RADIO_STATE, CMD_RANDOM, CMD_RESET, CMD_ROM_READ,
-    CMD_ROM_WIPE, CMD_ROM_WRITE, CMD_SF, CMD_STAT_BAT, CMD_STAT_CHTM, CMD_STAT_CSMA,
+    BATTERY_STATE_UNKNOWN, CMD_BANDWIDTH, CMD_BLINK, CMD_BT_CTRL, CMD_BT_PIN, CMD_CFG_READ,
+    CMD_CONF_DELETE, CMD_CONF_SAVE, CMD_CR, CMD_DETECT, CMD_DISP_ADR, CMD_DISP_BLNK, CMD_DISP_INT,
+    CMD_DISP_RCND, CMD_DISP_READ, CMD_DISP_ROT, CMD_DIS_IA, CMD_ERROR, CMD_FB_EXT, CMD_FB_READ,
+    CMD_FB_WRITE, CMD_FREQUENCY, CMD_FW_HASH, CMD_FW_UPD, CMD_FW_VERSION, CMD_LEAVE, CMD_LT_ALOCK,
+    CMD_MCU, CMD_NP_INT, CMD_PLATFORM, CMD_RADIO_LOCK, CMD_RADIO_STATE, CMD_RANDOM, CMD_RESET,
+    CMD_ROM_READ, CMD_ROM_WIPE, CMD_ROM_WRITE, CMD_SF, CMD_STAT_BAT, CMD_STAT_CHTM, CMD_STAT_CSMA,
     CMD_STAT_PHYPRM, CMD_STAT_RSSI, CMD_STAT_RX, CMD_STAT_SNR, CMD_STAT_TEMP, CMD_STAT_TX,
     CMD_ST_ALOCK, CMD_TXPOWER, CMD_WIFI_CHN, CMD_WIFI_IP, CMD_WIFI_MODE, CMD_WIFI_NM, CMD_WIFI_PSK,
     CMD_WIFI_SSID, DETECT_REQ, DETECT_RESP, ERROR_INITRADIO, ERROR_MEMORY_LOW, ERROR_MODEM_TIMEOUT,
     ERROR_TXFAILED, PLATFORM_AVR, PLATFORM_ESP32, PLATFORM_NRF52, RADIO_STATE_ASK, RADIO_STATE_OFF,
-    RADIO_STATE_ON, RESET_ESP32,
+    RADIO_STATE_ON, RESET_ESP32, RNodeBluetoothControlEvent,
 };
 
 use rns_transport::kiss::{FEND, FESC, TFEND, TFESC};
@@ -95,6 +95,7 @@ fn lora_config_emits_rnode_radio_off_and_leave_shutdown_commands() {
 fn lora_config_exposes_python_rnode_management_constants_and_query_frame() {
     assert_eq!(CMD_BLINK, 0x30);
     assert_eq!(CMD_BT_CTRL, 0x46);
+    assert_eq!(CMD_BT_PIN, 0x62);
     assert_eq!(CMD_ROM_READ, 0x51);
     assert_eq!(RADIO_STATE_ASK, 0xff);
     assert_eq!(
@@ -114,6 +115,20 @@ fn lora_config_exposes_python_rnode_management_constants_and_query_frame() {
     assert_eq!(LoraConfig::bluetooth_disable_frame(), vec![FEND, CMD_BT_CTRL, 0x00, FEND]);
     assert_eq!(LoraConfig::bluetooth_pair_frame(), vec![FEND, CMD_BT_CTRL, 0x02, FEND]);
     assert_eq!(LoraConfig::rom_read_frame(), vec![FEND, CMD_ROM_READ, 0x00, FEND]);
+}
+
+#[test]
+fn rnode_bluetooth_control_event_decodes_usb_pairing_pin() {
+    assert_eq!(
+        RNodeBluetoothControlEvent::from_command(CMD_BT_PIN, &[0x00, 0x01, 0xE2, 0x40]),
+        Some(RNodeBluetoothControlEvent::Pin { code: "123456".to_string() })
+    );
+    assert_eq!(
+        RNodeBluetoothControlEvent::from_command(CMD_BT_PIN, &[0x00, 0x00, 0x00, 0x2A]),
+        Some(RNodeBluetoothControlEvent::Pin { code: "000042".to_string() })
+    );
+    assert_eq!(RNodeBluetoothControlEvent::from_command(CMD_BT_PIN, &[0x00, 0x01]), None);
+    assert_eq!(RNodeBluetoothControlEvent::from_command(CMD_BT_CTRL, &[0x02]), None);
 }
 
 #[test]
