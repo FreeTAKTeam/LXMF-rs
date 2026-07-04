@@ -49,7 +49,7 @@ rns-core.workspace = true
 [features]
 default = []
 fernet-aes128 = []
-rnode-ble = ["dep:btleplug", "dep:futures", "dep:uuid"]
+rnode-ble = ["dep:btleplug", "btleplug/serde", "dep:futures", "dep:uuid"]
 vrn76-kiss-ble = ["rnode-ble"]
 
 [dev-dependencies]

@@ -318,6 +318,8 @@ dependencies = [
  "objc2-core-bluetooth",
  "objc2-foundation",
  "once_cell",
+ "serde",
+ "serde_bytes",
  "static_assertions",
  "thiserror 2.0.18",
  "tokio",
@@ -3116,6 +3118,7 @@ checksum = "144d6b123cef80b301b8f72a9e2ca4370ddec21950d0a103dd22c437006d2db7"
 dependencies = [
  "getrandom 0.4.2",
  "js-sys",
+ "serde_core",
  "wasm-bindgen",
 ]
 

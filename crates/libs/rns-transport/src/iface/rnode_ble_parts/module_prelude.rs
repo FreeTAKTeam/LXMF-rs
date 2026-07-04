@@ -380,7 +380,19 @@ impl NativeRnodeBleBackend {
         let Ok(address) = settings.peripheral_id.parse::<BDAddr>() else {
             return Ok(None);
         };
-        let peripheral_id = PeripheralId::from(address);
+        let peripheral_id: PeripheralId = match serde_json::to_value(address)
+            .and_then(serde_json::from_value)
+        {
+            Ok(id) => id,
+            Err(err) => {
+                log::warn!(
+                    "RNode BLE could not build Android peripheral id peripheral_id={} err={}",
+                    settings.peripheral_id,
+                    err
+                );
+                return Ok(None);
+            }
+        };
         match adapter.add_peripheral(&peripheral_id).await {
             Ok(peripheral) => {
                 log::info!(
