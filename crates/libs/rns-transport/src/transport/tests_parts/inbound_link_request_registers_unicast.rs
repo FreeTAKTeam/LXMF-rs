@@ -108,3 +108,34 @@ async fn inbound_link_request_pins_in_link_to_unicast_route() {
         "in-link must bind to the unicast virtual iface so replies are unicast, not dropped",
     );
 }
+
+/// Channel frames must bypass the transport-level duplicate filter. The channel
+/// protocol has its own sequencing/dedup, and a retransmit is required when the
+/// first copy arrives before the receiver's channel is open (a link-activation
+/// race exposed once the multicast first-dial no longer forces a slow retry).
+/// Deduping the retransmit drops the only copy the open channel would have seen,
+/// stalling the auth handshake (`recv round1/round2: auth timeout`).
+#[tokio::test]
+async fn duplicate_filter_allows_repeated_channel_frames() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let transport = Transport::new(TransportConfig::new("test", &identity, false));
+    let handler = transport.get_handler();
+
+    let packet = Packet {
+        header: Header {
+            destination_type: DestinationType::Link,
+            packet_type: PacketType::Data,
+            ..Default::default()
+        },
+        context: PacketContext::Channel,
+        destination: AddressHash::new_from_rand(OsRng),
+        data: PacketDataBuffer::new_from_slice(b"channel round1 frame"),
+        ..Default::default()
+    };
+
+    assert!(handler.lock().await.filter_duplicate_packets(&packet).await);
+    assert!(
+        handler.lock().await.filter_duplicate_packets(&packet).await,
+        "channel retransmit must not be suppressed as a transport-level duplicate",
+    );
+}

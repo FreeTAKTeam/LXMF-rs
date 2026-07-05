@@ -250,6 +250,12 @@ impl TransportHandler {
                     PacketContext::KeepAlive
                         | PacketContext::LinkClose
                         | PacketContext::ResourceRequest
+                        // The channel protocol has its own sequencing/dedup, so
+                        // transport-level dedup must not suppress channel frames.
+                        // Otherwise a retransmit needed after the receiver's
+                        // channel opens (link-activation race) is dropped as a
+                        // duplicate of the pre-open copy, stalling auth.
+                        | PacketContext::Channel
                 );
             }
             PacketType::Proof => {
