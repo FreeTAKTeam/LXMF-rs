@@ -357,6 +357,46 @@ impl TransportHandler {
         Some(virtual_hash)
     }
 
+    /// Resolve the interface an inbound *link-associated* packet (LinkRequest /
+    /// Proof / link Data) should be handled on, eagerly learning the sender's
+    /// unicast route in the process.
+    ///
+    /// On a multicast iface this registers (or refreshes) the peer's virtual
+    /// unicast iface from the packet's source address — the "detect over
+    /// multicast, then unicast" step — and returns that virtual hash. Binding
+    /// the resulting link to it means the link's proof/data replies target the
+    /// virtual iface, which `PeerRouting` resolves to a unicast send instead of
+    /// being dropped by the multicast tx-guard (which only excepts LinkProof).
+    /// Announces already do this via `unicast_iface_for_source`; doing it for
+    /// link traffic too closes the announce-vs-link-request race that stalled
+    /// the AutoInterface auth handshake.
+    ///
+    /// Falls back to `iface` unchanged when the packet did not arrive over a
+    /// multicast iface from a UDP peer (e.g. TCP/Serial links), so those paths
+    /// keep their existing ingress iface.
+    pub(super) async fn ingress_route_iface(
+        &mut self,
+        iface: AddressHash,
+        source: IfaceSource,
+    ) -> AddressHash {
+        match self.unicast_iface_for_source(iface, source).await {
+            Some(virtual_iface) => virtual_iface,
+            None => {
+                // Expected on non-multicast ifaces (TCP/Serial) and for packets
+                // already attributed to a virtual unicast iface. Kept at trace so
+                // it costs zero instructions in production (release_max_level) and
+                // does not spam this per-inbound-packet path.
+                log::trace!(
+                    "tp({}): no unicast route learned for source {:?} on iface {}; keeping ingress iface",
+                    self.config.name,
+                    source,
+                    iface,
+                );
+                iface
+            }
+        }
+    }
+
     /// Register a `PeerRouting` map for a multicast iface at
     /// construction time. Called by
     /// `Transport::add_multicast_udp_interface`.

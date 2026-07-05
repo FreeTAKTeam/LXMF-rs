@@ -1,0 +1,110 @@
+use super::path::handle_link_request;
+
+// Regression coverage for the flaky AutoInterface/multicast e2e failure:
+// when a link request/handshake arrives over a multicast iface *before* the
+// peer's announce is processed, the inbound link used to bind to the host
+// multicast iface. Its proof/data replies then targeted `Direct(iface_address)`
+// which `PeerRouting` cannot resolve, so the multicast tx-guard dropped every
+// reply except the LinkProof — stalling the auth handshake (`recv round1/round2:
+// auth timeout`). The fix registers the peer's virtual unicast route from the
+// inbound packet's source address (detect-via-multicast, then unicast) and pins
+// the link to that virtual iface, so replies are unicast to the discovered peer.
+
+/// `ingress_route_iface` on a multicast iface eagerly registers the sender's
+/// virtual unicast route from its source addr and returns that virtual hash.
+#[tokio::test]
+async fn ingress_route_iface_registers_virtual_route_on_multicast() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let transport = Transport::new(TransportConfig::new("test", &identity, true));
+    let mc_iface = register_fake_multicast_iface(&transport).await;
+    let handler = transport.get_handler();
+
+    let peer = peer_addr(4242);
+    let route_iface = handler
+        .lock()
+        .await
+        .ingress_route_iface(mc_iface, crate::iface::IfaceSource::Udp(peer))
+        .await;
+
+    assert_ne!(route_iface, mc_iface, "must resolve to a fresh virtual unicast iface");
+
+    let guard = handler.lock().await;
+    let routing = guard.multicast_peer_routings.get(&mc_iface).expect("routing").lock().await;
+    assert_eq!(routing.hash_for_addr(&peer), Some(route_iface));
+    assert_eq!(routing.addr_for_hash(&route_iface), Some(peer));
+}
+
+/// On a non-multicast iface (no PeerRouting) it is a pass-through: the caller's
+/// iface is returned unchanged and nothing is registered.
+#[tokio::test]
+async fn ingress_route_iface_passes_through_on_non_multicast() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let transport = Transport::new(TransportConfig::new("test", &identity, true));
+    let unicast_iface = new_unicast_iface_in(&transport).await;
+    let handler = transport.get_handler();
+
+    let peer = peer_addr(4242);
+    let route_iface = handler
+        .lock()
+        .await
+        .ingress_route_iface(unicast_iface, crate::iface::IfaceSource::Udp(peer))
+        .await;
+
+    assert_eq!(route_iface, unicast_iface, "non-multicast iface must pass through unchanged");
+    assert!(handler.lock().await.unicast_udp_ifaces.is_empty());
+}
+
+/// End-to-end at the handler level: an inbound `LinkRequest` from a UDP peer on a
+/// multicast iface (no prior announce) creates an in-link pinned to the peer's
+/// virtual unicast iface — so its proof/data replies unicast instead of being
+/// dropped by the tx-guard. Pre-fix the link bound to the host multicast iface.
+#[tokio::test]
+async fn inbound_link_request_pins_in_link_to_unicast_route() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let transport = Transport::new(TransportConfig::new("test", &local_identity, true));
+    let mc_iface = register_fake_multicast_iface(&transport).await;
+    let handler = transport.get_handler();
+
+    // Register a local service (input) destination the client will link to.
+    let server_dest =
+        SingleInputDestination::new(PrivateIdentity::new_from_rand(OsRng), DestinationName::new("lxmf", "delivery"));
+    let dest_desc = server_dest.desc;
+    handler
+        .lock()
+        .await
+        .single_in_destinations
+        .insert(dest_desc.address_hash, Arc::new(Mutex::new(server_dest)));
+
+    // Client-side outbound link → take its LinkRequest packet.
+    let (link_events, _keep) = tokio::sync::broadcast::channel(4);
+    let mut outbound = Link::new(dest_desc, link_events);
+    let request_packet = outbound.request();
+
+    // Replicate the jobs.rs inbound dispatch for a LinkRequest arriving on the
+    // multicast socket from `peer` before any announce from that peer.
+    let peer = peer_addr(4242);
+    let route_iface = handler
+        .lock()
+        .await
+        .ingress_route_iface(mc_iface, crate::iface::IfaceSource::Udp(peer))
+        .await;
+    handle_link_request(&request_packet, route_iface, handler.lock().await).await;
+
+    assert_ne!(route_iface, mc_iface, "link request from a fresh peer resolves to a virtual iface");
+
+    let guard = handler.lock().await;
+
+    // Peer route learned from the link request's source address.
+    let routing = guard.multicast_peer_routings.get(&mc_iface).expect("routing").lock().await;
+    assert_eq!(routing.hash_for_addr(&peer), Some(route_iface));
+    drop(routing);
+
+    // The in-link is pinned to the virtual unicast iface (not the multicast host).
+    let in_link = guard.in_links.values().next().expect("in-link should be created").clone();
+    drop(guard);
+    assert_eq!(
+        in_link.lock().await.ingress_iface(),
+        Some(route_iface),
+        "in-link must bind to the unicast virtual iface so replies are unicast, not dropped",
+    );
+}
