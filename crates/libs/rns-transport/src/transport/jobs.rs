@@ -298,27 +298,25 @@ pub(super) async fn manage_transport(
                                 message.address,
                                 message.source,
                             ).await,
-                            // Link traffic: learn the sender's unicast route from its
-                            // source address (detect-over-multicast, then unicast) and
+                            // Link traffic: learn the sender's unicast route and
                             // bind the link to that virtual iface, so replies are
-                            // unicast rather than dropped by the multicast tx-guard.
-                            // No-op fallback to `message.address` on non-multicast ifaces.
+                            // unicast
                             PacketType::LinkRequest => {
                                 let route_iface = handler
-                                    .ingress_route_iface(message.address, message.source)
+                                    .ingress_route_iface(&packet, message.address, message.source)
                                     .await;
                                 handle_link_request(&packet, route_iface, handler).await
                             }
                             PacketType::Proof => {
                                 let route_iface = handler
-                                    .ingress_route_iface(message.address, message.source)
+                                    .ingress_route_iface(&packet, message.address, message.source)
                                     .await;
                                 drop(handler);
                                 handle_proof(packet, handler_arc.clone(), route_iface).await;
                             }
                             PacketType::Data => {
                                 let route_iface = handler
-                                    .ingress_route_iface(message.address, message.source)
+                                    .ingress_route_iface(&packet, message.address, message.source)
                                     .await;
                                 handle_data(&packet, route_iface, handler).await
                             }

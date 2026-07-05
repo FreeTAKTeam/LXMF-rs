@@ -987,8 +987,8 @@ where
     let local_switch_id = switch_id_for_identity(&options.switch_identity);
 
     match packet_type {
-        WDCL_T_DISCOVER => {
-            if target == local_switch_id {
+        WDCL_T_DISCOVER
+            if target == local_switch_id => {
                 if let Some(remote_switch_id) =
                     accept_discovery_response(&options.switch_identity, frame)
                 {
@@ -1027,9 +1027,8 @@ where
                     }
                 }
             }
-        }
-        WDCL_T_ENDPOINT_PKT => {
-            if target == local_switch_id && payload.len() > ENDPOINT_ID_LEN {
+        WDCL_T_ENDPOINT_PKT
+            if target == local_switch_id && payload.len() > ENDPOINT_ID_LEN => {
                 let data_len = payload.len() - ENDPOINT_ID_LEN;
                 let mut endpoint = [0_u8; ENDPOINT_ID_LEN];
                 endpoint.copy_from_slice(&payload[data_len..]);
@@ -1047,12 +1046,10 @@ where
                     }
                 }
             }
-        }
-        WDCL_T_LOG => {
-            if target == local_switch_id {
+        WDCL_T_LOG
+            if target == local_switch_id => {
                 process_weave_log(payload, options, state).await;
             }
-        }
         WDCL_T_DISP if target == local_switch_id => {
             process_weave_display(payload, options);
         }

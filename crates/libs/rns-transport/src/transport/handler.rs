@@ -363,35 +363,61 @@ impl TransportHandler {
         Some(virtual_hash)
     }
 
+    /// Whether an inbound link-associated packet targets something we will
+    /// actually route or deliver — i.e. it is "accepted" rather than dropped.
+    /// Used to gate eager unicast-route learning so that unauthenticated
+    /// multicast senders cannot grow `unicast_udp_ifaces` / the `iface_manager`
+    /// virtual-iface set with requests to unknown destinations.
+    ///
+    /// The criteria mirror the accept branches of the individual handlers:
+    ///   - Link packets (`Proof` / `Data` with `DestinationType::Link`) are
+    ///     accepted when we already track the link — as an inbound link, an
+    ///     outbound link (matched by id), or a forward in the `link_table`.
+    ///   - Everything else (`LinkRequest` and single `Data`, both
+    ///     `DestinationType::Single`) is accepted when the destination is a
+    ///     local input destination or has a known next hop — exactly
+    ///     `handle_link_request`'s destination/intermediate split.
+    pub(super) async fn should_learn_unicast_route(&self, packet: &Packet) -> bool {
+        if packet.header.destination_type == DestinationType::Link {
+            // `LinkId == AddressHash`, so the link id is `packet.destination`.
+            if self.in_links.contains_key(&packet.destination)
+                || self.link_table.knows(&packet.destination)
+            {
+                return true;
+            }
+            for link in self.out_links.values() {
+                if *link.lock().await.id() == packet.destination {
+                    return true;
+                }
+            }
+            false
+        } else {
+            self.single_in_destinations.contains_key(&packet.destination)
+                || self.path_table.next_hop_full(&packet.destination).is_some()
+        }
+    }
+
     /// Resolve the interface an inbound *link-associated* packet (LinkRequest /
     /// Proof / link Data) should be handled on, eagerly learning the sender's
     /// unicast route in the process.
-    ///
-    /// On a multicast iface this registers (or refreshes) the peer's virtual
-    /// unicast iface from the packet's source address — the "detect over
-    /// multicast, then unicast" step — and returns that virtual hash. Binding
-    /// the resulting link to it means the link's proof/data replies target the
-    /// virtual iface, which `PeerRouting` resolves to a unicast send instead of
-    /// being dropped by the multicast tx-guard (which only excepts LinkProof).
-    /// Announces already do this via `unicast_iface_for_source`; doing it for
-    /// link traffic too closes the announce-vs-link-request race that stalled
-    /// the AutoInterface auth handshake.
-    ///
-    /// Falls back to `iface` unchanged when the packet did not arrive over a
-    /// multicast iface from a UDP peer (e.g. TCP/Serial links), so those paths
-    /// keep their existing ingress iface.
+
     pub(super) async fn ingress_route_iface(
         &mut self,
+        packet: &Packet,
         iface: AddressHash,
         source: IfaceSource,
     ) -> AddressHash {
+        if !self.should_learn_unicast_route(packet).await {
+            log::info!(
+                "tp({}): unrecognized target: {}, keeping ingress as-is.",
+                self.config.name,
+                packet.destination.to_hex_string()
+            );
+            return iface;
+        }
         match self.unicast_iface_for_source(iface, source).await {
             Some(virtual_iface) => virtual_iface,
             None => {
-                // Expected on non-multicast ifaces (TCP/Serial) and for packets
-                // already attributed to a virtual unicast iface. Kept at trace so
-                // it costs zero instructions in production (release_max_level) and
-                // does not spam this per-inbound-packet path.
                 log::trace!(
                     "tp({}): no unicast route learned for source {:?} on iface {}; keeping ingress iface",
                     self.config.name,

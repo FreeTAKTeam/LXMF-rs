@@ -81,6 +81,13 @@ impl LinkTable {
         self.entries.insert(link_id, entry);
     }
 
+    /// Whether the table has any entry (validated or pending) for `link_id`.
+    /// Unlike `original_destination`, this does not filter on `validated`, so it
+    /// also recognizes link requests still awaiting their proof.
+    pub fn knows(&self, link_id: &LinkId) -> bool {
+        self.entries.contains_key(link_id)
+    }
+
     pub fn original_destination(&self, link_id: &LinkId) -> Option<AddressHash> {
         self.entries.get(link_id).filter(|e| e.validated).map(|e| e.original_destination)
     }
