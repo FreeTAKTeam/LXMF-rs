@@ -30,6 +30,7 @@ async fn rnode_ble_runtime_rejects_outbound_packets_larger_than_mtu_before_ble_w
     );
 }
 
+#[cfg(feature = "rnode-ble")]
 #[tokio::test]
 async fn rnode_ble_runtime_sends_packet_at_mtu_after_deferred_radio_config() {
     let lora_config = LoraConfig::us915_default();
