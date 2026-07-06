@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last reassessed: 2026-06-30
+Last reassessed: 2026-07-06
 
 This file is the repository-level source of truth for parity posture, release
 confidence, and execution order. Detailed row-level status lives in:
@@ -32,6 +32,23 @@ The project is best described by capability level:
 | Propagation interoperable | achieved | Propagated delivery, complete Python-only `LXMPeer.py` lifecycle coverage, and Python-reference propagation router fetch/download/sync lifecycle coverage are implemented and tested. |
 | Operationally substitutable | partial | `reticulumd` is deployable and supports several production interfaces, but runtime, interface, and utility breadth remains narrower than Python. |
 | Full Python surface parity | not achieved | Remaining gaps are tracked in the two parity matrices. |
+
+## v0.7.0 SDK-First Release Focus
+
+The v0.7.0 release thread is SDK-first: REM/RCH-facing delivery, discovery,
+identity, saved-peer, paper, history, conversation, cancellation, and
+propagation workflows should keep moving onto the existing `lxmf-sdk`
+`ZmqPipelineBackendClient` surface. This is an in-place improvement of the
+current SDK/backend client. It is not a compatibility layer, adapter, shim, or
+new parallel SDK surface.
+
+Scoped release evidence is split as follows:
+
+| Evidence slice | Release use | Acceptance boundary |
+| --- | --- | --- |
+| LXMF send/receive | Proves typed SDK delivery, receipt/status, history, inbound event, paper, and propagation-control behavior exercised through `ZmqPipelineBackendClient`. | Software and pinned Python-reference evidence can support the v0.7.0 SDK-first claim when the scenario is named. |
+| Carrier attach/announce software | Proves daemon/runtime interface attach, local shared-instance attach, AutoInterface carrier lifecycle, I2P fake-SAM or real-SAM attach, and announce/path fanout where the carrier is software-controlled. | Supports interface readiness for the implemented software carriers only; it does not claim broad physical-network parity. |
+| Optional HIL | Adds confidence for RNode, RNodeMulti, Weave, VR-N76, BLE, and prepared-host carrier/device combinations. | Useful release evidence, but optional for the SDK-first software release and not required to promote software ledger rows. |
 
 ## Strong Areas
 
@@ -255,7 +272,12 @@ The project is best described by capability level:
   dispatches safe `rnodeconf-rs query-radio-state` and `blink` management
   commands through the live daemon binding, records their queued JSON results,
   and captures a post-management status snapshot that must remain online,
-  radio-on, and command-error free. A software-only RNode BLE smoke records
+  radio-on, and command-error free. The transport-side serial/TCP LoRa status
+  now also reports native safe-management metadata for SDK/daemon consumers:
+  supported safe commands, guarded persistent/destructive command boundaries,
+  queue depth/capacity/closed state, accepted and failed operation counters,
+  the last queued or failed operation ID/command/state, and the last
+  management error. A software-only RNode BLE smoke records
   `evidence_scope = "software_rnode_ble_fallback_management"` under
   `target/rnode-ble-software-smoke/` for feature-gated fallback, command-monitor,
   management dispatch, outbound RNode BLE MTU rejection and MTU-sized transmit,
@@ -830,6 +852,10 @@ The project is best described by capability level:
   peer display names, unread counts, last-message previews with links, receipt
   inclusion intent, and restart pagination cursors through
   `app.message.conversation.list` on the SDK envelope path.
+- The native SDK app domain now exposes `app.messages().history(...)` and
+  `app.messages().conversations(...)` on the existing `Client` surface, so
+  direct-chat clients can bind message-list and conversation-list UI without
+  decoding raw SDK envelopes.
 - `ZmqPipelineBackendClient::list_message_history` now accepts both canonical
   `id`/`content` records and legacy direct-chat `message_id`/`body` records
   from `app.message.history.list`, keeping restart-recovered conversation
@@ -1009,6 +1035,12 @@ The project is best described by capability level:
   rejects for short payloads, destination mismatches, and decrypt failures, so
   those router-coupled drops remain observer-visible instead of only counted as
   rejected imports.
+- The native SDK app event mapper now projects inbound delivery, receipt, and
+  drop payloads into typed helpers on the existing event path, preserving
+  message IDs, source/destination hashes, raw LXMF bytes, delivery kind,
+  receipt status, signature/stamp metadata, drop reason, and lifecycle state
+  without requiring REM/RCH clients to parse raw event JSON for normal message
+  and status UI.
 - RPC-layer propagation rejects for ignored destination hashes now emit bounded
   `inbound_dropped` events before returning `PermissionDenied` from
   `propagation_ingest` and remote fetch/download/sync imports. The events use
@@ -1268,7 +1300,10 @@ The project is best described by capability level:
 ## Remaining Release Blockers
 
 These are blockers to a broad "Python replacement" claim, not blockers to using
-the implemented subset.
+the implemented subset. For the v0.7.0 SDK-first release, the gating evidence
+is the scoped LXMF send/receive and carrier attach/announce software evidence
+listed above; optional HIL remains confidence-building evidence, not a release
+gate for the SDK-first software slice.
 
 1. **Interop breadth**
    - Propagation router lifecycle now has dispatchable Python-reference cases
@@ -1304,10 +1339,12 @@ the implemented subset.
 
 ## Active Execution Order
 
-1. Expand pinned Rust/Python interoperability gates with each completed row.
-2. Close RNS discovery, resolver, and transport-policy gaps.
-3. Collect hardware, soak, and external-client release evidence.
-4. Expand interface and utility breadth after protocol behavior stabilizes.
+1. Finish the v0.7.0 SDK-first evidence slice on the existing
+   `lxmf-sdk`/`ZmqPipelineBackendClient` path.
+2. Expand pinned Rust/Python interoperability gates with each completed row.
+3. Close RNS discovery, resolver, and transport-policy gaps.
+4. Collect hardware, soak, and external-client release evidence.
+5. Expand interface and utility breadth after protocol behavior stabilizes.
 
 ## Verification Baseline
 

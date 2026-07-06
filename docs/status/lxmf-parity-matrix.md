@@ -1,6 +1,6 @@
 # LXMF Parity Matrix
 
-Last reassessed: 2026-06-30
+Last reassessed: 2026-07-06
 
 This is the maintained row-level status for Python LXMF compatibility.
 Repository-level posture and execution order live in
@@ -50,20 +50,37 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - PARITY_ITEM id=peer.queue_accounting status=done
 - PARITY_ITEM id=peer.acceptance_rate status=done
 - PARITY_ITEM id=peer.peering_key status=done
-- PARITY_ITEM id=router.outbound_queue status=partial
-- PARITY_ITEM id=router.handle_outbound_policy status=partial
-- PARITY_ITEM id=router.adapter_transport status=partial
+- PARITY_ITEM id=router.outbound_queue status=done
+- PARITY_ITEM id=router.handle_outbound_policy status=done
+- PARITY_ITEM id=router.adapter_transport status=done
 - PARITY_ITEM id=router.paper_uri_ingest status=done
 - PARITY_ITEM id=router.cancel_outbound status=done
 - PARITY_ITEM id=router.propagation_ingest_fetch status=done
 - PARITY_ITEM id=router.transfer_state_lifecycle status=done
 - PARITY_ITEM id=router.node_app_data status=done
-- PARITY_ITEM id=handlers.delivery_callback status=partial
-- PARITY_ITEM id=handlers.propagation_app_data status=partial
-- PARITY_ITEM id=handlers.router_side_effects status=partial
+- PARITY_ITEM id=handlers.delivery_callback status=done
+- PARITY_ITEM id=handlers.propagation_app_data status=done
+- PARITY_ITEM id=handlers.router_side_effects status=done
 - PARITY_ITEM id=interop.python_live_gate status=done
 
 ## Capability Detail
+
+### v0.7.0 SDK-first boundary
+
+- v0.7.0 improves the existing `lxmf-sdk` and
+  `ZmqPipelineBackendClient` in place for REM/RCH-facing workflows. It does
+  not add a compatibility layer, adapter, shim, or new parallel SDK surface.
+- LXMF send evidence for this release is scoped to typed SDK send/batch-send,
+  delivery status, receipt terminality, retry metadata, cancellation, history,
+  conversation summaries, paper encode/decode, and propagation-control calls
+  exercised through `ZmqPipelineBackendClient`.
+- LXMF receive evidence is scoped to SDK-pollable raw inbound, receipt, and
+  inbound-drop events plus persisted direct/propagated local-delivery metadata
+  produced by the daemon/RPC event stream.
+- Carrier attach/announce evidence remains a Reticulum/interface concern:
+  LXMF rows can cite it only when a named send/receive scenario crosses that
+  software carrier, and optional HIL remains release confidence rather than a
+  prerequisite for SDK-first LXMF rows.
 
 ### Messages and interchange
 
@@ -98,6 +115,14 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   direct `delivered`, `sent: link resource`, and `sent: propagated resource`.
 - Resource advertisement failure, retry exhaustion, timeout, and explicit
   cancellation reach daemon message state.
+- Outbound SDK sends enter the daemon-owned queue before bridge handoff, run
+  validation/policy checks before scheduling, expose delivery-pipeline queue and
+  lane state, and preserve queued identity/path misses for delivery-announce
+  wakeup rather than dropping them as terminal failures.
+- Delivery callbacks now publish SDK-pollable receipt lifecycle events with
+  optional router metadata when available: packet hash, resource hash, peer,
+  method/stage, delivery kind, byte count, and link ID. The typed SDK event
+  surface exposes the same fields through `DeliveryLifecycleDetails`.
 - RPC daemon `lxmf.delivery` announces reschedule stored pending direct,
   default-direct, and opportunistic outbound messages for the announced
   destination, without waking propagated, paper, terminal, already-sending, or
@@ -163,6 +188,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   advertised integer or fractional kilobytes into the byte limits used by
   peer-sync queue selection, so valid queued payloads are not misclassified as
   transfer-limited.
+- Propagation announce/app-data handling is daemon-state driven: node app-data,
+  stamp cost, transfer/sync policy, and auth-required state are regenerated from
+  local propagation state, while router-side resource completion/failure updates
+  peer counters, receipt state, and SDK-visible lifecycle metadata.
 - Propagation peer maintenance selection claims the chosen peer before invoking
   sync by recording the sync attempt and next backoff window, while allowing the
   internal maintenance-triggered sync to consume that claim, so concurrent
@@ -403,6 +432,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   peer display names, unread counts, last-message previews with links, receipt
   inclusion intent, and restart pagination cursors through
   `app.message.conversation.list` on the SDK envelope path.
+- The native SDK app domain now exposes the same durable message-list and
+  conversation-list flows as `app.messages().history(...)` and
+  `app.messages().conversations(...)`, so direct-chat clients can stay on the
+  existing SDK client surface without raw envelope decoding.
 - `ZmqPipelineBackendClient::list_message_history` accepts canonical
   `id`/`content` history rows and legacy direct-chat `message_id`/`body` rows,
   so recovered history remains typed even when the daemon returns the older app
@@ -885,6 +918,11 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   including default identifier redaction and `delivery_kind` classification,
   without storing a message or updating peer activity. Direct stamp-policy and
   delivery-policy rejections route through the same bounded drop-event helper.
+- The native SDK app event mapper now exposes typed inbound message, inbound
+  drop, receipt, and delivery-lifecycle helpers on the existing event path,
+  preserving message IDs, peer/source identity, destination hashes, raw LXMF
+  bytes, signature/stamp metadata, drop reason, receipt status, and lifecycle
+  state without requiring normal client UI flows to decode raw event JSON.
 - Focused propagated local-delivery tests cover ignored-source delivery-policy
   rejections emitting bounded raw `inbound_dropped` events with
   `delivery_kind = "propagation"` while preserving Python-style no-store

@@ -95,6 +95,10 @@ fn send_batch_uses_zmq_sdk_method_and_decodes_ordered_results() {
     assert_eq!(params["messages"][0]["fields"].get("_sdk"), None);
     assert_eq!(params["messages"][0]["method"], json!("direct"));
     assert_eq!(params["messages"][0]["include_ticket"], json!(false));
+    assert_eq!(params["messages"][0]["idempotency_key"], json!("batch-msg-1-send-once"));
+    assert_eq!(params["messages"][0]["ttl_ms"], json!(30_000));
+    assert_eq!(params["messages"][0]["correlation_id"], json!("batch-msg-1-corr"));
+    assert_eq!(params["messages"][0]["extensions"]["burst_slot"], json!(0));
     assert_eq!(params["messages"][1]["fields"]["FIELD_GROUP"], json!("group-b"));
     assert_eq!(params["messages"][1]["fields"].get("content"), None);
     assert_eq!(params["messages"][1]["fields"].get("title"), None);

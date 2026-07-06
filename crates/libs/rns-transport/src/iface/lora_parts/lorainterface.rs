@@ -1,6 +1,68 @@
 type RNodeManagementFrameSender = tokio::sync::mpsc::Sender<Vec<u8>>;
 type RNodeManagementFrameReceiver =
     Arc<tokio::sync::Mutex<tokio::sync::mpsc::Receiver<Vec<u8>>>>;
+type RNodeManagementStatus = Arc<std::sync::Mutex<LoraRNodeManagementStatus>>;
+
+#[derive(Debug, Clone, Default)]
+struct LoraRNodeManagementStatus {
+    accepted_total: u64,
+    failed_total: u64,
+    next_operation_seq: u64,
+    last_operation: Option<LoraRNodeManagementOperation>,
+    last_management_error: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct LoraRNodeManagementOperation {
+    operation_id: String,
+    command: String,
+    state: String,
+}
+
+impl LoraRNodeManagementStatus {
+    fn record_queued(&mut self, command: &str) {
+        let operation_id = self.next_operation_id();
+        self.accepted_total = self.accepted_total.saturating_add(1);
+        self.last_operation = Some(LoraRNodeManagementOperation {
+            operation_id,
+            command: command.to_owned(),
+            state: "queued".to_owned(),
+        });
+        self.last_management_error = None;
+    }
+
+    fn record_failed(&mut self, command: &str, error: String) {
+        let operation_id = self.next_operation_id();
+        self.failed_total = self.failed_total.saturating_add(1);
+        self.last_operation = Some(LoraRNodeManagementOperation {
+            operation_id,
+            command: command.to_owned(),
+            state: "failed".to_owned(),
+        });
+        self.last_management_error = Some(error);
+    }
+
+    fn next_operation_id(&mut self) -> String {
+        self.next_operation_seq = self.next_operation_seq.saturating_add(1);
+        format!("rnode-management-{}", self.next_operation_seq)
+    }
+
+    fn to_json(&self) -> serde_json::Value {
+        let last_operation = self.last_operation.as_ref().map(|operation| {
+            serde_json::json!({
+                "operation_id": operation.operation_id,
+                "command": operation.command,
+                "state": operation.state,
+            })
+        });
+        serde_json::json!({
+            "accepted_total": self.accepted_total,
+            "failed_total": self.failed_total,
+            "last_operation": last_operation,
+            "last_management_error": self.last_management_error.as_deref(),
+        })
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct LoraInterface {
@@ -18,6 +80,7 @@ pub struct LoraInterface {
     startup_response_timeout: Duration,
     management_frame_tx: RNodeManagementFrameSender,
     management_frame_rx: RNodeManagementFrameReceiver,
+    management_status: RNodeManagementStatus,
 }
 
 impl LoraInterface {
@@ -39,6 +102,7 @@ impl LoraInterface {
             startup_response_timeout: R_NODE_STARTUP_RESPONSE_TIMEOUT,
             management_frame_tx,
             management_frame_rx,
+            management_status: Arc::new(std::sync::Mutex::new(LoraRNodeManagementStatus::default())),
         }
     }
 
@@ -60,6 +124,7 @@ impl LoraInterface {
             startup_response_timeout: R_NODE_STARTUP_RESPONSE_TIMEOUT,
             management_frame_tx,
             management_frame_rx,
+            management_status: Arc::new(std::sync::Mutex::new(LoraRNodeManagementStatus::default())),
         }
     }
 
@@ -125,7 +190,10 @@ impl LoraInterface {
 
     #[must_use]
     pub fn rnode_management_handle(&self) -> LoraRNodeManagementHandle {
-        LoraRNodeManagementHandle { tx: self.management_frame_tx.clone() }
+        LoraRNodeManagementHandle {
+            tx: self.management_frame_tx.clone(),
+            status: self.management_status.clone(),
+        }
     }
 
     #[must_use]
@@ -221,6 +289,24 @@ impl LoraInterface {
             "tx_power_dbm": self.config.tx_power_dbm,
             "max_payload_bytes": self.config.max_payload_bytes,
         });
+        let management_status =
+            self.management_status.lock().expect("lora management status mutex poisoned").to_json();
+        let management = serde_json::json!({
+            "supported": true,
+            "safe_commands": ["radio_state_query", "blink"],
+            "guarded_persistent_commands": true,
+            "guarded_destructive_commands": true,
+            "queue": {
+                "available_capacity": self.management_frame_tx.capacity(),
+                "max_capacity": self.management_frame_tx.max_capacity(),
+                "pending_depth": self
+                    .management_frame_tx
+                    .max_capacity()
+                    .saturating_sub(self.management_frame_tx.capacity()),
+                "closed": self.management_frame_tx.is_closed(),
+            },
+            "operations": management_status,
+        });
         serde_json::json!({
             "endpoint": self.endpoint(),
             "bearer": match self.bearer() {
@@ -241,6 +327,7 @@ impl LoraInterface {
             "online": self.online,
             "flow_control": self.flow_control,
             "reported_bitrate_bps": self.reported_bitrate_bps(),
+            "management": management,
         })
     }
 
@@ -438,44 +525,90 @@ fn rnode_management_channel() -> (RNodeManagementFrameSender, RNodeManagementFra
 #[derive(Debug, Clone)]
 pub struct LoraRNodeManagementHandle {
     tx: RNodeManagementFrameSender,
+    status: RNodeManagementStatus,
 }
 
 impl LoraRNodeManagementHandle {
+    fn record_queued(&self, command: &str) {
+        let mut status = self.status.lock().expect("lora management status mutex poisoned");
+        status.record_queued(command);
+    }
+
+    fn record_failed(&self, command: &str, error: String) {
+        let mut status = self.status.lock().expect("lora management status mutex poisoned");
+        status.record_failed(command, error);
+    }
+
+    pub fn try_dispatch_named_frame(
+        &self,
+        command: &str,
+        frame: Vec<u8>,
+    ) -> Result<(), tokio::sync::mpsc::error::TrySendError<Vec<u8>>> {
+        match self.tx.try_send(frame) {
+            Ok(()) => {
+                self.record_queued(command);
+                Ok(())
+            }
+            Err(err) => {
+                self.record_failed(command, err.to_string());
+                Err(err)
+            }
+        }
+    }
+
     pub fn try_dispatch_frame(
         &self,
         frame: Vec<u8>,
     ) -> Result<(), tokio::sync::mpsc::error::TrySendError<Vec<u8>>> {
-        self.tx.try_send(frame)
+        self.try_dispatch_named_frame("raw_frame", frame)
+    }
+
+    pub async fn dispatch_named_frame(
+        &self,
+        command: &str,
+        frame: Vec<u8>,
+    ) -> Result<(), tokio::sync::mpsc::error::SendError<Vec<u8>>> {
+        match self.tx.send(frame).await {
+            Ok(()) => {
+                self.record_queued(command);
+                Ok(())
+            }
+            Err(err) => {
+                self.record_failed(command, err.to_string());
+                Err(err)
+            }
+        }
     }
 
     pub async fn dispatch_frame(
         &self,
         frame: Vec<u8>,
     ) -> Result<(), tokio::sync::mpsc::error::SendError<Vec<u8>>> {
-        self.tx.send(frame).await
+        self.dispatch_named_frame("raw_frame", frame).await
     }
 
     pub fn try_query_radio_state(
         &self,
     ) -> Result<(), tokio::sync::mpsc::error::TrySendError<Vec<u8>>> {
-        self.try_dispatch_frame(LoraConfig::radio_state_query_frame())
+        self.try_dispatch_named_frame("radio_state_query", LoraConfig::radio_state_query_frame())
     }
 
     pub fn try_blink(&self, pattern: u8) -> Result<(), tokio::sync::mpsc::error::TrySendError<Vec<u8>>> {
-        self.try_dispatch_frame(LoraConfig::blink_frame(pattern))
+        self.try_dispatch_named_frame("blink", LoraConfig::blink_frame(pattern))
     }
 
     pub async fn query_radio_state(
         &self,
     ) -> Result<(), tokio::sync::mpsc::error::SendError<Vec<u8>>> {
-        self.dispatch_frame(LoraConfig::radio_state_query_frame()).await
+        self.dispatch_named_frame("radio_state_query", LoraConfig::radio_state_query_frame())
+            .await
     }
 
     pub async fn blink(
         &self,
         pattern: u8,
     ) -> Result<(), tokio::sync::mpsc::error::SendError<Vec<u8>>> {
-        self.dispatch_frame(LoraConfig::blink_frame(pattern)).await
+        self.dispatch_named_frame("blink", LoraConfig::blink_frame(pattern)).await
     }
 }
 

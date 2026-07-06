@@ -25,7 +25,10 @@ use crate::types::{
     ShutdownMode, TickBudget, TickResult,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{Map as JsonMap, Value as JsonValue};
+#[cfg(any(feature = "rpc-backend", feature = "zmq-pipeline-backend"))]
+use serde_json::Map as JsonMap;
+#[cfg(any(feature = "rpc-backend", feature = "zmq-pipeline-backend"))]
+use serde_json::Value as JsonValue;
 #[cfg(feature = "sdk-async")]
 use std::future::Future;
 #[cfg(feature = "sdk-async")]
@@ -34,8 +37,10 @@ use std::pin::Pin;
 use tokio_stream::Stream;
 
 const CAP_KEY_MANAGEMENT: &str = "sdk.capability.key_management";
+#[cfg(any(feature = "rpc-backend", feature = "zmq-pipeline-backend"))]
 const LXMF_RAW_FIELDS_KEY: &str = "_lxmf_fields_msgpack_b64";
 
+#[cfg(any(feature = "rpc-backend", feature = "zmq-pipeline-backend"))]
 fn lxmf_wire_fields_from_payload(payload: JsonValue) -> JsonValue {
     let JsonValue::Object(mut map) = payload else {
         return JsonValue::Null;
@@ -52,6 +57,7 @@ fn lxmf_wire_fields_from_payload(payload: JsonValue) -> JsonValue {
     non_empty_fields(fields)
 }
 
+#[cfg(any(feature = "rpc-backend", feature = "zmq-pipeline-backend"))]
 fn is_reserved_payload_field_key(key: &str) -> bool {
     key != LXMF_RAW_FIELDS_KEY
         && matches!(
@@ -60,6 +66,7 @@ fn is_reserved_payload_field_key(key: &str) -> bool {
         )
 }
 
+#[cfg(any(feature = "rpc-backend", feature = "zmq-pipeline-backend"))]
 fn non_empty_fields(fields: JsonMap<String, JsonValue>) -> JsonValue {
     if fields.is_empty() {
         JsonValue::Null

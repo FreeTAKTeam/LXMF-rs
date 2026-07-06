@@ -138,10 +138,10 @@ impl DeliveryTask {
             let status = self.identity_miss_status(failure_status);
             let detail = destination_hex.unwrap_or(self.destination_hex.as_str());
             log_delivery_trace(&self.message_id, detail, stage, "not found");
-            emit_receipt_event(&self.receipt_tx, ReceiptEvent {
-                message_id: self.message_id.clone(),
-                status: status.to_string(),
-            });
+            emit_receipt_event(
+                &self.receipt_tx,
+                ReceiptEvent::new(self.message_id.clone(), status).with_method(stage),
+            );
             if status == Self::DEFERRED_PEER_IDENTITY_STATUS {
                 return Ok(None);
             }

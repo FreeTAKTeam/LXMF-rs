@@ -70,6 +70,52 @@ pub struct StreamGapDetails {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[non_exhaustive]
+pub struct InboundMessageDetails {
+    pub message_id: Option<String>,
+    pub source_hash: Option<String>,
+    pub destination_hash: Option<String>,
+    pub delivery_kind: Option<String>,
+    pub lxmf_bytes_hex: Option<String>,
+    pub receipt_status: Option<String>,
+    pub signature_checked: Option<bool>,
+    pub signature_status: Option<String>,
+    pub stamp_status: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct InboundDropDetails {
+    pub reason: Option<String>,
+    pub delivery_kind: Option<String>,
+    pub raw_destination_hash: Option<String>,
+    pub resolved_destination_hash: Option<String>,
+    pub source_hash: Option<String>,
+    pub destination_hash: Option<String>,
+    pub dropped_message_id: Option<String>,
+    pub payload_mode: Option<String>,
+    pub bytes_len: Option<u64>,
+    pub detail: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct DeliveryLifecycleDetails {
+    pub state: Option<String>,
+    pub from: Option<String>,
+    pub to: Option<String>,
+    pub receipt_status: Option<String>,
+    pub delivery_kind: Option<String>,
+    pub packet_hash: Option<String>,
+    pub resource_hash: Option<String>,
+    pub peer: Option<String>,
+    pub method: Option<String>,
+    pub bytes: Option<u64>,
+    pub link_id: Option<String>,
+    pub reason: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct EventMetadata {
     pub event_id: String,
     pub runtime_id: String,
@@ -109,6 +155,7 @@ pub enum EventKind {
     MessageFailed,
     MessageCancelled,
     InboundMessageReceived,
+    InboundMessageDropped,
     QueuePressureRaised,
     RetryScheduled,
     ReconnectScheduled,
@@ -136,6 +183,101 @@ pub struct EventBatch {
     pub dropped_count: u64,
 }
 
+impl Event {
+    pub fn inbound_message_details(&self) -> Option<InboundMessageDetails> {
+        matches!(self.kind, EventKind::InboundMessageReceived)
+            .then(|| inbound_message_details(&self.details))
+    }
+    pub fn inbound_drop_details(&self) -> Option<InboundDropDetails> {
+        matches!(self.kind, EventKind::InboundMessageDropped)
+            .then(|| inbound_drop_details(&self.details))
+    }
+    pub fn delivery_lifecycle_details(&self) -> Option<DeliveryLifecycleDetails> {
+        matches!(
+            self.kind,
+            EventKind::MessageQueued
+                | EventKind::MessageDispatching
+                | EventKind::MessageSent
+                | EventKind::MessageDelivered
+                | EventKind::MessageFailed
+                | EventKind::MessageCancelled
+        )
+        .then(|| delivery_lifecycle_details(&self.details))
+    }
+}
+fn json_str(value: &JsonValue, key: &str) -> Option<String> {
+    value.get(key)?.as_str().map(ToOwned::to_owned)
+}
+
+fn nested_json_str(value: &JsonValue, path: &[&str]) -> Option<String> {
+    let mut current = value;
+    for key in path {
+        current = current.get(*key)?;
+    }
+    current.as_str().map(ToOwned::to_owned)
+}
+
+fn nested_json_bool(value: &JsonValue, path: &[&str]) -> Option<bool> {
+    let mut current = value;
+    for key in path {
+        current = current.get(*key)?;
+    }
+    current.as_bool()
+}
+
+fn inbound_message_details(payload: &JsonValue) -> InboundMessageDetails {
+    let message = payload.get("message").unwrap_or(payload);
+    InboundMessageDetails {
+        message_id: json_str(message, "id").or_else(|| json_str(payload, "message_id")),
+        source_hash: json_str(message, "source").or_else(|| json_str(payload, "source_hash")),
+        destination_hash: json_str(message, "destination")
+            .or_else(|| json_str(payload, "destination_hash")),
+        delivery_kind: json_str(payload, "delivery_kind"),
+        lxmf_bytes_hex: json_str(payload, "lxmf_bytes_hex"),
+        receipt_status: json_str(message, "receipt_status")
+            .or_else(|| json_str(payload, "receipt_status")),
+        signature_checked: nested_json_bool(message, &["fields", "_lxmf", "signature_checked"]),
+        signature_status: nested_json_str(message, &["fields", "_lxmf", "signature_status"]),
+        stamp_status: nested_json_str(message, &["fields", "_lxmf", "stamp_status"]),
+    }
+}
+
+fn inbound_drop_details(payload: &JsonValue) -> InboundDropDetails {
+    InboundDropDetails {
+        reason: json_str(payload, "reason"),
+        delivery_kind: json_str(payload, "delivery_kind"),
+        raw_destination_hash: json_str(payload, "raw_destination_hash"),
+        resolved_destination_hash: json_str(payload, "resolved_destination_hash"),
+        source_hash: json_str(payload, "source_hash"),
+        destination_hash: json_str(payload, "destination_hash"),
+        dropped_message_id: json_str(payload, "dropped_message_id"),
+        payload_mode: json_str(payload, "payload_mode"),
+        bytes_len: payload.get("bytes_len").and_then(JsonValue::as_u64),
+        detail: json_str(payload, "detail"),
+    }
+}
+
+fn delivery_lifecycle_details(payload: &JsonValue) -> DeliveryLifecycleDetails {
+    let message = payload.get("message").unwrap_or(payload);
+    DeliveryLifecycleDetails {
+        state: json_str(payload, "state")
+            .or_else(|| normalized_receipt_state(payload).ok().flatten()),
+        from: json_str(payload, "from"),
+        to: json_str(payload, "to"),
+        receipt_status: json_str(message, "receipt_status")
+            .or_else(|| json_str(payload, "receipt_status"))
+            .or_else(|| json_str(payload, "status")),
+        delivery_kind: json_str(payload, "delivery_kind"),
+        packet_hash: json_str(payload, "packet_hash"),
+        resource_hash: json_str(payload, "resource_hash"),
+        peer: json_str(payload, "peer").or_else(|| json_str(payload, "peer_id")),
+        method: json_str(payload, "method"),
+        bytes: payload.get("bytes").and_then(JsonValue::as_u64),
+        link_id: json_str(payload, "link_id"),
+        reason: json_str(payload, "reason").or_else(|| json_str(payload, "detail")),
+    }
+}
+
 #[cfg(feature = "sdk-async")]
 fn payload_state(payload: &JsonValue, key: &str) -> Result<Option<String>, &'static str> {
     match payload.get(key) {
@@ -147,11 +289,16 @@ fn payload_state(payload: &JsonValue, key: &str) -> Result<Option<String>, &'sta
     }
 }
 
-#[cfg(feature = "sdk-async")]
-fn receipt_state(payload: &JsonValue) -> Result<Option<String>, &'static str> {
-    let Some(message) = payload.get("message") else { return Ok(None) };
-    let Some(status_val) = message.get("receipt_status") else { return Ok(None) };
-    let status = status_val.as_str().ok_or("receipt_status is not a string")?;
+fn normalized_receipt_state(payload: &JsonValue) -> Result<Option<String>, &'static str> {
+    let status_val = payload
+        .get("message")
+        .and_then(|message| message.get("receipt_status").or_else(|| message.get("status")))
+        .or_else(|| payload.get("receipt_status"))
+        .or_else(|| payload.get("status"))
+        .or_else(|| payload.get("state"))
+        .or_else(|| payload.get("receipt").and_then(|receipt| receipt.get("status")));
+    let Some(status_val) = status_val else { return Ok(None) };
+    let status = status_val.as_str().ok_or("receipt status is not a string")?;
     Ok(Some(status.split(':').next().unwrap_or(status).trim().to_ascii_lowercase()))
 }
 
@@ -170,13 +317,66 @@ fn map_delivery_state(state: &str) -> EventKind {
 
 #[cfg(feature = "sdk-async")]
 fn payload_peer_id(payload: &JsonValue) -> Result<Option<String>, &'static str> {
-    for key in ["peer", "peer_id", "identity", "target"] {
+    for key in ["peer", "peer_id", "identity", "target", "source_hash", "destination_hash"] {
         match payload.get(key) {
             None => continue,
             Some(v) => {
                 return v
                     .as_str()
                     .ok_or("peer id field is not a string")
+                    .map(|s| Some(s.to_owned()));
+            }
+        }
+    }
+    if let Some(message) = payload.get("message") {
+        for key in ["source", "source_hash", "destination", "destination_hash"] {
+            match message.get(key) {
+                None => continue,
+                Some(v) => {
+                    return v
+                        .as_str()
+                        .ok_or("message peer id field is not a string")
+                        .map(|s| Some(s.to_owned()));
+                }
+            }
+        }
+    }
+    Ok(None)
+}
+
+#[cfg(feature = "sdk-async")]
+fn payload_message_id(payload: &JsonValue) -> Result<Option<String>, &'static str> {
+    for key in ["message_id", "id", "dropped_message_id"] {
+        match payload.get(key) {
+            None => continue,
+            Some(v) => {
+                return v
+                    .as_str()
+                    .ok_or("message id field is not a string")
+                    .map(|s| Some(s.to_owned()));
+            }
+        }
+    }
+    if let Some(message) = payload.get("message") {
+        for key in ["id", "message_id"] {
+            match message.get(key) {
+                None => continue,
+                Some(v) => {
+                    return v
+                        .as_str()
+                        .ok_or("nested message id field is not a string")
+                        .map(|s| Some(s.to_owned()));
+                }
+            }
+        }
+    }
+    if let Some(receipt) = payload.get("receipt") {
+        match receipt.get("message_id") {
+            None => {}
+            Some(v) => {
+                return v
+                    .as_str()
+                    .ok_or("receipt message id field is not a string")
                     .map(|s| Some(s.to_owned()));
             }
         }
@@ -226,6 +426,7 @@ pub fn map_sdk_event(event: SdkEvent, profile_id: &str) -> Event {
         "command.completed" => EventKind::CommandCompleted,
         "command.failed" => EventKind::CommandFailed,
         "InboundMessageReceived" | "inbound" => EventKind::InboundMessageReceived,
+        "inbound_dropped" => EventKind::InboundMessageDropped,
         "StreamGap" => EventKind::StreamGapDetected(StreamGapDetails {
             expected_seq_no: event.payload.get("expected_seq_no").and_then(JsonValue::as_u64),
             observed_seq_no: event.payload.get("observed_seq_no").and_then(JsonValue::as_u64),
@@ -242,8 +443,8 @@ pub fn map_sdk_event(event: SdkEvent, profile_id: &str) -> Event {
         "delivery_cancelled" => EventKind::MessageCancelled,
         "sdk_security_rate_limited" => EventKind::SecurityActionRequired,
         "runtime_shutdown_requested" => EventKind::RuntimeStopped,
-        "outbound" => map_delivery_state(
-            receipt_state(&event.payload)
+        "outbound" | "receipt" => map_delivery_state(
+            normalized_receipt_state(&event.payload)
                 .ok()
                 .flatten()
                 .unwrap_or_else(|| "unknown".to_owned())
@@ -267,7 +468,9 @@ pub fn map_sdk_event(event: SdkEvent, profile_id: &str) -> Event {
             occurred_at_ms: event.ts_ms,
             severity: event.severity.into(),
             operation_id: event.operation_id,
-            message_id: event.message_id,
+            message_id: event
+                .message_id
+                .or_else(|| payload_message_id(&event.payload).ok().flatten()),
             peer_id: event.peer_id.or_else(|| payload_peer_id(&event.payload).ok().flatten()),
             correlation_id: event.correlation_id,
             profile_id: profile_id.to_owned(),
@@ -291,129 +494,6 @@ pub fn map_event_batch(batch: RawEventBatch, profile_id: &str) -> EventBatch {
 pub fn subscription_cursor(subscription: &EventSubscription) -> Option<crate::EventCursor> {
     subscription.cursor.clone()
 }
-
 #[cfg(test)]
-mod tests {
-    use super::{map_sdk_event, EventKind, SubscriptionStart};
-    use crate::{SdkEvent, Severity as RawSeverity, SubscriptionStart as RawSubscriptionStart};
-    use serde_json::json;
-    use std::collections::BTreeMap;
-
-    fn base_event(event_type: &str, payload: serde_json::Value) -> SdkEvent {
-        SdkEvent {
-            event_id: "evt-1".to_owned(),
-            runtime_id: "rt-1".to_owned(),
-            stream_id: "stream-1".to_owned(),
-            seq_no: 1,
-            contract_version: 2,
-            ts_ms: 10,
-            event_type: event_type.to_owned(),
-            severity: RawSeverity::Info,
-            source_component: "test".to_owned(),
-            operation_id: None,
-            message_id: None,
-            peer_id: None,
-            correlation_id: None,
-            trace_id: None,
-            payload,
-            extensions: BTreeMap::new(),
-        }
-    }
-
-    #[test]
-    fn maps_runtime_state_change_to_started() {
-        let mapped = map_sdk_event(
-            base_event("RuntimeStateChanged", json!({ "from": "starting", "to": "running" })),
-            "desktop_default",
-        );
-        assert!(matches!(mapped.kind, EventKind::RuntimeStarted));
-    }
-
-    #[test]
-    fn maps_stream_gap_to_typed_gap_event() {
-        let mapped = map_sdk_event(
-            base_event(
-                "StreamGap",
-                json!({ "expected_seq_no": 2, "observed_seq_no": 7, "dropped_count": 5 }),
-            ),
-            "desktop_default",
-        );
-        match mapped.kind {
-            EventKind::StreamGapDetected(details) => {
-                assert_eq!(details.expected_seq_no, Some(2));
-                assert_eq!(details.observed_seq_no, Some(7));
-                assert_eq!(details.dropped_count, 5);
-                assert!(details.recovery_required);
-            }
-            other => panic!("expected stream gap event, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn subscription_start_round_trips() {
-        let raw: RawSubscriptionStart = SubscriptionStart::Tail.into();
-        assert_eq!(SubscriptionStart::from(raw), SubscriptionStart::Tail);
-    }
-
-    #[test]
-    fn maps_runtime_degraded_and_reconnect_events() {
-        let degraded = map_sdk_event(base_event("RuntimeDegraded", json!({})), "desktop_default");
-        let reconnect = map_sdk_event(
-            base_event("ReconnectScheduled", json!({ "delay_ms": 500 })),
-            "desktop_default",
-        );
-        let recovered = map_sdk_event(base_event("RuntimeRecovered", json!({})), "desktop_default");
-
-        assert!(matches!(degraded.kind, EventKind::RuntimeDegraded));
-        assert!(matches!(reconnect.kind, EventKind::ReconnectScheduled));
-        assert!(matches!(recovered.kind, EventKind::RuntimeRecovered));
-    }
-
-    #[test]
-    fn maps_discovery_events() {
-        let announced = map_sdk_event(
-            base_event("announce_received", json!({ "peer": "peer-a" })),
-            "desktop_default",
-        );
-        let peer_sync =
-            map_sdk_event(base_event("peer_sync", json!({ "peer": "peer-a" })), "desktop_default");
-        let contact_update = map_sdk_event(
-            base_event("contact_updated", json!({ "identity": "peer-a" })),
-            "desktop_default",
-        );
-
-        assert!(matches!(announced.kind, EventKind::AnnounceReceived));
-        assert!(matches!(peer_sync.kind, EventKind::PeerDiscovered));
-        assert!(matches!(contact_update.kind, EventKind::ContactUpdated));
-        assert_eq!(announced.metadata.peer_id.as_deref(), Some("peer-a"));
-        assert_eq!(peer_sync.metadata.peer_id.as_deref(), Some("peer-a"));
-        assert_eq!(contact_update.metadata.peer_id.as_deref(), Some("peer-a"));
-    }
-
-    #[test]
-    fn maps_command_domain_events() {
-        let dispatched = map_sdk_event(
-            base_event(
-                "command.dispatched",
-                json!({ "correlation_id": "cmd-1", "target": "peer-a" }),
-            ),
-            "desktop_default",
-        );
-        let completed = map_sdk_event(
-            base_event(
-                "command.completed",
-                json!({ "correlation_id": "cmd-1", "target": "peer-a" }),
-            ),
-            "desktop_default",
-        );
-        let failed = map_sdk_event(
-            base_event("command.failed", json!({ "correlation_id": "cmd-1", "target": "peer-a" })),
-            "desktop_default",
-        );
-
-        assert!(matches!(dispatched.kind, EventKind::CommandDispatched));
-        assert!(matches!(completed.kind, EventKind::CommandCompleted));
-        assert!(matches!(failed.kind, EventKind::CommandFailed));
-        assert_eq!(dispatched.metadata.peer_id.as_deref(), Some("peer-a"));
-    }
-}
+#[path = "events_tests.rs"]
+mod tests;

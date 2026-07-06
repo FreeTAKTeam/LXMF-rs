@@ -493,6 +493,7 @@ mod tests {
         iface.record_command_response(CMD_RADIO_STATE, &[RADIO_STATE_ON]).expect("radio state");
         iface.record_command_response(CMD_STAT_RX, &7_u32.to_be_bytes()).expect("rx");
         iface.record_command_response(CMD_STAT_TX, &11_u32.to_be_bytes()).expect("tx");
+        iface.rnode_management_handle().try_query_radio_state().expect("queue radio query");
 
         let json = iface.runtime_status_json();
 
@@ -512,5 +513,55 @@ mod tests {
         assert_eq!(json["radio_status"]["stat_tx"].as_u64(), Some(11));
         assert_eq!(json["online"].as_bool(), Some(true));
         assert!(json["last_command_error"].is_null());
+        assert_eq!(json["management"]["supported"].as_bool(), Some(true));
+        assert_eq!(json["management"]["safe_commands"][0].as_str(), Some("radio_state_query"));
+        assert_eq!(json["management"]["safe_commands"][1].as_str(), Some("blink"));
+        assert_eq!(json["management"]["guarded_persistent_commands"].as_bool(), Some(true));
+        assert_eq!(json["management"]["guarded_destructive_commands"].as_bool(), Some(true));
+        assert_eq!(json["management"]["queue"]["closed"].as_bool(), Some(false));
+        assert_eq!(json["management"]["queue"]["pending_depth"].as_u64(), Some(1));
+        assert!(json["management"]["queue"]["available_capacity"].as_u64().is_some());
+        assert!(json["management"]["queue"]["max_capacity"].as_u64().is_some());
+        assert_eq!(json["management"]["operations"]["accepted_total"].as_u64(), Some(1));
+        assert_eq!(json["management"]["operations"]["failed_total"].as_u64(), Some(0));
+        assert_eq!(
+            json["management"]["operations"]["last_operation"]["command"].as_str(),
+            Some("radio_state_query")
+        );
+        assert_eq!(
+            json["management"]["operations"]["last_operation"]["state"].as_str(),
+            Some("queued")
+        );
+        assert!(json["management"]["operations"]["last_management_error"].is_null());
+    }
+
+    #[test]
+    fn lora_rnode_management_status_tracks_failed_queue_handoff() {
+        let iface = LoraInterface::new("COM9", 115_200, LoraConfig::us915_default());
+        let handle = iface.rnode_management_handle();
+
+        for _ in 0..LORA_RNODE_MANAGEMENT_CHANNEL_CAPACITY {
+            handle.try_blink(0x01).expect("queue blink");
+        }
+        handle.try_blink(0x01).expect_err("full management queue should fail");
+
+        let json = iface.runtime_status_json();
+        assert_eq!(
+            json["management"]["operations"]["accepted_total"].as_u64(),
+            Some(LORA_RNODE_MANAGEMENT_CHANNEL_CAPACITY as u64)
+        );
+        assert_eq!(json["management"]["operations"]["failed_total"].as_u64(), Some(1));
+        assert_eq!(
+            json["management"]["operations"]["last_operation"]["command"].as_str(),
+            Some("blink")
+        );
+        assert_eq!(
+            json["management"]["operations"]["last_operation"]["state"].as_str(),
+            Some("failed")
+        );
+        assert!(
+            json["management"]["operations"]["last_management_error"].as_str().is_some(),
+            "failed queue handoff should report the last management error"
+        );
     }
 }

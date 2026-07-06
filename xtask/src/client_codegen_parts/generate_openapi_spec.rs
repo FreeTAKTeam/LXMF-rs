@@ -77,7 +77,7 @@ fn generate_openapi_spec(
     );
     components.insert("RPCErrorPayload".to_string(), rpc_error_payload);
     components.insert(
-        "RPCError".to_string(),
+        "RPCErrorResponse".to_string(),
         json!({
             "type": "object",
             "required": ["id", "error"],
@@ -159,7 +159,7 @@ fn generate_openapi_spec(
 
     components.insert("RPCRequestUnion".to_string(), one_of_union(&method_request_refs));
     let mut response_variants = Vec::with_capacity(method_response_refs.len() + 1);
-    response_variants.push("#/components/schemas/RPCError".to_string());
+    response_variants.push("#/components/schemas/RPCErrorResponse".to_string());
     response_variants.extend(method_response_refs);
     components.insert("RPCResponseUnion".to_string(), one_of_union(&response_variants));
 
@@ -221,6 +221,18 @@ fn generate_openapi_spec(
     for (_name, schema) in spec.components.schemas.iter_mut() {
         sanitize_component_self_references(schema);
     }
+    promote_inline_component_property(
+        &mut spec.components.schemas,
+        "ResponseMeta",
+        "rpc_endpoint",
+        "ResponseMetaRpcEndpoint",
+    );
+    promote_inline_component_property(
+        &mut spec.components.schemas,
+        "SdkNegotiateV2Params",
+        "config",
+        "SdkNegotiateV2ParamsConfig",
+    );
 
     let mut encoded = serde_json::to_vec_pretty(&spec).context("serialize OpenAPI spec")?;
     encoded.push(b'\n');
@@ -233,6 +245,33 @@ fn generate_openapi_spec(
         .with_context(|| format!("write OpenAPI spec {}", spec_path.display()))?;
 
     Ok(sha256_hex(&encoded))
+}
+
+fn promote_inline_component_property(
+    components: &mut BTreeMap<String, Value>,
+    parent_component: &str,
+    property: &str,
+    promoted_component: &str,
+) {
+    if components.contains_key(promoted_component) {
+        return;
+    }
+
+    let Some(schema) = components
+        .get_mut(parent_component)
+        .and_then(Value::as_object_mut)
+        .and_then(|schema| schema.get_mut("properties"))
+        .and_then(Value::as_object_mut)
+        .and_then(|properties| properties.get_mut(property))
+    else {
+        return;
+    };
+
+    let promoted = std::mem::replace(
+        schema,
+        json!({"$ref": format!("#/components/schemas/{promoted_component}")}),
+    );
+    components.insert(promoted_component.to_string(), promoted);
 }
 
 fn select_error_schema_source(sources: &[SchemaSource]) -> Option<&SchemaSource> {

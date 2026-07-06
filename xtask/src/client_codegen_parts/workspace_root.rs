@@ -181,6 +181,13 @@ mod tests {
                             "method": {"const": "sdk_send_v2"},
                             "count": {"type": ["integer", "null"]},
                             "body": {"type": ["object", "string", "null"]},
+                            "empty": {"type": "null"},
+                            "json": {
+                                "oneOf": [
+                                    {"type": "string"},
+                                    {"type": "null"}
+                                ]
+                            },
                         },
                         "required": ["method"]
                     },
@@ -188,6 +195,22 @@ mod tests {
                         "$id": "urn:example",
                         "$schema": "https://json-schema.org/draft/2020-12/schema",
                         "type": ["string", "null"]
+                    },
+                    "ErrorJsonValue": {
+                        "oneOf": [
+                            {"type": "string"},
+                            {"type": "number"},
+                            {"type": "null"}
+                        ]
+                    },
+                    "rpcId": {
+                        "oneOf": [
+                            {"type": "string"},
+                            {"type": "integer", "minimum": 0}
+                        ]
+                    },
+                    "ResponseMetaRpcEndpoint": {
+                        "type": ["object", "string", "null"]
                     },
                     "MapWithPropertyNames": {
                         "type": "object",
@@ -224,10 +247,33 @@ mod tests {
         assert_eq!(body["nullable"], true);
         assert!(body.get("type").is_none());
 
+        let empty = &request["properties"]["empty"];
+        assert_eq!(empty["nullable"], true);
+        assert!(empty.get("type").is_none());
+
+        let json = &request["properties"]["json"];
+        assert_eq!(json["oneOf"][0]["type"], "string");
+        assert_eq!(json["oneOf"].as_array().expect("oneOf array").len(), 1);
+        assert_eq!(json["nullable"], true);
+
         let payload = &converted["components"]["schemas"]["Payload"];
         assert!(payload.get("const").is_none());
         assert_eq!(payload["type"], "string");
         assert_eq!(payload["nullable"], true);
+
+        let error_json_value = &converted["components"]["schemas"]["ErrorJsonValue"];
+        assert_eq!(error_json_value["type"], "object");
+        assert_eq!(error_json_value["additionalProperties"], true);
+        assert!(error_json_value.get("oneOf").is_none());
+
+        let rpc_id = &converted["components"]["schemas"]["rpcId"];
+        assert_eq!(rpc_id["type"], "string");
+        assert!(rpc_id.get("oneOf").is_none());
+
+        let rpc_endpoint = &converted["components"]["schemas"]["ResponseMetaRpcEndpoint"];
+        assert_eq!(rpc_endpoint["type"], "object");
+        assert_eq!(rpc_endpoint["additionalProperties"], true);
+        assert!(rpc_endpoint.get("anyOf").is_none());
 
         let map_schema = &converted["components"]["schemas"]["MapWithPropertyNames"];
         assert!(map_schema.get("propertyNames").is_none());

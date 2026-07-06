@@ -82,6 +82,7 @@ pub lxmf_sdk::app::EventKind::CommandReceiptAcknowledged
 pub lxmf_sdk::app::EventKind::ContactBootstrapped
 pub lxmf_sdk::app::EventKind::ContactUpdated
 pub lxmf_sdk::app::EventKind::FatalErrorRaised
+pub lxmf_sdk::app::EventKind::InboundMessageDropped
 pub lxmf_sdk::app::EventKind::InboundMessageReceived
 pub lxmf_sdk::app::EventKind::MessageCancelled
 pub lxmf_sdk::app::EventKind::MessageDelivered
@@ -306,6 +307,19 @@ pub lxmf_sdk::app::DeliveryAttempt::error_code: alloc::string::String
 pub lxmf_sdk::app::DeliveryAttempt::queue_pressure: bool
 pub lxmf_sdk::app::DeliveryAttempt::retryable: bool
 pub lxmf_sdk::app::DeliveryAttempt::scheduled_delay_ms: core::option::Option<u64>
+#[non_exhaustive] pub struct lxmf_sdk::app::DeliveryLifecycleDetails
+pub lxmf_sdk::app::DeliveryLifecycleDetails::bytes: core::option::Option<u64>
+pub lxmf_sdk::app::DeliveryLifecycleDetails::delivery_kind: core::option::Option<alloc::string::String>
+pub lxmf_sdk::app::DeliveryLifecycleDetails::from: core::option::Option<alloc::string::String>
+pub lxmf_sdk::app::DeliveryLifecycleDetails::link_id: core::option::Option<alloc::string::String>
+pub lxmf_sdk::app::DeliveryLifecycleDetails::method: core::option::Option<alloc::string::String>
+pub lxmf_sdk::app::DeliveryLifecycleDetails::packet_hash: core::option::Option<alloc::string::String>
+pub lxmf_sdk::app::DeliveryLifecycleDetails::peer: core::option::Option<alloc::string::String>
+pub lxmf_sdk::app::DeliveryLifecycleDetails::reason: core::option::Option<alloc::string::String>
+pub lxmf_sdk::app::DeliveryLifecycleDetails::receipt_status: core::option::Option<alloc::string::String>
+pub lxmf_sdk::app::DeliveryLifecycleDetails::resource_hash: core::option::Option<alloc::string::String>
+pub lxmf_sdk::app::DeliveryLifecycleDetails::state: core::option::Option<alloc::string::String>
+pub lxmf_sdk::app::DeliveryLifecycleDetails::to: core::option::Option<alloc::string::String>
 #[non_exhaustive] pub struct lxmf_sdk::app::DeliveryOptions
 pub lxmf_sdk::app::DeliveryOptions::max_attempts: core::option::Option<u32>
 pub lxmf_sdk::app::DeliveryOptions::queue_pressure_strategy: core::option::Option<lxmf_sdk::app::QueuePressureStrategy>
@@ -373,6 +387,10 @@ pub lxmf_sdk::app::Event::extensions: alloc::collections::btree::map::BTreeMap<a
 pub lxmf_sdk::app::Event::kind: lxmf_sdk::app::EventKind
 pub lxmf_sdk::app::Event::metadata: lxmf_sdk::app::EventMetadata
 pub lxmf_sdk::app::Event::raw_event_type: alloc::string::String
+impl lxmf_sdk::app::Event
+pub fn lxmf_sdk::app::Event::delivery_lifecycle_details(&self) -> core::option::Option<lxmf_sdk::app::DeliveryLifecycleDetails>
+pub fn lxmf_sdk::app::Event::inbound_drop_details(&self) -> core::option::Option<lxmf_sdk::app::InboundDropDetails>
+pub fn lxmf_sdk::app::Event::inbound_message_details(&self) -> core::option::Option<lxmf_sdk::app::InboundMessageDetails>
 #[non_exhaustive] pub struct lxmf_sdk::app::EventBatch
 pub lxmf_sdk::app::EventBatch::dropped_count: u64
 pub lxmf_sdk::app::EventBatch::events: alloc::vec::Vec<lxmf_sdk::app::Event>
@@ -422,9 +440,32 @@ pub fn lxmf_sdk::app::IdentityDirectory<'a, B>::peer_directory_since(&self, limi
 pub fn lxmf_sdk::app::IdentityDirectory<'a, B>::presence(&self, cursor: core::option::Option<alloc::string::String>, limit: core::option::Option<usize>) -> core::result::Result<lxmf_sdk::app::PresencePage, lxmf_sdk::app::Error>
 pub fn lxmf_sdk::app::IdentityDirectory<'a, B>::presence_since(&self, cursor: core::option::Option<alloc::string::String>, limit: core::option::Option<usize>, min_last_seen_ts_ms: core::option::Option<i64>) -> core::result::Result<lxmf_sdk::app::PresencePage, lxmf_sdk::app::Error>
 pub fn lxmf_sdk::app::IdentityDirectory<'a, B>::update_contact(&self, update: lxmf_sdk::app::ContactUpdate) -> core::result::Result<lxmf_sdk::app::Contact, lxmf_sdk::app::Error>
+#[non_exhaustive] pub struct lxmf_sdk::app::InboundDropDetails
+pub lxmf_sdk::app::InboundDropDetails::bytes_len: core::option::Option<u64>
+pub lxmf_sdk::app::InboundDropDetails::delivery_kind: core::option::Option<alloc::string::String>
+pub lxmf_sdk::app::InboundDropDetails::destination_hash: core::option::Option<alloc::string::String>
+pub lxmf_sdk::app::InboundDropDetails::detail: core::option::Option<alloc::string::String>
+pub lxmf_sdk::app::InboundDropDetails::dropped_message_id: core::option::Option<alloc::string::String>
+pub lxmf_sdk::app::InboundDropDetails::payload_mode: core::option::Option<alloc::string::String>
+pub lxmf_sdk::app::InboundDropDetails::raw_destination_hash: core::option::Option<alloc::string::String>
+pub lxmf_sdk::app::InboundDropDetails::reason: core::option::Option<alloc::string::String>
+pub lxmf_sdk::app::InboundDropDetails::resolved_destination_hash: core::option::Option<alloc::string::String>
+pub lxmf_sdk::app::InboundDropDetails::source_hash: core::option::Option<alloc::string::String>
+#[non_exhaustive] pub struct lxmf_sdk::app::InboundMessageDetails
+pub lxmf_sdk::app::InboundMessageDetails::delivery_kind: core::option::Option<alloc::string::String>
+pub lxmf_sdk::app::InboundMessageDetails::destination_hash: core::option::Option<alloc::string::String>
+pub lxmf_sdk::app::InboundMessageDetails::lxmf_bytes_hex: core::option::Option<alloc::string::String>
+pub lxmf_sdk::app::InboundMessageDetails::message_id: core::option::Option<alloc::string::String>
+pub lxmf_sdk::app::InboundMessageDetails::receipt_status: core::option::Option<alloc::string::String>
+pub lxmf_sdk::app::InboundMessageDetails::signature_checked: core::option::Option<bool>
+pub lxmf_sdk::app::InboundMessageDetails::signature_status: core::option::Option<alloc::string::String>
+pub lxmf_sdk::app::InboundMessageDetails::source_hash: core::option::Option<alloc::string::String>
+pub lxmf_sdk::app::InboundMessageDetails::stamp_status: core::option::Option<alloc::string::String>
 pub struct lxmf_sdk::app::Messages<'a, B: lxmf_sdk::SdkBackend>
 impl<'a, B: lxmf_sdk::SdkBackend> lxmf_sdk::app::Messages<'a, B>
+pub fn lxmf_sdk::app::Messages<'a, B>::conversations(&self, request: lxmf_sdk::ConversationListRequest) -> core::result::Result<lxmf_sdk::ConversationListPage, lxmf_sdk::app::Error>
 pub fn lxmf_sdk::app::Messages<'a, B>::delivery_plan(&self) -> core::result::Result<lxmf_sdk::app::DeliveryPlan, lxmf_sdk::app::Error>
+pub fn lxmf_sdk::app::Messages<'a, B>::history(&self, request: lxmf_sdk::messaging::MessageHistoryListRequest) -> core::result::Result<lxmf_sdk::messaging::MessageHistoryPage, lxmf_sdk::app::Error>
 pub fn lxmf_sdk::app::Messages<'a, B>::send(&self, request: lxmf_sdk::app::SendRequest) -> core::result::Result<lxmf_sdk::app::SendReceipt, lxmf_sdk::app::Error>
 pub async fn lxmf_sdk::app::Messages<'a, B>::send_async(&self, request: lxmf_sdk::app::SendRequest) -> core::result::Result<lxmf_sdk::app::SendReceipt, lxmf_sdk::app::Error> where B: lxmf_sdk::SdkBackendAsyncOps
 pub fn lxmf_sdk::app::Messages<'a, B>::send_with_options(&self, request: lxmf_sdk::app::SendRequest, options: lxmf_sdk::app::DeliveryOptions) -> core::result::Result<lxmf_sdk::app::SendReport, lxmf_sdk::app::Error>

@@ -1,5 +1,7 @@
-use alloc::collections::{BTreeMap, BTreeSet};
-use alloc::string::{String, ToString};
+#[cfg(feature = "std")]
+use alloc::collections::BTreeMap;
+use alloc::collections::BTreeSet;
+use alloc::string::String;
 use alloc::vec::Vec;
 use serde::{Deserialize, Serialize};
 
@@ -135,7 +137,7 @@ impl KeyManagerBackend for FileKeyManager {
                 continue;
             }
             if let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) {
-                ids.push(stem.to_string());
+                ids.push(String::from(stem));
             }
         }
         ids.sort();
@@ -287,6 +289,7 @@ fn merge_key_ids(mut first: Vec<String>, second: Vec<String>) -> Vec<String> {
     ids.into_iter().collect()
 }
 
+#[cfg(feature = "std")]
 fn is_valid_key_id(value: &str) -> bool {
     !value.is_empty()
         && value.chars().all(|character| {

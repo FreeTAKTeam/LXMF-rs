@@ -48,11 +48,7 @@ fn receipt_event_updates_store_and_emits_event() {
     let daemon = RpcDaemon::test_instance();
     store_outbound_message(&daemon, "msg-1");
 
-    handle_receipt_event(
-        &daemon,
-        ReceiptEvent { message_id: "msg-1".into(), status: "delivered".into() },
-    )
-    .expect("handle receipt");
+    handle_receipt_event(&daemon, ReceiptEvent::new("msg-1", "delivered")).expect("handle receipt");
 
     let list = daemon
         .handle_rpc(RpcRequest { id: 2, method: "list_messages".into(), params: None })
@@ -80,11 +76,8 @@ fn transport_receipt_event_matches_rpc_pollable_sdk_payload() {
 
     let transport_daemon = RpcDaemon::test_instance();
     store_outbound_message(&transport_daemon, "msg-transport");
-    handle_receipt_event(
-        &transport_daemon,
-        ReceiptEvent { message_id: "msg-transport".into(), status: "delivered".into() },
-    )
-    .expect("handle transport-origin receipt");
+    handle_receipt_event(&transport_daemon, ReceiptEvent::new("msg-transport", "delivered"))
+        .expect("handle transport-origin receipt");
 
     let rpc_payload = poll_receipt_payload(&rpc_daemon, 21);
     let transport_payload = poll_receipt_payload(&transport_daemon, 22);
@@ -101,15 +94,40 @@ fn transport_receipt_event_matches_rpc_pollable_sdk_payload() {
 }
 
 #[test]
+fn receipt_event_preserves_router_metadata_in_sdk_payload() {
+    let daemon = RpcDaemon::test_instance();
+    store_outbound_message(&daemon, "msg-meta-1");
+
+    handle_receipt_event(
+        &daemon,
+        ReceiptEvent::new("msg-meta-1", "sent: link")
+            .with_packet_hash("packet-1")
+            .with_peer("peer-b")
+            .with_method("direct")
+            .with_delivery_kind("link-packet")
+            .with_bytes(128)
+            .with_link_id("link-1"),
+    )
+    .expect("handle receipt");
+
+    let payload = poll_receipt_payload(&daemon, 23);
+    assert_eq!(payload["message_id"], json!("msg-meta-1"));
+    assert_eq!(payload["status"], json!("sent: link"));
+    assert_eq!(payload["packet_hash"], json!("packet-1"));
+    assert_eq!(payload["peer"], json!("peer-b"));
+    assert_eq!(payload["method"], json!("direct"));
+    assert_eq!(payload["delivery_kind"], json!("link-packet"));
+    assert_eq!(payload["bytes"], json!(128));
+    assert_eq!(payload["link_id"], json!("link-1"));
+}
+
+#[test]
 fn resource_completion_receipt_stays_non_terminal_until_delivery_receipt() {
     let daemon = RpcDaemon::test_instance();
     store_outbound_message(&daemon, "msg-resource-1");
 
-    handle_receipt_event(
-        &daemon,
-        ReceiptEvent { message_id: "msg-resource-1".into(), status: "sent: link resource".into() },
-    )
-    .expect("record resource sent");
+    handle_receipt_event(&daemon, ReceiptEvent::new("msg-resource-1", "sent: link resource"))
+        .expect("record resource sent");
 
     let status = daemon
         .handle_rpc(RpcRequest { id: 11, method: "list_messages".into(), params: None })
@@ -119,11 +137,8 @@ fn resource_completion_receipt_stays_non_terminal_until_delivery_receipt() {
         json!("sent: link resource")
     );
 
-    handle_receipt_event(
-        &daemon,
-        ReceiptEvent { message_id: "msg-resource-1".into(), status: "delivered".into() },
-    )
-    .expect("record delivered");
+    handle_receipt_event(&daemon, ReceiptEvent::new("msg-resource-1", "delivered"))
+        .expect("record delivered");
 
     let final_status = daemon
         .handle_rpc(RpcRequest { id: 12, method: "list_messages".into(), params: None })

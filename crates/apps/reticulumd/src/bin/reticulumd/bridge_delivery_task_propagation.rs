@@ -30,10 +30,11 @@ impl DeliveryTask {
         let Some(propagation_node_hex) = self.propagation_node_hex.clone() else {
             emit_receipt_event(
                 &self.receipt_tx,
-                ReceiptEvent {
-                    message_id: self.message_id.clone(),
-                    status: "failed: no outbound propagation node selected".to_string(),
-                },
+                ReceiptEvent::new(
+                    self.message_id.clone(),
+                    "failed: no outbound propagation node selected",
+                )
+                .with_method("propagation"),
             );
             return None;
         };
@@ -43,10 +44,8 @@ impl DeliveryTask {
             Err(err) => {
                 emit_receipt_event(
                     &self.receipt_tx,
-                    ReceiptEvent {
-                        message_id: self.message_id.clone(),
-                        status: format!("failed: {err}"),
-                    },
+                    ReceiptEvent::new(self.message_id.clone(), format!("failed: {err}"))
+                        .with_method("propagation"),
                 );
                 return None;
             }

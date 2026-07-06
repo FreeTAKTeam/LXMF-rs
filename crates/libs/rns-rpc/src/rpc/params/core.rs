@@ -2,6 +2,20 @@
 struct RecordReceiptParams {
     message_id: String,
     status: String,
+    #[serde(default)]
+    packet_hash: Option<String>,
+    #[serde(default)]
+    resource_hash: Option<String>,
+    #[serde(default)]
+    peer: Option<String>,
+    #[serde(default)]
+    method: Option<String>,
+    #[serde(default)]
+    delivery_kind: Option<String>,
+    #[serde(default)]
+    bytes: Option<u64>,
+    #[serde(default)]
+    link_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

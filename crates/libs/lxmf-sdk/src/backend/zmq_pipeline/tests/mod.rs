@@ -746,7 +746,10 @@ fn send_uses_zmq_sdk_method_and_preserves_delivery_options() {
             .with_try_propagation_on_fail(true)
             .with_stamp_cost(16)
             .with_include_ticket(true)
-            .with_correlation_id("corr-1"),
+            .with_idempotency_key("send-once-incident-42")
+            .with_ttl_ms(45_000)
+            .with_correlation_id("corr-1")
+            .with_extension("incident_id", json!("incident-42")),
         )
         .expect("send");
 
@@ -762,6 +765,10 @@ fn send_uses_zmq_sdk_method_and_preserves_delivery_options() {
     assert_eq!(params["try_propagation_on_fail"], json!(true));
     assert_eq!(params["stamp_cost"], json!(16));
     assert_eq!(params["include_ticket"], json!(true));
+    assert_eq!(params["idempotency_key"], json!("send-once-incident-42"));
+    assert_eq!(params["ttl_ms"], json!(45_000));
+    assert_eq!(params["correlation_id"], json!("corr-1"));
+    assert_eq!(params["extensions"]["incident_id"], json!("incident-42"));
     assert_eq!(params["fields"]["9"][0]["command_type"], json!("checklist.create.online"));
     assert_eq!(params["fields"].get("body"), None);
     assert_eq!(params["fields"].get("title"), None);

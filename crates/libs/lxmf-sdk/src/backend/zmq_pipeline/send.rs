@@ -11,10 +11,10 @@ pub(super) fn send_params(req: SendRequest, message_id: String) -> JsonValue {
         stamp_cost,
         include_ticket,
         try_propagation_on_fail,
-        idempotency_key: _,
-        ttl_ms: _,
-        correlation_id: _,
-        extensions: _,
+        idempotency_key,
+        ttl_ms,
+        correlation_id,
+        extensions,
     } = req;
     let content = message_content(&payload);
     let title =
@@ -31,6 +31,10 @@ pub(super) fn send_params(req: SendRequest, message_id: String) -> JsonValue {
         "stamp_cost": stamp_cost,
         "include_ticket": include_ticket,
         "try_propagation_on_fail": try_propagation_on_fail,
+        "idempotency_key": idempotency_key,
+        "ttl_ms": ttl_ms,
+        "correlation_id": correlation_id,
+        "extensions": extensions,
     })
 }
 
@@ -52,10 +56,10 @@ fn batch_item_params(item: BatchSendItem) -> JsonValue {
         stamp_cost,
         include_ticket,
         try_propagation_on_fail,
-        idempotency_key: _,
-        ttl_ms: _,
-        correlation_id: _,
-        extensions: _,
+        idempotency_key,
+        ttl_ms,
+        correlation_id,
+        extensions,
     } = item;
     let content = message_content(&payload);
     let title =
@@ -71,6 +75,10 @@ fn batch_item_params(item: BatchSendItem) -> JsonValue {
         "stamp_cost": stamp_cost,
         "include_ticket": include_ticket,
         "try_propagation_on_fail": try_propagation_on_fail,
+        "idempotency_key": idempotency_key,
+        "ttl_ms": ttl_ms,
+        "correlation_id": correlation_id,
+        "extensions": extensions,
     })
 }
 

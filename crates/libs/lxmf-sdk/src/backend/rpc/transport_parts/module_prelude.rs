@@ -4,9 +4,13 @@ use hmac::{Hmac, Mac};
 
 use rns_rpc::e2e_harness::{build_rpc_frame, parse_http_response_body, parse_rpc_frame};
 
+#[cfg(feature = "sdk-async")]
 use rns_rpc::rpc::{codec, http};
 
-use rns_rpc::{RpcError, RpcResponse};
+#[cfg(feature = "sdk-async")]
+use rns_rpc::RpcResponse;
+
+use rns_rpc::RpcError;
 
 use rustls::pki_types::ServerName;
 

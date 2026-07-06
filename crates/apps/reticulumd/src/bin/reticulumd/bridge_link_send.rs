@@ -208,10 +208,13 @@ impl DeliveryTask {
                 log_delivery_trace(&self.message_id, &self.destination_hex, trace_stage, &detail);
                 emit_receipt_event(
                     &self.receipt_tx,
-                    ReceiptEvent {
-                        message_id: self.message_id.clone(),
-                        status: statuses.packet.to_string(),
-                    },
+                    ReceiptEvent::new(self.message_id.clone(), statuses.packet)
+                        .with_packet_hash(packet_hash)
+                        .with_peer(activity_peer)
+                        .with_method(trace_stage)
+                        .with_delivery_kind("link-packet")
+                        .with_bytes(payload.len())
+                        .with_link_id(link_id.to_string()),
                 );
                 Ok(())
             }
@@ -221,10 +224,13 @@ impl DeliveryTask {
                 log_delivery_trace(&self.message_id, &self.destination_hex, trace_stage, &detail);
                 emit_receipt_event(
                     &self.receipt_tx,
-                    ReceiptEvent {
-                        message_id: self.message_id.clone(),
-                        status: statuses.resource.to_string(),
-                    },
+                    ReceiptEvent::new(self.message_id.clone(), statuses.resource)
+                        .with_resource_hash(resource_hash_hex)
+                        .with_peer(activity_peer)
+                        .with_method(trace_stage)
+                        .with_delivery_kind("link-resource")
+                        .with_bytes(payload.len())
+                        .with_link_id(link_id.to_string()),
                 );
                 Ok(())
             }
@@ -307,10 +313,13 @@ impl DeliveryTask {
             log_delivery_trace(&self.message_id, &self.destination_hex, trace_stage, &detail);
             emit_receipt_event(
                 &self.receipt_tx,
-                ReceiptEvent {
-                    message_id: self.message_id.clone(),
-                    status: statuses.resource.to_string(),
-                },
+                ReceiptEvent::new(self.message_id.clone(), statuses.resource)
+                    .with_resource_hash(resource_hash_hex)
+                    .with_peer(activity_peer)
+                    .with_method(trace_stage)
+                    .with_delivery_kind("propagation-resource")
+                    .with_bytes(payload.len())
+                    .with_link_id(link_id.to_string()),
             );
             spawn_propagation_resource_signal_monitor(
                 propagation_signal_rx,
@@ -374,10 +383,13 @@ impl DeliveryTask {
                 self.daemon.record_outbound_peer_sent(activity_peer, payload.len());
                 emit_receipt_event(
                     &self.receipt_tx,
-                    ReceiptEvent {
-                        message_id: self.message_id.clone(),
-                        status: statuses.packet.to_string(),
-                    },
+                    ReceiptEvent::new(self.message_id.clone(), statuses.packet)
+                        .with_packet_hash(packet_hash)
+                        .with_peer(activity_peer)
+                        .with_method(trace_stage)
+                        .with_delivery_kind("existing-link-packet")
+                        .with_bytes(payload.len())
+                        .with_link_id(link_id.to_string()),
                 );
                 Ok(())
             }
@@ -393,10 +405,13 @@ impl DeliveryTask {
                 log_delivery_trace(&self.message_id, &self.destination_hex, trace_stage, &detail);
                 emit_receipt_event(
                     &self.receipt_tx,
-                    ReceiptEvent {
-                        message_id: self.message_id.clone(),
-                        status: statuses.resource.to_string(),
-                    },
+                    ReceiptEvent::new(self.message_id.clone(), statuses.resource)
+                        .with_resource_hash(resource_hash_hex)
+                        .with_peer(activity_peer)
+                        .with_method(trace_stage)
+                        .with_delivery_kind("existing-link-resource")
+                        .with_bytes(payload.len())
+                        .with_link_id(link_id.to_string()),
                 );
                 Ok(())
             }
@@ -434,10 +449,12 @@ fn spawn_propagation_resource_signal_monitor(
         );
         emit_receipt_event(
             &receipt_tx,
-            ReceiptEvent {
+            ReceiptEvent::new(
                 message_id,
-                status: "failed: propagation node rejected message: invalid stamp".to_string(),
-            },
+                "failed: propagation node rejected message: invalid stamp",
+            )
+            .with_delivery_kind("propagation-resource")
+            .with_link_id(link_id.to_string()),
         );
     });
 }

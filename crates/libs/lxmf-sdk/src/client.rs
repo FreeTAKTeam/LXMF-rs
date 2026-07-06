@@ -44,6 +44,7 @@ pub struct Client<B: SdkBackend> {
     idempotency_inflight: Mutex<HashMap<IdempotencyCacheKey, Arc<tokio::sync::Mutex<()>>>>,
 }
 
+#[cfg(feature = "sdk-async")]
 #[path = "client/async_ops.rs"]
 mod async_ops;
 #[path = "client/domains.rs"]

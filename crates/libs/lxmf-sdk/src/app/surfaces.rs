@@ -14,6 +14,12 @@ use crate::domain::{
     AttachmentId, AttachmentListRequest, AttachmentListResult, AttachmentMeta,
     AttachmentStoreRequest,
 };
+#[cfg(feature = "std")]
+use crate::error::{code, ErrorCategory as SdkErrorCategory, SdkError};
+#[cfg(feature = "std")]
+use crate::messaging::{
+    ConversationListPage, ConversationListRequest, MessageHistoryListRequest, MessageHistoryPage,
+};
 use crate::{SdkBackend, ShutdownMode};
 #[cfg(feature = "sdk-async")]
 use crate::{SdkBackendAsyncEvents, SdkBackendAsyncOps};
@@ -95,6 +101,28 @@ impl<'a, B: SdkBackend> Messages<'a, B> {
     pub fn delivery_plan(&self) -> Result<DeliveryPlan, Error> {
         self.client.delivery_plan()
     }
+
+    #[cfg(feature = "std")]
+    pub fn history(&self, request: MessageHistoryListRequest) -> Result<MessageHistoryPage, Error> {
+        let payload = serde_json::to_value(request).map_err(app_internal_error)?;
+        let response = self.client.query("app.message.history.list", payload)?;
+        serde_json::from_value(response.payload).map_err(app_internal_error)
+    }
+
+    #[cfg(feature = "std")]
+    pub fn conversations(
+        &self,
+        request: ConversationListRequest,
+    ) -> Result<ConversationListPage, Error> {
+        let payload = serde_json::to_value(request).map_err(app_internal_error)?;
+        let response = self.client.query("app.message.conversation.list", payload)?;
+        serde_json::from_value(response.payload).map_err(app_internal_error)
+    }
+}
+
+#[cfg(feature = "std")]
+fn app_internal_error(err: serde_json::Error) -> Error {
+    Error::from(SdkError::new(code::INTERNAL, SdkErrorCategory::Internal, err.to_string()))
 }
 
 #[cfg(feature = "sdk-async")]

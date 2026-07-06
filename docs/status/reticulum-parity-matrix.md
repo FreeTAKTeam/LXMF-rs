@@ -1,6 +1,6 @@
 # Reticulum Parity Matrix
 
-Last reassessed: 2026-06-30
+Last reassessed: 2026-07-06
 
 This is the maintained row-level status for Python Reticulum compatibility.
 Repository-level posture and execution order live in
@@ -40,6 +40,14 @@ Workspace paths are used for navigation. Published package names are
 
 Implemented interface families are active runtime code, not parser-only
 placeholders:
+
+### v0.7.0 interface evidence boundary
+
+| Evidence slice | Applies here | Boundary |
+| --- | --- | --- |
+| LXMF send/receive | Consumed from the LXMF matrix when a named SDK scenario sends or receives over a Reticulum carrier. | Proves that scenario only; it does not close broad Reticulum interface parity by itself. |
+| Carrier attach/announce software | LocalInterface TCP/Unix attach, AutoInterface carrier runtime, fake-SAM or real-SAM I2P attach, software loopback TCP/UDP/Backbone/Pipe/KISS/RNodeMulti/Weave smokes, and announce/path fanout with daemon/RPC status evidence. | Supports the implemented software carrier claims and release readiness for those carrier paths. |
+| Optional HIL | RNode, RNodeMulti, Weave, VR-N76, BLE, prepared-host radio/device matrices, and long-running physical-carrier checks. | Adds operational confidence but remains optional for the v0.7.0 SDK-first software release and cannot promote software-only rows by itself. |
 
 - TCP client and server, including Python-style `fixed_mtu` handling where
   `0` keeps the default TCP MTU and non-zero values below the Reticulum MTU of
@@ -433,7 +441,11 @@ endpoint is not mistaken for broad hardware parity. The prepared-host gate also
 queues safe `rnodeconf-rs query-radio-state` and `blink` management dispatch
 through the live daemon binding, records the command JSON artifacts, and
 requires a post-management status snapshot that remains online, radio-on, and
-free of command or hardware errors.
+free of command or hardware errors. Transport-side serial/TCP LoRa runtime
+status now also reports safe-management commands, guarded persistent/destructive
+boundaries, queue depth/capacity, accepted and failed operation counters, the
+last operation ID/command/state, and the last management error for SDK/daemon
+status consumers.
 Software-only RNode BLE fallback/management evidence now writes
 `evidence_scope = "software_rnode_ble_fallback_management"` under
 `target/rnode-ble-software-smoke/`, covering feature-gated identifier/alias

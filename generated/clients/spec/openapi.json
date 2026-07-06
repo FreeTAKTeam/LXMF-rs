@@ -127,26 +127,6 @@
         ],
         "type": "object"
       },
-      "RPCError": {
-        "additionalProperties": false,
-        "properties": {
-          "error": {
-            "$ref": "#/components/schemas/RPCErrorPayload"
-          },
-          "id": {
-            "$ref": "#/components/schemas/rpcId"
-          },
-          "jsonrpc": {
-            "const": "2.0",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "error"
-        ],
-        "type": "object"
-      },
       "RPCErrorPayload": {
         "$id": "https://weft.tak/contracts/sdk/v2/error.schema.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -197,6 +177,26 @@
           "retryable"
         ],
         "title": "LXMF SDK Error v2",
+        "type": "object"
+      },
+      "RPCErrorResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/RPCErrorPayload"
+          },
+          "id": {
+            "$ref": "#/components/schemas/rpcId"
+          },
+          "jsonrpc": {
+            "const": "2.0",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "error"
+        ],
         "type": "object"
       },
       "RPCRequest": {
@@ -258,7 +258,7 @@
       "RPCResponseUnion": {
         "oneOf": [
           {
-            "$ref": "#/components/schemas/RPCError"
+            "$ref": "#/components/schemas/RPCErrorResponse"
           },
           {
             "$ref": "#/components/schemas/SdkCancelMessageV2Response"
@@ -325,11 +325,7 @@
             "$ref": "#/components/schemas/PythonReference"
           },
           "rpc_endpoint": {
-            "type": [
-              "object",
-              "string",
-              "null"
-            ]
+            "$ref": "#/components/schemas/ResponseMetaRpcEndpoint"
           },
           "sdk_version": {
             "minLength": 1,
@@ -337,6 +333,13 @@
           }
         },
         "type": "object"
+      },
+      "ResponseMetaRpcEndpoint": {
+        "type": [
+          "object",
+          "string",
+          "null"
+        ]
       },
       "RpcError": {
         "additionalProperties": false,
@@ -539,45 +542,7 @@
         "additionalProperties": true,
         "properties": {
           "config": {
-            "additionalProperties": true,
-            "properties": {
-              "auth_mode": {
-                "minLength": 1,
-                "type": "string"
-              },
-              "bind_mode": {
-                "minLength": 1,
-                "type": "string"
-              },
-              "block_timeout_ms": {
-                "minimum": 1,
-                "type": [
-                  "integer",
-                  "null"
-                ]
-              },
-              "overflow_policy": {
-                "minLength": 1,
-                "type": "string"
-              },
-              "profile": {
-                "minLength": 1,
-                "type": "string"
-              },
-              "rpc_backend": {
-                "type": [
-                  "object",
-                  "null"
-                ]
-              }
-            },
-            "required": [
-              "auth_mode",
-              "bind_mode",
-              "overflow_policy",
-              "profile"
-            ],
-            "type": "object"
+            "$ref": "#/components/schemas/SdkNegotiateV2ParamsConfig"
           },
           "requested_capabilities": {
             "items": {
@@ -599,6 +564,47 @@
           "config",
           "requested_capabilities",
           "supported_contract_versions"
+        ],
+        "type": "object"
+      },
+      "SdkNegotiateV2ParamsConfig": {
+        "additionalProperties": true,
+        "properties": {
+          "auth_mode": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "bind_mode": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "block_timeout_ms": {
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "overflow_policy": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "profile": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "rpc_backend": {
+            "type": [
+              "object",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "auth_mode",
+          "bind_mode",
+          "overflow_policy",
+          "profile"
         ],
         "type": "object"
       },

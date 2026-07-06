@@ -1,6 +1,6 @@
 [package]
 name = "rns-tools"
-version = "0.6.0"
+version = "0.7.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -18,9 +18,9 @@ hex.workspace = true
 socket2 = { version = "0.5", features = ["all"] }
 log = { workspace = true }
 tracing-subscriber = { workspace = true }
-rns-embedded-core = { path = "../../libs/rns-embedded-core", version = "0.6.0" }
-rns-embedded-runtime = { path = "../../libs/rns-embedded-runtime", version = "0.6.0", features = ["std"] }
-rns_rpc = { package = "reticulum-rs-rpc", path = "../../libs/rns-rpc", version = "0.6.0" }
+rns-embedded-core = { path = "../../libs/rns-embedded-core", version = "0.7.0" }
+rns-embedded-runtime = { path = "../../libs/rns-embedded-runtime", version = "0.7.0", features = ["std"] }
+rns_rpc = { package = "reticulum-rs-rpc", path = "../../libs/rns-rpc", version = "0.7.0" }
 
 [target.'cfg(any(target_os = "android", target_os = "linux", target_os = "macos", target_os = "windows"))'.dependencies]
 btleplug = "0.12"

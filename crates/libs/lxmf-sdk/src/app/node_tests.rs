@@ -224,3 +224,4 @@ fn stream_gap_event() -> SdkEvent {
 include!("node_tests_envelope_routes.rs");
 include!("node_tests_runtime_voice.rs");
 include!("node_tests_client_domain.rs");
+include!("node_tests_client_messages.rs");

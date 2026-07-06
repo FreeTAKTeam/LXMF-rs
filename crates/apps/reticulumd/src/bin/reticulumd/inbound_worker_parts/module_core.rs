@@ -218,10 +218,14 @@ fn handle_outbound_resource_completion(
     match take_outbound_resource_tracking(outbound_resource_map, resource_hash_hex.as_str()) {
         Ok(tracking) => {
             daemon.record_outbound_peer_sent(&tracking.peer, tracking.bytes);
-            emit_receipt_event(receipt_tx, ReceiptEvent {
-                message_id: tracking.message_id,
-                status: tracking.sent_status,
-            });
+            emit_receipt_event(
+                receipt_tx,
+                ReceiptEvent::new(tracking.message_id, tracking.sent_status)
+                    .with_resource_hash(resource_hash_hex)
+                    .with_peer(tracking.peer)
+                    .with_delivery_kind("resource-complete")
+                    .with_bytes(tracking.bytes),
+            );
         }
         Err(err) => {
             log::warn!("[daemon-rx] outbound resource completion without tracking hash={}: {err}", resource_hash_hex);
@@ -239,10 +243,14 @@ fn handle_outbound_resource_failure(
     match take_outbound_resource_tracking(outbound_resource_map, resource_hash_hex.as_str()) {
         Ok(tracking) => {
             daemon.record_outbound_peer_activity(&tracking.peer, tracking.bytes, false);
-            emit_receipt_event(receipt_tx, ReceiptEvent {
-                message_id: tracking.message_id,
-                status: "failed: resource transfer timed out".to_string(),
-            });
+            emit_receipt_event(
+                receipt_tx,
+                ReceiptEvent::new(tracking.message_id, "failed: resource transfer timed out")
+                    .with_resource_hash(resource_hash_hex)
+                    .with_peer(tracking.peer)
+                    .with_delivery_kind("resource-failed")
+                    .with_bytes(tracking.bytes),
+            );
         }
         Err(err) => {
             log::warn!("[daemon-rx] outbound resource failure without tracking hash={}: {err}", resource_hash_hex);

@@ -8,13 +8,13 @@
     },
     {
       "path": "docs/contracts/baselines/lxmf-sdk-public-api.txt",
-      "bytes": 325075,
-      "sha256": "88c2d4282f2d661b2851b2650ffd17b64c2508024b2ef6e495836dd8a3e958f5"
+      "bytes": 328553,
+      "sha256": "caccf06e374e5fcdf45e7b3a1f4df76e62ea6a493232f0102779208b5afd363a"
     },
     {
       "path": "docs/contracts/baselines/schema-client-generation-baseline.json",
       "bytes": 373,
-      "sha256": "e966db1c4a77d568bbb6a46c7f12f73caa024d76cf277b03d34117ea657c298b"
+      "sha256": "9947d9b7162b95f0f5c5477fd6354a31658c084c8a7152642f6f15ed9ea41609"
     },
     {
       "path": "docs/contracts/ble-camera-wire-v1.md",

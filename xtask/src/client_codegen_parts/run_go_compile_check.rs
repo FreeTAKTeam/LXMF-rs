@@ -143,9 +143,51 @@ fn convert_openapi_spec_for_generator(spec: &Value) -> Result<Value> {
                     }
                 }
             }
+            simplify_generator_union_components(&mut out);
             Ok(Value::Object(out))
         }
         _ => Ok(spec.clone()),
+    }
+}
+
+fn simplify_generator_union_components(root: &mut Map<String, Value>) {
+    let Some(schemas) = root
+        .get_mut("components")
+        .and_then(Value::as_object_mut)
+        .and_then(|components| components.get_mut("schemas"))
+        .and_then(Value::as_object_mut)
+    else {
+        return;
+    };
+
+    if schemas.contains_key("ErrorJsonValue") {
+        schemas.insert(
+            "ErrorJsonValue".to_string(),
+            json!({
+                "type": "object",
+                "additionalProperties": true,
+                "description": "Generator-compatible representation of an arbitrary JSON value."
+            }),
+        );
+    }
+    if schemas.contains_key("rpcId") {
+        schemas.insert(
+            "rpcId".to_string(),
+            json!({
+                "type": "string",
+                "description": "Generator-compatible JSON-RPC id representation; the canonical contract also permits non-negative integer ids."
+            }),
+        );
+    }
+    if schemas.contains_key("ResponseMetaRpcEndpoint") {
+        schemas.insert(
+            "ResponseMetaRpcEndpoint".to_string(),
+            json!({
+                "type": "object",
+                "additionalProperties": true,
+                "description": "Generator-compatible RPC endpoint metadata; the canonical contract also permits string and null endpoint values."
+            }),
+        );
     }
 }
 
@@ -166,9 +208,15 @@ fn transform_schema_node_for_generator(value: &Value) -> Result<Value> {
             } else {
                 None
             };
+            let null_only_type =
+                matches!(map.get("type").and_then(Value::as_str), Some("null"));
 
             for (key, node) in map {
                 if key == "type" {
+                    if null_only_type {
+                        out.insert("nullable".to_string(), Value::Bool(true));
+                        continue;
+                    }
                     if let Some(TypeArrayConversion::Single { base_type, nullable }) = &type_array {
                         out.insert("type".to_string(), Value::String(base_type.to_string()));
                         if *nullable {
@@ -193,6 +241,24 @@ fn transform_schema_node_for_generator(value: &Value) -> Result<Value> {
                 if key == "propertyNames" {
                     continue;
                 }
+                if key == "oneOf" || key == "anyOf" {
+                    if let Some(values) = node.as_array() {
+                        let mut nullable_union = false;
+                        let mut schemas = Vec::with_capacity(values.len());
+                        for value in values {
+                            if is_null_only_schema(value) {
+                                nullable_union = true;
+                                continue;
+                            }
+                            schemas.push(transform_schema_node_for_generator(value)?);
+                        }
+                        out.insert(key.clone(), Value::Array(schemas));
+                        if nullable_union {
+                            out.insert("nullable".to_string(), Value::Bool(true));
+                        }
+                        continue;
+                    }
+                }
 
                 let transformed = transform_schema_node_for_generator(node)?;
                 out.insert(key.clone(), transformed);
@@ -209,6 +275,14 @@ fn transform_schema_node_for_generator(value: &Value) -> Result<Value> {
         }
         _ => Ok(value.clone()),
     }
+}
+
+fn is_null_only_schema(value: &Value) -> bool {
+    value
+        .as_object()
+        .and_then(|map| map.get("type"))
+        .and_then(Value::as_str)
+        == Some("null")
 }
 
 #[derive(Debug, Clone)]

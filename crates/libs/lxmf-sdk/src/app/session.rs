@@ -1,12 +1,14 @@
-use super::errors::Error;
 #[cfg(feature = "sdk-async")]
-use super::errors::{ErrorCategory, ErrorCode};
+use super::errors::{Error, ErrorCategory, ErrorCode};
 #[cfg(feature = "sdk-async")]
 use super::events::{map_event_batch, Event, EventBatch};
-use super::runtime::{Config, Profile, RunState};
+#[cfg(feature = "sdk-async")]
+use super::runtime::Profile;
+use super::runtime::{Config, RunState};
+#[cfg(feature = "sdk-async")]
+use crate::LxmfSdk;
 use crate::{
-    Client as CoreClient, ClientHandle, EventCursor, LxmfSdk, RuntimeSnapshot, SdkBackend,
-    ShutdownMode,
+    Client as CoreClient, ClientHandle, EventCursor, RuntimeSnapshot, SdkBackend, ShutdownMode,
 };
 #[cfg(feature = "sdk-async")]
 use crate::{SdkBackendAsyncEvents, SdkBackendAsyncOps};
