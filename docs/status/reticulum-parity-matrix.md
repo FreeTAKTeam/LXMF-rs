@@ -432,10 +432,11 @@ Software-only RNode BLE fallback/management evidence now writes
 `evidence_scope = "software_rnode_ble_fallback_management"` under
 `target/rnode-ble-software-smoke/`, covering feature-gated identifier/alias
 matching, configured Android peripheral fallback exclusion, command-monitor
-status/degraded fallback, management-frame chunking/queueing, `rnodeconf-rs`
-extended management command-to-RPC coverage, feature-gated `reticulumd` daemon
-`RnodeBle` management bridge dispatch, persistent/destructive CLI guard enforcement,
-and shared closed-queue cleanup regressions. A fake TCP RNode smoke now records
+status/degraded fallback, outbound RNode BLE MTU rejection and MTU-sized transmit,
+management-frame chunking/queueing, `rnodeconf-rs` extended management
+command-to-RPC coverage, feature-gated `reticulumd` daemon `RnodeBle`
+management bridge dispatch, persistent/destructive CLI guard enforcement, and
+shared closed-queue cleanup regressions. A fake TCP RNode smoke now records
 `evidence_scope = "software_fake_tcp_rnode_prepared_host_management"` by
 running the ordinary prepared-host path against a deterministic local KISS TCP
 peer and verifying startup, radio configuration, radio-state query, and blink

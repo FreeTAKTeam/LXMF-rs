@@ -7,16 +7,13 @@ use std::pin::Pin;
 use std::time::{Duration, Instant};
 
 #[cfg(feature = "rnode-ble")]
-use crate::buffer::{InputBuffer, OutputBuffer};
+use crate::buffer::InputBuffer;
 
 #[cfg(feature = "rnode-ble")]
 use crate::iface::{IfaceSource, Interface, InterfaceContext, RxMessage};
 
 #[cfg(feature = "rnode-ble")]
 use crate::packet::Packet;
-
-#[cfg(feature = "rnode-ble")]
-use crate::serde::Serialize;
 
 #[cfg(feature = "rnode-ble")]
 use btleplug::api::{

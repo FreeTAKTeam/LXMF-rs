@@ -24,6 +24,7 @@ impl InterfaceManager {
         self.cleanup();
         let mut trace = TxDispatchTrace::default();
         let mut saw_closed_queue = false;
+        let packet_wire_len = packet_wire_len_for_dispatch(&message);
         let scoped_path_request_iface = match message.tx_type {
             TxMessageType::Broadcast(Some(address)) if apply_egress_control => Some(address),
             _ => None,
@@ -86,6 +87,14 @@ impl InterfaceManager {
                     trace.failed_ifaces += 1;
                     continue;
                 }
+                let Some(wire_len) = packet_wire_len else {
+                    trace.failed_ifaces += 1;
+                    continue;
+                };
+                if !packet_fits_iface_mtu(iface, &message, wire_len) {
+                    trace.failed_ifaces += 1;
+                    continue;
+                }
 
                 let is_paced_announce = message.packet.header.packet_type == PacketType::Announce
                     && message.packet.header.hops > 0
@@ -144,6 +153,7 @@ impl InterfaceManager {
         let mut trace = TxDispatchTrace::default();
         let mut saw_closed_queue = false;
         let message = TxMessage { tx_type: TxMessageType::Broadcast(None), packet };
+        let packet_wire_len = packet_wire_len_for_dispatch(&message);
 
         for iface in &mut self.ifaces {
             if iface.address != address || !iface.outgoing || iface.stop.is_cancelled() {
@@ -151,6 +161,14 @@ impl InterfaceManager {
             }
 
             trace.matched_ifaces += 1;
+            let Some(wire_len) = packet_wire_len else {
+                trace.failed_ifaces += 1;
+                continue;
+            };
+            if !packet_fits_iface_mtu(iface, &message, wire_len) {
+                trace.failed_ifaces += 1;
+                continue;
+            }
             match Self::send_to_iface(iface, message.clone()).await {
                 TxIfaceSendResult::Sent => trace.sent_ifaces += 1,
                 TxIfaceSendResult::Failed => trace.failed_ifaces += 1,
@@ -227,4 +245,43 @@ enum TxIfaceSendResult {
     Sent,
     Failed,
     Closed,
+}
+
+fn packet_wire_len_for_dispatch(message: &TxMessage) -> Option<usize> {
+    match message.packet.to_bytes() {
+        Ok(raw) => Some(raw.len()),
+        Err(err) => {
+            log::warn!(
+                "tx packet serialize failed before interface enqueue tx_type={:?} \
+                 packet_type={:?} context={:?} dst={} data_len={} err={:?}",
+                message.tx_type,
+                message.packet.header.packet_type,
+                message.packet.context,
+                message.packet.destination,
+                message.packet.data.len(),
+                err
+            );
+            None
+        }
+    }
+}
+
+fn packet_fits_iface_mtu(iface: &LocalInterface, message: &TxMessage, wire_len: usize) -> bool {
+    if wire_len <= iface.mtu {
+        return true;
+    }
+
+    log::warn!(
+        "tx packet exceeds interface mtu iface={} tx_type={:?} packet_type={:?} \
+         context={:?} dst={} data_len={} wire_len={} mtu={}",
+        iface.address,
+        message.tx_type,
+        message.packet.header.packet_type,
+        message.packet.context,
+        message.packet.destination,
+        message.packet.data.len(),
+        wire_len,
+        iface.mtu
+    );
+    false
 }

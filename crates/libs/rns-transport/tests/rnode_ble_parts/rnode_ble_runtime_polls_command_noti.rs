@@ -31,6 +31,35 @@ async fn rnode_ble_runtime_rejects_outbound_packets_larger_than_mtu_before_ble_w
 }
 
 #[tokio::test]
+async fn rnode_ble_runtime_sends_packet_at_mtu_after_deferred_radio_config() {
+    let lora_config = LoraConfig::us915_default();
+    let payload = vec![0x42; usize::from(lora_config.max_payload_bytes)];
+    let config = RnodeBleKissConfig {
+        mtu: payload.len(),
+        max_write_len: 1024,
+        deferred_frames: lora_config.radio_config_frames(),
+        ..Default::default()
+    };
+    let backend = TestRnodeBleBackend::default();
+    let mut runtime = RnodeBleKissRuntime::new(backend, config);
+
+    runtime.startup().await.expect("startup");
+    runtime.send_deferred_frames().await.expect("radio config");
+    let writes_after_radio_config = runtime.backend().writes.len();
+    runtime.send_packet(&payload).await.expect("payload at mtu should send");
+
+    assert_eq!(runtime.backend().writes.len(), writes_after_radio_config + 1);
+    assert_eq!(
+        runtime.backend().writes.last(),
+        Some(&RnodeBleWrite {
+            characteristic_uuid: RNODE_BLE_WRITE_CHARACTERISTIC_UUID,
+            with_response: false,
+            payload: encode_data_frame(&payload),
+        })
+    );
+}
+
+#[tokio::test]
 async fn rnode_ble_runtime_splits_outbound_kiss_frames_by_ble_write_limit() {
     let config = RnodeBleKissConfig { max_write_len: 4, ..Default::default() };
     let backend = TestRnodeBleBackend::default();

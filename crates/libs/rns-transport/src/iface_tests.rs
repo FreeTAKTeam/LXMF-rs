@@ -59,6 +59,64 @@ mod tests {
         assert_eq!(mgr.mtu(context.channel.address()), Some(220));
     }
 
+    #[tokio::test]
+    async fn direct_packet_over_configured_mtu_is_not_queued() {
+        let mut mgr = InterfaceManager::new(16);
+        let mut rx = mgr
+            .new_channel_with_role_mode_mtu(16, IfaceRole::Unicast, InterfaceMode::Full, 20)
+            .tx_channel;
+        let iface = mgr.ifaces[0].address;
+        let packet = packet_with_wire_len(21);
+
+        let trace = mgr.send(TxMessage { tx_type: TxMessageType::Direct(iface), packet }).await;
+
+        assert_eq!(trace.matched_ifaces, 1);
+        assert_eq!(trace.sent_ifaces, 0);
+        assert_eq!(trace.failed_ifaces, 1);
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn direct_packet_at_configured_mtu_is_queued() {
+        let mut mgr = InterfaceManager::new(16);
+        let mut rx = mgr
+            .new_channel_with_role_mode_mtu(16, IfaceRole::Unicast, InterfaceMode::Full, 20)
+            .tx_channel;
+        let iface = mgr.ifaces[0].address;
+        let packet = packet_with_wire_len(20);
+
+        let trace =
+            mgr.send(TxMessage { tx_type: TxMessageType::Direct(iface), packet: packet.clone() }).await;
+
+        assert_eq!(trace.matched_ifaces, 1);
+        assert_eq!(trace.sent_ifaces, 1);
+        assert_eq!(trace.failed_ifaces, 0);
+        let sent = rx.try_recv().expect("packet should fit configured mtu");
+        assert_eq!(sent.packet, packet);
+    }
+
+    #[tokio::test]
+    async fn broadcast_over_one_iface_mtu_still_uses_larger_iface() {
+        let mut mgr = InterfaceManager::new(16);
+        let mut small_rx = mgr
+            .new_channel_with_role_mode_mtu(16, IfaceRole::Unicast, InterfaceMode::Full, 20)
+            .tx_channel;
+        let mut large_rx = mgr
+            .new_channel_with_role_mode_mtu(16, IfaceRole::Unicast, InterfaceMode::Full, 24)
+            .tx_channel;
+        let packet = packet_with_wire_len(22);
+
+        let trace =
+            mgr.send(TxMessage { tx_type: TxMessageType::Broadcast(None), packet: packet.clone() }).await;
+
+        assert_eq!(trace.matched_ifaces, 2);
+        assert_eq!(trace.sent_ifaces, 1);
+        assert_eq!(trace.failed_ifaces, 1);
+        assert!(small_rx.try_recv().is_err());
+        let sent = large_rx.try_recv().expect("larger iface should receive packet");
+        assert_eq!(sent.packet, packet);
+    }
+
     #[test]
     fn set_announce_pacing_updates_registered_iface() {
         let mut mgr = InterfaceManager::new(16);
@@ -136,6 +194,15 @@ mod tests {
         assert_eq!(mgr.iface_count(), 1);
         assert!(mgr.stop_interface(addr));
         assert_eq!(mgr.iface_count(), 0);
+    }
+
+    fn packet_with_wire_len(wire_len: usize) -> Packet {
+        let mut packet = Packet::default();
+        let base_len = packet.to_bytes().expect("default packet serializes").len();
+        assert!(wire_len >= base_len, "test packet wire length must include header");
+        packet.data.safe_write(&vec![0; wire_len - base_len]);
+        assert_eq!(packet.to_bytes().expect("sized packet serializes").len(), wire_len);
+        packet
     }
 
     #[test]

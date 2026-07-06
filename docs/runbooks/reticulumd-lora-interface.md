@@ -285,9 +285,14 @@ configuration. It then writes configuration frames for frequency, bandwidth, TX
 power, spreading factor, coding rate, optional short-term and long-term airtime
 locks, and radio-on state. Airtime locks are encoded as Python-compatible
 hundredths of a percent. Packet I/O then uses KISS data frames with
-`max_payload_bytes` as the interface MTU. READY flow control is disabled by
-default for RNode parity and is enabled only when `flow_control = true` is
-configured. Like Python RNode startup, a flow-controlled stream is considered
+`max_payload_bytes` as the interface MTU. Outbound packets whose serialized
+Reticulum wire length exceeds that MTU are rejected before they are queued to
+the interface, with diagnostics that include packet context, size, and budget.
+For BLE RNodes this rejection does not mark the BLE session disconnected; it
+means the packet was unsuitable for the configured LoRa/RNode payload budget.
+READY flow control is disabled by default for RNode parity and is enabled only
+when `flow_control = true` is configured. Like Python RNode startup, a
+flow-controlled stream is considered
 ready after startup frames are flushed: the first outbound packet is sent
 immediately, then later packets wait for device `CMD_READY` frames. If an RNode
 misses `CMD_READY`, the stream unlocks flow control after the Python-compatible
@@ -415,7 +420,8 @@ closed-queue cleanup regression, then writes artifacts under
 - configured RNode BLE identifier and alias matching
 - configured Android peripheral exclusion during fallback scan
 - RNode BLE command-monitor startup, degraded fallback, and runtime status JSON
-- RNode BLE packet, shutdown, and management-frame chunking
+- RNode BLE packet MTU rejection, successful MTU-sized transmit, shutdown, and
+  management-frame chunking
 - RNode BLE management handle queueing
 - reticulumd daemon RnodeBle management bridge dispatch
 - `rnodeconf-rs` extended management command-to-RPC matrix

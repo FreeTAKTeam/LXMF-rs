@@ -308,7 +308,7 @@ impl NativeRnodeBleKissInterface {
                 ),
             }
 
-            let mut tx_buffer = vec![0_u8; config.mtu];
+            let packet_mtu = config.mtu;
             let mut reconnect_needed = false;
             let mut command_monitor = rnode_config
                 .map(|config| RnodeBleCommandMonitor::new(config, startup_response_timeout));
@@ -389,15 +389,47 @@ impl NativeRnodeBleKissInterface {
 
                 if radio_config_sent {
                     while let Ok(message) = tx_channel.try_recv() {
-                        let mut output = OutputBuffer::new(&mut tx_buffer[..]);
-                        if message.packet.serialize(&mut output).is_err() {
-                            log::warn!("RNode BLE packet serialize failed iface={}", label);
+                        let raw = match message.packet.to_bytes() {
+                            Ok(raw) => raw,
+                            Err(err) => {
+                                log::warn!(
+                                    "RNode BLE packet serialize failed iface={} packet_type={:?} \
+                                     context={:?} dst={} data_len={} mtu={} err={:?}",
+                                    label,
+                                    message.packet.header.packet_type,
+                                    message.packet.context,
+                                    message.packet.destination,
+                                    message.packet.data.len(),
+                                    packet_mtu,
+                                    err
+                                );
+                                continue;
+                            }
+                        };
+                        if raw.len() > packet_mtu {
+                            log::warn!(
+                                "RNode BLE packet exceeds configured MTU iface={} packet_type={:?} \
+                                 context={:?} dst={} data_len={} wire_len={} mtu={}",
+                                label,
+                                message.packet.header.packet_type,
+                                message.packet.context,
+                                message.packet.destination,
+                                message.packet.data.len(),
+                                raw.len(),
+                                packet_mtu
+                            );
                             continue;
                         }
-                        if let Err(err) = runtime.send_packet(output.as_slice()).await {
+                        if let Err(err) = runtime.send_packet(&raw).await {
                             log::warn!(
-                                "RNode BLE packet write failed iface={} err={:?}",
+                                "RNode BLE packet write failed iface={} packet_type={:?} \
+                                 context={:?} dst={} wire_len={} mtu={} err={:?}",
                                 label,
+                                message.packet.header.packet_type,
+                                message.packet.context,
+                                message.packet.destination,
+                                raw.len(),
+                                packet_mtu,
                                 err
                             );
                             reconnect_needed = true;

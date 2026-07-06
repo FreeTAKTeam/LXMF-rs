@@ -251,10 +251,10 @@ The project is best described by capability level:
   radio-on, and command-error free. A software-only RNode BLE smoke records
   `evidence_scope = "software_rnode_ble_fallback_management"` under
   `target/rnode-ble-software-smoke/` for feature-gated fallback, command-monitor,
-  management dispatch, `reticulumd` daemon `RnodeBle` management bridge
-  dispatch, `rnodeconf-rs` extended management command-to-RPC coverage,
-  persistent/destructive CLI guard enforcement, and shared
-  closed-queue cleanup regressions. A fake TCP RNode smoke records
+  management dispatch, outbound RNode BLE MTU rejection and MTU-sized transmit,
+  `reticulumd` daemon `RnodeBle` management bridge dispatch, `rnodeconf-rs`
+  extended management command-to-RPC coverage, persistent/destructive CLI guard
+  enforcement, and shared closed-queue cleanup regressions. A fake TCP RNode smoke records
   `evidence_scope = "software_fake_tcp_rnode_prepared_host_management"` by
   running the ordinary prepared-host path against a deterministic local KISS TCP
   peer and verifying startup, radio configuration, radio-state query, and blink
