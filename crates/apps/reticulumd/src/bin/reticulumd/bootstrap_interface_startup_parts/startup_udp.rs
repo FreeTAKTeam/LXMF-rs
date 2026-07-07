@@ -407,6 +407,64 @@ async fn startup_ble(
     }
 }
 
+async fn startup_reticulum_ble(
+    iface: &InterfaceConfig,
+    label: &str,
+    iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
+    record: &mut InterfaceRecord,
+    startup_failures: &mut Vec<InterfaceStartupFailure>,
+    reticulum_ble_runtime_refreshes: &mut Vec<ReticulumBleRuntimeRefresh>,
+    transport_identity_hash: Option<[u8; 16]>,
+) -> bool {
+    let Some(local_identity) = transport_identity_hash else {
+        let err = "reticulum_ble requires the daemon transport identity hash".to_string();
+        record_startup_failure(
+            record,
+            startup_failures,
+            label.to_string(),
+            iface.kind.clone(),
+            err,
+        );
+        mark_interface_runtime_fields(record, "degraded", 0);
+        return false;
+    };
+    match reticulum_ble::spawn(iface_manager.clone(), iface, local_identity).await {
+        Ok(spawned) => {
+            let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
+            let mut manager = iface_manager.lock().await;
+            manager.set_mode(spawned.iface, mode);
+            apply_interface_runtime_config(&mut manager, spawned.iface, iface);
+            drop(manager);
+            log::info!(
+                "[daemon] reticulum_ble enabled iface={} name={} service_uuid={}",
+                spawned.iface,
+                label,
+                iface.service_uuid.as_deref().unwrap_or(reticulum_ble::SERVICE_UUID)
+            );
+            let runtime_iface = spawned.iface.to_string();
+            mark_interface_startup_status(record, "spawned", None, Some(runtime_iface.as_str()));
+            mark_interface_runtime_fields(record, "degraded", 0);
+            mark_reticulum_ble_runtime_status(record, iface, spawned.iface, local_identity);
+            reticulum_ble_runtime_refreshes.push(ReticulumBleRuntimeRefresh {
+                runtime_iface: spawned.iface,
+                status: spawned.status,
+            });
+            true
+        }
+        Err(err) => {
+            record_startup_failure(
+                record,
+                startup_failures,
+                label.to_string(),
+                iface.kind.clone(),
+                err,
+            );
+            mark_interface_runtime_fields(record, "degraded", 0);
+            false
+        }
+    }
+}
+
 async fn mark_ble_spawn_success(
     iface: &InterfaceConfig,
     label: &str,
@@ -564,6 +622,56 @@ fn mark_ble_gatt_runtime_status(
                     "mtu": iface.mtu,
                     "scan_timeout_ms": iface.scan_timeout_ms,
                     "connect_timeout_ms": iface.ble_connect_timeout_ms.or(iface.connect_timeout_ms),
+                    "iface": runtime_iface.to_string(),
+                }
+            }),
+        );
+    });
+}
+
+fn mark_reticulum_ble_runtime_status(
+    record: &mut InterfaceRecord,
+    iface: &InterfaceConfig,
+    runtime_iface: AddressHash,
+    local_identity: [u8; 16],
+) {
+    let local_identity = local_identity.iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+    with_interface_runtime_metadata(record, |runtime| {
+        runtime.insert(
+            "reticulum_ble".to_string(),
+            serde_json::json!({
+                "status": {
+                    "link_state": "degraded",
+                    "adapter": iface.adapter.as_deref(),
+                    "service_uuid": iface.service_uuid.as_deref().unwrap_or(reticulum_ble::SERVICE_UUID),
+                    "tx_char_uuid": iface.notify_char_uuid.as_deref().unwrap_or(reticulum_ble::TX_CHAR_UUID),
+                    "rx_char_uuid": iface.write_char_uuid.as_deref().unwrap_or(reticulum_ble::RX_CHAR_UUID),
+                    "identity_char_uuid": iface.identity_char_uuid.as_deref().unwrap_or(reticulum_ble::IDENTITY_CHAR_UUID),
+                    "local_identity": local_identity,
+                    "mtu": iface.mtu.unwrap_or(185),
+                    "max_connections": iface.max_connections.unwrap_or(7),
+                    "scan_duration_ms": iface.scan_duration_ms.unwrap_or(10_000),
+                    "discovery_interval_ms": iface.discovery_interval_ms.unwrap_or(5_000),
+                    "discovery_interval_idle_ms": iface.discovery_interval_idle_ms.unwrap_or(30_000),
+                    "advertising_refresh_interval_ms": iface.advertising_refresh_interval_ms.unwrap_or(30_000),
+                    "min_rssi_dbm": iface.min_rssi_dbm.unwrap_or(-85),
+                    "enable_central": iface.enable_central.unwrap_or(true),
+                    "enable_peripheral": iface.enable_peripheral.unwrap_or(true),
+                    "central_links": 0,
+                    "peripheral_links": 0,
+                    "scan_state": if iface.enable_central.unwrap_or(true) { "native_backend_pending" } else { "disabled" },
+                    "advertising_state": if iface.enable_peripheral.unwrap_or(true) { "native_backend_pending" } else { "disabled" },
+                    "peer_identities": [],
+                    "active_addresses": [],
+                    "fragments_rx": 0,
+                    "fragments_tx": 0,
+                    "packets_rx": 0,
+                    "packets_tx": 0,
+                    "malformed_fragments": 0,
+                    "reconnects": 0,
+                    "duplicate_rejections": 0,
+                    "stale_reassembly_drops": 0,
+                    "last_error": "reticulum_ble native dual-role backend is not yet available",
                     "iface": runtime_iface.to_string(),
                 }
             }),

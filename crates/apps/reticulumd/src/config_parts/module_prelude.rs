@@ -375,11 +375,29 @@ pub struct InterfaceConfig {
     #[serde(default)]
     pub notify_char_uuid: Option<String>,
     #[serde(default)]
+    pub identity_char_uuid: Option<String>,
+    #[serde(default)]
     pub scan_timeout_ms: Option<u64>,
+    #[serde(default)]
+    pub scan_duration_ms: Option<u64>,
+    #[serde(default)]
+    pub discovery_interval_ms: Option<u64>,
+    #[serde(default)]
+    pub discovery_interval_idle_ms: Option<u64>,
+    #[serde(default)]
+    pub advertising_refresh_interval_ms: Option<u64>,
     #[serde(default)]
     pub ble_connect_timeout_ms: Option<u64>,
     #[serde(default)]
     pub connect_timeout_ms: Option<u64>,
+    #[serde(default)]
+    pub max_connections: Option<usize>,
+    #[serde(default)]
+    pub min_rssi_dbm: Option<i32>,
+    #[serde(default)]
+    pub enable_central: Option<bool>,
+    #[serde(default)]
+    pub enable_peripheral: Option<bool>,
     #[serde(default)]
     pub region: Option<String>,
     #[serde(default)]

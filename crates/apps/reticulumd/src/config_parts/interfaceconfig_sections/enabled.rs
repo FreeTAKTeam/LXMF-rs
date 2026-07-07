@@ -312,6 +312,34 @@ impl InterfaceConfig {
                     self.max_reconnect_backoff_ms,
                 );
             }
+            "reticulum_ble" => {
+                insert_opt_string(&mut settings, "adapter", self.adapter.as_ref());
+                insert_opt_string(&mut settings, "service_uuid", self.service_uuid.as_ref());
+                insert_opt_string(&mut settings, "tx_char_uuid", self.notify_char_uuid.as_ref());
+                insert_opt_string(&mut settings, "rx_char_uuid", self.write_char_uuid.as_ref());
+                insert_opt_string(
+                    &mut settings,
+                    "identity_char_uuid",
+                    self.identity_char_uuid.as_ref(),
+                );
+                insert_opt_u64(&mut settings, "mtu", self.mtu.map(|v| v as u64));
+                insert_opt_u64(&mut settings, "max_connections", self.max_connections.map(|v| v as u64));
+                insert_opt_u64(&mut settings, "scan_duration_ms", self.scan_duration_ms);
+                insert_opt_u64(&mut settings, "discovery_interval_ms", self.discovery_interval_ms);
+                insert_opt_u64(
+                    &mut settings,
+                    "discovery_interval_idle_ms",
+                    self.discovery_interval_idle_ms,
+                );
+                insert_opt_u64(
+                    &mut settings,
+                    "advertising_refresh_interval_ms",
+                    self.advertising_refresh_interval_ms,
+                );
+                insert_opt_i64(&mut settings, "min_rssi_dbm", self.min_rssi_dbm.map(i64::from));
+                insert_opt_bool(&mut settings, "enable_central", self.enable_central);
+                insert_opt_bool(&mut settings, "enable_peripheral", self.enable_peripheral);
+            }
             "vrn76_kiss_ble" => {
                 insert_opt_string(&mut settings, "adapter", self.adapter.as_ref());
                 insert_opt_string(&mut settings, "peripheral_id", self.peripheral_id.as_ref());
@@ -436,6 +464,7 @@ impl InterfaceConfig {
             "pipe" => self.validate_pipe(index),
             "i2p" => self.validate_i2p(index),
             "ble_gatt" => self.validate_ble(index),
+            "reticulum_ble" => self.validate_reticulum_ble(index),
             "vrn76_kiss_ble" => self.validate_vrn76_kiss_ble(index),
             "lora" => self.validate_lora(index, original_kind),
             "rnode_multi" => self.validate_rnode_multi(index),
@@ -620,6 +649,9 @@ impl InterfaceConfig {
         if self.kind == "vrn76_kiss_ble" {
             self.normalize_vrn76_kiss_ble_aliases(index)?;
         }
+        if self.kind == "reticulum_ble" {
+            self.normalize_reticulum_ble_aliases(index)?;
+        }
         if self.kind == "kiss" {
             self.normalize_kiss_aliases(index, original_kind)?;
         }
@@ -682,6 +714,64 @@ impl InterfaceConfig {
         }
         if self.take_bool_alias_for_kind("kiss_framing", index, "tcp_client")?.unwrap_or(false) {
             self.kind = "kiss_tcp_client".to_string();
+        }
+        Ok(())
+    }
+
+    fn normalize_reticulum_ble_aliases(&mut self, index: usize) -> Result<(), String> {
+        const SERVICE_UUID: &str = "37145b00-442d-4a94-917f-8f42c5da28e3";
+        const TX_UUID: &str = "37145b00-442d-4a94-917f-8f42c5da28e4";
+        const RX_UUID: &str = "37145b00-442d-4a94-917f-8f42c5da28e5";
+        const IDENTITY_UUID: &str = "37145b00-442d-4a94-917f-8f42c5da28e6";
+
+        if self.service_uuid.is_none() {
+            self.service_uuid = Some(SERVICE_UUID.to_string());
+        }
+        if self.notify_char_uuid.is_none() {
+            self.notify_char_uuid = self
+                .take_string_alias_for_kind("tx_char_uuid", index, "reticulum_ble")?
+                .and_then(non_empty_string)
+                .or_else(|| Some(TX_UUID.to_string()));
+        } else {
+            let _ = self.take_string_alias_for_kind("tx_char_uuid", index, "reticulum_ble")?;
+        }
+        if self.write_char_uuid.is_none() {
+            self.write_char_uuid = self
+                .take_string_alias_for_kind("rx_char_uuid", index, "reticulum_ble")?
+                .and_then(non_empty_string)
+                .or_else(|| Some(RX_UUID.to_string()));
+        } else {
+            let _ = self.take_string_alias_for_kind("rx_char_uuid", index, "reticulum_ble")?;
+        }
+        if self.identity_char_uuid.is_none() {
+            self.identity_char_uuid = Some(IDENTITY_UUID.to_string());
+        }
+        if self.mtu.is_none() {
+            self.mtu = Some(185);
+        }
+        if self.max_connections.is_none() {
+            self.max_connections = Some(7);
+        }
+        if self.min_rssi_dbm.is_none() {
+            self.min_rssi_dbm = Some(-85);
+        }
+        if self.scan_duration_ms.is_none() {
+            self.scan_duration_ms = Some(10_000);
+        }
+        if self.discovery_interval_ms.is_none() {
+            self.discovery_interval_ms = Some(5_000);
+        }
+        if self.discovery_interval_idle_ms.is_none() {
+            self.discovery_interval_idle_ms = Some(30_000);
+        }
+        if self.advertising_refresh_interval_ms.is_none() {
+            self.advertising_refresh_interval_ms = Some(30_000);
+        }
+        if self.enable_central.is_none() {
+            self.enable_central = Some(true);
+        }
+        if self.enable_peripheral.is_none() {
+            self.enable_peripheral = Some(true);
         }
         Ok(())
     }

@@ -362,6 +362,65 @@ impl InterfaceConfig {
         Ok(())
     }
 
+    fn validate_reticulum_ble(&self, index: usize) -> Result<(), String> {
+        self.reject_unknown_new_kind_keys(index, "reticulum_ble")?;
+        if !self.enabled() {
+            return Ok(());
+        }
+        if let Some(adapter) = self.adapter.as_deref() {
+            require_non_empty(
+                Some(adapter),
+                &format!("interfaces[{index}].adapter cannot be empty for reticulum_ble"),
+            )?;
+        }
+        for (field, value) in [
+            ("service_uuid", self.service_uuid.as_deref()),
+            ("tx_char_uuid", self.notify_char_uuid.as_deref()),
+            ("rx_char_uuid", self.write_char_uuid.as_deref()),
+            ("identity_char_uuid", self.identity_char_uuid.as_deref()),
+        ] {
+            let value = value.unwrap_or_default();
+            if !is_uuid_like(value) {
+                return Err(format!(
+                    "interfaces[{index}].{field} must be a 16-, 32-, or 128-bit UUID for reticulum_ble"
+                ));
+            }
+        }
+        if let Some(mtu) = self.mtu {
+            if !(23..=517).contains(&mtu) {
+                return Err(format!(
+                    "interfaces[{index}].mtu must be between 23 and 517 for reticulum_ble"
+                ));
+            }
+        }
+        if self.max_connections.is_some_and(|value| value == 0) {
+            return Err(format!(
+                "interfaces[{index}].max_connections must be > 0 for reticulum_ble"
+            ));
+        }
+        if self.min_rssi_dbm.is_some_and(|value| !(-127..=20).contains(&value)) {
+            return Err(format!(
+                "interfaces[{index}].min_rssi_dbm must be between -127 and 20 for reticulum_ble"
+            ));
+        }
+        for (field, value) in [
+            ("scan_duration_ms", self.scan_duration_ms),
+            ("discovery_interval_ms", self.discovery_interval_ms),
+            ("discovery_interval_idle_ms", self.discovery_interval_idle_ms),
+            ("advertising_refresh_interval_ms", self.advertising_refresh_interval_ms),
+        ] {
+            if value == Some(0) {
+                return Err(format!("interfaces[{index}].{field} must be > 0 for reticulum_ble"));
+            }
+        }
+        if self.enable_central == Some(false) && self.enable_peripheral == Some(false) {
+            return Err(format!(
+                "interfaces[{index}].enable_central and enable_peripheral cannot both be false for reticulum_ble"
+            ));
+        }
+        Ok(())
+    }
+
     fn validate_vrn76_kiss_ble(&self, index: usize) -> Result<(), String> {
         self.reject_unknown_new_kind_keys(index, "vrn76_kiss_ble")?;
         if let Some(flow_control) = self.flow_control.as_ref() {

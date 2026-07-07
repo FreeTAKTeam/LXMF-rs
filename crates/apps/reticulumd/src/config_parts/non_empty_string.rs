@@ -73,6 +73,7 @@ fn normalize_interface_kind(value: &str) -> String {
         "WeaveInterface" => "weave".to_string(),
         "I2PInterface" => "i2p".to_string(),
         "Vrn76KissBluetoothInterface" | "Vrn76KissBleInterface" => "vrn76_kiss_ble".to_string(),
+        "AndroidBLE" | "AndroidBLEInterface" | "BLEInterface" => "reticulum_ble".to_string(),
         value => value.to_string(),
     }
 }
@@ -151,6 +152,12 @@ fn insert_opt_string_array(
 }
 
 fn insert_opt_u64(target: &mut JsonMap<String, JsonValue>, key: &str, value: Option<u64>) {
+    if let Some(value) = value {
+        target.insert(key.to_string(), JsonValue::Number(value.into()));
+    }
+}
+
+fn insert_opt_i64(target: &mut JsonMap<String, JsonValue>, key: &str, value: Option<i64>) {
     if let Some(value) = value {
         target.insert(key.to_string(), JsonValue::Number(value.into()));
     }

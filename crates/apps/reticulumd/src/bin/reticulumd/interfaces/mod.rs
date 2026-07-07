@@ -6,6 +6,7 @@ pub(super) mod kiss;
 pub(super) mod lora;
 pub(super) mod lora_state;
 pub(super) mod pipe;
+pub(super) mod reticulum_ble;
 pub(super) mod rnode_multi;
 pub(super) mod serial;
 pub(super) mod udp;

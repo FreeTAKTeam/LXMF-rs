@@ -225,6 +225,95 @@ interfaces = [
 }
 
 #[test]
+fn parses_reticulum_ble_aliases_with_columba_defaults() {
+    for alias in ["AndroidBLE", "AndroidBLEInterface", "BLEInterface", "reticulum_ble"] {
+        let input = format!(
+            r#"
+interfaces = [
+  {{ type = "{alias}", enabled = true, name = "columba-ble" }}
+]
+"#
+        );
+        let cfg = DaemonConfig::from_toml(&input).expect("parse reticulum BLE alias");
+        let iface = &cfg.interfaces[0];
+        assert_eq!(iface.kind, "reticulum_ble");
+        assert_eq!(iface.service_uuid.as_deref(), Some("37145b00-442d-4a94-917f-8f42c5da28e3"));
+        assert_eq!(iface.notify_char_uuid.as_deref(), Some("37145b00-442d-4a94-917f-8f42c5da28e4"));
+        assert_eq!(iface.write_char_uuid.as_deref(), Some("37145b00-442d-4a94-917f-8f42c5da28e5"));
+        assert_eq!(iface.identity_char_uuid.as_deref(), Some("37145b00-442d-4a94-917f-8f42c5da28e6"));
+        assert_eq!(iface.mtu, Some(185));
+        assert_eq!(iface.max_connections, Some(7));
+        assert_eq!(iface.scan_duration_ms, Some(10_000));
+        assert_eq!(iface.discovery_interval_ms, Some(5_000));
+        assert_eq!(iface.discovery_interval_idle_ms, Some(30_000));
+        assert_eq!(iface.min_rssi_dbm, Some(-85));
+        assert_eq!(iface.enable_central, Some(true));
+        assert_eq!(iface.enable_peripheral, Some(true));
+
+        let settings = iface.settings_json().expect("settings");
+        assert_eq!(settings["service_uuid"], "37145b00-442d-4a94-917f-8f42c5da28e3");
+        assert_eq!(settings["tx_char_uuid"], "37145b00-442d-4a94-917f-8f42c5da28e4");
+        assert_eq!(settings["rx_char_uuid"], "37145b00-442d-4a94-917f-8f42c5da28e5");
+        assert_eq!(settings["identity_char_uuid"], "37145b00-442d-4a94-917f-8f42c5da28e6");
+        assert_eq!(settings["mtu"], 185);
+    }
+}
+
+#[test]
+fn parses_reticulum_ble_custom_peer_settings() {
+    let cfg = DaemonConfig::from_toml(
+        r#"
+interfaces = [
+  { type = "reticulum_ble", enabled = true, name = "columba-ble", adapter = "hci0", tx_char_uuid = "2A37", rx_char_uuid = "2A38", identity_char_uuid = "2A39", mtu = 247, max_connections = 4, scan_duration_ms = 7000, discovery_interval_ms = 11000, discovery_interval_idle_ms = 31000, advertising_refresh_interval_ms = 17000, min_rssi_dbm = -95, enable_central = true, enable_peripheral = false }
+]
+"#,
+    )
+    .expect("parse reticulum BLE settings");
+    let iface = &cfg.interfaces[0];
+    assert_eq!(iface.notify_char_uuid.as_deref(), Some("2A37"));
+    assert_eq!(iface.write_char_uuid.as_deref(), Some("2A38"));
+    assert_eq!(iface.identity_char_uuid.as_deref(), Some("2A39"));
+    assert_eq!(iface.mtu, Some(247));
+    assert_eq!(iface.max_connections, Some(4));
+    assert_eq!(iface.min_rssi_dbm, Some(-95));
+
+    let settings = iface.settings_json().expect("settings");
+    assert_eq!(settings["adapter"], "hci0");
+    assert_eq!(settings["tx_char_uuid"], "2A37");
+    assert_eq!(settings["rx_char_uuid"], "2A38");
+    assert_eq!(settings["mtu"], 247);
+    assert_eq!(settings["max_connections"], 4);
+    assert_eq!(settings["min_rssi_dbm"], -95);
+    assert_eq!(settings["enable_peripheral"], false);
+}
+
+#[test]
+fn rejects_invalid_reticulum_ble_settings() {
+    for (toml, expected) in [
+        (
+            r#"[{ type = "reticulum_ble", enabled = true, service_uuid = "bad" }]"#,
+            "service_uuid must be a 16-, 32-, or 128-bit UUID",
+        ),
+        (
+            r#"[{ type = "reticulum_ble", enabled = true, mtu = 22 }]"#,
+            "mtu must be between 23 and 517",
+        ),
+        (
+            r#"[{ type = "reticulum_ble", enabled = true, discovery_interval_ms = 0 }]"#,
+            "discovery_interval_ms must be > 0",
+        ),
+        (
+            r#"[{ type = "reticulum_ble", enabled = true, enable_central = false, enable_peripheral = false }]"#,
+            "enable_central and enable_peripheral cannot both be false",
+        ),
+    ] {
+        let input = format!("interfaces = {toml}");
+        let err = DaemonConfig::from_toml(&input).expect_err("reject invalid reticulum BLE");
+        assert!(err.to_string().contains(expected), "unexpected error: {err}");
+    }
+}
+
+#[test]
 fn rejects_enabled_tcp_server_empty_host() {
     let input = r#"
 interfaces = [

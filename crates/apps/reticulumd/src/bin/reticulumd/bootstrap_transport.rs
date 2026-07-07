@@ -19,8 +19,8 @@ pub(super) use interface_startup::Vrn76RuntimeRefresh;
 pub(super) use interface_startup::{
     AutoRuntimeRefresh, BleGattRuntimeRefresh, I2pRuntimeRefresh, KissRuntimeRefresh,
     LoraRuntimeRefresh, PipeRuntimeRefresh, RNodeManagementBinding, RNodeMultiRuntimeRefresh,
-    SerialRuntimeRefresh, TcpRuntimeRefresh, TcpRuntimeStatusSource, UdpRuntimeRefresh,
-    WeaveControlBinding, WeaveRuntimeRefresh,
+    ReticulumBleRuntimeRefresh, SerialRuntimeRefresh, TcpRuntimeRefresh, TcpRuntimeStatusSource,
+    UdpRuntimeRefresh, WeaveControlBinding, WeaveRuntimeRefresh,
 };
 use path_restore::{
     mark_path_table_restore_status, mark_path_table_restore_status_on_enabled_interfaces,
@@ -63,6 +63,7 @@ pub(super) struct TransportStartupArtifacts {
     pub(super) serial_runtime_refreshes: Vec<SerialRuntimeRefresh>,
     pub(super) kiss_runtime_refreshes: Vec<KissRuntimeRefresh>,
     pub(super) ble_gatt_runtime_refreshes: Vec<BleGattRuntimeRefresh>,
+    pub(super) reticulum_ble_runtime_refreshes: Vec<ReticulumBleRuntimeRefresh>,
     pub(super) i2p_runtime_refreshes: Vec<I2pRuntimeRefresh>,
     pub(super) tcp_runtime_refreshes: Vec<TcpRuntimeRefresh>,
     pub(super) weave_runtime_refreshes: Vec<WeaveRuntimeRefresh>,
@@ -180,6 +181,7 @@ pub(super) async fn start_transport_and_interfaces(
     let mut serial_runtime_refreshes = Vec::new();
     let mut kiss_runtime_refreshes = Vec::new();
     let mut ble_gatt_runtime_refreshes = Vec::new();
+    let mut reticulum_ble_runtime_refreshes = Vec::new();
     let mut i2p_runtime_refreshes = Vec::new();
     let mut tcp_runtime_refreshes = Vec::new();
     let mut weave_runtime_refreshes = Vec::new();
@@ -266,6 +268,7 @@ pub(super) async fn start_transport_and_interfaces(
             serial_runtime_refreshes.extend(startup.serial_runtime_refreshes);
             kiss_runtime_refreshes.extend(startup.kiss_runtime_refreshes);
             ble_gatt_runtime_refreshes.extend(startup.ble_gatt_runtime_refreshes);
+            reticulum_ble_runtime_refreshes.extend(startup.reticulum_ble_runtime_refreshes);
             i2p_runtime_refreshes.extend(startup.i2p_runtime_refreshes);
             tcp_runtime_refreshes.extend(startup.tcp_runtime_refreshes);
             weave_runtime_refreshes.extend(startup.weave_runtime_refreshes);
@@ -398,6 +401,7 @@ pub(super) async fn start_transport_and_interfaces(
         serial_runtime_refreshes,
         kiss_runtime_refreshes,
         ble_gatt_runtime_refreshes,
+        reticulum_ble_runtime_refreshes,
         i2p_runtime_refreshes,
         tcp_runtime_refreshes,
         weave_runtime_refreshes,

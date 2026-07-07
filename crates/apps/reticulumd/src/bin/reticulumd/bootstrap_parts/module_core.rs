@@ -189,6 +189,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     let serial_runtime_refreshes = startup.serial_runtime_refreshes;
     let kiss_runtime_refreshes = startup.kiss_runtime_refreshes;
     let ble_gatt_runtime_refreshes = startup.ble_gatt_runtime_refreshes;
+    let reticulum_ble_runtime_refreshes = startup.reticulum_ble_runtime_refreshes;
     let i2p_runtime_refreshes = startup.i2p_runtime_refreshes;
     let tcp_runtime_refreshes = startup.tcp_runtime_refreshes;
     let weave_runtime_refreshes = startup.weave_runtime_refreshes;
@@ -333,6 +334,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     spawn_serial_runtime_status_refresher(daemon.clone(), serial_runtime_refreshes);
     spawn_kiss_runtime_status_refresher(daemon.clone(), kiss_runtime_refreshes);
     spawn_ble_gatt_runtime_status_refresher(daemon.clone(), ble_gatt_runtime_refreshes);
+    spawn_reticulum_ble_runtime_status_refresher(daemon.clone(), reticulum_ble_runtime_refreshes);
     spawn_i2p_runtime_status_refresher(daemon.clone(), i2p_runtime_refreshes);
     spawn_tcp_runtime_status_refresher(daemon.clone(), tcp_runtime_refreshes);
     spawn_weave_runtime_status_refresher(daemon.clone(), weave_runtime_refreshes);
@@ -688,6 +690,40 @@ fn refresh_ble_gatt_runtime_status_once(
             daemon.update_interface_runtime_metadata_by_iface(
                 refresh.runtime_iface.to_string().as_str(),
                 "ble_gatt",
+                "status",
+                refresh.status.to_json(),
+            )
+        })
+        .count()
+}
+
+fn spawn_reticulum_ble_runtime_status_refresher(
+    daemon: Arc<RpcDaemon>,
+    refreshes: Vec<transport_startup::ReticulumBleRuntimeRefresh>,
+) {
+    if refreshes.is_empty() {
+        return;
+    }
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(INTERFACE_RUNTIME_STATUS_REFRESH_INTERVAL);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            interval.tick().await;
+            refresh_reticulum_ble_runtime_status_once(&daemon, &refreshes);
+        }
+    });
+}
+
+fn refresh_reticulum_ble_runtime_status_once(
+    daemon: &RpcDaemon,
+    refreshes: &[transport_startup::ReticulumBleRuntimeRefresh],
+) -> usize {
+    refreshes
+        .iter()
+        .filter(|refresh| {
+            daemon.update_interface_runtime_metadata_by_iface(
+                refresh.runtime_iface.to_string().as_str(),
+                "reticulum_ble",
                 "status",
                 refresh.status.to_json(),
             )

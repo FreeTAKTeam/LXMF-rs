@@ -10,7 +10,7 @@ use crate::bridge_rnode_management::DaemonRNodeManagementHandle;
 use crate::interface_hot_apply::hot_apply_interface_seed_key;
 
 use crate::interfaces::{
-    auto, ble, common::interface_label, i2p, kiss, lora, pipe, rnode_multi, serial, udp,
+    auto, ble, common::interface_label, i2p, kiss, lora, pipe, reticulum_ble, rnode_multi, serial, udp,
     vrn76_kiss_ble, weave,
 };
 
@@ -47,6 +47,7 @@ pub(super) struct InterfaceStartupBatch {
     pub(super) serial_runtime_refreshes: Vec<SerialRuntimeRefresh>,
     pub(super) kiss_runtime_refreshes: Vec<KissRuntimeRefresh>,
     pub(super) ble_gatt_runtime_refreshes: Vec<BleGattRuntimeRefresh>,
+    pub(super) reticulum_ble_runtime_refreshes: Vec<ReticulumBleRuntimeRefresh>,
     pub(super) i2p_runtime_refreshes: Vec<I2pRuntimeRefresh>,
     pub(super) tcp_runtime_refreshes: Vec<TcpRuntimeRefresh>,
     pub(super) weave_runtime_refreshes: Vec<WeaveRuntimeRefresh>,
@@ -93,6 +94,12 @@ pub(crate) struct KissRuntimeRefresh {
 pub(crate) struct BleGattRuntimeRefresh {
     pub(crate) runtime_iface: AddressHash,
     pub(crate) status: ble::BleRuntimeStatusHandle,
+}
+
+#[derive(Clone)]
+pub(crate) struct ReticulumBleRuntimeRefresh {
+    pub(crate) runtime_iface: AddressHash,
+    pub(crate) status: reticulum_ble::ReticulumBleRuntimeStatusHandle,
 }
 
 struct UdpStartupSinks<'a> {
@@ -219,6 +226,7 @@ pub(super) async fn startup_configured_interfaces(
     let mut serial_runtime_refreshes = Vec::new();
     let mut kiss_runtime_refreshes = Vec::new();
     let mut ble_gatt_runtime_refreshes = Vec::new();
+    let mut reticulum_ble_runtime_refreshes = Vec::new();
     let mut i2p_runtime_refreshes = Vec::new();
     let mut tcp_runtime_refreshes = Vec::new();
     let mut weave_runtime_refreshes = Vec::new();
@@ -538,6 +546,21 @@ pub(super) async fn startup_configured_interfaces(
                     startup_successes += 1;
                 }
             }
+            "reticulum_ble" => {
+                if startup_reticulum_ble(
+                    iface,
+                    &label,
+                    iface_manager,
+                    &mut configured_interfaces[index],
+                    &mut startup_failures,
+                    &mut reticulum_ble_runtime_refreshes,
+                    transport_identity_hash,
+                )
+                .await
+                {
+                    startup_successes += 1;
+                }
+            }
             "vrn76_kiss_ble" => {
                 let startup = startup_vrn76_kiss_ble(
                     iface,
@@ -613,6 +636,7 @@ pub(super) async fn startup_configured_interfaces(
         serial_runtime_refreshes,
         kiss_runtime_refreshes,
         ble_gatt_runtime_refreshes,
+        reticulum_ble_runtime_refreshes,
         i2p_runtime_refreshes,
         tcp_runtime_refreshes,
         weave_runtime_refreshes,
@@ -1731,8 +1755,8 @@ mod tests {
     use super::{
         apply_interface_runtime_config, build_tcp_client_adapter, mark_ble_spawn_success,
         startup_configured_interfaces, startup_i2p, startup_kiss, startup_kiss_tcp_client,
-        startup_pipe, startup_rnode_multi, startup_serial, startup_tcp_server_record, startup_udp,
-        startup_weave, UdpStartupSinks,
+        startup_pipe, startup_reticulum_ble, startup_rnode_multi, startup_serial,
+        startup_tcp_server_record, startup_udp, startup_weave, UdpStartupSinks,
     };
     use crate::Args;
     use crate::bridge_rnode_management::DaemonRNodeManagementHandle;
@@ -2510,6 +2534,89 @@ interfaces = [
         assert_eq!(ble_status["iface"].as_str(), Some(runtime_iface.to_string().as_str()));
         assert_eq!(manager.role(&runtime_iface), Some(IfaceRole::Unicast));
         assert_eq!(manager.mode(&runtime_iface), Some(InterfaceMode::AccessPoint));
+    }
+
+    #[tokio::test]
+    async fn reticulum_ble_startup_marks_columba_runtime_status() {
+        let cfg = reticulum_daemon::config::DaemonConfig::from_toml(
+            r#"
+interfaces = [
+  { type = "BLEInterface", enabled = true, name = "columba-ble", mode = "ap" }
+]
+"#,
+        )
+        .expect("parse reticulum ble config");
+        let iface = &cfg.interfaces[0];
+        let identity = rns_core::identity::PrivateIdentity::new_from_rand(rand_core::OsRng);
+        let transport_identity = to_transport_private_identity(&identity);
+        let transport = Transport::new(TransportConfig::new("test", &transport_identity, true));
+        let manager = transport.iface_manager();
+        let mut local_identity = [0_u8; 16];
+        local_identity.copy_from_slice(identity.address_hash().as_slice());
+        let mut record = InterfaceRecord {
+            kind: iface.kind.clone(),
+            enabled: true,
+            host: None,
+            port: None,
+            name: iface.name.clone(),
+            settings: iface.settings_json(),
+        };
+        let mut startup_failures = Vec::new();
+        let mut refreshes = Vec::new();
+
+        let started = startup_reticulum_ble(
+            iface,
+            "columba-ble",
+            &manager,
+            &mut record,
+            &mut startup_failures,
+            &mut refreshes,
+            Some(local_identity),
+        )
+        .await;
+
+        assert!(started);
+        assert!(startup_failures.is_empty());
+        assert_eq!(refreshes.len(), 1);
+        let runtime = record
+            .settings
+            .as_ref()
+            .and_then(|settings| settings.get("_runtime"))
+            .expect("runtime settings");
+        assert_eq!(runtime["startup_status"].as_str(), Some("spawned"));
+        assert_eq!(runtime["runtime_status"].as_str(), Some("degraded"));
+        let runtime_iface =
+            runtime["iface"].as_str().expect("runtime iface").trim_matches('/').to_string();
+        let runtime_iface =
+            AddressHash::new_from_hex_string(&runtime_iface).expect("iface hash");
+        let manager = manager.lock().await;
+        assert_eq!(manager.role(&runtime_iface), Some(IfaceRole::Unicast));
+        assert_eq!(manager.mode(&runtime_iface), Some(InterfaceMode::AccessPoint));
+        assert_eq!(refreshes[0].runtime_iface, runtime_iface);
+        let ble_status = &runtime["reticulum_ble"]["status"];
+        assert_eq!(ble_status["link_state"].as_str(), Some("degraded"));
+        assert_eq!(ble_status["scan_state"].as_str(), Some("native_backend_pending"));
+        assert_eq!(
+            ble_status["advertising_state"].as_str(),
+            Some("native_backend_pending")
+        );
+        assert_eq!(
+            ble_status["service_uuid"].as_str(),
+            Some("37145b00-442d-4a94-917f-8f42c5da28e3")
+        );
+        assert_eq!(
+            ble_status["tx_char_uuid"].as_str(),
+            Some("37145b00-442d-4a94-917f-8f42c5da28e4")
+        );
+        assert_eq!(
+            ble_status["rx_char_uuid"].as_str(),
+            Some("37145b00-442d-4a94-917f-8f42c5da28e5")
+        );
+        assert_eq!(ble_status["mtu"].as_u64(), Some(185));
+        assert_eq!(ble_status["max_connections"].as_u64(), Some(7));
+        assert_eq!(ble_status["enable_central"].as_bool(), Some(true));
+        assert_eq!(ble_status["enable_peripheral"].as_bool(), Some(true));
+        assert_eq!(ble_status["iface"].as_str(), Some(runtime_iface.to_string().as_str()));
     }
 
     #[tokio::test]
