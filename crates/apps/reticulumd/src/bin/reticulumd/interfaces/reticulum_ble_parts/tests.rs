@@ -50,7 +50,7 @@ fn reticulum_ble_rejects_duplicate_mismatch_timeout_and_oversize() {
     let now = Instant::now();
     let mut core = ReticulumBleRuntimeCore::new(ident(0x10));
     let peer = ident(0x20);
-    let fragments = fragment_packet(&vec![b'X'; 200], 100).expect("fragment");
+    let fragments = fragment_packet(&[b'X'; 200], 100).expect("fragment");
     assert_eq!(core.receive_fragment(peer, &fragments[0], now).expect("receive"), None);
     assert_eq!(core.receive_fragment(peer, &fragments[1], now).expect("receive"), None);
     let mut changed = fragments[1].clone();
@@ -60,7 +60,7 @@ fn reticulum_ble_rejects_duplicate_mismatch_timeout_and_oversize() {
         Err(FragmentError::DuplicateMismatch(1))
     ));
 
-    let stale = fragment_packet(&vec![b'Z'; 200], 100).expect("fragment");
+    let stale = fragment_packet(&[b'Z'; 200], 100).expect("fragment");
     assert_eq!(core.receive_fragment(peer, &stale[0], now).expect("receive"), None);
     let later = now + Duration::from_secs(31);
     assert_eq!(core.receive_fragment(peer, &stale[1], later).expect("receive"), None);
