@@ -21,6 +21,16 @@ fn expected_i2p_sam_default() -> (String, u16) {
 }
 
 #[test]
+fn parses_interfaces_reference_example_config() {
+    let input = include_str!("../../examples/interfaces-reference.toml");
+
+    let cfg = DaemonConfig::from_toml(input).expect("parse interfaces reference config");
+
+    assert_eq!(cfg.interfaces.len(), 20);
+    assert!(cfg.interfaces.iter().all(|iface| !iface.enabled()));
+}
+
+#[test]
 fn parses_tcp_client_interface() {
     let input = r#"
 display_name = "RCH Rust Stress Hub"

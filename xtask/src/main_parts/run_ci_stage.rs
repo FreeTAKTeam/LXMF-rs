@@ -290,6 +290,7 @@ fn run_reference_integration_check() -> Result<()> {
         "## Reference Integration Smoke Suite",
         "cargo run -p xtask -- reference-integration-check",
         "crates/apps/reticulumd/examples/service-reference.toml",
+        "crates/apps/reticulumd/examples/interfaces-reference.toml",
         "crates/apps/lxmf-cli/examples/desktop-reference.toml",
         "crates/apps/rns-tools/examples/gateway-reference.toml",
     ] {

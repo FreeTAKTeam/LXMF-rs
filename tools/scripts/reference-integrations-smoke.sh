@@ -6,6 +6,7 @@ cd "$ROOT_DIR"
 
 required_files=(
   "crates/apps/reticulumd/examples/service-reference.toml"
+  "crates/apps/reticulumd/examples/interfaces-reference.toml"
   "crates/apps/lxmf-cli/examples/desktop-reference.toml"
   "crates/apps/rns-tools/examples/gateway-reference.toml"
   "docs/runbooks/reference-integrations.md"

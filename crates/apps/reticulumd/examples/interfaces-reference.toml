@@ -1,0 +1,485 @@
+# Reference integration: reticulumd interface configuration
+#
+# This file is intentionally safe by default:
+# - every interface is disabled
+# - required fields for disabled interfaces are shown as commented examples
+# - optional parameters are commented out next to the interface that consumes them
+#
+# To use this file, enable one interface block, uncomment the fields it needs,
+# and remove or leave the other disabled examples.
+
+# display_name = "lxmf-rs node"
+# announce_capabilities = ["lxmf"]
+
+# The legacy Reticulum shared-instance section can synthesize a local interface
+# when no explicit local/local_client interface is configured.
+# [reticulum]
+# share_instance = true
+# shared_instance_type = "unix"       # tcp | unix
+# shared_instance_port = 37428
+# instance_name = "default"
+# force_shared_instance_bitrate = 1000000000
+# instance_control_port = 37429
+# rpc_key = "change-me"
+
+# [propagation_node]
+# enabled = false
+# control_allowed = []
+# node_announce_at_start = false
+# node_announce_interval_secs = 300
+# peer_announce_at_start = false
+# peer_announce_interval_secs = 300
+# transfer_limit_kb = 256
+# sync_limit_kb = 10240
+# stamp_cost = 16
+# stamp_cost_flexibility = 3
+# peering_cost = 18
+
+# Shared parameters accepted by interface entries:
+# enabled = false
+# interface_enabled = false
+# name = "example"
+# interface_mode = "full"             # full | access_point/ap | pointtopoint/ptp | roaming | boundary | gateway/gw
+# mode = "full"                       # compatibility alias for interface_mode
+# outgoing = true
+# bitrate = 1000000
+# announce_cap = 2                    # 1..=100 percent
+# announce_rate_target = 0
+# announce_rate_grace = 0
+# announce_rate_penalty = 0
+# bootstrap_only = false
+# ignore_config_warnings = false
+# ifac_size = 16
+# network_name = "private-ifac"
+# networkname = "private-ifac"        # compatibility alias for network_name
+# passphrase = "change-me"
+# pass_phrase = "change-me"           # compatibility alias for passphrase
+# ingress_control = false
+# egress_control = false
+# ic_max_held_announces = 256
+# ic_burst_hold = 60.0
+# ic_burst_freq_new = 3.0
+# ic_burst_freq = 12.0
+# ic_pr_burst_freq_new = 3.0
+# ic_pr_burst_freq = 12.0
+# ec_pr_freq = 12.0
+# ic_new_time = 60.0
+# ic_burst_penalty = 300.0
+# ic_held_release_interval = 30.0
+# discoverable = false
+# announce_interval = 360             # minutes when discoverable=true
+# discovery_stamp_value = 16
+# discovery_name = "node"
+# discovery_encrypt = true
+# reachable_on = "tcp"
+# publish_ifac = false
+# latitude = 0.0
+# longitude = 0.0
+# height = 0.0
+# discovery_frequency = 915000000
+# discovery_bandwidth = 125000
+# discovery_modulation = 9
+
+[[interfaces]]
+type = "tcp_client"
+enabled = false
+name = "tcp-client-example"
+# host = "127.0.0.1"
+# port = 4242
+# target_host = "127.0.0.1"           # compatibility alias for host
+# target_port = 4242                  # compatibility alias for port
+# prefer_ipv6 = false
+# i2p_tunneled = false
+# connect_timeout = 5
+# max_reconnect_tries = 0
+# mtu = 1064
+# fixed_mtu = 1064                    # compatibility alias for mtu
+# kiss_framing = false                # true normalizes this block to kiss_tcp_client
+
+[[interfaces]]
+type = "tcp_server"
+enabled = false
+name = "tcp-server-example"
+# host = "0.0.0.0"
+# port = 4242
+# listen_ip = "0.0.0.0"               # compatibility alias for host
+# listen_port = 4242                  # compatibility alias for port
+# device = "eth0"
+# prefer_ipv6 = false
+# i2p_tunneled = false
+# mtu = 1064
+
+[[interfaces]]
+type = "backbone"
+enabled = false
+name = "backbone-server-example"
+# host = "0.0.0.0"
+# port = 4242
+# listen_ip = "0.0.0.0"               # compatibility alias for host
+# listen_on = "0.0.0.0"               # compatibility alias for host
+# listen_port = 4242                  # compatibility alias for port
+# device = "eth0"
+# prefer_ipv6 = false
+# i2p_tunneled = false
+# mtu = 1048576
+
+[[interfaces]]
+type = "backbone_client"
+enabled = false
+name = "backbone-client-example"
+# host = "example.net"
+# port = 4242
+# target_host = "example.net"
+# target_port = 4242
+# remote = "example.net"              # compatibility alias for target_host
+# prefer_ipv6 = false
+# i2p_tunneled = false
+# connect_timeout = 5
+# max_reconnect_tries = 0
+# mtu = 1048576
+
+[[interfaces]]
+type = "local"
+enabled = false
+name = "local-shared-instance-example"
+# shared_instance_type = "unix"        # tcp | unix
+# instance_name = "default"
+# socket_path = "@rns/default"
+# unix_socket_path = "@rns/default"    # compatibility alias for socket_path
+# host = "127.0.0.1"                  # tcp shared-instance only
+# port = 37428                        # tcp shared-instance only
+# listen_ip = "127.0.0.1"             # compatibility alias for host
+# bind_ip = "127.0.0.1"               # compatibility alias for host
+# listen_port = 37428                 # compatibility alias for port
+# shared_instance_port = 37428        # compatibility alias for port
+# connect_timeout = 5
+# max_reconnect_tries = 0
+# mtu = 1064
+# fixed_mtu = 1064                    # compatibility alias for mtu
+# force_shared_instance_bitrate = 1000000000
+
+[[interfaces]]
+type = "local_client"
+enabled = false
+name = "local-client-example"
+# shared_instance_type = "tcp"         # tcp | unix
+# instance_name = "default"
+# socket_path = "@rns/default"
+# host = "127.0.0.1"
+# port = 37428
+# connect_timeout = 5
+# max_reconnect_tries = 0
+# mtu = 1064
+
+[[interfaces]]
+type = "pipe"
+enabled = false
+name = "pipe-example"
+# command = "cat"
+# respawn_delay = 5.0
+# mtu = 1064
+
+[[interfaces]]
+type = "i2p"
+enabled = false
+name = "i2p-example"
+# peers = ["exampledestination.b32.i2p"]
+# connectable = false
+# sam_host = "127.0.0.1"
+# sam_ip = "127.0.0.1"                # compatibility alias for sam_host
+# sam_port = 7656
+# mtu = 1064
+# reconnect_backoff_ms = 1000
+# state_path = "./state/i2p"
+# storagepath = "./state/i2p"          # compatibility alias for state_path
+# ifac_netname = "private-ifac"        # compatibility alias for network_name
+# ifac_netkey = "change-me"            # compatibility alias for passphrase
+
+[[interfaces]]
+type = "udp"
+enabled = false
+name = "udp-example"
+# host = "0.0.0.0"
+# port = 4242
+# listen_ip = "0.0.0.0"               # compatibility alias for host
+# listen_port = 4242                  # compatibility alias for port
+# device = "eth0"
+# target_host = "192.0.2.10"
+# target_port = 4242
+# forward_ip = "192.0.2.10"           # compatibility alias for target_host
+# forward_port = 4242                 # compatibility alias for target_port
+
+[[interfaces]]
+type = "auto"
+enabled = false
+name = "auto-example"
+# group_id = "reticulum"
+# discovery_scope = "link"            # link | realm | admin | site | organization | global
+# discovery_port = 29716
+# data_port = 42671
+# multicast_address_type = "temporary"
+# devices = ["eth0", "wlan0"]
+# ignored_devices = ["docker0"]
+# configured_bitrate = 1000000         # compatibility alias for bitrate
+
+[[interfaces]]
+type = "serial"
+enabled = false
+name = "serial-example"
+# device = "/dev/ttyUSB0"
+# port = "/dev/ttyUSB0"               # compatibility alias for device
+# baud_rate = 115200
+# speed = 115200                      # compatibility alias for baud_rate
+# data_bits = 8
+# databits = 8                        # compatibility alias for data_bits
+# parity = "none"
+# stop_bits = 1
+# stopbits = 1                        # compatibility alias for stop_bits
+# flow_control = "none"               # none | software | hardware
+# mtu = 1064
+# reconnect_backoff_ms = 1000
+# max_reconnect_backoff_ms = 30000
+
+[[interfaces]]
+type = "weave"
+enabled = false
+name = "weave-example"
+# device = "/dev/ttyUSB0"
+# port = "/dev/ttyUSB0"               # compatibility alias for device
+# baud_rate = 3000000
+# speed = 3000000                     # compatibility alias for baud_rate
+# mtu = 1024
+# configured_bitrate = 1000000         # compatibility alias for bitrate
+
+[[interfaces]]
+type = "kiss"
+enabled = false
+name = "kiss-example"
+# device = "/dev/ttyUSB0"
+# port = "/dev/ttyUSB0"               # compatibility alias for device
+# baud_rate = 9600
+# speed = 9600                        # compatibility alias for baud_rate
+# data_bits = 8
+# databits = 8                        # compatibility alias for data_bits
+# parity = "none"
+# stop_bits = 1
+# stopbits = 1                        # compatibility alias for stop_bits
+# mtu = 564
+# preamble_ms = 350
+# preamble = 350                      # compatibility alias for preamble_ms
+# tx_tail_ms = 20
+# txtail = 20                         # compatibility alias for tx_tail_ms
+# persistence = 64
+# slot_time_ms = 20
+# slottime = 20                       # compatibility alias for slot_time_ms
+# kiss_flow_control = false
+# flow_control = false                # compatibility alias for kiss_flow_control on KISS interfaces
+# id_callsign = "N0CALL-0"
+# id_interval = 600
+# beacon_data = "N0CALL-0"            # compatibility alias for id_callsign
+# beacon_interval = 600               # compatibility alias for id_interval
+# reconnect_backoff_ms = 1000
+# max_reconnect_backoff_ms = 30000
+
+[[interfaces]]
+type = "ax25_kiss"
+enabled = false
+name = "ax25-kiss-example"
+# device = "/dev/ttyUSB0"
+# port = "/dev/ttyUSB0"               # compatibility alias for device
+# baud_rate = 9600
+# speed = 9600                        # compatibility alias for baud_rate
+# data_bits = 8
+# databits = 8                        # compatibility alias for data_bits
+# parity = "none"
+# stop_bits = 1
+# stopbits = 1                        # compatibility alias for stop_bits
+# mtu = 564
+# preamble_ms = 350
+# preamble = 350                      # compatibility alias for preamble_ms
+# tx_tail_ms = 20
+# txtail = 20                         # compatibility alias for tx_tail_ms
+# persistence = 64
+# slot_time_ms = 20
+# slottime = 20                       # compatibility alias for slot_time_ms
+# kiss_flow_control = false
+# flow_control = false                # compatibility alias for kiss_flow_control
+# callsign = "N0CALL"
+# ssid = 0
+# id_callsign = "N0CALL-0"
+# id_interval = 600
+# reconnect_backoff_ms = 1000
+# max_reconnect_backoff_ms = 30000
+
+[[interfaces]]
+type = "kiss_tcp_client"
+enabled = false
+name = "kiss-tcp-client-example"
+# host = "127.0.0.1"
+# port = 8001
+# mtu = 564
+# preamble_ms = 350
+# tx_tail_ms = 20
+# persistence = 64
+# slot_time_ms = 20
+# kiss_flow_control = false
+# flow_control = false                # compatibility alias for kiss_flow_control
+# id_callsign = "N0CALL-0"
+# id_interval = 600
+# reconnect_backoff_ms = 1000
+# max_reconnect_backoff_ms = 30000
+
+[[interfaces]]
+type = "ble_gatt"
+enabled = false
+name = "ble-gatt-example"
+# adapter = "hci0"
+# peripheral_id = "AA:BB:CC:DD:EE:FF"
+# service_uuid = "12345678-1234-1234-1234-1234567890ab"
+# write_char_uuid = "2A37"
+# notify_char_uuid = "2A38"
+# scan_timeout_ms = 5000
+# ble_connect_timeout_ms = 10000
+# connect_timeout_ms = 10000
+# mtu = 247
+# reconnect_backoff_ms = 500
+# max_reconnect_backoff_ms = 5000
+
+[[interfaces]]
+type = "reticulum_ble"
+enabled = false
+name = "reticulum-ble-example"
+# Aliases: AndroidBLE, AndroidBLEInterface, BLEInterface.
+# Defaults follow the Columba Protocol v2.2 UUID profile when omitted.
+# adapter = "hci0"
+# service_uuid = "37145b00-442d-4a94-917f-8f42c5da28e3"
+# tx_char_uuid = "37145b00-442d-4a94-917f-8f42c5da28e4"
+# rx_char_uuid = "37145b00-442d-4a94-917f-8f42c5da28e5"
+# identity_char_uuid = "37145b00-442d-4a94-917f-8f42c5da28e6"
+# mtu = 185
+# max_connections = 7
+# scan_duration_ms = 10000
+# discovery_interval_ms = 5000
+# discovery_interval_idle_ms = 30000
+# advertising_refresh_interval_ms = 30000
+# min_rssi_dbm = -85
+# enable_central = true
+# enable_peripheral = true
+
+[[interfaces]]
+type = "vrn76_kiss_ble"
+enabled = false
+name = "vrn76-kiss-ble-example"
+# Aliases: Vrn76KissBluetoothInterface, Vrn76KissBleInterface.
+# adapter = "hci0"
+# peripheral_id = "VR-N76"
+# device_name_filter = "VR-N76"        # compatibility alias for peripheral_id
+# device_address = "AA:BB:CC:DD:EE:FF" # compatibility alias for peripheral_id
+# frame_mode = "benshi_tnc_data"       # benshi_tnc_data | raw_kiss
+# mtu = 564
+# max_write_len = 512
+# preamble_ms = 350
+# preamble = 350                       # compatibility alias for preamble_ms
+# tx_tail_ms = 20
+# txtail = 20                          # compatibility alias for tx_tail_ms
+# persistence = 64
+# slot_time_ms = 20
+# slottime = 20                        # compatibility alias for slot_time_ms
+# kiss_flow_control = false
+# flow_control = false                 # compatibility alias for kiss_flow_control
+# id_callsign = "N0CALL-0"
+# id_interval = 600
+# scan_timeout_ms = 10000
+# ble_scan_timeout_ms = 10000          # compatibility alias for scan_timeout_ms
+# connect_timeout_ms = 3000
+# command_timeout_ms = 3000            # compatibility alias for connect_timeout_ms
+# reconnect_backoff_ms = 1000
+# max_reconnect_backoff_ms = 30000
+
+[[interfaces]]
+type = "lora"
+enabled = false
+name = "lora-example"
+# Alias: RNodeInterface.
+# adapter = "hci0"
+# device = "/dev/ttyUSB0"              # serial, tcp://host:port, or ble://identifier
+# port = "/dev/ttyUSB0"                # compatibility alias for device
+# allow_bluetooth = false              # RNodeInterface selector helper
+# target_device_name = "RNode"
+# target_device_address = "AA:BB:CC:DD:EE:FF"
+# ble_name = "RNode"
+# ble_addr = "AA:BB:CC:DD:EE:FF"
+# tcp_host = "192.0.2.10:4242"
+# force_ble = false
+# force_tcp = false
+# baud_rate = 115200
+# speed = 115200                       # compatibility alias for baud_rate
+# mtu = 508
+# max_write_len = 512
+# region = "US915"                     # EU868 | US915 | AU915 | AS923 | IN865 | KR920 | RU864
+# frequency_hz = 915000000
+# frequency = 915000000                # compatibility alias for frequency_hz
+# bandwidth_hz = 125000
+# bandwidth = 125000                   # compatibility alias for bandwidth_hz
+# spreading_factor = 9
+# spreadingfactor = 9                  # compatibility alias for spreading_factor
+# coding_rate = "4/5"
+# codingrate = "4/5"                  # compatibility alias for coding_rate
+# tx_power_dbm = 17
+# txpower = 17                         # compatibility alias for tx_power_dbm
+# flow_control = false
+# scan_timeout_ms = 10000
+# ble_connect_timeout_ms = 10000
+# connect_timeout_ms = 3000
+# command_timeout_ms = 3000            # compatibility alias for connect_timeout_ms
+# id_callsign = "N0CALL-0"
+# id_interval = 600
+# reconnect_backoff_ms = 1000
+# max_reconnect_backoff_ms = 30000
+# airtime_limit_short = 100.0
+# airtime_limit_long = 100.0
+# sync_word = 18
+# preamble_symbols = 8
+# max_payload_bytes = 255
+# state_path = "./state/lora"
+
+[[interfaces]]
+type = "rnode_multi"
+enabled = false
+name = "rnode-multi-example"
+# Alias: RNodeMultiInterface.
+# device = "/dev/ttyUSB0"              # serial or tcp://host:port
+# port = "/dev/ttyUSB0"                # compatibility alias for device
+# baud_rate = 115200
+# speed = 115200                       # compatibility alias for baud_rate
+# mtu = 508
+# id_callsign = "N0CALL-0"
+# id_interval = 600
+# flow_control = false
+# airtime_limit_short = 100.0
+# airtime_limit_long = 100.0
+
+# RNodeMulti subinterfaces are nested tables on the rnode_multi entry. The
+# daemon accepts arbitrary table names such as radio0/radio1; each enabled
+# subinterface needs a unique vport and full LoRa radio settings.
+# [interfaces.radio0]
+# enabled = true
+# vport = 2
+# frequency_hz = 915000000
+# frequency = 915000000                # compatibility alias for frequency_hz
+# bandwidth_hz = 125000
+# bandwidth = 125000                   # compatibility alias for bandwidth_hz
+# spreading_factor = 9
+# spreadingfactor = 9                  # compatibility alias for spreading_factor
+# coding_rate = "4/5"
+# codingrate = "4/5"                  # compatibility alias for coding_rate
+# tx_power_dbm = 17
+# txpower = 17                         # compatibility alias for tx_power_dbm
+# flow_control = false
+# airtime_limit_short = 100.0
+# airtime_limit_long = 100.0
+
+# RNode Bluetooth Classic/SPP note:
+# `rnode_spp` currently exists as a transport-side scaffold, not as a
+# reticulumd interface kind. See docs/interfaces/rnode-spp.md for the runtime
+# contract. Add a daemon config block only after a native daemon backend exists.

@@ -7,12 +7,14 @@ This runbook defines three production-oriented reference integration patterns fo
 Reference artifact:
 
 - `crates/apps/reticulumd/examples/service-reference.toml`
+- `crates/apps/reticulumd/examples/interfaces-reference.toml`
 
 Intent:
 
 - run `reticulumd` as a long-lived service process
 - expose local RPC for colocated SDK clients
 - enforce hardened runtime defaults and redaction
+- provide a disabled-by-default catalog of supported interface parameters
 
 Baseline smoke command:
 
