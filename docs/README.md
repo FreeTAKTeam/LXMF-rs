@@ -51,6 +51,8 @@ are kept in Git history instead of the live documentation tree.
 - `docs/lxmf-cli.md`: operator CLI quick reference
 - `docs/interfaces/meshtastic.md`: Meshtastic tunnel configuration and library
   integration guide
+- `docs/interfaces/rnode-spp.md`: RNode Bluetooth Classic/SPP transport
+  contract and backend guidance
 - `docs/PerformancesComparison.html`: retained performance comparison snapshot;
   use the benchmarking runbook for current measurements
 - `docs/runbooks/release-readiness.md`: release gate checklist
