@@ -80,6 +80,7 @@
 # discovery_bandwidth = 125000
 # discovery_modulation = 9
 
+# Outbound TCP client for connecting to another Reticulum TCP listener.
 [[interfaces]]
 type = "tcp_client"
 enabled = false
@@ -96,6 +97,7 @@ name = "tcp-client-example"
 # fixed_mtu = 1064                    # compatibility alias for mtu
 # kiss_framing = false                # true normalizes this block to kiss_tcp_client
 
+# Inbound TCP server/listener for accepting Reticulum TCP peers.
 [[interfaces]]
 type = "tcp_server"
 enabled = false
@@ -109,6 +111,7 @@ name = "tcp-server-example"
 # i2p_tunneled = false
 # mtu = 1064
 
+# High-MTU inbound Backbone listener for trusted/core Reticulum links.
 [[interfaces]]
 type = "backbone"
 enabled = false
@@ -123,6 +126,7 @@ name = "backbone-server-example"
 # i2p_tunneled = false
 # mtu = 1048576
 
+# High-MTU outbound Backbone client for trusted/core Reticulum links.
 [[interfaces]]
 type = "backbone_client"
 enabled = false
@@ -138,6 +142,7 @@ name = "backbone-client-example"
 # max_reconnect_tries = 0
 # mtu = 1048576
 
+# Local shared-instance listener for colocated apps on TCP or Unix sockets.
 [[interfaces]]
 type = "local"
 enabled = false
@@ -158,6 +163,7 @@ name = "local-shared-instance-example"
 # fixed_mtu = 1064                    # compatibility alias for mtu
 # force_shared_instance_bitrate = 1000000000
 
+# Local shared-instance client for attaching to another local Reticulum daemon.
 [[interfaces]]
 type = "local_client"
 enabled = false
@@ -171,6 +177,7 @@ name = "local-client-example"
 # max_reconnect_tries = 0
 # mtu = 1064
 
+# Subprocess pipe interface that exchanges framed bytes over stdin/stdout.
 [[interfaces]]
 type = "pipe"
 enabled = false
@@ -179,6 +186,7 @@ name = "pipe-example"
 # respawn_delay = 5.0
 # mtu = 1064
 
+# I2P SAM interface for Reticulum peers over I2P destinations.
 [[interfaces]]
 type = "i2p"
 enabled = false
@@ -195,6 +203,7 @@ name = "i2p-example"
 # ifac_netname = "private-ifac"        # compatibility alias for network_name
 # ifac_netkey = "change-me"            # compatibility alias for passphrase
 
+# UDP unicast interface with optional forwarding target.
 [[interfaces]]
 type = "udp"
 enabled = false
@@ -209,6 +218,7 @@ name = "udp-example"
 # forward_ip = "192.0.2.10"           # compatibility alias for target_host
 # forward_port = 4242                 # compatibility alias for target_port
 
+# AutoInterface multicast discovery and local carrier interface.
 [[interfaces]]
 type = "auto"
 enabled = false
@@ -222,6 +232,7 @@ name = "auto-example"
 # ignored_devices = ["docker0"]
 # configured_bitrate = 1000000         # compatibility alias for bitrate
 
+# Plain serial byte-stream interface.
 [[interfaces]]
 type = "serial"
 enabled = false
@@ -240,6 +251,7 @@ name = "serial-example"
 # reconnect_backoff_ms = 1000
 # max_reconnect_backoff_ms = 30000
 
+# Weave serial device interface for Weave-compatible attached hardware.
 [[interfaces]]
 type = "weave"
 enabled = false
@@ -251,6 +263,7 @@ name = "weave-example"
 # mtu = 1024
 # configured_bitrate = 1000000         # compatibility alias for bitrate
 
+# Serial KISS TNC interface carrying Reticulum packets in KISS frames.
 [[interfaces]]
 type = "kiss"
 enabled = false
@@ -281,6 +294,7 @@ name = "kiss-example"
 # reconnect_backoff_ms = 1000
 # max_reconnect_backoff_ms = 30000
 
+# AX.25 KISS TNC interface with callsign/SSID addressing.
 [[interfaces]]
 type = "ax25_kiss"
 enabled = false
@@ -311,6 +325,7 @@ name = "ax25-kiss-example"
 # reconnect_backoff_ms = 1000
 # max_reconnect_backoff_ms = 30000
 
+# TCP-hosted KISS interface, commonly used for Wi-Fi or bridge-backed TNCs.
 [[interfaces]]
 type = "kiss_tcp_client"
 enabled = false
@@ -329,6 +344,7 @@ name = "kiss-tcp-client-example"
 # reconnect_backoff_ms = 1000
 # max_reconnect_backoff_ms = 30000
 
+# Generic configured BLE GATT adapter with explicit service/write/notify UUIDs.
 [[interfaces]]
 type = "ble_gatt"
 enabled = false
@@ -345,6 +361,7 @@ name = "ble-gatt-example"
 # reconnect_backoff_ms = 500
 # max_reconnect_backoff_ms = 5000
 
+# Columba-compatible dual-role Reticulum BLE peer interface.
 [[interfaces]]
 type = "reticulum_ble"
 enabled = false
@@ -366,6 +383,7 @@ name = "reticulum-ble-example"
 # enable_central = true
 # enable_peripheral = true
 
+# VR-N76/VT-N76 Bluetooth KISS-over-BLE interface using the Benshi profile.
 [[interfaces]]
 type = "vrn76_kiss_ble"
 enabled = false
@@ -396,6 +414,7 @@ name = "vrn76-kiss-ble-example"
 # reconnect_backoff_ms = 1000
 # max_reconnect_backoff_ms = 30000
 
+# LoRa/RNode interface over serial, TCP, or RNode BLE endpoints.
 [[interfaces]]
 type = "lora"
 enabled = false
@@ -443,6 +462,7 @@ name = "lora-example"
 # max_payload_bytes = 255
 # state_path = "./state/lora"
 
+# RNodeMulti parent interface for one serial/TCP device with vport children.
 [[interfaces]]
 type = "rnode_multi"
 enabled = false
