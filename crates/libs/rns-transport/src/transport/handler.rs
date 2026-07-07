@@ -400,7 +400,6 @@ impl TransportHandler {
     /// Resolve the interface an inbound *link-associated* packet (LinkRequest /
     /// Proof / link Data) should be handled on, eagerly learning the sender's
     /// unicast route in the process.
-
     pub(super) async fn ingress_route_iface(
         &mut self,
         packet: &Packet,

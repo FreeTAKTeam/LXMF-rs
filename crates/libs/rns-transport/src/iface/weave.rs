@@ -987,69 +987,64 @@ where
     let local_switch_id = switch_id_for_identity(&options.switch_identity);
 
     match packet_type {
-        WDCL_T_DISCOVER
-            if target == local_switch_id => {
-                if let Some(remote_switch_id) =
-                    accept_discovery_response(&options.switch_identity, frame)
-                {
-                    state.lock().await.remote_switch_id = Some(remote_switch_id);
-                    let handshake =
-                        weave_handshake_frame(&options.switch_identity, remote_switch_id);
-                    update_weave_status(&options.runtime_status, |status| {
-                        status.remote_switch_id = Some(remote_switch_id);
-                        status.last_error = None;
-                    });
-                    let handshake = weave_wire_frame(&handshake);
-                    match stream.write_all(&handshake).await {
-                        Ok(()) => {
-                            let _ = stream.flush().await;
-                            update_weave_status(&options.runtime_status, |status| {
-                                status.bytes_tx =
-                                    status.bytes_tx.saturating_add(handshake.len() as u64);
-                                status.frames_tx = status.frames_tx.saturating_add(1);
-                            });
-                        }
-                        Err(err) => {
-                            update_weave_status(&options.runtime_status, |status| {
-                                status.mark_reconnecting(format!(
-                                    "weave handshake write failed iface={} device={} err={}",
-                                    options.parent_iface, options.device, err
-                                ));
-                            });
-                            log::warn!(
-                                "Weave handshake write error iface={} device={} err={}",
-                                options.parent_iface,
-                                options.device,
-                                err
-                            );
-                            return false;
-                        }
-                    }
-                }
-            }
-        WDCL_T_ENDPOINT_PKT
-            if target == local_switch_id && payload.len() > ENDPOINT_ID_LEN => {
-                let data_len = payload.len() - ENDPOINT_ID_LEN;
-                let mut endpoint = [0_u8; ENDPOINT_ID_LEN];
-                endpoint.copy_from_slice(&payload[data_len..]);
-                let address = ensure_weave_endpoint(endpoint, options, state.clone()).await;
-                if let Some(address) = address {
-                    if let Ok(packet) =
-                        Packet::deserialize(&mut InputBuffer::new(&payload[..data_len]))
-                    {
+        WDCL_T_DISCOVER if target == local_switch_id => {
+            if let Some(remote_switch_id) =
+                accept_discovery_response(&options.switch_identity, frame)
+            {
+                state.lock().await.remote_switch_id = Some(remote_switch_id);
+                let handshake = weave_handshake_frame(&options.switch_identity, remote_switch_id);
+                update_weave_status(&options.runtime_status, |status| {
+                    status.remote_switch_id = Some(remote_switch_id);
+                    status.last_error = None;
+                });
+                let handshake = weave_wire_frame(&handshake);
+                match stream.write_all(&handshake).await {
+                    Ok(()) => {
+                        let _ = stream.flush().await;
                         update_weave_status(&options.runtime_status, |status| {
-                            status.mark_endpoint_packet_rx(endpoint, address);
+                            status.bytes_tx =
+                                status.bytes_tx.saturating_add(handshake.len() as u64);
+                            status.frames_tx = status.frames_tx.saturating_add(1);
                         });
-                        let _ = rx_channel
-                            .send(RxMessage { address, packet, source: IfaceSource::None })
-                            .await;
+                    }
+                    Err(err) => {
+                        update_weave_status(&options.runtime_status, |status| {
+                            status.mark_reconnecting(format!(
+                                "weave handshake write failed iface={} device={} err={}",
+                                options.parent_iface, options.device, err
+                            ));
+                        });
+                        log::warn!(
+                            "Weave handshake write error iface={} device={} err={}",
+                            options.parent_iface,
+                            options.device,
+                            err
+                        );
+                        return false;
                     }
                 }
             }
-        WDCL_T_LOG
-            if target == local_switch_id => {
-                process_weave_log(payload, options, state).await;
+        }
+        WDCL_T_ENDPOINT_PKT if target == local_switch_id && payload.len() > ENDPOINT_ID_LEN => {
+            let data_len = payload.len() - ENDPOINT_ID_LEN;
+            let mut endpoint = [0_u8; ENDPOINT_ID_LEN];
+            endpoint.copy_from_slice(&payload[data_len..]);
+            let address = ensure_weave_endpoint(endpoint, options, state.clone()).await;
+            if let Some(address) = address {
+                if let Ok(packet) = Packet::deserialize(&mut InputBuffer::new(&payload[..data_len]))
+                {
+                    update_weave_status(&options.runtime_status, |status| {
+                        status.mark_endpoint_packet_rx(endpoint, address);
+                    });
+                    let _ = rx_channel
+                        .send(RxMessage { address, packet, source: IfaceSource::None })
+                        .await;
+                }
             }
+        }
+        WDCL_T_LOG if target == local_switch_id => {
+            process_weave_log(payload, options, state).await;
+        }
         WDCL_T_DISP if target == local_switch_id => {
             process_weave_display(payload, options);
         }
