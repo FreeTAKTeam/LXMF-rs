@@ -50,6 +50,7 @@ pub struct RnodeSppRead {
 pub enum RnodeSppKissError {
     Kiss(KissDecodeError),
     Backend { operation: &'static str, message: String },
+    ConnectTimeout { timeout: Duration },
     PacketTooLarge { limit: usize, actual: usize },
 }
 
@@ -248,9 +249,10 @@ where
 
     pub async fn startup(&mut self) -> Result<(), RnodeSppKissError> {
         self.connected = false;
-        self.backend
-            .connect()
+        let connect_timeout = self.session.config.connect_timeout;
+        tokio::time::timeout(connect_timeout, self.backend.connect())
             .await
+            .map_err(|_| RnodeSppKissError::ConnectTimeout { timeout: connect_timeout })?
             .map_err(|message| RnodeSppKissError::Backend { operation: "connect", message })?;
         let writes = self.session.startup_frames();
         self.write_all(writes, "startup_write").await?;
