@@ -1046,6 +1046,10 @@ Scoped release evidence is split as follows:
   receipt status, signature/stamp metadata, drop reason, and lifecycle state
   without requiring REM/RCH clients to parse raw event JSON for normal message
   and status UI.
+- Typed inbound message helpers now expose the richer handler metadata already
+  carried in raw inbound events: signature validity, stamp validity,
+  propagation stamp validity, LXMF method, and direct transport encryption
+  fields.
 - RPC-layer propagation rejects for ignored destination hashes now emit bounded
   `inbound_dropped` events before returning `PermissionDenied` from
   `propagation_ingest` and remote fetch/download/sync imports. The events use

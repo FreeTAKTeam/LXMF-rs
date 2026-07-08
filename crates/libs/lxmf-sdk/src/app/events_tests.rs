@@ -131,8 +131,16 @@ fn maps_inbound_success_to_typed_details() {
                     "fields": {
                         "_lxmf": {
                             "signature_checked": true,
+                            "signature_valid": true,
                             "signature_status": "verified",
-                            "stamp_status": "accepted"
+                            "stamp_checked": true,
+                            "stamp_valid": true,
+                            "stamp_status": "accepted",
+                            "propagation_stamp_checked": true,
+                            "propagation_stamp_valid": false,
+                            "method": 2,
+                            "transport_encrypted": true,
+                            "transport_encryption": "Curve25519"
                         }
                     }
                 }
@@ -152,8 +160,16 @@ fn maps_inbound_success_to_typed_details() {
     assert_eq!(details.lxmf_bytes_hex.as_deref(), Some("aabbcc"));
     assert_eq!(details.receipt_status.as_deref(), Some("received"));
     assert_eq!(details.signature_checked, Some(true));
+    assert_eq!(details.signature_valid, Some(true));
     assert_eq!(details.signature_status.as_deref(), Some("verified"));
+    assert_eq!(details.stamp_checked, Some(true));
+    assert_eq!(details.stamp_valid, Some(true));
     assert_eq!(details.stamp_status.as_deref(), Some("accepted"));
+    assert_eq!(details.propagation_stamp_checked, Some(true));
+    assert_eq!(details.propagation_stamp_valid, Some(false));
+    assert_eq!(details.method, Some(2));
+    assert_eq!(details.transport_encrypted, Some(true));
+    assert_eq!(details.transport_encryption.as_deref(), Some("Curve25519"));
 }
 
 #[test]

@@ -927,6 +927,10 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   preserving message IDs, peer/source identity, destination hashes, raw LXMF
   bytes, signature/stamp metadata, drop reason, receipt status, and lifecycle
   state without requiring normal client UI flows to decode raw event JSON.
+- Typed inbound message helpers now expose the richer handler metadata already
+  carried in raw inbound events: signature validity, stamp validity,
+  propagation stamp validity, LXMF method, and direct transport encryption
+  fields.
 - Focused propagated local-delivery tests cover ignored-source delivery-policy
   rejections emitting bounded raw `inbound_dropped` events with
   `delivery_kind = "propagation"` while preserving Python-style no-store
