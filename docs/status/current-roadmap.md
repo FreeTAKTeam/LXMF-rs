@@ -882,6 +882,9 @@ Scoped release evidence is split as follows:
   cancellation through both `ZmqPipelineBackendClient::cancel` and
   `app.delivery.cancel` envelope execution, preserving daemon cancellation
   outcomes without raw RPC envelopes.
+- The native SDK app facade now routes `app.delivery.cancel` locally through
+  `Client::cancel_delivery`, preserving typed cancellation results for app
+  callers instead of falling through to generic remote-command dispatch.
 - `app.delivery.cancel` now cancels queued/pre-handoff outbound work before
   bridge delivery, persists `receipt_status = cancelled`, records delivery
   trace and event state, exposes cancel metadata through raw and envelope SDK

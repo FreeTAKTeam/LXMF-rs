@@ -125,6 +125,27 @@ impl<B: SdkBackend> Client<B> {
                     serde_json::to_value(status).expect("delivery status should serialize"),
                 ))
             }
+            "app.delivery.cancel" => {
+                let message_id = payload
+                    .get("message_id")
+                    .and_then(|value| value.as_str())
+                    .filter(|value| !value.trim().is_empty())
+                    .ok_or_else(|| {
+                        invalid_envelope(
+                            "delivery cancel envelope requires payload.message_id",
+                            canonical_id.as_str(),
+                        )
+                    })?;
+                let result = self.cancel_delivery(message_id.to_owned())?;
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::json!({
+                        "message_id": message_id,
+                        "result": result,
+                    }),
+                ))
+            }
             "app.event.poll" => {
                 let cursor = payload
                     .get("cursor")

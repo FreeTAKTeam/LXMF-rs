@@ -97,6 +97,35 @@ fn execute_envelope_routes_delivery_send_locally() {
 }
 
 #[test]
+fn execute_envelope_routes_delivery_cancel_locally() {
+    let app = Client::new(MockBackend::new());
+    app.start(Config::testing_default()).expect("start");
+
+    let response = app
+        .command(
+            "app.delivery.cancel",
+            serde_json::json!({
+                "message_id": "msg-cancel"
+            }),
+        )
+        .expect("delivery cancel");
+
+    assert_eq!(response.operation_id.as_str(), "app.delivery.cancel");
+    assert_eq!(
+        response.payload.get("message_id").and_then(|value| value.as_str()),
+        Some("msg-cancel")
+    );
+    assert_eq!(
+        response.payload.get("result").and_then(|value| value.as_str()),
+        Some("accepted")
+    );
+    assert!(
+        response.payload.get("command").is_none(),
+        "cancel should not fall through to the generic remote-command path"
+    );
+}
+
+#[test]
 fn execute_envelope_routes_custom_commands_via_remote_command_backend() {
     let backend = MockBackend::new();
     backend.queue_remote_command_result(Ok(crate::domain::RemoteCommandResponse {

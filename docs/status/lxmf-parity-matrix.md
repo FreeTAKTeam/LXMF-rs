@@ -448,6 +448,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   mapping `sdk_status_v2` into `DeliverySnapshot`, so direct-chat delivery
   status reports `sent` as terminal only until
   `sdk.capability.receipt_terminality` is negotiated.
+- The native SDK app facade now routes `app.delivery.cancel` locally through
+  `Client::cancel_delivery`, preserving typed cancellation results for app
+  callers instead of falling through to generic remote-command dispatch.
 - The typed ZeroMQ SDK backend preserves daemon-reported retry-attempt counts
   and reason codes when mapping `sdk_status_v2` into `DeliverySnapshot`, so
   direct-chat restart and retry recovery state remains visible to REM/RCH over

@@ -10,7 +10,7 @@ use super::runtime::{
     RuntimeStatus, SendReceipt, SendRequest,
 };
 use super::session::{SessionState, SharedBackend};
-use crate::{Client as CoreClient, LxmfSdk, SdkBackend, ShutdownMode};
+use crate::{CancelResult, Client as CoreClient, LxmfSdk, MessageId, SdkBackend, ShutdownMode};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -182,6 +182,14 @@ impl<B: SdkBackend> Client<B> {
         };
         let snapshot = client.status(message_id.into()).map_err(Error::from)?;
         Ok(snapshot.map(map_delivery_snapshot))
+    }
+
+    pub fn cancel_delivery(&self, message_id: impl Into<MessageId>) -> Result<CancelResult, Error> {
+        let state = self.state.lock().expect("app client mutex poisoned");
+        let Some(client) = state.client.as_ref() else {
+            return Err(Error::not_started());
+        };
+        client.cancel(message_id.into()).map_err(Error::from)
     }
 
     pub fn status(&self) -> Result<RuntimeStatus, Error> {
