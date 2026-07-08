@@ -931,6 +931,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   carried in raw inbound events: signature validity, stamp validity,
   propagation stamp validity, LXMF method, and direct transport encryption
   fields.
+- Receipt lifecycle events preserve handler/bridge stage provenance in both
+  the pollable SDK payload and typed app lifecycle helper, so transport-origin
+  delivery receipts remain distinguishable without raw event JSON parsing.
 - Focused propagated local-delivery tests cover ignored-source delivery-policy
   rejections emitting bounded raw `inbound_dropped` events with
   `delivery_kind = "propagation"` while preserving Python-style no-store

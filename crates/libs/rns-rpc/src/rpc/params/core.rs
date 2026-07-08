@@ -16,6 +16,8 @@ struct RecordReceiptParams {
     bytes: Option<u64>,
     #[serde(default)]
     link_id: Option<String>,
+    #[serde(default)]
+    stage: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

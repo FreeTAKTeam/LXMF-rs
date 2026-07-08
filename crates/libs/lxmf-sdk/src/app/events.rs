@@ -9,7 +9,6 @@ pub use events_details::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::collections::BTreeMap;
-
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -354,7 +353,6 @@ pub fn map_event_batch(batch: RawEventBatch, profile_id: &str) -> EventBatch {
         dropped_count: batch.dropped_count,
     }
 }
-
 #[cfg(feature = "sdk-async")]
 pub fn subscription_cursor(subscription: &EventSubscription) -> Option<crate::EventCursor> {
     subscription.cursor.clone()

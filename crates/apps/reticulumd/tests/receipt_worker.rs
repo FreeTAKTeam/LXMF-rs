@@ -106,7 +106,8 @@ fn receipt_event_preserves_router_metadata_in_sdk_payload() {
             .with_method("direct")
             .with_delivery_kind("link-packet")
             .with_bytes(128)
-            .with_link_id("link-1"),
+            .with_link_id("link-1")
+            .with_stage("transport_receipt"),
     )
     .expect("handle receipt");
 
@@ -119,6 +120,7 @@ fn receipt_event_preserves_router_metadata_in_sdk_payload() {
     assert_eq!(payload["delivery_kind"], json!("link-packet"));
     assert_eq!(payload["bytes"], json!(128));
     assert_eq!(payload["link_id"], json!("link-1"));
+    assert_eq!(payload["stage"], json!("transport_receipt"));
 }
 
 #[test]

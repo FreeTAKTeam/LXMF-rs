@@ -61,6 +61,7 @@ pub struct DeliveryLifecycleDetails {
     pub method: Option<String>,
     pub bytes: Option<u64>,
     pub link_id: Option<String>,
+    pub stage: Option<String>,
     pub reason: Option<String>,
 }
 
@@ -154,6 +155,7 @@ pub(super) fn delivery_lifecycle_details(payload: &JsonValue) -> DeliveryLifecyc
         method: json_str(payload, "method"),
         bytes: payload.get("bytes").and_then(JsonValue::as_u64),
         link_id: json_str(payload, "link_id"),
+        stage: json_str(payload, "stage"),
         reason: json_str(payload, "reason").or_else(|| json_str(payload, "detail")),
     }
 }

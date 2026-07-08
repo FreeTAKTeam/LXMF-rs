@@ -119,6 +119,7 @@ impl RpcDaemon {
                     delivery_kind,
                     bytes,
                     link_id,
+                    stage,
                 } = parsed;
                 let (status, updated, delivered_ticket_destination) = {
                     let _status_guard = self
@@ -183,6 +184,9 @@ impl RpcDaemon {
                 }
                 if let Some(link_id) = link_id {
                     payload.insert("link_id".into(), json!(link_id));
+                }
+                if let Some(stage) = stage {
+                    payload.insert("stage".into(), json!(stage));
                 }
                 let payload = JsonValue::Object(payload);
                 let event = RpcEvent { event_type: "receipt".into(), payload: payload.clone() };

@@ -1050,6 +1050,10 @@ Scoped release evidence is split as follows:
   carried in raw inbound events: signature validity, stamp validity,
   propagation stamp validity, LXMF method, and direct transport encryption
   fields.
+- Receipt lifecycle events now preserve handler/bridge stage provenance in the
+  pollable SDK payload and typed app lifecycle helper, so transport-origin
+  delivery receipts can be distinguished from other receipt publishers without
+  raw JSON parsing.
 - RPC-layer propagation rejects for ignored destination hashes now emit bounded
   `inbound_dropped` events before returning `PermissionDenied` from
   `propagation_ingest` and remote fetch/download/sync imports. The events use

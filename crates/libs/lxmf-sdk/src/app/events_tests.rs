@@ -246,7 +246,8 @@ fn maps_receipt_event_to_lifecycle_details() {
                 "packet_hash": "packet-1",
                 "resource_hash": "resource-1",
                 "bytes": 128,
-                "link_id": "link-1"
+                "link_id": "link-1",
+                "stage": "transport_receipt"
             }),
         ),
         "desktop_default",
@@ -265,4 +266,5 @@ fn maps_receipt_event_to_lifecycle_details() {
     assert_eq!(details.resource_hash.as_deref(), Some("resource-1"));
     assert_eq!(details.bytes, Some(128));
     assert_eq!(details.link_id.as_deref(), Some("link-1"));
+    assert_eq!(details.stage.as_deref(), Some("transport_receipt"));
 }

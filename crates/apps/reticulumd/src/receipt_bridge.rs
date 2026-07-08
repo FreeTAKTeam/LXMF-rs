@@ -19,6 +19,7 @@ pub struct ReceiptEvent {
     pub delivery_kind: Option<String>,
     pub bytes: Option<usize>,
     pub link_id: Option<String>,
+    pub stage: Option<String>,
 }
 
 impl ReceiptEvent {
@@ -33,6 +34,7 @@ impl ReceiptEvent {
             delivery_kind: None,
             bytes: None,
             link_id: None,
+            stage: None,
         }
     }
 
@@ -71,6 +73,11 @@ impl ReceiptEvent {
         self
     }
 
+    pub fn with_stage(mut self, stage: impl Into<String>) -> Self {
+        self.stage = Some(stage.into());
+        self
+    }
+
     fn rpc_params(&self) -> serde_json::Value {
         let mut params = serde_json::json!({
             "message_id": self.message_id,
@@ -97,6 +104,9 @@ impl ReceiptEvent {
             }
             if let Some(link_id) = &self.link_id {
                 map.insert("link_id".to_string(), serde_json::json!(link_id));
+            }
+            if let Some(stage) = &self.stage {
+                map.insert("stage".to_string(), serde_json::json!(stage));
             }
         }
         params
@@ -127,7 +137,8 @@ impl ReceiptHandler for ReceiptBridge {
         };
         let event = ReceiptEvent::new(message_id, "delivered")
             .with_packet_hash(hex::encode(receipt.message_id))
-            .with_delivery_kind("transport-receipt");
+            .with_delivery_kind("transport-receipt")
+            .with_stage("transport_receipt");
         if let Err(err) = self.tx.try_send(event) {
             log::warn!("[daemon] dropped delivery receipt event: {err}");
         }
