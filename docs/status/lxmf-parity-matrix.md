@@ -432,10 +432,11 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
   peer display names, unread counts, last-message previews with links, receipt
   inclusion intent, and restart pagination cursors through
   `app.message.conversation.list` on the SDK envelope path.
-- The native SDK app domain now exposes the same durable message-list and
-  conversation-list flows as `app.messages().history(...)` and
-  `app.messages().conversations(...)`, so direct-chat clients can stay on the
-  existing SDK client surface without raw envelope decoding.
+- The native SDK app domain now exposes the same durable message-list,
+  conversation-list, and cancellation flows as `app.messages().history(...)`,
+  `app.messages().conversations(...)`, and `app.messages().cancel(...)`, so
+  direct-chat clients can stay on the existing SDK client surface without raw
+  envelope decoding or dropping to the root client handle.
 - `ZmqPipelineBackendClient::list_message_history` accepts canonical
   `id`/`content` history rows and legacy direct-chat `message_id`/`body` rows,
   so recovered history remains typed even when the daemon returns the older app

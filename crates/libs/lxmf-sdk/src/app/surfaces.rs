@@ -20,6 +20,7 @@ use crate::error::{code, ErrorCategory as SdkErrorCategory, SdkError};
 use crate::messaging::{
     ConversationListPage, ConversationListRequest, MessageHistoryListRequest, MessageHistoryPage,
 };
+use crate::CancelResult;
 use crate::{SdkBackend, ShutdownMode};
 #[cfg(feature = "sdk-async")]
 use crate::{SdkBackendAsyncEvents, SdkBackendAsyncOps};
@@ -85,6 +86,10 @@ impl<'a, B: SdkBackend> Messages<'a, B> {
         message_id: impl Into<crate::MessageId>,
     ) -> Result<Option<DeliveryStatus>, Error> {
         self.client.delivery_status(message_id)
+    }
+
+    pub fn cancel(&self, message_id: impl Into<crate::MessageId>) -> Result<CancelResult, Error> {
+        self.client.backend.cancel(message_id.into()).map_err(Error::from)
     }
 
     #[cfg(feature = "sdk-async")]

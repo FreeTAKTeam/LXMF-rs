@@ -853,10 +853,11 @@ Scoped release evidence is split as follows:
   peer display names, unread counts, last-message previews with links, receipt
   inclusion intent, and restart pagination cursors through
   `app.message.conversation.list` on the SDK envelope path.
-- The native SDK app domain now exposes `app.messages().history(...)` and
-  `app.messages().conversations(...)` on the existing `Client` surface, so
-  direct-chat clients can bind message-list and conversation-list UI without
-  decoding raw SDK envelopes.
+- The native SDK app domain now exposes `app.messages().history(...)`,
+  `app.messages().conversations(...)`, and `app.messages().cancel(...)` on
+  the existing `Client` surface, so direct-chat clients can bind message-list,
+  conversation-list, and cancellation UI without decoding raw SDK envelopes or
+  dropping to the root client handle.
 - `ZmqPipelineBackendClient::list_message_history` now accepts both canonical
   `id`/`content` records and legacy direct-chat `message_id`/`body` records
   from `app.message.history.list`, keeping restart-recovered conversation

@@ -272,8 +272,21 @@ fn client_domain_handles_delegate_to_core_app_surface() {
         app.messages().status(receipt.message_id.clone()).expect("message status").expect("status");
     assert_eq!(status.message_id, receipt.message_id);
 
+    let cancel = app.messages().cancel(receipt.message_id.clone()).expect("message cancel");
+    assert_eq!(cancel, crate::CancelResult::Accepted);
+
     let runtime = app.runtime().status().expect("runtime status");
     assert_eq!(runtime.state, RunState::Running);
+}
+
+#[test]
+fn messages_domain_cancel_delegates_to_core_app_surface() {
+    let app = Client::new(MockBackend::new());
+    app.runtime().start(Config::desktop_default()).expect("start");
+
+    let result = app.messages().cancel(crate::MessageId("msg-cancel".to_owned())).expect("cancel");
+
+    assert_eq!(result, crate::CancelResult::Accepted);
 }
 
 #[test]
