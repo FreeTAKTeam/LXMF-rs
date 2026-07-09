@@ -218,7 +218,7 @@ fn generate_openapi_spec(
     };
 
     let mut spec = spec;
-    for (_name, schema) in spec.components.schemas.iter_mut() {
+    for schema in spec.components.schemas.values_mut() {
         sanitize_component_self_references(schema);
     }
     promote_inline_component_property(
