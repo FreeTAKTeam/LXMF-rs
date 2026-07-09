@@ -389,8 +389,9 @@ fn restore_tunnel_path_defaults_missing_existing_mode_to_full_timeout() {
         random_blob(b"first", 200),
         |_| Some(InterfaceMode::Full),
     ));
-    table.map.get_mut(&destination).expect("path entry").timestamp -=
-        DESTINATION_TIMEOUT + Duration::from_secs(1);
+    let now = table.get(&destination).expect("path entry").timestamp
+        + DESTINATION_TIMEOUT
+        + Duration::from_secs(1);
 
     assert!(table.restore_tunnel_path_with_random_blobs(TunnelPathRestore {
         destination,
@@ -400,7 +401,7 @@ fn restore_tunnel_path_defaults_missing_existing_mode_to_full_timeout() {
         packet_hash: hash(b"tunnel-missing-mode-packet"),
         random_blobs: vec![random_blob(b"equal", 200)],
         existing_mode: None,
-        now: Instant::now(),
+        now,
     }));
 
     let entry = table.get(&destination).expect("expired full-timeout path should replace");
