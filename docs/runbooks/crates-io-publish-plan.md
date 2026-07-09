@@ -72,6 +72,7 @@ not have to rewrite `use` paths just to complete the package rename.
 | `lxmf-reference` | `lxmf-reference` | `lxmf_reference` | GitHub release version | yes |
 | `lxmf-core` | `lxmf-wire` | `lxmf_core` | GitHub release version | yes |
 | `lxmf-sdk` | `lxmf-sdk` | `lxmf_sdk` | GitHub release version | yes |
+| `lxmf-runtime` | `lxmf-runtime` | `lxmf_runtime` | GitHub release version | yes |
 | `rns-core` | `reticulum-rs-core` | `rns_core` | GitHub release version | yes |
 | `rns-transport` | `reticulum-rs-transport` | `rns_transport` | GitHub release version | yes |
 | `rns-rpc` | `reticulum-rs-rpc` | `rns_rpc` | GitHub release version | yes |
@@ -195,13 +196,14 @@ Recommended order:
 7. `reticulum-rs-transport`
 8. `reticulum-rs-rpc`
 9. `lxmf-sdk`
-10. `rns-embedded-mininode`
-11. `lxmf-embedded-mini`
-12. `reticulum-rs`
-13. `lxmf`
-14. `lxmf-cli`
-15. `reticulumd`
-16. `rns-tools`
+10. `lxmf-runtime`
+11. `rns-embedded-mininode`
+12. `lxmf-embedded-mini`
+13. `reticulum-rs`
+14. `lxmf`
+15. `lxmf-cli`
+16. `reticulumd`
+17. `rns-tools`
 Reason:
 
 - `reticulum-rs-rpc` and `lxmf-sdk` share pinned compatibility metadata through
@@ -211,6 +213,7 @@ Reason:
 - `rns-embedded-ffi` depends on `rns-embedded-core` and `rns-embedded-runtime`
 - `reticulum-rs-transport` depends on `reticulum-rs-core`
 - `lxmf-sdk` depends on `reticulum-rs-rpc`
+- `lxmf-runtime` depends on `lxmf-sdk`, `lxmf-wire`, and `reticulum-rs-transport`
 - `rns-embedded-mininode` depends on `lxmf-wire` and `reticulum-rs-core`
 - facade crates should only publish after the underlying components are live
 - command crates publish last after their library dependencies are live

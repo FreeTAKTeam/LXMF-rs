@@ -10,6 +10,7 @@ members = [
   "crates/libs/rns-embedded-runtime",
   "crates/libs/lxmf-core",
   "crates/libs/lxmf-sdk",
+  "crates/libs/lxmf-runtime",
   "crates/libs/reticulum-rs",
   "crates/libs/rns-core",
   "crates/libs/rns-transport",
@@ -29,6 +30,7 @@ default-members = [
   "crates/libs/rns-embedded-runtime",
   "crates/libs/lxmf-core",
   "crates/libs/lxmf-sdk",
+  "crates/libs/lxmf-runtime",
   "crates/libs/reticulum-rs",
   "crates/libs/rns-core",
   "crates/libs/rns-transport",
@@ -56,6 +58,9 @@ allowed_library_edges = [
   "lxmf->lxmf-wire",
   "lxmf-sdk->lxmf-wire",
   "lxmf-sdk->reticulum-rs-rpc",
+  "lxmf-runtime->lxmf-sdk",
+  "lxmf-runtime->lxmf-wire",
+  "lxmf-runtime->reticulum-rs-transport",
   "reticulum-rs->reticulum-rs-core",
   "reticulum-rs->reticulum-rs-rpc",
   "reticulum-rs->reticulum-rs-transport",
@@ -95,6 +100,7 @@ criterion = "0.5"
 lxmf = { version = "0.7.1", path = "crates/libs/lxmf" }
 lxmf-core = { package = "lxmf-wire", version = "0.7.1", path = "crates/libs/lxmf-core" }
 lxmf-sdk = { version = "0.7.1", path = "crates/libs/lxmf-sdk" }
+lxmf-runtime = { version = "0.7.1", path = "crates/libs/lxmf-runtime" }
 reticulum-rs = { version = "0.7.1", path = "crates/libs/reticulum-rs" }
 rns-core = { package = "reticulum-rs-core", version = "0.7.1", path = "crates/libs/rns-core" }
 rns-rpc = { package = "reticulum-rs-rpc", version = "0.7.1", path = "crates/libs/rns-rpc" }

@@ -1,0 +1,30 @@
+[package]
+name = "lxmf-runtime"
+version = "0.7.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "In-process LXMF SDK backend over the Reticulum transport runtime."
+readme = "../../../README.md"
+documentation = "https://docs.rs/lxmf-runtime"
+keywords = ["lxmf", "reticulum", "runtime", "sdk"]
+categories = ["network-programming"]
+
+[dependencies]
+base64.workspace = true
+hex.workspace = true
+lxmf-core.workspace = true
+lxmf-sdk = { version = "0.7.1", path = "../lxmf-sdk", default-features = false, features = ["std"] }
+rand_core = { workspace = true, features = ["getrandom"] }
+rmp-serde.workspace = true
+rns-transport.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

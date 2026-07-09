@@ -48,6 +48,7 @@ LXMF-rs/
 │   │   ├── lxmf/
 │   │   ├── lxmf-core/
 │   │   ├── lxmf-sdk/
+│   │   ├── lxmf-runtime/
 │   │   ├── reticulum-rs/
 │   │   ├── rns-core/
 │   │   ├── rns-embedded-core/
@@ -84,6 +85,7 @@ migration-era crates are not kept in the repository surface.
 - `lxmf-wire` (`crates/libs/lxmf-core`): message/payload/identity primitives.
 - `lxmf`: umbrella crate for `lxmf-sdk` and `lxmf-wire`.
 - `lxmf-sdk`: host-facing client API (`start/send/cancel/status/configure/poll/snapshot/shutdown`).
+- `lxmf-runtime`: in-process `SdkBackend` over Reticulum transport for embedded host applications.
 - `rns-embedded-runtime`: node-centric embedded runtime facade with lifecycle, event, and managed `std` driver support.
 - `rns-embedded-ffi`: C ABI for embedded/manual-tick compatibility and the v1 node-centric API.
 - `rns-embedded-core`: shared embedded/runtime types and fixtures.

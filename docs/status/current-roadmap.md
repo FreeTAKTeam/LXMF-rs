@@ -37,10 +37,11 @@ The project is best described by capability level:
 
 The v0.7.0 release thread is SDK-first: REM/RCH-facing delivery, discovery,
 identity, saved-peer, paper, history, conversation, cancellation, and
-propagation workflows should keep moving onto the existing `lxmf-sdk`
-`ZmqPipelineBackendClient` surface. This is an in-place improvement of the
-current SDK/backend client. It is not a compatibility layer, adapter, shim, or
-new parallel SDK surface.
+propagation workflows should keep moving onto the existing `lxmf-sdk` surface.
+Daemon consumers use `ZmqPipelineBackendClient`; embedded host applications can
+use `lxmf-runtime::InProcessBackend` over their existing Reticulum transport.
+Both implement the same `SdkBackend` contract. This is not a compatibility
+layer, shim, or parallel SDK surface.
 
 Scoped release evidence is split as follows:
 

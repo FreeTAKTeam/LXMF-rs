@@ -228,6 +228,10 @@ const WAVE1_PUBLIC_CRATES: &[PublishedCrate] = &[
     },
     PublishedCrate { package: "reticulum-rs-rpc", manifest_path: "crates/libs/rns-rpc/Cargo.toml" },
     PublishedCrate { package: "lxmf-sdk", manifest_path: "crates/libs/lxmf-sdk/Cargo.toml" },
+    PublishedCrate {
+        package: "lxmf-runtime",
+        manifest_path: "crates/libs/lxmf-runtime/Cargo.toml",
+    },
 ];
 
 const FACADE_PUBLIC_CRATES: &[PublishedCrate] = &[

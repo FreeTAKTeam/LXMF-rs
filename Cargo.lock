@@ -1589,6 +1589,23 @@ name = "lxmf-reference"
 version = "0.7.1"
 
 [[package]]
+name = "lxmf-runtime"
+version = "0.7.1"
+dependencies = [
+ "base64 0.22.1",
+ "hex",
+ "lxmf-sdk",
+ "lxmf-wire",
+ "rand_core 0.6.4",
+ "reticulum-rs-transport",
+ "rmp-serde",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "lxmf-sdk"
 version = "0.7.1"
 dependencies = [

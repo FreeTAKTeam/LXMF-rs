@@ -437,3 +437,50 @@ async fn new_unicast_iface_in(transport: &Transport) -> AddressHash {
     let channel = mgr.new_channel(16);
     *channel.address()
 }
+#[tokio::test]
+async fn delivery_link_available_tracks_python_router_direct_and_backchannel_maps() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let config = TransportConfig::new("test", &local_identity, true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+
+    let signer = PrivateIdentity::new_from_rand(OsRng);
+    let identity = *signer.as_identity();
+    let destination = crate::destination::DestinationDesc {
+        identity,
+        address_hash: identity.address_hash,
+        name: DestinationName::new("lxmf", "delivery"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(8);
+    let outbound = Arc::new(Mutex::new(Link::new(destination, tx.clone())));
+
+    assert!(!transport.delivery_link_available(&destination.address_hash).await);
+
+    handler.lock().await.out_links.insert(destination.address_hash, outbound.clone());
+    assert!(
+        transport.delivery_link_available(&destination.address_hash).await,
+        "pending direct links count as available like Python LXMRouter.direct_links membership"
+    );
+
+    outbound.lock().await.close();
+    assert!(
+        !transport.delivery_link_available(&destination.address_hash).await,
+        "closed direct links must not leak availability while awaiting cleanup"
+    );
+
+    let inbound_request = Link::new(destination, tx.clone()).request();
+    let inbound =
+        Link::new_from_request(&inbound_request, signer.sign_key().clone(), destination, tx)
+            .expect("link request should parse");
+    let inbound = Arc::new(Mutex::new(inbound));
+    let inbound_id = *inbound.lock().await.id();
+    handler.lock().await.in_links.insert(inbound_id, inbound.clone());
+
+    assert!(
+        transport.delivery_link_available(&destination.address_hash).await,
+        "backchannel links count as available like Python LXMRouter.backchannel_links membership"
+    );
+
+    inbound.lock().await.close();
+    assert!(!transport.delivery_link_available(&destination.address_hash).await);
+}
