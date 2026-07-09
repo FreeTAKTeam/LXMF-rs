@@ -345,18 +345,16 @@ pub(super) async fn startup_configured_interfaces(
                         }
                         LocalTcpSidecarStartup::Failed => {}
                     }
-                } else {
-                    if let Some(seed) = startup_tcp_server_record(
-                        index,
-                        iface,
-                        &label,
-                        selected_tcp_server,
-                        server_iface,
-                        &mut configured_interfaces[index],
-                        &mut startup_failures,
-                    ) {
-                        seeded_hot_apply_interfaces.push(seed);
-                    }
+                } else if let Some(seed) = startup_tcp_server_record(
+                    index,
+                    iface,
+                    &label,
+                    selected_tcp_server,
+                    server_iface,
+                    &mut configured_interfaces[index],
+                    &mut startup_failures,
+                ) {
+                    seeded_hot_apply_interfaces.push(seed);
                 }
                 if selected_tcp_server.selected_index == Some(index) {
                     if let Some(active_iface) = server_iface {
@@ -708,6 +706,7 @@ fn startup_tcp_server_record(
     })
 }
 
+#[cfg_attr(not(unix), allow(dead_code))]
 enum LocalUnixStartup {
     Active,
     Attached(AddressHash),
