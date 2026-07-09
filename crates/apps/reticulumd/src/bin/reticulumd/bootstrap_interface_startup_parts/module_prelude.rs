@@ -2925,10 +2925,10 @@ interfaces = [
         let cfg = reticulum_daemon::config::DaemonConfig::from_toml(&format!(
             r#"
 interfaces = [
-  {{ type = "I2PInterface", enabled = true, name = "i2p-main", connectable = true, storagepath = "{}" }}
+  {{ type = "I2PInterface", enabled = true, name = "i2p-main", connectable = true, storagepath = {} }}
 ]
 "#,
-            root.to_string_lossy()
+            toml::Value::String(root.to_string_lossy().into_owned())
         ))
         .expect("parse i2p config");
         let args = test_args();
@@ -3101,12 +3101,12 @@ interfaces = [
         let cfg = reticulum_daemon::config::DaemonConfig::from_toml(&format!(
             r#"
 interfaces = [
-  {{ type = "I2PInterface", enabled = true, name = "i2p-main", connectable = true, sam_ip = "{}", sam_port = {}, storagepath = "{}" }}
+  {{ type = "I2PInterface", enabled = true, name = "i2p-main", connectable = true, sam_ip = "{}", sam_port = {}, storagepath = {} }}
 ]
 "#,
             sam_addr.ip(),
             sam_addr.port(),
-            root.to_string_lossy()
+            toml::Value::String(root.to_string_lossy().into_owned())
         ))
         .expect("parse i2p config");
         let args = test_args();
