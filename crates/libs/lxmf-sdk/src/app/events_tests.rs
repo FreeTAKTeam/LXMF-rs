@@ -180,6 +180,9 @@ fn maps_inbound_drop_to_typed_details() {
             json!({
                 "reason": "payload_too_short",
                 "delivery_kind": "propagation",
+                "operation": "propagation_remote_fetch",
+                "transient_id": "transient-drop-1",
+                "peer": "peer-drop-source",
                 "raw_destination_hash": "sha256:raw",
                 "resolved_destination_hash": "sha256:resolved",
                 "source_hash": "sha256:source",
@@ -195,10 +198,13 @@ fn maps_inbound_drop_to_typed_details() {
 
     assert!(matches!(mapped.kind, EventKind::InboundMessageDropped));
     assert_eq!(mapped.metadata.message_id.as_deref(), Some("msg-drop-1"));
-    assert_eq!(mapped.metadata.peer_id.as_deref(), Some("sha256:source"));
+    assert_eq!(mapped.metadata.peer_id.as_deref(), Some("peer-drop-source"));
     let details = mapped.inbound_drop_details().expect("drop details");
     assert_eq!(details.reason.as_deref(), Some("payload_too_short"));
     assert_eq!(details.delivery_kind.as_deref(), Some("propagation"));
+    assert_eq!(details.operation.as_deref(), Some("propagation_remote_fetch"));
+    assert_eq!(details.transient_id.as_deref(), Some("transient-drop-1"));
+    assert_eq!(details.peer.as_deref(), Some("peer-drop-source"));
     assert_eq!(details.raw_destination_hash.as_deref(), Some("sha256:raw"));
     assert_eq!(details.resolved_destination_hash.as_deref(), Some("sha256:resolved"));
     assert_eq!(details.source_hash.as_deref(), Some("sha256:source"));

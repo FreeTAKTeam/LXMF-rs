@@ -925,8 +925,9 @@ Workspace paths are used for navigation. `crates/libs/lxmf-core` publishes as
 - The native SDK app event mapper now exposes typed inbound message, inbound
   drop, receipt, and delivery-lifecycle helpers on the existing event path,
   preserving message IDs, peer/source identity, destination hashes, raw LXMF
-  bytes, signature/stamp metadata, drop reason, receipt status, and lifecycle
-  state without requiring normal client UI flows to decode raw event JSON.
+  bytes, signature/stamp metadata, drop reason, remote propagation
+  operation/transient/peer context, receipt status, and lifecycle state without
+  requiring normal client UI flows to decode raw event JSON.
 - Typed inbound message helpers now expose the richer handler metadata already
   carried in raw inbound events: signature validity, stamp validity,
   propagation stamp validity, LXMF method, and direct transport encryption
