@@ -1407,7 +1407,7 @@ gate for the SDK-first software slice.
    - Capture release evidence for Sideband and MeshChatX before making those
      client-specific compatibility claims.
 2. **Reticulum behavioral breadth**
-   - Finish resolver/bootstrap, announce/path edge behavior, and broader runtime
+   - Finish bootstrap/discovery, announce/path edge behavior, and broader runtime
      mutation parity beyond TCP clients, explicit loopback and IPv4 wildcard TCP
      server listeners, and explicit UDP listener, peer, and multicast-bind
      records.
@@ -1438,7 +1438,7 @@ gate for the SDK-first software slice.
 1. Finish the v0.7.0 SDK-first evidence slice on the existing
    `lxmf-sdk`/`ZmqPipelineBackendClient` path.
 2. Expand pinned Rust/Python interoperability gates with each completed row.
-3. Close RNS discovery, resolver, and transport-policy gaps.
+3. Close RNS discovery and transport-policy gaps.
 4. Collect hardware, soak, and external-client release evidence.
 5. Expand interface and utility breadth after protocol behavior stabilizes.
 

@@ -101,6 +101,14 @@ jobs:
           PYTHON_LXMF_PATH: ${{ github.workspace }}/LXMF
         run: python -m pytest tests/ --reference-only -v --tb=short
 
+      - name: Pinned Python Resolver surface probe
+        working-directory: lxmf-rs
+        run: |
+          python tools/scripts/python_resolver_reference_probe.py \
+            --python-rns-path "${{ github.workspace }}/Reticulum" \
+            --json-out target/python-reference/resolver.json
+          cargo test -p reticulum-rs-transport utils::resolver::tests -- --nocapture
+
       - name: Python selector Backbone slow-reader probe
         working-directory: lxmf-rs
         run: |
