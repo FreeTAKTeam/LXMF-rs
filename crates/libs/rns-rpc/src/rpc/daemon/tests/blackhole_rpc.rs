@@ -85,3 +85,70 @@ fn blackhole_identity_rpc_returns_false_for_malformed_identity_hashes() {
         .expect("get blackholed identities");
     assert_eq!(listed.result.expect("listed result"), json!({}));
 }
+
+#[test]
+fn blackholed_identities_survive_restart_and_removal_is_persisted() {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let run_id = SystemTime::now().duration_since(UNIX_EPOCH).expect("unix epoch").as_nanos();
+    let db_path = std::env::temp_dir()
+        .join(format!("lxmf-rs-blackholes-{run_id}-{}.sqlite", std::process::id()));
+    let identity = "00112233445566778899aabbccddeeff";
+
+    {
+        let store = MessagesStore::open(db_path.as_path()).expect("open sqlite store");
+        let daemon = RpcDaemon::with_store(store, "persist-node".to_string());
+        let added = daemon
+            .handle_rpc(rpc_request(
+                20,
+                "blackhole_identity",
+                json!({
+                    "identity_hash": identity,
+                    "until": 4_102_444_800_i64,
+                    "reason": "operator"
+                }),
+            ))
+            .expect("blackhole identity");
+        assert_eq!(added.result.expect("added result"), json!(true));
+    }
+
+    {
+        let store = MessagesStore::open(db_path.as_path()).expect("reopen sqlite store");
+        let daemon = RpcDaemon::with_store(store, "persist-node".to_string());
+        let listed = daemon
+            .handle_rpc(RpcRequest {
+                id: 21,
+                method: "get_blackholed_identities".to_string(),
+                params: None,
+            })
+            .expect("get persisted blackholed identities");
+        let listed = listed.result.expect("listed result");
+        assert_eq!(listed[identity]["source"], json!("persist-node"));
+        assert_eq!(listed[identity]["until"], json!(4_102_444_800_i64));
+        assert_eq!(listed[identity]["reason"], json!("operator"));
+
+        let removed = daemon
+            .handle_rpc(rpc_request(
+                22,
+                "unblackhole_identity",
+                json!({ "identity_hash": identity }),
+            ))
+            .expect("unblackhole identity");
+        assert_eq!(removed.result.expect("removed result"), json!(true));
+    }
+
+    {
+        let store = MessagesStore::open(db_path.as_path()).expect("reopen sqlite store again");
+        let daemon = RpcDaemon::with_store(store, "persist-node".to_string());
+        let listed = daemon
+            .handle_rpc(RpcRequest {
+                id: 23,
+                method: "get_blackholed_identities".to_string(),
+                params: None,
+            })
+            .expect("get blackholed identities after persisted removal");
+        assert_eq!(listed.result.expect("listed result"), json!({}));
+    }
+
+    let _ = std::fs::remove_file(&db_path);
+}

@@ -1,6 +1,6 @@
 # Reticulum Parity Matrix
 
-Last reassessed: 2026-07-06
+Last reassessed: 2026-07-10
 
 This is the maintained row-level status for Python Reticulum compatibility.
 Repository-level posture and execution order live in
@@ -20,7 +20,7 @@ Workspace paths are used for navigation. Published package names are
 
 | Python surface | Rust surface | Status | Implemented baseline | Residual gap |
 | --- | --- | --- | --- | --- |
-| `RNS/Reticulum.py` | `crates/libs/rns-transport`, `crates/apps/reticulumd` | partial | Deployable daemon, configuration, propagation-node activation, persistence, RPC, graceful shutdown, unified legacy `status`/`daemon_status_ex` daemon runtime snapshot visibility, daemon/RPC runtime status for Reticulum path-table restore success or failure, Reticulum-style blackholed identity list/add/remove RPC state, multiple live interfaces, and runtime `set_interfaces`/`reload_config` hot-apply for TCP clients, explicit loopback and IPv4 wildcard TCP server listeners including `localhost` and `0.0.0.0`, and explicit UDP listener, peer, multicast-bind, and multicast-forward records. | Python runtime/config mutation remains wider for device-bound, non-local concrete listener, broader interface shapes, and persisted transport blackhole side effects; interface breadth remains wider. |
+| `RNS/Reticulum.py` | `crates/libs/rns-transport`, `crates/apps/reticulumd` | partial | Deployable daemon, configuration, propagation-node activation, persistence, RPC, graceful shutdown, unified legacy `status`/`daemon_status_ex` daemon runtime snapshot visibility, daemon/RPC runtime status for Reticulum path-table restore success or failure, Reticulum-style blackholed identity list/add/remove RPC state with restart-safe persistence, multiple live interfaces, and runtime `set_interfaces`/`reload_config` hot-apply for TCP clients, explicit loopback and IPv4 wildcard TCP server listeners including `localhost` and `0.0.0.0`, and explicit UDP listener, peer, multicast-bind, and multicast-forward records. | Python runtime/config mutation remains wider for device-bound, non-local concrete listener, and broader interface shapes; blackhole-associated path eviction and interface breadth remain wider. |
 | `RNS/Identity.py` | `crates/libs/rns-core` | done | Identity material, hashing, signing, encryption, recall, and key conversion. | No confirmed parity blocker. |
 | `RNS/Destination.py` | `crates/libs/rns-core`, `crates/libs/rns-transport` | done | Destination hashing, descriptors, announces, proof validation, ratchets, and known-key stability checks. | No confirmed parity blocker. |
 | `RNS/Packet.py` | `crates/libs/rns-core`, `crates/libs/rns-transport` | done | Framing, serialization, contexts, proofs, receipts, Python-default link proof context, and header semantics. | No confirmed parity blocker. |
@@ -43,7 +43,8 @@ Workspace paths are used for navigation. Published package names are
   remains a separate strict-startup policy.
 - Legacy daemon RPC now exposes `next_hop`, `next_hop_if_name`,
   `first_hop_timeout`, and `link_count`, and tracks blackholed identity
-  list/add/remove state with Python-compatible malformed-input behavior.
+  list/add/remove state with Python-compatible malformed-input behavior and
+  restart-safe persistence of local entries and removals.
 - Shared-instance server/client/disabled state, final path-table flush, and
   path/tunnel restore skip accounting are visible through the daemon status
   surface and focused Rust regressions.

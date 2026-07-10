@@ -216,6 +216,11 @@ impl RpcDaemon {
             self.sdk_remote_commands.lock().expect("sdk_remote_commands mutex poisoned").clone();
         let voice_sessions =
             self.sdk_voice_sessions.lock().expect("sdk_voice_sessions mutex poisoned").clone();
+        let blackholed_identities = self
+            .blackholed_identities
+            .lock()
+            .expect("blackholed_identities mutex poisoned")
+            .clone();
 
         SdkDomainSnapshotV1 {
             next_domain_seq,
@@ -236,6 +241,7 @@ impl RpcDaemon {
             active_identity,
             remote_commands,
             voice_sessions,
+            blackholed_identities,
         }
     }
 
@@ -325,6 +331,10 @@ impl RpcDaemon {
             parsed.remote_commands;
         *self.sdk_voice_sessions.lock().expect("sdk_voice_sessions mutex poisoned") =
             parsed.voice_sessions;
+        *self
+            .blackholed_identities
+            .lock()
+            .expect("blackholed_identities mutex poisoned") = parsed.blackholed_identities;
         Ok(())
     }
 

@@ -5,6 +5,7 @@ impl RpcDaemon {
     ) -> Result<RpcResponse, std::io::Error> {
         match request.method.as_str() {
             "get_blackholed_identities" => {
+                let _domain_state_guard = self.lock_and_restore_sdk_domain_snapshot()?;
                 let identities = self.blackholed_identities_json();
                 Ok(RpcResponse { id: request.id, result: Some(identities), error: None })
             }
@@ -18,6 +19,7 @@ impl RpcDaemon {
                         error: None,
                     });
                 };
+                let _domain_state_guard = self.lock_and_restore_sdk_domain_snapshot()?;
                 let changed = {
                     let mut guard = self
                         .blackholed_identities
@@ -37,6 +39,9 @@ impl RpcDaemon {
                         json!(true)
                     }
                 };
+                if changed == json!(true) {
+                    self.persist_sdk_domain_snapshot()?;
+                }
                 Ok(RpcResponse { id: request.id, result: Some(changed), error: None })
             }
             "unblackhole_identity" => {
@@ -49,6 +54,7 @@ impl RpcDaemon {
                         error: None,
                     });
                 };
+                let _domain_state_guard = self.lock_and_restore_sdk_domain_snapshot()?;
                 let removed = {
                     let mut guard = self
                         .blackholed_identities
@@ -60,6 +66,9 @@ impl RpcDaemon {
                         JsonValue::Null
                     }
                 };
+                if removed == json!(true) {
+                    self.persist_sdk_domain_snapshot()?;
+                }
                 Ok(RpcResponse { id: request.id, result: Some(removed), error: None })
             }
             _ => unreachable!("legacy blackhole identity route: {}", request.method),

@@ -169,6 +169,8 @@ struct SdkDomainSnapshotV1 {
     remote_commands: HashMap<String, SdkRemoteCommandRecord>,
     #[serde(default)]
     voice_sessions: HashMap<String, SdkVoiceSessionRecord>,
+    #[serde(default)]
+    blackholed_identities: HashMap<String, JsonValue>,
 }
 
 fn deserialize_remote_commands<'de, D>(
