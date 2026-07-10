@@ -2,7 +2,10 @@ use std::collections::BTreeMap;
 use std::time::Duration;
 
 use lxmf_core::{MessageMethod, TransportMethod};
-use lxmf_sdk::{DeliveryState, MessageId, SdkBackend, SendRequest, Severity};
+use lxmf_sdk::{
+    Client, DeliveryState, LxmfSdk, MessageId, SdkBackend, SdkConfig, SendRequest, Severity,
+    StartRequest,
+};
 use rand_core::OsRng;
 use rns_transport::destination::{DestinationName, SingleInputDestination};
 use rns_transport::hash::{AddressHash, Hash};
@@ -150,4 +153,37 @@ async fn delivery_updates_drive_status_snapshot_and_events() {
     let events = backend.poll_events(None, 16).expect("events").events;
     assert_eq!(events.len(), 3);
     assert_eq!(events[2].event_type, "reticulum.packet_received");
+}
+
+#[tokio::test]
+async fn sdk_client_starts_with_in_process_backend_capability_contract() {
+    let identity = rns_transport::identity::PrivateIdentity::new_from_rand(OsRng);
+    let transport = std::sync::Arc::new(Transport::new(TransportConfig::new(
+        "lxmf-runtime-lifecycle-test",
+        &identity,
+        true,
+    )));
+    let source =
+        SingleInputDestination::new(identity.clone(), DestinationName::new("lxmf", "delivery"))
+            .desc
+            .address_hash;
+    let backend = InProcessBackend::new(InProcessBackendConfig::new(
+        "runtime-lifecycle-test",
+        tokio::runtime::Handle::current(),
+        transport,
+        identity,
+        source,
+    ));
+    let client = Client::new(backend);
+    let mut config = SdkConfig::desktop_local_default();
+    config.rpc_backend = None;
+
+    let handle = client
+        .start(StartRequest::new(config))
+        .expect("in-process backend must satisfy the desktop local runtime contract");
+
+    assert!(handle
+        .effective_capabilities
+        .iter()
+        .any(|capability| capability == "sdk.capability.idempotency_ttl"));
 }

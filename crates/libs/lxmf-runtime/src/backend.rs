@@ -89,6 +89,7 @@ impl SdkBackend for InProcessBackend {
                 "sdk.capability.cursor_replay",
                 "sdk.capability.receipt_terminality",
                 "sdk.capability.config_revision_cas",
+                "sdk.capability.idempotency_ttl",
                 "reticulum.capability.raw_bytes",
                 "reticulum.capability.msgpack_fields"
             ],
