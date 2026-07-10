@@ -142,6 +142,10 @@ pub trait PathLookupBridge: Send + Sync {
     fn link_count(&self) -> Result<usize, std::io::Error> {
         Err(std::io::Error::other("link count bridge is not configured"))
     }
+
+    fn remove_paths_for_identity(&self, _identity: &str) -> Result<usize, std::io::Error> {
+        Ok(0)
+    }
 }
 
 pub trait RNodeManagementBridge: Send + Sync {

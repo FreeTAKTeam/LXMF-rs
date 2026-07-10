@@ -128,6 +128,22 @@ impl PathLookupBridge for DaemonPathLookupBridge {
         })
     }
 
+    fn remove_paths_for_identity(&self, identity: &str) -> Result<usize, std::io::Error> {
+        let identity = Self::destination_hash(identity)?;
+        self.run_transport(move |transport| {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|err| {
+                    std::io::Error::other(format!(
+                        "failed to build blackhole path cleanup runtime: {err}"
+                    ))
+                })?;
+            Ok(runtime
+                .block_on(async move { transport.expire_paths_for_identity(&identity).await }))
+        })
+    }
+
     fn link_count(&self) -> Result<usize, std::io::Error> {
         self.run_transport(move |transport| {
             let runtime = tokio::runtime::Builder::new_current_thread()

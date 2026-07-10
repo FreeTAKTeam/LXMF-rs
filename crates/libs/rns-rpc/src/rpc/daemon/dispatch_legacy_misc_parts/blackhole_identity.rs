@@ -29,7 +29,7 @@ impl RpcDaemon {
                         JsonValue::Null
                     } else {
                         guard.insert(
-                            identity_hash,
+                            identity_hash.clone(),
                             json!({
                                 "source": self.identity_hash.as_str(),
                                 "until": parsed.until.unwrap_or(JsonValue::Null),
@@ -41,6 +41,20 @@ impl RpcDaemon {
                 };
                 if changed == json!(true) {
                     self.persist_sdk_domain_snapshot()?;
+                    if let Some(bridge) = self
+                        .path_lookup_bridge
+                        .lock()
+                        .expect("path_lookup_bridge mutex poisoned")
+                        .clone()
+                    {
+                        if let Err(err) = bridge.remove_paths_for_identity(identity_hash.as_str()) {
+                            log::warn!(
+                                "[daemon] failed to remove paths for blackholed identity {}: {}",
+                                identity_hash,
+                                err
+                            );
+                        }
+                    }
                 }
                 Ok(RpcResponse { id: request.id, result: Some(changed), error: None })
             }

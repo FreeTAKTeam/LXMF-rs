@@ -1,3 +1,26 @@
+#[derive(Default)]
+struct BlackholePathLookupBridge {
+    removed_identities: std::sync::Mutex<Vec<String>>,
+}
+
+impl PathLookupBridge for BlackholePathLookupBridge {
+    fn has_path(&self, _destination: &str) -> Result<bool, std::io::Error> {
+        Ok(false)
+    }
+
+    fn request_path(&self, _destination: &str) -> Result<(), std::io::Error> {
+        Ok(())
+    }
+
+    fn remove_paths_for_identity(&self, identity: &str) -> Result<usize, std::io::Error> {
+        self.removed_identities
+            .lock()
+            .expect("removed identities mutex poisoned")
+            .push(identity.to_string());
+        Ok(2)
+    }
+}
+
 #[test]
 fn blackhole_identity_rpc_matches_reticulum_boolean_semantics() {
     let daemon = RpcDaemon::test_instance();
@@ -56,6 +79,29 @@ fn blackhole_identity_rpc_matches_reticulum_boolean_semantics() {
         ))
         .expect("duplicate unblackhole identity");
     assert_eq!(duplicate_remove.result.expect("duplicate remove result"), JsonValue::Null);
+}
+
+#[test]
+fn blackhole_identity_rpc_requests_associated_path_eviction_once() {
+    let daemon = RpcDaemon::test_instance();
+    let bridge = Arc::new(BlackholePathLookupBridge::default());
+    daemon.set_path_lookup_bridge(bridge.clone());
+    let identity = "00112233445566778899AABBCCDDEEFF";
+    let normalized = identity.to_ascii_lowercase();
+
+    let added = daemon
+        .handle_rpc(rpc_request(7, "blackhole_identity", json!({ "identity": identity })))
+        .expect("blackhole identity");
+    assert_eq!(added.result.expect("added result"), json!(true));
+
+    let duplicate = daemon
+        .handle_rpc(rpc_request(8, "blackhole_identity", json!({ "identity": identity })))
+        .expect("duplicate blackhole identity");
+    assert_eq!(duplicate.result.expect("duplicate result"), JsonValue::Null);
+    assert_eq!(
+        *bridge.removed_identities.lock().expect("removed identities mutex poisoned"),
+        vec![normalized]
+    );
 }
 
 #[test]

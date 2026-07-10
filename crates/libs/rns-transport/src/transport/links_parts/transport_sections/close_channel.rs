@@ -223,6 +223,28 @@ impl Transport {
         }
     }
 
+    pub async fn expire_paths_for_identity(&self, identity: &AddressHash) -> usize {
+        let destinations = {
+            let handler = self.handler.lock().await;
+            handler
+                .single_out_destinations
+                .iter()
+                .map(|(destination, record)| (*destination, record.clone()))
+                .collect::<Vec<_>>()
+        };
+        let mut matching_destinations = Vec::new();
+        for (destination, record) in destinations {
+            if record.lock().await.identity.address_hash == *identity {
+                matching_destinations.push(destination);
+            }
+        }
+        let mut handler = self.handler.lock().await;
+        matching_destinations
+            .into_iter()
+            .filter(|destination| handler.path_table.expire_path(destination))
+            .count()
+    }
+
     pub async fn destination_identity(&self, address: &AddressHash) -> Option<Identity> {
         let destination =
             { self.handler.lock().await.single_out_destinations.get(address).cloned() }?;
