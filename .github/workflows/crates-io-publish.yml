@@ -67,6 +67,7 @@ jobs:
             "crates/libs/rns-transport/Cargo.toml"
             "crates/libs/rns-rpc/Cargo.toml"
             "crates/libs/lxmf-sdk/Cargo.toml"
+            "crates/libs/lxmf-runtime/Cargo.toml"
             "crates/libs/rns-embedded-mininode/Cargo.toml"
             "crates/libs/lxmf-embedded-mini/Cargo.toml"
             "crates/libs/reticulum-rs/Cargo.toml"
