@@ -20,6 +20,8 @@ use interface_hot_apply_parts::pipe_runtime_refresh::{
     attach_hot_apply_pipe_runtime_status, spawn_hot_apply_pipe_runtime_status_refresher,
     HotApplyPipeRefresh,
 };
+#[cfg(test)]
+use interface_hot_apply_parts::record_hot_apply::udp_bind_and_forward_addr_with_device_resolver;
 use interface_hot_apply_parts::record_hot_apply::{
     apply_record_runtime_config, hot_apply_interface_key, hot_apply_interface_record_changed,
     hot_apply_interface_seed_key as record_hot_apply_interface_seed_key, interface_record_mode,

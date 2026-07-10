@@ -246,7 +246,7 @@
     }
 
     #[test]
-    fn reload_config_reports_device_udp_requires_restart_without_partial_apply() {
+    fn reload_config_hot_applies_device_udp() {
         let daemon = RpcDaemon::test_instance();
         let original_interfaces = vec![udp_interface("udp-device", "127.0.0.1", 4242)];
         daemon.replace_interfaces(original_interfaces.clone());
@@ -270,7 +270,16 @@
             ))
             .expect("reload_config response");
 
-        assert_reload_restart_required_without_apply(&daemon, &bridge, response, original_interfaces);
+        assert!(response.error.is_none(), "unexpected error: {response:?}");
+        let result = response.result.expect("reload result");
+        assert_eq!(result["hot_applied_interface_mutation"], json!(true));
+        let mut expected = udp_interface("udp-device", "127.0.0.1", 4242);
+        expected.settings = Some(json!({ "device": "eth0" }));
+        assert_eq!(bridge.applied(), vec![vec![expected.clone()]]);
+        assert_eq!(
+            *daemon.interfaces.lock().expect("interfaces mutex poisoned"),
+            vec![expected]
+        );
     }
 
     #[test]

@@ -159,6 +159,7 @@ pub(crate) fn hot_apply_interface_record_changed(
         || (current.kind == "tcp_server"
             && tcp_server_client_mtu(current) != tcp_server_client_mtu(next))
         || (current.kind == "udp" && udp_forward_addr(current) != udp_forward_addr(next))
+        || (current.kind == "udp" && setting_str(current, "device") != setting_str(next, "device"))
         || (current.kind == "pipe"
             && pipe_runtime_signature(current) != pipe_runtime_signature(next))
 }
@@ -240,33 +241,61 @@ fn tcp_server_hot_apply_host(host: &str) -> &str {
 pub(crate) fn udp_bind_and_forward_addr(
     record: &InterfaceRecord,
 ) -> Result<(String, Option<String>), io::Error> {
-    let host = record.host.as_deref().map(str::trim).filter(|value| !value.is_empty()).ok_or_else(
-        || io::Error::new(io::ErrorKind::InvalidInput, "udp hot-apply requires host"),
-    )?;
-    if setting_str(record, "device").is_some() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "udp hot-apply does not support device-bound records",
-        ));
-    }
+    udp_bind_and_forward_addr_with_device_resolver(
+        record,
+        crate::interfaces::udp::resolve_device_broadcast_addr,
+    )
+}
+
+pub(crate) fn udp_bind_and_forward_addr_with_device_resolver<F>(
+    record: &InterfaceRecord,
+    resolve_device_broadcast: F,
+) -> Result<(String, Option<String>), io::Error>
+where
+    F: Fn(&str) -> Result<String, String>,
+{
+    let configured_host = record.host.as_deref().map(str::trim).filter(|value| !value.is_empty());
+    let device = setting_str(record, "device").map(str::trim).filter(|value| !value.is_empty());
+    let configured_target_host =
+        setting_str(record, "target_host").or_else(|| setting_str(record, "forward_ip"));
+    let needs_device_broadcast =
+        device.is_some() && (configured_host.is_none() || configured_target_host.is_none());
+    let device_broadcast = if needs_device_broadcast {
+        Some(resolve_device_broadcast(device.expect("device checked")).map_err(|err| {
+            io::Error::new(io::ErrorKind::InvalidInput, format!("udp hot-apply {err}"))
+        })?)
+    } else {
+        None
+    };
+    let host =
+        configured_host.map(ToOwned::to_owned).or_else(|| device_broadcast.clone()).ok_or_else(
+            || io::Error::new(io::ErrorKind::InvalidInput, "udp hot-apply requires host or device"),
+        )?;
     let port = record.port.ok_or_else(|| {
         io::Error::new(io::ErrorKind::InvalidInput, "udp hot-apply requires port")
     })?;
-    Ok((format!("{host}:{port}"), udp_forward_addr_result(record)?))
+    let forward_addr = udp_forward_addr_result(record, device_broadcast.as_deref())?;
+    Ok((format!("{host}:{port}"), forward_addr))
 }
 
 fn udp_forward_addr(record: &InterfaceRecord) -> Option<String> {
-    udp_forward_addr_result(record).ok().flatten()
+    udp_forward_addr_result(record, None).ok().flatten()
 }
 
-fn udp_forward_addr_result(record: &InterfaceRecord) -> Result<Option<String>, io::Error> {
+fn udp_forward_addr_result(
+    record: &InterfaceRecord,
+    device_broadcast: Option<&str>,
+) -> Result<Option<String>, io::Error> {
     let target_host = setting_str(record, "target_host");
     let forward_ip = setting_str(record, "forward_ip");
-    let host = target_host.or(forward_ip);
+    let configured_host = target_host.or(forward_ip);
+    let host = configured_host.or(device_broadcast);
     let port = setting_u64(record, "target_port")
         .or_else(|| setting_u64(record, "forward_port"))
         .or_else(|| {
-            if target_host.is_none() && forward_ip.is_some() {
+            if (target_host.is_none() && forward_ip.is_some())
+                || (configured_host.is_none() && device_broadcast.is_some())
+            {
                 record.port.map(u64::from)
             } else {
                 None

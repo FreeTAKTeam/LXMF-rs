@@ -1,9 +1,9 @@
 use super::{
     apply_hot_apply_interface_records, mark_udp_record_runtime_status,
     refresh_hot_apply_pipe_runtime_status_once, refresh_hot_apply_tcp_listener_runtime_status_once,
-    refresh_hot_apply_udp_runtime_status_once, HotApplyPipeRefresh, HotApplyRuntimeRefreshes,
-    HotApplyUdpRefresh, InterfaceHotApplyBridge, InterfaceManager, InterfaceMutationBridge,
-    InterfaceRecord, ManagedHotApplyInterface,
+    refresh_hot_apply_udp_runtime_status_once, udp_bind_and_forward_addr_with_device_resolver,
+    HotApplyPipeRefresh, HotApplyRuntimeRefreshes, HotApplyUdpRefresh, InterfaceHotApplyBridge,
+    InterfaceManager, InterfaceMutationBridge, InterfaceRecord, ManagedHotApplyInterface,
 };
 use rand_core::OsRng;
 use rns_rpc::{RpcDaemon, RpcRequest};
@@ -904,17 +904,39 @@ fn hot_apply_rejects_out_of_range_udp_forward_target_port() {
 }
 
 #[test]
-fn hot_apply_rejects_device_bound_udp_records() {
+fn hot_apply_resolves_device_bound_udp_defaults() {
+    let mut record = udp_record("udp-device", "", 4242);
+    record.host = None;
+    record.settings = Some(json!({ "device": "eth0" }));
+
+    let (bind_addr, forward_addr) =
+        udp_bind_and_forward_addr_with_device_resolver(&record, |device| {
+            assert_eq!(device, "eth0");
+            Ok("192.0.2.255".to_string())
+        })
+        .expect("device-bound udp addresses");
+
+    assert_eq!(bind_addr, "192.0.2.255:4242");
+    assert_eq!(forward_addr.as_deref(), Some("192.0.2.255:4242"));
+}
+
+#[test]
+fn hot_apply_accepts_device_bound_udp_with_explicit_addresses() {
     let (tx, _rx) = tokio::sync::mpsc::channel(1);
     let bridge = test_bridge(tx);
     let mut record = udp_record("udp-device", "127.0.0.1", 4242);
-    record.settings = Some(json!({ "device": "eth0" }));
+    record.settings = Some(json!({
+        "device": "eth0",
+        "target_host": "127.0.0.1",
+        "target_port": 4243
+    }));
 
-    let err =
-        bridge.apply_interfaces(vec![record]).expect_err("device-bound udp should require restart");
+    let applied = bridge
+        .apply_interfaces(vec![record])
+        .expect("device-bound udp with explicit addresses should hot-apply");
 
-    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
-    assert!(err.to_string().contains("device-bound"));
+    assert_eq!(applied.len(), 1);
+    assert_eq!(applied[0].kind, "udp");
 }
 
 #[test]

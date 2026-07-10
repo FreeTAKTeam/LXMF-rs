@@ -73,7 +73,7 @@ where
     Ok((bind_addr, forward_addr))
 }
 
-fn resolve_device_broadcast_addr(device: &str) -> Result<String, String> {
+pub(crate) fn resolve_device_broadcast_addr(device: &str) -> Result<String, String> {
     let interfaces =
         if_addrs::get_if_addrs().map_err(|err| format!("udp.device lookup failed: {err}"))?;
     interfaces

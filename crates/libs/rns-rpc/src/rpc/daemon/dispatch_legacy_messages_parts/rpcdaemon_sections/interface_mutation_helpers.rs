@@ -210,16 +210,27 @@ impl RpcDaemon {
         if let Some(name) = iface.name.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
             return Some(name.to_string());
         }
-        let host = iface.host.as_deref()?.trim();
+        let host = iface
+            .host
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+            .or_else(|| {
+                Self::interface_setting_str(iface, "device")
+                    .map(|device| format!("device:{device}"))
+            })?;
         let port = iface.port?;
         Some(format!("{host}:{port}"))
     }
 
     fn udp_record_is_hot_apply_safe(iface: &InterfaceRecord) -> bool {
-        if iface.kind != "udp" || iface.host.as_deref().map(str::trim).is_none_or(str::is_empty) {
+        let has_host = iface.host.as_deref().map(str::trim).is_some_and(|value| !value.is_empty());
+        let has_device = Self::interface_setting_str(iface, "device").is_some();
+        if iface.kind != "udp" || (!has_host && !has_device) {
             return false;
         }
-        if iface.port.is_none() || Self::interface_setting_str(iface, "device").is_some() {
+        if iface.port.is_none() {
             return false;
         }
         let native_target_host = Self::interface_setting_str(iface, "target_host");
@@ -234,7 +245,8 @@ impl RpcDaemon {
                     None
                 }
             });
-        if target_host.is_some() ^ target_port.is_some() {
+        let device_supplies_target = has_device && target_host.is_none();
+        if !device_supplies_target && (target_host.is_some() ^ target_port.is_some()) {
             return false;
         }
         if target_port.is_some_and(|value| u16::try_from(value).is_err()) {
@@ -247,7 +259,16 @@ impl RpcDaemon {
         if iface.kind != "udp" {
             return None;
         }
-        let host = iface.host.as_deref()?.trim();
+        let host = iface
+            .host
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+            .or_else(|| {
+                Self::interface_setting_str(iface, "device")
+                    .map(|device| format!("device:{device}"))
+            })?;
         let port = iface.port?;
         Some(format!("{host}:{port}"))
     }

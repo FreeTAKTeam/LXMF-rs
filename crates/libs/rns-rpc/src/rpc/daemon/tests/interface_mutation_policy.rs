@@ -670,8 +670,10 @@
     }
 
     #[test]
-    fn set_interfaces_reports_device_udp_requires_restart() {
+    fn set_interfaces_hot_applies_device_udp() {
         let daemon = RpcDaemon::test_instance();
+        let bridge = std::sync::Arc::new(RecordingInterfaceMutationBridge::new());
+        daemon.set_interface_mutation_bridge(bridge.clone());
 
         let response = daemon
             .handle_rpc(rpc_request(
@@ -692,12 +694,44 @@
             ))
             .expect("set_interfaces response");
 
-        let error = response.error.expect("expected restart-required error");
-        assert_eq!(error.code, "CONFIG_RESTART_REQUIRED");
-        assert_eq!(
-            error.machine_code.as_deref(),
-            Some("UNSUPPORTED_MUTATION_KIND_REQUIRES_RESTART")
-        );
+        assert!(response.error.is_none(), "unexpected error: {response:?}");
+        let mut expected = udp_interface("udp-device", "127.0.0.1", 4242);
+        expected.settings = Some(json!({ "device": "eth0" }));
+        assert_eq!(bridge.applied(), vec![vec![expected]]);
+    }
+
+    #[test]
+    fn set_interfaces_hot_applies_device_only_udp() {
+        let daemon = RpcDaemon::test_instance();
+        let bridge = std::sync::Arc::new(RecordingInterfaceMutationBridge::new());
+        daemon.set_interface_mutation_bridge(bridge.clone());
+
+        let response = daemon
+            .handle_rpc(rpc_request(
+                330,
+                "set_interfaces",
+                json!({
+                    "interfaces": [{
+                        "type": "udp",
+                        "enabled": true,
+                        "port": 4242,
+                        "name": "udp-device-only",
+                        "settings": { "device": "eth0" }
+                    }]
+                }),
+            ))
+            .expect("set_interfaces response");
+
+        assert!(response.error.is_none(), "unexpected error: {response:?}");
+        let expected = InterfaceRecord {
+            kind: "udp".to_string(),
+            enabled: true,
+            host: None,
+            port: Some(4242),
+            name: Some("udp-device-only".to_string()),
+            settings: Some(json!({ "device": "eth0" })),
+        };
+        assert_eq!(bridge.applied(), vec![vec![expected]]);
     }
 
     #[test]
