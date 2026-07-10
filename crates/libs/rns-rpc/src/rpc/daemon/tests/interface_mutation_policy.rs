@@ -286,8 +286,10 @@
     }
 
     #[test]
-    fn set_interfaces_reports_non_loopback_tcp_server_requires_restart() {
+    fn set_interfaces_hot_applies_non_loopback_tcp_server() {
         let daemon = RpcDaemon::test_instance();
+        let bridge = std::sync::Arc::new(RecordingInterfaceMutationBridge::new());
+        daemon.set_interface_mutation_bridge(bridge.clone());
 
         let response = daemon
             .handle_rpc(rpc_request(
@@ -307,7 +309,11 @@
             ))
             .expect("set_interfaces response");
 
-        assert_restart_required(response);
+        assert!(response.error.is_none(), "unexpected error: {response:?}");
+        assert_eq!(
+            bridge.applied(),
+            vec![vec![tcp_server_interface("listener", "192.0.2.1", 4242)]]
+        );
     }
 
     #[test]
@@ -379,8 +385,10 @@
     }
 
     #[test]
-    fn set_interfaces_reports_non_local_hostname_tcp_server_requires_restart() {
+    fn set_interfaces_hot_applies_hostname_tcp_server() {
         let daemon = RpcDaemon::test_instance();
+        let bridge = std::sync::Arc::new(RecordingInterfaceMutationBridge::new());
+        daemon.set_interface_mutation_bridge(bridge.clone());
 
         let response = daemon
             .handle_rpc(rpc_request(
@@ -400,12 +408,18 @@
             ))
             .expect("set_interfaces response");
 
-        assert_restart_required(response);
+        assert!(response.error.is_none(), "unexpected error: {response:?}");
+        assert_eq!(
+            bridge.applied(),
+            vec![vec![tcp_server_interface("listener", "example.invalid", 4242)]]
+        );
     }
 
     #[test]
-    fn set_interfaces_reports_device_tcp_server_requires_restart() {
+    fn set_interfaces_hot_applies_device_tcp_server() {
         let daemon = RpcDaemon::test_instance();
+        let bridge = std::sync::Arc::new(RecordingInterfaceMutationBridge::new());
+        daemon.set_interface_mutation_bridge(bridge.clone());
 
         let response = daemon
             .handle_rpc(rpc_request(
@@ -428,12 +442,54 @@
             ))
             .expect("set_interfaces response");
 
-        assert_restart_required(response);
+        assert!(response.error.is_none(), "unexpected error: {response:?}");
+        let mut expected = tcp_server_interface("listener", "127.0.0.1", 4242);
+        expected.settings = Some(json!({ "device": "eth0" }));
+        assert_eq!(bridge.applied(), vec![vec![expected]]);
     }
 
     #[test]
-    fn set_interfaces_reports_prefer_ipv6_tcp_server_requires_restart() {
+    fn set_interfaces_hot_applies_device_only_tcp_server() {
         let daemon = RpcDaemon::test_instance();
+        let bridge = std::sync::Arc::new(RecordingInterfaceMutationBridge::new());
+        daemon.set_interface_mutation_bridge(bridge.clone());
+
+        let response = daemon
+            .handle_rpc(rpc_request(
+                1_280,
+                "set_interfaces",
+                json!({
+                    "interfaces": [{
+                        "type": "tcp_server",
+                        "enabled": true,
+                        "port": 4242,
+                        "name": "listener",
+                        "settings": {
+                            "device": "eth0",
+                            "prefer_ipv6": true
+                        }
+                    }]
+                }),
+            ))
+            .expect("set_interfaces response");
+
+        assert!(response.error.is_none(), "unexpected error: {response:?}");
+        let expected = InterfaceRecord {
+            kind: "tcp_server".to_string(),
+            enabled: true,
+            host: None,
+            port: Some(4242),
+            name: Some("listener".to_string()),
+            settings: Some(json!({ "device": "eth0", "prefer_ipv6": true })),
+        };
+        assert_eq!(bridge.applied(), vec![vec![expected]]);
+    }
+
+    #[test]
+    fn set_interfaces_hot_applies_prefer_ipv6_tcp_server() {
+        let daemon = RpcDaemon::test_instance();
+        let bridge = std::sync::Arc::new(RecordingInterfaceMutationBridge::new());
+        daemon.set_interface_mutation_bridge(bridge.clone());
 
         let response = daemon
             .handle_rpc(rpc_request(
@@ -456,7 +512,10 @@
             ))
             .expect("set_interfaces response");
 
-        assert_restart_required(response);
+        assert!(response.error.is_none(), "unexpected error: {response:?}");
+        let mut expected = tcp_server_interface("listener", "127.0.0.1", 4242);
+        expected.settings = Some(json!({ "prefer_ipv6": true }));
+        assert_eq!(bridge.applied(), vec![vec![expected]]);
     }
 
     #[test]

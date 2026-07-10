@@ -469,13 +469,13 @@ Scoped release evidence is split as follows:
   `rnstatus-rs`. A software loopback smoke now proves Python-style
   `UDPInterface` alias parsing, strict daemon startup, bound loopback status,
   and malformed-datagram `bytes_rx`/`decode_errors` telemetry without external
-  network services. `set_interfaces` and `reload_config` now hot-apply explicit
-  loopback and IPv4 wildcard TCP server listeners, including the local
-  `localhost` hostname and `0.0.0.0`, alongside TCP clients and explicit UDP
-  listener, peer, multicast-bind, and multicast-forward records, with tests proving
-  `device`-bound, non-local concrete, and broader TCP server listener shapes stay
-  restart-required or invalid, UDP `device`-bound, partial-target, and
-  out-of-range-target shapes remain restart-required or invalid, and duplicate
+  network services. `set_interfaces` and `reload_config` now hot-apply
+  host-bound or device-bound TCP server listeners, including loopback,
+  `localhost`, IPv4 wildcard, concrete, hostname, and device-selected IPv4/IPv6
+  addresses, alongside TCP clients and explicit or device-bound UDP listener,
+  peer, multicast-bind, and multicast-forward records. Device-bound UDP uses
+  Python-style IPv4 broadcast defaults; partial-target and out-of-range-target
+  UDP shapes remain restart-required or invalid, and duplicate
   TCP server or UDP binds are rejected before mutation.
   Hot-applied explicit TCP server records attach live daemon/RPC
   `_runtime.tcp.listener_status` metadata, hot-applied explicit UDP records
@@ -1408,9 +1408,8 @@ gate for the SDK-first software slice.
      client-specific compatibility claims.
 2. **Reticulum behavioral breadth**
    - Finish bootstrap/discovery, announce/path edge behavior, and broader runtime
-     mutation parity beyond TCP clients, explicit loopback and IPv4 wildcard TCP
-     server listeners, and explicit UDP listener, peer, and multicast-bind
-     records.
+     mutation parity for startup-only interface families beyond the hot-applied
+     TCP client/server, UDP listener/peer/multicast, and Pipe surfaces.
 3. **Operational breadth**
    - Add broader prepared-host hardware evidence across serial/TCP/BLE RNode
      device, firmware, management, and radio combinations; ordinary

@@ -209,7 +209,10 @@ fn tcp_bind_addr(host: &str, port: u16) -> String {
     }
 }
 
-fn resolve_tcp_listener_device_bind_host(device: &str, prefer_ipv6: bool) -> Result<String, String> {
+pub(crate) fn resolve_tcp_listener_device_bind_host(
+    device: &str,
+    prefer_ipv6: bool,
+) -> Result<String, String> {
     let interfaces = if_addrs::get_if_addrs()
         .map_err(|err| format!("failed to inspect network interfaces for device {device}: {err}"))?;
     let candidates = interfaces

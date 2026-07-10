@@ -20,7 +20,7 @@ Workspace paths are used for navigation. Published package names are
 
 | Python surface | Rust surface | Status | Implemented baseline | Residual gap |
 | --- | --- | --- | --- | --- |
-| `RNS/Reticulum.py` | `crates/libs/rns-transport`, `crates/apps/reticulumd` | partial | Deployable daemon, configuration, propagation-node activation, persistence, RPC, graceful shutdown, unified legacy `status`/`daemon_status_ex` daemon runtime snapshot visibility, daemon/RPC runtime status for Reticulum path-table restore success or failure, Reticulum-style blackholed identity list/add/remove RPC state with restart-safe persistence and associated cached-path eviction, multiple live interfaces, and runtime `set_interfaces`/`reload_config` hot-apply for TCP clients, explicit loopback and IPv4 wildcard TCP server listeners including `localhost` and `0.0.0.0`, and explicit or device-bound UDP listener, peer, multicast-bind, and multicast-forward records. | Python runtime/config mutation remains wider for device-bound and non-local concrete TCP listeners and broader interface shapes; interface breadth remains wider. |
+| `RNS/Reticulum.py` | `crates/libs/rns-transport`, `crates/apps/reticulumd` | partial | Deployable daemon, configuration, propagation-node activation, persistence, RPC, graceful shutdown, unified legacy `status`/`daemon_status_ex` daemon runtime snapshot visibility, daemon/RPC runtime status for Reticulum path-table restore success or failure, Reticulum-style blackholed identity list/add/remove RPC state with restart-safe persistence and associated cached-path eviction, multiple live interfaces, and runtime `set_interfaces`/`reload_config` hot-apply for TCP clients, host-bound or device-bound TCP servers with IPv4/IPv6 preference, and explicit or device-bound UDP listener, peer, multicast-bind, and multicast-forward records. | Python runtime/config mutation remains wider across startup-only interface families; overall interface breadth remains wider. |
 | `RNS/Identity.py` | `crates/libs/rns-core` | done | Identity material, hashing, signing, encryption, recall, and key conversion. | No confirmed parity blocker. |
 | `RNS/Destination.py` | `crates/libs/rns-core`, `crates/libs/rns-transport` | done | Destination hashing, descriptors, announces, proof validation, ratchets, and known-key stability checks. | No confirmed parity blocker. |
 | `RNS/Packet.py` | `crates/libs/rns-core`, `crates/libs/rns-transport` | done | Framing, serialization, contexts, proofs, receipts, Python-default link proof context, and header semantics. | No confirmed parity blocker. |
@@ -161,11 +161,12 @@ placeholders:
   operators. A software loopback smoke now proves Python-style alias parsing,
   strict startup, bound loopback status, and malformed-datagram
   `bytes_rx`/`decode_errors` telemetry without external network services.
-  Runtime interface mutation now hot-applies explicit loopback and IPv4
-  wildcard TCP server listeners, including `localhost` and `0.0.0.0`, plus explicit UDP listener, peer,
+  Runtime interface mutation now hot-applies host-bound and device-bound TCP
+  server listeners, including loopback, `localhost`, IPv4 wildcard, concrete
+  local addresses, hostnames, and device-selected IPv4/IPv6 addresses, plus explicit UDP listener, peer,
   multicast-bind, and multicast-forward records through `set_interfaces` and
   `reload_config`, while `device`-bound, non-local concrete, and broader TCP server
-  listener shapes and UDP partial-target and out-of-range-target records remain
+  startup-only interface families and UDP partial-target and out-of-range-target records remain
   restart-required or invalid. Device-bound UDP records resolve Python-style
   IPv4 broadcast defaults during hot-apply. Duplicate
   TCP server and UDP binds are rejected before mutation. Hot-applied explicit
