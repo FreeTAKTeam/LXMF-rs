@@ -3,7 +3,7 @@
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/FreeTAKTeam/LXMF-rs)
 
 Rust monorepo for LXMF and Reticulum with strict library/app boundaries and
-enterprise quality gates. The `0.7.x` line is a usable sub-1.0
+enterprise quality gates. The `0.8.0` line is a usable sub-1.0
 daemon/product release with substantially expanded RNS/LXMF software parity,
 published crates, GitHub tool bundles, and improved existing typed SDK
 communication for REM/RCH clients; it is not a compatibility layer or a
@@ -13,25 +13,25 @@ complete drop-in replacement for every Python Reticulum/LXMF behavior.
 
 - Contributor workflow: `CONTRIBUTING.md`
 - Current status and execution order: `docs/status/current-roadmap.md`
-- Release notes: `docs/release-notes-v0.7.1.md`
+- Release notes: `docs/release-notes-v0.8.0.md`
 - Docs map and retention rules: `docs/README.md`
 - SDK guide: `docs/sdk/README.md`
 - Support policy: `docs/contracts/support-policy.md`
 
 ## Release Status
 
-Current release train: `0.7.1`.
+Current release train: `0.8.0`.
 
-Use `docs/release-notes-v0.7.1.md` for the release summary and
+Use `docs/release-notes-v0.8.0.md` for the release summary and
 `docs/runbooks/release-readiness.md` for the release gate record. The
 repository-level parity source of truth remains
 `docs/status/current-roadmap.md`; the detailed parity supplements are
 `docs/status/reticulum-parity-matrix.md` and
 `docs/status/lxmf-parity-matrix.md`.
 
-The `0.7.x` release scope covers the Rust libraries, SDK entry points, `lxmd`,
+The `0.8.0` release scope covers the Rust libraries, SDK entry points, `lxmd`,
 `reticulumd`, and `rns-tools`, plus host-native GitHub bundles for all
-implemented user-facing tools. The `0.7.1` train is SDK-first: it improves the
+implemented user-facing tools. The `0.8.0` train is SDK-first: it improves the
 existing typed SDK communication path, event/status metadata, and release
 alignment while preserving the explicit boundary that this is not a separate
 compatibility layer. Operational substitutability is materially stronger but
@@ -186,7 +186,7 @@ cargo run -p xtask -- architecture-checks
 cargo run -p xtask -- sdk-docs-check
 cargo run -p xtask -- sdk-migration-check
 cargo xtask release-check
-cargo xtask package-daemon-bundle --version 0.7.1
+cargo xtask package-daemon-bundle --version 0.8.0
 cargo xtask api-diff
 cargo xtask python-impl-bench-compare
 cargo xtask python-impl-bench-compare --profile report
@@ -198,7 +198,7 @@ For fast local iteration on one binary, prefer narrow commands:
 ```bash
 make check-bin PKG=lxmf-cli BIN=lxmd
 make run-bin PKG=rns-tools BIN=rnsd ARGS="--help"
-make package-daemon-bundle VERSION=0.7.1
+make package-daemon-bundle VERSION=0.8.0
 make python-lxmd-smoke
 ```
 
@@ -247,16 +247,16 @@ workspace directory names:
 
 ```toml
 [dependencies]
-lxmf = "0.7.1"
-reticulum-rs = "0.7.1"
+lxmf = "0.8.0"
+reticulum-rs = "0.8.0"
 ```
 
 Or depend on the component crates directly:
 
 ```toml
 [dependencies]
-lxmf-sdk = "0.7.1"
-reticulum-rs-rpc = "0.7.1"
+lxmf-sdk = "0.8.0"
+reticulum-rs-rpc = "0.8.0"
 ```
 
 ## SDK Guide
@@ -387,9 +387,9 @@ Release artifacts are published on the GitHub releases page:
 
 [https://github.com/FreeTAKTeam/LXMF-rs/releases](https://github.com/FreeTAKTeam/LXMF-rs/releases)
 
-For `v0.7.1`, use the release at:
+For `v0.8.0`, use the release at:
 
-[https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.7.1](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.7.1)
+[https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.8.0](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.8.0)
 
 1. Open the release page and download the package and matching `.sha256` file
    for your platform.
@@ -397,19 +397,19 @@ For `v0.7.1`, use the release at:
 2. Linux/macOS
 
 ```bash
-sha256sum -c lxmf-rs-tools-v0.7.1-linux-x64.tar.gz.sha256
-tar -xzf lxmf-rs-tools-v0.7.1-linux-x64.tar.gz
+sha256sum -c lxmf-rs-tools-v0.8.0-linux-x64.tar.gz.sha256
+tar -xzf lxmf-rs-tools-v0.8.0-linux-x64.tar.gz
 
-sha256sum -c lxmf-rs-tools-v0.7.1-macos-arm64.tar.gz.sha256
-tar -xzf lxmf-rs-tools-v0.7.1-macos-arm64.tar.gz
+sha256sum -c lxmf-rs-tools-v0.8.0-macos-arm64.tar.gz.sha256
+tar -xzf lxmf-rs-tools-v0.8.0-macos-arm64.tar.gz
 ```
 
 3. Windows
 
 ```powershell
-Get-FileHash .\lxmf-rs-tools-v0.7.1-windows-x64.zip -Algorithm SHA256
-Get-Content .\lxmf-rs-tools-v0.7.1-windows-x64.zip.sha256
-Expand-Archive .\lxmf-rs-tools-v0.7.1-windows-x64.zip .
+Get-FileHash .\lxmf-rs-tools-v0.8.0-windows-x64.zip -Algorithm SHA256
+Get-Content .\lxmf-rs-tools-v0.8.0-windows-x64.zip.sha256
+Expand-Archive .\lxmf-rs-tools-v0.8.0-windows-x64.zip .
 ```
 
 4. Run directly for validation

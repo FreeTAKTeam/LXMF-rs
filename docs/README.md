@@ -58,7 +58,7 @@ are kept in Git history instead of the live documentation tree.
 - `docs/runbooks/release-readiness.md`: release gate checklist
 - `docs/runbooks/logging-and-diagnostics.md`: operator logging knobs and
   contributor failure-visibility rules
-- `docs/release-notes-v0.7.1.md`: current project release notes
+- `docs/release-notes-v0.8.0.md`: current project release notes
 - `docs/runbooks/reticulumd-operational-deployment.md`: daemon deployment,
   probes, shutdown, and service manager examples
 - `docs/runbooks/crates-io-publish-plan.md`: crates.io naming, versioning, and publish order

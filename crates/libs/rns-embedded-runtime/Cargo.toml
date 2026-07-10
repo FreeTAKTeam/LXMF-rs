@@ -1,6 +1,6 @@
 [package]
 name = "rns-embedded-runtime"
-version = "0.7.1"
+version = "0.8.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -8,7 +8,7 @@ repository.workspace = true
 description = "Runtime support layer for embedded Reticulum transports and alloc-backed targets."
 
 [dependencies]
-rns-embedded-core = { path = "../rns-embedded-core", version = "0.7.1", default-features = false, features = ["alloc"] }
+rns-embedded-core = { path = "../rns-embedded-core", version = "0.8.0", default-features = false, features = ["alloc"] }
 
 [features]
 default = ["std"]

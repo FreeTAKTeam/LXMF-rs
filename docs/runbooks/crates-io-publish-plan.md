@@ -112,8 +112,8 @@ Keep these unpublished:
 These are used only for local tooling, test support, or release engineering and
 are not intended to carry a public support commitment.
 
-Retired migration-era crates such as `crates/internal/*`, `lxmf-router`, and
-`lxmf-runtime` are not part of the publish plan. If any of those names are
+Retired migration-era crates such as `crates/internal/*` and `lxmf-router` are
+not part of the publish plan. If any of those names are
 revived, they need a fresh support-policy decision before publication.
 
 ## 6. Versioning Policy

@@ -94,9 +94,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.102"
+version = "1.0.103"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
+checksum = "2a4385e2e34eb35d6b3efe798b9eb88096925d87726c0798709bf56d9ed84af3"
 
 [[package]]
 name = "asn1-rs"
@@ -1551,7 +1551,7 @@ dependencies = [
 
 [[package]]
 name = "lxmf"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "lxmf-sdk",
  "lxmf-wire",
@@ -1559,7 +1559,7 @@ dependencies = [
 
 [[package]]
 name = "lxmf-cli"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "clap",
  "clap_complete",
@@ -1578,7 +1578,7 @@ dependencies = [
 
 [[package]]
 name = "lxmf-embedded-mini"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "heapless",
  "lxmf-wire",
@@ -1586,11 +1586,11 @@ dependencies = [
 
 [[package]]
 name = "lxmf-reference"
-version = "0.7.1"
+version = "0.8.0"
 
 [[package]]
 name = "lxmf-runtime"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "base64 0.22.1",
  "hex",
@@ -1607,7 +1607,7 @@ dependencies = [
 
 [[package]]
 name = "lxmf-sdk"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "criterion",
  "hex",
@@ -1631,7 +1631,7 @@ dependencies = [
 
 [[package]]
 name = "lxmf-wire"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "base64 0.22.1",
  "criterion",
@@ -1795,9 +1795,9 @@ dependencies = [
 
 [[package]]
 name = "num-conv"
-version = "0.1.0"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "51d515d32fb182ee37cda2ccdcb92950d6a3c2893aa280e540671c2cd0f3b1d9"
+checksum = "521739c6d2bac4aa25192232afe6841231376b2b26d4d9fae5ecf8ca5772e441"
 
 [[package]]
 name = "num-integer"
@@ -2152,7 +2152,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "reticulum-rs"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "reticulum-rs-core",
  "reticulum-rs-rpc",
@@ -2161,7 +2161,7 @@ dependencies = [
 
 [[package]]
 name = "reticulum-rs-core"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "aes",
  "cbc",
@@ -2183,7 +2183,7 @@ dependencies = [
 
 [[package]]
 name = "reticulum-rs-rpc"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "base64 0.22.1",
  "ciborium",
@@ -2209,7 +2209,7 @@ dependencies = [
 
 [[package]]
 name = "reticulum-rs-transport"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "aes",
  "base64 0.22.1",
@@ -2247,7 +2247,7 @@ dependencies = [
 
 [[package]]
 name = "reticulumd"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "base64 0.22.1",
  "btleplug",
@@ -2328,7 +2328,7 @@ dependencies = [
 
 [[package]]
 name = "rns-embedded-core"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "hex",
  "serde",
@@ -2338,7 +2338,7 @@ dependencies = [
 
 [[package]]
 name = "rns-embedded-ffi"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "critical-section",
  "embedded-alloc",
@@ -2349,7 +2349,7 @@ dependencies = [
 
 [[package]]
 name = "rns-embedded-mininode"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "hex",
  "lxmf-wire",
@@ -2361,14 +2361,14 @@ dependencies = [
 
 [[package]]
 name = "rns-embedded-runtime"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "rns-embedded-core",
 ]
 
 [[package]]
 name = "rns-tools"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "base64 0.22.1",
  "btleplug",
@@ -2501,9 +2501,9 @@ dependencies = [
 
 [[package]]
 name = "scc"
-version = "3.7.3"
+version = "3.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "36b032630cfe931bea2c3316541f04ef0e20357943fbfe0b6ed01c00f87462d8"
+checksum = "7800bc2c7e91b26aeae70c2ab6eaa653efc133104b7756e674c99304adff3fdb"
 dependencies = [
  "saa",
  "sdd",
@@ -2842,9 +2842,9 @@ dependencies = [
 
 [[package]]
 name = "time"
-version = "0.3.45"
+version = "0.3.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9e442fc33d7fdb45aa9bfeb312c095964abdf596f7567261062b2a7107aaabd"
+checksum = "743bd48c283afc0388f9b8827b976905fb217ad9e647fae3a379a9283c4def2c"
 dependencies = [
  "deranged",
  "itoa",
@@ -2857,15 +2857,15 @@ dependencies = [
 
 [[package]]
 name = "time-core"
-version = "0.1.7"
+version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8b36ee98fd31ec7426d599183e8fe26932a8dc1fb76ddb6214d05493377d34ca"
+checksum = "7694e1cfe791f8d31026952abf09c69ca6f6fa4e1a1229e18988f06a04a12dca"
 
 [[package]]
 name = "time-macros"
-version = "0.2.25"
+version = "0.2.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "71e552d1249bf61ac2a52db88179fd0673def1e1ad8243a00d9ec9ed71fee3dd"
+checksum = "2e70e4c5a0e0a8a4823ad65dfe1a6930e4f4d756dcd9dd7939022b5e8c501215"
 dependencies = [
  "num-conv",
  "time-core",
