@@ -24,7 +24,7 @@ jobs:
           components: miri
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-deny,cargo-audit
+          tool: cargo-deny,cargo-audit,cargo-nextest
       - name: Leader-grade readiness certification
         run: cargo xtask ci --stage leader-readiness-check
       - uses: actions/upload-artifact@v4
