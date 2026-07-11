@@ -9,12 +9,24 @@ pub fn status_hash(status: &Value) -> Option<String> {
     None
 }
 
-pub fn wait_for_known_path(rpc_port: u16, destination: &str) -> Result<(), String> {
+pub fn wait_for_known_path(
+    sender_rpc_port: u16,
+    announcer_rpc_port: u16,
+    destination: &str,
+) -> Result<(), String> {
     let deadline = Instant::now() + TEST_TIMEOUT;
+    let mut next_announce = Instant::now();
+    let mut last_announce_error = None;
     let mut last_status = "path status was not queried".to_string();
     while Instant::now() < deadline {
+        if Instant::now() >= next_announce {
+            if let Err(err) = rpc_call(announcer_rpc_port, "announce_now", None) {
+                last_announce_error = Some(err);
+            }
+            next_announce = Instant::now() + Duration::from_secs(5);
+        }
         match rpc_call(
-            rpc_port,
+            sender_rpc_port,
             "path_status",
             Some(json!({ "destination": destination })),
         ) {
@@ -32,7 +44,8 @@ pub fn wait_for_known_path(rpc_port: u16, destination: &str) -> Result<(), Strin
     }
 
     Err(format!(
-        "destination {destination} did not become reachable on rpc port {rpc_port}; last status: {last_status}"
+        "destination {destination} did not become reachable on rpc port {sender_rpc_port}; last status: {last_status}; last announce error: {}",
+        last_announce_error.as_deref().unwrap_or("none")
     ))
 }
 
