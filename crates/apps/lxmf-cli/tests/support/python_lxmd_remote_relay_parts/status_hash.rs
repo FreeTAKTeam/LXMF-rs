@@ -9,6 +9,33 @@ pub fn status_hash(status: &Value) -> Option<String> {
     None
 }
 
+pub fn wait_for_known_path(rpc_port: u16, destination: &str) -> Result<(), String> {
+    let deadline = Instant::now() + TEST_TIMEOUT;
+    let mut last_status = "path status was not queried".to_string();
+    while Instant::now() < deadline {
+        match rpc_call(
+            rpc_port,
+            "path_status",
+            Some(json!({ "destination": destination })),
+        ) {
+            Ok(status) => {
+                if status["known"].as_bool() == Some(true)
+                    || status["path_found"].as_bool() == Some(true)
+                {
+                    return Ok(());
+                }
+                last_status = status.to_string();
+            }
+            Err(err) => last_status = format!("rpc error: {err}"),
+        }
+        thread::sleep(WAIT_POLL_INTERVAL);
+    }
+
+    Err(format!(
+        "destination {destination} did not become reachable on rpc port {rpc_port}; last status: {last_status}"
+    ))
+}
+
 pub fn wait_for_inbound_message(rpc_port: u16, expected_content: &str) -> Result<(), String> {
     let deadline = Instant::now() + TEST_TIMEOUT;
     while Instant::now() < deadline {

@@ -144,13 +144,14 @@ fn rust_to_python_lxmd_relay_remote_path_e2e() {
         let sender_hash = status_hash(&sender_status)
             .unwrap_or_else(|| panic!("rust-sender delivery hash: {sender_status}"));
 
+        let delivery_started_at = Instant::now();
         rpc_call(recipient_rpc, "announce_now", None)?;
+        wait_for_known_path(sender_rpc, &recipient_hash)?;
 
         let message_id = format!(
             "python-relay-remote-{}",
             SystemTime::now().duration_since(UNIX_EPOCH).expect("time").as_millis()
         );
-        let delivery_started_at = Instant::now();
         rpc_call(
             sender_rpc,
             "send_message_v2",
