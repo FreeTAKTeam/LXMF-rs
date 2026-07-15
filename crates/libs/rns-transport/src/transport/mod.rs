@@ -188,13 +188,26 @@ pub struct TransportConfig {
     ratchet_store_path: Option<PathBuf>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DeliveryReceipt {
+    /// Hash of the packet authenticated by the received proof.
+    ///
+    /// The field name is retained for API compatibility. Prefer
+    /// [`DeliveryReceipt::packet_hash`] in new code.
     pub message_id: [u8; 32],
 }
 
 impl DeliveryReceipt {
-    pub fn new(message_id: [u8; 32]) -> Self {
-        Self { message_id }
+    pub fn new(packet_hash: [u8; 32]) -> Self {
+        Self { message_id: packet_hash }
+    }
+
+    pub fn packet_hash(&self) -> Hash {
+        Hash::new(self.message_id)
+    }
+
+    pub fn matches_packet_hash(&self, packet_hash: &Hash) -> bool {
+        self.message_id == packet_hash.to_bytes()
     }
 }
 
@@ -335,9 +348,36 @@ pub enum SendPacketOutcome {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SendPacketTrace {
     pub outcome: SendPacketOutcome,
+    /// Hash of the packet after transport preparation, including encryption.
+    ///
+    /// This is `None` only when packet preparation failed before a stable
+    /// outbound identity could be produced.
+    pub packet_hash: Option<Hash>,
     pub direct_iface: Option<AddressHash>,
     pub broadcast: bool,
     pub dispatch: TxDispatchTrace,
+}
+
+impl SendPacketTrace {
+    fn without_packet_hash(outcome: SendPacketOutcome) -> Self {
+        Self {
+            outcome,
+            packet_hash: None,
+            direct_iface: None,
+            broadcast: false,
+            dispatch: TxDispatchTrace::default(),
+        }
+    }
+
+    fn with_packet_hash(
+        outcome: SendPacketOutcome,
+        packet_hash: Hash,
+        direct_iface: Option<AddressHash>,
+        broadcast: bool,
+        dispatch: TxDispatchTrace,
+    ) -> Self {
+        Self { outcome, packet_hash: Some(packet_hash), direct_iface, broadcast, dispatch }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

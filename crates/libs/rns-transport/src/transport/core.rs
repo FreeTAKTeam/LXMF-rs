@@ -299,6 +299,22 @@ impl Transport {
         handler.send_packet_with_trace(packet).await
     }
 
+    /// Sends a packet and exposes its final hash before interface handoff.
+    ///
+    /// The observer runs after transport preparation, including encryption,
+    /// and before dispatch. Applications can register the hash against their
+    /// own message identifier here, then match it with
+    /// [`DeliveryReceipt::packet_hash`]. If dispatch later fails, callers
+    /// should remove the mapping after inspecting the returned trace.
+    pub async fn send_packet_observed_with_trace(
+        &self,
+        packet: Packet,
+        observe_packet_hash: impl FnOnce(Hash),
+    ) -> SendPacketTrace {
+        let mut handler = self.handler.lock().await;
+        handler.send_packet_observed_with_trace(packet, observe_packet_hash).await
+    }
+
     pub async fn send_packet_broadcast_with_trace(&self, packet: Packet) -> SendPacketTrace {
         let mut handler = self.handler.lock().await;
         handler.send_packet_broadcast_with_trace(packet).await
@@ -308,6 +324,7 @@ impl Transport {
         &self,
         packet: Packet,
     ) -> SendPacketTrace {
+        let packet_hash = packet.hash();
         let dispatch = self
             .iface_manager
             .lock()
@@ -325,7 +342,7 @@ impl Transport {
         } else {
             SendPacketOutcome::DroppedNoRoute
         };
-        SendPacketTrace { outcome, direct_iface: None, broadcast: true, dispatch }
+        SendPacketTrace::with_packet_hash(outcome, packet_hash, None, true, dispatch)
     }
 
     pub async fn send_announce(

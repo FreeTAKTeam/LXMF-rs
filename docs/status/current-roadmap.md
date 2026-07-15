@@ -582,6 +582,9 @@ Scoped release evidence is split as follows:
   accept Python-style link proofs with default packet context, so Python
   delivery receipts can advance daemon-originated sends from `sent:*` to
   `delivered` while preserving resource completion status.
+- Raw transport sends now expose the finalized post-encryption packet hash in
+  `SendPacketTrace`, plus a pre-dispatch observer for race-free application
+  mapping to the packet hash reported by `DeliveryReceipt`.
 - The typed ZeroMQ SDK delivery status path now preserves daemon-reported
   retry-attempt counts and reason codes in `DeliverySnapshot`, so REM/RCH can
   inspect retry and recovery state without dropping to raw RPC status calls.

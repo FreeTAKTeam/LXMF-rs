@@ -60,12 +60,9 @@ impl TransportHandler {
                     self.config.name,
                     packet.destination
                 );
-                return Err(SendPacketTrace {
-                    outcome: SendPacketOutcome::DroppedMissingDestinationIdentity,
-                    direct_iface: None,
-                    broadcast: false,
-                    dispatch: TxDispatchTrace::default(),
-                });
+                return Err(SendPacketTrace::without_packet_hash(
+                    SendPacketOutcome::DroppedMissingDestinationIdentity,
+                ));
             };
             let identity = destination.lock().await.identity;
             let salt = identity.address_hash.as_slice();
@@ -81,12 +78,9 @@ impl TransportHandler {
                             self.config.name,
                             packet.destination
                         );
-                        return Err(SendPacketTrace {
-                            outcome: SendPacketOutcome::DroppedCiphertextTooLarge,
-                            direct_iface: None,
-                            broadcast: false,
-                            dispatch: TxDispatchTrace::default(),
-                        });
+                        return Err(SendPacketTrace::without_packet_hash(
+                            SendPacketOutcome::DroppedCiphertextTooLarge,
+                        ));
                     }
                     packet.data = buffer;
                 }
@@ -97,12 +91,9 @@ impl TransportHandler {
                         packet.destination,
                         err
                     );
-                    return Err(SendPacketTrace {
-                        outcome: SendPacketOutcome::DroppedEncryptFailed,
-                        direct_iface: None,
-                        broadcast: false,
-                        dispatch: TxDispatchTrace::default(),
-                    });
+                    return Err(SendPacketTrace::without_packet_hash(
+                        SendPacketOutcome::DroppedEncryptFailed,
+                    ));
                 }
             }
         }
@@ -118,10 +109,21 @@ impl TransportHandler {
         self.send_packet_with_trace(packet).await.outcome
     }
 
-    pub(super) async fn send_packet_with_trace(&mut self, mut packet: Packet) -> SendPacketTrace {
+    pub(super) async fn send_packet_with_trace(&mut self, packet: Packet) -> SendPacketTrace {
+        self.send_packet_observed_with_trace(packet, |_| {}).await
+    }
+
+    pub(super) async fn send_packet_observed_with_trace(
+        &mut self,
+        mut packet: Packet,
+        observe_packet_hash: impl FnOnce(Hash),
+    ) -> SendPacketTrace {
         if let Err(trace) = self.prepare_outbound_packet(&mut packet).await {
             return trace;
         }
+
+        let packet_hash = packet.hash();
+        observe_packet_hash(packet_hash);
 
         diag::log_route_lookup(&self.path_table, &packet.destination);
 
@@ -140,7 +142,7 @@ impl TransportHandler {
                 SendPacketOutcome::DroppedNoRoute
             };
             diag::log_direct_send(iface, outcome, &dispatch);
-            SendPacketTrace { outcome, direct_iface: Some(iface), broadcast: false, dispatch }
+            SendPacketTrace::with_packet_hash(outcome, packet_hash, Some(iface), false, dispatch)
         } else if self.config.broadcast || packet.header.packet_type == PacketType::Announce {
             let dispatch =
                 self.send(TxMessage { tx_type: TxMessageType::Broadcast(None), packet }).await;
@@ -150,19 +152,20 @@ impl TransportHandler {
                 SendPacketOutcome::DroppedNoRoute
             };
             diag::log_broadcast_send(outcome, &dispatch);
-            SendPacketTrace { outcome, direct_iface: None, broadcast: true, dispatch }
+            SendPacketTrace::with_packet_hash(outcome, packet_hash, None, true, dispatch)
         } else {
             log::trace!(
                 "tp({}): no route for outbound packet dst={}",
                 self.config.name,
                 packet.destination
             );
-            SendPacketTrace {
-                outcome: SendPacketOutcome::DroppedNoRoute,
-                direct_iface: None,
-                broadcast: false,
-                dispatch: TxDispatchTrace::default(),
-            }
+            SendPacketTrace::with_packet_hash(
+                SendPacketOutcome::DroppedNoRoute,
+                packet_hash,
+                None,
+                false,
+                TxDispatchTrace::default(),
+            )
         }
     }
 
@@ -174,6 +177,7 @@ impl TransportHandler {
             return trace;
         }
 
+        let packet_hash = packet.hash();
         let dispatch =
             self.send(TxMessage { tx_type: TxMessageType::Broadcast(None), packet }).await;
         let outcome = if dispatch.sent_ifaces > 0 || dispatch.queued_ifaces > 0 {
@@ -181,7 +185,7 @@ impl TransportHandler {
         } else {
             SendPacketOutcome::DroppedNoRoute
         };
-        SendPacketTrace { outcome, direct_iface: None, broadcast: true, dispatch }
+        SendPacketTrace::with_packet_hash(outcome, packet_hash, None, true, dispatch)
     }
 
     pub(super) async fn send(&self, message: TxMessage) -> TxDispatchTrace {
