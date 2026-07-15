@@ -198,8 +198,8 @@ pub struct DeliveryReceipt {
 }
 
 impl DeliveryReceipt {
-    pub fn new(packet_hash: [u8; 32]) -> Self {
-        Self { message_id: packet_hash }
+    pub fn new(message_id: [u8; 32]) -> Self {
+        Self { message_id }
     }
 
     pub fn packet_hash(&self) -> Hash {

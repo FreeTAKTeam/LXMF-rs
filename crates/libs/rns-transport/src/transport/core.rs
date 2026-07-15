@@ -306,6 +306,8 @@ impl Transport {
     /// own message identifier here, then match it with
     /// [`DeliveryReceipt::packet_hash`]. If dispatch later fails, callers
     /// should remove the mapping after inspecting the returned trace.
+    /// The observer must return promptly and must not synchronously re-enter
+    /// this transport instance.
     pub async fn send_packet_observed_with_trace(
         &self,
         packet: Packet,
