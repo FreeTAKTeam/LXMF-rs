@@ -145,20 +145,21 @@ fn handle_announce_replacement_matches_python_freshness_rules() {
     assert_eq!(entry.random_blobs.len(), 1);
 
     let mut table = PathTable::new();
-    assert!(table.handle_announce(
+    let now = test_now();
+    assert!(table.handle_announce_at(
         &announce(destination, 1, b"first", 100),
         None,
         first_iface,
         random_blob(b"first", 100),
+        now - AP_PATH_TIME - Duration::from_secs(1),
         |_| Some(InterfaceMode::AccessPoint),
     ));
-    table.map.get_mut(&destination).expect("path entry").timestamp -=
-        AP_PATH_TIME + Duration::from_secs(1);
-    assert!(table.handle_announce(
+    assert!(table.handle_announce_at(
         &announce(destination, 4, b"later", 90),
         None,
         second_iface,
         random_blob(b"later", 90),
+        now,
         |_| Some(InterfaceMode::AccessPoint),
     ));
     let entry = table.get(&destination).expect("expired higher-hop announce should replace");
@@ -367,15 +368,15 @@ fn restore_tunnel_path_replaces_expired_active_path_even_with_more_hops() {
     let active_transport = addr(b"active-transport-expired");
     let tunnel_transport = addr(b"tunnel-transport-expired");
     let mut table = PathTable::new();
-    assert!(table.handle_announce(
+    let now = test_now();
+    assert!(table.handle_announce_at(
         &announce(destination, 1, b"first", 200),
         Some(active_transport),
         active_iface,
         random_blob(b"first", 200),
+        now - AP_PATH_TIME - Duration::from_secs(1),
         |_| Some(InterfaceMode::AccessPoint),
     ));
-    table.map.get_mut(&destination).expect("path entry").timestamp -=
-        AP_PATH_TIME + Duration::from_secs(1);
 
     assert!(table.restore_tunnel_path_with_random_blobs(TunnelPathRestore {
         destination,
@@ -385,7 +386,7 @@ fn restore_tunnel_path_replaces_expired_active_path_even_with_more_hops() {
         packet_hash: hash(b"tunnel-expired-packet"),
         random_blobs: vec![random_blob(b"equal", 200)],
         existing_mode: Some(InterfaceMode::AccessPoint),
-        now: Instant::now(),
+        now,
     }));
 
     let entry = table.get(&destination).expect("expired active path should replace");

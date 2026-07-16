@@ -392,14 +392,12 @@ impl RpcDaemon {
                 bytes_len,
                 bridged_decode.as_ref(),
             );
-        } else {
-            if let Some(outcome) = bridged_decode.as_ref() {
-                if let Some(record) = outcome.record.clone() {
-                    if let Some(raw_lxmf_bytes) = outcome.raw_lxmf_bytes.as_ref() {
-                        self.accept_inbound_with_raw(record, raw_lxmf_bytes)?;
-                    } else {
-                        self.accept_inbound(record)?;
-                    }
+        } else if let Some(outcome) = bridged_decode.as_ref() {
+            if let Some(record) = outcome.record.clone() {
+                if let Some(raw_lxmf_bytes) = outcome.raw_lxmf_bytes.as_ref() {
+                    self.accept_inbound_with_raw(record, raw_lxmf_bytes)?;
+                } else {
+                    self.accept_inbound(record)?;
                 }
             }
         }

@@ -302,7 +302,7 @@ checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
 
 [[package]]
 name = "lxmf-reference"
-version = "0.9.0"
+version = "0.9.1"
 
 [[package]]
 name = "memchr"
@@ -409,7 +409,7 @@ dependencies = [
 
 [[package]]
 name = "reticulum-rs-rpc"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "base64",
  "ciborium",

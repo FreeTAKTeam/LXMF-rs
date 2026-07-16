@@ -120,9 +120,27 @@ impl PathTable {
         random_blob: RandomBlob,
         mode_for_iface: impl FnMut(&AddressHash) -> Option<InterfaceMode>,
     ) -> bool {
+        self.handle_announce_at(
+            announce,
+            transport_id,
+            iface,
+            random_blob,
+            Instant::now(),
+            mode_for_iface,
+        )
+    }
+
+    fn handle_announce_at(
+        &mut self,
+        announce: &Packet,
+        transport_id: Option<AddressHash>,
+        iface: AddressHash,
+        random_blob: RandomBlob,
+        now: Instant,
+        mode_for_iface: impl FnMut(&AddressHash) -> Option<InterfaceMode>,
+    ) -> bool {
         let hops = announce.header.hops;
         let announce_emitted = random_blob_timebase(&random_blob);
-        let now = Instant::now();
         let mut random_blobs = Vec::new();
 
         if let Some(existing_entry) = self.map.get(&announce.destination) {

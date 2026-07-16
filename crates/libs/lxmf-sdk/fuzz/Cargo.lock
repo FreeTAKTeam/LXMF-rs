@@ -481,11 +481,11 @@ checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 
 [[package]]
 name = "lxmf-reference"
-version = "0.9.0"
+version = "0.9.1"
 
 [[package]]
 name = "lxmf-sdk"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "hex",
  "hmac",
@@ -515,7 +515,7 @@ dependencies = [
 
 [[package]]
 name = "lxmf-wire"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "base64",
  "ed25519-dalek",
@@ -652,7 +652,7 @@ dependencies = [
 
 [[package]]
 name = "reticulum-rs-core"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "aes",
  "cbc",
@@ -671,7 +671,7 @@ dependencies = [
 
 [[package]]
 name = "reticulum-rs-rpc"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "base64",
  "ciborium",

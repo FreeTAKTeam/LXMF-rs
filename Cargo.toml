@@ -90,22 +90,22 @@ allowed_app_edges = [
 ]
 
 [workspace.dependencies]
-lxmf-reference = { version = "0.9.0", path = "crates/libs/lxmf-reference" }
-rns-embedded-core = { version = "0.9.0", path = "crates/libs/rns-embedded-core" }
-rns-embedded-ffi = { version = "0.9.0", path = "crates/libs/rns-embedded-ffi" }
-rns-embedded-runtime = { version = "0.9.0", path = "crates/libs/rns-embedded-runtime" }
+lxmf-reference = { version = "0.9.1", path = "crates/libs/lxmf-reference" }
+rns-embedded-core = { version = "0.9.1", path = "crates/libs/rns-embedded-core" }
+rns-embedded-ffi = { version = "0.9.1", path = "crates/libs/rns-embedded-ffi" }
+rns-embedded-runtime = { version = "0.9.1", path = "crates/libs/rns-embedded-runtime" }
 anyhow = "1"
 clap = { version = "4.5.29", features = ["derive"] }
 clap_complete = "4.5"
 criterion = "0.5"
-lxmf = { version = "0.9.0", path = "crates/libs/lxmf" }
-lxmf-core = { package = "lxmf-wire", version = "0.9.0", path = "crates/libs/lxmf-core" }
-lxmf-sdk = { version = "0.9.0", path = "crates/libs/lxmf-sdk" }
-lxmf-runtime = { version = "0.9.0", path = "crates/libs/lxmf-runtime" }
-reticulum-rs = { version = "0.9.0", path = "crates/libs/reticulum-rs" }
-rns-core = { package = "reticulum-rs-core", version = "0.9.0", path = "crates/libs/rns-core" }
-rns-rpc = { package = "reticulum-rs-rpc", version = "0.9.0", path = "crates/libs/rns-rpc" }
-rns-transport = { package = "reticulum-rs-transport", version = "0.9.0", path = "crates/libs/rns-transport" }
+lxmf = { version = "0.9.1", path = "crates/libs/lxmf" }
+lxmf-core = { package = "lxmf-wire", version = "0.9.1", path = "crates/libs/lxmf-core" }
+lxmf-sdk = { version = "0.9.1", path = "crates/libs/lxmf-sdk" }
+lxmf-runtime = { version = "0.9.1", path = "crates/libs/lxmf-runtime" }
+reticulum-rs = { version = "0.9.1", path = "crates/libs/reticulum-rs" }
+rns-core = { package = "reticulum-rs-core", version = "0.9.1", path = "crates/libs/rns-core" }
+rns-rpc = { package = "reticulum-rs-rpc", version = "0.9.1", path = "crates/libs/rns-rpc" }
+rns-transport = { package = "reticulum-rs-transport", version = "0.9.1", path = "crates/libs/rns-transport" }
 aes = "0.8.4"
 base64 = "0.22"
 cbc = "0.1.2"

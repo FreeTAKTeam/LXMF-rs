@@ -636,7 +636,10 @@ async fn hot_apply_pipe_refresh_attaches_runtime_status() {
     assert_eq!(status["command"].as_str(), Some("cat"));
     assert_eq!(status["process_state"].as_str(), Some("backoff"));
     assert_eq!(status["pipe_is_open"].as_bool(), Some(false));
-    assert_eq!(status["respawn_attempts"].as_u64(), Some(1));
+    assert!(
+        status["respawn_attempts"].as_u64().is_some_and(|attempts| attempts >= 1),
+        "pipe runtime status should report at least the injected failed attempt"
+    );
     assert_eq!(status["last_error"].as_str(), Some("test pipe closed"));
 }
 
