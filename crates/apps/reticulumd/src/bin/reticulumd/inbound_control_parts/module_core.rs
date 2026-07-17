@@ -19,6 +19,10 @@ pub(super) fn spawn_control_worker(
                     clear_validated_peer_link(&control, &event.id);
                     continue;
                 }
+                LinkEvent::PeerIdentified(identity) => {
+                    record_identified_peer(&control, event.id, *identity);
+                    continue;
+                }
                 LinkEvent::Data(payload) => payload,
                 _ => continue,
             };
@@ -41,64 +45,58 @@ pub(super) fn spawn_control_worker(
             if !is_control_request && !is_propagation_request {
                 continue;
             }
-            match payload.context() {
-                PacketContext::LinkIdentify => {
-                    match parse_link_identify_payload(payload.as_slice(), &event.id) {
-                        Ok(identity) => {
-                            if let Ok(mut guard) = control.identified_peer_links.lock() {
-                                guard.insert(event.id, identity);
-                            }
-                        }
-                        Err(err) => {
-                            log::warn!(
-                                "[daemon-control] invalid link identify payload link={} err={}",
-                                event.id,
-                                err
-                            );
-                        }
+            if payload.context() == PacketContext::Request {
+                let Some(request_id) = payload.request_id() else {
+                    continue;
+                };
+                let remote_identity = match control.identified_peer_links.lock() {
+                    Ok(guard) => guard.get(&event.id).cloned(),
+                    Err(err) => {
+                        log::warn!("[daemon-control] failed to lock identified peer map: {err}");
+                        None
                     }
-                }
-                PacketContext::Request => {
-                    let Some(request_id) = payload.request_id() else {
-                        continue;
-                    };
-                    let remote_identity = match control.identified_peer_links.lock() {
-                        Ok(guard) => guard.get(&event.id).cloned(),
-                        Err(err) => {
-                            log::warn!(
-                                "[daemon-control] failed to lock identified peer map: {err}"
-                            );
-                            None
-                        }
-                    };
-                    let response = handle_control_request(
-                        daemon.as_ref(),
-                        &control,
-                        &event.id,
-                        payload.as_slice(),
-                        remote_identity.as_ref(),
+                };
+                let response = handle_control_request(
+                    daemon.as_ref(),
+                    &control,
+                    &event.id,
+                    payload.as_slice(),
+                    remote_identity.as_ref(),
+                    is_propagation_request,
+                );
+                if let Err(err) = response::send_control_response(
+                    transport.as_ref(),
+                    &event.id,
+                    request_id,
+                    response,
+                )
+                .await
+                {
+                    log::error!(
+                        "[daemon-control] failed to send response link={} propagation_request={} error={}",
+                        event.id,
                         is_propagation_request,
+                        err
                     );
-                    if let Err(err) = response::send_control_response(
-                        transport.as_ref(),
-                        &event.id,
-                        request_id,
-                        response,
-                    )
-                    .await
-                    {
-                        log::error!(
-                            "[daemon-control] failed to send response link={} propagation_request={} error={}",
-                            event.id,
-                            is_propagation_request,
-                            err
-                        );
-                    }
                 }
-                _ => {}
             }
         }
     });
+}
+
+fn record_identified_peer(
+    control: &PropagationControlContext,
+    link_id: AddressHash,
+    identity: Identity,
+) {
+    match control.identified_peer_links.lock() {
+        Ok(mut guard) => {
+            guard.insert(link_id, identity);
+        }
+        Err(err) => {
+            log::warn!("[daemon-control] failed to lock identified peer map: {err}");
+        }
+    }
 }
 
 fn clear_validated_peer_link(control: &PropagationControlContext, link_id: &AddressHash) {
@@ -108,23 +106,6 @@ fn clear_validated_peer_link(control: &PropagationControlContext, link_id: &Addr
     if let Ok(mut guard) = control.identified_peer_links.lock() {
         guard.remove(link_id);
     }
-}
-
-fn parse_link_identify_payload(
-    payload: &[u8],
-    link_id: &AddressHash,
-) -> Result<Identity, &'static str> {
-    if payload.len() < 32 + 32 + 64 {
-        return Err("payload too short");
-    }
-    let identity = Identity::new_from_slices(&payload[..32], &payload[32..64]);
-    let signature = ed25519_dalek::Signature::from_slice(&payload[64..128])
-        .map_err(|_| "invalid signature bytes")?;
-    let mut signed = Vec::with_capacity(16 + 64);
-    signed.extend_from_slice(link_id.as_slice());
-    signed.extend_from_slice(&payload[..64]);
-    identity.verify(&signed, &signature).map_err(|_| "signature verification failed")?;
-    Ok(identity)
 }
 
 fn handle_control_request(
