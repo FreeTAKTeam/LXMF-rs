@@ -82,7 +82,10 @@ impl Link {
         Ok(())
     }
 
-    fn post_event(&self, event: LinkEvent) {
+    fn post_event(&mut self, event: LinkEvent) {
+        if let LinkEvent::PeerIdentified(identity) = &event {
+            self.peer_identity = **identity;
+        }
         let _ = self.event_tx.send(LinkEventData {
             id: self.id,
             address_hash: self.destination.address_hash,
