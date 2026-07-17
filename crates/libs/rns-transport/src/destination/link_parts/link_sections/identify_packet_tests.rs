@@ -287,4 +287,25 @@ mod identify_packet_tests {
         assert!(outbound.stale_since.is_none());
         assert!(outbound.last_inbound.is_some());
     }
+
+    #[test]
+    fn corrupted_channel_ciphertext_is_not_acknowledged_or_counted_as_inbound() {
+        let (mut outbound, inbound, iface, _) = linked_pair();
+        outbound.open_channel();
+        let mut packet = inbound.channel_packet(b"channel-payload").expect("channel packet");
+        let last = packet.data.len() - 1;
+        packet.data.as_mut_slice()[last] ^= 0x01;
+
+        outbound.status = LinkStatus::Stale;
+        outbound.stale_since = Some(Instant::now());
+        outbound.last_inbound = None;
+
+        assert!(matches!(
+            outbound.handle_packet(&packet, iface),
+            LinkHandleResult::None
+        ));
+        assert_eq!(outbound.status, LinkStatus::Stale);
+        assert!(outbound.stale_since.is_some());
+        assert!(outbound.last_inbound.is_none());
+    }
 }
