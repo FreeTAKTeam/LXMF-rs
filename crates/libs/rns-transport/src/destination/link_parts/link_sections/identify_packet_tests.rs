@@ -54,6 +54,17 @@ mod identify_packet_tests {
         (outbound, inbound, iface, rx)
     }
 
+    fn rtt_packet(link: &Link, value: f32, trailing_byte: bool) -> Packet {
+        let mut encoded = Vec::new();
+        rmp::encode::write_f32(&mut encoded, value).expect("encode RTT");
+        if trailing_byte {
+            encoded.push(0x00);
+        }
+        let mut packet = link.data_packet(&encoded).expect("encrypt RTT packet");
+        packet.context = PacketContext::LinkRTT;
+        packet
+    }
+
     #[test]
     fn parse_link_identify_accepts_valid_proof() {
         let link_id = AddressHash::new([0xAB; ADDRESS_HASH_SIZE]);
@@ -62,7 +73,10 @@ mod identify_packet_tests {
 
         let result = parse_link_identify_payload(&payload, &link_id);
 
-        assert_eq!(result.map(|identity| identity.address_hash), Some(private.as_identity().address_hash));
+        assert_eq!(
+            result.map(|identity| identity.address_hash),
+            Some(private.as_identity().address_hash)
+        );
     }
 
     #[test]
@@ -166,5 +180,111 @@ mod identify_packet_tests {
             rx.try_recv().expect("peer identified after invalid traffic").event,
             LinkEvent::PeerIdentified(_)
         ));
+    }
+
+    #[test]
+    fn invalid_identify_does_not_refresh_or_revive_a_stale_link() {
+        let (mut outbound, inbound, iface, mut rx) = linked_pair();
+        let announced = PrivateIdentity::new_from_rand(OsRng);
+        let valid_payload = build_test_identify_payload(&announced, outbound.id());
+        let mut invalid_payload = valid_payload.clone();
+        invalid_payload[PUBLIC_KEY_LENGTH * 2] ^= 0x40;
+        let invalid_packet = inbound.identify_packet(&invalid_payload).expect("invalid packet build");
+
+        outbound.status = LinkStatus::Stale;
+        outbound.stale_since = Some(Instant::now());
+        outbound.last_inbound = None;
+        outbound.last_data = None;
+
+        assert!(matches!(
+            outbound.handle_packet(&invalid_packet, iface),
+            LinkHandleResult::None
+        ));
+        assert_eq!(outbound.status, LinkStatus::Stale);
+        assert!(outbound.stale_since.is_some());
+        assert!(outbound.last_inbound.is_none());
+        assert!(outbound.last_data.is_none());
+        assert!(rx.try_recv().is_err());
+
+        let valid_packet = inbound.identify_packet(&valid_payload).expect("valid packet build");
+        assert!(matches!(
+            outbound.handle_packet(&valid_packet, iface),
+            LinkHandleResult::None
+        ));
+        assert_eq!(outbound.status, LinkStatus::Active);
+        assert!(outbound.stale_since.is_none());
+        assert!(outbound.last_inbound.is_some());
+        assert!(matches!(
+            rx.try_recv().expect("valid identify event").event,
+            LinkEvent::PeerIdentified(_)
+        ));
+    }
+
+    #[test]
+    fn hostile_rtt_values_and_trailing_bytes_are_rejected_without_state_change() {
+        let (mut outbound, inbound, iface, _) = linked_pair();
+        let baseline_rtt = outbound.rtt;
+        let baseline_last_inbound = outbound.last_inbound;
+        let invalid_values = [
+            f32::NAN,
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+            -1.0,
+            KEEPALIVE_MAX_SECS + 1.0,
+        ];
+
+        for value in invalid_values {
+            let packet = rtt_packet(&inbound, value, false);
+            assert!(matches!(
+                outbound.handle_packet(&packet, iface),
+                LinkHandleResult::None
+            ));
+            assert_eq!(outbound.rtt, baseline_rtt);
+            assert_eq!(outbound.last_inbound, baseline_last_inbound);
+        }
+
+        let trailing = rtt_packet(&inbound, 0.25, true);
+        assert!(matches!(
+            outbound.handle_packet(&trailing, iface),
+            LinkHandleResult::None
+        ));
+        assert_eq!(outbound.rtt, baseline_rtt);
+        assert_eq!(outbound.last_inbound, baseline_last_inbound);
+
+        let valid = rtt_packet(&inbound, 0.25, false);
+        assert!(matches!(
+            outbound.handle_packet(&valid, iface),
+            LinkHandleResult::None
+        ));
+        assert!(outbound.rtt >= Duration::from_secs_f32(0.25));
+        assert!(outbound.last_inbound.is_some());
+    }
+
+    #[test]
+    fn malformed_keepalive_does_not_refresh_or_revive_a_stale_link() {
+        let (mut outbound, inbound, iface, _) = linked_pair();
+        let mut malformed = inbound.keep_alive_packet(0xFF);
+        malformed.data.safe_write(&[0x00]);
+
+        outbound.status = LinkStatus::Stale;
+        outbound.stale_since = Some(Instant::now());
+        outbound.last_inbound = None;
+
+        assert!(matches!(
+            outbound.handle_packet(&malformed, iface),
+            LinkHandleResult::None
+        ));
+        assert_eq!(outbound.status, LinkStatus::Stale);
+        assert!(outbound.stale_since.is_some());
+        assert!(outbound.last_inbound.is_none());
+
+        let valid = inbound.keep_alive_packet(0xFF);
+        assert!(matches!(
+            outbound.handle_packet(&valid, iface),
+            LinkHandleResult::KeepAlive
+        ));
+        assert_eq!(outbound.status, LinkStatus::Active);
+        assert!(outbound.stale_since.is_none());
+        assert!(outbound.last_inbound.is_some());
     }
 }
