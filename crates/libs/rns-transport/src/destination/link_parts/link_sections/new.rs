@@ -249,10 +249,30 @@ impl Link {
                 }
                 return LinkHandleResult::Proof(proof);
             }
-            PacketContext::None
-            | PacketContext::Request
-            | PacketContext::Response
-            | PacketContext::LinkIdentify => {
+            // Restores the dedicated `LinkIdentify` handling added in
+            // #213 (commit 204b3d2), lost when this file was split out
+            // of the original monolithic `link.rs` in #302 (commit
+            // d4e45208) — `LinkIdentify` had been folded back into this
+            // catch-all decrypt-and-post-`Data` arm during the split,
+            // which is wrong: a `LinkIdentify` payload isn't a normal
+            // message and was never meant to surface as one.
+            // `LinkEvent::PeerIdentified` and `parse_link_identify_payload`
+            // below both already survived the split untouched; only this
+            // dispatch arm and the sending half (`identify_packet`,
+            // restored below) were actually lost. See #476.
+            PacketContext::LinkIdentify => {
+                let mut buffer = [0u8; PACKET_MDU];
+                if let Ok(plain_text) = self.decrypt(packet.data.as_slice(), &mut buffer[..]) {
+                    if let Some(identity) = parse_link_identify_payload(plain_text, &self.id) {
+                        self.post_event(LinkEvent::PeerIdentified(Box::new(identity)));
+                    } else {
+                        log::warn!("link({}): invalid identify payload, dropping", self.id);
+                    }
+                } else {
+                    log::error!("link({}): can't decrypt identify packet", self.id);
+                }
+            }
+            PacketContext::None | PacketContext::Request | PacketContext::Response => {
                 let mut buffer = [0u8; PACKET_MDU];
                 if let Ok(plain_text) = self.decrypt(packet.data.as_slice(), &mut buffer[..]) {
                     log::trace!("link({}): data {}B", self.id, plain_text.len());
@@ -411,6 +431,19 @@ impl Link {
         self.packet_with_context(data, PacketContext::Channel)
     }
 
+    /// Build a link peer identification packet (context = 0xFB LinkIdentify).
+    /// The payload should be built the same way `parse_link_identify_payload`
+    /// (below) parses it: `public_key ++ verifying_key ++
+    /// sign(link_id ++ public_key ++ verifying_key)`.
+    ///
+    /// Restores the method added in #213 (commit 204b3d2), lost during the
+    /// #302 module split (commit d4e45208) — see this file's other restored
+    /// block above (in `handle_data_packet`) for the receive-side half and
+    /// the full regression history. See #476.
+    pub fn identify_packet(&self, payload: &[u8]) -> Result<Packet, RnsError> {
+        self.packet_with_context(payload, PacketContext::LinkIdentify)
+    }
+
     pub fn register_channel_handler<F>(&mut self, msg_type: u16, handler: F) -> HandlerId
     where
         F: FnMut(ChannelEnvelope) -> bool + Send + 'static,
@@ -424,4 +457,31 @@ impl Link {
             .push(RegisteredChannelHandler { id, handler: Box::new(handler) });
         id
     }
+}
+
+// Restores `parse_link_identify_payload` (and `LINK_IDENTIFY_PAYLOAD_LENGTH`),
+// added in #213 (commit 204b3d2) and lost during the #302 module split
+// (commit d4e45208) — ported verbatim from #213's own diff; only the
+// surrounding file location changed (the split moved `channel_packet`/
+// `data_packet` here, into `link_sections/new.rs`, from the original
+// single `destination/link.rs` — this restoration follows them). See #476.
+const LINK_IDENTIFY_PAYLOAD_LENGTH: usize = PUBLIC_KEY_LENGTH * 2 + SIGNATURE_LENGTH;
+
+fn parse_link_identify_payload(payload: &[u8], link_id: &AddressHash) -> Option<Identity> {
+    if payload.len() != LINK_IDENTIFY_PAYLOAD_LENGTH {
+        return None;
+    }
+    let identity = Identity::new_from_slices(
+        &payload[..PUBLIC_KEY_LENGTH],
+        &payload[PUBLIC_KEY_LENGTH..PUBLIC_KEY_LENGTH * 2],
+    );
+    let signature = Signature::from_slice(
+        &payload[PUBLIC_KEY_LENGTH * 2..PUBLIC_KEY_LENGTH * 2 + SIGNATURE_LENGTH],
+    )
+    .ok()?;
+    let mut signed = Vec::with_capacity(ADDRESS_HASH_SIZE + PUBLIC_KEY_LENGTH * 2);
+    signed.extend_from_slice(link_id.as_slice());
+    signed.extend_from_slice(&payload[..PUBLIC_KEY_LENGTH * 2]);
+    identity.verify(&signed, &signature).ok()?;
+    Some(identity)
 }
