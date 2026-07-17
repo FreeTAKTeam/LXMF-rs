@@ -43,9 +43,8 @@ async fn python_to_rust_link_identify_roundtrip() {
         Duration::from_secs(8),
     )
     .await;
-    let mut received = transport.received_data_events();
     let remote_identity =
-        wait_for_link_identify(&mut received, link_id, Duration::from_secs(8)).await;
+        wait_for_link_identify(&mut in_events, link_id, Duration::from_secs(8)).await;
     assert_ne!(remote_identity.address_hash, *rust_identity.address_hash());
 
     let destination_hash = { destination.lock().await.desc.address_hash };
