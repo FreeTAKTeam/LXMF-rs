@@ -2,9 +2,9 @@ use std::io;
 use std::sync::Arc;
 use std::time::Duration;
 
-use rns_transport::destination::link::Link;
+use rns_transport::destination::link::{Link, LinkEvent, LinkEventData};
 use rns_transport::hash::{address_hash, AddressHash};
-use rns_transport::identity::{lxmf_sign, lxmf_verify, Identity, PUBLIC_KEY_LENGTH};
+use rns_transport::identity::{lxmf_sign, Identity, PUBLIC_KEY_LENGTH};
 use rns_transport::packet::{
     ContextFlag, DestinationType, Header, HeaderType, IfacFlag, Packet, PacketContext,
     PacketDataBuffer, PacketType, PropagationType,
@@ -13,21 +13,19 @@ use rns_transport::resource::{ResourceComplete, ResourceEvent, ResourceEventKind
 use rns_transport::transport::{ReceivedData, SendPacketOutcome, Transport};
 use tokio::time::timeout;
 
-const SIGNATURE_LENGTH: usize = ed25519_dalek::SIGNATURE_LENGTH;
-
 pub(super) async fn wait_for_link_identify(
-    events: &mut tokio::sync::broadcast::Receiver<ReceivedData>,
+    events: &mut tokio::sync::broadcast::Receiver<LinkEventData>,
     link_id: AddressHash,
     duration: Duration,
 ) -> Identity {
     timeout(duration, async {
         loop {
-            let event = events.recv().await.expect("received data event");
-            if event.destination != link_id || event.context != Some(PacketContext::LinkIdentify) {
+            let event = events.recv().await.expect("link event");
+            if event.id != link_id {
                 continue;
             }
-            if let Some(identity) = parse_link_identify_payload(link_id, event.data.as_slice()) {
-                return identity;
+            if let LinkEvent::PeerIdentified(identity) = event.event {
+                return *identity;
             }
         }
     })
@@ -51,22 +49,6 @@ pub(super) fn build_link_identify_payload(
     let mut payload = public_key;
     payload.extend_from_slice(&signature);
     payload
-}
-
-fn parse_link_identify_payload(link_id: AddressHash, bytes: &[u8]) -> Option<Identity> {
-    if bytes.len() != PUBLIC_KEY_LENGTH * 2 + SIGNATURE_LENGTH {
-        return None;
-    }
-    let public_key = &bytes[..PUBLIC_KEY_LENGTH];
-    let verifying_key = &bytes[PUBLIC_KEY_LENGTH..PUBLIC_KEY_LENGTH * 2];
-    let signature = &bytes[PUBLIC_KEY_LENGTH * 2..];
-    let identity = Identity::new_from_slices(public_key, verifying_key);
-
-    let mut signed_data = Vec::with_capacity(link_id.as_slice().len() + PUBLIC_KEY_LENGTH * 2);
-    signed_data.extend_from_slice(link_id.as_slice());
-    signed_data.extend_from_slice(&bytes[..PUBLIC_KEY_LENGTH * 2]);
-
-    lxmf_verify(&identity, &signed_data, signature).then_some(identity)
 }
 
 pub(super) fn build_link_request_payload(
