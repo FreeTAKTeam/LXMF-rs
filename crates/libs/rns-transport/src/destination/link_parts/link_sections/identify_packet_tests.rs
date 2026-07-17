@@ -151,6 +151,11 @@ mod identify_packet_tests {
             }
             _ => panic!("identify packet must not surface as generic link data"),
         }
+        assert_eq!(
+            outbound.peer_identity().address_hash,
+            announced.as_identity().address_hash,
+            "verified identity must be stored before observers receive the event"
+        );
         assert!(rx.try_recv().is_err(), "identify packet emitted an extra event");
     }
 
