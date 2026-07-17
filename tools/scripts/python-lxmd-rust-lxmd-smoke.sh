@@ -2052,8 +2052,10 @@ assert python_payload["payload_hex"] == expected_payload_hex, python_payload
 assert expected_transient in python_peer_seed["unhandled_ids"], python_peer_seed
 assert python_peer_seed["peer"] == rust_peer, python_peer_seed
 propagation = status.get("propagation", {})
-assert propagation.get("unpeered_propagation_incoming", 0) >= 1, propagation
-assert propagation.get("unpeered_propagation_rx_bytes", 0) >= python_payload["stored_bytes"], propagation
+# LinkIdentify retains the verified identity before the resource transfer.
+# This sync must remain in the peered lane; an unpeered count is an auth regression.
+assert propagation.get("unpeered_propagation_incoming", 0) == 0, propagation
+assert propagation.get("unpeered_propagation_rx_bytes", 0) == 0, propagation
 
 source_row = next(
     (row for row in peers.get("peers", []) if row.get("peer", "").lower() == python_peer.lower()),
