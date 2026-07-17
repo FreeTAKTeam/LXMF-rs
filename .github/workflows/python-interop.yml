@@ -163,7 +163,19 @@ jobs:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum
           LXMF_PY_REPO: ${{ github.workspace }}/LXMF
           LXMF_PY_COMPAT_HARNESS: ${{ github.workspace }}/lxmf-rs/tools/scripts/python_compat_harness.py
-        run: cargo test -p reticulumd --test python_compat_matrix -- --ignored --nocapture --test-threads=1
+        run: |
+          mkdir -p target/python-interop-logs
+          set -o pipefail
+          cargo test -p reticulumd --test python_compat_matrix -- --ignored --nocapture --test-threads=1 \
+            2>&1 | tee target/python-interop-logs/python-compat-matrix.log
+
+      - name: Upload Python interop diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-interop-diagnostics-${{ github.run_id }}
+          path: lxmf-rs/target/python-interop-logs/**
+          if-no-files-found: ignore
 
       - name: Rust/Python LXMD remote relay interop
         working-directory: lxmf-rs
