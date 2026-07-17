@@ -237,16 +237,15 @@ impl Link {
                     return LinkHandleResult::None;
                 }
 
-                let proof = self.prove_packet(packet);
                 let mut buffer = [0u8; PACKET_MDU];
                 if let Ok(plain_text) = self.decrypt(packet.data.as_slice(), &mut buffer[..]) {
                     self.note_inbound(packet.context);
                     log::trace!("link({}): data {}B", self.id, plain_text.len());
                     self.handle_channel_frame(plain_text);
-                } else {
-                    log::error!("link({}): can't decrypt packet", self.id);
+                    return LinkHandleResult::Proof(self.prove_packet(packet));
                 }
-                return LinkHandleResult::Proof(proof);
+                log::error!("link({}): can't decrypt packet", self.id);
+                return LinkHandleResult::None;
             }
             PacketContext::LinkIdentify => {
                 let mut buffer = [0u8; PACKET_MDU];
