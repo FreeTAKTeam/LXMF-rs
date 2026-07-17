@@ -18,6 +18,14 @@
             stored.map(|identity| identity.address_hash),
             Some(remote_identity.address_hash)
         );
+        assert!(
+            !control
+                .validated_peer_links
+                .lock()
+                .expect("validated peer links")
+                .contains(&link_id),
+            "identity discovery must not bypass later peering validation"
+        );
 
         clear_validated_peer_link(&control, &link_id);
         assert!(!control
