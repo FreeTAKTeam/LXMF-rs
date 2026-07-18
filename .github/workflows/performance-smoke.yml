@@ -31,13 +31,17 @@ jobs:
       - name: Core fixture, schema, and report smoke
         env:
           PYTHONPATH: ${{ github.workspace }}/target/python-references/Reticulum:${{ github.workspace }}/target/python-references/LXMF
-        run: cargo xtask python-impl-bench-report --compare-runs 1 --resource-runs 1 --resource-iterations 2000
+        run: >-
+          cargo xtask python-impl-bench-report
+          --profile fast
+          --compare-runs 1
+          --resource-runs 1
+          --resource-iterations 2000
       - name: SDK transport workload smoke
         run: |
           cargo build --release -p reticulumd --bin reticulumd
           cargo build --release -p lxmf-sdk --example sdk_transport_benchmark
           python3 tools/scripts/sdk_transport_bench.py \
-            --runs 1 --iterations 10 \
             --output target/performance/sdk-transport.json
       - name: Same-topology workload smoke
         run: python3 tools/scripts/e2e_performance.py --profile smoke --output target/performance/e2e.json

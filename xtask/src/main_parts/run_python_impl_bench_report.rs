@@ -1,10 +1,10 @@
 fn run_python_impl_bench_report(
+    profile: PythonImplBenchProfile,
     compare_runs_override: Option<usize>,
     resource_runs_override: Option<usize>,
     resource_iterations_override: Option<usize>,
 ) -> Result<()> {
     let config = load_python_impl_bench_config()?;
-    let profile = PythonImplBenchProfile::Report;
     let profile_config = config.profiles.get(profile);
     let compare_runs = compare_runs_override.unwrap_or(profile_config.report.compare_runs);
     let resource_runs = resource_runs_override.unwrap_or(profile_config.report.resource_runs);

@@ -44,6 +44,7 @@ def trimmed_tail_sample(values: list[int]) -> list[int]:
 
 
 def run_benchmark(name: str, iterations: int, func):
+    print(f"benchmarking {name} ({iterations} iterations)", flush=True)
     samples: list[int] = []
     for _ in range(iterations):
         start = time.perf_counter_ns()
@@ -58,7 +59,7 @@ def run_benchmark(name: str, iterations: int, func):
     mean = statistics.fmean(samples)
     throughput = 1_000_000_000.0 / max(p50, 1.0)
 
-    return {
+    result = {
         "name": name,
         "iterations": iterations,
         "mean_ns": mean,
@@ -67,6 +68,8 @@ def run_benchmark(name: str, iterations: int, func):
         "p99_ns": p99,
         "throughput_ops_per_sec": throughput,
     }
+    print(f"completed {name}", flush=True)
+    return result
 
 
 def build_lxmf_fixtures():
@@ -136,6 +139,8 @@ def build_rns_fixtures():
     import RNS
     from RNS import Resource
 
+    print("building Reticulum announce fixtures", flush=True)
+
     class BenchLink:
         ACTIVE = 0x02
         MDU = RNS.Packet.MDU
@@ -196,6 +201,7 @@ def build_rns_fixtures():
         batch_packet.pack()
         announce_batch_packets.append(batch_packet)
 
+    print("building Reticulum identity crypto fixtures", flush=True)
     sign_message = b"x" * 2048
     signature = identity.sign(sign_message)
 
@@ -219,12 +225,17 @@ def build_rns_fixtures():
             total += 1 if RNS.Identity.validate_announce(packet) else 0
         return total
 
+    print("building Reticulum resource fixtures", flush=True)
     resource_link = BenchLink()
-    resource_payload = bytearray()
-    for _ in range(6):
-        resource_payload.extend(
-            bytes.fromhex(FIXTURES["payloads"]["resource_pattern_hex"]) * RNS.Packet.MDU
-        )
+    resource_byte = bytes.fromhex(FIXTURES["payloads"]["resource_pattern_hex"])
+    if len(resource_byte) != 1:
+        raise ValueError("resource_pattern_hex must encode exactly one byte")
+    # Reticulum remaps resources with duplicate part hashes. Give each part a
+    # distinct prefix so this deterministic fixture cannot remap forever.
+    resource_payload = b"".join(
+        bytes([part_index]) + resource_byte * (RNS.Packet.MDU - 1)
+        for part_index in range(6)
+    )
 
     resource = Resource(
         bytes(resource_payload),
@@ -232,6 +243,7 @@ def build_rns_fixtures():
         advertise=False,
         auto_compress=False,
     )
+    print("Reticulum resource fixtures ready", flush=True)
 
     def packet_send_stub(self):
         self.sent = True
@@ -478,6 +490,7 @@ def main() -> int:
         except KeyError as exc:
             raise SystemExit(f"unsupported benchmark: {args.benchmark}") from exc
     else:
+        print("building LXMF benchmark fixtures", flush=True)
         (
             pack_message,
             packed_message,
@@ -486,6 +499,7 @@ def main() -> int:
             pack_resource_message,
             packed_resource_message,
         ) = build_lxmf_fixtures()
+        print("building Reticulum benchmark fixtures", flush=True)
         (
             announce_create,
             announce_packet,
@@ -500,6 +514,7 @@ def main() -> int:
             resource_segment,
             resource_reassemble,
         ) = build_rns_fixtures()
+        print("benchmark fixtures ready", flush=True)
         benchmark_factories = {
             "python_lxmf/message_to_wire": lambda: run_benchmark(
                 "python_lxmf/message_to_wire", args.iterations, pack_message
