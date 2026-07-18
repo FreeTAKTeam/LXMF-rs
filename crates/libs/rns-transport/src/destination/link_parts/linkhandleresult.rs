@@ -35,6 +35,7 @@ pub struct Link {
     ingress_iface: Option<AddressHash>,
     priv_identity: PrivateIdentity,
     peer_identity: Identity,
+    identified_peer_identity: Option<Identity>,
     derived_key: DerivedKey,
     session_cipher: Option<CachedFernet>,
     signalling: Option<[u8; LINK_MTU_SIZE]>,

@@ -133,7 +133,8 @@ mod identify_packet_tests {
 
     #[test]
     fn identify_packet_roundtrip_emits_only_peer_identified() {
-        let (mut outbound, inbound, iface, mut rx) = linked_pair();
+        let (mut outbound, mut inbound, iface, mut rx) = linked_pair();
+        let link_peer_identity = *outbound.peer_identity();
         let announced = PrivateIdentity::new_from_rand(OsRng);
         let payload = build_test_identify_payload(&announced, outbound.id());
 
@@ -152,11 +153,26 @@ mod identify_packet_tests {
             _ => panic!("identify packet must not surface as generic link data"),
         }
         assert_eq!(
-            outbound.peer_identity().address_hash,
-            announced.as_identity().address_hash,
+            outbound.identified_peer_identity().map(|identity| identity.address_hash),
+            Some(announced.as_identity().address_hash),
             "verified identity must be stored before observers receive the event"
         );
+        assert_eq!(
+            outbound.peer_identity().address_hash,
+            link_peer_identity.address_hash,
+            "identification must not replace the link-session proof identity"
+        );
         assert!(rx.try_recv().is_err(), "identify packet emitted an extra event");
+
+        let data_packet = outbound.data_packet(b"proof-after-identify").expect("data packet");
+        let proof = match inbound.handle_packet(&data_packet, iface) {
+            LinkHandleResult::Proof(proof) => proof,
+            _ => panic!("data packet should produce a proof"),
+        };
+        assert!(
+            outbound.validate_packet_proof(&proof).is_ok(),
+            "identification must not break subsequent packet proof verification"
+        );
     }
 
     #[test]

@@ -239,9 +239,13 @@ async fn remote_identity_for_resource_link(
             log::warn!("[daemon-control] failed to lock identified peer map: {err}");
         }
     }
+    if let Some(link) = transport.find_in_link(link_id).await {
+        let guard = link.lock().await;
+        return Some(*guard.identified_peer_identity().unwrap_or_else(|| guard.peer_identity()));
+    }
     if let Some(link) = transport.find_out_link(link_id).await {
         let guard = link.lock().await;
-        return Some(*guard.peer_identity());
+        return Some(*guard.identified_peer_identity().unwrap_or_else(|| guard.peer_identity()));
     }
     None
 }

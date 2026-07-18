@@ -347,6 +347,10 @@ impl Link {
         &self.peer_identity
     }
 
+    pub fn identified_peer_identity(&self) -> Option<&Identity> {
+        self.identified_peer_identity.as_ref()
+    }
+
     pub fn create_rtt(&self) -> Packet {
         let rtt = self.rtt.as_secs_f32();
         let mut buf = Vec::new();

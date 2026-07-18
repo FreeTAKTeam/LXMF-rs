@@ -211,11 +211,13 @@ async fn remote_propagation_peer_for_link(
 ) -> Option<String> {
     if let Some(link) = transport.find_in_link(link_id).await {
         let guard = link.lock().await;
-        return Some(propagation_destination_hash_for_identity(guard.peer_identity()));
+        let identity = guard.identified_peer_identity().unwrap_or_else(|| guard.peer_identity());
+        return Some(propagation_destination_hash_for_identity(identity));
     }
     if let Some(link) = transport.find_out_link(link_id).await {
         let guard = link.lock().await;
-        return Some(propagation_destination_hash_for_identity(guard.peer_identity()));
+        let identity = guard.identified_peer_identity().unwrap_or_else(|| guard.peer_identity());
+        return Some(propagation_destination_hash_for_identity(identity));
     }
     None
 }
