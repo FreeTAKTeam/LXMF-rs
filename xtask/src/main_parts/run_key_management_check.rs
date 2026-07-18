@@ -455,5 +455,11 @@ fn run_python_impl_bench_compare(profile: PythonImplBenchProfile) -> Result<()> 
     let config = load_python_impl_bench_config()?;
     let profile_config = config.profiles.get(profile);
     let paths = default_python_impl_output_paths();
-    run_python_impl_bench_compare_with_paths(&config, profile_config, &paths, true)
+    run_python_impl_bench_compare_with_paths(
+        &config,
+        profile_config,
+        profile_config.python.iterations,
+        &paths,
+        true,
+    )
 }

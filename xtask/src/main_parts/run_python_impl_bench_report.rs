@@ -1,17 +1,23 @@
 fn run_python_impl_bench_report(
     profile: PythonImplBenchProfile,
     compare_runs_override: Option<usize>,
+    python_iterations_override: Option<usize>,
     resource_runs_override: Option<usize>,
     resource_iterations_override: Option<usize>,
 ) -> Result<()> {
     let config = load_python_impl_bench_config()?;
     let profile_config = config.profiles.get(profile);
     let compare_runs = compare_runs_override.unwrap_or(profile_config.report.compare_runs);
+    let python_iterations =
+        python_iterations_override.unwrap_or(profile_config.python.iterations);
     let resource_runs = resource_runs_override.unwrap_or(profile_config.report.resource_runs);
     let resource_iterations =
         resource_iterations_override.unwrap_or(profile_config.report.resource_iterations);
     if compare_runs == 0 {
         bail!("python-impl-bench-report requires compare_runs > 0");
+    }
+    if python_iterations == 0 {
+        bail!("python-impl-bench-report requires python_iterations > 0");
     }
     if resource_runs == 0 {
         bail!("python-impl-bench-report requires resource_runs > 0");
@@ -46,6 +52,7 @@ fn run_python_impl_bench_report(
         run_python_impl_bench_compare_with_paths(
             &config,
             profile_config,
+            python_iterations,
             &paths,
             run_index % 2 == 0,
         )
@@ -106,13 +113,14 @@ fn default_python_impl_output_paths() -> PythonImplOutputPaths<'static> {
 fn run_python_impl_bench_compare_with_paths(
     config: &PythonImplBenchConfig,
     profile_config: &PythonImplBenchProfileConfig,
+    python_iterations: usize,
     paths: &PythonImplOutputPaths<'_>,
     rust_first: bool,
 ) -> Result<()> {
     let sample_size = profile_config.criterion.sample_size.to_string();
     let warm_up_time = profile_config.criterion.warm_up_time_seconds.to_string();
     let measurement_time = profile_config.criterion.measurement_time_seconds.to_string();
-    let python_iterations = profile_config.python.iterations.to_string();
+    let python_iterations = python_iterations.to_string();
 
     let run_rust = || -> Result<()> {
         run(

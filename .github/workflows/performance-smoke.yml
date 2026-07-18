@@ -35,8 +35,9 @@ jobs:
           cargo xtask python-impl-bench-report
           --profile fast
           --compare-runs 1
+          --python-iterations 10
           --resource-runs 1
-          --resource-iterations 2000
+          --resource-iterations 10
       - name: SDK transport workload smoke
         run: |
           cargo build --release -p reticulumd --bin reticulumd

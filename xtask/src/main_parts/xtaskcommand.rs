@@ -119,6 +119,8 @@ enum XtaskCommand {
         #[arg(long)]
         compare_runs: Option<usize>,
         #[arg(long)]
+        python_iterations: Option<usize>,
+        #[arg(long)]
         resource_runs: Option<usize>,
         #[arg(long)]
         resource_iterations: Option<usize>,
@@ -361,11 +363,13 @@ fn main() -> Result<()> {
         XtaskCommand::PythonImplBenchReport {
             profile,
             compare_runs,
+            python_iterations,
             resource_runs,
             resource_iterations,
         } => run_python_impl_bench_report(
             profile,
             compare_runs,
+            python_iterations,
             resource_runs,
             resource_iterations,
         ),
