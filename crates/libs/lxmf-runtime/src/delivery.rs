@@ -75,7 +75,8 @@ pub(crate) async fn send(
     let message_id = MessageId(hex::encode(
         WireMessage::unpack(&wire)
             .map_err(|err| internal(format!("failed to decode encoded LXMF message: {err}")))?
-            .message_id(),
+            .try_message_id()
+            .map_err(|err| internal(format!("failed to hash encoded LXMF message: {err}")))?,
     ));
     let mut desired_method = requested_method(request)?;
     if matches!(desired_method, TransportMethod::Opportunistic)

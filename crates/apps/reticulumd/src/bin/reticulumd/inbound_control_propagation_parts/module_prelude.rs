@@ -281,8 +281,18 @@ pub(super) fn handle_offer_request(
             return ControlResponse::Code(error_no_access);
         }
     }
-    if let Ok(mut guard) = control.validated_peer_links.lock() {
-        guard.insert(*link_id);
+    match control.validated_peer_links.lock() {
+        Ok(mut guard) => {
+            guard.insert(*link_id);
+        }
+        Err(error) => {
+            log::error!(
+                "[daemon-control] validated peer map lock poisoned while recording link={}: {}",
+                link_id,
+                error
+            );
+            return ControlResponse::Code(error_no_access);
+        }
     }
 
     daemon.throttle_propagation_peer_offer(remote_propagation_hash_hex.as_str());
@@ -353,16 +363,36 @@ fn propagation_destination_hash_for_identity(identity: &Identity) -> [u8; 16] {
 }
 
 fn delivery_identity_allowed(daemon: &RpcDaemon, identity: &Identity) -> bool {
-    let policy = daemon
+    let remote_hash = hex::encode(identity.address_hash.as_slice());
+    let response = match daemon
         .handle_rpc(RpcRequest { id: 0, method: "get_delivery_policy".to_string(), params: None })
-        .ok()
-        .and_then(|response| response.result)
-        .and_then(|value| value.get("policy").cloned())
-        .unwrap_or_else(|| json!({}));
+    {
+        Ok(response) => response,
+        Err(error) => {
+            log::error!(
+                "[daemon-control] failed to load delivery policy identity={remote_hash}: {error}"
+            );
+            return false;
+        }
+    };
+    if let Some(error) = response.error {
+        log::error!(
+            "[daemon-control] delivery policy RPC failed identity={} code={} error={}",
+            remote_hash,
+            error.code,
+            error.message
+        );
+        return false;
+    }
+    let Some(policy) = response.result.and_then(|value| value.get("policy").cloned()) else {
+        log::error!(
+            "[daemon-control] delivery policy RPC returned no policy identity={remote_hash}"
+        );
+        return false;
+    };
     if !policy.get("auth_required").and_then(Value::as_bool).unwrap_or(false) {
         return true;
     }
-    let remote_hash = hex::encode(identity.address_hash.as_slice());
     policy.get("allowed_destinations").and_then(Value::as_array).is_some_and(|entries| {
         entries
             .iter()

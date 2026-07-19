@@ -4,7 +4,7 @@
     target_os = "macos",
     target_os = "windows"
 ))]
-use btleplug::api::{Central, Peripheral as _};
+use btleplug::api::{Central, Characteristic, Peripheral as _};
 #[cfg(any(
     target_os = "android",
     target_os = "linux",
@@ -24,6 +24,36 @@ use std::io;
 use std::time::{Duration, Instant};
 
 use crate::hex_lower;
+
+#[cfg(any(target_os = "android", target_os = "linux", target_os = "macos", target_os = "windows"))]
+pub(super) async fn disconnect_peripheral(peripheral: &Peripheral, context: &str) {
+    if let Err(error) = peripheral.disconnect().await {
+        log::warn!(
+            "BLE disconnect failed context={} device_id={} error={}",
+            context,
+            peripheral.id(),
+            error
+        );
+    }
+}
+
+#[cfg(any(target_os = "android", target_os = "linux", target_os = "macos", target_os = "windows"))]
+pub(super) async fn cleanup_peripheral_subscription(
+    peripheral: &Peripheral,
+    notify_char: &Characteristic,
+    context: &str,
+) {
+    if let Err(error) = peripheral.unsubscribe(notify_char).await {
+        log::warn!(
+            "BLE unsubscribe failed context={} device_id={} characteristic={} error={}",
+            context,
+            peripheral.id(),
+            notify_char.uuid,
+            error
+        );
+    }
+    disconnect_peripheral(peripheral, context).await;
+}
 
 #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos", target_os = "windows"))]
 pub(super) fn format_manufacturer_data(data: &std::collections::HashMap<u16, Vec<u8>>) -> String {
@@ -111,7 +141,7 @@ pub(super) async fn find_camera_peripheral_by_profile(
                 continue;
             }
             if peripheral.discover_services().await.is_err() {
-                let _ = peripheral.disconnect().await;
+                disconnect_peripheral(&peripheral, "service discovery rejected candidate").await;
                 continue;
             }
             let chars = peripheral.characteristics();
@@ -122,7 +152,7 @@ pub(super) async fn find_camera_peripheral_by_profile(
             if has_write && has_notify {
                 return Ok(peripheral);
             }
-            let _ = peripheral.disconnect().await;
+            disconnect_peripheral(&peripheral, "candidate missing requested GATT profile").await;
         }
         if Instant::now() >= deadline {
             return Err(io::Error::new(io::ErrorKind::TimedOut, "BLE peripheral not found"));

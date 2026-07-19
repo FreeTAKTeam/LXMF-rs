@@ -59,7 +59,11 @@ impl RpcDaemon {
             .lock()
             .expect("ticket delivery mutex poisoned")
             .insert(destination.to_string(), delivered_at);
-        let _ = self.store.upsert_ticket_last_delivery(destination, delivered_at);
+        if let Err(error) = self.store.upsert_ticket_last_delivery(destination, delivered_at) {
+            log::error!(
+                "failed to persist ticket delivery timestamp destination={destination}: {error}"
+            );
+        }
     }
 
     fn ticket_interval_active(&self, destination: &str) -> bool {
@@ -76,9 +80,17 @@ impl RpcDaemon {
             return true;
         }
 
-        self.store.get_ticket_last_delivery(destination).ok().flatten().is_some_and(
-            |last_delivery| now.saturating_sub(last_delivery) < Self::TICKET_INTERVAL_SECS,
-        )
+        match self.store.get_ticket_last_delivery(destination) {
+            Ok(last_delivery) => last_delivery.is_some_and(|last_delivery| {
+                now.saturating_sub(last_delivery) < Self::TICKET_INTERVAL_SECS
+            }),
+            Err(error) => {
+                log::error!(
+                    "failed to read ticket delivery timestamp destination={destination}: {error}"
+                );
+                false
+            }
+        }
     }
 
     pub fn current_stamp_policy(&self) -> StampPolicy {
@@ -105,26 +117,42 @@ impl RpcDaemon {
         self.prune_expired_tickets(now);
         let mut seen = HashSet::new();
         let mut tickets = Vec::new();
-        if let Some(ticket) = self
+        if let Some(record) = self
             .ticket_cache
             .lock()
             .expect("ticket mutex poisoned")
             .get(destination)
             .filter(|record| record.expires_at > now)
-            .and_then(|record| hex::decode(record.ticket.as_str()).ok())
+            .cloned()
         {
-            seen.insert(ticket.clone());
-            tickets.push(ticket);
+            match hex::decode(record.ticket.as_str()) {
+                Ok(ticket) => {
+                    seen.insert(ticket.clone());
+                    tickets.push(ticket);
+                }
+                Err(error) => log::error!(
+                    "invalid cached ticket destination={destination}: {error}"
+                ),
+            }
         }
 
-        for (ticket, expires_at) in
-            self.store.get_tickets_for_destination(destination).unwrap_or_default()
-        {
+        let stored_tickets = match self.store.get_tickets_for_destination(destination) {
+            Ok(tickets) => tickets,
+            Err(error) => {
+                log::error!("failed to read issued tickets destination={destination}: {error}");
+                Vec::new()
+            }
+        };
+        for (ticket, expires_at) in stored_tickets {
             if expires_at <= now {
                 continue;
             }
-            let Ok(ticket) = hex::decode(ticket.as_str()) else {
-                continue;
+            let ticket = match hex::decode(ticket.as_str()) {
+                Ok(ticket) => ticket,
+                Err(error) => {
+                    log::error!("invalid stored ticket destination={destination}: {error}");
+                    continue;
+                }
             };
             if seen.insert(ticket.clone()) {
                 tickets.push(ticket);
@@ -168,7 +196,9 @@ impl RpcDaemon {
     }
 
     fn prune_expired_tickets(&self, now: i64) {
-        let _ = self.store.prune_expired_tickets(now, Self::TICKET_GRACE_SECS);
+        if let Err(err) = self.store.prune_expired_tickets(now, Self::TICKET_GRACE_SECS) {
+            log::warn!("[rpc-daemon] failed to prune expired delivery tickets now={now}: {err}");
+        }
     }
 
     pub fn message_receipt_status(
@@ -451,14 +481,21 @@ impl RpcDaemon {
 
     pub fn record_inbound_peer_activity(&self, peer: &str, bytes: usize) {
         let peer = peer.trim();
-        if let Ok(mut guard) = self.peers.lock() {
-            if let Some(existing) =
-                guard.values_mut().find(|record| record.peer.eq_ignore_ascii_case(peer))
-            {
-                existing.alive = true;
-                existing.last_seen = now_i64();
-                existing.rx_bytes = existing.rx_bytes.saturating_add(bytes as u64);
+        let mut guard = match self.peers.lock() {
+            Ok(guard) => guard,
+            Err(error) => {
+                log::error!(
+                    "[rpc-daemon] peers lock poisoned while recording inbound peer={peer}: {error}"
+                );
+                return;
             }
+        };
+        if let Some(existing) =
+            guard.values_mut().find(|record| record.peer.eq_ignore_ascii_case(peer))
+        {
+            existing.alive = true;
+            existing.last_seen = now_i64();
+            existing.rx_bytes = existing.rx_bytes.saturating_add(bytes as u64);
         }
     }
 
@@ -492,64 +529,85 @@ impl RpcDaemon {
         clear_backoff: bool,
     ) -> bool {
         let peer = peer.trim();
-        if let Ok(mut guard) = self.peers.lock() {
-            if let Some(existing) = guard.values_mut().find(|record| {
-                record.peer_type.as_deref() != Some("unpeered")
-                    && record.peer.eq_ignore_ascii_case(peer)
-            }) {
-                let now = now_i64();
-                existing.alive = true;
-                existing.last_seen = now;
-                existing.incoming = existing.incoming.saturating_add(messages as u64);
-                existing.rx_bytes = existing.rx_bytes.saturating_add(bytes as u64);
-                if clear_backoff {
-                    existing.last_sync_attempt = now;
-                    existing.sync_backoff = 0;
-                    existing.next_sync_attempt = 0;
-                }
-                return true;
+        let mut guard = match self.peers.lock() {
+            Ok(guard) => guard,
+            Err(error) => {
+                log::error!(
+                    "[rpc-daemon] peers lock poisoned while recording propagation peer={peer}: {error}"
+                );
+                return false;
             }
+        };
+        if let Some(existing) = guard.values_mut().find(|record| {
+            record.peer_type.as_deref() != Some("unpeered")
+                && record.peer.eq_ignore_ascii_case(peer)
+        }) {
+            let now = now_i64();
+            existing.alive = true;
+            existing.last_seen = now;
+            existing.incoming = existing.incoming.saturating_add(messages as u64);
+            existing.rx_bytes = existing.rx_bytes.saturating_add(bytes as u64);
+            if clear_backoff {
+                existing.last_sync_attempt = now;
+                existing.sync_backoff = 0;
+                existing.next_sync_attempt = 0;
+            }
+            return true;
         }
         false
     }
 
     pub fn record_outbound_peer_activity(&self, peer: &str, bytes: usize, delivered: bool) {
         let peer = peer.trim();
-        if let Ok(mut guard) = self.peers.lock() {
-            if let Some(existing) =
-                guard.values_mut().find(|record| record.peer.eq_ignore_ascii_case(peer))
-            {
-                let now = now_i64();
-                existing.tx_bytes = existing.tx_bytes.saturating_add(bytes as u64);
-                existing.last_sync_attempt = now;
-                if !delivered {
-                    existing.sync_backoff =
-                        existing.sync_backoff.saturating_add(LXMF_PEER_SYNC_BACKOFF_STEP_SECS);
-                    existing.next_sync_attempt =
-                        now.saturating_add(i64::from(existing.sync_backoff));
-                    existing.alive = false;
-                    existing.acceptance_rate = (existing.acceptance_rate * 0.9).max(0.0);
-                } else {
-                    existing.alive = true;
-                    existing.last_seen = now;
-                    existing.sync_backoff = 0;
-                    existing.next_sync_attempt = 0;
-                    existing.acceptance_rate =
-                        ((existing.acceptance_rate * 0.8) + 0.2).clamp(0.0, 1.0);
-                }
+        let mut guard = match self.peers.lock() {
+            Ok(guard) => guard,
+            Err(error) => {
+                log::error!(
+                    "[rpc-daemon] peers lock poisoned while recording outbound peer={peer}: {error}"
+                );
+                return;
+            }
+        };
+        if let Some(existing) =
+            guard.values_mut().find(|record| record.peer.eq_ignore_ascii_case(peer))
+        {
+            let now = now_i64();
+            existing.tx_bytes = existing.tx_bytes.saturating_add(bytes as u64);
+            existing.last_sync_attempt = now;
+            if !delivered {
+                existing.sync_backoff =
+                    existing.sync_backoff.saturating_add(LXMF_PEER_SYNC_BACKOFF_STEP_SECS);
+                existing.next_sync_attempt =
+                    now.saturating_add(i64::from(existing.sync_backoff));
+                existing.alive = false;
+                existing.acceptance_rate = (existing.acceptance_rate * 0.9).max(0.0);
+            } else {
+                existing.alive = true;
+                existing.last_seen = now;
+                existing.sync_backoff = 0;
+                existing.next_sync_attempt = 0;
+                existing.acceptance_rate =
+                    ((existing.acceptance_rate * 0.8) + 0.2).clamp(0.0, 1.0);
             }
         }
     }
 
     pub fn record_outbound_peer_sent(&self, peer: &str, bytes: usize) {
         let peer = peer.trim();
-        if let Ok(mut guard) = self.peers.lock() {
-            if let Some(existing) =
-                guard.values_mut().find(|record| record.peer.eq_ignore_ascii_case(peer))
-            {
-                existing.tx_bytes = existing.tx_bytes.saturating_add(bytes as u64);
-                existing.last_sync_attempt = now_i64();
+        let mut guard = match self.peers.lock() {
+            Ok(guard) => guard,
+            Err(error) => {
+                log::error!(
+                    "[rpc-daemon] peers lock poisoned while recording sent peer={peer}: {error}"
+                );
+                return;
             }
+        };
+        if let Some(existing) =
+            guard.values_mut().find(|record| record.peer.eq_ignore_ascii_case(peer))
+        {
+            existing.tx_bytes = existing.tx_bytes.saturating_add(bytes as u64);
+            existing.last_sync_attempt = now_i64();
         }
     }
 

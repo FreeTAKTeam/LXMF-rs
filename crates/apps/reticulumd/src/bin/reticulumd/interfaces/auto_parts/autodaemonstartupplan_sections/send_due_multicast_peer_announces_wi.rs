@@ -596,14 +596,22 @@ impl AutoDaemonStartupPlan {
                         let datagram = match received {
                             Ok(datagram) => datagram,
                             Err(error) => {
-                                let _ = events
+                                if events
                                     .send(AutoDiscoveryLoopEvent::ReceiveFailed {
                                         ifname: socket.ifname.clone(),
                                         kind: socket.kind,
                                         bind_addr: socket.bind_addr,
                                         error,
                                     })
-                                    .await;
+                                    .await
+                                    .is_err()
+                                {
+                                    log::debug!(
+                                        "[daemon-auto] discovery failure receiver closed ifname={} bind_addr={}",
+                                        socket.ifname,
+                                        socket.bind_addr
+                                    );
+                                }
                                 break;
                             }
                         };

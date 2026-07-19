@@ -221,10 +221,11 @@ fn stop_driver_locked(state: &mut NodeState) -> Option<JoinHandle<()>> {
 }
 
 #[cfg(feature = "std")]
-fn join_driver(handle: Option<JoinHandle<()>>) {
+fn join_driver(handle: Option<JoinHandle<()>>) -> Result<(), NodeError> {
     if let Some(handle) = handle {
-        let _ = handle.join();
+        handle.join().map_err(|_| NodeError::InternalError)?;
     }
+    Ok(())
 }
 
 #[cfg(feature = "std")]

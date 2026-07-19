@@ -59,7 +59,7 @@ impl RpcDaemon {
             .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
         let _ = parsed.extensions.len();
         if let Some(bridge) = &self.announce_bridge {
-            let _ = bridge.announce_now();
+            bridge.announce_now()?;
         }
         let timestamp = now_millis_u64() as i64;
         let event = RpcEvent {

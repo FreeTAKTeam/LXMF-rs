@@ -36,7 +36,13 @@ impl RpcDaemon {
                                 Some("remote control bridge unavailable".to_string());
                         });
                         for peer in self.active_peer_ids() {
-                            let _ = self.record_payload_backed_peer_queue_snapshot(peer.as_str());
+                            if let Err(error) =
+                                self.record_payload_backed_peer_queue_snapshot(peer.as_str())
+                            {
+                                log::error!(
+                                    "failed to record peer queue snapshot peer={peer}: {error}"
+                                );
+                            }
                         }
                         return Err(std::io::Error::other("remote control bridge unavailable"));
                     }

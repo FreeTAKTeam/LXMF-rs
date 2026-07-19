@@ -15,6 +15,10 @@ use crate::serde::Serialize;
 
 use super::{Interface, InterfaceContext, TxMessage};
 
+#[path = "pipe_parts/process_cleanup.rs"]
+mod process_cleanup;
+use process_cleanup::terminate_pipe_child;
+
 pub struct PipeInterface {
     command: String,
     respawn_delay: Duration,
@@ -258,8 +262,7 @@ async fn run_pipe_process(
     )
     .await;
 
-    let _ = child.kill().await;
-    let _ = child.wait().await;
+    terminate_pipe_child(&mut child, command).await?;
     Ok(())
 }
 
@@ -316,13 +319,28 @@ async fn run_pipe_stream<R, W>(
                                         if let Ok(packet) =
                                             Packet::deserialize(&mut InputBuffer::new(output.as_slice()))
                                         {
-                                            let _ = rx_channel
+                                            if rx_channel
                                                 .send(RxMessage {
                                                     address: iface_address,
                                                     packet,
                                                     source: IfaceSource::None,
                                                 })
-                                                .await;
+                                                .await
+                                                .is_err()
+                                            {
+                                                log::warn!(
+                                                    "pipe receive queue closed iface={iface_address}"
+                                                );
+                                                update_pipe_status(&runtime_status, |status| {
+                                                    status.process_state = "closed".to_string();
+                                                    status.pipe_is_open = false;
+                                                    status.last_error = Some(
+                                                        "transport receive queue closed".to_string(),
+                                                    );
+                                                });
+                                                rx_stop.cancel();
+                                                return;
+                                            }
                                         }
                                     }
                                     frame_buffer.drain(..=end);
@@ -401,9 +419,23 @@ async fn run_pipe_stream<R, W>(
         })
     };
 
-    let _ = rx_task.await;
+    if let Err(error) = rx_task.await {
+        log::error!("pipe receive task failed iface={iface_address}: {error}");
+        update_pipe_status(&runtime_status, |status| {
+            status.process_state = "receive_task_failed".to_string();
+            status.pipe_is_open = false;
+            status.last_error = Some(error.to_string());
+        });
+    }
     stop.cancel();
-    let _ = tx_task.await;
+    if let Err(error) = tx_task.await {
+        log::error!("pipe transmit task failed iface={iface_address}: {error}");
+        update_pipe_status(&runtime_status, |status| {
+            status.process_state = "transmit_task_failed".to_string();
+            status.pipe_is_open = false;
+            status.last_error = Some(error.to_string());
+        });
+    }
 }
 
 fn update_pipe_status(

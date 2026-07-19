@@ -10,7 +10,7 @@ use lxmf::WireMessage;
 
 use rns_rpc::{MessageRecord, RpcDaemon, RpcRequest};
 
-use serde_json::{json, Map as JsonMap, Value as JsonValue};
+use serde_json::{Map as JsonMap, Value as JsonValue};
 
 use crate::lxmf_bridge::rmpv_to_json;
 
@@ -30,12 +30,37 @@ pub fn inbound_record_allowed_by_delivery_policy(
     daemon: &RpcDaemon,
     record: &MessageRecord,
 ) -> bool {
-    let policy = daemon
+    let response = match daemon
         .handle_rpc(RpcRequest { id: 0, method: "get_delivery_policy".to_string(), params: None })
-        .ok()
-        .and_then(|response| response.result)
-        .and_then(|value| value.get("policy").cloned())
-        .unwrap_or_else(|| json!({}));
+    {
+        Ok(response) => response,
+        Err(error) => {
+            log::error!(
+                "failed to load inbound delivery policy source={} destination={}: {error}",
+                record.source,
+                record.destination
+            );
+            return false;
+        }
+    };
+    if let Some(error) = response.error {
+        log::error!(
+            "inbound delivery policy RPC failed source={} destination={} code={} error={}",
+            record.source,
+            record.destination,
+            error.code,
+            error.message
+        );
+        return false;
+    }
+    let Some(policy) = response.result.and_then(|value| value.get("policy").cloned()) else {
+        log::error!(
+            "inbound delivery policy RPC returned no policy source={} destination={}",
+            record.source,
+            record.destination
+        );
+        return false;
+    };
     !policy.get("ignored_destinations").and_then(JsonValue::as_array).is_some_and(|entries| {
         entries
             .iter()
@@ -223,7 +248,10 @@ pub fn evaluate_inbound_stamp_policy(
     let tickets = daemon.valid_issued_tickets_for(source_hex.as_str());
     let stamp = message.payload.stamp.as_deref().map(|value| value.as_ref());
     let accepted_cost = policy.target_cost.saturating_sub(policy.flexibility);
-    if let Some(value) = validate_stamp(stamp, &message.message_id(), accepted_cost, &tickets) {
+    let message_id = message
+        .try_message_id()
+        .map_err(|error| format!("stamp validation hashing failed: {error}"))?;
+    if let Some(value) = validate_stamp(stamp, &message_id, accepted_cost, &tickets) {
         return Ok(InboundStampStatus { checked: true, valid: true, value: Some(value) });
     }
 
@@ -231,7 +259,7 @@ pub fn evaluate_inbound_stamp_policy(
         return Ok(InboundStampStatus {
             checked: true,
             valid: false,
-            value: invalid_stamp_value(stamp, &message.message_id()),
+            value: invalid_stamp_value(stamp, &message_id),
         });
     }
 

@@ -13,6 +13,8 @@ These are the first places to update when behavior changes:
 - `docs/status/reticulum-parity-matrix.md`: maintained Reticulum row-level
   parity status
 - `docs/status/lxmf-parity-matrix.md`: maintained LXMF row-level parity status
+- `docs/status/v0.9.6-hardening-audit.md`: active stabilization requirements,
+  findings, and release evidence
 - `docs/contracts/`: public contracts, compatibility policy, support policy, API
   behavior, and protocol-facing guarantees
 - `docs/interfaces/`: interface-specific configuration and usage guidance for
@@ -47,6 +49,7 @@ are kept in Git history instead of the live documentation tree.
 - `docs/status/reticulum-parity-matrix.md`: current Reticulum parity rows
 - `docs/status/lxmf-parity-matrix.md`: current LXMF parity rows
 - `docs/sdk/README.md`: starting point for SDK integrators
+- `docs/examples.md`: checked commands and Rust integration examples
 - `docs/lxmf-rs-api.md`: API surface and stability summary
 - `docs/lxmf-cli.md`: operator CLI quick reference
 - `docs/interfaces/meshtastic.md`: Meshtastic tunnel configuration and library
@@ -58,7 +61,7 @@ are kept in Git history instead of the live documentation tree.
 - `docs/runbooks/release-readiness.md`: release gate checklist
 - `docs/runbooks/logging-and-diagnostics.md`: operator logging knobs and
   contributor failure-visibility rules
-- `docs/release-notes-v0.8.0.md`: current project release notes
+- `docs/release-notes-v0.9.6.md`: current release-candidate notes
 - `docs/runbooks/reticulumd-operational-deployment.md`: daemon deployment,
   probes, shutdown, and service manager examples
 - `docs/runbooks/crates-io-publish-plan.md`: crates.io naming, versioning, and publish order

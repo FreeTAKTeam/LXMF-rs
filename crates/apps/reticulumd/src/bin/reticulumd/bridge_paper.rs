@@ -43,7 +43,7 @@ pub(super) fn encode_paper(
     )
     .map_err(std::io::Error::other)?;
     let wire = WireMessage::unpack(payload.as_slice()).map_err(std::io::Error::other)?;
-    let transient_id = hex::encode(wire.message_id());
+    let transient_id = hex::encode(wire.try_message_id().map_err(std::io::Error::other)?);
     let destination_identity = CoreIdentity::new_from_slices(
         destination_identity.public_key_bytes(),
         destination_identity.verifying_key_bytes(),
@@ -65,7 +65,7 @@ pub(super) fn decode_paper_uri(
 ) -> Result<Option<PaperDecodeOutcome>, std::io::Error> {
     let wire = WireMessage::unpack_paper_uri(uri, &bridge.signer).map_err(std::io::Error::other)?;
     let raw_lxmf_bytes = wire.pack().map_err(std::io::Error::other)?;
-    let transient_id = hex::encode(wire.message_id());
+    let transient_id = hex::encode(wire.try_message_id().map_err(std::io::Error::other)?);
     let destination_hint = hex::encode(wire.destination);
     let record = rns_rpc::MessageRecord {
         id: transient_id.clone(),

@@ -37,7 +37,7 @@ fn write_identity_file(path: &Path, key_bytes: &[u8]) -> io::Result<()> {
 
     #[cfg(windows)]
     if path.exists() {
-        let _ = fs::remove_file(path);
+        fs::remove_file(path)?;
     }
 
     fs::rename(&tmp_path, path)?;

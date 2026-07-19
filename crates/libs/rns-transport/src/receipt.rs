@@ -29,8 +29,18 @@ pub fn track_receipt_mapping(
     packet_hash: &str,
     message_id: &str,
 ) {
-    if let Ok(mut guard) = map.lock() {
-        guard.insert(packet_hash.to_string(), message_id.to_string());
+    match map.lock() {
+        Ok(mut guard) => {
+            guard.insert(packet_hash.to_string(), message_id.to_string());
+        }
+        Err(error) => {
+            log::error!(
+                "receipt mapping lock poisoned while tracking packet_hash={} message_id={}: {}",
+                packet_hash,
+                message_id,
+                error
+            );
+        }
     }
 }
 
@@ -38,8 +48,17 @@ pub fn prune_receipt_mappings_for_message(
     map: &Arc<Mutex<HashMap<String, String>>>,
     message_id: &str,
 ) {
-    if let Ok(mut guard) = map.lock() {
-        guard.retain(|_, mapped_message_id| mapped_message_id != message_id);
+    match map.lock() {
+        Ok(mut guard) => {
+            guard.retain(|_, mapped_message_id| mapped_message_id != message_id);
+        }
+        Err(error) => {
+            log::error!(
+                "receipt mapping lock poisoned while pruning message_id={}: {}",
+                message_id,
+                error
+            );
+        }
     }
 }
 

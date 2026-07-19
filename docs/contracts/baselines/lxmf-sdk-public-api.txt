@@ -1181,7 +1181,7 @@ pub lxmf_sdk::domain::PropagationRecoveryStateResult::timed_out: bool
 pub lxmf_sdk::domain::PropagationRecoveryStateResult::timestamp: core::option::Option<i64>
 pub lxmf_sdk::domain::PropagationRecoveryStateResult::total_ingested: u64
 impl lxmf_sdk::domain::PropagationRecoveryStateResult
-pub fn lxmf_sdk::domain::PropagationRecoveryStateResult::from_propagation(propagation: serde_json::value::Value) -> Self
+pub fn lxmf_sdk::domain::PropagationRecoveryStateResult::from_propagation(propagation: serde_json::value::Value) -> core::result::Result<Self, alloc::string::String>
 #[non_exhaustive] pub struct lxmf_sdk::domain::PropagationRemoteClientStats
 pub lxmf_sdk::domain::PropagationRemoteClientStats::received: core::option::Option<u64>
 pub lxmf_sdk::domain::PropagationRemoteClientStats::served: core::option::Option<u64>
@@ -3115,7 +3115,7 @@ pub lxmf_sdk::PropagationRecoveryStateResult::timed_out: bool
 pub lxmf_sdk::PropagationRecoveryStateResult::timestamp: core::option::Option<i64>
 pub lxmf_sdk::PropagationRecoveryStateResult::total_ingested: u64
 impl lxmf_sdk::domain::PropagationRecoveryStateResult
-pub fn lxmf_sdk::domain::PropagationRecoveryStateResult::from_propagation(propagation: serde_json::value::Value) -> Self
+pub fn lxmf_sdk::domain::PropagationRecoveryStateResult::from_propagation(propagation: serde_json::value::Value) -> core::result::Result<Self, alloc::string::String>
 #[non_exhaustive] pub struct lxmf_sdk::PropagationRemoteClientStats
 pub lxmf_sdk::PropagationRemoteClientStats::received: core::option::Option<u64>
 pub lxmf_sdk::PropagationRemoteClientStats::served: core::option::Option<u64>

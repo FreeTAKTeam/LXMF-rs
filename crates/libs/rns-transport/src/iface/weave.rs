@@ -789,6 +789,31 @@ fn hex_bytes(bytes: &[u8]) -> String {
     out
 }
 
+async fn flush_weave_stream<IO>(
+    stream: &mut IO,
+    options: &WeaveStreamOptions,
+    operation: &str,
+) -> bool
+where
+    IO: AsyncWrite + Unpin,
+{
+    if let Err(err) = stream.flush().await {
+        update_weave_status(&options.runtime_status, |status| {
+            status.mark_reconnecting(format!(
+                "weave {operation} flush failed iface={} device={} err={err}",
+                options.parent_iface, options.device
+            ));
+        });
+        log::warn!(
+            "Weave {operation} flush error iface={} device={} err={err}",
+            options.parent_iface,
+            options.device
+        );
+        return false;
+    }
+    true
+}
+
 pub(crate) async fn run_weave_stream<IO>(
     mut stream: IO,
     options: WeaveStreamOptions,
@@ -817,7 +842,9 @@ pub(crate) async fn run_weave_stream<IO>(
         );
         return;
     }
-    let _ = stream.flush().await;
+    if !flush_weave_stream(&mut stream, &options, "discovery").await {
+        return;
+    }
     update_weave_status(&options.runtime_status, |status| {
         status.link_state = WeaveLinkState::Discovering;
         status.bytes_tx = status.bytes_tx.saturating_add(discover.len() as u64);
@@ -927,7 +954,9 @@ pub(crate) async fn run_weave_stream<IO>(
                         );
                         break 'stream_loop;
                     }
-                    let _ = stream.flush().await;
+                    if !flush_weave_stream(&mut stream, &options, "packet").await {
+                        break 'stream_loop;
+                    }
                     update_weave_status(&options.runtime_status, |status| {
                         status.bytes_tx = status.bytes_tx.saturating_add(frame.len() as u64);
                         status.frames_tx = status.frames_tx.saturating_add(1);
@@ -950,7 +979,9 @@ pub(crate) async fn run_weave_stream<IO>(
                     );
                     break 'stream_loop;
                 }
-                let _ = stream.flush().await;
+                if !flush_weave_stream(&mut stream, &options, "management frame").await {
+                    break 'stream_loop;
+                }
                 update_weave_status(&options.runtime_status, |status| {
                     status.bytes_tx = status.bytes_tx.saturating_add(frame.len() as u64);
                     status.frames_tx = status.frames_tx.saturating_add(1);
@@ -1000,7 +1031,9 @@ where
                 let handshake = weave_wire_frame(&handshake);
                 match stream.write_all(&handshake).await {
                     Ok(()) => {
-                        let _ = stream.flush().await;
+                        if !flush_weave_stream(stream, options, "handshake").await {
+                            return false;
+                        }
                         update_weave_status(&options.runtime_status, |status| {
                             status.bytes_tx =
                                 status.bytes_tx.saturating_add(handshake.len() as u64);
@@ -1036,9 +1069,19 @@ where
                     update_weave_status(&options.runtime_status, |status| {
                         status.mark_endpoint_packet_rx(endpoint, address);
                     });
-                    let _ = rx_channel
+                    if rx_channel
                         .send(RxMessage { address, packet, source: IfaceSource::None })
-                        .await;
+                        .await
+                        .is_err()
+                    {
+                        log::warn!(
+                            "Weave receive queue closed iface={} device={} endpoint={}",
+                            options.parent_iface,
+                            options.device,
+                            hex::encode(endpoint)
+                        );
+                        return false;
+                    }
                 }
             }
         }
@@ -1237,7 +1280,12 @@ async fn gc_weave_endpoints(
     }
 
     for (_, iface) in &stale {
-        let _ = options.iface_manager.lock().await.stop_interface(*iface);
+        if !options.iface_manager.lock().await.stop_interface(*iface) {
+            log::debug!(
+                "Weave stale endpoint interface already absent parent={} iface={iface}",
+                options.parent_iface
+            );
+        }
     }
     update_weave_status(&options.runtime_status, |status| {
         for (endpoint_id, _) in &stale {
@@ -1267,7 +1315,12 @@ async fn cleanup_weave_endpoints(
     }
 
     for (_, iface) in &endpoints {
-        let _ = options.iface_manager.lock().await.stop_interface(*iface);
+        if !options.iface_manager.lock().await.stop_interface(*iface) {
+            log::debug!(
+                "Weave endpoint cleanup interface already absent parent={} iface={iface}",
+                options.parent_iface
+            );
+        }
     }
     update_weave_status(&options.runtime_status, WeaveRuntimeStatus::clear_endpoints);
 }
@@ -1283,7 +1336,7 @@ fn accept_discovery_response(
     }
     let remote_pub = &frame[SWITCH_ID_LEN + 1..SWITCH_ID_LEN + 1 + WEAVE_PUBKEY_SIZE];
     let signature = Signature::from_slice(&frame[SWITCH_ID_LEN + 1 + WEAVE_PUBKEY_SIZE..]).ok()?;
-    let remote = Identity::new_from_slices(remote_pub, remote_pub);
+    let remote = Identity::try_new_from_slices(remote_pub, remote_pub).ok()?;
     remote.verify(&local_switch_id, &signature).ok()?;
     let mut remote_switch_id = [0_u8; SWITCH_ID_LEN];
     remote_switch_id.copy_from_slice(&remote_pub[WEAVE_PUBKEY_SIZE - SWITCH_ID_LEN..]);
@@ -1407,11 +1460,24 @@ mod tests {
         read_chunks: VecDeque<Vec<u8>>,
         successful_writes: usize,
         write_attempts: usize,
+        successful_flushes: usize,
+        flush_attempts: usize,
     }
 
     impl FailingWeaveWriteStream {
         fn new(read_chunks: Vec<Vec<u8>>, successful_writes: usize) -> Self {
-            Self { read_chunks: read_chunks.into(), successful_writes, write_attempts: 0 }
+            Self {
+                read_chunks: read_chunks.into(),
+                successful_writes,
+                write_attempts: 0,
+                successful_flushes: usize::MAX,
+                flush_attempts: 0,
+            }
+        }
+
+        fn with_successful_flushes(mut self, successful_flushes: usize) -> Self {
+            self.successful_flushes = successful_flushes;
+            self
         }
     }
 
@@ -1447,13 +1513,53 @@ mod tests {
             Poll::Ready(Ok(buf.len()))
         }
 
-        fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        fn poll_flush(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            self.flush_attempts = self.flush_attempts.saturating_add(1);
+            if self.flush_attempts > self.successful_flushes {
+                return Poll::Ready(Err(io::Error::other("synthetic weave flush failure")));
+            }
             Poll::Ready(Ok(()))
         }
 
         fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
             Poll::Ready(Ok(()))
         }
+    }
+
+    #[tokio::test]
+    async fn weave_stream_discovery_flush_failure_exits_for_reconnect() {
+        let (options, _manager, _parent) = test_options().await;
+        let runtime_status = options.runtime_status.clone();
+        let stream =
+            FailingWeaveWriteStream::new(Vec::new(), usize::MAX).with_successful_flushes(0);
+        let (rx_tx, _rx_rx) = tokio::sync::mpsc::channel(4);
+        let (_tx_tx, tx_rx) = tokio::sync::mpsc::channel(4);
+
+        tokio::time::timeout(
+            Duration::from_secs(1),
+            run_weave_stream(
+                stream,
+                options,
+                CancellationToken::new(),
+                CancellationToken::new(),
+                rx_tx,
+                Arc::new(tokio::sync::Mutex::new(tx_rx)),
+                unused_weave_management_rx(),
+            ),
+        )
+        .await
+        .expect("weave stream exits after discovery flush failure");
+
+        let status = runtime_status.lock().expect("weave runtime status").clone();
+        assert_eq!(status.link_state, WeaveLinkState::Reconnecting);
+        assert!(
+            status
+                .last_error
+                .as_deref()
+                .is_some_and(|err| err.contains("synthetic weave flush failure")),
+            "unexpected last_error {:?}",
+            status.last_error
+        );
     }
 
     async fn test_options(

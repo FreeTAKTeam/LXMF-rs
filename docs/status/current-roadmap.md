@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last reassessed: 2026-07-16
+Last reassessed: 2026-07-19
 
 This file is the repository-level source of truth for parity posture, release
 confidence, and execution order. Detailed row-level status lives in:
@@ -33,6 +33,37 @@ The project is best described by capability level:
 | Operationally substitutable | software-complete | Software-controlled runtime, interface, router, utility, and SDK operations are mapped; attached hardware and public-network evidence remain bounded. |
 | Full Python software surface parity | achieved | The strict inventory reports 1,664 complete, 0 partial, and 1 provenance-backed not-applicable entry. |
 | ZeroMQ SDK-access parity | achieved in v0.9.5 implementation | Generated classification and daemon-operation inventory live in `sdk-zmq-parity.json`; release evidence must still pass all gates. |
+
+## v0.9.6 Stabilization
+
+v0.9.6 is a patch-level hardening release over the v0.9.5 software-parity
+baseline. Its scope is correctness, observable failure handling, documentation
+accuracy, and release evidence rather than a new parity claim.
+
+Current candidate work includes link-context fan-out through each link's bound
+interface, packet-cache-correlated single-destination delivery proofs, real-link
+plain-resource routing evidence, and identified-peer propagation behavior.
+Fan-out now has additive reporting APIs that distinguish no matching link,
+complete delivery to interface queues, and partial packet-build or dispatch
+failure. Core and transport `RnsError` values implement the standard Rust error
+traits. Packet-ingress workers now stop when their transport receive queue
+closes, and the issue-369 scanner rejects ignored channel sends in single-line
+and multiline forms as well as mutex-poison branches that discard failure.
+Identity and address-hash parsing now rejects malformed or overlong key
+material without panic/default substitution, LXMF message-ID encoding has a
+fallible path used by protocol/runtime code, policy lookups fail closed, and
+database migrations plus persisted JSON reads preserve their actual errors.
+
+Release readiness remains **in progress**, but the complete local
+`cargo xtask release-check` gate passed on the 2026-07-19 hardening working
+tree, including workspace, architecture, boundary, interoperability-artifact,
+API-drift, supply-chain, simulator, reproducibility, and embedded-footprint
+checks. Workspace and project metadata are aligned to `0.9.6`; the candidate is
+not ready to tag until the reviewed tree becomes an exact commit and hosted CI
+passes on that SHA.
+Release-candidate notes live in `docs/release-notes-v0.9.6.md`; practical setup
+and error-handling examples live in `docs/examples.md`. The requirement and
+evidence ledger is `docs/status/v0.9.6-hardening-audit.md`.
 
 The 2026-07-10 integration pass reconciled the outstanding parity branches as
 one compatible Rust surface. Reticulum configuration now keeps
@@ -1423,20 +1454,19 @@ Scoped release evidence is split as follows:
 
 ## Remaining Release Blockers
 
-There are no remaining software-manifest blockers. Promotion is now gated by
-the reproducible build, package, API, security, simulator, pinned-Python, and
-release checks. Physical radio/BLE/serial devices, public I2P, public networks,
-and Sideband/MeshChatX/Columba claims remain separate optional evidence tracks
-and do not block v0.9.0.
+There are no remaining software-manifest blockers. The local reproducible
+build, package, API, security, simulator, and release gates pass on the current
+`0.9.6` working tree. Promotion is gated by an exact reviewed commit and hosted
+CI, including pinned-Python interop. Physical radio/BLE/serial devices, public
+I2P, public networks, and Sideband/MeshChatX/Columba claims remain separate
+optional evidence tracks and do not block v0.9.6.
 
 ## Active Execution Order
 
-1. Run formatting, all-feature Clippy, workspace tests, boundaries,
-   architecture, module-size, security, API, interop, and reproducible-build
-   gates.
-2. Align every public crate and binary to `0.9.0` and prepare release notes.
-3. Publish `v0.9.0-rc.1` from the exact passing SHA with simulation artifacts.
-4. Promote that exact SHA to `v0.9.0`, publish packages and platform bundles,
+1. Review and commit the complete `0.9.6` candidate without unrelated changes.
+2. Run hosted CI and pinned-Python interop on the exact candidate SHA.
+3. Publish `v0.9.6-rc.1` from that SHA with simulation artifacts.
+4. Promote that exact SHA to `v0.9.6`, publish packages and platform bundles,
    and verify remote tags, registries, checksums, and support wording.
 
 ## Verification Baseline

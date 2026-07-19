@@ -70,7 +70,12 @@ impl NativeVrn76KissBleInterface {
                     err
                 );
                 let mut backend = runtime.into_backend();
-                let _ = backend.cleanup().await;
+                if let Err(cleanup_error) = backend.cleanup().await {
+                    log::warn!(
+                        "VR-N76 BLE cleanup failed after setup error iface={} error={cleanup_error:?}",
+                        label
+                    );
+                }
                 sleep(active_backoff).await;
                 active_backoff = bounded_backoff_next(active_backoff, max_reconnect_backoff);
                 continue;
@@ -154,13 +159,20 @@ impl NativeVrn76KissBleInterface {
                     Ok(Ok(Some(payload))) => {
                         runtime_status.update(runtime.status());
                         if let Ok(packet) = Packet::deserialize(&mut InputBuffer::new(&payload)) {
-                            let _ = rx_channel
+                            if rx_channel
                                 .send(RxMessage {
                                     address: iface_address,
                                     packet,
                                     source: IfaceSource::None,
                                 })
-                                .await;
+                                .await
+                                .is_err()
+                            {
+                                log::warn!(
+                                    "VR-N76 transport receive queue closed iface={label}"
+                                );
+                                iface_stop.cancel();
+                            }
                         }
                     }
                     Ok(Ok(None)) | Err(_) => {
@@ -176,7 +188,9 @@ impl NativeVrn76KissBleInterface {
             }
 
             let mut backend = runtime.into_backend();
-            let _ = backend.cleanup().await;
+            if let Err(error) = backend.cleanup().await {
+                log::warn!("VR-N76 BLE cleanup failed iface={} error={error:?}", label);
+            }
             runtime_status.update(Vrn76KissBleStatus::default());
             if context.cancel.is_cancelled() || iface_stop.is_cancelled() {
                 break;

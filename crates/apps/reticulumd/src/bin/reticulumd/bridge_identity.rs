@@ -46,13 +46,25 @@ pub(super) fn cached_identity_for_destination(
     let mut candidates = Vec::new();
     push_unique_identity(&mut candidates, peer_identity);
     push_unique_identity(&mut candidates, propagation_node_identity);
-    if let Ok(peers) = peer_crypto.lock() {
-        peers.values().for_each(|info| push_unique_identity(&mut candidates, Some(info.identity)));
+    match peer_crypto.lock() {
+        Ok(peers) => {
+            peers
+                .values()
+                .for_each(|info| push_unique_identity(&mut candidates, Some(info.identity)));
+        }
+        Err(error) => {
+            log::error!("[daemon] peer identity cache lock poisoned: {error}");
+        }
     }
-    if let Ok(identities) = outbound_propagation_identities.lock() {
-        identities
-            .values()
-            .for_each(|identity| push_unique_identity(&mut candidates, Some(*identity)));
+    match outbound_propagation_identities.lock() {
+        Ok(identities) => {
+            identities
+                .values()
+                .for_each(|identity| push_unique_identity(&mut candidates, Some(*identity)));
+        }
+        Err(error) => {
+            log::error!("[daemon] propagation identity cache lock poisoned: {error}");
+        }
     }
     const DESTINATION_NAMES: [(&str, &str); 4] = [
         ("lxmf", "delivery"),
@@ -75,21 +87,39 @@ pub(super) fn persisted_identity_for_destination(
     destination_hash: AddressHash,
 ) -> Option<Identity> {
     let destination_hex = hex::encode(destination_hash.as_slice());
-    let (public_key_hex, verifying_key_hex) =
-        daemon.announce_identity_keys(destination_hex.as_str()).ok().flatten()?;
-    let identity = identity_from_key_hex(public_key_hex.as_str(), verifying_key_hex.as_str())?;
+    let (public_key_hex, verifying_key_hex) = match daemon
+        .announce_identity_keys(destination_hex.as_str())
+    {
+        Ok(keys) => keys?,
+        Err(error) => {
+            log::error!(
+                "[daemon] failed to read persisted announce identity destination={destination_hex}: {error}"
+            );
+            return None;
+        }
+    };
+    let identity = match identity_from_key_hex(public_key_hex.as_str(), verifying_key_hex.as_str())
+    {
+        Ok(identity) => identity,
+        Err(error) => {
+            log::error!(
+                "[daemon] persisted announce identity is malformed destination={destination_hex}: {error}"
+            );
+            return None;
+        }
+    };
     identity_matches_destination(identity, destination_hash).then_some(identity)
 }
 
-fn identity_from_key_hex(public_key_hex: &str, verifying_key_hex: &str) -> Option<Identity> {
-    let public_key = hex::decode(public_key_hex).ok()?;
-    let verifying_key = hex::decode(verifying_key_hex).ok()?;
-    if public_key.len() != rns_transport::identity::PUBLIC_KEY_LENGTH
-        || verifying_key.len() != rns_transport::identity::PUBLIC_KEY_LENGTH
-    {
-        return None;
-    }
-    Some(Identity::new_from_slices(public_key.as_slice(), verifying_key.as_slice()))
+fn identity_from_key_hex(
+    public_key_hex: &str,
+    verifying_key_hex: &str,
+) -> Result<Identity, &'static str> {
+    let public_key = hex::decode(public_key_hex).map_err(|_| "public key is not valid hex")?;
+    let verifying_key =
+        hex::decode(verifying_key_hex).map_err(|_| "verifying key is not valid hex")?;
+    Identity::try_new_from_slices(public_key.as_slice(), verifying_key.as_slice())
+        .map_err(|_| "public or verifying key is invalid")
 }
 
 fn identity_matches_destination(identity: Identity, destination_hash: AddressHash) -> bool {
@@ -167,5 +197,12 @@ mod tests {
             .expect("record announce identity");
 
         assert!(persisted_identity_for_destination(&daemon, wrong_hash).is_none());
+    }
+
+    #[test]
+    fn persisted_identity_key_decoder_rejects_malformed_material() {
+        assert!(identity_from_key_hex("not-hex", &"00".repeat(32)).is_err());
+        assert!(identity_from_key_hex(&"00".repeat(31), &"00".repeat(32)).is_err());
+        assert!(identity_from_key_hex(&"00".repeat(32), &"00".repeat(31)).is_err());
     }
 }

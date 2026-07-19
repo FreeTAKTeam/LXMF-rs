@@ -60,7 +60,11 @@ impl OutboundBridge for BlockingOutboundBridge {
         record: &MessageRecord,
         _options: &OutboundDeliveryOptions,
     ) -> Result<(), std::io::Error> {
-        let _ = self.started_tx.lock().expect("started mutex").send(record.id.clone());
+        self.started_tx
+            .lock()
+            .expect("started mutex")
+            .send(record.id.clone())
+            .expect("outbound start observer remains connected");
         let _ =
             self.release_rx.lock().expect("release mutex").recv_timeout(StdDuration::from_secs(2));
         Ok(())
@@ -85,7 +89,7 @@ impl OutboundBridge for SlowOutboundBridge {
     ) -> Result<(), std::io::Error> {
         if !self.blocked_once.swap(true, StdOrdering::SeqCst) {
             if let Some(started_tx) = self.started_tx.lock().expect("started mutex").take() {
-                let _ = started_tx.send(());
+                started_tx.send(()).expect("slow bridge observer remains connected");
             }
             let _ = self
                 .release_rx

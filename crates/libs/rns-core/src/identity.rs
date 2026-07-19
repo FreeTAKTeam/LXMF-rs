@@ -69,23 +69,24 @@ impl Identity {
     }
 
     pub fn new_from_slices(public_key: &[u8], verifying_key: &[u8]) -> Self {
-        let public_key = {
-            let mut key_data = [0u8; PUBLIC_KEY_LENGTH];
-            key_data.copy_from_slice(public_key);
-            PublicKey::from(key_data)
-        };
+        Self::try_new_from_slices(public_key, verifying_key)
+            .expect("identity key slices must be exactly 32 bytes with a valid verifying key")
+    }
 
-        let verifying_key = {
-            let mut key_data = [0u8; PUBLIC_KEY_LENGTH];
-            key_data.copy_from_slice(verifying_key);
-            VerifyingKey::from_bytes(&key_data).unwrap_or_default()
-        };
+    pub fn try_new_from_slices(public_key: &[u8], verifying_key: &[u8]) -> Result<Self, RnsError> {
+        let public_key: &[u8; PUBLIC_KEY_LENGTH] =
+            public_key.try_into().map_err(|_| RnsError::InvalidArgument)?;
+        let verifying_key: &[u8; PUBLIC_KEY_LENGTH] =
+            verifying_key.try_into().map_err(|_| RnsError::InvalidArgument)?;
+        let public_key = PublicKey::from(*public_key);
+        let verifying_key =
+            VerifyingKey::from_bytes(verifying_key).map_err(|_| RnsError::InvalidArgument)?;
 
-        Self::new(public_key, verifying_key)
+        Ok(Self::new(public_key, verifying_key))
     }
 
     pub fn new_from_hex_string(hex_string: &str) -> Result<Self, RnsError> {
-        if hex_string.len() < PUBLIC_KEY_LENGTH * 2 * 2 {
+        if hex_string.len() != PUBLIC_KEY_LENGTH * 2 * 2 {
             return Err(RnsError::IncorrectHash);
         }
 
@@ -102,7 +103,7 @@ impl Identity {
             .map_err(|_| RnsError::IncorrectHash)?;
         }
 
-        Ok(Self::new_from_slices(&public_key_bytes[..], &verifying_key_bytes[..]))
+        Self::try_new_from_slices(&public_key_bytes[..], &verifying_key_bytes[..])
     }
 
     pub fn to_hex_string(&self) -> String {
@@ -256,7 +257,7 @@ impl PrivateIdentity {
     }
 
     pub fn new_from_hex_string(hex_string: &str) -> Result<Self, RnsError> {
-        if hex_string.len() < PUBLIC_KEY_LENGTH * 2 * 2 {
+        if hex_string.len() != PUBLIC_KEY_LENGTH * 2 * 2 {
             return Err(RnsError::IncorrectHash);
         }
 
@@ -477,21 +478,4 @@ impl DerivedKey {
 }
 
 #[cfg(test)]
-mod tests {
-    use rand_core::OsRng;
-
-    use super::PrivateIdentity;
-
-    #[test]
-    fn private_identity_hex_string() {
-        let original_id = PrivateIdentity::new_from_rand(OsRng);
-        let original_hex = original_id.to_hex_string();
-
-        let actual_id =
-            PrivateIdentity::new_from_hex_string(&original_hex).expect("valid identity");
-
-        assert_eq!(actual_id.private_key.as_bytes(), original_id.private_key.as_bytes());
-
-        assert_eq!(actual_id.sign_key.as_bytes(), original_id.sign_key.as_bytes());
-    }
-}
+mod tests;

@@ -68,14 +68,21 @@ impl RpcDaemon {
         let Some(existing_peer_key) = existing_peer_key else {
             return;
         };
-        if self
-            .store
-            .peer_completed_propagation_mark_exists(
-                existing_peer_key.as_str(),
-                transient_id.as_str(),
-            )
-            .unwrap_or(false)
-        {
+        let completed = match self.store.peer_completed_propagation_mark_exists(
+            existing_peer_key.as_str(),
+            transient_id.as_str(),
+        ) {
+            Ok(completed) => completed,
+            Err(error) => {
+                log::error!(
+                    "failed to query completed propagation mark peer={} transient_id={}: {error}",
+                    existing_peer_key,
+                    transient_id
+                );
+                false
+            }
+        };
+        if completed {
             self.record_peer_queue_handled_id(existing_peer_key.as_str(), transient_id.as_str());
             return;
         }
@@ -358,7 +365,9 @@ impl RpcDaemon {
             weave_display_control_bridge: Mutex::new(None),
             started_at: std::time::Instant::now(),
         };
-        let _ = daemon.restore_sdk_domain_snapshot();
+        if let Err(error) = daemon.restore_sdk_domain_snapshot() {
+            log::error!("failed to restore persisted SDK domain snapshot: {error}");
+        }
         daemon
     }
 

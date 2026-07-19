@@ -195,7 +195,7 @@ impl RpcDaemon {
             let already_received = self
                 .store
                 .peer_received_propagation_mark_exists(source_peer_key, transient_id.as_str())
-                .unwrap_or(false);
+                .map_err(std::io::Error::other)?;
             if !already_received {
                 source_received_count = source_received_count.saturating_add(1);
                 source_received_bytes = source_received_bytes.saturating_add(
@@ -250,7 +250,7 @@ impl RpcDaemon {
             let already_received = self
                 .store
                 .peer_received_propagation_mark_exists(source_peer_key, transient_id.as_str())
-                .unwrap_or(false);
+                .map_err(std::io::Error::other)?;
             if !already_received {
                 source_received_count = source_received_count.saturating_add(1);
                 source_received_bytes = source_received_bytes.saturating_add(

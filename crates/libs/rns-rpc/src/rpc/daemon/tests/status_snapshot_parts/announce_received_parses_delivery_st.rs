@@ -163,7 +163,9 @@ fn announce_received_wakes_pending_direct_and_opportunistic_outbound() {
             record: &MessageRecord,
             options: &OutboundDeliveryOptions,
         ) -> Result<(), std::io::Error> {
-            let _ = self.tx.send((record.id.clone(), options.method.clone()));
+            self.tx
+                .send((record.id.clone(), options.method.clone()))
+                .expect("outbound observer remains connected");
             Ok(())
         }
     }
@@ -323,7 +325,9 @@ fn selected_propagation_announce_wakes_pending_propagated_outbound() {
             record: &MessageRecord,
             options: &OutboundDeliveryOptions,
         ) -> Result<(), std::io::Error> {
-            let _ = self.tx.send((record.id.clone(), options.method.clone()));
+            self.tx
+                .send((record.id.clone(), options.method.clone()))
+                .expect("outbound observer remains connected");
             Ok(())
         }
     }
@@ -479,7 +483,7 @@ fn announce_received_does_not_wake_cancelled_deferred_outbound() {
             record: &MessageRecord,
             _options: &OutboundDeliveryOptions,
         ) -> Result<(), std::io::Error> {
-            let _ = self.tx.send(record.id.clone());
+            self.tx.send(record.id.clone()).expect("outbound observer remains connected");
             Ok(())
         }
     }

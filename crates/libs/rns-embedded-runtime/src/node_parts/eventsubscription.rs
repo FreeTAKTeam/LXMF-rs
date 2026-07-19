@@ -48,7 +48,7 @@ impl EmbeddedNode {
         })?;
         self.notify_waiters();
         #[cfg(feature = "std")]
-        self.start_driver(next_epoch);
+        self.start_driver(next_epoch)?;
         #[cfg(not(feature = "std"))]
         let _ = next_epoch;
         Ok(())
@@ -95,7 +95,7 @@ impl EmbeddedNode {
         self.notify_waiters();
 
         #[cfg(feature = "std")]
-        join_driver(handle);
+        join_driver(handle)?;
 
         Ok(())
     }
@@ -281,12 +281,13 @@ impl EmbeddedNode {
     }
 
     #[cfg(feature = "std")]
-    fn start_driver(&self, epoch: u64) {
+    fn start_driver(&self, epoch: u64) -> Result<(), NodeError> {
         let start_instant = Instant::now();
-        if let Ok(mut state) = self.inner.state.lock() {
+        self.with_state(|state| {
             state.driver =
                 Some(DriverState { epoch, stop_requested: false, start_instant, handle: None });
-        }
+            Ok(())
+        })?;
 
         let inner = Arc::clone(&self.inner);
         let handle = thread::spawn(move || loop {
@@ -297,16 +298,23 @@ impl EmbeddedNode {
             thread::sleep(DRIVER_TICK_SLEEP);
         });
 
-        if let Ok(mut state) = self.inner.state.lock() {
-            if let Some(driver) = state.driver.as_mut() {
-                if driver.epoch == epoch {
-                    driver.handle = Some(handle);
-                    return;
-                }
+        let mut state = match self.inner.state.lock() {
+            Ok(state) => state,
+            Err(_) => {
+                handle.join().map_err(|_| NodeError::InternalError)?;
+                return Err(NodeError::InternalError);
+            }
+        };
+        if let Some(driver) = state.driver.as_mut() {
+            if driver.epoch == epoch {
+                driver.handle = Some(handle);
+                return Ok(());
             }
         }
+        drop(state);
 
-        let _ = handle.join();
+        handle.join().map_err(|_| NodeError::InternalError)?;
+        Ok(())
     }
 
     #[cfg(feature = "std")]

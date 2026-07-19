@@ -54,15 +54,18 @@ Response object:
 - `result: object | array | scalar | null`
 - `error: { code: string, message: string } | null`
 
-## Experimental ZeroMQ pipeline transport
+## ZeroMQ pipeline transport
 
-Status: opt-in, feature-gated, not the default SDK transport.
+Status: supported and feature-gated. The listener is explicitly enabled with
+`--zmq-rpc-endpoint`; the canonical mode is a single ROUTER/DEALER endpoint.
+The local Unix RPC socket remains the daemon's zero-configuration endpoint.
 
 Crate/API pin:
 
 - Rust crate: `zeromq = 0.6.0`
 - Enabled crate features: `tokio-runtime`, `tcp-transport`
-- Initial socket pattern: paired `PUSH`/`PULL` sockets
+- Canonical socket pattern: single-endpoint `ROUTER`/`DEALER`
+- Compatibility socket pattern: paired `PUSH`/`PULL` command/response sockets
 - IPC transport is deferred for the first cross-platform pass.
 
 Envelope:

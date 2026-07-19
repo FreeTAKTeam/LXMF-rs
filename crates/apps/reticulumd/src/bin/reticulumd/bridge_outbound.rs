@@ -105,8 +105,15 @@ impl OutboundBridge for TransportBridge {
                     if let Some(identity) =
                         identity_resolver::persisted_identity_for_destination(daemon.as_ref(), hash)
                     {
-                        if let Ok(mut guard) = self.outbound_propagation_identities.lock() {
-                            guard.insert(node_hex.to_string(), identity);
+                        match self.outbound_propagation_identities.lock() {
+                            Ok(mut guard) => {
+                                guard.insert(node_hex.to_string(), identity);
+                            }
+                            Err(error) => {
+                                log::error!(
+                                    "[daemon] propagation identity cache lock poisoned for node={node_hex}: {error}"
+                                );
+                            }
                         }
                         return Some(identity);
                     }
@@ -124,8 +131,15 @@ impl OutboundBridge for TransportBridge {
                             return None;
                         }
                     };
-                    if let Ok(mut guard) = self.outbound_propagation_identities.lock() {
-                        guard.insert(node_hex.to_string(), identity);
+                    match self.outbound_propagation_identities.lock() {
+                        Ok(mut guard) => {
+                            guard.insert(node_hex.to_string(), identity);
+                        }
+                        Err(error) => {
+                            log::error!(
+                                "[daemon] propagation identity cache lock poisoned for node={node_hex}: {error}"
+                            );
+                        }
                     }
                     Some(identity)
                 })

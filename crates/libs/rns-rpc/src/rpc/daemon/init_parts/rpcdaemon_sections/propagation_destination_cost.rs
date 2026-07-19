@@ -37,8 +37,17 @@ impl RpcDaemon {
                 log::warn!("[rpc-daemon] failed to read peer cost cache for {peer}: {err}");
                 None
             }
-        }
-        .or_else(|| self.store.latest_announce_stamp_cost_for(peer.as_str()).ok().flatten());
+        };
+        let cost = match cost {
+            Some(cost) => Some(cost),
+            None => match self.store.latest_announce_stamp_cost_for(peer.as_str()) {
+                Ok(cost) => cost,
+                Err(error) => {
+                    log::error!("failed to read propagation stamp cost peer={peer}: {error}");
+                    None
+                }
+            },
+        };
         let source = if cost.is_some() { "cached_announce" } else { "unavailable" };
         (Some(peer), cost, source)
     }

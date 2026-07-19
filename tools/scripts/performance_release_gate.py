@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Apply v0.9.5 release performance budgets to same-runner datasets."""
+"""Apply release performance budgets to same-runner datasets."""
 
 from __future__ import annotations
 

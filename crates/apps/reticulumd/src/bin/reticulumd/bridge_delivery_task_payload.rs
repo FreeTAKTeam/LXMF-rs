@@ -27,20 +27,24 @@ impl DeliveryTask {
             match &result {
                 Ok(_) => self.record_stamp_work_metadata("ready", work),
                 Err(err) => {
-                    if Self::is_cancelled_status(
-                        self.daemon
-                            .message_receipt_status(&self.message_id)
-                            .ok()
-                            .flatten()
-                            .as_deref(),
-                    ) {
+                    let cancelled = match self.daemon.message_receipt_status(&self.message_id) {
+                        Ok(status) => Self::is_cancelled_status(status.as_deref()),
+                        Err(status_err) => {
+                            log::warn!(
+                                "[daemon] failed to read receipt status after payload build error message={} err={status_err}",
+                                self.message_id
+                            );
+                            false
+                        }
+                    };
+                    if cancelled {
                         self.record_stamp_work_metadata("cancelled", work);
                     } else {
                         self.record_stamp_work_metadata("failed", work);
-                        let _ = self.daemon.record_message_lxmf_metadata(
-                            &self.message_id,
+                        self.record_lxmf_metadata(
                             "stamp_error",
                             JsonValue::String(err.to_string()),
+                            "stamp_error",
                         );
                     }
                 }
@@ -64,11 +68,10 @@ impl DeliveryTask {
             let mut entries = self.stamp_work_entries("queued", work);
             entries.push(("stamp_attempts".to_string(), JsonValue::Number(0.into())));
             entries.push(("progress".to_string(), JsonValue::Number(0.into())));
-            let _ = self.daemon.record_message_lxmf_metadata_entries(&self.message_id, entries);
+            self.record_lxmf_metadata_entries(entries, "normal_stamp_queued");
         }
         if self.requested_method == RequestedDeliveryMethod::Propagated {
-            let _ = self.daemon.record_message_lxmf_metadata_entries(
-                &self.message_id,
+            self.record_lxmf_metadata_entries(
                 [
                     (
                         "propagation_stamp_state".to_string(),
@@ -78,6 +81,7 @@ impl DeliveryTask {
                     ("progress".to_string(), JsonValue::Number(0.into())),
                     ("propagation_stamp_error".to_string(), JsonValue::Null),
                 ],
+                "propagation_stamp_queued",
             );
         }
     }
@@ -90,7 +94,7 @@ impl DeliveryTask {
                 JsonValue::Number(serde_json::Number::from(attempt)),
             ));
             entries.push(("progress".to_string(), JsonValue::Number(0.into())));
-            let _ = self.daemon.record_message_lxmf_metadata_entries(&self.message_id, entries);
+            self.record_lxmf_metadata_entries(entries, "normal_stamp_attempt");
         }
     }
 
@@ -107,7 +111,7 @@ impl DeliveryTask {
                 JsonValue::Number(serde_json::Number::from(now_secs_i64() + 1)),
             ));
             entries.push(("progress".to_string(), JsonValue::Number(0.into())));
-            let _ = self.daemon.record_message_lxmf_metadata_entries(&self.message_id, entries);
+            self.record_lxmf_metadata_entries(entries, "normal_stamp_retry");
         }
     }
 
@@ -119,7 +123,7 @@ impl DeliveryTask {
                 JsonValue::Number(serde_json::Number::from(attempt)),
             ));
             entries.push(("stamp_error".to_string(), JsonValue::String(error)));
-            let _ = self.daemon.record_message_lxmf_metadata_entries(&self.message_id, entries);
+            self.record_lxmf_metadata_entries(entries, "normal_stamp_failed");
         }
     }
 
@@ -127,11 +131,10 @@ impl DeliveryTask {
         if let Some(work) = self.normal_stamp_work() {
             let mut entries = self.stamp_work_entries("cancelled", work);
             entries.push(("stamp_error".to_string(), JsonValue::Null));
-            let _ = self.daemon.record_message_lxmf_metadata_entries(&self.message_id, entries);
+            self.record_lxmf_metadata_entries(entries, "normal_stamp_cancelled");
         }
         if self.requested_method == RequestedDeliveryMethod::Propagated {
-            let _ = self.daemon.record_message_lxmf_metadata_entries(
-                &self.message_id,
+            self.record_lxmf_metadata_entries(
                 [
                     (
                         "propagation_stamp_state".to_string(),
@@ -139,6 +142,7 @@ impl DeliveryTask {
                     ),
                     ("propagation_stamp_error".to_string(), JsonValue::Null),
                 ],
+                "propagation_stamp_cancelled",
             );
         }
     }
@@ -160,7 +164,31 @@ impl DeliveryTask {
 
     fn record_stamp_work_metadata(&self, state: &str, work: StampWorkMetadata<'_>) {
         let entries = self.stamp_work_entries(state, work);
-        let _ = self.daemon.record_message_lxmf_metadata_entries(&self.message_id, entries);
+        self.record_lxmf_metadata_entries(entries, "normal_stamp_state");
+    }
+
+    fn record_lxmf_metadata(&self, key: &str, value: JsonValue, context: &str) {
+        if let Err(err) = self.daemon.record_message_lxmf_metadata(&self.message_id, key, value) {
+            log::warn!(
+                "[daemon] failed to record delivery metadata message={} context={context} err={err}",
+                self.message_id
+            );
+        }
+    }
+
+    pub(super) fn record_lxmf_metadata_entries(
+        &self,
+        entries: impl IntoIterator<Item = (String, JsonValue)>,
+        context: &str,
+    ) {
+        if let Err(err) =
+            self.daemon.record_message_lxmf_metadata_entries(&self.message_id, entries)
+        {
+            log::warn!(
+                "[daemon] failed to record delivery metadata message={} context={context} err={err}",
+                self.message_id
+            );
+        }
     }
 
     fn stamp_work_entries(

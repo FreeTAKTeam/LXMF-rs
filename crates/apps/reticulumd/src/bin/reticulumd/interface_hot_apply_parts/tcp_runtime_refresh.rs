@@ -23,13 +23,15 @@ pub(crate) fn attach_hot_apply_tcp_listener_runtime_status(
     let Some(daemon) = daemon.and_then(Weak::upgrade) else {
         return;
     };
-    let _ = daemon.update_interface_runtime_metadata_by_record(
+    if !daemon.update_interface_runtime_metadata_by_record(
         record,
         runtime_iface.to_string().as_str(),
         "tcp",
         "listener_status",
         status.to_json(),
-    );
+    ) {
+        log::debug!("[daemon] tcp runtime refresh target disappeared iface={runtime_iface}");
+    }
 }
 
 pub(crate) fn spawn_hot_apply_tcp_listener_runtime_status_refresher(

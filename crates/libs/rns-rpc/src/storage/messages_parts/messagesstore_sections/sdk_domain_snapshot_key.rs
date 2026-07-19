@@ -76,130 +76,6 @@ impl MessagesStore {
         Ok(())
     }
 
-    fn spawn_outbound_write_worker(
-        write_state: Arc<WriteState>,
-        rx: mpsc::Receiver<OutboundWriteCommand>,
-    ) {
-        std::thread::Builder::new()
-            .name("messages-outbound-writer".to_string())
-            .spawn(move || {
-                while let Ok(command) = rx.recv() {
-                    match command {
-                        OutboundWriteCommand::InsertMessage { record, reply } => {
-                            let _ = reply
-                                .send(Self::insert_message_direct(write_state.as_ref(), &record));
-                        }
-                        OutboundWriteCommand::ResolveReceiptStatus {
-                            message_id,
-                            candidate_status,
-                            reply,
-                        } => {
-                            let _ = reply.send(Self::resolve_receipt_status_direct(
-                                write_state.as_ref(),
-                                message_id.as_str(),
-                                candidate_status.as_str(),
-                            ));
-                        }
-                        OutboundWriteCommand::PruneMessagesToLimitBytes { limit_bytes, reply } => {
-                            let result = Self::prune_messages_to_limit_bytes_direct(
-                                write_state.as_ref(),
-                                limit_bytes,
-                            );
-                            if let Some(reply) = reply {
-                                let _ = reply.send(result);
-                            }
-                        }
-                        OutboundWriteCommand::UpdateReceiptStatus { message_id, status, reply } => {
-                            let _ = reply.send(Self::update_receipt_status_direct(
-                                write_state.as_ref(),
-                                message_id.as_str(),
-                                status.as_str(),
-                            ));
-                        }
-                        OutboundWriteCommand::UpdateMessageFields {
-                            message_id,
-                            fields_json,
-                            reply,
-                        } => {
-                            let _ = reply.send(Self::update_message_fields_direct(
-                                write_state.as_ref(),
-                                message_id.as_str(),
-                                fields_json.as_deref(),
-                            ));
-                        }
-                        OutboundWriteCommand::UpsertAnnounceIdentity {
-                            peer,
-                            public_key_hex,
-                            verifying_key_hex,
-                            updated_at,
-                            reply,
-                        } => {
-                            let _ = reply.send(Self::upsert_announce_identity_direct(
-                                write_state.as_ref(),
-                                peer.as_str(),
-                                public_key_hex.as_str(),
-                                verifying_key_hex.as_str(),
-                                updated_at,
-                            ));
-                        }
-                        OutboundWriteCommand::InsertAnnounce { record, reply } => {
-                            let _ = reply
-                                .send(Self::insert_announce_direct(write_state.as_ref(), &record));
-                        }
-                        OutboundWriteCommand::UpsertTicket {
-                            destination,
-                            ticket,
-                            expires_at,
-                            reply,
-                        } => {
-                            let _ = reply.send(Self::upsert_ticket_direct(
-                                write_state.as_ref(),
-                                destination.as_str(),
-                                ticket.as_str(),
-                                expires_at,
-                            ));
-                        }
-                        OutboundWriteCommand::PruneExpiredTickets {
-                            now,
-                            inbound_grace_secs,
-                            reply,
-                        } => {
-                            let _ = reply.send(Self::prune_expired_tickets_direct(
-                                write_state.as_ref(),
-                                now,
-                                inbound_grace_secs,
-                            ));
-                        }
-                        OutboundWriteCommand::UpsertOutboundTicket {
-                            destination,
-                            ticket,
-                            expires_at,
-                            reply,
-                        } => {
-                            let _ = reply.send(Self::upsert_outbound_ticket_direct(
-                                write_state.as_ref(),
-                                destination.as_str(),
-                                ticket.as_str(),
-                                expires_at,
-                            ));
-                        }
-                        OutboundWriteCommand::UpsertTicketLastDelivery {
-                            destination,
-                            delivered_at,
-                            reply,
-                        } => {
-                            let _ = reply.send(Self::upsert_ticket_last_delivery_direct(
-                                write_state.as_ref(),
-                                destination.as_str(),
-                                delivered_at,
-                            ));
-                        }
-                    }
-                }
-            })
-            .expect("spawn messages outbound writer");
-    }
-
     fn with_write_conn<T>(
         &self,
         f: impl FnOnce(&Connection) -> rusqlite::Result<T>,
@@ -256,8 +132,7 @@ impl MessagesStore {
         write_state: &WriteState,
         record: &MessageRecord,
     ) -> rusqlite::Result<()> {
-        let fields_json =
-            record.fields.as_ref().map(|value| serde_json::to_string(value).unwrap_or_default());
+        let fields_json = record.fields.as_ref().map(serialize_json_for_sql).transpose()?;
         Self::write_lock_and_run(write_state, |conn| {
             let inserted = conn.execute(
                 "INSERT INTO messages (id, source, destination, title, content, timestamp, direction, fields, receipt_status)
@@ -366,7 +241,7 @@ impl MessagesStore {
         write_state: &WriteState,
         record: &AnnounceRecord,
     ) -> rusqlite::Result<()> {
-        let capabilities_json = serde_json::to_string(&record.capabilities).unwrap_or_default();
+        let capabilities_json = serialize_json_for_sql(&record.capabilities)?;
         Self::write_lock_and_run(write_state, |conn| {
             conn.execute(
                 "INSERT OR REPLACE INTO announces (id, peer, timestamp, name, name_source, first_seen, seen_count, app_data_hex, capabilities, rssi, snr, q, stamp_cost, stamp_cost_flexibility, peering_cost) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",

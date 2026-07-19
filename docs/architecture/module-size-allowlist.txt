@@ -22,7 +22,6 @@ crates/apps/reticulumd/src/config_parts/interfaceconfig_sections/validate_lora.r
 crates/apps/reticulumd/tests/config_parts/module_prelude.rs
 crates/apps/rns-tools/src/bin/shared/rnstatus.rs
 crates/libs/rns-rpc/src/rpc/daemon/dispatch_legacy_messages_parts/localunpeercleanup.rs
-crates/libs/rns-rpc/src/rpc/daemon/dispatch_legacy_messages_parts/rpcdaemon_sections/handle_rpc_legacy_peer_sync.rs
 # Baseline exceptions that remain above budget; split these as follow-up cleanup.
 crates/libs/lxmf-sdk/src/messaging.rs
 crates/libs/lxmf-core/src/announce.rs

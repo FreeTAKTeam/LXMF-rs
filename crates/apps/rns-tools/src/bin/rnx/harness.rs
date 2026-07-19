@@ -132,11 +132,13 @@ pub(crate) fn wait_for_ready<R: Read + Send + 'static>(
     reader: R,
     timeout: Duration,
 ) -> io::Result<DaemonReady> {
-    let (tx, rx) = mpsc::channel::<String>();
+    let (tx, rx) = mpsc::channel::<io::Result<String>>();
     std::thread::spawn(move || {
-        let mut lines = BufReader::new(reader).lines();
-        while let Some(Ok(line)) = lines.next() {
-            let _ = tx.send(line);
+        for line in BufReader::new(reader).lines() {
+            let read_failed = line.is_err();
+            if tx.send(line).is_err() || read_failed {
+                break;
+            }
         }
     });
 
@@ -149,7 +151,7 @@ pub(crate) fn wait_for_ready<R: Read + Send + 'static>(
         }
         let remaining = deadline.saturating_duration_since(now);
         match rx.recv_timeout(remaining) {
-            Ok(line) => {
+            Ok(Ok(line)) => {
                 ready.delivery_hash =
                     ready.delivery_hash.or_else(|| parse_delivery_destination_hash(&line));
                 ready.propagation_hash =
@@ -158,6 +160,7 @@ pub(crate) fn wait_for_ready<R: Read + Send + 'static>(
                     return Ok(ready);
                 }
             }
+            Ok(Err(err)) => return Err(err),
             Err(mpsc::RecvTimeoutError::Timeout) => continue,
             Err(mpsc::RecvTimeoutError::Disconnected) => {
                 return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "daemon stdout closed"));
@@ -302,8 +305,12 @@ pub(crate) fn cleanup_child(child: &mut Child, keep: bool) {
     if keep {
         return;
     }
-    let _ = child.kill();
-    let _ = child.wait();
+    if let Err(error) = child.kill() {
+        log::warn!("failed to terminate scenario child process: {error}");
+    }
+    if let Err(error) = child.wait() {
+        log::warn!("failed to reap scenario child process: {error}");
+    }
 }
 
 #[cfg(test)]

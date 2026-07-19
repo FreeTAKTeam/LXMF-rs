@@ -245,8 +245,18 @@ async fn run_serial_stream<IO>(
         })
     };
 
-    let _ = tx_task.await;
-    let _ = rx_task.await;
+    if let Err(error) = tx_task.await {
+        log::error!("serial transmit task failed iface={iface_address}: {error}");
+        runtime_status.update(|status| {
+            status.last_error = Some(format!("transmit task failed: {error}"));
+        });
+    }
+    if let Err(error) = rx_task.await {
+        log::error!("serial receive task failed iface={iface_address}: {error}");
+        runtime_status.update(|status| {
+            status.last_error = Some(format!("receive task failed: {error}"));
+        });
+    }
     runtime_status.update(|status| {
         status.link_state = "closed".to_string();
     });

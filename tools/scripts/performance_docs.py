@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Publish or verify generated v0.9.5 performance documentation."""
+"""Publish or verify generated release performance documentation."""
 
 from __future__ import annotations
 

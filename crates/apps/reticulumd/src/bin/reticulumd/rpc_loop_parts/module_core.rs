@@ -65,7 +65,7 @@ pub(super) async fn run_rpc_loop(
         match tokio::signal::ctrl_c().await {
             Ok(()) => {
                 log::info!("[daemon] shutdown signal received");
-                let _ = shutdown_tx.send(true);
+                shutdown_tx.send_replace(true);
             }
             Err(err) => {
                 log::error!("[daemon] failed to install shutdown signal handler: {}", err);
@@ -98,7 +98,9 @@ pub(super) async fn run_rpc_loop_until(
                 None => run_plain_rpc_loop(addr, daemon, shutdown).await,
             }
             if let Some(handle) = unix_handle {
-                let _ = handle.await;
+                if let Err(err) = handle.await {
+                    log::error!("[daemon-rpc] unix RPC listener task failed: {err}");
+                }
             }
         }
         (None, None, Some(path)) => run_unix_rpc_loop(path, daemon, shutdown).await,
@@ -261,14 +263,18 @@ async fn handle_connection<S>(
         Ok(buffer) => buffer,
         Err(err) => {
             log::error!("[daemon] rpc read error peer={} err={}", peer_addr, err);
-            let _ = stream.write_all(request_read_error_response(&err)).await;
-            let _ = stream.shutdown().await;
+            if let Err(write_err) = stream.write_all(request_read_error_response(&err)).await {
+                log::warn!(
+                    "[daemon-rpc] failed to write request error response peer={peer_addr} err={write_err}"
+                );
+            }
+            shutdown_rpc_stream(&mut stream, peer_addr, "request_read_error").await;
             return;
         }
     };
 
     if buffer.is_empty() {
-        let _ = stream.shutdown().await;
+        shutdown_rpc_stream(&mut stream, peer_addr, "empty_request").await;
         return;
     }
 
@@ -299,7 +305,7 @@ async fn handle_connection<S>(
     if let Err(err) = stream.write_all(&response).await {
         log::warn!("[daemon-rpc] failed to write RPC response: {err}");
     }
-    let _ = stream.shutdown().await;
+    shutdown_rpc_stream(&mut stream, peer_addr, "response_complete").await;
 }
 
 async fn handle_event_stream<S>(
@@ -323,7 +329,7 @@ async fn handle_event_stream<S>(
         if let Err(err) = stream.write_all(&response).await {
             log::warn!("[daemon-rpc] failed to write RPC auth error response: {err}");
         }
-        let _ = stream.shutdown().await;
+        shutdown_rpc_stream(&mut stream, peer_addr, "authorization_rejected").await;
         return;
     }
 
@@ -340,19 +346,25 @@ async fn handle_event_stream<S>(
                     "[daemon-rpc] failed to write event stream error response: {write_err}"
                 );
             }
-            let _ = stream.shutdown().await;
+            shutdown_rpc_stream(&mut stream, peer_addr, "initial_poll_failed").await;
             return;
         }
     };
 
-    if stream.write_all(&http::streaming_event_response_header()).await.is_err() {
-        let _ = stream.shutdown().await;
+    if let Err(err) = stream.write_all(&http::streaming_event_response_header()).await {
+        log::debug!(
+            "[daemon-rpc] event stream header write failed peer={peer_addr} err={err}"
+        );
+        shutdown_rpc_stream(&mut stream, peer_addr, "event_stream_header_failed").await;
         return;
     }
 
     let mut last_sent_seq = 0_u64;
-    if !write_sdk_event_batch(&mut stream, &first_batch, &mut cursor, &mut last_sent_seq).await {
-        let _ = stream.shutdown().await;
+    if let Err(err) =
+        write_sdk_event_batch(&mut stream, &first_batch, &mut cursor, &mut last_sent_seq).await
+    {
+        log::debug!("[daemon-rpc] initial event batch write failed peer={peer_addr} err={err}");
+        shutdown_rpc_stream(&mut stream, peer_addr, "initial_event_batch_failed").await;
         return;
     }
 
@@ -368,15 +380,22 @@ async fn handle_event_stream<S>(
                 );
                 let response = RpcResponse { id: 0, result: None, error: Some(*err) };
                 if let Ok(frame) = codec::encode_frame(&response) {
-                    let _ = stream.write_all(&frame).await;
+                    if let Err(write_err) = stream.write_all(&frame).await {
+                        log::debug!(
+                            "[daemon-rpc] event catch-up error frame write failed peer={peer_addr} err={write_err}"
+                        );
+                    }
                 }
                 break;
             }
         };
         let event_count =
             batch.get("events").and_then(serde_json::Value::as_array).map_or(0, Vec::len);
-        if !write_sdk_event_batch(&mut stream, &batch, &mut cursor, &mut last_sent_seq).await {
-            let _ = stream.shutdown().await;
+        if let Err(err) =
+            write_sdk_event_batch(&mut stream, &batch, &mut cursor, &mut last_sent_seq).await
+        {
+            log::debug!("[daemon-rpc] catch-up event batch write failed peer={peer_addr} err={err}");
+            shutdown_rpc_stream(&mut stream, peer_addr, "catch_up_event_batch_failed").await;
             return;
         }
         if event_count == 0 {
@@ -405,11 +424,23 @@ async fn handle_event_stream<S>(
                 break;
             }
         };
-        if stream.write_all(&frame).await.is_err() {
+        if let Err(err) = stream.write_all(&frame).await {
+            log::debug!("[daemon-rpc] live event write failed peer={peer_addr} err={err}");
             break;
         }
     }
-    let _ = stream.shutdown().await;
+    shutdown_rpc_stream(&mut stream, peer_addr, "event_stream_complete").await;
+}
+
+async fn shutdown_rpc_stream<S>(stream: &mut S, peer_addr: SocketAddr, context: &str)
+where
+    S: AsyncWrite + Unpin,
+{
+    if let Err(err) = stream.shutdown().await {
+        log::debug!(
+            "[daemon-rpc] stream shutdown failed peer={peer_addr} context={context} err={err}"
+        );
+    }
 }
 
 fn event_stream_query_cursor(path: &str) -> Option<String> {
@@ -443,7 +474,7 @@ async fn write_sdk_event_batch<S>(
     batch: &serde_json::Value,
     cursor: &mut Option<String>,
     last_sent_seq: &mut u64,
-) -> bool
+) -> std::io::Result<()>
 where
     S: AsyncWrite + Unpin,
 {
@@ -451,19 +482,14 @@ where
         *cursor = Some(next_cursor.to_string());
     }
     let Some(events) = batch.get("events").and_then(serde_json::Value::as_array) else {
-        return true;
+        return Ok(());
     };
     for event in events {
         if let Some(seq_no) = event.get("seq_no").and_then(serde_json::Value::as_u64) {
             *last_sent_seq = (*last_sent_seq).max(seq_no);
         }
-        let frame = match codec::encode_frame(event) {
-            Ok(frame) => frame,
-            Err(_) => return false,
-        };
-        if stream.write_all(&frame).await.is_err() {
-            return false;
-        }
+        let frame = codec::encode_frame(event)?;
+        stream.write_all(&frame).await?;
     }
-    true
+    Ok(())
 }

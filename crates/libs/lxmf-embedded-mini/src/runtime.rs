@@ -261,7 +261,9 @@ impl<
         if self.replay_source_floors.len() >= RECENT_REPLAY_SOURCES {
             self.replay_source_floors.remove(0);
         }
-        let _ = self.replay_source_floors.push(ReplaySourceFloor { source, floor });
+        self.replay_source_floors
+            .push(ReplaySourceFloor { source, floor })
+            .expect("replay source capacity enforced before insertion");
     }
 }
 

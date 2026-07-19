@@ -166,15 +166,23 @@ async fn process_announce<'a>(
         hex::encode(announce.app_data)
     );
 
-    if path_accepted {
-        let _ = handler.announce_tx.send(AnnounceEvent {
-            destination,
-            app_data: PacketDataBuffer::new_from_slice(announce.app_data),
-            ratchet,
-            name_hash,
-            hops: packet.header.hops,
-            interface,
-        });
+    if path_accepted
+        && handler
+            .announce_tx
+            .send(AnnounceEvent {
+                destination,
+                app_data: PacketDataBuffer::new_from_slice(announce.app_data),
+                ratchet,
+                name_hash,
+                hops: packet.header.hops,
+                interface,
+            })
+            .is_err()
+    {
+        log::trace!(
+            "[announce-debug] accepted announce has no active subscribers dst={}",
+            packet.destination
+        );
     }
 
     handler

@@ -123,6 +123,13 @@ traits. Row-level transport classification is generated in
 ### Delivery and receipts
 
 - Direct, opportunistic, propagated, and paper modes are distinct.
+- Opportunistic Single/Data delivery now generates receiver-policy-controlled
+  proofs on the ingress interface; explicit proof validation requires the
+  packet-cache correlation for the proved destination and rejects signatures
+  from unrelated known identities.
+- Link data and channel fan-out routes through each active link's bound
+  interface and exposes structured matched/sent/failed counts to callers that
+  need retry or degraded-state decisions.
 - Transport completion remains `sent`; final delivery receipts produce
   `delivered`.
 - Rust-originated link sends register packet/resource hashes before handoff and

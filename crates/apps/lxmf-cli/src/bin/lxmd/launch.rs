@@ -26,24 +26,21 @@ pub(crate) fn launch_supervised(
 
     if let Err(err) = wait_until_ready(&mut child, rpc_addr, crate::READY_TIMEOUT) {
         log::error!("{err}");
-        let _ = child.kill();
-        let _ = child.wait();
+        terminate_child(&mut child, "readiness failure");
         return ExitCode::from(1);
     }
 
     if args.propagation_node {
         if let Err(err) = enable_propagation_mode(rpc_addr) {
             log::error!("failed to enable propagation mode: {err}");
-            let _ = child.kill();
-            let _ = child.wait();
+            terminate_child(&mut child, "propagation setup failure");
             return ExitCode::from(1);
         }
     }
 
     if let Err(err) = apply_python_compat_config(rpc_addr, args) {
         log::error!("failed to apply python-style daemon settings: {err}");
-        let _ = child.kill();
-        let _ = child.wait();
+        terminate_child(&mut child, "compatibility setup failure");
         return ExitCode::from(1);
     }
 
@@ -67,6 +64,15 @@ pub(crate) fn launch_supervised(
             log::error!("failed waiting for reticulumd: {}", err);
             ExitCode::from(1)
         }
+    }
+}
+
+fn terminate_child(child: &mut Child, context: &str) {
+    if let Err(err) = child.kill() {
+        log::warn!("failed to terminate reticulumd after {context}: {err}");
+    }
+    if let Err(err) = child.wait() {
+        log::warn!("failed to reap reticulumd after {context}: {err}");
     }
 }
 

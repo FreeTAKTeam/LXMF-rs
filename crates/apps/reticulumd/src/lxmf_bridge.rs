@@ -97,7 +97,7 @@ pub fn build_wire_message_with_options_and_cancel(
         message.fields.clone(),
         None,
     );
-    let message_id = WireMessage::new(destination, source, payload).message_id();
+    let message_id = WireMessage::new(destination, source, payload).try_message_id()?;
 
     if let Some(ticket_hex) = outbound_ticket_hex {
         let ticket = decode_ticket_hex(ticket_hex)?;

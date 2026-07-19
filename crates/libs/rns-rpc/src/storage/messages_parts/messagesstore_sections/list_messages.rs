@@ -454,7 +454,10 @@ impl MessagesStore {
 
 fn message_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<MessageRecord> {
     let fields_json: Option<String> = row.get(7)?;
-    let fields = fields_json.as_ref().and_then(|value| serde_json::from_str(value).ok());
+    let fields = fields_json
+        .as_deref()
+        .map(|value| deserialize_json_column(value, 7))
+        .transpose()?;
     let receipt_status: Option<String> = row.get(8)?;
     Ok(MessageRecord {
         id: row.get(0)?,

@@ -41,14 +41,19 @@ impl WireMessage {
     }
 
     pub fn message_id(&self) -> [u8; 32] {
+        self.try_message_id()
+            .expect("serializing an in-memory LXMF payload for hashing must succeed")
+    }
+
+    pub fn try_message_id(&self) -> Result<[u8; 32], LxmfError> {
         let mut hasher = Sha256::new();
         hasher.update(self.destination);
         hasher.update(self.source);
-        hasher.update(self.payload.to_msgpack_without_stamp().unwrap_or_default());
+        hasher.update(self.payload.to_msgpack_without_stamp()?);
         let bytes = hasher.finalize();
         let mut out = [0u8; 32];
         out.copy_from_slice(&bytes);
-        out
+        Ok(out)
     }
 
     pub fn sign(&mut self, signer: &PrivateIdentity) -> Result<(), LxmfError> {
@@ -57,7 +62,7 @@ impl WireMessage {
         data.extend_from_slice(&self.destination);
         data.extend_from_slice(&self.source);
         data.extend_from_slice(&payload);
-        data.extend_from_slice(&self.message_id());
+        data.extend_from_slice(&self.try_message_id()?);
 
         let signature = signer.sign(&data);
         self.signature = Some(signature.to_bytes());
@@ -76,7 +81,7 @@ impl WireMessage {
         data.extend_from_slice(&self.destination);
         data.extend_from_slice(&self.source);
         data.extend_from_slice(&payload);
-        data.extend_from_slice(&self.message_id());
+        data.extend_from_slice(&self.try_message_id()?);
 
         Ok(identity.verify(&data, &signature).is_ok())
     }

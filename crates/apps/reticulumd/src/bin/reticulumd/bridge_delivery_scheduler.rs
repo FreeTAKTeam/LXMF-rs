@@ -1,5 +1,8 @@
-use super::delivery_task::{DeliveryTask, PreparedDeliveryPayload, PreparedPropagationPayload};
+use super::delivery_task::{
+    emit_receipt_event, DeliveryTask, PreparedDeliveryPayload, PreparedPropagationPayload,
+};
 use super::{log_delivery_trace, propagation, RequestedDeliveryMethod};
+use reticulum_daemon::receipt_bridge::ReceiptEvent;
 use serde_json::{json, Value as JsonValue};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -432,7 +435,26 @@ async fn prepare_propagation_payload(
     );
     task.record_propagation_stamp_work_metadata("queued", context.target_cost, None);
     for attempt in 1..=2u32 {
-        let _stamp_permit = stamp_limit.clone().acquire_owned().await.ok()?;
+        let _stamp_permit = match stamp_limit.clone().acquire_owned().await {
+            Ok(permit) => permit,
+            Err(error) => {
+                log::error!(
+                    "[daemon-delivery] stamp worker stopped message_id={} peer={peer}: {error}",
+                    task.message_id
+                );
+                task.record_propagation_stamp_work_metadata(
+                    "worker_stopped",
+                    context.target_cost,
+                    None,
+                );
+                emit_receipt_event(
+                    &task.receipt_tx,
+                    ReceiptEvent::new(task.message_id.clone(), "failed: stamp worker stopped")
+                        .with_method("propagation"),
+                );
+                return None;
+            }
+        };
         metrics.record_stamp_started_for_peer(peer);
         task.record_propagation_stamp_attempt_metadata(context.target_cost, attempt);
         if task.abort_if_cancelled("propagation") {
@@ -444,10 +466,7 @@ async fn prepare_propagation_payload(
             lxmf_payload,
             &context.destination_identity,
             context.target_cost,
-            || {
-                let status = task.daemon.message_receipt_status(&task.message_id).ok().flatten();
-                DeliveryTask::is_cancelled_status(status.as_deref())
-            },
+            || task.abort_if_cancelled("propagation-stamp"),
         );
         drop(_stamp_permit);
         metrics.record_stamp_completed_for_peer(peer);

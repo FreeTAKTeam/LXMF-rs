@@ -74,6 +74,132 @@
     }
 
     #[test]
+    fn malformed_persisted_message_fields_are_reported() {
+        let store = MessagesStore::in_memory().expect("in-memory store");
+        store.insert_message(&outbound_message("msg-invalid-json", 1, None)).expect("insert");
+        store
+            .with_write_conn(|conn| {
+                conn.execute(
+                    "UPDATE messages SET fields = '{not-json' WHERE id = 'msg-invalid-json'",
+                    [],
+                )?;
+                Ok(())
+            })
+            .expect("inject malformed fields");
+
+        let err = store.get_message("msg-invalid-json").expect_err("malformed JSON must surface");
+        assert!(matches!(err, rusqlite::Error::FromSqlConversionFailure(7, _, _)));
+    }
+
+    #[test]
+    fn schema_upgrade_adds_legacy_message_and_announce_columns() {
+        let path = std::env::temp_dir().join(format!(
+            "lxmf-rpc-schema-upgrade-{}-{}.sqlite",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock after epoch")
+                .as_nanos()
+        ));
+        {
+            let conn = Connection::open(&path).expect("open legacy database");
+            conn.execute_batch(
+                "CREATE TABLE messages (
+                    id TEXT PRIMARY KEY,
+                    source TEXT NOT NULL,
+                    destination TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    timestamp INTEGER NOT NULL,
+                    direction TEXT NOT NULL
+                );
+                CREATE TABLE announces (
+                    id TEXT PRIMARY KEY,
+                    peer TEXT NOT NULL,
+                    timestamp INTEGER NOT NULL
+                );
+                INSERT INTO messages
+                    (id, source, destination, content, timestamp, direction)
+                    VALUES ('legacy-message', 'source', 'destination', 'body', 5, 'in');
+                INSERT INTO announces (id, peer, timestamp)
+                    VALUES ('legacy-announce', 'peer', 7);",
+            )
+            .expect("create legacy schema");
+        }
+
+        let store = MessagesStore::open(&path).expect("upgrade legacy schema");
+        let message = store
+            .get_message("legacy-message")
+            .expect("read upgraded message")
+            .expect("legacy message exists");
+        assert_eq!(message.title, "");
+        let announces = store.list_announces(10, None, None).expect("read upgraded announce");
+        assert_eq!(announces[0].first_seen, 7);
+        assert_eq!(announces[0].seen_count, 1);
+        drop(store);
+        let conn = Connection::open(&path).expect("reopen upgraded database");
+        for (table, column) in [
+            ("messages", "title"),
+            ("messages", "fields"),
+            ("messages", "receipt_status"),
+            ("announces", "capabilities"),
+            ("announces", "stamp_cost"),
+            ("announces", "peering_cost"),
+        ] {
+            assert!(
+                MessagesStore::schema_has_column(&conn, table, column)
+                    .expect("inspect upgraded schema"),
+                "missing upgraded column {table}.{column}"
+            );
+        }
+        drop(conn);
+        std::fs::remove_file(path).expect("remove schema-upgrade database");
+    }
+
+    #[test]
+    fn failed_schema_upgrade_rolls_back_partial_columns() {
+        let path = std::env::temp_dir().join(format!(
+            "lxmf-rpc-schema-rollback-{}-{}.sqlite",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock after epoch")
+                .as_nanos()
+        ));
+        {
+            let conn = Connection::open(&path).expect("open legacy database");
+            conn.execute_batch(
+                "CREATE TABLE messages (
+                    id TEXT PRIMARY KEY,
+                    source TEXT NOT NULL,
+                    destination TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    timestamp INTEGER NOT NULL,
+                    direction TEXT NOT NULL
+                );
+                CREATE TABLE announces (
+                    id TEXT PRIMARY KEY,
+                    peer TEXT NOT NULL,
+                    timestamp INTEGER NOT NULL
+                );
+                INSERT INTO announces (id, peer, timestamp) VALUES ('legacy', 'peer', 7);
+                CREATE TRIGGER reject_announce_backfill
+                    BEFORE UPDATE ON announces
+                    BEGIN SELECT RAISE(ABORT, 'backfill blocked'); END;",
+            )
+            .expect("create failing legacy schema");
+        }
+
+        assert!(MessagesStore::open(&path).is_err(), "migration failure must surface");
+        let conn = Connection::open(&path).expect("reopen rolled-back database");
+        assert!(!MessagesStore::schema_has_column(&conn, "messages", "title")
+            .expect("inspect messages schema"));
+        assert!(!MessagesStore::schema_has_column(&conn, "announces", "first_seen")
+            .expect("inspect announces schema"));
+        drop(conn);
+        std::fs::remove_file(path).expect("remove schema-rollback database");
+    }
+
+    #[test]
     fn prune_expired_tickets_matches_python_available_ticket_cleanup() {
         let store = MessagesStore::in_memory().expect("in-memory store");
         store.upsert_outbound_ticket("expired-outbound", "00", 90).expect("outbound expired");

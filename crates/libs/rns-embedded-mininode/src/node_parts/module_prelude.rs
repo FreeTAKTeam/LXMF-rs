@@ -234,7 +234,7 @@ impl<S: MiniNodeStore> MiniNode<S> {
 
         let wire = message.to_wire(Some(&self.identity))?;
         let unpacked = WireMessage::unpack(&wire)?;
-        let message_id = unpacked.message_id();
+        let message_id = unpacked.try_message_id()?;
 
         let packet = Packet {
             header: Header {
@@ -348,17 +348,19 @@ impl<S: MiniNodeStore> MiniNode<S> {
 
     fn handle_message(&mut self, packet: &Packet) -> Result<(), MiniNodeError> {
         let wire = WireMessage::unpack(packet.data.as_slice())?;
-        let message_id = wire.message_id();
+        let message_id = wire.try_message_id()?;
         if self.recent_message_ids.iter().any(|entry| entry == &message_id) {
             return Ok(());
         }
 
-        let verified = self
+        let verified = match self
             .neighbors
             .iter()
             .find(|neighbor| neighbor.destination_hash == wire.source)
-            .map(|neighbor| wire.verify(&neighbor.identity).unwrap_or(false))
-            .unwrap_or(false);
+        {
+            Some(neighbor) => wire.verify(&neighbor.identity)?,
+            None => false,
+        };
 
         let content = wire.payload.content.as_ref().map(|value| value.to_vec()).unwrap_or_default();
         self.remember_message_id(message_id);

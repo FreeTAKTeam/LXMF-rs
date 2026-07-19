@@ -436,11 +436,14 @@ async fn stop_hot_apply_interface(
     transport: Option<&Arc<Transport>>,
     address: AddressHash,
 ) {
-    if let Some(transport) = transport {
-        let _ = transport.stop_interface(address).await;
+    let stopped = if let Some(transport) = transport {
+        transport.stop_interface(address).await
     } else {
         let mut guard = iface_manager.lock().await;
-        let _ = guard.stop_interface(address);
+        guard.stop_interface(address)
+    };
+    if !stopped {
+        log::debug!("[daemon] hot-apply interface already absent address={address}");
     }
 }
 

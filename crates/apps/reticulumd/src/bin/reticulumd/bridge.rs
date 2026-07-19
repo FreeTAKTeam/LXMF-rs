@@ -150,8 +150,11 @@ impl TransportBridge {
     }
 
     pub(super) fn set_daemon(&self, daemon: Arc<RpcDaemon>) {
-        if let Ok(mut guard) = self.daemon.lock() {
-            *guard = Some(daemon);
+        match self.daemon.lock() {
+            Ok(mut guard) => *guard = Some(daemon),
+            Err(error) => {
+                log::error!("[daemon] remote-control bridge daemon lock poisoned: {error}");
+            }
         }
     }
 

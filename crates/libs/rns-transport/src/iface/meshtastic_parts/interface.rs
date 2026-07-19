@@ -98,12 +98,14 @@ impl MeshtasticInterface {
                 _ = iface_stop.cancelled() => break,
                 received = inbound_rx.recv() => {
                     let Some(received) = received else { break };
-                    process_received_for_interface(
+                    if !process_received_for_interface(
                         &mut tunnel,
                         received,
                         iface_address,
                         &rx_channel,
-                    ).await;
+                    ).await {
+                        break;
+                    }
                     record_meshtastic_status(&runtime_status, tunnel.status());
                 }
                 Some(message) = tx_channel.recv() => {
@@ -144,17 +146,25 @@ async fn process_received_for_interface(
     received: MeshtasticReceivedFrame,
     iface_address: AddressHash,
     rx_channel: &mpsc::Sender<RxMessage>,
-) {
+) -> bool {
     match tunnel.process_received(received) {
         Ok(Some(data)) => match Packet::from_bytes(&data) {
             Ok(packet) => {
-                let _ = rx_channel
+                if rx_channel
                     .send(RxMessage {
                         address: iface_address,
                         packet,
                         source: IfaceSource::None,
                     })
-                    .await;
+                    .await
+                    .is_err()
+                {
+                    tunnel.status.last_error = Some("transport receive queue closed".to_string());
+                    log::warn!(
+                        "meshtastic_interface receive queue closed iface={iface_address}"
+                    );
+                    return false;
+                }
             }
             Err(err) => {
                 tunnel.status.decode_errors = tunnel.status.decode_errors.saturating_add(1);
@@ -167,6 +177,7 @@ async fn process_received_for_interface(
             tunnel.status.last_error = Some(err);
         }
     }
+    true
 }
 
 fn queue_packet_for_meshtastic(

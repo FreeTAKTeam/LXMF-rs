@@ -69,39 +69,48 @@ impl Default for PropagationNodeConfig {
 }
 
 impl PropagationNodeConfig {
-    fn from_meta(meta: &JsonValue) -> Self {
-        meta.get("propagation_node")
-            .cloned()
-            .and_then(|value| serde_json::from_value(value).ok())
-            .unwrap_or_default()
+    fn from_meta(meta: &JsonValue) -> Result<Self, String> {
+        match meta.get("propagation_node") {
+            None | Some(JsonValue::Null) => Ok(Self::default()),
+            Some(value) => serde_json::from_value(value.clone())
+                .map_err(|error| format!("invalid propagation node config: {error}")),
+        }
     }
 }
 
 impl PropagationNodeSelectionState {
-    fn from_peer_and_meta(peer: Option<String>, meta: &JsonValue) -> Self {
-        let state = propagation_node_json_string(meta, "state").ok().flatten()
-            .or_else(|| propagation_node_json_string(meta, "state_name").ok().flatten());
-        let failure_kind = propagation_node_json_string(meta, "failure_kind").ok().flatten();
+    fn from_peer_and_meta(peer: Option<String>, meta: &JsonValue) -> Result<Self, String> {
+        macro_rules! field {
+            ($getter:ident, $key:literal) => {
+                $getter(meta, $key)
+                    .map_err(|error| format!("propagation node field `{}` {error}", $key))?
+            };
+        }
+
+        let state = field!(propagation_node_json_string, "state")
+            .or(field!(propagation_node_json_string, "state_name"));
+        let failure_kind = field!(propagation_node_json_string, "failure_kind");
         let timed_out = failure_kind.as_deref() == Some("timeout")
             || state.as_deref() == Some("timeout");
-        let access_denied = propagation_node_json_bool(meta, "access_denied").ok().flatten().unwrap_or(false)
+        let access_denied = field!(propagation_node_json_bool, "access_denied").unwrap_or(false)
             || matches!(
                 failure_kind.as_deref(),
                 Some("access_denied" | "access-denied" | "no_access")
             );
-        let selected = peer.is_some() || propagation_node_json_bool(meta, "selected").ok().flatten().unwrap_or(false);
-        Self {
+        let selected = peer.is_some()
+            || field!(propagation_node_json_bool, "selected").unwrap_or(false);
+        Ok(Self {
             peer,
             state,
             selected,
             failure_kind,
             timed_out,
             access_denied,
-            queue_depth: propagation_node_json_u64(meta, "queue_depth").ok().flatten().unwrap_or(0),
-            retry_count: propagation_node_json_u64(meta, "retry_count").ok().flatten().unwrap_or(0),
-            next_sync_attempt: propagation_node_json_i64(meta, "next_sync_attempt").ok().flatten(),
-            last_sync_error: propagation_node_json_string(meta, "last_sync_error").ok().flatten(),
-        }
+            queue_depth: field!(propagation_node_json_u64, "queue_depth").unwrap_or(0),
+            retry_count: field!(propagation_node_json_u64, "retry_count").unwrap_or(0),
+            next_sync_attempt: field!(propagation_node_json_i64, "next_sync_attempt"),
+            last_sync_error: field!(propagation_node_json_string, "last_sync_error"),
+        })
     }
 }
 
@@ -132,8 +141,11 @@ impl<'de> Deserialize<'de> for PropagationNodeSelectionResult {
         D: serde::Deserializer<'de>,
     {
         let raw = RawPropagationNodeSelectionResult::deserialize(deserializer)?;
-        let selection_state = PropagationNodeSelectionState::from_peer_and_meta(raw.peer.clone(), &raw.meta);
-        let node_config = PropagationNodeConfig::from_meta(&raw.meta);
+        let selection_state =
+            PropagationNodeSelectionState::from_peer_and_meta(raw.peer.clone(), &raw.meta)
+                .map_err(serde::de::Error::custom)?;
+        let node_config =
+            PropagationNodeConfig::from_meta(&raw.meta).map_err(serde::de::Error::custom)?;
         Ok(Self {
             peer: raw.peer,
             meta: raw.meta,
@@ -179,14 +191,21 @@ pub struct PropagationNodeRecord {
 }
 
 impl PropagationNodeRecord {
-    fn from_node(node: &JsonValue) -> Self {
-        Self {
-            peer: propagation_node_json_string(node, "peer").ok().flatten(),
-            name: propagation_node_json_string(node, "name").ok().flatten(),
-            last_seen: propagation_node_json_i64(node, "last_seen").ok().flatten(),
-            selected: propagation_node_json_bool(node, "selected").ok().flatten().unwrap_or(false),
-            capabilities: propagation_node_json_string_array(node, "capabilities"),
+    fn from_node(node: &JsonValue) -> Result<Self, String> {
+        macro_rules! field {
+            ($getter:ident, $key:literal) => {
+                $getter(node, $key)
+                    .map_err(|error| format!("propagation node field `{}` {error}", $key))?
+            };
         }
+
+        Ok(Self {
+            peer: field!(propagation_node_json_string, "peer"),
+            name: field!(propagation_node_json_string, "name"),
+            last_seen: field!(propagation_node_json_i64, "last_seen"),
+            selected: field!(propagation_node_json_bool, "selected").unwrap_or(false),
+            capabilities: propagation_node_json_string_array(node, "capabilities")?,
+        })
     }
 }
 
@@ -215,7 +234,12 @@ impl<'de> Deserialize<'de> for PropagationNodeListResult {
         D: serde::Deserializer<'de>,
     {
         let raw = RawPropagationNodeListResult::deserialize(deserializer)?;
-        let node_records = raw.nodes.iter().map(PropagationNodeRecord::from_node).collect();
+        let node_records = raw
+            .nodes
+            .iter()
+            .map(PropagationNodeRecord::from_node)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(serde::de::Error::custom)?;
         Ok(Self {
             nodes: raw.nodes,
             meta: raw.meta,
@@ -226,38 +250,53 @@ impl<'de> Deserialize<'de> for PropagationNodeListResult {
 
 fn propagation_node_json_bool(value: &JsonValue, key: &str) -> Result<Option<bool>, &'static str> {
     match value.get(key) {
-        None => Ok(None),
+        None | Some(JsonValue::Null) => Ok(None),
         Some(v) => v.as_bool().ok_or("field is not a bool").map(Some),
     }
 }
 
 fn propagation_node_json_i64(value: &JsonValue, key: &str) -> Result<Option<i64>, &'static str> {
     match value.get(key) {
-        None => Ok(None),
+        None | Some(JsonValue::Null) => Ok(None),
         Some(v) => v.as_i64().ok_or("field is not an integer").map(Some),
     }
 }
 
 fn propagation_node_json_u64(value: &JsonValue, key: &str) -> Result<Option<u64>, &'static str> {
     match value.get(key) {
-        None => Ok(None),
+        None | Some(JsonValue::Null) => Ok(None),
         Some(v) => v.as_u64().ok_or("field is not an unsigned integer").map(Some),
     }
 }
 
 fn propagation_node_json_string(value: &JsonValue, key: &str) -> Result<Option<String>, &'static str> {
     match value.get(key) {
-        None => Ok(None),
+        None | Some(JsonValue::Null) => Ok(None),
         Some(v) => v.as_str().ok_or("field is not a string").map(|s| Some(s.to_owned())),
     }
 }
 
-fn propagation_node_json_string_array(value: &JsonValue, key: &str) -> Vec<String> {
-    value
-        .get(key)
-        .and_then(JsonValue::as_array)
-        .map(|items| items.iter().filter_map(JsonValue::as_str).map(ToOwned::to_owned).collect())
-        .unwrap_or_default()
+fn propagation_node_json_string_array(
+    value: &JsonValue,
+    key: &str,
+) -> Result<Vec<String>, String> {
+    let Some(raw) = value.get(key) else {
+        return Ok(Vec::new());
+    };
+    if raw.is_null() {
+        return Ok(Vec::new());
+    }
+    let items = raw
+        .as_array()
+        .ok_or_else(|| format!("propagation node field `{key}` is not an array"))?;
+    items
+        .iter()
+        .map(|item| {
+            item.as_str()
+                .map(ToOwned::to_owned)
+                .ok_or_else(|| format!("propagation node field `{key}` contains a non-string"))
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -301,5 +340,28 @@ mod propagation_node_tests {
             result.node_config.control_allowed,
             vec!["00112233445566778899aabbccddeeff".to_string()]
         );
+    }
+
+    #[test]
+    fn node_results_reject_malformed_typed_metadata() {
+        let error = serde_json::from_value::<PropagationNodeSelectionResult>(json!({
+            "peer": null,
+            "meta": {"queue_depth": "many"}
+        }))
+        .expect_err("invalid queue depth");
+        assert!(error.to_string().contains("queue_depth"));
+
+        let error = serde_json::from_value::<PropagationNodeSelectionResult>(json!({
+            "peer": null,
+            "meta": {"propagation_node": {"enabled": "yes"}}
+        }))
+        .expect_err("invalid node config");
+        assert!(error.to_string().contains("propagation node config"));
+
+        let error = serde_json::from_value::<PropagationNodeListResult>(json!({
+            "nodes": [{"capabilities": ["sync", 42]}]
+        }))
+        .expect_err("invalid capability entry");
+        assert!(error.to_string().contains("capabilities"));
     }
 }

@@ -115,8 +115,9 @@ impl RatchetState {
         let encoded = rmp_serde::to_vec(&persisted).map_err(|_| RnsError::PacketError)?;
         let tmp_path = path.with_extension("tmp");
         std::fs::write(&tmp_path, encoded).map_err(|_| RnsError::PacketError)?;
+        #[cfg(windows)]
         if path.exists() {
-            let _ = std::fs::remove_file(path);
+            std::fs::remove_file(path).map_err(|_| RnsError::PacketError)?;
         }
         std::fs::rename(&tmp_path, path).map_err(|_| RnsError::PacketError)?;
         Ok(())

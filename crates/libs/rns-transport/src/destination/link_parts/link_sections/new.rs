@@ -54,10 +54,10 @@ impl Link {
         }
 
         let data = packet.data.as_slice();
-        let peer_identity = Identity::new_from_slices(
+        let peer_identity = Identity::try_new_from_slices(
             &data[..PUBLIC_KEY_LENGTH],
             &data[PUBLIC_KEY_LENGTH..PUBLIC_KEY_LENGTH * 2],
-        );
+        )?;
         let signalling = if data.len() >= PUBLIC_KEY_LENGTH * 2 + LINK_MTU_SIZE {
             let mut bytes = [0u8; LINK_MTU_SIZE];
             bytes.copy_from_slice(
@@ -462,10 +462,11 @@ fn parse_link_identify_payload(payload: &[u8], link_id: &AddressHash) -> Option<
     if payload.len() != LINK_IDENTIFY_PAYLOAD_LENGTH {
         return None;
     }
-    let identity = Identity::new_from_slices(
+    let identity = Identity::try_new_from_slices(
         &payload[..PUBLIC_KEY_LENGTH],
         &payload[PUBLIC_KEY_LENGTH..PUBLIC_KEY_LENGTH * 2],
-    );
+    )
+    .ok()?;
     let signature = Signature::from_slice(
         &payload[PUBLIC_KEY_LENGTH * 2..PUBLIC_KEY_LENGTH * 2 + SIGNATURE_LENGTH],
     )

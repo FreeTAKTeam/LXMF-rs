@@ -249,7 +249,7 @@
         impl Drop for DropNotify {
             fn drop(&mut self) {
                 if let Some(tx) = self.0.take() {
-                    let _ = tx.send(());
+                    tx.send(()).expect("drop observer remains connected");
                 }
             }
         }

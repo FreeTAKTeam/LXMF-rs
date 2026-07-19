@@ -292,3 +292,15 @@ fn passed_on_rebroadcast_requires_next_hop_count() {
     );
     assert!(table.map.contains_key(&destination));
 }
+
+#[test]
+fn zero_capacity_announce_cache_is_unbounded() {
+    let mut table = AnnounceTable::new(0, 1);
+    for byte in [1_u8, 2_u8] {
+        let destination = AddressHash::new([byte; 16]);
+        let packet = Packet { destination, ..Packet::default() };
+        table.add_cached(&packet, destination, AddressHash::new([0x42; 16]));
+    }
+
+    assert_eq!(table.cache.len(), 2);
+}

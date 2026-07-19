@@ -120,12 +120,28 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
             None
         }
     });
-    let reticulum_runtime_policy = args
-        .config
-        .as_ref()
-        .and_then(|path| std::fs::read_to_string(path).ok())
-        .and_then(|input| ReticulumRuntimePolicy::from_toml(&input).ok())
-        .unwrap_or_default();
+    let reticulum_runtime_policy = match args.config.as_ref() {
+        Some(path) => match std::fs::read_to_string(path) {
+            Ok(input) => match ReticulumRuntimePolicy::from_toml(&input) {
+                Ok(policy) => policy,
+                Err(error) => {
+                    log::error!(
+                        "[daemon] failed to parse Reticulum runtime policy {}: {error}",
+                        path.display()
+                    );
+                    ReticulumRuntimePolicy::default()
+                }
+            },
+            Err(error) => {
+                log::error!(
+                    "[daemon] failed to read Reticulum runtime policy {}: {error}",
+                    path.display()
+                );
+                ReticulumRuntimePolicy::default()
+            }
+        },
+        None => ReticulumRuntimePolicy::default(),
+    };
     let identity_hash = hex::encode(identity.address_hash().as_slice());
     let local_display_name = std::env::var("LXMF_DISPLAY_NAME")
         .ok()
@@ -373,18 +389,36 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     );
     if propagation_node_config.enabled {
         if let Some(peer) = propagation_destination_hash_hex.as_deref() {
-            let _ = daemon.handle_rpc(RpcRequest {
+            match daemon.handle_rpc(RpcRequest {
                 id: 0,
                 method: "set_outbound_propagation_node".to_string(),
                 params: Some(json!({ "peer": peer })),
-            });
+            }) {
+                Ok(response) => {
+                    if let Some(error) = response.error {
+                        log::warn!(
+                            "[daemon] failed to select startup propagation peer={} code={} error={}",
+                            peer,
+                            error.code,
+                            error.message
+                        );
+                    }
+                }
+                Err(error) => {
+                    log::warn!(
+                        "[daemon] failed to select startup propagation peer={peer}: {error}"
+                    );
+                }
+            }
         }
     }
 
     // Make the local delivery destination visible on startup when configured.
     if propagation_node_config.peer_announce_at_start {
         if let Some(bridge) = bridge.as_ref() {
-            let _ = bridge.announce_now();
+            if let Err(error) = bridge.announce_now() {
+                log::warn!("[daemon] startup delivery announce failed: {error}");
+            }
         }
     }
     if let Some(interval_secs) = propagation_node_config.peer_announce_interval_secs {
@@ -395,7 +429,9 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
 
     if propagation_control_enabled && propagation_node_config.node_announce_at_start {
         if let Some(bridge) = bridge.as_ref() {
-            let _ = bridge.announce_propagation_now();
+            if let Err(error) = bridge.announce_propagation_now() {
+                log::warn!("[daemon] startup propagation announce failed: {error}");
+            }
         } else {
             if let Some((transport, destination)) =
                 transport.as_ref().zip(propagation_destination.as_ref())

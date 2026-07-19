@@ -137,7 +137,8 @@ pub(crate) fn apply_python_compat_config(
         )?;
 
         for peer in &compat.static_peers {
-            let _ = rpc_client::rpc_call(rpc_addr, "peer_sync", Some(json!({ "peer": peer })));
+            rpc_client::rpc_call(rpc_addr, "peer_sync", Some(json!({ "peer": peer })))
+                .map_err(|err| format!("failed to synchronize static peer {peer}: {err}"))?;
         }
     }
 

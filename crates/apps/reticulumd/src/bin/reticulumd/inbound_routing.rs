@@ -277,13 +277,17 @@ mod tests {
             let sender_rx_channel = sender_rx_channel.clone();
             async move {
                 while let Some(msg) = receiver_tx.recv().await {
-                    let _ = sender_rx_channel
+                    if sender_rx_channel
                         .send(RxMessage {
                             address: sender_addr,
                             packet: msg.packet,
                             source: IfaceSource::None,
                         })
-                        .await;
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
                 }
             }
         });
@@ -291,13 +295,17 @@ mod tests {
             let receiver_rx_channel = receiver_rx_channel.clone();
             async move {
                 while let Some(msg) = sender_tx.recv().await {
-                    let _ = receiver_rx_channel
+                    if receiver_rx_channel
                         .send(RxMessage {
                             address: receiver_addr,
                             packet: msg.packet,
                             source: IfaceSource::None,
                         })
-                        .await;
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
                 }
             }
         });

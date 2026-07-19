@@ -40,7 +40,7 @@ pub fn summarize_wire_message(
     let fields = message.fields.as_ref().map(rmpv_to_json).transpose()?;
 
     Ok(InterchangeMessageSummary {
-        message_id: hex::encode(wire.message_id()),
+        message_id: hex::encode(wire.try_message_id()?),
         source: hex::encode(wire.source),
         destination: hex::encode(wire.destination),
         timestamp_f64: message.timestamp.unwrap_or(0.0),

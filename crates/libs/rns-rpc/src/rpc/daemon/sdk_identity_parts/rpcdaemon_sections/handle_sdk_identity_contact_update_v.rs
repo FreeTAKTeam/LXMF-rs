@@ -225,14 +225,14 @@ impl RpcDaemon {
         }
         if parsed.auto_sync {
             let timestamp = now as i64;
-            let _ = self.upsert_peer(
+            self.upsert_peer(
                 identity,
                 timestamp,
                 Vec::new(),
                 contact.display_name.clone(),
                 Some("bootstrap".to_string()),
                 Some("bootstrap".to_string()),
-            );
+            )?;
         }
         self.persist_sdk_domain_snapshot()?;
         self.publish_event(RpcEvent {

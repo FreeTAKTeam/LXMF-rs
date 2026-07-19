@@ -76,7 +76,7 @@ impl EventSinkBridge for SlowFirstSink {
     fn publish(&self, _envelope: &RpcEventSinkEnvelope) -> Result<(), std::io::Error> {
         if !self.blocked_once.swap(true, Ordering::SeqCst) {
             if let Some(started_tx) = self.started_tx.lock().expect("started mutex").take() {
-                let _ = started_tx.send(());
+                started_tx.send(()).expect("slow sink observer remains connected");
             }
             let _ = self
                 .release_rx

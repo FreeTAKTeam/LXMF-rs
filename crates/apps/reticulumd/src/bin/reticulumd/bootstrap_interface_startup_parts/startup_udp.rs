@@ -150,7 +150,11 @@ async fn startup_auto(
                     Some(AutoRuntimeRefresh { runtime_iface: host_iface, status: runtime_status })
                 }
                 Err(err) => {
-                    let _ = iface_manager.lock().await.stop_interface(host_iface);
+                    if !iface_manager.lock().await.stop_interface(host_iface) {
+                        log::debug!(
+                            "AutoInterface host already absent after startup failure iface={host_iface}"
+                        );
+                    }
                     record_startup_failure(
                         record,
                         startup_failures,

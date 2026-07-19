@@ -4,12 +4,19 @@ use reticulum_daemon::inbound_delivery::{
     annotate_inbound_record_stamp_status, decode_inbound_payload_with_diagnostics,
     evaluate_inbound_stamp_policy, inbound_record_allowed_by_delivery_policy,
 };
-use rns_rpc::{MessageRecord, RpcDaemon, RpcEvent};
+use rns_rpc::{MessageRecord, RpcDaemon};
 use rns_transport::hash::AddressHash;
 use rns_transport::identity_bridge::to_core_identity;
 use rns_transport::transport::{ReceivedPayloadMode, Transport};
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value};
 use std::borrow::Cow;
+
+#[path = "inbound_delivery_events_parts/drop_events.rs"]
+mod drop_events;
+pub(crate) use drop_events::{
+    emit_inbound_drop_event, emit_propagation_duplicate_drop_event,
+    emit_propagation_predecode_drop_event, InboundDeliveryKind, InboundDropEvent,
+};
 
 pub(super) async fn accept_delivery_resource(
     daemon: &RpcDaemon,
@@ -113,23 +120,18 @@ pub(super) async fn accept_delivery_resource(
         );
         return;
     }
-    if matches!(daemon.message_exists(record.id.as_str()), Ok(true)) {
-        emit_inbound_drop_event(
-            daemon,
-            InboundDropEvent {
-                reason: "duplicate",
-                delivery_kind: InboundDeliveryKind::Resource,
-                raw_destination_hex: raw_destination_hex.as_str(),
-                destination,
-                payload_mode: InboundPayloadMode::FullWire,
-                bytes_len: data.len(),
-                detail: Some("message already stored".to_string()),
-                record: Some(&record),
-            },
-        );
-        return;
-    }
-    let _ = daemon.accept_inbound_with_raw(record, data);
+    persist_inbound_record(
+        daemon,
+        &record,
+        data,
+        InboundPersistenceContext {
+            delivery_kind: InboundDeliveryKind::Resource,
+            label: "resource",
+            raw_destination_hex: raw_destination_hex.as_str(),
+            destination,
+            payload_mode: InboundPayloadMode::FullWire,
+        },
+    );
 }
 
 pub(super) async fn accept_delivery_packet(
@@ -231,116 +233,74 @@ pub(super) async fn accept_delivery_packet(
         );
         return;
     }
-    if matches!(daemon.message_exists(record.id.as_str()), Ok(true)) {
-        emit_inbound_drop_event(
-            daemon,
-            InboundDropEvent {
-                reason: "duplicate",
-                delivery_kind: InboundDeliveryKind::Packet,
-                raw_destination_hex,
-                destination,
-                payload_mode,
-                bytes_len: data.len(),
-                detail: Some("message already stored".to_string()),
-                record: Some(&record),
-            },
-        );
+    if !persist_inbound_record(
+        daemon,
+        &record,
+        data,
+        InboundPersistenceContext {
+            delivery_kind: InboundDeliveryKind::Packet,
+            label: "packet",
+            raw_destination_hex,
+            destination,
+            payload_mode,
+        },
+    ) {
         return;
     }
     daemon.record_inbound_peer_activity(&record.source, data.len());
-    let _ = daemon.accept_inbound_with_raw(record, data);
-}
-
-pub(crate) struct InboundDropEvent<'a> {
-    pub(crate) reason: &'a str,
-    pub(crate) delivery_kind: InboundDeliveryKind,
-    pub(crate) raw_destination_hex: &'a str,
-    pub(crate) destination: [u8; 16],
-    pub(crate) payload_mode: InboundPayloadMode,
-    pub(crate) bytes_len: usize,
-    pub(crate) detail: Option<String>,
-    pub(crate) record: Option<&'a MessageRecord>,
 }
 
 #[derive(Clone, Copy)]
-pub(crate) enum InboundDeliveryKind {
-    Packet,
-    Propagation,
-    Resource,
-}
-
-fn inbound_drop_event_payload(event: InboundDropEvent<'_>) -> Value {
-    let mut payload = json!({
-        "reason": event.reason,
-        "delivery_kind": inbound_delivery_kind_name(event.delivery_kind),
-        "raw_destination_hash": event.raw_destination_hex,
-        "resolved_destination_hash": hex::encode(event.destination),
-        "payload_mode": inbound_payload_mode_name(event.payload_mode),
-        "bytes_len": event.bytes_len,
-    });
-    if let Some(detail) = inbound_drop_detail(event.reason, event.detail) {
-        payload["detail"] = Value::String(detail);
-    }
-    if let Some(record) = event.record {
-        payload["dropped_message_id"] = Value::String(record.id.clone());
-        payload["source_hash"] = Value::String(record.source.clone());
-        payload["destination_hash"] = Value::String(record.destination.clone());
-    }
-    payload
-}
-
-pub(crate) fn emit_inbound_drop_event(daemon: &RpcDaemon, event: InboundDropEvent<'_>) {
-    let payload = inbound_drop_event_payload(event);
-    daemon.publish_event(RpcEvent { event_type: "inbound_dropped".to_string(), payload });
-}
-
-pub(crate) fn emit_propagation_predecode_drop_event(
-    daemon: &RpcDaemon,
+struct InboundPersistenceContext<'a> {
+    delivery_kind: InboundDeliveryKind,
+    label: &'static str,
+    raw_destination_hex: &'a str,
     destination: [u8; 16],
-    transient_payload: &[u8],
-    reason: &'static str,
-    detail: impl Into<String>,
-) {
-    let raw_destination_hex =
-        propagated_transient_raw_destination_hex(destination, transient_payload);
+    payload_mode: InboundPayloadMode,
+}
+
+fn persist_inbound_record(
+    daemon: &RpcDaemon,
+    record: &MessageRecord,
+    data: &[u8],
+    context: InboundPersistenceContext<'_>,
+) -> bool {
+    let (reason, detail) = match daemon.message_exists(record.id.as_str()) {
+        Ok(true) => ("duplicate", "message already stored".to_string()),
+        Ok(false) => match daemon.accept_inbound_with_raw(record.clone(), data) {
+            Ok(()) => return true,
+            Err(err) => {
+                log::error!(
+                    "[daemon-rx] inbound {} persistence failed id={}: {err}",
+                    context.label,
+                    record.id
+                );
+                ("inbound_persistence_failed", err.to_string())
+            }
+        },
+        Err(err) => {
+            log::error!(
+                "[daemon-rx] inbound {} duplicate lookup failed id={}: {err}",
+                context.label,
+                record.id
+            );
+            ("message_lookup_failed", err.to_string())
+        }
+    };
     emit_inbound_drop_event(
         daemon,
         InboundDropEvent {
             reason,
-            delivery_kind: InboundDeliveryKind::Propagation,
-            raw_destination_hex: raw_destination_hex.as_str(),
-            destination,
-            payload_mode: InboundPayloadMode::FullWire,
-            bytes_len: transient_payload.len(),
-            detail: Some(detail.into()),
-            record: None,
+            delivery_kind: context.delivery_kind,
+            raw_destination_hex: context.raw_destination_hex,
+            destination: context.destination,
+            payload_mode: context.payload_mode,
+            bytes_len: data.len(),
+            detail: Some(detail),
+            record: Some(record),
         },
     );
-}
-
-pub(crate) fn emit_propagation_duplicate_drop_event(
-    daemon: &RpcDaemon,
-    destination: [u8; 16],
-    transient_payload: &[u8],
-    transient_id: &str,
-    detail: &'static str,
-) {
-    let raw_destination_hex =
-        propagated_transient_raw_destination_hex(destination, transient_payload);
-    let mut payload = inbound_drop_event_payload(InboundDropEvent {
-        reason: "duplicate",
-        delivery_kind: InboundDeliveryKind::Propagation,
-        raw_destination_hex: raw_destination_hex.as_str(),
-        destination,
-        payload_mode: InboundPayloadMode::FullWire,
-        bytes_len: transient_payload.len(),
-        detail: Some(detail.to_string()),
-        record: None,
-    });
-    // Propagation transient IDs are protocol-visible content identifiers used by
-    // queue and duplicate-accounting APIs; keep them structured, not in detail.
-    payload["transient_id"] = Value::String(transient_id.to_string());
-    daemon.publish_event(RpcEvent { event_type: "inbound_dropped".to_string(), payload });
+    false
 }
 
 pub(super) fn log_resolved_packet(
@@ -368,45 +328,11 @@ fn inbound_payload_mode(mode: ReceivedPayloadMode) -> InboundPayloadMode {
     }
 }
 
-fn propagated_transient_raw_destination_hex(
-    destination: [u8; 16],
-    transient_payload: &[u8],
-) -> String {
-    if transient_payload.len() >= 16 {
-        hex::encode(&transient_payload[..16])
-    } else {
-        hex::encode(destination)
-    }
-}
-
-fn inbound_payload_mode_name(mode: InboundPayloadMode) -> &'static str {
-    match mode {
-        InboundPayloadMode::FullWire => "full_wire",
-        InboundPayloadMode::DestinationStripped => "destination_stripped",
-    }
-}
-
 fn direct_delivery_resource_limit_exceeded(daemon: &RpcDaemon, data: &[u8]) -> Option<u64> {
     let limit_bytes =
         u64::from(daemon.current_propagation_state().delivery_limit).saturating_mul(1000);
     let resource_size = data.len() as u64;
     (resource_size > limit_bytes).then_some(limit_bytes)
-}
-
-fn inbound_delivery_kind_name(kind: InboundDeliveryKind) -> &'static str {
-    match kind {
-        InboundDeliveryKind::Packet => "packet",
-        InboundDeliveryKind::Propagation => "propagation",
-        InboundDeliveryKind::Resource => "resource",
-    }
-}
-
-fn inbound_drop_detail(reason: &str, detail: Option<String>) -> Option<String> {
-    let detail = detail.filter(|value| !value.is_empty())?;
-    if reason == "stamp_policy_rejected" {
-        return Some("invalid LXMF stamp".to_string());
-    }
-    Some(detail)
 }
 
 pub(crate) async fn annotate_inbound_signature_status(

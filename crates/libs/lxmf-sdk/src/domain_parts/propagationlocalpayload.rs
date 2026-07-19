@@ -166,7 +166,10 @@ impl<'de> Deserialize<'de> for PropagationIngestResult {
         D: serde::Deserializer<'de>,
     {
         let raw = RawPropagationIngestResult::deserialize(deserializer)?;
-        let recovery_state = PropagationRecoveryStateResult::from_propagation(raw.propagation.clone());
+        let recovery_state = PropagationRecoveryStateResult::from_propagation(
+            raw.propagation.clone(),
+        )
+        .map_err(serde::de::Error::custom)?;
         Ok(Self {
             ingested_count: raw.ingested_count,
             duplicate_count: raw.duplicate_count,
@@ -216,7 +219,10 @@ impl<'de> Deserialize<'de> for PropagationFetchResult {
         D: serde::Deserializer<'de>,
     {
         let raw = RawPropagationFetchResult::deserialize(deserializer)?;
-        let recovery_state = PropagationRecoveryStateResult::from_propagation(raw.propagation.clone());
+        let recovery_state = PropagationRecoveryStateResult::from_propagation(
+            raw.propagation.clone(),
+        )
+        .map_err(serde::de::Error::custom)?;
         Ok(Self {
             transient_id: raw.transient_id,
             payload_hex: raw.payload_hex,

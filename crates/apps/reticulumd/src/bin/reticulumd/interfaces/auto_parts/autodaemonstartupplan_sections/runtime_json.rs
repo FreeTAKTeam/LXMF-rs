@@ -409,14 +409,14 @@ impl AutoDaemonStartupPlan {
                                 );
                                 log_auto_discovery_loop_event(event);
                                 if receive_failed && !shutdown_sent {
-                                    let _ = shutdown_tx.send(true);
+                                    shutdown_tx.send_replace(true);
                                     shutdown_sent = true;
                                 }
                             }
                             None => {
                                 discovery_events_open = false;
                                 if !shutdown_sent {
-                                    let _ = shutdown_tx.send(true);
+                                    shutdown_tx.send_replace(true);
                                     shutdown_sent = true;
                                 }
                             }
@@ -431,7 +431,7 @@ impl AutoDaemonStartupPlan {
                                 );
                                 log_auto_peer_data_loop_event(event);
                                 if receive_failed && !shutdown_sent {
-                                    let _ = shutdown_tx.send(true);
+                                    shutdown_tx.send_replace(true);
                                     shutdown_sent = true;
                                 }
                             }

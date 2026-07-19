@@ -756,7 +756,13 @@ async fn run_i2p_peer_loop(
             i2p_hdlc_runtime(event_tx),
         )
         .await;
-        let _ = status_task.await;
+        if let Err(error) = status_task.await {
+            log::error!(
+                "I2P stream status task failed peer={} iface={} error={error}",
+                peer,
+                iface_address
+            );
+        }
         log::info!("I2P SAM stream disconnected peer={} iface={}", peer, iface_address);
     }
 }
@@ -780,7 +786,9 @@ async fn cleanup_i2p_peer_routes(
     }
 
     for iface in &ifaces {
-        let _ = iface_manager.lock().await.stop_interface(*iface);
+        if !iface_manager.lock().await.stop_interface(*iface) {
+            log::debug!("I2P peer route interface already absent iface={iface}");
+        }
     }
     let mut status = runtime_status.lock().expect("i2p runtime status mutex poisoned");
     for iface in ifaces {
@@ -1012,13 +1020,21 @@ async fn run_i2p_accepted_stream(
         i2p_hdlc_runtime(event_tx),
     )
     .await;
-    let _ = status_task.await;
+    if let Err(error) = status_task.await {
+        log::error!(
+            "I2P incoming status task failed peer={} iface={} error={error}",
+            remote_destination,
+            child_iface
+        );
+    }
     runtime_status
         .lock()
         .expect("i2p runtime status mutex poisoned")
         .mark_incoming_closed(child_iface);
     peer_routes.lock().await.remove(&child_iface);
-    let _ = iface_manager.lock().await.stop_interface(child_iface);
+    if !iface_manager.lock().await.stop_interface(child_iface) {
+        log::debug!("I2P incoming child interface already absent iface={child_iface}");
+    }
     log::info!("I2P SAM incoming stream closed peer={} iface={}", remote_destination, child_iface);
 }
 
@@ -2032,7 +2048,7 @@ mod tests {
 
         cancel.cancel();
         iface_stop.cancel();
-        let _ = release_stream_tx.send(());
+        release_stream_tx.send(()).expect("fake SAM stream release receiver");
         tokio::time::timeout(Duration::from_secs(2), accept_loop)
             .await
             .expect("accept loop shutdown timeout")

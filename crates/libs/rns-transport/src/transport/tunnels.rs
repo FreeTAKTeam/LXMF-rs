@@ -388,10 +388,10 @@ fn validate_tunnel_synthesize(data: &[u8]) -> Result<Hash, RnsError> {
     let random_hash_start = interface_hash_start + HASH_SIZE;
     let signature_start = random_hash_start + ADDRESS_HASH_SIZE;
 
-    let identity = Identity::new_from_slices(
+    let identity = Identity::try_new_from_slices(
         &public_identity[..PUBLIC_KEY_LENGTH],
         &public_identity[PUBLIC_KEY_LENGTH..PUBLIC_KEY_LENGTH * 2],
-    );
+    )?;
     let signed_data = &data[..signature_start];
     let signature =
         Signature::from_slice(&data[signature_start..]).map_err(|_| RnsError::CryptoError)?;

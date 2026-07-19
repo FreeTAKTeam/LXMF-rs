@@ -6,7 +6,6 @@ use crate::direct_backchannel::DirectBackchannelLinks;
 use rns_rpc::{RpcDaemon, RpcRequest};
 
 use rns_transport::destination::link::{Link, LinkEvent};
-
 use rns_transport::destination::{DestinationName, SingleInputDestination};
 
 use rns_transport::hash::{AddressHash, Hash};
@@ -164,10 +163,18 @@ pub(super) fn spawn_inbound_worker(
                     }
                     ResourceEventKind::OutboundCancelled => {
                         let resource_hash_hex = hex::encode(event.hash.as_slice());
-                        let _ = take_outbound_resource_tracking(
+                        match take_outbound_resource_tracking(
                             &outbound_resource_map,
                             resource_hash_hex.as_str(),
-                        );
+                        ) {
+                            Ok(_) => {}
+                            Err("resource not tracked") => log::debug!(
+                                "[daemon-rx] cancelled outbound resource already untracked hash={resource_hash_hex}"
+                            ),
+                            Err(error) => log::error!(
+                                "[daemon-rx] failed to clear cancelled outbound resource hash={resource_hash_hex}: {error}"
+                            ),
+                        }
                     }
                     ResourceEventKind::InboundFailed(failure) => {
                         log::warn!(
@@ -281,87 +288,14 @@ fn handle_outbound_resource_failure(
     }
 }
 
-/// Whether the link identified by `link_id` is anchored on an
-/// `lxmf/delivery` destination — the direct-backchannel cache should only
-/// ever be populated from delivery links, never `lxmf/propagation`/
-/// `propagation.control` ones (see `spawn_packet_inbound_worker`'s
-/// `PeerIdentified` consumer for why). Checks in-links then out-links,
-/// mirroring `routing::resolve_resource_destination`'s own lookup order;
-/// an unresolvable `link_id` (already closed/evicted) is treated as
-/// not-delivery, fail-closed rather than caching on a guess.
-async fn is_delivery_backchannel_link(transport: &Transport, link_id: &AddressHash) -> bool {
-    let link = match transport.find_in_link(link_id).await {
-        Some(link) => Some(link),
-        None => transport.find_out_link(link_id).await,
-    };
-    match link {
-        Some(link) => routing::is_lxmf_delivery_destination(link.lock().await.destination()),
-        None => false,
-    }
-}
-
 fn spawn_packet_inbound_worker(
     daemon: Arc<RpcDaemon>,
     transport: Arc<Transport>,
     control: PropagationControlContext,
     direct_backchannel_links: Option<DirectBackchannelLinks>,
 ) {
-    // meshage fork — `LinkIdentify` packets stopped surfacing as plain
-    // `received_data_events()` payloads once #477 gave them their own
-    // dedicated `LinkEvent::PeerIdentified` event (matching upstream
-    // Python Reticulum's own separate identify handling), so the direct
-    // backchannel cache has to be populated from that event directly
-    // instead — the crate now hands back an already-parsed, already-
-    // signature-verified `Identity`, so this no longer needs its own
-    // `parse_link_identify_payload` reimplementation. A backchannel link
-    // can be either side's outbound link to the other, so both event
-    // streams are covered, mirroring how `Transport::new`'s own
-    // `spawn_link_data_forwarder` covers both directions. See #477's
-    // review discussion.
-    //
-    // `PeerIdentified` fires for ANY link, not just delivery ones — a peer
-    // also sends `LinkIdentify` on `lxmf/propagation`/`propagation.control`
-    // links (e.g. `bridge_remote_request.rs`, propagation download flows).
-    // The old inline-packet path only ever recorded a backchannel entry
-    // after `resolve_packet_destination` had resolved to
-    // `InboundLxmfDestination::Delivery`; that filter has to be
-    // reconstructed here by resolving the actual `Link` this event came
-    // from and checking its destination aspect, or a propagation/control
-    // link gets cached as if it were the peer's delivery backchannel — a
-    // later direct send would then reuse that link and the receiver would
-    // resolve the payload as propagation/control instead of delivery
-    // (flagged in Codex review; see PR #477 discussion).
-    if let Some(backchannel_links) = direct_backchannel_links.clone() {
-        for mut rx in [transport.in_link_events(), transport.out_link_events()] {
-            let backchannel_links = backchannel_links.clone();
-            let link_transport = transport.clone();
-            tokio::spawn(async move {
-                loop {
-                    match rx.recv().await {
-                        Ok(event) => {
-                            if let LinkEvent::PeerIdentified(identity) = event.event {
-                                if !is_delivery_backchannel_link(&link_transport, &event.id).await {
-                                    log::debug!(
-                                        "[daemon-rx] skipping non-delivery backchannel identify destination={} link={}",
-                                        identity.address_hash,
-                                        event.id
-                                    );
-                                    continue;
-                                }
-                                backchannel_links.record_identified_link(&identity, event.id);
-                                log::debug!(
-                                    "[daemon-rx] direct backchannel available destination={} link={}",
-                                    identity.address_hash,
-                                    event.id
-                                );
-                            }
-                        }
-                        Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
-                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
-                    }
-                }
-            });
-        }
+    if let Some(backchannel_links) = direct_backchannel_links {
+        link_identification::spawn_identified_peer_workers(transport.clone(), backchannel_links);
     }
 
     let daemon_inbound = daemon;
@@ -451,67 +385,4 @@ fn spawn_packet_inbound_worker(
             }
         }
     });
-}
-
-#[cfg(test)]
-mod backchannel_link_classification_tests {
-    use super::is_delivery_backchannel_link;
-    use rand_core::OsRng;
-    use rns_transport::destination::{DestinationDesc, DestinationName};
-    use rns_transport::identity::PrivateIdentity;
-    use rns_transport::transport::{Transport, TransportConfig};
-
-    // Regression test for the Codex-flagged backchannel-caching bug in
-    // PR #477: `PeerIdentified` fires for any link (delivery, propagation,
-    // AND propagation.control), but only a delivery link's identify
-    // should ever get cached as a peer's direct-delivery backchannel — a
-    // propagation/control link cached under the same key would later get
-    // reused for a direct delivery send, and the receiver would resolve
-    // the payload as propagation/control instead of delivery. This drives
-    // two real outbound links (one of each aspect) through an in-process
-    // `Transport` — no identify handshake needed, since the gate only
-    // inspects the link's own destination, not identify state.
-    #[tokio::test]
-    async fn only_a_delivery_aspect_link_is_treated_as_a_delivery_backchannel() {
-        let local_identity = PrivateIdentity::new_from_rand(OsRng);
-        let transport = Transport::new(TransportConfig::new(
-            "backchannel-classification-test",
-            &local_identity,
-            true,
-        ));
-
-        let delivery_peer = PrivateIdentity::new_from_rand(OsRng);
-        let delivery_destination = DestinationDesc {
-            identity: *delivery_peer.as_identity(),
-            address_hash: *delivery_peer.address_hash(),
-            name: DestinationName::new("lxmf", "delivery"),
-        };
-        let delivery_link = transport.link(delivery_destination).await;
-        let delivery_link_id = *delivery_link.lock().await.id();
-
-        let control_peer = PrivateIdentity::new_from_rand(OsRng);
-        let control_destination = DestinationDesc {
-            identity: *control_peer.as_identity(),
-            address_hash: *control_peer.address_hash(),
-            name: DestinationName::new("lxmf", "propagation.control"),
-        };
-        let control_link = transport.link(control_destination).await;
-        let control_link_id = *control_link.lock().await.id();
-
-        assert!(is_delivery_backchannel_link(&transport, &delivery_link_id).await);
-        assert!(!is_delivery_backchannel_link(&transport, &control_link_id).await);
-    }
-
-    #[tokio::test]
-    async fn an_unresolvable_link_id_is_not_treated_as_a_delivery_backchannel() {
-        let local_identity = PrivateIdentity::new_from_rand(OsRng);
-        let transport = Transport::new(TransportConfig::new(
-            "backchannel-classification-unresolvable-test",
-            &local_identity,
-            true,
-        ));
-        let bogus_link_id = rns_transport::hash::AddressHash::new([7u8; 16]);
-
-        assert!(!is_delivery_backchannel_link(&transport, &bogus_link_id).await);
-    }
 }

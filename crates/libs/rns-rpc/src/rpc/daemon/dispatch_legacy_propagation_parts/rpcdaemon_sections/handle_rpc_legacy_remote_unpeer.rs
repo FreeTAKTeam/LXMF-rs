@@ -48,8 +48,14 @@ impl RpcDaemon {
                         self.record_remote_unpeer_failure(
                             "remote control bridge unavailable".to_string(),
                         );
-                        let _ =
-                            self.record_payload_backed_peer_queue_snapshot(snapshot_peer.as_str());
+                        if let Err(error) =
+                            self.record_payload_backed_peer_queue_snapshot(snapshot_peer.as_str())
+                        {
+                            log::error!(
+                                "failed to record peer queue snapshot peer={}: {error}",
+                                snapshot_peer
+                            );
+                        }
                         if self.peer_record_exists(snapshot_peer.as_str(), false) {
                             self.publish_failed_remote_peer_sync_event(
                                 snapshot_peer.as_str(),
@@ -82,18 +88,27 @@ impl RpcDaemon {
                             )?;
                         } else {
                             let timestamp = now_i64();
-                            if let Ok(mut peers) = self.peers.lock() {
-                                if let Some(peer) = peers.get_mut(snapshot_peer.as_str()) {
-                                    peer.last_sync_attempt = timestamp;
-                                    peer.sync_backoff = peer
-                                        .sync_backoff
-                                        .saturating_add(super::init::LXMF_PEER_SYNC_BACKOFF_STEP_SECS);
-                                    peer.next_sync_attempt =
-                                        timestamp.saturating_add(i64::from(peer.sync_backoff));
-                                }
+                            let mut peers = self
+                                .peers
+                                .lock()
+                                .map_err(|error| std::io::Error::other(error.to_string()))?;
+                            if let Some(peer) = peers.get_mut(snapshot_peer.as_str()) {
+                                peer.last_sync_attempt = timestamp;
+                                peer.sync_backoff = peer
+                                    .sync_backoff
+                                    .saturating_add(super::init::LXMF_PEER_SYNC_BACKOFF_STEP_SECS);
+                                peer.next_sync_attempt =
+                                    timestamp.saturating_add(i64::from(peer.sync_backoff));
                             }
-                            let _ = self
-                                .record_payload_backed_peer_queue_snapshot(snapshot_peer.as_str());
+                            drop(peers);
+                            if let Err(snapshot_error) = self
+                                .record_payload_backed_peer_queue_snapshot(snapshot_peer.as_str())
+                            {
+                                log::error!(
+                                    "failed to record peer queue snapshot peer={}: {snapshot_error}",
+                                    snapshot_peer
+                                );
+                            }
                             self.publish_failed_remote_peer_sync_event(
                                 snapshot_peer.as_str(),
                                 remote_id.as_str(),

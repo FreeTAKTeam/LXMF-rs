@@ -76,7 +76,9 @@ pub(super) async fn run_zmq_rpc_loop_until(
         }
     }
     drop(response_tx);
-    let _ = response_writer.await;
+    response_writer
+        .await
+        .map_err(|err| io::Error::other(format!("zmq response writer task failed: {err}")))?;
     Ok(())
 }
 

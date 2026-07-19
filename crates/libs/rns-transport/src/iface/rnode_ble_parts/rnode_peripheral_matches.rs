@@ -281,7 +281,12 @@ impl NativeRnodeBleKissInterface {
                     err
                 );
                 let mut backend = runtime.into_backend();
-                let _ = backend.cleanup().await;
+                if let Err(cleanup_error) = backend.cleanup().await {
+                    log::warn!(
+                        "RNode BLE cleanup failed after setup error iface={} error={cleanup_error:?}",
+                        label
+                    );
+                }
                 sleep(active_backoff).await;
                 active_backoff = bounded_backoff_next(active_backoff, max_reconnect_backoff);
                 continue;
@@ -518,13 +523,21 @@ impl NativeRnodeBleKissInterface {
                                         payload.len(),
                                         label
                                     );
-                                    let _ = rx_channel
+                                    if rx_channel
                                         .send(RxMessage {
                                             address: iface_address,
                                             packet,
                                             source: IfaceSource::None,
                                         })
-                                        .await;
+                                        .await
+                                        .is_err()
+                                    {
+                                        log::warn!(
+                                            "RNode BLE transport receive queue closed iface={label}"
+                                        );
+                                        iface_stop.cancel();
+                                        break;
+                                    }
                                 }
                                 Err(err) => {
                                     let hex: String = payload
@@ -572,9 +585,13 @@ impl NativeRnodeBleKissInterface {
                 .and_then(|monitor| monitor.external_framebuffer_frame(false))
                 .into_iter()
                 .collect::<Vec<_>>();
-            let _ = runtime.shutdown_with_prefix_frames(shutdown_prefix_frames).await;
+            if let Err(error) = runtime.shutdown_with_prefix_frames(shutdown_prefix_frames).await {
+                log::warn!("RNode BLE shutdown failed iface={} error={error:?}", label);
+            }
             let mut backend = runtime.into_backend();
-            let _ = backend.cleanup().await;
+            if let Err(error) = backend.cleanup().await {
+                log::warn!("RNode BLE cleanup failed iface={} error={error:?}", label);
+            }
             if context.cancel.is_cancelled() || iface_stop.is_cancelled() {
                 break;
             }

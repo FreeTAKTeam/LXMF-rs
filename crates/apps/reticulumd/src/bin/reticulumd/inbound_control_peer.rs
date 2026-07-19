@@ -20,20 +20,45 @@ pub(super) fn handle_peer_command(
     if !peer_exists(daemon, peer_hex.as_str(), sync_command) {
         return Some(ControlResponse::Code(error_not_found));
     }
-    let mut params = json!({ "peer": peer_hex });
+    let mut params = json!({ "peer": peer_hex.clone() });
     if sync_command {
         params["force_sync"] = json!(true);
     }
     if let Some(transfer_limit_kb) = transfer_limit_kb {
         params["transfer_limit_kb"] = json!(transfer_limit_kb);
     }
-    let result =
-        daemon.handle_rpc(RpcRequest { id: 0, method: method.to_string(), params: Some(params) });
-    result
-        .ok()
-        .and_then(|response| response.result)
-        .map(ControlResponse::Value)
-        .or(Some(ControlResponse::Code(error_invalid_data)))
+    match daemon.handle_rpc(RpcRequest { id: 0, method: method.to_string(), params: Some(params) })
+    {
+        Ok(response) => match (response.result, response.error) {
+            (Some(result), None) => Some(ControlResponse::Value(result)),
+            (_, Some(error)) => {
+                log::warn!(
+                    "[daemon-control] peer command failed method={} peer={} code={} error={}",
+                    method,
+                    peer_hex,
+                    error.code,
+                    error.message
+                );
+                Some(ControlResponse::Code(error_invalid_data))
+            }
+            (None, None) => {
+                log::warn!(
+                    "[daemon-control] peer command returned no result method={} peer={}",
+                    method,
+                    peer_hex
+                );
+                Some(ControlResponse::Code(error_invalid_data))
+            }
+        },
+        Err(error) => {
+            log::warn!(
+                "[daemon-control] peer command RPC failed method={} peer={}: {error}",
+                method,
+                peer_hex
+            );
+            Some(ControlResponse::Code(error_invalid_data))
+        }
+    }
 }
 fn peer_request_from_data(data: Option<rmpv::Value>) -> Option<(String, Option<f64>)> {
     match data {
@@ -89,10 +114,28 @@ fn peer_exists(daemon: &RpcDaemon, peer_hex: &str, include_unpeered: bool) -> bo
     if include_unpeered && daemon.peer_record_exists(peer_hex, true) {
         return true;
     }
-    daemon
-        .handle_rpc(RpcRequest { id: 0, method: "list_peers".to_string(), params: None })
-        .ok()
-        .and_then(|response| response.result)
+    let response = match daemon.handle_rpc(RpcRequest {
+        id: 0,
+        method: "list_peers".to_string(),
+        params: None,
+    }) {
+        Ok(response) => response,
+        Err(error) => {
+            log::warn!("[daemon-control] failed to list peers while finding {peer_hex}: {error}");
+            return false;
+        }
+    };
+    if let Some(error) = response.error {
+        log::warn!(
+            "[daemon-control] list peers failed while finding {} code={} error={}",
+            peer_hex,
+            error.code,
+            error.message
+        );
+        return false;
+    }
+    response
+        .result
         .and_then(|value| value.get("peers").cloned())
         .and_then(|value| value.as_array().cloned())
         .map(|rows| {

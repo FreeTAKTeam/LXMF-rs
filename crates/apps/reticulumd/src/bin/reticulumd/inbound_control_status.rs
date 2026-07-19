@@ -5,18 +5,16 @@ pub(super) fn compose_python_status(
     daemon: &RpcDaemon,
     control: &PropagationControlContext,
 ) -> Value {
-    let status = daemon
-        .handle_rpc(RpcRequest { id: 0, method: "daemon_status_ex".to_string(), params: None })
-        .ok()
-        .and_then(|response| response.result)
-        .unwrap_or_else(|| json!({}));
-    let peers = daemon
-        .handle_rpc(RpcRequest { id: 0, method: "list_peers".to_string(), params: None })
-        .ok()
-        .and_then(|response| response.result)
-        .unwrap_or_else(|| json!({ "peers": [] }));
+    let status = rpc_result_or_default(daemon, "daemon_status_ex", json!({}));
+    let peers = rpc_result_or_default(daemon, "list_peers", json!({ "peers": [] }));
     let propagation = status.get("propagation").cloned().unwrap_or_else(|| json!({}));
-    let (message_count, message_bytes) = daemon.message_storage_stats().unwrap_or((0, 0));
+    let (message_count, message_bytes) = match daemon.message_storage_stats() {
+        Ok(stats) => stats,
+        Err(error) => {
+            log::error!("[daemon-control] failed to read message storage stats: {error}");
+            (0, 0)
+        }
+    };
     let static_peer_count = propagation
         .get("static_peers")
         .and_then(Value::as_array)
@@ -52,7 +50,15 @@ pub(super) fn compose_python_status(
                         unhandled,
                         offered_bytes,
                         unhandled_bytes,
-                    ) = daemon.peer_message_stats(peer.as_str()).unwrap_or((0, 0, 0, 0, 0, 0));
+                    ) = match daemon.peer_message_stats(peer.as_str()) {
+                        Ok(stats) => stats,
+                        Err(error) => {
+                            log::error!(
+                                "[daemon-control] failed to read peer message stats peer={peer}: {error}"
+                            );
+                            (0, 0, 0, 0, 0, 0)
+                        }
+                    };
                     total_peer_count = total_peer_count.saturating_add(1);
                     if peer_type == "discovered" {
                         discovered_peer_count = discovered_peer_count.saturating_add(1);
@@ -186,6 +192,31 @@ pub(super) fn compose_python_status(
         "max_peers": propagation.get("max_peers").and_then(Value::as_u64).unwrap_or(20),
         "peers": peer_map,
     })
+}
+
+fn rpc_result_or_default(daemon: &RpcDaemon, method: &str, default: Value) -> Value {
+    match daemon.handle_rpc(RpcRequest { id: 0, method: method.to_string(), params: None }) {
+        Ok(response) => {
+            if let Some(error) = response.error {
+                log::error!(
+                    "[daemon-control] status RPC failed method={} code={} error={}",
+                    method,
+                    error.code,
+                    error.message
+                );
+                default
+            } else {
+                response.result.unwrap_or_else(|| {
+                    log::error!("[daemon-control] status RPC returned no result method={method}");
+                    default
+                })
+            }
+        }
+        Err(error) => {
+            log::error!("[daemon-control] status RPC failed method={method}: {error}");
+            default
+        }
+    }
 }
 
 fn normalize_python_limit_value(value: Value) -> Value {

@@ -64,7 +64,7 @@ pub(super) async fn ingest_announce_event(
             None
         }
     };
-    let _ = daemon.accept_announce_with_metadata(
+    if let Err(err) = daemon.accept_announce_with_metadata(
         peer.clone(),
         timestamp,
         peer_name,
@@ -83,13 +83,17 @@ pub(super) async fn ingest_announce_event(
         None,
         None,
         None,
-    );
-    let _ = daemon.record_announce_identity(
+    ) {
+        log::error!("[daemon] failed to persist announce peer={peer}: {err}");
+    }
+    if let Err(err) = daemon.record_announce_identity(
         peer.as_str(),
         hex::encode(identity.public_key_bytes()).as_str(),
         hex::encode(identity.verifying_key_bytes()).as_str(),
         timestamp,
-    );
+    ) {
+        log::error!("[daemon] failed to persist announce identity peer={peer}: {err}");
+    }
 }
 
 fn announce_stamp_cost(

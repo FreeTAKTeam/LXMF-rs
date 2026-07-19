@@ -1,32 +1,29 @@
 #![allow(clippy::result_large_err)]
 
 use lxmf_sdk::{
-    Client, LxmfSdk, SdkConfig, SendRequest, StartRequest, ZmqEndpointRole,
-    ZmqPipelineBackendClient, ZmqPipelineBackendConfig, ZmqPipelineTokenAuth,
+    Client, LxmfSdk, SdkConfig, SendRequest, StartRequest, ZmqPipelineBackendClient,
+    ZmqPipelineBackendConfig, ZmqPipelineTokenAuth,
 };
 use serde_json::json;
 use std::time::Duration;
 
 fn main() -> Result<(), lxmf_sdk::SdkError> {
-    let command_endpoint =
-        std::env::var("LXMF_ZMQ_COMMAND").unwrap_or_else(|_| "tcp://127.0.0.1:9100".to_owned());
-    let response_endpoint =
-        std::env::var("LXMF_ZMQ_RESPONSE").unwrap_or_else(|_| "tcp://127.0.0.1:9101".to_owned());
+    let endpoint =
+        std::env::var("LXMF_ZMQ_ENDPOINT").unwrap_or_else(|_| "tcp://127.0.0.1:9100".to_owned());
     let source = std::env::var("LXMF_SOURCE").unwrap_or_else(|_| "example.zmq".to_owned());
     let destination =
         std::env::var("LXMF_DESTINATION").unwrap_or_else(|_| "example.peer".to_owned());
 
-    let mut config = ZmqPipelineBackendConfig::local_tcp(command_endpoint, response_endpoint);
-    config.command_role = endpoint_role_from_env("LXMF_ZMQ_COMMAND_ROLE", config.command_role);
-    config.response_role = endpoint_role_from_env("LXMF_ZMQ_RESPONSE_ROLE", config.response_role);
+    let mut config = match token_auth_from_env() {
+        Some(token_auth) => ZmqPipelineBackendConfig::remote(endpoint, token_auth),
+        None => ZmqPipelineBackendConfig::local(endpoint),
+    };
     config.request_timeout = Duration::from_millis(
         std::env::var("LXMF_ZMQ_TIMEOUT_MS")
             .ok()
             .and_then(|value| value.parse::<u64>().ok())
             .unwrap_or(5_000),
     );
-    config.token_auth = token_auth_from_env();
-
     let backend = ZmqPipelineBackendClient::new(config)?;
     let client = Client::new(backend);
     let handle = client.start(StartRequest::new(SdkConfig::desktop_local_default()))?;
@@ -57,14 +54,6 @@ fn main() -> Result<(), lxmf_sdk::SdkError> {
     );
 
     Ok(())
-}
-
-fn endpoint_role_from_env(name: &str, default_role: ZmqEndpointRole) -> ZmqEndpointRole {
-    match std::env::var(name).ok().as_deref() {
-        Some("bind") | Some("BIND") => ZmqEndpointRole::Bind,
-        Some("connect") | Some("CONNECT") => ZmqEndpointRole::Connect,
-        _ => default_role,
-    }
 }
 
 fn token_auth_from_env() -> Option<ZmqPipelineTokenAuth> {

@@ -262,15 +262,29 @@ impl LocalUnixServer {
             }
 
             if let Some(path) = endpoint.filesystem_path() {
-                let _ = remove_socket_file(path);
+                if let Err(error) = remove_socket_file(path) {
+                    log::warn!(
+                        "local unix socket cleanup failed endpoint={} path={} error={error}",
+                        endpoint_label,
+                        path.display()
+                    );
+                }
             }
         }
 
         if let Some(path) = endpoint.filesystem_path() {
-            let _ = remove_socket_file(path);
+            if let Err(error) = remove_socket_file(path) {
+                log::warn!(
+                    "local unix socket cleanup failed endpoint={} path={} error={error}",
+                    endpoint.label(),
+                    path.display()
+                );
+            }
         }
         iface_stop.cancel();
-        let _ = tokio::join!(tx_task);
+        if let Err(error) = tx_task.await {
+            log::error!("local unix transmit task failed endpoint={}: {error}", endpoint.label());
+        }
     }
 
     pub async fn preflight_bind_available(endpoint: &LocalUnixEndpoint) -> std::io::Result<()> {

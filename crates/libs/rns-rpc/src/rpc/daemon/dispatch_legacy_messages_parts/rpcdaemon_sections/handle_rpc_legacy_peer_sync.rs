@@ -460,19 +460,15 @@ impl RpcDaemon {
             propagation_last_resource_bytes,
         );
         let (outgoing, incoming, offered, unhandled, offered_bytes, unhandled_bytes) =
-            self.peer_message_stats(record.peer.as_str()).unwrap_or((0, 0, 0, 0, 0, 0));
+            self.peer_message_stats_for_reporting(record.peer.as_str());
         let acceptance_rate = peer_acceptance_rate_for_reporting(
             status.acceptance_rate,
             outgoing,
             offered,
             status.alive,
         );
-        let handled_ids =
-            self.store.list_peer_handled_propagation_ids(record.peer.as_str()).unwrap_or_default();
-        let unhandled_ids = self
-            .store
-            .list_peer_unhandled_propagation_ids(record.peer.as_str())
-            .unwrap_or_default();
+        let handled_ids = self.peer_handled_ids_for_reporting(record.peer.as_str());
+        let unhandled_ids = self.peer_unhandled_ids_for_reporting(record.peer.as_str());
         let messages = json!({ "offered": offered, "outgoing": outgoing, "incoming": incoming, "unhandled": unhandled, "offered_bytes": offered_bytes, "unhandled_bytes": unhandled_bytes, "handled_ids": handled_ids, "unhandled_ids": unhandled_ids, });
         let peer_type_value = record.peer_type.clone();
         let peer_status_type =

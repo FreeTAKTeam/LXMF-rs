@@ -19,14 +19,33 @@ impl DirectBackchannelLinks {
 
     pub(super) fn record_identified_link(&self, identity: &Identity, link_id: AddressHash) {
         let destination = delivery_destination_hash_for_identity(identity);
-        if let Ok(mut guard) = self.links.lock() {
-            guard.insert(destination, link_id);
+        match self.links.lock() {
+            Ok(mut guard) => {
+                guard.insert(destination, link_id);
+            }
+            Err(error) => {
+                log::error!(
+                    "[daemon] direct backchannel cache lock poisoned while recording dst={} link={}: {}",
+                    destination,
+                    link_id,
+                    error
+                );
+            }
         }
     }
 
     pub(super) fn remove_destination(&self, destination: &AddressHash) {
-        if let Ok(mut guard) = self.links.lock() {
-            guard.remove(destination);
+        match self.links.lock() {
+            Ok(mut guard) => {
+                guard.remove(destination);
+            }
+            Err(error) => {
+                log::error!(
+                    "[daemon] direct backchannel cache lock poisoned while removing dst={}: {}",
+                    destination,
+                    error
+                );
+            }
         }
     }
 

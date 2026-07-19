@@ -133,19 +133,20 @@ impl RpcDaemon {
 
                 let normalized_transient_id =
                     normalize_propagation_transient_key(parsed.transient_id.as_str());
-                let payload = self
+                let in_memory_payload = self
                     .propagation_payloads
                     .lock()
                     .expect("propagation payload mutex poisoned")
                     .get(normalized_transient_id.as_str())
-                    .cloned()
-                    .or_else(|| {
-                        self.store
-                            .get_propagation_entry(normalized_transient_id.as_str())
-                            .ok()
-                            .flatten()
-                            .map(|entry| entry.payload_hex)
-                    })
+                    .cloned();
+                let payload = match in_memory_payload {
+                    Some(payload) => Some(payload),
+                    None => self
+                        .store
+                        .get_propagation_entry(normalized_transient_id.as_str())
+                        .map_err(std::io::Error::other)?
+                        .map(|entry| entry.payload_hex),
+                }
                     .ok_or_else(|| {
                         std::io::Error::new(std::io::ErrorKind::NotFound, "transient_id not found")
                     })?;

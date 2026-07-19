@@ -266,18 +266,21 @@ impl RpcDaemon {
                             state.last_sync_error = None;
                         });
                         let peer_sync_completed_at = now_i64();
-                        if let Ok(mut peers) = self.peers.lock() {
-                            if let Some(peer) = peers
-                                .values_mut()
-                                .find(|record| record.peer.eq_ignore_ascii_case(peer_key.as_str()))
-                            {
-                                peer.alive = true;
-                                peer.last_seen = peer_sync_completed_at;
-                                peer.last_sync_attempt = peer_sync_completed_at;
-                                peer.sync_backoff = 0;
-                                peer.next_sync_attempt = 0;
-                            }
+                        let mut peers = self
+                            .peers
+                            .lock()
+                            .map_err(|error| std::io::Error::other(error.to_string()))?;
+                        if let Some(peer) = peers
+                            .values_mut()
+                            .find(|record| record.peer.eq_ignore_ascii_case(peer_key.as_str()))
+                        {
+                            peer.alive = true;
+                            peer.last_seen = peer_sync_completed_at;
+                            peer.last_sync_attempt = peer_sync_completed_at;
+                            peer.sync_backoff = 0;
+                            peer.next_sync_attempt = 0;
                         }
+                        drop(peers);
                         let peer = self
                             .peers
                             .lock()
@@ -293,17 +296,11 @@ impl RpcDaemon {
                                 unhandled,
                                 offered_bytes,
                                 unhandled_bytes,
-                            ) = self
-                                .peer_message_stats(peer.peer.as_str())
-                                .unwrap_or((0, 0, 0, 0, 0, 0));
-                            let handled_ids = self
-                                .store
-                                .list_peer_handled_propagation_ids(peer.peer.as_str())
-                                .unwrap_or_default();
-                            let unhandled_ids = self
-                                .store
-                                .list_peer_unhandled_propagation_ids(peer.peer.as_str())
-                                .unwrap_or_default();
+                            ) = self.peer_message_stats_for_reporting(peer.peer.as_str());
+                            let handled_ids =
+                                self.peer_handled_ids_for_reporting(peer.peer.as_str());
+                            let unhandled_ids =
+                                self.peer_unhandled_ids_for_reporting(peer.peer.as_str());
                             let peering_key =
                                 super::dispatch_legacy_messages::peer_peering_key_value(
                                     &peer,

@@ -255,10 +255,10 @@ impl<B: SdkBackendAsyncOps> Client<B> {
         let ack = self.backend.shutdown_async(mode).await?;
         {
             let mut lifecycle = self.lifecycle.lock().expect("lifecycle mutex poisoned");
-            if lifecycle.state() != RuntimeState::Stopped {
-                let _ = lifecycle.mark_draining();
-                lifecycle.mark_stopped();
+            if matches!(lifecycle.state(), RuntimeState::Running | RuntimeState::Starting) {
+                lifecycle.mark_draining()?;
             }
+            lifecycle.mark_stopped();
         }
         Ok(ack)
     }

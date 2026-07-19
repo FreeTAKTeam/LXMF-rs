@@ -217,8 +217,11 @@ impl ReticulumBleRuntimeStatusHandle {
     }
 
     fn update(&self, f: impl FnOnce(&mut ReticulumBleRuntimeStatus)) {
-        if let Ok(mut guard) = self.inner.lock() {
-            f(&mut guard);
+        match self.inner.lock() {
+            Ok(mut guard) => f(&mut guard),
+            Err(error) => {
+                log::error!("Reticulum BLE runtime status mutex poisoned: {error}");
+            }
         }
     }
 

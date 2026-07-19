@@ -84,15 +84,52 @@ impl RatchetStore {
 
     pub(crate) fn clean_expired(&mut self, now: f64) {
         self.cache.retain(|_, record| now <= record.received + RATCHET_EXPIRY_SECS);
-        if let Ok(entries) = fs::read_dir(&self.ratchet_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if let Ok(data) = fs::read(&path) {
-                    if let Ok(record) = rmp_serde::from_slice::<RatchetRecord>(&data) {
-                        if now > record.received + RATCHET_EXPIRY_SECS {
-                            let _ = fs::remove_file(path);
-                        }
-                    }
+        let entries = match fs::read_dir(&self.ratchet_dir) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
+            Err(error) => {
+                log::warn!(
+                    "failed to scan ratchet directory path={} error={error}",
+                    self.ratchet_dir.display()
+                );
+                return;
+            }
+        };
+        for entry in entries {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(error) => {
+                    log::warn!("failed to read ratchet directory entry: {error}");
+                    continue;
+                }
+            };
+            let path = entry.path();
+            let data = match fs::read(&path) {
+                Ok(data) => data,
+                Err(error) => {
+                    log::warn!(
+                        "failed to read ratchet record path={} error={error}",
+                        path.display()
+                    );
+                    continue;
+                }
+            };
+            let record = match rmp_serde::from_slice::<RatchetRecord>(&data) {
+                Ok(record) => record,
+                Err(error) => {
+                    log::warn!(
+                        "failed to decode ratchet record path={} error={error}",
+                        path.display()
+                    );
+                    continue;
+                }
+            };
+            if now > record.received + RATCHET_EXPIRY_SECS {
+                if let Err(error) = fs::remove_file(&path) {
+                    log::warn!(
+                        "failed to remove expired ratchet record path={} error={error}",
+                        path.display()
+                    );
                 }
             }
         }
@@ -108,8 +145,9 @@ impl RatchetStore {
         let path = self.path_for(destination);
         let tmp_path = path.with_extension("out");
         fs::write(&tmp_path, encoded).map_err(|_| RnsError::PacketError)?;
+        #[cfg(windows)]
         if path.exists() {
-            let _ = fs::remove_file(&path);
+            fs::remove_file(&path).map_err(|_| RnsError::PacketError)?;
         }
         fs::rename(&tmp_path, &path).map_err(|_| RnsError::PacketError)?;
         Ok(())
@@ -129,7 +167,17 @@ impl RatchetStore {
 
     fn remove_record(&self, destination: &AddressHash) {
         let path = self.path_for(destination);
-        let _ = fs::remove_file(path);
+        match fs::remove_file(&path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                log::warn!(
+                    "failed to remove ratchet record destination={} path={} error={error}",
+                    destination,
+                    path.display()
+                );
+            }
+        }
     }
 
     fn path_for(&self, destination: &AddressHash) -> PathBuf {

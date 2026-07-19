@@ -1,6 +1,24 @@
 use rusqlite::{params, Connection};
 use serde_json::Value as JsonValue;
 
+fn serialize_json_for_sql<T: serde::Serialize>(value: &T) -> rusqlite::Result<String> {
+    serde_json::to_string(value)
+        .map_err(|err| rusqlite::Error::ToSqlConversionFailure(Box::new(err)))
+}
+
+fn deserialize_json_column<T: serde::de::DeserializeOwned>(
+    value: &str,
+    column: usize,
+) -> rusqlite::Result<T> {
+    serde_json::from_str(value).map_err(|err| {
+        rusqlite::Error::FromSqlConversionFailure(
+            column,
+            rusqlite::types::Type::Text,
+            Box::new(err),
+        )
+    })
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct MessageRecord {
     pub id: String,
@@ -53,8 +71,7 @@ impl MessagesStore {
     }
 
     pub fn insert_message(&self, record: &MessageRecord) -> rusqlite::Result<()> {
-        let fields_json =
-            record.fields.as_ref().map(|value| serde_json::to_string(value).unwrap_or_default());
+        let fields_json = record.fields.as_ref().map(serialize_json_for_sql).transpose()?;
         self.conn.execute(
             "INSERT OR REPLACE INTO messages (id, source, destination, title, content, timestamp, direction, fields, receipt_status) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
@@ -85,8 +102,10 @@ impl MessagesStore {
             let mut rows = stmt.query(params![ts, limit as i64])?;
             while let Some(row) = rows.next()? {
                 let fields_json: Option<String> = row.get(7)?;
-                let fields =
-                    fields_json.as_ref().and_then(|value| serde_json::from_str(value).ok());
+                let fields = fields_json
+                    .as_deref()
+                    .map(|value| deserialize_json_column(value, 7))
+                    .transpose()?;
                 let receipt_status: Option<String> = row.get(8)?;
                 records.push(MessageRecord {
                     id: row.get(0)?,
@@ -107,8 +126,10 @@ impl MessagesStore {
             let mut rows = stmt.query(params![limit as i64])?;
             while let Some(row) = rows.next()? {
                 let fields_json: Option<String> = row.get(7)?;
-                let fields =
-                    fields_json.as_ref().and_then(|value| serde_json::from_str(value).ok());
+                let fields = fields_json
+                    .as_deref()
+                    .map(|value| deserialize_json_column(value, 7))
+                    .transpose()?;
                 let receipt_status: Option<String> = row.get(8)?;
                 records.push(MessageRecord {
                     id: row.get(0)?,
@@ -140,7 +161,7 @@ impl MessagesStore {
     }
 
     pub fn insert_announce(&self, record: &AnnounceRecord) -> rusqlite::Result<()> {
-        let capabilities_json = serde_json::to_string(&record.capabilities).unwrap_or_default();
+        let capabilities_json = serialize_json_for_sql(&record.capabilities)?;
         self.conn.execute(
             "INSERT OR REPLACE INTO announces (id, peer, timestamp, name, name_source, first_seen, seen_count, app_data_hex, capabilities, rssi, snr, q, stamp_cost_flexibility, peering_cost) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             params![
@@ -174,7 +195,8 @@ impl MessagesStore {
             let capabilities_json: Option<String> = row.get(8)?;
             let capabilities = capabilities_json
                 .as_deref()
-                .and_then(|value| serde_json::from_str::<Vec<String>>(value).ok())
+                .map(|value| deserialize_json_column(value, 8))
+                .transpose()?
                 .unwrap_or_default();
             let seen_count: i64 = row.get(6)?;
             Ok(AnnounceRecord {
@@ -228,7 +250,8 @@ impl MessagesStore {
     }
 
     fn init_schema(&self) -> rusqlite::Result<()> {
-        self.conn.execute_batch(
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute_batch(
             "CREATE TABLE IF NOT EXISTS messages (
                 id TEXT PRIMARY KEY,
                 source TEXT NOT NULL,
@@ -257,23 +280,56 @@ impl MessagesStore {
                 peering_cost INTEGER
             );",
         )?;
-        let _ = self.conn.execute("ALTER TABLE messages ADD COLUMN title TEXT", []);
-        let _ = self.conn.execute("UPDATE messages SET title = '' WHERE title IS NULL", []);
-        let _ = self.conn.execute("ALTER TABLE messages ADD COLUMN fields TEXT", []);
-        let _ = self.conn.execute("ALTER TABLE messages ADD COLUMN receipt_status TEXT", []);
-        let _ = self.conn.execute("ALTER TABLE announces ADD COLUMN name TEXT", []);
-        let _ = self.conn.execute("ALTER TABLE announces ADD COLUMN name_source TEXT", []);
-        let _ = self.conn.execute("ALTER TABLE announces ADD COLUMN first_seen INTEGER", []);
-        let _ = self.conn.execute("ALTER TABLE announces ADD COLUMN seen_count INTEGER", []);
-        let _ = self.conn.execute("ALTER TABLE announces ADD COLUMN app_data_hex TEXT", []);
-        let _ = self.conn.execute("ALTER TABLE announces ADD COLUMN capabilities TEXT", []);
-        let _ = self.conn.execute("ALTER TABLE announces ADD COLUMN rssi REAL", []);
-        let _ = self.conn.execute("ALTER TABLE announces ADD COLUMN snr REAL", []);
-        let _ = self.conn.execute("ALTER TABLE announces ADD COLUMN q REAL", []);
-        let _ = self
-            .conn
-            .execute("ALTER TABLE announces ADD COLUMN stamp_cost_flexibility INTEGER", []);
-        let _ = self.conn.execute("ALTER TABLE announces ADD COLUMN peering_cost INTEGER", []);
+        Self::ensure_schema_column(&tx, "messages", "title", "title TEXT")?;
+        tx.execute("UPDATE messages SET title = '' WHERE title IS NULL", [])?;
+        Self::ensure_schema_column(&tx, "messages", "fields", "fields TEXT")?;
+        Self::ensure_schema_column(&tx, "messages", "receipt_status", "receipt_status TEXT")?;
+        Self::ensure_schema_column(&tx, "announces", "name", "name TEXT")?;
+        Self::ensure_schema_column(&tx, "announces", "name_source", "name_source TEXT")?;
+        Self::ensure_schema_column(&tx, "announces", "first_seen", "first_seen INTEGER")?;
+        Self::ensure_schema_column(&tx, "announces", "seen_count", "seen_count INTEGER")?;
+        tx.execute("UPDATE announces SET first_seen = timestamp WHERE first_seen IS NULL", [])?;
+        tx.execute("UPDATE announces SET seen_count = 1 WHERE seen_count IS NULL", [])?;
+        Self::ensure_schema_column(&tx, "announces", "app_data_hex", "app_data_hex TEXT")?;
+        Self::ensure_schema_column(&tx, "announces", "capabilities", "capabilities TEXT")?;
+        Self::ensure_schema_column(&tx, "announces", "rssi", "rssi REAL")?;
+        Self::ensure_schema_column(&tx, "announces", "snr", "snr REAL")?;
+        Self::ensure_schema_column(&tx, "announces", "q", "q REAL")?;
+        Self::ensure_schema_column(
+            &tx,
+            "announces",
+            "stamp_cost_flexibility",
+            "stamp_cost_flexibility INTEGER",
+        )?;
+        Self::ensure_schema_column(&tx, "announces", "peering_cost", "peering_cost INTEGER")?;
+        tx.commit()
+    }
+
+    fn schema_has_column(
+        conn: &Connection,
+        table: &'static str,
+        column: &'static str,
+    ) -> rusqlite::Result<bool> {
+        let mut statement = conn.prepare(&format!("PRAGMA table_info({table})"))?;
+        let mut rows = statement.query([])?;
+        while let Some(row) = rows.next()? {
+            let existing: String = row.get(1)?;
+            if existing == column {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    fn ensure_schema_column(
+        conn: &Connection,
+        table: &'static str,
+        column: &'static str,
+        declaration: &'static str,
+    ) -> rusqlite::Result<()> {
+        if !Self::schema_has_column(conn, table, column)? {
+            conn.execute(format!("ALTER TABLE {table} ADD COLUMN {declaration}").as_str(), [])?;
+        }
         Ok(())
     }
 }

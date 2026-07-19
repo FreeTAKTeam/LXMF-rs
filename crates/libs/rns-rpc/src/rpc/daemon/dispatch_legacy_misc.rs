@@ -402,7 +402,7 @@ impl RpcDaemon {
             "announce_now" => {
                 let timestamp = now_i64();
                 if let Some(bridge) = &self.announce_bridge {
-                    let _ = bridge.announce_now();
+                    bridge.announce_now()?;
                 }
                 let event = RpcEvent {
                     event_type: "announce_sent".into(),

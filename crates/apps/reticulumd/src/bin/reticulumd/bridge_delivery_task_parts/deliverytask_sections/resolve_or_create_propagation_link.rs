@@ -62,9 +62,14 @@ impl DeliveryTask {
                 return Err(std::io::Error::new(std::io::ErrorKind::NotFound, msg))
             }
         };
-        if let Ok(mut guard) = self.outbound_propagation_identities.lock() {
-            guard.insert(propagation_node_hex.to_string(), propagation_identity);
-        }
+        self.outbound_propagation_identities
+            .lock()
+            .map_err(|error| {
+                std::io::Error::other(format!(
+                    "propagation identity cache lock poisoned for {propagation_node_hex}: {error}"
+                ))
+            })?
+            .insert(propagation_node_hex.to_string(), propagation_identity);
 
         let propagation_destination = SingleOutputDestination::new(
             propagation_identity,

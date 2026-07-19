@@ -56,11 +56,9 @@ impl RpcDaemon {
             return;
         };
         let (outgoing, incoming, offered, unhandled, offered_bytes, unhandled_bytes) =
-            self.peer_message_stats(peer.peer.as_str()).unwrap_or((0, 0, 0, 0, 0, 0));
-        let handled_ids =
-            self.store.list_peer_handled_propagation_ids(peer.peer.as_str()).unwrap_or_default();
-        let unhandled_ids =
-            self.store.list_peer_unhandled_propagation_ids(peer.peer.as_str()).unwrap_or_default();
+            self.peer_message_stats_for_reporting(peer.peer.as_str());
+        let handled_ids = self.peer_handled_ids_for_reporting(peer.peer.as_str());
+        let unhandled_ids = self.peer_unhandled_ids_for_reporting(peer.peer.as_str());
         let peering_key = super::dispatch_legacy_messages::peer_peering_key_value(
             &peer,
             self.identity_hash.as_str(),
@@ -166,12 +164,13 @@ impl RpcDaemon {
         sync_limit: Option<u64>,
     ) -> Result<(), std::io::Error> {
         let timestamp = now_i64();
-        if let Ok(mut peers) = self.peers.lock() {
-            if let Some(peer) = peers.get_mut(peer_id) {
-                peer.last_sync_attempt = timestamp;
-                peer.next_sync_attempt = timestamp.saturating_add(PN_STAMP_THROTTLE_SECS);
-            }
+        let mut peers =
+            self.peers.lock().map_err(|error| std::io::Error::other(error.to_string()))?;
+        if let Some(peer) = peers.get_mut(peer_id) {
+            peer.last_sync_attempt = timestamp;
+            peer.next_sync_attempt = timestamp.saturating_add(PN_STAMP_THROTTLE_SECS);
         }
+        drop(peers);
         self.record_payload_backed_peer_queue_snapshot(peer_id)?;
         self.publish_failed_remote_peer_sync_event(
             peer_id,
@@ -193,14 +192,15 @@ impl RpcDaemon {
         sync_limit: Option<u64>,
     ) -> Result<(), std::io::Error> {
         let timestamp = now_i64();
-        if let Ok(mut peers) = self.peers.lock() {
-            if let Some(peer) = peers.get_mut(peer_id) {
-                peer.last_sync_attempt = timestamp;
-                peer.sync_backoff =
-                    peer.sync_backoff.saturating_add(super::init::LXMF_PEER_SYNC_BACKOFF_STEP_SECS);
-                peer.next_sync_attempt = timestamp.saturating_add(i64::from(peer.sync_backoff));
-            }
+        let mut peers =
+            self.peers.lock().map_err(|error| std::io::Error::other(error.to_string()))?;
+        if let Some(peer) = peers.get_mut(peer_id) {
+            peer.last_sync_attempt = timestamp;
+            peer.sync_backoff =
+                peer.sync_backoff.saturating_add(super::init::LXMF_PEER_SYNC_BACKOFF_STEP_SECS);
+            peer.next_sync_attempt = timestamp.saturating_add(i64::from(peer.sync_backoff));
         }
+        drop(peers);
         self.record_payload_backed_peer_queue_snapshot(peer_id)?;
         self.publish_failed_remote_peer_sync_event(
             peer_id,

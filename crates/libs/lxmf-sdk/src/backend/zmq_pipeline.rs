@@ -90,12 +90,10 @@ impl Drop for ZmqPipelineBackendClient {
             return;
         };
         if tokio::runtime::Handle::try_current().is_ok() {
-            // Tokio rejects dropping a blocking-capable runtime from an async task. Finish its
-            // shutdown on a plain thread so a client can safely be constructed and dropped in
-            // either synchronous or asynchronous applications.
-            let _ = std::thread::Builder::new()
-                .name("lxmf-sdk-zmq-runtime-drop".to_owned())
-                .spawn(move || drop(runtime));
+            // Tokio rejects blocking runtime destruction from an async task. Its explicit
+            // background shutdown consumes the runtime without relying on a fallible helper
+            // thread spawn (whose failure would otherwise drop the runtime in this context).
+            runtime.shutdown_background();
         } else {
             drop(runtime);
         }

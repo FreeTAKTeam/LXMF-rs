@@ -20,14 +20,26 @@ impl RpcDaemon {
             if !served_ids.insert(transient_hex.clone()) {
                 continue;
             }
-            let payload = match self
-                .store
-                .get_propagation_entry(transient_hex.as_str())
-                .ok()
-                .flatten()
+            let stored_entry = match self.store.get_propagation_entry(transient_hex.as_str()) {
+                Ok(entry) => entry,
+                Err(error) => {
+                    log::error!(
+                        "failed to read propagation entry transient_id={transient_hex}: {error}"
+                    );
+                    None
+                }
+            };
+            let payload = match stored_entry
                 .filter(|entry| entry.destination == destination_hex)
-                .and_then(|entry| hex::decode(entry.payload_hex.as_str()).ok())
-            {
+                .and_then(|entry| match hex::decode(entry.payload_hex.as_str()) {
+                    Ok(payload) => Some(payload),
+                    Err(error) => {
+                        log::error!(
+                            "invalid stored propagation payload transient_id={transient_hex}: {error}"
+                        );
+                        None
+                    }
+                }) {
                 Some(payload) => payload,
                 None => {
                     let payload_hex = {
@@ -75,16 +87,33 @@ impl RpcDaemon {
         let haves_hex = haves.iter().map(hex::encode).collect::<Vec<_>>();
         let mut removed_snapshot_ids = Vec::new();
         for transient_hex in &haves_hex {
-            if self.store.get_propagation_entry(transient_hex.as_str()).ok().flatten().is_some_and(
-                |entry| entry.destination.eq_ignore_ascii_case(destination_hex.as_str()),
-            ) {
+            let entry = match self.store.get_propagation_entry(transient_hex.as_str()) {
+                Ok(entry) => entry,
+                Err(error) => {
+                    log::error!(
+                        "failed to read propagation entry during purge transient_id={transient_hex}: {error}"
+                    );
+                    None
+                }
+            };
+            if entry.is_some_and(|entry| {
+                entry.destination.eq_ignore_ascii_case(destination_hex.as_str())
+            }) {
                 removed_snapshot_ids.push(transient_hex.clone());
             }
         }
-        let mut purged = self
+        let mut purged = match self
             .store
             .purge_propagation_entries_for_destination(destination_hex.as_str(), &haves_hex)
-            .unwrap_or_default();
+        {
+            Ok(purged) => purged,
+            Err(error) => {
+                log::error!(
+                    "failed to purge propagation entries destination={destination_hex}: {error}"
+                );
+                0
+            }
+        };
         {
             let mut guard =
                 self.propagation_payloads.lock().expect("propagation payload mutex poisoned");

@@ -100,11 +100,29 @@ fn record_identified_peer(
 }
 
 fn clear_validated_peer_link(control: &PropagationControlContext, link_id: &AddressHash) {
-    if let Ok(mut guard) = control.validated_peer_links.lock() {
-        guard.remove(link_id);
+    match control.validated_peer_links.lock() {
+        Ok(mut guard) => {
+            guard.remove(link_id);
+        }
+        Err(error) => {
+            log::error!(
+                "[daemon-control] validated peer map lock poisoned while clearing link={}: {}",
+                link_id,
+                error
+            );
+        }
     }
-    if let Ok(mut guard) = control.identified_peer_links.lock() {
-        guard.remove(link_id);
+    match control.identified_peer_links.lock() {
+        Ok(mut guard) => {
+            guard.remove(link_id);
+        }
+        Err(error) => {
+            log::error!(
+                "[daemon-control] identified peer map lock poisoned while clearing link={}: {}",
+                link_id,
+                error
+            );
+        }
     }
 }
 

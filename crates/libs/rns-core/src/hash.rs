@@ -105,7 +105,7 @@ impl AddressHash {
     }
 
     pub fn new_from_hex_string(hex_string: &str) -> Result<Self, RnsError> {
-        if hex_string.len() < ADDRESS_HASH_SIZE * 2 {
+        if hex_string.len() != ADDRESS_HASH_SIZE * 2 {
             return Err(RnsError::IncorrectHash);
         }
 
@@ -195,5 +195,12 @@ mod tests {
             AddressHash::new_from_hex_string(&address_hash_hex).expect("valid hash");
 
         assert_eq!(actual_address_hash.as_slice(), original_address_hash.as_slice());
+    }
+
+    #[test]
+    fn address_hex_string_rejects_malformed_input() {
+        assert!(AddressHash::new_from_hex_string("not-a-hash").is_err());
+        assert!(AddressHash::new_from_hex_string(&"00".repeat(15)).is_err());
+        assert!(AddressHash::new_from_hex_string(&"00".repeat(17)).is_err());
     }
 }

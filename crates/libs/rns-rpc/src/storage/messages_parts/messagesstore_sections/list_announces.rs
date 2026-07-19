@@ -12,7 +12,8 @@ impl MessagesStore {
                 let capabilities_json: Option<String> = row.get(8)?;
                 let capabilities = capabilities_json
                     .as_deref()
-                    .and_then(|value| serde_json::from_str::<Vec<String>>(value).ok())
+                    .map(|value| deserialize_json_column(value, 8))
+                    .transpose()?
                     .unwrap_or_default();
                 let seen_count: i64 = row.get(6)?;
                 Ok(AnnounceRecord {
@@ -296,7 +297,8 @@ impl MessagesStore {
 
     fn init_schema(&self) -> rusqlite::Result<()> {
         self.with_write_conn(|conn| {
-            conn.execute_batch(
+            let tx = conn.unchecked_transaction()?;
+            tx.execute_batch(
                 "CREATE TABLE IF NOT EXISTS messages (
                     id TEXT PRIMARY KEY,
                     source TEXT NOT NULL,
@@ -368,8 +370,52 @@ impl MessagesStore {
                 CREATE TABLE IF NOT EXISTS propagation_local_entries (
                     transient_id TEXT PRIMARY KEY,
                     processed_at INTEGER NOT NULL
-                );
-                CREATE INDEX IF NOT EXISTS idx_messages_timestamp_desc
+                );",
+            )?;
+            Self::ensure_multi_ticket_schema(&tx)?;
+            tx.execute(
+                "CREATE INDEX IF NOT EXISTS idx_tickets_destination_expires
+                    ON tickets(destination, expires_at DESC)",
+                [],
+            )?;
+            Self::ensure_schema_column(&tx, "messages", "title", "title TEXT")?;
+            tx.execute("UPDATE messages SET title = '' WHERE title IS NULL", [])?;
+            Self::ensure_schema_column(&tx, "messages", "fields", "fields TEXT")?;
+            Self::ensure_schema_column(
+                &tx,
+                "messages",
+                "receipt_status",
+                "receipt_status TEXT",
+            )?;
+            Self::ensure_schema_column(&tx, "announces", "name", "name TEXT")?;
+            Self::ensure_schema_column(&tx, "announces", "name_source", "name_source TEXT")?;
+            Self::ensure_schema_column(&tx, "announces", "first_seen", "first_seen INTEGER")?;
+            Self::ensure_schema_column(&tx, "announces", "seen_count", "seen_count INTEGER")?;
+            tx.execute(
+                "UPDATE announces SET first_seen = timestamp WHERE first_seen IS NULL",
+                [],
+            )?;
+            tx.execute("UPDATE announces SET seen_count = 1 WHERE seen_count IS NULL", [])?;
+            Self::ensure_schema_column(&tx, "announces", "app_data_hex", "app_data_hex TEXT")?;
+            Self::ensure_schema_column(&tx, "announces", "capabilities", "capabilities TEXT")?;
+            Self::ensure_schema_column(&tx, "announces", "rssi", "rssi REAL")?;
+            Self::ensure_schema_column(&tx, "announces", "snr", "snr REAL")?;
+            Self::ensure_schema_column(&tx, "announces", "q", "q REAL")?;
+            Self::ensure_schema_column(&tx, "announces", "stamp_cost", "stamp_cost INTEGER")?;
+            Self::ensure_schema_column(
+                &tx,
+                "announces",
+                "stamp_cost_flexibility",
+                "stamp_cost_flexibility INTEGER",
+            )?;
+            Self::ensure_schema_column(
+                &tx,
+                "announces",
+                "peering_cost",
+                "peering_cost INTEGER",
+            )?;
+            tx.execute_batch(
+                "CREATE INDEX IF NOT EXISTS idx_messages_timestamp_desc
                     ON messages(timestamp DESC);
                 CREATE INDEX IF NOT EXISTS idx_messages_direction_timestamp_desc
                     ON messages(direction, timestamp DESC);
@@ -382,30 +428,7 @@ impl MessagesStore {
                 CREATE INDEX IF NOT EXISTS idx_propagation_peer_entries_state
                     ON propagation_peer_entries(peer, state, transient_id);",
             )?;
-            Self::ensure_multi_ticket_schema(conn)?;
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_tickets_destination_expires
-                    ON tickets(destination, expires_at DESC)",
-                [],
-            )?;
-            let _ = conn.execute("ALTER TABLE messages ADD COLUMN title TEXT", []);
-            let _ = conn.execute("UPDATE messages SET title = '' WHERE title IS NULL", []);
-            let _ = conn.execute("ALTER TABLE messages ADD COLUMN fields TEXT", []);
-            let _ = conn.execute("ALTER TABLE messages ADD COLUMN receipt_status TEXT", []);
-            let _ = conn.execute("ALTER TABLE announces ADD COLUMN name TEXT", []);
-            let _ = conn.execute("ALTER TABLE announces ADD COLUMN name_source TEXT", []);
-            let _ = conn.execute("ALTER TABLE announces ADD COLUMN first_seen INTEGER", []);
-            let _ = conn.execute("ALTER TABLE announces ADD COLUMN seen_count INTEGER", []);
-            let _ = conn.execute("ALTER TABLE announces ADD COLUMN app_data_hex TEXT", []);
-            let _ = conn.execute("ALTER TABLE announces ADD COLUMN capabilities TEXT", []);
-            let _ = conn.execute("ALTER TABLE announces ADD COLUMN rssi REAL", []);
-            let _ = conn.execute("ALTER TABLE announces ADD COLUMN snr REAL", []);
-            let _ = conn.execute("ALTER TABLE announces ADD COLUMN q REAL", []);
-            let _ = conn.execute("ALTER TABLE announces ADD COLUMN stamp_cost INTEGER", []);
-            let _ =
-                conn.execute("ALTER TABLE announces ADD COLUMN stamp_cost_flexibility INTEGER", []);
-            let _ = conn.execute("ALTER TABLE announces ADD COLUMN peering_cost INTEGER", []);
-            Ok(())
+            tx.commit()
         })
     }
 

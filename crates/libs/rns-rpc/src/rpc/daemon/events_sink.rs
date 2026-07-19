@@ -34,7 +34,7 @@ impl RpcDaemon {
                     }
                     #[cfg(test)]
                     EventSinkCommand::Flush { reply } => {
-                        let _ = reply.send(());
+                        reply.send(()).expect("event sink flush requester remains connected");
                     }
                 }
             }
@@ -106,8 +106,17 @@ impl RpcDaemon {
             event: event.clone(),
         };
         let max_event_bytes = self.sdk_event_sink_max_event_bytes();
-        let event_bytes =
-            serde_json::to_vec(&envelope).map(|payload| payload.len()).unwrap_or(usize::MAX);
+        let event_bytes = match serde_json::to_vec(&envelope) {
+            Ok(payload) => payload.len(),
+            Err(error) => {
+                log::error!(
+                    "[daemon] failed to encode event sink envelope type={}: {error}",
+                    event.event_type
+                );
+                self.metrics_record_event_sink_skipped();
+                return;
+            }
+        };
         if event_bytes > max_event_bytes {
             self.metrics_record_event_sink_skipped();
             return;

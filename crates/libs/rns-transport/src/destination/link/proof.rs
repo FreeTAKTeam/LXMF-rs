@@ -31,10 +31,10 @@ pub(crate) fn validate_link_request_proof_packet(
         output.offset()
     };
 
-    let identity = Identity::new_from_slices(
+    let identity = Identity::try_new_from_slices(
         &proof_data[ADDRESS_HASH_SIZE..ADDRESS_HASH_SIZE + PUBLIC_KEY_LENGTH],
         verifying_key,
-    );
+    )?;
 
     let signature = Signature::from_slice(&packet.data.as_slice()[..SIGNATURE_LENGTH])
         .map_err(|_| RnsError::CryptoError)?;

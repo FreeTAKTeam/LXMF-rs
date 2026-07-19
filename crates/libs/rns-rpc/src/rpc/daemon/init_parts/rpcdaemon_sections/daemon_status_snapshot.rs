@@ -452,4 +452,37 @@ impl RpcDaemon {
             peer_type,
         })
     }
+
+    pub(super) fn peer_message_stats_for_reporting(
+        &self,
+        peer: &str,
+    ) -> (u64, u64, u64, u64, u64, u64) {
+        match self.peer_message_stats(peer) {
+            Ok(stats) => stats,
+            Err(error) => {
+                log::error!("failed to read peer message stats peer={peer}: {error}");
+                (0, 0, 0, 0, 0, 0)
+            }
+        }
+    }
+
+    pub(super) fn peer_handled_ids_for_reporting(&self, peer: &str) -> Vec<String> {
+        match self.store.list_peer_handled_propagation_ids(peer) {
+            Ok(ids) => ids,
+            Err(error) => {
+                log::error!("failed to read handled propagation IDs peer={peer}: {error}");
+                Vec::new()
+            }
+        }
+    }
+
+    pub(super) fn peer_unhandled_ids_for_reporting(&self, peer: &str) -> Vec<String> {
+        match self.store.list_peer_unhandled_propagation_ids(peer) {
+            Ok(ids) => ids,
+            Err(error) => {
+                log::error!("failed to read unhandled propagation IDs peer={peer}: {error}");
+                Vec::new()
+            }
+        }
+    }
 }

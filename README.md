@@ -3,39 +3,40 @@
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/FreeTAKTeam/LXMF-rs)
 
 Rust monorepo for LXMF and Reticulum with strict library/app boundaries and
-enterprise quality gates. The `0.9.5` line is a usable sub-1.0
-daemon/product release with substantially expanded RNS/LXMF software parity,
-published crates, GitHub tool bundles, and improved existing typed SDK
-communication for REM/RCH clients; it is not a compatibility layer or a
-complete drop-in replacement for every Python Reticulum/LXMF behavior.
+enterprise quality gates. The `0.9.6` line is a stabilization release over the
+usable `0.9.5` sub-1.0 daemon/product baseline, with stricter failure handling,
+receipt validation, storage migrations, typed SDK decoding, and operational
+diagnostics. It is not a compatibility layer or a complete drop-in replacement
+for every Python Reticulum/LXMF behavior.
 
 ## Start Here
 
 - Contributor workflow: `CONTRIBUTING.md`
 - Current status and execution order: `docs/status/current-roadmap.md`
-- Release notes: `docs/release-notes-v0.9.5.md`
+- Release notes: `docs/release-notes-v0.9.6.md`
 - Docs map and retention rules: `docs/README.md`
 - SDK guide: `docs/sdk/README.md`
 - Support policy: `docs/contracts/support-policy.md`
 
 ## Release Status
 
-Current release train: `0.9.5`.
+Current release train: `0.9.6`. The latest published stable artifacts remain
+`v0.9.5` until the `v0.9.6` candidate is promoted.
 
-Use `docs/release-notes-v0.9.5.md` for the release summary and
+Use `docs/release-notes-v0.9.6.md` for the candidate release summary and
 `docs/runbooks/release-readiness.md` for the release gate record. The
 repository-level parity source of truth remains
 `docs/status/current-roadmap.md`; the detailed parity supplements are
 `docs/status/reticulum-parity-matrix.md` and
 `docs/status/lxmf-parity-matrix.md`.
 
-The `0.9.5` release scope covers the Rust libraries, SDK entry points, `lxmd`,
+The `0.9.6` release scope covers the Rust libraries, SDK entry points, `lxmd`,
 `reticulumd`, and `rns-tools`, plus host-native GitHub bundles for all
-implemented user-facing tools. The `0.9.5` train is SDK-first: it improves the
-existing typed SDK communication path, event/status metadata, and release
-alignment while preserving the explicit boundary that this is not a separate
-compatibility layer. Operational substitutability is materially stronger but
-still partial.
+implemented user-facing tools. The patch train keeps the SDK-first product
+shape while hardening authoritative return values, persistence, identity
+parsing, link delivery, and error visibility. Operational substitutability is
+materially stronger but remains bounded by the parity matrices and external
+evidence requirements.
 External-client compatibility claims for REM, RCH, Sideband, MeshChatX,
 Columba, or other third-party clients require separate interop gate evidence.
 
@@ -186,7 +187,7 @@ cargo run -p xtask -- architecture-checks
 cargo run -p xtask -- sdk-docs-check
 cargo run -p xtask -- sdk-migration-check
 cargo xtask release-check
-cargo xtask package-daemon-bundle --version 0.9.5
+cargo xtask package-daemon-bundle --version 0.9.6
 cargo xtask api-diff
 cargo xtask python-impl-bench-compare
 cargo xtask python-impl-bench-compare --profile report
@@ -198,7 +199,7 @@ For fast local iteration on one binary, prefer narrow commands:
 ```bash
 make check-bin PKG=lxmf-cli BIN=lxmd
 make run-bin PKG=rns-tools BIN=rnsd ARGS="--help"
-make package-daemon-bundle VERSION=0.9.5
+make package-daemon-bundle VERSION=0.9.6
 make python-lxmd-smoke
 ```
 
@@ -221,6 +222,7 @@ cargo run -p rns-tools --bin rnx -- e2e --timeout-secs 20
 ## Documentation Entry Points
 
 - Docs map: `docs/README.md`
+- Practical examples: `docs/examples.md`
 - Current status: `docs/status/current-roadmap.md`
 - API surface and stability: `docs/lxmf-rs-api.md`
 - CLI quick reference: `docs/lxmf-cli.md`
@@ -247,16 +249,16 @@ workspace directory names:
 
 ```toml
 [dependencies]
-lxmf = "0.9.5"
-reticulum-rs = "0.9.5"
+lxmf = "0.9.6"
+reticulum-rs = "0.9.6"
 ```
 
 Or depend on the component crates directly:
 
 ```toml
 [dependencies]
-lxmf-sdk = "0.9.5"
-reticulum-rs-rpc = "0.9.5"
+lxmf-sdk = "0.9.6"
+reticulum-rs-rpc = "0.9.6"
 ```
 
 ## SDK Guide

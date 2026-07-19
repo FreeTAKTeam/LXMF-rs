@@ -96,7 +96,13 @@ impl ZmqPipelineBackendClient {
 
     pub fn propagation_recovery_state(&self) -> Result<PropagationRecoveryStateResult, SdkError> {
         let status = self.propagation_status()?;
-        Ok(PropagationRecoveryStateResult::from_propagation(status.propagation))
+        PropagationRecoveryStateResult::from_propagation(status.propagation).map_err(|error| {
+            SdkError::new(
+                code::INTERNAL,
+                ErrorCategory::Internal,
+                format!("invalid propagation recovery state: {error}"),
+            )
+        })
     }
 
     pub fn propagation_enable(

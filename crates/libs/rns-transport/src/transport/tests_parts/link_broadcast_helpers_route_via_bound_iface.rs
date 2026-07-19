@@ -53,7 +53,14 @@ async fn send_to_out_links_reaches_the_links_bound_interface() {
     let link_id = *outbound.id();
     transport.get_handler().lock().await.out_links.insert(destination.address_hash, Arc::new(Mutex::new(outbound)));
 
-    transport.send_to_out_links(&destination.address_hash, b"broadcast payload").await;
+    let report = transport
+        .send_to_out_links_with_report(&destination.address_hash, b"broadcast payload")
+        .await;
+
+    assert!(report.is_complete());
+    assert_eq!(report.matched_links, 1);
+    assert_eq!(report.sent_links, 1);
+    assert_eq!(report.failed_links, 0);
 
     let sent = timeout(Duration::from_millis(200), channel.tx_channel.recv())
         .await
@@ -61,6 +68,36 @@ async fn send_to_out_links_reaches_the_links_bound_interface() {
         .expect("tx channel should not have closed");
     assert_eq!(sent.tx_type, TxMessageType::Direct(iface));
     assert_eq!(sent.packet.destination, link_id, "packet must be addressed to the link itself");
+}
+
+#[tokio::test]
+async fn send_to_out_links_reports_dispatch_failure_for_unregistered_bound_iface() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let transport = Transport::new(TransportConfig::new("test", &local_identity, false));
+
+    let signer = PrivateIdentity::new_from_rand(OsRng);
+    let identity = *signer.as_identity();
+    let destination = DestinationDesc {
+        identity,
+        address_hash: identity.address_hash,
+        name: DestinationName::new("lxmf", "delivery"),
+    };
+    let (outbound, _inbound) = activated_link_pair(destination, &signer);
+    transport
+        .get_handler()
+        .lock()
+        .await
+        .out_links
+        .insert(destination.address_hash, Arc::new(Mutex::new(outbound)));
+
+    let report = transport
+        .send_to_out_links_with_report(&destination.address_hash, b"undeliverable")
+        .await;
+
+    assert!(!report.is_complete());
+    assert_eq!(report.matched_links, 1);
+    assert_eq!(report.sent_links, 0);
+    assert_eq!(report.failed_links, 1);
 }
 
 #[tokio::test]

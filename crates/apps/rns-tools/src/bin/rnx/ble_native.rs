@@ -23,6 +23,14 @@ use futures::StreamExt;
 use std::io;
 use std::time::{Duration, Instant};
 
+#[cfg(any(
+    target_os = "android",
+    target_os = "linux",
+    target_os = "macos",
+    target_os = "windows"
+))]
+use crate::helpers::cleanup_peripheral_subscription;
+
 use crate::{
     embedded_to_io, hex_lower, parse_hex_16, resolve_runtime_seq, upload_attachment_via_rpc,
     NativePeerMode,
@@ -191,8 +199,7 @@ pub(crate) fn run_ble_native_peer(
             }
         }
 
-        let _ = peripheral.unsubscribe(&notify_char).await;
-        let _ = peripheral.disconnect().await;
+        cleanup_peripheral_subscription(&peripheral, &notify_char, "native peer session").await;
         log::info!(
             "BLE_NATIVE_PEER ok: device_id={} responses={} mode={:?}",
             peripheral.id(),
@@ -333,8 +340,7 @@ pub(crate) fn run_ble_native_bridge(
             break;
         }
 
-        let _ = peripheral.unsubscribe(&notify_char).await;
-        let _ = peripheral.disconnect().await;
+        cleanup_peripheral_subscription(&peripheral, &notify_char, "native bridge session").await;
         if attachment_id.is_none() {
             return Err(io::Error::new(
                 io::ErrorKind::TimedOut,

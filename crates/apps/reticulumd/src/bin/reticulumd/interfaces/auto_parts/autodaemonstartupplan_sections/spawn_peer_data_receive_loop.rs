@@ -31,13 +31,21 @@ impl AutoDaemonStartupPlan {
                         let datagram = match received {
                             Ok(datagram) => datagram,
                             Err(error) => {
-                                let _ = events
+                                if events
                                     .send(AutoPeerDataLoopEvent::ReceiveFailed {
                                         ifname: socket.ifname.clone(),
                                         bind_addr: socket.bind_addr,
                                         error,
                                     })
-                                    .await;
+                                    .await
+                                    .is_err()
+                                {
+                                    log::debug!(
+                                        "[daemon-auto] peer-data failure receiver closed ifname={} bind_addr={}",
+                                        socket.ifname,
+                                        socket.bind_addr
+                                    );
+                                }
                                 break;
                             }
                         };

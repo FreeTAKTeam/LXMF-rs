@@ -8,8 +8,8 @@
     },
     {
       "path": "docs/contracts/baselines/lxmf-sdk-public-api.txt",
-      "bytes": 394488,
-      "sha256": "9aa0ad3a947a562d01d7e415f1f2763c407d4e668769f22fab09720751cd67b3"
+      "bytes": 394578,
+      "sha256": "3f8484de68f4153dd11cd24901c580a541ba73a150430dbeb822c31276cab93e"
     },
     {
       "path": "docs/contracts/baselines/schema-client-generation-baseline.json",
@@ -113,8 +113,8 @@
     },
     {
       "path": "docs/contracts/rpc-contract.md",
-      "bytes": 15395,
-      "sha256": "55ac96ab7f46dfcf93621789bcc236a1a81a3cb9a0d55a2775b665c788dc689c"
+      "bytes": 15635,
+      "sha256": "0d755fffc38b9622efc14113b93f286432d4fd6322505b5b27c06254dbdbd177"
     },
     {
       "path": "docs/contracts/schema-driven-clients.md",
@@ -153,8 +153,8 @@
     },
     {
       "path": "docs/contracts/sdk-v2-backends.md",
-      "bytes": 8305,
-      "sha256": "235c5920a1662b8b5d8d8d4b448a48295ec444b4aeed8c3b117af1397262f5d8"
+      "bytes": 8567,
+      "sha256": "efbf6b64ce5dab7e4a7bd3c7686ef8f6b27bd9364422133440f28185e58b98ea"
     },
     {
       "path": "docs/contracts/sdk-v2-commands.md",

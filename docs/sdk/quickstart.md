@@ -14,9 +14,8 @@ This quickstart covers a minimal `lxmf-sdk` client using the RPC backend.
 cargo run -p reticulumd --bin reticulumd
 ```
 
-Then connect with `Client::rpc("unix:/tmp/lxmf-rpc.sock")`.
-
-HTTP/Unix RPC is still the default SDK path.
+Then connect with `Client::rpc("unix:/tmp/lxmf-rpc.sock")`. Local Unix RPC is
+the zero-configuration daemon endpoint and remains supported for compatibility.
 
 For explicit TCP development, opt in with `--rpc`:
 
@@ -29,11 +28,18 @@ unless remote token auth is already configured in the persisted SDK runtime conf
 mTLS client authentication is configured at startup with `--rpc-tls-client-ca`.
 Use loopback TCP only for local development.
 
-## ZeroMQ Backend
+## Canonical ZeroMQ Backend
 
-The ZeroMQ backend is parallel and opt-in. It is the preferred SDK transport
-for high-throughput local integrations and the REM/RCH 0.5.0 compatibility
-track:
+ZeroMQ is the preferred high-throughput SDK transport for desktop integrations.
+It is compiled into the default `reticulumd` build, but the listener is
+explicitly enabled so an unused network endpoint is never opened implicitly:
+
+```bash
+cargo run -p reticulumd --bin reticulumd -- \
+  --zmq-rpc-endpoint tcp://127.0.0.1:9100
+```
+
+Enable the SDK client feature:
 
 ```toml
 lxmf-sdk = { path = "crates/libs/lxmf-sdk", features = ["zmq-pipeline-backend"] }
@@ -42,9 +48,8 @@ lxmf-sdk = { path = "crates/libs/lxmf-sdk", features = ["zmq-pipeline-backend"] 
 ```rust
 use lxmf_sdk::{Client, ZmqPipelineBackendClient, ZmqPipelineBackendConfig};
 
-let backend = ZmqPipelineBackendClient::new(ZmqPipelineBackendConfig::local_tcp(
+let backend = ZmqPipelineBackendClient::new(ZmqPipelineBackendConfig::local(
     "tcp://127.0.0.1:9100",
-    "tcp://127.0.0.1:9101",
 ))?;
 let client = Client::new(backend);
 ```
@@ -86,8 +91,7 @@ state without raw RPC status calls.
 Run the example client:
 
 ```bash
-LXMF_ZMQ_COMMAND=tcp://127.0.0.1:9100 \
-LXMF_ZMQ_RESPONSE=tcp://127.0.0.1:9101 \
+LXMF_ZMQ_ENDPOINT=tcp://127.0.0.1:9100 \
 cargo run -p lxmf-sdk --example zmq_pipeline_send --features zmq-pipeline-backend
 ```
 
@@ -96,7 +100,7 @@ Start `reticulumd` with HTTP and ZeroMQ enabled for a local stress comparison:
 ```powershell
 cargo run -p reticulumd --features zmq-pipeline-rpc --bin reticulumd -- `
   --rpc 127.0.0.1:4242 `
-  --zmq-rpc-command tcp://127.0.0.1:9100 `
+  --zmq-rpc-endpoint tcp://127.0.0.1:9100 `
   --db target/stress-pr199/reticulumd.db `
   --identity target/stress-pr199/reticulumd.identity
 ```

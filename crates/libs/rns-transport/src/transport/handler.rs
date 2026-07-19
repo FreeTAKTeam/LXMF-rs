@@ -474,8 +474,20 @@ impl TransportHandler {
                         break;
                     }
                 }
-                let _ = removed_from_routing;
-                self.iface_manager.lock().await.stop_interface(iface_hash);
+                if !removed_from_routing {
+                    log::debug!(
+                        "tp({}): idle virtual UDP iface {} was absent from peer routing tables",
+                        self.config.name,
+                        iface_hash
+                    );
+                }
+                if !self.iface_manager.lock().await.stop_interface(iface_hash) {
+                    log::debug!(
+                        "tp({}): idle virtual UDP iface {} was already stopped",
+                        self.config.name,
+                        iface_hash
+                    );
+                }
                 log::debug!(
                     "tp({}): GC'd idle virtual UDP iface {} for peer {}",
                     self.config.name,

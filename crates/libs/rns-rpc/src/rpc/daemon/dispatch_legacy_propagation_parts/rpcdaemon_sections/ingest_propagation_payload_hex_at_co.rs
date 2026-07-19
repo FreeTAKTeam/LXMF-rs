@@ -293,19 +293,23 @@ impl RpcDaemon {
     }
 
     pub fn has_propagation_payload(&self, transient_id: &str) -> bool {
-        if self
-            .store
-            .get_propagation_entry(normalize_propagation_transient_key(transient_id).as_str())
-            .ok()
-            .flatten()
-            .is_some()
-        {
+        let normalized = normalize_propagation_transient_key(transient_id);
+        let stored = match self.store.get_propagation_entry(normalized.as_str()) {
+            Ok(entry) => entry.is_some(),
+            Err(error) => {
+                log::error!(
+                    "failed to query propagation payload transient_id={normalized}: {error}"
+                );
+                false
+            }
+        };
+        if stored {
             return true;
         }
         self.propagation_payloads
             .lock()
             .expect("propagation payload mutex poisoned")
-            .contains_key(normalize_propagation_transient_key(transient_id).as_str())
+            .contains_key(normalized.as_str())
     }
 
     fn peer_store_key_or_input(&self, peer: &str) -> String {
@@ -427,14 +431,46 @@ impl RpcDaemon {
         destination: &[u8; 16],
     ) -> Vec<(Vec<u8>, usize)> {
         let destination_hex = hex::encode(destination);
-        let mut entries = self
+        let stored_entries = match self
             .store
             .list_propagation_entries_for_destination(destination_hex.as_str())
-            .unwrap_or_default()
+        {
+            Ok(entries) => entries,
+            Err(error) => {
+                log::error!(
+                    "failed to list propagation payloads destination={destination_hex}: {error}"
+                );
+                Vec::new()
+            }
+        };
+        let mut entries = stored_entries
             .into_iter()
             .filter_map(|entry| {
-                let transient_id = hex::decode(entry.transient_id).ok()?;
-                (transient_id.len() == 32).then_some((transient_id, entry.size_bytes as usize))
+                let transient_id = match hex::decode(entry.transient_id.as_str()) {
+                    Ok(transient_id) if transient_id.len() == 32 => transient_id,
+                    Ok(transient_id) => {
+                        log::error!(
+                            "invalid stored propagation transient ID length destination={} bytes={}",
+                            destination_hex,
+                            transient_id.len()
+                        );
+                        return None;
+                    }
+                    Err(error) => {
+                        log::error!(
+                            "invalid stored propagation transient ID destination={destination_hex}: {error}"
+                        );
+                        return None;
+                    }
+                };
+                let size = usize::try_from(entry.size_bytes).unwrap_or_else(|_| {
+                    log::error!(
+                        "stored propagation payload size exceeds platform range transient_id={}",
+                        hex::encode(transient_id.as_slice())
+                    );
+                    usize::MAX
+                });
+                Some((transient_id, size))
             })
             .collect::<Vec<_>>();
         let known = entries

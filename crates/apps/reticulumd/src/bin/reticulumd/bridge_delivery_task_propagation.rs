@@ -118,8 +118,7 @@ impl DeliveryTask {
         propagation_payload: &propagation::PropagationPayload,
         target_cost: u32,
     ) {
-        let _ = self.daemon.record_message_lxmf_metadata_entries(
-            &self.message_id,
+        self.record_lxmf_metadata_entries(
             [
                 (
                     "propagation_transient_id".to_string(),
@@ -144,6 +143,7 @@ impl DeliveryTask {
                     JsonValue::Number(serde_json::Number::from(propagation_payload.stamp_value)),
                 ),
             ],
+            "propagation_payload",
         );
     }
 
@@ -224,12 +224,11 @@ impl DeliveryTask {
         if state != "failed" {
             entries.push(("propagation_stamp_error".to_string(), JsonValue::Null));
         }
-        let _ = self.daemon.record_message_lxmf_metadata_entries(&self.message_id, entries);
+        self.record_lxmf_metadata_entries(entries, "propagation_stamp_state");
     }
 
     pub(super) fn record_propagation_stamp_attempt_metadata(&self, target_cost: u32, attempt: u32) {
-        let _ = self.daemon.record_message_lxmf_metadata_entries(
-            &self.message_id,
+        self.record_lxmf_metadata_entries(
             [
                 (
                     "propagation_stamp_state".to_string(),
@@ -246,6 +245,7 @@ impl DeliveryTask {
                 ("propagation_stamp_error".to_string(), JsonValue::Null),
                 ("progress".to_string(), JsonValue::Number(0.into())),
             ],
+            "propagation_stamp_attempt",
         );
     }
 
@@ -255,8 +255,7 @@ impl DeliveryTask {
         attempt: u32,
         error: String,
     ) {
-        let _ = self.daemon.record_message_lxmf_metadata_entries(
-            &self.message_id,
+        self.record_lxmf_metadata_entries(
             [
                 ("propagation_stamp_state".to_string(), JsonValue::String("queued".to_string())),
                 (
@@ -274,6 +273,7 @@ impl DeliveryTask {
                 ),
                 ("progress".to_string(), JsonValue::Number(0.into())),
             ],
+            "propagation_stamp_retry",
         );
     }
 }

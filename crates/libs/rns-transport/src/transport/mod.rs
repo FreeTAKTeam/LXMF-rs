@@ -346,6 +346,26 @@ pub enum SendPacketOutcome {
     DroppedNoRoute,
 }
 
+/// Aggregate outcome for a best-effort send across active Reticulum links.
+///
+/// Fan-out can partially succeed, so a single `Result` cannot represent the
+/// outcome without discarding useful information about the other links.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct LinkSendReport {
+    /// Active links that matched the requested destination, if any.
+    pub matched_links: usize,
+    /// Matching links whose packet reached an interface queue.
+    pub sent_links: usize,
+    /// Matching links whose packet could not be built or dispatched.
+    pub failed_links: usize,
+}
+
+impl LinkSendReport {
+    pub fn is_complete(self) -> bool {
+        self.matched_links > 0 && self.sent_links == self.matched_links && self.failed_links == 0
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SendPacketTrace {
     pub outcome: SendPacketOutcome,
@@ -409,6 +429,8 @@ mod path;
 mod resource_wire;
 // wire_encryption: packet-context policy for transport-layer encryption.
 mod wire_encryption;
+// wire_receipt: proof correlation and cryptographic receipt validation.
+mod wire_receipt;
 // wire: inbound packet handlers and wire-level packet logic.
 mod wire;
 

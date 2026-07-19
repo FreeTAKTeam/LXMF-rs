@@ -297,7 +297,10 @@ impl<'de> Deserialize<'de> for PropagationAcknowledgeSyncResult {
         D: serde::Deserializer<'de>,
     {
         let raw = RawPropagationAcknowledgeSyncResult::deserialize(deserializer)?;
-        let recovery_state = PropagationRecoveryStateResult::from_propagation(raw.propagation.clone());
+        let recovery_state = PropagationRecoveryStateResult::from_propagation(
+            raw.propagation.clone(),
+        )
+        .map_err(serde::de::Error::custom)?;
         Ok(Self {
             propagation: raw.propagation,
             recovery_state,
@@ -326,7 +329,10 @@ impl<'de> Deserialize<'de> for PropagationStatusResult {
         D: serde::Deserializer<'de>,
     {
         let raw = RawPropagationStatusResult::deserialize(deserializer)?;
-        let recovery_state = PropagationRecoveryStateResult::from_propagation(raw.propagation.clone());
+        let recovery_state = PropagationRecoveryStateResult::from_propagation(
+            raw.propagation.clone(),
+        )
+        .map_err(serde::de::Error::custom)?;
         Ok(Self {
             propagation: raw.propagation,
             recovery_state,

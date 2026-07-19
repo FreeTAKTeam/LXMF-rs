@@ -22,7 +22,8 @@ pub(super) async fn build_outbound_payload(
     input: OutboundPayloadBuild,
 ) -> Result<Vec<u8>, std::io::Error> {
     tokio::task::spawn_blocking(move || {
-        build_wire_message_with_options_and_cancel(
+        let status_lookup_error = std::sync::Mutex::new(None);
+        let result = build_wire_message_with_options_and_cancel(
             input.source_hash,
             input.destination,
             input.title.as_str(),
@@ -35,16 +36,30 @@ pub(super) async fn build_outbound_payload(
                 .include_ticket
                 .as_ref()
                 .map(|(expires_at, ticket)| (*expires_at, ticket.as_slice())),
-            || {
-                input
-                    .daemon
-                    .message_receipt_status(&input.message_id)
-                    .ok()
-                    .flatten()
-                    .is_some_and(|status| status.trim().eq_ignore_ascii_case("cancelled"))
+            || match input.daemon.message_receipt_status(&input.message_id) {
+                Ok(status) => {
+                    status.is_some_and(|status| status.trim().eq_ignore_ascii_case("cancelled"))
+                }
+                Err(error) => {
+                    let mut guard = status_lookup_error
+                        .lock()
+                        .expect("outbound status lookup error mutex poisoned");
+                    if guard.is_none() {
+                        *guard = Some(error.to_string());
+                    }
+                    true
+                }
             },
-        )
-        .map_err(std::io::Error::other)
+        );
+        if let Some(error) =
+            status_lookup_error.into_inner().expect("outbound status lookup error mutex poisoned")
+        {
+            return Err(std::io::Error::other(format!(
+                "receipt status lookup failed for message {}: {error}",
+                input.message_id
+            )));
+        }
+        result.map_err(std::io::Error::other)
     })
     .await
     .map_err(std::io::Error::other)?

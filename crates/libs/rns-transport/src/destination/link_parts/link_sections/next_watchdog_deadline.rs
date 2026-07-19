@@ -86,11 +86,26 @@ impl Link {
         if let LinkEvent::PeerIdentified(identity) = &event {
             self.identified_peer_identity = Some(**identity);
         }
-        let _ = self.event_tx.send(LinkEventData {
-            id: self.id,
-            address_hash: self.destination.address_hash,
-            event,
-        });
+        let event_kind = match &event {
+            LinkEvent::Activated => "activated",
+            LinkEvent::Data(_) => "data",
+            LinkEvent::PeerIdentified(_) => "peer_identified",
+            LinkEvent::Closed => "closed",
+        };
+        if self
+            .event_tx
+            .send(LinkEventData {
+                id: self.id,
+                address_hash: self.destination.address_hash,
+                event,
+            })
+            .is_err()
+        {
+            log::trace!(
+                "[link] event has no active subscribers link={} event={event_kind}",
+                self.id
+            );
+        }
     }
 
     fn finalize_local_close(&mut self) {

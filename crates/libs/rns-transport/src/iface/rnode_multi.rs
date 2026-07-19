@@ -392,7 +392,9 @@ async fn cleanup_rnode_multi_virtual_ifaces(
 
     let mut manager = iface_manager.lock().await;
     for iface in vport_map.keys() {
-        let _ = manager.stop_interface(*iface);
+        if !manager.stop_interface(*iface) {
+            log::debug!("RNodeMulti virtual interface already absent iface={iface}");
+        }
     }
 }
 
@@ -953,7 +955,20 @@ pub(crate) async fn run_rnode_multi_stream<IO>(
             return;
         }
     }
-    let _ = stream.flush().await;
+    if let Err(err) = stream.flush().await {
+        log::warn!(
+            "RNodeMulti init flush error iface={} device={} err={}",
+            options.parent_iface,
+            options.device,
+            err
+        );
+        update_rnode_multi_runtime_state(
+            &options.runtime_status,
+            "init_failed",
+            Some(err.to_string()),
+        );
+        return;
+    }
 
     let mut tx_buffer = vec![0_u8; options.mtu];
     let mut last_read_at = tokio::time::Instant::now();
@@ -1091,14 +1106,33 @@ pub(crate) async fn run_rnode_multi_stream<IO>(
         }
     }
 
+    let mut shutdown_error = None;
     if display_capable {
-        let _ = stream.write_all(&rnode_multi_external_framebuffer_frame(false)).await;
+        if let Err(error) = stream.write_all(&rnode_multi_external_framebuffer_frame(false)).await {
+            shutdown_error = Some(format!("external framebuffer shutdown write failed: {error}"));
+        }
     }
-    for frame in &options.shutdown_frames {
-        let _ = stream.write_all(frame).await;
+    if shutdown_error.is_none() {
+        for frame in &options.shutdown_frames {
+            if let Err(error) = stream.write_all(frame).await {
+                shutdown_error = Some(format!("shutdown frame write failed: {error}"));
+                break;
+            }
+        }
     }
-    let _ = stream.flush().await;
-    if mark_closed_on_exit {
+    if shutdown_error.is_none() {
+        if let Err(error) = stream.flush().await {
+            shutdown_error = Some(format!("shutdown flush failed: {error}"));
+        }
+    }
+    if let Some(error) = shutdown_error {
+        log::warn!(
+            "RNodeMulti shutdown error iface={} device={} error={error}",
+            options.parent_iface,
+            options.device
+        );
+        update_rnode_multi_runtime_state(&options.runtime_status, "shutdown_failed", Some(error));
+    } else if mark_closed_on_exit {
         update_rnode_multi_runtime_state(&options.runtime_status, "closed", None);
     }
 }
@@ -1167,7 +1201,7 @@ where
                     })?;
                 for frame in frames {
                     if let KissFrame::Command(KissCommand::Unknown(command, payload)) = frame {
-                        let _ = status.accept_command(command, &payload).map_err(|err| {
+                        status.accept_command(command, &payload).map_err(|err| {
                             RNodeMultiStartupProbeError::new(err, status.clone())
                         })?;
                     }

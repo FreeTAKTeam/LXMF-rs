@@ -454,9 +454,10 @@ pub(crate) async fn run_hdlc_stream_with_runtime<R, W>(
                                     break;
                                 }
                                 Ok(n) => {
-                                    if let Ok(mut last_read) = last_read_at.lock() {
-                                        *last_read = Instant::now();
-                                    }
+                                    *last_read_at
+                                        .lock()
+                                        .expect("tcp client last-read mutex poisoned") =
+                                        Instant::now();
                                     send_hdlc_stream_event(&events, HdlcStreamEvent::Read { bytes: n });
                                     // TCP and Unix streams can deliver partial or multiple HDLC frames.
                                     frame_buffer.extend_from_slice(&tcp_buffer[..n]);
@@ -480,13 +481,23 @@ pub(crate) async fn run_hdlc_stream_with_runtime<R, W>(
                                                     packet.context as u8,
                                                     packet.header.hops
                                                 );
-                                                let _ = rx_channel
+                                                if rx_channel
                                                     .send(RxMessage {
                                                         address: iface_address,
                                                         packet,
                                                         source: IfaceSource::None,
                                                     })
-                                                    .await;
+                                                    .await
+                                                    .is_err()
+                                                {
+                                                    log::warn!(
+                                                        "[tp-diag] transport receive queue closed iface={} label={}",
+                                                        iface_address,
+                                                        label
+                                                    );
+                                                    stop.cancel();
+                                                    return;
+                                                }
                                             } else {
                                                 log::warn!("couldn't decode packet");
                                             }
@@ -559,7 +570,9 @@ pub(crate) async fn run_hdlc_stream_with_runtime<R, W>(
                     _ = watchdog_tick.tick(), if watchdog.is_some() => {
                         let watchdog = watchdog.as_ref().expect("guarded by select condition");
                         let now = Instant::now();
-                        let last_read = last_read_at.lock().map(|last_read| *last_read).unwrap_or(now);
+                        let last_read = *last_read_at
+                            .lock()
+                            .expect("tcp client last-read mutex poisoned");
                         let read_idle = now.saturating_duration_since(last_read);
 
                         if read_idle > watchdog.read_timeout {
@@ -1023,7 +1036,13 @@ impl TcpClient {
                 runtime,
             )
             .await;
-            let _ = status_task.await;
+            if let Err(error) = status_task.await {
+                log::error!(
+                    "tcp client status task failed iface={} peer={} error={error}",
+                    iface_address,
+                    addr
+                );
+            }
 
             log::info!("disconnected from <{}>", addr);
         }

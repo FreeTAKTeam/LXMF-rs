@@ -94,10 +94,9 @@ pub(super) fn spawn_tracked_resource_cancel_monitor(monitor: ResourceCancelMonit
 }
 
 impl DeliveryTask {
-    fn track_link_packet_before_send(&self, packet: &Packet) -> String {
+    fn track_link_packet_before_send(&self, packet: &Packet) {
         let packet_hash = hex::encode(packet.hash().to_bytes());
         track_receipt_mapping(&self.receipt_map, &packet_hash, &self.message_id);
-        packet_hash
     }
 
     fn track_resource_before_send(
@@ -108,7 +107,7 @@ impl DeliveryTask {
         sent_status: &str,
         link_id: AddressHash,
         resource_hash: rns_transport::hash::Hash,
-    ) -> String {
+    ) {
         let resource_hash_hex = hex::encode(resource_hash.as_slice());
         track_outbound_resource(
             &self.outbound_resource_map,
@@ -130,7 +129,6 @@ impl DeliveryTask {
             link_id,
             resource_hash,
         });
-        resource_hash_hex
     }
 
     pub(super) async fn send_via_link_mode(
@@ -170,10 +168,10 @@ impl DeliveryTask {
                         &link,
                         payload,
                         |packet| {
-                            let _ = self.track_link_packet_before_send(packet);
+                            self.track_link_packet_before_send(packet);
                         },
                         |resource_hash| {
-                            let _ = self.track_resource_before_send(
+                            self.track_resource_before_send(
                                 trace_stage,
                                 activity_peer,
                                 payload.len(),
@@ -322,7 +320,7 @@ impl DeliveryTask {
             let resource_hash = self
                 .transport
                 .send_resource_observed(&link_id, payload.to_vec(), None, |resource_hash| {
-                    let _ = self.track_resource_before_send(
+                    self.track_resource_before_send(
                         trace_stage,
                         activity_peer,
                         payload.len(),
@@ -370,10 +368,10 @@ impl DeliveryTask {
             &link,
             payload,
             |packet| {
-                let _ = self.track_link_packet_before_send(packet);
+                self.track_link_packet_before_send(packet);
             },
             |resource_hash| {
-                let _ = self.track_resource_before_send(
+                self.track_resource_before_send(
                     trace_stage,
                     activity_peer,
                     payload.len(),

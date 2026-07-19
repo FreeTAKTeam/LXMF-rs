@@ -51,11 +51,14 @@ async fn link_in_payload_is_forwarded_to_received_data() {
     let address_hash = AddressHash::new_from_rand(OsRng);
     let payload = LinkPayload::new_from_slice(b"hello");
 
-    let _ = transport.link_in_event_tx.send(LinkEventData {
-        id: link_id,
-        address_hash,
-        event: LinkEvent::Data(Box::new(payload)),
-    });
+    assert!(transport
+        .link_in_event_tx
+        .send(LinkEventData {
+            id: link_id,
+            address_hash,
+            event: LinkEvent::Data(Box::new(payload)),
+        })
+        .is_ok(), "link input forwarder remains subscribed");
 
     let received = timeout(Duration::from_millis(200), rx.recv())
         .await
@@ -79,11 +82,14 @@ async fn link_out_payload_is_forwarded_to_received_data() {
     let address_hash = AddressHash::new_from_rand(OsRng);
     let payload = LinkPayload::new_from_slice(b"outbound");
 
-    let _ = transport.link_out_event_tx.send(LinkEventData {
-        id: link_id,
-        address_hash,
-        event: LinkEvent::Data(Box::new(payload)),
-    });
+    assert!(transport
+        .link_out_event_tx
+        .send(LinkEventData {
+            id: link_id,
+            address_hash,
+            event: LinkEvent::Data(Box::new(payload)),
+        })
+        .is_ok(), "link output forwarder remains subscribed");
 
     let received = timeout(Duration::from_millis(200), rx.recv())
         .await

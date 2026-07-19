@@ -319,13 +319,12 @@ impl TcpServer {
                 break;
             }
 
-            if let Ok(mut status) = runtime_status.lock() {
-                status.mark_binding();
-            }
+            runtime_status.lock().expect("tcp server runtime status mutex poisoned").mark_binding();
             let listener = bind_tcp_listener(addr.clone(), prefer_ipv6).await.map_err(|err| {
-                if let Ok(mut status) = runtime_status.lock() {
-                    status.mark_bind_error(err.to_string());
-                }
+                runtime_status
+                    .lock()
+                    .expect("tcp server runtime status mutex poisoned")
+                    .mark_bind_error(err.to_string());
                 RnsError::ConnectionError
             });
 
@@ -338,9 +337,10 @@ impl TcpServer {
             log::info!("listen on <{}>", addr);
 
             let listener = listener.unwrap();
-            if let Ok(mut status) = runtime_status.lock() {
-                status.mark_listening();
-            }
+            runtime_status
+                .lock()
+                .expect("tcp server runtime status mutex poisoned")
+                .mark_listening();
 
             let tx_task = {
                 let cancel = context.cancel.clone();
@@ -401,25 +401,27 @@ impl TcpServer {
                                 let child_iface =
                                     iface_manager.spawn(accepted_client, TcpClient::spawn);
                                 iface_manager.inherit_runtime_config(parent_iface, child_iface);
-                                if let Ok(mut status) = runtime_status.lock() {
-                                    status.mark_accepted(endpoint, child_iface, child_status);
-                                }
+                                runtime_status
+                                    .lock()
+                                    .expect("tcp server runtime status mutex poisoned")
+                                    .mark_accepted(endpoint, child_iface, child_status);
                             }
                             Err(err) => {
-                                if let Ok(mut status) = runtime_status.lock() {
-                                    status.mark_accept_error(err.to_string());
-                                }
+                                runtime_status
+                                    .lock()
+                                    .expect("tcp server runtime status mutex poisoned")
+                                    .mark_accept_error(err.to_string());
                             }
                         };
                     }
                 }
             }
 
-            let _ = tokio::join!(tx_task);
+            if let Err(error) = tx_task.await {
+                log::error!("tcp server transmit task failed listener={addr}: {error}");
+            }
         }
-        if let Ok(mut status) = runtime_status.lock() {
-            status.mark_closed();
-        };
+        runtime_status.lock().expect("tcp server runtime status mutex poisoned").mark_closed();
     }
 }
 

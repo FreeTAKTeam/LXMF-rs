@@ -111,7 +111,7 @@ async fn run_daemon_loops(
         match tokio::signal::ctrl_c().await {
             Ok(()) => {
                 log::info!("[daemon] shutdown signal received");
-                let _ = shutdown_tx.send(true);
+                shutdown_tx.send_replace(true);
             }
             Err(err) => {
                 log::error!("[daemon] failed to install shutdown signal handler: {}", err);

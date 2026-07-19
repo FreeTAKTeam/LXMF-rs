@@ -1,4 +1,3 @@
-use alloc::fmt::Write;
 use core::cmp;
 use core::fmt;
 
@@ -105,14 +104,15 @@ impl AddressHash {
     }
 
     pub fn new_from_hex_string(hex_string: &str) -> Result<Self, RnsError> {
-        if hex_string.len() < ADDRESS_HASH_SIZE * 2 {
+        if hex_string.len() != ADDRESS_HASH_SIZE * 2 {
             return Err(RnsError::IncorrectHash);
         }
 
         let mut bytes = [0u8; ADDRESS_HASH_SIZE];
 
         for i in 0..ADDRESS_HASH_SIZE {
-            bytes[i] = u8::from_str_radix(&hex_string[i * 2..(i * 2) + 2], 16).unwrap();
+            bytes[i] = u8::from_str_radix(&hex_string[i * 2..(i * 2) + 2], 16)
+                .map_err(|_| RnsError::IncorrectHash)?;
         }
 
         Ok(Self(bytes))
@@ -139,13 +139,7 @@ impl AddressHash {
     }
 
     pub fn to_hex_string(&self) -> String {
-        let mut hex_string = String::with_capacity(ADDRESS_HASH_SIZE * 2);
-
-        for byte in self.0 {
-            write!(&mut hex_string, "{:02x}", byte).unwrap();
-        }
-
-        hex_string
+        hex::encode(self.0)
     }
 }
 
@@ -200,5 +194,12 @@ mod tests {
             AddressHash::new_from_hex_string(&address_hash_hex).expect("valid hash");
 
         assert_eq!(actual_address_hash.as_slice(), original_address_hash.as_slice());
+    }
+
+    #[test]
+    fn address_hex_string_rejects_malformed_input() {
+        assert!(AddressHash::new_from_hex_string("not-a-hash").is_err());
+        assert!(AddressHash::new_from_hex_string(&"00".repeat(15)).is_err());
+        assert!(AddressHash::new_from_hex_string(&"00".repeat(17)).is_err());
     }
 }

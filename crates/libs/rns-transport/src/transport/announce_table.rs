@@ -79,16 +79,18 @@ impl AnnounceCache {
             self.evict_one();
         }
 
-        if self.newer.as_ref().unwrap().len() >= self.capacity {
-            self.older = Some(self.newer.take().unwrap());
+        if self.capacity > 0
+            && self.newer.as_ref().is_some_and(|newer| newer.len() >= self.capacity)
+        {
+            self.older = self.newer.take();
             self.newer = Some(BTreeMap::new());
         }
 
-        self.newer.as_mut().unwrap().insert(destination, entry);
+        self.newer.get_or_insert_with(BTreeMap::new).insert(destination, entry);
     }
 
     fn get(&self, destination: &AddressHash) -> Option<AnnounceEntry> {
-        if let Some(entry) = self.newer.as_ref().unwrap().get(destination) {
+        if let Some(entry) = self.newer.as_ref().and_then(|newer| newer.get(destination)) {
             return Some(entry.clone());
         }
 

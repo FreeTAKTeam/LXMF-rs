@@ -48,9 +48,13 @@ async fn run_rpc_http_event_stream(
         Some(Err(reason)) => {
             // A malformed resume cursor is a hard failure: silently restarting the stream
             // from scratch could replay or skip events. Surface it to the consumer.
-            let _ = tx
+            if tx
                 .send(Err(SdkError::new(code::INTERNAL, ErrorCategory::Internal, reason)))
-                .await;
+                .await
+                .is_err()
+            {
+                return;
+            }
             return;
         }
         None => None,
@@ -60,7 +64,9 @@ async fn run_rpc_http_event_stream(
         let parsed_endpoint = match RpcBackendClient::parse_endpoint(&endpoint) {
             Ok(endpoint) => endpoint.to_owned(),
             Err(err) => {
-                let _ = tx.send(Err(err)).await;
+                if tx.send(Err(err)).await.is_err() {
+                    return;
+                }
                 return;
             }
         };
@@ -77,7 +83,9 @@ async fn run_rpc_http_event_stream(
                     tokio::time::sleep(std::time::Duration::from_millis(250)).await;
                     continue;
                 }
-                let _ = tx.send(Err(err)).await;
+                if tx.send(Err(err)).await.is_err() {
+                    return;
+                }
                 return;
             }
         };
@@ -98,7 +106,9 @@ async fn run_rpc_http_event_stream(
                     }
                 }
                 Err(err) if err.category != ErrorCategory::Transport => {
-                    let _ = tx.send(Err(err)).await;
+                    if tx.send(Err(err)).await.is_err() {
+                        return;
+                    }
                     return;
                 }
                 Err(_) => {

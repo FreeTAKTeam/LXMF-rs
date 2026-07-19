@@ -1,194 +1,10 @@
 use super::path::send_to_next_hop;
 use super::resource_wire;
 use super::wire_encryption::should_encrypt_packet;
+use super::wire_receipt::validated_receipt_hash;
 use super::*;
 use crate::packet::Header;
-use ed25519_dalek::{Signature, SIGNATURE_LENGTH};
-
-fn validate_destination_receipt_proof(
-    identity: &Identity,
-    packet: &Packet,
-) -> Result<Hash, RnsError> {
-    if packet.header.packet_type != PacketType::Proof
-        || packet.context == PacketContext::LinkRequestProof
-        || packet.data.len() < HASH_SIZE + SIGNATURE_LENGTH
-    {
-        return Err(RnsError::PacketError);
-    }
-
-    let mut hash = [0u8; HASH_SIZE];
-    hash.copy_from_slice(&packet.data.as_slice()[..HASH_SIZE]);
-    let signature =
-        Signature::from_slice(&packet.data.as_slice()[HASH_SIZE..HASH_SIZE + SIGNATURE_LENGTH])
-            .map_err(|_| RnsError::CryptoError)?;
-    identity.verify(&hash, &signature)?;
-
-    Ok(Hash::new(hash))
-}
-
-fn validate_destination_receipt_signature(
-    identity: &Identity,
-    receipt_hash: &Hash,
-    signature_bytes: &[u8],
-) -> Result<Hash, RnsError> {
-    if signature_bytes.len() < SIGNATURE_LENGTH {
-        return Err(RnsError::PacketError);
-    }
-    let signature = Signature::from_slice(&signature_bytes[..SIGNATURE_LENGTH])
-        .map_err(|_| RnsError::CryptoError)?;
-    identity.verify(receipt_hash.as_slice(), &signature)?;
-
-    Ok(*receipt_hash)
-}
-
-pub(super) async fn validated_receipt_hash(
-    packet: &Packet,
-    handler: &TransportHandler,
-) -> Result<Option<[u8; HASH_SIZE]>, RnsError> {
-    if packet.header.packet_type != PacketType::Proof {
-        return Ok(None);
-    }
-
-    if packet.header.destination_type == DestinationType::Link
-        && matches!(packet.context, PacketContext::LinkProof | PacketContext::None)
-    {
-        let mut link = handler
-            .in_links
-            .get(&packet.destination)
-            .cloned()
-            .or_else(|| handler.out_links.get(&packet.destination).cloned());
-        if link.is_none() {
-            for candidate in handler.out_links.values() {
-                if *candidate.lock().await.id() == packet.destination {
-                    link = Some(candidate.clone());
-                    break;
-                }
-            }
-        }
-        if let Some(link) = link {
-            let link = link.lock().await;
-            return match link.validate_packet_proof(packet) {
-                Ok(hash) => Ok(Some(hash.to_bytes())),
-                Err(_) => Err(RnsError::CryptoError),
-            };
-        }
-        return Ok(None);
-    }
-
-    if packet.data.len() == SIGNATURE_LENGTH {
-        let proof_context = {
-            let packet_cache = handler.packet_cache.lock().await;
-            packet_cache.proof_context_for_destination(&packet.destination)
-        };
-        if let Some((receipt_hash, proved_destination, _)) = proof_context {
-            let mut destination_checked = false;
-            if let Some(destination) =
-                handler.single_out_destinations.get(&proved_destination).cloned()
-            {
-                destination_checked = true;
-                let destination = destination.lock().await;
-                if let Ok(hash) = validate_destination_receipt_signature(
-                    &destination.identity,
-                    &receipt_hash,
-                    packet.data.as_slice(),
-                ) {
-                    return Ok(Some(hash.to_bytes()));
-                }
-            }
-            if let Some(destination) =
-                handler.single_in_destinations.get(&proved_destination).cloned()
-            {
-                destination_checked = true;
-                let destination = destination.lock().await;
-                if let Ok(hash) = validate_destination_receipt_signature(
-                    destination.identity.as_identity(),
-                    &receipt_hash,
-                    packet.data.as_slice(),
-                ) {
-                    return Ok(Some(hash.to_bytes()));
-                }
-            }
-            if destination_checked {
-                return Err(RnsError::CryptoError);
-            }
-        }
-    }
-
-    // meshage fork — explicit proofs (`packet_hash(32B) ++ signature(64B)`)
-    // are addressed the same way implicit ones are: to
-    // `AddressHash::new_from_hash(&original_packet_hash)`
-    // (`RNS/Packet.py::ProofDestination`, `RNS/Identity.py::prove` —
-    // confirmed applies to both proof shapes, not just implicit), so a
-    // direct lookup of `packet.destination` against this instance's own
-    // registered destinations (the old behavior here) can never match a
-    // real proof again — no real Reticulum peer, nor this crate's own
-    // corrected proof-generation in `handle_data`, ever addresses a proof
-    // to a real destination hash.
-    //
-    // Two cases, matching who is receiving this proof, both resolved the same
-    // way: via the packet_cache reverse lookup the implicit branch above
-    // already uses, cross-checking the embedded hash against the tracked one
-    // first (mirroring Python's own `receipt.hash == proof_hash` gate), then
-    // verifying *only* against the destination we actually tracked for that
-    // hash.
-    //
-    // - We relayed the original packet: `handle_data`'s unconditional
-    //   `packet_cache.note_source` call ran for it, whether or not we also
-    //   host a local destination it happened to match.
-    // - We are the *original sender*, receiving this proof directly from its
-    //   prover: `PacketCache::update` (run for every outbound packet we send)
-    //   records the same reverse mapping for our own Data sends, so this
-    //   case has a cache entry too.
-    //
-    // Without a tracked entry, there is no cached record of us ever sending
-    // or relaying a packet with this hash, so there's nothing to check the
-    // proof against — do NOT fall back to trying every known destination's
-    // identity against the embedded hash. That would accept a signature from
-    // *any* peer we happen to know, over a hash they could have observed on
-    // a packet addressed to someone else entirely, letting them forge a
-    // delivery receipt for a message they never received.
-    if packet.data.len() == HASH_SIZE + SIGNATURE_LENGTH {
-        let proof_context = {
-            let packet_cache = handler.packet_cache.lock().await;
-            packet_cache.proof_context_for_destination(&packet.destination)
-        };
-        if let Some((receipt_hash, proved_destination, _)) = proof_context {
-            let mut embedded_hash = [0u8; HASH_SIZE];
-            embedded_hash.copy_from_slice(&packet.data.as_slice()[..HASH_SIZE]);
-            if embedded_hash == receipt_hash.to_bytes() {
-                let mut destination_checked = false;
-                if let Some(destination) =
-                    handler.single_out_destinations.get(&proved_destination).cloned()
-                {
-                    destination_checked = true;
-                    let destination = destination.lock().await;
-                    if let Ok(hash) =
-                        validate_destination_receipt_proof(&destination.identity, packet)
-                    {
-                        return Ok(Some(hash.to_bytes()));
-                    }
-                }
-                if let Some(destination) =
-                    handler.single_in_destinations.get(&proved_destination).cloned()
-                {
-                    destination_checked = true;
-                    let destination = destination.lock().await;
-                    if let Ok(hash) = validate_destination_receipt_proof(
-                        destination.identity.as_identity(),
-                        packet,
-                    ) {
-                        return Ok(Some(hash.to_bytes()));
-                    }
-                }
-                if destination_checked {
-                    return Err(RnsError::CryptoError);
-                }
-            }
-        }
-    }
-
-    Ok(None)
-}
+use ed25519_dalek::SIGNATURE_LENGTH;
 
 async fn should_forward_link_request_proof(
     packet: &Packet,
@@ -505,7 +321,7 @@ pub(super) async fn handle_data<'a>(
                 );
                 return;
             }
-            handler
+            if handler
                 .received_data_tx
                 .send(ReceivedData {
                     destination: packet.destination,
@@ -527,7 +343,19 @@ pub(super) async fn handle_data<'a>(
                     hops: Some(packet.header.hops),
                     interface: packet.transport.map(|value| value.as_slice().to_vec()),
                 })
-                .ok();
+                .is_err()
+            {
+                // A broadcast sender has no durable queue. No subscribers is
+                // valid when the transport is used without an application
+                // event consumer, but it must remain observable while
+                // diagnosing an apparently missing inbound delivery.
+                log::debug!(
+                    "tp({}): inbound data event had no subscribers dst={} context={:?}",
+                    handler.config.name,
+                    packet.destination,
+                    packet.context
+                );
+            }
 
             // Generates the automatic delivery proof this branch was
             // missing: it decrypts and forwards a plain `Single`/`Data`
@@ -613,12 +441,24 @@ pub(super) async fn handle_data<'a>(
                         context: PacketContext::None,
                         data: PacketDataBuffer::new_from_slice(&proof_data),
                     };
-                    handler
+                    let dispatch = handler
                         .send(TxMessage {
                             tx_type: TxMessageType::Direct(iface),
                             packet: proof_packet,
                         })
                         .await;
+                    if dispatch.sent_ifaces == 0 && dispatch.queued_ifaces == 0 {
+                        log::warn!(
+                            "tp({}): delivery proof dispatch failed dst={} packet_hash={} \
+                             iface={} matched={} failed={}",
+                            handler.config.name,
+                            packet.destination,
+                            packet_hash,
+                            iface,
+                            dispatch.matched_ifaces,
+                            dispatch.failed_ifaces
+                        );
+                    }
                 }
             }
         } else {

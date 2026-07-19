@@ -60,9 +60,14 @@ impl TransportBridge {
                 )
                 .await;
                 if let Ok((_, identity)) = &result {
-                    if let Ok(mut guard) = identity_cache.lock() {
-                        guard.insert(remote.clone(), *identity);
-                    }
+                    identity_cache
+                        .lock()
+                        .map_err(|error| {
+                            std::io::Error::other(format!(
+                                "remote identity cache lock poisoned for {remote}: {error}"
+                            ))
+                        })?
+                        .insert(remote.clone(), *identity);
                 }
                 result.and_then(|(value, _)| response_to_result(value))
             })
@@ -122,9 +127,14 @@ impl TransportBridge {
                 )
                 .await;
                 if let Ok((_, identity)) = &result {
-                    if let Ok(mut guard) = identity_cache.lock() {
-                        guard.insert(remote.clone(), *identity);
-                    }
+                    identity_cache
+                        .lock()
+                        .map_err(|error| {
+                            std::io::Error::other(format!(
+                                "remote identity cache lock poisoned for {remote}: {error}"
+                            ))
+                        })?
+                        .insert(remote.clone(), *identity);
                 }
                 result.and_then(|(value, _)| response_to_json(&value))
             })
@@ -329,9 +339,14 @@ impl RemoteControlBridge for TransportBridge {
                 )
                 .await;
                 if let Ok((_, identity)) = &result {
-                    if let Ok(mut guard) = identity_cache.lock() {
-                        guard.insert(remote.clone(), *identity);
-                    }
+                    identity_cache
+                        .lock()
+                        .map_err(|error| {
+                            std::io::Error::other(format!(
+                                "remote identity cache lock poisoned for {remote}: {error}"
+                            ))
+                        })?
+                        .insert(remote.clone(), *identity);
                 }
                 result.map(|(json, _)| json)
             })

@@ -248,7 +248,12 @@ pub(super) async fn manage_transport(
                         break;
                     },
                     Some(message) = rx_receiver.recv() => {
-                        let _ = iface_messages_tx.send(message.clone());
+                        if iface_messages_tx.send(message.clone()).is_err() {
+                            log::trace!(
+                                "[tp-diag] interface message has no active subscribers iface={}",
+                                message.address
+                            );
+                        }
 
                         let packet = message.packet;
 

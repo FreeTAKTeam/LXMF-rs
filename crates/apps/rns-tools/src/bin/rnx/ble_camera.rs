@@ -23,8 +23,10 @@ use futures::StreamExt;
 use std::io;
 use std::time::{Duration, Instant};
 
+#[cfg(target_os = "macos")]
+use crate::helpers::cleanup_peripheral_subscription;
 #[cfg(any(target_os = "android", target_os = "linux", target_os = "windows"))]
-use crate::helpers::find_camera_peripheral_by_profile;
+use crate::helpers::{cleanup_peripheral_subscription, find_camera_peripheral_by_profile};
 #[cfg(any(
     target_os = "android",
     target_os = "linux",
@@ -267,8 +269,7 @@ fn capture_camera_over_ble(
             }
         }
 
-        let _ = peripheral.unsubscribe(&notify_char).await;
-        let _ = peripheral.disconnect().await;
+        cleanup_peripheral_subscription(&peripheral, &notify_char, "camera capture session").await;
         Ok(bytes)
     })
 }

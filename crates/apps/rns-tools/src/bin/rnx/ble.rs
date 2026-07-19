@@ -22,7 +22,8 @@ use std::time::{Duration, Instant};
     target_os = "windows"
 ))]
 use crate::helpers::{
-    ascii_lower, format_manufacturer_data, normalize_identifier, parse_gatt_uuid,
+    ascii_lower, disconnect_peripheral, format_manufacturer_data, normalize_identifier,
+    parse_gatt_uuid,
 };
 use crate::{hex_lower, NativePeerMode};
 
@@ -209,7 +210,7 @@ pub(crate) fn run_ble_find_camera(
                     continue;
                 }
                 if peripheral.discover_services().await.is_err() {
-                    let _ = peripheral.disconnect().await;
+                    disconnect_peripheral(&peripheral, "camera profile discovery failure").await;
                     continue;
                 }
                 let chars = peripheral.characteristics();
@@ -221,10 +222,10 @@ pub(crate) fn run_ble_find_camera(
 
                 if has_write && has_notify {
                     log::trace!("BLE_FIND_CAMERA match id={} name={} rssi={}", id, name, rssi);
-                    let _ = peripheral.disconnect().await;
+                    disconnect_peripheral(&peripheral, "camera profile probe complete").await;
                     return Ok(());
                 }
-                let _ = peripheral.disconnect().await;
+                disconnect_peripheral(&peripheral, "camera profile mismatch").await;
             }
             tokio::time::sleep(Duration::from_millis(250)).await;
         }

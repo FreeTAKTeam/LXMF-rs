@@ -112,16 +112,24 @@ impl Transport {
                                     payload.context() as u8,
                                     payload.len()
                                 );
-                                let _ = received_data_tx.send(ReceivedData {
-                                    destination: event.id,
-                                    data: PacketDataBuffer::new_from_slice(payload.as_slice()),
-                                    payload_mode: ReceivedPayloadMode::FullWire,
-                                    ratchet_used: false,
-                                    context: Some(payload.context()),
-                                    request_id: payload.request_id(),
-                                    hops: None,
-                                    interface: None,
-                                });
+                                if received_data_tx
+                                    .send(ReceivedData {
+                                        destination: event.id,
+                                        data: PacketDataBuffer::new_from_slice(payload.as_slice()),
+                                        payload_mode: ReceivedPayloadMode::FullWire,
+                                        ratchet_used: false,
+                                        context: Some(payload.context()),
+                                        request_id: payload.request_id(),
+                                        hops: None,
+                                        interface: None,
+                                    })
+                                    .is_err()
+                                {
+                                    log::trace!(
+                                        "[tp-diag] received data has no active subscribers link_id=/{}//",
+                                        event.id
+                                    );
+                                }
                             }
                         }
                         Err(broadcast::error::RecvError::Closed) => break,
@@ -398,7 +406,8 @@ impl Transport {
     pub async fn handle_inbound_for_test(&self, packet: Packet) {
         let (receipt, receipt_handler) = {
             let handler = self.handler.lock().await;
-            let receipt = match super::wire::validated_receipt_hash(&packet, &handler).await {
+            let receipt = match super::wire_receipt::validated_receipt_hash(&packet, &handler).await
+            {
                 Ok(receipt_hash) => receipt_hash.map(DeliveryReceipt::new),
                 Err(err) => {
                     log::warn!("[transport] failed to validate inbound test receipt: {err:?}");

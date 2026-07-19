@@ -15,9 +15,30 @@ fn production_code_does_not_silently_discard_issue_369_failures() {
         for line_no in multiline_lock_ok_lines(&source) {
             findings.push(format!("{display}:{line_no}: mutex lock poison is discarded"));
         }
+        for line_no in multiline_send_ok_lines(&source) {
+            findings.push(format!("{display}:{line_no}: channel send failure is discarded"));
+        }
+        for line_no in ignored_result_lines(&source, ".send(") {
+            findings.push(format!("{display}:{line_no}: channel send result is ignored"));
+        }
+        for line_no in ignored_result_lines(&source, ".execute(")
+            .into_iter()
+            .chain(ignored_result_lines(&source, ".execute_batch("))
+        {
+            findings.push(format!("{display}:{line_no}: database operation result is ignored"));
+        }
+        for line_no in suppressed_result_lines(&source, "self.store") {
+            findings.push(format!("{display}:{line_no}: persistent-store error is discarded"));
+        }
+        for line_no in suppressed_result_lines(&source, "message_receipt_status") {
+            findings.push(format!("{display}:{line_no}: receipt-status error is discarded"));
+        }
         for (line, text) in source.lines().enumerate() {
             let line_no = line + 1;
             if text.contains(".lock().ok()") {
+                findings.push(format!("{display}:{line_no}: mutex lock poison is discarded"));
+            }
+            if text.contains("if let Ok(") && text.contains(".lock()") {
                 findings.push(format!("{display}:{line_no}: mutex lock poison is discarded"));
             }
             if text.contains("let _ = Hkdf::<Sha256>::new")
@@ -57,6 +78,14 @@ fn production_code_does_not_silently_discard_issue_369_failures() {
             if text.contains("rmp_serde::from_slice") && text.contains(".ok()") {
                 findings.push(format!("{display}:{line_no}: msgpack decode error is discarded"));
             }
+            if text.contains("VerifyingKey::from_bytes") && text.contains("unwrap_or_default()") {
+                findings.push(format!(
+                    "{display}:{line_no}: invalid verifying key is replaced with a default"
+                ));
+            }
+            if text.contains("u8::from_str_radix") && text.contains(".unwrap()") {
+                findings.push(format!("{display}:{line_no}: malformed hex input can panic"));
+            }
         }
     });
 
@@ -66,6 +95,95 @@ fn production_code_does_not_silently_discard_issue_369_failures() {
         "issue #369 silent failure patterns remain:\n{}",
         findings.join("\n")
     );
+}
+
+fn suppressed_result_lines(source: &str, operation: &str) -> Vec<usize> {
+    let mut findings = Vec::new();
+    let mut pending_line = None;
+    let mut expression = String::new();
+
+    for (index, text) in source.lines().enumerate() {
+        let line_no = index + 1;
+        if pending_line.is_none() {
+            if !text.contains(operation) {
+                continue;
+            }
+            pending_line = Some(line_no);
+        }
+        expression.push_str(text);
+
+        let suppresses_error = expression.contains(".ok()")
+            || expression.contains("unwrap_or_default()")
+            || expression.contains("unwrap_or(false)");
+        if suppresses_error {
+            findings.push(pending_line.expect("pending result suppression line"));
+            pending_line = None;
+            expression.clear();
+        } else if expression.contains(';')
+            || line_no.saturating_sub(pending_line.unwrap_or(line_no)) > 40
+        {
+            pending_line = None;
+            expression.clear();
+        }
+    }
+
+    findings
+}
+
+fn multiline_send_ok_lines(source: &str) -> Vec<usize> {
+    let mut findings = Vec::new();
+    let mut pending_send = None;
+
+    for (index, text) in source.lines().enumerate() {
+        let line_no = index + 1;
+        if pending_send.is_none() && text.contains(".send(") {
+            pending_send = Some(line_no);
+        }
+        if pending_send.is_some() {
+            if text.contains(".ok()") {
+                findings.push(pending_send.expect("pending send line"));
+                pending_send = None;
+            } else if text.contains(';')
+                || line_no.saturating_sub(pending_send.unwrap_or(line_no)) > 40
+            {
+                pending_send = None;
+            }
+        }
+    }
+
+    findings
+}
+
+fn ignored_result_lines(source: &str, operation: &str) -> Vec<usize> {
+    let mut findings = Vec::new();
+    let mut pending_line = None;
+    let mut statement = String::new();
+
+    for (index, text) in source.lines().enumerate() {
+        let line_no = index + 1;
+        if pending_line.is_none() {
+            let Some(offset) = text.find("let _ =") else {
+                continue;
+            };
+            pending_line = Some(line_no);
+            statement.push_str(&text[offset..]);
+        } else {
+            statement.push_str(text);
+        }
+
+        if statement.contains(';') {
+            if statement.contains(operation) {
+                findings.push(pending_line.expect("pending ignored-result line"));
+            }
+            pending_line = None;
+            statement.clear();
+        } else if line_no.saturating_sub(pending_line.unwrap_or(line_no)) > 40 {
+            pending_line = None;
+            statement.clear();
+        }
+    }
+
+    findings
 }
 
 fn multiline_lock_ok_lines(source: &str) -> Vec<usize> {

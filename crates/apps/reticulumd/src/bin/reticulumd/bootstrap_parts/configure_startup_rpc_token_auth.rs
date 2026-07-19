@@ -338,7 +338,9 @@ fn spawn_bridge_announce_scheduler(bridge: Arc<TransportBridge>, interval_secs: 
         let mut interval = tokio::time::interval(Duration::from_secs(interval_secs));
         loop {
             interval.tick().await;
-            let _ = bridge.announce_now();
+            if let Err(error) = bridge.announce_now() {
+                log::warn!("[daemon] scheduled delivery announce failed: {error}");
+            }
         }
     });
 }
@@ -348,7 +350,9 @@ fn spawn_bridge_propagation_announce_scheduler(bridge: Arc<TransportBridge>, int
         let mut interval = tokio::time::interval(Duration::from_secs(interval_secs));
         loop {
             interval.tick().await;
-            let _ = bridge.announce_propagation_now();
+            if let Err(error) = bridge.announce_propagation_now() {
+                log::warn!("[daemon] scheduled propagation announce failed: {error}");
+            }
         }
     });
 }

@@ -73,7 +73,7 @@ mod tests {
         let (tx, rx) = tokio::sync::oneshot::channel();
         let address = mgr.spawn(TestInterface, |context| async move {
             context.cancel.cancelled().await;
-            let _ = tx.send(());
+            tx.send(()).expect("stop observer remains connected");
         });
 
         assert!(mgr.stop_interface(address));

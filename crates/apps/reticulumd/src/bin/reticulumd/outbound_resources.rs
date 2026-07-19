@@ -18,8 +18,15 @@ pub(super) fn track_outbound_resource(
     resource_hash_hex: String,
     tracking: OutboundResourceTracking,
 ) {
-    if let Ok(mut guard) = outbound_resource_map.lock() {
-        guard.insert(resource_hash_hex, tracking);
+    match outbound_resource_map.lock() {
+        Ok(mut guard) => {
+            guard.insert(resource_hash_hex, tracking);
+        }
+        Err(error) => {
+            log::error!(
+                "[daemon] outbound resource map lock poisoned while tracking resource: {error}"
+            );
+        }
     }
 }
 
@@ -37,8 +44,17 @@ pub(super) fn prune_outbound_resource_mappings_for_message(
     outbound_resource_map: &OutboundResourceMap,
     message_id: &str,
 ) {
-    if let Ok(mut guard) = outbound_resource_map.lock() {
-        guard.retain(|_, tracking| tracking.message_id != message_id);
+    match outbound_resource_map.lock() {
+        Ok(mut guard) => {
+            guard.retain(|_, tracking| tracking.message_id != message_id);
+        }
+        Err(error) => {
+            log::error!(
+                "[daemon] outbound resource map lock poisoned while pruning message_id={}: {}",
+                message_id,
+                error
+            );
+        }
     }
 }
 

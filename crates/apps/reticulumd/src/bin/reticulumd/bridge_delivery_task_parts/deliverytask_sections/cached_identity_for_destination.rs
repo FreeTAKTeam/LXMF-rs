@@ -107,10 +107,7 @@ impl DeliveryTask {
                 &payload,
                 &context.destination_identity,
                 context.target_cost,
-                || {
-                    let status = self.daemon.message_receipt_status(&self.message_id).ok().flatten();
-                    Self::is_cancelled_status(status.as_deref())
-                },
+                || self.abort_if_cancelled("propagation-stamp"),
             );
             drop(_stamp_permit);
             match result {
@@ -384,8 +381,18 @@ impl DeliveryTask {
         log_delivery_trace(&self.message_id, &self.destination_hex, "opportunistic", &trace_detail);
         let outcome = trace.outcome;
         if !send_outcome_is_sent(outcome) {
-            if let Ok(mut map) = self.receipt_map.lock() {
-                map.remove(&packet_hash);
+            match self.receipt_map.lock() {
+                Ok(mut map) => {
+                    map.remove(&packet_hash);
+                }
+                Err(error) => {
+                    log::error!(
+                        "[daemon] receipt map lock poisoned while removing packet_hash={} message_id={}: {}",
+                        packet_hash,
+                        self.message_id,
+                        error
+                    );
+                }
             }
         }
         emit_receipt_event(
@@ -462,8 +469,18 @@ impl DeliveryTask {
             return Ok(None);
         };
 
-        if let Ok(mut peers) = self.peer_crypto.lock() {
-            peers.insert(self.destination_hex.clone(), PeerCrypto { identity });
+        match self.peer_crypto.lock() {
+            Ok(mut peers) => {
+                peers.insert(self.destination_hex.clone(), PeerCrypto { identity });
+            }
+            Err(error) => {
+                log::error!(
+                    "[daemon] peer identity cache lock poisoned for destination={} message_id={}: {}",
+                    self.destination_hex,
+                    self.message_id,
+                    error
+                );
+            }
         }
         Ok(Some(identity))
     }

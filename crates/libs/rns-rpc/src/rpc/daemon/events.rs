@@ -23,7 +23,9 @@ impl RpcDaemon {
                     .unwrap_or(0);
 
                 if let Some(bridge) = &bridge {
-                    let _ = bridge.announce_now();
+                    if let Err(error) = bridge.announce_now() {
+                        log::warn!("scheduled announce failed: {error}");
+                    }
                 }
 
                 let timestamp = now_i64();
@@ -189,7 +191,12 @@ impl RpcDaemon {
         let policy = self.sdk_overflow_policy();
         let block_timeout_ms = self.sdk_block_timeout_ms();
 
-        let _ = self.push_legacy_event_with_policy(&event, policy.as_str(), block_timeout_ms);
+        if !self.push_legacy_event_with_policy(&event, policy.as_str(), block_timeout_ms) {
+            log::warn!(
+                "legacy event queue rejected event type={} overflow_policy={policy}",
+                event.event_type
+            );
+        }
 
         let seq_no = {
             let mut seq_guard =
@@ -221,8 +228,18 @@ impl RpcDaemon {
 
     pub fn publish_event(&self, event: RpcEvent) {
         let sequenced_event = self.push_sequenced_event(event);
-        let _ = self.events.send(sequenced_event.event.clone());
-        let _ = self.sdk_events.send(sequenced_event);
+        let seq_no = sequenced_event.seq_no;
+        let event_type = sequenced_event.event.event_type.clone();
+        if self.events.send(sequenced_event.event.clone()).is_err() {
+            log::trace!(
+                "[rpc-daemon] legacy event has no active subscribers seq_no={seq_no} event_type={event_type}"
+            );
+        }
+        if self.sdk_events.send(sequenced_event).is_err() {
+            log::trace!(
+                "[rpc-daemon] sdk event has no active subscribers seq_no={seq_no} event_type={event_type}"
+            );
+        }
     }
 
     pub fn sdk_stream_event_frame(&self, sequenced_event: &SequencedRpcEvent) -> JsonValue {
@@ -297,7 +314,9 @@ impl RpcDaemon {
                     .unwrap_or(0);
 
                 if let Some(bridge) = &self.announce_bridge {
-                    let _ = bridge.announce_now();
+                    if let Err(error) = bridge.announce_now() {
+                        log::warn!("scheduled announce failed: {error}");
+                    }
                 }
 
                 let timestamp = now_i64();
@@ -330,7 +349,13 @@ impl RpcDaemon {
             fields: None,
             receipt_status: None,
         };
-        let _ = self.store.insert_message(&record);
+        if let Err(error) = self.store.insert_message(&record) {
+            log::error!(
+                "failed to persist injected inbound test message id={}: {error}",
+                record.id
+            );
+            return;
+        }
         let event =
             RpcEvent { event_type: "inbound".into(), payload: json!({ "message": record }) };
         self.publish_event(event);
