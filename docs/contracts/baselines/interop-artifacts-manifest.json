@@ -8,8 +8,8 @@
     },
     {
       "path": "docs/contracts/baselines/lxmf-sdk-public-api.txt",
-      "bytes": 394578,
-      "sha256": "3f8484de68f4153dd11cd24901c580a541ba73a150430dbeb822c31276cab93e"
+      "bytes": 394828,
+      "sha256": "409b5ac39eda1b7ba8c569e280d100898d026a2c83b8638da167c9df35330189"
     },
     {
       "path": "docs/contracts/baselines/schema-client-generation-baseline.json",
