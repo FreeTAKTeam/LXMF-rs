@@ -17,7 +17,7 @@ permissions:
 jobs:
   same-runner-comparison:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 360
     steps:
       - name: Resolve candidate ref
         id: candidate
@@ -52,12 +52,22 @@ jobs:
         working-directory: baseline
         env:
           PYTHONPATH: ${{ github.workspace }}/refs/Reticulum:${{ github.workspace }}/refs/LXMF
-        run: cargo xtask python-impl-bench-report
+        run: >-
+          cargo xtask python-impl-bench-report
+          --compare-runs 3
+          --python-iterations 5000
+          --resource-runs 2
+          --resource-iterations 5000
       - name: Measure release candidate
         working-directory: candidate
         env:
           PYTHONPATH: ${{ github.workspace }}/refs/Reticulum:${{ github.workspace }}/refs/LXMF
-        run: cargo xtask python-impl-bench-report
+        run: >-
+          cargo xtask python-impl-bench-report
+          --compare-runs 3
+          --python-iterations 5000
+          --resource-runs 2
+          --resource-iterations 5000
       - name: Measure ZeroMQ and HTTP SDK transports
         working-directory: candidate
         run: |

@@ -113,6 +113,13 @@ python3 tools/scripts/performance_docs.py --check
 ```
 
 Release candidates are measured on the same runner as a checkout of `v0.9.1`.
+The hosted release workflow keeps report-profile Criterion settings but uses
+three interleaved comparison runs, two isolated resource runs, and 5,000
+Python/resource iterations per checkout so both revisions complete within the
+GitHub-hosted job limit. Generated datasets record these counts. Use the full
+five-comparison/three-resource defaults for independently published benchmark
+claims.
+
 Apply the release budgets to those two generated datasets with:
 
 ```bash
