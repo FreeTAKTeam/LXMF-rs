@@ -60,9 +60,10 @@ candidate commit.
   result with `?` or attach local context with `map_err`. The existing
   `new_from_slices` signature remains source-compatible for typed/invariant
   conversions.
-- `PropagationRecoveryStateResult::from_propagation` now returns `Result` so
+- `PropagationRecoveryStateResult::try_from_propagation` returns `Result` so
   callers can distinguish an absent optional field from a malformed typed
-  response.
+  response. The existing infallible `from_propagation` method remains
+  source-compatible for callers that need the pre-v0.9.6 best-effort behavior.
 
 ## Release evidence
 

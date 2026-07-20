@@ -38,22 +38,30 @@ pub(super) fn handle_receipt_update(
     outbound_resource_map: &OutboundResourceMap,
 ) {
     let message_id = event.message_id.clone();
+    if let Err(err) = persist_receipt_update(daemon, event, receipt_map, outbound_resource_map) {
+        log_delivery_trace(&message_id, "-", "receipt-persist", &format!("failed err={err}"));
+    }
+}
+
+pub(crate) fn persist_receipt_update(
+    daemon: &RpcDaemon,
+    event: ReceiptEvent,
+    receipt_map: &Arc<Mutex<HashMap<String, String>>>,
+    outbound_resource_map: &OutboundResourceMap,
+) -> Result<(), std::io::Error> {
+    let message_id = event.message_id.clone();
     let status = event.status.clone();
     let detail = format!("status={status}");
     log_delivery_trace(&message_id, "-", "receipt-update", &detail);
     let delivery_state = ReceiptDeliveryState::from_status(&status);
-    let result = handle_receipt_event(daemon, event);
-    if let Err(err) = result {
-        let detail = format!("persist-failed err={err}");
-        log_delivery_trace(&message_id, "-", "receipt-persist", &detail);
-        return;
-    }
+    handle_receipt_event(daemon, event)?;
 
     if delivery_state.should_prune_correlations() {
         prune_receipt_mappings_for_message(receipt_map, &message_id);
         prune_outbound_resource_mappings_for_message(outbound_resource_map, &message_id);
     }
     log_delivery_trace(&message_id, "-", "receipt-persist", "ok");
+    Ok(())
 }
 
 #[cfg(test)]

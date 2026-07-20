@@ -78,7 +78,103 @@ pub struct PropagationRecoveryStateResult {
 }
 
 impl PropagationRecoveryStateResult {
-    pub fn from_propagation(propagation: JsonValue) -> Result<Self, String> {
+    /// Projects propagation metadata using the compatibility behavior exposed
+    /// before v0.9.6. Malformed optional fields are treated as absent so
+    /// existing callers retain the original infallible API.
+    pub fn from_propagation(propagation: JsonValue) -> Self {
+        let state_name = json_string(&propagation, "state_name").ok().flatten();
+        let sync_state =
+            json_u64(&propagation, "sync_state").ok().flatten().unwrap_or(0) as u32;
+        let failure_kind = json_string(&propagation, "failure_kind")
+            .ok()
+            .flatten()
+            .or_else(|| match state_name.as_deref() {
+                Some("no_access") => Some("no_access".to_string()),
+                Some("timeout") => Some("timeout".to_string()),
+                _ => None,
+            });
+        let timed_out =
+            failure_kind.as_deref() == Some("timeout") || state_name.as_deref() == Some("timeout");
+        let access_denied = json_bool(&propagation, "access_denied")
+            .ok()
+            .flatten()
+            .unwrap_or(false)
+            || state_name.as_deref() == Some("no_access")
+            || sync_state == 0xf4
+            || matches!(
+                failure_kind.as_deref(),
+                Some("access_denied" | "access-denied" | "no_access")
+            );
+        Self {
+            enabled: json_bool(&propagation, "enabled").ok().flatten().unwrap_or(false),
+            selected_node: json_string(&propagation, "selected_node").ok().flatten(),
+            sync_state,
+            state_name,
+            sync_progress: json_f64(&propagation, "sync_progress").ok().flatten(),
+            last_sync_started: json_i64(&propagation, "last_sync_started").ok().flatten(),
+            last_sync_completed: json_i64(&propagation, "last_sync_completed").ok().flatten(),
+            last_sync_error: json_string(&propagation, "last_sync_error").ok().flatten(),
+            failure_kind,
+            timed_out,
+            access_denied,
+            next_sync_attempt: json_i64(&propagation, "next_sync_attempt").ok().flatten(),
+            retry_count: json_u64(&propagation, "retry_count").ok().flatten().unwrap_or(0),
+            queue_depth: json_u64(&propagation, "queue_depth").ok().flatten().unwrap_or(0),
+            timestamp: json_i64(&propagation, "timestamp").ok().flatten(),
+            auth_required: json_bool(&propagation, "auth_required").ok().flatten().unwrap_or(false),
+            store_root: json_string(&propagation, "store_root").ok().flatten(),
+            target_cost: json_u64(&propagation, "target_cost").ok().flatten(),
+            stamp_cost_flexibility: json_u64(&propagation, "stamp_cost_flexibility")
+                .ok()
+                .flatten(),
+            message_storage_limit_mb: json_u64(&propagation, "message_storage_limit_mb")
+                .ok()
+                .flatten(),
+            delivery_limit: json_u64(&propagation, "delivery_limit").ok().flatten(),
+            propagation_limit: json_u64(&propagation, "propagation_limit").ok().flatten(),
+            autopeer: json_bool(&propagation, "autopeer").ok().flatten(),
+            autopeer_maxdepth: json_u64(&propagation, "autopeer_maxdepth").ok().flatten(),
+            static_peers: remote_transfer_json_string_array(&propagation, "static_peers"),
+            sync_limit: json_u64(&propagation, "sync_limit").ok().flatten(),
+            max_peers: json_u64(&propagation, "max_peers").ok().flatten(),
+            from_static_only: json_bool(&propagation, "from_static_only").ok().flatten(),
+            retain_synced_on_node: json_bool(&propagation, "retain_synced_on_node")
+                .ok()
+                .flatten(),
+            peering_cost: json_u64(&propagation, "peering_cost").ok().flatten(),
+            remote_peering_cost_max: json_u64(&propagation, "remote_peering_cost_max")
+                .ok()
+                .flatten(),
+            control_allowed: remote_transfer_json_string_array(&propagation, "control_allowed"),
+            total_ingested: json_u64(&propagation, "total_ingested")
+                .ok()
+                .flatten()
+                .unwrap_or(0),
+            last_ingest_count: json_u64(&propagation, "last_ingest_count")
+                .ok()
+                .flatten()
+                .unwrap_or(0),
+            client_propagation_messages_received: json_u64(
+                &propagation,
+                "client_propagation_messages_received",
+            )
+            .ok()
+            .flatten()
+            .unwrap_or(0),
+            client_propagation_messages_served: json_u64(
+                &propagation,
+                "client_propagation_messages_served",
+            )
+            .ok()
+            .flatten()
+            .unwrap_or(0),
+            propagation,
+        }
+    }
+
+    /// Strictly projects propagation metadata and reports malformed typed
+    /// fields instead of silently treating them as absent.
+    pub fn try_from_propagation(propagation: JsonValue) -> Result<Self, String> {
         macro_rules! field {
             ($getter:ident, $key:literal) => {
                 $getter(&propagation, $key)
@@ -220,7 +316,7 @@ mod propagation_recovery_state_tests {
 
     #[test]
     fn recovery_state_accepts_absent_and_null_optional_fields() {
-        let state = PropagationRecoveryStateResult::from_propagation(json!({
+        let state = PropagationRecoveryStateResult::try_from_propagation(json!({
             "enabled": true,
             "selected_node": null,
             "static_peers": null
@@ -234,22 +330,35 @@ mod propagation_recovery_state_tests {
 
     #[test]
     fn recovery_state_rejects_malformed_typed_fields() {
-        let error = PropagationRecoveryStateResult::from_propagation(json!({
+        let error = PropagationRecoveryStateResult::try_from_propagation(json!({
             "queue_depth": "many"
         }))
         .expect_err("invalid queue depth");
         assert!(error.contains("queue_depth"));
 
-        let error = PropagationRecoveryStateResult::from_propagation(json!({
+        let error = PropagationRecoveryStateResult::try_from_propagation(json!({
             "sync_state": u64::from(u32::MAX) + 1
         }))
         .expect_err("overflowing sync state");
         assert!(error.contains("sync_state"));
 
-        let error = PropagationRecoveryStateResult::from_propagation(json!({
+        let error = PropagationRecoveryStateResult::try_from_propagation(json!({
             "static_peers": ["peer-a", 42]
         }))
         .expect_err("invalid static peer entry");
         assert!(error.contains("static_peers"));
+    }
+
+    #[test]
+    fn compatibility_recovery_state_keeps_infallible_projection() {
+        let state = PropagationRecoveryStateResult::from_propagation(json!({
+            "enabled": true,
+            "queue_depth": "many",
+            "static_peers": ["peer-a", 42]
+        }));
+
+        assert!(state.enabled);
+        assert_eq!(state.queue_depth, 0);
+        assert_eq!(state.static_peers, vec!["peer-a".to_string()]);
     }
 }

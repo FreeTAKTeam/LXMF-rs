@@ -148,6 +148,36 @@ async fn abort_if_cancelled_reads_persisted_daemon_status() {
 }
 
 #[tokio::test]
+async fn receipt_lookup_error_persists_terminal_status_without_receipt_queue() {
+    let message_id = "propagation-cost-lookup-message";
+    let store = MessagesStore::in_memory().expect("store");
+    store
+        .insert_message(&MessageRecord {
+            id: message_id.to_string(),
+            source: "source".to_string(),
+            destination: "00000000000000000000000000000000".to_string(),
+            title: String::new(),
+            content: String::new(),
+            timestamp: 0,
+            direction: "out".to_string(),
+            fields: None,
+            receipt_status: Some("sending".to_string()),
+        })
+        .expect("insert message");
+    let daemon = Arc::new(RpcDaemon::with_store(store, "lookup-error-node".to_string()));
+    let task = delivery_task_for_propagation_cost_lookup(daemon.clone());
+
+    assert!(task.abort_for_status_result(
+        "test",
+        Err(std::io::Error::other("synthetic receipt lookup failure")),
+    ));
+    assert_eq!(
+        daemon.message_receipt_status(message_id).expect("receipt status"),
+        Some("failed: receipt status lookup: synthetic receipt lookup failure".to_string())
+    );
+}
+
+#[tokio::test]
 async fn tracked_outbound_resource_cancel_sends_resource_cancel_frame() {
     let message_id = "cancel-active-resource";
     let store = MessagesStore::in_memory().expect("store");
