@@ -1,0 +1,107 @@
+{
+  "environment": {
+    "generated_at_utc": "2026-07-20T18:46:39Z",
+    "lxmf_rs_dirty": false,
+    "lxmf_rs_revision": "f6f8407f0645ec251efdb9dc37149aaea78ce8e9",
+    "platform": "Linux-7.0.0-27-generic-x86_64-with-glibc2.43",
+    "python_lxmf_revision": "727830cefda83d9c6e3982b48675425f3f988f9c",
+    "python_rns_revision": "15320e4d2cfabb143c1db20ca887e275fd521585",
+    "python_version": "3.12.13",
+    "reticulated_dirty": true,
+    "reticulated_revision": "3aa991d3e443184cc3f94ade23abda7c78bb637e",
+    "rust_binary_sha256": "05463e5d3701da757e07c07b7f3d7639986685ada2d8711c2cda5d3aa4577ab6"
+  },
+  "runs": [
+    {
+      "composition": "python",
+      "forward": {
+        "delivered": 3,
+        "destination_implementation": "Python",
+        "p50_seconds": 25.180237702006707,
+        "p95_seconds": 25.226097325998126,
+        "samples": 3,
+        "source_implementation": "Python"
+      },
+      "label": "100 Python",
+      "media_tx": 35662,
+      "raw_report_sha256": "69eb90d956c14fe203b8619f3779e407adb82b5c139347477b318b1974b60e31",
+      "ready_seconds": 1.761,
+      "reverse": {
+        "delivered": 0,
+        "destination_implementation": "Python",
+        "failure": "SENDFAIL noidentity",
+        "p50_seconds": null,
+        "p95_seconds": null,
+        "samples": 3,
+        "source_implementation": "Python",
+        "timeout_seconds": 120.501
+      },
+      "status": "fail"
+    },
+    {
+      "composition": "mixed",
+      "forward": {
+        "delivered": 3,
+        "destination_implementation": "Rust",
+        "p50_seconds": 0.45646748000581283,
+        "p95_seconds": 0.45687731899670325,
+        "samples": 3,
+        "source_implementation": "Python"
+      },
+      "label": "50 Python / 50 Rust",
+      "media_tx": 4411,
+      "raw_report_sha256": "ac55a775de0b9d69ea3039517612c73e2c0e7c136960446dea747c248ab8ac6a",
+      "ready_seconds": 1.517,
+      "reverse": {
+        "delivered": 3,
+        "destination_implementation": "Python",
+        "p50_seconds": 0.7701579489948926,
+        "p95_seconds": 0.7769938900019042,
+        "samples": 3,
+        "source_implementation": "Rust"
+      },
+      "status": "pass"
+    },
+    {
+      "composition": "rust",
+      "forward": {
+        "delivered": 3,
+        "destination_implementation": "Rust",
+        "p50_seconds": 0.11188276200846303,
+        "p95_seconds": 0.115015613992,
+        "samples": 3,
+        "source_implementation": "Rust"
+      },
+      "label": "100 Rust",
+      "media_tx": 1368,
+      "raw_report_sha256": "1d57b5ce0433929056886646c5ca5a51ae1d85a9ac8e7ea734ba5b5c398d26f9",
+      "ready_seconds": 0.253,
+      "reverse": {
+        "delivered": 3,
+        "destination_implementation": "Rust",
+        "p50_seconds": 0.19163855598890223,
+        "p95_seconds": 0.1931110020086635,
+        "samples": 3,
+        "source_implementation": "Rust"
+      },
+      "status": "pass"
+    }
+  ],
+  "scenario": {
+    "bitrate_bps": 1000000,
+    "configured_loss": 0.0,
+    "delivery_mode": "opportunistic",
+    "media": 99,
+    "mtu_bytes": 500,
+    "nodes": 100,
+    "payload_bytes": 256,
+    "propagation_seconds": 0.001,
+    "route_hops": 99,
+    "route_warmup_seconds": 60,
+    "samples_per_direction": 3,
+    "topology": "linear-chain",
+    "topology_seed": 20260720,
+    "transport_nodes": 98
+  },
+  "schema_version": 1
+}

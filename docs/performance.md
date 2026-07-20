@@ -66,6 +66,22 @@ These matched sender workloads use the same two-node loopback TCP topology with 
 | Loopback TCP propagated delivery | warm | 256 | 721.21 ms | 7858.45 ms | 10.90x | 890.08 ms | 7873.64 ms | 3.440s | 6.480s | 80.4 MiB | 80.2 MiB | 3.49% | 0.07% |
 | Loopback TCP resource delivery | warm | 16384 | 513.15 ms | 817.19 ms | 1.59x | 596.14 ms | 836.28 ms | 4.670s | 1.870s | 80.4 MiB | 80.4 MiB | 0.99% | 0.57% |
 
+## 100-node chain scale tests
+
+Exploratory single-host scale results are stored in [`docs/performance/100-node-chain-2026-07-20.json`](performance/100-node-chain-2026-07-20.json). Each run created `100` nodes in a linear chain over `99` simulated media at `1` Mbit/s, a `500`-byte MTU, `1` ms propagation per medium, and `0.0%` configured loss. The `98` interior nodes acted as transports.
+
+After a `60`-second route warm-up, the endpoints sent `3` concurrent `256`-byte opportunistic messages in each direction. RTT columns report p50 across delivered samples; a dash means no sample was delivered. Readiness required all 100 nodes to be running, connected, and addressed.
+
+| Composition | Ready | n0 -> n99 p50 | n99 -> n0 p50 | Delivered | Media TX | Result |
+|---|---:|---:|---:|---:|---:|---:|
+| 100 Python | 1.761 s | 25.180 s (Python -> Python) | - (Python -> Python) | 3/6 | 35,662 | fail |
+| 50 Python / 50 Rust | 1.517 s | 0.456 s (Python -> Rust) | 0.770 s (Rust -> Python) | 6/6 | 4,411 | pass |
+| 100 Rust | 0.253 s | 0.112 s (Rust -> Rust) | 0.192 s (Rust -> Rust) | 6/6 | 1,368 | pass |
+
+The all-Python reverse direction delivered `0/3` samples, logged `SENDFAIL noidentity`, and reached the `121`-second action timeout; the missing RTT is not zero.
+
+These are single runs per composition, not a repeated benchmark distribution. The simulator and all nodes shared one host, so scheduler and simulator overhead affect the measurements. The Rust binary came from LXMF-rs `f6f8407f0645ec251efdb9dc37149aaea78ce8e9`; the Python references were Reticulum `15320e4d2cfabb143c1db20ca887e275fd521585` and LXMF `727830cefda83d9c6e3982b48675425f3f988f9c`. The reticulated harness working tree contained uncommitted changes, so these results are exploratory evidence rather than a release threshold.
+
 ## Limitations
 
 - Scheduler noise, CPU frequency changes, and host background work affect tails and resource readings.

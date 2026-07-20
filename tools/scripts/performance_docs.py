@@ -14,6 +14,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 README = ROOT / "README.md"
 PAGE = ROOT / "docs/performance.md"
+SCALE_DATASET = ROOT / "docs/performance/100-node-chain-2026-07-20.json"
 START = "<!-- performance-summary:start -->"
 END = "<!-- performance-summary:end -->"
 PYTHON_INTEROP_WORKFLOW = ROOT / ".github/workflows/python-interop.yml"
@@ -86,6 +87,73 @@ def fmt_ns(value: float) -> str:
     return f"{value:.0f} ns"
 
 
+def fmt_seconds(value: float | None) -> str:
+    if value is None:
+        return "-"
+    return f"{value:.3f} s"
+
+
+def scale_test_section(data: dict[str, Any]) -> list[str]:
+    scenario = data["scenario"]
+    lines = [
+        "## 100-node chain scale tests",
+        "",
+        "Exploratory single-host scale results are stored in "
+        "[`docs/performance/100-node-chain-2026-07-20.json`](performance/100-node-chain-2026-07-20.json). "
+        f"Each run created `{scenario['nodes']}` nodes in a linear chain over `{scenario['media']}` simulated media "
+        f"at `{scenario['bitrate_bps'] // 1_000_000}` Mbit/s, a `{scenario['mtu_bytes']}`-byte MTU, "
+        f"`{scenario['propagation_seconds'] * 1_000:.0f}` ms propagation per medium, and "
+        f"`{scenario['configured_loss']:.1%}` configured loss. "
+        f"The `{scenario['transport_nodes']}` interior nodes acted as transports.",
+        "",
+        f"After a `{scenario['route_warmup_seconds']:.0f}`-second route warm-up, the endpoints sent "
+        f"`{scenario['samples_per_direction']}` concurrent `{scenario['payload_bytes']}`-byte "
+        f"{scenario['delivery_mode']} messages in each direction. RTT columns report p50 across delivered samples; "
+        f"a dash means no sample was delivered. Readiness required all {scenario['nodes']} nodes to be running, "
+        "connected, and addressed.",
+        "",
+        "| Composition | Ready | n0 -> n99 p50 | n99 -> n0 p50 | Delivered | Media TX | Result |",
+        "|---|---:|---:|---:|---:|---:|---:|",
+    ]
+    for run in data["runs"]:
+        forward = run["forward"]
+        reverse = run["reverse"]
+        delivered = forward["delivered"] + reverse["delivered"]
+        samples = forward["samples"] + reverse["samples"]
+        forward_label = (
+            f"{fmt_seconds(forward['p50_seconds'])} "
+            f"({forward['source_implementation']} -> {forward['destination_implementation']})"
+        )
+        reverse_label = (
+            f"{fmt_seconds(reverse['p50_seconds'])} "
+            f"({reverse['source_implementation']} -> {reverse['destination_implementation']})"
+        )
+        lines.append(
+            f"| {run['label']} | {fmt_seconds(run['ready_seconds'])} | {forward_label} | {reverse_label} | "
+            f"{delivered}/{samples} | {run['media_tx']:,} | {run['status']} |"
+        )
+    python_run = next((run for run in data["runs"] if run["composition"] == "python"), None)
+    if python_run is None:
+        raise ValueError("100-node scale dataset is missing the all-Python run")
+    environment = data["environment"]
+    lines.extend(
+        [
+            "",
+            "The all-Python reverse direction delivered `0/3` samples, logged "
+            f"`{python_run['reverse']['failure']}`, and reached the "
+            f"`{python_run['reverse']['timeout_seconds']:.0f}`-second action timeout; the missing RTT is not zero.",
+            "",
+            "These are single runs per composition, not a repeated benchmark distribution. The simulator and all nodes "
+            "shared one host, so scheduler and simulator overhead affect the measurements. The Rust binary came from "
+            f"LXMF-rs `{environment['lxmf_rs_revision']}`; the Python references were Reticulum "
+            f"`{environment['python_rns_revision']}` and LXMF `{environment['python_lxmf_revision']}`. "
+            "The reticulated harness working tree contained uncommitted changes, so these results are exploratory "
+            "evidence rather than a release threshold.",
+        ]
+    )
+    return lines
+
+
 def summary_section(data: dict[str, Any], release: str) -> str:
     env = data["environment"]
     rows = data["comparisons"][:4]
@@ -112,7 +180,7 @@ def summary_section(data: dict[str, Any], release: str) -> str:
     return "\n".join(lines)
 
 
-def performance_page(data: dict[str, Any], release: str) -> str:
+def performance_page(data: dict[str, Any], release: str, scale_data: dict[str, Any]) -> str:
     env = data["environment"]
     lines = [
         "# Performance",
@@ -201,6 +269,7 @@ def performance_page(data: dict[str, Any], release: str) -> str:
             )
     else:
         lines.append("No E2E measurements are present; release publication must add the report before making whole-delivery claims.")
+    lines.extend(["", *scale_test_section(scale_data)])
     lines.extend(
         [
             "",
@@ -255,8 +324,9 @@ def main() -> int:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         data = load(target)
+        scale_data = load(SCALE_DATASET)
         verify_workflow_refs(data)
-        expected_page = performance_page(data, args.release)
+        expected_page = performance_page(data, args.release, scale_data)
         expected_readme = replace_marked(README.read_text(encoding="utf-8"), summary_section(data, args.release))
         if args.check:
             if not PAGE.is_file() or PAGE.read_text(encoding="utf-8") != expected_page:
