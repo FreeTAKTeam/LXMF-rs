@@ -6,23 +6,23 @@ use super::*;
 use crate::packet::Header;
 use ed25519_dalek::SIGNATURE_LENGTH;
 
-async fn should_forward_link_request_proof(
+async fn should_forward_link_table_proof(
     packet: &Packet,
     handler: &TransportHandler,
     iface: AddressHash,
 ) -> bool {
-    if packet.context != PacketContext::LinkRequestProof {
-        return true;
-    }
-
     if !handler.config.transport_enabled {
         log::debug!(
-            "[tp-diag] lrproof_forward_skip node={} reason=transport_disabled link={} iface={}",
+            "[tp-diag] link_proof_forward_skip node={} reason=transport_disabled link={} iface={}",
             handler.config.name,
             packet.destination,
             iface
         );
         return false;
+    }
+
+    if packet.context != PacketContext::LinkRequestProof {
+        return true;
     }
 
     let Some((original_destination, expected_iface)) =
@@ -163,7 +163,7 @@ pub(super) async fn handle_proof(
         }
     }
 
-    let maybe_packet = if should_forward_link_request_proof(&packet, &handler, iface).await {
+    let maybe_packet = if should_forward_link_table_proof(&packet, &handler, iface).await {
         handler.link_table.handle_proof(&packet)
     } else {
         None

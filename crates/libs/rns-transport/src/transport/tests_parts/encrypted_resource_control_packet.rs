@@ -876,7 +876,8 @@ async fn routed_link_resource_proof_forwards_back_to_link_requester() {
 #[tokio::test]
 async fn routed_link_packet_proof_forwards_back_to_link_requester() {
     let local_identity = PrivateIdentity::new_from_rand(OsRng);
-    let config = TransportConfig::new("test", &local_identity, true);
+    let mut config = TransportConfig::new("test", &local_identity, true);
+    config.set_transport_enabled(true);
     let transport = Transport::new(config);
     let handler = transport.get_handler();
     let mut requester_iface = transport.iface_manager.lock().await.new_channel(8);
@@ -983,5 +984,13 @@ async fn disabled_transport_does_not_forward_established_link_traffic() {
     assert!(
         timeout(Duration::from_millis(200), requester_iface.tx_channel.recv()).await.is_err(),
         "disabled transport must not forward established-link data"
+    );
+
+    let packet_proof = inbound_link.prove_packet(&data_packet);
+    handle_proof(packet_proof, handler, next_hop_iface).await;
+
+    assert!(
+        timeout(Duration::from_millis(200), requester_iface.tx_channel.recv()).await.is_err(),
+        "disabled transport must not forward established-link proofs"
     );
 }
