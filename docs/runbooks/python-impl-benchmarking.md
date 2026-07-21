@@ -114,12 +114,13 @@ python3 tools/scripts/performance_docs.py --check
 
 Release candidates are measured on the same runner as a checkout of `v0.9.1`.
 The hosted release workflow keeps report-profile Criterion settings but uses
-three interleaved comparison runs, two isolated resource runs, and 5,000
-resource iterations per checkout so both revisions complete within the
-GitHub-hosted job limit. Python iteration counts retain the report-profile
-default supported by both revisions. Generated datasets record these counts.
-Use the full five-comparison/three-resource defaults for independently
-published benchmark claims.
+three interleaved comparison runs, 2,000 Python iterations per workload, two
+isolated resource runs, and 5,000 resource iterations per checkout. The
+workflow applies the same bounded Python count to both checked-out benchmark
+configs because the `v0.9.1` command does not expose that value as a CLI
+override. Generated datasets record the effective counts. Use the full
+five-comparison/three-resource defaults and the report profile's 10,000 Python
+iterations for independently published benchmark claims.
 
 Apply the release budgets to those two generated datasets with:
 

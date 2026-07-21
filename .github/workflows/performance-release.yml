@@ -48,6 +48,12 @@ jobs:
           mkdir -p candidate/target/python-references
           ln -s "$GITHUB_WORKSPACE/refs/Reticulum" candidate/target/python-references/Reticulum
           ln -s "$GITHUB_WORKSPACE/refs/LXMF" candidate/target/python-references/LXMF
+      - name: Bound hosted Python benchmark iterations
+        run: |
+          for config in baseline/tools/benchmarks/python_impl.toml candidate/tools/benchmarks/python_impl.toml; do
+            sed -i 's/^iterations = 10000$/iterations = 2000/' "$config"
+            test "$(grep -c '^iterations = 2000$' "$config")" -eq 2
+          done
       - name: Measure v0.9.1 baseline
         working-directory: baseline
         env:
