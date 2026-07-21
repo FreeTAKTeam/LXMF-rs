@@ -55,7 +55,6 @@ jobs:
         run: >-
           cargo xtask python-impl-bench-report
           --compare-runs 3
-          --python-iterations 5000
           --resource-runs 2
           --resource-iterations 5000
       - name: Measure release candidate
@@ -65,7 +64,6 @@ jobs:
         run: >-
           cargo xtask python-impl-bench-report
           --compare-runs 3
-          --python-iterations 5000
           --resource-runs 2
           --resource-iterations 5000
       - name: Measure ZeroMQ and HTTP SDK transports
