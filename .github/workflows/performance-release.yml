@@ -62,7 +62,7 @@ jobs:
           cargo xtask python-impl-bench-report
           --compare-runs 3
           --resource-runs 2
-          --resource-iterations 5000
+          --resource-iterations 1000
       - name: Measure release candidate
         working-directory: candidate
         env:
@@ -71,7 +71,7 @@ jobs:
           cargo xtask python-impl-bench-report
           --compare-runs 3
           --resource-runs 2
-          --resource-iterations 5000
+          --resource-iterations 1000
       - name: Measure ZeroMQ and HTTP SDK transports
         working-directory: candidate
         run: |
