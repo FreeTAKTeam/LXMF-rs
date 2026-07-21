@@ -15,6 +15,16 @@ async fn should_forward_link_request_proof(
         return true;
     }
 
+    if !handler.config.transport_enabled {
+        log::debug!(
+            "[tp-diag] lrproof_forward_skip node={} reason=transport_disabled link={} iface={}",
+            handler.config.name,
+            packet.destination,
+            iface
+        );
+        return false;
+    }
+
     let Some((original_destination, expected_iface)) =
         handler.link_table.proof_validation_context(&packet.destination)
     else {
@@ -114,7 +124,7 @@ pub(super) async fn handle_proof(
                 None
             }
         };
-        if let Some(source_iface) = source_iface {
+        if let (true, Some(source_iface)) = (handler.config.transport_enabled, source_iface) {
             if source_iface != iface {
                 log::debug!(
                     "[tp-diag] destination_proof_reverse_forward node={} proof_dst={} source_iface={} ingress_iface={}",
@@ -184,7 +194,11 @@ pub(super) async fn handle_keepalive_response<'a>(
     if packet.context == PacketContext::KeepAlive
         && packet.data.as_slice()[0] == KEEP_ALIVE_RESPONSE
     {
-        let lookup = handler.link_table.handle_keepalive(packet);
+        let lookup = if handler.config.transport_enabled {
+            handler.link_table.handle_keepalive(packet)
+        } else {
+            None
+        };
 
         if let Some((propagated, iface)) = lookup {
             handler
@@ -251,8 +265,12 @@ pub(super) async fn handle_data<'a>(
             return;
         }
 
-        if let Some((packet, iface)) = handler.link_table.handle_reverse_link_packet(packet, iface)
-        {
+        let reverse_packet = if handler.config.transport_enabled {
+            handler.link_table.handle_reverse_link_packet(packet, iface)
+        } else {
+            None
+        };
+        if let Some((packet, iface)) = reverse_packet {
             log::debug!(
                 "[resource-diag] wire_resource_reverse_forward node={} link={} iface={}",
                 handler.config.name,
@@ -263,16 +281,18 @@ pub(super) async fn handle_data<'a>(
             return;
         }
 
-        let lookup = handler.link_table.original_destination(&packet.destination);
-        if lookup.is_some() {
-            let sent = send_to_next_hop(packet, &handler, lookup).await;
+        if handler.config.transport_enabled {
+            let lookup = handler.link_table.original_destination(&packet.destination);
+            if lookup.is_some() {
+                let sent = send_to_next_hop(packet, &handler, lookup).await;
 
-            log::trace!(
-                "tp({}): {} packet to remote link {}",
-                handler.config.name,
-                if sent { "forwarded" } else { "could not forward" },
-                packet.destination
-            );
+                log::trace!(
+                    "tp({}): {} packet to remote link {}",
+                    handler.config.name,
+                    if sent { "forwarded" } else { "could not forward" },
+                    packet.destination
+                );
+            }
         }
     }
 
@@ -461,7 +481,7 @@ pub(super) async fn handle_data<'a>(
                     }
                 }
             }
-        } else {
+        } else if handler.config.transport_enabled {
             data_handled = send_to_next_hop(packet, &handler, None).await;
         }
     }

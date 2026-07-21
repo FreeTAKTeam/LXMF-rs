@@ -1,4 +1,5 @@
 use rand_core::OsRng;
+use rns_transport::destination::link::Link;
 use rns_transport::destination::{DestinationName, SingleInputDestination};
 use rns_transport::hash::{AddressHash, ADDRESS_HASH_SIZE};
 use rns_transport::identity::PrivateIdentity;
@@ -14,6 +15,13 @@ fn retransmitting_transport(name: &str) -> Transport {
     let identity = PrivateIdentity::new_from_rand(OsRng);
     let mut config = TransportConfig::new(name, &identity, true);
     config.set_retransmit(true);
+    Transport::new(config)
+}
+
+fn non_transport_instance(name: &str) -> Transport {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut config = TransportConfig::new(name, &identity, true);
+    config.set_transport_enabled(false);
     Transport::new(config)
 }
 
@@ -115,6 +123,57 @@ async fn learn_remote_announce(
     feed_iface_packet(iface, announce.clone()).await;
     wait_for_known_path(transport, &destination).await;
     announce
+}
+
+fn link_request(destination: rns_transport::destination::DestinationDesc) -> Packet {
+    let (link_events, _keep) = tokio::sync::broadcast::channel(4);
+    Link::new(destination, link_events).request()
+}
+
+#[tokio::test]
+async fn disabled_transport_does_not_relay_known_path_link_requests() {
+    let app = non_transport_instance("issue-491-disabled-app");
+    let mut host_iface = new_probe_iface_with_mode(&app, InterfaceMode::AccessPoint).await;
+    let attacker_iface = new_probe_iface_with_mode(&app, InterfaceMode::AccessPoint).await;
+    let mut host_destination = SingleInputDestination::new(
+        PrivateIdentity::new_from_rand(OsRng),
+        DestinationName::new("lxmf", "issue-491-host"),
+    );
+    let mut announce = host_destination.announce(OsRng, None).expect("valid host announce");
+    announce.header.hops = 1;
+    let destination = announce.destination;
+
+    feed_iface_packet(&host_iface, announce).await;
+    wait_for_known_path(&app, &destination).await;
+    feed_iface_packet(&attacker_iface, link_request(host_destination.desc)).await;
+
+    assert_no_tx_within(
+        &mut host_iface,
+        "host-facing access-point interface on a disabled transport",
+        Duration::from_millis(250),
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn disabled_transport_still_accepts_link_requests_for_local_destinations() {
+    let mut app = non_transport_instance("disabled-app-local-destination");
+    let local_destination = app
+        .add_destination(
+            PrivateIdentity::new_from_rand(OsRng),
+            DestinationName::new("lxmf", "disabled-app-local"),
+        )
+        .await;
+    let destination = local_destination.lock().await.desc;
+    let mut requester_iface = new_probe_iface_with_mode(&app, InterfaceMode::AccessPoint).await;
+
+    feed_iface_packet(&requester_iface, link_request(destination)).await;
+
+    let proof = recv_tx(&mut requester_iface, "local destination link proof").await;
+    assert!(
+        matches!(proof.tx_type, TxMessageType::Direct(iface) if iface == *requester_iface.address())
+    );
+    assert_eq!(proof.packet.context, PacketContext::LinkRequestProof);
 }
 
 fn fresh_announce(destination: &mut SingleInputDestination, hops: u8) -> Packet {

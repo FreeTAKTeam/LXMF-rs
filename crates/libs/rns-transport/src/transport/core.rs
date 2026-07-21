@@ -39,7 +39,7 @@ impl Transport {
         });
 
         let transport_id =
-            if config.retransmit { Some(*config.identity.address_hash()) } else { None };
+            if config.transport_enabled { Some(*config.identity.address_hash()) } else { None };
         let path_requests = PathRequests::new(
             config.name.as_str(),
             transport_id,

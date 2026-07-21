@@ -1,6 +1,6 @@
 # Reticulum Parity Matrix
 
-Last reassessed: 2026-07-16
+Last reassessed: 2026-07-21
 
 This is the maintained row-level status for Python Reticulum compatibility.
 Repository-level posture and execution order live in
@@ -31,7 +31,7 @@ human-operated validation remain the explicit v1.0 boundary.
 | `RNS/Identity.py` | `crates/libs/rns-core` | complete | unit, pinned-python | Identity material, hashing, signing, encryption, recall, and key conversion. | No confirmed parity blocker. |
 | `RNS/Destination.py` | `crates/libs/rns-core`, `crates/libs/rns-transport` | complete | unit, pinned-python | Destination hashing, descriptors, announces, proof generation and validation, ratchets, and known-key stability checks. Single-destination Data delivery proofs are correlated through the packet cache before identity verification. | No confirmed parity blocker. |
 | `RNS/Packet.py` | `crates/libs/rns-core`, `crates/libs/rns-transport` | complete | unit, pinned-python | Framing, serialization, contexts, proofs, receipts, public post-encryption packet-hash correlation, explicit and implicit proof-destination correlation, Python-default link proof context, and header semantics. | No confirmed parity blocker. |
-| `RNS/Transport.py` | `crates/libs/rns-transport`, `crates/apps/reticulumd` | complete | unit, simulated, pinned-python | Path and announce handling, path replacement/state/await semantics, routed links/resources/receipts/tunnels, next-hop bitrate/MTU/latency formulas, interface prioritization/detach/lookup, destination registration lifecycle, discovery and blackhole state, shared-instance behavior, packet filtering, Python-format forced disk packet cache and announce cleanup, MessagePack packet-hash/path/tunnel persistence, runtime jobs and graceful shutdown. Existing deterministic evidence also covers known-path response precedence, roaming suppression/grace, recursive discovery, link MTU signalling, restore/restart, scoped path requests, pacing, duplicate suppression, and bound-interface link fan-out with structured partial-failure reports. | No generated public-callable software gap remains in `Transport.py`; real carrier/public-network evidence remains separately bounded. |
+| `RNS/Transport.py` | `crates/libs/rns-transport`, `crates/apps/reticulumd` | complete | unit, simulated, pinned-python | Path and announce handling, path replacement/state/await semantics, routed links/resources/receipts/tunnels, next-hop bitrate/MTU/latency formulas, interface prioritization/detach/lookup, destination registration lifecycle, discovery and blackhole state, shared-instance behavior, packet filtering, Python-format forced disk packet cache and announce cleanup, MessagePack packet-hash/path/tunnel persistence, runtime jobs and graceful shutdown. Existing deterministic evidence also covers known-path response precedence, roaming suppression/grace, recursive discovery, link MTU signalling, restore/restart, scoped path requests, pacing, duplicate suppression, bound-interface link fan-out with structured partial-failure reports, and `enable_transport = false` suppression of Link Request and established-link transit forwarding while local destinations remain reachable. | No generated public-callable software gap remains in `Transport.py`; real carrier/public-network evidence remains separately bounded. |
 | `RNS/Link.py` | `crates/libs/rns-transport` | complete | unit, pinned-python | Establishment, proof validation, bound-interface enforcement for data/channel fan-out, RTT-derived liveness, protocol close, and cleanup. | Continue live regression coverage; no confirmed blocker. |
 | `RNS/Resource.py` | `crates/libs/rns-transport` | complete | unit, simulated, pinned-python | Bounded receive allocation, advertisement validation, retries, adaptive fragment scheduling, timeout/failure events, cancellation, cleanup, and Python-shaped split-resource sequencing with original-hash preservation, ordered reassembly, per-segment completion metadata, and final whole-resource completion. | No confirmed software implementation blocker; physical-carrier evidence belongs to the interface rows. |
 | `RNS/Channel.py` | `crates/libs/rns-transport` | complete | unit, pinned-python | Channel packet handling, retry scheduling, buffering, ordered receive delivery, callback ordering/short-circuit/panic containment, delivery-on-proof, timeout retry, exhaustion cleanup, and live Rust/Python channel sequence tests. | No confirmed channel parity blocker. |
@@ -45,9 +45,11 @@ human-operated validation remain the explicit v1.0 boundary.
 
 ### Runtime and daemon compatibility
 
-- `[reticulum] enable_transport` now controls Reticulum retransmission
-  independently from interface startup, while `panic_on_interface_error`
-  remains a separate strict-startup policy.
+- `[reticulum] enable_transport` now controls the full Reticulum transport
+  contract independently from interface startup: disabled instances do not
+  retransmit announces/path responses or forward remote Link Requests and
+  established-link traffic, while local destinations remain reachable.
+  `panic_on_interface_error` remains a separate strict-startup policy.
 - Legacy daemon RPC now exposes `next_hop`, `next_hop_if_name`,
   `first_hop_timeout`, and `link_count`, and tracks blackholed identity
   list/add/remove state with Python-compatible malformed-input behavior and

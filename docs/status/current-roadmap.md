@@ -43,6 +43,9 @@ accuracy, and release evidence rather than a new parity claim.
 Current candidate work includes link-context fan-out through each link's bound
 interface, packet-cache-correlated single-destination delivery proofs, real-link
 plain-resource routing evidence, and identified-peer propagation behavior.
+Transport-disabled runtimes now enforce Python's `enable_transport = false`
+contract across known-path Link Requests and established-link transit traffic
+without blocking locally hosted destinations.
 Fan-out now has additive reporting APIs that distinguish no matching link,
 complete delivery to interface queues, and partial packet-build or dispatch
 failure. Core and transport `RnsError` values implement the standard Rust error

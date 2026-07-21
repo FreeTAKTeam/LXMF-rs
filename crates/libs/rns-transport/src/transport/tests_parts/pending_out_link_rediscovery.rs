@@ -287,6 +287,7 @@ async fn timed_out_routed_link_marks_one_hop_path_unresponsive_and_requests_redi
 async fn timed_out_routed_link_expires_one_hop_path_for_non_transport_boundary_ingress() {
     let local_identity = PrivateIdentity::new_from_rand(OsRng);
     let mut config = TransportConfig::new("client-instance", &local_identity, true);
+    config.set_transport_enabled(true);
     config.set_link_proof_timeout_secs(0);
     let transport = Transport::new(config);
     let handler = transport.get_handler();
@@ -342,6 +343,7 @@ async fn timed_out_routed_link_expires_one_hop_path_for_non_transport_boundary_i
         .expect("link request should forward to the current next-hop iface")
         .expect("tx channel open");
 
+    handler.lock().await.config.set_transport_enabled(false);
     tokio::time::sleep(Duration::from_millis(1)).await;
     super::jobs::handle_link_table_cleanup(handler.lock().await).await;
 

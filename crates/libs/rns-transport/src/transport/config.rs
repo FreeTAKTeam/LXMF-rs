@@ -7,7 +7,7 @@ impl TransportConfig {
             name: name.into(),
             identity: identity.clone(),
             broadcast,
-            retransmit: false,
+            transport_enabled: false,
             connected_to_shared_instance: false,
             announce_cache_capacity: 100_000,
             announce_retry_limit: 1,
@@ -22,8 +22,18 @@ impl TransportConfig {
         }
     }
 
+    /// Enables or disables forwarding traffic for remote destinations and links.
+    ///
+    /// This is the in-process equivalent of Reticulum's
+    /// `[reticulum] enable_transport` setting. Disabled transports still serve
+    /// their own destinations and locally owned links.
+    pub fn set_transport_enabled(&mut self, enabled: bool) {
+        self.transport_enabled = enabled;
+    }
+
+    /// Compatibility alias for callers that used the original transport-mode setter.
     pub fn set_retransmit(&mut self, retransmit: bool) {
-        self.retransmit = retransmit;
+        self.set_transport_enabled(retransmit);
     }
 
     pub fn set_connected_to_shared_instance(&mut self, connected: bool) {
@@ -82,7 +92,7 @@ impl Default for TransportConfig {
             name: "tp".into(),
             identity: PrivateIdentity::new_from_rand(OsRng),
             broadcast: false,
-            retransmit: false,
+            transport_enabled: false,
             connected_to_shared_instance: false,
             announce_cache_capacity: 100_000,
             announce_retry_limit: 1,
@@ -108,5 +118,16 @@ mod tests {
 
         assert_eq!(config.resource_retry_interval_secs, 2);
         assert_eq!(config.resource_retry_limit, 16);
+    }
+
+    #[test]
+    fn retransmit_setter_remains_a_transport_enabled_alias() {
+        let identity = PrivateIdentity::new_from_rand(OsRng);
+        let mut config = TransportConfig::new("test", &identity, true);
+
+        config.set_retransmit(true);
+        assert!(config.transport_enabled);
+        config.set_transport_enabled(false);
+        assert!(!config.transport_enabled);
     }
 }

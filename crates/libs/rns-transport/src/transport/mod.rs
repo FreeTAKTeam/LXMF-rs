@@ -174,7 +174,7 @@ pub struct TransportConfig {
     name: String,
     identity: PrivateIdentity,
     broadcast: bool,
-    retransmit: bool,
+    transport_enabled: bool,
     connected_to_shared_instance: bool,
     announce_cache_capacity: usize,
     announce_retry_limit: u8,

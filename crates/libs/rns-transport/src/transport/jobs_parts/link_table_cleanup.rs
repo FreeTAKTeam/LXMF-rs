@@ -25,7 +25,7 @@ pub(super) async fn handle_link_table_cleanup<'a>(mut handler: MutexGuard<'a, Tr
         }
 
         if should_mark_unresponsive {
-            if handler.config.retransmit {
+            if handler.config.transport_enabled {
                 let ingress_mode = handler.iface_manager.lock().await.mode(&expired.received_from);
                 if ingress_mode != Some(crate::iface::InterfaceMode::Boundary) {
                     handler.path_table.mark_path_unresponsive(&destination);

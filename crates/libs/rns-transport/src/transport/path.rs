@@ -116,6 +116,15 @@ pub(super) async fn send_to_next_hop<'a>(
     handler: &MutexGuard<'a, TransportHandler>,
     lookup: Option<AddressHash>,
 ) -> bool {
+    if !handler.config.transport_enabled {
+        log::debug!(
+            "[tp-diag] forward_next_hop_skip node={} dst={} reason=transport_disabled",
+            handler.config.name,
+            packet.destination
+        );
+        return false;
+    }
+
     let decision = route_inbound_packet(&handler.path_table, packet, lookup);
     let packet = decision.packet;
     let maybe_iface = decision.next_iface;
@@ -185,7 +194,7 @@ pub(super) async fn handle_path_request<'a>(
             return;
         }
 
-        if handler.config.retransmit {
+        if handler.config.transport_enabled {
             if let Some(entry) = handler.path_table.get(&request.destination) {
                 let next_hop = entry.received_from;
                 let learned_iface = entry.iface;
@@ -235,7 +244,7 @@ pub(super) async fn handle_path_request<'a>(
             }
         }
 
-        if handler.config.retransmit {
+        if handler.config.transport_enabled {
             let should_search_for_unknown = handler
                 .iface_manager
                 .lock()
@@ -342,6 +351,16 @@ pub(super) async fn handle_link_request_as_intermediate<'a>(
     packet: &Packet,
     mut handler: MutexGuard<'a, TransportHandler>,
 ) {
+    if !handler.config.transport_enabled {
+        log::debug!(
+            "[tp-diag] link_request_intermediate_skip node={} dst={} from_iface={} reason=transport_disabled",
+            handler.config.name,
+            packet.destination,
+            received_from
+        );
+        return;
+    }
+
     log::debug!(
         "[tp-diag] link_request_intermediate node={} dst={} from_iface={} next_hop={} next_iface={} packet={}",
         handler.config.name,
@@ -397,6 +416,12 @@ pub(super) async fn handle_link_request<'a>(
         log::trace!("tp({}): handle link request for {}", handler.config.name, packet.destination);
 
         handle_link_request_as_destination(destination, packet, iface, handler).await;
+    } else if !handler.config.transport_enabled {
+        log::trace!(
+            "tp({}): dropping transit link request to {} because transport forwarding is disabled",
+            handler.config.name,
+            packet.destination
+        );
     } else if let Some(entry) = handler.path_table.next_hop_full(&packet.destination) {
         log::trace!(
             "tp({}): handle link request for remote destination {}",

@@ -212,7 +212,8 @@ async fn handle_inbound_for_test_rejects_untracked_hash_even_with_a_known_identi
 #[tokio::test]
 async fn routed_destination_proof_forwards_back_to_packet_source() {
     let local_identity = PrivateIdentity::new_from_rand(OsRng);
-    let config = TransportConfig::new("test", &local_identity, true);
+    let mut config = TransportConfig::new("test", &local_identity, true);
+    config.set_transport_enabled(true);
     let transport = Transport::new(config);
     let handler = transport.get_handler();
     let mut source_iface = transport.iface_manager.lock().await.new_channel(8);
@@ -273,7 +274,8 @@ async fn routed_destination_proof_forwards_back_to_packet_source() {
 #[tokio::test]
 async fn routed_implicit_destination_proof_forwards_back_to_packet_source() {
     let local_identity = PrivateIdentity::new_from_rand(OsRng);
-    let config = TransportConfig::new("test", &local_identity, true);
+    let mut config = TransportConfig::new("test", &local_identity, true);
+    config.set_transport_enabled(true);
     let transport = Transport::new(config);
     let handler = transport.get_handler();
     let mut source_iface = transport.iface_manager.lock().await.new_channel(8);
@@ -801,7 +803,8 @@ async fn routed_link_resource_request_forwards_back_to_link_requester() {
 #[tokio::test]
 async fn routed_link_resource_proof_forwards_back_to_link_requester() {
     let local_identity = PrivateIdentity::new_from_rand(OsRng);
-    let config = TransportConfig::new("test", &local_identity, true);
+    let mut config = TransportConfig::new("test", &local_identity, true);
+    config.set_transport_enabled(true);
     let transport = Transport::new(config);
     let handler = transport.get_handler();
     let mut requester_iface = transport.iface_manager.lock().await.new_channel(8);
@@ -923,4 +926,62 @@ async fn routed_link_packet_proof_forwards_back_to_link_requester() {
     assert_eq!(sent.packet.destination, *outbound_link.id());
     assert_eq!(sent.packet.header.packet_type, PacketType::Proof);
     assert!(matches!(sent.packet.context, PacketContext::None | PacketContext::LinkProof));
+}
+
+#[tokio::test]
+async fn disabled_transport_does_not_forward_established_link_traffic() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut config = TransportConfig::new("disabled-transport", &local_identity, true);
+    config.set_transport_enabled(false);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+    let (mut requester_iface, next_hop_iface) = {
+        let iface_manager = transport.iface_manager();
+        let mut manager = iface_manager.lock().await;
+        let requester = manager.new_channel(8);
+        let next_hop = manager.new_channel(8);
+        (requester, *next_hop.address())
+    };
+    let received_from = *requester_iface.address();
+
+    let remote_destination = SingleInputDestination::new(
+        PrivateIdentity::new_from_rand(OsRng),
+        DestinationName::new("lxmf", "disabled-transit"),
+    );
+    let next_hop = AddressHash::new_from_rand(OsRng);
+    let (tx, _) = tokio::sync::broadcast::channel(4);
+    let mut outbound_link = Link::new(remote_destination.desc, tx.clone());
+    let request = outbound_link.request();
+    let mut inbound_link = Link::new_from_request(
+        &request,
+        remote_destination.sign_key().clone(),
+        remote_destination.desc,
+        tx,
+    )
+    .expect("link from request");
+    let link_request_proof = inbound_link.prove();
+    assert!(matches!(
+        outbound_link.handle_packet(&link_request_proof, next_hop_iface),
+        LinkHandleResult::Activated
+    ));
+
+    {
+        let mut guard = handler.lock().await;
+        guard.link_table.add(
+            &request,
+            request.destination,
+            received_from,
+            next_hop,
+            next_hop_iface,
+        );
+        assert!(guard.link_table.handle_proof(&link_request_proof).is_some());
+    }
+
+    let data_packet = outbound_link.data_packet(b"must not transit").expect("link data packet");
+    handle_data(&data_packet, next_hop_iface, handler.lock().await).await;
+
+    assert!(
+        timeout(Duration::from_millis(200), requester_iface.tx_channel.recv()).await.is_err(),
+        "disabled transport must not forward established-link data"
+    );
 }

@@ -379,8 +379,7 @@ impl TransportHandler {
     ///     outbound link (matched by id), or a forward in the `link_table`.
     ///   - Everything else (`LinkRequest` and single `Data`, both
     ///     `DestinationType::Single`) is accepted when the destination is a
-    ///     local input destination or has a known next hop — exactly
-    ///     `handle_link_request`'s destination/intermediate split.
+    ///     local input destination or, with transport enabled, a known next hop.
     pub(super) async fn should_learn_unicast_route(&self, packet: &Packet) -> bool {
         if packet.header.destination_type == DestinationType::Link {
             // `LinkId == AddressHash`, so the link id is `packet.destination`.
@@ -397,7 +396,8 @@ impl TransportHandler {
             false
         } else {
             self.single_in_destinations.contains_key(&packet.destination)
-                || self.path_table.next_hop_full(&packet.destination).is_some()
+                || self.config.transport_enabled
+                    && self.path_table.next_hop_full(&packet.destination).is_some()
         }
     }
 

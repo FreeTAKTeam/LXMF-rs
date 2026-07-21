@@ -64,7 +64,7 @@ impl Transport {
     pub async fn save_packet_hashlist<P: AsRef<Path>>(&self, storage_path: P) -> io::Result<usize> {
         let hashes = {
             let handler = self.handler.lock().await;
-            if handler.config.retransmit {
+            if handler.config.transport_enabled {
                 handler
                     .packet_cache
                     .try_lock()

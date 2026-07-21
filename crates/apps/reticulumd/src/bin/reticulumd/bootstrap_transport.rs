@@ -44,7 +44,7 @@ use std::sync::{Arc, Mutex};
 
 const STREAM_RECONNECT_EVENT_CHANNEL_CAPACITY: usize = 32;
 
-pub(super) fn reticulum_transport_retransmit_enabled(daemon_config: Option<&DaemonConfig>) -> bool {
+pub(super) fn reticulum_transport_enabled(daemon_config: Option<&DaemonConfig>) -> bool {
     daemon_config.is_some_and(DaemonConfig::reticulum_transport_enabled)
 }
 
@@ -215,7 +215,7 @@ pub(super) async fn start_transport_and_interfaces(
         let transport_identity =
             rns_transport::identity_bridge::to_transport_private_identity(identity);
         let mut config = TransportConfig::new("daemon", &transport_identity, true);
-        config.set_retransmit(reticulum_transport_retransmit_enabled(daemon_config));
+        config.set_transport_enabled(reticulum_transport_enabled(daemon_config));
         let mut transport_instance = Transport::new(config);
         transport_instance
             .set_receipt_handler(Box::new(ReceiptBridge::new(receipt_map, receipt_tx.clone())))

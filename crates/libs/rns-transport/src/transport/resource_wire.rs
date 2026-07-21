@@ -37,16 +37,21 @@ pub(super) async fn handle_resource_proof(
         }
         handler.resource_response_packets = responses;
         publish_resource_events(&handler, events);
-    } else if let Some((packet, target_iface)) =
-        handler.link_table.handle_reverse_link_packet(&packet, iface)
-    {
-        log::debug!(
-            "[tp-diag] resource_proof_reverse_forward node={} link={} iface={}",
-            handler.config.name,
-            packet.destination,
-            target_iface
-        );
-        handler.send(TxMessage { tx_type: TxMessageType::Direct(target_iface), packet }).await;
+    } else {
+        let reverse_packet = if handler.config.transport_enabled {
+            handler.link_table.handle_reverse_link_packet(&packet, iface)
+        } else {
+            None
+        };
+        if let Some((packet, target_iface)) = reverse_packet {
+            log::debug!(
+                "[tp-diag] resource_proof_reverse_forward node={} link={} iface={}",
+                handler.config.name,
+                packet.destination,
+                target_iface
+            );
+            handler.send(TxMessage { tx_type: TxMessageType::Direct(target_iface), packet }).await;
+        }
     }
 }
 

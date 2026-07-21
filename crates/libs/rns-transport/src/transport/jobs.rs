@@ -127,7 +127,8 @@ pub(super) async fn handle_check_links<'a>(mut handler: MutexGuard<'a, Transport
         match link.status() {
             LinkStatus::Closed => {
                 let destination = link.destination().address_hash;
-                let rediscover_closed_pending = !handler.config.retransmit && !link.was_activated();
+                let rediscover_closed_pending =
+                    !handler.config.transport_enabled && !link.was_activated();
                 links_to_remove.push(*link_entry.0);
                 closed_link_ids.push(*link.id());
                 if rediscover_closed_pending {
@@ -227,7 +228,7 @@ pub(super) async fn manage_transport(
     iface_messages_tx: broadcast::Sender<RxMessage>,
 ) {
     let cancel = handler_arc.lock().await.cancel.clone();
-    let retransmit = handler_arc.lock().await.config.retransmit;
+    let transport_enabled = handler_arc.lock().await.config.transport_enabled;
 
     let _packet_task = {
         let handler_arc = handler_arc.clone();
@@ -423,7 +424,7 @@ pub(super) async fn manage_transport(
                     },
                     _ = time::sleep(INTERVAL_ANNOUNCES_RETRANSMIT) => {
                         let guard = handler.lock().await;
-                        if retransmit {
+                        if transport_enabled {
                             retransmit_announces(guard).await;
                         } else {
                             release_held_announces(guard).await;
