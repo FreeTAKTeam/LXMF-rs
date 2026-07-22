@@ -5,6 +5,13 @@ use core::fmt;
 
 use crate::constants::{PN_META_NAME, SF_COMPRESSION};
 
+mod delivery_metadata;
+
+pub use delivery_metadata::{
+    capabilities_from_delivery_app_data, encode_delivery_announce_app_data_with_capabilities,
+    normalize_announce_capabilities,
+};
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AnnounceSlot {
     pub id: u8,

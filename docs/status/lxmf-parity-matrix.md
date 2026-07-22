@@ -665,6 +665,11 @@ traits. Row-level transport classification is generated in
 - Python-style `lxmd` `[lxmf] announce_interval` drives peer/delivery announce
   cadence separately from `[propagation] announce_interval`, which remains the
   propagation-node announce cadence.
+- Delivery announce application data uses the shared `lxmf-wire` structured
+  encoder/decoder: the Python-compatible display-name and stamp-cost positions
+  remain stable, while optional application capability strings occupy an
+  extension metadata slot. `reticulumd` and embedded consumers use the same
+  codec instead of encoding capabilities in callsigns or private text formats.
 - Outbound propagated delivery resolves selected propagation-node
   `propagation_stamp_cost` case-insensitively, so Python-style hash casing does
   not fall back to the default propagation stamp cost.

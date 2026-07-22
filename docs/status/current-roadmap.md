@@ -78,7 +78,11 @@ single-destination policy mutators alongside the broader Python convenience
 surface, reuses identified direct backchannels, preserves delivery-trace and
 opportunistic packet metadata, and resolves conversation display names from
 durable delivery announces even when delivery announces are intentionally not
-promoted to propagation peers. The `rnx` soak harness now discovers delivery
+promoted to propagation peers. Standard delivery announce encoding now has one
+shared core helper that preserves the Python-compatible display-name and stamp
+slots while placing optional application capability metadata in an extension
+slot, so applications do not need daemon-local or callsign-based encoders. The
+`rnx` soak harness now discovers delivery
 destinations from that durable announce surface, enables transport forwarding
 for mesh nodes, and requires full-mesh destination visibility before delivery.
 Inbound routing now resolves full-wire packets and resources received over an

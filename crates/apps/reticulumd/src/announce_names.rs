@@ -60,47 +60,15 @@ pub fn encode_delivery_announce_app_data_with_capabilities(
     stamp_cost: Option<u32>,
     capabilities: &[String],
 ) -> Result<Vec<u8>, AnnounceEncodeError> {
-    let normalized =
-        normalize_display_name(display_name).ok_or(AnnounceEncodeError::InvalidDisplayName)?;
-    let stamp_cost = stamp_cost
-        .filter(|cost| *cost > 0 && *cost < 255)
-        .map(rmpv::Value::from)
-        .unwrap_or(rmpv::Value::Nil);
-    let mut peer_data = vec![rmpv::Value::Binary(normalized.into_bytes()), stamp_cost];
-    let capabilities = normalize_capabilities(capabilities);
-    if !capabilities.is_empty() {
-        let caps =
-            rmpv::Value::Array(capabilities.into_iter().map(rmpv::Value::from).collect::<Vec<_>>());
-        let payload = rmpv::Value::Map(vec![
-            (rmpv::Value::from("app"), rmpv::Value::from("rch")),
-            (rmpv::Value::from("schema"), rmpv::Value::from(1)),
-            (rmpv::Value::from("caps"), caps),
-        ]);
-        peer_data.push(rmpv::Value::Binary(encode_msgpack(&payload, "delivery capabilities")?));
-    }
-    let peer_data = rmpv::Value::Array(peer_data);
-    Ok(encode_msgpack(&peer_data, "delivery announce")?)
+    lxmf::announce::encode_delivery_announce_app_data_with_capabilities(
+        display_name,
+        stamp_cost,
+        capabilities,
+    )
 }
 
 pub fn normalize_capabilities(capabilities: &[String]) -> Vec<String> {
-    let mut normalized = Vec::new();
-    for capability in capabilities {
-        let capability = capability.trim().to_ascii_lowercase();
-        if capability.is_empty()
-            || capability.chars().any(|ch| {
-                !(ch.is_ascii_lowercase()
-                    || ch.is_ascii_digit()
-                    || ch == '_'
-                    || ch == '-'
-                    || ch == '.')
-            })
-            || normalized.iter().any(|existing| existing == &capability)
-        {
-            continue;
-        }
-        normalized.push(capability);
-    }
-    normalized
+    lxmf::announce::normalize_announce_capabilities(capabilities)
 }
 
 #[derive(Debug, Clone, Copy)]
