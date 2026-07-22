@@ -66,19 +66,27 @@ pub fn capabilities_from_delivery_app_data(
     // Slot one is the standard stamp cost, but earlier REM builds placed their
     // capability map there. An integer/nil stamp never matches this decoder,
     // so scanning extensions from slot one preserves that deployed layout.
-    Ok(entries.iter().skip(1).find_map(capabilities_from_metadata_value).unwrap_or_default())
+    for entry in entries.iter().skip(1) {
+        if let Some(capabilities) = capabilities_from_metadata_value(entry)? {
+            return Ok(capabilities);
+        }
+    }
+    Ok(Vec::new())
 }
 
-fn capabilities_from_metadata_value(value: &Value) -> Option<Vec<String>> {
+fn capabilities_from_metadata_value(
+    value: &Value,
+) -> Result<Option<Vec<String>>, AnnounceDecodeError> {
     match value {
-        Value::Map(entries) => entries.iter().find_map(|(key, value)| {
+        Value::Map(entries) => Ok(entries.iter().find_map(|(key, value)| {
             matches!(key, Value::String(actual) if matches!(actual.as_str(), Some("caps" | "announce_capabilities")))
                 .then(|| capabilities_from_array(value))
-        }),
-        Value::Binary(bytes) => rmp_serde::from_slice::<Value>(bytes)
-            .ok()
-            .and_then(|nested| capabilities_from_metadata_value(&nested)),
-        _ => None,
+        })),
+        Value::Binary(bytes) => {
+            let nested = rmp_serde::from_slice::<Value>(bytes)?;
+            capabilities_from_metadata_value(&nested)
+        }
+        _ => Ok(None),
     }
 }
 
@@ -154,5 +162,20 @@ mod tests {
             capabilities_from_delivery_app_data(app_data.as_slice()).expect("legacy capabilities"),
             alloc::vec!["r3akt".to_string(), "telemetry".to_string()]
         );
+    }
+
+    #[test]
+    fn decoder_rejects_malformed_binary_capability_metadata() {
+        let malformed = Value::Array(alloc::vec![
+            Value::from("Malformed metadata"),
+            Value::Nil,
+            Value::Binary(alloc::vec![0xc1]),
+        ]);
+        let app_data = rmp_serde::to_vec(&malformed).expect("delivery announce msgpack");
+
+        assert!(matches!(
+            capabilities_from_delivery_app_data(app_data.as_slice()),
+            Err(AnnounceDecodeError::Msgpack(_))
+        ));
     }
 }
