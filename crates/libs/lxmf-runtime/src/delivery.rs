@@ -70,7 +70,13 @@ pub(crate) async fn send(
     request: &SendRequest,
 ) -> Result<InProcessSendReport, SdkError> {
     let requested_destination = parse_hash(&request.destination)?;
-    let remote = resolve_destination(context.transport, requested_destination, "delivery").await?;
+    let remote = resolve_destination(
+        context.transport,
+        requested_destination,
+        "delivery",
+        context.link_connect_timeout,
+    )
+    .await?;
     let wire = encode_wire(context.identity, context.source_destination, &remote, request)?;
     let message_id = MessageId(hex::encode(
         WireMessage::unpack(&wire)
@@ -152,7 +158,13 @@ async fn send_propagated(
         .transpose()?
         .or(context.propagation_relay)
         .ok_or_else(|| transport_error("no propagation relay selected"))?;
-    let relay = resolve_destination(context.transport, relay_hash, "propagation").await?;
+    let relay = resolve_destination(
+        context.transport,
+        relay_hash,
+        "propagation",
+        context.link_connect_timeout,
+    )
+    .await?;
     let recipient = lxmf_core::identity::Identity::new_from_slices(
         remote.identity.public_key_bytes(),
         remote.identity.verifying_key_bytes(),
@@ -222,15 +234,22 @@ fn encode_wire(
         .map_err(|err| internal(format!("failed to encode LXMF message: {err}")))
 }
 
-async fn resolve_destination(
+pub(crate) async fn resolve_destination(
     transport: &Transport,
     hash: AddressHash,
     aspect: &str,
+    timeout: Duration,
 ) -> Result<DestinationDesc, SdkError> {
-    let identity = transport
-        .destination_identity(&hash)
-        .await
-        .ok_or_else(|| transport_error(format!("destination identity unavailable for {hash}")))?;
+    let identity = if let Some(identity) = transport.destination_identity(&hash).await {
+        identity
+    } else {
+        transport.await_path(&hash, timeout, None).await;
+        transport.destination_identity(&hash).await.ok_or_else(|| {
+            transport_error(format!(
+                "destination identity unavailable for {hash} after path resolution"
+            ))
+        })?
+    };
     Ok(DestinationDesc { identity, name: DestinationName::new("lxmf", aspect), address_hash: hash })
 }
 
