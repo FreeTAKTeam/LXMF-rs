@@ -17,7 +17,7 @@ fn session_rpc(
     rns_rpc::rpc::codec::decode_frame(response.as_slice()).expect("decode response")
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn service_identities_are_distinct_persistent_and_session_scoped() {
     use base64::Engine as _;
     use rns_rpc::ServiceIdentityBridge as _;

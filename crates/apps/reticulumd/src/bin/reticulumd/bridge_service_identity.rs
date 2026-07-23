@@ -9,7 +9,6 @@ use std::collections::HashMap;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const SERVICE_IDENTITY_MANIFEST_VERSION: u8 = 1;
@@ -276,52 +275,43 @@ impl TransportBridge {
         let runtime_handle = self.runtime_handle.clone();
         let identity_for_task = identity.clone();
         let spec_for_task = spec.clone();
-        let (reply_tx, reply_rx) = mpsc::sync_channel::<
-            io::Result<(Arc<tokio::sync::Mutex<SingleInputDestination>>, String)>,
-        >(1);
-        runtime_handle.spawn(async move {
-            let transport_identity =
-                match rns_transport::identity::PrivateIdentity::from_private_key_bytes(
-                    &identity_for_task.to_private_key_bytes(),
-                ) {
-                    Ok(identity) => identity,
-                    Err(error) => {
-                        if reply_tx
-                            .send(Err(io::Error::new(
+        let (destination, delivery_destination) = tokio::task::block_in_place(|| {
+            runtime_handle.block_on(async move {
+                tokio::time::timeout(SERVICE_IDENTITY_OPERATION_TIMEOUT, async move {
+                    let transport_identity =
+                        rns_transport::identity::PrivateIdentity::from_private_key_bytes(
+                            &identity_for_task.to_private_key_bytes(),
+                        )
+                        .map_err(|error| {
+                            io::Error::new(
                                 io::ErrorKind::InvalidData,
                                 format!(
                                     "failed to convert service identity for transport: {error:?}"
                                 ),
-                            )))
-                            .is_err()
-                        {
-                            log::warn!(
-                                "[daemon] service identity registration caller disconnected"
-                            );
-                        }
-                        return;
-                    }
-                };
-            let destination = transport
-                .add_destination(transport_identity, DestinationName::new("lxmf", "delivery"))
-                .await;
-            let delivery_destination = {
-                let destination = destination.lock().await;
-                hex::encode(destination.desc.address_hash.as_slice())
-            };
-            transport
-                .set_destination_announce_app_data(
-                    &destination,
-                    service_announce_app_data(&spec_for_task),
-                )
-                .await;
-            if reply_tx.send(Ok((destination, delivery_destination))).is_err() {
-                log::warn!("[daemon] service identity registration caller disconnected");
-            }
-        });
-        let (destination, delivery_destination) = reply_rx
-            .recv_timeout(SERVICE_IDENTITY_OPERATION_TIMEOUT)
-            .map_err(|error| io::Error::new(io::ErrorKind::TimedOut, error))??;
+                            )
+                        })?;
+                    let destination = transport
+                        .add_destination(
+                            transport_identity,
+                            DestinationName::new("lxmf", "delivery"),
+                        )
+                        .await;
+                    let delivery_destination = {
+                        let destination = destination.lock().await;
+                        hex::encode(destination.desc.address_hash.as_slice())
+                    };
+                    transport
+                        .set_destination_announce_app_data(
+                            &destination,
+                            service_announce_app_data(&spec_for_task),
+                        )
+                        .await;
+                    Ok::<_, io::Error>((destination, delivery_destination))
+                })
+                .await
+                .map_err(|error| io::Error::new(io::ErrorKind::TimedOut, error))?
+            })
+        })?;
         let record = RegisteredServiceIdentity {
             identity,
             destination,
