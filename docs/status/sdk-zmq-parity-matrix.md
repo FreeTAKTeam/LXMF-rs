@@ -6,7 +6,7 @@ SDK contract: `v2.6` in schema namespace `v2` and protocol version `2`.
 
 Pinned-Python entries: **1665** — daemon SDK: **825**, local library: **839**, provenance-backed not applicable: **1**.
 
-Daemon operations inventoried: **114**. Every operation uses the shared framed-RPC codec over HTTP/Unix and ZeroMQ; authorization is derived from query (`read`) versus command (`mutate`) semantics.
+Daemon operations inventoried: **115**. Every operation uses the shared framed-RPC codec over HTTP/Unix and ZeroMQ; authorization is derived from query (`read`) versus command (`mutate`) semantics.
 
 The complete row-level Python classification and daemon capability inventory are in [`sdk-zmq-parity.json`](sdk-zmq-parity.json). This file is generated and checked for drift in CI.
 
@@ -36,7 +36,7 @@ The complete row-level Python classification and daemon capability inventory are
 | `app.event.poll` | `sdk_poll_events_v2` | read | none | `docs/schemas/sdk/v2/rpc/sdk_poll_events_v2.schema.json` |
 | `app.identity.announce` | `sdk_identity_announce_now_v2` | mutate | `sdk.capability.identity_discovery` | `Rust SDK serde types` |
 | `app.identity.bootstrap` | `sdk_identity_bootstrap_v2` | mutate | `sdk.capability.contact_management` | `Rust SDK serde types` |
-| `app.identity.create` | `sdk_identity_create_v2` | mutate | `sdk.capability.identity_multi`, `sdk.capability.identity_import_export` | `docs/schemas/sdk/v2/rpc/sdk_release_c_methods.schema.json` |
+| `app.identity.create` | `sdk_identity_create_v2` | mutate | `sdk.capability.identity_multi`, `sdk.capability.identity_import_export` | `Rust SDK serde types` |
 | `app.identity.list` | `sdk_identity_list_v2` | read | `sdk.capability.identity_multi` | `Rust SDK serde types` |
 | `app.identity.presence.list` | `sdk_identity_presence_list_v2` | read | `sdk.capability.identity_discovery` | `Rust SDK serde types` |
 | `app.marker.create` | `sdk_marker_create_v2` | mutate | `sdk.capability.markers` | `Rust SDK serde types` |

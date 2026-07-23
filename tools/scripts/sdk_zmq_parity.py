@@ -31,6 +31,10 @@ def read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def repo_relative(path: Path) -> str:
+    return path.relative_to(ROOT).as_posix()
+
+
 def classify_python_item(item: dict[str, Any]) -> dict[str, Any]:
     if item["implementation"] == "not-applicable":
         access = "not-applicable"
@@ -81,7 +85,7 @@ def operation_specs() -> list[dict[str, Any]]:
                     "authorization": "read" if kind == "query" else "mutate",
                     "required_capabilities": list_field(block, "required_capabilities"),
                     "typed_contract": (
-                        str(schema.relative_to(ROOT)) if schema.is_file() else "Rust SDK serde types"
+                        repo_relative(schema) if schema.is_file() else "Rust SDK serde types"
                     ),
                     "http_implementation": "RpcBackendClient/RpcDaemon framed RPC",
                     "zmq_implementation": "ZmqPipelineBackendClient sdk_envelope_execute_v2",
@@ -89,7 +93,7 @@ def operation_specs() -> list[dict[str, Any]]:
                         "rns-rpc daemon operation registry tests",
                         "lxmf-sdk ZeroMQ envelope transport contract tests",
                     ],
-                    "source": str(path.relative_to(ROOT)),
+                    "source": repo_relative(path),
                 }
             )
         for operation_id, group, kind, capability, method in re.findall(
@@ -110,7 +114,7 @@ def operation_specs() -> list[dict[str, Any]]:
                         "rns-rpc daemon operation registry tests",
                         "lxmf-sdk ZeroMQ envelope transport contract tests",
                     ],
-                    "source": str(path.relative_to(ROOT)),
+                    "source": repo_relative(path),
                 }
             )
     specs.sort(key=lambda value: value["id"])
@@ -182,13 +186,17 @@ def main() -> int:
         payload = build()
         expected = {JSON_OUT: serialized(payload), MARKDOWN_OUT: markdown(payload)}
         if args.check:
-            drift = [str(path.relative_to(ROOT)) for path, content in expected.items() if not path.is_file() or read(path) != content]
+            drift = [
+                repo_relative(path)
+                for path, content in expected.items()
+                if not path.is_file() or read(path) != content
+            ]
             if drift:
                 raise ValueError(f"ZeroMQ SDK parity drift: regenerate {', '.join(drift)}")
         else:
             for path, content in expected.items():
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(content, encoding="utf-8")
+                path.write_text(content, encoding="utf-8", newline="\n")
     except (OSError, KeyError, ValueError) as error:
         print(f"sdk_zmq_parity: {error}", file=sys.stderr)
         return 1

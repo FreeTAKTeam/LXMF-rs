@@ -24,24 +24,6 @@
     {
       "authorization": "mutate",
       "automated_evidence": [
-        "reticulumd multi-service identity registry tests",
-        "lxmf-sdk ZeroMQ envelope transport contract tests"
-      ],
-      "http_implementation": "RpcBackendClient/RpcDaemon framed RPC",
-      "id": "app.identity.create",
-      "kind": "command",
-      "required_capabilities": [
-        "sdk.capability.identity_multi",
-        "sdk.capability.identity_import_export"
-      ],
-      "rpc_method": "sdk_identity_create_v2",
-      "source": "crates/libs/rns-rpc/src/rpc/daemon/sdk_operations_parts/sdk_operation_specs.rs",
-      "typed_contract": "docs/schemas/sdk/v2/rpc/sdk_release_c_methods.schema.json",
-      "zmq_implementation": "ZmqPipelineBackendClient sdk_envelope_execute_v2"
-    },
-    {
-      "authorization": "mutate",
-      "automated_evidence": [
         "rns-rpc daemon operation registry tests",
         "lxmf-sdk ZeroMQ envelope transport contract tests"
       ],
@@ -387,7 +369,7 @@
         "sdk.capability.identity_discovery"
       ],
       "rpc_method": "sdk_identity_announce_now_v2",
-      "source": "crates/libs/rns-rpc/src/rpc/daemon/sdk_operations_parts/sdk_operation_specs.rs",
+      "source": "crates/libs/rns-rpc/src/rpc/daemon/sdk_operations_parts/identity_operation_specs.rs",
       "typed_contract": "Rust SDK serde types",
       "zmq_implementation": "ZmqPipelineBackendClient sdk_envelope_execute_v2"
     },
@@ -409,6 +391,24 @@
       "zmq_implementation": "ZmqPipelineBackendClient sdk_envelope_execute_v2"
     },
     {
+      "authorization": "mutate",
+      "automated_evidence": [
+        "rns-rpc daemon operation registry tests",
+        "lxmf-sdk ZeroMQ envelope transport contract tests"
+      ],
+      "http_implementation": "RpcBackendClient/RpcDaemon framed RPC",
+      "id": "app.identity.create",
+      "kind": "command",
+      "required_capabilities": [
+        "sdk.capability.identity_multi",
+        "sdk.capability.identity_import_export"
+      ],
+      "rpc_method": "sdk_identity_create_v2",
+      "source": "crates/libs/rns-rpc/src/rpc/daemon/sdk_operations_parts/identity_operation_specs.rs",
+      "typed_contract": "Rust SDK serde types",
+      "zmq_implementation": "ZmqPipelineBackendClient sdk_envelope_execute_v2"
+    },
+    {
       "authorization": "read",
       "automated_evidence": [
         "rns-rpc daemon operation registry tests",
@@ -421,7 +421,7 @@
         "sdk.capability.identity_multi"
       ],
       "rpc_method": "sdk_identity_list_v2",
-      "source": "crates/libs/rns-rpc/src/rpc/daemon/sdk_operations_parts/sdk_operation_specs.rs",
+      "source": "crates/libs/rns-rpc/src/rpc/daemon/sdk_operations_parts/identity_operation_specs.rs",
       "typed_contract": "Rust SDK serde types",
       "zmq_implementation": "ZmqPipelineBackendClient sdk_envelope_execute_v2"
     },
@@ -438,7 +438,7 @@
         "sdk.capability.identity_discovery"
       ],
       "rpc_method": "sdk_identity_presence_list_v2",
-      "source": "crates/libs/rns-rpc/src/rpc/daemon/sdk_operations_parts/sdk_operation_specs.rs",
+      "source": "crates/libs/rns-rpc/src/rpc/daemon/sdk_operations_parts/identity_operation_specs.rs",
       "typed_contract": "Rust SDK serde types",
       "zmq_implementation": "ZmqPipelineBackendClient sdk_envelope_execute_v2"
     },
@@ -26089,7 +26089,7 @@
   "sdk_contract_release": "v2.6",
   "summary": {
     "daemon-sdk": 825,
-    "daemon_operations": 114,
+    "daemon_operations": 115,
     "local-library": 839,
     "not-applicable": 1,
     "python_entries": 1665
