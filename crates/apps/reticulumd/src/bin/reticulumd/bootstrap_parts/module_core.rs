@@ -18,7 +18,7 @@ use crate::announce_persistence::PathTablePersistenceContext;
 
 use rns_rpc::{
     AnnounceBridge, InterfaceRecord, MessagesStore, OutboundBridge, RemoteControlBridge,
-    RpcDaemon, RpcRequest,
+    RpcDaemon, RpcRequest, ServiceIdentityBridge,
 };
 
 use rns_transport::destination::SingleInputDestination;
@@ -276,6 +276,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                 propagation_announce_app_data.clone();
             Arc::new(TransportBridge::new(
                 transport.clone(),
+                reticulum_storage_path.join("service-identities"),
                 identity.clone(),
                 delivery_source_hash,
                 destination.clone(),
@@ -303,6 +304,18 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         bridge.as_ref().map(|bridge| bridge.clone() as Arc<dyn OutboundBridge>);
     let announce_bridge: Option<Arc<dyn AnnounceBridge>> =
         bridge.as_ref().map(|bridge| bridge.clone() as Arc<dyn AnnounceBridge>);
+
+    if let Some(bridge) = bridge.as_ref() {
+        match bridge.load_persisted_service_identities().await {
+            Ok(count) if count > 0 => {
+                log::info!("[daemon] loaded {count} persisted service identities")
+            }
+            Ok(_) => {}
+            Err(error) => {
+                log::error!("[daemon] failed to load persisted service identities: {error}")
+            }
+        }
+    }
 
     let daemon = Arc::new(RpcDaemon::with_store_and_bridges(
         store,
@@ -353,6 +366,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     }
     if let Some(bridge) = bridge.as_ref() {
         bridge.set_daemon(daemon.clone());
+        daemon.set_service_identity_bridge(bridge.clone() as Arc<dyn ServiceIdentityBridge>);
         daemon.set_remote_control_bridge(bridge.clone() as Arc<dyn RemoteControlBridge>);
     }
     daemon.set_delivery_destination_hash(delivery_destination_hash_hex);

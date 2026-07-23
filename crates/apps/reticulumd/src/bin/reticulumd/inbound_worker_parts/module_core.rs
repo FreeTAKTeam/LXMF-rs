@@ -41,6 +41,7 @@ pub(super) fn spawn_inbound_worker(
         control::spawn_control_worker(daemon.clone(), transport.clone(), control.clone());
     }
     let resource_control = control.clone();
+    let resource_outbound_sources = direct_backchannel_links.clone();
     spawn_packet_inbound_worker(
         daemon.clone(),
         transport.clone(),
@@ -61,6 +62,7 @@ pub(super) fn spawn_inbound_worker(
                             transport.as_ref(),
                             &event.link_id,
                             local_delivery_destination,
+                            resource_outbound_sources.as_ref(),
                         )
                         .await
                         {
@@ -294,8 +296,11 @@ fn spawn_packet_inbound_worker(
     control: PropagationControlContext,
     direct_backchannel_links: Option<DirectBackchannelLinks>,
 ) {
-    if let Some(backchannel_links) = direct_backchannel_links {
-        link_identification::spawn_identified_peer_workers(transport.clone(), backchannel_links);
+    if let Some(backchannel_links) = direct_backchannel_links.as_ref() {
+        link_identification::spawn_identified_peer_workers(
+            transport.clone(),
+            backchannel_links.clone(),
+        );
     }
 
     let daemon_inbound = daemon;
@@ -318,6 +323,7 @@ fn spawn_packet_inbound_worker(
                         &event.destination,
                         event.payload_mode,
                         local_delivery_destination,
+                        direct_backchannel_links.as_ref(),
                     )
                     .await
                     else {

@@ -12,6 +12,7 @@ mod delivery_trace;
 mod destination;
 mod domains;
 mod history;
+mod identity;
 mod propagation;
 mod propagation_payload;
 mod propagation_policy;
@@ -410,6 +411,9 @@ fn identity_import_uses_zmq_sdk_method_and_decodes_identity_bundle() {
         .identity_import(crate::domain::IdentityImportRequest {
             bundle_base64: "aW1wb3J0ZWQ=".to_owned(),
             passphrase: Some("secret".to_owned()),
+            display_name: None,
+            capabilities: Vec::new(),
+            metadata: BTreeMap::new(),
             extensions: BTreeMap::from([("source".to_owned(), json!("rem-recovery"))]),
         })
         .expect("identity import");

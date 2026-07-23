@@ -413,11 +413,14 @@ traits. Row-level transport classification is generated in
 - Live propagation announces retain Python PN metadata on active peer records,
   so announce-derived peer metadata survives into later peering and queue
   restart/export snapshots.
-- The typed ZeroMQ SDK backend exposes identity list/activate/import/export,
-  identity announce, presence list, identity resolve, contact update/list, and
-  identity bootstrap, so peer-directory state, identity recovery, and
-  saved-peer setup needed by REM/RCH can stay on the `ZmqPipelineBackendClient`
-  path instead of requiring raw RPC/HTTP identity/contact calls.
+- The typed ZeroMQ SDK backend exposes real Reticulum service-identity
+  create/list/activate/import/export plus targeted identity announces. Each
+  authenticated session is restricted to identities it created or proved by
+  private-key import, and each identity retains its own `lxmf.delivery`
+  destination, signer, display name, capabilities, metadata, inbound queue,
+  and restart-persistent key while the daemon transport identity remains
+  independent. Presence, resolve, contact, and bootstrap calls remain on the
+  same `ZmqPipelineBackendClient` path for REM/RCH.
 - The typed ZeroMQ SDK backend exposes
   `ZmqPipelineBackendClient::identity_announce` for capability-rich announces,
   preserving local identity, display name, callsign, REM capability flags, RCH

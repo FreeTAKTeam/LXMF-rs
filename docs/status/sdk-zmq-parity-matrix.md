@@ -36,6 +36,7 @@ The complete row-level Python classification and daemon capability inventory are
 | `app.event.poll` | `sdk_poll_events_v2` | read | none | `docs/schemas/sdk/v2/rpc/sdk_poll_events_v2.schema.json` |
 | `app.identity.announce` | `sdk_identity_announce_now_v2` | mutate | `sdk.capability.identity_discovery` | `Rust SDK serde types` |
 | `app.identity.bootstrap` | `sdk_identity_bootstrap_v2` | mutate | `sdk.capability.contact_management` | `Rust SDK serde types` |
+| `app.identity.create` | `sdk_identity_create_v2` | mutate | `sdk.capability.identity_multi`, `sdk.capability.identity_import_export` | `docs/schemas/sdk/v2/rpc/sdk_release_c_methods.schema.json` |
 | `app.identity.list` | `sdk_identity_list_v2` | read | `sdk.capability.identity_multi` | `Rust SDK serde types` |
 | `app.identity.presence.list` | `sdk_identity_presence_list_v2` | read | `sdk.capability.identity_discovery` | `Rust SDK serde types` |
 | `app.marker.create` | `sdk_marker_create_v2` | mutate | `sdk.capability.markers` | `Rust SDK serde types` |

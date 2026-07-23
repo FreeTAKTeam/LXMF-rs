@@ -262,15 +262,20 @@ pub struct MarkerListResult {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+/// A Reticulum identity hash, distinct from any destination derived from it.
 pub struct IdentityRef(pub String);
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct IdentityBundle {
     pub identity: IdentityRef,
+    /// The `lxmf.delivery` destination derived from `identity`.
+    pub delivery_destination: Option<String>,
     pub public_key: String,
     pub display_name: Option<String>,
     #[serde(default)]
     pub capabilities: Vec<String>,
+    #[serde(default)]
+    pub metadata: BTreeMap<String, JsonValue>,
     #[serde(default)]
     pub extensions: BTreeMap<String, JsonValue>,
 }
@@ -279,6 +284,12 @@ pub struct IdentityBundle {
 pub struct IdentityImportRequest {
     pub bundle_base64: String,
     pub passphrase: Option<String>,
+    #[serde(default)]
+    pub display_name: Option<String>,
+    #[serde(default)]
+    pub capabilities: Vec<String>,
+    #[serde(default)]
+    pub metadata: BTreeMap<String, JsonValue>,
     #[serde(default)]
     pub extensions: BTreeMap<String, JsonValue>,
 }

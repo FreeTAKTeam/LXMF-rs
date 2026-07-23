@@ -912,11 +912,13 @@ Scoped release evidence is split as follows:
 - Duplicate inbound peer propagation payloads now still apply source-aware
   fan-out to active relay peers while keeping the source peer handled, so a
   known local payload does not skip relay queue creation.
-- The typed ZeroMQ SDK backend now covers identity list/activate/import/export,
-  identity announce, presence list, identity resolve, contact update/list, and
-  identity bootstrap, so REM/RCH peer discovery, identity recovery, and
-  saved-peer setup can use `ZmqPipelineBackendClient` instead of falling back
-  to raw RPC/HTTP identity/contact calls.
+- The typed ZeroMQ SDK backend now supports multiple real, persistent
+  Reticulum service identities on one transport through
+  `sdk_identity_create_v2` and session-scoped list/activate/import/export/send,
+  targeted announces, source-specific signing, inbound event filtering, and
+  reconnect retention. This matches the Python delivery-identity registration
+  model needed by REM/RCH without conflating a service key or display name
+  with the daemon transport/propagation identity.
 - The typed ZeroMQ SDK backend now also exposes
   `ZmqPipelineBackendClient::identity_announce` for capability-rich announces,
   preserving local identity, display name, callsign, REM capability flags, RCH

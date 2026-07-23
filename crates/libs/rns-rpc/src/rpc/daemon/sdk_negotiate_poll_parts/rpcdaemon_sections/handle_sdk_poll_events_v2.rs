@@ -145,35 +145,47 @@ impl RpcDaemon {
             }
         }
 
+        let delivery_destinations = self
+            .service_identity_bridge()
+            .map(|_| self.current_session_delivery_destinations());
         let remaining_slots = parsed.max.saturating_sub(event_rows.len());
-        for entry in log_guard
-            .iter()
-            .filter(|entry| entry.seq_no >= start_seq)
-            .filter(|entry| entry.event.event_type != "sdk_lifecycle_trace")
-            .take(remaining_slots)
-        {
-            let event_row = json!({
-                "event_id": format!("evt-{}", entry.seq_no),
-                "runtime_id": self.identity_hash,
-                "stream_id": SDK_STREAM_ID,
-                "seq_no": entry.seq_no,
-                "contract_version": self.active_contract_version(),
-                "ts_ms": (now_i64().max(0) as u64) * 1000,
-                "event_type": entry.event.event_type.clone(),
-                "severity": Self::event_severity(entry.event.event_type.as_str()),
-                "source_component": "rns-rpc",
-                "payload": entry.event.payload.clone(),
-            });
-            if let Err(response) = append_event_row(event_row, &mut event_rows, &mut batch_bytes) {
-                return Ok(response);
+        let mut last_scanned_seq = cursor_seq;
+        if remaining_slots > 0 {
+            for entry in log_guard
+                .iter()
+                .filter(|entry| entry.seq_no >= start_seq)
+                .filter(|entry| entry.event.event_type != "sdk_lifecycle_trace")
+            {
+                last_scanned_seq = Some(entry.seq_no);
+                if delivery_destinations.as_ref().is_some_and(|destinations| {
+                    !self.event_visible_to_current_identity_session(&entry.event, destinations)
+                }) {
+                    continue;
+                }
+                let event_row = json!({
+                    "event_id": format!("evt-{}", entry.seq_no),
+                    "runtime_id": self.identity_hash,
+                    "stream_id": SDK_STREAM_ID,
+                    "seq_no": entry.seq_no,
+                    "contract_version": self.active_contract_version(),
+                    "ts_ms": (now_i64().max(0) as u64) * 1000,
+                    "event_type": entry.event.event_type.clone(),
+                    "severity": Self::event_severity(entry.event.event_type.as_str()),
+                    "source_component": "rns-rpc",
+                    "payload": entry.event.payload.clone(),
+                });
+                if let Err(response) =
+                    append_event_row(event_row, &mut event_rows, &mut batch_bytes)
+                {
+                    return Ok(response);
+                }
+                if event_rows.len() >= parsed.max {
+                    break;
+                }
             }
         }
 
-        let next_seq = event_rows
-            .iter()
-            .rev()
-            .find_map(|event| event.get("seq_no").and_then(JsonValue::as_u64))
-            .or(cursor_seq)
+        let next_seq = last_scanned_seq
             .or(latest_seq)
             .unwrap_or(0);
         let next_cursor = self.sdk_encode_cursor(next_seq);

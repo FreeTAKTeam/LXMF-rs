@@ -210,7 +210,10 @@ fn sdk_domain_state_survives_restart() {
                 json!({ "identity": "persist-imported" }),
             ))
             .expect("identity export after restart");
-        assert!(identity_export.error.is_none());
+        assert_eq!(
+            identity_export.error.as_ref().map(|error| error.code.as_str()),
+            Some("SDK_SECURITY_IDENTITY_FORBIDDEN")
+        );
 
         let command_reply = daemon
             .handle_rpc(rpc_request(

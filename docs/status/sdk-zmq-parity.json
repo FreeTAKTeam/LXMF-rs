@@ -24,6 +24,24 @@
     {
       "authorization": "mutate",
       "automated_evidence": [
+        "reticulumd multi-service identity registry tests",
+        "lxmf-sdk ZeroMQ envelope transport contract tests"
+      ],
+      "http_implementation": "RpcBackendClient/RpcDaemon framed RPC",
+      "id": "app.identity.create",
+      "kind": "command",
+      "required_capabilities": [
+        "sdk.capability.identity_multi",
+        "sdk.capability.identity_import_export"
+      ],
+      "rpc_method": "sdk_identity_create_v2",
+      "source": "crates/libs/rns-rpc/src/rpc/daemon/sdk_operations_parts/sdk_operation_specs.rs",
+      "typed_contract": "docs/schemas/sdk/v2/rpc/sdk_release_c_methods.schema.json",
+      "zmq_implementation": "ZmqPipelineBackendClient sdk_envelope_execute_v2"
+    },
+    {
+      "authorization": "mutate",
+      "automated_evidence": [
         "rns-rpc daemon operation registry tests",
         "lxmf-sdk ZeroMQ envelope transport contract tests"
       ],

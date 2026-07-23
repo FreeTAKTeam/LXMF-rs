@@ -62,7 +62,7 @@ async fn await_path_returns_after_python_poll_interval_timeout() {
 #[tokio::test]
 async fn destination_deregistration_and_interface_detach_release_runtime_state() {
     let identity = PrivateIdentity::new_from_rand(OsRng);
-    let mut transport = Transport::new(TransportConfig::new("deregister", &identity, true));
+    let transport = Transport::new(TransportConfig::new("deregister", &identity, true));
     let destination = transport
         .add_destination(
             PrivateIdentity::new_from_rand(OsRng),

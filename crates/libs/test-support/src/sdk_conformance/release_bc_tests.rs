@@ -173,6 +173,9 @@ fn sdk_conformance_release_bc_domain_methods_work_through_rpc_adapter() {
         .identity_import(IdentityImportRequest {
             bundle_base64: "eyJpZGVudGl0eSI6Im5vZGUtYiIsInB1YmxpY19rZXkiOiJub2RlLWItcHViIiwiZGlzcGxheV9uYW1lIjoiTm9kZSBCIiwiY2FwYWJpbGl0aWVzIjpbXSwiZXh0ZW5zaW9ucyI6e319".to_string(),
             passphrase: None,
+            display_name: None,
+            capabilities: Vec::new(),
+            metadata: BTreeMap::new(),
             extensions: BTreeMap::new(),
         })
         .expect("identity_import");

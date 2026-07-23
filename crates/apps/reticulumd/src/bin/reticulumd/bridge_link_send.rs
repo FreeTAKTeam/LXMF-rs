@@ -150,6 +150,7 @@ impl DeliveryTask {
         );
         let link = self.transport.link(destination_desc).await;
         let link_id = *link.lock().await.id();
+        self.direct_backchannel_links.record_outbound_local_source(link_id, self.source_hash);
         let result =
             match await_link_activation(self.transport.as_ref(), &link, Duration::from_secs(20))
                 .await

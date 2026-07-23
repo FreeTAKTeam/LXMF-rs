@@ -61,6 +61,9 @@ impl RpcDaemon {
         options: OutboundDeliveryOptions,
         include_ticket: Option<bool>,
     ) -> Result<RpcResponse, std::io::Error> {
+        if let Err(error) = self.validate_current_session_source(source.as_str()) {
+            return Ok(RpcResponse { id: request_id, result: None, error: Some(error) });
+        }
         let timestamp = now_i64();
         if self.enforce_store_forward_retention(timestamp)? {
             return Ok(self.sdk_error_response(
@@ -417,6 +420,7 @@ impl RpcDaemon {
             "sdk_marker_update_position_v2",
             "sdk_marker_delete_v2",
             "sdk_identity_list_v2",
+            "sdk_identity_create_v2",
             "sdk_identity_announce_now_v2",
             "sdk_identity_presence_list_v2",
             "sdk_identity_activate_v2",

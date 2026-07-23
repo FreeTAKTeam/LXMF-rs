@@ -6,6 +6,7 @@ use rns_transport::transport::{ReceivedData, ReceivedPayloadMode, Transport};
 use std::sync::Arc;
 
 use super::propagation;
+use crate::direct_backchannel::DirectBackchannelLinks;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum InboundLxmfDestination {
@@ -17,6 +18,7 @@ pub(super) async fn resolve_resource_destination(
     transport: &Transport,
     link_id: &AddressHash,
     local_delivery_destination: Option<[u8; 16]>,
+    outbound_sources: Option<&DirectBackchannelLinks>,
 ) -> Option<InboundLxmfDestination> {
     if let Some(link) = transport.find_in_link(link_id).await {
         let guard = link.lock().await;
@@ -26,7 +28,12 @@ pub(super) async fn resolve_resource_destination(
     }
     if let Some(link) = transport.find_out_link(link_id).await {
         let guard = link.lock().await;
-        return destination_for_outbound_link(guard.destination(), local_delivery_destination);
+        return destination_for_outbound_link(
+            link_id,
+            guard.destination(),
+            local_delivery_destination,
+            outbound_sources,
+        );
     }
     None
 }
@@ -37,6 +44,7 @@ pub(super) async fn resolve_packet_destination(
     destination: &AddressHash,
     payload_mode: ReceivedPayloadMode,
     local_delivery_destination: Option<[u8; 16]>,
+    outbound_sources: Option<&DirectBackchannelLinks>,
 ) -> Option<InboundLxmfDestination> {
     match payload_mode {
         ReceivedPayloadMode::DestinationStripped => {
@@ -45,9 +53,12 @@ pub(super) async fn resolve_packet_destination(
             }
             if let Some(link) = transport.find_out_link(destination).await {
                 let guard = link.lock().await;
-                if let Some(resolved) =
-                    destination_for_outbound_link(guard.destination(), local_delivery_destination)
-                {
+                if let Some(resolved) = destination_for_outbound_link(
+                    destination,
+                    guard.destination(),
+                    local_delivery_destination,
+                    outbound_sources,
+                ) {
                     return Some(resolved);
                 }
             }
@@ -63,11 +74,20 @@ pub(super) async fn resolve_packet_destination(
             }
             if let Some(link) = transport.find_out_link(destination).await {
                 let guard = link.lock().await;
-                if let Some(resolved) =
-                    destination_for_outbound_link(guard.destination(), local_delivery_destination)
-                {
+                if let Some(resolved) = destination_for_outbound_link(
+                    destination,
+                    guard.destination(),
+                    local_delivery_destination,
+                    outbound_sources,
+                ) {
                     return Some(resolved);
                 }
+            }
+            if propagation::is_lxmf_propagation_destination(destination, control) {
+                return Some(InboundLxmfDestination::Propagation);
+            }
+            if transport.has_destination(destination).await {
+                return Some(InboundLxmfDestination::Delivery(destination_hash(destination)));
             }
             local_delivery_destination
                 .filter(|local| local.as_slice() == destination.as_slice())
@@ -77,11 +97,16 @@ pub(super) async fn resolve_packet_destination(
 }
 
 fn destination_for_outbound_link(
+    link_id: &AddressHash,
     remote_destination: &DestinationDesc,
     local_delivery_destination: Option<[u8; 16]>,
+    outbound_sources: Option<&DirectBackchannelLinks>,
 ) -> Option<InboundLxmfDestination> {
     if is_lxmf_delivery_destination(remote_destination) {
-        return local_delivery_destination.map(InboundLxmfDestination::Delivery);
+        return outbound_sources
+            .and_then(|sources| sources.outbound_local_source(link_id))
+            .or(local_delivery_destination)
+            .map(InboundLxmfDestination::Delivery);
     }
     lxmf_destination_from_desc(remote_destination)
 }
@@ -165,6 +190,7 @@ mod tests {
         is_lxmf_propagation_link_destination, resolve_resource_destination,
         should_skip_resolved_control_payload, InboundLxmfDestination,
     };
+    use crate::direct_backchannel::DirectBackchannelLinks;
     use rand_core::OsRng;
     use rns_transport::destination::{DestinationDesc, DestinationName};
     use rns_transport::identity::PrivateIdentity;
@@ -227,10 +253,41 @@ mod tests {
             name: DestinationName::new("lxmf", "delivery"),
         };
         let local_destination = [7_u8; 16];
+        let link_id = rns_transport::hash::AddressHash::new([9_u8; 16]);
 
         assert_eq!(
-            destination_for_outbound_link(&remote_destination, Some(local_destination)),
+            destination_for_outbound_link(
+                &link_id,
+                &remote_destination,
+                Some(local_destination),
+                None,
+            ),
             Some(InboundLxmfDestination::Delivery(local_destination))
+        );
+    }
+
+    #[test]
+    fn outbound_delivery_link_prefers_registered_service_source() {
+        let remote = PrivateIdentity::new_from_rand(OsRng);
+        let remote_destination = DestinationDesc {
+            identity: *remote.as_identity(),
+            address_hash: *remote.address_hash(),
+            name: DestinationName::new("lxmf", "delivery"),
+        };
+        let link_id = rns_transport::hash::AddressHash::new([10_u8; 16]);
+        let default_destination = [7_u8; 16];
+        let service_destination = [8_u8; 16];
+        let sources = DirectBackchannelLinks::new();
+        sources.record_outbound_local_source(link_id, service_destination);
+
+        assert_eq!(
+            destination_for_outbound_link(
+                &link_id,
+                &remote_destination,
+                Some(default_destination),
+                Some(&sources),
+            ),
+            Some(InboundLxmfDestination::Delivery(service_destination))
         );
     }
 
@@ -250,7 +307,7 @@ mod tests {
         use tokio::time::{timeout, Duration};
 
         let receiver_identity = PrivateIdentity::new_from_rand(OsRng);
-        let mut receiver_transport =
+        let receiver_transport =
             Transport::new(TransportConfig::new("receiver", &receiver_identity, true));
         let receiver_iface = receiver_transport.iface_manager().lock().await.new_channel(64);
         let own_destination = receiver_transport
@@ -359,6 +416,7 @@ mod tests {
             &receiver_transport,
             &event.link_id,
             Some(destination_hash),
+            None,
         )
         .await;
 

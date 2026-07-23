@@ -68,6 +68,7 @@ impl RpcDaemon {
             "sdk_marker_update_position_v2" => self.handle_sdk_marker_update_position_v2(request),
             "sdk_marker_delete_v2" => self.handle_sdk_marker_delete_v2(request),
             "sdk_identity_list_v2" => self.handle_sdk_identity_list_v2(request),
+            "sdk_identity_create_v2" => self.handle_sdk_identity_create_v2(request),
             "sdk_identity_announce_now_v2" => self.handle_sdk_identity_announce_now_v2(request),
             "sdk_identity_presence_list_v2" => self.handle_sdk_identity_presence_list_v2(request),
             "sdk_identity_activate_v2" => self.handle_sdk_identity_activate_v2(request),

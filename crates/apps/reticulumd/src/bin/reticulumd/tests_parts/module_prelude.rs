@@ -255,9 +255,21 @@ async fn test_transport_bridge_fixture() -> (Arc<RpcDaemon>, Arc<TransportBridge
 
 async fn test_transport_bridge_fixture_with_peer(
 ) -> (Arc<RpcDaemon>, Arc<TransportBridge>, PrivateIdentity, String) {
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system time after epoch")
+        .as_nanos();
+    let service_identity_dir =
+        std::env::temp_dir().join(format!("reticulumd-test-service-identities-{unique}"));
+    test_transport_bridge_fixture_with_peer_at(service_identity_dir).await
+}
+
+async fn test_transport_bridge_fixture_with_peer_at(
+    service_identity_dir: PathBuf,
+) -> (Arc<RpcDaemon>, Arc<TransportBridge>, PrivateIdentity, String) {
     let signer = PrivateIdentity::new_from_rand(rand_core::OsRng);
     let transport_identity = rns_transport::identity_bridge::to_transport_private_identity(&signer);
-    let mut transport = Transport::new(TransportConfig::new("test", &transport_identity, true));
+    let transport = Transport::new(TransportConfig::new("test", &transport_identity, true));
     let announce_destination = transport
         .add_destination(transport_identity.clone(), DestinationName::new("lxmf", "delivery"))
         .await;
@@ -280,6 +292,7 @@ async fn test_transport_bridge_fixture_with_peer(
 
     let bridge = Arc::new(TransportBridge::new(
         transport,
+        service_identity_dir,
         signer,
         [0u8; 16],
         announce_destination,

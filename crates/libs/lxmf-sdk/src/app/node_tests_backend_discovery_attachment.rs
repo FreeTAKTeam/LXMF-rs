@@ -3,9 +3,11 @@ macro_rules! mock_backend_discovery_attachment_methods {
     fn identity_list(&self) -> Result<Vec<crate::domain::IdentityBundle>, SdkError> {
         Ok(vec![crate::domain::IdentityBundle {
             identity: crate::domain::IdentityRef("alice".to_owned()),
+            delivery_destination: None,
             public_key: "pubkey".to_owned(),
             display_name: Some("Alice".to_owned()),
             capabilities: vec!["chat".to_owned()],
+            metadata: BTreeMap::new(),
             extensions: BTreeMap::new(),
         }])
     }

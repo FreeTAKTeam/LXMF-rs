@@ -24,6 +24,10 @@ pub fn load_or_create_identity(path: &Path) -> io::Result<PrivateIdentity> {
     Ok(identity)
 }
 
+pub fn save_identity(path: &Path, identity: &PrivateIdentity) -> io::Result<()> {
+    write_identity_file(path, &identity.to_private_key_bytes())
+}
+
 fn write_identity_file(path: &Path, key_bytes: &[u8]) -> io::Result<()> {
     if let Some(parent) = path.parent() {
         if !parent.as_os_str().is_empty() {

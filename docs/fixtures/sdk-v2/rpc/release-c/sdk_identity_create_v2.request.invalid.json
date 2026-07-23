@@ -1,0 +1,7 @@
+{
+  "id": 1211,
+  "method": "sdk_identity_create_v2",
+  "params": {
+    "unsupported": true
+  }
+}

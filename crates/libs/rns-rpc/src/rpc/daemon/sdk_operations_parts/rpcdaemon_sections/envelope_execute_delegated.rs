@@ -87,6 +87,11 @@ impl RpcDaemon {
                 method: method.to_owned(),
                 params: Some(params),
             })?,
+            "sdk_identity_create_v2" => self.handle_sdk_identity_create_v2(RpcRequest {
+                id: request_id,
+                method: method.to_owned(),
+                params: Some(params),
+            })?,
             "sdk_identity_announce_now_v2" => {
                 self.handle_sdk_identity_announce_now_v2(RpcRequest {
                     id: request_id,
@@ -337,6 +342,9 @@ impl RpcDaemon {
         let payload = match method {
             "sdk_send_v2" | "sdk_send_batch_v2" => raw,
             "sdk_identity_list_v2" => raw.get("identities").cloned().unwrap_or(JsonValue::Null),
+            "sdk_identity_create_v2" => {
+                raw.get("identity").cloned().unwrap_or(JsonValue::Null)
+            }
             "sdk_identity_presence_list_v2" => {
                 raw.get("presence_list").cloned().unwrap_or(JsonValue::Null)
             }

@@ -1,0 +1,14 @@
+{
+  "id": 1210,
+  "method": "sdk_identity_create_v2",
+  "params": {
+    "display_name": "RCH",
+    "capabilities": [
+      "lxmf.delivery",
+      "r3akt"
+    ],
+    "metadata": {
+      "service": "rch"
+    }
+  }
+}

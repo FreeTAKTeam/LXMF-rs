@@ -3,9 +3,9 @@ use super::envelope::EnvelopeResponse;
 use super::errors::Error;
 use super::node::Client;
 use crate::domain::{
-    ContactListRequest, ContactUpdateRequest, IdentityBootstrapRequest, PresenceListRequest,
-    WorkflowAttachmentReportRequest, WorkflowMissionUpdateRequest, WorkflowPeerReadyRequest,
-    WorkflowTopicSyncRequest,
+    ContactListRequest, ContactUpdateRequest, IdentityAnnounceRequest, IdentityBootstrapRequest,
+    IdentityCreateRequest, PresenceListRequest, WorkflowAttachmentReportRequest,
+    WorkflowMissionUpdateRequest, WorkflowPeerReadyRequest, WorkflowTopicSyncRequest,
 };
 use crate::SdkBackend;
 use serde_json::Value as JsonValue;
@@ -24,12 +24,42 @@ impl<B: SdkBackend> Client<B> {
                 serde_json::to_value(self.backend.identity_list().map_err(Error::from)?)
                     .expect("identity list should serialize"),
             )),
-            "app.identity.announce" => {
-                self.backend.identity_announce_now().map_err(Error::from)?;
+            "app.identity.create" => {
+                let req: IdentityCreateRequest =
+                    serde_json::from_value(payload).map_err(|err| {
+                        invalid_envelope(
+                            format!("invalid identity create payload: {err}"),
+                            canonical_id.as_str(),
+                        )
+                    })?;
+                let identity = self.backend.identity_create(req).map_err(Error::from)?;
                 Ok(envelope_result(
                     canonical_id,
                     correlation_id,
-                    serde_json::json!({ "accepted": true }),
+                    serde_json::to_value(identity).expect("created identity should serialize"),
+                ))
+            }
+            "app.identity.announce" => {
+                if payload.as_object().is_some_and(serde_json::Map::is_empty) {
+                    self.backend.identity_announce_now().map_err(Error::from)?;
+                    return Ok(envelope_result(
+                        canonical_id,
+                        correlation_id,
+                        serde_json::json!({ "accepted": true }),
+                    ));
+                }
+                let req: IdentityAnnounceRequest =
+                    serde_json::from_value(payload).map_err(|err| {
+                        invalid_envelope(
+                            format!("invalid identity announce payload: {err}"),
+                            canonical_id.as_str(),
+                        )
+                    })?;
+                let announce = self.backend.identity_announce(req).map_err(Error::from)?;
+                Ok(envelope_result(
+                    canonical_id,
+                    correlation_id,
+                    serde_json::to_value(announce).expect("identity announce should serialize"),
                 ))
             }
             "app.identity.presence.list" => {

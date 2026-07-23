@@ -2,6 +2,7 @@ impl RpcDaemon {
     fn operation_spec(&self, id_or_alias: &str) -> Option<ResolvedSdkOperationSpec> {
         if let Some(spec) = SDK_OPERATION_SPECS
             .iter()
+            .chain(IDENTITY_SDK_OPERATION_SPECS.iter())
             .chain(TICKET_SDK_OPERATION_SPECS.iter())
             .chain(CONVERSATION_SDK_OPERATION_SPECS.iter())
             .chain(DELIVERY_SDK_OPERATION_SPECS.iter())
@@ -36,6 +37,7 @@ impl RpcDaemon {
     pub(super) fn operation_registry_json(&self) -> JsonValue {
         let mut entries = SDK_OPERATION_SPECS
             .iter()
+            .chain(IDENTITY_SDK_OPERATION_SPECS.iter())
             .chain(TICKET_SDK_OPERATION_SPECS.iter())
             .chain(CONVERSATION_SDK_OPERATION_SPECS.iter())
             .chain(DELIVERY_SDK_OPERATION_SPECS.iter())

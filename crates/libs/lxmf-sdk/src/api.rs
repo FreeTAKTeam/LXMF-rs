@@ -7,13 +7,13 @@ use crate::domain::{
     AttachmentUploadChunkRequest, AttachmentUploadCommitRequest, AttachmentUploadSession,
     AttachmentUploadStartRequest, ContactListRequest, ContactListResult, ContactRecord,
     ContactUpdateRequest, IdentityAnnounceRequest, IdentityAnnounceResult,
-    IdentityBootstrapRequest, IdentityBundle, IdentityImportRequest, IdentityRef,
-    IdentityResolveRequest, MarkerCreateRequest, MarkerDeleteRequest, MarkerListRequest,
-    MarkerListResult, MarkerRecord, MarkerUpdatePositionRequest, PaperDecodeResult,
-    PaperMessageEnvelope, PeerConnectionRequest, PeerConnectionResult, PresenceListRequest,
-    PresenceListResult, RemoteCommandRequest, RemoteCommandResponse, RemoteCommandSession,
-    RemoteCommandSessionListRequest, RemoteCommandSessionListResult, TelemetryPoint,
-    TelemetryQuery, TopicCreateRequest, TopicId, TopicListRequest, TopicListResult,
+    IdentityBootstrapRequest, IdentityBundle, IdentityCreateRequest, IdentityImportRequest,
+    IdentityRef, IdentityResolveRequest, MarkerCreateRequest, MarkerDeleteRequest,
+    MarkerListRequest, MarkerListResult, MarkerRecord, MarkerUpdatePositionRequest,
+    PaperDecodeResult, PaperMessageEnvelope, PeerConnectionRequest, PeerConnectionResult,
+    PresenceListRequest, PresenceListResult, RemoteCommandRequest, RemoteCommandResponse,
+    RemoteCommandSession, RemoteCommandSessionListRequest, RemoteCommandSessionListResult,
+    TelemetryPoint, TelemetryQuery, TopicCreateRequest, TopicId, TopicListRequest, TopicListResult,
     TopicPublishRequest, TopicRecord, TopicSubscriptionRequest, VoiceSessionId,
     VoiceSessionOpenRequest, VoiceSessionState, VoiceSessionUpdateRequest,
 };
@@ -178,6 +178,10 @@ pub trait LxmfSdkMarkers {
 
 pub trait LxmfSdkIdentity {
     fn identity_list(&self) -> Result<Vec<IdentityBundle>, SdkError> {
+        Err(SdkError::capability_disabled("sdk.capability.identity_multi"))
+    }
+
+    fn identity_create(&self, _req: IdentityCreateRequest) -> Result<IdentityBundle, SdkError> {
         Err(SdkError::capability_disabled("sdk.capability.identity_multi"))
     }
 

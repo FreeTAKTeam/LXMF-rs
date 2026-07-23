@@ -26,7 +26,7 @@ async fn default_proof_strategy_never_generates_a_delivery_proof() {
     // opportunistic packet.
     let receiver_identity = PrivateIdentity::new_from_rand(OsRng);
     let receiver_config = TransportConfig::new("receiver", &receiver_identity, true);
-    let mut receiver_transport = Transport::new(receiver_config);
+    let receiver_transport = Transport::new(receiver_config);
     let mut receiver_iface = receiver_transport.iface_manager().lock().await.new_channel(8);
     let own_destination = receiver_transport
         .add_destination(receiver_identity.clone(), DestinationName::new("lxmf", "delivery"))
@@ -73,7 +73,7 @@ async fn proof_strategy_all_generates_a_valid_delivery_proof() {
     // into `ProofStrategy::All`.
     let receiver_identity = PrivateIdentity::new_from_rand(OsRng);
     let receiver_config = TransportConfig::new("receiver", &receiver_identity, true);
-    let mut receiver_transport = Transport::new(receiver_config);
+    let receiver_transport = Transport::new(receiver_config);
     let mut receiver_iface = receiver_transport.iface_manager().lock().await.new_channel(8);
     let own_destination = receiver_transport
         .add_destination(receiver_identity.clone(), DestinationName::new("lxmf", "delivery"))
@@ -158,7 +158,7 @@ async fn proof_strategy_all_generates_a_valid_delivery_proof() {
 async fn proof_strategy_app_with_true_callback_generates_a_delivery_proof() {
     let receiver_identity = PrivateIdentity::new_from_rand(OsRng);
     let receiver_config = TransportConfig::new("receiver", &receiver_identity, true);
-    let mut receiver_transport = Transport::new(receiver_config);
+    let receiver_transport = Transport::new(receiver_config);
     let mut receiver_iface = receiver_transport.iface_manager().lock().await.new_channel(8);
     let own_destination = receiver_transport
         .add_destination(receiver_identity.clone(), DestinationName::new("lxmf", "delivery"))
@@ -209,7 +209,7 @@ async fn proof_strategy_app_with_true_callback_generates_a_delivery_proof() {
 async fn proof_strategy_app_with_false_callback_never_generates_a_delivery_proof() {
     let receiver_identity = PrivateIdentity::new_from_rand(OsRng);
     let receiver_config = TransportConfig::new("receiver", &receiver_identity, true);
-    let mut receiver_transport = Transport::new(receiver_config);
+    let receiver_transport = Transport::new(receiver_config);
     let mut receiver_iface = receiver_transport.iface_manager().lock().await.new_channel(8);
     let own_destination = receiver_transport
         .add_destination(receiver_identity.clone(), DestinationName::new("lxmf", "delivery"))
@@ -266,7 +266,7 @@ async fn non_data_or_non_single_packets_never_generate_a_delivery_proof() {
     // payload is fine here, unlike the other tests in this file.
     let receiver_identity = PrivateIdentity::new_from_rand(OsRng);
     let receiver_config = TransportConfig::new("receiver", &receiver_identity, true);
-    let mut receiver_transport = Transport::new(receiver_config);
+    let receiver_transport = Transport::new(receiver_config);
     let mut receiver_iface = receiver_transport.iface_manager().lock().await.new_channel(8);
     let own_destination = receiver_transport
         .add_destination(receiver_identity.clone(), DestinationName::new("lxmf", "delivery"))

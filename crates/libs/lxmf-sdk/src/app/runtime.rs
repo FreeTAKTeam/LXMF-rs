@@ -141,6 +141,7 @@ pub struct RuntimeStatus {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[non_exhaustive]
 pub struct SendRequest {
+    /// The registered service's `lxmf.delivery` destination hash.
     pub source: String,
     pub destination: String,
     pub payload: JsonValue,

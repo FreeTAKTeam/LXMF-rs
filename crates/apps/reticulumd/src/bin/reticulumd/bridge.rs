@@ -42,6 +42,8 @@ mod remote_control_link;
 mod remote_fetch;
 #[path = "bridge_remote_request.rs"]
 mod remote_request;
+#[path = "bridge_service_identity.rs"]
+mod service_identity;
 use super::outbound_resources::{
     track_outbound_resource, OutboundResourceMap, OutboundResourceTracking,
     OUTBOUND_RESOURCE_SENT_STATUS,
@@ -69,7 +71,8 @@ use rns_transport::packet::{
 use rns_transport::transport::Transport;
 use serde_json::{json, Value as JsonValue};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub(crate) use delivery_method::{validate_delivery_request, RequestedDeliveryMethod};
@@ -99,6 +102,9 @@ pub(super) struct TransportBridge {
     direct_backchannel_links: DirectBackchannelLinks,
     receipt_tx: tokio::sync::mpsc::Sender<ReceiptEvent>,
     delivery_scheduler: DeliveryScheduler,
+    service_identities: Arc<RwLock<service_identity::ServiceIdentityRegistry>>,
+    service_identity_dir: PathBuf,
+    runtime_handle: tokio::runtime::Handle,
 }
 
 #[derive(Clone, Copy)]
@@ -110,6 +116,7 @@ impl TransportBridge {
     #[allow(clippy::too_many_arguments)]
     pub(super) fn new(
         transport: Arc<Transport>,
+        service_identity_dir: PathBuf,
         signer: PrivateIdentity,
         delivery_source_hash: [u8; 16],
         announce_destination: Arc<tokio::sync::Mutex<SingleInputDestination>>,
@@ -123,7 +130,13 @@ impl TransportBridge {
         outbound_resource_map: OutboundResourceMap,
         receipt_tx: tokio::sync::mpsc::Sender<ReceiptEvent>,
     ) -> Self {
-        Self {
+        let default_display_name = announce_app_data.as_deref().and_then(|app_data| {
+            reticulum_daemon::announce_names::parse_peer_name_from_app_data(app_data)
+                .ok()
+                .flatten()
+                .map(|(display_name, _)| display_name)
+        });
+        let bridge = Self {
             daemon: Arc::new(Mutex::new(None)),
             transport,
             signer,
@@ -142,7 +155,14 @@ impl TransportBridge {
             direct_backchannel_links: DirectBackchannelLinks::new(),
             receipt_tx,
             delivery_scheduler: DeliveryScheduler::spawn(DeliverySchedulerConfig::from_env()),
-        }
+            service_identities: Arc::new(RwLock::new(
+                service_identity::ServiceIdentityRegistry::default(),
+            )),
+            service_identity_dir,
+            runtime_handle: tokio::runtime::Handle::current(),
+        };
+        bridge.initialize_default_service_identity(default_display_name);
+        bridge
     }
 
     pub(super) fn direct_backchannel_links(&self) -> DirectBackchannelLinks {

@@ -2,6 +2,8 @@ include!("sdk_operations_parts/module_prelude.rs");
 
 include!("sdk_operations_parts/sdk_operation_specs.rs");
 
+include!("sdk_operations_parts/identity_operation_specs.rs");
+
 include!("sdk_operations_parts/ticket_operation_specs.rs");
 
 include!("sdk_operations_parts/conversation_operation_specs.rs");

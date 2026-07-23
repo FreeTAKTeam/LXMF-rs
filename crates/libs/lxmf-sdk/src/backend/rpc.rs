@@ -12,11 +12,11 @@ use crate::domain::{
     AttachmentListResult, AttachmentMeta, AttachmentStoreRequest, AttachmentUploadChunkAck,
     AttachmentUploadChunkRequest, AttachmentUploadCommitRequest, AttachmentUploadSession,
     AttachmentUploadStartRequest, ContactListRequest, ContactListResult, ContactRecord,
-    ContactUpdateRequest, IdentityBootstrapRequest, IdentityBundle, IdentityImportRequest,
-    IdentityRef, IdentityResolveRequest, MarkerCreateRequest, MarkerDeleteRequest,
-    MarkerListRequest, MarkerListResult, MarkerRecord, MarkerUpdatePositionRequest,
-    PaperDecodeResult, PaperMessageEnvelope, PresenceListRequest, PresenceListResult,
-    RemoteCommandRequest, RemoteCommandResponse, RemoteCommandSession,
+    ContactUpdateRequest, IdentityBootstrapRequest, IdentityBundle, IdentityCreateRequest,
+    IdentityImportRequest, IdentityRef, IdentityResolveRequest, MarkerCreateRequest,
+    MarkerDeleteRequest, MarkerListRequest, MarkerListResult, MarkerRecord,
+    MarkerUpdatePositionRequest, PaperDecodeResult, PaperMessageEnvelope, PresenceListRequest,
+    PresenceListResult, RemoteCommandRequest, RemoteCommandResponse, RemoteCommandSession,
     RemoteCommandSessionListRequest, RemoteCommandSessionListResult, RouterStats,
     RouterStoragePolicy, RouterStoragePolicyPatch, TelemetryPoint, TelemetryQuery,
     TopicCreateRequest, TopicId, TopicListRequest, TopicListResult, TopicPublishRequest,
@@ -303,6 +303,10 @@ impl SdkBackend for RpcBackendClient {
 
     fn identity_list(&self) -> Result<Vec<IdentityBundle>, SdkError> {
         self.identity_list_impl()
+    }
+
+    fn identity_create(&self, req: IdentityCreateRequest) -> Result<IdentityBundle, SdkError> {
+        self.identity_create_impl(req)
     }
 
     fn identity_announce_now(&self) -> Result<Ack, SdkError> {

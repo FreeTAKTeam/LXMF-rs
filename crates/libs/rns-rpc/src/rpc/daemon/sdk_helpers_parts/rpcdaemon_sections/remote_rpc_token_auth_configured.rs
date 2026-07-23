@@ -258,9 +258,11 @@ impl RpcDaemon {
     pub(super) fn default_sdk_identity(identity_hash: &str) -> SdkIdentityBundle {
         SdkIdentityBundle {
             identity: identity_hash.to_string(),
+            delivery_destination: None,
             public_key: format!("{identity_hash}-pub"),
             display_name: Some("default".to_string()),
             capabilities: vec!["sdk.capability.identity_hash_resolution".to_string()],
+            metadata: JsonMap::new(),
             extensions: JsonMap::new(),
         }
     }

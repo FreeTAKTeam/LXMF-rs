@@ -15,6 +15,7 @@ pub struct IdentityAnnounceResult {
     pub accepted: bool,
     pub announce_id: Option<JsonValue>,
     pub identity: Option<IdentityRef>,
+    pub delivery_destination: Option<String>,
     pub display_name: Option<String>,
     #[serde(default)]
     pub capabilities: Vec<String>,

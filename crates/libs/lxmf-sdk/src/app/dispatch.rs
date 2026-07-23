@@ -165,6 +165,7 @@ impl<B: SdkBackend> Client<B> {
                 ))
             }
             "app.identity.list"
+            | "app.identity.create"
             | "app.identity.announce"
             | "app.identity.presence.list"
             | "app.contact.list"

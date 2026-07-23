@@ -678,9 +678,15 @@
       "result": { "name": "result", "schema": { "type": "object", "additionalProperties": true } }
     },
     {
+      "name": "sdk_identity_create_v2",
+      "x-client-generation": false,
+      "params": [{ "name": "params", "required": true, "schema": { "type": "object", "additionalProperties": false, "properties": { "display_name": { "type": ["string", "null"] }, "capabilities": { "type": "array", "items": { "type": "string" } }, "metadata": { "type": "object", "additionalProperties": true }, "extensions": { "$ref": "#/components/schemas/ReleaseCExtensionMap" } } } }],
+      "result": { "name": "result", "schema": { "type": "object", "additionalProperties": true } }
+    },
+    {
       "name": "sdk_identity_announce_now_v2",
       "x-client-generation": false,
-      "params": [{ "name": "params", "required": true, "schema": { "type": "object", "additionalProperties": false, "properties": { "extensions": { "$ref": "#/components/schemas/ReleaseCExtensionMap" } } } }],
+      "params": [{ "name": "params", "required": true, "schema": { "type": "object", "additionalProperties": false, "properties": { "identity": { "type": ["string", "null"], "minLength": 1 }, "display_name": { "type": ["string", "null"] }, "capabilities": { "type": "array", "items": { "type": "string" } }, "metadata": { "type": "object", "additionalProperties": true }, "extensions": { "$ref": "#/components/schemas/ReleaseCExtensionMap" } } } }],
       "result": { "name": "result", "schema": { "type": "object", "additionalProperties": true } }
     },
     {
@@ -698,7 +704,7 @@
     {
       "name": "sdk_identity_import_v2",
       "x-client-generation": false,
-      "params": [{ "name": "params", "required": true, "schema": { "type": "object", "additionalProperties": false, "required": ["bundle_base64"], "properties": { "bundle_base64": { "type": "string", "minLength": 1 }, "passphrase": { "type": ["string", "null"] }, "extensions": { "$ref": "#/components/schemas/ReleaseCExtensionMap" } } } }],
+      "params": [{ "name": "params", "required": true, "schema": { "type": "object", "additionalProperties": false, "required": ["bundle_base64"], "properties": { "bundle_base64": { "type": "string", "minLength": 1 }, "passphrase": { "type": ["string", "null"] }, "display_name": { "type": ["string", "null"] }, "capabilities": { "type": "array", "items": { "type": "string" } }, "metadata": { "type": "object", "additionalProperties": true }, "extensions": { "$ref": "#/components/schemas/ReleaseCExtensionMap" } } } }],
       "result": { "name": "result", "schema": { "type": "object", "additionalProperties": true } }
     },
     {
@@ -2608,6 +2614,7 @@
             "type": "string",
             "enum": [
               "sdk_identity_list_v2",
+              "sdk_identity_create_v2",
               "sdk_identity_announce_now_v2",
               "sdk_identity_presence_list_v2",
               "sdk_identity_activate_v2",
@@ -2630,8 +2637,16 @@
         },
         "allOf": [
           {
-            "if": { "properties": { "method": { "enum": ["sdk_identity_list_v2", "sdk_identity_announce_now_v2"] } }, "required": ["method"] },
+            "if": { "properties": { "method": { "const": "sdk_identity_list_v2" } }, "required": ["method"] },
             "then": { "properties": { "params": { "type": "object", "additionalProperties": false, "properties": { "extensions": { "$ref": "#/components/schemas/ReleaseCExtensionMap" } } } } }
+          },
+          {
+            "if": { "properties": { "method": { "const": "sdk_identity_create_v2" } }, "required": ["method"] },
+            "then": { "properties": { "params": { "type": "object", "additionalProperties": false, "properties": { "display_name": { "type": ["string", "null"] }, "capabilities": { "type": "array", "items": { "type": "string" } }, "metadata": { "type": "object", "additionalProperties": true }, "extensions": { "$ref": "#/components/schemas/ReleaseCExtensionMap" } } } } }
+          },
+          {
+            "if": { "properties": { "method": { "const": "sdk_identity_announce_now_v2" } }, "required": ["method"] },
+            "then": { "properties": { "params": { "type": "object", "additionalProperties": false, "properties": { "identity": { "type": ["string", "null"], "minLength": 1 }, "display_name": { "type": ["string", "null"] }, "capabilities": { "type": "array", "items": { "type": "string" } }, "metadata": { "type": "object", "additionalProperties": true }, "extensions": { "$ref": "#/components/schemas/ReleaseCExtensionMap" } } } } }
           },
           {
             "if": { "properties": { "method": { "enum": ["sdk_identity_presence_list_v2", "sdk_identity_contact_list_v2"] } }, "required": ["method"] },
@@ -2643,7 +2658,7 @@
           },
           {
             "if": { "properties": { "method": { "const": "sdk_identity_import_v2" } }, "required": ["method"] },
-            "then": { "properties": { "params": { "type": "object", "additionalProperties": false, "required": ["bundle_base64"], "properties": { "bundle_base64": { "type": "string", "minLength": 1 }, "passphrase": { "type": ["string", "null"] }, "extensions": { "$ref": "#/components/schemas/ReleaseCExtensionMap" } } } } }
+            "then": { "properties": { "params": { "type": "object", "additionalProperties": false, "required": ["bundle_base64"], "properties": { "bundle_base64": { "type": "string", "minLength": 1 }, "passphrase": { "type": ["string", "null"] }, "display_name": { "type": ["string", "null"] }, "capabilities": { "type": "array", "items": { "type": "string" } }, "metadata": { "type": "object", "additionalProperties": true }, "extensions": { "$ref": "#/components/schemas/ReleaseCExtensionMap" } } } } }
           },
           {
             "if": { "properties": { "method": { "const": "sdk_identity_resolve_v2" } }, "required": ["method"] },

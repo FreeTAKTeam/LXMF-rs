@@ -4,9 +4,9 @@ use crate::capability::{NegotiationRequest, NegotiationResponse};
 use crate::domain::{
     ContactListRequest, ContactListResult, ContactRecord, ContactUpdateRequest,
     IdentityAnnounceRequest, IdentityAnnounceResult, IdentityBootstrapRequest, IdentityBundle,
-    IdentityImportRequest, IdentityRef, IdentityResolveRequest, PaperDecodeResult,
-    PaperMessageEnvelope, PeerConnectionRequest, PeerConnectionResult, PresenceListRequest,
-    PresenceListResult,
+    IdentityCreateRequest, IdentityImportRequest, IdentityRef, IdentityResolveRequest,
+    PaperDecodeResult, PaperMessageEnvelope, PeerConnectionRequest, PeerConnectionResult,
+    PresenceListRequest, PresenceListResult,
 };
 use crate::error::{code, ErrorCategory, SdkError};
 use crate::event::{EventBatch, EventCursor};
@@ -337,6 +337,13 @@ impl SdkBackend for ZmqPipelineBackendClient {
     fn identity_list(&self) -> Result<Vec<IdentityBundle>, SdkError> {
         let result = self.call_rpc("sdk_identity_list_v2", Some(json!({})))?;
         Self::decode_field_or_root(&result, "identities", "identity_list response")
+    }
+    fn identity_create(&self, req: IdentityCreateRequest) -> Result<IdentityBundle, SdkError> {
+        let params = serde_json::to_value(req).map_err(|err| {
+            SdkError::new(code::INTERNAL, ErrorCategory::Internal, err.to_string())
+        })?;
+        let result = self.call_rpc("sdk_identity_create_v2", Some(params))?;
+        Self::decode_field_or_root(&result, "identity", "identity_create response")
     }
     fn identity_activate(&self, identity: IdentityRef) -> Result<Ack, SdkError> {
         let result =

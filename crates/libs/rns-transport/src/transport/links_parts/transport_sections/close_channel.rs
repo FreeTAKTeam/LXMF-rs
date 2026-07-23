@@ -170,11 +170,18 @@ impl Transport {
     }
 
     pub async fn add_destination(
-        &mut self,
+        &self,
         identity: PrivateIdentity,
         name: DestinationName,
     ) -> Arc<Mutex<SingleInputDestination>> {
         let destination = SingleInputDestination::new(identity, name);
+        self.register_destination(destination).await
+    }
+
+    pub async fn register_destination(
+        &self,
+        destination: SingleInputDestination,
+    ) -> Arc<Mutex<SingleInputDestination>> {
         let address_hash = destination.desc.address_hash;
 
         log::debug!("tp({}): add destination {}", self.name, address_hash);

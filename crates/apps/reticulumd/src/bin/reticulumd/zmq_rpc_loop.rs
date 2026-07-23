@@ -189,8 +189,12 @@ fn handle_zmq_request_envelope(
             "zmq command ingress accepts request envelopes only",
         ));
     }
-    let response_payload =
-        daemon.handle_framed_request(envelope.payload.as_slice()).unwrap_or_else(|err| {
+    let response_payload = daemon
+        .handle_framed_request_for_session(
+            envelope.session_id.as_str(),
+            envelope.payload.as_slice(),
+        )
+        .unwrap_or_else(|err| {
             let response = RpcResponse {
                 id: envelope.request_id,
                 result: None,

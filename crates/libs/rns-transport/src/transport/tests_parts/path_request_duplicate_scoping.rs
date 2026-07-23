@@ -5,7 +5,7 @@ async fn local_path_response_duplicate_scoping_reaches_requester_and_iface_polic
     let local_identity = PrivateIdentity::new_from_rand(OsRng);
     let mut config = TransportConfig::new("test", &local_identity, true);
     config.set_retransmit(true);
-    let mut transport = Transport::new(config);
+    let transport = Transport::new(config);
 
     let local_destination = transport
         .add_destination(

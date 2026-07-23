@@ -290,6 +290,14 @@ impl RpcDaemon {
         let mut sdk_identities = HashMap::new();
         sdk_identities
             .insert(identity_hash.clone(), Self::default_sdk_identity(identity_hash.as_str()));
+        let mut sdk_identity_sessions = HashMap::new();
+        sdk_identity_sessions.insert(
+            super::LEGACY_RPC_SESSION_ID.to_owned(),
+            SdkIdentitySession {
+                authorized_identities: HashSet::from([identity_hash.clone()]),
+                active_identity: Some(identity_hash.clone()),
+            },
+        );
         let daemon = Self {
             store,
             identity_hash,
@@ -328,6 +336,7 @@ impl RpcDaemon {
             sdk_markers: Mutex::new(HashMap::new()),
             sdk_marker_order: Mutex::new(Vec::new()),
             sdk_identities: Mutex::new(sdk_identities),
+            sdk_identity_sessions: Mutex::new(sdk_identity_sessions),
             sdk_contacts: Mutex::new(HashMap::new()),
             sdk_contact_order: Mutex::new(Vec::new()),
             sdk_active_identity: Mutex::new(Some(active_identity)),
@@ -356,6 +365,7 @@ impl RpcDaemon {
             outbound_bridge,
             outbound_delivery_tx,
             announce_bridge,
+            service_identity_bridge: Mutex::new(None),
             event_sink_bridges,
             event_sink_tx,
             interface_mutation_bridge: Mutex::new(None),
@@ -399,6 +409,14 @@ impl RpcDaemon {
                 Some(trimmed.to_string())
             }
         });
+    }
+
+    pub fn set_service_identity_bridge(&self, bridge: Arc<dyn ServiceIdentityBridge>) {
+        let mut guard = self
+            .service_identity_bridge
+            .lock()
+            .expect("service_identity_bridge mutex poisoned");
+        *guard = Some(bridge);
     }
 
     pub fn set_sdk_custom_operations(&self, operations: Vec<SdkCustomOperationSpec>) {

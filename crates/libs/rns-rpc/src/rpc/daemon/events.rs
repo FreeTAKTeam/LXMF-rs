@@ -167,9 +167,17 @@ impl RpcDaemon {
     }
 
     pub fn handle_framed_request(&self, bytes: &[u8]) -> Result<Vec<u8>, std::io::Error> {
+        self.handle_framed_request_for_session(super::LEGACY_RPC_SESSION_ID, bytes)
+    }
+
+    pub fn handle_framed_request_for_session(
+        &self,
+        session_id: &str,
+        bytes: &[u8],
+    ) -> Result<Vec<u8>, std::io::Error> {
         let request: RpcRequest = codec::decode_frame(bytes)
             .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
-        let response = self.handle_rpc(request)?;
+        let response = super::with_rpc_session(session_id, || self.handle_rpc(request))?;
         codec::encode_frame(&response).map_err(std::io::Error::other)
     }
 

@@ -8,6 +8,12 @@ impl OutboundBridge for TransportBridge {
         options: &OutboundDeliveryOptions,
     ) -> Result<(), std::io::Error> {
         let _destination = parse_destination_hash_required(&record.destination)?;
+        if self.service_identity_for_destination(record.source.as_str()).is_none() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                format!("source delivery destination {} is not registered", record.source),
+            ));
+        }
         let daemon = self
             .daemon
             .lock()
@@ -36,14 +42,26 @@ impl OutboundBridge for TransportBridge {
         options: &OutboundDeliveryOptions,
     ) -> Result<(), std::io::Error> {
         let destination = parse_destination_hash_required(&record.destination)?;
+        let service_identity =
+            self.service_identity_for_destination(record.source.as_str()).ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    format!("source delivery destination {} is not registered", record.source),
+                )
+            })?;
+        let mut service_source_hash = [0u8; 16];
+        service_source_hash.copy_from_slice(
+            parse_destination_hash_required(service_identity.delivery_destination.as_str())?
+                .as_slice(),
+        );
         let daemon = self
             .daemon
             .lock()
             .expect("transport bridge daemon mutex poisoned")
             .clone()
             .ok_or_else(|| std::io::Error::other("daemon bridge unavailable"))?;
-        let local_delivery_identity = (destination == self.delivery_source_hash).then(|| {
-            let signer_identity = self.signer.as_identity();
+        let local_delivery_identity = (destination == service_source_hash).then(|| {
+            let signer_identity = service_identity.identity.as_identity();
             Identity::new_from_slices(
                 signer_identity.public_key_bytes(),
                 signer_identity.verifying_key_bytes(),
@@ -168,14 +186,14 @@ impl OutboundBridge for TransportBridge {
             direct_backchannel_links: self.direct_backchannel_links.clone(),
             receipt_tx: self.receipt_tx.clone(),
             message_id: record.id.clone(),
-            source_hash: self.delivery_source_hash,
+            source_hash: service_source_hash,
             destination,
             destination_hash: AddressHash::new(destination),
             destination_hex: record.destination.clone(),
             title: record.title.clone(),
             content: record.content.clone(),
             fields: record.fields.clone(),
-            signer: self.signer.clone(),
+            signer: service_identity.identity,
             stamp_cost,
             outbound_ticket,
             include_ticket: include_ticket_bytes,

@@ -11,10 +11,7 @@
           "if": {
             "properties": {
               "method": {
-                "enum": [
-                  "sdk_identity_list_v2",
-                  "sdk_identity_announce_now_v2"
-                ]
+                "const": "sdk_identity_list_v2"
               }
             },
             "required": [
@@ -26,6 +23,95 @@
               "params": {
                 "additionalProperties": false,
                 "properties": {
+                  "extensions": {
+                    "$ref": "#/$defs/extension_map"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "sdk_identity_create_v2"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "additionalProperties": false,
+                "properties": {
+                  "display_name": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "capabilities": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "metadata": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "extensions": {
+                    "$ref": "#/$defs/extension_map"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "method": {
+                "const": "sdk_identity_announce_now_v2"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "additionalProperties": false,
+                "properties": {
+                  "identity": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "minLength": 1
+                  },
+                  "display_name": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "capabilities": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "metadata": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
                   "extensions": {
                     "$ref": "#/$defs/extension_map"
                   }
@@ -140,6 +226,22 @@
                       "string",
                       "null"
                     ]
+                  },
+                  "display_name": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "capabilities": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "metadata": {
+                    "additionalProperties": true,
+                    "type": "object"
                   }
                 },
                 "required": [
@@ -526,6 +628,7 @@
         "method": {
           "enum": [
             "sdk_identity_list_v2",
+            "sdk_identity_create_v2",
             "sdk_identity_announce_now_v2",
             "sdk_identity_presence_list_v2",
             "sdk_identity_activate_v2",

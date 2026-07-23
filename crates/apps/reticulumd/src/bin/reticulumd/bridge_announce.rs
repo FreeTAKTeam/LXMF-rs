@@ -150,14 +150,7 @@ impl AnnounceBridge for TransportBridge {
         Ok(())
     }
 
-    fn announce_delivery(&self, _destination_hash: &str) -> Result<(), std::io::Error> {
-        let transport = self.transport.clone();
-        let destination = self.announce_destination.clone();
-        let app_data = self.current_delivery_announce_app_data();
-        tokio::spawn(async move {
-            transport.set_destination_announce_app_data(&destination, app_data.clone()).await;
-            transport.send_announce(&destination, app_data.as_deref()).await;
-        });
-        Ok(())
+    fn announce_delivery(&self, destination_hash: &str) -> Result<(), std::io::Error> {
+        self.announce_registered_service_destination(destination_hash)
     }
 }

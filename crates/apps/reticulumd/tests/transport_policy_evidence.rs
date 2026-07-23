@@ -157,7 +157,7 @@ async fn disabled_transport_does_not_relay_known_path_link_requests() {
 
 #[tokio::test]
 async fn disabled_transport_still_accepts_link_requests_for_local_destinations() {
-    let mut app = non_transport_instance("disabled-app-local-destination");
+    let app = non_transport_instance("disabled-app-local-destination");
     let local_destination = app
         .add_destination(
             PrivateIdentity::new_from_rand(OsRng),

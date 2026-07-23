@@ -65,6 +65,16 @@ fn built_in_entries() -> Vec<OperationEntry> {
         .with_alias("sdk_identity_list_v2")
         .with_required_capability("sdk.capability.identity_multi"),
         OperationEntry::new(
+            "app.identity.create",
+            "identity",
+            OperationKind::Command,
+            TransportVariant::Rpc,
+            "Create a persistent Reticulum service identity for this session.",
+        )
+        .with_alias("sdk_identity_create_v2")
+        .with_required_capability("sdk.capability.identity_multi")
+        .with_required_capability("sdk.capability.identity_import_export"),
+        OperationEntry::new(
             "app.identity.announce",
             "identity",
             OperationKind::Command,

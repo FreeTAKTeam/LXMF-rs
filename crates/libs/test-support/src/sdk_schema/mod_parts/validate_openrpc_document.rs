@@ -131,6 +131,7 @@ fn validate_openrpc_document(document: &JsonValue) {
         compile_schema(&compiled, "openrpc/SdkReleaseCEnvelope");
         for method_name in [
             "sdk_identity_list_v2",
+            "sdk_identity_create_v2",
             "sdk_identity_announce_now_v2",
             "sdk_identity_presence_list_v2",
             "sdk_identity_activate_v2",

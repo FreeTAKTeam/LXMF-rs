@@ -156,6 +156,13 @@ impl<B: SdkBackend> LxmfSdkIdentity for Client<B> {
         self.backend.identity_list()
     }
 
+    fn identity_create(
+        &self,
+        req: crate::domain::IdentityCreateRequest,
+    ) -> Result<crate::domain::IdentityBundle, SdkError> {
+        self.backend.identity_create(req)
+    }
+
     fn identity_announce_now(&self) -> Result<Ack, SdkError> {
         self.backend.identity_announce_now()
     }

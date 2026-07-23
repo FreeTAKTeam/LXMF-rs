@@ -148,7 +148,7 @@ async fn python_to_rust_channel_roundtrip() {
     let mut config =
         TransportConfig::new("python-channel-interop-rust-server", &rust_identity, true);
     config.set_path_request_timeout_secs(2);
-    let mut transport = Transport::new(config);
+    let transport = Transport::new(config);
     let iface_manager = transport.iface_manager();
     transport
         .iface_manager()
@@ -238,7 +238,7 @@ async fn python_to_rust_backbone_channel_roundtrip() {
     let mut config =
         TransportConfig::new("python-backbone-channel-interop-rust-server", &rust_identity, true);
     config.set_path_request_timeout_secs(2);
-    let mut transport = Transport::new(config);
+    let transport = Transport::new(config);
     let iface_manager = transport.iface_manager();
     transport.iface_manager().lock().await.spawn(
         rust_server_for_python_interop(
@@ -328,7 +328,7 @@ async fn python_to_rust_channel_sequence_callbacks_are_ordered() {
     let mut config =
         TransportConfig::new("python-channel-sequence-interop-rust-server", &rust_identity, true);
     config.set_path_request_timeout_secs(2);
-    let mut transport = Transport::new(config);
+    let transport = Transport::new(config);
     let iface_manager = transport.iface_manager();
     transport
         .iface_manager()
@@ -438,7 +438,7 @@ async fn python_to_rust_link_data_roundtrip() {
     let mut config =
         TransportConfig::new("python-link-data-interop-rust-server", &rust_identity, true);
     config.set_path_request_timeout_secs(2);
-    let mut transport = Transport::new(config);
+    let transport = Transport::new(config);
     let iface_manager = transport.iface_manager();
     transport
         .iface_manager()
@@ -508,7 +508,7 @@ async fn python_to_rust_backbone_link_data_roundtrip() {
     let mut config =
         TransportConfig::new("python-backbone-link-data-interop-rust-server", &rust_identity, true);
     config.set_path_request_timeout_secs(2);
-    let mut transport = Transport::new(config);
+    let transport = Transport::new(config);
     let iface_manager = transport.iface_manager();
     transport.iface_manager().lock().await.spawn(
         rust_server_for_python_interop(
@@ -580,7 +580,7 @@ async fn python_to_rust_request_response_roundtrip() {
     let mut config =
         TransportConfig::new("python-request-interop-rust-server", &rust_identity, true);
     config.set_path_request_timeout_secs(2);
-    let mut transport = Transport::new(config);
+    let transport = Transport::new(config);
     let iface_manager = transport.iface_manager();
     transport
         .iface_manager()
@@ -658,7 +658,7 @@ async fn python_to_rust_backbone_request_response_roundtrip() {
     let mut config =
         TransportConfig::new("python-backbone-request-interop-rust-server", &rust_identity, true);
     config.set_path_request_timeout_secs(2);
-    let mut transport = Transport::new(config);
+    let transport = Transport::new(config);
     let iface_manager = transport.iface_manager();
     transport.iface_manager().lock().await.spawn(
         rust_server_for_python_interop(
@@ -739,7 +739,7 @@ async fn python_to_rust_resource_backed_request_response_roundtrip() {
         TransportConfig::new("python-large-request-interop-rust-server", &rust_identity, true);
     config.set_path_request_timeout_secs(2);
     config.set_resource_retry_interval_secs(1);
-    let mut transport = Transport::new(config);
+    let transport = Transport::new(config);
     let iface_manager = transport.iface_manager();
     transport
         .iface_manager()
@@ -842,7 +842,7 @@ async fn python_to_rust_backbone_resource_backed_request_response_roundtrip() {
     );
     config.set_path_request_timeout_secs(2);
     config.set_resource_retry_interval_secs(1);
-    let mut transport = Transport::new(config);
+    let transport = Transport::new(config);
     let iface_manager = transport.iface_manager();
     transport.iface_manager().lock().await.spawn(
         rust_server_for_python_interop(

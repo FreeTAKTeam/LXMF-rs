@@ -15,7 +15,7 @@ async fn python_to_rust_link_identify_roundtrip() {
     let mut config =
         TransportConfig::new("python-identify-interop-rust-server", &rust_identity, true);
     config.set_path_request_timeout_secs(2);
-    let mut transport = Transport::new(config);
+    let transport = Transport::new(config);
     let iface_manager = transport.iface_manager();
     transport
         .iface_manager()
@@ -83,7 +83,7 @@ async fn python_to_rust_channel_buffer_roundtrip() {
     let mut config =
         TransportConfig::new("python-buffer-interop-rust-server", &rust_identity, true);
     config.set_path_request_timeout_secs(2);
-    let mut transport = Transport::new(config);
+    let transport = Transport::new(config);
     let iface_manager = transport.iface_manager();
     transport
         .iface_manager()
@@ -157,7 +157,7 @@ async fn python_to_rust_raw_resource_roundtrip() {
         TransportConfig::new("python-resource-interop-rust-server", &rust_identity, true);
     config.set_path_request_timeout_secs(2);
     config.set_resource_retry_interval_secs(1);
-    let mut transport = Transport::new(config);
+    let transport = Transport::new(config);
     let iface_manager = transport.iface_manager();
     transport
         .iface_manager()

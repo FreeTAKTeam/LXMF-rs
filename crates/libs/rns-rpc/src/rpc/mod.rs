@@ -32,3 +32,25 @@ include!("helpers.rs");
 pub fn handle_framed_request(daemon: &RpcDaemon, bytes: &[u8]) -> Result<Vec<u8>, std::io::Error> {
     daemon.handle_framed_request(bytes)
 }
+
+thread_local! {
+    static RPC_SESSION_CONTEXT: std::cell::RefCell<Option<String>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+const LEGACY_RPC_SESSION_ID: &str = "legacy-rpc";
+
+fn with_rpc_session<T>(session_id: &str, operation: impl FnOnce() -> T) -> T {
+    RPC_SESSION_CONTEXT.with(|context| {
+        let previous = context.replace(Some(session_id.to_owned()));
+        let result = operation();
+        context.replace(previous);
+        result
+    })
+}
+
+fn current_rpc_session_id() -> String {
+    RPC_SESSION_CONTEXT
+        .with(|context| context.borrow().clone())
+        .unwrap_or_else(|| LEGACY_RPC_SESSION_ID.to_owned())
+}
