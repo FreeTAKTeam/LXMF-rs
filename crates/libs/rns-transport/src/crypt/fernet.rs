@@ -187,21 +187,9 @@ impl<R: CryptoRngCore + Copy> Fernet<R> {
 
         hmac.update(&token_data[..token_data.len() - HMAC_OUT_SIZE]);
 
-        let actual_tag = hmac.finalize().into_bytes();
+        hmac.verify_slice(expected_tag).map_err(|_| RnsError::IncorrectSignature)?;
 
-        let valid = expected_tag
-            .iter()
-            .zip(actual_tag.as_slice())
-            .map(|(x, y)| x.cmp(y))
-            .find(|&ord| ord != cmp::Ordering::Equal)
-            .unwrap_or(actual_tag.len().cmp(&expected_tag.len()))
-            == cmp::Ordering::Equal;
-
-        if valid {
-            Ok(VerifiedToken(token_data))
-        } else {
-            Err(RnsError::IncorrectSignature)
-        }
+        Ok(VerifiedToken(token_data))
     }
 
     pub fn decrypt<'a, 'b>(
@@ -266,21 +254,9 @@ impl CachedFernet {
 
         hmac.update(&token_data[..token_data.len() - HMAC_OUT_SIZE]);
 
-        let actual_tag = hmac.finalize().into_bytes();
+        hmac.verify_slice(expected_tag).map_err(|_| RnsError::IncorrectSignature)?;
 
-        let valid = expected_tag
-            .iter()
-            .zip(actual_tag.as_slice())
-            .map(|(x, y)| x.cmp(y))
-            .find(|&ord| ord != cmp::Ordering::Equal)
-            .unwrap_or(actual_tag.len().cmp(&expected_tag.len()))
-            == cmp::Ordering::Equal;
-
-        if valid {
-            Ok(VerifiedToken(token_data))
-        } else {
-            Err(RnsError::IncorrectSignature)
-        }
+        Ok(VerifiedToken(token_data))
     }
 
     pub fn decrypt<'a, 'b>(
