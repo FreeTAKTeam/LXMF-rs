@@ -10,14 +10,16 @@ impl RpcBackendClient {
                 format!("failed to open mtls private key {}: {}", path.display(), err),
             )
         })?;
-        let mut reader = BufReader::new(file);
-        let key = private_key(&mut reader).map_err(|err| {
-            SdkError::new(
-                code::SECURITY_AUTH_REQUIRED,
-                ErrorCategory::Security,
-                format!("failed to parse mtls private key {}: {}", path.display(), err),
-            )
-        })?;
+        let key = rustls::pki_types::PrivateKeyDer::pem_reader_iter(file)
+            .next()
+            .transpose()
+            .map_err(|err| {
+                SdkError::new(
+                    code::SECURITY_AUTH_REQUIRED,
+                    ErrorCategory::Security,
+                    format!("failed to parse mtls private key {}: {}", path.display(), err),
+                )
+            })?;
         key.ok_or_else(|| {
             SdkError::new(
                 code::SECURITY_AUTH_REQUIRED,

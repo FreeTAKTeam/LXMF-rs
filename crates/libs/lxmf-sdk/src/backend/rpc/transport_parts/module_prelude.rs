@@ -16,13 +16,13 @@ use rustls::pki_types::ServerName;
 
 use rustls::{ClientConfig, RootCertStore};
 
-use rustls_pemfile::private_key;
+use rustls_pki_types::pem::PemObject;
 
 use sha2::Sha256;
 
 use std::fs::File;
 
-use std::io::{self, BufReader, Read, Write};
+use std::io::{Read, Write};
 
 use std::net::{IpAddr, Shutdown, TcpStream};
 

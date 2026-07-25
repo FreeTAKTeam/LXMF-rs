@@ -16,7 +16,7 @@ lxmf-reference.workspace = true
 lxmf-core.workspace = true
 rns-rpc = { workspace = true, optional = true }
 rustls = { workspace = true, optional = true }
-rustls-pemfile = { workspace = true, optional = true }
+rustls-pki-types = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 thiserror.workspace = true
@@ -33,7 +33,7 @@ zeroize.workspace = true
 default = ["std", "sdk-async", "rpc-backend", "zmq-pipeline-backend"]
 std = []
 sdk-async = ["dep:tokio", "dep:tokio-stream"]
-rpc-backend = ["std", "dep:rns-rpc", "dep:rustls", "dep:rustls-pemfile", "dep:tokio-rustls"]
+rpc-backend = ["std", "dep:rns-rpc", "dep:rustls", "dep:rustls-pki-types", "dep:tokio-rustls"]
 zmq-pipeline-backend = ["std", "sdk-async", "dep:rns-rpc", "dep:zeromq"]
 embedded-alloc = []
 loom-tests = []

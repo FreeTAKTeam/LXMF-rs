@@ -139,7 +139,7 @@ const DAEMON_RELEASE_BINARIES: &[(&str, &str)] = &[
 ];
 
 const CARGO_AUDIT_IGNORE_ADVISORIES: &[&str] =
-    &["RUSTSEC-2024-0421", "RUSTSEC-2024-0436", "RUSTSEC-2026-0009", "RUSTSEC-2025-0134"];
+    &["RUSTSEC-2024-0421", "RUSTSEC-2024-0436", "RUSTSEC-2026-0009"];
 
 const SCHEMA_CLIENT_SMOKE_REPORT_PATH: &str = "target/interop/schema-client-smoke-report.txt";
 

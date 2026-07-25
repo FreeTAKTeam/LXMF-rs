@@ -109,9 +109,9 @@ fn build_tls_server_config(config: &RpcTlsConfig) -> io::Result<std::sync::Arc<S
 
 fn load_cert_chain(path: &Path) -> io::Result<Vec<rustls::pki_types::CertificateDer<'static>>> {
     let file = File::open(path)?;
-    let mut reader = BufReader::new(file);
-    let certificates =
-        rustls_pemfile::certs(&mut reader).collect::<Result<Vec<_>, _>>().map_err(|err| {
+    let certificates = rustls::pki_types::CertificateDer::pem_reader_iter(file)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|err| {
             io::Error::new(
                 io::ErrorKind::InvalidData,
                 format!("failed to parse PEM certs from {}: {}", path.display(), err),
@@ -128,13 +128,15 @@ fn load_cert_chain(path: &Path) -> io::Result<Vec<rustls::pki_types::Certificate
 
 fn load_private_key(path: &Path) -> io::Result<rustls::pki_types::PrivateKeyDer<'static>> {
     let file = File::open(path)?;
-    let mut reader = BufReader::new(file);
-    let key = private_key(&mut reader).map_err(|err| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("failed to parse private key {}: {}", path.display(), err),
-        )
-    })?;
+    let key = rustls::pki_types::PrivateKeyDer::pem_reader_iter(file)
+        .next()
+        .transpose()
+        .map_err(|err| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("failed to parse private key {}: {}", path.display(), err),
+            )
+        })?;
     key.ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::InvalidData,
@@ -230,6 +232,43 @@ mod rpc_loop_tests {
         let line = rpc_ready_line("http", "127.0.0.1:4242");
 
         assert!(line.contains("listening on http://127.0.0.1:4242"));
+    }
+
+    #[test]
+    fn tls_pem_loaders_accept_certificate_and_private_key_sections() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let cert_path = temp.path().join("certificate.pem");
+        let key_path = temp.path().join("private-key.pem");
+        std::fs::write(
+            &cert_path,
+            b"-----BEGIN CERTIFICATE-----\nAQID\n-----END CERTIFICATE-----\n",
+        )
+        .expect("write certificate");
+        std::fs::write(
+            &key_path,
+            b"-----BEGIN PRIVATE KEY-----\nAQID\n-----END PRIVATE KEY-----\n",
+        )
+        .expect("write private key");
+
+        let certificates = load_cert_chain(&cert_path).expect("load certificate");
+        let private_key = load_private_key(&key_path).expect("load private key");
+
+        assert_eq!(certificates.len(), 1);
+        assert_eq!(certificates[0].as_ref(), &[1, 2, 3]);
+        assert_eq!(private_key.secret_der(), &[1, 2, 3]);
+    }
+
+    #[test]
+    fn tls_pem_loaders_report_files_without_matching_sections() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("empty.pem");
+        std::fs::write(&path, b"").expect("write empty PEM file");
+
+        let cert_error = load_cert_chain(&path).expect_err("empty certificate file rejected");
+        let key_error = load_private_key(&path).expect_err("empty private key file rejected");
+
+        assert!(cert_error.to_string().contains("no certificates found"));
+        assert!(key_error.to_string().contains("no private key found"));
     }
 
     #[test]

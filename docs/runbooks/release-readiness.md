@@ -56,7 +56,7 @@ Current GitHub PR CI in `.github/workflows/ci.yml` enforces these jobs:
   - `cargo run -p xtask -- sdk-migration-check`
 - `security`
   - `cargo deny check bans licenses sources`
-  - `cargo audit --ignore RUSTSEC-2024-0421 --ignore RUSTSEC-2024-0436 --ignore RUSTSEC-2026-0009 --ignore RUSTSEC-2025-0134`
+  - `cargo audit --ignore RUSTSEC-2024-0421 --ignore RUSTSEC-2024-0436 --ignore RUSTSEC-2026-0009`
 
 `.github/workflows/python-interop.yml` is also a pull-request gate for pinned
 reference compatibility. It runs:

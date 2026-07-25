@@ -138,7 +138,7 @@ tokio-serial = "5.4.4"
 tokio-stream = "0.1"
 zeromq = { version = "0.6.0", default-features = false, features = ["tokio-runtime", "tcp-transport"] }
 rustls = "0.23.23"
-rustls-pemfile = "2.2.0"
+rustls-pki-types = { version = "1.15", features = ["std"] }
 x509-parser = "0.16.0"
 rand_core = "0.6.4"
 x25519-dalek = "2.0.1"

@@ -8,13 +8,13 @@ use rustls::server::WebPkiClientVerifier;
 
 use rustls::{RootCertStore, ServerConfig};
 
-use rustls_pemfile::private_key;
+use rustls_pki_types::pem::PemObject;
 
 use serde_json::json;
 
 use std::fs::File;
 
-use std::io::{self, BufReader};
+use std::io;
 
 use std::net::{IpAddr, SocketAddr};
 
