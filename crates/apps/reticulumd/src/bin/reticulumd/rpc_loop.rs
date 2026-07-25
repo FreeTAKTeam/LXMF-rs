@@ -5,4 +5,6 @@ mod rpc_access_log;
 
 include!("rpc_loop_parts/module_core.rs");
 
+include!("rpc_loop_parts/network_listeners.rs");
+
 include!("rpc_loop_parts/read_http_request.rs");

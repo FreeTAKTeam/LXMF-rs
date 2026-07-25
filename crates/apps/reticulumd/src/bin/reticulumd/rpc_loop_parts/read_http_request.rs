@@ -2,14 +2,31 @@ async fn read_http_request<S>(stream: &mut S) -> io::Result<Vec<u8>>
 where
     S: AsyncRead + Unpin,
 {
+    read_http_request_with_timeout(stream, RPC_REQUEST_TIMEOUT).await
+}
+
+async fn read_http_request_with_timeout<S>(
+    stream: &mut S,
+    request_timeout: Duration,
+) -> io::Result<Vec<u8>>
+where
+    S: AsyncRead + Unpin,
+{
+    timeout(request_timeout, read_http_request_inner(stream))
+        .await
+        .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "rpc read timed out"))?
+}
+
+async fn read_http_request_inner<S>(stream: &mut S) -> io::Result<Vec<u8>>
+where
+    S: AsyncRead + Unpin,
+{
     let mut buffer = Vec::new();
     let mut expected_len: Option<usize> = None;
 
     loop {
         let mut chunk = [0_u8; 4096];
-        let read = timeout(RPC_READ_TIMEOUT, stream.read(&mut chunk))
-            .await
-            .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "rpc read timed out"))??;
+        let read = stream.read(&mut chunk).await?;
         if read == 0 {
             break;
         }
@@ -270,6 +287,47 @@ mod rpc_loop_tests {
             assert_eq!(err.kind(), io::ErrorKind::InvalidData);
             assert!(err.to_string().contains("maximum size"));
         });
+    }
+
+    #[test]
+    fn read_http_request_enforces_total_deadline_across_reads() {
+        let runtime =
+            tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+        runtime.block_on(async {
+            let (mut client, mut server) = duplex(4096);
+            let writer = tokio::spawn(async move {
+                for byte in b"GET /rpc HTTP/1.1\r\n" {
+                    if client.write_all(&[*byte]).await.is_err() {
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(40)).await;
+                }
+            });
+
+            let err =
+                read_http_request_with_timeout(&mut server, Duration::from_millis(75))
+                    .await
+                    .expect_err("slow request should exceed its total deadline");
+            assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+            writer.abort();
+        });
+    }
+
+    #[test]
+    fn remote_connection_budget_recovers_when_a_connection_finishes() {
+        let permits = Arc::new(Semaphore::new(1));
+        let permit =
+            reserve_remote_connection(&permits).expect("first connection should be admitted");
+        assert!(
+            reserve_remote_connection(&permits).is_err(),
+            "connection above the configured limit should be rejected"
+        );
+
+        drop(permit);
+        assert!(
+            reserve_remote_connection(&permits).is_ok(),
+            "finishing a connection should restore listener capacity"
+        );
     }
 
     #[test]

@@ -29,7 +29,7 @@ use tokio::net::UnixListener;
 
 use tokio::net::{TcpListener, TcpStream};
 
-use tokio::sync::watch;
+use tokio::sync::{watch, OwnedSemaphorePermit, Semaphore};
 
 use tokio::time::{timeout, Duration};
 
@@ -41,7 +41,11 @@ use x509_parser::extensions::ParsedExtension;
 
 use x509_parser::prelude::{FromDer, GeneralName, X509Certificate};
 
-const RPC_READ_TIMEOUT: Duration = Duration::from_secs(5);
+const RPC_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+
+const RPC_TLS_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
+
+const RPC_MAX_REMOTE_CONNECTIONS: usize = 128;
 
 const RPC_MAX_HEADER_BYTES: usize = 16 * 1024;
 
@@ -113,33 +117,6 @@ pub(super) async fn run_rpc_loop_until(
     }
 }
 
-async fn run_plain_rpc_loop(
-    addr: SocketAddr,
-    daemon: Arc<RpcDaemon>,
-    mut shutdown: ShutdownReceiver,
-) {
-    let listener = TcpListener::bind(addr).await.expect("bind rpc listener");
-    println!("{}", rpc_ready_line("http", addr));
-
-    loop {
-        tokio::select! {
-            shutdown_result = shutdown.changed() => {
-                if shutdown_result.is_err() || *shutdown.borrow() {
-                    log::info!("[daemon] rpc tcp listener shutting down");
-                    break;
-                }
-            }
-            accepted = listener.accept() => {
-                let (stream, peer_addr) = accepted.expect("accept rpc socket");
-                let daemon = daemon.clone();
-                tokio::spawn(async move {
-                    handle_connection(stream, peer_addr, daemon.as_ref(), None).await;
-                });
-            }
-        }
-    }
-}
-
 #[cfg(unix)]
 async fn run_unix_rpc_loop(path: PathBuf, daemon: Arc<RpcDaemon>, mut shutdown: ShutdownReceiver) {
     prepare_rpc_unix_socket_path(&path).expect("prepare rpc unix socket path");
@@ -200,54 +177,6 @@ async fn run_unix_rpc_loop(path: PathBuf, _daemon: Arc<RpcDaemon>, _shutdown: Sh
         "[daemon] ignoring --rpc-unix {} because Unix sockets are not supported on this platform",
         path.display()
     );
-}
-
-async fn run_tls_rpc_loop(
-    addr: SocketAddr,
-    daemon: Arc<RpcDaemon>,
-    config: RpcTlsConfig,
-    mut shutdown: ShutdownReceiver,
-) {
-    let tls_server = build_tls_server_config(&config).expect("build rpc tls server config");
-    let acceptor = TlsAcceptor::from(tls_server);
-    let listener = TcpListener::bind(addr).await.expect("bind tls rpc listener");
-    println!("{}", rpc_ready_line("https", addr));
-
-    loop {
-        tokio::select! {
-            shutdown_result = shutdown.changed() => {
-                if shutdown_result.is_err() || *shutdown.borrow() {
-                    log::info!("[daemon] rpc tls listener shutting down");
-                    break;
-                }
-            }
-            accepted = listener.accept() => {
-                let (stream, peer_addr) = accepted.expect("accept tls rpc socket");
-                let daemon = daemon.clone();
-                let acceptor = acceptor.clone();
-                tokio::spawn(async move {
-                    match acceptor.accept(stream).await {
-                        Ok(tls_stream) => {
-                            let transport_auth = extract_transport_auth(&tls_stream);
-                            handle_connection(
-                                tls_stream,
-                                peer_addr,
-                                daemon.as_ref(),
-                                Some(transport_auth),
-                            )
-                            .await;
-                        }
-                        Err(err) => {
-                            log::error!(
-                                "[daemon] rpc tls handshake failed peer={} err={}",
-                                peer_addr, err
-                            );
-                        }
-                    }
-                });
-            }
-        }
-    }
 }
 
 #[tracing::instrument(name = "rpc_conn", skip(stream, daemon, transport_auth))]
