@@ -106,6 +106,7 @@ impl RpcDaemon {
         Some(claims)
     }
 
+    #[cfg(test)]
     pub(super) fn token_signature(secret: &str, payload: &str) -> String {
         let mut mac = hmac::Hmac::<sha2::Sha256>::new_from_slice(secret.as_bytes())
             .expect("HMAC key length is valid for HMAC-SHA256");

@@ -188,16 +188,27 @@ impl RpcDaemon {
                     let signed_payload = zeroize::Zeroizing::new(format!(
                         "iss={issuer};aud={audience};jti={jti};sub={subject};iat={iat};exp={exp}"
                     ));
-                    let expected_signature = zeroize::Zeroizing::new(Self::token_signature(
-                        shared_secret.as_str(),
-                        signed_payload.as_str(),
-                    ));
-                    if signature != expected_signature.as_str() {
-                        return Err(RpcError::new(
+                    let signature_bytes = hex::decode(signature).map_err(|_| {
+                        RpcError::new(
+                            "SDK_SECURITY_TOKEN_INVALID".to_string(),
+                            "token signature is invalid".to_string(),
+                        )
+                    })?;
+                    let mut mac =
+                        hmac::Hmac::<sha2::Sha256>::new_from_slice(shared_secret.as_bytes())
+                            .map_err(|_| {
+                                RpcError::new(
+                                    "SDK_SECURITY_TOKEN_INVALID".to_string(),
+                                    "token authentication failed".to_string(),
+                                )
+                            })?;
+                    mac.update(signed_payload.as_bytes());
+                    mac.verify_slice(&signature_bytes).map_err(|_| {
+                        RpcError::new(
                             "SDK_SECURITY_TOKEN_INVALID".to_string(),
                             "token signature does not match runtime policy".to_string(),
-                        ));
-                    }
+                        )
+                    })?;
                     if issuer != expected_issuer || audience != expected_audience {
                         return Err(RpcError::new(
                             "SDK_SECURITY_TOKEN_INVALID".to_string(),
