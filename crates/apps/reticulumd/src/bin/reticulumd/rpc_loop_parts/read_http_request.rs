@@ -380,6 +380,44 @@ mod rpc_loop_tests {
 
     #[cfg(unix)]
     #[test]
+    fn prepare_rpc_unix_socket_path_refuses_symlink() {
+        use std::os::unix::fs::symlink;
+
+        let temp = tempfile::tempdir().expect("tempdir");
+        let target = temp.path().join("target");
+        let path = temp.path().join("reticulumd.sock");
+        std::fs::write(&target, b"target").expect("write target");
+        symlink(&target, &path).expect("create symlink");
+
+        let err = prepare_rpc_unix_socket_path(&path).expect_err("symlink rejected");
+        assert_eq!(err.kind(), io::ErrorKind::AlreadyExists);
+        assert!(path.is_symlink());
+        assert!(target.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rpc_unix_socket_is_private() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let runtime =
+            tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+        runtime.block_on(async {
+            let temp = tempfile::tempdir().expect("tempdir");
+            let path = temp.path().join("reticulumd.sock");
+            let listener = bind_private_rpc_unix_listener(&path).expect("bind private socket");
+
+            let mode =
+                std::fs::metadata(&path).expect("socket metadata").permissions().mode() & 0o777;
+            assert_eq!(mode, RPC_UNIX_SOCKET_MODE);
+
+            drop(listener);
+            cleanup_rpc_unix_socket_path(&path).expect("cleanup socket");
+        });
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn unix_rpc_loop_removes_stale_socket_and_cleans_up_on_shutdown() {
         let runtime =
             tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");

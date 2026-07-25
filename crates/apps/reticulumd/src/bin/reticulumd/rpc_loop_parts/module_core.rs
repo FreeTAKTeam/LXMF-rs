@@ -119,8 +119,7 @@ pub(super) async fn run_rpc_loop_until(
 
 #[cfg(unix)]
 async fn run_unix_rpc_loop(path: PathBuf, daemon: Arc<RpcDaemon>, mut shutdown: ShutdownReceiver) {
-    prepare_rpc_unix_socket_path(&path).expect("prepare rpc unix socket path");
-    let listener = UnixListener::bind(&path).expect("bind rpc unix socket");
+    let listener = bind_private_rpc_unix_listener(&path).expect("bind private rpc unix socket");
     log::info!("reticulumd listening on unix:{}", path.display());
     let peer_addr = SocketAddr::from(([127, 0, 0, 1], 0));
 
@@ -142,33 +141,6 @@ async fn run_unix_rpc_loop(path: PathBuf, daemon: Arc<RpcDaemon>, mut shutdown: 
         }
     }
     cleanup_rpc_unix_socket_path(&path).expect("cleanup rpc unix socket path");
-}
-
-#[cfg(unix)]
-fn prepare_rpc_unix_socket_path(path: &Path) -> io::Result<()> {
-    if let Ok(metadata) = std::fs::metadata(path) {
-        use std::os::unix::fs::FileTypeExt;
-        if metadata.file_type().is_socket() {
-            std::fs::remove_file(path)?;
-        } else {
-            return Err(io::Error::new(
-                io::ErrorKind::AlreadyExists,
-                format!("refusing to remove non-socket rpc unix path {}", path.display()),
-            ));
-        }
-    }
-    Ok(())
-}
-
-#[cfg(unix)]
-fn cleanup_rpc_unix_socket_path(path: &Path) -> io::Result<()> {
-    if let Ok(metadata) = std::fs::metadata(path) {
-        use std::os::unix::fs::FileTypeExt;
-        if metadata.file_type().is_socket() {
-            std::fs::remove_file(path)?;
-        }
-    }
-    Ok(())
 }
 
 #[cfg(not(unix))]

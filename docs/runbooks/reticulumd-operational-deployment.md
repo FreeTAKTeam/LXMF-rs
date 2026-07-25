@@ -28,7 +28,16 @@ curl --unix-socket /tmp/lxmf-rpc.sock http://localhost/metrics
 
 The daemon removes an existing socket at the configured path only when the path
 is actually a Unix socket. It refuses to remove regular files or directories.
-On graceful shutdown, the listener exits and removes the socket path.
+The socket is explicitly restricted to mode `0600`, independent of the process
+umask. On graceful shutdown, the listener exits and removes the socket path.
+
+The default `/tmp` location preserves compatibility with existing clients.
+Because `/tmp` is shared, another local user can reserve that pathname before
+the daemon starts and prevent startup. The socket mode prevents other users
+from opening connections after permission hardening completes. Production
+services should place the socket in a private runtime directory, such as
+`/run/reticulumd`, with directory mode `0700`. The daemon does not change
+permissions on a caller-provided parent directory.
 
 ## Optional TCP Deployment
 
@@ -86,6 +95,7 @@ Wants=network-online.target
 Type=simple
 ExecStart=/usr/local/bin/reticulumd --rpc-unix /run/reticulumd/lxmf-rpc.sock
 RuntimeDirectory=reticulumd
+RuntimeDirectoryMode=0700
 Restart=on-failure
 RestartSec=2
 KillSignal=SIGINT
