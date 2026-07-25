@@ -15,11 +15,22 @@ pub enum KeyPurpose {
     Custom(String),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StoredKey {
     pub key_id: String,
     pub purpose: KeyPurpose,
     pub material: Vec<u8>,
+}
+
+impl core::fmt::Debug for StoredKey {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        formatter
+            .debug_struct("StoredKey")
+            .field("key_id", &self.key_id)
+            .field("purpose", &self.purpose)
+            .field("material", &"[REDACTED]")
+            .finish()
+    }
 }
 
 pub trait KeyManagerBackend {
@@ -81,7 +92,8 @@ pub struct FileKeyManager {
 impl FileKeyManager {
     pub fn new(root: impl Into<std::path::PathBuf>) -> Result<Self, RnsError> {
         let root = root.into();
-        std::fs::create_dir_all(&root).map_err(|_| RnsError::ConnectionError)?;
+        crate::secure_storage::ensure_private_directory(&root)
+            .map_err(|_| RnsError::ConnectionError)?;
         Ok(Self { root })
     }
 
@@ -111,10 +123,9 @@ impl KeyManagerBackend for FileKeyManager {
 
     fn put(&self, key: StoredKey) -> Result<(), RnsError> {
         let path = self.path_for_key(key.key_id.as_str())?;
-        let tmp_path = path.with_extension("tmp");
         let bytes = rmp_serde::to_vec_named(&key).map_err(|_| RnsError::PacketError)?;
-        std::fs::write(&tmp_path, bytes).map_err(|_| RnsError::ConnectionError)?;
-        std::fs::rename(&tmp_path, &path).map_err(|_| RnsError::ConnectionError)?;
+        crate::secure_storage::atomic_write_private(&path, &bytes)
+            .map_err(|_| RnsError::ConnectionError)?;
         Ok(())
     }
 

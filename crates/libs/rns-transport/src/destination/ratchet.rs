@@ -92,9 +92,6 @@ impl RatchetState {
     }
 
     fn persist(&self, identity: &PrivateIdentity, path: &Path) -> Result<(), RnsError> {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|_| RnsError::PacketError)?;
-        }
         let packed = pack_ratchets(&self.ratchets)?;
         let signature = identity.sign(&packed).to_bytes();
         let persisted = PersistedRatchets {
@@ -102,13 +99,8 @@ impl RatchetState {
             ratchets: ByteBuf::from(packed),
         };
         let encoded = rmp_serde::to_vec(&persisted).map_err(|_| RnsError::PacketError)?;
-        let tmp_path = path.with_extension("tmp");
-        std::fs::write(&tmp_path, encoded).map_err(|_| RnsError::PacketError)?;
-        #[cfg(windows)]
-        if path.exists() {
-            std::fs::remove_file(path).map_err(|_| RnsError::PacketError)?;
-        }
-        std::fs::rename(&tmp_path, path).map_err(|_| RnsError::PacketError)?;
+        rns_core::secure_storage::atomic_write_private(path, &encoded)
+            .map_err(|_| RnsError::PacketError)?;
         Ok(())
     }
 
@@ -162,4 +154,72 @@ pub(crate) fn try_decrypt_with_ratchets(
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RatchetState;
+    use crate::identity::PrivateIdentity;
+    use rand_core::OsRng;
+
+    #[test]
+    fn persisted_ratchets_roundtrip() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("ratchets").join("destination.ratchets");
+        let identity = PrivateIdentity::new_from_rand(OsRng);
+        let expected = vec![[0x42; super::RATCHET_LENGTH]];
+        let state = RatchetState { ratchets: expected.clone(), ..RatchetState::default() };
+
+        state.persist(&identity, &path).expect("persist ratchets");
+        let mut loaded = RatchetState::default();
+        loaded.reload(&identity, &path).expect("reload ratchets");
+
+        assert_eq!(loaded.ratchets, expected);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn persisted_ratchets_use_private_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = tempfile::tempdir().expect("tempdir");
+        let directory = temp.path().join("ratchets");
+        std::fs::create_dir(&directory).expect("create permissive ratchet directory");
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o755))
+            .expect("set permissive directory mode");
+        let path = directory.join("destination.ratchets");
+        let identity = PrivateIdentity::new_from_rand(OsRng);
+
+        RatchetState::default().persist(&identity, &path).expect("persist ratchets");
+
+        let directory_mode =
+            std::fs::metadata(&directory).expect("ratchet directory metadata").permissions().mode()
+                & 0o777;
+        let file_mode =
+            std::fs::metadata(&path).expect("ratchet file metadata").permissions().mode() & 0o777;
+        assert_eq!(directory_mode, 0o700);
+        assert_eq!(file_mode, 0o600);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn persisted_ratchets_do_not_follow_legacy_temp_symlink() {
+        use std::os::unix::fs::symlink;
+
+        let temp = tempfile::tempdir().expect("tempdir");
+        let directory = temp.path().join("ratchets");
+        std::fs::create_dir(&directory).expect("create ratchet directory");
+        let path = directory.join("destination.ratchets");
+        let victim = temp.path().join("victim");
+        std::fs::write(&victim, b"unchanged").expect("write victim");
+        let legacy_tmp = path.with_extension("tmp");
+        symlink(&victim, &legacy_tmp).expect("create legacy temp symlink");
+        let identity = PrivateIdentity::new_from_rand(OsRng);
+
+        RatchetState::default().persist(&identity, &path).expect("persist ratchets");
+
+        assert_eq!(std::fs::read(&victim).expect("read victim"), b"unchanged");
+        assert!(legacy_tmp.is_symlink());
+        assert!(path.is_file());
+    }
 }
