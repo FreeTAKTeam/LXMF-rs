@@ -289,6 +289,59 @@ fn sdk_property_stream_gap_reports_consistent_drop_metadata() {
 }
 
 #[test]
+fn sdk_stream_gap_only_batch_keeps_cursor_before_retained_events() {
+    let daemon = RpcDaemon::test_instance();
+    let configure = daemon
+        .handle_rpc(rpc_request(
+            1_103,
+            "sdk_configure_v2",
+            json!({
+                "expected_revision": 0,
+                "patch": {
+                    "overflow_policy": "drop_oldest",
+                    "event_stream": { "max_poll_events": 4096 }
+                }
+            }),
+        ))
+        .expect("configure");
+    assert!(configure.error.is_none());
+
+    for idx in 0..(SDK_EVENT_LOG_CAPACITY + 1) {
+        daemon.emit_event(RpcEvent {
+            event_type: "property_gap_cursor".to_string(),
+            payload: json!({ "idx": idx }),
+        });
+    }
+
+    let first = daemon
+        .handle_rpc(rpc_request(
+            1_104,
+            "sdk_poll_events_v2",
+            json!({ "cursor": null, "max": 1 }),
+        ))
+        .expect("gap-only poll");
+    let first_result = first.result.expect("gap-only result");
+    let events = first_result["events"].as_array().expect("events");
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0]["event_type"], json!("StreamGap"));
+
+    let follow = daemon
+        .handle_rpc(rpc_request(
+            1_105,
+            "sdk_poll_events_v2",
+            json!({
+                "cursor": first_result["next_cursor"].as_str().expect("cursor"),
+                "max": 1
+            }),
+        ))
+        .expect("retained-event poll");
+    let follow_result = follow.result.expect("retained result");
+    let follow_events = follow_result["events"].as_array().expect("events");
+    assert_eq!(follow_events.len(), 1);
+    assert_eq!(follow_events[0]["event_type"], json!("property_gap_cursor"));
+}
+
+#[test]
 fn native_stream_gap_frame_matches_poll_gap_metadata_shape() {
     let daemon = RpcDaemon::test_instance();
     let frame = daemon.sdk_stream_gap_frame(42, 47, 5);

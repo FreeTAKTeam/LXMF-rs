@@ -158,3 +158,60 @@ async fn service_identities_are_distinct_persistent_and_session_scoped() {
         bundle_a["delivery_destination"]
     );
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn paper_encoding_uses_selected_service_identity() {
+    use base64::Engine as _;
+
+    let (daemon, bridge, recipient, recipient_hex) =
+        test_transport_bridge_fixture_with_peer().await;
+    daemon.set_service_identity_bridge(bridge);
+    let service_identity = PrivateIdentity::new_from_rand(rand_core::OsRng);
+    let imported = session_rpc(
+        &daemon,
+        "paper-service",
+        20,
+        "sdk_identity_import_v2",
+        json!({
+            "bundle_base64": base64::engine::general_purpose::STANDARD
+                .encode(service_identity.to_private_key_bytes()),
+            "display_name": "Paper Service"
+        }),
+    );
+    let source = imported.result.expect("import result")["identity"]["delivery_destination"]
+        .as_str()
+        .expect("delivery destination")
+        .to_string();
+
+    let send = session_rpc(
+        &daemon,
+        "paper-service",
+        21,
+        "send_message_v2",
+        json!({
+            "id": "service-paper-message",
+            "source": source,
+            "destination": recipient_hex,
+            "title": "Service paper",
+            "content": "selected identity",
+            "method": "paper"
+        }),
+    );
+    assert!(send.error.is_none(), "{:?}", send.error);
+
+    let encoded = session_rpc(
+        &daemon,
+        "paper-service",
+        22,
+        "sdk_paper_encode_v2",
+        json!({ "message_id": "service-paper-message" }),
+    );
+    assert!(encoded.error.is_none(), "{:?}", encoded.error);
+    let uri = encoded.result.expect("encode result")["envelope"]["uri"]
+        .as_str()
+        .expect("paper uri")
+        .to_string();
+    let wire = WireMessage::unpack_paper_uri(uri.as_str(), &recipient).expect("decode paper uri");
+
+    assert_eq!(hex::encode(wire.source), source);
+}

@@ -75,6 +75,7 @@ impl RpcDaemon {
         let start_seq = cursor_seq.map(|value| value.saturating_add(1)).or(oldest_seq).unwrap_or(0);
         let mut event_rows = Vec::new();
         let mut batch_bytes = 0_usize;
+        let mut gap_seq = None;
 
         let append_event_row =
             |row: JsonValue, event_rows: &mut Vec<JsonValue>, batch_bytes: &mut usize| {
@@ -122,6 +123,7 @@ impl RpcDaemon {
                 }
             };
             if let Some(gap_meta) = gap_meta {
+                gap_seq = Some(gap_meta.gap_seq_no);
                 let gap_row = json!({
                         "event_id": format!("gap-{}", gap_meta.gap_seq_no),
                     "runtime_id": self.identity_hash,
@@ -186,6 +188,7 @@ impl RpcDaemon {
         }
 
         let next_seq = last_scanned_seq
+            .or(gap_seq)
             .or(latest_seq)
             .unwrap_or(0);
         let next_cursor = self.sdk_encode_cursor(next_seq);

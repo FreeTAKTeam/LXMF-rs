@@ -30,13 +30,24 @@ pub(super) fn encode_paper(
     let Some(destination_identity) = destination_identity else {
         return Ok(None);
     };
+    let service_identity =
+        bridge.service_identity_for_destination(record.source.as_str()).ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                format!("source delivery destination {} is not registered", record.source),
+            )
+        })?;
+    let mut source_hash = [0u8; 16];
+    source_hash.copy_from_slice(
+        parse_destination_hash_required(service_identity.delivery_destination.as_str())?.as_slice(),
+    );
     let payload = build_wire_message_with_options(
-        bridge.delivery_source_hash,
+        source_hash,
         destination,
         &record.title,
         &record.content,
         record.fields.clone(),
-        &bridge.signer,
+        &service_identity.identity,
         None,
         None,
         None,
