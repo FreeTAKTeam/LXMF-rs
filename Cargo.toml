@@ -95,6 +95,7 @@ rns-embedded-core = { version = "0.9.6", path = "crates/libs/rns-embedded-core" 
 rns-embedded-ffi = { version = "0.9.6", path = "crates/libs/rns-embedded-ffi" }
 rns-embedded-runtime = { version = "0.9.6", path = "crates/libs/rns-embedded-runtime" }
 anyhow = "1"
+atomicwrites = "0.4.4"
 clap = { version = "4.5.29", features = ["derive"] }
 clap_complete = "4.5"
 criterion = "0.5"

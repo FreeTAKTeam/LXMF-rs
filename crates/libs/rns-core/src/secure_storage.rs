@@ -36,12 +36,7 @@ pub fn atomic_write_private(path: &Path, contents: &[u8]) -> io::Result<()> {
     tmp_file.sync_all()?;
     drop(tmp_file);
 
-    #[cfg(windows)]
-    if path.exists() {
-        fs::remove_file(path)?;
-    }
-
-    fs::rename(cleanup.path(), path)?;
+    replace_private_temp(cleanup.path(), path)?;
     cleanup.disarm();
 
     #[cfg(unix)]
@@ -54,6 +49,16 @@ pub fn atomic_write_private(path: &Path, contents: &[u8]) -> io::Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(not(windows))]
+fn replace_private_temp(source: &Path, destination: &Path) -> io::Result<()> {
+    fs::rename(source, destination)
+}
+
+#[cfg(windows)]
+fn replace_private_temp(source: &Path, destination: &Path) -> io::Result<()> {
+    atomicwrites::replace_atomic(source, destination)
 }
 
 fn create_private_temp(path: &Path) -> io::Result<(PathBuf, File)> {
@@ -123,10 +128,12 @@ impl Drop for TempCleanup {
 
 #[cfg(test)]
 mod tests {
-    use super::{atomic_write_private, ensure_private_directory};
+    use super::atomic_write_private;
+    #[cfg(unix)]
+    use super::ensure_private_directory;
 
     #[test]
-    fn private_file_roundtrip_and_replace() {
+    fn private_file_roundtrip_and_atomically_replace_existing() {
         let temp = tempfile::tempdir().expect("tempdir");
         let path = temp.path().join("private").join("secret");
 
@@ -134,6 +141,28 @@ mod tests {
         atomic_write_private(&path, b"second").expect("replacement write");
 
         assert_eq!(std::fs::read(path).expect("read private file"), b"second");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn failed_windows_replacement_preserves_existing_secret() {
+        use std::fs::OpenOptions;
+        use std::os::windows::fs::OpenOptionsExt;
+
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("secret");
+        atomic_write_private(&path, b"existing").expect("initial write");
+
+        let locked_file = OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(&path)
+            .expect("lock destination against replacement");
+        let result = atomic_write_private(&path, b"replacement");
+        drop(locked_file);
+
+        assert!(result.is_err(), "replacement should fail while locked");
+        assert_eq!(std::fs::read(path).expect("read preserved secret"), b"existing");
     }
 
     #[cfg(unix)]
