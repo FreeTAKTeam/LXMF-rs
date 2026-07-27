@@ -7,6 +7,11 @@ pub enum RnsError {
     CryptoError,
     PacketError,
     ConnectionError,
+    /// No wall-clock time source is available. Returned by
+    /// timestamp-dependent operations (announce timestamps, ratchet
+    /// rotation) in `no_std` builds before the embedding application has
+    /// installed one via `ratchets::set_time_override`.
+    TimeSourceUnavailable,
 }
 
 impl core::fmt::Display for RnsError {
@@ -19,6 +24,10 @@ impl core::fmt::Display for RnsError {
             Self::CryptoError => "cryptographic operation failed",
             Self::PacketError => "invalid packet",
             Self::ConnectionError => "connection failed",
+            Self::TimeSourceUnavailable => {
+                "no wall-clock time source available (install one via \
+                 ratchets::set_time_override in no_std builds)"
+            }
         })
     }
 }

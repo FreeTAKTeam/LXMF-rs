@@ -239,9 +239,10 @@ fn announce_random_blob_matches_python_layout() {
         priv_identity,
         DestinationName::new("example_utilities", "announcesample.fruits"),
     );
-    let before = now_secs().floor() as u64;
+    let _guard = crate::ratchets::tests::time_test_lock().lock().expect("time test lock");
+    let before = now_secs().expect("std tests have a system clock").floor() as u64;
     let announce = destination.announce(FixedRng::new(0x11), None).expect("valid announce");
-    let after = now_secs().floor() as u64;
+    let after = now_secs().expect("std tests have a system clock").floor() as u64;
 
     let blob = decode_announce_random_blob(&announce);
     assert_eq!(&blob[..5], &[0x11, 0x12, 0x13, 0x14, 0x15]);
@@ -251,4 +252,31 @@ fn announce_random_blob_matches_python_layout() {
     let emitted = u64::from_be_bytes(ts_bytes);
     assert!(emitted >= before.saturating_sub(1));
     assert!(emitted <= after.saturating_add(1));
+}
+
+// no_std-focused test for issue #518: with the embedded time contract
+// installed, the announce timestamp comes from the override, not a
+// silently-zero clock. (In a real no_std build without an override,
+// `announce` fails with `RnsError::TimeSourceUnavailable`; that branch
+// only compiles without the `std` feature, so host tests exercise the
+// contract through the override.)
+#[test]
+fn announce_timestamp_uses_embedded_time_override() {
+    let _guard = crate::ratchets::tests::time_test_lock().lock().expect("time test lock");
+    let priv_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut destination = SingleInputDestination::new(
+        priv_identity,
+        DestinationName::new("example_utilities", "announcesample.fruits"),
+    );
+
+    crate::ratchets::set_time_override(1_700_000_000.9);
+    let announce = destination
+        .announce(FixedRng::new(0x11), None)
+        .expect("valid announce with embedded time source");
+    crate::ratchets::clear_time_override();
+
+    let blob = decode_announce_random_blob(&announce);
+    let mut ts_bytes = [0u8; 8];
+    ts_bytes[3..8].copy_from_slice(&blob[5..10]);
+    assert_eq!(u64::from_be_bytes(ts_bytes), 1_700_000_000);
 }
