@@ -12,12 +12,20 @@ use std::sync::{Arc, Mutex, MutexGuard};
 /// silently dropping every subsequent track/prune/lookup for the rest of
 /// the process lifetime, the old behavior) is strictly worse than
 /// recovering it.
+///
+/// Once the map state has been accepted, the poison flag is cleared
+/// while still holding the recovered guard, so the recovery applies
+/// process-wide: later acquisitions — including call sites that lock the
+/// map directly — no longer see a poison error, and the warning is
+/// emitted once per poisoning instead of on every operation.
 fn lock_receipt_map(
     map: &Arc<Mutex<HashMap<String, String>>>,
 ) -> MutexGuard<'_, HashMap<String, String>> {
     map.lock().unwrap_or_else(|poisoned| {
         log::warn!("receipt mapping lock poisoned; recovering map state and continuing");
-        poisoned.into_inner()
+        let guard = poisoned.into_inner();
+        map.clear_poison();
+        guard
     })
 }
 
@@ -139,6 +147,14 @@ mod tests {
         let key = hex::encode(receipt(0x01).message_id);
         track_receipt_mapping(&map, &key, "msg-1");
         assert_eq!(lookup_receipt_message_id(&map, &receipt(0x01)).expect("lookup"), "msg-1");
+        // Recovery applies process-wide: the poison flag was cleared
+        // while accepting the recovered map, so even call sites that lock
+        // the map directly (e.g. the daemon's failed-send cleanup) no
+        // longer see a poison error.
+        assert!(
+            map.lock().is_ok(),
+            "poison flag must be cleared once the recovered map is accepted"
+        );
     }
 
     #[test]
