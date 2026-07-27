@@ -32,26 +32,26 @@
       "overall": {
         "level": "partial",
         "complete_ratio": {
-          "numerator": 1787,
+          "numerator": 1695,
           "denominator": 1810
         },
         "inventory": {
           "total": 1811,
-          "complete": 1787,
-          "partial": 23,
+          "complete": 1695,
+          "partial": 115,
           "not_applicable": 1
         }
       },
       "reticulum": {
         "level": "partial",
         "complete_ratio": {
-          "numerator": 1585,
+          "numerator": 1493,
           "denominator": 1608
         },
         "inventory": {
           "total": 1608,
-          "complete": 1585,
-          "partial": 23,
+          "complete": 1493,
+          "partial": 115,
           "not_applicable": 0
         }
       },

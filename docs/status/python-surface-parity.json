@@ -20819,9 +20819,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.client.ReticulumGitClient",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "class",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust covers isolated local Git bundle preparation, but not the Python ReticulumGitClient remote session behavior.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -20836,9 +20836,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.client.ReticulumGitClient.abort",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust covers isolated local Git bundle preparation, but not the Python ReticulumGitClient remote session behavior.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -20853,9 +20853,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.client.ReticulumGitClient.connect_server",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust covers isolated local Git bundle preparation, but not the Python ReticulumGitClient remote session behavior.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -20870,9 +20870,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.client.ReticulumGitClient.escape_for_stdout",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust covers isolated local Git bundle preparation, but not the Python ReticulumGitClient remote session behavior.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -20887,9 +20887,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.client.ReticulumGitClient.handle_git_list",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust covers isolated local Git bundle preparation, but not the Python ReticulumGitClient remote session behavior.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -20904,9 +20904,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.client.ReticulumGitClient.link_closed",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust covers isolated local Git bundle preparation, but not the Python ReticulumGitClient remote session behavior.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -20921,9 +20921,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.client.ReticulumGitClient.link_established",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust covers isolated local Git bundle preparation, but not the Python ReticulumGitClient remote session behavior.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -20938,9 +20938,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.client.ReticulumGitClient.process_fetch_queue",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust covers isolated local Git bundle preparation, but not the Python ReticulumGitClient remote session behavior.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -20955,9 +20955,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.client.ReticulumGitClient.process_push_queue",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust covers isolated local Git bundle preparation, but not the Python ReticulumGitClient remote session behavior.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -20972,9 +20972,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.client.ReticulumGitClient.run",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust covers isolated local Git bundle preparation, but not the Python ReticulumGitClient remote session behavior.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -20989,9 +20989,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.client.ReticulumGitClient.send_request",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust covers isolated local Git bundle preparation, but not the Python ReticulumGitClient remote session behavior.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -21006,9 +21006,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.client.main",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "function",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust covers isolated local Git bundle preparation, but not the Python ReticulumGitClient remote session behavior.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -21023,9 +21023,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.client.program_setup",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "function",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust covers isolated local Git bundle preparation, but not the Python ReticulumGitClient remote session behavior.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -22553,9 +22553,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "class",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -22570,9 +22570,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.abort",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -22587,9 +22587,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.connect_remote",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -22604,9 +22604,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.create_release",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -22621,9 +22621,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.create_repository",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -22638,9 +22638,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.delete_release",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -22655,9 +22655,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.fetch_release",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -22672,9 +22672,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.fork_repository",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -22689,9 +22689,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.group_permissions",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -22706,9 +22706,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.latest_release",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -22723,9 +22723,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.link_closed",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -22740,9 +22740,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.link_established",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -22757,9 +22757,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.list_releases",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -22774,9 +22774,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.mirror_repository",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -22791,9 +22791,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.parse_remote_destination_url",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -22808,9 +22808,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.parse_remote_group_url",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -22825,9 +22825,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.parse_remote_url",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -22842,9 +22842,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.repository_permissions",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -22859,9 +22859,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.send_request",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -22876,9 +22876,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.sync_repository",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -22893,9 +22893,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.view_release",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -22910,9 +22910,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.work_activate",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -22927,9 +22927,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.work_comment",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -22944,9 +22944,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.work_complete",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -22961,9 +22961,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.work_create",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -22978,9 +22978,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.work_delete",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -22995,9 +22995,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.work_edit",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23012,9 +23012,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.work_list",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23029,9 +23029,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.work_permissions",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23046,9 +23046,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.work_propose",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23063,9 +23063,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.work_view",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23080,9 +23080,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "class",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23097,9 +23097,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.announce",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23114,9 +23114,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.download_succeeded",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23131,9 +23131,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.fetch_succeeded",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23148,9 +23148,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.handle_create",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23165,9 +23165,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.handle_delete",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23182,9 +23182,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.handle_fetch",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23199,9 +23199,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.handle_fork",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23216,9 +23216,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.handle_list",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23233,9 +23233,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.handle_mirror",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23250,9 +23250,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.handle_perms",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23267,9 +23267,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.handle_push",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23284,9 +23284,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.handle_release",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23301,9 +23301,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.handle_sync",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23318,9 +23318,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.handle_work",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23335,9 +23335,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.jobs",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23352,9 +23352,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.last_upstream_sync",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23369,9 +23369,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.load_repository",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23386,9 +23386,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.load_repository_group",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23403,9 +23403,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.log_request",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23420,9 +23420,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.parse_permission",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23437,9 +23437,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.parse_request_group_path",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23454,9 +23454,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.parse_request_repository_path",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23471,9 +23471,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.permissions_from_allowed_input",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23488,9 +23488,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.push_succeeded",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23505,9 +23505,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.record_download",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23522,9 +23522,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.record_fetch",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23539,9 +23539,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.record_group_view",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23556,9 +23556,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.record_page_view",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23573,9 +23573,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.record_push",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23590,9 +23590,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.record_release_download",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23607,9 +23607,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.record_repository_view",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23624,9 +23624,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.register_request_handlers",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23641,9 +23641,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.release_data",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23658,9 +23658,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.release_download_succeeded",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23675,9 +23675,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.releases_list_data",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23692,9 +23692,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.remote_connected",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23709,9 +23709,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.remote_disconnected",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23726,9 +23726,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.remote_identified",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23743,9 +23743,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.repository_stats",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23760,9 +23760,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.resolve_doc_permission",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23777,9 +23777,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.resolve_group_permission",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23794,9 +23794,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.resolve_permission",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23811,9 +23811,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.start",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23828,9 +23828,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.update_group_permissions",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23845,9 +23845,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.view_succeeded",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23862,9 +23862,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.main",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "function",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -23879,9 +23879,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.program_setup",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "function",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -28235,9 +28235,9 @@
     "includes": "public RNS/LXMF callables and committed manual product contracts"
   },
   "summary": {
-    "complete": 1787,
+    "complete": 1695,
     "not-applicable": 1,
-    "partial": 23,
+    "partial": 115,
     "total": 1811
   }
 }

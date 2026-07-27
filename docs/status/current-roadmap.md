@@ -22,7 +22,9 @@ LXMF-rs retains the v0.9.5 SDK-access baseline, but mapped Reticulum software
 parity is now partial against the pinned RNS 1.4.2 reference. The 1.4.2
 reassessment adds gravity-based routing, dynamic path rebalancing,
 request/response size controls, boundary path-request behavior, and expanded
-interface statistics to the tracked gap set.
+interface statistics to the tracked gap set. The strict audit also keeps the
+Python `rngit` remote client/server, repository service, and work-item API
+partial because Rust currently provides only isolated local bundle workflows.
 
 The project is best described by capability level:
 
@@ -32,7 +34,7 @@ The project is best described by capability level:
 | Direct-message interoperable | achieved | Selected bidirectional Rust/Python direct, link, channel, paper, and daemon paths are exercised in CI. |
 | Propagation interoperable | achieved | Propagated delivery, complete Python-only `LXMPeer.py` lifecycle coverage, and Python-reference propagation router fetch/download/sync lifecycle coverage are implemented and tested. |
 | Operationally substitutable | partial against RNS 1.4.2 | The prior software-controlled runtime remains usable, but new 1.4.2 routing and policy behavior is not yet fully implemented. |
-| Full Python software surface parity | partial | The strict inventory reports 1,787 complete, 23 partial, and 1 provenance-backed not-applicable entry. |
+| Full Python software surface parity | partial | The strict inventory reports 1,695 complete, 115 partial, and 1 provenance-backed not-applicable entry. |
 | ZeroMQ SDK-access parity | achieved in v0.9.5 implementation | Generated classification and daemon-operation inventory live in `sdk-zmq-parity.json`; release evidence must still pass all gates. |
 
 ## v0.9.6 Stabilization
@@ -122,7 +124,7 @@ stale or unmapped entries.
 
 The RNS 1.2.2 baseline recorded **1,664 implementation-complete, 0 partial,
 and 1 provenance-backed not-applicable entry across 1,665 entries**. The
-current RNS 1.4.2 inventory records **1,787 implementation-complete, 23
+current RNS 1.4.2 inventory records **1,695 implementation-complete, 115
 partial, and 1 provenance-backed not-applicable entry across 1,811 entries**.
 Documentation CI checks inventory drift; the release gate continues to require
 zero partial entries. SDK negotiation and daemon runtime status expose this as

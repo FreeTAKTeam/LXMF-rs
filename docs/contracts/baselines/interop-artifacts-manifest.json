@@ -1408,8 +1408,8 @@
     },
     {
       "path": "docs/fixtures/sdk-v2/rpc/sdk_negotiate_v2.response.valid.json",
-      "bytes": 2357,
-      "sha256": "7e0b4ed60b3365cf6f2e56029bffa44115f45c3a46a126b1eb7146af69e26e5d"
+      "bytes": 2359,
+      "sha256": "16197b6ed942ab92352e2b779eed4788df98cccc1b3fd3324838bbd533e4e2c4"
     },
     {
       "path": "docs/fixtures/sdk-v2/rpc/sdk_poll_events_v2.request.invalid.json",

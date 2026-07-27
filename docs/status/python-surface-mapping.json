@@ -736,6 +736,20 @@
       "notes": "Default-deny command authorization is exercised with isolated subprocess fixtures."
     },
     {
+      "pattern": "RNS.Utilities.rngit.client.*",
+      "implementation": "partial",
+      "rust_surface": ["rns-tools::rngit", "rns-tools::rncp", "rns-tools::rnsh"],
+      "evidence": ["unit", "simulated", "pinned-python"],
+      "notes": "Rust covers isolated local Git bundle preparation, but not the Python ReticulumGitClient remote session behavior."
+    },
+    {
+      "pattern": "RNS.Utilities.rngit.server.*",
+      "implementation": "partial",
+      "rust_surface": ["rns-tools::rngit", "rns-tools::rncp", "rns-tools::rnsh"],
+      "evidence": ["unit", "simulated", "pinned-python"],
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API."
+    },
+    {
       "pattern": "RNS.Utilities.rngit.*",
       "implementation": "complete",
       "rust_surface": ["rns-tools::rngit", "rns-tools::rncp", "rns-tools::rnsh"],
