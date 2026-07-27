@@ -214,21 +214,18 @@ fn authorize_zmq_envelope(
     {
         return Ok(());
     }
-    let auth = envelope.auth.as_ref().ok_or_else(|| {
-        RpcError::new("SDK_SECURITY_AUTH_REQUIRED", "zmq rpc envelope auth metadata is required")
-    })?;
-    if !auth.scheme.eq_ignore_ascii_case("bearer") {
-        return Err(RpcError::new(
-            "SDK_SECURITY_TOKEN_INVALID",
-            "zmq rpc auth metadata must use bearer scheme",
-        ));
-    }
-    let value = auth
-        .value
-        .strip_prefix("Bearer ")
-        .or_else(|| auth.value.strip_prefix("bearer "))
-        .unwrap_or(auth.value.as_str());
-    let headers = vec![("authorization".to_string(), format!("Bearer {value}"))];
+    let headers = match envelope.auth.as_ref() {
+        Some(auth) if auth.scheme.eq_ignore_ascii_case("bearer") => {
+            let value = auth
+                .value
+                .strip_prefix("Bearer ")
+                .or_else(|| auth.value.strip_prefix("bearer "))
+                .unwrap_or(auth.value.as_str());
+            vec![("authorization".to_string(), format!("Bearer {value}"))]
+        }
+        Some(_) => vec![("authorization".to_string(), "unsupported".to_string())],
+        None => Vec::new(),
+    };
     daemon.authorize_http_request(&headers, Some("0.0.0.0"))
 }
 
@@ -355,6 +352,51 @@ mod tests {
         let rpc = parse_rpc_frame(&response.envelope.payload).expect("rpc response");
         let error = rpc.error.expect("auth error");
         assert_eq!(error.code, "SDK_SECURITY_AUTH_REQUIRED");
+    }
+
+    #[test]
+    fn missing_zmq_auth_is_rate_limited_before_envelope_rejection() {
+        let daemon = token_auth_daemon();
+        let envelope = ZmqRpcEnvelope::request(
+            "session-missing-auth",
+            20,
+            "tcp://127.0.0.1:9101",
+            Vec::new(),
+            None,
+        );
+
+        for _ in 0..120 {
+            let error = authorize_zmq_envelope(&daemon, &envelope, true, true)
+                .expect_err("missing auth should be rejected");
+            assert_eq!(error.code, "SDK_SECURITY_AUTH_REQUIRED");
+        }
+        let limited = authorize_zmq_envelope(&daemon, &envelope, true, true)
+            .expect_err("repeated missing auth should be rate limited");
+        assert_eq!(limited.code, "SDK_SECURITY_RATE_LIMITED");
+    }
+
+    #[test]
+    fn invalid_zmq_auth_scheme_is_rate_limited_before_envelope_rejection() {
+        let daemon = token_auth_daemon();
+        let envelope = ZmqRpcEnvelope::request(
+            "session-invalid-scheme",
+            21,
+            "tcp://127.0.0.1:9101",
+            Vec::new(),
+            Some(rns_rpc::rpc::zmq::ZmqRpcAuthMetadata {
+                scheme: "basic".to_string(),
+                value: "not-a-bearer-token".to_string(),
+            }),
+        );
+
+        for _ in 0..120 {
+            let error = authorize_zmq_envelope(&daemon, &envelope, true, true)
+                .expect_err("invalid auth scheme should be rejected");
+            assert_eq!(error.code, "SDK_SECURITY_TOKEN_INVALID");
+        }
+        let limited = authorize_zmq_envelope(&daemon, &envelope, true, true)
+            .expect_err("repeated invalid auth scheme should be rate limited");
+        assert_eq!(limited.code, "SDK_SECURITY_RATE_LIMITED");
     }
 
     #[test]
