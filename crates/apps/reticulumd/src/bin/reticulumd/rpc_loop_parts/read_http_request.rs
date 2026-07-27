@@ -418,6 +418,69 @@ mod rpc_loop_tests {
 
     #[cfg(unix)]
     #[test]
+    fn rpc_unix_socket_is_private_at_creation_under_permissive_umask() {
+        const CHILD_MARKER: &str = "RETICULUMD_RPC_UMASK_TEST_CHILD";
+
+        if std::env::var_os(CHILD_MARKER).is_none() {
+            let executable = std::env::current_exe().expect("current test executable");
+            let status = std::process::Command::new("sh")
+                .arg("-c")
+                .arg("umask 000; exec \"$1\" \"$2\" --nocapture")
+                .arg("sh")
+                .arg(executable)
+                .arg("rpc_unix_socket_is_private_at_creation_under_permissive_umask")
+                .env(CHILD_MARKER, "1")
+                .status()
+                .expect("run permissive-umask test child");
+            assert!(status.success(), "permissive-umask test child failed");
+            return;
+        }
+
+        use std::os::unix::fs::PermissionsExt;
+
+        let runtime =
+            tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+        runtime.block_on(async {
+            let temp = tempfile::tempdir().expect("tempdir");
+            let path = temp.path().join("reticulumd.sock");
+            let listener = bind_private_rpc_unix_listener_with_pre_publish(
+                &path,
+                |staging_path| {
+                    assert!(
+                        !path.exists(),
+                        "final socket must not exist before private publication"
+                    );
+                    assert!(
+                        std::os::unix::net::UnixStream::connect(&path).is_err(),
+                        "final socket must not be connectable before private publication"
+                    );
+                    let socket_mode =
+                        std::fs::metadata(staging_path)?.permissions().mode() & 0o777;
+                    assert_eq!(socket_mode, RPC_UNIX_SOCKET_MODE);
+                    let staging_mode =
+                        std::fs::metadata(staging_path.parent().expect("staging parent"))?
+                            .permissions()
+                            .mode()
+                            & 0o777;
+                    assert_eq!(staging_mode, RPC_UNIX_STAGING_DIR_MODE);
+                    Ok(())
+                },
+            )
+            .expect("bind private socket");
+
+            let mode =
+                std::fs::metadata(&path).expect("socket metadata").permissions().mode() & 0o777;
+            assert_eq!(mode, RPC_UNIX_SOCKET_MODE);
+            std::os::unix::net::UnixStream::connect(&path)
+                .expect("connect after private publication");
+
+            drop(listener);
+            cleanup_rpc_unix_socket_path(&path).expect("cleanup socket");
+        });
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn unix_rpc_loop_removes_stale_socket_and_cleans_up_on_shutdown() {
         let runtime =
             tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
