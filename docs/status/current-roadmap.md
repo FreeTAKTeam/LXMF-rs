@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last reassessed: 2026-07-19
+Last reassessed: 2026-07-26
 
 This file is the repository-level source of truth for parity posture, release
 confidence, and execution order. Detailed row-level status lives in:
@@ -18,10 +18,11 @@ override these status files.
 
 ## Current Position
 
-LXMF-rs has complete mapped software implementation parity against the pinned
-Python inventory. v0.9.5 closes the separate SDK-access axis by making the
-single-endpoint ZeroMQ backend the canonical desktop transport while retaining
-HTTP/Unix and legacy dual-endpoint compatibility.
+LXMF-rs retains the v0.9.5 SDK-access baseline, but mapped Reticulum software
+parity is now partial against the pinned RNS 1.4.2 reference. The 1.4.2
+reassessment adds gravity-based routing, dynamic path rebalancing,
+request/response size controls, boundary path-request behavior, and expanded
+interface statistics to the tracked gap set.
 
 The project is best described by capability level:
 
@@ -30,15 +31,16 @@ The project is best described by capability level:
 | Wire compatible | achieved | Core Reticulum packet/identity primitives and LXMF message encodings are implemented and tested. |
 | Direct-message interoperable | achieved | Selected bidirectional Rust/Python direct, link, channel, paper, and daemon paths are exercised in CI. |
 | Propagation interoperable | achieved | Propagated delivery, complete Python-only `LXMPeer.py` lifecycle coverage, and Python-reference propagation router fetch/download/sync lifecycle coverage are implemented and tested. |
-| Operationally substitutable | software-complete | Software-controlled runtime, interface, router, utility, and SDK operations are mapped; attached hardware and public-network evidence remain bounded. |
-| Full Python software surface parity | achieved | The strict inventory reports 1,664 complete, 0 partial, and 1 provenance-backed not-applicable entry. |
+| Operationally substitutable | partial against RNS 1.4.2 | The prior software-controlled runtime remains usable, but new 1.4.2 routing and policy behavior is not yet fully implemented. |
+| Full Python software surface parity | partial | The strict inventory reports 1,787 complete, 23 partial, and 1 provenance-backed not-applicable entry. |
 | ZeroMQ SDK-access parity | achieved in v0.9.5 implementation | Generated classification and daemon-operation inventory live in `sdk-zmq-parity.json`; release evidence must still pass all gates. |
 
 ## v0.9.6 Stabilization
 
 v0.9.6 is a patch-level hardening release over the v0.9.5 software-parity
-baseline. Its scope is correctness, observable failure handling, documentation
-accuracy, and release evidence rather than a new parity claim.
+baseline. The RNS 1.4.2 re-pin reopens the software-parity release gate; its
+new behavior must be implemented or explicitly deferred before a complete
+parity claim can be restored.
 
 Current candidate work includes link-context fan-out through each link's bound
 interface, packet-cache-correlated single-destination delivery proofs, real-link
@@ -111,16 +113,19 @@ release blockers.
 
 ## v0.9.0 Full Software-Parity Baseline
 
-The v0.9.0 release criterion is zero partial or unmapped entries in the
+The v0.9.0 release criterion was zero partial or unmapped entries in the
 generated pinned-Python surface manifest. The scope is the full public
 Reticulum and LXMF software surface, official utilities, and idiomatic Rust
 equivalents. `docs/status/python-surface-parity.json` is generated from the
 pinned references and `docs/status/python-surface-mapping.json`; CI rejects
 stale or unmapped entries.
 
-Current generated inventory: **1,664 implementation-complete, 0 partial, and
-1 provenance-backed not-applicable entry across 1,665 entries**. Release and
-documentation CI invoke the inventory with `--require-complete`.
+The RNS 1.2.2 baseline recorded **1,664 implementation-complete, 0 partial,
+and 1 provenance-backed not-applicable entry across 1,665 entries**. The
+current RNS 1.4.2 inventory records **1,787 implementation-complete, 23
+partial, and 1 provenance-backed not-applicable entry across 1,811 entries**.
+Documentation CI checks inventory drift; the release gate continues to require
+zero partial entries.
 
 Implementation and evidence are independent. Hardware-capable interfaces may
 reach `implementation=complete` with deterministic simulation while retaining

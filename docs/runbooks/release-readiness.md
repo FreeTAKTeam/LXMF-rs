@@ -71,7 +71,7 @@ reference compatibility. It runs:
 The SDK reports the parity checkpoint as its crate version plus the pinned
 reference revisions from `.github/workflows/python-interop.yml`: Reticulum
 conformance `0319444b20e0815f26c6b9ceeba8fa44de037c9b`, Python Reticulum
-`15320e4d2cfabb143c1db20ca887e275fd521585`, and Python LXMF
+`b48b96e61676504e0a4e527b33b9a0b4495c6872`, and Python LXMF
 `727830cefda83d9c6e3982b48675425f3f988f9c`. Check GitHub Actions for current
 run status; do not copy transient run IDs or conclusions into runtime SDK
 responses or long-lived documentation.

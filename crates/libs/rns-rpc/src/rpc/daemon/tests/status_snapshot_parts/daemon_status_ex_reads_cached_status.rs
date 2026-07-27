@@ -228,6 +228,22 @@ fn assert_status_snapshot_fields(result: &JsonValue) {
         result["reticulum"]["shared_instance"]["is_connected_to_shared_instance"].as_bool(),
         Some(false)
     );
+    assert_eq!(
+        result["reticulum"]["parity"]["level"].as_str(),
+        Some(crate::PYTHON_SOFTWARE_PARITY_LEVEL)
+    );
+    assert_eq!(
+        result["reticulum"]["parity"]["baseline_version"].as_str(),
+        Some(crate::PYTHON_RETICULUM_REFERENCE_VERSION)
+    );
+    assert_eq!(
+        result["reticulum"]["parity"]["inventory"]["total"].as_u64(),
+        Some(crate::PYTHON_SOFTWARE_PARITY_TOTAL as u64)
+    );
+    assert_eq!(
+        result["reticulum"]["parity"]["inventory"]["partial"].as_u64(),
+        Some(crate::PYTHON_SOFTWARE_PARITY_PARTIAL as u64)
+    );
     assert!(
         result["capabilities"].as_array().is_some_and(|values| values.iter().any(|value| value == "daemon_status_ex")),
         "status snapshot should include capability list: {result}"

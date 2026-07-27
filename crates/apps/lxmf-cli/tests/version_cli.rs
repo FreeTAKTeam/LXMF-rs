@@ -3,8 +3,8 @@ use std::process::Command;
 
 const PYTHON_LXMF_VERSION: &str = "0.9.6";
 const PYTHON_LXMF_REF: &str = "727830cefda83d9c6e3982b48675425f3f988f9c";
-const PYTHON_RETICULUM_VERSION: &str = "1.2.2";
-const PYTHON_RETICULUM_REF: &str = "15320e4d2cfabb143c1db20ca887e275fd521585";
+const PYTHON_RETICULUM_VERSION: &str = "1.4.2";
+const PYTHON_RETICULUM_REF: &str = "b48b96e61676504e0a4e527b33b9a0b4495c6872";
 
 fn project_version() -> String {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../VERSION");
