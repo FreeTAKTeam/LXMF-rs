@@ -86,6 +86,8 @@ pub struct NegotiationResponse {
     pub sdk_version: String,
     #[serde(default)]
     pub python_reference: ParityReference,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub software_parity: Option<crate::SoftwareParityOrientation>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -157,8 +159,8 @@ pub fn negotiate_plugins(
 #[cfg(test)]
 mod tests {
     use super::{
-        negotiate_contract_version, negotiate_plugins, ParityReference, PluginDescriptor,
-        PluginState,
+        negotiate_contract_version, negotiate_plugins, NegotiationResponse, ParityReference,
+        PluginDescriptor, PluginState,
     };
 
     #[test]
@@ -255,5 +257,54 @@ mod tests {
             reference.python_lxmf_version.as_deref(),
             Some(crate::PYTHON_LXMF_REFERENCE_VERSION)
         );
+    }
+
+    #[test]
+    fn negotiation_response_round_trips_typed_software_parity() {
+        let expected = crate::current_software_parity_orientation();
+        let mut payload = negotiation_response_payload();
+        payload["software_parity"] =
+            serde_json::to_value(&expected).expect("serialize software parity");
+
+        let response: NegotiationResponse =
+            serde_json::from_value(payload).expect("typed negotiation response should decode");
+        assert_eq!(response.software_parity.as_ref(), Some(&expected));
+        assert_eq!(
+            serde_json::to_value(response).expect("typed negotiation response should serialize")
+                ["software_parity"],
+            serde_json::to_value(expected).expect("serialize expected software parity")
+        );
+    }
+
+    #[test]
+    fn negotiation_response_accepts_older_payload_without_software_parity() {
+        let response: NegotiationResponse = serde_json::from_value(negotiation_response_payload())
+            .expect("older negotiation response should decode");
+
+        assert_eq!(response.software_parity, None);
+        assert!(
+            serde_json::to_value(response)
+                .expect("older negotiation response should serialize")
+                .get("software_parity")
+                .is_none(),
+            "absent optional parity should remain omitted"
+        );
+    }
+
+    fn negotiation_response_payload() -> serde_json::Value {
+        serde_json::json!({
+            "runtime_id": "runtime-legacy",
+            "active_contract_version": 2,
+            "effective_capabilities": [],
+            "effective_limits": {
+                "max_poll_events": 64,
+                "max_event_bytes": 32768,
+                "max_batch_bytes": 1048576,
+                "max_extension_keys": 32,
+                "idempotency_ttl_ms": 60000
+            },
+            "contract_release": "v2.6",
+            "schema_namespace": "v2"
+        })
     }
 }

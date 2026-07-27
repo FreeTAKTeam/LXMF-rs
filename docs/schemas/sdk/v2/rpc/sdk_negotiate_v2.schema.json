@@ -67,6 +67,80 @@
       ],
       "type": "object"
     },
+    "parity_checkpoint": {
+      "additionalProperties": false,
+      "properties": {
+        "complete_ratio": {
+          "$ref": "#/$defs/parity_ratio"
+        },
+        "inventory": {
+          "$ref": "#/$defs/parity_inventory"
+        },
+        "level": {
+          "$ref": "#/$defs/parity_level"
+        }
+      },
+      "required": [
+        "complete_ratio",
+        "inventory",
+        "level"
+      ],
+      "type": "object"
+    },
+    "parity_inventory": {
+      "additionalProperties": false,
+      "properties": {
+        "complete": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "not_applicable": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "partial": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "total": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "complete",
+        "not_applicable",
+        "partial",
+        "total"
+      ],
+      "type": "object"
+    },
+    "parity_level": {
+      "enum": [
+        "complete",
+        "partial",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "parity_ratio": {
+      "additionalProperties": false,
+      "properties": {
+        "denominator": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "numerator": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "denominator",
+        "numerator"
+      ],
+      "type": "object"
+    },
     "python_reference": {
       "additionalProperties": false,
       "properties": {
@@ -95,6 +169,24 @@
         "python_lxmf_ref",
         "python_reticulum_ref",
         "reticulum_conformance_ref"
+      ],
+      "type": "object"
+    },
+    "reference_revision": {
+      "additionalProperties": false,
+      "properties": {
+        "revision": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "version": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "revision",
+        "version"
       ],
       "type": "object"
     },
@@ -217,6 +309,9 @@
         "sdk_version": {
           "minLength": 1,
           "type": "string"
+        },
+        "software_parity": {
+          "$ref": "#/$defs/software_parity_orientation"
         }
       },
       "required": [
@@ -286,6 +381,50 @@
           "type": "integer"
         }
       ]
+    },
+    "software_parity_orientation": {
+      "additionalProperties": false,
+      "properties": {
+        "advisory": {
+          "const": true
+        },
+        "lxmf": {
+          "$ref": "#/$defs/parity_checkpoint"
+        },
+        "overall": {
+          "$ref": "#/$defs/parity_checkpoint"
+        },
+        "references": {
+          "$ref": "#/$defs/software_parity_references"
+        },
+        "reticulum": {
+          "$ref": "#/$defs/parity_checkpoint"
+        }
+      },
+      "required": [
+        "advisory",
+        "lxmf",
+        "overall",
+        "references",
+        "reticulum"
+      ],
+      "type": "object"
+    },
+    "software_parity_references": {
+      "additionalProperties": false,
+      "properties": {
+        "lxmf": {
+          "$ref": "#/$defs/reference_revision"
+        },
+        "reticulum": {
+          "$ref": "#/$defs/reference_revision"
+        }
+      },
+      "required": [
+        "lxmf",
+        "reticulum"
+      ],
+      "type": "object"
     }
   },
   "$id": "https://weft.tak/contracts/sdk/v2/rpc/sdk_negotiate_v2.schema.json",

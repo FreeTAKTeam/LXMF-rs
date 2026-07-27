@@ -248,6 +248,7 @@ fn successful_negotiation() -> Result<NegotiationResponse, SdkError> {
         schema_namespace: "v2".to_owned(),
         sdk_version: crate::SDK_VERSION.to_owned(),
         python_reference: crate::ParityReference::default(),
+        software_parity: None,
     })
 }
 
@@ -271,7 +272,6 @@ fn start_failure_rolls_back_to_new_and_can_retry() {
         successful_negotiation(),
     ]);
     let client = Client::new(backend);
-
     let first = client.start(sample_start_request());
     assert!(first.is_err());
     let second = client.start(sample_start_request());

@@ -408,6 +408,7 @@ impl RpcDaemon {
                 "schema_namespace": "v2",
                 "sdk_version": SDK_VERSION,
                 "python_reference": python_reference_meta(),
+                "software_parity": software_parity_orientation(),
                 "meta": self.response_meta(),
             })),
             error: None,

@@ -1,5 +1,12 @@
 //! Pinned reference implementation metadata used by LXMF-rs compatibility gates.
 
+mod parity;
+
+pub use parity::{
+    current_software_parity_orientation, ParityCheckpoint, ParityInventory, ParityLevel,
+    ParityRatio, ReferenceRevision, SoftwareParityOrientation, SoftwareParityReferences,
+};
+
 include!("python_software_parity.rs");
 
 pub const RETICULUM_CONFORMANCE_REFERENCE_REF: &str = "0319444b20e0815f26c6b9ceeba8fa44de037c9b";

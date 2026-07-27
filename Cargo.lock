@@ -1587,6 +1587,9 @@ dependencies = [
 [[package]]
 name = "lxmf-reference"
 version = "0.9.6"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "lxmf-runtime"

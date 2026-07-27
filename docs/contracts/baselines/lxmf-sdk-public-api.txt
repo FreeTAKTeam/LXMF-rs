@@ -8,7 +8,15 @@ pub use lxmf_sdk::PYTHON_SOFTWARE_PARITY_LEVEL
 pub use lxmf_sdk::PYTHON_SOFTWARE_PARITY_NOT_APPLICABLE
 pub use lxmf_sdk::PYTHON_SOFTWARE_PARITY_PARTIAL
 pub use lxmf_sdk::PYTHON_SOFTWARE_PARITY_TOTAL
+pub use lxmf_sdk::ParityCheckpoint
+pub use lxmf_sdk::ParityInventory
+pub use lxmf_sdk::ParityLevel
+pub use lxmf_sdk::ParityRatio
 pub use lxmf_sdk::RETICULUM_CONFORMANCE_REFERENCE_REF
+pub use lxmf_sdk::ReferenceRevision
+pub use lxmf_sdk::SoftwareParityOrientation
+pub use lxmf_sdk::SoftwareParityReferences
+pub use lxmf_sdk::current_software_parity_orientation
 pub mod lxmf_sdk::app
 #[non_exhaustive] pub enum lxmf_sdk::app::AttemptDisposition
 pub lxmf_sdk::app::AttemptDisposition::Failed
@@ -681,6 +689,7 @@ pub lxmf_sdk::capability::NegotiationResponse::python_reference: lxmf_sdk::capab
 pub lxmf_sdk::capability::NegotiationResponse::runtime_id: alloc::string::String
 pub lxmf_sdk::capability::NegotiationResponse::schema_namespace: alloc::string::String
 pub lxmf_sdk::capability::NegotiationResponse::sdk_version: alloc::string::String
+pub lxmf_sdk::capability::NegotiationResponse::software_parity: core::option::Option<lxmf_reference::parity::SoftwareParityOrientation>
 #[non_exhaustive] pub struct lxmf_sdk::capability::ParityReference
 pub lxmf_sdk::capability::ParityReference::python_lxmf_ref: alloc::string::String
 pub lxmf_sdk::capability::ParityReference::python_lxmf_version: core::option::Option<alloc::string::String>
@@ -2867,6 +2876,7 @@ pub lxmf_sdk::NegotiationResponse::python_reference: lxmf_sdk::capability::Parit
 pub lxmf_sdk::NegotiationResponse::runtime_id: alloc::string::String
 pub lxmf_sdk::NegotiationResponse::schema_namespace: alloc::string::String
 pub lxmf_sdk::NegotiationResponse::sdk_version: alloc::string::String
+pub lxmf_sdk::NegotiationResponse::software_parity: core::option::Option<lxmf_reference::parity::SoftwareParityOrientation>
 pub struct lxmf_sdk::PaperDecodeResult
 pub lxmf_sdk::PaperDecodeResult::accepted: bool
 pub lxmf_sdk::PaperDecodeResult::bytes_len: u64

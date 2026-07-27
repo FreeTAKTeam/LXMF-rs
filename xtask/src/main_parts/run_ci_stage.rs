@@ -167,6 +167,10 @@ fn run_release_check() -> Result<()> {
 }
 
 fn run_python_surface_parity_check(require_complete: bool) -> Result<()> {
+    run(
+        "python3",
+        &["tools/scripts/python_surface_inventory.py", "--self-test"],
+    )?;
     let mut args = vec![
         "tools/scripts/python_surface_inventory.py",
         "--check",

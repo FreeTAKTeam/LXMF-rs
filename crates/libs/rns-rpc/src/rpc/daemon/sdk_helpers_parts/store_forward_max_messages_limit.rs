@@ -24,17 +24,6 @@ pub(super) fn python_reference_meta() -> JsonValue {
     })
 }
 
-pub(super) fn reticulum_parity_status() -> JsonValue {
-    json!({
-        "scope": "python_software_surface",
-        "level": crate::PYTHON_SOFTWARE_PARITY_LEVEL,
-        "baseline_version": crate::PYTHON_RETICULUM_REFERENCE_VERSION,
-        "baseline_ref": crate::PYTHON_RETICULUM_REFERENCE_REF,
-        "inventory": {
-            "total": crate::PYTHON_SOFTWARE_PARITY_TOTAL,
-            "complete": crate::PYTHON_SOFTWARE_PARITY_COMPLETE,
-            "partial": crate::PYTHON_SOFTWARE_PARITY_PARTIAL,
-            "not_applicable": crate::PYTHON_SOFTWARE_PARITY_NOT_APPLICABLE,
-        },
-    })
+pub(super) fn software_parity_orientation() -> JsonValue {
+    json!(crate::current_software_parity_orientation())
 }

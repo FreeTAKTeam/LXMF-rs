@@ -73,6 +73,14 @@ Startup handshake response includes:
 - `effective_limits`
 - `contract_release`
 - `schema_namespace`
+- optional `software_parity`, an advisory orientation containing the pinned
+  Reticulum and LXMF reference versions/revisions plus separate overall,
+  Reticulum, and LXMF checkpoints
+
+`software_parity` is additive and optional so clients can deserialize older
+negotiation responses. Its exact complete/applicable ratios and inventory
+counts help consumers orient themselves, but they do not replace
+`effective_capabilities` or runtime feature checks.
 
 Capability descriptor fields:
 

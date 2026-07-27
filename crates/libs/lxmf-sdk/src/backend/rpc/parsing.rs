@@ -1,4 +1,5 @@
 use super::*;
+use crate::SoftwareParityOrientation;
 
 impl RpcBackendClient {
     pub(super) fn parse_required_string(
@@ -35,6 +36,15 @@ impl RpcBackendClient {
         match value.get("python_reference") {
             None | Some(JsonValue::Null) => Ok(ParityReference::default()),
             Some(raw) => Self::decode_value(raw.clone(), "python reference metadata"),
+        }
+    }
+
+    pub(super) fn parse_software_parity(
+        value: &JsonValue,
+    ) -> Result<Option<SoftwareParityOrientation>, SdkError> {
+        match value.get("software_parity") {
+            None | Some(JsonValue::Null) => Ok(None),
+            Some(raw) => Self::decode_value(raw.clone(), "software parity orientation").map(Some),
         }
     }
 

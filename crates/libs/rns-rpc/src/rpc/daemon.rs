@@ -8,7 +8,8 @@ mod sdk_helpers;
 
 use cursor_utils::*;
 use sdk_helpers::{
-    python_reference_meta, reticulum_parity_status, SDK_VERSION, STORE_FORWARD_MAX_MESSAGES_LIMIT,
+    python_reference_meta, software_parity_orientation, SDK_VERSION,
+    STORE_FORWARD_MAX_MESSAGES_LIMIT,
 };
 mod dispatch;
 mod dispatch_legacy_clear;

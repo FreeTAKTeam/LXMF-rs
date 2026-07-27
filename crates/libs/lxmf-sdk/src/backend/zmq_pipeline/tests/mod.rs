@@ -126,7 +126,8 @@ fn negotiate_with_token_auth_preserves_remote_token_runtime_config() {
                 "python_reticulum_ref": "reticulum-test-ref",
                 "python_lxmf_version": "0.9.6-test",
                 "python_lxmf_ref": "lxmf-test-ref"
-            }
+            },
+            "software_parity": crate::current_software_parity_orientation()
         }),
         Arc::clone(&captured),
     );
@@ -159,6 +160,7 @@ fn negotiate_with_token_auth_preserves_remote_token_runtime_config() {
     assert_eq!(response.python_reference.python_reticulum_version.as_deref(), Some("1.2.2-test"));
     assert_eq!(response.python_reference.python_lxmf_version.as_deref(), Some("0.9.6-test"));
     assert_eq!(response.python_reference.python_lxmf_ref, "lxmf-test-ref");
+    assert_eq!(response.software_parity, Some(crate::current_software_parity_orientation()));
     let captured = captured.lock().expect("captured request");
     let request = captured.as_ref().expect("zmq request");
     assert_eq!(request.method, "sdk_negotiate_v2");
@@ -221,6 +223,7 @@ fn negotiate_without_reported_parity_metadata_falls_back_to_local_constants() {
         response.python_reference.python_reticulum_version.as_deref(),
         Some(crate::PYTHON_RETICULUM_REFERENCE_VERSION)
     );
+    assert_eq!(response.software_parity, None);
     server.join().expect("server joined");
 }
 

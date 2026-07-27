@@ -63,6 +63,7 @@ impl ZmqPipelineBackendClient {
                 crate::SDK_VERSION,
             )?,
             python_reference: Self::parse_parity_reference(&result)?,
+            software_parity: Self::parse_software_parity(&result)?,
         })
     }
 

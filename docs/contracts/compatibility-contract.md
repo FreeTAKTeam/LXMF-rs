@@ -15,11 +15,16 @@
 - Python LXMF compatibility is validated against version `0.9.6` at commit
   `727830cefda83d9c6e3982b48675425f3f988f9c`. The version is diagnostic; the
   commit remains the reproducible compatibility identity.
-- Daemon `status`, `daemon_status_ex`, and the typed `rns.runtime.status`
-  operation expose the current software checkpoint at `reticulum.parity`.
-  `level` and the inventory counts describe mapped Python software-surface
-  parity only; hardware evidence remains a separate matrix axis. The parity
-  inventory generator emits and checks the Rust metadata used by this API.
+- SDK negotiation exposes an optional typed `software_parity` orientation, and
+  daemon `status`, `daemon_status_ex`, and the typed `rns.runtime.status`
+  operation expose the same structure at `reticulum.parity`.
+- The structure separately reports overall, Reticulum, and LXMF checkpoints.
+  Each ratio is exact complete/applicable, where applicable is complete plus
+  partial and not-applicable entries are excluded. The inventory generator
+  emits and checks the grouped Rust metadata used by these API surfaces.
+- `software_parity.advisory` is always `true`. This is consumer orientation,
+  not a substitute for capability negotiation, runtime feature checks, or the
+  separate hardware-evidence axis.
 
 ## Canonical Payload Policy (v0.3 clean-break)
 

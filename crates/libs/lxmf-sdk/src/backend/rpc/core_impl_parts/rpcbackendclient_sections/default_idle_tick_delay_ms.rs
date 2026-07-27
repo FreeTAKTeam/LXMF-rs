@@ -105,6 +105,7 @@ impl RpcBackendClient {
         let sdk_version =
             Self::parse_optional_string_or_default(&result, "sdk_version", crate::SDK_VERSION)?;
         let python_reference = Self::parse_parity_reference(&result)?;
+        let software_parity = Self::parse_software_parity(&result)?;
         {
             let mut guard = self
                 .negotiated_capabilities
@@ -136,6 +137,7 @@ impl RpcBackendClient {
             schema_namespace,
             sdk_version,
             python_reference,
+            software_parity,
         })
     }
 
@@ -213,6 +215,7 @@ impl RpcBackendClient {
         let sdk_version =
             Self::parse_optional_string_or_default(&result, "sdk_version", crate::SDK_VERSION)?;
         let python_reference = Self::parse_parity_reference(&result)?;
+        let software_parity = Self::parse_software_parity(&result)?;
         {
             let mut guard = self
                 .negotiated_capabilities
@@ -244,6 +247,7 @@ impl RpcBackendClient {
             schema_namespace,
             sdk_version,
             python_reference,
+            software_parity,
         })
     }
 

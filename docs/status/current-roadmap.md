@@ -125,7 +125,10 @@ and 1 provenance-backed not-applicable entry across 1,665 entries**. The
 current RNS 1.4.2 inventory records **1,787 implementation-complete, 23
 partial, and 1 provenance-backed not-applicable entry across 1,811 entries**.
 Documentation CI checks inventory drift; the release gate continues to require
-zero partial entries.
+zero partial entries. SDK negotiation and daemon runtime status expose this as
+an advisory consumer orientation with separate overall, Reticulum, and LXMF
+checkpoints; capability negotiation and runtime feature checks remain
+authoritative for behavior.
 
 Implementation and evidence are independent. Hardware-capable interfaces may
 reach `implementation=complete` with deterministic simulation while retaining

@@ -33,6 +33,10 @@
             })
         );
         assert_eq!(
+            result["software_parity"],
+            json!(crate::current_software_parity_orientation())
+        );
+        assert_eq!(
             result["meta"]["python_reference"],
             result["python_reference"],
             "response metadata should repeat the parity checkpoint for clients that only inspect meta"

@@ -40,10 +40,13 @@ The reopened software gaps are:
 - the newly exposed Reticulum/Transport lifecycle helpers listed as partial in
   `python-surface-parity.json`.
 
-The daemon `status` and `daemon_status_ex` API surfaces expose this checkpoint
-under `reticulum.parity`, including the level, pinned baseline, and inventory
-counts. This is software-surface status; it does not collapse the separate
-hardware-evidence axis.
+SDK negotiation exposes an optional typed `software_parity` orientation, and
+daemon `status`, `daemon_status_ex`, and `rns.runtime.status` expose the same
+structure under `reticulum.parity`. It separates overall, Reticulum, and LXMF
+checkpoints, includes pinned reference versions and revisions, and reports
+exact complete/applicable ratios alongside the inventory counts. It is marked
+`advisory: true` for consumer orientation and does not replace capability
+negotiation, runtime feature checks, or the separate hardware-evidence axis.
 
 ## Surface Matrix
 

@@ -80,19 +80,19 @@ fn daemon_status_ex_reads_cached_status_snapshot() {
             15,
             "sdk_envelope_execute_v2",
             json!({
-                "operation_id": "app.delivery.destination_hash",
+                "operation_id": "rns.runtime.status",
                 "kind": "query",
                 "payload": {},
             }),
         ))
-        .expect("destination hash envelope");
-    let envelope = envelope_response.result.expect("destination hash envelope result");
-    assert_eq!(envelope["response"]["operation_id"], json!("app.delivery.destination_hash"));
+        .expect("runtime status envelope");
+    let envelope = envelope_response.result.expect("runtime status envelope result");
+    assert_eq!(envelope["response"]["operation_id"], json!("rns.runtime.status"));
     assert_status_snapshot_fields(&envelope["response"]["payload"]);
     assert_eq!(
         daemon.metrics_snapshot()["counters"]["daemon_status_calls_total"].as_u64(),
-        Some(1),
-        "delegated legacy status should not inflate daemon_status_ex metrics"
+        Some(2),
+        "typed runtime status should count as a daemon status call"
     );
 }
 
@@ -229,21 +229,23 @@ fn assert_status_snapshot_fields(result: &JsonValue) {
         Some(false)
     );
     assert_eq!(
-        result["reticulum"]["parity"]["level"].as_str(),
-        Some(crate::PYTHON_SOFTWARE_PARITY_LEVEL)
+        result["reticulum"]["parity"],
+        json!(crate::current_software_parity_orientation())
     );
     assert_eq!(
-        result["reticulum"]["parity"]["baseline_version"].as_str(),
-        Some(crate::PYTHON_RETICULUM_REFERENCE_VERSION)
+        result["reticulum"]["parity"]["overall"]["complete_ratio"],
+        json!({"numerator": 1787, "denominator": 1810})
     );
     assert_eq!(
-        result["reticulum"]["parity"]["inventory"]["total"].as_u64(),
-        Some(crate::PYTHON_SOFTWARE_PARITY_TOTAL as u64)
+        result["reticulum"]["parity"]["reticulum"]["inventory"],
+        json!({
+            "total": 1608,
+            "complete": 1585,
+            "partial": 23,
+            "not_applicable": 0
+        })
     );
-    assert_eq!(
-        result["reticulum"]["parity"]["inventory"]["partial"].as_u64(),
-        Some(crate::PYTHON_SOFTWARE_PARITY_PARTIAL as u64)
-    );
+    assert_eq!(result["reticulum"]["parity"]["lxmf"]["level"], "complete");
     assert!(
         result["capabilities"].as_array().is_some_and(|values| values.iter().any(|value| value == "daemon_status_ex")),
         "status snapshot should include capability list: {result}"

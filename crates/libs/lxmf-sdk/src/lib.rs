@@ -127,6 +127,8 @@ pub const CONTRACT_RELEASE: &str = "v2.6";
 pub const SCHEMA_NAMESPACE: &str = "v2";
 pub const SDK_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub use lxmf_reference::{
+    current_software_parity_orientation, ParityCheckpoint, ParityInventory, ParityLevel,
+    ParityRatio, ReferenceRevision, SoftwareParityOrientation, SoftwareParityReferences,
     PYTHON_LXMF_REFERENCE_REF, PYTHON_LXMF_REFERENCE_VERSION, PYTHON_RETICULUM_REFERENCE_REF,
     PYTHON_RETICULUM_REFERENCE_VERSION, PYTHON_SOFTWARE_PARITY_COMPLETE,
     PYTHON_SOFTWARE_PARITY_LEVEL, PYTHON_SOFTWARE_PARITY_NOT_APPLICABLE,

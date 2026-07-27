@@ -254,6 +254,7 @@ impl SdkBackend for ZmqPipelineBackendClient {
                 crate::SDK_VERSION,
             )?,
             python_reference: Self::parse_parity_reference(&result)?,
+            software_parity: Self::parse_software_parity(&result)?,
         })
     }
     fn send(&self, req: SendRequest) -> Result<MessageId, SdkError> {
