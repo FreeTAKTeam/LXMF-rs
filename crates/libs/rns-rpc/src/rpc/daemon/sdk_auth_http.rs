@@ -310,7 +310,7 @@ impl RpcDaemon {
     }
 
     #[allow(clippy::result_large_err)]
-    pub(super) fn enforce_pre_auth_ip_rate_limit(&self, source_ip: &str) -> Result<(), RpcError> {
+    pub fn enforce_pre_auth_ip_rate_limit(&self, source_ip: &str) -> Result<(), RpcError> {
         let (per_ip_limit, _) = self.sdk_rate_limits();
         if per_ip_limit == 0 {
             return Ok(());

@@ -214,18 +214,26 @@ fn authorize_zmq_envelope(
     {
         return Ok(());
     }
-    let headers = match envelope.auth.as_ref() {
-        Some(auth) if auth.scheme.eq_ignore_ascii_case("bearer") => {
-            let value = auth
-                .value
-                .strip_prefix("Bearer ")
-                .or_else(|| auth.value.strip_prefix("bearer "))
-                .unwrap_or(auth.value.as_str());
-            vec![("authorization".to_string(), format!("Bearer {value}"))]
-        }
-        Some(_) => vec![("authorization".to_string(), "unsupported".to_string())],
-        None => Vec::new(),
+    let Some(auth) = envelope.auth.as_ref() else {
+        daemon.enforce_pre_auth_ip_rate_limit("0.0.0.0")?;
+        return Err(RpcError::new(
+            "SDK_SECURITY_AUTH_REQUIRED",
+            "zmq rpc envelope auth metadata is required",
+        ));
     };
+    if !auth.scheme.eq_ignore_ascii_case("bearer") {
+        daemon.enforce_pre_auth_ip_rate_limit("0.0.0.0")?;
+        return Err(RpcError::new(
+            "SDK_SECURITY_TOKEN_INVALID",
+            "zmq rpc auth metadata must use bearer scheme",
+        ));
+    }
+    let value = auth
+        .value
+        .strip_prefix("Bearer ")
+        .or_else(|| auth.value.strip_prefix("bearer "))
+        .unwrap_or(auth.value.as_str());
+    let headers = vec![("authorization".to_string(), format!("Bearer {value}"))];
     daemon.authorize_http_request(&headers, Some("0.0.0.0"))
 }
 

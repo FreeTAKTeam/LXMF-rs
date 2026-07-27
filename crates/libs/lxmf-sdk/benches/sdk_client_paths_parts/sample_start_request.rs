@@ -213,11 +213,18 @@ fn bench_slow_subscriber_memory(c: &mut Criterion) {
                             .await
                             .expect("stream should yield")
                             .expect("event should parse");
-                        let _ = stats.queued.fetch_update(
-                            Ordering::Relaxed,
-                            Ordering::Relaxed,
-                            |queued| Some(queued.saturating_sub(1)),
-                        );
+                        let mut queued = stats.queued.load(Ordering::Relaxed);
+                        loop {
+                            match stats.queued.compare_exchange_weak(
+                                queued,
+                                queued.saturating_sub(1),
+                                Ordering::Relaxed,
+                                Ordering::Relaxed,
+                            ) {
+                                Ok(_) => break,
+                                Err(current) => queued = current,
+                            }
+                        }
                         stats.observe();
                         observed = event.metadata.seq_no;
                         tokio::time::sleep(Duration::from_micros(50)).await;
