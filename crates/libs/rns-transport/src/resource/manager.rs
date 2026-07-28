@@ -216,6 +216,41 @@ impl ResourceManager {
             advertisement.compressed(),
             advertisement.encrypted()
         );
+        // Enforce the inbound limits before any receiver state is created
+        // (issue #514): a hostile peer must not get a ResourceReceiver —
+        // and the part-tracking allocations that come with it — for a
+        // resource that exceeds the transfer-size or part-count caps.
+        // ResourceReceiver::new_with_mtu re-checks both bounds as defense
+        // in depth; the explicit guards here reject early with the exact
+        // limit and peer context in the log.
+        if advertisement.transfer_size > MAX_INBOUND_RESOURCE_TRANSFER_SIZE {
+            log::warn!(
+                "rejecting resource advertisement over transfer-size limit link={} hash={} transfer_size={} limit={}",
+                link.id(),
+                advertisement.hash,
+                advertisement.transfer_size,
+                MAX_INBOUND_RESOURCE_TRANSFER_SIZE
+            );
+            log::debug!(
+                "[resource-diag] reject_advertisement transfer_size_limit hash={}",
+                advertisement.hash
+            );
+            return;
+        }
+        if u64::from(advertisement.parts) > MAX_INBOUND_RESOURCE_PARTS {
+            log::warn!(
+                "rejecting resource advertisement over part-count limit link={} hash={} parts={} limit={}",
+                link.id(),
+                advertisement.hash,
+                advertisement.parts,
+                MAX_INBOUND_RESOURCE_PARTS
+            );
+            log::debug!(
+                "[resource-diag] reject_advertisement parts_limit hash={}",
+                advertisement.hash
+            );
+            return;
+        }
         if advertisement.total_segments > 1 {
             let expected_segment = self
                 .incoming_segments

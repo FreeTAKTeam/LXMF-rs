@@ -529,6 +529,95 @@ mod tests {
         ));
     }
 
+    // Regression tests for issue #514: the manager must reject
+    // advertisements exceeding MAX_INBOUND_RESOURCE_TRANSFER_SIZE or
+    // MAX_INBOUND_RESOURCE_PARTS before any receiver (and its
+    // part-tracking allocations) is created.
+    fn advertisement_with(transfer_size: u64, data_size: u64, parts: u32) -> ResourceAdvertisement {
+        ResourceAdvertisement {
+            transfer_size,
+            data_size,
+            parts,
+            hash: Hash::new_from_slice(&[3u8; 32]),
+            random_hash: [0u8; RANDOM_HASH_SIZE],
+            original_hash: Hash::new_from_slice(&[3u8; 32]),
+            segment_index: 1,
+            total_segments: 1,
+            request_id: None,
+            flags: 0,
+            hashmap: vec![0u8; MAPHASH_LEN],
+        }
+    }
+
+    fn manager_with_test_link() -> (ResourceManager, Link) {
+        let signer = PrivateIdentity::new_from_rand(OsRng);
+        let identity = *signer.as_identity();
+        let destination = DestinationDesc {
+            identity,
+            address_hash: identity.address_hash,
+            name: DestinationName::new("lxmf", "resource"),
+        };
+        let (tx, _) = tokio::sync::broadcast::channel(1);
+        let mut link = Link::new(destination, tx);
+        link.request();
+        (ResourceManager::new_with_config(Duration::from_secs(1), 1), link)
+    }
+
+    #[test]
+    fn resource_manager_rejects_advertisement_over_transfer_size_limit() {
+        let (mut manager, mut link) = manager_with_test_link();
+        // A multi-gigabyte advertised transfer must never reach receiver
+        // creation; a transfer exactly at the cap still must.
+        let oversized =
+            advertisement_with(MAX_INBOUND_RESOURCE_TRANSFER_SIZE + 1, 1, 1);
+        let packet = resource_packet(
+            PacketContext::ResourceAdvrtisement,
+            &oversized.pack().expect("advertisement"),
+            *link.id(),
+        );
+
+        let responses = manager.handle_packet(&packet, &mut link);
+        assert!(responses.is_empty(), "rejected advertisement must not produce a request");
+        assert!(manager.incoming.is_empty(), "rejected advertisement must not create a receiver");
+
+        let at_limit = advertisement_with(MAX_INBOUND_RESOURCE_TRANSFER_SIZE, 1, 1);
+        let packet = resource_packet(
+            PacketContext::ResourceAdvrtisement,
+            &at_limit.pack().expect("advertisement"),
+            *link.id(),
+        );
+        let responses = manager.handle_packet(&packet, &mut link);
+        assert!(!manager.incoming.is_empty(), "transfer at the limit is still accepted");
+        assert!(!responses.is_empty(), "accepted advertisement requests parts");
+    }
+
+    #[test]
+    fn resource_manager_rejects_advertisement_over_parts_limit() {
+        let (mut manager, mut link) = manager_with_test_link();
+        // An excessive part count must never reach receiver creation; a
+        // count exactly at the cap still must.
+        let oversized = advertisement_with(1, 1, (MAX_INBOUND_RESOURCE_PARTS + 1) as u32);
+        let packet = resource_packet(
+            PacketContext::ResourceAdvrtisement,
+            &oversized.pack().expect("advertisement"),
+            *link.id(),
+        );
+
+        let responses = manager.handle_packet(&packet, &mut link);
+        assert!(responses.is_empty(), "rejected advertisement must not produce a request");
+        assert!(manager.incoming.is_empty(), "rejected advertisement must not create a receiver");
+
+        let at_limit = advertisement_with(1, 1, 1);
+        let packet = resource_packet(
+            PacketContext::ResourceAdvrtisement,
+            &at_limit.pack().expect("advertisement"),
+            *link.id(),
+        );
+        let responses = manager.handle_packet(&packet, &mut link);
+        assert!(!manager.incoming.is_empty(), "valid advertisement is still accepted");
+        assert!(!responses.is_empty());
+    }
+
     #[test]
     fn resource_receiver_rejects_unreasonable_advertised_parts() {
         let signer = PrivateIdentity::new_from_rand(OsRng);
