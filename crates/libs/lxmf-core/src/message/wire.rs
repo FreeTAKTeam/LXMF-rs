@@ -209,6 +209,15 @@ impl WireMessage {
         Ok(envelope)
     }
 
+    /// Packs the propagation envelope for `destination`.
+    ///
+    /// `propagation_stamp` is the LXMF proof-of-work anti-spam stamp
+    /// appended in cleartext after the encrypted payload — it is **not**
+    /// a salt or nonce and plays no role in the cryptographic envelope
+    /// (issue #519 audit). Propagation nodes validate it against the
+    /// transient id (see `crate::stamp`); a fixed or absent stamp will be
+    /// rejected by nodes enforcing a stamp cost, so callers should
+    /// generate one with `stamp::generate_propagation_stamp`.
     pub fn pack_propagation_with_options_and_rng<R: CryptoRngCore + Copy>(
         &self,
         destination: &Identity,
