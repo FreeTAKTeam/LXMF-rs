@@ -12,6 +12,24 @@ struct InboundSegmentAssembly {
 }
 
 impl ResourceManager {
+    pub fn confirm_outbound_dispatch(&mut self, resource_hash: Hash, sent: bool) {
+        let Some(mut sender) = self.pending_outgoing.remove(&resource_hash) else {
+            return;
+        };
+
+        if sent {
+            sender.mark_advertised(self.retry_limit);
+            self.outgoing.insert(resource_hash, sender);
+        } else {
+            self.outgoing_segment_chains.remove(&sender.original_hash);
+            self.events.push(ResourceEvent {
+                hash: resource_hash,
+                link_id: sender.link_id,
+                kind: ResourceEventKind::OutboundFailed,
+            });
+        }
+    }
+
     fn finish_inbound_payload(
         &mut self,
         segment_hash: Hash,
