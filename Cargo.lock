@@ -1657,6 +1657,7 @@ dependencies = [
  "criterion",
  "ed25519-dalek",
  "hex",
+ "hkdf",
  "rand_core 0.6.4",
  "reticulum-rs-core",
  "rmp-serde",

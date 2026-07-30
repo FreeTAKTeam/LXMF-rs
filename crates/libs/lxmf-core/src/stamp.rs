@@ -29,15 +29,25 @@ pub const DEFAULT_PROPAGATION_STAMP_COST: u32 = 16;
 /// `LXStamper.WORKBLOCK_EXPAND_ROUNDS_PN`.
 const PROPAGATION_WORKBLOCK_EXPAND_ROUNDS: usize = 1000;
 
+/// Maximum attainable stamp cost: the stamp value is the number of leading
+/// zero bits of a SHA-256 digest, so it can never exceed 256. Requests
+/// above this limit are rejected immediately instead of mining forever.
+pub const MAX_STAMP_COST: u32 = 256;
+
 /// `LXMessage.LXMF_OVERHEAD`: 2 destination hashes + signature + timestamp
 /// + msgpack struct overhead.
 const LXMF_OVERHEAD: usize = (2 * 16) + 64 + 8 + 8;
 
 /// Generates a propagation stamp reaching `stamp_cost` for the given
 /// transient id, mirroring `LXStamper.generate_stamp` with
-/// `WORKBLOCK_EXPAND_ROUNDS_PN`. Returns `None` only if the nonce space
-/// is exhausted, which is unreachable for realistic costs.
+/// `WORKBLOCK_EXPAND_ROUNDS_PN`. Returns `None` when `stamp_cost` exceeds
+/// [`MAX_STAMP_COST`] (unattainable, would otherwise mine forever) or if
+/// the nonce space is exhausted, which is unreachable for realistic costs.
 pub fn generate_propagation_stamp(transient_id: &[u8; 32], stamp_cost: u32) -> Option<Vec<u8>> {
+    if stamp_cost > MAX_STAMP_COST {
+        return None;
+    }
+
     let workblock = stamp_workblock(transient_id, PROPAGATION_WORKBLOCK_EXPAND_ROUNDS);
     let mut workblock_hasher = Sha256::new();
     workblock_hasher.update(&workblock);
@@ -61,6 +71,10 @@ pub fn generate_propagation_stamp(transient_id: &[u8; 32], stamp_cost: u32) -> O
 /// transient id is the full hash of the preceding data. Returns the
 /// stamp's work value when it reaches `target_cost`.
 pub fn validate_propagation_stamp(transient_data: &[u8], target_cost: u32) -> Option<u32> {
+    if target_cost > MAX_STAMP_COST {
+        return None;
+    }
+
     if transient_data.len() <= LXMF_OVERHEAD + PROPAGATION_STAMP_SIZE {
         return None;
     }
@@ -145,6 +159,23 @@ mod tests {
         // LXMRouter.PROPAGATION_COST — stamps at this value satisfy the
         // default minimum accepted cost (16 - 3 = 13).
         assert_eq!(DEFAULT_PROPAGATION_STAMP_COST, 16);
+    }
+
+    #[test]
+    fn unattainable_stamp_costs_are_rejected_before_mining() {
+        // A SHA-256 digest has at most 256 leading zero bits, so costs
+        // above 256 can never be reached; generation and validation must
+        // fail fast instead of hanging at full CPU.
+        let transient_id = sha256_array(b"unattainable");
+        assert!(generate_propagation_stamp(&transient_id, 257).is_none());
+        assert!(generate_propagation_stamp(&transient_id, u32::MAX).is_none());
+
+        let lxm_data = alloc::vec![0x42u8; 160];
+        let transient_id = sha256_array(&lxm_data);
+        let stamp = generate_propagation_stamp(&transient_id, 1).expect("stamp");
+        let mut transient = lxm_data;
+        transient.extend_from_slice(&stamp);
+        assert!(validate_propagation_stamp(&transient, 257).is_none());
     }
 
     #[test]

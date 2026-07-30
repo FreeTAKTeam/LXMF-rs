@@ -645,6 +645,14 @@ Scoped release evidence is split as follows:
 - Destination-level outbound delivery stamp costs learned from Python-style
   `lxmf.delivery` announces are now queryable through `get_outbound_stamp_cost`
   and the `app.delivery.outbound_stamp_cost` SDK envelope operation.
+- The in-process propagated-delivery path (`lxmf-runtime` `send_propagated`)
+  now mines a real LXMF propagation stamp (ported `LXStamper` workblock HKDF
+  in `lxmf-wire` `stamp.rs`) at the Python default target cost 16 instead of
+  appending a fixed all-zero stamp, so default-configured relays (minimum
+  accepted cost 13) accept these transfers. Remaining gap: the relay's
+  announced stamp cost (`pn_stamp_cost_from_app_data`) is not yet plumbed
+  into stamp generation, so relays enforcing a minimum above 16 still
+  reject this path.
 - Direct and propagated resource sends support receipt-state separation,
   timeout/failure propagation, and active resource cancellation.
 - Link sends now register packet/resource receipt tracking before handoff and
