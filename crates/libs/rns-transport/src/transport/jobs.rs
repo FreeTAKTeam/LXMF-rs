@@ -293,13 +293,21 @@ pub(super) async fn manage_transport(
     let cancel = handler_arc.lock().await.cancel.clone();
     let transport_enabled = handler_arc.lock().await.config.transport_enabled;
 
-    let _packet_task = {
+    // Worker supervision (issue #525): every worker handle is retained in
+    // this set. The loop at the end of this function fails loudly and
+    // cancels the remaining workers if any worker exits before shutdown,
+    // so a panicked or silently returned worker can no longer degrade the
+    // transport invisibly. Each worker returns its name on exit for
+    // actionable logging.
+    let mut workers = tokio::task::JoinSet::new();
+
+    {
         let handler_arc = handler_arc.clone();
         let cancel = cancel.clone();
 
         log::trace!("tp({}): start packet task", handler_arc.lock().await.config.name);
 
-        tokio::spawn(async move {
+        workers.spawn(async move {
             loop {
                 let mut rx_receiver = rx_receiver.lock().await;
 
@@ -394,14 +402,16 @@ pub(super) async fn manage_transport(
                     }
                 };
             }
-        })
-    };
+
+            "packet"
+        });
+    }
 
     {
         let handler = handler_arc.clone();
         let cancel = cancel.clone();
 
-        tokio::spawn(async move {
+        workers.spawn(async move {
             loop {
                 if cancel.is_cancelled() {
                     break;
@@ -417,6 +427,8 @@ pub(super) async fn manage_transport(
                     }
                 }
             }
+
+            "link-check"
         });
     }
 
@@ -424,7 +436,7 @@ pub(super) async fn manage_transport(
         let handler = handler_arc.clone();
         let cancel = cancel.clone();
 
-        tokio::spawn(async move {
+        workers.spawn(async move {
             loop {
                 if cancel.is_cancelled() {
                     break;
@@ -439,6 +451,8 @@ pub(super) async fn manage_transport(
                     }
                 }
             }
+
+            "iface-cleanup"
         });
     }
 
@@ -446,7 +460,7 @@ pub(super) async fn manage_transport(
         let handler = handler_arc.clone();
         let cancel = cancel.clone();
 
-        tokio::spawn(async move {
+        workers.spawn(async move {
             loop {
                 if cancel.is_cancelled() {
                     break;
@@ -469,6 +483,8 @@ pub(super) async fn manage_transport(
                     },
                 }
             }
+
+            "packet-cache-cleanup"
         });
     }
 
@@ -476,7 +492,7 @@ pub(super) async fn manage_transport(
         let handler = handler_arc.clone();
         let cancel = cancel.clone();
 
-        tokio::spawn(async move {
+        workers.spawn(async move {
             loop {
                 if cancel.is_cancelled() {
                     break;
@@ -500,6 +516,8 @@ pub(super) async fn manage_transport(
                     }
                 }
             }
+
+            "announce-retransmit"
         });
     }
 
@@ -510,7 +528,7 @@ pub(super) async fn manage_transport(
             handler_arc.lock().await.config.resource_retry_interval_secs.max(1),
         );
 
-        tokio::spawn(async move {
+        workers.spawn(async move {
             loop {
                 if cancel.is_cancelled() {
                     break;
@@ -546,7 +564,38 @@ pub(super) async fn manage_transport(
                     }
                 }
             }
+
+            "resource-retry"
         });
+    }
+
+    // Supervision loop (issue #525) — extracted so the failure semantics
+    // are directly testable: normal shutdown cancels every worker and
+    // drains this set quietly; any worker that exits while the transport
+    // is still running cancels the rest and is logged with its name and
+    // failure.
+    supervise_workers(&mut workers, &cancel).await;
+}
+
+async fn supervise_workers(
+    workers: &mut tokio::task::JoinSet<&'static str>,
+    cancel: &tokio_util::sync::CancellationToken,
+) {
+    while let Some(result) = workers.join_next().await {
+        match result {
+            Ok(name) => {
+                if !cancel.is_cancelled() {
+                    log::error!(
+                        "tp: transport worker '{name}' exited before shutdown; cancelling remaining workers"
+                    );
+                    cancel.cancel();
+                }
+            }
+            Err(err) => {
+                log::error!("tp: transport worker failed ({err}); cancelling remaining workers");
+                cancel.cancel();
+            }
+        }
     }
 }
 
