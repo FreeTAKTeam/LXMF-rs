@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine as _;
-use lxmf_core::{decide_delivery, Message, MessageMethod, TransportMethod, WireMessage};
+use lxmf_core::{decide_delivery, LxmfError, Message, MessageMethod, TransportMethod, WireMessage};
 use lxmf_sdk::{MessageId, SdkError, SendRequest};
 use rand_core::OsRng;
 use rns_transport::destination::{DestinationDesc, DestinationName};
@@ -171,14 +171,25 @@ async fn send_propagated(
     );
     let propagated = WireMessage::unpack(wire)
         .and_then(|message| {
-            message
-                .pack_propagation_with_options_and_rng(
-                    &recipient,
-                    crate::state::now_ms() as f64 / 1000.0,
-                    Some(&[0_u8; 32]),
-                    OsRng,
-                )
-                .map(|(payload, _)| payload)
+            let (lxmf_data, transient_id) =
+                message.pack_propagation_transient_with_rng(&recipient, OsRng)?;
+            // Issue #519: the trailing 32 bytes of the transient payload
+            // are the LXMF propagation stamp — a proof-of-work anti-spam
+            // value validated by the relay, not a salt/nonce. A fixed
+            // all-zero stamp is rejected by nodes enforcing a stamp cost
+            // (Python default minimum accepted: 13), so generate a real
+            // stamp at the Python default target cost. Using the relay's
+            // announced cost (pn_announce data) is a tracked follow-up.
+            let stamp = lxmf_core::stamp::generate_propagation_stamp(
+                &transient_id,
+                lxmf_core::stamp::DEFAULT_PROPAGATION_STAMP_COST,
+            )
+            .ok_or_else(|| LxmfError::Encode("propagation stamp generation exhausted".into()))?;
+            WireMessage::pack_propagation_envelope(
+                crate::state::now_ms() as f64 / 1000.0,
+                &lxmf_data,
+                Some(&stamp),
+            )
         })
         .map_err(|err| internal(format!("failed to encode propagated LXMF payload: {err}")))?;
     let representation = if propagated.len() > LXMF_MAX_PAYLOAD {

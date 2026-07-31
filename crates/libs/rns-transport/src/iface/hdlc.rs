@@ -1,6 +1,6 @@
 use crate::{buffer::OutputBuffer, error::RnsError};
 
-const HDLC_FRAME_FLAG: u8 = 0x7e;
+pub(crate) const HDLC_FRAME_FLAG: u8 = 0x7e;
 const HDLC_ESCAPE_BYTE: u8 = 0x7d;
 const HDLC_ESCAPE_MASK: u8 = 0b00100000;
 

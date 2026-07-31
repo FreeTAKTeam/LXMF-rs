@@ -178,3 +178,67 @@ pub(crate) fn try_decrypt_with_ratchets(
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{RatchetState, DEFAULT_RATCHET_INTERVAL_SECS};
+    use crate::identity::PrivateIdentity;
+    use rand_core::OsRng;
+
+    // no_std-focused tests for issue #518: ratchet rotation is driven
+    // entirely by the injected `now`, so the embedded time contract can
+    // be validated deterministically. A frozen or zero clock must never
+    // silently rotate (or refuse to rotate) — rotation happens exactly
+    // when the injected time crosses the interval boundary.
+    #[test]
+    fn rotate_if_needed_rotates_exactly_on_injected_interval_boundary() {
+        let identity = PrivateIdentity::new_from_rand(OsRng);
+        let mut state = RatchetState { enabled: true, ..RatchetState::default() };
+
+        state.rotate_if_needed(&identity, 1_000.0).expect("first rotation");
+        assert_eq!(state.ratchets.len(), 1, "empty state rotates regardless of clock");
+        let first = state.ratchets.clone();
+
+        state
+            .rotate_if_needed(&identity, 1_000.0 + DEFAULT_RATCHET_INTERVAL_SECS as f64 - 1.0)
+            .expect("within interval");
+        assert_eq!(state.ratchets, first, "no rotation before the interval elapses");
+
+        state
+            .rotate_if_needed(&identity, 1_000.0 + DEFAULT_RATCHET_INTERVAL_SECS as f64 + 1.0)
+            .expect("past interval");
+        assert_eq!(state.ratchets.len(), 2);
+        assert_ne!(
+            state.ratchets[0], first[0],
+            "rotation past the interval installs a new ratchet"
+        );
+    }
+
+    #[test]
+    fn rotate_if_needed_with_zero_clock_does_not_falsely_rotate_or_expire() {
+        let identity = PrivateIdentity::new_from_rand(OsRng);
+        let mut state = RatchetState { enabled: true, ..RatchetState::default() };
+
+        // The issue-518 no_std failure mode: a silent 0.0 clock rotates
+        // once and then never again (0 > 0 + interval is false), freezing
+        // the replay window. With the injected-time contract the caller
+        // controls `now`, and a zero value must behave as "no time
+        // elapsed": rotate the empty state once, then hold steady.
+        state.rotate_if_needed(&identity, 0.0).expect("zero clock");
+        assert_eq!(state.ratchets.len(), 1);
+        let only = state.ratchets.clone();
+        for _ in 0..3 {
+            state.rotate_if_needed(&identity, 0.0).expect("zero clock again");
+        }
+        assert_eq!(state.ratchets, only, "a frozen clock must not silently rotate or expire");
+    }
+
+    #[test]
+    fn rotate_if_needed_noops_when_ratchets_disabled() {
+        let identity = PrivateIdentity::new_from_rand(OsRng);
+        let mut state = RatchetState::default();
+
+        state.rotate_if_needed(&identity, 1_000.0).expect("disabled state");
+        assert!(state.ratchets.is_empty());
+    }
+}

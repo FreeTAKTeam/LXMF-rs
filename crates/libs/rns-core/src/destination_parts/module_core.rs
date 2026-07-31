@@ -312,12 +312,18 @@ impl Destination<PrivateIdentity, Input, Single> {
         // Python Reticulum encodes announce randomness as 5 random bytes
         // followed by a 5-byte big-endian unix timestamp. Matching this
         // layout keeps announce freshness/path ordering interoperable.
+        // In no_std builds this fails explicitly with
+        // `TimeSourceUnavailable` until the embedding application
+        // installs a clock via `ratchets::set_time_override` — a silent
+        // zero timestamp would corrupt announce freshness ordering and
+        // freeze ratchet rotation (issue #518).
+        let now = now_secs().ok_or(RnsError::TimeSourceUnavailable)?;
         let mut rand_hash = [0u8; RAND_HASH_LENGTH];
         let mut random_part = [0u8; RAND_HASH_LENGTH / 2];
         let mut rng_mut = rng;
         rng_mut.fill_bytes(&mut random_part);
         rand_hash[..RAND_HASH_LENGTH / 2].copy_from_slice(&random_part);
-        let emitted_secs = now_secs().floor() as u64;
+        let emitted_secs = now.floor() as u64;
         let emitted_be = emitted_secs.to_be_bytes();
         rand_hash[RAND_HASH_LENGTH / 2..].copy_from_slice(&emitted_be[3..8]);
 
@@ -325,7 +331,6 @@ impl Destination<PrivateIdentity, Input, Single> {
         let verifying_key = self.identity.as_identity().verifying_key_bytes();
 
         let ratchet = if self.ratchet_state.enabled {
-            let now = now_secs();
             self.ratchet_state.rotate_if_needed(&self.identity, now)?;
             self.ratchet_state.current_ratchet_public()
         } else {

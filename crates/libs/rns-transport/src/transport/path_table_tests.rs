@@ -45,6 +45,45 @@ fn announce(destination: AddressHash, hops: u8, prefix: &[u8; 5], emitted: u64) 
     }
 }
 
+fn entry_with_hops(hops: u8) -> PathEntry {
+    PathEntry {
+        timestamp: test_now(),
+        received_from: addr(b"from"),
+        hops,
+        iface: addr(b"iface"),
+        packet_hash: hash(b"packet"),
+        random_blobs: Vec::new(),
+        state: PathState::Unknown,
+    }
+}
+
+/// Issue #515: the direct-hop invariant is centralized in `PathEntry`
+/// helpers so every routing decision agrees on what "direct" means. These
+/// tests pin the full matrix, including the inconsistent intermediate
+/// states a broken `apply_receive_hop_increment` ordering could produce.
+#[test]
+fn direct_hop_invariant_hops_zero_is_direct() {
+    assert!(entry_with_hops(0).is_direct());
+    for hops in [1u8, 2, 3, u8::MAX] {
+        assert!(!entry_with_hops(hops).is_direct(), "hops={hops} must not be direct");
+    }
+}
+
+#[test]
+fn type1_eligibility_matches_reference_outbound_rule() {
+    // Reference Transport.outbound(): hops > 1 -> Type2; hops == 1 and
+    // shared instance -> Type2; else Type1.
+    for shared in [false, true] {
+        assert!(entry_with_hops(0).type1_eligible(shared));
+    }
+    assert!(entry_with_hops(1).type1_eligible(false));
+    assert!(!entry_with_hops(1).type1_eligible(true));
+    for hops in [2u8, 3, 64, u8::MAX] {
+        assert!(!entry_with_hops(hops).type1_eligible(false), "hops={hops} must be Type2");
+        assert!(!entry_with_hops(hops).type1_eligible(true), "hops={hops} must be Type2");
+    }
+}
+
 #[test]
 fn remove_stale_and_expire_path_match_expected_lifetimes() {
     let now = test_now();

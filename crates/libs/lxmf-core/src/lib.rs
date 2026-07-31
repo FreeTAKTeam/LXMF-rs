@@ -11,6 +11,7 @@ pub mod identity;
 pub mod inbound_decode;
 pub mod message;
 pub mod payload_fields;
+pub mod stamp;
 #[cfg(feature = "std")]
 pub mod wire_fields;
 

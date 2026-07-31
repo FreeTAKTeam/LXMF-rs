@@ -20,14 +20,10 @@ pub(super) fn route_inbound_packet(
         return RouteDecision { packet: original_packet.clone(), next_iface: None };
     };
 
-    // Now that inbound packets are correctly incremented on receipt (see
-    // `transport/jobs.rs`'s `apply_receive_hop_increment`), a genuinely
-    // direct (zero real hops away) destination is `entry.hops == 0` —
-    // matching reference Reticulum's own `for_local_client` criterion
-    // (`Transport.py`, `Transport.path_table[dest][IDX_PT_HOPS] == 0`),
-    // confirmed by direct reading. `received_from` doesn't factor into it at
-    // all in the reference implementation.
-    let is_direct_hop = entry.hops == 0;
+    // Centralized direct-hop criterion (issue #515): see
+    // `PathEntry::is_direct` for the full invariant and its dependency on
+    // `apply_receive_hop_increment` in transport/jobs.rs.
+    let is_direct_hop = entry.is_direct();
     let packet = if is_direct_hop {
         Packet {
             header: Header {
@@ -90,28 +86,10 @@ pub(super) fn route_outbound_packet(
         return RouteDecision { packet: original_packet.clone(), next_iface: None };
     };
 
-    // Matches reference Reticulum's own `Transport.outbound()` exactly
-    // (confirmed by direct reading):
-    //
-    //   if hops > 1: Type2
-    //   elif hops == 1 and connected_to_shared_instance: Type2
-    //   else: Type1
-    //
-    // No `received_from` check anywhere in the reference rule — that
-    // condition (previously required here) happened to work for
-    // destinations whose path was learned via a direct announce but broke
-    // anything learned via a relayed/PathResponse announce instead, which is
-    // the overwhelmingly common case for anything reached through a
-    // Transport hub. This only became provably correct once inbound packets
-    // were fixed to increment hops on receipt (see `transport/jobs.rs`) —
-    // reference Reticulum's own `for_local_client`/outbound rules assume
-    // hops faithfully reflects real distance, which this crate's own hops
-    // previously didn't.
-    let type1_eligible = match entry.hops {
-        0 => true,
-        1 => !connected_to_shared_instance,
-        _ => false,
-    };
+    // Centralized `Transport.outbound()` header rule (issue #515): see
+    // `PathEntry::type1_eligible` for the full reference-parity rule and
+    // why `received_from` deliberately doesn't factor into it.
+    let type1_eligible = entry.type1_eligible(connected_to_shared_instance);
 
     if type1_eligible {
         return RouteDecision { packet: original_packet.clone(), next_iface: Some(entry.iface) };
@@ -239,6 +217,18 @@ pub(super) async fn handle_path_request<'a>(
                 }
 
                 let incoming_iface_mode = handler.iface_manager.lock().await.mode(&iface);
+                // Reference parity (issue #516): Python Reticulum
+                // `Transport.py` (~line 3044) suppresses a known-path
+                // response when the request arrived on a MODE_ROAMING
+                // interface and the known next hop is attached to that
+                // same interface (`attached_interface == received_from`),
+                // because roaming peers are expected to move and answering
+                // would pin a stale route. Behavior here matches the
+                // reference exactly; regression coverage lives in
+                // `tests_parts/module_prelude.rs`
+                // (`roaming_iface_suppresses_known_path_response_when_next_hop_is_same_iface`,
+                // `roaming_iface_delays_known_path_response_when_next_hop_differs`,
+                // `roaming_suppression_only_applies_to_roaming_mode`).
                 if incoming_iface_mode == Some(InterfaceMode::Roaming) && learned_iface == iface {
                     log::trace!(
                         "tp({}): suppressing roaming same-iface path response for {}",
