@@ -31,20 +31,23 @@ mod tests {
         use tokio_util::sync::CancellationToken;
 
         let cancel = CancellationToken::new();
-        let mut workers = tokio::task::JoinSet::new();
+        let mut workers = WorkerSet::new();
+        let mut worker_names = WorkerNames::new();
 
-        workers.spawn(async { "faulty" });
+        spawn_named_worker(&mut workers, &mut worker_names, "faulty", async {});
         {
             let cancel = cancel.clone();
-            workers.spawn(async move {
+            spawn_named_worker(&mut workers, &mut worker_names, "long-lived", async move {
                 cancel.cancelled().await;
-                "long-lived"
             });
         }
 
-        tokio::time::timeout(Duration::from_secs(2), supervise_workers(&mut workers, &cancel))
-            .await
-            .expect("supervision should drain all workers after early exit");
+        tokio::time::timeout(
+            Duration::from_secs(2),
+            supervise_workers(&mut workers, &worker_names, &cancel),
+        )
+        .await
+        .expect("supervision should drain all workers after early exit");
 
         assert!(cancel.is_cancelled(), "early worker exit must cancel the transport");
         assert!(workers.is_empty());
@@ -57,23 +60,51 @@ mod tests {
         use tokio_util::sync::CancellationToken;
 
         let cancel = CancellationToken::new();
-        let mut workers = tokio::task::JoinSet::<&'static str>::new();
+        let mut workers = WorkerSet::new();
+        let mut worker_names = WorkerNames::new();
 
-        workers.spawn(async { panic!("boom") });
+        spawn_named_worker(&mut workers, &mut worker_names, "panicky", async {
+            panic!("boom")
+        });
         {
             let cancel = cancel.clone();
-            workers.spawn(async move {
+            spawn_named_worker(&mut workers, &mut worker_names, "long-lived", async move {
                 cancel.cancelled().await;
-                "long-lived"
             });
         }
 
-        tokio::time::timeout(Duration::from_secs(2), supervise_workers(&mut workers, &cancel))
-            .await
-            .expect("supervision should drain all workers after a panic");
+        tokio::time::timeout(
+            Duration::from_secs(2),
+            supervise_workers(&mut workers, &worker_names, &cancel),
+        )
+        .await
+        .expect("supervision should drain all workers after a panic");
 
         assert!(cancel.is_cancelled(), "worker panic must cancel the transport");
         assert!(workers.is_empty());
+    }
+
+    /// Issue #539 review follow-up: worker names are tracked by task id,
+    /// so the failure log can attribute a panic (which returns no value)
+    /// to the worker that caused it.
+    #[tokio::test]
+    async fn worker_names_attribute_failures_by_task_id() {
+        let mut workers = WorkerSet::new();
+        let mut worker_names = WorkerNames::new();
+
+        spawn_named_worker(&mut workers, &mut worker_names, "first", async {});
+        spawn_named_worker(&mut workers, &mut worker_names, "second", async {});
+
+        let (id, result) = workers
+            .join_next_with_id()
+            .await
+            .expect("a completed worker")
+            .expect("worker finished without panicking");
+        assert_eq!(result, ());
+        assert!(
+            matches!(worker_names.get(&id).copied(), Some("first" | "second")),
+            "completed task id must map back to its worker name"
+        );
     }
 
     /// Issue #525: on normal shutdown all workers exit after cancellation
@@ -83,19 +114,27 @@ mod tests {
         use tokio_util::sync::CancellationToken;
 
         let cancel = CancellationToken::new();
-        let mut workers = tokio::task::JoinSet::new();
-        for _ in 0..3 {
+        let mut workers = WorkerSet::new();
+        let mut worker_names = WorkerNames::new();
+        for idx in 0..3 {
             let cancel = cancel.clone();
-            workers.spawn(async move {
+            let name = match idx {
+                0 => "worker-a",
+                1 => "worker-b",
+                _ => "worker-c",
+            };
+            spawn_named_worker(&mut workers, &mut worker_names, name, async move {
                 cancel.cancelled().await;
-                "worker"
             });
         }
 
         cancel.cancel();
-        tokio::time::timeout(Duration::from_secs(2), supervise_workers(&mut workers, &cancel))
-            .await
-            .expect("supervision should drain cleanly on normal shutdown");
+        tokio::time::timeout(
+            Duration::from_secs(2),
+            supervise_workers(&mut workers, &worker_names, &cancel),
+        )
+        .await
+        .expect("supervision should drain cleanly on normal shutdown");
         assert!(workers.is_empty());
     }
 }

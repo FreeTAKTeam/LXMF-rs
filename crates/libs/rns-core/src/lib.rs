@@ -13,6 +13,9 @@ pub mod key_manager;
 pub mod packet;
 pub mod ratchets;
 
+#[cfg(feature = "std")]
+#[doc(hidden)]
+pub mod secure_storage;
 pub mod serde;
 
 pub use destination::{group_decrypt, group_encrypt};

@@ -12,9 +12,9 @@ include!("tests_parts/tunnel_restore_freshness.rs");
 
 include!("tests_parts/held_udp_announce_preserves_peer_sou.rs");
 
-include!("tests_parts/announce_identity_drift.rs");
-
 include!("tests_parts/roaming_path_response_suppression.rs");
+
+include!("tests_parts/announce_identity_drift.rs");
 
 include!("tests_parts/announce_broadcast_policy.rs");
 

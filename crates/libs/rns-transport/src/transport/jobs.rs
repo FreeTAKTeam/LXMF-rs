@@ -297,9 +297,11 @@ pub(super) async fn manage_transport(
     // this set. The loop at the end of this function fails loudly and
     // cancels the remaining workers if any worker exits before shutdown,
     // so a panicked or silently returned worker can no longer degrade the
-    // transport invisibly. Each worker returns its name on exit for
-    // actionable logging.
-    let mut workers = tokio::task::JoinSet::new();
+    // transport invisibly. Each worker returns its name on exit, and the
+    // id-to-name map keeps failures attributable even when a panic means
+    // no value comes back (review follow-up on #539).
+    let mut workers = WorkerSet::new();
+    let mut worker_names = WorkerNames::new();
 
     {
         let handler_arc = handler_arc.clone();
@@ -307,7 +309,7 @@ pub(super) async fn manage_transport(
 
         log::trace!("tp({}): start packet task", handler_arc.lock().await.config.name);
 
-        workers.spawn(async move {
+        spawn_named_worker(&mut workers, &mut worker_names, "packet", async move {
             loop {
                 let mut rx_receiver = rx_receiver.lock().await;
 
@@ -402,8 +404,6 @@ pub(super) async fn manage_transport(
                     }
                 };
             }
-
-            "packet"
         });
     }
 
@@ -411,7 +411,7 @@ pub(super) async fn manage_transport(
         let handler = handler_arc.clone();
         let cancel = cancel.clone();
 
-        workers.spawn(async move {
+        spawn_named_worker(&mut workers, &mut worker_names, "link-check", async move {
             loop {
                 if cancel.is_cancelled() {
                     break;
@@ -427,8 +427,6 @@ pub(super) async fn manage_transport(
                     }
                 }
             }
-
-            "link-check"
         });
     }
 
@@ -436,7 +434,7 @@ pub(super) async fn manage_transport(
         let handler = handler_arc.clone();
         let cancel = cancel.clone();
 
-        workers.spawn(async move {
+        spawn_named_worker(&mut workers, &mut worker_names, "iface-cleanup", async move {
             loop {
                 if cancel.is_cancelled() {
                     break;
@@ -451,8 +449,6 @@ pub(super) async fn manage_transport(
                     }
                 }
             }
-
-            "iface-cleanup"
         });
     }
 
@@ -460,7 +456,7 @@ pub(super) async fn manage_transport(
         let handler = handler_arc.clone();
         let cancel = cancel.clone();
 
-        workers.spawn(async move {
+        spawn_named_worker(&mut workers, &mut worker_names, "packet-cache-cleanup", async move {
             loop {
                 if cancel.is_cancelled() {
                     break;
@@ -483,8 +479,6 @@ pub(super) async fn manage_transport(
                     },
                 }
             }
-
-            "packet-cache-cleanup"
         });
     }
 
@@ -492,7 +486,7 @@ pub(super) async fn manage_transport(
         let handler = handler_arc.clone();
         let cancel = cancel.clone();
 
-        workers.spawn(async move {
+        spawn_named_worker(&mut workers, &mut worker_names, "announce-retransmit", async move {
             loop {
                 if cancel.is_cancelled() {
                     break;
@@ -516,8 +510,6 @@ pub(super) async fn manage_transport(
                     }
                 }
             }
-
-            "announce-retransmit"
         });
     }
 
@@ -528,7 +520,7 @@ pub(super) async fn manage_transport(
             handler_arc.lock().await.config.resource_retry_interval_secs.max(1),
         );
 
-        workers.spawn(async move {
+        spawn_named_worker(&mut workers, &mut worker_names, "resource-retry", async move {
             loop {
                 if cancel.is_cancelled() {
                     break;
@@ -564,8 +556,6 @@ pub(super) async fn manage_transport(
                     }
                 }
             }
-
-            "resource-retry"
         });
     }
 
@@ -574,17 +564,36 @@ pub(super) async fn manage_transport(
     // drains this set quietly; any worker that exits while the transport
     // is still running cancels the rest and is logged with its name and
     // failure.
-    supervise_workers(&mut workers, &cancel).await;
+    supervise_workers(&mut workers, &worker_names, &cancel).await;
+}
+
+type WorkerSet = tokio::task::JoinSet<()>;
+type WorkerNames = std::collections::HashMap<tokio::task::Id, &'static str>;
+
+/// Spawns a named transport worker, recording the task id so failures
+/// (including panics, which return no value) stay attributable to the
+/// worker that caused them.
+fn spawn_named_worker<F>(
+    workers: &mut WorkerSet,
+    worker_names: &mut WorkerNames,
+    name: &'static str,
+    future: F,
+) where
+    F: std::future::Future<Output = ()> + Send + 'static,
+{
+    worker_names.insert(workers.spawn(future).id(), name);
 }
 
 async fn supervise_workers(
-    workers: &mut tokio::task::JoinSet<&'static str>,
+    workers: &mut WorkerSet,
+    worker_names: &WorkerNames,
     cancel: &tokio_util::sync::CancellationToken,
 ) {
-    while let Some(result) = workers.join_next().await {
+    while let Some(result) = workers.join_next_with_id().await {
         match result {
-            Ok(name) => {
+            Ok((id, ())) => {
                 if !cancel.is_cancelled() {
+                    let name = worker_names.get(&id).copied().unwrap_or("<unnamed>");
                     log::error!(
                         "tp: transport worker '{name}' exited before shutdown; cancelling remaining workers"
                     );
@@ -592,7 +601,13 @@ async fn supervise_workers(
                 }
             }
             Err(err) => {
-                log::error!("tp: transport worker failed ({err}); cancelling remaining workers");
+                // JoinError carries no return value, but it does carry
+                // the failed task id — look the worker name up so panics
+                // stay attributable (review follow-up on #539).
+                let name = worker_names.get(&err.id()).copied().unwrap_or("<unnamed>");
+                log::error!(
+                    "tp: transport worker '{name}' failed ({err}); cancelling remaining workers"
+                );
                 cancel.cancel();
             }
         }

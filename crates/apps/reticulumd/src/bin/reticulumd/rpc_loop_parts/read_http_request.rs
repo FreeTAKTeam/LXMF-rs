@@ -2,14 +2,31 @@ async fn read_http_request<S>(stream: &mut S) -> io::Result<Vec<u8>>
 where
     S: AsyncRead + Unpin,
 {
+    read_http_request_with_timeout(stream, RPC_REQUEST_TIMEOUT).await
+}
+
+async fn read_http_request_with_timeout<S>(
+    stream: &mut S,
+    request_timeout: Duration,
+) -> io::Result<Vec<u8>>
+where
+    S: AsyncRead + Unpin,
+{
+    timeout(request_timeout, read_http_request_inner(stream))
+        .await
+        .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "rpc read timed out"))?
+}
+
+async fn read_http_request_inner<S>(stream: &mut S) -> io::Result<Vec<u8>>
+where
+    S: AsyncRead + Unpin,
+{
     let mut buffer = Vec::new();
     let mut expected_len: Option<usize> = None;
 
     loop {
         let mut chunk = [0_u8; 4096];
-        let read = timeout(RPC_READ_TIMEOUT, stream.read(&mut chunk))
-            .await
-            .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "rpc read timed out"))??;
+        let read = stream.read(&mut chunk).await?;
         if read == 0 {
             break;
         }
@@ -312,6 +329,47 @@ mod rpc_loop_tests {
     }
 
     #[test]
+    fn read_http_request_enforces_total_deadline_across_reads() {
+        let runtime =
+            tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+        runtime.block_on(async {
+            let (mut client, mut server) = duplex(4096);
+            let writer = tokio::spawn(async move {
+                for byte in b"GET /rpc HTTP/1.1\r\n" {
+                    if client.write_all(&[*byte]).await.is_err() {
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(40)).await;
+                }
+            });
+
+            let err =
+                read_http_request_with_timeout(&mut server, Duration::from_millis(75))
+                    .await
+                    .expect_err("slow request should exceed its total deadline");
+            assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+            writer.abort();
+        });
+    }
+
+    #[test]
+    fn remote_connection_budget_recovers_when_a_connection_finishes() {
+        let permits = Arc::new(Semaphore::new(1));
+        let permit =
+            reserve_remote_connection(&permits).expect("first connection should be admitted");
+        assert!(
+            reserve_remote_connection(&permits).is_err(),
+            "connection above the configured limit should be rejected"
+        );
+
+        drop(permit);
+        assert!(
+            reserve_remote_connection(&permits).is_ok(),
+            "finishing a connection should restore listener capacity"
+        );
+    }
+
+    #[test]
     fn event_stream_invalid_cursor_returns_framed_rpc_error() {
         let runtime =
             tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
@@ -357,6 +415,107 @@ mod rpc_loop_tests {
         assert_eq!(err.kind(), io::ErrorKind::AlreadyExists);
         assert!(err.to_string().contains("non-socket"));
         assert!(path.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn prepare_rpc_unix_socket_path_refuses_symlink() {
+        use std::os::unix::fs::symlink;
+
+        let temp = tempfile::tempdir().expect("tempdir");
+        let target = temp.path().join("target");
+        let path = temp.path().join("reticulumd.sock");
+        std::fs::write(&target, b"target").expect("write target");
+        symlink(&target, &path).expect("create symlink");
+
+        let err = prepare_rpc_unix_socket_path(&path).expect_err("symlink rejected");
+        assert_eq!(err.kind(), io::ErrorKind::AlreadyExists);
+        assert!(path.is_symlink());
+        assert!(target.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rpc_unix_socket_is_private() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let runtime =
+            tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+        runtime.block_on(async {
+            let temp = tempfile::tempdir().expect("tempdir");
+            let path = temp.path().join("reticulumd.sock");
+            let listener = bind_private_rpc_unix_listener(&path).expect("bind private socket");
+
+            let mode =
+                std::fs::metadata(&path).expect("socket metadata").permissions().mode() & 0o777;
+            assert_eq!(mode, RPC_UNIX_SOCKET_MODE);
+
+            drop(listener);
+            cleanup_rpc_unix_socket_path(&path).expect("cleanup socket");
+        });
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rpc_unix_socket_is_private_at_creation_under_permissive_umask() {
+        const CHILD_MARKER: &str = "RETICULUMD_RPC_UMASK_TEST_CHILD";
+
+        if std::env::var_os(CHILD_MARKER).is_none() {
+            let executable = std::env::current_exe().expect("current test executable");
+            let status = std::process::Command::new("sh")
+                .arg("-c")
+                .arg("umask 000; exec \"$1\" \"$2\" --nocapture")
+                .arg("sh")
+                .arg(executable)
+                .arg("rpc_unix_socket_is_private_at_creation_under_permissive_umask")
+                .env(CHILD_MARKER, "1")
+                .status()
+                .expect("run permissive-umask test child");
+            assert!(status.success(), "permissive-umask test child failed");
+            return;
+        }
+
+        use std::os::unix::fs::PermissionsExt;
+
+        let runtime =
+            tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+        runtime.block_on(async {
+            let temp = tempfile::tempdir().expect("tempdir");
+            let path = temp.path().join("reticulumd.sock");
+            let listener = bind_private_rpc_unix_listener_with_pre_publish(
+                &path,
+                |staging_path| {
+                    assert!(
+                        !path.exists(),
+                        "final socket must not exist before private publication"
+                    );
+                    assert!(
+                        std::os::unix::net::UnixStream::connect(&path).is_err(),
+                        "final socket must not be connectable before private publication"
+                    );
+                    let socket_mode =
+                        std::fs::metadata(staging_path)?.permissions().mode() & 0o777;
+                    assert_eq!(socket_mode, RPC_UNIX_SOCKET_MODE);
+                    let staging_mode =
+                        std::fs::metadata(staging_path.parent().expect("staging parent"))?
+                            .permissions()
+                            .mode()
+                            & 0o777;
+                    assert_eq!(staging_mode, RPC_UNIX_STAGING_DIR_MODE);
+                    Ok(())
+                },
+            )
+            .expect("bind private socket");
+
+            let mode =
+                std::fs::metadata(&path).expect("socket metadata").permissions().mode() & 0o777;
+            assert_eq!(mode, RPC_UNIX_SOCKET_MODE);
+            std::os::unix::net::UnixStream::connect(&path)
+                .expect("connect after private publication");
+
+            drop(listener);
+            cleanup_rpc_unix_socket_path(&path).expect("cleanup socket");
+        });
     }
 
     #[cfg(unix)]
