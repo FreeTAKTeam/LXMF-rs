@@ -239,6 +239,18 @@ pub(super) async fn handle_path_request<'a>(
                 }
 
                 let incoming_iface_mode = handler.iface_manager.lock().await.mode(&iface);
+                // Reference parity (issue #516): Python Reticulum
+                // `Transport.py` (~line 3044) suppresses a known-path
+                // response when the request arrived on a MODE_ROAMING
+                // interface and the known next hop is attached to that
+                // same interface (`attached_interface == received_from`),
+                // because roaming peers are expected to move and answering
+                // would pin a stale route. Behavior here matches the
+                // reference exactly; regression coverage lives in
+                // `tests_parts/module_prelude.rs`
+                // (`roaming_iface_suppresses_known_path_response_when_next_hop_is_same_iface`,
+                // `roaming_iface_delays_known_path_response_when_next_hop_differs`,
+                // `roaming_suppression_only_applies_to_roaming_mode`).
                 if incoming_iface_mode == Some(InterfaceMode::Roaming) && learned_iface == iface {
                     log::trace!(
                         "tp({}): suppressing roaming same-iface path response for {}",
