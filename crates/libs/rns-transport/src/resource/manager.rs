@@ -210,6 +210,20 @@ impl ResourceManager {
                 .map(|assembly| assembly.next_segment)
                 .unwrap_or(1);
             if advertisement.segment_index != expected_segment {
+                // Out-of-order split-resource segment (issue #520): we
+                // deliberately log-and-drop rather than accept or reject.
+                // Reference Reticulum has NO segment-ordering check and
+                // blindly accepts segments in any order, so silently
+                // accepting would mask a real receiver-side assembly
+                // divergence here (our receiver assembles strictly in
+                // order). Sending a ResourceReceiverCancel (RCL, context
+                // 0x07) is the interoperable reject signal, but it would
+                // tear down the sender's entire resource — much harsher
+                // than the reference behavior for what is usually a
+                // reordered/in-flight segment that the sender will
+                // retransmit on the next request window. Dropping keeps
+                // the transfer alive: the sender re-offers the missing
+                // segment and normal flow resumes.
                 log::warn!(
                     "rejecting out-of-order resource segment original_hash={} expected={} received={}",
                     advertisement.original_hash,

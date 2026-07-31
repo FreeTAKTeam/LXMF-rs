@@ -22,11 +22,46 @@ pub(super) type RandomBlob = [u8; RAND_HASH_LENGTH];
 pub struct PathEntry {
     pub timestamp: Instant,
     pub received_from: AddressHash,
+    /// Real network distance to the destination. This value is only
+    /// meaningful because `apply_receive_hop_increment` (transport/jobs.rs)
+    /// runs on every inbound packet before any path-table bookkeeping —
+    /// see [`PathEntry::is_direct`] (issue #515).
     pub hops: u8,
     pub iface: AddressHash,
     pub packet_hash: Hash,
     random_blobs: Vec<RandomBlob>,
     state: PathState,
+}
+
+impl PathEntry {
+    /// Direct-hop invariant (issue #515): a genuinely direct destination
+    /// is `hops == 0`, matching reference Reticulum's `for_local_client`
+    /// criterion (`Transport.path_table[dest][IDX_PT_HOPS] == 0`). The
+    /// invariant holds only because inbound packets get their hop count
+    /// incremented on receipt (`apply_receive_hop_increment` in
+    /// transport/jobs.rs) before any routing/path decision is made —
+    /// centralizing the checks here means a future refactor of that
+    /// ordering has exactly one place to break, loudly, in tests.
+    pub fn is_direct(&self) -> bool {
+        self.hops == 0
+    }
+
+    /// Reference Reticulum `Transport.outbound()` header rule (confirmed
+    /// by direct reading):
+    ///
+    ///   hops > 1 → Type2
+    ///   hops == 1 and connected_to_shared_instance → Type2
+    ///   else → Type1
+    ///
+    /// Like [`PathEntry::is_direct`], this assumes `hops` reflects real
+    /// distance (see its doc comment).
+    pub fn type1_eligible(&self, connected_to_shared_instance: bool) -> bool {
+        match self.hops {
+            0 => true,
+            1 => !connected_to_shared_instance,
+            _ => false,
+        }
+    }
 }
 
 pub struct PathTable {

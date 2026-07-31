@@ -1,6 +1,23 @@
 use super::announce_limits::AnnounceLimitAction;
 use super::*;
+use crate::identity::Identity;
 use crate::packet::{Header, HeaderType, PropagationType};
+
+/// Identity-drift invariant (issue #517), matching reference Reticulum's
+/// `Identity.validate_announce`: the ONLY cross-announce binding for a
+/// known destination is the public/verifying key pair.
+///
+/// The destination-hash ↔ name-hash binding is enforced separately by
+/// `DestinationAnnounce::validate` (it recomputes the address hash from
+/// the announced identity + name hash), so name_hash cannot drift
+/// independently of the destination hash. app_data must NOT be compared
+/// here — the reference implementation overwrites app_data on every
+/// accepted announce, so rejecting on app_data change would break
+/// legitimate announces (e.g. LXMF peers rotating stamp-cost metadata)
+/// and diverge from protocol behavior.
+fn identity_drifted(existing: &Identity, announced: &Identity) -> bool {
+    existing.public_key != announced.public_key || existing.verifying_key != announced.verifying_key
+}
 
 async fn process_announce<'a>(
     packet: &Packet,
@@ -15,9 +32,8 @@ async fn process_announce<'a>(
 
     if let Some(existing) = handler.single_out_destinations.get(&packet.destination).cloned() {
         let existing = existing.lock().await;
-        if existing.identity.public_key != announce.destination.identity.public_key
-            || existing.identity.verifying_key != announce.destination.identity.verifying_key
-        {
+        // Centralized drift invariant (issue #517): see `identity_drifted`.
+        if identity_drifted(&existing.identity, &announce.destination.identity) {
             log::warn!(
                 "tp({}): rejecting announce for {} due to identity drift",
                 handler.config.name,

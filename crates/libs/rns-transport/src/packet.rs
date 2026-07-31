@@ -418,6 +418,26 @@ impl Packet {
         Ok(out)
     }
 
+    /// Packet hash used for deduplication, cache keys, and proofs.
+    ///
+    /// The `0b00001111` mask on the header byte is **protocol-mandated**
+    /// (issue #527): reference Reticulum (`RNS/Packet.py` `get_hash`)
+    /// hashes `raw[0] & 0b00001111` plus destination, context, and data,
+    /// so hops, propagation type, header type, context flag, and the IFAC
+    /// flag are deliberately excluded. A relayed copy of the same logical
+    /// packet (hops incremented, header type changed) must keep the same
+    /// hash — that is exactly what lets the packet-hash list suppress
+    /// rebroadcast loops. `destination/link/id.rs` relies on the same
+    /// mask for link-id derivation, so changing it breaks wire
+    /// compatibility in both places.
+    ///
+    /// Cache invariant: two wire-distinct packets that differ only in the
+    /// excluded header fields intentionally collide in the hash. The
+    /// dedup layer (`TransportHandler::filter_duplicate_packets`) owns
+    /// disambiguation using the *unhashed* fields — announces bypass
+    /// dedup, keepalive/resource/channel contexts are always allowed, and
+    /// link-request proofs are allowed while the link is inactive — so
+    /// this function must never be "fixed" to include more header bits.
     pub fn hash(&self) -> Hash {
         Hash::new(
             Hash::generator()
@@ -473,7 +493,8 @@ impl fmt::Display for Packet {
 #[cfg(test)]
 mod tests {
     use super::{
-        ContextFlag, DestinationType, Header, HeaderType, IfacFlag, PacketType, PropagationType,
+        AddressHash, ContextFlag, DestinationType, Header, HeaderType, IfacFlag, Packet,
+        PacketContext, PacketDataBuffer, PacketType, PropagationType,
     };
 
     #[test]
@@ -495,5 +516,73 @@ mod tests {
         let decoded = Header::from_meta(meta);
         assert_eq!(decoded.context_flag, ContextFlag::Set);
         assert_eq!(decoded.propagation_type, PropagationType::Transport);
+    }
+
+    // Collision tests for issue #527: packets differing only in the
+    // header fields excluded by the protocol-mandated 0b00001111 mask
+    // MUST hash identically (that is what suppresses rebroadcast loops
+    // of a relayed packet), while any change to the hashed fields must
+    // change the hash.
+    fn base_packet() -> Packet {
+        Packet {
+            header: Header {
+                ifac_flag: IfacFlag::Open,
+                header_type: HeaderType::Type1,
+                context_flag: ContextFlag::Unset,
+                propagation_type: PropagationType::Broadcast,
+                destination_type: DestinationType::Single,
+                packet_type: PacketType::Data,
+                hops: 0,
+            },
+            destination: AddressHash::new_from_slice(&[0x42; 16]),
+            context: PacketContext::None,
+            data: PacketDataBuffer::new_from_slice(b"collision-test-payload"),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn packet_hash_is_stable_across_excluded_header_fields() {
+        let base = base_packet();
+        let mut relayed = base_packet();
+        // Everything the mask excludes: hops, header type, propagation
+        // type, context flag, IFAC flag, and the transport address.
+        relayed.header.hops = 7;
+        relayed.header.header_type = HeaderType::Type2;
+        relayed.header.propagation_type = PropagationType::Transport;
+        relayed.header.context_flag = ContextFlag::Set;
+        relayed.header.ifac_flag = IfacFlag::Authenticated;
+        relayed.transport = Some(AddressHash::new_from_slice(&[0x99; 16]));
+
+        assert_eq!(
+            base.hash(),
+            relayed.hash(),
+            "a relayed copy of the same logical packet must keep the same hash"
+        );
+    }
+
+    #[test]
+    fn packet_hash_changes_with_hashed_fields() {
+        let base = base_packet();
+
+        let mut different_destination = base_packet();
+        different_destination.destination = AddressHash::new_from_slice(&[0x43; 16]);
+        assert_ne!(base.hash(), different_destination.hash());
+
+        let mut different_context = base_packet();
+        different_context.context = PacketContext::Resource;
+        assert_ne!(base.hash(), different_context.hash());
+
+        let mut different_data = base_packet();
+        different_data.data = PacketDataBuffer::new_from_slice(b"collision-test-payload!");
+        assert_ne!(base.hash(), different_data.hash());
+
+        let mut different_packet_type = base_packet();
+        different_packet_type.header.packet_type = PacketType::Proof;
+        assert_ne!(
+            base.hash(),
+            different_packet_type.hash(),
+            "packet_type is inside the mask and must affect the hash"
+        );
     }
 }

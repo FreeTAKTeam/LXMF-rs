@@ -257,15 +257,18 @@ where
     fn get(&self, key_id: &str) -> Result<Option<StoredKey>, RnsError> {
         match self.primary.get(key_id) {
             Ok(Some(key)) => Ok(Some(key)),
+            // A genuine not-found is the expected fallback case.
             Ok(None) => self.secondary.get(key_id),
-            Err(_) => self.secondary.get(key_id),
+            Err(error) if is_availability_error(&error) => self.secondary.get(key_id),
+            Err(error) => Err(error),
         }
     }
 
     fn put(&self, key: StoredKey) -> Result<(), RnsError> {
         match self.primary.put(key.clone()) {
             Ok(_) => Ok(()),
-            Err(_) => self.secondary.put(key),
+            Err(error) if is_availability_error(&error) => self.secondary.put(key),
+            Err(error) => Err(error),
         }
     }
 
@@ -280,13 +283,26 @@ where
     }
 
     fn list_ids(&self) -> Result<Vec<String>, RnsError> {
-        match (self.primary.list_ids(), self.secondary.list_ids()) {
-            (Ok(primary_ids), Ok(secondary_ids)) => Ok(merge_key_ids(primary_ids, secondary_ids)),
-            (Ok(primary_ids), Err(_)) => Ok(primary_ids),
-            (Err(_), Ok(secondary_ids)) => Ok(secondary_ids),
-            (Err(_), Err(_)) => Err(RnsError::ConnectionError),
+        match self.primary.list_ids() {
+            Ok(primary_ids) => match self.secondary.list_ids() {
+                Ok(secondary_ids) => Ok(merge_key_ids(primary_ids, secondary_ids)),
+                Err(error) if is_availability_error(&error) => Ok(primary_ids),
+                Err(error) => Err(error),
+            },
+            Err(error) if is_availability_error(&error) => self.secondary.list_ids(),
+            Err(error) => Err(error),
         }
     }
+}
+
+/// Fallback policy (issue #526): only *availability* failures of the
+/// primary backend justify serving from the secondary store. Argument
+/// and data-integrity errors (`InvalidArgument`, `PacketError`, ...) are
+/// surfaced unchanged so misconfiguration and possible corruption can't
+/// be hidden by silently reading from — or writing to — a different
+/// backend than the caller configured.
+fn is_availability_error(error: &RnsError) -> bool {
+    matches!(error, RnsError::ConnectionError)
 }
 
 fn merge_key_ids(mut first: Vec<String>, second: Vec<String>) -> Vec<String> {
@@ -491,5 +507,104 @@ mod tests {
 
         let ids = manager.list_ids().expect("list ids");
         assert_eq!(ids, vec!["secondary-a".to_owned(), "secondary-b".to_owned()]);
+    }
+
+    // Regression tests for issue #526: only availability errors
+    // (`ConnectionError`) may trigger fallback. Argument/integrity errors
+    // must surface instead of being hidden by the secondary store.
+    struct InvalidArgumentKeyManager;
+
+    impl KeyManagerBackend for InvalidArgumentKeyManager {
+        fn backend_id(&self) -> &'static str {
+            "invalid-argument"
+        }
+
+        fn get(&self, _key_id: &str) -> Result<Option<StoredKey>, RnsError> {
+            Err(RnsError::InvalidArgument)
+        }
+
+        fn put(&self, _key: StoredKey) -> Result<(), RnsError> {
+            Err(RnsError::InvalidArgument)
+        }
+
+        fn delete(&self, _key_id: &str) -> Result<(), RnsError> {
+            Err(RnsError::InvalidArgument)
+        }
+
+        fn list_ids(&self) -> Result<Vec<String>, RnsError> {
+            Err(RnsError::InvalidArgument)
+        }
+    }
+
+    struct CorruptKeyManager;
+
+    impl KeyManagerBackend for CorruptKeyManager {
+        fn backend_id(&self) -> &'static str {
+            "corrupt"
+        }
+
+        fn get(&self, _key_id: &str) -> Result<Option<StoredKey>, RnsError> {
+            Err(RnsError::PacketError)
+        }
+
+        fn put(&self, _key: StoredKey) -> Result<(), RnsError> {
+            Err(RnsError::PacketError)
+        }
+
+        fn delete(&self, _key_id: &str) -> Result<(), RnsError> {
+            Err(RnsError::PacketError)
+        }
+
+        fn list_ids(&self) -> Result<Vec<String>, RnsError> {
+            Err(RnsError::PacketError)
+        }
+    }
+
+    #[test]
+    fn fallback_get_surfaces_primary_argument_error_instead_of_serving_secondary() {
+        let secondary = InMemoryKeyManager::new();
+        secondary.put(sample_key("hidden-key")).expect("store secondary key");
+        let manager = FallbackKeyManager::new(InvalidArgumentKeyManager, secondary);
+
+        let result = manager.get("hidden-key");
+        assert!(
+            matches!(result, Err(RnsError::InvalidArgument)),
+            "misconfiguration must surface, not be hidden by a secondary read"
+        );
+    }
+
+    #[test]
+    fn fallback_get_surfaces_primary_integrity_error_instead_of_serving_secondary() {
+        let secondary = InMemoryKeyManager::new();
+        secondary.put(sample_key("hidden-key")).expect("store secondary key");
+        let manager = FallbackKeyManager::new(CorruptKeyManager, secondary);
+
+        let result = manager.get("hidden-key");
+        assert!(
+            matches!(result, Err(RnsError::PacketError)),
+            "possible corruption must surface, not be hidden by a secondary read"
+        );
+    }
+
+    #[test]
+    fn fallback_put_surfaces_primary_integrity_error_without_writing_secondary() {
+        let secondary = InMemoryKeyManager::new();
+        let manager = FallbackKeyManager::new(CorruptKeyManager, secondary);
+
+        let result = manager.put(sample_key("misrouted-key"));
+        assert!(matches!(result, Err(RnsError::PacketError)));
+        assert!(
+            manager.secondary.get("misrouted-key").expect("secondary readable").is_none(),
+            "a failed primary write must not silently land in the secondary backend"
+        );
+    }
+
+    #[test]
+    fn fallback_list_ids_surfaces_primary_non_availability_error() {
+        let secondary = InMemoryKeyManager::new();
+        secondary.put(sample_key("secondary-a")).expect("store secondary-a");
+        let manager = FallbackKeyManager::new(CorruptKeyManager, secondary);
+
+        assert!(matches!(manager.list_ids(), Err(RnsError::PacketError)));
     }
 }
