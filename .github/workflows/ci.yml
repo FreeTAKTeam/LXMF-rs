@@ -39,6 +39,20 @@ jobs:
         run: cargo check --workspace --all-targets
 
 
+  architecture-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Architecture checks
+        run: cargo xtask ci --stage architecture-checks
+
+
   build-matrix:
     runs-on: ubuntu-latest
     strategy:
