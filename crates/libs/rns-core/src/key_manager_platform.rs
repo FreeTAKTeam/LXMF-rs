@@ -1,5 +1,6 @@
 use super::*;
 
+#[cfg(feature = "std")]
 impl FileKeyManager {
     pub fn new(root: impl Into<std::path::PathBuf>) -> Result<Self, RnsError> {
         let root = root.into();

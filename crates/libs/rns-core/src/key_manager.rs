@@ -88,10 +88,8 @@ pub struct FileKeyManager {
     root: std::path::PathBuf,
 }
 
-#[cfg(feature = "std")]
 #[path = "key_manager_platform.rs"]
 mod key_manager_platform;
-#[cfg(feature = "std")]
 pub use key_manager_platform::{
     HsmKeyManager, HsmKeyStoreHook, OsKeyStoreHook, OsKeyStoreKeyManager,
 };
