@@ -12,24 +12,6 @@ pub struct ResourceManager {
 }
 
 impl ResourceManager {
-    pub fn confirm_outbound_dispatch(&mut self, resource_hash: Hash, sent: bool) {
-        let Some(mut sender) = self.pending_outgoing.remove(&resource_hash) else {
-            return;
-        };
-
-        if sent {
-            sender.mark_advertised(self.retry_limit);
-            self.outgoing.insert(resource_hash, sender);
-        } else {
-            self.outgoing_segment_chains.remove(&sender.original_hash);
-            self.events.push(ResourceEvent {
-                hash: resource_hash,
-                link_id: sender.link_id,
-                kind: ResourceEventKind::OutboundFailed,
-            });
-        }
-    }
-
     pub fn cancel_outgoing(
         &mut self,
         resource_hash: Hash,
@@ -216,6 +198,11 @@ impl ResourceManager {
             advertisement.compressed(),
             advertisement.encrypted()
         );
+        // Enforce the inbound limits before any receiver state is created
+        // (issue #514) — see advertisement_limits.rs.
+        if advertisement_exceeds_inbound_limits(&advertisement, link.id()) {
+            return;
+        }
         if advertisement.total_segments > 1 {
             let expected_segment = self
                 .incoming_segments
@@ -223,6 +210,20 @@ impl ResourceManager {
                 .map(|assembly| assembly.next_segment)
                 .unwrap_or(1);
             if advertisement.segment_index != expected_segment {
+                // Out-of-order split-resource segment (issue #520): we
+                // deliberately log-and-drop rather than accept or reject.
+                // Reference Reticulum has NO segment-ordering check and
+                // blindly accepts segments in any order, so silently
+                // accepting would mask a real receiver-side assembly
+                // divergence here (our receiver assembles strictly in
+                // order). Sending a ResourceReceiverCancel (RCL, context
+                // 0x07) is the interoperable reject signal, but it would
+                // tear down the sender's entire resource — much harsher
+                // than the reference behavior for what is usually a
+                // reordered/in-flight segment that the sender will
+                // retransmit on the next request window. Dropping keeps
+                // the transfer alive: the sender re-offers the missing
+                // segment and normal flow resumes.
                 log::warn!(
                     "rejecting out-of-order resource segment original_hash={} expected={} received={}",
                     advertisement.original_hash,

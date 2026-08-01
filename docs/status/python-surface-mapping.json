@@ -14,6 +14,13 @@
       "evidence": ["unit", "pinned-python"]
     },
     {
+      "pattern": "RNS.Destination.Destination.set_max_request_size",
+      "implementation": "partial",
+      "rust_surface": ["reticulum-rs-core::destination", "reticulum-rs-transport::destination"],
+      "evidence": ["unit", "pinned-python"],
+      "notes": "RNS 1.4.2 adds configurable inbound request limits; the Rust destination request API does not expose this control yet."
+    },
+    {
       "pattern": "RNS.Destination.*",
       "implementation": "complete",
       "rust_surface": ["reticulum-rs-core::destination", "reticulum-rs-transport::destination"],
@@ -570,6 +577,13 @@
       "evidence": ["unit", "simulated", "pinned-python", "hardware-unverified"]
     },
     {
+      "pattern": "RNS.Interfaces.BackboneInterface.BackboneInterface.blocked_ip_*",
+      "implementation": "partial",
+      "rust_surface": ["reticulum-rs-transport::iface::tcp_server", "rns-tools::rnstatus"],
+      "evidence": ["unit", "simulated", "pinned-python"],
+      "notes": "RNS 1.4.2 exposes blocked IP counts and lists through interface statistics; the Rust status surface does not expose these fields yet."
+    },
+    {
       "pattern": "RNS.Interfaces.BackboneInterface.*",
       "implementation": "complete",
       "rust_surface": ["reticulum-rs-transport::iface::tcp_client", "reticulum-rs-transport::iface::tcp_server", "reticulum-rs-transport::iface::hdlc"],
@@ -720,6 +734,20 @@
       "rust_surface": ["rns-tools::rnsh", "lxmf-sdk::RemoteCommandRequest", "reticulumd::remote_control"],
       "evidence": ["unit", "simulated", "pinned-python"],
       "notes": "Default-deny command authorization is exercised with isolated subprocess fixtures."
+    },
+    {
+      "pattern": "RNS.Utilities.rngit.client.*",
+      "implementation": "partial",
+      "rust_surface": ["rns-tools::rngit", "rns-tools::rncp", "rns-tools::rnsh"],
+      "evidence": ["unit", "simulated", "pinned-python"],
+      "notes": "Rust covers isolated local Git bundle preparation, but not the Python ReticulumGitClient remote session behavior."
+    },
+    {
+      "pattern": "RNS.Utilities.rngit.server.*",
+      "implementation": "partial",
+      "rust_surface": ["rns-tools::rngit", "rns-tools::rncp", "rns-tools::rnsh"],
+      "evidence": ["unit", "simulated", "pinned-python"],
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API."
     },
     {
       "pattern": "RNS.Utilities.rngit.*",
@@ -999,6 +1027,13 @@
       "evidence": ["unit", "pinned-python"]
     },
     {
+      "pattern": "RNS.release_1_4_2.*",
+      "implementation": "partial",
+      "rust_surface": ["reticulum-rs-transport", "reticulumd", "rns-tools"],
+      "evidence": ["unit", "simulated", "pinned-python"],
+      "notes": "Behavior added by the RNS 1.4.2 baseline is tracked explicitly until an equivalent Rust implementation and focused evidence land."
+    },
+    {
       "pattern": "CRNS.*",
       "implementation": "not-applicable",
       "rust_surface": ["docs/status/reticulum-parity-matrix.md"],
@@ -1026,6 +1061,31 @@
       "id": "LXMF.Utilities.lxmd.cli-contract",
       "kind": "cli",
       "source": "LXMF/Utilities/lxmd.py"
+    },
+    {
+      "id": "RNS.release_1_4_2.dynamic_path_rebalancing",
+      "kind": "protocol",
+      "source": "RNS 1.4.2 release"
+    },
+    {
+      "id": "RNS.release_1_4_2.request_response_size_limits",
+      "kind": "protocol",
+      "source": "RNS 1.4.2 release"
+    },
+    {
+      "id": "RNS.release_1_4_2.interface_gravity",
+      "kind": "transport-policy",
+      "source": "RNS 1.4.2 release"
+    },
+    {
+      "id": "RNS.release_1_4_2.boundary_path_requests",
+      "kind": "transport-policy",
+      "source": "RNS 1.4.2 release"
+    },
+    {
+      "id": "RNS.release_1_4_2.ifstats_blocked_ips",
+      "kind": "status",
+      "source": "RNS 1.4.2 release"
     },
     {
       "id": "CRNS.provenance",

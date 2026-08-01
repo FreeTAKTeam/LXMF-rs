@@ -160,6 +160,95 @@
     }
 
     #[test]
+    fn sdk_security_failed_authentication_is_rate_limited_before_token_parsing() {
+        let daemon = RpcDaemon::test_instance();
+        let response = daemon
+            .handle_rpc(rpc_request(
+                25,
+                "sdk_negotiate_v2",
+                json!({
+                    "supported_contract_versions": [2],
+                    "requested_capabilities": [],
+                    "config": {
+                        "profile": "desktop-full",
+                        "bind_mode": "remote",
+                        "auth_mode": "token",
+                        "rpc_backend": {
+                            "token_auth": {
+                                "issuer": "test-issuer",
+                                "audience": "test-audience",
+                                "jti_cache_ttl_ms": 30_000,
+                                "clock_skew_ms": 0,
+                                "shared_secret": "test-secret"
+                            }
+                        }
+                    }
+                }),
+            ))
+            .expect("negotiate");
+        assert!(response.error.is_none());
+        let configured = daemon
+            .handle_rpc(rpc_request(
+                26,
+                "sdk_configure_v2",
+                json!({
+                    "expected_revision": 0,
+                    "patch": {
+                        "extensions": {
+                            "rate_limits": {
+                                "per_ip_per_minute": 2,
+                                "per_principal_per_minute": 10
+                            }
+                        }
+                    }
+                }),
+            ))
+            .expect("configure rate limits");
+        assert!(configured.error.is_none());
+
+        for _ in 0..2 {
+            let error = daemon
+                .authorize_http_request(&[], Some("10.5.6.7"))
+                .expect_err("missing credentials should fail");
+            assert_eq!(error.code, "SDK_SECURITY_AUTH_REQUIRED");
+        }
+        let limited = daemon
+            .authorize_http_request(&[], Some("10.5.6.7"))
+            .expect_err("repeated missing credentials should be throttled");
+        assert_eq!(limited.code, "SDK_SECURITY_RATE_LIMITED");
+        assert!(
+            daemon.sdk_rate_principal_counts
+                .lock()
+                .expect("sdk_rate_principal_counts mutex poisoned")
+                .is_empty(),
+            "failed authentication must not consume a principal quota"
+        );
+    }
+
+    #[test]
+    fn sdk_security_pre_authentication_ip_state_is_bounded() {
+        let daemon = RpcDaemon::test_instance();
+
+        for index in 0..super::sdk_auth_http::SDK_RATE_LIMIT_MAX_IP_ENTRIES + 128 {
+            let source_ip = format!("198.51.100.{index}");
+            let _ = daemon.enforce_pre_auth_ip_rate_limit(source_ip.as_str());
+        }
+        let oversized_source =
+            "x".repeat(super::sdk_auth_http::SDK_RATE_LIMIT_MAX_IP_KEY_BYTES + 1);
+        let _ = daemon.enforce_pre_auth_ip_rate_limit(oversized_source.as_str());
+
+        let counts =
+            daemon.sdk_rate_ip_counts.lock().expect("sdk_rate_ip_counts mutex poisoned");
+        assert!(counts.len() <= super::sdk_auth_http::SDK_RATE_LIMIT_MAX_IP_ENTRIES);
+        assert!(counts.contains_key(super::sdk_auth_http::SDK_RATE_LIMIT_OVERFLOW_IP));
+        assert!(
+            counts
+                .keys()
+                .all(|key| key.len() <= super::sdk_auth_http::SDK_RATE_LIMIT_MAX_IP_KEY_BYTES)
+        );
+    }
+
+    #[test]
     fn sdk_security_events_redact_sensitive_fields_by_default() {
         let daemon = RpcDaemon::test_instance();
         let _ = daemon.handle_rpc(rpc_request(

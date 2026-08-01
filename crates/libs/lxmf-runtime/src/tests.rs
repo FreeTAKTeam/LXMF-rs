@@ -16,7 +16,7 @@ use tokio::sync::broadcast;
 
 use crate::delivery::{
     forced_representation, request_link_attempts, request_link_timeout, request_resource_timeout,
-    requested_method,
+    requested_method, resolve_destination,
 };
 use crate::link_delivery::await_resource_completion;
 use crate::{
@@ -70,6 +70,33 @@ fn accepted_result_uses_short_link_timeout_unless_overridden() {
 
     request.extensions.insert(EXT_LINK_CONNECT_TIMEOUT_MS.to_owned(), json!(75_000));
     assert_eq!(request_link_timeout(&request, Duration::from_secs(20)), Duration::from_secs(75));
+}
+
+#[tokio::test]
+async fn missing_destination_identity_requests_path_before_failing() {
+    let identity = rns_transport::identity::PrivateIdentity::new_from_rand(OsRng);
+    let transport = Transport::new(TransportConfig::new(
+        "lxmf-runtime-identity-resolution-test",
+        &identity,
+        true,
+    ));
+    let mut iface = transport.iface_manager().lock().await.new_channel(4);
+    let unknown = AddressHash::new([0x44; rns_transport::hash::ADDRESS_HASH_SIZE]);
+
+    let error =
+        match resolve_destination(&transport, unknown, "delivery", Duration::from_millis(55)).await
+        {
+            Ok(_) => panic!("unknown destination must remain unavailable"),
+            Err(error) => error,
+        };
+
+    assert_eq!(error.category, lxmf_sdk::ErrorCategory::Transport);
+    assert!(error.message.contains("after path resolution"));
+    let path_request = iface.tx_channel.try_recv().expect("path request must be broadcast");
+    assert_eq!(
+        &path_request.packet.data.as_slice()[..rns_transport::hash::ADDRESS_HASH_SIZE],
+        unknown.as_slice()
+    );
 }
 
 #[tokio::test]

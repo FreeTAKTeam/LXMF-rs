@@ -3,6 +3,7 @@ use crate::capability::{EffectiveLimits, ParityReference};
 use crate::error::{code, ErrorCategory, SdkError};
 use crate::event::{EventBatch, EventCursor, SdkEvent, Severity};
 use crate::types::{Ack, CancelResult, DeliveryState, RuntimeState};
+use crate::SoftwareParityOrientation;
 use serde::de::DeserializeOwned;
 use serde_json::Value as JsonValue;
 use std::collections::BTreeMap;
@@ -164,6 +165,15 @@ impl ZmqPipelineBackendClient {
         match value.get("python_reference") {
             None | Some(JsonValue::Null) => Ok(ParityReference::default()),
             Some(raw) => Self::decode_value(raw.clone(), "python reference metadata"),
+        }
+    }
+
+    pub(super) fn parse_software_parity(
+        value: &JsonValue,
+    ) -> Result<Option<SoftwareParityOrientation>, SdkError> {
+        match value.get("software_parity") {
+            None | Some(JsonValue::Null) => Ok(None),
+            Some(raw) => Self::decode_value(raw.clone(), "software parity orientation").map(Some),
         }
     }
 

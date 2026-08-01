@@ -33,6 +33,10 @@
             })
         );
         assert_eq!(
+            result["software_parity"],
+            json!(crate::current_software_parity_orientation())
+        );
+        assert_eq!(
             result["meta"]["python_reference"],
             result["python_reference"],
             "response metadata should repeat the parity checkpoint for clients that only inspect meta"
@@ -417,4 +421,13 @@
             .authorize_http_request(&tampered_headers, Some("10.5.6.7"))
             .expect_err("tampered signature should be rejected");
         assert_eq!(tampered.code, "SDK_SECURITY_TOKEN_INVALID");
+        assert_eq!(tampered.message, "token signature does not match runtime policy");
+
+        let malformed_headers =
+            vec![("authorization".to_string(), format!("Bearer {valid_payload};sig=not-hex"))];
+        let malformed = daemon
+            .authorize_http_request(&malformed_headers, Some("10.5.6.7"))
+            .expect_err("malformed signature should be rejected");
+        assert_eq!(malformed.code, "SDK_SECURITY_TOKEN_INVALID");
+        assert_eq!(malformed.message, "token signature is invalid");
     }

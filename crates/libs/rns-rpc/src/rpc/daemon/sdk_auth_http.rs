@@ -1,5 +1,9 @@
 use super::*;
 
+pub(super) const SDK_RATE_LIMIT_MAX_IP_ENTRIES: usize = 4_096;
+pub(super) const SDK_RATE_LIMIT_MAX_IP_KEY_BYTES: usize = 64;
+pub(super) const SDK_RATE_LIMIT_OVERFLOW_IP: &str = "<overflow>";
+
 impl RpcDaemon {
     pub(super) fn response_meta(&self) -> JsonValue {
         let profile = self.sdk_profile.lock().expect("sdk_profile mutex poisoned").clone();
@@ -103,6 +107,8 @@ impl RpcDaemon {
                 ));
             }
 
+            self.enforce_pre_auth_ip_rate_limit(source_ip.as_str())?;
+
             let mut principal = "local".to_string();
             match auth_mode.as_str() {
                 "local_trusted" => {}
@@ -188,16 +194,27 @@ impl RpcDaemon {
                     let signed_payload = zeroize::Zeroizing::new(format!(
                         "iss={issuer};aud={audience};jti={jti};sub={subject};iat={iat};exp={exp}"
                     ));
-                    let expected_signature = zeroize::Zeroizing::new(Self::token_signature(
-                        shared_secret.as_str(),
-                        signed_payload.as_str(),
-                    ));
-                    if signature != expected_signature.as_str() {
-                        return Err(RpcError::new(
+                    let signature_bytes = hex::decode(signature).map_err(|_| {
+                        RpcError::new(
+                            "SDK_SECURITY_TOKEN_INVALID".to_string(),
+                            "token signature is invalid".to_string(),
+                        )
+                    })?;
+                    let mut mac =
+                        hmac::Hmac::<sha2::Sha256>::new_from_slice(shared_secret.as_bytes())
+                            .map_err(|_| {
+                                RpcError::new(
+                                    "SDK_SECURITY_TOKEN_INVALID".to_string(),
+                                    "token authentication failed".to_string(),
+                                )
+                            })?;
+                    mac.update(signed_payload.as_bytes());
+                    mac.verify_slice(&signature_bytes).map_err(|_| {
+                        RpcError::new(
                             "SDK_SECURITY_TOKEN_INVALID".to_string(),
                             "token signature does not match runtime policy".to_string(),
-                        ));
-                    }
+                        )
+                    })?;
                     if issuer != expected_issuer || audience != expected_audience {
                         return Err(RpcError::new(
                             "SDK_SECURITY_TOKEN_INVALID".to_string(),
@@ -280,7 +297,7 @@ impl RpcDaemon {
                 }
             }
 
-            self.enforce_rate_limits(source_ip.as_str(), principal.as_str())
+            self.enforce_authenticated_principal_rate_limit(source_ip.as_str(), principal.as_str())
         })();
 
         let elapsed_ms = auth_started.elapsed().as_millis() as u64;
@@ -288,56 +305,74 @@ impl RpcDaemon {
         result
     }
 
+    fn reset_expired_rate_limit_window(&self, now: u64) {
+        let mut window_started = self
+            .sdk_rate_window_started_ms
+            .lock()
+            .expect("sdk_rate_window_started_ms mutex poisoned");
+        if *window_started == 0 || now.saturating_sub(*window_started) >= 60_000 {
+            *window_started = now;
+            self.sdk_rate_ip_counts.lock().expect("sdk_rate_ip_counts mutex poisoned").clear();
+            self.sdk_rate_principal_counts
+                .lock()
+                .expect("sdk_rate_principal_counts mutex poisoned")
+                .clear();
+        }
+    }
+
     #[allow(clippy::result_large_err)]
-    pub(super) fn enforce_rate_limits(
+    pub fn enforce_pre_auth_ip_rate_limit(&self, source_ip: &str) -> Result<(), RpcError> {
+        let (per_ip_limit, _) = self.sdk_rate_limits();
+        if per_ip_limit == 0 {
+            return Ok(());
+        }
+
+        self.reset_expired_rate_limit_window(now_millis_u64());
+        let mut counts = self.sdk_rate_ip_counts.lock().expect("sdk_rate_ip_counts mutex poisoned");
+        let source_key = if source_ip.len() <= SDK_RATE_LIMIT_MAX_IP_KEY_BYTES
+            && (counts.contains_key(source_ip)
+                || counts.len() < SDK_RATE_LIMIT_MAX_IP_ENTRIES.saturating_sub(1))
+        {
+            source_ip
+        } else {
+            SDK_RATE_LIMIT_OVERFLOW_IP
+        };
+        let count = counts.entry(source_key.to_string()).or_insert(0);
+        *count = count.saturating_add(1);
+        if *count > per_ip_limit {
+            let event = RpcEvent {
+                event_type: "sdk_security_rate_limited".to_string(),
+                payload: json!({
+                    "scope": "ip",
+                    "source_ip": source_ip,
+                    "principal": "unauthenticated",
+                    "limit": per_ip_limit,
+                    "count": *count,
+                }),
+            };
+            self.publish_event(event);
+            return Err(RpcError::new(
+                "SDK_SECURITY_RATE_LIMITED".to_string(),
+                "per-ip request rate limit exceeded".to_string(),
+            ));
+        }
+
+        Ok(())
+    }
+
+    #[allow(clippy::result_large_err)]
+    fn enforce_authenticated_principal_rate_limit(
         &self,
         source_ip: &str,
         principal: &str,
     ) -> Result<(), RpcError> {
-        let (per_ip_limit, per_principal_limit) = self.sdk_rate_limits();
-        if per_ip_limit == 0 && per_principal_limit == 0 {
+        let (_, per_principal_limit) = self.sdk_rate_limits();
+        if per_principal_limit == 0 {
             return Ok(());
         }
 
         let now = now_millis_u64();
-        {
-            let mut window_started = self
-                .sdk_rate_window_started_ms
-                .lock()
-                .expect("sdk_rate_window_started_ms mutex poisoned");
-            if *window_started == 0 || now.saturating_sub(*window_started) >= 60_000 {
-                *window_started = now;
-                self.sdk_rate_ip_counts.lock().expect("sdk_rate_ip_counts mutex poisoned").clear();
-                self.sdk_rate_principal_counts
-                    .lock()
-                    .expect("sdk_rate_principal_counts mutex poisoned")
-                    .clear();
-            }
-        }
-
-        if per_ip_limit > 0 {
-            let mut counts =
-                self.sdk_rate_ip_counts.lock().expect("sdk_rate_ip_counts mutex poisoned");
-            let count = counts.entry(source_ip.to_string()).or_insert(0);
-            *count = count.saturating_add(1);
-            if *count > per_ip_limit {
-                let event = RpcEvent {
-                    event_type: "sdk_security_rate_limited".to_string(),
-                    payload: json!({
-                        "scope": "ip",
-                        "source_ip": source_ip,
-                        "principal": principal,
-                        "limit": per_ip_limit,
-                        "count": *count,
-                    }),
-                };
-                self.publish_event(event);
-                return Err(RpcError::new(
-                    "SDK_SECURITY_RATE_LIMITED".to_string(),
-                    "per-ip request rate limit exceeded".to_string(),
-                ));
-            }
-        }
+        self.reset_expired_rate_limit_window(now);
 
         if per_principal_limit > 0 {
             let mut counts = self

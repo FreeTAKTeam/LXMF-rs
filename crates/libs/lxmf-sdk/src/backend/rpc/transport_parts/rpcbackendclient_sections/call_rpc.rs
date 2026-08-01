@@ -430,9 +430,8 @@ impl RpcBackendClient {
                 format!("failed to open mtls certificate chain {}: {}", path.display(), err),
             )
         })?;
-        let mut reader = BufReader::new(file);
-        let certificates = rustls_pemfile::certs(&mut reader)
-            .collect::<Result<Vec<_>, io::Error>>()
+        let certificates = rustls::pki_types::CertificateDer::pem_reader_iter(file)
+            .collect::<Result<Vec<_>, _>>()
             .map_err(|err| {
                 SdkError::new(
                     code::SECURITY_AUTH_REQUIRED,

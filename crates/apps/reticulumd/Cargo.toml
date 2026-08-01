@@ -35,7 +35,7 @@ serde = { workspace = true }
 toml = { workspace = true }
 tokio-rustls = { workspace = true }
 rustls = { workspace = true }
-rustls-pemfile = { workspace = true }
+rustls-pki-types = { workspace = true }
 x509-parser = { workspace = true }
 zeromq = { workspace = true, optional = true }
 

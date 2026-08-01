@@ -23,3 +23,7 @@ pub(super) fn python_reference_meta() -> JsonValue {
         "python_lxmf_ref": crate::PYTHON_LXMF_REFERENCE_REF,
     })
 }
+
+pub(super) fn software_parity_orientation() -> JsonValue {
+    json!(crate::current_software_parity_orientation())
+}

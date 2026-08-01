@@ -8,13 +8,13 @@
     },
     {
       "path": "docs/contracts/baselines/lxmf-sdk-public-api.txt",
-      "bytes": 394828,
-      "sha256": "409b5ac39eda1b7ba8c569e280d100898d026a2c83b8638da167c9df35330189"
+      "bytes": 399496,
+      "sha256": "a37e23d0e1fe87b80b368773c5fb18f701fe81039c5cdb337199de358b292092"
     },
     {
       "path": "docs/contracts/baselines/schema-client-generation-baseline.json",
       "bytes": 373,
-      "sha256": "7de835d9ce1550179fa825e71b8478dccfa79f1ccc92b25f1bb7475a2b1623ef"
+      "sha256": "3ecf32bf55707a0acc0122e6bbee5045630f1c89cf38f11c1cf337951985a727"
     },
     {
       "path": "docs/contracts/ble-camera-wire-v1.md",
@@ -28,8 +28,8 @@
     },
     {
       "path": "docs/contracts/compatibility-contract.md",
-      "bytes": 2303,
-      "sha256": "e4303546d2f1192b6da410a887a8298b7c3614e3b0ad233feedac1507a12d528"
+      "bytes": 3008,
+      "sha256": "f0bd1210ec3b08d9a3309e0f29d25aa159c2c089f02cfa8ea8d8a46d9151e007"
     },
     {
       "path": "docs/contracts/compatibility-matrix.md",
@@ -218,8 +218,8 @@
     },
     {
       "path": "docs/contracts/sdk-v2.md",
-      "bytes": 13239,
-      "sha256": "c3590d74f0bce7f9f31823e30192549e04427abbc4c7966085928e3a8ad1cfc5"
+      "bytes": 13690,
+      "sha256": "9c2ea8023697f040e99270737e3f9f8ac100f8c8b7d8e4beaeb1597ee6d34b74"
     },
     {
       "path": "docs/contracts/support-policy.md",
@@ -1252,6 +1252,16 @@
       "sha256": "9147e6d7e0fc08df68d57b290d87f490567b152cf30eec466758d0684afc9eb7"
     },
     {
+      "path": "docs/fixtures/sdk-v2/rpc/release-c/sdk_identity_create_v2.request.invalid.json",
+      "bytes": 98,
+      "sha256": "31ccb15667504bc830881941318ca49139d3ea2ca56e0cf36995ca94ff8e6659"
+    },
+    {
+      "path": "docs/fixtures/sdk-v2/rpc/release-c/sdk_identity_create_v2.request.valid.json",
+      "bytes": 214,
+      "sha256": "e68b511c9db71fb0a737e6149a8fb5b85b8a25efae2652813c7db1d7332062d7"
+    },
+    {
       "path": "docs/fixtures/sdk-v2/rpc/release-c/sdk_identity_export_v2.request.invalid.json",
       "bytes": 96,
       "sha256": "ed128509cb3225f79f389c91c820401e7a0eb7633494dee7c4187b309ea2f67d"
@@ -1398,8 +1408,8 @@
     },
     {
       "path": "docs/fixtures/sdk-v2/rpc/sdk_negotiate_v2.response.valid.json",
-      "bytes": 1139,
-      "sha256": "864b7f190434f6f129b9e4492fd74f2f01617b41f1ee1f01f7b918a0721b7239"
+      "bytes": 2359,
+      "sha256": "16197b6ed942ab92352e2b779eed4788df98cccc1b3fd3324838bbd533e4e2c4"
     },
     {
       "path": "docs/fixtures/sdk-v2/rpc/sdk_poll_events_v2.request.invalid.json",
@@ -1474,7 +1484,7 @@
     {
       "path": "docs/fixtures/sdk-v2/rpc/sdk_snapshot_v2.response.valid.json",
       "bytes": 820,
-      "sha256": "62f01bd1d71c5ae6465bbd2eb14887bead93b27f2afae741c982eb5d3fdb47de"
+      "sha256": "c11bc7620272df1448273465e52e662e5dcc2fd1f4dc4d31a5a904e686696ed9"
     },
     {
       "path": "docs/fixtures/sdk-v2/rpc/sdk_status_v2.request.invalid.json",
@@ -1489,7 +1499,7 @@
     {
       "path": "docs/fixtures/sdk-v2/rpc/sdk_status_v2.response.valid.json",
       "bytes": 600,
-      "sha256": "9da882a153d4c053bcd03374b3dccb7dc7cfed09674c552ef17d8103440a0783"
+      "sha256": "4ba0ab1f9dbf4499a0cef366c43548d20568c540fedfa7860cb3d5c811c21ef2"
     },
     {
       "path": "docs/fixtures/sdk-v2/telemetry.point.valid.json",
@@ -1593,8 +1603,8 @@
     },
     {
       "path": "docs/schemas/sdk/v2/rpc/sdk_negotiate_v2.schema.json",
-      "bytes": 6742,
-      "sha256": "c15e34fd04352e8dd038254cc63919f3563f7c764a1fcda1dcc4b8239f5d4d13"
+      "bytes": 9716,
+      "sha256": "e6beefb6ad389ed4b7a0eb4a2ed42643c7d26054fe4639cc25df8e69f1ddf3a1"
     },
     {
       "path": "docs/schemas/sdk/v2/rpc/sdk_poll_events_v2.schema.json",
@@ -1608,8 +1618,8 @@
     },
     {
       "path": "docs/schemas/sdk/v2/rpc/sdk_release_c_methods.schema.json",
-      "bytes": 16326,
-      "sha256": "2b09ff3873499692277dcba0588b143b047aa30159b45a9cf8a2dfe5f5f5b556"
+      "bytes": 19179,
+      "sha256": "f92bef0f838de99a0912aa8329cb42461ef7f01f25bec3c0f2cc08673fc0be7c"
     },
     {
       "path": "docs/schemas/sdk/v2/rpc/sdk_send_batch_v2.schema.json",

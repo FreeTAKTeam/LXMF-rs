@@ -197,6 +197,7 @@ impl RpcDaemon {
             "interfaces": snapshot.interfaces,
             "reticulum": {
                 "shared_instance": Self::shared_instance_status(&snapshot.interfaces),
+                "parity": software_parity_orientation(),
             },
             "delivery_policy": snapshot.delivery_policy,
             "propagation": snapshot.propagation,

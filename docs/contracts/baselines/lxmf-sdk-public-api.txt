@@ -3,7 +3,20 @@ pub use lxmf_sdk::PYTHON_LXMF_REFERENCE_REF
 pub use lxmf_sdk::PYTHON_LXMF_REFERENCE_VERSION
 pub use lxmf_sdk::PYTHON_RETICULUM_REFERENCE_REF
 pub use lxmf_sdk::PYTHON_RETICULUM_REFERENCE_VERSION
+pub use lxmf_sdk::PYTHON_SOFTWARE_PARITY_COMPLETE
+pub use lxmf_sdk::PYTHON_SOFTWARE_PARITY_LEVEL
+pub use lxmf_sdk::PYTHON_SOFTWARE_PARITY_NOT_APPLICABLE
+pub use lxmf_sdk::PYTHON_SOFTWARE_PARITY_PARTIAL
+pub use lxmf_sdk::PYTHON_SOFTWARE_PARITY_TOTAL
+pub use lxmf_sdk::ParityCheckpoint
+pub use lxmf_sdk::ParityInventory
+pub use lxmf_sdk::ParityLevel
+pub use lxmf_sdk::ParityRatio
 pub use lxmf_sdk::RETICULUM_CONFORMANCE_REFERENCE_REF
+pub use lxmf_sdk::ReferenceRevision
+pub use lxmf_sdk::SoftwareParityOrientation
+pub use lxmf_sdk::SoftwareParityReferences
+pub use lxmf_sdk::current_software_parity_orientation
 pub mod lxmf_sdk::app
 #[non_exhaustive] pub enum lxmf_sdk::app::AttemptDisposition
 pub lxmf_sdk::app::AttemptDisposition::Failed
@@ -676,6 +689,7 @@ pub lxmf_sdk::capability::NegotiationResponse::python_reference: lxmf_sdk::capab
 pub lxmf_sdk::capability::NegotiationResponse::runtime_id: alloc::string::String
 pub lxmf_sdk::capability::NegotiationResponse::schema_namespace: alloc::string::String
 pub lxmf_sdk::capability::NegotiationResponse::sdk_version: alloc::string::String
+pub lxmf_sdk::capability::NegotiationResponse::software_parity: core::option::Option<lxmf_reference::parity::SoftwareParityOrientation>
 #[non_exhaustive] pub struct lxmf_sdk::capability::ParityReference
 pub lxmf_sdk::capability::ParityReference::python_lxmf_ref: alloc::string::String
 pub lxmf_sdk::capability::ParityReference::python_lxmf_version: core::option::Option<alloc::string::String>
@@ -850,6 +864,7 @@ pub struct lxmf_sdk::domain::IdentityAnnounceResult
 pub lxmf_sdk::domain::IdentityAnnounceResult::accepted: bool
 pub lxmf_sdk::domain::IdentityAnnounceResult::announce_id: core::option::Option<serde_json::value::Value>
 pub lxmf_sdk::domain::IdentityAnnounceResult::capabilities: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::domain::IdentityAnnounceResult::delivery_destination: core::option::Option<alloc::string::String>
 pub lxmf_sdk::domain::IdentityAnnounceResult::display_name: core::option::Option<alloc::string::String>
 pub lxmf_sdk::domain::IdentityAnnounceResult::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
 pub lxmf_sdk::domain::IdentityAnnounceResult::identity: core::option::Option<lxmf_sdk::domain::IdentityRef>
@@ -862,15 +877,25 @@ impl core::convert::From<lxmf_sdk::app::BootstrapRequest> for lxmf_sdk::domain::
 pub fn lxmf_sdk::domain::IdentityBootstrapRequest::from(value: lxmf_sdk::app::BootstrapRequest) -> Self
 pub struct lxmf_sdk::domain::IdentityBundle
 pub lxmf_sdk::domain::IdentityBundle::capabilities: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::domain::IdentityBundle::delivery_destination: core::option::Option<alloc::string::String>
 pub lxmf_sdk::domain::IdentityBundle::display_name: core::option::Option<alloc::string::String>
 pub lxmf_sdk::domain::IdentityBundle::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
 pub lxmf_sdk::domain::IdentityBundle::identity: lxmf_sdk::domain::IdentityRef
+pub lxmf_sdk::domain::IdentityBundle::metadata: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
 pub lxmf_sdk::domain::IdentityBundle::public_key: alloc::string::String
 impl core::convert::From<lxmf_sdk::domain::IdentityBundle> for lxmf_sdk::app::Identity
 pub fn lxmf_sdk::app::Identity::from(value: lxmf_sdk::domain::IdentityBundle) -> Self
+pub struct lxmf_sdk::domain::IdentityCreateRequest
+pub lxmf_sdk::domain::IdentityCreateRequest::capabilities: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::domain::IdentityCreateRequest::display_name: core::option::Option<alloc::string::String>
+pub lxmf_sdk::domain::IdentityCreateRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::IdentityCreateRequest::metadata: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
 pub struct lxmf_sdk::domain::IdentityImportRequest
 pub lxmf_sdk::domain::IdentityImportRequest::bundle_base64: alloc::string::String
+pub lxmf_sdk::domain::IdentityImportRequest::capabilities: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::domain::IdentityImportRequest::display_name: core::option::Option<alloc::string::String>
 pub lxmf_sdk::domain::IdentityImportRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::domain::IdentityImportRequest::metadata: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
 pub lxmf_sdk::domain::IdentityImportRequest::passphrase: core::option::Option<alloc::string::String>
 pub struct lxmf_sdk::domain::IdentityRef(pub alloc::string::String)
 pub struct lxmf_sdk::domain::IdentityResolveRequest
@@ -2416,6 +2441,7 @@ pub fn lxmf_sdk::Client<B>::identity_announce_now(&self) -> core::result::Result
 pub fn lxmf_sdk::Client<B>::identity_bootstrap(&self, req: lxmf_sdk::domain::IdentityBootstrapRequest) -> core::result::Result<lxmf_sdk::domain::ContactRecord, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::Client<B>::identity_contact_list(&self, req: lxmf_sdk::domain::ContactListRequest) -> core::result::Result<lxmf_sdk::domain::ContactListResult, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::Client<B>::identity_contact_update(&self, req: lxmf_sdk::domain::ContactUpdateRequest) -> core::result::Result<lxmf_sdk::domain::ContactRecord, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::identity_create(&self, req: lxmf_sdk::domain::IdentityCreateRequest) -> core::result::Result<lxmf_sdk::domain::IdentityBundle, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::Client<B>::identity_export(&self, identity: lxmf_sdk::domain::IdentityRef) -> core::result::Result<lxmf_sdk::domain::IdentityImportRequest, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::Client<B>::identity_import(&self, req: lxmf_sdk::domain::IdentityImportRequest) -> core::result::Result<lxmf_sdk::domain::IdentityBundle, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::Client<B>::identity_list(&self) -> core::result::Result<alloc::vec::Vec<lxmf_sdk::domain::IdentityBundle>, lxmf_sdk::SdkError>
@@ -2647,6 +2673,7 @@ pub struct lxmf_sdk::IdentityAnnounceResult
 pub lxmf_sdk::IdentityAnnounceResult::accepted: bool
 pub lxmf_sdk::IdentityAnnounceResult::announce_id: core::option::Option<serde_json::value::Value>
 pub lxmf_sdk::IdentityAnnounceResult::capabilities: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::IdentityAnnounceResult::delivery_destination: core::option::Option<alloc::string::String>
 pub lxmf_sdk::IdentityAnnounceResult::display_name: core::option::Option<alloc::string::String>
 pub lxmf_sdk::IdentityAnnounceResult::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
 pub lxmf_sdk::IdentityAnnounceResult::identity: core::option::Option<lxmf_sdk::domain::IdentityRef>
@@ -2659,15 +2686,25 @@ impl core::convert::From<lxmf_sdk::app::BootstrapRequest> for lxmf_sdk::domain::
 pub fn lxmf_sdk::domain::IdentityBootstrapRequest::from(value: lxmf_sdk::app::BootstrapRequest) -> Self
 pub struct lxmf_sdk::IdentityBundle
 pub lxmf_sdk::IdentityBundle::capabilities: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::IdentityBundle::delivery_destination: core::option::Option<alloc::string::String>
 pub lxmf_sdk::IdentityBundle::display_name: core::option::Option<alloc::string::String>
 pub lxmf_sdk::IdentityBundle::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
 pub lxmf_sdk::IdentityBundle::identity: lxmf_sdk::domain::IdentityRef
+pub lxmf_sdk::IdentityBundle::metadata: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
 pub lxmf_sdk::IdentityBundle::public_key: alloc::string::String
 impl core::convert::From<lxmf_sdk::domain::IdentityBundle> for lxmf_sdk::app::Identity
 pub fn lxmf_sdk::app::Identity::from(value: lxmf_sdk::domain::IdentityBundle) -> Self
+pub struct lxmf_sdk::IdentityCreateRequest
+pub lxmf_sdk::IdentityCreateRequest::capabilities: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::IdentityCreateRequest::display_name: core::option::Option<alloc::string::String>
+pub lxmf_sdk::IdentityCreateRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::IdentityCreateRequest::metadata: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
 pub struct lxmf_sdk::IdentityImportRequest
 pub lxmf_sdk::IdentityImportRequest::bundle_base64: alloc::string::String
+pub lxmf_sdk::IdentityImportRequest::capabilities: alloc::vec::Vec<alloc::string::String>
+pub lxmf_sdk::IdentityImportRequest::display_name: core::option::Option<alloc::string::String>
 pub lxmf_sdk::IdentityImportRequest::extensions: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub lxmf_sdk::IdentityImportRequest::metadata: alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
 pub lxmf_sdk::IdentityImportRequest::passphrase: core::option::Option<alloc::string::String>
 pub struct lxmf_sdk::IdentityRef(pub alloc::string::String)
 pub struct lxmf_sdk::IdentityResolveRequest
@@ -2839,6 +2876,7 @@ pub lxmf_sdk::NegotiationResponse::python_reference: lxmf_sdk::capability::Parit
 pub lxmf_sdk::NegotiationResponse::runtime_id: alloc::string::String
 pub lxmf_sdk::NegotiationResponse::schema_namespace: alloc::string::String
 pub lxmf_sdk::NegotiationResponse::sdk_version: alloc::string::String
+pub lxmf_sdk::NegotiationResponse::software_parity: core::option::Option<lxmf_reference::parity::SoftwareParityOrientation>
 pub struct lxmf_sdk::PaperDecodeResult
 pub lxmf_sdk::PaperDecodeResult::accepted: bool
 pub lxmf_sdk::PaperDecodeResult::bytes_len: u64
@@ -3313,6 +3351,7 @@ pub fn lxmf_sdk::RpcBackendClient::identity_announce_now(&self) -> core::result:
 pub fn lxmf_sdk::RpcBackendClient::identity_bootstrap(&self, req: lxmf_sdk::domain::IdentityBootstrapRequest) -> core::result::Result<lxmf_sdk::domain::ContactRecord, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::RpcBackendClient::identity_contact_list(&self, req: lxmf_sdk::domain::ContactListRequest) -> core::result::Result<lxmf_sdk::domain::ContactListResult, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::RpcBackendClient::identity_contact_update(&self, req: lxmf_sdk::domain::ContactUpdateRequest) -> core::result::Result<lxmf_sdk::domain::ContactRecord, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::identity_create(&self, req: lxmf_sdk::domain::IdentityCreateRequest) -> core::result::Result<lxmf_sdk::domain::IdentityBundle, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::RpcBackendClient::identity_export(&self, identity: lxmf_sdk::domain::IdentityRef) -> core::result::Result<lxmf_sdk::domain::IdentityImportRequest, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::RpcBackendClient::identity_import(&self, req: lxmf_sdk::domain::IdentityImportRequest) -> core::result::Result<lxmf_sdk::domain::IdentityBundle, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::RpcBackendClient::identity_list(&self) -> core::result::Result<alloc::vec::Vec<lxmf_sdk::domain::IdentityBundle>, lxmf_sdk::SdkError>
@@ -3670,6 +3709,7 @@ pub fn lxmf_sdk::ZmqPipelineBackendClient::identity_announce_now(&self) -> core:
 pub fn lxmf_sdk::ZmqPipelineBackendClient::identity_bootstrap(&self, req: lxmf_sdk::domain::IdentityBootstrapRequest) -> core::result::Result<lxmf_sdk::domain::ContactRecord, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::ZmqPipelineBackendClient::identity_contact_list(&self, req: lxmf_sdk::domain::ContactListRequest) -> core::result::Result<lxmf_sdk::domain::ContactListResult, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::ZmqPipelineBackendClient::identity_contact_update(&self, req: lxmf_sdk::domain::ContactUpdateRequest) -> core::result::Result<lxmf_sdk::domain::ContactRecord, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::ZmqPipelineBackendClient::identity_create(&self, req: lxmf_sdk::domain::IdentityCreateRequest) -> core::result::Result<lxmf_sdk::domain::IdentityBundle, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::ZmqPipelineBackendClient::identity_export(&self, identity: lxmf_sdk::domain::IdentityRef) -> core::result::Result<lxmf_sdk::domain::IdentityImportRequest, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::ZmqPipelineBackendClient::identity_import(&self, req: lxmf_sdk::domain::IdentityImportRequest) -> core::result::Result<lxmf_sdk::domain::IdentityBundle, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::ZmqPipelineBackendClient::identity_list(&self) -> core::result::Result<alloc::vec::Vec<lxmf_sdk::domain::IdentityBundle>, lxmf_sdk::SdkError>
@@ -3797,6 +3837,7 @@ pub fn lxmf_sdk::LxmfSdkIdentity::identity_announce_now(&self) -> core::result::
 pub fn lxmf_sdk::LxmfSdkIdentity::identity_bootstrap(&self, _req: lxmf_sdk::domain::IdentityBootstrapRequest) -> core::result::Result<lxmf_sdk::domain::ContactRecord, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::LxmfSdkIdentity::identity_contact_list(&self, _req: lxmf_sdk::domain::ContactListRequest) -> core::result::Result<lxmf_sdk::domain::ContactListResult, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::LxmfSdkIdentity::identity_contact_update(&self, _req: lxmf_sdk::domain::ContactUpdateRequest) -> core::result::Result<lxmf_sdk::domain::ContactRecord, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::LxmfSdkIdentity::identity_create(&self, _req: lxmf_sdk::domain::IdentityCreateRequest) -> core::result::Result<lxmf_sdk::domain::IdentityBundle, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::LxmfSdkIdentity::identity_export(&self, _identity: lxmf_sdk::domain::IdentityRef) -> core::result::Result<lxmf_sdk::domain::IdentityImportRequest, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::LxmfSdkIdentity::identity_import(&self, _req: lxmf_sdk::domain::IdentityImportRequest) -> core::result::Result<lxmf_sdk::domain::IdentityBundle, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::LxmfSdkIdentity::identity_list(&self) -> core::result::Result<alloc::vec::Vec<lxmf_sdk::domain::IdentityBundle>, lxmf_sdk::SdkError>
@@ -3809,6 +3850,7 @@ pub fn lxmf_sdk::Client<B>::identity_announce_now(&self) -> core::result::Result
 pub fn lxmf_sdk::Client<B>::identity_bootstrap(&self, req: lxmf_sdk::domain::IdentityBootstrapRequest) -> core::result::Result<lxmf_sdk::domain::ContactRecord, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::Client<B>::identity_contact_list(&self, req: lxmf_sdk::domain::ContactListRequest) -> core::result::Result<lxmf_sdk::domain::ContactListResult, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::Client<B>::identity_contact_update(&self, req: lxmf_sdk::domain::ContactUpdateRequest) -> core::result::Result<lxmf_sdk::domain::ContactRecord, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::Client<B>::identity_create(&self, req: lxmf_sdk::domain::IdentityCreateRequest) -> core::result::Result<lxmf_sdk::domain::IdentityBundle, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::Client<B>::identity_export(&self, identity: lxmf_sdk::domain::IdentityRef) -> core::result::Result<lxmf_sdk::domain::IdentityImportRequest, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::Client<B>::identity_import(&self, req: lxmf_sdk::domain::IdentityImportRequest) -> core::result::Result<lxmf_sdk::domain::IdentityBundle, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::Client<B>::identity_list(&self) -> core::result::Result<alloc::vec::Vec<lxmf_sdk::domain::IdentityBundle>, lxmf_sdk::SdkError>
@@ -3944,6 +3986,7 @@ pub fn lxmf_sdk::SdkBackend::identity_announce_now(&self) -> core::result::Resul
 pub fn lxmf_sdk::SdkBackend::identity_bootstrap(&self, _req: lxmf_sdk::domain::IdentityBootstrapRequest) -> core::result::Result<lxmf_sdk::domain::ContactRecord, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::SdkBackend::identity_contact_list(&self, _req: lxmf_sdk::domain::ContactListRequest) -> core::result::Result<lxmf_sdk::domain::ContactListResult, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::SdkBackend::identity_contact_update(&self, _req: lxmf_sdk::domain::ContactUpdateRequest) -> core::result::Result<lxmf_sdk::domain::ContactRecord, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::SdkBackend::identity_create(&self, _req: lxmf_sdk::domain::IdentityCreateRequest) -> core::result::Result<lxmf_sdk::domain::IdentityBundle, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::SdkBackend::identity_export(&self, _identity: lxmf_sdk::domain::IdentityRef) -> core::result::Result<lxmf_sdk::domain::IdentityImportRequest, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::SdkBackend::identity_import(&self, _req: lxmf_sdk::domain::IdentityImportRequest) -> core::result::Result<lxmf_sdk::domain::IdentityBundle, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::SdkBackend::identity_list(&self) -> core::result::Result<alloc::vec::Vec<lxmf_sdk::domain::IdentityBundle>, lxmf_sdk::SdkError>
@@ -4004,6 +4047,7 @@ pub fn lxmf_sdk::RpcBackendClient::identity_announce_now(&self) -> core::result:
 pub fn lxmf_sdk::RpcBackendClient::identity_bootstrap(&self, req: lxmf_sdk::domain::IdentityBootstrapRequest) -> core::result::Result<lxmf_sdk::domain::ContactRecord, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::RpcBackendClient::identity_contact_list(&self, req: lxmf_sdk::domain::ContactListRequest) -> core::result::Result<lxmf_sdk::domain::ContactListResult, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::RpcBackendClient::identity_contact_update(&self, req: lxmf_sdk::domain::ContactUpdateRequest) -> core::result::Result<lxmf_sdk::domain::ContactRecord, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::RpcBackendClient::identity_create(&self, req: lxmf_sdk::domain::IdentityCreateRequest) -> core::result::Result<lxmf_sdk::domain::IdentityBundle, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::RpcBackendClient::identity_export(&self, identity: lxmf_sdk::domain::IdentityRef) -> core::result::Result<lxmf_sdk::domain::IdentityImportRequest, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::RpcBackendClient::identity_import(&self, req: lxmf_sdk::domain::IdentityImportRequest) -> core::result::Result<lxmf_sdk::domain::IdentityBundle, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::RpcBackendClient::identity_list(&self) -> core::result::Result<alloc::vec::Vec<lxmf_sdk::domain::IdentityBundle>, lxmf_sdk::SdkError>
@@ -4062,6 +4106,7 @@ pub fn lxmf_sdk::ZmqPipelineBackendClient::identity_announce_now(&self) -> core:
 pub fn lxmf_sdk::ZmqPipelineBackendClient::identity_bootstrap(&self, req: lxmf_sdk::domain::IdentityBootstrapRequest) -> core::result::Result<lxmf_sdk::domain::ContactRecord, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::ZmqPipelineBackendClient::identity_contact_list(&self, req: lxmf_sdk::domain::ContactListRequest) -> core::result::Result<lxmf_sdk::domain::ContactListResult, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::ZmqPipelineBackendClient::identity_contact_update(&self, req: lxmf_sdk::domain::ContactUpdateRequest) -> core::result::Result<lxmf_sdk::domain::ContactRecord, lxmf_sdk::SdkError>
+pub fn lxmf_sdk::ZmqPipelineBackendClient::identity_create(&self, req: lxmf_sdk::domain::IdentityCreateRequest) -> core::result::Result<lxmf_sdk::domain::IdentityBundle, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::ZmqPipelineBackendClient::identity_export(&self, identity: lxmf_sdk::domain::IdentityRef) -> core::result::Result<lxmf_sdk::domain::IdentityImportRequest, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::ZmqPipelineBackendClient::identity_import(&self, req: lxmf_sdk::domain::IdentityImportRequest) -> core::result::Result<lxmf_sdk::domain::IdentityBundle, lxmf_sdk::SdkError>
 pub fn lxmf_sdk::ZmqPipelineBackendClient::identity_list(&self) -> core::result::Result<alloc::vec::Vec<lxmf_sdk::domain::IdentityBundle>, lxmf_sdk::SdkError>

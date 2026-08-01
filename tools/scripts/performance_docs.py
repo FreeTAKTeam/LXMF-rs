@@ -7,6 +7,7 @@ import argparse
 import json
 import statistics
 import sys
+import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +19,7 @@ SCALE_DATASET = ROOT / "docs/performance/100-node-chain-2026-07-20.json"
 START = "<!-- performance-summary:start -->"
 END = "<!-- performance-summary:end -->"
 PYTHON_INTEROP_WORKFLOW = ROOT / ".github/workflows/python-interop.yml"
+PYTHON_BENCHMARK_CONFIG = ROOT / "tools/benchmarks/python_impl.toml"
 
 
 def parse_args() -> argparse.Namespace:
@@ -38,16 +40,35 @@ def load(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def verify_workflow_refs(data: dict[str, Any]) -> None:
+def current_python_references() -> dict[str, str]:
+    config = tomllib.loads(PYTHON_BENCHMARK_CONFIG.read_text(encoding="utf-8"))
+    references = config.get("references")
+    if not isinstance(references, dict):
+        raise ValueError("Python benchmark configuration is missing references")
+    reticulum = references.get("reticulum")
+    lxmf = references.get("lxmf")
+    if not isinstance(reticulum, str) or not isinstance(lxmf, str):
+        raise ValueError("Python benchmark references must be strings")
+    return {"reticulum": reticulum, "lxmf": lxmf}
+
+
+def verify_workflow_refs(references: dict[str, str]) -> None:
     workflow = PYTHON_INTEROP_WORKFLOW.read_text(encoding="utf-8")
-    env = data["environment"]
     expected = {
-        "PYTHON_RETICULUM_REF": env["python_rns_revision"],
-        "PYTHON_LXMF_REF": env["python_lxmf_revision"],
+        "PYTHON_RETICULUM_REF": references["reticulum"],
+        "PYTHON_LXMF_REF": references["lxmf"],
     }
     for name, revision in expected.items():
         if f"{name}: {revision}" not in workflow:
-            raise ValueError(f"{name} does not match the pinned performance dataset")
+            raise ValueError(f"{name} does not match the Python benchmark configuration")
+
+
+def verify_report_refs(data: dict[str, Any], references: dict[str, str]) -> None:
+    environment = data["environment"]
+    if environment["python_rns_revision"] != references["reticulum"]:
+        raise ValueError("report Reticulum revision differs from benchmark configuration")
+    if environment["python_lxmf_revision"] != references["lxmf"]:
+        raise ValueError("report LXMF revision differs from benchmark configuration")
 
 
 def enrich_dispersion(report_path: Path, data: dict[str, Any]) -> None:
@@ -309,8 +330,11 @@ def main() -> int:
     args = parse_args()
     target = dataset_path(args.release)
     try:
+        references = current_python_references()
+        verify_workflow_refs(references)
         if args.report:
             data = load(args.report)
+            verify_report_refs(data, references)
             enrich_dispersion(args.report, data)
             if args.sdk_transport_report:
                 data.update(load(args.sdk_transport_report))
@@ -325,7 +349,6 @@ def main() -> int:
             target.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         data = load(target)
         scale_data = load(SCALE_DATASET)
-        verify_workflow_refs(data)
         expected_page = performance_page(data, args.release, scale_data)
         expected_readme = replace_marked(README.read_text(encoding="utf-8"), summary_section(data, args.release))
         if args.check:

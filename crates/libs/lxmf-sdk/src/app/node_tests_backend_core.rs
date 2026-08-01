@@ -36,6 +36,7 @@ macro_rules! mock_backend_core_methods {
             schema_namespace: "v2".to_owned(),
             sdk_version: crate::SDK_VERSION.to_owned(),
             python_reference: crate::ParityReference::default(),
+            software_parity: None,
         })
     }
 

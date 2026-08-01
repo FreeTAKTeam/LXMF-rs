@@ -3346,149 +3346,6 @@
         "unit",
         "pinned-python"
       ],
-      "id": "RNS.Channel.ChannelOutletBase",
-      "implementation": "complete",
-      "kind": "class",
-      "rust_surface": [
-        "reticulum-rs-transport::channel"
-      ],
-      "source": "Channel.py"
-    },
-    {
-      "evidence": [
-        "unit",
-        "pinned-python"
-      ],
-      "id": "RNS.Channel.ChannelOutletBase.get_packet_id",
-      "implementation": "complete",
-      "kind": "method",
-      "rust_surface": [
-        "reticulum-rs-transport::channel"
-      ],
-      "source": "Channel.py"
-    },
-    {
-      "evidence": [
-        "unit",
-        "pinned-python"
-      ],
-      "id": "RNS.Channel.ChannelOutletBase.get_packet_state",
-      "implementation": "complete",
-      "kind": "method",
-      "rust_surface": [
-        "reticulum-rs-transport::channel"
-      ],
-      "source": "Channel.py"
-    },
-    {
-      "evidence": [
-        "unit",
-        "pinned-python"
-      ],
-      "id": "RNS.Channel.ChannelOutletBase.is_usable",
-      "implementation": "complete",
-      "kind": "method",
-      "rust_surface": [
-        "reticulum-rs-transport::channel"
-      ],
-      "source": "Channel.py"
-    },
-    {
-      "evidence": [
-        "unit",
-        "pinned-python"
-      ],
-      "id": "RNS.Channel.ChannelOutletBase.mdu",
-      "implementation": "complete",
-      "kind": "method",
-      "rust_surface": [
-        "reticulum-rs-transport::channel"
-      ],
-      "source": "Channel.py"
-    },
-    {
-      "evidence": [
-        "unit",
-        "pinned-python"
-      ],
-      "id": "RNS.Channel.ChannelOutletBase.resend",
-      "implementation": "complete",
-      "kind": "method",
-      "rust_surface": [
-        "reticulum-rs-transport::channel"
-      ],
-      "source": "Channel.py"
-    },
-    {
-      "evidence": [
-        "unit",
-        "pinned-python"
-      ],
-      "id": "RNS.Channel.ChannelOutletBase.rtt",
-      "implementation": "complete",
-      "kind": "method",
-      "rust_surface": [
-        "reticulum-rs-transport::channel"
-      ],
-      "source": "Channel.py"
-    },
-    {
-      "evidence": [
-        "unit",
-        "pinned-python"
-      ],
-      "id": "RNS.Channel.ChannelOutletBase.send",
-      "implementation": "complete",
-      "kind": "method",
-      "rust_surface": [
-        "reticulum-rs-transport::channel"
-      ],
-      "source": "Channel.py"
-    },
-    {
-      "evidence": [
-        "unit",
-        "pinned-python"
-      ],
-      "id": "RNS.Channel.ChannelOutletBase.set_packet_delivered_callback",
-      "implementation": "complete",
-      "kind": "method",
-      "rust_surface": [
-        "reticulum-rs-transport::channel"
-      ],
-      "source": "Channel.py"
-    },
-    {
-      "evidence": [
-        "unit",
-        "pinned-python"
-      ],
-      "id": "RNS.Channel.ChannelOutletBase.set_packet_timeout_callback",
-      "implementation": "complete",
-      "kind": "method",
-      "rust_surface": [
-        "reticulum-rs-transport::channel"
-      ],
-      "source": "Channel.py"
-    },
-    {
-      "evidence": [
-        "unit",
-        "pinned-python"
-      ],
-      "id": "RNS.Channel.ChannelOutletBase.timed_out",
-      "implementation": "complete",
-      "kind": "method",
-      "rust_surface": [
-        "reticulum-rs-transport::channel"
-      ],
-      "source": "Channel.py"
-    },
-    {
-      "evidence": [
-        "unit",
-        "pinned-python"
-      ],
       "id": "RNS.Channel.Envelope",
       "implementation": "complete",
       "kind": "class",
@@ -4055,6 +3912,19 @@
         "reticulum-rs-core::crypto"
       ],
       "source": "Cryptography/HMAC.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Cryptography.Hashes.file_sha256",
+      "implementation": "complete",
+      "kind": "function",
+      "rust_surface": [
+        "reticulum-rs-core::crypto"
+      ],
+      "source": "Cryptography/Hashes.py"
     },
     {
       "evidence": [
@@ -6282,6 +6152,21 @@
         "unit",
         "pinned-python"
       ],
+      "id": "RNS.Destination.Destination.set_max_request_size",
+      "implementation": "partial",
+      "kind": "method",
+      "notes": "RNS 1.4.2 adds configurable inbound request limits; the Rust destination request API does not expose this control yet.",
+      "rust_surface": [
+        "reticulum-rs-core::destination",
+        "reticulum-rs-transport::destination"
+      ],
+      "source": "Destination.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
       "id": "RNS.Destination.Destination.set_packet_callback",
       "implementation": "complete",
       "kind": "method",
@@ -6460,6 +6345,21 @@
         "pinned-python"
       ],
       "id": "RNS.Discovery.InterfaceAnnounceHandler.received_announce",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::discovery::announce::decode_announce",
+        "reticulumd::announce_worker"
+      ],
+      "source": "Discovery.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Discovery.InterfaceAnnounceHandler.sanitize_name",
       "implementation": "complete",
       "kind": "method",
       "rust_surface": [
@@ -6762,6 +6662,19 @@
         "unit",
         "pinned-python"
       ],
+      "id": "RNS.Discovery.is_ygg_ipv6",
+      "implementation": "complete",
+      "kind": "function",
+      "rust_surface": [
+        "reticulum-rs-transport::discovery::is_ip_address/is_hostname"
+      ],
+      "source": "Discovery.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
       "id": "RNS.Identity.Identity",
       "implementation": "complete",
       "kind": "class",
@@ -7036,6 +6949,19 @@
         "pinned-python"
       ],
       "id": "RNS.Identity.Identity.prove",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-core::identity"
+      ],
+      "source": "Identity.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Identity.Identity.pub_to_file",
       "implementation": "complete",
       "kind": "method",
       "rust_surface": [
@@ -10114,6 +10040,23 @@
         "pinned-python",
         "hardware-unverified"
       ],
+      "id": "RNS.Interfaces.BackboneInterface.BackboneClientInterface.check_frame_len",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::iface::tcp_client",
+        "reticulum-rs-transport::iface::tcp_server",
+        "reticulum-rs-transport::iface::hdlc"
+      ],
+      "source": "Interfaces/BackboneInterface.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python",
+        "hardware-unverified"
+      ],
       "id": "RNS.Interfaces.BackboneInterface.BackboneClientInterface.connect",
       "implementation": "complete",
       "kind": "method",
@@ -10149,6 +10092,23 @@
         "hardware-unverified"
       ],
       "id": "RNS.Interfaces.BackboneInterface.BackboneClientInterface.initial_connect",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::iface::tcp_client",
+        "reticulum-rs-transport::iface::tcp_server",
+        "reticulum-rs-transport::iface::hdlc"
+      ],
+      "source": "Interfaces/BackboneInterface.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python",
+        "hardware-unverified"
+      ],
+      "id": "RNS.Interfaces.BackboneInterface.BackboneClientInterface.invalid_frame",
       "implementation": "complete",
       "kind": "method",
       "rust_surface": [
@@ -10315,6 +10275,38 @@
       "evidence": [
         "unit",
         "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Interfaces.BackboneInterface.BackboneInterface.blocked_ip_count",
+      "implementation": "partial",
+      "kind": "method",
+      "notes": "RNS 1.4.2 exposes blocked IP counts and lists through interface statistics; the Rust status surface does not expose these fields yet.",
+      "rust_surface": [
+        "reticulum-rs-transport::iface::tcp_server",
+        "rns-tools::rnstatus"
+      ],
+      "source": "Interfaces/BackboneInterface.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Interfaces.BackboneInterface.BackboneInterface.blocked_ip_list",
+      "implementation": "partial",
+      "kind": "method",
+      "notes": "RNS 1.4.2 exposes blocked IP counts and lists through interface statistics; the Rust status surface does not expose these fields yet.",
+      "rust_surface": [
+        "reticulum-rs-transport::iface::tcp_server",
+        "rns-tools::rnstatus"
+      ],
+      "source": "Interfaces/BackboneInterface.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
         "pinned-python",
         "hardware-unverified"
       ],
@@ -10437,6 +10429,74 @@
         "pinned-python",
         "hardware-unverified"
       ],
+      "id": "RNS.Interfaces.BackboneInterface.BackboneInterface.ic_burst_activated",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::iface::tcp_client",
+        "reticulum-rs-transport::iface::tcp_server",
+        "reticulum-rs-transport::iface::hdlc"
+      ],
+      "source": "Interfaces/BackboneInterface.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python",
+        "hardware-unverified"
+      ],
+      "id": "RNS.Interfaces.BackboneInterface.BackboneInterface.ic_burst_active",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::iface::tcp_client",
+        "reticulum-rs-transport::iface::tcp_server",
+        "reticulum-rs-transport::iface::hdlc"
+      ],
+      "source": "Interfaces/BackboneInterface.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python",
+        "hardware-unverified"
+      ],
+      "id": "RNS.Interfaces.BackboneInterface.BackboneInterface.ic_pr_burst_activated",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::iface::tcp_client",
+        "reticulum-rs-transport::iface::tcp_server",
+        "reticulum-rs-transport::iface::hdlc"
+      ],
+      "source": "Interfaces/BackboneInterface.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python",
+        "hardware-unverified"
+      ],
+      "id": "RNS.Interfaces.BackboneInterface.BackboneInterface.ic_pr_burst_active",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::iface::tcp_client",
+        "reticulum-rs-transport::iface::tcp_server",
+        "reticulum-rs-transport::iface::hdlc"
+      ],
+      "source": "Interfaces/BackboneInterface.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python",
+        "hardware-unverified"
+      ],
       "id": "RNS.Interfaces.BackboneInterface.BackboneInterface.incoming_connection",
       "implementation": "complete",
       "kind": "method",
@@ -10488,6 +10548,23 @@
         "pinned-python",
         "hardware-unverified"
       ],
+      "id": "RNS.Interfaces.BackboneInterface.BackboneInterface.received_path_request",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::iface::tcp_client",
+        "reticulum-rs-transport::iface::tcp_server",
+        "reticulum-rs-transport::iface::hdlc"
+      ],
+      "source": "Interfaces/BackboneInterface.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python",
+        "hardware-unverified"
+      ],
       "id": "RNS.Interfaces.BackboneInterface.BackboneInterface.register_in",
       "implementation": "complete",
       "kind": "method",
@@ -10506,6 +10583,23 @@
         "hardware-unverified"
       ],
       "id": "RNS.Interfaces.BackboneInterface.BackboneInterface.sent_announce",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::iface::tcp_client",
+        "reticulum-rs-transport::iface::tcp_server",
+        "reticulum-rs-transport::iface::hdlc"
+      ],
+      "source": "Interfaces/BackboneInterface.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python",
+        "hardware-unverified"
+      ],
+      "id": "RNS.Interfaces.BackboneInterface.BackboneInterface.sent_path_request",
       "implementation": "complete",
       "kind": "method",
       "rust_surface": [
@@ -10879,7 +10973,43 @@
         "pinned-python",
         "hardware-unverified"
       ],
+      "id": "RNS.Interfaces.I2PInterface.I2PInterface.received_path_request",
+      "implementation": "complete",
+      "kind": "method",
+      "notes": "Fake-SAM and prepared-host evidence prove software lifecycle; public I2P operation is not claimed.",
+      "rust_surface": [
+        "reticulum-rs-transport::iface::i2p",
+        "reticulumd::bootstrap_interface_startup"
+      ],
+      "source": "Interfaces/I2PInterface.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "prepared-host",
+        "pinned-python",
+        "hardware-unverified"
+      ],
       "id": "RNS.Interfaces.I2PInterface.I2PInterface.sent_announce",
+      "implementation": "complete",
+      "kind": "method",
+      "notes": "Fake-SAM and prepared-host evidence prove software lifecycle; public I2P operation is not claimed.",
+      "rust_surface": [
+        "reticulum-rs-transport::iface::i2p",
+        "reticulumd::bootstrap_interface_startup"
+      ],
+      "source": "Interfaces/I2PInterface.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "prepared-host",
+        "pinned-python",
+        "hardware-unverified"
+      ],
+      "id": "RNS.Interfaces.I2PInterface.I2PInterface.sent_path_request",
       "implementation": "complete",
       "kind": "method",
       "notes": "Fake-SAM and prepared-host evidence prove software lifecycle; public I2P operation is not claimed.",
@@ -11321,6 +11451,21 @@
         "simulated",
         "pinned-python"
       ],
+      "id": "RNS.Interfaces.Interface.Interface.incoming_pr_frequency",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::iface::Interface",
+        "reticulum-rs-transport::InterfaceManager"
+      ],
+      "source": "Interfaces/Interface.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
       "id": "RNS.Interfaces.Interface.Interface.optimise_mtu",
       "implementation": "complete",
       "kind": "method",
@@ -11337,6 +11482,21 @@
         "pinned-python"
       ],
       "id": "RNS.Interfaces.Interface.Interface.outgoing_announce_frequency",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::iface::Interface",
+        "reticulum-rs-transport::InterfaceManager"
+      ],
+      "source": "Interfaces/Interface.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Interfaces.Interface.Interface.outgoing_pr_frequency",
       "implementation": "complete",
       "kind": "method",
       "rust_surface": [
@@ -11396,6 +11556,21 @@
         "simulated",
         "pinned-python"
       ],
+      "id": "RNS.Interfaces.Interface.Interface.received_path_request",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::iface::Interface",
+        "reticulum-rs-transport::InterfaceManager"
+      ],
+      "source": "Interfaces/Interface.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
       "id": "RNS.Interfaces.Interface.Interface.sent_announce",
       "implementation": "complete",
       "kind": "method",
@@ -11411,7 +11586,52 @@
         "simulated",
         "pinned-python"
       ],
+      "id": "RNS.Interfaces.Interface.Interface.sent_path_request",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::iface::Interface",
+        "reticulum-rs-transport::InterfaceManager"
+      ],
+      "source": "Interfaces/Interface.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Interfaces.Interface.Interface.should_egress_limit_pr",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::iface::Interface",
+        "reticulum-rs-transport::InterfaceManager"
+      ],
+      "source": "Interfaces/Interface.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
       "id": "RNS.Interfaces.Interface.Interface.should_ingress_limit",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::iface::Interface",
+        "reticulum-rs-transport::InterfaceManager"
+      ],
+      "source": "Interfaces/Interface.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Interfaces.Interface.Interface.should_ingress_limit_pr",
       "implementation": "complete",
       "kind": "method",
       "rust_surface": [
@@ -11998,7 +12218,37 @@
         "simulated",
         "pinned-python"
       ],
+      "id": "RNS.Interfaces.LocalInterface.LocalServerInterface.received_path_request",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::iface::local",
+        "reticulumd::bootstrap_interface_startup"
+      ],
+      "source": "Interfaces/LocalInterface.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
       "id": "RNS.Interfaces.LocalInterface.LocalServerInterface.sent_announce",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::iface::local",
+        "reticulumd::bootstrap_interface_startup"
+      ],
+      "source": "Interfaces/LocalInterface.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Interfaces.LocalInterface.LocalServerInterface.sent_path_request",
       "implementation": "complete",
       "kind": "method",
       "rust_surface": [
@@ -13745,6 +13995,23 @@
         "pinned-python",
         "hardware-unverified"
       ],
+      "id": "RNS.Interfaces.RNodeMultiInterface.RNodeMultiInterface.received_path_request",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::iface::rnode_multi",
+        "reticulumd::bootstrap_interface_startup"
+      ],
+      "source": "Interfaces/RNodeMultiInterface.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "prepared-host",
+        "pinned-python",
+        "hardware-unverified"
+      ],
       "id": "RNS.Interfaces.RNodeMultiInterface.RNodeMultiInterface.reconnect_port",
       "implementation": "complete",
       "kind": "method",
@@ -13763,6 +14030,23 @@
         "hardware-unverified"
       ],
       "id": "RNS.Interfaces.RNodeMultiInterface.RNodeMultiInterface.sent_announce",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::iface::rnode_multi",
+        "reticulumd::bootstrap_interface_startup"
+      ],
+      "source": "Interfaces/RNodeMultiInterface.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "prepared-host",
+        "pinned-python",
+        "hardware-unverified"
+      ],
+      "id": "RNS.Interfaces.RNodeMultiInterface.RNodeMultiInterface.sent_path_request",
       "implementation": "complete",
       "kind": "method",
       "rust_surface": [
@@ -14397,6 +14681,23 @@
         "pinned-python",
         "hardware-unverified"
       ],
+      "id": "RNS.Interfaces.TCPInterface.TCPClientInterface.check_frame_len",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::iface::tcp_client",
+        "reticulum-rs-transport::iface::tcp_server",
+        "reticulumd::interfaces"
+      ],
+      "source": "Interfaces/TCPInterface.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python",
+        "hardware-unverified"
+      ],
       "id": "RNS.Interfaces.TCPInterface.TCPClientInterface.connect",
       "implementation": "complete",
       "kind": "method",
@@ -14432,6 +14733,23 @@
         "hardware-unverified"
       ],
       "id": "RNS.Interfaces.TCPInterface.TCPClientInterface.initial_connect",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::iface::tcp_client",
+        "reticulum-rs-transport::iface::tcp_server",
+        "reticulumd::interfaces"
+      ],
+      "source": "Interfaces/TCPInterface.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python",
+        "hardware-unverified"
+      ],
+      "id": "RNS.Interfaces.TCPInterface.TCPClientInterface.invalid_frame",
       "implementation": "complete",
       "kind": "method",
       "rust_surface": [
@@ -14754,7 +15072,41 @@
         "pinned-python",
         "hardware-unverified"
       ],
+      "id": "RNS.Interfaces.TCPInterface.TCPServerInterface.received_path_request",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::iface::tcp_client",
+        "reticulum-rs-transport::iface::tcp_server",
+        "reticulumd::interfaces"
+      ],
+      "source": "Interfaces/TCPInterface.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python",
+        "hardware-unverified"
+      ],
       "id": "RNS.Interfaces.TCPInterface.TCPServerInterface.sent_announce",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::iface::tcp_client",
+        "reticulum-rs-transport::iface::tcp_server",
+        "reticulumd::interfaces"
+      ],
+      "source": "Interfaces/TCPInterface.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python",
+        "hardware-unverified"
+      ],
+      "id": "RNS.Interfaces.TCPInterface.TCPServerInterface.sent_path_request",
       "implementation": "complete",
       "kind": "method",
       "rust_surface": [
@@ -17072,6 +17424,19 @@
         "unit",
         "pinned-python"
       ],
+      "id": "RNS.Link.RequestReceipt.response_rejected",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::destination::link"
+      ],
+      "source": "Link.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
       "id": "RNS.Link.RequestReceipt.response_resource_progress",
       "implementation": "complete",
       "kind": "method",
@@ -17718,6 +18083,21 @@
         "simulated",
         "pinned-python"
       ],
+      "id": "RNS.Resource.Resource.ensure_link",
+      "implementation": "complete",
+      "kind": "method",
+      "notes": "Includes ordered split-resource advertisements, proof-gated segment sequencing, reassembly, and segment progress metadata.",
+      "rust_surface": [
+        "reticulum-rs-transport::resource"
+      ],
+      "source": "Resource.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
       "id": "RNS.Resource.Resource.get_data_size",
       "implementation": "complete",
       "kind": "method",
@@ -18304,6 +18684,51 @@
         "simulated",
         "pinned-python"
       ],
+      "id": "RNS.Reticulum.Reticulum.autoconnect_announces_to_internal",
+      "implementation": "partial",
+      "kind": "method",
+      "rust_surface": [
+        "reticulumd",
+        "reticulum-rs-rpc::RpcDaemon"
+      ],
+      "source": "Reticulum.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Reticulum.Reticulum.autoconnect_interface_gravity",
+      "implementation": "partial",
+      "kind": "method",
+      "rust_surface": [
+        "reticulumd",
+        "reticulum-rs-rpc::RpcDaemon"
+      ],
+      "source": "Reticulum.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Reticulum.Reticulum.autoconnect_interface_mode",
+      "implementation": "partial",
+      "kind": "method",
+      "rust_surface": [
+        "reticulumd",
+        "reticulum-rs-rpc::RpcDaemon"
+      ],
+      "source": "Reticulum.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
       "id": "RNS.Reticulum.Reticulum.blackhole_identity",
       "implementation": "complete",
       "kind": "method",
@@ -18323,6 +18748,21 @@
       "kind": "method",
       "rust_surface": [
         "reticulumd::config::ReticulumRuntimePolicy"
+      ],
+      "source": "Reticulum.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Reticulum.Reticulum.blackhole_update_interval",
+      "implementation": "partial",
+      "kind": "method",
+      "rust_surface": [
+        "reticulumd",
+        "reticulum-rs-rpc::RpcDaemon"
       ],
       "source": "Reticulum.py"
     },
@@ -18625,6 +19065,21 @@
     {
       "evidence": [
         "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Reticulum.Reticulum.is_blackholed",
+      "implementation": "partial",
+      "kind": "method",
+      "rust_surface": [
+        "reticulumd",
+        "reticulum-rs-rpc::RpcDaemon"
+      ],
+      "source": "Reticulum.py"
+    },
+    {
+      "evidence": [
+        "unit",
         "pinned-python"
       ],
       "id": "RNS.Reticulum.Reticulum.link_mtu_discovery",
@@ -18632,6 +19087,21 @@
       "kind": "method",
       "rust_surface": [
         "reticulumd::config::ReticulumRuntimePolicy"
+      ],
+      "source": "Reticulum.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Reticulum.Reticulum.local_hops_delta",
+      "implementation": "partial",
+      "kind": "method",
+      "rust_surface": [
+        "reticulumd",
+        "reticulum-rs-rpc::RpcDaemon"
       ],
       "source": "Reticulum.py"
     },
@@ -18745,6 +19215,21 @@
     {
       "evidence": [
         "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Reticulum.Reticulum.rpc_return",
+      "implementation": "partial",
+      "kind": "method",
+      "rust_surface": [
+        "reticulumd",
+        "reticulum-rs-rpc::RpcDaemon"
+      ],
+      "source": "Reticulum.py"
+    },
+    {
+      "evidence": [
+        "unit",
         "pinned-python"
       ],
       "id": "RNS.Reticulum.Reticulum.should_autoconnect_discovered_interfaces",
@@ -18793,6 +19278,21 @@
       "rust_surface": [
         "reticulumd::main",
         "reticulumd::announce_persistence"
+      ],
+      "source": "Reticulum.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Reticulum.Reticulum.static_transport_identity",
+      "implementation": "partial",
+      "kind": "method",
+      "rust_surface": [
+        "reticulumd",
+        "reticulum-rs-rpc::RpcDaemon"
       ],
       "source": "Reticulum.py"
     },
@@ -18853,6 +19353,21 @@
         "reticulum-rs-transport::destination::link",
         "reticulum-rs-transport::transport::LinkTable",
         "reticulum-rs-transport::transport::NextHopMetrics"
+      ],
+      "source": "Transport.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Transport.Transport.add_interface",
+      "implementation": "partial",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::transport",
+        "reticulumd"
       ],
       "source": "Transport.py"
     },
@@ -19250,6 +19765,38 @@
         "simulated",
         "pinned-python"
       ],
+      "id": "RNS.Transport.Transport.handle_disovery_path_requests",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::transport::PathTable",
+        "reticulum-rs-transport::Transport",
+        "reticulum-rs-rpc::path_status/request_path/drop_path"
+      ],
+      "source": "Transport.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Transport.Transport.handle_outgoing_announces",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::Transport::recv_announces",
+        "reticulum-rs-transport::transport::announce",
+        "reticulum-rs-transport::InterfaceManager::drop_announce_queues"
+      ],
+      "source": "Transport.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
       "id": "RNS.Transport.Transport.handle_tunnel",
       "implementation": "complete",
       "kind": "method",
@@ -19322,6 +19869,21 @@
         "simulated",
         "pinned-python"
       ],
+      "id": "RNS.Transport.Transport.interface_hashes",
+      "implementation": "partial",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::transport",
+        "reticulumd"
+      ],
+      "source": "Transport.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
       "id": "RNS.Transport.Transport.interface_to_shared_instance",
       "implementation": "complete",
       "kind": "method",
@@ -19337,12 +19899,42 @@
         "simulated",
         "pinned-python"
       ],
+      "id": "RNS.Transport.Transport.internal_identity",
+      "implementation": "partial",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::transport",
+        "reticulumd"
+      ],
+      "source": "Transport.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
       "id": "RNS.Transport.Transport.is_local_client_interface",
       "implementation": "complete",
       "kind": "method",
       "rust_surface": [
         "reticulum-rs-transport::iface::local",
         "reticulumd::bootstrap_interface_startup"
+      ],
+      "source": "Transport.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Transport.Transport.is_shared_instance",
+      "implementation": "partial",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::transport",
+        "reticulumd"
       ],
       "source": "Transport.py"
     },
@@ -19371,6 +19963,21 @@
       "kind": "method",
       "rust_surface": [
         "reticulum-rs-transport::transport::manage_transport"
+      ],
+      "source": "Transport.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Transport.Transport.mangle_hops",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::transport::NextHopMetrics",
+        "reticulum-rs-rpc::path_status"
       ],
       "source": "Transport.py"
     },
@@ -19744,6 +20351,21 @@
         "simulated",
         "pinned-python"
       ],
+      "id": "RNS.Transport.Transport.remove_interface",
+      "implementation": "partial",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::transport",
+        "reticulumd"
+      ],
+      "source": "Transport.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
       "id": "RNS.Transport.Transport.request_path",
       "implementation": "complete",
       "kind": "method",
@@ -19838,6 +20460,21 @@
       "rust_surface": [
         "reticulum-rs-transport::iface::local",
         "reticulum-rs-transport::iface::tcp_client"
+      ],
+      "source": "Transport.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Transport.Transport.should_apply_delta",
+      "implementation": "partial",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::transport",
+        "reticulumd"
       ],
       "source": "Transport.py"
     },
@@ -19949,6 +20586,21 @@
       "rust_surface": [
         "reticulum-rs-rpc::blackhole",
         "reticulum-rs-transport::discovery::lifecycle::BlackholeUpdateScheduler"
+      ],
+      "source": "Transport.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Transport.Transport.void_queues",
+      "implementation": "partial",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::transport",
+        "reticulumd"
       ],
       "source": "Transport.py"
     },
@@ -20167,9 +20819,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.client.ReticulumGitClient",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "class",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust covers isolated local Git bundle preparation, but not the Python ReticulumGitClient remote session behavior.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -20184,9 +20836,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.client.ReticulumGitClient.abort",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust covers isolated local Git bundle preparation, but not the Python ReticulumGitClient remote session behavior.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -20201,9 +20853,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.client.ReticulumGitClient.connect_server",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust covers isolated local Git bundle preparation, but not the Python ReticulumGitClient remote session behavior.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -20218,9 +20870,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.client.ReticulumGitClient.escape_for_stdout",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust covers isolated local Git bundle preparation, but not the Python ReticulumGitClient remote session behavior.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -20235,9 +20887,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.client.ReticulumGitClient.handle_git_list",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust covers isolated local Git bundle preparation, but not the Python ReticulumGitClient remote session behavior.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -20252,9 +20904,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.client.ReticulumGitClient.link_closed",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust covers isolated local Git bundle preparation, but not the Python ReticulumGitClient remote session behavior.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -20269,9 +20921,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.client.ReticulumGitClient.link_established",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust covers isolated local Git bundle preparation, but not the Python ReticulumGitClient remote session behavior.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -20286,9 +20938,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.client.ReticulumGitClient.process_fetch_queue",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust covers isolated local Git bundle preparation, but not the Python ReticulumGitClient remote session behavior.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -20303,9 +20955,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.client.ReticulumGitClient.process_push_queue",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust covers isolated local Git bundle preparation, but not the Python ReticulumGitClient remote session behavior.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -20320,9 +20972,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.client.ReticulumGitClient.run",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust covers isolated local Git bundle preparation, but not the Python ReticulumGitClient remote session behavior.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -20337,9 +20989,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.client.ReticulumGitClient.send_request",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust covers isolated local Git bundle preparation, but not the Python ReticulumGitClient remote session behavior.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -20354,9 +21006,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.client.main",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "function",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust covers isolated local Git bundle preparation, but not the Python ReticulumGitClient remote session behavior.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -20371,6 +21023,23 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.client.program_setup",
+      "implementation": "partial",
+      "kind": "function",
+      "notes": "Rust covers isolated local Git bundle preparation, but not the Python ReticulumGitClient remote session behavior.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/client.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.commitsigs.armor_ssh_signature",
       "implementation": "complete",
       "kind": "function",
       "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
@@ -20379,7 +21048,245 @@
         "rns-tools::rncp",
         "rns-tools::rnsh"
       ],
-      "source": "Utilities/rngit/client.py"
+      "source": "Utilities/rngit/commitsigs.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.commitsigs.check_novalidate",
+      "implementation": "complete",
+      "kind": "function",
+      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/commitsigs.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.commitsigs.create_ssh_signature",
+      "implementation": "complete",
+      "kind": "function",
+      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/commitsigs.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.commitsigs.extract_commit_author",
+      "implementation": "complete",
+      "kind": "function",
+      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/commitsigs.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.commitsigs.extract_commit_committer",
+      "implementation": "complete",
+      "kind": "function",
+      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/commitsigs.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.commitsigs.extract_commit_tagger",
+      "implementation": "complete",
+      "kind": "function",
+      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/commitsigs.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.commitsigs.find_principals",
+      "implementation": "complete",
+      "kind": "function",
+      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/commitsigs.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.commitsigs.get_pubkey_wire_format",
+      "implementation": "complete",
+      "kind": "function",
+      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/commitsigs.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.commitsigs.main",
+      "implementation": "complete",
+      "kind": "function",
+      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/commitsigs.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.commitsigs.parse_ssh_signature",
+      "implementation": "complete",
+      "kind": "function",
+      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/commitsigs.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.commitsigs.read_ssh_string",
+      "implementation": "complete",
+      "kind": "function",
+      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/commitsigs.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.commitsigs.sign",
+      "implementation": "complete",
+      "kind": "function",
+      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/commitsigs.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.commitsigs.ssh_string",
+      "implementation": "complete",
+      "kind": "function",
+      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/commitsigs.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.commitsigs.unarmor_ssh_signature",
+      "implementation": "complete",
+      "kind": "function",
+      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/commitsigs.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.commitsigs.verify",
+      "implementation": "complete",
+      "kind": "function",
+      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/commitsigs.py"
     },
     {
       "evidence": [
@@ -20540,6 +21447,23 @@
         "simulated",
         "pinned-python"
       ],
+      "id": "RNS.Utilities.rngit.pages.NomadNetworkNode.format_commit",
+      "implementation": "complete",
+      "kind": "method",
+      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/pages.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
       "id": "RNS.Utilities.rngit.pages.NomadNetworkNode.format_diff",
       "implementation": "complete",
       "kind": "method",
@@ -20575,6 +21499,23 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.pages.NomadNetworkNode.format_size",
+      "implementation": "complete",
+      "kind": "method",
+      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/pages.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.pages.NomadNetworkNode.format_tabs",
       "implementation": "complete",
       "kind": "method",
       "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
@@ -20728,6 +21669,23 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.pages.NomadNetworkNode.get_commit_info",
+      "implementation": "complete",
+      "kind": "method",
+      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/pages.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.pages.NomadNetworkNode.get_commit_signature",
       "implementation": "complete",
       "kind": "method",
       "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
@@ -21033,6 +21991,23 @@
         "simulated",
         "pinned-python"
       ],
+      "id": "RNS.Utilities.rngit.pages.NomadNetworkNode.m_link_e",
+      "implementation": "complete",
+      "kind": "method",
+      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/pages.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
       "id": "RNS.Utilities.rngit.pages.NomadNetworkNode.m_link_r",
       "implementation": "complete",
       "kind": "method",
@@ -21169,6 +22144,40 @@
         "simulated",
         "pinned-python"
       ],
+      "id": "RNS.Utilities.rngit.pages.NomadNetworkNode.render_chart_full_block",
+      "implementation": "complete",
+      "kind": "method",
+      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/pages.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.pages.NomadNetworkNode.render_chart_halfblock",
+      "implementation": "complete",
+      "kind": "method",
+      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/pages.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
       "id": "RNS.Utilities.rngit.pages.NomadNetworkNode.render_combined_chart",
       "implementation": "complete",
       "kind": "method",
@@ -21204,6 +22213,23 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.pages.NomadNetworkNode.repository_thanks",
+      "implementation": "complete",
+      "kind": "method",
+      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/pages.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.pages.NomadNetworkNode.resolve_doc_permission",
       "implementation": "complete",
       "kind": "method",
       "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
@@ -21475,10 +22501,61 @@
         "simulated",
         "pinned-python"
       ],
-      "id": "RNS.Utilities.rngit.server.ReticulumGitClient",
+      "id": "RNS.Utilities.rngit.pages.NomadNetworkNode.serve_wd_download",
       "implementation": "complete",
-      "kind": "class",
+      "kind": "method",
       "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/pages.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.pages.NomadNetworkNode.serve_work_doc_page",
+      "implementation": "complete",
+      "kind": "method",
+      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/pages.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.pages.NomadNetworkNode.serve_work_page",
+      "implementation": "complete",
+      "kind": "method",
+      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/pages.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.server.ReticulumGitClient",
+      "implementation": "partial",
+      "kind": "class",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -21493,9 +22570,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.abort",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -21510,9 +22587,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.connect_remote",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -21527,9 +22604,26 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.create_release",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/server.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.server.ReticulumGitClient.create_repository",
+      "implementation": "partial",
+      "kind": "method",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -21544,9 +22638,77 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.delete_release",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/server.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.server.ReticulumGitClient.fetch_release",
+      "implementation": "partial",
+      "kind": "method",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/server.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.server.ReticulumGitClient.fork_repository",
+      "implementation": "partial",
+      "kind": "method",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/server.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.server.ReticulumGitClient.group_permissions",
+      "implementation": "partial",
+      "kind": "method",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/server.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.server.ReticulumGitClient.latest_release",
+      "implementation": "partial",
+      "kind": "method",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -21561,9 +22723,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.link_closed",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -21578,9 +22740,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.link_established",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -21595,9 +22757,60 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.list_releases",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/server.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.server.ReticulumGitClient.mirror_repository",
+      "implementation": "partial",
+      "kind": "method",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/server.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.server.ReticulumGitClient.parse_remote_destination_url",
+      "implementation": "partial",
+      "kind": "method",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/server.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.server.ReticulumGitClient.parse_remote_group_url",
+      "implementation": "partial",
+      "kind": "method",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -21612,9 +22825,26 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.parse_remote_url",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/server.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.server.ReticulumGitClient.repository_permissions",
+      "implementation": "partial",
+      "kind": "method",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -21629,9 +22859,26 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.send_request",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/server.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.server.ReticulumGitClient.sync_repository",
+      "implementation": "partial",
+      "kind": "method",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -21646,9 +22893,179 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.view_release",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/server.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.server.ReticulumGitClient.work_activate",
+      "implementation": "partial",
+      "kind": "method",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/server.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.server.ReticulumGitClient.work_comment",
+      "implementation": "partial",
+      "kind": "method",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/server.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.server.ReticulumGitClient.work_complete",
+      "implementation": "partial",
+      "kind": "method",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/server.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.server.ReticulumGitClient.work_create",
+      "implementation": "partial",
+      "kind": "method",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/server.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.server.ReticulumGitClient.work_delete",
+      "implementation": "partial",
+      "kind": "method",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/server.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.server.ReticulumGitClient.work_edit",
+      "implementation": "partial",
+      "kind": "method",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/server.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.server.ReticulumGitClient.work_list",
+      "implementation": "partial",
+      "kind": "method",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/server.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.server.ReticulumGitClient.work_permissions",
+      "implementation": "partial",
+      "kind": "method",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/server.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.server.ReticulumGitClient.work_propose",
+      "implementation": "partial",
+      "kind": "method",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/server.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.server.ReticulumGitClient.work_view",
+      "implementation": "partial",
+      "kind": "method",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -21663,9 +23080,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "class",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -21680,9 +23097,26 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.announce",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/server.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.server.ReticulumGitNode.download_succeeded",
+      "implementation": "partial",
+      "kind": "method",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -21697,9 +23131,26 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.fetch_succeeded",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/server.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.server.ReticulumGitNode.handle_create",
+      "implementation": "partial",
+      "kind": "method",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -21714,9 +23165,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.handle_delete",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -21731,9 +23182,26 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.handle_fetch",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/server.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.server.ReticulumGitNode.handle_fork",
+      "implementation": "partial",
+      "kind": "method",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -21748,9 +23216,43 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.handle_list",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/server.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.server.ReticulumGitNode.handle_mirror",
+      "implementation": "partial",
+      "kind": "method",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/server.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.server.ReticulumGitNode.handle_perms",
+      "implementation": "partial",
+      "kind": "method",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -21765,9 +23267,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.handle_push",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -21782,9 +23284,43 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.handle_release",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/server.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.server.ReticulumGitNode.handle_sync",
+      "implementation": "partial",
+      "kind": "method",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/server.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.server.ReticulumGitNode.handle_work",
+      "implementation": "partial",
+      "kind": "method",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -21799,9 +23335,43 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.jobs",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/server.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.server.ReticulumGitNode.last_upstream_sync",
+      "implementation": "partial",
+      "kind": "method",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/server.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.server.ReticulumGitNode.load_repository",
+      "implementation": "partial",
+      "kind": "method",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -21816,9 +23386,26 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.load_repository_group",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/server.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.server.ReticulumGitNode.log_request",
+      "implementation": "partial",
+      "kind": "method",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -21833,9 +23420,26 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.parse_permission",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/server.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.server.ReticulumGitNode.parse_request_group_path",
+      "implementation": "partial",
+      "kind": "method",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -21850,9 +23454,26 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.parse_request_repository_path",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/server.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.server.ReticulumGitNode.permissions_from_allowed_input",
+      "implementation": "partial",
+      "kind": "method",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -21867,9 +23488,26 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.push_succeeded",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/server.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.server.ReticulumGitNode.record_download",
+      "implementation": "partial",
+      "kind": "method",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -21884,9 +23522,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.record_fetch",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -21901,9 +23539,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.record_group_view",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -21918,9 +23556,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.record_page_view",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -21935,9 +23573,26 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.record_push",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/server.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.server.ReticulumGitNode.record_release_download",
+      "implementation": "partial",
+      "kind": "method",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -21952,9 +23607,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.record_repository_view",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -21969,9 +23624,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.register_request_handlers",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -21986,9 +23641,26 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.release_data",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/server.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.server.ReticulumGitNode.release_download_succeeded",
+      "implementation": "partial",
+      "kind": "method",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -22003,9 +23675,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.releases_list_data",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -22020,9 +23692,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.remote_connected",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -22037,9 +23709,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.remote_disconnected",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -22054,9 +23726,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.remote_identified",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -22071,9 +23743,43 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.repository_stats",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/server.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.server.ReticulumGitNode.resolve_doc_permission",
+      "implementation": "partial",
+      "kind": "method",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/server.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.server.ReticulumGitNode.resolve_group_permission",
+      "implementation": "partial",
+      "kind": "method",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -22088,9 +23794,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.resolve_permission",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -22105,9 +23811,26 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.start",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/server.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.server.ReticulumGitNode.update_group_permissions",
+      "implementation": "partial",
+      "kind": "method",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -22122,9 +23845,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.view_succeeded",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "method",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -22139,9 +23862,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.main",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "function",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -22156,9 +23879,9 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.program_setup",
-      "implementation": "complete",
+      "implementation": "partial",
       "kind": "function",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
         "rns-tools::rngit",
         "rns-tools::rncp",
@@ -22274,6 +23997,40 @@
         "simulated",
         "pinned-python"
       ],
+      "id": "RNS.Utilities.rngit.util.MarkdownToMicron.restore_url_scope",
+      "implementation": "complete",
+      "kind": "method",
+      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/util.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.util.MarkdownToMicron.set_url_scope",
+      "implementation": "complete",
+      "kind": "method",
+      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/util.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
       "id": "RNS.Utilities.rngit.util.convert_markdown_to_micron",
       "implementation": "complete",
       "kind": "function",
@@ -22284,6 +24041,239 @@
         "rns-tools::rnsh"
       ],
       "source": "Utilities/rngit/util.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.util.san_ref",
+      "implementation": "complete",
+      "kind": "function",
+      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/util.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.util.san_refs",
+      "implementation": "complete",
+      "kind": "function",
+      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/util.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.util.san_sha",
+      "implementation": "complete",
+      "kind": "function",
+      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "rust_surface": [
+        "rns-tools::rngit",
+        "rns-tools::rncp",
+        "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/util.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rnid.announce",
+      "implementation": "complete",
+      "kind": "function",
+      "rust_surface": [
+        "rns-tools::rnid",
+        "reticulum-rs-transport::identity"
+      ],
+      "source": "Utilities/rnid.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rnid.check_release_rsm_structure",
+      "implementation": "complete",
+      "kind": "function",
+      "rust_surface": [
+        "rns-tools::rnid",
+        "reticulum-rs-transport::identity"
+      ],
+      "source": "Utilities/rnid.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rnid.create_rsg",
+      "implementation": "complete",
+      "kind": "function",
+      "rust_surface": [
+        "rns-tools::rnid",
+        "reticulum-rs-transport::identity"
+      ],
+      "source": "Utilities/rnid.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rnid.decrypt",
+      "implementation": "complete",
+      "kind": "function",
+      "rust_surface": [
+        "rns-tools::rnid",
+        "reticulum-rs-transport::identity"
+      ],
+      "source": "Utilities/rnid.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rnid.encrypt",
+      "implementation": "complete",
+      "kind": "function",
+      "rust_surface": [
+        "rns-tools::rnid",
+        "reticulum-rs-transport::identity"
+      ],
+      "source": "Utilities/rnid.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rnid.ensure_reticulum",
+      "implementation": "complete",
+      "kind": "function",
+      "rust_surface": [
+        "rns-tools::rnid",
+        "reticulum-rs-transport::identity"
+      ],
+      "source": "Utilities/rnid.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rnid.export_prv_identity",
+      "implementation": "complete",
+      "kind": "function",
+      "rust_surface": [
+        "rns-tools::rnid",
+        "reticulum-rs-transport::identity"
+      ],
+      "source": "Utilities/rnid.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rnid.export_pub_identity",
+      "implementation": "complete",
+      "kind": "function",
+      "rust_surface": [
+        "rns-tools::rnid",
+        "reticulum-rs-transport::identity"
+      ],
+      "source": "Utilities/rnid.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rnid.extract_signed_rsg_data",
+      "implementation": "complete",
+      "kind": "function",
+      "rust_surface": [
+        "rns-tools::rnid",
+        "reticulum-rs-transport::identity"
+      ],
+      "source": "Utilities/rnid.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rnid.get_editor_content",
+      "implementation": "complete",
+      "kind": "function",
+      "rust_surface": [
+        "rns-tools::rnid",
+        "reticulum-rs-transport::identity"
+      ],
+      "source": "Utilities/rnid.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rnid.get_operating_identity",
+      "implementation": "complete",
+      "kind": "function",
+      "rust_surface": [
+        "rns-tools::rnid",
+        "reticulum-rs-transport::identity"
+      ],
+      "source": "Utilities/rnid.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rnid.get_rsg_data",
+      "implementation": "complete",
+      "kind": "function",
+      "rust_surface": [
+        "rns-tools::rnid",
+        "reticulum-rs-transport::identity"
+      ],
+      "source": "Utilities/rnid.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rnid.get_rsg_hash",
+      "implementation": "complete",
+      "kind": "function",
+      "rust_surface": [
+        "rns-tools::rnid",
+        "reticulum-rs-transport::identity"
+      ],
+      "source": "Utilities/rnid.py"
     },
     {
       "evidence": [
@@ -22304,7 +24294,217 @@
         "unit",
         "pinned-python"
       ],
+      "id": "RNS.Utilities.rnid.print_hash_information",
+      "implementation": "complete",
+      "kind": "function",
+      "rust_surface": [
+        "rns-tools::rnid",
+        "reticulum-rs-transport::identity"
+      ],
+      "source": "Utilities/rnid.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rnid.print_identity_information",
+      "implementation": "complete",
+      "kind": "function",
+      "rust_surface": [
+        "rns-tools::rnid",
+        "reticulum-rs-transport::identity"
+      ],
+      "source": "Utilities/rnid.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rnid.rsg_is_legacy_format",
+      "implementation": "complete",
+      "kind": "function",
+      "rust_surface": [
+        "rns-tools::rnid",
+        "reticulum-rs-transport::identity"
+      ],
+      "source": "Utilities/rnid.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rnid.rsg_meta_from_file",
+      "implementation": "complete",
+      "kind": "function",
+      "rust_surface": [
+        "rns-tools::rnid",
+        "reticulum-rs-transport::identity"
+      ],
+      "source": "Utilities/rnid.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rnid.rsg_meta_from_str",
+      "implementation": "complete",
+      "kind": "function",
+      "rust_surface": [
+        "rns-tools::rnid",
+        "reticulum-rs-transport::identity"
+      ],
+      "source": "Utilities/rnid.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rnid.sign",
+      "implementation": "complete",
+      "kind": "function",
+      "rust_surface": [
+        "rns-tools::rnid",
+        "reticulum-rs-transport::identity"
+      ],
+      "source": "Utilities/rnid.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rnid.sign_message",
+      "implementation": "complete",
+      "kind": "function",
+      "rust_surface": [
+        "rns-tools::rnid",
+        "reticulum-rs-transport::identity"
+      ],
+      "source": "Utilities/rnid.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
       "id": "RNS.Utilities.rnid.spin",
+      "implementation": "complete",
+      "kind": "function",
+      "rust_surface": [
+        "rns-tools::rnid",
+        "reticulum-rs-transport::identity"
+      ],
+      "source": "Utilities/rnid.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rnid.unwrap_rsg",
+      "implementation": "complete",
+      "kind": "function",
+      "rust_surface": [
+        "rns-tools::rnid",
+        "reticulum-rs-transport::identity"
+      ],
+      "source": "Utilities/rnid.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rnid.validate",
+      "implementation": "complete",
+      "kind": "function",
+      "rust_surface": [
+        "rns-tools::rnid",
+        "reticulum-rs-transport::identity"
+      ],
+      "source": "Utilities/rnid.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rnid.validate_args",
+      "implementation": "complete",
+      "kind": "function",
+      "rust_surface": [
+        "rns-tools::rnid",
+        "reticulum-rs-transport::identity"
+      ],
+      "source": "Utilities/rnid.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rnid.validate_message",
+      "implementation": "complete",
+      "kind": "function",
+      "rust_surface": [
+        "rns-tools::rnid",
+        "reticulum-rs-transport::identity"
+      ],
+      "source": "Utilities/rnid.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rnid.validate_rsg",
+      "implementation": "complete",
+      "kind": "function",
+      "rust_surface": [
+        "rns-tools::rnid",
+        "reticulum-rs-transport::identity"
+      ],
+      "source": "Utilities/rnid.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rnid.wrap_rsg",
+      "implementation": "complete",
+      "kind": "function",
+      "rust_surface": [
+        "rns-tools::rnid",
+        "reticulum-rs-transport::identity"
+      ],
+      "source": "Utilities/rnid.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rnid.wrap_rsg_str",
+      "implementation": "complete",
+      "kind": "function",
+      "rust_surface": [
+        "rns-tools::rnid",
+        "reticulum-rs-transport::identity"
+      ],
+      "source": "Utilities/rnid.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rnid.write_identity",
       "implementation": "complete",
       "kind": "function",
       "rust_surface": [
@@ -25576,7 +27776,63 @@
         "unit",
         "pinned-python"
       ],
-      "id": "RNS.b256_rep",
+      "id": "RNS.b256_to_byte",
+      "implementation": "complete",
+      "kind": "function",
+      "rust_surface": [
+        "reticulum-rs-core",
+        "reticulum-rs-transport"
+      ],
+      "source": "__init__.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.b256_to_bytes",
+      "implementation": "complete",
+      "kind": "function",
+      "rust_surface": [
+        "reticulum-rs-core",
+        "reticulum-rs-transport"
+      ],
+      "source": "__init__.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.b256rep",
+      "implementation": "complete",
+      "kind": "function",
+      "rust_surface": [
+        "reticulum-rs-core",
+        "reticulum-rs-transport"
+      ],
+      "source": "__init__.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.byte_to_b256",
+      "implementation": "complete",
+      "kind": "function",
+      "rust_surface": [
+        "reticulum-rs-core",
+        "reticulum-rs-transport"
+      ],
+      "source": "__init__.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.bytes_to_b256",
       "implementation": "complete",
       "kind": "function",
       "rust_surface": [
@@ -25826,6 +28082,105 @@
     {
       "evidence": [
         "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.release_1_4_2.boundary_path_requests",
+      "implementation": "partial",
+      "kind": "transport-policy",
+      "notes": "Behavior added by the RNS 1.4.2 baseline is tracked explicitly until an equivalent Rust implementation and focused evidence land.",
+      "rust_surface": [
+        "reticulum-rs-transport",
+        "reticulumd",
+        "rns-tools"
+      ],
+      "source": "RNS 1.4.2 release"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.release_1_4_2.dynamic_path_rebalancing",
+      "implementation": "partial",
+      "kind": "protocol",
+      "notes": "Behavior added by the RNS 1.4.2 baseline is tracked explicitly until an equivalent Rust implementation and focused evidence land.",
+      "rust_surface": [
+        "reticulum-rs-transport",
+        "reticulumd",
+        "rns-tools"
+      ],
+      "source": "RNS 1.4.2 release"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.release_1_4_2.ifstats_blocked_ips",
+      "implementation": "partial",
+      "kind": "status",
+      "notes": "Behavior added by the RNS 1.4.2 baseline is tracked explicitly until an equivalent Rust implementation and focused evidence land.",
+      "rust_surface": [
+        "reticulum-rs-transport",
+        "reticulumd",
+        "rns-tools"
+      ],
+      "source": "RNS 1.4.2 release"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.release_1_4_2.interface_gravity",
+      "implementation": "partial",
+      "kind": "transport-policy",
+      "notes": "Behavior added by the RNS 1.4.2 baseline is tracked explicitly until an equivalent Rust implementation and focused evidence land.",
+      "rust_surface": [
+        "reticulum-rs-transport",
+        "reticulumd",
+        "rns-tools"
+      ],
+      "source": "RNS 1.4.2 release"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.release_1_4_2.request_response_size_limits",
+      "implementation": "partial",
+      "kind": "protocol",
+      "notes": "Behavior added by the RNS 1.4.2 baseline is tracked explicitly until an equivalent Rust implementation and focused evidence land.",
+      "rust_surface": [
+        "reticulum-rs-transport",
+        "reticulumd",
+        "rns-tools"
+      ],
+      "source": "RNS 1.4.2 release"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.sl",
+      "implementation": "complete",
+      "kind": "function",
+      "rust_surface": [
+        "reticulum-rs-core",
+        "reticulum-rs-transport"
+      ],
+      "source": "__init__.py"
+    },
+    {
+      "evidence": [
+        "unit",
         "pinned-python"
       ],
       "id": "RNS.timestamp_str",
@@ -25868,7 +28223,7 @@
   ],
   "references": {
     "lxmf": "727830cefda83d9c6e3982b48675425f3f988f9c",
-    "reticulum": "15320e4d2cfabb143c1db20ca887e275fd521585"
+    "reticulum": "b48b96e61676504e0a4e527b33b9a0b4495c6872"
   },
   "schema_version": 1,
   "scope": {
@@ -25880,8 +28235,9 @@
     "includes": "public RNS/LXMF callables and committed manual product contracts"
   },
   "summary": {
-    "complete": 1664,
+    "complete": 1695,
     "not-applicable": 1,
-    "total": 1665
+    "partial": 115,
+    "total": 1811
   }
 }

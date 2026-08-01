@@ -29,6 +29,9 @@ serde_bytes.workspace = true
 sha2.workspace = true
 x25519-dalek = { workspace = true, features = ["static_secrets"] }
 
+[target.'cfg(windows)'.dependencies]
+atomicwrites.workspace = true
+
 [dev-dependencies]
 criterion.workspace = true
 log.workspace = true

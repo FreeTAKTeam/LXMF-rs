@@ -4,7 +4,7 @@
 
 SDK contract: `v2.6` in schema namespace `v2` and protocol version `2`.
 
-Pinned-Python entries: **1665** — daemon SDK: **825**, local library: **839**, provenance-backed not applicable: **1**.
+Pinned-Python entries: **1811** — daemon SDK: **858**, local library: **952**, provenance-backed not applicable: **1**.
 
 Daemon operations inventoried: **115**. Every operation uses the shared framed-RPC codec over HTTP/Unix and ZeroMQ; authorization is derived from query (`read`) versus command (`mutate`) semantics.
 

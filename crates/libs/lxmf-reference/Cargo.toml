@@ -11,5 +11,8 @@ documentation = "https://docs.rs/lxmf-reference"
 keywords = ["lxmf", "compatibility", "reference"]
 categories = ["development-tools::testing"]
 
+[dependencies]
+serde.workspace = true
+
 [lints]
 workspace = true

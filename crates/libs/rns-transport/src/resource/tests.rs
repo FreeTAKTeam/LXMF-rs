@@ -280,6 +280,87 @@ mod tests {
         assert_eq!(complete.1.data, [first_data.as_slice(), second_data.as_slice()].concat());
     }
 
+    /// Issue #520: out-of-order split segments are logged and dropped (not
+    /// accepted, not RCL-cancelled), and the transfer recovers once the
+    /// expected segment arrives.
+    #[test]
+    fn resource_receiver_drops_out_of_order_split_segments_until_sequence_resumes() {
+        let signer = PrivateIdentity::new_from_rand(OsRng);
+        let identity = *signer.as_identity();
+        let destination = DestinationDesc {
+            identity,
+            address_hash: identity.address_hash,
+            name: DestinationName::new("lxmf", "resource"),
+        };
+        let (tx, _) = tokio::sync::broadcast::channel(1);
+        let mut link = Link::new(destination, tx);
+        link.request();
+        let mut manager = ResourceManager::new_with_config(Duration::from_secs(1), 2);
+        let first_data = b"first-segment";
+        let second_data = b"second-segment";
+
+        let total_data_size = (first_data.len() + second_data.len()) as u64;
+        let (first_adv, first_part) =
+            split_test_segment(first_data, None, 1, 2, total_data_size);
+        let original_hash = first_adv.hash;
+        let (second_adv, second_part) =
+            split_test_segment(second_data, Some(original_hash), 2, 2, total_data_size);
+
+        // Segment 2 advertisement arrives before segment 1: dropped, with
+        // no request issued and no receiver state created.
+        let early_second = resource_packet(
+            PacketContext::ResourceAdvrtisement,
+            &second_adv.pack().expect("second advertisement"),
+            *link.id(),
+        );
+        assert!(manager.handle_packet(&early_second, &mut link).is_empty());
+        assert!(manager.incoming.is_empty(), "out-of-order segment must not create a receiver");
+
+        // Segment 1 arrives and is accepted normally.
+        let first_packet = resource_packet(
+            PacketContext::ResourceAdvrtisement,
+            &first_adv.pack().expect("first advertisement"),
+            *link.id(),
+        );
+        assert_eq!(manager.handle_packet(&first_packet, &mut link).len(), 1);
+        assert_eq!(
+            manager
+                .handle_packet(
+                    &resource_packet(PacketContext::Resource, &first_part, *link.id()),
+                    &mut link,
+                )
+                .len(),
+            1
+        );
+
+        // A stale replay of segment 1 (expected segment is now 2) is also
+        // dropped without tearing anything down.
+        assert!(manager.handle_packet(&first_packet, &mut link).is_empty());
+
+        // Segment 2, now in order, is accepted and assembly completes.
+        let second_packet = resource_packet(
+            PacketContext::ResourceAdvrtisement,
+            &second_adv.pack().expect("second advertisement"),
+            *link.id(),
+        );
+        assert_eq!(manager.handle_packet(&second_packet, &mut link).len(), 1);
+        manager.handle_packet(
+            &resource_packet(PacketContext::Resource, &second_part, *link.id()),
+            &mut link,
+        );
+
+        let complete = manager
+            .drain_events()
+            .into_iter()
+            .find_map(|event| match event.kind {
+                ResourceEventKind::Complete(complete) => Some((event.hash, complete)),
+                _ => None,
+            })
+            .expect("split resource should assemble once order resumes");
+        assert_eq!(complete.0, original_hash);
+        assert_eq!(complete.1.data, [first_data.as_slice(), second_data.as_slice()].concat());
+    }
+
     #[test]
     fn resource_manager_ignores_duplicate_active_advertisement() {
         let signer = PrivateIdentity::new_from_rand(OsRng);
@@ -527,6 +608,95 @@ mod tests {
             receiver.handle_part(part, &link),
             PartOutcome::Failed("decompress_failed")
         ));
+    }
+
+    // Regression tests for issue #514: the manager must reject
+    // advertisements exceeding MAX_INBOUND_RESOURCE_TRANSFER_SIZE or
+    // MAX_INBOUND_RESOURCE_PARTS before any receiver (and its
+    // part-tracking allocations) is created.
+    fn advertisement_with(transfer_size: u64, data_size: u64, parts: u32) -> ResourceAdvertisement {
+        ResourceAdvertisement {
+            transfer_size,
+            data_size,
+            parts,
+            hash: Hash::new_from_slice(&[3u8; 32]),
+            random_hash: [0u8; RANDOM_HASH_SIZE],
+            original_hash: Hash::new_from_slice(&[3u8; 32]),
+            segment_index: 1,
+            total_segments: 1,
+            request_id: None,
+            flags: 0,
+            hashmap: vec![0u8; MAPHASH_LEN],
+        }
+    }
+
+    fn manager_with_test_link() -> (ResourceManager, Link) {
+        let signer = PrivateIdentity::new_from_rand(OsRng);
+        let identity = *signer.as_identity();
+        let destination = DestinationDesc {
+            identity,
+            address_hash: identity.address_hash,
+            name: DestinationName::new("lxmf", "resource"),
+        };
+        let (tx, _) = tokio::sync::broadcast::channel(1);
+        let mut link = Link::new(destination, tx);
+        link.request();
+        (ResourceManager::new_with_config(Duration::from_secs(1), 1), link)
+    }
+
+    #[test]
+    fn resource_manager_rejects_advertisement_over_transfer_size_limit() {
+        let (mut manager, mut link) = manager_with_test_link();
+        // A multi-gigabyte advertised transfer must never reach receiver
+        // creation; a transfer exactly at the cap still must.
+        let oversized =
+            advertisement_with(MAX_INBOUND_RESOURCE_TRANSFER_SIZE + 1, 1, 1);
+        let packet = resource_packet(
+            PacketContext::ResourceAdvrtisement,
+            &oversized.pack().expect("advertisement"),
+            *link.id(),
+        );
+
+        let responses = manager.handle_packet(&packet, &mut link);
+        assert!(responses.is_empty(), "rejected advertisement must not produce a request");
+        assert!(manager.incoming.is_empty(), "rejected advertisement must not create a receiver");
+
+        let at_limit = advertisement_with(MAX_INBOUND_RESOURCE_TRANSFER_SIZE, 1, 1);
+        let packet = resource_packet(
+            PacketContext::ResourceAdvrtisement,
+            &at_limit.pack().expect("advertisement"),
+            *link.id(),
+        );
+        let responses = manager.handle_packet(&packet, &mut link);
+        assert!(!manager.incoming.is_empty(), "transfer at the limit is still accepted");
+        assert!(!responses.is_empty(), "accepted advertisement requests parts");
+    }
+
+    #[test]
+    fn resource_manager_rejects_advertisement_over_parts_limit() {
+        let (mut manager, mut link) = manager_with_test_link();
+        // An excessive part count must never reach receiver creation; a
+        // count exactly at the cap still must.
+        let oversized = advertisement_with(1, 1, (MAX_INBOUND_RESOURCE_PARTS + 1) as u32);
+        let packet = resource_packet(
+            PacketContext::ResourceAdvrtisement,
+            &oversized.pack().expect("advertisement"),
+            *link.id(),
+        );
+
+        let responses = manager.handle_packet(&packet, &mut link);
+        assert!(responses.is_empty(), "rejected advertisement must not produce a request");
+        assert!(manager.incoming.is_empty(), "rejected advertisement must not create a receiver");
+
+        let at_limit = advertisement_with(1, 1, 1);
+        let packet = resource_packet(
+            PacketContext::ResourceAdvrtisement,
+            &at_limit.pack().expect("advertisement"),
+            *link.id(),
+        );
+        let responses = manager.handle_packet(&packet, &mut link);
+        assert!(!manager.incoming.is_empty(), "valid advertisement is still accepted");
+        assert!(!responses.is_empty());
     }
 
     #[test]

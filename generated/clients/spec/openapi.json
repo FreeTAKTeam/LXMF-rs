@@ -96,6 +96,80 @@
           }
         ]
       },
+      "ParityCheckpoint": {
+        "additionalProperties": false,
+        "properties": {
+          "complete_ratio": {
+            "$ref": "#/components/schemas/ParityRatio"
+          },
+          "inventory": {
+            "$ref": "#/components/schemas/ParityInventory"
+          },
+          "level": {
+            "$ref": "#/components/schemas/ParityLevel"
+          }
+        },
+        "required": [
+          "complete_ratio",
+          "inventory",
+          "level"
+        ],
+        "type": "object"
+      },
+      "ParityInventory": {
+        "additionalProperties": false,
+        "properties": {
+          "complete": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "not_applicable": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "partial": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "complete",
+          "not_applicable",
+          "partial",
+          "total"
+        ],
+        "type": "object"
+      },
+      "ParityLevel": {
+        "enum": [
+          "complete",
+          "partial",
+          "unknown"
+        ],
+        "type": "string"
+      },
+      "ParityRatio": {
+        "additionalProperties": false,
+        "properties": {
+          "denominator": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "numerator": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "denominator",
+          "numerator"
+        ],
+        "type": "object"
+      },
       "PythonReference": {
         "additionalProperties": false,
         "properties": {
@@ -307,6 +381,24 @@
         "required": [
           "id",
           "result"
+        ],
+        "type": "object"
+      },
+      "ReferenceRevision": {
+        "additionalProperties": false,
+        "properties": {
+          "revision": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "version": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "revision",
+          "version"
         ],
         "type": "object"
       },
@@ -690,6 +782,9 @@
           "sdk_version": {
             "minLength": 1,
             "type": "string"
+          },
+          "software_parity": {
+            "$ref": "#/components/schemas/SoftwareParityOrientation"
           }
         },
         "required": [
@@ -1355,6 +1450,50 @@
         },
         "required": [
           "message"
+        ],
+        "type": "object"
+      },
+      "SoftwareParityOrientation": {
+        "additionalProperties": false,
+        "properties": {
+          "advisory": {
+            "const": true
+          },
+          "lxmf": {
+            "$ref": "#/components/schemas/ParityCheckpoint"
+          },
+          "overall": {
+            "$ref": "#/components/schemas/ParityCheckpoint"
+          },
+          "references": {
+            "$ref": "#/components/schemas/SoftwareParityReferences"
+          },
+          "reticulum": {
+            "$ref": "#/components/schemas/ParityCheckpoint"
+          }
+        },
+        "required": [
+          "advisory",
+          "lxmf",
+          "overall",
+          "references",
+          "reticulum"
+        ],
+        "type": "object"
+      },
+      "SoftwareParityReferences": {
+        "additionalProperties": false,
+        "properties": {
+          "lxmf": {
+            "$ref": "#/components/schemas/ReferenceRevision"
+          },
+          "reticulum": {
+            "$ref": "#/components/schemas/ReferenceRevision"
+          }
+        },
+        "required": [
+          "lxmf",
+          "reticulum"
         ],
         "type": "object"
       },

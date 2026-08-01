@@ -869,6 +869,142 @@
           }
         }
       },
+      "ParityLevel": {
+        "type": "string",
+        "enum": [
+          "complete",
+          "partial",
+          "unknown"
+        ]
+      },
+      "ParityRatio": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "numerator",
+          "denominator"
+        ],
+        "properties": {
+          "numerator": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "denominator": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "ParityInventory": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "total",
+          "complete",
+          "partial",
+          "not_applicable"
+        ],
+        "properties": {
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "complete": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "partial": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "not_applicable": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "ParityCheckpoint": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "level",
+          "complete_ratio",
+          "inventory"
+        ],
+        "properties": {
+          "level": {
+            "$ref": "#/components/schemas/ParityLevel"
+          },
+          "complete_ratio": {
+            "$ref": "#/components/schemas/ParityRatio"
+          },
+          "inventory": {
+            "$ref": "#/components/schemas/ParityInventory"
+          }
+        }
+      },
+      "ReferenceRevision": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "version",
+          "revision"
+        ],
+        "properties": {
+          "version": {
+            "type": "string",
+            "minLength": 1
+          },
+          "revision": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "SoftwareParityReferences": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "reticulum",
+          "lxmf"
+        ],
+        "properties": {
+          "reticulum": {
+            "$ref": "#/components/schemas/ReferenceRevision"
+          },
+          "lxmf": {
+            "$ref": "#/components/schemas/ReferenceRevision"
+          }
+        }
+      },
+      "SoftwareParityOrientation": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "advisory",
+          "references",
+          "overall",
+          "reticulum",
+          "lxmf"
+        ],
+        "properties": {
+          "advisory": {
+            "const": true
+          },
+          "references": {
+            "$ref": "#/components/schemas/SoftwareParityReferences"
+          },
+          "overall": {
+            "$ref": "#/components/schemas/ParityCheckpoint"
+          },
+          "reticulum": {
+            "$ref": "#/components/schemas/ParityCheckpoint"
+          },
+          "lxmf": {
+            "$ref": "#/components/schemas/ParityCheckpoint"
+          }
+        }
+      },
       "ResponseMeta": {
         "type": "object",
         "additionalProperties": true,
@@ -1010,6 +1146,9 @@
           },
           "python_reference": {
             "$ref": "#/components/schemas/PythonReference"
+          },
+          "software_parity": {
+            "$ref": "#/components/schemas/SoftwareParityOrientation"
           },
           "sdk_version": {
             "type": "string",

@@ -341,16 +341,19 @@ fn legacy_projection_extra_components(
 ) -> Result<Vec<(&'static str, &'static str)>> {
     let response_meta_ref = "#/components/schemas/ResponseMeta";
     let python_reference_ref = "#/components/schemas/PythonReference";
+    let software_parity_ref = "#/components/schemas/SoftwareParityOrientation";
     let send_batch_message_ref = "#/components/schemas/SdkSendBatchV2Message";
     let send_batch_result_item_ref = "#/components/schemas/SdkSendBatchV2ResultItem";
     let mut needs_response_meta = false;
     let mut needs_python_reference = false;
+    let mut needs_software_parity = false;
     let mut needs_send_batch_message = false;
     let mut needs_send_batch_result_item = false;
     for component in root_components {
         let schema = component_schema(components, component)?;
         needs_response_meta |= schema_mentions_ref(&schema, response_meta_ref);
         needs_python_reference |= schema_mentions_ref(&schema, python_reference_ref);
+        needs_software_parity |= schema_mentions_ref(&schema, software_parity_ref);
         needs_send_batch_message |= schema_mentions_ref(&schema, send_batch_message_ref);
         needs_send_batch_result_item |= schema_mentions_ref(&schema, send_batch_result_item_ref);
     }
@@ -362,6 +365,17 @@ fn legacy_projection_extra_components(
     let mut extras = Vec::new();
     if needs_python_reference {
         extras.push(("PythonReference", "python_reference"));
+    }
+    if needs_software_parity {
+        extras.extend([
+            ("ParityLevel", "parity_level"),
+            ("ParityRatio", "parity_ratio"),
+            ("ParityInventory", "parity_inventory"),
+            ("ParityCheckpoint", "parity_checkpoint"),
+            ("ReferenceRevision", "reference_revision"),
+            ("SoftwareParityReferences", "software_parity_references"),
+            ("SoftwareParityOrientation", "software_parity_orientation"),
+        ]);
     }
     if needs_response_meta {
         extras.push(("ResponseMeta", "response_meta"));

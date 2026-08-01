@@ -187,21 +187,9 @@ impl<R: CryptoRngCore + Copy> Fernet<R> {
 
         hmac.update(&token_data[..token_data.len() - HMAC_OUT_SIZE]);
 
-        let actual_tag = hmac.finalize().into_bytes();
+        hmac.verify_slice(expected_tag).map_err(|_| RnsError::IncorrectSignature)?;
 
-        let valid = expected_tag
-            .iter()
-            .zip(actual_tag.as_slice())
-            .map(|(x, y)| x.cmp(y))
-            .find(|&ord| ord != cmp::Ordering::Equal)
-            .unwrap_or(actual_tag.len().cmp(&expected_tag.len()))
-            == cmp::Ordering::Equal;
-
-        if valid {
-            Ok(VerifiedToken(token_data))
-        } else {
-            Err(RnsError::IncorrectSignature)
-        }
+        Ok(VerifiedToken(token_data))
     }
 
     pub fn decrypt<'a, 'b>(
@@ -266,21 +254,9 @@ impl CachedFernet {
 
         hmac.update(&token_data[..token_data.len() - HMAC_OUT_SIZE]);
 
-        let actual_tag = hmac.finalize().into_bytes();
+        hmac.verify_slice(expected_tag).map_err(|_| RnsError::IncorrectSignature)?;
 
-        let valid = expected_tag
-            .iter()
-            .zip(actual_tag.as_slice())
-            .map(|(x, y)| x.cmp(y))
-            .find(|&ord| ord != cmp::Ordering::Equal)
-            .unwrap_or(actual_tag.len().cmp(&expected_tag.len()))
-            == cmp::Ordering::Equal;
-
-        if valid {
-            Ok(VerifiedToken(token_data))
-        } else {
-            Err(RnsError::IncorrectSignature)
-        }
+        Ok(VerifiedToken(token_data))
     }
 
     pub fn decrypt<'a, 'b>(
@@ -311,7 +287,10 @@ impl CachedFernet {
 
 #[cfg(test)]
 mod tests {
-    use crate::crypt::fernet::{Fernet, AES_BLOCK_SIZE, FERNET_OVERHEAD_SIZE};
+    use crate::crypt::fernet::{
+        CachedFernet, Fernet, Token, AES_BLOCK_SIZE, AES_KEY_SIZE, FERNET_OVERHEAD_SIZE,
+    };
+    use crate::error::RnsError;
     use core::str;
     use rand_core::OsRng;
 
@@ -354,5 +333,40 @@ mod tests {
         // More than overhead but less than required encrypted token size.
         let mut out_buf = [0u8; FERNET_OVERHEAD_SIZE + AES_BLOCK_SIZE - 1];
         assert!(fernet.encrypt(test_msg.into(), &mut out_buf[..]).is_err());
+    }
+
+    #[test]
+    fn verify_rejects_tampered_authentication_tag() {
+        const BUF_SIZE: usize = 4096;
+
+        let fernet = Fernet::new_rand(OsRng);
+        let mut out_buf = [0u8; BUF_SIZE];
+        let token_len =
+            fernet.encrypt("authenticated".into(), &mut out_buf).expect("cipher token").len();
+        out_buf[token_len - 1] ^= 1;
+
+        assert!(matches!(
+            fernet.verify(Token::from(&out_buf[..token_len])),
+            Err(RnsError::IncorrectSignature)
+        ));
+    }
+
+    #[test]
+    fn cached_verify_rejects_tampered_authentication_tag() {
+        const BUF_SIZE: usize = 4096;
+        const KEY: [u8; AES_KEY_SIZE] = [7; AES_KEY_SIZE];
+
+        let fernet = CachedFernet::new_from_slices(&KEY, &KEY);
+        let mut out_buf = [0u8; BUF_SIZE];
+        let token_len = fernet
+            .encrypt(OsRng, "authenticated".into(), &mut out_buf)
+            .expect("cipher token")
+            .len();
+        out_buf[token_len - 1] ^= 1;
+
+        assert!(matches!(
+            fernet.verify(Token::from(&out_buf[..token_len])),
+            Err(RnsError::IncorrectSignature)
+        ));
     }
 }

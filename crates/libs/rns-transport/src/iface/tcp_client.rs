@@ -361,6 +361,43 @@ fn tcp_wire_buffer_capacity(mtu: usize) -> usize {
     mtu.saturating_mul(2).saturating_add(16)
 }
 
+/// Maximum number of bytes the HDLC frame reassembly buffer may hold
+/// before it is reset. A valid frame's wire length never exceeds the
+/// worst-case HDLC escape expansion of a single MTU payload
+/// (`tcp_wire_buffer_capacity`), so allowing twice that preserves valid
+/// oversized-frame handling — including a frame split across multiple
+/// reads — while bounding memory against a peer that streams garbage
+/// that never closes a frame. The previous `mtu * 64` guard let a
+/// malformed stream sustain ~16 MiB at the default MTU before tripping;
+/// this caps it at ~1 MiB instead.
+fn max_hdlc_frame_buffer_len(mtu: usize) -> usize {
+    tcp_wire_buffer_capacity(mtu).saturating_mul(2)
+}
+
+/// Drops malformed backlog from the HDLC frame reassembly buffer once it
+/// exceeds `limit`, returning whether anything was dropped. A trailing
+/// partial frame is preserved when it can still decode: with no complete
+/// frame found, the buffer holds at most one flag byte, so everything
+/// before the last flag is guaranteed garbage, whereas the flag itself
+/// may open a valid frame whose body arrives in later reads. A partial
+/// frame already larger than the worst-case valid wire length can never
+/// decode into the MTU-sized receive buffer and is dropped entirely, so
+/// a flag followed by endless garbage still can't grow the buffer without
+/// bound.
+fn trim_malformed_hdlc_backlog(frame_buffer: &mut Vec<u8>, limit: usize, mtu: usize) -> bool {
+    if frame_buffer.len() <= limit {
+        return false;
+    }
+    let worst_case_frame = tcp_wire_buffer_capacity(mtu);
+    match frame_buffer.iter().rposition(|&byte| byte == super::hdlc::HDLC_FRAME_FLAG) {
+        Some(flag) if frame_buffer.len() - flag <= worst_case_frame => {
+            frame_buffer.drain(..flag);
+        }
+        _ => frame_buffer.clear(),
+    }
+    true
+}
+
 fn forced_bitrate_delay(raw_len: usize, bitrate_bps: u64) -> Option<Duration> {
     if raw_len == 0 || bitrate_bps == 0 {
         return None;
@@ -523,10 +560,26 @@ pub(crate) async fn run_hdlc_stream_with_runtime<R, W>(
                                         frame_buffer.drain(..=end);
                                     }
 
-                                    if frame_buffer.len() > mtu.saturating_mul(64) {
+                                    let frame_buffer_limit = max_hdlc_frame_buffer_len(mtu);
+                                    let buffered = frame_buffer.len();
+                                    if trim_malformed_hdlc_backlog(
+                                        &mut frame_buffer,
+                                        frame_buffer_limit,
+                                        mtu,
+                                    ) {
                                         // Guard against unbounded growth on malformed
-                                        // streams where no valid frame closes.
-                                        frame_buffer.clear();
+                                        // streams where no valid frame closes. Any
+                                        // trailing partial frame that can still
+                                        // decode is preserved — see
+                                        // trim_malformed_hdlc_backlog.
+                                        log::warn!(
+                                            "[tp-diag] {} dropped malformed HDLC backlog iface={} buffered={} kept={} limit={}",
+                                            label,
+                                            iface_address,
+                                            buffered,
+                                            frame_buffer.len(),
+                                            frame_buffer_limit
+                                        );
                                     }
                                 }
                                 Err(e) => {
@@ -1177,15 +1230,17 @@ mod tests {
     use std::time::{Duration, Instant};
 
     use super::{
-        forced_bitrate_delay, prefer_ipv6_socket_addrs, run_hdlc_stream_with_runtime,
-        tcp_wire_buffer_capacity, HdlcStreamEvent, HdlcStreamRuntime, HdlcStreamWatchdog,
-        TcpClient, TcpSocketTuning, HDLC_STREAM_EVENT_CHANNEL_CAPACITY,
+        forced_bitrate_delay, max_hdlc_frame_buffer_len, prefer_ipv6_socket_addrs,
+        run_hdlc_stream_with_runtime, tcp_wire_buffer_capacity, trim_malformed_hdlc_backlog,
+        HdlcStreamEvent, HdlcStreamRuntime, HdlcStreamWatchdog, TcpClient, TcpSocketTuning,
+        HDLC_STREAM_EVENT_CHANNEL_CAPACITY,
     };
     use crate::buffer::OutputBuffer;
     use crate::hash::AddressHash;
     use crate::iface::hdlc::Hdlc;
     use crate::iface::{InterfaceManager, TxMessage, TxMessageType};
     use crate::packet::Packet;
+    use crate::serde::Serialize;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::{TcpListener, TcpStream};
     use tokio_util::sync::CancellationToken;
@@ -1479,6 +1534,156 @@ mod tests {
 
         let encoded_len = Hdlc::encode(&raw, &mut output).expect("encode worst-case payload");
         assert!(encoded_len >= (mtu * 2) + 2, "wire len must cover escaped payload plus flags");
+    }
+
+    #[test]
+    fn hdlc_frame_buffer_limit_is_tight_but_preserves_valid_oversized_frames() {
+        // A valid frame's wire length never exceeds the worst-case escape
+        // expansion of one MTU payload; the limit must admit a full such
+        // frame (even split across reads) with headroom to spare.
+        for mtu in [256, 512, 4096, TcpClient::DEFAULT_MTU] {
+            let limit = max_hdlc_frame_buffer_len(mtu);
+            let worst_case_valid_frame = mtu * 2 + 2;
+            assert!(
+                limit >= worst_case_valid_frame * 2,
+                "limit {limit} must preserve oversized frames for mtu {mtu}"
+            );
+            // ... while staying far tighter than the old `mtu * 64` guard
+            // that allowed ~16 MiB of malformed backlog at the default MTU.
+            assert!(
+                limit <= mtu * 8,
+                "limit {limit} regressed toward the old loose guard for mtu {mtu}"
+            );
+        }
+        // Concrete bound for the default-MTU case from issue #512.
+        assert!(max_hdlc_frame_buffer_len(TcpClient::DEFAULT_MTU) <= 2 * 1024 * 1024);
+    }
+
+    // Regression for PR #528 review: clearing the malformed backlog must
+    // not discard the opening flag and partial body of a valid frame
+    // whose remainder arrives in later TCP reads.
+    #[test]
+    fn trim_malformed_backlog_preserves_decodable_partial_frame() {
+        let mtu = 256;
+        let limit = max_hdlc_frame_buffer_len(mtu);
+        let mut buffer = vec![0x55_u8; limit + 10];
+        // Garbage prefix followed by a partial frame: opening flag plus a
+        // few payload bytes, no closing flag yet.
+        let partial_start = buffer.len() - 4;
+        buffer[partial_start] = 0x7e;
+
+        assert!(trim_malformed_hdlc_backlog(&mut buffer, limit, mtu));
+        assert_eq!(buffer.len(), 4, "only the partial frame suffix survives");
+        assert_eq!(buffer[0], 0x7e, "the opening flag is preserved");
+    }
+
+    #[test]
+    fn trim_malformed_backlog_drops_undecodable_partial_frame() {
+        let mtu = 256;
+        let limit = max_hdlc_frame_buffer_len(mtu);
+        // A "partial frame" (flag at the start) already larger than the
+        // worst-case valid wire length can never decode — keeping it
+        // would let flag-prefixed garbage grow the buffer without bound.
+        let mut buffer = vec![0x55_u8; limit + 10];
+        buffer[0] = 0x7e;
+
+        assert!(trim_malformed_hdlc_backlog(&mut buffer, limit, mtu));
+        assert!(buffer.is_empty(), "oversized partial frame must be dropped entirely");
+    }
+
+    #[test]
+    fn trim_malformed_backlog_clears_flagless_garbage_and_ignores_small_buffers() {
+        let mtu = 256;
+        let limit = max_hdlc_frame_buffer_len(mtu);
+
+        let mut garbage = vec![0x55_u8; limit + 1];
+        assert!(trim_malformed_hdlc_backlog(&mut garbage, limit, mtu));
+        assert!(garbage.is_empty());
+
+        let mut small = vec![0x55_u8; limit];
+        assert!(!trim_malformed_hdlc_backlog(&mut small, limit, mtu));
+        assert_eq!(small.len(), limit, "buffers at or under the limit are untouched");
+    }
+
+    // Regression test for issue #512: a peer that streams persistent
+    // garbage with no HDLC frame flags must not grow the reassembly
+    // buffer without bound, and the stream must recover sync once a
+    // valid frame finally arrives.
+    #[tokio::test]
+    async fn hdlc_stream_recovers_sync_after_sustained_malformed_stream() {
+        let mtu = 256;
+        let (stream, mut peer) = tokio::io::duplex(128 * 1024);
+        let (read_stream, write_stream) = tokio::io::split(stream);
+        let cancel = CancellationToken::new();
+        let iface_stop = CancellationToken::new();
+        let iface_address = AddressHash::new([0x48; 16]);
+        let (rx_channel, mut rx_messages) = tokio::sync::mpsc::channel(4);
+        let (_tx_sender, tx_receiver) = tokio::sync::mpsc::channel(1);
+        let (event_tx, mut event_rx) =
+            tokio::sync::mpsc::channel(HDLC_STREAM_EVENT_CHANNEL_CAPACITY);
+
+        let handle = tokio::spawn(run_hdlc_stream_with_runtime(
+            "test".to_string(),
+            iface_address,
+            mtu,
+            cancel.clone(),
+            iface_stop,
+            rx_channel,
+            Arc::new(tokio::sync::Mutex::new(tx_receiver)),
+            read_stream,
+            write_stream,
+            HdlcStreamRuntime::new().with_events(event_tx),
+        ));
+
+        // Persistent malformed stream: three times the frame-buffer limit
+        // of garbage that contains no HDLC flag byte, so no frame can
+        // ever close and the guard must reset the buffer repeatedly.
+        let garbage = vec![0x55_u8; max_hdlc_frame_buffer_len(mtu) * 3];
+        peer.write_all(&garbage).await.expect("write garbage");
+
+        // Wait until the rx task has consumed all of the garbage (i.e.
+        // the guard has tripped and cleared the buffer at least once)
+        // before sending a valid frame, so the frame can't be caught in
+        // a guard reset alongside the garbage.
+        let mut consumed = 0_usize;
+        while consumed < garbage.len() {
+            let event = tokio::time::timeout(Duration::from_secs(2), event_rx.recv())
+                .await
+                .expect("read event deadline")
+                .expect("read event");
+            if let HdlcStreamEvent::Read { bytes } = event {
+                consumed += bytes;
+            }
+        }
+
+        // A valid frame arriving after the malformed flood must still be
+        // decoded and delivered.
+        let mut raw_buffer = vec![0_u8; mtu];
+        let raw_len = {
+            let mut output = OutputBuffer::new(&mut raw_buffer[..]);
+            Packet::default().serialize(&mut output).expect("serialize packet");
+            output.offset()
+        };
+        let mut wire_buffer = vec![0_u8; tcp_wire_buffer_capacity(mtu)];
+        let wire_len = {
+            let mut output = OutputBuffer::new(&mut wire_buffer[..]);
+            Hdlc::encode(&raw_buffer[..raw_len], &mut output).expect("encode frame");
+            output.offset()
+        };
+        peer.write_all(&wire_buffer[..wire_len]).await.expect("write valid frame");
+
+        let message = tokio::time::timeout(Duration::from_secs(2), rx_messages.recv())
+            .await
+            .expect("packet deadline")
+            .expect("packet after malformed stream");
+        assert_eq!(message.address, iface_address);
+
+        cancel.cancel();
+        drop(peer);
+        tokio::time::timeout(Duration::from_secs(2), handle)
+            .await
+            .expect("hdlc stream task timed out")
+            .expect("hdlc stream task");
     }
 
     #[tokio::test]

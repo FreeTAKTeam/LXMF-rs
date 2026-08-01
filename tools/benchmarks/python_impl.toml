@@ -1,5 +1,5 @@
 [references]
-reticulum = "15320e4d2cfabb143c1db20ca887e275fd521585"
+reticulum = "b48b96e61676504e0a4e527b33b9a0b4495c6872"
 lxmf = "727830cefda83d9c6e3982b48675425f3f988f9c"
 
 [profiles.fast.criterion]

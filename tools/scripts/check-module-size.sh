@@ -12,21 +12,16 @@ ALLOWLIST_PATH="${ALLOWLIST_PATH:-docs/architecture/module-size-allowlist.txt}"
 
 [[ -f "${ALLOWLIST_PATH}" ]] || fail "allowlist not found: ${ALLOWLIST_PATH}"
 
-line_limit_for() {
+set_line_limit() {
   local file="$1"
   case "${file}" in
     */tests/*|*/fuzz/*|*/benches/*)
-      echo "${MAX_LINES_TEST}"
+      limit="${MAX_LINES_TEST}"
       ;;
     *)
-      echo "${MAX_LINES_PROD}"
+      limit="${MAX_LINES_PROD}"
       ;;
   esac
-}
-
-is_allowlisted() {
-  local file="$1"
-  read_allowlist | grep -Fqx "${file}"
 }
 
 read_allowlist() {
@@ -34,11 +29,27 @@ read_allowlist() {
     | sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d'
 }
 
+declare -A allowlisted_files=()
+while IFS= read -r file; do
+  allowlisted_files["${file}"]=1
+done < <(read_allowlist)
+
+is_allowlisted() {
+  local file="$1"
+  [[ -n "${allowlisted_files[${file}]+set}" ]]
+}
+
+count_lines() {
+  mapfile -t module_size_lines < "$1"
+  line_count=${#module_size_lines[@]}
+  unset module_size_lines
+}
+
 violations=()
 while IFS= read -r file; do
   [[ -n "${file}" ]] || continue
-  line_count="$(wc -l < "${file}" | tr -d '[:space:]')"
-  limit="$(line_limit_for "${file}")"
+  count_lines "${file}"
+  set_line_limit "${file}"
   if [[ "${line_count}" -gt "${limit}" ]]; then
     if ! is_allowlisted "${file}"; then
       violations+=("${file}:${line_count} (limit=${limit})")
@@ -53,8 +64,8 @@ while IFS= read -r file; do
     stale_allowlist+=("${file} (missing)")
     continue
   fi
-  line_count="$(wc -l < "${file}" | tr -d '[:space:]')"
-  limit="$(line_limit_for "${file}")"
+  count_lines "${file}"
+  set_line_limit "${file}"
   if [[ "${line_count}" -le "${limit}" ]]; then
     stale_allowlist+=("${file} (now ${line_count} <= ${limit})")
   fi

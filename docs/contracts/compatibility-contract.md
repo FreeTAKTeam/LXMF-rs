@@ -9,12 +9,22 @@
 - Compatibility track: LXMF-rs `0.5.x` keeps the `lxmf` `0.3.x` and
   `reticulum-rs` `0.2.x` package line unless release notes declare otherwise.
 - During active refactor development, integration CI may pin exact git revisions.
-- Python Reticulum compatibility is validated against version `1.2.2` at commit
-  `15320e4d2cfabb143c1db20ca887e275fd521585`. The version is diagnostic; the
+- Python Reticulum compatibility is assessed against version `1.4.2` at commit
+  `b48b96e61676504e0a4e527b33b9a0b4495c6872`. The version is diagnostic; the
   commit remains the reproducible compatibility identity.
 - Python LXMF compatibility is validated against version `0.9.6` at commit
   `727830cefda83d9c6e3982b48675425f3f988f9c`. The version is diagnostic; the
   commit remains the reproducible compatibility identity.
+- SDK negotiation exposes an optional typed `software_parity` orientation, and
+  daemon `status`, `daemon_status_ex`, and the typed `rns.runtime.status`
+  operation expose the same structure at `reticulum.parity`.
+- The structure separately reports overall, Reticulum, and LXMF checkpoints.
+  Each ratio is exact complete/applicable, where applicable is complete plus
+  partial and not-applicable entries are excluded. The inventory generator
+  emits and checks the grouped Rust metadata used by these API surfaces.
+- `software_parity.advisory` is always `true`. This is consumer orientation,
+  not a substitute for capability negotiation, runtime feature checks, or the
+  separate hardware-evidence axis.
 
 ## Canonical Payload Policy (v0.3 clean-break)
 

@@ -25,7 +25,7 @@ jobs:
         run: |
           mkdir -p target/python-references
           git clone https://github.com/markqvist/Reticulum.git target/python-references/Reticulum
-          git -C target/python-references/Reticulum checkout 15320e4d2cfabb143c1db20ca887e275fd521585
+          git -C target/python-references/Reticulum checkout b48b96e61676504e0a4e527b33b9a0b4495c6872
           git clone https://github.com/markqvist/LXMF.git target/python-references/LXMF
           git -C target/python-references/LXMF checkout 727830cefda83d9c6e3982b48675425f3f988f9c
       - name: Core fixture, schema, and report smoke
