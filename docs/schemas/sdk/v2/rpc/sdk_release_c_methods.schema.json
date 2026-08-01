@@ -48,24 +48,24 @@
               "params": {
                 "additionalProperties": false,
                 "properties": {
-                  "display_name": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  },
                   "capabilities": {
                     "items": {
                       "type": "string"
                     },
                     "type": "array"
                   },
-                  "metadata": {
-                    "additionalProperties": true,
-                    "type": "object"
+                  "display_name": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   },
                   "extensions": {
                     "$ref": "#/$defs/extension_map"
+                  },
+                  "metadata": {
+                    "additionalProperties": true,
+                    "type": "object"
                   }
                 },
                 "type": "object"
@@ -89,12 +89,11 @@
               "params": {
                 "additionalProperties": false,
                 "properties": {
-                  "identity": {
-                    "type": [
-                      "string",
-                      "null"
-                    ],
-                    "minLength": 1
+                  "capabilities": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
                   },
                   "display_name": {
                     "type": [
@@ -102,18 +101,19 @@
                       "null"
                     ]
                   },
-                  "capabilities": {
-                    "items": {
-                      "type": "string"
-                    },
-                    "type": "array"
+                  "extensions": {
+                    "$ref": "#/$defs/extension_map"
+                  },
+                  "identity": {
+                    "minLength": 1,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   },
                   "metadata": {
                     "additionalProperties": true,
                     "type": "object"
-                  },
-                  "extensions": {
-                    "$ref": "#/$defs/extension_map"
                   }
                 },
                 "type": "object"
@@ -218,14 +218,11 @@
                     "minLength": 1,
                     "type": "string"
                   },
-                  "extensions": {
-                    "$ref": "#/$defs/extension_map"
-                  },
-                  "passphrase": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
+                  "capabilities": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
                   },
                   "display_name": {
                     "type": [
@@ -233,15 +230,18 @@
                       "null"
                     ]
                   },
-                  "capabilities": {
-                    "items": {
-                      "type": "string"
-                    },
-                    "type": "array"
+                  "extensions": {
+                    "$ref": "#/$defs/extension_map"
                   },
                   "metadata": {
                     "additionalProperties": true,
                     "type": "object"
+                  },
+                  "passphrase": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   }
                 },
                 "required": [
