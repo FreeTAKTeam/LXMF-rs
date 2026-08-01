@@ -40,6 +40,9 @@ current parity posture remains bounded by
   RNS parity row; the pinned reference baseline deselects only that known
   failing reference case while the remaining reference and Rust interop suites
   remain release gates.
+- The Python-to-Rust LXMD remote-relay path remains a documented partial
+  interoperability row; the two complementary remote-relay flows remain
+  hosted gates for this release.
 - Hosted CI, architecture checks, and pinned-Python interop pass on that SHA.
 - `v0.9.7-rc.1` evidence is reviewed before promotion to `v0.9.7`.
 - The final GitHub release, bundles, checksums, and crates.io publications are
