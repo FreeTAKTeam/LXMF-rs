@@ -36,6 +36,10 @@ current parity posture remains bounded by
 - `cargo xtask release-check` and `rnx e2e` pass on the exact candidate SHA.
 - The documented Python/RNS surface inventory is checked for consistency;
   100% parity is explicitly out of scope for this release.
+- Boundary-mode recursive path-request gating remains a documented partial
+  RNS parity row; the pinned reference baseline deselects only that known
+  failing reference case while the remaining reference and Rust interop suites
+  remain release gates.
 - Hosted CI, architecture checks, and pinned-Python interop pass on that SHA.
 - `v0.9.7-rc.1` evidence is reviewed before promotion to `v0.9.7`.
 - The final GitHub release, bundles, checksums, and crates.io publications are
