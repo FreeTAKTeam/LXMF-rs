@@ -334,7 +334,7 @@ impl RpcDaemon {
         self.sdk_identities
             .lock()
             .expect("sdk_identities mutex poisoned")
-            .insert(identity.clone(), bundle.clone());
+            .insert(identity, bundle.clone());
         self.persist_sdk_domain_snapshot()?;
         let timestamp = now_millis_u64() as i64;
         let event = RpcEvent {

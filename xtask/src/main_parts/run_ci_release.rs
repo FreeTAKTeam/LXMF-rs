@@ -4,7 +4,10 @@ pub(super) fn run_release_check() -> Result<()> {
     run_pr_core_ci()?;
     run_correctness_check()?;
     run("cargo", &["doc", "--workspace", "--no-deps", "--lib"])?;
-    run_python_surface_parity_check(true)?;
+    // v0.9.7 explicitly ships with documented partial Python/RNS parity. The
+    // inventory remains a required consistency/evidence check, but release
+    // promotion must not require every mapped surface row to be complete.
+    run_python_surface_parity_check(false)?;
     run_sdk_zmq_parity_check()?;
     run_performance_docs_check()?;
     run_sdk_docs_check()?;

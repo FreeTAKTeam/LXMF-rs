@@ -49,11 +49,11 @@ jobs:
       - name: Generate and verify report schema
         run: |
           python3 tools/scripts/performance_docs.py \
-            --release v0.9.6 \
+            --release v0.9.7 \
             --report target/criterion/python-impl-report/report.json \
             --sdk-transport-report target/performance/sdk-transport.json \
             --e2e-report target/performance/e2e.json
-          python3 tools/scripts/performance_docs.py --release v0.9.6 --check
+          python3 tools/scripts/performance_docs.py --release v0.9.7 --check
       - uses: actions/upload-artifact@v4
         with:
           name: performance-smoke-${{ github.run_id }}

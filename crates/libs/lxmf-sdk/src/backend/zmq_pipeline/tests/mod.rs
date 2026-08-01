@@ -1,7 +1,6 @@
 use super::*;
 use rns_rpc::rpc::zmq::ZmqRpcEnvelopeKind;
 use rns_rpc::rpc::{RpcRequest, RpcResponse};
-use std::net::TcpListener;
 use std::sync::{mpsc, Arc, Mutex};
 use zeromq::{PullSocket, PushSocket, Socket, SocketRecv, SocketSend, ZmqMessage};
 
@@ -1076,12 +1075,7 @@ fn parse_claims(token: &str) -> BTreeMap<String, String> {
         .collect()
 }
 
-fn unused_loopback_endpoint() -> String {
-    let listener = TcpListener::bind("127.0.0.1:0").expect("reserve tcp port");
-    let port = listener.local_addr().expect("local addr").port();
-    drop(listener);
-    format!("tcp://localhost:{port}")
-}
+include!("unused_loopback_endpoint.rs");
 
 fn zmq_cancel_test_guard() -> std::sync::MutexGuard<'static, ()> {
     static GUARD: Mutex<()> = Mutex::new(());

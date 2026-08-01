@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last reassessed: 2026-07-26
+Last reassessed: 2026-08-01
 
 This file is the repository-level source of truth for parity posture, release
 confidence, and execution order. Detailed row-level status lives in:
@@ -37,7 +37,26 @@ The project is best described by capability level:
 | Full Python software surface parity | partial | The strict inventory reports 1,695 complete, 115 partial, and 1 provenance-backed not-applicable entry. |
 | ZeroMQ SDK-access parity | achieved in v0.9.5 implementation | Generated classification and daemon-operation inventory live in `sdk-zmq-parity.json`; release evidence must still pass all gates. |
 
-## v0.9.6 Stabilization
+## v0.9.7 Release Candidate
+
+v0.9.7 is a patch-level stabilization release over the published v0.9.6
+baseline. Current `origin/main` includes the merged multi-service identity,
+RPC hardening, authentication-rate limiting, private-storage, RNS 1.4.2
+parity, resource-limit, propagation-stamp, transport-worker, and crypto-safety
+fixes that landed after v0.9.6. This release makes no new broad parity claim;
+it records the behavior now present on the exact release commit.
+
+Local release readiness is **passing**. Workspace metadata is aligned to
+`0.9.7`, the complete `cargo xtask release-check` passes, and binary E2E smoke
+passes. This release explicitly accepts the documented partial
+Python/RNS inventory (1,695 complete, 115 partial, and one
+provenance-backed not-applicable); the release gate checks inventory
+consistency without requiring 100% completion. Hosted CI and pinned-Python
+interoperability remain pending on the exact post-merge candidate commit.
+Release-candidate notes live in `docs/release-notes-v0.9.7.md`; the evidence
+ledger is `docs/status/v0.9.7-release-candidate.md`.
+
+## v0.9.6 Stabilization Baseline
 
 v0.9.6 is a patch-level hardening release over the v0.9.5 software-parity
 baseline. The RNS 1.4.2 re-pin reopens the software-parity release gate; its
@@ -61,16 +80,9 @@ material without panic/default substitution, LXMF message-ID encoding has a
 fallible path used by protocol/runtime code, policy lookups fail closed, and
 database migrations plus persisted JSON reads preserve their actual errors.
 
-Release readiness remains **in progress**, but the complete local
-`cargo xtask release-check` gate passed on the 2026-07-19 hardening working
-tree, including workspace, architecture, boundary, interoperability-artifact,
-API-drift, supply-chain, simulator, reproducibility, and embedded-footprint
-checks. Workspace and project metadata are aligned to `0.9.6`; the candidate is
-not ready to tag until the reviewed tree becomes an exact commit and hosted CI
-passes on that SHA.
-Release-candidate notes live in `docs/release-notes-v0.9.6.md`; practical setup
-and error-handling examples live in `docs/examples.md`. The requirement and
-evidence ledger is `docs/status/v0.9.6-hardening-audit.md`.
+The v0.9.6 hardening gate and publication remain historical baseline evidence.
+Its release notes and audit are retained for historical comparison while the
+current release candidate is tracked above.
 
 The 2026-07-10 integration pass reconciled the outstanding parity branches as
 one compatible Rust surface. Reticulum configuration now keeps
@@ -1481,19 +1493,20 @@ Scoped release evidence is split as follows:
 
 ## Remaining Release Blockers
 
-There are no remaining software-manifest blockers. The local reproducible
-build, package, API, security, simulator, and release gates pass on the current
-`0.9.6` working tree. Promotion is gated by an exact reviewed commit and hosted
-CI, including pinned-Python interop. Physical radio/BLE/serial devices, public
-I2P, public networks, and Sideband/MeshChatX/Columba claims remain separate
-optional evidence tracks and do not block v0.9.6.
+The #542 merge prerequisite is satisfied at `709cff55`. The release policy
+accepts the documented 115 partial Python/RNS inventory, and the non-strict
+inventory check plus complete local release gate now pass. Promotion is still
+gated by an exact reviewed commit, hosted CI, and pinned-Python
+interoperability; binary E2E smoke has passed locally. Physical
+radio/BLE/serial devices, public I2P, public networks, and
+Sideband/MeshChatX/Columba claims remain separate optional evidence tracks and
+do not block this software release.
 
 ## Active Execution Order
 
-1. Review and commit the complete `0.9.6` candidate without unrelated changes.
-2. Run hosted CI and pinned-Python interop on the exact candidate SHA.
-3. Publish `v0.9.6-rc.1` from that SHA with simulation artifacts.
-4. Promote that exact SHA to `v0.9.6`, publish packages and platform bundles,
+1. Commit and push the passing post-#542 candidate tree for hosted CI and pinned-Python interop.
+2. Publish `v0.9.7-rc.1` from that SHA with simulation artifacts.
+3. Promote that exact SHA to `v0.9.7`, publish packages and platform bundles,
    and verify remote tags, registries, checksums, and support wording.
 
 ## Verification Baseline

@@ -1,6 +1,6 @@
 [package]
 name = "rns-embedded-mininode"
-version = "0.9.6"
+version = "0.9.7"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -9,11 +9,11 @@ description = "Minimal embedded Reticulum node helpers for constrained LXMF depl
 
 [dependencies]
 hex.workspace = true
-lxmf-core = { package = "lxmf-wire", path = "../lxmf-core", version = "0.9.6", default-features = false, features = ["alloc"] }
+lxmf-core = { package = "lxmf-wire", path = "../lxmf-core", version = "0.9.7", default-features = false, features = ["alloc"] }
 rand_core.workspace = true
 rmp-serde.workspace = true
 rmpv.workspace = true
-rns-core = { package = "reticulum-rs-core", path = "../rns-core", version = "0.9.6", default-features = false, features = ["alloc"] }
+rns-core = { package = "reticulum-rs-core", path = "../rns-core", version = "0.9.7", default-features = false, features = ["alloc"] }
 
 [features]
 default = ["std"]

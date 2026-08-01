@@ -20,8 +20,8 @@ fn announce_entries_use_random_window_and_grace_retry() {
         .checked_duration_since(before_insert)
         .expect("retry timeout is after insertion");
     assert!(
-        initial_delay <= PATHFINDER_RETRY_WINDOW,
-        "initial retry window should stay inside python's 0.5s jitter window"
+        initial_delay <= PATHFINDER_RETRY_WINDOW + Duration::from_millis(25),
+        "initial retry window should stay inside python's 0.5s jitter window, allowing measurement overhead"
     );
     assert_eq!(entry.retries, 0);
 

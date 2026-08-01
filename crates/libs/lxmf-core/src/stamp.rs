@@ -162,6 +162,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "proof-of-work expansion is prohibitively slow under Miri")]
     fn unattainable_stamp_costs_are_rejected_before_mining() {
         // A SHA-256 digest has at most 256 leading zero bits, so costs
         // above 256 can never be reached; generation and validation must
@@ -179,6 +180,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "proof-of-work expansion is prohibitively slow under Miri")]
     fn generated_propagation_stamp_validates_at_default_minimum_accepted_cost() {
         let lxm_data = alloc::vec![0x42u8; 160];
         let transient_id = sha256_array(&lxm_data);
@@ -194,6 +196,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "proof-of-work expansion is prohibitively slow under Miri")]
     fn all_zero_propagation_stamp_does_not_reliably_reach_enforced_costs() {
         // The issue-519 call site appended a fixed zero stamp: its value is
         // whatever the hash happens to give, far below the Python default
@@ -208,6 +211,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "proof-of-work expansion is prohibitively slow under Miri")]
     fn propagation_stamp_validator_rejects_short_or_modified_payloads() {
         let short = alloc::vec![0u8; 64 + PROPAGATION_STAMP_SIZE];
         assert!(validate_propagation_stamp(&short, 1).is_none());

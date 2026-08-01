@@ -14,7 +14,7 @@
     {
       "path": "docs/contracts/baselines/schema-client-generation-baseline.json",
       "bytes": 373,
-      "sha256": "3ecf32bf55707a0acc0122e6bbee5045630f1c89cf38f11c1cf337951985a727"
+      "sha256": "4251c2f9b04ca184bd4bee691df76d59d2a004460e4e6bbdf0ca194ef435c89b"
     },
     {
       "path": "docs/contracts/ble-camera-wire-v1.md",

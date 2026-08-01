@@ -9,7 +9,7 @@ on:
         default: main
   push:
     tags:
-      - v0.9.6-rc.*
+      - v0.9.7-rc.*
 
 permissions:
   contents: read
@@ -86,11 +86,11 @@ jobs:
         working-directory: candidate
         run: |
           python3 tools/scripts/performance_docs.py \
-            --release v0.9.6 \
+            --release v0.9.7 \
             --report target/criterion/python-impl-report/report.json \
             --sdk-transport-report target/performance/sdk-transport.json \
             --e2e-report target/performance/e2e.json
-          cp docs/performance/v0.9.6.json target/performance/candidate.json
+          cp docs/performance/v0.9.7.json target/performance/candidate.json
       - name: Apply release regression budgets
         working-directory: candidate
         run: |
@@ -100,7 +100,7 @@ jobs:
             --output target/performance/release-gate.json
       - uses: actions/upload-artifact@v4
         with:
-          name: v0.9.6-performance-${{ github.run_id }}
+          name: v0.9.7-performance-${{ github.run_id }}
           path: |
             candidate/target/criterion/python-impl-report/**
             baseline/target/criterion/python-impl-report/**

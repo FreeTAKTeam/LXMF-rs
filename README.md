@@ -3,7 +3,7 @@
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/FreeTAKTeam/LXMF-rs)
 
 Rust monorepo for LXMF and Reticulum with strict library/app boundaries and
-enterprise quality gates. The `0.9.6` line is a stabilization release over the
+enterprise quality gates. The `0.9.7` line is a stabilization release over the
 usable `0.9.5` sub-1.0 daemon/product baseline, with stricter failure handling,
 receipt validation, storage migrations, typed SDK decoding, and operational
 diagnostics. It is not a compatibility layer or a complete drop-in replacement
@@ -13,24 +13,24 @@ for every Python Reticulum/LXMF behavior.
 
 - Contributor workflow: `CONTRIBUTING.md`
 - Current status and execution order: `docs/status/current-roadmap.md`
-- Release notes: `docs/release-notes-v0.9.6.md`
+- Release notes: `docs/release-notes-v0.9.7.md`
 - Docs map and retention rules: `docs/README.md`
 - SDK guide: `docs/sdk/README.md`
 - Support policy: `docs/contracts/support-policy.md`
 
 ## Release Status
 
-Current release train: `0.9.6`. The latest published stable artifacts remain
-`v0.9.5` until the `v0.9.6` candidate is promoted.
+Current release train: `0.9.7`. The latest published stable artifacts are
+`v0.9.6`; `v0.9.7` is being prepared from the current `origin/main`.
 
-Use `docs/release-notes-v0.9.6.md` for the candidate release summary and
+Use `docs/release-notes-v0.9.7.md` for the candidate release summary and
 `docs/runbooks/release-readiness.md` for the release gate record. The
 repository-level parity source of truth remains
 `docs/status/current-roadmap.md`; the detailed parity supplements are
 `docs/status/reticulum-parity-matrix.md` and
 `docs/status/lxmf-parity-matrix.md`.
 
-The `0.9.6` release scope covers the Rust libraries, SDK entry points, `lxmd`,
+The `0.9.7` release scope covers the Rust libraries, SDK entry points, `lxmd`,
 `reticulumd`, and `rns-tools`, plus host-native GitHub bundles for all
 implemented user-facing tools. The patch train keeps the SDK-first product
 shape while hardening authoritative return values, persistence, identity
@@ -187,7 +187,7 @@ cargo run -p xtask -- architecture-checks
 cargo run -p xtask -- sdk-docs-check
 cargo run -p xtask -- sdk-migration-check
 cargo xtask release-check
-cargo xtask package-daemon-bundle --version 0.9.6
+cargo xtask package-daemon-bundle --version 0.9.7
 cargo xtask api-diff
 cargo xtask python-impl-bench-compare
 cargo xtask python-impl-bench-compare --profile report
@@ -199,7 +199,7 @@ For fast local iteration on one binary, prefer narrow commands:
 ```bash
 make check-bin PKG=lxmf-cli BIN=lxmd
 make run-bin PKG=rns-tools BIN=rnsd ARGS="--help"
-make package-daemon-bundle VERSION=0.9.6
+make package-daemon-bundle VERSION=0.9.7
 make python-lxmd-smoke
 ```
 
@@ -249,16 +249,16 @@ workspace directory names:
 
 ```toml
 [dependencies]
-lxmf = "0.9.6"
-reticulum-rs = "0.9.6"
+lxmf = "0.9.7"
+reticulum-rs = "0.9.7"
 ```
 
 Or depend on the component crates directly:
 
 ```toml
 [dependencies]
-lxmf-sdk = "0.9.6"
-reticulum-rs-rpc = "0.9.6"
+lxmf-sdk = "0.9.7"
+reticulum-rs-rpc = "0.9.7"
 ```
 
 ## SDK Guide
