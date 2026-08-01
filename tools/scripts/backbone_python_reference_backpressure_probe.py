@@ -35,6 +35,52 @@ class _Parent:
         self.spawned_interfaces: list[object] = []
 
 
+class _ReferenceDefaults:
+    """Provide Interface defaults without starting a Reticulum runtime.
+
+    BackboneClientInterface inherits Interface, whose constructor reads the
+    process-wide Reticulum instance for configuration defaults. This probe
+    intentionally drives one connected socket only, so starting a full
+    Reticulum runtime would add unrelated interfaces and background jobs.
+    """
+
+    def __init__(self, interface_defaults: Any) -> None:
+        self._interface_defaults = interface_defaults
+
+    def _default_ic_max_held_announces(self) -> int:
+        return self._interface_defaults.MAX_HELD_ANNOUNCES
+
+    def _default_ic_burst_hold(self) -> int:
+        return self._interface_defaults.IC_BURST_HOLD
+
+    def _default_ic_burst_freq_new(self) -> int:
+        return self._interface_defaults.IC_BURST_FREQ_NEW
+
+    def _default_ic_burst_freq(self) -> int:
+        return self._interface_defaults.IC_BURST_FREQ
+
+    def _default_ic_pr_burst_freq_new(self) -> int:
+        return self._interface_defaults.IC_PR_BURST_FREQ_NEW
+
+    def _default_ic_pr_burst_freq(self) -> int:
+        return self._interface_defaults.IC_PR_BURST_FREQ
+
+    def _default_ic_new_time(self) -> int:
+        return self._interface_defaults.IC_NEW_TIME
+
+    def _default_ic_burst_penalty(self) -> int:
+        return self._interface_defaults.IC_BURST_PENALTY
+
+    def _default_ic_held_release_interval(self) -> int:
+        return self._interface_defaults.IC_HELD_RELEASE_INTERVAL
+
+    def _default_ec_pr_freq(self) -> int:
+        return self._interface_defaults.EC_PR_FREQ
+
+    def _default_egress_control(self) -> bool:
+        return self._interface_defaults.EGRESS_CONTROL
+
+
 def _set_small_buffers(sock: socket.socket, size: int) -> None:
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, size)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, size)
@@ -84,6 +130,13 @@ def _load_backbone_classes(python_rns_path: Path) -> tuple[Any, Any, Any]:
     sys.path.insert(0, str(python_rns_path))
     import RNS  # type: ignore
     from RNS.Interfaces.BackboneInterface import BackboneClientInterface, BackboneInterface  # type: ignore
+    from RNS.Interfaces.Interface import Interface  # type: ignore
+
+    if RNS.Reticulum.get_instance() is None:
+        # The reference Interface constructor requires these defaults even
+        # when the probe supplies an already-connected socket. Install a
+        # side-effect-free provider for this short-lived probe process.
+        RNS.Reticulum._Reticulum__instance = _ReferenceDefaults(Interface)
 
     return RNS, BackboneInterface, BackboneClientInterface
 
