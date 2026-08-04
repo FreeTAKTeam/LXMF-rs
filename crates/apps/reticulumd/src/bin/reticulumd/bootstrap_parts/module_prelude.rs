@@ -11,3 +11,5 @@ use super::outbound_resources::OutboundResourceMap;
 use super::receipt_worker::spawn_receipt_worker;
 
 use super::Args;
+
+use rns_rpc::PropagationState;

@@ -222,6 +222,7 @@ impl RpcDaemon {
             }
             "propagation_peer_maintenance" => {
                 let timestamp = now_i64();
+                let pruned_peer_entries = self.maintain_propagation_storage()?;
                 let culled_peers = self.cull_unreachable_non_static_peers(timestamp)?;
                 let rotated_peers = self.rotate_low_acceptance_non_static_peers()?;
                 let pruned_local_processed = self
@@ -250,6 +251,7 @@ impl RpcDaemon {
                         "rotated_peers": rotated_peers,
                         "pruned_local_processed": pruned_local_processed.len(),
                         "pruned_local_processed_ids": pruned_local_processed,
+                        "pruned_peer_entries": pruned_peer_entries,
                         "synced_peer": synced_peer,
                         "peer_sync": peer_sync,
                         "max_unreachable_secs": super::init::LXMF_PEER_MAX_UNREACHABLE_SECS,
@@ -323,6 +325,24 @@ impl RpcDaemon {
                     }
                     if let Some(limit) = parsed.message_storage_limit_mb {
                         guard.message_storage_limit_mb = (limit > 0).then_some(limit);
+                    }
+                    if let Some(limit) = parsed.peer_entry_limit {
+                        guard.peer_entry_limit = limit.max(1);
+                    }
+                    if let Some(limit) = parsed.peer_entry_limit_per_peer {
+                        guard.peer_entry_limit_per_peer = limit.max(1);
+                    }
+                    if let Some(ttl) = parsed.peer_entry_ttl_secs {
+                        guard.peer_entry_ttl_secs = ttl.max(1);
+                    }
+                    if let Some(ttl) = parsed.completed_peer_entry_ttl_secs {
+                        guard.completed_peer_entry_ttl_secs = ttl.max(1);
+                    }
+                    if let Some(max_peers) = parsed.max_propagation_peers {
+                        guard.max_propagation_peers = max_peers.max(1);
+                    }
+                    if let Some(interval) = parsed.storage_maintenance_interval_secs {
+                        guard.storage_maintenance_interval_secs = interval.max(1);
                     }
                     if let Some(limit) = parsed.delivery_limit {
                         guard.delivery_limit = limit;

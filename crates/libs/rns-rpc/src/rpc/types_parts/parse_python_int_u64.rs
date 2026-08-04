@@ -77,6 +77,34 @@ fn default_propagation_sync_limit() -> u32 {
     10240
 }
 
+fn default_message_storage_limit_mb() -> Option<u64> {
+    Some(DEFAULT_MESSAGE_STORAGE_LIMIT_MB)
+}
+
+fn default_peer_entry_limit() -> u64 {
+    DEFAULT_PEER_ENTRY_LIMIT
+}
+
+fn default_peer_entry_limit_per_peer() -> u64 {
+    DEFAULT_PEER_ENTRY_LIMIT_PER_PEER
+}
+
+fn default_peer_entry_ttl_secs() -> u64 {
+    DEFAULT_PEER_ENTRY_TTL_SECS
+}
+
+fn default_completed_peer_entry_ttl_secs() -> u64 {
+    DEFAULT_COMPLETED_PEER_ENTRY_TTL_SECS
+}
+
+fn default_max_propagation_peers() -> u32 {
+    DEFAULT_MAX_PROPAGATION_PEERS
+}
+
+fn default_storage_maintenance_interval_secs() -> u64 {
+    DEFAULT_STORAGE_MAINTENANCE_INTERVAL_SECS
+}
+
 fn default_network_distance() -> u32 {
     1
 }

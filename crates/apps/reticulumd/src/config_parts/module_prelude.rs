@@ -198,6 +198,20 @@ pub struct PropagationNodeConfig {
     pub stamp_cost_flexibility: Option<u32>,
     #[serde(default)]
     pub peering_cost: Option<u32>,
+    #[serde(default)]
+    pub message_storage_limit_mb: Option<u64>,
+    #[serde(default)]
+    pub peer_entry_limit: Option<u64>,
+    #[serde(default)]
+    pub peer_entry_limit_per_peer: Option<u64>,
+    #[serde(default)]
+    pub peer_entry_ttl_secs: Option<u64>,
+    #[serde(default)]
+    pub completed_peer_entry_ttl_secs: Option<u64>,
+    #[serde(default)]
+    pub max_propagation_peers: Option<u32>,
+    #[serde(default)]
+    pub storage_maintenance_interval_secs: Option<u64>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]

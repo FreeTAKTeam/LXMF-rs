@@ -1,4 +1,7 @@
-use rns_core::key_manager::{FileKeyManager, KeyManagerBackend, KeyPurpose, StoredKey};
+use rns_core::key_manager::{KeyPurpose, StoredKey};
+
+#[cfg(unix)]
+use rns_core::key_manager::{FileKeyManager, KeyManagerBackend};
 
 fn sample_key(key_id: &str) -> StoredKey {
     StoredKey {

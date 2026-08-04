@@ -27,3 +27,12 @@ sync_limit_kb = 10240
 stamp_cost = 16
 stamp_cost_flexibility = 3
 peering_cost = 18
+# Durable propagation payload and peer-entry bounds. These defaults prevent a
+# busy node from creating one SQLite row for every payload/peer combination.
+message_storage_limit_mb = 256
+peer_entry_limit = 1000000
+peer_entry_limit_per_peer = 1024
+peer_entry_ttl_secs = 604800
+completed_peer_entry_ttl_secs = 2592000
+max_propagation_peers = 512
+storage_maintenance_interval_secs = 300

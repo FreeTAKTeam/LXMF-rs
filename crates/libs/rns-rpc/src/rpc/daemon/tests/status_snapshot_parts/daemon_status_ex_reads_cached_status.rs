@@ -567,7 +567,7 @@ fn propagation_policy_is_reported_and_enforced_for_new_peers() {
     assert_eq!(result["propagation"]["retain_synced_on_node"].as_bool(), Some(true));
     assert_eq!(result["propagation"]["peering_cost"].as_u64(), Some(18));
     assert_eq!(result["propagation"]["remote_peering_cost_max"].as_u64(), Some(26));
-    assert_eq!(result["propagation"]["message_storage_limit_mb"].as_u64(), None);
+    assert_eq!(result["propagation"]["message_storage_limit_mb"].as_u64(), Some(256));
 
     daemon.accept_announce("static-peer".to_string(), 1_700_000_000).expect("static peer accepted");
     daemon

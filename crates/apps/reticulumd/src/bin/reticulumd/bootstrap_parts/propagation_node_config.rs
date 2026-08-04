@@ -7,6 +7,13 @@ pub(super) struct ResolvedPropagationNodeConfig {
     pub(super) node_announce_at_start: bool,
     pub(super) node_announce_interval_secs: Option<u64>,
     pub(super) announce_config: PropagationNodeAnnounceConfig,
+    pub(super) message_storage_limit_mb: Option<u64>,
+    pub(super) peer_entry_limit: u64,
+    pub(super) peer_entry_limit_per_peer: u64,
+    pub(super) peer_entry_ttl_secs: u64,
+    pub(super) completed_peer_entry_ttl_secs: u64,
+    pub(super) max_propagation_peers: u32,
+    pub(super) storage_maintenance_interval_secs: u64,
 }
 
 fn resolve_propagation_node_config(
@@ -14,6 +21,7 @@ fn resolve_propagation_node_config(
 ) -> ResolvedPropagationNodeConfig {
     let toml = daemon_config.and_then(|config| config.propagation_node.as_ref());
     let defaults = PropagationNodeAnnounceConfig::default();
+    let storage_defaults = PropagationState::default();
     let allowed_from_env = parse_hex_list_env("LXMD_CONTROL_ALLOWED");
     let allowed_control_identities = if allowed_from_env.is_empty() {
         toml.map(|config| config.control_allowed.clone()).unwrap_or_default()
@@ -80,6 +88,75 @@ fn resolve_propagation_node_config(
                 .unwrap_or(defaults.peering_cost),
             ..defaults
         },
+        message_storage_limit_mb: env_u64("LXMD_PROPAGATION_MESSAGE_STORAGE_LIMIT_MB")
+            .unwrap_or_else(|err| {
+                log::warn!(
+                    "[daemon] invalid env var LXMD_PROPAGATION_MESSAGE_STORAGE_LIMIT_MB: {err}"
+                );
+                None
+            })
+            .or_else(|| toml.and_then(|config| config.message_storage_limit_mb))
+            .map(|value| value.max(1))
+            .or(storage_defaults.message_storage_limit_mb),
+        peer_entry_limit: env_u64("LXMD_PROPAGATION_PEER_ENTRY_LIMIT")
+            .unwrap_or_else(|err| {
+                log::warn!("[daemon] invalid env var LXMD_PROPAGATION_PEER_ENTRY_LIMIT: {err}");
+                None
+            })
+            .or_else(|| toml.and_then(|config| config.peer_entry_limit))
+            .filter(|value| *value > 0)
+            .unwrap_or(storage_defaults.peer_entry_limit),
+        peer_entry_limit_per_peer: env_u64("LXMD_PROPAGATION_PEER_ENTRY_LIMIT_PER_PEER")
+            .unwrap_or_else(|err| {
+                log::warn!(
+                    "[daemon] invalid env var LXMD_PROPAGATION_PEER_ENTRY_LIMIT_PER_PEER: {err}"
+                );
+                None
+            })
+            .or_else(|| toml.and_then(|config| config.peer_entry_limit_per_peer))
+            .filter(|value| *value > 0)
+            .unwrap_or(storage_defaults.peer_entry_limit_per_peer),
+        peer_entry_ttl_secs: env_u64("LXMD_PROPAGATION_PEER_ENTRY_TTL_SECS")
+            .unwrap_or_else(|err| {
+                log::warn!("[daemon] invalid env var LXMD_PROPAGATION_PEER_ENTRY_TTL_SECS: {err}");
+                None
+            })
+            .or_else(|| toml.and_then(|config| config.peer_entry_ttl_secs))
+            .filter(|value| *value > 0)
+            .unwrap_or(storage_defaults.peer_entry_ttl_secs),
+        completed_peer_entry_ttl_secs: env_u64(
+            "LXMD_PROPAGATION_COMPLETED_PEER_ENTRY_TTL_SECS",
+        )
+        .unwrap_or_else(|err| {
+            log::warn!(
+                "[daemon] invalid env var LXMD_PROPAGATION_COMPLETED_PEER_ENTRY_TTL_SECS: {err}"
+            );
+            None
+        })
+        .or_else(|| toml.and_then(|config| config.completed_peer_entry_ttl_secs))
+        .filter(|value| *value > 0)
+        .unwrap_or(storage_defaults.completed_peer_entry_ttl_secs),
+        max_propagation_peers: env_u64("LXMD_PROPAGATION_MAX_PEERS")
+            .unwrap_or_else(|err| {
+                log::warn!("[daemon] invalid env var LXMD_PROPAGATION_MAX_PEERS: {err}");
+                None
+            })
+            .or_else(|| toml.and_then(|config| config.max_propagation_peers.map(u64::from)))
+            .and_then(|value| u32::try_from(value).ok())
+            .filter(|value| *value > 0)
+            .unwrap_or(storage_defaults.max_propagation_peers),
+        storage_maintenance_interval_secs: env_u64(
+            "LXMD_PROPAGATION_STORAGE_MAINTENANCE_INTERVAL_SECS",
+        )
+        .unwrap_or_else(|err| {
+            log::warn!(
+                "[daemon] invalid env var LXMD_PROPAGATION_STORAGE_MAINTENANCE_INTERVAL_SECS: {err}"
+            );
+            None
+        })
+        .or_else(|| toml.and_then(|config| config.storage_maintenance_interval_secs))
+        .filter(|value| *value > 0)
+        .unwrap_or(storage_defaults.storage_maintenance_interval_secs),
     }
 }
 

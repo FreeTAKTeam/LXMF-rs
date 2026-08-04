@@ -177,6 +177,18 @@ struct PropagationEnableParams {
     #[serde(default)]
     message_storage_limit_mb: Option<u64>,
     #[serde(default)]
+    peer_entry_limit: Option<u64>,
+    #[serde(default)]
+    peer_entry_limit_per_peer: Option<u64>,
+    #[serde(default)]
+    peer_entry_ttl_secs: Option<u64>,
+    #[serde(default)]
+    completed_peer_entry_ttl_secs: Option<u64>,
+    #[serde(default)]
+    max_propagation_peers: Option<u32>,
+    #[serde(default)]
+    storage_maintenance_interval_secs: Option<u64>,
+    #[serde(default)]
     delivery_limit: Option<u32>,
     #[serde(default)]
     propagation_limit: Option<u32>,

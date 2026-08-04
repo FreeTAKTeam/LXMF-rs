@@ -24,6 +24,42 @@ impl RpcDaemon {
             .collect()
     }
 
+    /// Return the peers that should receive newly ingested propagation entries.
+    ///
+    /// The peer table can contain thousands of discovered peers while a
+    /// propagation payload is only useful to a bounded set of current peers.
+    /// Keep configured static peers ahead of discovered peers, then prefer the
+    /// most recently observed peers so one payload cannot create an unbounded
+    /// peer-entry fan-out.
+    pub(super) fn propagation_fanout_peer_ids(&self) -> Vec<String> {
+        let (max_peers, static_peers) = {
+            let state = self.propagation_state.lock().expect("propagation mutex poisoned");
+            (state.max_propagation_peers.max(1) as usize, state.static_peers.clone())
+        };
+        let mut peers = self
+            .peers
+            .lock()
+            .expect("peers mutex poisoned")
+            .values()
+            .filter(|record| record.peer_type.as_deref() != Some("unpeered"))
+            .cloned()
+            .collect::<Vec<_>>();
+        peers.sort_by(|left, right| {
+            let left_static = static_peers
+                .iter()
+                .any(|candidate| candidate.eq_ignore_ascii_case(left.peer.as_str()));
+            let right_static = static_peers
+                .iter()
+                .any(|candidate| candidate.eq_ignore_ascii_case(right.peer.as_str()));
+            right_static
+                .cmp(&left_static)
+                .then_with(|| right.last_seen.cmp(&left.last_seen))
+                .then_with(|| left.peer.cmp(&right.peer))
+        });
+        peers.truncate(max_peers);
+        peers.into_iter().map(|record| record.peer).collect()
+    }
+
     pub fn peer_record_exists(&self, peer: &str, include_unpeered: bool) -> bool {
         self.peers.lock().expect("peers mutex poisoned").values().any(|record| {
             record.peer.eq_ignore_ascii_case(peer)
@@ -35,12 +71,21 @@ impl RpcDaemon {
         &self,
         peer: &str,
     ) -> Result<(), std::io::Error> {
+        let per_peer_limit = self
+            .propagation_state
+            .lock()
+            .expect("propagation mutex poisoned")
+            .peer_entry_limit_per_peer;
         self.store
             .merge_case_insensitive_peer_propagation_marks(peer)
             .map_err(std::io::Error::other)?;
-        self.store.mark_all_propagation_unhandled_for_peer(peer).map_err(std::io::Error::other)?;
-        let unhandled_ids =
-            self.store.list_peer_unhandled_propagation_ids(peer).map_err(std::io::Error::other)?;
+        self.store
+            .mark_recent_propagation_unhandled_for_peer(peer, per_peer_limit)
+            .map_err(std::io::Error::other)?;
+        let unhandled_ids = self
+            .store
+            .list_peer_unhandled_propagation_ids_limited(peer, per_peer_limit)
+            .map_err(std::io::Error::other)?;
         self.record_peer_queue_unhandled(peer, unhandled_ids.as_slice());
         let handled_ids =
             self.store.list_peer_handled_propagation_ids(peer).map_err(std::io::Error::other)?;

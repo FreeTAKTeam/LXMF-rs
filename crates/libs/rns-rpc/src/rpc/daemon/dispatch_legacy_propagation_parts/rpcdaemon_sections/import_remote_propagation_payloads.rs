@@ -186,6 +186,7 @@ impl RpcDaemon {
         }
 
         let active_peers = self.active_peer_ids();
+        let fanout_peers = self.propagation_fanout_peer_ids();
         let source_active_peer =
             active_peers.iter().find(|peer| peer.eq_ignore_ascii_case(source_peer)).cloned();
         let source_peer_key = source_active_peer.as_deref().unwrap_or(source_peer);
@@ -210,7 +211,7 @@ impl RpcDaemon {
                 .mark_peer_received_propagation(source_peer_key, transient_id.as_str())
                 .map_err(std::io::Error::other)?;
             self.record_peer_queue_handled_id(source_peer_key, transient_id.as_str());
-            for peer in &active_peers {
+            for peer in &fanout_peers {
                 if peer.eq_ignore_ascii_case(source_peer) {
                     continue;
                 }
@@ -241,6 +242,7 @@ impl RpcDaemon {
         }
 
         let active_peers = self.active_peer_ids();
+        let fanout_peers = self.propagation_fanout_peer_ids();
         let source_active_peer =
             active_peers.iter().find(|peer| peer.eq_ignore_ascii_case(source_peer)).cloned();
         let source_peer_key = source_active_peer.as_deref().unwrap_or(source_peer);
@@ -265,7 +267,7 @@ impl RpcDaemon {
                 .mark_peer_received_propagation(source_peer_key, transient_id.as_str())
                 .map_err(std::io::Error::other)?;
             self.record_peer_queue_handled_id(source_peer_key, transient_id.as_str());
-            for peer in &active_peers {
+            for peer in &fanout_peers {
                 if peer.eq_ignore_ascii_case(source_peer) {
                     continue;
                 }

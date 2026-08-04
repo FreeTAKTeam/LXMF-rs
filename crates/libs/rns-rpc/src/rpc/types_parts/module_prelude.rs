@@ -192,6 +192,14 @@ pub struct DeliveryPolicy {
     pub prioritised_destinations: Vec<String>,
 }
 
+pub const DEFAULT_MESSAGE_STORAGE_LIMIT_MB: u64 = 256;
+pub const DEFAULT_PEER_ENTRY_LIMIT: u64 = 1_000_000;
+pub const DEFAULT_PEER_ENTRY_LIMIT_PER_PEER: u64 = 1_024;
+pub const DEFAULT_PEER_ENTRY_TTL_SECS: u64 = 7 * 24 * 60 * 60;
+pub const DEFAULT_COMPLETED_PEER_ENTRY_TTL_SECS: u64 = 30 * 24 * 60 * 60;
+pub const DEFAULT_MAX_PROPAGATION_PEERS: u32 = 512;
+pub const DEFAULT_STORAGE_MAINTENANCE_INTERVAL_SECS: u64 = 5 * 60;
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct PropagationState {
     pub enabled: bool,
@@ -203,8 +211,20 @@ pub struct PropagationState {
     pub target_cost: u32,
     #[serde(default = "default_propagation_stamp_cost_flexibility")]
     pub stamp_cost_flexibility: u32,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default = "default_message_storage_limit_mb", skip_serializing_if = "Option::is_none")]
     pub message_storage_limit_mb: Option<u64>,
+    #[serde(default = "default_peer_entry_limit")]
+    pub peer_entry_limit: u64,
+    #[serde(default = "default_peer_entry_limit_per_peer")]
+    pub peer_entry_limit_per_peer: u64,
+    #[serde(default = "default_peer_entry_ttl_secs")]
+    pub peer_entry_ttl_secs: u64,
+    #[serde(default = "default_completed_peer_entry_ttl_secs")]
+    pub completed_peer_entry_ttl_secs: u64,
+    #[serde(default = "default_max_propagation_peers")]
+    pub max_propagation_peers: u32,
+    #[serde(default = "default_storage_maintenance_interval_secs")]
+    pub storage_maintenance_interval_secs: u64,
     #[serde(default = "default_delivery_transfer_limit")]
     pub delivery_limit: u32,
     #[serde(default = "default_propagation_transfer_limit")]
@@ -267,7 +287,13 @@ impl Default for PropagationState {
             store_root: None,
             target_cost: 0,
             stamp_cost_flexibility: default_propagation_stamp_cost_flexibility(),
-            message_storage_limit_mb: None,
+            message_storage_limit_mb: default_message_storage_limit_mb(),
+            peer_entry_limit: default_peer_entry_limit(),
+            peer_entry_limit_per_peer: default_peer_entry_limit_per_peer(),
+            peer_entry_ttl_secs: default_peer_entry_ttl_secs(),
+            completed_peer_entry_ttl_secs: default_completed_peer_entry_ttl_secs(),
+            max_propagation_peers: default_max_propagation_peers(),
+            storage_maintenance_interval_secs: default_storage_maintenance_interval_secs(),
             delivery_limit: default_delivery_transfer_limit(),
             propagation_limit: default_propagation_transfer_limit(),
             sync_limit: default_propagation_sync_limit(),

@@ -364,11 +364,30 @@ impl RpcDaemon {
         Ok(())
     }
 
+    pub fn maintain_propagation_storage(&self) -> Result<usize, std::io::Error> {
+        let state = self.propagation_state.lock().map_err(|error| {
+            std::io::Error::other(format!("propagation mutex poisoned: {error}"))
+        })?.clone();
+        let now = now_i64();
+        let pruned_peer_entries = self
+            .store
+            .prune_propagation_peer_entries_to_policy(
+                now,
+                state.peer_entry_ttl_secs,
+                state.completed_peer_entry_ttl_secs,
+                state.peer_entry_limit,
+                state.peer_entry_limit_per_peer,
+            )
+            .map_err(std::io::Error::other)?;
+        self.prune_propagation_payloads_to_storage_limit()?;
+        Ok(pruned_peer_entries)
+    }
+
     fn queue_propagation_entry_for_active_peers(
         &self,
         transient_id: &str,
     ) -> Result<(), std::io::Error> {
-        for peer in self.active_peer_ids() {
+        for peer in self.propagation_fanout_peer_ids() {
             self.store
                 .mark_peer_unhandled_propagation(peer.as_str(), transient_id)
                 .map_err(std::io::Error::other)?;
@@ -393,7 +412,7 @@ impl RpcDaemon {
             .mark_peer_received_propagation(source_peer_key, transient_id)
             .map_err(std::io::Error::other)?;
         self.record_peer_queue_handled_id(source_peer_key, transient_id);
-        for peer in active_peers {
+        for peer in self.propagation_fanout_peer_ids() {
             if peer.eq_ignore_ascii_case(source_peer.as_str()) {
                 self.record_peer_queue_handled_id(peer.as_str(), transient_id);
             } else {

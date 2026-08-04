@@ -248,6 +248,38 @@ impl MessagesStore {
         })
     }
 
+    pub fn list_peer_unhandled_propagation_ids_limited(
+        &self,
+        peer: &str,
+        limit: u64,
+    ) -> rusqlite::Result<Vec<String>> {
+        self.with_read_conn(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT marks.transient_id
+                 FROM (
+                    SELECT transient_id,
+                           CASE
+                               WHEN SUM(CASE WHEN state = 'transfer_limited' THEN 1 ELSE 0 END) > 0 THEN 'transfer_limited'
+                               WHEN SUM(CASE WHEN state = 'received' THEN 1 ELSE 0 END) > 0 THEN 'received'
+                               WHEN SUM(CASE WHEN state = 'transferred' THEN 1 ELSE 0 END) > 0 THEN 'transferred'
+                               WHEN SUM(CASE WHEN state = 'handled' THEN 1 ELSE 0 END) > 0 THEN 'handled'
+                               ELSE 'unhandled'
+                           END AS state
+                    FROM propagation_peer_entries
+                    WHERE LOWER(peer) = LOWER(?1)
+                    GROUP BY transient_id
+                 ) marks
+                 INNER JOIN propagation_entries e
+                    ON e.transient_id = marks.transient_id
+                 WHERE marks.state = 'unhandled'
+                 ORDER BY e.received_at DESC, marks.transient_id DESC
+                 LIMIT ?2",
+            )?;
+            let rows = stmt.query_map(params![peer, limit.max(1)], |row| row.get(0))?;
+            rows.collect()
+        })
+    }
+
     pub fn clear_peer_propagation_marks(&self, peer: &str) -> rusqlite::Result<usize> {
         self.with_write_conn(|conn| {
             let affected = conn.execute(
