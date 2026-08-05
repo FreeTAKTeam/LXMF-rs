@@ -1,5 +1,7 @@
 include!("types_parts/module_prelude.rs");
 
+include!("types_parts/rpc_runtime_support.rs");
+
 include!("types_parts/rpcdaemon.rs");
 
 include!("types_parts/service_identity.rs");

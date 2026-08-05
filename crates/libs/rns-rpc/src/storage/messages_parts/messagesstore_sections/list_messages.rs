@@ -316,6 +316,12 @@ impl MessagesStore {
                     (peer, transient_id, state, updated_at)
                  SELECT ?1, transient_id, 'unhandled', ?2
                  FROM propagation_entries
+                 WHERE NOT EXISTS (
+                     SELECT 1
+                     FROM propagation_peer_entries existing
+                     WHERE LOWER(existing.peer) = LOWER(?1)
+                       AND existing.transient_id = propagation_entries.transient_id
+                 )
                  ORDER BY received_at DESC, transient_id DESC
                  LIMIT ?3",
                 params![peer, now_unix_secs(), limit.max(1)],

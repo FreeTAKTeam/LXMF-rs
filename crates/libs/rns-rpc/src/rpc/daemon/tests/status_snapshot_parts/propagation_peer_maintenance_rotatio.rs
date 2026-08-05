@@ -437,3 +437,59 @@ fn propagation_peer_maintenance_candidate_pool_includes_unknown_speed_peers_like
 
     assert_eq!(selected.as_deref(), Some(unknown_speed_peer.as_str()));
 }
+
+#[test]
+fn propagation_storage_maintenance_refreshes_peer_snapshot_after_policy_prune_like_python() {
+    let daemon = RpcDaemon::test_instance();
+    let peer = make_ready_propagation_peer(&daemon, 0x68);
+    {
+        let mut state = daemon.propagation_state.lock().expect("propagation mutex poisoned");
+        state.peer_entry_limit = 16;
+        state.peer_entry_limit_per_peer = 1;
+    }
+
+    let first = PropagationEntryRecord {
+        transient_id: "e1".repeat(32),
+        destination: "31".repeat(16),
+        payload_hex: "31".repeat(16),
+        received_at: 1_700_000_630,
+        size_bytes: 16,
+        stamp_value: None,
+    };
+    let second = PropagationEntryRecord {
+        transient_id: "e2".repeat(32),
+        destination: "32".repeat(16),
+        payload_hex: "32".repeat(16),
+        received_at: 1_700_000_631,
+        size_bytes: 16,
+        stamp_value: None,
+    };
+    for entry in [&first, &second] {
+        daemon.store.upsert_propagation_entry(entry).expect("store propagation entry");
+        daemon
+            .store
+            .mark_peer_unhandled_propagation(peer.as_str(), entry.transient_id.as_str())
+            .expect("mark propagation entry unhandled");
+    }
+    {
+        let mut peers = daemon.peers.lock().expect("peers mutex poisoned");
+        let record = peers.get_mut(&peer).expect("peer record");
+        record.restored_unhandled_ids = vec![first.transient_id.clone(), second.transient_id.clone()];
+    }
+
+    assert_eq!(daemon.maintain_propagation_storage().expect("maintain propagation storage"), 1);
+
+    let persisted_ids = daemon
+        .store
+        .list_peer_unhandled_propagation_ids(peer.as_str())
+        .expect("persisted unhandled ids");
+    let snapshot_ids = daemon
+        .peers
+        .lock()
+        .expect("peers mutex poisoned")
+        .get(&peer)
+        .expect("peer record")
+        .restored_unhandled_ids
+        .clone();
+    assert_eq!(snapshot_ids, persisted_ids);
+}

@@ -379,6 +379,9 @@ impl RpcDaemon {
                 state.peer_entry_limit_per_peer,
             )
             .map_err(std::io::Error::other)?;
+        if pruned_peer_entries > 0 {
+            self.refresh_all_peer_queue_snapshots()?;
+        }
         self.prune_propagation_payloads_to_storage_limit()?;
         Ok(pruned_peer_entries)
     }

@@ -147,6 +147,42 @@
     }
 
     #[test]
+    fn recent_unhandled_queue_limit_skips_existing_peer_marks_like_python() {
+        let store = MessagesStore::in_memory().expect("in-memory store");
+        let peer = "peer-prospective-limit";
+        let existing = PropagationEntryRecord {
+            transient_id: "b7".repeat(32),
+            destination: "77".repeat(16),
+            payload_hex: "77".repeat(10),
+            received_at: 200,
+            size_bytes: 10,
+            stamp_value: None,
+        };
+        let pending = PropagationEntryRecord {
+            transient_id: "b8".repeat(32),
+            destination: "88".repeat(16),
+            payload_hex: "88".repeat(20),
+            received_at: 100,
+            size_bytes: 20,
+            stamp_value: None,
+        };
+        store.upsert_propagation_entry(&existing).expect("existing entry");
+        store.upsert_propagation_entry(&pending).expect("pending entry");
+        store
+            .mark_peer_received_propagation(peer, existing.transient_id.as_str())
+            .expect("mark existing received");
+
+        store
+            .mark_recent_propagation_unhandled_for_peer(peer, 1)
+            .expect("mark recent prospective entry");
+
+        assert_eq!(
+            store.list_peer_unhandled_propagation_ids(peer).expect("unhandled ids"),
+            vec![pending.transient_id]
+        );
+    }
+
+    #[test]
     fn terminal_peer_marks_clear_case_variant_unhandled_rows_like_python() {
         let store = MessagesStore::in_memory().expect("in-memory store");
         let stored_peer = "Peer-Terminal-Mixed";

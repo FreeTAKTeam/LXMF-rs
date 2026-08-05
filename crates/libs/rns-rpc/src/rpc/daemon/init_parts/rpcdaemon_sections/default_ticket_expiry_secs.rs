@@ -177,12 +177,6 @@ impl RpcDaemon {
         &self,
         peer: &str,
     ) -> Result<(), std::io::Error> {
-        fn push_unique(ids: &mut Vec<String>, transient_id: String) {
-            if !ids.iter().any(|id| id.eq_ignore_ascii_case(transient_id.as_str())) {
-                ids.push(transient_id);
-            }
-        }
-
         let peer_key = {
             let guard = self.peers.lock().expect("peers mutex poisoned");
             guard.keys().find(|existing| existing.eq_ignore_ascii_case(peer)).cloned()
@@ -198,17 +192,41 @@ impl RpcDaemon {
             self.restore_peer_record_queue_marks(&record)?;
         }
 
+        self.refresh_peer_queue_snapshot_from_storage(peer_key.as_str())
+    }
+
+    pub(super) fn refresh_all_peer_queue_snapshots(&self) -> Result<(), std::io::Error> {
+        let peer_keys = {
+            let guard = self.peers.lock().expect("peers mutex poisoned");
+            guard.keys().cloned().collect::<Vec<_>>()
+        };
+        for peer_key in peer_keys {
+            self.refresh_peer_queue_snapshot_from_storage(peer_key.as_str())?;
+        }
+        Ok(())
+    }
+
+    fn refresh_peer_queue_snapshot_from_storage(
+        &self,
+        peer_key: &str,
+    ) -> Result<(), std::io::Error> {
+        fn push_unique(ids: &mut Vec<String>, transient_id: String) {
+            if !ids.iter().any(|id| id.eq_ignore_ascii_case(transient_id.as_str())) {
+                ids.push(transient_id);
+            }
+        }
+
         let mut unhandled_ids = Vec::new();
         let mut handled_ids = Vec::new();
         for entry in self
             .store
-            .list_peer_unhandled_propagation(peer_key.as_str())
+            .list_peer_unhandled_propagation(peer_key)
             .map_err(std::io::Error::other)?
         {
             let transient_id = entry.transient_id.trim().to_ascii_lowercase();
             if self
                 .store
-                .peer_completed_propagation_mark_exists(peer_key.as_str(), transient_id.as_str())
+                .peer_completed_propagation_mark_exists(peer_key, transient_id.as_str())
                 .map_err(std::io::Error::other)?
             {
                 push_unique(&mut handled_ids, transient_id);
@@ -218,7 +236,7 @@ impl RpcDaemon {
         }
         for transient_id in self
             .store
-            .list_peer_handled_propagation_ids(peer_key.as_str())
+            .list_peer_handled_propagation_ids(peer_key)
             .map_err(std::io::Error::other)?
         {
             let transient_id = transient_id.trim().to_ascii_lowercase();
@@ -236,7 +254,7 @@ impl RpcDaemon {
         });
 
         let mut guard = self.peers.lock().expect("peers mutex poisoned");
-        if let Some(record) = guard.get_mut(&peer_key) {
+        if let Some(record) = guard.get_mut(peer_key) {
             record.restored_handled_ids = handled_ids;
             record.restored_unhandled_ids = unhandled_ids;
         }
@@ -464,61 +482,4 @@ impl RpcDaemon {
         *guard = Some(bridge);
     }
 
-    pub fn set_sdk_custom_operations(&self, operations: Vec<SdkCustomOperationSpec>) {
-        let mut guard =
-            self.sdk_custom_operations.lock().expect("sdk_custom_operations mutex poisoned");
-        *guard = operations
-            .into_iter()
-            .map(|mut operation| {
-                operation.id = operation.id.trim().to_owned();
-                operation.group = operation.group.trim().to_owned();
-                operation.kind = operation.kind.trim().to_ascii_lowercase();
-                operation.transport_variant = operation.transport_variant.trim().to_owned();
-                operation.description = operation.description.trim().to_owned();
-                operation.aliases = operation
-                    .aliases
-                    .into_iter()
-                    .map(|alias| alias.trim().to_owned())
-                    .filter(|alias| !alias.is_empty())
-                    .collect();
-                operation.required_capabilities = operation
-                    .required_capabilities
-                    .into_iter()
-                    .map(|capability| capability.trim().to_owned())
-                    .filter(|capability| !capability.is_empty())
-                    .collect();
-                operation
-            })
-            .filter(|operation| {
-                !operation.id.is_empty()
-                    && !operation.group.is_empty()
-                    && matches!(operation.kind.as_str(), "query" | "command")
-                    && !operation.transport_variant.is_empty()
-            })
-            .collect();
-    }
-
-    pub fn with_sdk_custom_operations(self, operations: Vec<SdkCustomOperationSpec>) -> Self {
-        self.set_sdk_custom_operations(operations);
-        self
-    }
-
-    pub fn ensure_ticket(
-        &self,
-        destination: &str,
-        ttl_secs: Option<u64>,
-    ) -> Result<TicketRecord, std::io::Error> {
-        self.issue_ticket(destination, ttl_secs)
-    }
-
-    pub fn generate_ticket(
-        &self,
-        destination: &str,
-        ttl_secs: Option<u64>,
-    ) -> Result<Option<TicketRecord>, std::io::Error> {
-        if self.ticket_interval_active(destination) {
-            return Ok(None);
-        }
-        self.issue_ticket(destination, ttl_secs).map(Some)
-    }
 }
