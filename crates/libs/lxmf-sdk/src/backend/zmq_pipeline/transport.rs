@@ -100,23 +100,34 @@ impl ZmqPipelineBackendClient {
             .as_mut()
             .ok_or_else(|| sdk_error(ErrorCategory::Internal, "missing zmq transport"))?;
 
-        // Bound the command send and response wait by one deadline.  A PUSH
+        // Bound the command send and response wait by one deadline. A PUSH
         // socket can itself await indefinitely when the peer or its receive
         // queue is wedged; starting the timeout only after `send` completed
         // lets the actor retain stale work until the application queue fills.
-        let result = tokio::time::timeout(self.config.request_timeout, async {
-            transport
-                .command
-                .send(ZmqMessage::from(encoded))
-                .await
-                .map_err(|err| sdk_error(ErrorCategory::Transport, err.to_string()))?;
+        let deadline = tokio::time::Instant::now() + self.config.request_timeout;
+        let timeout_error = || {
+            SdkError::new(
+                "SDK_TRANSPORT_ZMQ_TIMEOUT",
+                ErrorCategory::Timeout,
+                "zmq rpc request timed out waiting for send or correlated response",
+            )
+        };
+        async {
+            let send_result = tokio::select! {
+                biased;
+                _ = tokio::time::sleep_until(deadline) => Err(timeout_error()),
+                result = transport.command.send(ZmqMessage::from(encoded)) => result
+                    .map_err(|err| sdk_error(ErrorCategory::Transport, err.to_string())),
+            };
+            send_result?;
 
             loop {
-                let message = transport
-                    .responses
-                    .recv()
-                    .await
-                    .map_err(|err| sdk_error(ErrorCategory::Transport, err.to_string()))?;
+                let message = tokio::select! {
+                    biased;
+                    _ = tokio::time::sleep_until(deadline) => return Err(timeout_error()),
+                    result = transport.responses.recv() => result
+                        .map_err(|err| sdk_error(ErrorCategory::Transport, err.to_string()))?,
+                };
                 let bytes = Vec::<u8>::try_from(message)
                     .map_err(|err| sdk_error(ErrorCategory::Transport, err.to_string()))?;
                 let envelope = zmq::decode_envelope(&bytes)
@@ -128,16 +139,8 @@ impl ZmqPipelineBackendClient {
                     return Ok(envelope);
                 }
             }
-        })
-        .await;
-        match result {
-            Ok(result) => result,
-            Err(_) => Err(SdkError::new(
-                "SDK_TRANSPORT_ZMQ_TIMEOUT",
-                ErrorCategory::Timeout,
-                "zmq rpc request timed out waiting for send or correlated response",
-            )),
         }
+        .await
     }
 
     async fn send_and_recv_single_endpoint(
