@@ -58,8 +58,9 @@ length-delimited block itself (prefixed to segment 1 alone). This is a
 row-level increment recorded in `docs/status/reticulum-parity-matrix.md`; no
 capability status in the table above changes.
 
-Local release readiness is **pending exact-candidate validation**. Workspace
-metadata is being aligned to `0.9.8`; this release explicitly accepts the
+Local release readiness is **PASS locally; hosted validation pending**. The
+validated candidate commit is `0c494a53c08141a0cbb9829278006f888af25c5c`.
+Workspace metadata is aligned to `0.9.8`; this release explicitly accepts the
 documented partial
 Python/RNS inventory (1,695 complete, 115 partial, and one
 provenance-backed not-applicable); the release gate checks inventory
