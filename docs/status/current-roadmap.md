@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last reassessed: 2026-08-01
+Last reassessed: 2026-08-06
 
 This file is the repository-level source of truth for parity posture, release
 confidence, and execution order. Detailed row-level status lives in:
@@ -37,14 +37,13 @@ The project is best described by capability level:
 | Full Python software surface parity | partial | The strict inventory reports 1,695 complete, 115 partial, and 1 provenance-backed not-applicable entry. |
 | ZeroMQ SDK-access parity | achieved in v0.9.5 implementation | Generated classification and daemon-operation inventory live in `sdk-zmq-parity.json`; release evidence must still pass all gates. |
 
-## v0.9.7 Release Candidate
+## v0.9.8 Release Candidate
 
-v0.9.7 is a patch-level stabilization release over the published v0.9.6
-baseline. Current `origin/main` includes the merged multi-service identity,
-RPC hardening, authentication-rate limiting, private-storage, RNS 1.4.2
-parity, resource-limit, propagation-stamp, transport-worker, and crypto-safety
-fixes that landed after v0.9.6. This release makes no new broad parity claim;
-it records the behavior now present on the exact release commit.
+v0.9.8 is a patch release over the published v0.9.7 baseline. The reviewed
+candidate starts at `9f12fb4e` and carries the merged resource-transfer, MTU,
+propagation, SDK deadline, lock-scope, metadata, cancellation, and compression
+fixes. This release makes no new broad parity claim; it records the behavior
+now present on the exact release commit.
 
 Resource-layer wire fidelity now includes outbound bz2 auto-compression
 matching `Resource.__init__`'s default, completing the existing inbound
@@ -59,15 +58,15 @@ length-delimited block itself (prefixed to segment 1 alone). This is a
 row-level increment recorded in `docs/status/reticulum-parity-matrix.md`; no
 capability status in the table above changes.
 
-Local release readiness is **passing**. Workspace metadata is aligned to
-`0.9.7`, the complete `cargo xtask release-check` passes, and binary E2E smoke
-passes. This release explicitly accepts the documented partial
+Local release readiness is **pending exact-candidate validation**. Workspace
+metadata is being aligned to `0.9.8`; this release explicitly accepts the
+documented partial
 Python/RNS inventory (1,695 complete, 115 partial, and one
 provenance-backed not-applicable); the release gate checks inventory
 consistency without requiring 100% completion. Hosted CI and pinned-Python
-interoperability remain pending on the exact post-merge candidate commit.
-Release-candidate notes live in `docs/release-notes-v0.9.7.md`; the evidence
-ledger is `docs/status/v0.9.7-release-candidate.md`.
+interoperability are required on the exact candidate commit.
+Release-candidate notes live in `docs/release-notes-v0.9.8.md`; the evidence
+ledger is `docs/status/v0.9.8-release-candidate.md`.
 
 ## v0.9.6 Stabilization Baseline
 
@@ -1528,20 +1527,20 @@ Scoped release evidence is split as follows:
 
 ## Remaining Release Blockers
 
-The #542 merge prerequisite is satisfied at `709cff55`. The release policy
-accepts the documented 115 partial Python/RNS inventory, and the non-strict
-inventory check plus complete local release gate now pass. Promotion is still
-gated by an exact reviewed commit, hosted CI, and pinned-Python
-interoperability; binary E2E smoke has passed locally. Physical
+The v0.9.8 candidate base is `9f12fb4e`. The release policy accepts the
+documented 115 partial Python/RNS inventory, and the non-strict inventory check
+does not require full completion. Promotion is gated by an exact reviewed
+commit, the complete local release gate, hosted CI, and pinned-Python
+interoperability. Physical
 radio/BLE/serial devices, public I2P, public networks, and
 Sideband/MeshChatX/Columba claims remain separate optional evidence tracks and
 do not block this software release.
 
 ## Active Execution Order
 
-1. Commit and push the passing post-#542 candidate tree for hosted CI and pinned-Python interop.
-2. Publish `v0.9.7-rc.1` from that SHA with simulation artifacts.
-3. Promote that exact SHA to `v0.9.7`, publish packages and platform bundles,
+1. Commit and push the passing post-`v0.9.7` candidate tree for hosted CI and pinned-Python interop.
+2. Publish `v0.9.8-rc.1` from that SHA with simulation and bundle artifacts.
+3. Promote that exact SHA to `v0.9.8`, repair `origin/release`, publish packages and platform bundles,
    and verify remote tags, registries, checksums, and support wording.
 
 ## Verification Baseline

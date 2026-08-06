@@ -1,6 +1,6 @@
 # Reticulum Parity Matrix
 
-Last reassessed: 2026-07-26
+Last reassessed: 2026-08-06
 
 This is the maintained row-level status for Python Reticulum compatibility.
 Repository-level posture and execution order live in
@@ -39,6 +39,12 @@ The reopened software gaps are:
 - blocked-IP interface statistics and `rnstatus` gravity display/sorting;
 - the newly exposed Reticulum/Transport lifecycle helpers listed as partial in
   `python-surface-parity.json`.
+
+The v0.9.8 release boundary preserves this inventory: `RNS/Resource.py`
+remains `partial` because the Rust sender does not implement the Python
+`receiver_min_consecutive_height` serving window, and the full baseline remains
+1,695 complete, 115 partial, and 1 not applicable. No hardware, public-network,
+or third-party-client claim is inferred from the release candidate.
 
 SDK negotiation exposes an optional typed `software_parity` orientation, and
 daemon `status`, `daemon_status_ex`, and `rns.runtime.status` expose the same

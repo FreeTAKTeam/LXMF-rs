@@ -1,6 +1,6 @@
 # LXMF Parity Matrix
 
-Last reassessed: 2026-07-16
+Last reassessed: 2026-08-06
 
 This is the maintained row-level status for Python LXMF compatibility.
 Repository-level posture and execution order live in
@@ -20,6 +20,11 @@ ZeroMQ now implements every `SdkBackend` domain, native async operations and
 cursor-replaying events, and the `LxmfSdkRouter`/`LxmfSdkPropagation` extension
 traits. Row-level transport classification is generated in
 `docs/status/sdk-zmq-parity.json`.
+
+For the v0.9.8 release boundary, all seven tracked LXMF module rows remain
+`complete`; the release carries the existing typed SDK, delivery, propagation,
+receipt, cancellation, and stamp evidence without broadening the matrix beyond
+the named software scenarios.
 
 ## Module Matrix
 

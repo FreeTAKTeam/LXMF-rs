@@ -109,7 +109,7 @@ jobs:
         env:
           PYTHON_RNS_PATH: ${{ github.workspace }}/Reticulum
           PYTHON_LXMF_PATH: ${{ github.workspace }}/LXMF
-        # v0.9.7 deliberately ships with documented partial RNS parity. The
+        # v0.9.8 deliberately ships with documented partial RNS parity. The
         # pinned reference currently fails only its boundary-mode recursive
         # path-request expectation; keep that deferred row visible in the
         # release notes while running every other reference test and all Rust
@@ -192,7 +192,7 @@ jobs:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum
           LXMF_PY_REPO: ${{ github.workspace }}/LXMF
         # The Python->Rust remote-relay path is a documented partial parity
-        # row for v0.9.7; the two complementary remote-relay cases remain
+        # row for v0.9.8; the two complementary remote-relay cases remain
         # required gates. Keep only that named case deferred rather than
         # weakening the rest of this live interop stage.
         run: >-
