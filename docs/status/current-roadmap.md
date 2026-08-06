@@ -1532,7 +1532,10 @@ The v0.9.8 candidate base is `9f12fb4e`. The release policy accepts the
 documented 115 partial Python/RNS inventory, and the non-strict inventory check
 does not require full completion. Promotion is gated by an exact reviewed
 commit, the complete local release gate, hosted CI, and pinned-Python
-interoperability. Physical
+interoperability. The exact candidate currently has a reproducible blocker in
+three resource-backed Python channel request/response cases; no RC or final
+publication is authorized until those tests pass on the pinned workflow.
+Physical
 radio/BLE/serial devices, public I2P, public networks, and
 Sideband/MeshChatX/Columba claims remain separate optional evidence tracks and
 do not block this software release.
