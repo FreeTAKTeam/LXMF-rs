@@ -442,7 +442,14 @@ impl ResourceManager {
             return;
         };
         let hash = Hash::new(hash_bytes);
-        self.incoming.remove(&hash);
+        if let Some(receiver) = self.incoming.remove(&hash) {
+            // A split receiver keeps the already-completed segments in a
+            // separate assembly keyed by the original resource hash. A
+            // remote cancel names the segment currently in flight, so remove
+            // that assembly as well and report the abandoned payload instead
+            // of leaving the caller waiting for a timeout.
+            self.fail_inbound_segments(receiver.original_hash, "remote_cancelled");
+        }
         // Removed from both, as before: a hash lives in exactly one of these,
         // but which one depends on whether dispatch has been confirmed yet.
         let cancelled = self.pending_outgoing.remove(&hash);
