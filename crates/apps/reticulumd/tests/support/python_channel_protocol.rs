@@ -205,11 +205,15 @@ pub(super) async fn wait_for_resource_response(
                 continue;
             }
             if let ResourceEventKind::Complete(complete) = event.kind {
-                if let Some((response_id, response)) =
-                    parse_request_response_frame(complete.data.as_slice())
+                if complete.is_response
+                    && complete.request_id.as_deref() == Some(request_id.as_slice())
                 {
-                    if response_id == request_id {
-                        return response;
+                    if let Some((response_id, response)) =
+                        parse_request_response_frame(complete.data.as_slice())
+                    {
+                        if response_id == request_id {
+                            return response;
+                        }
                     }
                 }
             }

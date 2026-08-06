@@ -212,13 +212,15 @@ pub(super) async fn wait_for_inbound_resource_data_or_child_exit(
     link_id: AddressHash,
     child: &mut Child,
     duration: Duration,
-) -> Vec<u8> {
+) -> rns_transport::resource::ResourceComplete {
     let deadline = Instant::now() + duration;
     while Instant::now() < deadline {
         match timeout(Duration::from_millis(100), events.recv()).await {
             Ok(Ok(event)) if event.link_id == link_id => {
                 if let ResourceEventKind::Complete(complete) = event.kind {
-                    return complete.data;
+                    if complete.is_request {
+                        return complete;
+                    }
                 }
             }
             Ok(Ok(_)) => {}

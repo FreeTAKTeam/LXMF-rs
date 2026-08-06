@@ -407,7 +407,8 @@ async fn rust_to_python_resource_backed_request_response_roundtrip() {
     let link_id = wait_for_out_link_active(&mut link_events, &link, Duration::from_secs(8)).await;
     sleep(Duration::from_millis(100)).await;
 
-    let request_text = format!("large:{}", "x".repeat(900));
+    let negotiated_mtu = link.lock().await.link_mtu();
+    let request_text = format!("large:{}", "x".repeat(negotiated_mtu + 1024));
     let packed_request = build_link_request_payload(
         "/test/request",
         rmpv::Value::String(request_text.clone().into()),

@@ -258,9 +258,12 @@ class ChannelClient:
             result = {}
             request_data = message_data
             if self.payload_kind == "large-request":
-                request_data = "large:" + ("x" * 900)
+                # Keep this request resource-backed after negotiated-MTU
+                # support: a fixed 900-byte payload is a normal packet on
+                # TCP/Backbone links whose MDU is several kilobytes.
+                request_data = "large:" + ("x" * (active_link.mdu + 1024))
             print(
-                f"python_channel_client: sending {self.payload_kind} request len={len(request_data)}",
+                f"python_channel_client: sending {self.payload_kind} request len={len(request_data)} mdu={active_link.mdu}",
                 file=sys.stderr,
                 flush=True,
             )

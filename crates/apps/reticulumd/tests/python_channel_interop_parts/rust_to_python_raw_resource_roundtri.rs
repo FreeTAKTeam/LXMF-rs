@@ -768,20 +768,25 @@ async fn python_to_rust_resource_backed_request_response_roundtrip() {
     )
     .await;
     let mut resource_events = transport.resource_events();
-    let packed_request = wait_for_inbound_resource_data_or_child_exit(
+    let inbound_request = wait_for_inbound_resource_data_or_child_exit(
         &mut resource_events,
         link_id,
         guard.child.as_mut().expect("python child"),
         Duration::from_secs(8),
     )
     .await;
+    let request_id = address_hash(&inbound_request.data);
+    assert_eq!(
+        inbound_request.request_id.as_deref(),
+        Some(request_id.as_slice()),
+        "Python resource request should expose its request correlation id"
+    );
+    let packed_request = inbound_request.data;
     let request_data = parse_request_payload(&packed_request).expect("large request payload");
     let request_text = rmpv_to_string(&request_data).expect("large request text");
     assert!(request_text.starts_with("large:"));
     assert!(request_text.len() > 900);
 
-    let mut request_id = [0u8; 16];
-    request_id.copy_from_slice(&address_hash(&packed_request));
     let response_payload = rmp_serde::to_vec(&rmpv::Value::Array(vec![
         rmpv::Value::Binary(request_id.to_vec()),
         rmpv::Value::String(format!("reply:{request_text}").into()),
@@ -874,20 +879,25 @@ async fn python_to_rust_backbone_resource_backed_request_response_roundtrip() {
     )
     .await;
     let mut resource_events = transport.resource_events();
-    let packed_request = wait_for_inbound_resource_data_or_child_exit(
+    let inbound_request = wait_for_inbound_resource_data_or_child_exit(
         &mut resource_events,
         link_id,
         guard.child.as_mut().expect("python child"),
         Duration::from_secs(8),
     )
     .await;
+    let request_id = address_hash(&inbound_request.data);
+    assert_eq!(
+        inbound_request.request_id.as_deref(),
+        Some(request_id.as_slice()),
+        "Python Backbone resource request should expose its request correlation id"
+    );
+    let packed_request = inbound_request.data;
     let request_data = parse_request_payload(&packed_request).expect("large request payload");
     let request_text = rmpv_to_string(&request_data).expect("large request text");
     assert!(request_text.starts_with("large:"));
     assert!(request_text.len() > 900);
 
-    let mut request_id = [0u8; 16];
-    request_id.copy_from_slice(&address_hash(&packed_request));
     let response_payload = rmp_serde::to_vec(&rmpv::Value::Array(vec![
         rmpv::Value::Binary(request_id.to_vec()),
         rmpv::Value::String(format!("reply:{request_text}").into()),
