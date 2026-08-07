@@ -691,6 +691,21 @@ interfaces = [
 }
 
 #[test]
+fn parses_python_interface_gravity_and_exposes_runtime_setting() {
+    let input = r#"
+interfaces = [
+  { type = "tcp_client", enabled = true, host = "rmap.world", port = 4242, gravity = -7 }
+]
+"#;
+    let cfg = DaemonConfig::from_toml(input).expect("parse interface gravity");
+    let iface = &cfg.interfaces[0];
+
+    assert_eq!(iface.gravity, Some(-7));
+    assert_eq!(iface.interface_gravity(), -7);
+    assert_eq!(iface.settings_json().expect("settings")["gravity"], -7);
+}
+
+#[test]
 fn parses_common_reticulum_outgoing_flag() {
     let input = r#"
 interfaces = [

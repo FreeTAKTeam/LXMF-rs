@@ -72,6 +72,9 @@ pub const LINK_PACKET_MDU: usize =
         - 1;
 pub const HASHMAP_MAX_LEN: usize =
     (LINK_PACKET_MDU.saturating_sub(ADVERTISEMENT_OVERHEAD)) / MAPHASH_LEN;
+/// Sender-side serving window guard from Reticulum 1.4.2. The receiver may
+/// request hashes from this moving window, not from the whole resource.
+pub const COLLISION_GUARD_SIZE: usize = 2 * WINDOW_MAX_FAST + HASHMAP_MAX_LEN;
 
 const FLAG_ENCRYPTED: u8 = 0x01;
 const FLAG_COMPRESSED: u8 = 0x02;

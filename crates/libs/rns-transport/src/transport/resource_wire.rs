@@ -1,4 +1,5 @@
 use super::*;
+use crate::resource::{build_link_packet, ResourceAdvertisement};
 
 pub(super) fn is_link_resource_packet(packet: &Packet) -> bool {
     packet.header.destination_type == DestinationType::Link
@@ -83,6 +84,75 @@ pub(super) async fn handle_link_resource_packet<'a>(
         Ok(packet) => packet,
         Err(_) => return true,
     };
+    if packet.context == PacketContext::ResourceAdvrtisement {
+        if let Ok(advertisement) = ResourceAdvertisement::unpack(packet_for_manager.data.as_slice())
+        {
+            if advertisement.is_response() {
+                if let Some(request_id) = advertisement.request_id.as_ref() {
+                    let response_size =
+                        usize::try_from(advertisement.transfer_size).unwrap_or(usize::MAX);
+                    if !link.take_response_limit_if_allowed(request_id, response_size) {
+                        log::warn!(
+                            "[resource-diag] reject_response_advertisement link={} hash={} size={}",
+                            link.id(),
+                            advertisement.hash,
+                            advertisement.transfer_size
+                        );
+                        if let Ok(reject) = build_link_packet(
+                            &link,
+                            PacketType::Data,
+                            PacketContext::ResourceReceiverCancel,
+                            advertisement.hash.as_slice(),
+                        ) {
+                            let response_iface = link.ingress_iface().unwrap_or(iface);
+                            handler
+                                .send(TxMessage {
+                                    tx_type: TxMessageType::Direct(response_iface),
+                                    packet: reject,
+                                })
+                                .await;
+                        }
+                        return true;
+                    }
+                }
+            }
+            if advertisement.is_request() {
+                let limit = handler
+                    .single_in_destinations
+                    .get(&link.destination().address_hash)
+                    .cloned()
+                    .map(|destination| async move { destination.lock().await.max_request_size() });
+                if let Some(limit) = limit {
+                    if let Some(limit) = limit.await {
+                        if advertisement.transfer_size > u64::try_from(limit).unwrap_or(u64::MAX) {
+                            log::warn!(
+                                "[resource-diag] reject_request_advertisement link={} hash={} size={} limit={}",
+                                link.id(),
+                                advertisement.hash,
+                                advertisement.transfer_size,
+                                limit
+                            );
+                            if let Ok(reject) = build_link_packet(
+                                &link,
+                                PacketType::Data,
+                                PacketContext::ResourceReceiverCancel,
+                                advertisement.hash.as_slice(),
+                            ) {
+                                let response_iface = link.ingress_iface().unwrap_or(iface);
+                                handler
+                                    .send(TxMessage {
+                                        tx_type: TxMessageType::Direct(response_iface),
+                                        packet: reject,
+                                    })
+                                    .await;
+                            }
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+    }
     let response_iface = link.ingress_iface().unwrap_or(iface);
     // The smaller of what this node's interface can carry and what the link
     // actually negotiated. The interface alone is not enough: it describes

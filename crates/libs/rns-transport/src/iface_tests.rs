@@ -30,6 +30,25 @@ mod tests {
     }
 
     #[test]
+    fn interface_gravity_defaults_and_updates_with_policy() {
+        let mut mgr = InterfaceManager::new(16);
+        let channel =
+            mgr.new_channel_with_role_and_mode(16, IfaceRole::Unicast, InterfaceMode::Gateway);
+
+        assert_eq!(mgr.gravity(channel.address()), Some(0));
+        assert_eq!(
+            mgr.policy(channel.address()),
+            Some(InterfacePolicy { mode: InterfaceMode::Gateway, gravity: 0 })
+        );
+        assert!(mgr.set_gravity(*channel.address(), 17));
+        assert_eq!(mgr.gravity(channel.address()), Some(17));
+        assert_eq!(
+            mgr.policy(channel.address()),
+            Some(InterfacePolicy { mode: InterfaceMode::Gateway, gravity: 17 })
+        );
+    }
+
+    #[test]
     fn new_channel_defaults_to_outgoing_enabled() {
         let mut mgr = InterfaceManager::new(16);
         let channel = mgr.new_channel(16);
@@ -251,6 +270,7 @@ mod tests {
         assert_eq!(InterfaceMode::parse("roaming"), Ok(Some(InterfaceMode::Roaming)));
         assert_eq!(InterfaceMode::parse("boundary"), Ok(Some(InterfaceMode::Boundary)));
         assert_eq!(InterfaceMode::parse("gw"), Ok(Some(InterfaceMode::Gateway)));
+        assert_eq!(InterfaceMode::parse("internal"), Ok(Some(InterfaceMode::Internal)));
         assert!(InterfaceMode::parse("unknown").is_err());
     }
 
@@ -262,6 +282,7 @@ mod tests {
         assert!(InterfaceMode::Roaming.discovers_unknown_paths());
         assert!(!InterfaceMode::Boundary.discovers_unknown_paths());
         assert!(InterfaceMode::Gateway.discovers_unknown_paths());
+        assert!(InterfaceMode::Internal.discovers_unknown_paths());
     }
 
     #[test]
@@ -288,6 +309,20 @@ mod tests {
     }
 
     #[test]
+    fn virtual_iface_inherits_host_gravity() {
+        let mut mgr = InterfaceManager::new(16);
+        let host = *mgr
+            .new_channel_with_role_and_mode(16, IfaceRole::Multicast, InterfaceMode::Gateway)
+            .address();
+        assert!(mgr.set_gravity(host, -4));
+
+        let virtual_iface =
+            mgr.register_virtual_iface(host, IfaceRole::VirtualUnicast).expect("virtual iface");
+
+        assert_eq!(mgr.gravity(&virtual_iface), Some(-4));
+    }
+
+    #[test]
     fn accepted_child_can_inherit_parent_runtime_config() {
         let mut mgr = InterfaceManager::new(16);
         let parent = *mgr
@@ -304,12 +339,14 @@ mod tests {
         };
 
         assert!(mgr.set_outgoing(parent, false));
+        assert!(mgr.set_gravity(parent, 9));
         assert!(mgr.set_announce_pacing(parent, 1200, 5));
         assert!(mgr.set_shared_config(parent, shared_config.clone()));
 
         assert!(mgr.inherit_runtime_config(parent, child));
 
         assert_eq!(mgr.mode(&child), Some(InterfaceMode::Gateway));
+        assert_eq!(mgr.gravity(&child), Some(9));
         assert_eq!(mgr.outgoing(&child), Some(false));
         assert_eq!(mgr.announce_pacing(&child), Some((1200, 5)));
         assert_eq!(mgr.shared_config(&child), Some(&shared_config));

@@ -1,6 +1,13 @@
 use super::*;
+use serde::Serialize;
 
 impl RpcDaemon {
+    /// Serialize a legacy RPC response into the length-prefixed MessagePack
+    /// frame written by the daemon connection boundary.
+    pub fn rpc_return<T: Serialize>(response: &T) -> Result<Vec<u8>, std::io::Error> {
+        codec::encode_frame(response)
+    }
+
     pub(super) fn run_announce_scheduler(
         self: std::sync::Arc<Self>,
         interval_secs: u64,

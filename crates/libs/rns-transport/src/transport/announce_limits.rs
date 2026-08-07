@@ -477,6 +477,17 @@ impl AnnounceLimits {
         self.release_ready_at(Instant::now())
     }
 
+    pub fn clear_held_announces(&mut self) -> usize {
+        self.limits
+            .values_mut()
+            .map(|entry| {
+                let count = entry.held_announces.len();
+                entry.held_announces.clear();
+                count
+            })
+            .sum()
+    }
+
     fn release_ready_at(&mut self, now: Instant) -> Vec<ReleasedAnnounce> {
         let mut released = Vec::new();
 

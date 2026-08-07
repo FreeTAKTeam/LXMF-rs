@@ -133,6 +133,7 @@ fn test_args(
         rpc_unix: None,
         #[cfg(feature = "zmq-pipeline-rpc")]
         zmq_rpc_command: None,
+        #[cfg(feature = "zmq-pipeline-rpc")]
         zmq_rpc_endpoint: None,
     }
 }

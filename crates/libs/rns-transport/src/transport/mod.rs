@@ -176,6 +176,7 @@ pub struct TransportConfig {
     broadcast: bool,
     transport_enabled: bool,
     connected_to_shared_instance: bool,
+    local_hops_delta: u8,
     announce_cache_capacity: usize,
     announce_retry_limit: u8,
     announce_queue_len: usize,

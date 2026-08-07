@@ -1,4 +1,5 @@
 use super::*;
+use crate::iface::InterfacePolicy;
 
 pub(in crate::transport) fn decode_python_entry(
     value: &RmpValue,
@@ -23,35 +24,65 @@ pub(in crate::transport) fn decode_python_entry(
     })
 }
 
-pub(in crate::transport) fn should_replace_path(
+pub(in crate::transport) fn should_replace_path_with_policy(
     existing: &PathEntry,
     hops: u8,
     random_blob: &RandomBlob,
     announce_emitted: u64,
+    incoming_policy: Option<InterfacePolicy>,
     now: Instant,
-    mut mode_for_iface: impl FnMut(&AddressHash) -> Option<InterfaceMode>,
+    policy_for_iface: &mut impl FnMut(&AddressHash) -> Option<InterfacePolicy>,
 ) -> bool {
     if existing.random_blobs.contains(random_blob) {
         let path_emitted = newest_random_blob_timebase(&existing.random_blobs);
-        return existing.state == PathState::Unresponsive
+        if existing.state == PathState::Unresponsive
             && hops > existing.hops
-            && announce_emitted == path_emitted;
+            && announce_emitted == path_emitted
+        {
+            return true;
+        }
+
+        if hops <= existing.hops && announce_emitted == path_emitted {
+            let Some(incoming_policy) = incoming_policy else {
+                return false;
+            };
+            let Some(current_policy) = policy_for_iface(&existing.iface) else {
+                return false;
+            };
+            return incoming_policy.gravity > current_policy.gravity;
+        }
+
+        return false;
     }
 
     let path_emitted = newest_random_blob_timebase(&existing.random_blobs);
     if hops <= existing.hops {
-        return announce_emitted > path_emitted;
+        if announce_emitted > path_emitted {
+            return true;
+        }
+
+        if announce_emitted == path_emitted && hops <= existing.hops {
+            let Some(incoming_policy) = incoming_policy else {
+                return false;
+            };
+            let Some(current_policy) = policy_for_iface(&existing.iface) else {
+                return false;
+            };
+            return incoming_policy.gravity > current_policy.gravity;
+        }
+
+        return false;
     }
 
-    path_expired(existing, now, &mut mode_for_iface) || announce_emitted > path_emitted
+    path_expired(existing, now, policy_for_iface) || announce_emitted > path_emitted
 }
 
 fn path_expired(
     entry: &PathEntry,
     now: Instant,
-    mut mode_for_iface: impl FnMut(&AddressHash) -> Option<InterfaceMode>,
+    policy_for_iface: &mut impl FnMut(&AddressHash) -> Option<InterfacePolicy>,
 ) -> bool {
-    let mode = mode_for_iface(&entry.iface).unwrap_or(InterfaceMode::Full);
+    let mode = policy_for_iface(&entry.iface).map_or(InterfaceMode::Full, |policy| policy.mode);
     path_expired_for_mode(entry, now, mode)
 }
 
@@ -158,7 +189,8 @@ pub(in crate::transport) fn path_timeout_for_mode(mode: InterfaceMode) -> Durati
         InterfaceMode::Full
         | InterfaceMode::PointToPoint
         | InterfaceMode::Boundary
-        | InterfaceMode::Gateway => DESTINATION_TIMEOUT,
+        | InterfaceMode::Gateway
+        | InterfaceMode::Internal => DESTINATION_TIMEOUT,
     }
 }
 

@@ -86,6 +86,19 @@ fn create_path_request_hash() {
 }
 
 #[test]
+fn destination_request_size_limit_defaults_unbounded_and_can_be_cleared() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut destination =
+        SingleInputDestination::new(identity, DestinationName::new("test", "request-limit"));
+
+    assert_eq!(destination.max_request_size(), None);
+    destination.set_max_request_size(128).expect("valid request limit");
+    assert_eq!(destination.max_request_size(), Some(128));
+    destination.clear_max_request_size();
+    assert_eq!(destination.max_request_size(), None);
+}
+
+#[test]
 fn compare_announce() {
     let priv_key: [u8; 32] = [
         0xf0, 0xec, 0xbb, 0xa4, 0x9e, 0x78, 0x3d, 0xee, 0x14, 0xff, 0xc6, 0xc9, 0xf1, 0xe1, 0x25,

@@ -1,8 +1,62 @@
 use super::*;
+use crate::iface::{Interface, InterfaceContext};
 use std::io;
 use std::path::Path;
 
 impl Transport {
+    pub async fn add_interface<T, F, R>(&self, interface: T, worker: F) -> AddressHash
+    where
+        T: Interface,
+        F: FnOnce(InterfaceContext<T>) -> R,
+        R: std::future::Future<Output = ()> + Send + 'static,
+        R::Output: Send + 'static,
+    {
+        self.iface_manager.lock().await.spawn(interface, worker)
+    }
+
+    pub async fn remove_interface(&self, address: AddressHash) -> bool {
+        self.stop_interface(address).await
+    }
+
+    pub async fn interface_hashes(&self) -> std::collections::HashSet<AddressHash> {
+        self.iface_manager.lock().await.interface_hashes()
+    }
+
+    pub async fn internal_identity(&self) -> AddressHash {
+        *self.handler.lock().await.config.identity.address_hash()
+    }
+
+    pub async fn is_shared_instance(&self, interface: &AddressHash) -> bool {
+        self.iface_manager.lock().await.is_shared_instance(interface)
+    }
+
+    pub async fn should_apply_delta(&self, packet: &Packet, interface: &AddressHash) -> bool {
+        let (connected_to_shared_instance, local_hops_delta) = {
+            let handler = self.handler.lock().await;
+            (handler.config.connected_to_shared_instance, handler.config.local_hops_delta)
+        };
+        if connected_to_shared_instance
+            || packet.header.hops != 0
+            || local_hops_delta == 0
+            || matches!(
+                packet.header.destination_type,
+                DestinationType::Plain | DestinationType::Group
+            )
+        {
+            return false;
+        }
+        !self.iface_manager.lock().await.is_shared_instance(interface)
+    }
+
+    pub async fn void_queues(&self) -> usize {
+        let dropped = self.iface_manager.lock().await.drop_announce_queues();
+        let mut handler = self.handler.lock().await;
+        let dropped_held = handler.announce_limits.clear_held_announces();
+        handler.packet_signal_cache.clear();
+        handler.resource_response_packets.clear();
+        dropped + dropped_held
+    }
+
     pub async fn set_network_identity(&self, identity: PrivateIdentity) -> bool {
         let mut handler = self.handler.lock().await;
         if handler.network_identity.is_some() {

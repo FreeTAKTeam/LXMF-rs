@@ -27,6 +27,19 @@ pub enum InterfaceMode {
     Roaming,
     Boundary,
     Gateway,
+    Internal,
+}
+
+/// Routing attributes that affect path selection for an interface.
+///
+/// Reticulum 1.4.2 uses gravity only as a tie-breaker when the same announce
+/// is heard over multiple interfaces. Keeping it beside the mode makes the
+/// policy explicit and prevents callers from accidentally using announce
+/// pacing or hardware bitrate as a routing preference.
+#[derive(Debug, Default, PartialEq, Eq, Copy, Clone)]
+pub struct InterfacePolicy {
+    pub mode: InterfaceMode,
+    pub gravity: i64,
 }
 
 impl InterfaceMode {
@@ -41,6 +54,7 @@ impl InterfaceMode {
             "roaming" => Ok(Some(Self::Roaming)),
             "boundary" => Ok(Some(Self::Boundary)),
             "gateway" | "gw" => Ok(Some(Self::Gateway)),
+            "internal" => Ok(Some(Self::Internal)),
             _ => Err("unknown interface mode"),
         }
     }
@@ -53,11 +67,12 @@ impl InterfaceMode {
             Self::Roaming => "roaming",
             Self::Boundary => "boundary",
             Self::Gateway => "gateway",
+            Self::Internal => "internal",
         }
     }
 
     pub fn discovers_unknown_paths(self) -> bool {
-        matches!(self, Self::AccessPoint | Self::Gateway | Self::Roaming)
+        matches!(self, Self::AccessPoint | Self::Gateway | Self::Roaming | Self::Internal)
     }
 }
 
@@ -195,12 +210,14 @@ struct LocalInterface {
     mtu: usize,
     role: IfaceRole,
     mode: InterfaceMode,
+    gravity: i64,
     outgoing: bool,
     announce_queue: VecDeque<QueuedAnnounce>,
     announce_allowed_at: Instant,
     announce_bitrate_bps: u64,
     announce_cap_percent: u64,
     shared_config: InterfaceSharedConfig,
+    is_shared_instance: bool,
     outgoing_pr_history: VecDeque<Instant>,
 }
 

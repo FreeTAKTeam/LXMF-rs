@@ -22,6 +22,10 @@ pub(crate) fn setting_u64(record: &InterfaceRecord, key: &str) -> Option<u64> {
     setting(record, key)?.as_u64()
 }
 
+pub(crate) fn setting_i64(record: &InterfaceRecord, key: &str) -> Option<i64> {
+    setting(record, key)?.as_i64()
+}
+
 pub(crate) fn setting_f64(record: &InterfaceRecord, key: &str) -> Option<f64> {
     setting(record, key)?.as_f64()
 }

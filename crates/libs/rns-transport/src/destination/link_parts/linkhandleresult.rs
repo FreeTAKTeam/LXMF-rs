@@ -59,6 +59,7 @@ pub struct Link {
     channel_pending: HashMap<Hash, PendingChannelPacket>,
     channel_states: HashMap<u16, ChannelMessageState>,
     channel_rx_ring: HashMap<u16, ChannelEnvelope>,
+    pending_response_limits: HashMap<Vec<u8>, usize>,
     channel_window: u8,
     channel_window_max: u8,
     channel_window_min: u8,

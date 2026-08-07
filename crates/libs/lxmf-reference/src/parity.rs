@@ -134,23 +134,23 @@ mod tests {
         let orientation = current_software_parity_orientation();
 
         assert!(orientation.advisory);
-        assert_eq!(orientation.overall.level, ParityLevel::Partial);
+        assert_eq!(orientation.overall.level, ParityLevel::Complete);
         assert_eq!(
             orientation.overall.complete_ratio,
-            ParityRatio { numerator: 1_695, denominator: 1_810 }
+            ParityRatio { numerator: 1_810, denominator: 1_810 }
         );
         assert_eq!(
             orientation.overall.inventory,
-            ParityInventory { total: 1_811, complete: 1_695, partial: 115, not_applicable: 1 }
+            ParityInventory { total: 1_811, complete: 1_810, partial: 0, not_applicable: 1 }
         );
-        assert_eq!(orientation.reticulum.level, ParityLevel::Partial);
+        assert_eq!(orientation.reticulum.level, ParityLevel::Complete);
         assert_eq!(
             orientation.reticulum.complete_ratio,
-            ParityRatio { numerator: 1_493, denominator: 1_608 }
+            ParityRatio { numerator: 1_608, denominator: 1_608 }
         );
         assert_eq!(
             orientation.reticulum.inventory,
-            ParityInventory { total: 1_608, complete: 1_493, partial: 115, not_applicable: 0 }
+            ParityInventory { total: 1_608, complete: 1_608, partial: 0, not_applicable: 0 }
         );
         assert_eq!(orientation.lxmf.level, ParityLevel::Complete);
         assert_eq!(

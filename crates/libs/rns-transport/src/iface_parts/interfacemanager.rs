@@ -50,12 +50,14 @@ impl InterfaceManager {
             mtu,
             role,
             mode,
+            gravity: 0,
             outgoing: true,
             announce_queue: VecDeque::new(),
             announce_allowed_at: Instant::now(),
             announce_bitrate_bps: DEFAULT_IFACE_BITRATE_BPS,
             announce_cap_percent: DEFAULT_ANNOUNCE_CAP_PERCENT,
             shared_config: InterfaceSharedConfig::default(),
+            is_shared_instance: false,
             outgoing_pr_history: VecDeque::new(),
         });
 
@@ -242,19 +244,23 @@ impl InterfaceManager {
             return false;
         };
         let mode = source_iface.mode;
+        let gravity = source_iface.gravity;
         let outgoing = source_iface.outgoing;
         let announce_bitrate_bps = source_iface.announce_bitrate_bps;
         let announce_cap_percent = source_iface.announce_cap_percent;
         let shared_config = source_iface.shared_config.clone();
+        let is_shared_instance = source_iface.is_shared_instance;
 
         let Some(target_iface) = self.ifaces.iter_mut().find(|i| i.address == target) else {
             return false;
         };
         target_iface.mode = mode;
+        target_iface.gravity = gravity;
         target_iface.outgoing = outgoing;
         target_iface.announce_bitrate_bps = announce_bitrate_bps;
         target_iface.announce_cap_percent = announce_cap_percent;
         target_iface.shared_config = shared_config;
+        target_iface.is_shared_instance = is_shared_instance;
         true
     }
 
@@ -277,6 +283,7 @@ impl InterfaceManager {
         let host_tx = host_iface.tx_send.clone();
         let mtu = host_iface.mtu;
         let mode = host_iface.mode;
+        let gravity = host_iface.gravity;
 
         // Virtual iface gets its own CancellationToken so it can be
         // stopped (and GC'd by `cleanup()`) independently of the host.
@@ -305,12 +312,14 @@ impl InterfaceManager {
             mtu,
             role,
             mode,
+            gravity,
             outgoing: host_iface.outgoing,
             announce_queue: VecDeque::new(),
             announce_allowed_at: Instant::now(),
             announce_bitrate_bps: host_iface.announce_bitrate_bps,
             announce_cap_percent: host_iface.announce_cap_percent,
             shared_config: host_iface.shared_config.clone(),
+            is_shared_instance: host_iface.is_shared_instance,
             outgoing_pr_history: VecDeque::new(),
         });
 
@@ -335,22 +344,6 @@ impl InterfaceManager {
         }
         self.cleanup();
         stopped
-    }
-
-    /// Drops every pending announce and returns the number removed.
-    ///
-    /// This mirrors Python Reticulum's `Transport.drop_announce_queues()`
-    /// management operation while keeping queue ownership inside the
-    /// interface manager.
-    pub fn drop_announce_queues(&mut self) -> usize {
-        self.ifaces
-            .iter_mut()
-            .map(|iface| {
-                let dropped = iface.announce_queue.len();
-                iface.announce_queue.clear();
-                dropped
-            })
-            .sum()
     }
 
     /// Test-only: returns the number of tracked ifaces (live or stopped).

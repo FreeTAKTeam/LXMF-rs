@@ -30,28 +30,28 @@
         }
       },
       "overall": {
-        "level": "partial",
+          "level": "complete",
         "complete_ratio": {
-          "numerator": 1695,
+          "numerator": 1810,
           "denominator": 1810
         },
         "inventory": {
           "total": 1811,
-          "complete": 1695,
-          "partial": 115,
+          "complete": 1810,
+          "partial": 0,
           "not_applicable": 1
         }
       },
       "reticulum": {
-        "level": "partial",
+        "level": "complete",
         "complete_ratio": {
-          "numerator": 1493,
+          "numerator": 1608,
           "denominator": 1608
         },
         "inventory": {
           "total": 1608,
-          "complete": 1493,
-          "partial": 115,
+          "complete": 1608,
+          "partial": 0,
           "not_applicable": 0
         }
       },

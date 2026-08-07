@@ -1,4 +1,18 @@
 impl RpcDaemon {
+    pub fn is_blackholed(&self, identity_hash: &str) -> Result<bool, std::io::Error> {
+        let identity_hash = normalize_blackhole_identity_hash(identity_hash).ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "identity hash must be 16 bytes encoded as hexadecimal",
+            )
+        })?;
+        let guard = self
+            .blackholed_identities
+            .lock()
+            .expect("blackholed_identities mutex poisoned");
+        Ok(guard.contains_key(identity_hash.as_str()))
+    }
+
     fn handle_rpc_legacy_blackhole_identity(
         &self,
         request: RpcRequest,

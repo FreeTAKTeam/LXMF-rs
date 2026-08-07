@@ -19,6 +19,9 @@ struct ResourceSender {
     max_retries: u8,
     retries_left: u8,
     status: ResourceStatus,
+    /// Lowest part index the peer may request. Reticulum advances this after
+    /// serving a hashmap update and silently ignores older hashes.
+    receiver_min_consecutive_height: usize,
 }
 
 enum OutboundResourcePoll {
@@ -243,6 +246,7 @@ impl ResourceSender {
             max_retries: 0,
             retries_left: 0,
             status: ResourceStatus::None,
+            receiver_min_consecutive_height: 0,
         })
     }
 
@@ -313,8 +317,16 @@ impl ResourceSender {
 
         let mut sent_any = false;
         let mut scratch_packet = Packet::default();
+        let search_start = self.receiver_min_consecutive_height;
+        let search_end = search_start
+            .saturating_add(COLLISION_GUARD_SIZE)
+            .min(self.map_hashes.len());
         for hash in &request.requested_hashes {
-            if let Some(index) = self.map_hashes.iter().position(|entry| entry == hash) {
+            if let Some(index) = self.map_hashes[search_start..search_end]
+                .iter()
+                .position(|entry| entry == hash)
+                .map(|index| index + search_start)
+            {
                 if let Some(part) = self.parts.get(index) {
                     if build_link_packet_into(
                         link,
@@ -350,11 +362,25 @@ impl ResourceSender {
 
         if request.hashmap_exhausted {
             if let Some(last_hash) = request.last_map_hash {
-                if let Some(last_index) =
-                    self.map_hashes.iter().position(|entry| *entry == last_hash)
-                {
-                    let next_segment = (last_index / self.hashmap_segment_len) + 1;
-                    if next_segment * self.hashmap_segment_len < self.map_hashes.len() {
+                let part_index = self.map_hashes[search_start..search_end]
+                    .iter()
+                    .position(|entry| *entry == last_hash)
+                    .map(|index| search_start + index + 1)
+                    .unwrap_or(search_end);
+                self.receiver_min_consecutive_height =
+                    part_index.saturating_sub(1 + WINDOW_MAX_FAST);
+                if part_index % self.hashmap_segment_len != 0 {
+                    log::error!(
+                        "resource sequencing error hash={} part_index={} segment_len={}",
+                        self.resource_hash,
+                        part_index,
+                        self.hashmap_segment_len
+                    );
+                    self.status = ResourceStatus::Failed;
+                    return;
+                }
+                let next_segment = part_index / self.hashmap_segment_len;
+                if next_segment * self.hashmap_segment_len < self.map_hashes.len() {
                         let update = ResourceHashUpdate {
                             resource_hash: self.resource_hash,
                             segment: next_segment as u32,
@@ -376,7 +402,6 @@ impl ResourceSender {
                                 self.status = ResourceStatus::Failed;
                             }
                         }
-                    }
                 }
             }
         }

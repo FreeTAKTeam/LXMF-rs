@@ -235,6 +235,7 @@ pub struct Destination<I: HashIdentity, D: Direction, T: Type> {
     pub r#type: PhantomData<T>,
     pub identity: I,
     pub desc: DestinationDesc,
+    max_request_size: Option<usize>,
     ratchet_state: RatchetState,
     path_responses: BTreeMap<Vec<u8>, (Instant, Packet)>,
     path_response_queue: VecDeque<(Vec<u8>, Instant)>,

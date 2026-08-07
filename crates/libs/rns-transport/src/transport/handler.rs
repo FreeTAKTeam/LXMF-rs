@@ -1,6 +1,7 @@
 use super::diag;
 use super::wire_encryption::should_encrypt_packet;
 use super::*;
+use crate::iface::InterfaceMode;
 
 impl TransportHandler {
     async fn note_link_packet_sent(&self, packet: &Packet) {
@@ -215,16 +216,6 @@ impl TransportHandler {
             .send_with_announce_policy(message, announce_policy)
             .await;
         if dispatch.sent_ifaces > 0 || dispatch.queued_ifaces > 0 {
-            self.note_link_packet_sent(&packet).await;
-        }
-        dispatch
-    }
-
-    pub(super) async fn send_recursive_path_request(&self, message: TxMessage) -> TxDispatchTrace {
-        let packet = message.packet.clone();
-        self.packet_cache.lock().await.update(&packet);
-        let dispatch = self.iface_manager.lock().await.send_recursive_path_request(message).await;
-        if dispatch.sent_ifaces > 0 {
             self.note_link_packet_sent(&packet).await;
         }
         dispatch
@@ -498,3 +489,5 @@ impl TransportHandler {
         }
     }
 }
+
+include!("handler_parts/path_request.rs");

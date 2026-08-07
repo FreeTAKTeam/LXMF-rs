@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last reassessed: 2026-08-06
+Last reassessed: 2026-08-07
 
 This file is the repository-level source of truth for parity posture, release
 confidence, and execution order. Detailed row-level status lives in:
@@ -9,8 +9,8 @@ confidence, and execution order. Detailed row-level status lives in:
 - `docs/status/lxmf-parity-matrix.md`
 - `docs/status/software-parity-ledger.md`
 
-The software parity ledger maps current software/protocol/runtime partial rows
-into implementation-ready work packets and explicitly defers hardware/HIL and
+The software parity ledger maps software/protocol/runtime parity rows into
+implementation-ready work packets and explicitly defers hardware/HIL and
 external-client evidence.
 
 Historical plans and issue lists explain how work was approached; they do not
@@ -18,13 +18,14 @@ override these status files.
 
 ## Current Position
 
-LXMF-rs retains the v0.9.5 SDK-access baseline, but mapped Reticulum software
-parity is now partial against the pinned RNS 1.4.2 reference. The 1.4.2
-reassessment adds gravity-based routing, dynamic path rebalancing,
-request/response size controls, boundary path-request behavior, and expanded
-interface statistics to the tracked gap set. The strict audit also keeps the
-Python `rngit` remote client/server, repository service, and work-item API
-partial because Rust currently provides only isolated local bundle workflows.
+LXMF-rs retains the v0.9.5 SDK-access baseline and now reaches complete
+software-surface parity against the pinned RNS 1.4.2 reference. The focused
+reassessment covers gravity-based routing, dynamic path rebalancing,
+request/response size controls, boundary path-request behavior, resource
+serving-window enforcement, blocked-IP statistics, typed runtime/lifecycle
+policy surfaces, and the full `rngit` client/server repository, release,
+permission, work-item, and transport-neutral request surface. The legacy RPC
+return framing helper is also implemented and tested.
 
 The project is best described by capability level:
 
@@ -33,8 +34,8 @@ The project is best described by capability level:
 | Wire compatible | achieved | Core Reticulum packet/identity primitives and LXMF message encodings are implemented and tested. |
 | Direct-message interoperable | achieved | Selected bidirectional Rust/Python direct, link, channel, paper, and daemon paths are exercised in CI. |
 | Propagation interoperable | achieved | Propagated delivery, complete Python-only `LXMPeer.py` lifecycle coverage, and Python-reference propagation router fetch/download/sync lifecycle coverage are implemented and tested. |
-| Operationally substitutable | partial against RNS 1.4.2 | The prior software-controlled runtime remains usable, but new 1.4.2 routing and policy behavior is not yet fully implemented. |
-| Full Python software surface parity | partial | The strict inventory reports 1,695 complete, 115 partial, and 1 provenance-backed not-applicable entry. |
+| Operationally substitutable | achieved against RNS 1.4.2 | The software-controlled runtime includes the focused 1.4.2 routing, policy, and `rngit` repository-service slices. |
+| Full Python software surface parity | achieved | The strict inventory reports 1,810 complete, 0 partial, and 1 provenance-backed not-applicable entry. |
 | ZeroMQ SDK-access parity | achieved in v0.9.5 implementation | Generated classification and daemon-operation inventory live in `sdk-zmq-parity.json`; release evidence must still pass all gates. |
 
 ## v0.9.8 Release Candidate
@@ -61,8 +62,8 @@ capability status in the table above changes.
 Local release readiness is **PASS locally; hosted validation pending**. The
 validated candidate commit is `0c494a53c08141a0cbb9829278006f888af25c5c`.
 Workspace metadata is aligned to `0.9.8`; this release explicitly accepts the
-documented partial
-Python/RNS inventory (1,695 complete, 115 partial, and one
+documented complete
+Python/RNS inventory (1,810 complete, 0 partial, and one
 provenance-backed not-applicable); the release gate checks inventory
 consistency without requiring 100% completion. Hosted CI and pinned-Python
 interoperability are required on the exact candidate commit.
@@ -149,7 +150,7 @@ stale or unmapped entries.
 
 The RNS 1.2.2 baseline recorded **1,664 implementation-complete, 0 partial,
 and 1 provenance-backed not-applicable entry across 1,665 entries**. The
-current RNS 1.4.2 inventory records **1,695 implementation-complete, 115
+current RNS 1.4.2 inventory records **1,810 implementation-complete, 0
 partial, and 1 provenance-backed not-applicable entry across 1,811 entries**.
 Documentation CI checks inventory drift; the release gate continues to require
 zero partial entries. SDK negotiation and daemon runtime status expose this as
@@ -1528,10 +1529,9 @@ Scoped release evidence is split as follows:
 
 ## Remaining Release Blockers
 
-The v0.9.8 candidate base is `9f12fb4e`. The release policy accepts the
-documented 115 partial Python/RNS inventory, and the non-strict inventory check
-does not require full completion. Promotion is gated by an exact reviewed
-commit, the complete local release gate, hosted CI, and pinned-Python
+The v0.9.8 candidate base is `9f12fb4e`. The release policy now requires the
+complete pinned Python/RNS inventory; promotion remains gated by an exact
+reviewed commit, the complete local release gate, hosted CI, and pinned-Python
 interoperability. The exact candidate currently has a reproducible blocker in
 three resource-backed Python channel request/response cases; no RC or final
 publication is authorized until those tests pass on the pinned workflow.

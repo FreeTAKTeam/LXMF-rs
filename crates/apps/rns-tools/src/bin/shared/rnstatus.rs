@@ -24,6 +24,12 @@ struct Cli {
     #[arg(long)]
     json: bool,
 
+    #[arg(short = 's', long, value_name = "FIELD", help = "Sort interfaces by gravity (or g)")]
+    sort: Option<String>,
+
+    #[arg(short = 'r', long, help = "Reverse interface sorting")]
+    reverse: bool,
+
     #[arg(long, value_name = "INTERFACE")]
     weave_display: Option<String>,
 }
@@ -41,8 +47,11 @@ fn main() -> std::process::ExitCode {
 
 fn run(cli: &Cli, output: &mut dyn Write) -> io::Result<()> {
     let response = rpc_call(cli, 1, "daemon_status_ex")?;
-    let status = ensure_rpc_ok(response, "daemon_status_ex")?
+    let mut status = ensure_rpc_ok(response, "daemon_status_ex")?
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing daemon status"))?;
+    if let Some(sort) = cli.sort.as_deref() {
+        sort_interfaces(&mut status, sort, cli.reverse)?;
+    }
     if let Some(interface_name) = cli.weave_display.as_deref() {
         let weave_status = find_weave_status(&status, interface_name)?;
         if cli.json {
@@ -259,9 +268,60 @@ fn write_human_status(output: &mut dyn Write, status: &Value) -> io::Result<()> 
             .unwrap_or_else(|| "-".to_string());
         let endpoint = interface_endpoint(interface);
         let runtime = interface_runtime(interface);
-        writeln!(output, "{name:<24} {kind:<16} {enabled:<8} {endpoint:<22} {runtime}")?;
+        let annotations = interface_annotations(interface);
+        writeln!(output, "{name:<24} {kind:<16} {enabled:<8} {endpoint:<22} {runtime}{annotations}")?;
     }
     Ok(())
+}
+
+fn sort_interfaces(status: &mut Value, field: &str, reverse: bool) -> io::Result<()> {
+    let field = field.to_ascii_lowercase();
+    if field != "gravity" && field != "g" {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("unsupported interface sort field {field:?}; use gravity or g"),
+        ));
+    }
+    let Some(interfaces) = status.get_mut("interfaces").and_then(Value::as_array_mut) else {
+        return Ok(());
+    };
+    interfaces.sort_by_key(interface_gravity);
+    if !reverse {
+        interfaces.reverse();
+    }
+    Ok(())
+}
+
+fn interface_gravity(interface: &Value) -> i64 {
+    interface
+        .get("gravity")
+        .and_then(Value::as_i64)
+        .or_else(|| interface.get("settings").and_then(|settings| settings.get("gravity")).and_then(Value::as_i64))
+        .unwrap_or(0)
+}
+
+fn interface_blocked_ip_count(interface: &Value) -> usize {
+    let value = interface
+        .get("blocked_ips")
+        .or_else(|| interface.get("settings").and_then(|settings| settings.get("blocked_ips")));
+    match value {
+        Some(value) if value.is_array() => value.as_array().map_or(0, Vec::len),
+        Some(value) => value.as_u64().unwrap_or(0) as usize,
+        None => 0,
+    }
+}
+
+fn interface_annotations(interface: &Value) -> String {
+    let gravity = interface_gravity(interface);
+    let blocked_ips = interface_blocked_ip_count(interface);
+    let mut annotations = String::new();
+    if gravity != 0 {
+        annotations.push_str(&format!(", gravity {gravity}"));
+    }
+    if blocked_ips > 0 {
+        annotations.push_str(&format!(", blocked_ips {blocked_ips}"));
+    }
+    annotations
 }
 
 fn write_propagation_status(output: &mut dyn Write, status: &Value) -> io::Result<()> {
@@ -977,6 +1037,26 @@ mod tests {
         assert!(output.contains("uplink"));
         assert!(output.contains("tcp_server"));
         assert!(output.contains("failed (bind denied)"));
+    }
+
+    #[test]
+    fn status_sort_and_display_match_python_gravity_and_blocked_ip_fields() {
+        let mut status = json!({
+            "interfaces": [
+                {"name": "low", "settings": {"gravity": -2, "blocked_ips": 1}},
+                {"name": "high", "gravity": 7, "blocked_ips": ["192.0.2.1", "192.0.2.2"]}
+            ]
+        });
+        sort_interfaces(&mut status, "g", false).expect("gravity sort");
+        assert_eq!(status["interfaces"][0]["name"], "high");
+
+        let mut output = Vec::new();
+        write_human_status(&mut output, &status).expect("write status");
+        let output = String::from_utf8(output).expect("utf8");
+        assert!(output.contains("gravity 7"));
+        assert!(output.contains("blocked_ips 2"));
+        assert!(output.contains("gravity -2"));
+        assert!(output.contains("blocked_ips 1"));
     }
 
     #[test]

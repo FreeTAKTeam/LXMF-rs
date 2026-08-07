@@ -37,6 +37,7 @@ fn allows_announce_broadcast(
                             | InterfaceMode::PointToPoint
                             | InterfaceMode::AccessPoint
                             | InterfaceMode::Gateway
+                            | InterfaceMode::Internal
                     )
                 )
         }
@@ -50,10 +51,14 @@ fn allows_announce_broadcast(
                             | InterfaceMode::AccessPoint
                             | InterfaceMode::Boundary
                             | InterfaceMode::Gateway
+                            | InterfaceMode::Internal
                     )
                 )
         }
-        InterfaceMode::Full | InterfaceMode::PointToPoint | InterfaceMode::Gateway => true,
+        InterfaceMode::Full
+        | InterfaceMode::PointToPoint
+        | InterfaceMode::Gateway
+        | InterfaceMode::Internal => true,
     }
 }
 

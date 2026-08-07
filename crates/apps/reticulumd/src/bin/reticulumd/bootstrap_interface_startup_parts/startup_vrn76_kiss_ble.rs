@@ -322,6 +322,7 @@ fn apply_interface_runtime_config(
     address: AddressHash,
     iface: &InterfaceConfig,
 ) {
+    manager.set_gravity(address, iface.interface_gravity());
     manager.set_outgoing(address, iface.outgoing());
     if iface.bitrate.is_some() || iface.announce_cap.is_some() {
         let (current_bitrate, current_announce_cap) =

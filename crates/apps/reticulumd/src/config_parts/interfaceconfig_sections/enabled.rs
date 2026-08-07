@@ -22,6 +22,7 @@ impl InterfaceConfig {
                     .insert("interface_mode".to_string(), JsonValue::String(mode.as_str().into()));
             }
         }
+        insert_opt_i64(&mut settings, "gravity", self.gravity);
         insert_opt_bool(&mut settings, "outgoing", self.outgoing);
         insert_opt_u64(&mut settings, "bitrate", self.bitrate);
         insert_opt_u64(&mut settings, "announce_cap", self.announce_cap);
@@ -124,6 +125,22 @@ impl InterfaceConfig {
                 insert_opt_bool(&mut settings, "prefer_ipv6", self.prefer_ipv6);
                 insert_opt_bool(&mut settings, "i2p_tunneled", self.i2p_tunneled);
                 insert_opt_u64(&mut settings, "mtu", self.mtu.map(|v| v as u64));
+                insert_opt_bool(
+                    &mut settings,
+                    "block_fast_flapping",
+                    self.block_fast_flapping,
+                );
+                insert_opt_f64(
+                    &mut settings,
+                    "fast_flapping_threshold",
+                    self.fast_flapping_threshold,
+                );
+                insert_opt_u64(&mut settings, "fast_flapping_grace", self.fast_flapping_grace);
+                insert_opt_f64(
+                    &mut settings,
+                    "fast_flapping_block_time",
+                    self.fast_flapping_block_time,
+                );
             }
             "backbone_client" => {
                 insert_opt_string(&mut settings, "host", self.host.as_ref());
@@ -501,6 +518,10 @@ impl InterfaceConfig {
         Ok(self.discoverable_mode_override(mode).unwrap_or(mode))
     }
 
+    pub fn interface_gravity(&self) -> i64 {
+        self.gravity.unwrap_or(0)
+    }
+
     fn configured_interface_mode(&self) -> Result<rns_transport::iface::InterfaceMode, String> {
         let Some((field, value)) = self.interface_mode_raw() else {
             return Ok(rns_transport::iface::InterfaceMode::Full);
@@ -510,7 +531,7 @@ impl InterfaceConfig {
             .flatten()
             .ok_or_else(|| {
                 format!(
-                    "{field} must be one of full, access_point, accesspoint, ap, pointtopoint, ptp, roaming, boundary, gateway, gw"
+                    "{field} must be one of full, access_point, accesspoint, ap, pointtopoint, ptp, roaming, boundary, gateway, gw, internal"
                 )
             })
     }

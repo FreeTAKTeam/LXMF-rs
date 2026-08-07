@@ -7,7 +7,7 @@ use crate::{
     destination::RAND_HASH_LENGTH,
     error::RnsError,
     hash::{AddressHash, Hash, ADDRESS_HASH_SIZE, HASH_SIZE},
-    iface::InterfaceMode,
+    iface::{InterfaceMode, InterfacePolicy},
     packet::Packet,
 };
 use rmpv::Value as RmpValue;
@@ -66,6 +66,16 @@ impl PathEntry {
 
 pub struct PathTable {
     map: HashMap<AddressHash, PathEntry>,
+}
+
+pub(crate) struct AnnouncePolicyInput<'a, IncomingPolicy, ExistingPolicy> {
+    pub(crate) announce: &'a Packet,
+    pub(crate) transport_id: Option<AddressHash>,
+    pub(crate) iface: AddressHash,
+    pub(crate) random_blob: RandomBlob,
+    pub(crate) incoming_policy: IncomingPolicy,
+    pub(crate) now: Instant,
+    pub(crate) policy_for_iface: ExistingPolicy,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -147,46 +157,59 @@ impl PathTable {
         self.map.get(destination).map_or(super::PATHFINDER_M as u8, |entry| entry.hops)
     }
 
+    #[cfg(test)]
     pub fn handle_announce(
         &mut self,
         announce: &Packet,
         transport_id: Option<AddressHash>,
         iface: AddressHash,
         random_blob: RandomBlob,
-        mode_for_iface: impl FnMut(&AddressHash) -> Option<InterfaceMode>,
+        mut mode_for_iface: impl FnMut(&AddressHash) -> Option<InterfaceMode>,
     ) -> bool {
-        self.handle_announce_at(
+        self.handle_announce_with_policy(AnnouncePolicyInput {
             announce,
             transport_id,
             iface,
             random_blob,
-            Instant::now(),
-            mode_for_iface,
-        )
+            incoming_policy: |_: &AddressHash| None,
+            now: Instant::now(),
+            policy_for_iface: |address: &AddressHash| {
+                mode_for_iface(address).map(|mode| InterfacePolicy { mode, gravity: 0 })
+            },
+        })
     }
 
-    fn handle_announce_at(
+    pub fn handle_announce_with_policy<IncomingPolicy, ExistingPolicy>(
         &mut self,
-        announce: &Packet,
-        transport_id: Option<AddressHash>,
-        iface: AddressHash,
-        random_blob: RandomBlob,
-        now: Instant,
-        mode_for_iface: impl FnMut(&AddressHash) -> Option<InterfaceMode>,
-    ) -> bool {
+        input: AnnouncePolicyInput<'_, IncomingPolicy, ExistingPolicy>,
+    ) -> bool
+    where
+        IncomingPolicy: FnOnce(&AddressHash) -> Option<InterfacePolicy>,
+        ExistingPolicy: FnMut(&AddressHash) -> Option<InterfacePolicy>,
+    {
+        let AnnouncePolicyInput {
+            announce,
+            transport_id,
+            iface,
+            random_blob,
+            incoming_policy,
+            now,
+            mut policy_for_iface,
+        } = input;
         let hops = announce.header.hops;
         let announce_emitted = random_blob_timebase(&random_blob);
         let mut random_blobs = Vec::new();
 
         if let Some(existing_entry) = self.map.get(&announce.destination) {
             random_blobs.clone_from(&existing_entry.random_blobs);
-            if !should_replace_path(
+            if !should_replace_path_with_policy(
                 existing_entry,
                 hops,
                 &random_blob,
                 announce_emitted,
+                incoming_policy(&iface),
                 now,
-                mode_for_iface,
+                &mut policy_for_iface,
             ) {
                 return false;
             }
@@ -198,17 +221,18 @@ impl PathTable {
         }
 
         let received_from = transport_id.unwrap_or(announce.destination);
-        let new_entry = PathEntry {
-            timestamp: now,
-            received_from,
-            hops,
-            iface,
-            packet_hash: announce.hash(),
-            random_blobs,
-            state: PathState::Unknown,
-        };
-
-        self.map.insert(announce.destination, new_entry);
+        self.map.insert(
+            announce.destination,
+            PathEntry {
+                timestamp: now,
+                received_from,
+                hops,
+                iface,
+                packet_hash: announce.hash(),
+                random_blobs,
+                state: PathState::Unknown,
+            },
+        );
 
         log::info!(
             "{} is now reachable over {} hops through {} on iface {}",
@@ -218,6 +242,29 @@ impl PathTable {
             iface,
         );
         true
+    }
+
+    #[cfg(test)]
+    fn handle_announce_at(
+        &mut self,
+        announce: &Packet,
+        transport_id: Option<AddressHash>,
+        iface: AddressHash,
+        random_blob: RandomBlob,
+        now: Instant,
+        mut mode_for_iface: impl FnMut(&AddressHash) -> Option<InterfaceMode>,
+    ) -> bool {
+        self.handle_announce_with_policy(AnnouncePolicyInput {
+            announce,
+            transport_id,
+            iface,
+            random_blob,
+            incoming_policy: |_: &AddressHash| None,
+            now,
+            policy_for_iface: |address: &AddressHash| {
+                mode_for_iface(address).map(|mode| InterfacePolicy { mode, gravity: 0 })
+            },
+        })
     }
 
     #[cfg(test)]
@@ -376,7 +423,8 @@ impl PathTable {
 mod path_table_codec;
 pub(super) use path_table_codec::{
     bounded_random_blobs, decode_python_entry, decode_random_blobs, newest_random_blob_timebase,
-    path_expired_for_mode, path_timeout_for_mode, random_blob_timebase, should_replace_path,
+    path_expired_for_mode, path_timeout_for_mode, random_blob_timebase,
+    should_replace_path_with_policy,
 };
 
 include!("path_table_tunnel_restore.rs");

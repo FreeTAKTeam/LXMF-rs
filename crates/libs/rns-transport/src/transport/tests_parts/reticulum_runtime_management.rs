@@ -1,3 +1,5 @@
+use crate::iface::InterfaceSharedConfig;
+
 #[tokio::test]
 async fn packet_signal_cache_returns_latest_value_and_evicts_like_python() {
     let identity = PrivateIdentity::new_from_rand(OsRng);
@@ -119,6 +121,50 @@ async fn network_identity_discovery_and_packet_cache_match_python_management_con
         .expect("cached packet");
     assert_eq!(cached.packet, packet);
     assert_eq!(cached.interface_reference.as_deref(), Some("iface"));
+}
+
+#[tokio::test]
+async fn transport_runtime_helpers_match_shared_instance_and_hop_delta_policy() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut config = TransportConfig::new("runtime-helpers", &identity, true);
+    config.set_local_hops_delta(3);
+    let transport = Transport::new(config);
+
+    let (ordinary_iface, shared_iface) = {
+        let manager = transport.iface_manager();
+        let mut manager = manager.lock().await;
+        let ordinary_iface = *manager.new_channel(4).address();
+        let shared_iface = *manager.new_channel(4).address();
+        assert!(manager.set_shared_config(
+            shared_iface,
+            InterfaceSharedConfig {
+                network_name: Some("shared".to_string()),
+                ..InterfaceSharedConfig::default()
+            },
+        ));
+        assert!(manager.set_shared_instance(shared_iface, true));
+        (ordinary_iface, shared_iface)
+    };
+
+    let interfaces = transport.interface_hashes().await;
+    assert!(interfaces.contains(&ordinary_iface));
+    assert!(interfaces.contains(&shared_iface));
+    assert_eq!(transport.internal_identity().await, *identity.address_hash());
+    assert!(!transport.is_shared_instance(&ordinary_iface).await);
+    assert!(transport.is_shared_instance(&shared_iface).await);
+
+    let mut link_packet = Packet::default();
+    link_packet.header.destination_type = DestinationType::Link;
+    assert!(transport.should_apply_delta(&link_packet, &ordinary_iface).await);
+    assert!(!transport.should_apply_delta(&link_packet, &shared_iface).await);
+
+    link_packet.header.hops = 1;
+    assert!(!transport.should_apply_delta(&link_packet, &ordinary_iface).await);
+    link_packet.header.hops = 0;
+    link_packet.header.destination_type = DestinationType::Plain;
+    assert!(!transport.should_apply_delta(&link_packet, &ordinary_iface).await);
+
+    assert_eq!(transport.void_queues().await, 0);
 }
 
 #[tokio::test]

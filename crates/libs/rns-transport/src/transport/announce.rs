@@ -1,4 +1,5 @@
 use super::announce_limits::AnnounceLimitAction;
+use super::path_table::AnnouncePolicyInput;
 use super::*;
 use crate::identity::Identity;
 use crate::packet::{Header, HeaderType, PropagationType};
@@ -81,20 +82,24 @@ async fn process_announce<'a>(
     } else {
         let existing_path_iface =
             handler.path_table.get(&packet.destination).map(|entry| entry.iface);
-        let existing_path_mode = if let Some(existing_iface) = existing_path_iface {
-            handler.iface_manager.lock().await.mode(&existing_iface)
-        } else {
-            None
+        let (incoming_policy, existing_path_policy) = {
+            let manager = handler.iface_manager.lock().await;
+            (
+                manager.policy(&route_iface),
+                existing_path_iface.and_then(|iface| manager.policy(&iface)),
+            )
         };
-        handler.path_table.handle_announce(
-            packet,
-            packet.transport,
-            route_iface,
-            announce.random_blob,
-            |iface: &AddressHash| {
-                (Some(*iface) == existing_path_iface).then_some(existing_path_mode).flatten()
+        handler.path_table.handle_announce_with_policy(AnnouncePolicyInput {
+            announce: packet,
+            transport_id: packet.transport,
+            iface: route_iface,
+            random_blob: announce.random_blob,
+            incoming_policy: |_: &AddressHash| incoming_policy,
+            now: std::time::Instant::now(),
+            policy_for_iface: |iface: &AddressHash| {
+                (Some(*iface) == existing_path_iface).then_some(existing_path_policy).flatten()
             },
-        )
+        })
     };
 
     if path_accepted {

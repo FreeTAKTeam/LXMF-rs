@@ -6,7 +6,7 @@ use std::io;
 use std::time::Duration;
 
 use super::record_settings::interface_record_shared_config;
-use super::record_settings::{setting_bool, setting_f64, setting_str, setting_u64};
+use super::record_settings::{setting_bool, setting_f64, setting_i64, setting_str, setting_u64};
 
 pub(crate) fn validate_hot_apply_uniqueness(
     interfaces: &[InterfaceRecord],
@@ -458,6 +458,7 @@ pub(crate) fn apply_record_runtime_config(
     record: &InterfaceRecord,
 ) {
     manager.set_mode(address, interface_record_mode(record));
+    manager.set_gravity(address, setting_i64(record, "gravity").unwrap_or(0));
     manager.set_outgoing(address, setting_bool(record, "outgoing").unwrap_or(true));
     manager.set_announce_pacing(
         address,

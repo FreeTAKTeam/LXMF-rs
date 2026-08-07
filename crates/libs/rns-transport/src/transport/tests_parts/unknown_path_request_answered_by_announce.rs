@@ -290,19 +290,73 @@ async fn unknown_path_recursive_discovery_obeys_python_interface_modes() {
             "{mode:?} must not trigger recursive unknown-path discovery"
         );
 
-        handle_announce(
-            &announce,
-            handler.lock().await,
-            *learned_channel.address(),
-            crate::iface::IfaceSource::None,
-        )
-        .await;
-        assert!(
-            matches!(
+        if mode != InterfaceMode::Boundary {
+            handle_announce(
+                &announce,
+                handler.lock().await,
+                *learned_channel.address(),
+                crate::iface::IfaceSource::None,
+            )
+            .await;
+            assert!(matches!(
                 requester_channel.tx_channel.try_recv(),
                 Err(tokio::sync::mpsc::error::TryRecvError::Empty)
-            ),
-            "{mode:?} must not be retained as a waiting discovery requester"
-        );
+            ));
+        }
     }
+}
+
+#[tokio::test]
+async fn boundary_unknown_discovery_is_forwarded_only_to_boundary_and_gateway_ifaces() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut config = TransportConfig::new("boundary-discovery", &local_identity, true);
+    config.set_retransmit(true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+    let (mut boundary_channel, mut gateway_channel, mut full_channel, requester_channel) = {
+        let manager = transport.iface_manager();
+        let mut manager = manager.lock().await;
+        let boundary = manager.new_channel_with_role_and_mode(
+            16,
+            crate::iface::IfaceRole::Unicast,
+            InterfaceMode::Boundary,
+        );
+        let gateway = manager.new_channel_with_role_and_mode(
+            16,
+            crate::iface::IfaceRole::Unicast,
+            InterfaceMode::Gateway,
+        );
+        let full = manager.new_channel_with_role_and_mode(
+            16,
+            crate::iface::IfaceRole::Unicast,
+            InterfaceMode::Full,
+        );
+        let requester = manager.new_channel_with_role_and_mode(
+            16,
+            crate::iface::IfaceRole::Unicast,
+            InterfaceMode::Boundary,
+        );
+        (boundary, gateway, full, requester)
+    };
+    let requester_iface = *requester_channel.address();
+    let destination = AddressHash::new_from_hash(&Hash::new_from_slice(b"boundary-unknown"));
+    let path_request = {
+        let mut guard = handler.lock().await;
+        guard.path_requests.generate(&destination, Some(vec![0xB1; crate::hash::ADDRESS_HASH_SIZE]))
+    };
+
+    handle_path_request(&path_request, &mut handler.lock().await, requester_iface).await;
+
+    timeout(Duration::from_millis(200), boundary_channel.tx_channel.recv())
+        .await
+        .expect("boundary interface should receive recursive discovery")
+        .expect("boundary recursive discovery packet");
+    timeout(Duration::from_millis(200), gateway_channel.tx_channel.recv())
+        .await
+        .expect("gateway interface should receive recursive discovery")
+        .expect("gateway recursive discovery packet");
+    assert!(matches!(
+        full_channel.tx_channel.try_recv(),
+        Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+    ));
 }

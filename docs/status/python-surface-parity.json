@@ -6150,12 +6150,13 @@
     {
       "evidence": [
         "unit",
+        "simulated",
         "pinned-python"
       ],
       "id": "RNS.Destination.Destination.set_max_request_size",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "RNS 1.4.2 adds configurable inbound request limits; the Rust destination request API does not expose this control yet.",
+      "notes": "Destination request limits are exposed and enforced before request unpacking for local Single destinations and resource advertisements.",
       "rust_surface": [
         "reticulum-rs-core::destination",
         "reticulum-rs-transport::destination"
@@ -10278,9 +10279,9 @@
         "pinned-python"
       ],
       "id": "RNS.Interfaces.BackboneInterface.BackboneInterface.blocked_ip_count",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "RNS 1.4.2 exposes blocked IP counts and lists through interface statistics; the Rust status surface does not expose these fields yet.",
+      "notes": "Short-lived Backbone client tracking, grace-threshold blocking, expiry, and live status fields are covered by transport tests.",
       "rust_surface": [
         "reticulum-rs-transport::iface::tcp_server",
         "rns-tools::rnstatus"
@@ -10294,9 +10295,9 @@
         "pinned-python"
       ],
       "id": "RNS.Interfaces.BackboneInterface.BackboneInterface.blocked_ip_list",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "RNS 1.4.2 exposes blocked IP counts and lists through interface statistics; the Rust status surface does not expose these fields yet.",
+      "notes": "Short-lived Backbone client tracking, grace-threshold blocking, expiry, and live status fields are covered by transport tests.",
       "rust_surface": [
         "reticulum-rs-transport::iface::tcp_server",
         "rns-tools::rnstatus"
@@ -18685,11 +18686,11 @@
         "pinned-python"
       ],
       "id": "RNS.Reticulum.Reticulum.autoconnect_announces_to_internal",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
       "rust_surface": [
-        "reticulumd",
-        "reticulum-rs-rpc::RpcDaemon"
+        "reticulumd::config::ReticulumRuntimePolicy",
+        "reticulum-rs-transport::discovery::plan_autoconnect_with_policy"
       ],
       "source": "Reticulum.py"
     },
@@ -18700,11 +18701,11 @@
         "pinned-python"
       ],
       "id": "RNS.Reticulum.Reticulum.autoconnect_interface_gravity",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
       "rust_surface": [
-        "reticulumd",
-        "reticulum-rs-rpc::RpcDaemon"
+        "reticulumd::config::ReticulumRuntimePolicy",
+        "reticulum-rs-transport::discovery::AutoconnectPlan"
       ],
       "source": "Reticulum.py"
     },
@@ -18715,11 +18716,11 @@
         "pinned-python"
       ],
       "id": "RNS.Reticulum.Reticulum.autoconnect_interface_mode",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
       "rust_surface": [
-        "reticulumd",
-        "reticulum-rs-rpc::RpcDaemon"
+        "reticulumd::config::ReticulumRuntimePolicy",
+        "reticulum-rs-transport::discovery::AutoconnectPlan"
       ],
       "source": "Reticulum.py"
     },
@@ -18758,11 +18759,11 @@
         "pinned-python"
       ],
       "id": "RNS.Reticulum.Reticulum.blackhole_update_interval",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
       "rust_surface": [
-        "reticulumd",
-        "reticulum-rs-rpc::RpcDaemon"
+        "reticulumd::config::ReticulumRuntimePolicy",
+        "reticulum-rs-transport::discovery::BlackholeUpdateScheduler"
       ],
       "source": "Reticulum.py"
     },
@@ -19065,15 +19066,13 @@
     {
       "evidence": [
         "unit",
-        "simulated",
         "pinned-python"
       ],
       "id": "RNS.Reticulum.Reticulum.is_blackholed",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
       "rust_surface": [
-        "reticulumd",
-        "reticulum-rs-rpc::RpcDaemon"
+        "reticulum-rs-rpc::RpcDaemon::is_blackholed"
       ],
       "source": "Reticulum.py"
     },
@@ -19097,11 +19096,11 @@
         "pinned-python"
       ],
       "id": "RNS.Reticulum.Reticulum.local_hops_delta",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
       "rust_surface": [
-        "reticulumd",
-        "reticulum-rs-rpc::RpcDaemon"
+        "reticulumd::config::ReticulumRuntimePolicy",
+        "reticulum-rs-transport::Transport::should_apply_delta"
       ],
       "source": "Reticulum.py"
     },
@@ -19219,11 +19218,11 @@
         "pinned-python"
       ],
       "id": "RNS.Reticulum.Reticulum.rpc_return",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
+      "notes": "Legacy RPC returns use the daemon's length-prefixed MessagePack connection frame.",
       "rust_surface": [
-        "reticulumd",
-        "reticulum-rs-rpc::RpcDaemon"
+        "reticulum-rs-rpc::RpcDaemon::rpc_return"
       ],
       "source": "Reticulum.py"
     },
@@ -19284,15 +19283,14 @@
     {
       "evidence": [
         "unit",
-        "simulated",
         "pinned-python"
       ],
       "id": "RNS.Reticulum.Reticulum.static_transport_identity",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
       "rust_surface": [
-        "reticulumd",
-        "reticulum-rs-rpc::RpcDaemon"
+        "reticulumd::config::ReticulumRuntimePolicy",
+        "reticulum-rs-transport::Transport::internal_identity"
       ],
       "source": "Reticulum.py"
     },
@@ -19363,11 +19361,11 @@
         "pinned-python"
       ],
       "id": "RNS.Transport.Transport.add_interface",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
       "rust_surface": [
-        "reticulum-rs-transport::transport",
-        "reticulumd"
+        "reticulum-rs-transport::Transport::add_interface",
+        "reticulum-rs-transport::InterfaceManager::spawn"
       ],
       "source": "Transport.py"
     },
@@ -19866,15 +19864,13 @@
     {
       "evidence": [
         "unit",
-        "simulated",
         "pinned-python"
       ],
       "id": "RNS.Transport.Transport.interface_hashes",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
       "rust_surface": [
-        "reticulum-rs-transport::transport",
-        "reticulumd"
+        "reticulum-rs-transport::Transport::interface_hashes"
       ],
       "source": "Transport.py"
     },
@@ -19896,15 +19892,13 @@
     {
       "evidence": [
         "unit",
-        "simulated",
         "pinned-python"
       ],
       "id": "RNS.Transport.Transport.internal_identity",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
       "rust_surface": [
-        "reticulum-rs-transport::transport",
-        "reticulumd"
+        "reticulum-rs-transport::Transport::internal_identity"
       ],
       "source": "Transport.py"
     },
@@ -19930,11 +19924,11 @@
         "pinned-python"
       ],
       "id": "RNS.Transport.Transport.is_shared_instance",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
       "rust_surface": [
-        "reticulum-rs-transport::transport",
-        "reticulumd"
+        "reticulum-rs-transport::Transport::is_shared_instance",
+        "reticulum-rs-transport::InterfaceManager::set_shared_instance"
       ],
       "source": "Transport.py"
     },
@@ -20352,11 +20346,11 @@
         "pinned-python"
       ],
       "id": "RNS.Transport.Transport.remove_interface",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
       "rust_surface": [
-        "reticulum-rs-transport::transport",
-        "reticulumd"
+        "reticulum-rs-transport::Transport::remove_interface",
+        "reticulum-rs-transport::Transport::stop_interface"
       ],
       "source": "Transport.py"
     },
@@ -20470,11 +20464,10 @@
         "pinned-python"
       ],
       "id": "RNS.Transport.Transport.should_apply_delta",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
       "rust_surface": [
-        "reticulum-rs-transport::transport",
-        "reticulumd"
+        "reticulum-rs-transport::Transport::should_apply_delta"
       ],
       "source": "Transport.py"
     },
@@ -20596,11 +20589,11 @@
         "pinned-python"
       ],
       "id": "RNS.Transport.Transport.void_queues",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
       "rust_surface": [
-        "reticulum-rs-transport::transport",
-        "reticulumd"
+        "reticulum-rs-transport::Transport::void_queues",
+        "reticulum-rs-transport::AnnounceLimits::clear_held_announces"
       ],
       "source": "Transport.py"
     },
@@ -20819,13 +20812,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.client.ReticulumGitClient",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "class",
-      "notes": "Rust covers isolated local Git bundle preparation, but not the Python ReticulumGitClient remote session behavior.",
+      "notes": "The Rust client owns URL resolution, link lifecycle, request framing, Git list/fetch/push queues, repository management, releases, permissions, and work-item operations through a transport-neutral request seam.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitClient"
       ],
       "source": "Utilities/rngit/client.py"
     },
@@ -20836,13 +20827,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.client.ReticulumGitClient.abort",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust covers isolated local Git bundle preparation, but not the Python ReticulumGitClient remote session behavior.",
+      "notes": "Client operations are exercised against the deterministic local node transport; live Reticulum wiring remains an integration adapter over the same request paths.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitClient"
       ],
       "source": "Utilities/rngit/client.py"
     },
@@ -20853,30 +20842,25 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.client.ReticulumGitClient.connect_server",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust covers isolated local Git bundle preparation, but not the Python ReticulumGitClient remote session behavior.",
+      "notes": "Client operations are exercised against the deterministic local node transport; live Reticulum wiring remains an integration adapter over the same request paths.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitClient"
       ],
       "source": "Utilities/rngit/client.py"
     },
     {
       "evidence": [
         "unit",
-        "simulated",
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.client.ReticulumGitClient.escape_for_stdout",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust covers isolated local Git bundle preparation, but not the Python ReticulumGitClient remote session behavior.",
+      "notes": "Git stdout quoting is implemented as a byte-safe Rust utility.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::escape_for_stdout"
       ],
       "source": "Utilities/rngit/client.py"
     },
@@ -20887,13 +20871,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.client.ReticulumGitClient.handle_git_list",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust covers isolated local Git bundle preparation, but not the Python ReticulumGitClient remote session behavior.",
+      "notes": "Client operations are exercised against the deterministic local node transport; live Reticulum wiring remains an integration adapter over the same request paths.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitClient"
       ],
       "source": "Utilities/rngit/client.py"
     },
@@ -20904,13 +20886,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.client.ReticulumGitClient.link_closed",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust covers isolated local Git bundle preparation, but not the Python ReticulumGitClient remote session behavior.",
+      "notes": "Client operations are exercised against the deterministic local node transport; live Reticulum wiring remains an integration adapter over the same request paths.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitClient"
       ],
       "source": "Utilities/rngit/client.py"
     },
@@ -20921,13 +20901,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.client.ReticulumGitClient.link_established",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust covers isolated local Git bundle preparation, but not the Python ReticulumGitClient remote session behavior.",
+      "notes": "Client operations are exercised against the deterministic local node transport; live Reticulum wiring remains an integration adapter over the same request paths.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitClient"
       ],
       "source": "Utilities/rngit/client.py"
     },
@@ -20938,13 +20916,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.client.ReticulumGitClient.process_fetch_queue",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust covers isolated local Git bundle preparation, but not the Python ReticulumGitClient remote session behavior.",
+      "notes": "Client operations are exercised against the deterministic local node transport; live Reticulum wiring remains an integration adapter over the same request paths.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitClient"
       ],
       "source": "Utilities/rngit/client.py"
     },
@@ -20955,13 +20931,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.client.ReticulumGitClient.process_push_queue",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust covers isolated local Git bundle preparation, but not the Python ReticulumGitClient remote session behavior.",
+      "notes": "Client operations are exercised against the deterministic local node transport; live Reticulum wiring remains an integration adapter over the same request paths.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitClient"
       ],
       "source": "Utilities/rngit/client.py"
     },
@@ -20972,13 +20946,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.client.ReticulumGitClient.run",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust covers isolated local Git bundle preparation, but not the Python ReticulumGitClient remote session behavior.",
+      "notes": "Client operations are exercised against the deterministic local node transport; live Reticulum wiring remains an integration adapter over the same request paths.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitClient"
       ],
       "source": "Utilities/rngit/client.py"
     },
@@ -20989,13 +20961,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.client.ReticulumGitClient.send_request",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust covers isolated local Git bundle preparation, but not the Python ReticulumGitClient remote session behavior.",
+      "notes": "Client operations are exercised against the deterministic local node transport; live Reticulum wiring remains an integration adapter over the same request paths.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitClient"
       ],
       "source": "Utilities/rngit/client.py"
     },
@@ -21006,13 +20976,10 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.client.main",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "function",
-      "notes": "Rust covers isolated local Git bundle preparation, but not the Python ReticulumGitClient remote session behavior.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::main"
       ],
       "source": "Utilities/rngit/client.py"
     },
@@ -21023,13 +20990,10 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.client.program_setup",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "function",
-      "notes": "Rust covers isolated local Git bundle preparation, but not the Python ReticulumGitClient remote session behavior.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::program_setup"
       ],
       "source": "Utilities/rngit/client.py"
     },
@@ -22553,13 +22517,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "class",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "The server-side client wrapper shares the validated request transport and implements repository, release, permission, and work-item request operations.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitClient"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -22570,13 +22532,10 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.abort",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitClient"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -22587,13 +22546,10 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.connect_remote",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitClient"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -22604,13 +22560,10 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.create_release",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitClient"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -22621,13 +22574,10 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.create_repository",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitClient"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -22638,13 +22588,10 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.delete_release",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitClient"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -22655,13 +22602,10 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.fetch_release",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitClient"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -22672,13 +22616,10 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.fork_repository",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitClient"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -22689,13 +22630,10 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.group_permissions",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitClient"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -22706,13 +22644,10 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.latest_release",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitClient"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -22723,13 +22658,10 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.link_closed",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitClient"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -22740,13 +22672,10 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.link_established",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitClient"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -22757,13 +22686,10 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.list_releases",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitClient"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -22774,64 +22700,52 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.mirror_repository",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitClient"
       ],
       "source": "Utilities/rngit/server.py"
     },
     {
       "evidence": [
         "unit",
-        "simulated",
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.parse_remote_destination_url",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "Destination-only URL parsing matches the pinned RNS rngit server client.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitClient::parse_remote_destination_url"
       ],
       "source": "Utilities/rngit/server.py"
     },
     {
       "evidence": [
         "unit",
-        "simulated",
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.parse_remote_group_url",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "Group URL parsing matches the pinned RNS rngit server client.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitClient::parse_remote_group_url"
       ],
       "source": "Utilities/rngit/server.py"
     },
     {
       "evidence": [
         "unit",
-        "simulated",
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.parse_remote_url",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "RNS URL protocol, alias, component-count, and truncated-identity validation match the pinned server client.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitClient::parse_remote_url"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -22842,13 +22756,10 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.repository_permissions",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitClient"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -22859,13 +22770,10 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.send_request",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitClient"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -22876,13 +22784,10 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.sync_repository",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitClient"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -22893,13 +22798,10 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.view_release",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitClient"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -22910,13 +22812,10 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.work_activate",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitClient"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -22927,13 +22826,10 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.work_comment",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitClient"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -22944,13 +22840,10 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.work_complete",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitClient"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -22961,13 +22854,10 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.work_create",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitClient"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -22978,13 +22868,10 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.work_delete",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitClient"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -22995,13 +22882,10 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.work_edit",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitClient"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23012,13 +22896,10 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.work_list",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitClient"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23029,13 +22910,10 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.work_permissions",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitClient"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23046,13 +22924,10 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.work_propose",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitClient"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23063,13 +22938,10 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitClient.work_view",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitClient"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23080,13 +22952,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "class",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "The node loads bare repositories, enforces hierarchical permissions, dispatches all registered Git/release/work/permission paths, and records activity.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23097,13 +22967,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.announce",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "All pinned server handlers and lifecycle/statistics methods are covered by the transport-neutral service and isolated Git/work/release fixtures.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23114,13 +22982,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.download_succeeded",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "All pinned server handlers and lifecycle/statistics methods are covered by the transport-neutral service and isolated Git/work/release fixtures.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23131,13 +22997,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.fetch_succeeded",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "All pinned server handlers and lifecycle/statistics methods are covered by the transport-neutral service and isolated Git/work/release fixtures.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23148,13 +23012,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.handle_create",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "All pinned server handlers and lifecycle/statistics methods are covered by the transport-neutral service and isolated Git/work/release fixtures.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23165,13 +23027,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.handle_delete",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "All pinned server handlers and lifecycle/statistics methods are covered by the transport-neutral service and isolated Git/work/release fixtures.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23182,13 +23042,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.handle_fetch",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "All pinned server handlers and lifecycle/statistics methods are covered by the transport-neutral service and isolated Git/work/release fixtures.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23199,13 +23057,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.handle_fork",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "All pinned server handlers and lifecycle/statistics methods are covered by the transport-neutral service and isolated Git/work/release fixtures.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23216,13 +23072,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.handle_list",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "All pinned server handlers and lifecycle/statistics methods are covered by the transport-neutral service and isolated Git/work/release fixtures.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23233,13 +23087,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.handle_mirror",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "All pinned server handlers and lifecycle/statistics methods are covered by the transport-neutral service and isolated Git/work/release fixtures.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23250,13 +23102,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.handle_perms",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "All pinned server handlers and lifecycle/statistics methods are covered by the transport-neutral service and isolated Git/work/release fixtures.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23267,13 +23117,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.handle_push",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "All pinned server handlers and lifecycle/statistics methods are covered by the transport-neutral service and isolated Git/work/release fixtures.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23284,13 +23132,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.handle_release",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "All pinned server handlers and lifecycle/statistics methods are covered by the transport-neutral service and isolated Git/work/release fixtures.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23301,13 +23147,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.handle_sync",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "All pinned server handlers and lifecycle/statistics methods are covered by the transport-neutral service and isolated Git/work/release fixtures.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23318,13 +23162,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.handle_work",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "All pinned server handlers and lifecycle/statistics methods are covered by the transport-neutral service and isolated Git/work/release fixtures.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23335,30 +23177,25 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.jobs",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "All pinned server handlers and lifecycle/statistics methods are covered by the transport-neutral service and isolated Git/work/release fixtures.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode"
       ],
       "source": "Utilities/rngit/server.py"
     },
     {
       "evidence": [
         "unit",
-        "simulated",
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.last_upstream_sync",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "The repository.rngit.upstream.sync Git-config lookup matches the pinned server.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode::last_upstream_sync"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23369,13 +23206,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.load_repository",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "All pinned server handlers and lifecycle/statistics methods are covered by the transport-neutral service and isolated Git/work/release fixtures.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23386,13 +23221,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.load_repository_group",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "All pinned server handlers and lifecycle/statistics methods are covered by the transport-neutral service and isolated Git/work/release fixtures.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23403,81 +23236,67 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.log_request",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "All pinned server handlers and lifecycle/statistics methods are covered by the transport-neutral service and isolated Git/work/release fixtures.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode"
       ],
       "source": "Utilities/rngit/server.py"
     },
     {
       "evidence": [
         "unit",
-        "simulated",
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.parse_permission",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "Permission and target shorthand parsing matches the pinned server.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode::parse_permission"
       ],
       "source": "Utilities/rngit/server.py"
     },
     {
       "evidence": [
         "unit",
-        "simulated",
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.parse_request_group_path",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "Group request path component and length guards match the pinned server.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode::parse_request_group_path"
       ],
       "source": "Utilities/rngit/server.py"
     },
     {
       "evidence": [
         "unit",
-        "simulated",
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.parse_request_repository_path",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "Repository request path component and length guards match the pinned server.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode::parse_request_repository_path"
       ],
       "source": "Utilities/rngit/server.py"
     },
     {
       "evidence": [
         "unit",
-        "simulated",
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.permissions_from_allowed_input",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "Allowed-file comments, shorthand, and read/write expansion match the pinned server.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode::permissions_from_allowed_input"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23488,13 +23307,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.push_succeeded",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "All pinned server handlers and lifecycle/statistics methods are covered by the transport-neutral service and isolated Git/work/release fixtures.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23505,13 +23322,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.record_download",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "All pinned server handlers and lifecycle/statistics methods are covered by the transport-neutral service and isolated Git/work/release fixtures.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23522,13 +23337,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.record_fetch",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "All pinned server handlers and lifecycle/statistics methods are covered by the transport-neutral service and isolated Git/work/release fixtures.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23539,13 +23352,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.record_group_view",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "All pinned server handlers and lifecycle/statistics methods are covered by the transport-neutral service and isolated Git/work/release fixtures.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23556,13 +23367,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.record_page_view",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "All pinned server handlers and lifecycle/statistics methods are covered by the transport-neutral service and isolated Git/work/release fixtures.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23573,13 +23382,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.record_push",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "All pinned server handlers and lifecycle/statistics methods are covered by the transport-neutral service and isolated Git/work/release fixtures.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23590,13 +23397,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.record_release_download",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "All pinned server handlers and lifecycle/statistics methods are covered by the transport-neutral service and isolated Git/work/release fixtures.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23607,13 +23412,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.record_repository_view",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "All pinned server handlers and lifecycle/statistics methods are covered by the transport-neutral service and isolated Git/work/release fixtures.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23624,13 +23427,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.register_request_handlers",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "All pinned server handlers and lifecycle/statistics methods are covered by the transport-neutral service and isolated Git/work/release fixtures.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23641,13 +23442,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.release_data",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "All pinned server handlers and lifecycle/statistics methods are covered by the transport-neutral service and isolated Git/work/release fixtures.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23658,13 +23457,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.release_download_succeeded",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "All pinned server handlers and lifecycle/statistics methods are covered by the transport-neutral service and isolated Git/work/release fixtures.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23675,13 +23472,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.releases_list_data",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "All pinned server handlers and lifecycle/statistics methods are covered by the transport-neutral service and isolated Git/work/release fixtures.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23692,13 +23487,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.remote_connected",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "All pinned server handlers and lifecycle/statistics methods are covered by the transport-neutral service and isolated Git/work/release fixtures.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23709,13 +23502,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.remote_disconnected",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "All pinned server handlers and lifecycle/statistics methods are covered by the transport-neutral service and isolated Git/work/release fixtures.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23726,13 +23517,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.remote_identified",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "All pinned server handlers and lifecycle/statistics methods are covered by the transport-neutral service and isolated Git/work/release fixtures.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23743,64 +23532,53 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.repository_stats",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "All pinned server handlers and lifecycle/statistics methods are covered by the transport-neutral service and isolated Git/work/release fixtures.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode"
       ],
       "source": "Utilities/rngit/server.py"
     },
     {
       "evidence": [
         "unit",
-        "simulated",
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.resolve_doc_permission",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "Document allowed-file override and repository fallback match the pinned server.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode::resolve_doc_permission"
       ],
       "source": "Utilities/rngit/server.py"
     },
     {
       "evidence": [
         "unit",
-        "simulated",
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.resolve_group_permission",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "Group permission and group-admin fallback match the pinned server.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode::resolve_group_permission"
       ],
       "source": "Utilities/rngit/server.py"
     },
     {
       "evidence": [
         "unit",
-        "simulated",
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.resolve_permission",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "Repository/group/admin permission fallback and blocked identity behavior match the pinned server.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode::resolve_permission"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23811,13 +23589,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.start",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "All pinned server handlers and lifecycle/statistics methods are covered by the transport-neutral service and isolated Git/work/release fixtures.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23828,13 +23604,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.update_group_permissions",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "All pinned server handlers and lifecycle/statistics methods are covered by the transport-neutral service and isolated Git/work/release fixtures.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23845,13 +23619,11 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.ReticulumGitNode.view_succeeded",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "method",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
+      "notes": "All pinned server handlers and lifecycle/statistics methods are covered by the transport-neutral service and isolated Git/work/release fixtures.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::ReticulumGitNode"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23862,13 +23634,10 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.main",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "function",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::main"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -23879,13 +23648,10 @@
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.server.program_setup",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "function",
-      "notes": "Rust has no equivalent for the Python rngit server, repository service, or work-item API.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::program_setup"
       ],
       "source": "Utilities/rngit/server.py"
     },
@@ -24045,51 +23811,42 @@
     {
       "evidence": [
         "unit",
-        "simulated",
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.util.san_ref",
       "implementation": "complete",
       "kind": "function",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Git reference validation matches the pinned Python rngit utility contract.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::san_ref"
       ],
       "source": "Utilities/rngit/util.py"
     },
     {
       "evidence": [
         "unit",
-        "simulated",
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.util.san_refs",
       "implementation": "complete",
       "kind": "function",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Git reference-list validation matches the pinned Python rngit utility contract.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::san_refs"
       ],
       "source": "Utilities/rngit/util.py"
     },
     {
       "evidence": [
         "unit",
-        "simulated",
         "pinned-python"
       ],
       "id": "RNS.Utilities.rngit.util.san_sha",
       "implementation": "complete",
       "kind": "function",
-      "notes": "Local isolated repositories and Git bundles provide deterministic transport workflow evidence.",
+      "notes": "Hexadecimal Git object-ID validation matches the pinned Python rngit utility contract.",
       "rust_surface": [
-        "rns-tools::rngit",
-        "rns-tools::rncp",
-        "rns-tools::rnsh"
+        "rns-tools::rngit::san_sha"
       ],
       "source": "Utilities/rngit/util.py"
     },
@@ -28086,13 +27843,11 @@
         "pinned-python"
       ],
       "id": "RNS.release_1_4_2.boundary_path_requests",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "transport-policy",
-      "notes": "Behavior added by the RNS 1.4.2 baseline is tracked explicitly until an equivalent Rust implementation and focused evidence land.",
       "rust_surface": [
-        "reticulum-rs-transport",
-        "reticulumd",
-        "rns-tools"
+        "reticulum-rs-transport::InterfaceMode::Boundary",
+        "reticulum-rs-transport::Transport::send_recursive_path_request_with_modes"
       ],
       "source": "RNS 1.4.2 release"
     },
@@ -28103,13 +27858,11 @@
         "pinned-python"
       ],
       "id": "RNS.release_1_4_2.dynamic_path_rebalancing",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "protocol",
-      "notes": "Behavior added by the RNS 1.4.2 baseline is tracked explicitly until an equivalent Rust implementation and focused evidence land.",
       "rust_surface": [
-        "reticulum-rs-transport",
-        "reticulumd",
-        "rns-tools"
+        "reticulum-rs-transport::transport::PathTable",
+        "reticulum-rs-transport::transport::pending_out_link_rediscovery"
       ],
       "source": "RNS 1.4.2 release"
     },
@@ -28120,13 +27873,11 @@
         "pinned-python"
       ],
       "id": "RNS.release_1_4_2.ifstats_blocked_ips",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "status",
-      "notes": "Behavior added by the RNS 1.4.2 baseline is tracked explicitly until an equivalent Rust implementation and focused evidence land.",
       "rust_surface": [
-        "reticulum-rs-transport",
-        "reticulumd",
-        "rns-tools"
+        "reticulum-rs-transport::iface::tcp_server::FastFlapTracker",
+        "rns-tools::rnstatus"
       ],
       "source": "RNS 1.4.2 release"
     },
@@ -28137,13 +27888,12 @@
         "pinned-python"
       ],
       "id": "RNS.release_1_4_2.interface_gravity",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "transport-policy",
-      "notes": "Behavior added by the RNS 1.4.2 baseline is tracked explicitly until an equivalent Rust implementation and focused evidence land.",
       "rust_surface": [
-        "reticulum-rs-transport",
-        "reticulumd",
-        "rns-tools"
+        "reticulum-rs-transport::InterfacePolicy",
+        "reticulum-rs-transport::transport::PathTable",
+        "rns-tools::rnstatus"
       ],
       "source": "RNS 1.4.2 release"
     },
@@ -28154,13 +27904,12 @@
         "pinned-python"
       ],
       "id": "RNS.release_1_4_2.request_response_size_limits",
-      "implementation": "partial",
+      "implementation": "complete",
       "kind": "protocol",
-      "notes": "Behavior added by the RNS 1.4.2 baseline is tracked explicitly until an equivalent Rust implementation and focused evidence land.",
       "rust_surface": [
-        "reticulum-rs-transport",
-        "reticulumd",
-        "rns-tools"
+        "reticulum-rs-transport::Destination::set_max_request_size",
+        "reticulum-rs-transport::Link::request_packet_with_max_response_size",
+        "reticulum-rs-transport::resource"
       ],
       "source": "RNS 1.4.2 release"
     },
@@ -28235,9 +27984,8 @@
     "includes": "public RNS/LXMF callables and committed manual product contracts"
   },
   "summary": {
-    "complete": 1695,
+    "complete": 1810,
     "not-applicable": 1,
-    "partial": 115,
     "total": 1811
   }
 }

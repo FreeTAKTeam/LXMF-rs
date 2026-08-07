@@ -16,6 +16,7 @@ use crate::serde::Serialize;
 use alloc::string::String;
 
 use super::hdlc::Hdlc;
+use super::tcp_server::{FastFlapPolicy, FastFlapTracker};
 use super::{Interface, InterfaceContext, InterfaceRxSender, InterfaceTxReceiver};
 
 // TCP packet tracing is kept off by default and gated by diagnostics env flags.
@@ -802,6 +803,9 @@ pub struct TcpClient {
     max_reconnect_tries: Option<u64>,
     prefer_ipv6: bool,
     runtime_status: Arc<std::sync::Mutex<TcpRuntimeStatus>>,
+    fast_flap_tracker: Option<FastFlapTracker>,
+    fast_flap_policy: FastFlapPolicy,
+    peer_ip: Option<String>,
 }
 
 impl TcpClient {
@@ -825,6 +829,9 @@ impl TcpClient {
             connect_timeout: Self::DEFAULT_CONNECT_TIMEOUT,
             max_reconnect_tries: None,
             prefer_ipv6: false,
+            fast_flap_tracker: None,
+            fast_flap_policy: FastFlapPolicy::default(),
+            peer_ip: None,
         }
     }
 
@@ -845,6 +852,9 @@ impl TcpClient {
             connect_timeout: Self::DEFAULT_CONNECT_TIMEOUT,
             max_reconnect_tries: None,
             prefer_ipv6: false,
+            fast_flap_tracker: None,
+            fast_flap_policy: FastFlapPolicy::default(),
+            peer_ip: None,
         }
     }
 
@@ -906,6 +916,18 @@ impl TcpClient {
     #[must_use]
     pub fn with_prefer_ipv6(mut self, prefer_ipv6: bool) -> Self {
         self.prefer_ipv6 = prefer_ipv6;
+        self
+    }
+
+    pub(crate) fn with_fast_flap_tracking(
+        mut self,
+        tracker: FastFlapTracker,
+        policy: FastFlapPolicy,
+        peer_ip: Option<String>,
+    ) -> Self {
+        self.fast_flap_tracker = Some(tracker);
+        self.fast_flap_policy = policy;
+        self.peer_ip = peer_ip;
         self
     }
 
@@ -982,6 +1004,9 @@ impl TcpClient {
             connect_timeout,
             max_reconnect_tries,
             prefer_ipv6,
+            fast_flap_tracker,
+            fast_flap_policy,
+            peer_ip,
             runtime_status,
         ) = {
             let guard = context.inner.lock().unwrap();
@@ -994,6 +1019,9 @@ impl TcpClient {
                 guard.connect_timeout,
                 guard.max_reconnect_tries,
                 guard.prefer_ipv6,
+                guard.fast_flap_tracker.clone(),
+                guard.fast_flap_policy,
+                guard.peer_ip.clone(),
                 guard.runtime_status.clone(),
             )
         };
@@ -1146,6 +1174,10 @@ impl TcpClient {
             // a peer that accepts the handshake and then instantly resets
             // gets hammered with an unthrottled redial loop forever.
             let stayed_connected_for = connected_at.elapsed();
+            if let (Some(tracker), Some(peer_ip)) = (fast_flap_tracker.as_ref(), peer_ip.as_deref())
+            {
+                tracker.record_short_connection(peer_ip, stayed_connected_for, fast_flap_policy);
+            }
             if stayed_connected_for < MIN_STABLE_CONNECTION {
                 failed_connect_attempts = failed_connect_attempts.saturating_add(1);
                 runtime_status.lock().expect("tcp runtime status mutex poisoned").mark_reconnecting(format!(

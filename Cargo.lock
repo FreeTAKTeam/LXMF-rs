@@ -2401,6 +2401,8 @@ dependencies = [
  "rand_core 0.6.4",
  "reticulum-rs-rpc",
  "reticulum-rs-transport",
+ "rmp-serde",
+ "rmpv",
  "rns-embedded-core",
  "rns-embedded-runtime",
  "serde_json",

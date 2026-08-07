@@ -82,6 +82,20 @@ fn blackhole_identity_rpc_matches_reticulum_boolean_semantics() {
 }
 
 #[test]
+fn is_blackholed_matches_reticulum_identity_hash_validation() {
+    let daemon = RpcDaemon::test_instance();
+    let identity = "00112233445566778899aabbccddeeff";
+    assert!(!daemon.is_blackholed(identity).expect("initial blackhole check"));
+
+    daemon
+        .handle_rpc(rpc_request(12, "blackhole_identity", json!({ "identity": identity })))
+        .expect("blackhole identity");
+    assert!(daemon.is_blackholed(identity).expect("blackhole check"));
+    assert!(daemon.is_blackholed(&identity.to_ascii_uppercase()).expect("case-insensitive check"));
+    assert!(daemon.is_blackholed("abcd").is_err());
+}
+
+#[test]
 fn blackhole_identity_rpc_requests_associated_path_eviction_once() {
     let daemon = RpcDaemon::test_instance();
     let bridge = Arc::new(BlackholePathLookupBridge::default());

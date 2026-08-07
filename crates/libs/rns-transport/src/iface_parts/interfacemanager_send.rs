@@ -8,11 +8,19 @@ impl InterfaceManager {
         message: TxMessage,
         announce_policy: Option<AnnounceBroadcastPolicy>,
     ) -> TxDispatchTrace {
-        self.send_with_options(message, announce_policy, false).await
+        self.send_with_options(message, announce_policy, false, None).await
     }
 
     pub async fn send_recursive_path_request(&mut self, message: TxMessage) -> TxDispatchTrace {
-        self.send_with_options(message, None, true).await
+        self.send_recursive_path_request_with_modes(message, None).await
+    }
+
+    pub async fn send_recursive_path_request_with_modes(
+        &mut self,
+        message: TxMessage,
+        allowed_modes: Option<&[InterfaceMode]>,
+    ) -> TxDispatchTrace {
+        self.send_with_options(message, None, true, allowed_modes).await
     }
 
     async fn send_with_options(
@@ -20,6 +28,7 @@ impl InterfaceManager {
         message: TxMessage,
         announce_policy: Option<AnnounceBroadcastPolicy>,
         apply_egress_control: bool,
+        allowed_modes: Option<&[InterfaceMode]>,
     ) -> TxDispatchTrace {
         self.cleanup();
         let mut trace = TxDispatchTrace::default();
@@ -60,6 +69,10 @@ impl InterfaceManager {
                         let mut should_send = true;
                         if let Some(address) = address {
                             should_send = address != iface.address;
+                        }
+                        if should_send {
+                            should_send = allowed_modes
+                                .is_none_or(|modes| modes.contains(&iface.mode));
                         }
                         if should_send {
                             should_send = allows_announce_broadcast(

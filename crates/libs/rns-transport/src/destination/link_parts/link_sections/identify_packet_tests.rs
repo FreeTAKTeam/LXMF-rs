@@ -398,4 +398,62 @@ mod identify_packet_tests {
         }
     }
 
+    #[tokio::test]
+    async fn oversized_direct_response_is_dropped_when_request_sets_a_limit() {
+        let (mut outbound, inbound, iface, mut rx) = linked_pair();
+        let request = b"request";
+        let packet = outbound
+            .request_packet_with_max_response_size(request, Some(4))
+            .expect("a bounded request packet can be built");
+        let mut request_id = [0u8; ADDRESS_HASH_SIZE];
+        request_id.copy_from_slice(&packet.hash().to_bytes()[..ADDRESS_HASH_SIZE]);
+
+        let mut envelope = Vec::new();
+        rmpv::encode::write_value(
+            &mut envelope,
+            &rmpv::Value::Array(vec![
+            rmpv::Value::Binary(request_id.to_vec()),
+            rmpv::Value::Binary(b"hello".to_vec()),
+            ]),
+        )
+        .expect("response envelope");
+        let response = inbound.response_packet(&envelope).expect("response packet");
+
+        assert!(matches!(
+            outbound.handle_packet(&response, iface),
+            LinkHandleResult::None
+        ));
+        assert!(rx.try_recv().is_err(), "an oversized response must not reach consumers");
+    }
+
+    #[tokio::test]
+    async fn bounded_direct_response_is_delivered_and_consumes_the_limit() {
+        let (mut outbound, inbound, iface, mut rx) = linked_pair();
+        let packet = outbound
+            .request_packet_with_max_response_size(b"request", Some(8))
+            .expect("a bounded request packet can be built");
+        let mut request_id = [0u8; ADDRESS_HASH_SIZE];
+        request_id.copy_from_slice(&packet.hash().to_bytes()[..ADDRESS_HASH_SIZE]);
+        let mut envelope = Vec::new();
+        rmpv::encode::write_value(
+            &mut envelope,
+            &rmpv::Value::Array(vec![
+            rmpv::Value::Binary(request_id.to_vec()),
+            rmpv::Value::Binary(b"hello".to_vec()),
+            ]),
+        )
+        .expect("response envelope");
+
+        let response = inbound.response_packet(&envelope).expect("response packet");
+        outbound.handle_packet(&response, iface);
+        let event = rx.try_recv().expect("bounded response should be delivered");
+        assert!(matches!(event.event, LinkEvent::Data(_)));
+
+        // The reference consumes the pending request limit with the first
+        // response. A second response with the same id is therefore treated
+        // as unbounded only if the caller registered a new request.
+        outbound.handle_packet(&response, iface);
+        assert!(rx.try_recv().is_ok(), "a later response is not blocked by a stale limit");
+    }
+
 }

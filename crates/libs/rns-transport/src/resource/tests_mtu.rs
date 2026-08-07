@@ -104,3 +104,37 @@ fn resource_sender_constrains_parts_and_hash_updates_to_interface_mtu() {
         .expect("hash update response");
     assert!(hash_update.to_bytes().expect("hash update wire").len() <= LORA_MTU);
 }
+
+#[test]
+fn resource_sender_serves_only_inside_the_reticulum_collision_guard_window() {
+    let signer = PrivateIdentity::new_from_rand(OsRng);
+    let identity = *signer.as_identity();
+    let destination = DestinationDesc {
+        identity,
+        address_hash: identity.address_hash,
+        name: DestinationName::new("lxmf", "resource"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(4);
+    let link = Link::new(destination, tx);
+    let mut payload = vec![0u8; (COLLISION_GUARD_SIZE + 4) * PACKET_MDU];
+    OsRng.fill_bytes(&mut payload);
+    let mut sender = ResourceSender::new(&link, payload, None).expect("resource sender");
+    assert!(sender.parts.len() > COLLISION_GUARD_SIZE);
+
+    let outside_window = ResourceRequest {
+        hashmap_exhausted: false,
+        last_map_hash: None,
+        resource_hash: sender.resource_hash,
+        requested_hashes: vec![sender.map_hashes[COLLISION_GUARD_SIZE + 1]],
+    };
+    let mut responses = Vec::new();
+    sender.handle_request_into(&outside_window, &link, &mut responses);
+    assert!(responses.is_empty(), "old Reticulum serving windows drop out-of-window hashes");
+
+    let inside_window = ResourceRequest {
+        requested_hashes: vec![sender.map_hashes[0]],
+        ..outside_window
+    };
+    sender.handle_request_into(&inside_window, &link, &mut responses);
+    assert_eq!(responses.len(), 1, "the active serving window must still answer requests");
+}

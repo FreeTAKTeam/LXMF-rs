@@ -6,6 +6,14 @@ mod tests {
         RpcRequest { id, method: method.to_string(), params: Some(params) }
     }
 
+    #[test]
+    fn rpc_return_matches_the_legacy_messagepack_frame_boundary() {
+        let response = json!({"ok": true, "value": 7});
+        let frame = RpcDaemon::rpc_return(&response).expect("encode legacy RPC response");
+        let decoded: JsonValue = crate::rpc::codec::decode_frame(&frame).expect("decode response");
+        assert_eq!(decoded, response);
+    }
+
     include!("tests/negotiate_security.rs");
     include!("tests/events_basic.rs");
     include!("tests/announce_scheduler.rs");

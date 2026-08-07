@@ -1,6 +1,9 @@
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ReticulumRuntimePolicy {
     pub link_mtu_discovery: bool,
+    pub static_transport_identity: bool,
+    pub local_hops_delta: bool,
+    pub default_gravity: i64,
     pub remote_management_enabled: bool,
     pub respond_to_probes: bool,
     pub use_implicit_proof: bool,
@@ -10,12 +13,19 @@ pub struct ReticulumRuntimePolicy {
     pub blackhole_sources: Vec<String>,
     pub interface_discovery_sources: Vec<String>,
     pub max_autoconnected_interfaces: u32,
+    pub autoconnect_interface_mode: Option<String>,
+    pub autoconnect_interface_gravity: Option<i64>,
+    pub autoconnect_announces_to_internal: Option<bool>,
+    pub blackhole_update_interval_secs: f64,
 }
 
 impl Default for ReticulumRuntimePolicy {
     fn default() -> Self {
         Self {
             link_mtu_discovery: true,
+            static_transport_identity: false,
+            local_hops_delta: false,
+            default_gravity: 0,
             remote_management_enabled: false,
             respond_to_probes: false,
             use_implicit_proof: true,
@@ -25,6 +35,10 @@ impl Default for ReticulumRuntimePolicy {
             blackhole_sources: Vec::new(),
             interface_discovery_sources: Vec::new(),
             max_autoconnected_interfaces: 0,
+            autoconnect_interface_mode: None,
+            autoconnect_interface_gravity: None,
+            autoconnect_announces_to_internal: None,
+            blackhole_update_interval_secs: 60.0 * 60.0,
         }
     }
 }
@@ -46,12 +60,39 @@ impl ReticulumRuntimePolicy {
             .map_err(<toml::de::Error as serde::de::Error>::custom)
             .map(Option::unwrap_or_default)
     }
+
+    pub fn autoconnect_interface_mode(&self) -> Option<&str> {
+        self.autoconnect_interface_mode.as_deref()
+    }
+
+    pub const fn autoconnect_interface_gravity(&self) -> Option<i64> {
+        self.autoconnect_interface_gravity
+    }
+
+    pub const fn autoconnect_announces_to_internal(&self) -> Option<bool> {
+        self.autoconnect_announces_to_internal
+    }
+
+    pub const fn blackhole_update_interval(&self) -> f64 {
+        self.blackhole_update_interval_secs
+    }
+
+    pub const fn static_transport_identity(&self) -> bool {
+        self.static_transport_identity
+    }
+
+    pub const fn local_hops_delta(&self) -> bool {
+        self.local_hops_delta
+    }
 }
 
 impl ReticulumConfigRaw {
     fn runtime_policy(&self) -> Result<ReticulumRuntimePolicy, String> {
         Ok(ReticulumRuntimePolicy {
             link_mtu_discovery: self.link_mtu_discovery.unwrap_or(true),
+            static_transport_identity: self.static_transport_identity.unwrap_or(false),
+            local_hops_delta: self.local_hops_delta.unwrap_or(false),
+            default_gravity: self.default_gravity.unwrap_or(0),
             remote_management_enabled: self.enable_remote_management.unwrap_or(false),
             respond_to_probes: self.respond_to_probes.unwrap_or(false),
             use_implicit_proof: self.use_implicit_proof.unwrap_or(true),
@@ -74,6 +115,34 @@ impl ReticulumConfigRaw {
                 .filter(|value| *value > 0)
                 .map(|value| value as u32)
                 .unwrap_or(0),
+            autoconnect_interface_mode: self
+                .autoconnect_interface_mode
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| {
+                    matches!(
+                        value.to_ascii_lowercase().as_str(),
+                        "full"
+                            | "access_point"
+                            | "accesspoint"
+                            | "ap"
+                            | "pointtopoint"
+                            | "ptp"
+                            | "roaming"
+                            | "boundary"
+                            | "gateway"
+                            | "gw"
+                            | "internal"
+                    )
+                })
+                .map(str::to_ascii_lowercase),
+            autoconnect_interface_gravity: self.autoconnect_interface_gravity,
+            autoconnect_announces_to_internal: self.autoconnect_announces_to_internal,
+            blackhole_update_interval_secs: self
+                .blackhole_update_interval
+                .unwrap_or(60.0)
+                .max(2.0)
+                * 60.0,
         })
     }
 }

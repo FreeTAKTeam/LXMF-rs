@@ -15,10 +15,10 @@
     },
     {
       "pattern": "RNS.Destination.Destination.set_max_request_size",
-      "implementation": "partial",
+      "implementation": "complete",
       "rust_surface": ["reticulum-rs-core::destination", "reticulum-rs-transport::destination"],
-      "evidence": ["unit", "pinned-python"],
-      "notes": "RNS 1.4.2 adds configurable inbound request limits; the Rust destination request API does not expose this control yet."
+      "evidence": ["unit", "simulated", "pinned-python"],
+      "notes": "Destination request limits are exposed and enforced before request unpacking for local Single destinations and resource advertisements."
     },
     {
       "pattern": "RNS.Destination.*",
@@ -250,10 +250,59 @@
       "notes": "Implements Python-compatible persistence, source/type/endpoint filtering, age status transitions, seven-day expiry, and result ordering."
     },
     {
+      "pattern": "RNS.Reticulum.Reticulum.rpc_return",
+      "implementation": "complete",
+      "rust_surface": ["reticulum-rs-rpc::RpcDaemon::rpc_return"],
+      "evidence": ["unit", "simulated", "pinned-python"],
+      "notes": "Legacy RPC returns use the daemon's length-prefixed MessagePack connection frame."
+    },
+    {
       "pattern": "RNS.Reticulum.Reticulum",
       "implementation": "complete",
       "rust_surface": ["reticulumd", "reticulum-rs-rpc::RpcDaemon", "reticulum-rs-transport::Transport"],
       "evidence": ["unit", "simulated", "pinned-python"]
+    },
+    {
+      "pattern": "RNS.Reticulum.Reticulum.autoconnect_announces_to_internal",
+      "implementation": "complete",
+      "rust_surface": ["reticulumd::config::ReticulumRuntimePolicy", "reticulum-rs-transport::discovery::plan_autoconnect_with_policy"],
+      "evidence": ["unit", "simulated", "pinned-python"]
+    },
+    {
+      "pattern": "RNS.Reticulum.Reticulum.autoconnect_interface_gravity",
+      "implementation": "complete",
+      "rust_surface": ["reticulumd::config::ReticulumRuntimePolicy", "reticulum-rs-transport::discovery::AutoconnectPlan"],
+      "evidence": ["unit", "simulated", "pinned-python"]
+    },
+    {
+      "pattern": "RNS.Reticulum.Reticulum.autoconnect_interface_mode",
+      "implementation": "complete",
+      "rust_surface": ["reticulumd::config::ReticulumRuntimePolicy", "reticulum-rs-transport::discovery::AutoconnectPlan"],
+      "evidence": ["unit", "simulated", "pinned-python"]
+    },
+    {
+      "pattern": "RNS.Reticulum.Reticulum.blackhole_update_interval",
+      "implementation": "complete",
+      "rust_surface": ["reticulumd::config::ReticulumRuntimePolicy", "reticulum-rs-transport::discovery::BlackholeUpdateScheduler"],
+      "evidence": ["unit", "simulated", "pinned-python"]
+    },
+    {
+      "pattern": "RNS.Reticulum.Reticulum.is_blackholed",
+      "implementation": "complete",
+      "rust_surface": ["reticulum-rs-rpc::RpcDaemon::is_blackholed"],
+      "evidence": ["unit", "pinned-python"]
+    },
+    {
+      "pattern": "RNS.Reticulum.Reticulum.local_hops_delta",
+      "implementation": "complete",
+      "rust_surface": ["reticulumd::config::ReticulumRuntimePolicy", "reticulum-rs-transport::Transport::should_apply_delta"],
+      "evidence": ["unit", "simulated", "pinned-python"]
+    },
+    {
+      "pattern": "RNS.Reticulum.Reticulum.static_transport_identity",
+      "implementation": "complete",
+      "rust_surface": ["reticulumd::config::ReticulumRuntimePolicy", "reticulum-rs-transport::Transport::internal_identity"],
+      "evidence": ["unit", "pinned-python"]
     },
     {
       "pattern": "RNS.Reticulum.*",
@@ -456,6 +505,48 @@
       "evidence": ["unit", "simulated", "pinned-python"]
     },
     {
+      "pattern": "RNS.Transport.Transport.add_interface",
+      "implementation": "complete",
+      "rust_surface": ["reticulum-rs-transport::Transport::add_interface", "reticulum-rs-transport::InterfaceManager::spawn"],
+      "evidence": ["unit", "simulated", "pinned-python"]
+    },
+    {
+      "pattern": "RNS.Transport.Transport.interface_hashes",
+      "implementation": "complete",
+      "rust_surface": ["reticulum-rs-transport::Transport::interface_hashes"],
+      "evidence": ["unit", "pinned-python"]
+    },
+    {
+      "pattern": "RNS.Transport.Transport.internal_identity",
+      "implementation": "complete",
+      "rust_surface": ["reticulum-rs-transport::Transport::internal_identity"],
+      "evidence": ["unit", "pinned-python"]
+    },
+    {
+      "pattern": "RNS.Transport.Transport.is_shared_instance",
+      "implementation": "complete",
+      "rust_surface": ["reticulum-rs-transport::Transport::is_shared_instance", "reticulum-rs-transport::InterfaceManager::set_shared_instance"],
+      "evidence": ["unit", "simulated", "pinned-python"]
+    },
+    {
+      "pattern": "RNS.Transport.Transport.remove_interface",
+      "implementation": "complete",
+      "rust_surface": ["reticulum-rs-transport::Transport::remove_interface", "reticulum-rs-transport::Transport::stop_interface"],
+      "evidence": ["unit", "simulated", "pinned-python"]
+    },
+    {
+      "pattern": "RNS.Transport.Transport.should_apply_delta",
+      "implementation": "complete",
+      "rust_surface": ["reticulum-rs-transport::Transport::should_apply_delta"],
+      "evidence": ["unit", "simulated", "pinned-python"]
+    },
+    {
+      "pattern": "RNS.Transport.Transport.void_queues",
+      "implementation": "complete",
+      "rust_surface": ["reticulum-rs-transport::Transport::void_queues", "reticulum-rs-transport::AnnounceLimits::clear_held_announces"],
+      "evidence": ["unit", "simulated", "pinned-python"]
+    },
+    {
       "pattern": "RNS.Transport.Transport.save_packet_hashlist",
       "implementation": "complete",
       "rust_surface": ["reticulum-rs-transport::Transport::save_packet_hashlist"],
@@ -578,10 +669,10 @@
     },
     {
       "pattern": "RNS.Interfaces.BackboneInterface.BackboneInterface.blocked_ip_*",
-      "implementation": "partial",
+      "implementation": "complete",
       "rust_surface": ["reticulum-rs-transport::iface::tcp_server", "rns-tools::rnstatus"],
       "evidence": ["unit", "simulated", "pinned-python"],
-      "notes": "RNS 1.4.2 exposes blocked IP counts and lists through interface statistics; the Rust status surface does not expose these fields yet."
+      "notes": "Short-lived Backbone client tracking, grace-threshold blocking, expiry, and live status fields are covered by transport tests."
     },
     {
       "pattern": "RNS.Interfaces.BackboneInterface.*",
@@ -734,6 +825,176 @@
       "rust_surface": ["rns-tools::rnsh", "lxmf-sdk::RemoteCommandRequest", "reticulumd::remote_control"],
       "evidence": ["unit", "simulated", "pinned-python"],
       "notes": "Default-deny command authorization is exercised with isolated subprocess fixtures."
+    },
+    {
+      "pattern": "RNS.Utilities.rngit.util.san_ref",
+      "implementation": "complete",
+      "rust_surface": ["rns-tools::rngit::san_ref"],
+      "evidence": ["unit", "pinned-python"],
+      "notes": "Git reference validation matches the pinned Python rngit utility contract."
+    },
+    {
+      "pattern": "RNS.Utilities.rngit.util.san_refs",
+      "implementation": "complete",
+      "rust_surface": ["rns-tools::rngit::san_refs"],
+      "evidence": ["unit", "pinned-python"],
+      "notes": "Git reference-list validation matches the pinned Python rngit utility contract."
+    },
+    {
+      "pattern": "RNS.Utilities.rngit.util.san_sha",
+      "implementation": "complete",
+      "rust_surface": ["rns-tools::rngit::san_sha"],
+      "evidence": ["unit", "pinned-python"],
+      "notes": "Hexadecimal Git object-ID validation matches the pinned Python rngit utility contract."
+    },
+    {
+      "pattern": "RNS.Utilities.rngit.client.ReticulumGitClient.escape_for_stdout",
+      "implementation": "complete",
+      "rust_surface": ["rns-tools::rngit::escape_for_stdout"],
+      "evidence": ["unit", "pinned-python"],
+      "notes": "Git stdout quoting is implemented as a byte-safe Rust utility."
+    },
+    {
+      "pattern": "RNS.Utilities.rngit.server.ReticulumGitClient.parse_remote_url",
+      "implementation": "complete",
+      "rust_surface": ["rns-tools::rngit::ReticulumGitClient::parse_remote_url"],
+      "evidence": ["unit", "pinned-python"],
+      "notes": "RNS URL protocol, alias, component-count, and truncated-identity validation match the pinned server client."
+    },
+    {
+      "pattern": "RNS.Utilities.rngit.server.ReticulumGitClient.parse_remote_group_url",
+      "implementation": "complete",
+      "rust_surface": ["rns-tools::rngit::ReticulumGitClient::parse_remote_group_url"],
+      "evidence": ["unit", "pinned-python"],
+      "notes": "Group URL parsing matches the pinned RNS rngit server client."
+    },
+    {
+      "pattern": "RNS.Utilities.rngit.server.ReticulumGitClient.parse_remote_destination_url",
+      "implementation": "complete",
+      "rust_surface": ["rns-tools::rngit::ReticulumGitClient::parse_remote_destination_url"],
+      "evidence": ["unit", "pinned-python"],
+      "notes": "Destination-only URL parsing matches the pinned RNS rngit server client."
+    },
+    {
+      "pattern": "RNS.Utilities.rngit.server.ReticulumGitNode.parse_permission",
+      "implementation": "complete",
+      "rust_surface": ["rns-tools::rngit::ReticulumGitNode::parse_permission"],
+      "evidence": ["unit", "pinned-python"],
+      "notes": "Permission and target shorthand parsing matches the pinned server."
+    },
+    {
+      "pattern": "RNS.Utilities.rngit.server.ReticulumGitNode.parse_request_repository_path",
+      "implementation": "complete",
+      "rust_surface": ["rns-tools::rngit::ReticulumGitNode::parse_request_repository_path"],
+      "evidence": ["unit", "pinned-python"],
+      "notes": "Repository request path component and length guards match the pinned server."
+    },
+    {
+      "pattern": "RNS.Utilities.rngit.server.ReticulumGitNode.parse_request_group_path",
+      "implementation": "complete",
+      "rust_surface": ["rns-tools::rngit::ReticulumGitNode::parse_request_group_path"],
+      "evidence": ["unit", "pinned-python"],
+      "notes": "Group request path component and length guards match the pinned server."
+    },
+    {
+      "pattern": "RNS.Utilities.rngit.server.ReticulumGitNode.permissions_from_allowed_input",
+      "implementation": "complete",
+      "rust_surface": ["rns-tools::rngit::ReticulumGitNode::permissions_from_allowed_input"],
+      "evidence": ["unit", "pinned-python"],
+      "notes": "Allowed-file comments, shorthand, and read/write expansion match the pinned server."
+    },
+    {
+      "pattern": "RNS.Utilities.rngit.server.ReticulumGitNode.resolve_permission",
+      "implementation": "complete",
+      "rust_surface": ["rns-tools::rngit::ReticulumGitNode::resolve_permission"],
+      "evidence": ["unit", "pinned-python"],
+      "notes": "Repository/group/admin permission fallback and blocked identity behavior match the pinned server."
+    },
+    {
+      "pattern": "RNS.Utilities.rngit.server.ReticulumGitNode.resolve_group_permission",
+      "implementation": "complete",
+      "rust_surface": ["rns-tools::rngit::ReticulumGitNode::resolve_group_permission"],
+      "evidence": ["unit", "pinned-python"],
+      "notes": "Group permission and group-admin fallback match the pinned server."
+    },
+    {
+      "pattern": "RNS.Utilities.rngit.server.ReticulumGitNode.resolve_doc_permission",
+      "implementation": "complete",
+      "rust_surface": ["rns-tools::rngit::ReticulumGitNode::resolve_doc_permission"],
+      "evidence": ["unit", "pinned-python"],
+      "notes": "Document allowed-file override and repository fallback match the pinned server."
+    },
+    {
+      "pattern": "RNS.Utilities.rngit.server.ReticulumGitNode.last_upstream_sync",
+      "implementation": "complete",
+      "rust_surface": ["rns-tools::rngit::ReticulumGitNode::last_upstream_sync"],
+      "evidence": ["unit", "pinned-python"],
+      "notes": "The repository.rngit.upstream.sync Git-config lookup matches the pinned server."
+    },
+    {
+      "pattern": "RNS.Utilities.rngit.client.ReticulumGitClient",
+      "implementation": "complete",
+      "rust_surface": ["rns-tools::rngit::ReticulumGitClient"],
+      "evidence": ["unit", "simulated", "pinned-python"],
+      "notes": "The Rust client owns URL resolution, link lifecycle, request framing, Git list/fetch/push queues, repository management, releases, permissions, and work-item operations through a transport-neutral request seam."
+    },
+    {
+      "pattern": "RNS.Utilities.rngit.client.ReticulumGitClient.*",
+      "implementation": "complete",
+      "rust_surface": ["rns-tools::rngit::ReticulumGitClient"],
+      "evidence": ["unit", "simulated", "pinned-python"],
+      "notes": "Client operations are exercised against the deterministic local node transport; live Reticulum wiring remains an integration adapter over the same request paths."
+    },
+    {
+      "pattern": "RNS.Utilities.rngit.client.program_setup",
+      "implementation": "complete",
+      "rust_surface": ["rns-tools::rngit::program_setup"],
+      "evidence": ["unit", "simulated", "pinned-python"]
+    },
+    {
+      "pattern": "RNS.Utilities.rngit.client.main",
+      "implementation": "complete",
+      "rust_surface": ["rns-tools::rngit::main"],
+      "evidence": ["unit", "simulated", "pinned-python"]
+    },
+    {
+      "pattern": "RNS.Utilities.rngit.server.ReticulumGitClient",
+      "implementation": "complete",
+      "rust_surface": ["rns-tools::rngit::ReticulumGitClient"],
+      "evidence": ["unit", "simulated", "pinned-python"],
+      "notes": "The server-side client wrapper shares the validated request transport and implements repository, release, permission, and work-item request operations."
+    },
+    {
+      "pattern": "RNS.Utilities.rngit.server.ReticulumGitClient.*",
+      "implementation": "complete",
+      "rust_surface": ["rns-tools::rngit::ReticulumGitClient"],
+      "evidence": ["unit", "simulated", "pinned-python"]
+    },
+    {
+      "pattern": "RNS.Utilities.rngit.server.ReticulumGitNode",
+      "implementation": "complete",
+      "rust_surface": ["rns-tools::rngit::ReticulumGitNode"],
+      "evidence": ["unit", "simulated", "pinned-python"],
+      "notes": "The node loads bare repositories, enforces hierarchical permissions, dispatches all registered Git/release/work/permission paths, and records activity."
+    },
+    {
+      "pattern": "RNS.Utilities.rngit.server.ReticulumGitNode.*",
+      "implementation": "complete",
+      "rust_surface": ["rns-tools::rngit::ReticulumGitNode"],
+      "evidence": ["unit", "simulated", "pinned-python"],
+      "notes": "All pinned server handlers and lifecycle/statistics methods are covered by the transport-neutral service and isolated Git/work/release fixtures."
+    },
+    {
+      "pattern": "RNS.Utilities.rngit.server.program_setup",
+      "implementation": "complete",
+      "rust_surface": ["rns-tools::rngit::program_setup"],
+      "evidence": ["unit", "simulated", "pinned-python"]
+    },
+    {
+      "pattern": "RNS.Utilities.rngit.server.main",
+      "implementation": "complete",
+      "rust_surface": ["rns-tools::rngit::main"],
+      "evidence": ["unit", "simulated", "pinned-python"]
     },
     {
       "pattern": "RNS.Utilities.rngit.client.*",
@@ -1025,6 +1286,36 @@
       "implementation": "complete",
       "rust_surface": ["lxmf-wire", "lxmf-sdk"],
       "evidence": ["unit", "pinned-python"]
+    },
+    {
+      "pattern": "RNS.release_1_4_2.boundary_path_requests",
+      "implementation": "complete",
+      "rust_surface": ["reticulum-rs-transport::InterfaceMode::Boundary", "reticulum-rs-transport::Transport::send_recursive_path_request_with_modes"],
+      "evidence": ["unit", "simulated", "pinned-python"]
+    },
+    {
+      "pattern": "RNS.release_1_4_2.dynamic_path_rebalancing",
+      "implementation": "complete",
+      "rust_surface": ["reticulum-rs-transport::transport::PathTable", "reticulum-rs-transport::transport::pending_out_link_rediscovery"],
+      "evidence": ["unit", "simulated", "pinned-python"]
+    },
+    {
+      "pattern": "RNS.release_1_4_2.ifstats_blocked_ips",
+      "implementation": "complete",
+      "rust_surface": ["reticulum-rs-transport::iface::tcp_server::FastFlapTracker", "rns-tools::rnstatus"],
+      "evidence": ["unit", "simulated", "pinned-python"]
+    },
+    {
+      "pattern": "RNS.release_1_4_2.interface_gravity",
+      "implementation": "complete",
+      "rust_surface": ["reticulum-rs-transport::InterfacePolicy", "reticulum-rs-transport::transport::PathTable", "rns-tools::rnstatus"],
+      "evidence": ["unit", "simulated", "pinned-python"]
+    },
+    {
+      "pattern": "RNS.release_1_4_2.request_response_size_limits",
+      "implementation": "complete",
+      "rust_surface": ["reticulum-rs-transport::Destination::set_max_request_size", "reticulum-rs-transport::Link::request_packet_with_max_response_size", "reticulum-rs-transport::resource"],
+      "evidence": ["unit", "simulated", "pinned-python"]
     },
     {
       "pattern": "RNS.release_1_4_2.*",

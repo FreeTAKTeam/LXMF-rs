@@ -217,7 +217,20 @@ impl Transport {
         data: Vec<u8>,
         metadata: Option<Vec<u8>>,
     ) -> Result<Hash, RnsError> {
+        self.send_request_resource_with_max_response_size(link_id, request_id, data, metadata, None)
+            .await
+    }
+
+    pub async fn send_request_resource_with_max_response_size(
+        &self,
+        link_id: &AddressHash,
+        request_id: Vec<u8>,
+        data: Vec<u8>,
+        metadata: Option<Vec<u8>>,
+        max_response_size: Option<usize>,
+    ) -> Result<Hash, RnsError> {
         let link = self.find_any_link(link_id).await.ok_or(RnsError::InvalidArgument)?;
+        let response_request_id = request_id.clone();
         let iface = {
             let link_guard = link.lock().await;
             link_guard.ingress_iface()
@@ -241,7 +254,15 @@ impl Transport {
         let mut handler = self.handler.lock().await;
         let (resource_hash, packet) = handler.resource_manager.track_prepared(prepared);
         drop(handler);
+        if let Some(max_response_size) = max_response_size {
+            link.lock().await.set_response_size_limit(&response_request_id, max_response_size);
+        }
         let outcome = self.send_link_packet_on_bound_iface(&link, packet).await;
+        if !matches!(outcome, SendPacketOutcome::SentDirect | SendPacketOutcome::SentBroadcast)
+            && max_response_size.is_some()
+        {
+            link.lock().await.clear_response_size_limit(&response_request_id);
+        }
         let mut handler = self.handler.lock().await;
         let sent =
             matches!(outcome, SendPacketOutcome::SentDirect | SendPacketOutcome::SentBroadcast);

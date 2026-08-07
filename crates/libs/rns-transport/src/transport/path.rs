@@ -267,7 +267,7 @@ pub(super) async fn handle_path_request<'a>(
                 .lock()
                 .await
                 .mode(&iface)
-                .map(InterfaceMode::discovers_unknown_paths)
+                .map(|mode| mode.discovers_unknown_paths() || mode == InterfaceMode::Boundary)
                 .unwrap_or(false);
             if !should_search_for_unknown {
                 log::trace!(
@@ -283,11 +283,14 @@ pub(super) async fn handle_path_request<'a>(
                 Some(iface),
                 Some(request.tag_bytes.clone()),
             ) {
+                let boundary_search_modes = (handler.iface_manager.lock().await.mode(&iface)
+                    == Some(InterfaceMode::Boundary))
+                .then_some([InterfaceMode::Boundary, InterfaceMode::Gateway]);
                 handler
-                    .send_recursive_path_request(TxMessage {
-                        tx_type: TxMessageType::Broadcast(Some(iface)),
-                        packet,
-                    })
+                    .send_recursive_path_request_with_modes(
+                        TxMessage { tx_type: TxMessageType::Broadcast(Some(iface)), packet },
+                        boundary_search_modes.as_ref().map(|modes| modes.as_slice()),
+                    )
                     .await;
             }
         }

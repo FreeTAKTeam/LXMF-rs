@@ -262,6 +262,53 @@ fn handle_announce_replacement_matches_python_freshness_rules() {
 }
 
 #[test]
+fn equal_announce_prefers_higher_gravity_interface() {
+    let destination = addr(b"gravity-destination");
+    let low_gravity_iface = addr(b"gravity-low");
+    let high_gravity_iface = addr(b"gravity-high");
+    let blob = random_blob(b"same!", 100);
+    let mut table = PathTable::new();
+
+    assert!(table.handle_announce_with_policy(
+        AnnouncePolicyInput {
+            announce: &announce(destination, 2, b"same!", 100),
+            transport_id: None,
+            iface: low_gravity_iface,
+            random_blob: blob,
+            incoming_policy: |_: &AddressHash| Some(InterfacePolicy { mode: InterfaceMode::Full, gravity: 1 }),
+            now: Instant::now(),
+            policy_for_iface: |iface: &AddressHash| {
+                (Some(*iface) == Some(low_gravity_iface)).then_some(InterfacePolicy {
+                    mode: InterfaceMode::Full,
+                    gravity: 1,
+                })
+            },
+        },
+    ));
+
+    assert!(table.handle_announce_with_policy(
+        AnnouncePolicyInput {
+            announce: &announce(destination, 2, b"same!", 100),
+            transport_id: None,
+            iface: high_gravity_iface,
+            random_blob: blob,
+            incoming_policy: |_: &AddressHash| Some(InterfacePolicy { mode: InterfaceMode::Full, gravity: 2 }),
+            now: Instant::now(),
+            policy_for_iface: |iface: &AddressHash| {
+                (Some(*iface) == Some(low_gravity_iface)).then_some(InterfacePolicy {
+                    mode: InterfaceMode::Full,
+                    gravity: 1,
+                })
+            },
+        },
+    ));
+
+    let entry = table.get(&destination).expect("gravity-selected path");
+    assert_eq!(entry.iface, high_gravity_iface);
+    assert_eq!(entry.hops, 2);
+}
+
+#[test]
 fn active_path_entries_keep_python_random_blob_window() {
     let destination = addr(b"destination-window");
     let iface = addr(b"iface-window");

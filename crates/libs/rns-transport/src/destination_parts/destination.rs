@@ -8,6 +8,7 @@ impl Destination<PrivateIdentity, Input, Single> {
             r#type: PhantomData,
             identity,
             desc: DestinationDesc { identity: pub_identity, name, address_hash },
+            max_request_size: None,
             ratchet_state: RatchetState::default(),
             path_responses: BTreeMap::new(),
             path_response_queue: VecDeque::new(),
@@ -58,6 +59,22 @@ impl Destination<PrivateIdentity, Input, Single> {
 
     pub fn enforce_ratchets(&mut self, enforce: bool) {
         self.ratchet_state.enforce_ratchets = enforce;
+    }
+
+    /// Set the maximum packed request size accepted by this destination.
+    pub fn set_max_request_size(&mut self, max_request_size: usize) -> Result<(), RnsError> {
+        self.max_request_size = Some(max_request_size);
+        Ok(())
+    }
+
+    /// Remove the inbound request-size limit.
+    pub fn clear_max_request_size(&mut self) {
+        self.max_request_size = None;
+    }
+
+    /// Return the configured packed request-size limit, if any.
+    pub fn max_request_size(&self) -> Option<usize> {
+        self.max_request_size
     }
 
     pub fn decrypt_with_ratchets(
@@ -245,6 +262,7 @@ impl Destination<Identity, Output, Single> {
             r#type: PhantomData,
             identity,
             desc: DestinationDesc { identity, name, address_hash },
+            max_request_size: None,
             ratchet_state: RatchetState::default(),
             path_responses: BTreeMap::new(),
             path_response_queue: VecDeque::new(),
@@ -262,6 +280,7 @@ impl<D: Direction> Destination<EmptyIdentity, D, Plain> {
             r#type: PhantomData,
             identity,
             desc: DestinationDesc { identity: Default::default(), name, address_hash },
+            max_request_size: None,
             ratchet_state: RatchetState::default(),
             path_responses: BTreeMap::new(),
             path_response_queue: VecDeque::new(),

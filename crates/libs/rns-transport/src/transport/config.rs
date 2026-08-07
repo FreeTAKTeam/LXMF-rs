@@ -9,6 +9,7 @@ impl TransportConfig {
             broadcast,
             transport_enabled: false,
             connected_to_shared_instance: false,
+            local_hops_delta: 0,
             announce_cache_capacity: 100_000,
             announce_retry_limit: 1,
             announce_queue_len: 64,
@@ -38,6 +39,10 @@ impl TransportConfig {
 
     pub fn set_connected_to_shared_instance(&mut self, connected: bool) {
         self.connected_to_shared_instance = connected;
+    }
+
+    pub fn set_local_hops_delta(&mut self, delta: u8) {
+        self.local_hops_delta = delta;
     }
 
     pub fn set_broadcast(&mut self, broadcast: bool) {
@@ -94,6 +99,7 @@ impl Default for TransportConfig {
             broadcast: false,
             transport_enabled: false,
             connected_to_shared_instance: false,
+            local_hops_delta: 0,
             announce_cache_capacity: 100_000,
             announce_retry_limit: 1,
             announce_queue_len: 64,

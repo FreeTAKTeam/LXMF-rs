@@ -1,7 +1,9 @@
 use alloc::string::String;
+use std::collections::HashMap;
 use std::io;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use socket2::{Domain, Protocol, Socket, Type};
 use tokio::net::{lookup_host, TcpListener};
@@ -13,6 +15,104 @@ use super::tcp_client::{
     TcpRuntimeStatusHandle, TcpSocketTuning,
 };
 use super::{Interface, InterfaceContext, InterfaceManager};
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FastFlapPolicy {
+    pub enabled: bool,
+    pub threshold: Duration,
+    pub grace: u64,
+    pub expiry: Duration,
+}
+
+impl Default for FastFlapPolicy {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            threshold: Duration::from_secs(20),
+            grace: 5,
+            expiry: Duration::from_secs(12 * 60 * 60),
+        }
+    }
+}
+
+#[derive(Clone)]
+struct AcceptedClientOptions {
+    client_mtu: usize,
+    client_socket_tuning: TcpSocketTuning,
+    client_hdlc_watchdog: Option<HdlcStreamWatchdog>,
+    client_forced_bitrate_bps: Option<u64>,
+    fast_flap_tracker: Option<FastFlapTracker>,
+    fast_flap_policy: FastFlapPolicy,
+    peer_ip: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct FastFlapTracker {
+    entries: Arc<std::sync::Mutex<HashMap<String, FastFlapEntry>>>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct FastFlapEntry {
+    last: Instant,
+    flaps: u64,
+}
+
+impl Default for FastFlapTracker {
+    fn default() -> Self {
+        Self { entries: Arc::new(std::sync::Mutex::new(HashMap::new())) }
+    }
+}
+
+impl FastFlapTracker {
+    pub(crate) fn is_blocked(&self, ip: &str, policy: FastFlapPolicy) -> bool {
+        if !policy.enabled {
+            return false;
+        }
+        let now = Instant::now();
+        let mut entries = self.entries.lock().expect("fast-flap tracker mutex poisoned");
+        entries.retain(|_, entry| now.saturating_duration_since(entry.last) <= policy.expiry);
+        entries.get(ip).is_some_and(|entry| entry.flaps > policy.grace)
+    }
+
+    pub(crate) fn record_short_connection(
+        &self,
+        ip: &str,
+        connected_for: Duration,
+        policy: FastFlapPolicy,
+    ) {
+        if !policy.enabled || connected_for >= policy.threshold {
+            return;
+        }
+        let now = Instant::now();
+        let mut entries = self.entries.lock().expect("fast-flap tracker mutex poisoned");
+        entries.retain(|_, entry| now.saturating_duration_since(entry.last) <= policy.expiry);
+        let entry = entries.entry(ip.to_string()).or_insert(FastFlapEntry { last: now, flaps: 0 });
+        entry.last = now;
+        entry.flaps = entry.flaps.saturating_add(1);
+    }
+
+    pub(crate) fn blocked_ip_count(&self, policy: FastFlapPolicy) -> usize {
+        if !policy.enabled {
+            return 0;
+        }
+        let now = Instant::now();
+        let mut entries = self.entries.lock().expect("fast-flap tracker mutex poisoned");
+        entries.retain(|_, entry| now.saturating_duration_since(entry.last) <= policy.expiry);
+        entries.values().filter(|entry| entry.flaps > policy.grace).count()
+    }
+
+    pub(crate) fn blocked_ip_list(&self, policy: FastFlapPolicy) -> Vec<String> {
+        if !policy.enabled {
+            return Vec::new();
+        }
+        let now = Instant::now();
+        let mut entries = self.entries.lock().expect("fast-flap tracker mutex poisoned");
+        entries.retain(|_, entry| now.saturating_duration_since(entry.last) <= policy.expiry);
+        let mut ips = entries.keys().cloned().collect::<Vec<_>>();
+        ips.sort();
+        ips
+    }
+}
 
 #[derive(Clone)]
 pub struct TcpListenerRuntimeStatusHandle {
@@ -40,10 +140,17 @@ struct TcpListenerRuntimeStatus {
     latest_client_iface: Option<String>,
     latest_stream_status: Option<TcpRuntimeStatusHandle>,
     last_error: Option<String>,
+    fast_flap_policy: FastFlapPolicy,
+    fast_flap_tracker: FastFlapTracker,
 }
 
 impl TcpListenerRuntimeStatus {
-    fn new(bind_addr: String, client_mtu: usize) -> Self {
+    fn new(
+        bind_addr: String,
+        client_mtu: usize,
+        fast_flap_policy: FastFlapPolicy,
+        fast_flap_tracker: FastFlapTracker,
+    ) -> Self {
         Self {
             bind_addr,
             listener_state: "configured".to_string(),
@@ -57,6 +164,8 @@ impl TcpListenerRuntimeStatus {
             latest_client_iface: None,
             latest_stream_status: None,
             last_error: None,
+            fast_flap_policy,
+            fast_flap_tracker,
         }
     }
 
@@ -156,6 +265,22 @@ impl TcpListenerRuntimeStatus {
                 .map(|err| serde_json::Value::String(err.clone()))
                 .unwrap_or(serde_json::Value::Null),
         );
+        root.insert(
+            "blocked_ip_count".to_string(),
+            serde_json::Value::Number(
+                (self.fast_flap_tracker.blocked_ip_count(self.fast_flap_policy) as u64).into(),
+            ),
+        );
+        root.insert(
+            "blocked_ips".to_string(),
+            serde_json::Value::Array(
+                self.fast_flap_tracker
+                    .blocked_ip_list(self.fast_flap_policy)
+                    .into_iter()
+                    .map(serde_json::Value::String)
+                    .collect(),
+            ),
+        );
         serde_json::Value::Object(root)
     }
 }
@@ -168,6 +293,8 @@ pub struct TcpServer {
     client_hdlc_watchdog: Option<HdlcStreamWatchdog>,
     client_forced_bitrate_bps: Option<u64>,
     prefer_ipv6: bool,
+    fast_flap_policy: FastFlapPolicy,
+    fast_flap_tracker: FastFlapTracker,
     runtime_status: Arc<std::sync::Mutex<TcpListenerRuntimeStatus>>,
 }
 
@@ -179,10 +306,14 @@ impl TcpServer {
         iface_manager: Arc<tokio::sync::Mutex<InterfaceManager>>,
     ) -> Self {
         let addr = addr.into();
+        let fast_flap_policy = FastFlapPolicy::default();
+        let fast_flap_tracker = FastFlapTracker::default();
         Self {
             runtime_status: Arc::new(std::sync::Mutex::new(TcpListenerRuntimeStatus::new(
                 addr.clone(),
                 Self::DEFAULT_CLIENT_MTU,
+                fast_flap_policy,
+                fast_flap_tracker.clone(),
             ))),
             addr,
             iface_manager,
@@ -191,6 +322,8 @@ impl TcpServer {
             client_hdlc_watchdog: None,
             client_forced_bitrate_bps: None,
             prefer_ipv6: false,
+            fast_flap_policy,
+            fast_flap_tracker,
         }
     }
 
@@ -241,6 +374,22 @@ impl TcpServer {
     }
 
     #[must_use]
+    pub fn with_fast_flapping(
+        mut self,
+        enabled: bool,
+        threshold: Duration,
+        grace: u64,
+        expiry: Duration,
+    ) -> Self {
+        self.fast_flap_policy = FastFlapPolicy { enabled, threshold, grace, expiry };
+        self.runtime_status
+            .lock()
+            .expect("tcp listener runtime status mutex poisoned")
+            .fast_flap_policy = self.fast_flap_policy;
+        self
+    }
+
+    #[must_use]
     pub fn client_socket_tuning(&self) -> TcpSocketTuning {
         self.client_socket_tuning
     }
@@ -268,22 +417,22 @@ impl TcpServer {
     fn accepted_client(
         addr: String,
         stream: tokio::net::TcpStream,
-        client_mtu: usize,
-        client_socket_tuning: TcpSocketTuning,
-        client_hdlc_watchdog: Option<HdlcStreamWatchdog>,
-        client_forced_bitrate_bps: Option<u64>,
+        options: AcceptedClientOptions,
     ) -> TcpClient {
         let mut client = TcpClient::new_from_stream(addr, stream)
-            .with_mtu(client_mtu)
-            .with_socket_tuning(client_socket_tuning);
-        if let Some(bitrate_bps) = client_forced_bitrate_bps {
+            .with_mtu(options.client_mtu)
+            .with_socket_tuning(options.client_socket_tuning);
+        if let Some(bitrate_bps) = options.client_forced_bitrate_bps {
             client = client.with_forced_bitrate(bitrate_bps);
         }
-        if let Some(watchdog) = client_hdlc_watchdog {
-            client.with_hdlc_watchdog(watchdog)
-        } else {
-            client
+        if let Some(watchdog) = options.client_hdlc_watchdog {
+            client = client.with_hdlc_watchdog(watchdog);
         }
+        if let Some(tracker) = options.fast_flap_tracker {
+            client =
+                client.with_fast_flap_tracking(tracker, options.fast_flap_policy, options.peer_ip);
+        }
+        client
     }
 
     pub async fn spawn(context: InterfaceContext<Self>) {
@@ -295,6 +444,8 @@ impl TcpServer {
             client_hdlc_watchdog,
             client_forced_bitrate_bps,
             prefer_ipv6,
+            fast_flap_policy,
+            fast_flap_tracker,
             runtime_status,
         ) = {
             let guard = context.inner.lock().unwrap();
@@ -305,6 +456,8 @@ impl TcpServer {
                 guard.client_hdlc_watchdog.clone(),
                 guard.client_forced_bitrate_bps,
                 guard.prefer_ipv6,
+                guard.fast_flap_policy,
+                guard.fast_flap_tracker.clone(),
                 guard.runtime_status.clone(),
             )
         };
@@ -386,16 +539,29 @@ impl TcpServer {
                                     addr
                                 );
 
-                                let mut iface_manager = iface_manager.lock().await;
-
                                 let endpoint = client.1.to_string();
+                                let peer_ip = client.1.ip().to_string();
+                                if fast_flap_tracker.is_blocked(&peer_ip, fast_flap_policy) {
+                                    log::warn!(
+                                        "ignoring incoming connection from fast-flapping IP {}",
+                                        peer_ip
+                                    );
+                                    continue;
+                                }
+
+                                let mut iface_manager = iface_manager.lock().await;
                                 let accepted_client = TcpServer::accepted_client(
                                     endpoint.clone(),
                                     client.0,
-                                    client_mtu,
-                                    client_socket_tuning,
-                                    client_hdlc_watchdog.clone(),
-                                    client_forced_bitrate_bps,
+                                    AcceptedClientOptions {
+                                        client_mtu,
+                                        client_socket_tuning,
+                                        client_hdlc_watchdog: client_hdlc_watchdog.clone(),
+                                        client_forced_bitrate_bps,
+                                        fast_flap_tracker: Some(fast_flap_tracker.clone()),
+                                        fast_flap_policy,
+                                        peer_ip: Some(peer_ip),
+                                    },
                                 );
                                 let child_status = accepted_client.runtime_status_handle();
                                 let child_iface =
@@ -461,7 +627,10 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
-    use super::{backbone_hdlc_watchdog, bind_tcp_listener, TcpClient, TcpServer, TcpSocketTuning};
+    use super::{
+        backbone_hdlc_watchdog, bind_tcp_listener, AcceptedClientOptions, FastFlapPolicy,
+        FastFlapTracker, TcpClient, TcpServer, TcpSocketTuning,
+    };
     use crate::iface::InterfaceManager;
     use tokio::net::{TcpListener, TcpStream};
 
@@ -497,6 +666,31 @@ mod tests {
         assert!(server.client_hdlc_liveness_enabled());
     }
 
+    #[test]
+    fn fast_flapping_blocks_after_grace_and_reports_live_ip_state() {
+        let tracker = FastFlapTracker::default();
+        let policy = FastFlapPolicy {
+            enabled: true,
+            threshold: Duration::from_secs(2),
+            grace: 2,
+            expiry: Duration::from_secs(60),
+        };
+
+        tracker.record_short_connection("192.0.2.7", Duration::from_millis(1), policy);
+        tracker.record_short_connection("192.0.2.7", Duration::from_millis(1), policy);
+        assert_eq!(tracker.blocked_ip_count(policy), 0);
+        assert_eq!(tracker.blocked_ip_list(policy), vec!["192.0.2.7"]);
+
+        tracker.record_short_connection("192.0.2.7", Duration::from_millis(1), policy);
+        assert_eq!(tracker.blocked_ip_count(policy), 1);
+        assert!(tracker.is_blocked("192.0.2.7", policy));
+
+        let disabled = FastFlapPolicy { enabled: false, ..policy };
+        assert_eq!(tracker.blocked_ip_count(disabled), 0);
+        assert!(tracker.blocked_ip_list(disabled).is_empty());
+        assert!(!tracker.is_blocked("192.0.2.7", disabled));
+    }
+
     #[tokio::test]
     async fn tcp_server_forwards_configured_liveness_to_accepted_clients() {
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind listener");
@@ -507,10 +701,15 @@ mod tests {
         let ordinary = TcpServer::accepted_client(
             peer_addr.to_string(),
             stream,
-            TcpClient::DEFAULT_MTU,
-            TcpSocketTuning::default(),
-            None,
-            None,
+            AcceptedClientOptions {
+                client_mtu: TcpClient::DEFAULT_MTU,
+                client_socket_tuning: TcpSocketTuning::default(),
+                client_hdlc_watchdog: None,
+                client_forced_bitrate_bps: None,
+                fast_flap_tracker: None,
+                fast_flap_policy: FastFlapPolicy::default(),
+                peer_ip: None,
+            },
         );
         assert!(!ordinary.hdlc_liveness_enabled());
         assert_eq!(ordinary.forced_bitrate_bps(), None);
@@ -523,10 +722,15 @@ mod tests {
         let backbone = TcpServer::accepted_client(
             peer_addr.to_string(),
             stream,
-            1_048_576,
-            TcpSocketTuning::backbone(),
-            Some(backbone_hdlc_watchdog()),
-            Some(9_600),
+            AcceptedClientOptions {
+                client_mtu: 1_048_576,
+                client_socket_tuning: TcpSocketTuning::backbone(),
+                client_hdlc_watchdog: Some(backbone_hdlc_watchdog()),
+                client_forced_bitrate_bps: Some(9_600),
+                fast_flap_tracker: None,
+                fast_flap_policy: FastFlapPolicy::default(),
+                peer_ip: None,
+            },
         );
 
         assert_eq!(backbone.mtu_value(), 1_048_576);

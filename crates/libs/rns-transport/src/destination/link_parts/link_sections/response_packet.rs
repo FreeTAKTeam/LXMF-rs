@@ -31,6 +31,38 @@ impl Link {
         self.packet_with_context(data, PacketContext::Request)
     }
 
+    /// Build a request packet and associate the optional Python-compatible
+    /// `max_response_size` with the request id derived from its packet hash.
+    pub fn request_packet_with_max_response_size(
+        &mut self,
+        data: &[u8],
+        max_response_size: Option<usize>,
+    ) -> Result<Packet, RnsError> {
+        let packet = self.packet_with_context(data, PacketContext::Request)?;
+        if let Some(max_response_size) = max_response_size {
+            let request_id = packet.hash().to_bytes()[..ADDRESS_HASH_SIZE].to_vec();
+            self.pending_response_limits.insert(request_id, max_response_size);
+        }
+        Ok(packet)
+    }
+
+    /// Register a response-size limit for a resource-backed request.
+    pub fn set_response_size_limit(&mut self, request_id: &[u8], max_response_size: usize) {
+        self.pending_response_limits.insert(request_id.to_vec(), max_response_size);
+    }
+
+    /// Remove a pending limit after the matching response is accepted or
+    /// rejected. A missing limit means the request was unbounded.
+    pub fn take_response_limit_if_allowed(&mut self, request_id: &[u8], response_size: usize) -> bool {
+        self.pending_response_limits
+            .remove(request_id)
+            .is_none_or(|limit| response_size <= limit)
+    }
+
+    pub fn clear_response_size_limit(&mut self, request_id: &[u8]) {
+        self.pending_response_limits.remove(request_id);
+    }
+
     /// Build a response packet (context = `Response`) carrying `data`.
     ///
     /// Real Reticulum answers a request with a single packet whenever the
@@ -59,4 +91,19 @@ impl Link {
     pub fn response_packet(&self, data: &[u8]) -> Result<Packet, RnsError> {
         self.packet_with_context(data, PacketContext::Response)
     }
+}
+
+fn response_envelope_metadata(data: &[u8]) -> Option<(Option<[u8; ADDRESS_HASH_SIZE]>, usize)> {
+    let mut cursor = std::io::Cursor::new(data);
+    let value = rmpv::decode::read_value(&mut cursor).ok()?;
+    if cursor.position() != data.len() as u64 {
+        return None;
+    }
+    let values = value.as_array()?;
+    let request_id = values.first()?.as_slice()?;
+    let request_id = request_id.try_into().ok();
+    let response = values.get(1)?;
+    let mut packed_response = Vec::new();
+    rmpv::encode::write_value(&mut packed_response, response).ok()?;
+    Some((request_id, packed_response.len()))
 }
