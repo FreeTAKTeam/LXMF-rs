@@ -108,7 +108,11 @@ impl FastFlapTracker {
         let now = Instant::now();
         let mut entries = self.entries.lock().expect("fast-flap tracker mutex poisoned");
         entries.retain(|_, entry| now.saturating_duration_since(entry.last) <= policy.expiry);
-        let mut ips = entries.keys().cloned().collect::<Vec<_>>();
+        let mut ips = entries
+            .iter()
+            .filter(|(_, entry)| entry.flaps > policy.grace)
+            .map(|(ip, _)| ip.clone())
+            .collect::<Vec<_>>();
         ips.sort();
         ips
     }
@@ -679,10 +683,11 @@ mod tests {
         tracker.record_short_connection("192.0.2.7", Duration::from_millis(1), policy);
         tracker.record_short_connection("192.0.2.7", Duration::from_millis(1), policy);
         assert_eq!(tracker.blocked_ip_count(policy), 0);
-        assert_eq!(tracker.blocked_ip_list(policy), vec!["192.0.2.7"]);
+        assert!(tracker.blocked_ip_list(policy).is_empty());
 
         tracker.record_short_connection("192.0.2.7", Duration::from_millis(1), policy);
         assert_eq!(tracker.blocked_ip_count(policy), 1);
+        assert_eq!(tracker.blocked_ip_list(policy), vec!["192.0.2.7"]);
         assert!(tracker.is_blocked("192.0.2.7", policy));
 
         let disabled = FastFlapPolicy { enabled: false, ..policy };

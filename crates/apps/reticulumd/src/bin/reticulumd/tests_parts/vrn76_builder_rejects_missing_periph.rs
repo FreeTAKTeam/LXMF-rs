@@ -557,6 +557,10 @@ fn select_tcp_server_bind_uses_single_backbone_listener_when_transport_not_set()
             port: Some(4242),
             mtu: Some(1_048_576),
             prefer_ipv6: Some(true),
+            block_fast_flapping: Some(false),
+            fast_flapping_threshold: Some(8.0),
+            fast_flapping_grace: Some(2),
+            fast_flapping_block_time: Some(3.0),
             ..InterfaceConfig::default()
         }],
     };
@@ -567,6 +571,10 @@ fn select_tcp_server_bind_uses_single_backbone_listener_when_transport_not_set()
     assert_eq!(selected.kind, "backbone");
     assert_eq!(selected.client_mtu, Some(1_048_576));
     assert!(selected.prefer_ipv6);
+    assert_eq!(selected.block_fast_flapping, Some(false));
+    assert_eq!(selected.fast_flapping_threshold, Some(8.0));
+    assert_eq!(selected.fast_flapping_grace, Some(2));
+    assert_eq!(selected.fast_flapping_block_time, Some(3.0));
 }
 
 #[test]

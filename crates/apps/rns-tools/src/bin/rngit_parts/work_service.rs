@@ -113,9 +113,22 @@ impl ReticulumGitNode {
         if !self.resolve_permission(&remote, &group, &repository, required) {
             return response(Self::RES_DISALLOWED, "Not allowed", None);
         }
+        if matches!(
+            operation.as_str(),
+            "view" | "edit" | "delete" | "comment" | "complete" | "activate" | "perms"
+        ) {
+            let Some(doc_id) = map_value(request, &rmpv::Value::String("doc_id".into()))
+                .and_then(rmpv::Value::as_u64)
+            else {
+                return response(Self::RES_INVALID_REQ, "No document ID specified", None);
+            };
+            if !self.resolve_doc_permission(&remote, &group, &repository, doc_id, required) {
+                return response(Self::RES_DISALLOWED, "Not allowed", None);
+            }
+        }
         let root = Self::work_root(record);
         match operation.as_str() {
-            "list" => self.work_list(&root, request),
+            "list" => self.work_list(&root, request, remote, &group, &repository),
             "view" => self.work_view(&root, request),
             "create" | "propose" => self.work_create(&root, request, remote, operation == "propose"),
             "edit" => self.work_edit(&root, request),
@@ -128,7 +141,14 @@ impl ReticulumGitNode {
         }
     }
 
-    fn work_list(&self, root: &Path, request: &[(rmpv::Value, rmpv::Value)]) -> Vec<u8> {
+    fn work_list(
+        &self,
+        root: &Path,
+        request: &[(rmpv::Value, rmpv::Value)],
+        remote: [u8; 16],
+        group: &str,
+        repository: &str,
+    ) -> Vec<u8> {
         let requested_scope = map_string(request, &rmpv::Value::String("scope".into()));
         let scopes: Vec<String> = requested_scope.map_or_else(
             || vec!["active".to_string(), "completed".to_string(), "proposed".to_string()],
@@ -141,6 +161,15 @@ impl ReticulumGitNode {
                     let Some(id) = entry.file_name().to_str().and_then(|value| value.parse::<u64>().ok()) else {
                         continue;
                     };
+                    if !self.resolve_doc_permission(
+                        &remote,
+                        group,
+                        repository,
+                        id,
+                        Self::PERM_READ,
+                    ) {
+                        continue;
+                    }
                     if let Some(document) = self.work_document(root, &scope, id) {
                         documents.push(rmpv::Value::Map(vec![
                             (rmpv::Value::String("id".into()), rmpv::Value::from(id)),

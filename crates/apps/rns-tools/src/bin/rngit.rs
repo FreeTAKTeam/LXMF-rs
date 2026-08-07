@@ -412,6 +412,8 @@ mod tests {
         assert_eq!(permissions.first().copied(), Some(ReticulumGitNode::RES_OK));
     }
 
+    include!("rngit_parts/document_permissions_tests.rs");
+
     #[test]
     fn local_git_bundle_fetch_and_push_use_the_registered_request_paths() {
         let temp = tempfile::tempdir().expect("tempdir");

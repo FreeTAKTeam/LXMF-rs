@@ -1,4 +1,7 @@
-use super::{build_selected_tcp_server_adapter, reticulum_transport_enabled, TcpServerSelection};
+use super::{
+    build_selected_tcp_server_adapter, reticulum_transport_enabled, selected_fast_flap_policy,
+    TcpServerSelection,
+};
 use rns_transport::iface::InterfaceManager;
 use std::sync::Arc;
 use std::time::Duration;
@@ -40,6 +43,10 @@ fn selected_backbone_server_adapter_enables_socket_tuning_and_liveness() {
         kind: "backbone".to_string(),
         client_mtu: Some(1_048_576),
         prefer_ipv6: true,
+        block_fast_flapping: Some(true),
+        fast_flapping_threshold: Some(7.5),
+        fast_flapping_grace: Some(3),
+        fast_flapping_block_time: Some(2.0),
         ..TcpServerSelection::default()
     };
     let backbone_server =
@@ -49,6 +56,15 @@ fn selected_backbone_server_adapter_enables_socket_tuning_and_liveness() {
     assert_eq!(backbone_server.client_socket_tuning().keepalive, Some(true));
     assert!(backbone_server.client_hdlc_liveness_enabled());
     assert!(backbone_server.prefer_ipv6());
+    assert_eq!(
+        selected_fast_flap_policy(&backbone),
+        rns_transport::iface::tcp_server::FastFlapPolicy {
+            enabled: true,
+            threshold: Duration::from_secs_f64(7.5),
+            grace: 3,
+            expiry: Duration::from_secs(120),
+        }
+    );
 }
 
 #[test]

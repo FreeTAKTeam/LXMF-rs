@@ -862,16 +862,6 @@ async fn startup_synthetic_local_tcp_sidecar(
     let mut adapter = TcpServer::new(bind_addr.clone(), iface_manager.clone())
         .with_client_mtu(iface.mtu.unwrap_or(TcpClient::DEFAULT_MTU))
         .with_prefer_ipv6(iface.prefer_ipv6.unwrap_or(false));
-    if iface.kind == "backbone" {
-        adapter = adapter.with_fast_flapping(
-            iface.block_fast_flapping.unwrap_or(true),
-            Duration::from_secs_f64(iface.fast_flapping_threshold.unwrap_or(20.0).max(0.0)),
-            iface.fast_flapping_grace.unwrap_or(5),
-            Duration::from_secs_f64(
-                iface.fast_flapping_block_time.unwrap_or(12.0 * 60.0).max(0.0) * 60.0,
-            ),
-        );
-    }
     if let Some(bitrate_bps) = iface.force_shared_instance_bitrate {
         adapter = adapter.with_client_forced_bitrate(bitrate_bps);
     }
