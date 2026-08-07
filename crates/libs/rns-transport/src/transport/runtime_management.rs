@@ -31,18 +31,11 @@ impl Transport {
     }
 
     pub async fn should_apply_delta(&self, packet: &Packet, interface: &AddressHash) -> bool {
-        let (connected_to_shared_instance, local_hops_delta) = {
+        let should_apply = {
             let handler = self.handler.lock().await;
-            (handler.config.connected_to_shared_instance, handler.config.local_hops_delta)
+            handler.local_hops_delta_for_packet(packet).is_some()
         };
-        if connected_to_shared_instance
-            || packet.header.hops != 0
-            || local_hops_delta == 0
-            || matches!(
-                packet.header.destination_type,
-                DestinationType::Plain | DestinationType::Group
-            )
-        {
+        if !should_apply {
             return false;
         }
         !self.iface_manager.lock().await.is_shared_instance(interface)

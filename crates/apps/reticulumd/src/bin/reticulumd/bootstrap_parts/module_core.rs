@@ -192,6 +192,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         receipt_tx: receipt_tx.clone(),
         propagation_control_enabled,
         propagation_announce_config: propagation_node_config.announce_config,
+        local_hops_delta: reticulum_runtime_policy.local_hops_delta(),
     })
     .await;
 

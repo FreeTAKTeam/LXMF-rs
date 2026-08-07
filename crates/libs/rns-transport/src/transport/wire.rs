@@ -247,7 +247,13 @@ pub(super) async fn handle_data<'a>(
                 let mut destination = destination.lock().await;
                 match destination.decrypt_with_ratchets(packet.data.as_slice()) {
                     Ok((plaintext, used)) => {
-                        if handler.reject_oversized_request(packet, &destination, plaintext.len()) {
+                        if packet.context == PacketContext::Request
+                            && handler.reject_oversized_request(
+                                packet,
+                                &destination,
+                                plaintext.len(),
+                            )
+                        {
                             return;
                         }
                         ratchet_used = used;

@@ -66,6 +66,52 @@ async fn default_proof_strategy_never_generates_a_delivery_proof() {
 }
 
 #[tokio::test]
+async fn request_size_limit_does_not_reject_ordinary_single_packets() {
+    let receiver_identity = PrivateIdentity::new_from_rand(OsRng);
+    let receiver_transport = Transport::new(TransportConfig::new("receiver", &receiver_identity, true));
+    let receiver_iface = receiver_transport.iface_manager().lock().await.new_channel(8);
+    let own_destination = receiver_transport
+        .add_destination(receiver_identity.clone(), DestinationName::new("lxmf", "delivery"))
+        .await;
+    own_destination.lock().await.set_max_request_size(1).expect("valid request limit");
+    let own_hash = own_destination.lock().await.desc.address_hash;
+    let mut received = receiver_transport.received_data_events();
+
+    let sender_identity = PrivateIdentity::new_from_rand(OsRng);
+    let sender_transport = Transport::new(TransportConfig::new("sender", &sender_identity, true));
+    let mut sender_iface = sender_transport.iface_manager().lock().await.new_channel(8);
+    let receiver_announce = own_destination.lock().await.announce(OsRng, None).expect("valid announce");
+    handle_announce(
+        &receiver_announce,
+        sender_transport.get_handler().lock().await,
+        sender_iface.address,
+        crate::iface::IfaceSource::None,
+    )
+    .await;
+
+    let outbound = Packet {
+        destination: own_hash,
+        data: PacketDataBuffer::new_from_slice(b"ordinary application data"),
+        ..Packet::default()
+    };
+    let trace = sender_transport.send_packet_with_trace(outbound).await;
+    assert_eq!(trace.outcome, SendPacketOutcome::SentDirect);
+    let sent = timeout(Duration::from_millis(200), sender_iface.tx_channel.recv())
+        .await
+        .expect("packet should be queued for the sender's own interface")
+        .expect("tx channel open");
+    assert_eq!(sent.packet.context, PacketContext::None);
+
+    handle_data(&sent.packet, receiver_iface.address, receiver_transport.get_handler().lock().await).await;
+
+    let delivered = timeout(Duration::from_millis(200), received.recv())
+        .await
+        .expect("ordinary packet should not be subject to request limit")
+        .expect("received data channel open");
+    assert_eq!(delivered.data.as_slice(), b"ordinary application data");
+}
+
+#[tokio::test]
 async fn proof_strategy_all_generates_a_valid_delivery_proof() {
     // Receiver: the side this patch changes. Registers its own destination
     // via `add_destination`, exactly as this app's own `ReticulumStack::new`

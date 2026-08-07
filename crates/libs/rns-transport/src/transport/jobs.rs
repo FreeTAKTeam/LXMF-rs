@@ -189,6 +189,25 @@ pub(super) async fn manage_transport(
                         }
 
                         let mut packet = message.packet;
+                        let (configured_hops_delta, iface_manager) = {
+                            let handler = handler_arc.lock().await;
+                            (
+                                handler.local_hops_delta_for_packet(&packet),
+                                handler.iface_manager.clone(),
+                            )
+                        };
+                        let local_hops_delta = if let Some(delta) = configured_hops_delta {
+                            if !iface_manager.lock().await.is_shared_instance(&message.address) {
+                                Some(delta)
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        };
+                        if let Some(delta) = local_hops_delta {
+                            packet.header.hops = packet.header.hops.saturating_add(delta);
+                        }
                         apply_receive_hop_increment(&mut packet);
 
                         let mut handler = handler_arc.lock().await;

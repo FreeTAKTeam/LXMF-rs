@@ -97,6 +97,7 @@ pub(super) struct TransportStartupInput<'a> {
         tokio::sync::mpsc::Sender<reticulum_daemon::receipt_bridge::ReceiptEvent>,
     pub(super) propagation_control_enabled: bool,
     pub(super) propagation_announce_config: PropagationNodeAnnounceConfig,
+    pub(super) local_hops_delta: bool,
 }
 
 fn spawn_stream_reconnect_tunnel_synthesizer(
@@ -153,6 +154,7 @@ pub(super) async fn start_transport_and_interfaces(
         receipt_tx,
         propagation_control_enabled,
         propagation_announce_config,
+        local_hops_delta,
     } = input;
 
     for record in &mut configured_interfaces {
@@ -216,6 +218,7 @@ pub(super) async fn start_transport_and_interfaces(
             rns_transport::identity_bridge::to_transport_private_identity(identity);
         let mut config = TransportConfig::new("daemon", &transport_identity, true);
         config.set_transport_enabled(reticulum_transport_enabled(daemon_config));
+        config.set_local_hops_delta(if local_hops_delta { 1 } else { 0 });
         let mut transport_instance = Transport::new(config);
         transport_instance
             .set_receipt_handler(Box::new(ReceiptBridge::new(receipt_map, receipt_tx.clone())))

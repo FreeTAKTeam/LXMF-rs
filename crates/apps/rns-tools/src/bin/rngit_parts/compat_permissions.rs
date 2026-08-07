@@ -137,6 +137,9 @@ impl ReticulumGitNode {
         group_name: &str,
         permission: u8,
     ) -> bool {
+        if self.blocked_identities.contains(remote_identity) {
+            return false;
+        }
         let Some(group) = self.groups.get(group_name) else {
             return false;
         };

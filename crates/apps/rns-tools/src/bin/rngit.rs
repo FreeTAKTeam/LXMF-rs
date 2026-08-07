@@ -270,8 +270,72 @@ mod tests {
         );
         assert!(node.resolve_permission(&identity, "group", "repo", ReticulumGitNode::PERM_READ));
         assert!(!node.resolve_permission(&identity, "group", "repo", ReticulumGitNode::PERM_WRITE));
+        assert!(node.resolve_group_permission(&identity, "group", ReticulumGitNode::PERM_READ));
         node.blocked_identities.insert(identity);
         assert!(!node.resolve_permission(&identity, "group", "repo", ReticulumGitNode::PERM_READ));
+        assert!(!node.resolve_group_permission(&identity, "group", ReticulumGitNode::PERM_READ));
+    }
+
+    #[test]
+    fn permission_updates_refresh_in_memory_group_and_repository_state() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let group_path = temp.path().join("group");
+        let repository_path = group_path.join("repo");
+        fs::create_dir_all(&group_path).expect("group");
+        let identity = [7_u8; 16];
+        let mut node = ReticulumGitNode::default();
+        node.groups.insert(
+            "group".to_string(),
+            RepositoryGroup {
+                name: "group".to_string(),
+                path: group_path.clone(),
+                permissions: node.permissions_from_allowed_input(Some("read:all\nadmin:all")),
+                repositories: BTreeMap::from([(
+                    "repo".to_string(),
+                    RepositoryRecord {
+                        name: "repo".to_string(),
+                        path: repository_path,
+                        fork: None,
+                        mirror: None,
+                        permissions: node
+                            .permissions_from_allowed_input(Some("write:all\nadmin:all")),
+                    },
+                )]),
+            },
+        );
+
+        assert!(node.resolve_group_permission(&identity, "group", ReticulumGitNode::PERM_READ));
+        assert!(node.resolve_permission(&identity, "group", "repo", ReticulumGitNode::PERM_WRITE));
+
+        let group_request = vec![
+            (rmpv::Value::String("operation".into()), rmpv::Value::String("gperms".into())),
+            (rmpv::Value::from(2_u64), rmpv::Value::String("group".into())),
+            (rmpv::Value::String("step".into()), rmpv::Value::String("set".into())),
+            (
+                rmpv::Value::String("content".into()),
+                rmpv::Value::String("read:none\nadmin:all".into()),
+            ),
+        ];
+        assert_eq!(
+            node.handle_permission_request(&group_request, identity)[0],
+            ReticulumGitNode::RES_OK
+        );
+        assert!(!node.resolve_group_permission(&identity, "group", ReticulumGitNode::PERM_READ));
+
+        let repository_request = vec![
+            (rmpv::Value::String("operation".into()), rmpv::Value::String("rperms".into())),
+            (rmpv::Value::from(0_u64), rmpv::Value::String("group/repo".into())),
+            (rmpv::Value::String("step".into()), rmpv::Value::String("set".into())),
+            (
+                rmpv::Value::String("content".into()),
+                rmpv::Value::String("write:none\nadmin:all".into()),
+            ),
+        ];
+        assert_eq!(
+            node.handle_permission_request(&repository_request, identity)[0],
+            ReticulumGitNode::RES_OK
+        );
+        assert!(!node.resolve_permission(&identity, "group", "repo", ReticulumGitNode::PERM_WRITE));
     }
 
     #[test]

@@ -286,6 +286,24 @@ pub(crate) struct TransportHandler {
     receipt_handler: Option<Arc<dyn ReceiptHandler>>,
 }
 
+impl TransportHandler {
+    fn local_hops_delta_for_packet(&self, packet: &Packet) -> Option<u8> {
+        let local_hops_delta = self.config.local_hops_delta;
+        if self.config.connected_to_shared_instance
+            || packet.header.hops != 0
+            || local_hops_delta == 0
+            || matches!(
+                packet.header.destination_type,
+                DestinationType::Plain | DestinationType::Group
+            )
+        {
+            None
+        } else {
+            Some(local_hops_delta)
+        }
+    }
+}
+
 pub struct Transport {
     name: String,
     link_in_event_tx: broadcast::Sender<LinkEventData>,
