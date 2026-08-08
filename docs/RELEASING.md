@@ -92,6 +92,9 @@ gh attestation verify oci://ghcr.io/freetakteam/lxmf-rs:0.9.9 --owner FreeTAKTea
 
 ```sh
 # Container (works on Raspberry Pi OS 64-bit too):
+# The image's anonymous volume is writable by UID 65532. For a bind mount,
+# prepare the host directory for the image's nonroot user first:
+mkdir -p data && sudo chown 65532:65532 data
 docker run --rm -v $PWD/data:/data ghcr.io/freetakteam/lxmf-rs:latest
 
 # Homebrew:

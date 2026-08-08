@@ -1,0 +1,630 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+      - "[0-9]*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Existing release tag to build (for example v0.9.9-rc1)
+        required: true
+        type: string
+      publish:
+        description: Publish the GitHub release, container image, and optional Homebrew update
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  prepare:
+    name: Validate release ref
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
+      checkout_ref: ${{ steps.release.outputs.checkout_ref }}
+      prerelease: ${{ steps.release.outputs.prerelease }}
+      publish: ${{ steps.release.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: release
+        name: Validate release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            tag="${GITHUB_REF_NAME}"
+            publish=true
+          else
+            tag="${{ inputs.version }}"
+            if [[ "${{ inputs.publish }}" == "true" ]]; then
+              publish=true
+            else
+              publish=false
+            fi
+          fi
+
+          [[ "${tag}" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]] || {
+            echo "Invalid release tag: ${tag}" >&2
+            exit 1
+          }
+          git rev-parse --verify "refs/tags/${tag}^{commit}" >/dev/null || {
+            echo "The release tag must already exist: ${tag}" >&2
+            exit 1
+          }
+
+          version="${tag#v}"
+          prerelease=false
+          if [[ "${tag}" == *-rc* || "${tag}" == *-alpha* || "${tag}" == *-beta* || "${tag}" == *preview* ]]; then
+            prerelease=true
+          fi
+
+          {
+            echo "tag=${tag}"
+            echo "version=${version}"
+            echo "checkout_ref=${tag}"
+            echo "prerelease=${prerelease}"
+            echo "publish=${publish}"
+          } >> "${GITHUB_OUTPUT}"
+
+  sdk-wrapper-parity:
+    name: SDK wrapper parity gate
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.checkout_ref }}
+      - name: Install Linux BLE build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libdbus-1-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Run SDK wrapper parity gate
+        run: cargo test --locked -p test-support sdk_wrapper_parity_release_gate
+
+  build:
+    name: Build ${{ matrix.label }}
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: linux-x86_64
+            label: Linux x86_64 (musl)
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            artifact_arch: linux-x86_64
+            use_cross: false
+            suffix: ""
+          - id: linux-aarch64
+            label: Linux aarch64 (musl)
+            os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            artifact_arch: linux-aarch64
+            use_cross: true
+            suffix: ""
+          - id: linux-armv7
+            label: Linux armv7 (musleabihf)
+            os: ubuntu-latest
+            target: armv7-unknown-linux-musleabihf
+            artifact_arch: linux-armv7
+            use_cross: true
+            suffix: ""
+          - id: windows-x86_64
+            label: Windows x86_64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_arch: windows-x86_64
+            use_cross: false
+            suffix: ".exe"
+          - id: macos-x86_64
+            label: macOS x86_64
+            os: macos-13
+            target: x86_64-apple-darwin
+            artifact_arch: macos-x86_64
+            use_cross: false
+            suffix: ""
+          - id: macos-aarch64
+            label: macOS aarch64
+            os: macos-14
+            target: aarch64-apple-darwin
+            artifact_arch: macos-aarch64
+            use_cross: false
+            suffix: ""
+    runs-on: ${{ matrix.os }}
+    env:
+      TARGET: ${{ matrix.target }}
+      RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+      BINARY_SUFFIX: ${{ matrix.suffix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.checkout_ref }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Install native Linux musl toolchain
+        if: runner.os == 'Linux' && matrix.use_cross == false
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+      - name: Install cross
+        if: matrix.use_cross == true
+        shell: bash
+        run: cargo install cross --locked
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Build release binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          builder=cargo
+          if [[ "${{ matrix.use_cross }}" == "true" ]]; then
+            builder=cross
+          fi
+
+          "${builder}" build --locked --release --target "${TARGET}" -p lxmf-cli --bins
+          "${builder}" build --locked --release --target "${TARGET}" -p reticulumd --bins
+          "${builder}" build --locked --release --target "${TARGET}" \
+            -p rns-tools \
+            --bin rnsd \
+            --bin rnstatus-rs \
+            --bin rnx
+      - name: Stage binary archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          stage="dist/bin"
+          mkdir -p "${stage}"
+          binaries=(
+            lxmd lxmf lxmf-cli reticulumd lxm-interchange rnsd rnstatus-rs rnx
+          )
+          for binary in "${binaries[@]}"; do
+            source="target/${TARGET}/release/${binary}${BINARY_SUFFIX}"
+            test -f "${source}"
+            cp "${source}" "${stage}/${binary}${BINARY_SUFFIX}"
+          done
+          cp README.md dist/README.md
+
+          archive_stem="lxmf-rs_${RELEASE_VERSION}_${{ matrix.artifact_arch }}"
+          if [[ "${RUNNER_OS}" == "Windows" ]]; then
+            7z a -tzip "dist/${archive_stem}.zip" dist/bin dist/README.md
+          else
+            tar -C dist -czf "dist/${archive_stem}.tar.gz" bin README.md
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-build-${{ matrix.id }}
+          path: dist
+          if-no-files-found: error
+          retention-days: 14
+
+  package-linux:
+    name: Package Linux ${{ matrix.arch }}
+    needs: [prepare, build]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - build_id: linux-x86_64
+            arch: amd64
+          - build_id: linux-aarch64
+            arch: arm64
+          - build_id: linux-armv7
+            arch: armhf
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+      PACKAGE_ARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.checkout_ref }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-build-${{ matrix.build_id }}
+          path: dist
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: Install nfpm
+        run: |
+          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
+          echo "$(go env GOPATH)/bin" >> "${GITHUB_PATH}"
+      - name: Build deb and rpm packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y gettext-base
+          mkdir -p package-root/usr/bin target
+          cp dist/bin/* package-root/usr/bin/
+          export ARCH="${PACKAGE_ARCH}"
+          export VERSION="${RELEASE_VERSION}"
+          export STAGE="${GITHUB_WORKSPACE}/package-root"
+          envsubst '${ARCH} ${VERSION} ${STAGE}' < packaging/nfpm.yaml > target/nfpm.yaml
+          nfpm package --config target/nfpm.yaml --packager deb \
+            --target "dist/lxmf-rs_${VERSION}_${ARCH}.deb"
+          nfpm package --config target/nfpm.yaml --packager rpm \
+            --target "dist/lxmf-rs_${VERSION}_${ARCH}.rpm"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-linux-packages-${{ matrix.arch }}
+          path: |
+            dist/*.deb
+            dist/*.rpm
+          if-no-files-found: error
+          retention-days: 14
+
+  package-windows:
+    name: Package Windows
+    needs: [prepare, build]
+    runs-on: windows-latest
+    env:
+      RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      AZURE_TS_ENDPOINT: ${{ secrets.AZURE_TS_ENDPOINT }}
+      AZURE_TS_ACCOUNT_NAME: ${{ secrets.AZURE_TS_ACCOUNT_NAME }}
+      AZURE_TS_CERT_PROFILE: ${{ secrets.AZURE_TS_CERT_PROFILE }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.checkout_ref }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-build-windows-x86_64
+          path: dist
+      - name: Install WiX
+        shell: pwsh
+        run: dotnet tool install --global wix --version 5.*
+      - name: Sign Windows binaries
+        if: env.AZURE_TENANT_ID != '' && env.AZURE_CLIENT_ID != '' && env.AZURE_CLIENT_SECRET != '' && env.AZURE_TS_ENDPOINT != '' && env.AZURE_TS_ACCOUNT_NAME != '' && env.AZURE_TS_CERT_PROFILE != ''
+        uses: azure/artifact-signing-action@v2
+        with:
+          endpoint: ${{ env.AZURE_TS_ENDPOINT }}
+          signing-account-name: ${{ env.AZURE_TS_ACCOUNT_NAME }}
+          certificate-profile-name: ${{ env.AZURE_TS_CERT_PROFILE }}
+          files-folder: ${{ github.workspace }}\dist\bin
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          azure-tenant-id: ${{ env.AZURE_TENANT_ID }}
+          azure-client-id: ${{ env.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ env.AZURE_CLIENT_SECRET }}
+          exclude-workload-identity-credential: true
+          exclude-managed-identity-credential: true
+          exclude-shared-token-cache-credential: true
+          exclude-visual-studio-credential: true
+          exclude-visual-studio-code-credential: true
+          exclude-azure-cli-credential: true
+          exclude-azure-powershell-credential: true
+          exclude-azure-developer-cli-credential: true
+          exclude-interactive-browser-credential: true
+      - name: Note unsigned Windows artifacts
+        if: env.AZURE_TENANT_ID == '' || env.AZURE_CLIENT_ID == '' || env.AZURE_CLIENT_SECRET == '' || env.AZURE_TS_ENDPOINT == '' || env.AZURE_TS_ACCOUNT_NAME == '' || env.AZURE_TS_CERT_PROFILE == ''
+        run: Write-Host 'Azure Trusted Signing secrets are not configured; Windows artifacts will be unsigned.'
+      - name: Build MSI
+        shell: pwsh
+        run: |
+          wix build packaging/wix/main.wxs -arch x64 `
+            -d Version=$env:RELEASE_VERSION `
+            -d SourceDir="$env:GITHUB_WORKSPACE\dist\bin" `
+            -o "dist\lxmf-rs_$env:RELEASE_VERSION`_x64.msi"
+      - name: Sign MSI
+        if: env.AZURE_TENANT_ID != '' && env.AZURE_CLIENT_ID != '' && env.AZURE_CLIENT_SECRET != '' && env.AZURE_TS_ENDPOINT != '' && env.AZURE_TS_ACCOUNT_NAME != '' && env.AZURE_TS_CERT_PROFILE != ''
+        uses: azure/artifact-signing-action@v2
+        with:
+          endpoint: ${{ env.AZURE_TS_ENDPOINT }}
+          signing-account-name: ${{ env.AZURE_TS_ACCOUNT_NAME }}
+          certificate-profile-name: ${{ env.AZURE_TS_CERT_PROFILE }}
+          files: ${{ github.workspace }}\dist\lxmf-rs_${{ needs.prepare.outputs.version }}_x64.msi
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          azure-tenant-id: ${{ env.AZURE_TENANT_ID }}
+          azure-client-id: ${{ env.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ env.AZURE_CLIENT_SECRET }}
+          exclude-workload-identity-credential: true
+          exclude-managed-identity-credential: true
+          exclude-shared-token-cache-credential: true
+          exclude-visual-studio-credential: true
+          exclude-visual-studio-code-credential: true
+          exclude-azure-cli-credential: true
+          exclude-azure-powershell-credential: true
+          exclude-azure-developer-cli-credential: true
+          exclude-interactive-browser-credential: true
+      - name: Create Windows ZIP
+        shell: pwsh
+        run: Compress-Archive -Path 'dist\bin\*', 'dist\README.md' -DestinationPath "dist\lxmf-rs_$env:RELEASE_VERSION`_windows-x86_64.zip" -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: |
+            dist/*.zip
+            dist/*.msi
+          if-no-files-found: error
+          retention-days: 14
+
+  package-macos:
+    name: Package macOS universal
+    needs: [prepare, build]
+    runs-on: macos-14
+    env:
+      RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+      APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.checkout_ref }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-build-macos-x86_64
+          path: artifacts/x86_64
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-build-macos-aarch64
+          path: artifacts/aarch64
+      - name: Build universal binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/bin
+          for binary in lxmd lxmf lxmf-cli reticulumd lxm-interchange rnsd rnstatus-rs rnx; do
+            lipo -create \
+              "artifacts/x86_64/bin/${binary}" \
+              "artifacts/aarch64/bin/${binary}" \
+              -output "dist/bin/${binary}"
+          done
+          cp README.md dist/README.md
+      - name: Import macOS signing certificate
+        if: env.APPLE_CERTIFICATE_BASE64 != '' && env.APPLE_CERTIFICATE_PASSWORD != ''
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ env.APPLE_CERTIFICATE_BASE64 }}
+          p12-password: ${{ env.APPLE_CERTIFICATE_PASSWORD }}
+      - name: Sign macOS binaries
+        if: env.APPLE_CERTIFICATE_BASE64 != '' && env.APPLE_CERTIFICATE_PASSWORD != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          identity="$(security find-identity -v -p codesigning | awk -F '"' 'NR == 1 { print $2 }')"
+          test -n "${identity}"
+          for binary in dist/bin/*; do
+            codesign --force --options runtime --sign "${identity}" "${binary}"
+          done
+      - name: Note unsigned macOS artifacts
+        if: env.APPLE_CERTIFICATE_BASE64 == '' || env.APPLE_CERTIFICATE_PASSWORD == ''
+        run: echo 'Apple signing secrets are not configured; macOS artifacts will be unsigned.'
+      - name: Create macOS archive
+        shell: bash
+        run: tar -C dist -czf "dist/lxmf-rs_${RELEASE_VERSION}_macos-universal.tar.gz" bin README.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-macos
+          path: dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+
+  sbom:
+    name: Generate Rust SBOMs
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.checkout_ref }}
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install cargo-sbom
+        run: cargo install cargo-sbom --version 0.10.0 --locked
+      - name: Generate CycloneDX SBOMs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for package in reticulumd lxmf-cli rns-tools; do
+            cargo-sbom \
+              --cargo-package "${package}" \
+              --output-format=cyclone_dx_json_1_6 \
+              > "dist/sbom-${package}.cdx.json"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-sbom
+          path: dist/*.json
+          if-no-files-found: error
+          retention-days: 14
+
+  container:
+    name: Build OCI container
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.checkout_ref }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-build-linux-x86_64
+          path: artifacts/linux-x86_64
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-build-linux-aarch64
+          path: artifacts/linux-aarch64
+      - name: Stage container context
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p docker/context/amd64 docker/context/arm64
+          cp artifacts/linux-x86_64/bin/* docker/context/amd64/
+          cp artifacts/linux-aarch64/bin/* docker/context/arm64/
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        if: needs.prepare.outputs.publish == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and publish multi-arch image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ needs.prepare.outputs.publish == 'true' }}
+          tags: |
+            ghcr.io/freetakteam/lxmf-rs:${{ needs.prepare.outputs.version }}
+            ghcr.io/freetakteam/lxmf-rs:latest
+      - name: Generate container SBOM
+        if: needs.prepare.outputs.publish == 'true'
+        uses: anchore/sbom-action@v0
+        with:
+          image: ghcr.io/freetakteam/lxmf-rs:${{ needs.prepare.outputs.version }}
+          format: cyclonedx-json
+          output-file: sbom-container.cdx.json
+      - uses: actions/upload-artifact@v4
+        if: needs.prepare.outputs.publish == 'true'
+        with:
+          name: release-container
+          path: sbom-container.cdx.json
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Publish release assets
+    needs: [prepare, build, package-linux, package-windows, package-macos, sbom, container]
+    if: needs.prepare.outputs.publish == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+      RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: artifacts
+          merge-multiple: false
+      - name: Collect release files
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          find artifacts -type f \( \
+            -name '*.tar.gz' -o -name '*.zip' -o -name '*.deb' -o \
+            -name '*.rpm' -o -name '*.msi' -o -name '*.json' \
+          \) -exec cp {} release-assets/ \;
+          test "$(find release-assets -type f | wc -l)" -gt 0
+      - name: Generate checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          (
+            cd release-assets
+            files=(*)
+            sha256sum "${files[@]}" > SHA256SUMS.txt
+          )
+      - name: Install cosign
+        if: needs.prepare.outputs.publish == 'true'
+        uses: sigstore/cosign-installer@v3
+      - name: Sign checksums with keyless cosign
+        if: needs.prepare.outputs.publish == 'true'
+        shell: bash
+        run: |
+          cosign sign-blob --yes \
+            --bundle release-assets/SHA256SUMS.txt.cosign.bundle \
+            release-assets/SHA256SUMS.txt
+      - name: Attest release files
+        if: needs.prepare.outputs.publish == 'true'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: release-assets/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-assets-${{ needs.prepare.outputs.version }}
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 14
+      - name: Publish GitHub release
+        if: needs.prepare.outputs.publish == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: release-assets/*
+          fail_on_unmatched_files: true
+          generate_release_notes: true
+          prerelease: ${{ needs.prepare.outputs.prerelease == 'true' }}
+
+  homebrew:
+    name: Update Homebrew tap
+    needs: [prepare, release]
+    if: needs.prepare.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+      HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.checkout_ref }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-assets-${{ needs.prepare.outputs.version }}
+          path: release-assets
+      - name: Update Homebrew tap
+        if: env.HOMEBREW_TAP_TOKEN != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$(find release-assets -name '*_macos-universal.tar.gz' -print -quit)"
+          test -n "${archive}"
+          sha256="$(sha256sum "${archive}" | awk '{print $1}')"
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/FreeTAKTeam/homebrew-tap.git" tap
+          mkdir -p tap/Formula
+          sed \
+            -e "s/@TAG@/${{ needs.prepare.outputs.tag }}/g" \
+            -e "s/@VERSION@/${RELEASE_VERSION}/g" \
+            -e "s/@SHA256@/${sha256}/g" \
+            packaging/homebrew/lxmf-rs.rb.tmpl > tap/Formula/lxmf-rs.rb
+          git -C tap config user.name github-actions[bot]
+          git -C tap config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git -C tap add Formula/lxmf-rs.rb
+          if ! git -C tap diff --cached --quiet; then
+            git -C tap commit -m "Update lxmf-rs to ${RELEASE_VERSION}"
+            git -C tap push origin HEAD
+          fi
+      - name: Note skipped Homebrew update
+        if: env.HOMEBREW_TAP_TOKEN == ''
+        run: echo 'HOMEBREW_TAP_TOKEN is not configured; skipping Homebrew tap update.'

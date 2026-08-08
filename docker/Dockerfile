@@ -11,6 +11,7 @@ FROM gcr.io/distroless/static-debian12:nonroot
 
 ARG TARGETARCH
 COPY docker/context/${TARGETARCH}/ /usr/local/bin/
+COPY --chown=65532:65532 docker/data/.gitkeep /data/.gitkeep
 
 USER nonroot
 VOLUME ["/data"]

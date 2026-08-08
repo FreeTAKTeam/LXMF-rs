@@ -1,19 +1,20 @@
 # Homebrew formula template for LXMF-rs.
-# The release workflow substitutes @VERSION@ and @SHA256@ and pushes the
+# The release workflow substitutes @TAG@, @VERSION@, and @SHA256@ and pushes the
 # result to FreeTAKTeam/homebrew-tap as Formula/lxmf-rs.rb.
 class LxmfRs < Formula
   desc "LXMF and Reticulum tooling built from LXMF-rs (reticulumd, lxmf, rns-tools)"
   homepage "https://github.com/FreeTAKTeam/LXMF-rs"
-  url "https://github.com/FreeTAKTeam/LXMF-rs/releases/download/v@VERSION@/lxmf-rs_@VERSION@_macos-universal.tar.gz"
+  url "https://github.com/FreeTAKTeam/LXMF-rs/releases/download/@TAG@/lxmf-rs_@VERSION@_macos-universal.tar.gz"
   sha256 "@SHA256@"
   version "@VERSION@"
   license "EPL-2.0"
+  depends_on macos: :big_sur
 
   def install
-    Dir["*"].each { |f| bin.install f if File.file?(f) }
+    bin.install Dir["bin/*"]
   end
 
   test do
-    assert_match "reticulum", shell_output("#{bin}/reticulumd --help 2>&1", 1)
+    assert_match "reticulum", shell_output("#{bin}/reticulumd --help 2>&1", 0)
   end
 end
