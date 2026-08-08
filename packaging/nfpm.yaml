@@ -1,0 +1,25 @@
+# nfpm configuration for LXMF-rs .deb / .rpm packages.
+# ARCH, VERSION and STAGE are set by the release workflow before invoking nfpm.
+name: lxmf-rs
+arch: ${ARCH}
+platform: linux
+version: ${VERSION}
+version_schema: semver
+section: net
+priority: optional
+maintainer: "FreeTAKTeam <https://github.com/FreeTAKTeam>"
+vendor: FreeTAKTeam
+homepage: https://github.com/FreeTAKTeam/LXMF-rs
+license: EPL-2.0
+description: |-
+  LXMF and Reticulum tooling built from LXMF-rs: the reticulumd daemon,
+  lxm-interchange, the lxmf/lxmf-cli clients, and the rns-tools diagnostic
+  utilities (rnsd, rnstatus, rnpath, rncp, rnx, and friends).
+contents:
+  - src: ${STAGE}/usr/bin/
+    dst: /usr/bin/
+overrides:
+  deb:
+    depends: []
+  rpm:
+    group: Applications/Communications
