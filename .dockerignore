@@ -1,0 +1,9 @@
+# Keep the container build context small; only docker/context is needed.
+.git
+target
+**/*.md
+.github
+docs
+generated
+tools
+wrappers
