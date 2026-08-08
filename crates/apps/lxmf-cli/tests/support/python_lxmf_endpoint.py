@@ -289,6 +289,26 @@ class EndpointState:
         self._attach_link(link)
         return self.wait_link_state("active", timeout)
 
+    def wait_path(self, destination_hex: str, timeout: float = 60.0) -> dict:
+        destination_hash = bytes.fromhex(destination_hex)
+        deadline = time.time() + timeout
+        requested = False
+        while time.time() < deadline:
+            if RNS.Transport.has_path(destination_hash):
+                recipient_identity = RNS.Identity.recall(destination_hash)
+                if recipient_identity is not None:
+                    return {
+                        "path_found": True,
+                        "destination": destination_hex,
+                        "identity_hash": recipient_identity.hash.hex(),
+                    }
+            if not requested:
+                RNS.Transport.request_path(destination_hash)
+                requested = True
+            time.sleep(0.1)
+
+        raise RuntimeError(f"timed out waiting for path/identity to {destination_hex}")
+
     def link_status(self) -> dict:
         return self._link_snapshot()
 
@@ -357,6 +377,11 @@ class ControlHandler(socketserver.StreamRequestHandler):
                 )
             elif method == "open_link":
                 result = self.server.state.open_link(
+                    params["destination"],
+                    float(params.get("timeout", 60.0)),
+                )
+            elif method == "wait_path":
+                result = self.server.state.wait_path(
                     params["destination"],
                     float(params.get("timeout", 60.0)),
                 )

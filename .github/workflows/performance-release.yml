@@ -100,10 +100,10 @@ jobs:
             --dashboard-output target/performance/lxmf-rs-performance.html
           cp "docs/performance/${RELEASE_TAG}.json" target/performance/candidate.json
           cp "docs/performance/${RELEASE_TAG}.json" target/performance/lxmf-rs-performance.json
-          sha256sum \
-            target/performance/lxmf-rs-performance.html \
-            target/performance/lxmf-rs-performance.json \
-            > target/performance/SHA256SUMS
+          (
+            cd target/performance
+            sha256sum lxmf-rs-performance.html lxmf-rs-performance.json
+          ) > target/performance/SHA256SUMS
       - name: Apply release regression budgets
         working-directory: candidate
         run: |

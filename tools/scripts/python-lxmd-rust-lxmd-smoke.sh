@@ -1134,6 +1134,10 @@ EOF
     link_liveness_python_to_rust|link_teardown_python_to_rust|link_setup_python_to_rust)
       rpc_call "${RUST_RPC_ADDR}" "announce_now" "null" >/dev/null
       if [[ "${COMPAT_CASE}" == "link_setup_python_to_rust" ]]; then
+        python_control_call "${PY_ENDPOINT_CONTROL_PORT}" "wait_path" "$(cat <<EOF
+{"destination":"${RUST_DELIVERY_HASH}","timeout":${TIMEOUT_SECS}}
+EOF
+)" >/dev/null
         PERFORMANCE_START_NS="$(date +%s%N)"
       fi
       active_snapshot="$(python_control_call "${PY_ENDPOINT_CONTROL_PORT}" "open_link" "$(cat <<EOF

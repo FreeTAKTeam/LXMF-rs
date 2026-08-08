@@ -62,10 +62,10 @@ jobs:
             --e2e-report target/performance/e2e.json \
             --dashboard-output target/performance/lxmf-rs-performance.html
           cp "docs/performance/${RELEASE_TAG}.json" target/performance/lxmf-rs-performance.json
-          sha256sum \
-            target/performance/lxmf-rs-performance.html \
-            target/performance/lxmf-rs-performance.json \
-            > target/performance/SHA256SUMS
+          (
+            cd target/performance
+            sha256sum lxmf-rs-performance.html lxmf-rs-performance.json
+          ) > target/performance/SHA256SUMS
           python3 tools/scripts/performance_docs.py \
             --release "$RELEASE_TAG" \
             --dashboard-output target/performance/lxmf-rs-performance.html \
