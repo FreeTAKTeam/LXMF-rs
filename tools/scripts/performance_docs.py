@@ -11,6 +11,8 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
+from performance_dashboard import public_rows, render_dashboard
+
 
 ROOT = Path(__file__).resolve().parents[2]
 README = ROOT / "README.md"
@@ -28,11 +30,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--report", type=Path)
     parser.add_argument("--sdk-transport-report", type=Path)
     parser.add_argument("--e2e-report", type=Path)
+    parser.add_argument("--dashboard-output", type=Path)
     parser.add_argument("--check", action="store_true")
     return parser.parse_args()
 
 
 def dataset_path(release: str) -> Path:
+    if not release or release in {".", ".."} or any(char in release for char in "/\\"):
+        raise ValueError("release must be a non-empty tag-like name without path separators")
     return ROOT / "docs/performance" / f"{release}.json"
 
 
@@ -209,6 +214,7 @@ def performance_page(data: dict[str, Any], release: str, scale_data: dict[str, A
         "<!-- GENERATED: tools/scripts/performance_docs.py -->",
         "",
         f"Dataset: [`docs/performance/{release}.json`](performance/{release}.json). All numbers below originate from release SHA `{env['git_commit']}`.",
+        "The standalone release dashboard is available at [the latest GitHub Release asset](https://github.com/FreeTAKTeam/LXMF-rs/releases/latest/download/lxmf-rs-performance.html); the release asset is the public source for the complete matrix.",
         "",
         "## Methodology",
         "",
@@ -328,8 +334,8 @@ def replace_marked(source: str, replacement: str) -> str:
 
 def main() -> int:
     args = parse_args()
-    target = dataset_path(args.release)
     try:
+        target = dataset_path(args.release)
         references = current_python_references()
         verify_workflow_refs(references)
         if args.report:
@@ -345,20 +351,39 @@ def main() -> int:
                 if e2e["python_lxmf_revision"] != data["environment"]["python_lxmf_revision"]:
                     raise ValueError("E2E LXMF revision differs from core report")
                 data.update(e2e)
+            data["public_benchmark"] = {
+                "schema": "lxmf-rs-public-benchmark-v1",
+                "implementations": ["python", "lxmf_rs", "rns_rs"],
+                "rows": public_rows(data),
+            }
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         data = load(target)
         scale_data = load(SCALE_DATASET)
         expected_page = performance_page(data, args.release, scale_data)
         expected_readme = replace_marked(README.read_text(encoding="utf-8"), summary_section(data, args.release))
+        expected_dashboard = (
+            render_dashboard(data, args.release) if args.dashboard_output is not None else None
+        )
         if args.check:
             if not PAGE.is_file() or PAGE.read_text(encoding="utf-8") != expected_page:
                 raise ValueError("docs/performance.md drift")
             if README.read_text(encoding="utf-8") != expected_readme:
                 raise ValueError("README performance section drift")
+            if (
+                args.dashboard_output is not None
+                and (
+                    not args.dashboard_output.is_file()
+                    or args.dashboard_output.read_text(encoding="utf-8") != expected_dashboard
+                )
+            ):
+                raise ValueError(f"{args.dashboard_output} drift")
         else:
             PAGE.write_text(expected_page, encoding="utf-8")
             README.write_text(expected_readme, encoding="utf-8")
+            if args.dashboard_output is not None and expected_dashboard is not None:
+                args.dashboard_output.parent.mkdir(parents=True, exist_ok=True)
+                args.dashboard_output.write_text(expected_dashboard, encoding="utf-8")
     except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
         print(f"performance_docs: {error}", file=sys.stderr)
         return 1

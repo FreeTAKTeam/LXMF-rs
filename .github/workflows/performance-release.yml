@@ -7,12 +7,19 @@ on:
         description: Candidate SHA or ref
         required: true
         default: main
+      release_tag:
+        description: Release tag/label for the generated dataset and asset
+        required: true
+        default: v0.9.8
   push:
     tags:
-      - v0.9.8-rc.*
+      - v*
 
 permissions:
   contents: read
+
+env:
+  RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || inputs.release_tag }}
 
 jobs:
   same-runner-comparison:
@@ -86,11 +93,17 @@ jobs:
         working-directory: candidate
         run: |
           python3 tools/scripts/performance_docs.py \
-            --release v0.9.8 \
+            --release "$RELEASE_TAG" \
             --report target/criterion/python-impl-report/report.json \
             --sdk-transport-report target/performance/sdk-transport.json \
-            --e2e-report target/performance/e2e.json
-          cp docs/performance/v0.9.8.json target/performance/candidate.json
+            --e2e-report target/performance/e2e.json \
+            --dashboard-output target/performance/lxmf-rs-performance.html
+          cp "docs/performance/${RELEASE_TAG}.json" target/performance/candidate.json
+          cp "docs/performance/${RELEASE_TAG}.json" target/performance/lxmf-rs-performance.json
+          sha256sum \
+            target/performance/lxmf-rs-performance.html \
+            target/performance/lxmf-rs-performance.json \
+            > target/performance/SHA256SUMS
       - name: Apply release regression budgets
         working-directory: candidate
         run: |
@@ -98,12 +111,45 @@ jobs:
             --candidate target/performance/candidate.json \
             --baseline ../baseline/target/criterion/python-impl-report/report.json \
             --output target/performance/release-gate.json
+          python3 tools/scripts/performance_docs.py \
+            --release "$RELEASE_TAG" \
+            --dashboard-output target/performance/lxmf-rs-performance.html \
+            --check
       - uses: actions/upload-artifact@v4
         with:
-          name: v0.9.8-performance-${{ github.run_id }}
+          name: performance-release-${{ github.run_id }}
           path: |
             candidate/target/criterion/python-impl-report/**
             baseline/target/criterion/python-impl-report/**
             candidate/target/performance/**
             candidate/docs/performance.md
           if-no-files-found: error
+
+  publish-performance-assets:
+    needs: same-runner-comparison
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: performance-release-${{ github.run_id }}
+          path: dist
+      - name: Collect public performance assets
+        shell: bash
+        run: |
+          mkdir -p release-assets
+          find dist -type f -name 'lxmf-rs-performance.html' -exec cp {} release-assets/lxmf-rs-performance.html \;
+          find dist -type f -name 'lxmf-rs-performance.json' -exec cp {} release-assets/lxmf-rs-performance.json \;
+          find dist -type f -name 'SHA256SUMS' -exec cp {} release-assets/SHA256SUMS \;
+          test -s release-assets/lxmf-rs-performance.html
+          test -s release-assets/lxmf-rs-performance.json
+          test -s release-assets/SHA256SUMS
+      - name: Attach public performance assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: release-assets/*
+          fail_on_unmatched_files: true
+          generate_release_notes: false

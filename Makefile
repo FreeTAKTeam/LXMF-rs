@@ -1,4 +1,4 @@
-.PHONY: bootstrap fmt clippy test test-all test-full-targets doc deny audit udeps boundaries ci release-check package-daemon-bundle api-diff licenses migration-checks forbidden-deps python-impl-bench python-impl-bench-report python-lxmd-smoke check-bin run-bin sccache-show-stats sccache-zero-stats
+.PHONY: bootstrap fmt clippy test test-all test-full-targets doc deny audit udeps boundaries ci release-check package-daemon-bundle api-diff licenses migration-checks forbidden-deps python-impl-bench python-impl-bench-report public-benchmark test-performance-dashboard python-lxmd-smoke check-bin run-bin sccache-show-stats sccache-zero-stats
 
 bootstrap:
 	./tools/scripts/bootstrap-dev.sh
@@ -83,6 +83,12 @@ python-impl-bench:
 
 python-impl-bench-report:
 	cargo xtask python-impl-bench-report
+
+public-benchmark:
+	cargo xtask public-benchmark --release $${RELEASE_TAG:-local-request}
+
+test-performance-dashboard:
+	python tools/scripts/test_performance_dashboard.py
 
 python-lxmd-smoke:
 	./tools/scripts/python-lxmd-rust-lxmd-smoke.sh

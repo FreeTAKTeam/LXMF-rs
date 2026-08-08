@@ -56,8 +56,8 @@ are kept in Git history instead of the live documentation tree.
   integration guide
 - `docs/interfaces/rnode-spp.md`: RNode Bluetooth Classic/SPP transport
   contract and backend guidance
-- `docs/PerformancesComparison.html`: retained performance comparison snapshot;
-  use the benchmarking runbook for current measurements
+- `docs/PerformancesComparison.html`: retained historical performance snapshot;
+  use the benchmarking runbook and [the latest release dashboard](https://github.com/FreeTAKTeam/LXMF-rs/releases/latest/download/lxmf-rs-performance.html) for current measurements
 - `docs/runbooks/release-readiness.md`: release gate checklist
 - `docs/runbooks/logging-and-diagnostics.md`: operator logging knobs and
   contributor failure-visibility rules

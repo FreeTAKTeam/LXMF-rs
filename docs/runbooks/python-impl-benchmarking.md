@@ -18,6 +18,11 @@ The current report publishes protocol-core and transport-hotpath comparisons:
 - Two-node loopback TCP cold discovery plus warm direct, opportunistic,
   propagated, and 16 KiB resource delivery
 
+The public dashboard has a fixed matrix for packet encoding, announce
+validation, path convergence, link setup, exact-size Resource transfers,
+resource CPU/RSS, and 1000 active links. A cell is `N/A` when the release did
+not produce an exact measurement; nearby workloads must not be substituted.
+
 SDK transport and same-topology end-to-end results are kept in separate dataset
 tiers. Do not infer daemon or whole-system performance from protocol/core rows.
 
@@ -53,6 +58,18 @@ Aggregated report for serious claims:
 cargo xtask python-impl-bench-report
 ```
 
+Public release artifact:
+
+```bash
+cargo xtask public-benchmark --release v0.9.8
+```
+
+This command runs the full report and writes the canonical JSON, standalone
+HTML dashboard, raw E2E evidence, and `SHA256SUMS` under
+`target/performance/`. It is intentionally not part of pull-request or normal
+push CI. Use the manually dispatched performance workflow for an on-demand
+run, or the release performance workflow for tagged releases.
+
 Shortcuts:
 
 ```bash
@@ -63,8 +80,9 @@ make python-impl-bench-report
 ## Outputs
 
 `docs/PerformancesComparison.html` is historical and non-current. The current
-generated page is `docs/performance.md`, sourced from
-`docs/performance/v0.9.5.json`.
+generated page is `docs/performance.md`, sourced from the versioned JSON
+dataset. Tagged releases additionally publish the standalone
+`lxmf-rs-performance.html` dashboard and matching JSON/checksums.
 
 Quick comparison writes:
 
@@ -110,6 +128,14 @@ Publish and verify generated documentation:
 python3 tools/scripts/performance_docs.py --release v0.9.5 \
   --report target/criterion/python-impl-report/report.json
 python3 tools/scripts/performance_docs.py --check
+```
+
+The performance workflows have no pull-request, ordinary-push, or scheduled
+trigger. Real measurements run only from `workflow_dispatch` or release tags;
+regular CI may run the measurement-free renderer tests:
+
+```bash
+python tools/scripts/test_performance_dashboard.py
 ```
 
 Release candidates are measured on the same runner as a checkout of `v0.9.1`.

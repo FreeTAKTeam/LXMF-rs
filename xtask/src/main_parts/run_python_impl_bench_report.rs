@@ -121,6 +121,7 @@ fn run_python_impl_bench_compare_with_paths(
     let warm_up_time = profile_config.criterion.warm_up_time_seconds.to_string();
     let measurement_time = profile_config.criterion.measurement_time_seconds.to_string();
     let python_iterations = python_iterations.to_string();
+    let python = if cfg!(windows) { "python" } else { "python3" };
 
     let run_rust = || -> Result<()> {
         run(
@@ -180,21 +181,21 @@ fn run_python_impl_bench_compare_with_paths(
     };
     let run_python = || -> Result<()> {
         run(
-        "python3",
-        &[
-            "tools/scripts/python_impl_benchmarks.py",
-            "--iterations",
-            &python_iterations,
-            "--output",
-            paths
-                .python_report_path
-                .to_str()
-                .context("python benchmark output path must be utf-8")?,
-            "--expected-rns-ref",
-            &config.references.reticulum,
-            "--expected-lxmf-ref",
-            &config.references.lxmf,
-        ],
+            python,
+            &[
+                "tools/scripts/python_impl_benchmarks.py",
+                "--iterations",
+                &python_iterations,
+                "--output",
+                paths
+                    .python_report_path
+                    .to_str()
+                    .context("python benchmark output path must be utf-8")?,
+                "--expected-rns-ref",
+                &config.references.reticulum,
+                "--expected-lxmf-ref",
+                &config.references.lxmf,
+            ],
         )
     };
     if rust_first {

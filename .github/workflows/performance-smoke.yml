@@ -1,11 +1,18 @@
-name: Performance smoke
+name: Performance request run
 
 on:
-  pull_request:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release label for the generated dataset and artifact
+        required: true
+        default: v0.9.8
 
 permissions:
   contents: read
+
+env:
+  RELEASE_TAG: ${{ inputs.release_tag }}
 
 jobs:
   fixture-and-report-smoke:
@@ -49,11 +56,20 @@ jobs:
       - name: Generate and verify report schema
         run: |
           python3 tools/scripts/performance_docs.py \
-            --release v0.9.8 \
+            --release "$RELEASE_TAG" \
             --report target/criterion/python-impl-report/report.json \
             --sdk-transport-report target/performance/sdk-transport.json \
-            --e2e-report target/performance/e2e.json
-          python3 tools/scripts/performance_docs.py --release v0.9.8 --check
+            --e2e-report target/performance/e2e.json \
+            --dashboard-output target/performance/lxmf-rs-performance.html
+          cp "docs/performance/${RELEASE_TAG}.json" target/performance/lxmf-rs-performance.json
+          sha256sum \
+            target/performance/lxmf-rs-performance.html \
+            target/performance/lxmf-rs-performance.json \
+            > target/performance/SHA256SUMS
+          python3 tools/scripts/performance_docs.py \
+            --release "$RELEASE_TAG" \
+            --dashboard-output target/performance/lxmf-rs-performance.html \
+            --check
       - uses: actions/upload-artifact@v4
         with:
           name: performance-smoke-${{ github.run_id }}

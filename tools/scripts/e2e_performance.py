@@ -27,6 +27,12 @@ WORKLOADS = (
         "rns_path_request_python_to_rust",
         0,
     ),
+    (
+        "link_setup",
+        "link_setup_rust_to_python",
+        "link_setup_python_to_rust",
+        0,
+    ),
     ("direct", "direct_rust_to_python", "direct_python_to_rust", 256),
     ("opportunistic", "opportunistic_rust_to_python", "opportunistic_python_to_rust", 256),
     ("propagated", "propagated_rust_to_python", "propagated_python_to_rust", 256),
@@ -116,11 +122,10 @@ def run_sample(
         )
     data = json.loads(report.read_text(encoding="utf-8"))
     timing = data.get("performance")
-    expected_boundary = (
-        "cold_path_request_to_route_available"
-        if workload == "cold_discovery"
-        else "enqueue_to_receiver_evidence"
-    )
+    expected_boundary = {
+        "cold_discovery": "cold_path_request_to_route_available",
+        "link_setup": "link_request_to_active",
+    }.get(workload, "enqueue_to_receiver_evidence")
     if not timing or timing.get("boundary") != expected_boundary:
         raise RuntimeError(f"{report} did not contain the E2E performance boundary")
     if timing.get("startup_included") or timing.get("route_warmup_included"):
@@ -222,16 +227,19 @@ def main() -> int:
                     "label": (
                         "Loopback TCP cold destination discovery"
                         if is_discovery
-                        else f"Loopback TCP {workload} delivery"
+                        else (
+                            "Loopback TCP link setup"
+                            if workload == "link_setup"
+                            else f"Loopback TCP {workload} delivery"
+                        )
                     ),
                     "topology": "two-node loopback TCP, one Rust and one pinned-Python endpoint",
                     "route_state": "cold" if is_discovery else "warm",
                     "payload_size_bytes": payload_bytes,
-                    "timed_boundary": (
-                        "cold_path_request_to_route_available"
-                        if is_discovery
-                        else "enqueue_to_receiver_evidence"
-                    ),
+                    "timed_boundary": {
+                        "cold_discovery": "cold_path_request_to_route_available",
+                        "link_setup": "link_request_to_active",
+                    }.get(workload, "enqueue_to_receiver_evidence"),
                     "rust": rust,
                     "python": python,
                     "rust_p50_speedup_vs_python": python["p50_ns"] / rust["p50_ns"],

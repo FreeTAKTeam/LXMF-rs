@@ -1103,35 +1103,47 @@ PY
   )"
 
   case "${COMPAT_CASE}" in
-    link_liveness_rust_to_python|link_teardown_rust_to_python)
+    link_liveness_rust_to_python|link_teardown_rust_to_python|link_setup_rust_to_python)
       python_control_call "${PY_ENDPOINT_CONTROL_PORT}" "announce" "{}" >/dev/null
       rpc_call "${RUST_RPC_ADDR}" "announce_now" "null" >/dev/null
       if ! wait_for_rust_peer "${py_delivery_hash}"; then
         echo "Rust did not learn Python endpoint announce for ${COMPAT_CASE}" >&2
         exit 1
       fi
+      if [[ "${COMPAT_CASE}" == "link_setup_rust_to_python" ]]; then
+        PERFORMANCE_START_NS="$(date +%s%N)"
+      fi
       rust_message_id="rust-link-${COMPAT_CASE}-$(date +%s)"
       rpc_call "${RUST_RPC_ADDR}" "send_message_v2" "$(cat <<EOF
 {"id":"${rust_message_id}","source":"${RUST_DELIVERY_HASH}","destination":"${py_delivery_hash}","title":"","content":"${smoke_message_content}","method":"direct"}
 EOF
 )" >"${PY_SEND_LOG}"
-      message_json="$(python_control_call "${PY_ENDPOINT_CONTROL_PORT}" "wait_message" "$(cat <<EOF
-{"content":"${smoke_message_content}","timeout":${TIMEOUT_SECS}}
-EOF
-)")"
       active_snapshot="$(python_control_call "${PY_ENDPOINT_CONTROL_PORT}" "wait_link_state" "$(cat <<EOF
 {"state":"active","timeout":${TIMEOUT_SECS}}
 EOF
 )")"
       echo "active_snapshot=${active_snapshot}" >>"${PY_LOG}"
+      if [[ "${COMPAT_CASE}" == "link_setup_rust_to_python" ]]; then
+        PERFORMANCE_END_NS="$(date +%s%N)"
+      fi
+      message_json="$(python_control_call "${PY_ENDPOINT_CONTROL_PORT}" "wait_message" "$(cat <<EOF
+{"content":"${smoke_message_content}","timeout":${TIMEOUT_SECS}}
+EOF
+)")"
       ;;
-    link_liveness_python_to_rust|link_teardown_python_to_rust)
+    link_liveness_python_to_rust|link_teardown_python_to_rust|link_setup_python_to_rust)
       rpc_call "${RUST_RPC_ADDR}" "announce_now" "null" >/dev/null
+      if [[ "${COMPAT_CASE}" == "link_setup_python_to_rust" ]]; then
+        PERFORMANCE_START_NS="$(date +%s%N)"
+      fi
       active_snapshot="$(python_control_call "${PY_ENDPOINT_CONTROL_PORT}" "open_link" "$(cat <<EOF
 {"destination":"${RUST_DELIVERY_HASH}","timeout":${TIMEOUT_SECS}}
 EOF
 )")"
       echo "active_snapshot=${active_snapshot}" >>"${PY_LOG}"
+      if [[ "${COMPAT_CASE}" == "link_setup_python_to_rust" ]]; then
+        PERFORMANCE_END_NS="$(date +%s%N)"
+      fi
       ;;
     *)
       echo "unsupported link lifecycle case: ${COMPAT_CASE}" >&2
@@ -1140,6 +1152,8 @@ EOF
   esac
 
   case "${COMPAT_CASE}" in
+    link_setup_rust_to_python|link_setup_python_to_rust)
+      ;;
     link_liveness_rust_to_python|link_liveness_python_to_rust)
       keepalive_wait="$("${PYTHON_BIN}" - <<'PY' "${active_snapshot}"
 import json
@@ -1253,7 +1267,9 @@ PY
     "${active_snapshot}" \
     "${steady_snapshot}" \
     "${closed_snapshot}" \
-    "${message_json}"
+    "${message_json}" \
+    "${PERFORMANCE_START_NS}" \
+    "${PERFORMANCE_END_NS}"
 import json
 import sys
 
@@ -1272,7 +1288,9 @@ import sys
     steady_snapshot,
     closed_snapshot,
     message_json,
-) = sys.argv[1:15]
+    performance_start_ns,
+    performance_end_ns,
+) = sys.argv[1:17]
 
 def decode(value):
     return json.loads(value) if value else None
@@ -1299,6 +1317,19 @@ report = {
         "rust_remote_status": rust_remote_status_log,
     },
 }
+
+if performance_start_ns and performance_end_ns:
+    start_ns = int(performance_start_ns)
+    end_ns = int(performance_end_ns)
+    if end_ns <= start_ns:
+        raise SystemExit("invalid link setup timing boundary")
+    report["performance"] = {
+        "boundary": "link_request_to_active",
+        "enqueue_to_delivery_ns": end_ns - start_ns,
+        "payload_size_bytes": 0,
+        "startup_included": False,
+        "route_warmup_included": False,
+    }
 
 with open(report_path, "w", encoding="utf-8") as handle:
     json.dump(report, handle, indent=2)

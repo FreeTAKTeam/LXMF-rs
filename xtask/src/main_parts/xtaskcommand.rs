@@ -125,6 +125,12 @@ enum XtaskCommand {
         #[arg(long)]
         resource_iterations: Option<usize>,
     },
+    PublicBenchmark {
+        #[arg(long)]
+        release: String,
+        #[arg(long, value_enum, default_value_t = PythonImplBenchProfile::Report)]
+        profile: PythonImplBenchProfile,
+    },
     #[command(hide = true)]
     PythonImplBenchWorkload {
         #[arg(long, value_enum)]
@@ -373,6 +379,9 @@ fn main() -> Result<()> {
             resource_runs,
             resource_iterations,
         ),
+        XtaskCommand::PublicBenchmark { release, profile } => {
+            run_public_benchmark(&release, profile)
+        }
         XtaskCommand::PythonImplBenchWorkload { implementation, benchmark, iterations, output } => {
             run_python_impl_bench_workload(implementation, &benchmark, iterations, &output)
         }

@@ -3,6 +3,7 @@
 <!-- GENERATED: tools/scripts/performance_docs.py -->
 
 Dataset: [`docs/performance/v0.9.5.json`](performance/v0.9.5.json). All numbers below originate from release SHA `c4fd18761e41caf2f7d2c7307d49c37aa6dc43ca`.
+The standalone release dashboard is available at [the latest GitHub Release asset](https://github.com/FreeTAKTeam/LXMF-rs/releases/latest/download/lxmf-rs-performance.html); the release asset is the public source for the complete matrix.
 
 ## Methodology
 

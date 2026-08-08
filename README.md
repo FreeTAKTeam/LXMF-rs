@@ -193,6 +193,7 @@ cargo xtask api-diff
 cargo xtask python-impl-bench-compare
 cargo xtask python-impl-bench-compare --profile report
 cargo xtask python-impl-bench-report
+cargo xtask public-benchmark --release v0.9.8
 ```
 
 For fast local iteration on one binary, prefer narrow commands:
@@ -237,7 +238,7 @@ cargo run -p rns-tools --bin rnx -- e2e --timeout-secs 20
 - Extension registry: `docs/contracts/extension-registry.md`
 - RPC contract: `docs/contracts/rpc-contract.md`
 - Payload contract: `docs/contracts/payload-contract.md`
-- Historical performance comparison archive: `docs/PerformancesComparison.html`; current generated results: [`docs/performance.md`](docs/performance.md)
+- Historical performance comparison archive: `docs/PerformancesComparison.html`; current generated results: [`docs/performance.md`](docs/performance.md); public release dashboard: [latest GitHub Release asset](https://github.com/FreeTAKTeam/LXMF-rs/releases/latest/download/lxmf-rs-performance.html)
 - reticulumd operational deployment: `docs/runbooks/reticulumd-operational-deployment.md`
 - Logging and diagnostics: `docs/runbooks/logging-and-diagnostics.md`
 - crates.io publish plan: `docs/runbooks/crates-io-publish-plan.md`
