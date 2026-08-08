@@ -1,0 +1,31 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <!--
+    LXMF-rs MSI installer (WiX v4/v5 schema).
+    Build (see .github/workflows/release.yml):
+      wix build packaging/wix/main.wxs -arch x64 \
+        -d Version=0.9.9 -d SourceDir=<dir with signed .exe files> \
+        -o lxmf-rs_0.9.9_x64.msi
+  -->
+  <Package Name="LXMF-rs"
+           Manufacturer="FreeTAKTeam"
+           Version="$(var.Version)"
+           UpgradeCode="7F2C9C1E-3A5D-4B8F-9C2A-1E6D4A7B8C90"
+           Scope="perMachine">
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of LXMF-rs is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="LXMF-rs" />
+    </StandardDirectory>
+
+    <!-- WiX v4/v5 directory harvesting: one component per .exe in SourceDir. -->
+    <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
+      <Files Directory="$(var.SourceDir)" Include="*.exe" />
+    </ComponentGroup>
+
+    <Feature Id="Main" Title="LXMF-rs command-line tools" Level="1">
+      <ComponentGroupRef Id="ProductComponents" />
+    </Feature>
+  </Package>
+</Wix>
