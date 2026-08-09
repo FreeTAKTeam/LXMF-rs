@@ -81,7 +81,7 @@ failure_class = "FAIL_PROTOCOL"
 
 [cases.command]
 program = "python"
-args = ["tools/scripts/python_surface_inventory.py", "--python-rns-path", "Reticulum", "--python-lxmf-path", "LXMF", "--mapping", "docs/status/python-surface-mapping.json", "--json-out", "docs/status/python-surface-parity.json", "--check"]
+args = ["tools/scripts/python_surface_inventory.py", "--python-rns-path", "Reticulum/RNS", "--python-lxmf-path", "LXMF/LXMF", "--mapping", "docs/status/python-surface-mapping.json", "--json-out", "docs/status/python-surface-parity.json", "--check"]
 
 [[cases]]
 id = "python-resolver-reference"
