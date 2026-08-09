@@ -1,0 +1,154 @@
+[[cases]]
+id = "resource-retry-budget"
+suite = "resource"
+description = "A resource retry budget emits a terminal inbound failure."
+levels = ["pr", "nightly", "release"]
+profiles = ["virtual"]
+timeout_secs = 300
+failure_class = "FAIL_PROTOCOL"
+
+[cases.command]
+program = "cargo"
+args = ["test", "-p", "reticulum-rs-transport", "--lib", "resource_manager_emits_inbound_failed_when_retry_budget_exhausts", "--", "--nocapture"]
+
+[[cases]]
+id = "resource-split-assembly"
+suite = "resource"
+description = "Split resource assembly rejects inconsistent metadata."
+levels = ["pr", "nightly", "release"]
+profiles = ["virtual"]
+timeout_secs = 300
+failure_class = "FAIL_PROTOCOL"
+
+[cases.command]
+program = "cargo"
+args = ["test", "-p", "reticulum-rs-transport", "--lib", "resource_manager_reports_a_split_resource_that_assembles_to_the_wrong_size", "--", "--nocapture"]
+
+[[cases]]
+id = "routing-gravity-precedence"
+suite = "routing"
+description = "Equal-cost announces select the higher-gravity interface."
+levels = ["pr", "nightly", "release"]
+profiles = ["virtual"]
+timeout_secs = 300
+failure_class = "FAIL_PROTOCOL"
+
+[cases.command]
+program = "cargo"
+args = ["test", "-p", "reticulum-rs-transport", "--lib", "equal_announce_prefers_higher_gravity_interface", "--", "--nocapture"]
+
+[[cases]]
+id = "virtual-recovery-regression"
+suite = "recovery"
+description = "Resource/link recovery remains deterministic under the virtual adapter."
+levels = ["pr", "nightly", "release"]
+profiles = ["virtual"]
+timeout_secs = 300
+
+[cases.command]
+program = "cargo"
+args = ["test", "-p", "reticulum-rs-transport", "--lib", "resource_manager_link_close_allows_later_resource_on_new_link", "--", "--nocapture"]
+
+[[cases]]
+id = "mtu-8192-resource-window"
+suite = "resource"
+description = "The virtual transport preserves negotiated large-link MTU behavior."
+levels = ["pr", "nightly", "release"]
+profiles = ["virtual"]
+timeout_secs = 300
+failure_class = "FAIL_PROTOCOL"
+
+[cases.command]
+program = "cargo"
+args = ["test", "-p", "reticulum-rs-transport", "--lib", "resource_sender_preserves_default_packet_mdu_for_large_links", "--", "--nocapture"]
+
+[[cases]]
+id = "mtu-fragment-sizing"
+suite = "resource"
+description = "Virtual resource fragments and hashmap updates fit the interface MTU."
+levels = ["pr", "nightly", "release"]
+profiles = ["virtual"]
+timeout_secs = 300
+failure_class = "FAIL_PROTOCOL"
+
+[cases.command]
+program = "cargo"
+args = ["test", "-p", "reticulum-rs-transport", "--lib", "resource_sender_constrains_parts_and_hash_updates_to_interface_mtu", "--", "--nocapture"]
+
+[[cases]]
+id = "resource-compression-roundtrip"
+suite = "resource"
+description = "Compressed resource payloads round-trip through the virtual receiver."
+levels = ["pr", "nightly", "release"]
+profiles = ["virtual"]
+timeout_secs = 300
+failure_class = "FAIL_PROTOCOL"
+
+[cases.command]
+program = "cargo"
+args = ["test", "-p", "reticulum-rs-transport", "--lib", "resource_sender_auto_compresses_a_compressible_payload_and_round_trips_through_the_receiver", "--", "--nocapture"]
+
+[[cases]]
+id = "resource-cancel-recovery"
+suite = "recovery"
+description = "Virtual resource cancellation clears partial split assembly state."
+levels = ["pr", "nightly", "release"]
+profiles = ["virtual"]
+timeout_secs = 300
+failure_class = "FAIL_PROTOCOL"
+
+[cases.command]
+program = "cargo"
+args = ["test", "-p", "reticulum-rs-transport", "--lib", "remote_cancel_clears_the_partial_split_assembly_and_reports_failure", "--", "--nocapture"]
+
+[[cases]]
+id = "link-response-roundtrip"
+suite = "routing"
+description = "Link response packets round-trip through virtual peers."
+levels = ["pr", "nightly", "release"]
+profiles = ["virtual"]
+timeout_secs = 300
+failure_class = "FAIL_PROTOCOL"
+
+[cases.command]
+program = "cargo"
+args = ["test", "-p", "reticulum-rs-transport", "--lib", "a_response_packet_round_trips_across_a_link", "--", "--nocapture"]
+
+[[cases]]
+id = "path-request-response"
+suite = "routing"
+description = "Path request and response behavior remains deterministic in virtual peers."
+levels = ["pr", "nightly", "release"]
+profiles = ["virtual"]
+timeout_secs = 300
+failure_class = "FAIL_PROTOCOL"
+
+[cases.command]
+program = "cargo"
+args = ["test", "-p", "reticulum-rs-transport", "--lib", "path_request_roundtrip", "--", "--nocapture"]
+
+[[cases]]
+id = "virtual-routing-path-rebalance"
+suite = "routing"
+description = "Virtual path restoration rejects stale route state after rebalance."
+levels = ["pr", "nightly", "release"]
+profiles = ["virtual"]
+timeout_secs = 300
+failure_class = "FAIL_PROTOCOL"
+
+[cases.command]
+program = "cargo"
+args = ["test", "-p", "reticulum-rs-transport", "--lib", "restore_tunnel_path_replaces_with_newer_equal_hop_random_blob", "--", "--nocapture"]
+
+[[cases]]
+id = "channel-retry-terminal-failure"
+suite = "recovery"
+description = "Virtual channel retry exhaustion closes the link and fails pending messages."
+levels = ["pr", "nightly", "release"]
+profiles = ["virtual"]
+timeout_secs = 300
+failure_class = "FAIL_PROTOCOL"
+
+[cases.command]
+program = "cargo"
+args = ["test", "-p", "reticulum-rs-transport", "--lib", "channel_retry_exhaustion_closes_link_and_fails_pending_messages", "--", "--nocapture"]

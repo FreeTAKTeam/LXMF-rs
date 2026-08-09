@@ -1,5 +1,9 @@
 #[derive(Subcommand)]
 enum XtaskCommand {
+    Hil {
+        #[command(subcommand)]
+        command: hil::HilCommand,
+    },
     Ci {
         #[arg(long)]
         stage: Option<CiStage>,
@@ -281,6 +285,7 @@ fn main() -> Result<()> {
         .init();
     let xtask = Xtask::parse();
     match xtask.command {
+        XtaskCommand::Hil { command } => hil::run(command),
         XtaskCommand::Ci { stage, timeout_secs } => run_ci(stage, timeout_secs),
         XtaskCommand::ReleaseCheck => run_release_check(),
         XtaskCommand::PackageDaemonBundle { version, target } => {

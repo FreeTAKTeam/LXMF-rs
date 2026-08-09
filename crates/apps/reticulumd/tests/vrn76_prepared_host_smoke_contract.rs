@@ -55,25 +55,17 @@ fn vrn76_prepared_host_smoke_preserves_evidence_contract() {
 #[test]
 fn nightly_hil_workflow_exposes_vrn76_prepared_host_job() {
     let root = repo_root();
-    let workflow_path = root.join(".github/workflows/nightly-embedded-hil.yml");
+    let workflow_path = root.join(".github/workflows/hil-nightly.yml");
     let workflow = fs::read_to_string(&workflow_path).expect("read nightly HIL workflow");
 
     for required in [
-        "vrn76-prepared-host",
-        "HIL_VRN76_ENABLED",
-        "HIL_VRN76_PERIPHERAL_ID",
-        "HIL_VRN76_ADAPTER",
-        "HIL_VRN76_MTU",
-        "HIL_VRN76_MAX_WRITE_LEN",
-        "HIL_VRN76_FRAME_MODE",
-        "HIL_VRN76_KISS_FLOW_CONTROL",
-        "HIL_VRN76_SCAN_TIMEOUT_MS",
-        "HIL_VRN76_CONNECT_TIMEOUT_MS",
-        "HIL_VRN76_TIMEOUT_SECS",
-        "./tools/scripts/vrn76-kiss-ble-prepared-host-smoke.sh",
-        "vrn76-prepared-host-artifacts",
-        "target/vrn76-hil/report.json",
-        "target/vrn76-hil/run.*",
+        "- vr-n76",
+        "Run repository-native nightly profile",
+        "cargo xtask hil run --level nightly --profile ${{ matrix.profile }}",
+        "Create or update profile failure issue",
+        "[HIL] ${{ matrix.profile }} nightly failure",
+        "hil-nightly-${{ matrix.profile }}-${{ github.run_id }}",
+        "target/hil/runs/${{ matrix.profile }}-${{ github.run_id }}/**",
     ] {
         assert!(
             workflow.contains(required),
@@ -104,7 +96,7 @@ fn vrn76_docs_document_prepared_host_smoke_artifacts() {
         "prepared_host_vrn76_ble_readiness",
         "product_boundary",
         "broader hardware parity",
-        "HIL_VRN76_ENABLED",
+        "through the `vr-n76` profile",
     ] {
         assert!(runbook.contains(required), "VR-N76 runbook should document {required:?}");
     }

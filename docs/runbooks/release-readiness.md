@@ -12,7 +12,7 @@ active branch.
   are the maintained row-level parity records.
 - Changes to a project-level claim must update the roadmap and affected matrix
   together.
-- Rust/Python live interop is enforced by `.github/workflows/python-interop.yml`
+- Rust/Python live interop is enforced by `.github/workflows/verify.yml`
   on pull requests for the pinned Python Reticulum/LXMF references. Do not mark
   parity complete until non-ignored evidence exists for the specific matrix row.
 
@@ -58,18 +58,14 @@ Current GitHub PR CI in `.github/workflows/ci.yml` enforces these jobs:
   - `cargo deny check bans licenses sources`
   - `cargo audit --ignore RUSTSEC-2024-0421 --ignore RUSTSEC-2024-0436 --ignore RUSTSEC-2026-0009`
 
-`.github/workflows/python-interop.yml` is also a pull-request gate for pinned
-reference compatibility. It runs:
-
-- Python reference conformance baseline against pinned Reticulum/LXMF commits.
-- `cargo xtask ci --stage interop-artifacts`
-- `cargo xtask ci --stage sdk-conformance`
-- `cargo xtask ci --stage e2e-compatibility`
-- ignored live Rust/Python channel, paper, compatibility-matrix, and LXMD
-  remote-relay interop tests with the pinned checkouts.
+`.github/workflows/verify.yml` is also a pull-request gate for pinned
+reference compatibility. It invokes `cargo xtask hil run --level pr --all`,
+which runs the virtual transport cases, the pinned Python conformance
+baseline, and live Rust/Python channel, paper, compatibility-matrix, and LXMD
+remote-relay cases. The resulting evidence bundle is retained with the run.
 
 The SDK reports the parity checkpoint as its crate version plus the pinned
-reference revisions from `.github/workflows/python-interop.yml`: Reticulum
+reference revisions from `.github/workflows/verify.yml`: Reticulum
 conformance `0319444b20e0815f26c6b9ceeba8fa44de037c9b`, Python Reticulum
 `b48b96e61676504e0a4e527b33b9a0b4495c6872`, and Python LXMF
 `727830cefda83d9c6e3982b48675425f3f988f9c`. Check GitHub Actions for current
@@ -191,12 +187,12 @@ cargo run -p rns-tools --bin rnx -- mesh-sim --nodes 5 --timeout-secs 60
 
 Nightly ESP32 hardware-in-loop smoke:
 
-- Scheduled workflow: `.github/workflows/nightly-embedded-hil.yml`
+- Scheduled workflow: `.github/workflows/hil-nightly.yml`
 - Runbook: `docs/runbooks/embedded-hil-esp32.md`
 - Local gated command:
 
 ```bash
-cargo run -p xtask -- embedded-hil-check
+cargo xtask hil run --level nightly --profile esp32
 ```
 
 Queue pressure tuning and overflow policy guidance:

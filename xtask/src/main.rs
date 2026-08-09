@@ -1,6 +1,7 @@
 include!("main_parts/module_prelude.rs");
 
 mod client_codegen;
+mod hil;
 
 include!("main_parts/interop_baseline_path.rs");
 

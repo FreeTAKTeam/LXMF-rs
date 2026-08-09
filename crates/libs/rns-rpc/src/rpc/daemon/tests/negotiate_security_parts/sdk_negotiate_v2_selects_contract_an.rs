@@ -64,9 +64,9 @@
             .expect("repo root")
             .join(".github")
             .join("workflows")
-            .join("python-interop.yml");
+            .join("verify.yml");
         let needle = format!("{name}: ");
-        let text = std::fs::read_to_string(&workflow).expect("read python interop workflow");
+        let text = std::fs::read_to_string(&workflow).expect("read verify workflow");
         text.lines()
             .find_map(|line| line.trim().strip_prefix(&needle))
             .map(str::trim)

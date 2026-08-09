@@ -267,14 +267,14 @@ connected for the requested duration, writes `soak_samples` and
 This is stronger local prepared-host stability evidence, but it still does not
 replace broader public I2P peer-set or long-running production evidence.
 
-The nightly HIL workflow can run the same harness when
-`HIL_I2P_ENABLED=true`. Set `HIL_I2P_SAM_HOST`, `HIL_I2P_SAM_PORT`, and
+The nightly HIL matrix runs the same harness through the `i2p` profile. Set
+`HIL_I2P_SAM_HOST`, `HIL_I2P_SAM_PORT`, and
 `HIL_I2P_TIMEOUT_SECS` as needed for the prepared runner; set `HIL_I2P_PEERS`
 to enable configured outbound-peer proof. Unset host/port values fall back to
 the local SAM default.
 
-Nightly HIL can also run the two-daemon real-SAM pair with
-`HIL_I2P_PAIR_ENABLED=true`. Configure `HIL_I2P_PAIR_SAM_HOST`,
+Nightly HIL can also run the two-daemon real-SAM pair through the `i2p-pair`
+profile. Configure `HIL_I2P_PAIR_SAM_HOST`,
 `HIL_I2P_PAIR_SAM_PORT`, and `HIL_I2P_PAIR_TIMEOUT_SECS` for the runner's SAM
 router, and set `HIL_I2P_PAIR_SOAK_SECS` plus
 `HIL_I2P_PAIR_SOAK_POLL_SECS` when bounded connected-row stability samples are

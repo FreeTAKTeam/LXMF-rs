@@ -20,7 +20,7 @@ PAGE = ROOT / "docs/performance.md"
 SCALE_DATASET = ROOT / "docs/performance/100-node-chain-2026-07-20.json"
 START = "<!-- performance-summary:start -->"
 END = "<!-- performance-summary:end -->"
-PYTHON_INTEROP_WORKFLOW = ROOT / ".github/workflows/python-interop.yml"
+PYTHON_INTEROP_WORKFLOW = ROOT / ".github/workflows/verify.yml"
 PYTHON_BENCHMARK_CONFIG = ROOT / "tools/benchmarks/python_impl.toml"
 
 

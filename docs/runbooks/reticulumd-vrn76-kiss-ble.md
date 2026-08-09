@@ -201,7 +201,7 @@ Passing evidence requires the `vrn76-prepared-host` row to report
 `product_boundary` note that broader hardware parity still requires write,
 indication, disconnect, reconnect, adapter, firmware, and channel-ID evidence.
 
-The nightly HIL workflow exposes the same harness behind `HIL_VRN76_ENABLED`.
+The nightly HIL matrix exposes the same harness through the `vr-n76` profile.
 Repository variables can provide `HIL_VRN76_PERIPHERAL_ID`,
 `HIL_VRN76_ADAPTER`, `HIL_VRN76_MTU`, `HIL_VRN76_MAX_WRITE_LEN`,
 `HIL_VRN76_FRAME_MODE`, `HIL_VRN76_KISS_FLOW_CONTROL`,

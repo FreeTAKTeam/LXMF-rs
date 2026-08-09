@@ -310,7 +310,8 @@ evidence set in one pass. Use `--audit-existing` to re-check archived matrix
 reports without touching devices or refreshing smokes; partial mode skips local
 smokes unless `--run-local-smokes` or `RIF_RUN_LOCAL_SMOKES=true` is set.
 
-Nightly HIL exposes this path with `HIL_RNODE_MATRIX_ENABLED=true`. Configure
+Nightly HIL exposes this path through the `reticulum-interface-matrix` profile.
+Configure
 `HIL_RNODE_MATRIX_SERIAL_PORT`, `HIL_RNODE_MATRIX_TCP_PORT`,
 `HIL_RNODE_MATRIX_BLE_PORT`, and optionally
 `HIL_RNODE_MATRIX_RUN_LOCAL_SMOKES=true`; use bearer-specific overrides such as

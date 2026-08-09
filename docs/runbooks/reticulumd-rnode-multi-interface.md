@@ -314,9 +314,9 @@ so firmware/platform/MCU/interface assertions can be made directly from
 `rnstatus-rs --json`, including failed probe attempts where the hardware
 reported enough metadata before validation failed.
 
-Nightly HIL exposes the same smoke behind repository variables:
+Nightly HIL exposes the same smoke through the `rnode-multi` profile. The
+runner environment provides the adapter values:
 
-- `HIL_RNODE_MULTI_ENABLED=true`
 - `HIL_RNODE_MULTI_PORT`
 - `HIL_RNODE_MULTI_BAUD_RATE`
 - `HIL_RNODE_MULTI_VPORTS`

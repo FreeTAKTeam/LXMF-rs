@@ -14,13 +14,13 @@ fn python_channel_interop_preserves_backbone_variants() {
     let python_to_rust_path = root.join(
         "crates/apps/reticulumd/tests/python_channel_interop_parts/rust_to_python_raw_resource_roundtri.rs",
     );
-    let workflow_path = root.join(".github/workflows/python-interop.yml");
+    let workflow_path = root.join("tests/hil/cases/interop.toml");
 
     let support = fs::read_to_string(&support_path).expect("read Python channel process support");
     let prelude = fs::read_to_string(&prelude_path).expect("read Python channel interop prelude");
     let python_to_rust =
         fs::read_to_string(&python_to_rust_path).expect("read Python-to-Rust interop part");
-    let workflow = fs::read_to_string(&workflow_path).expect("read Python interop workflow");
+    let workflow = fs::read_to_string(&workflow_path).expect("read HIL interop case matrix");
 
     for required in [
         "PythonInteropInterfaceKind",
@@ -71,9 +71,9 @@ fn python_channel_interop_preserves_backbone_variants() {
     }
 
     assert!(
-        workflow.contains(
-            "cargo test -p reticulumd --test python_channel_interop -- --ignored --nocapture"
-        ),
-        "Python interop workflow should continue running the ignored channel interop matrix"
+        workflow.contains("python-channel-interop")
+            && workflow.contains("python_channel_interop")
+            && workflow.contains("--ignored"),
+        "HIL interop case matrix should continue running the ignored channel interop matrix"
     );
 }

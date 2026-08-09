@@ -186,7 +186,7 @@ RPC path against the connected device. This opt-in gate requires
 `remote_display_control_requested` plus `remote_display_control_result` in
 `report.json`.
 
-Nightly HIL exposes the same smoke through `HIL_WEAVE_ENABLED=true` with
+Nightly HIL exposes the same smoke through the `weave` profile with
 `HIL_WEAVE_PORT`, optional `HIL_WEAVE_BAUD_RATE`, optional `HIL_WEAVE_MTU`,
 optional `HIL_WEAVE_CONFIGURED_BITRATE`, optional
 `HIL_WEAVE_REQUIRE_CONNECTED`, optional `HIL_WEAVE_REMOTE_DISPLAY_CONTROL`, and

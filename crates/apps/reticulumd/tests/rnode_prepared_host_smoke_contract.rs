@@ -146,34 +146,17 @@ fn rnode_ble_software_smoke_preserves_evidence_contract() {
 #[test]
 fn nightly_hil_workflow_exposes_rnode_prepared_host_job() {
     let root = repo_root();
-    let workflow_path = root.join(".github/workflows/nightly-embedded-hil.yml");
+    let workflow_path = root.join(".github/workflows/hil-nightly.yml");
     let workflow = fs::read_to_string(&workflow_path).expect("read nightly HIL workflow");
 
     for required in [
-        "rnode-prepared-host",
-        "HIL_RNODE_ENABLED",
-        "HIL_RNODE_PORT",
-        "HIL_RNODE_BAUD_RATE",
-        "HIL_RNODE_REGION",
-        "HIL_RNODE_FREQUENCY",
-        "HIL_RNODE_BANDWIDTH",
-        "HIL_RNODE_SPREADING_FACTOR",
-        "HIL_RNODE_CODING_RATE",
-        "HIL_RNODE_TX_POWER",
-        "HIL_RNODE_BITRATE",
-        "HIL_RNODE_COMMAND_TIMEOUT_MS",
-        "HIL_RNODE_MAX_PAYLOAD_BYTES",
-        "HIL_RNODE_BLE_ADAPTER",
-        "HIL_RNODE_BLE_SCAN_TIMEOUT_MS",
-        "HIL_RNODE_BLE_CONNECT_TIMEOUT_MS",
-        "HIL_RNODE_BLE_MAX_WRITE_LEN",
-        "HIL_RNODE_MANAGEMENT_TIMEOUT_SECS",
-        "HIL_RNODE_BLINK_PATTERN",
-        "HIL_RNODE_TIMEOUT_SECS",
-        "./tools/scripts/rnode-prepared-host-smoke.sh",
-        "rnode-prepared-host-artifacts",
-        "target/rnode-hil/report.json",
-        "target/rnode-hil/run.*",
+        "- rnode-prepared",
+        "Run repository-native nightly profile",
+        "cargo xtask hil run --level nightly --profile ${{ matrix.profile }}",
+        "Create or update profile failure issue",
+        "[HIL] ${{ matrix.profile }} nightly failure",
+        "hil-nightly-${{ matrix.profile }}-${{ github.run_id }}",
+        "target/hil/runs/${{ matrix.profile }}-${{ github.run_id }}/**",
     ] {
         assert!(
             workflow.contains(required),
@@ -263,7 +246,7 @@ fn lora_runbook_documents_rnode_prepared_host_smoke_artifacts() {
         "prepared_host_ble_rnode",
         "product_boundary",
         "broader hardware parity",
-        "HIL_RNODE_ENABLED",
+        "through the `rnode-prepared` profile",
     ] {
         assert!(
             runbook.contains(required),

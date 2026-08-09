@@ -243,9 +243,9 @@ Artifacts are written under `target/auto-interface-hil/`, including
 for zero-initial startup, add, replacement, and removal. The report records
 `evidence_scope = "linux_namespace_dummy_churn"` plus a `product_boundary`
 note that broader prepared-host parity still requires evidence across real
-Wi-Fi, Ethernet, and platform interface churn. The nightly
-HIL workflow exposes this as `auto-interface-prepared-host-artifacts` when
-`HIL_AUTO_INTERFACE_ENABLED=true`.
+Wi-Fi, Ethernet, and platform interface churn. The nightly HIL matrix exposes
+this through the `auto-interface` profile and retains the prepared-host
+artifacts.
 
 ## Operational Follow-Up
 

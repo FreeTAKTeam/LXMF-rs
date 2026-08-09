@@ -489,8 +489,8 @@ records `evidence_scope = "sam_connectable_with_outbound_peers_real_pair"`
 with connected dialer outbound and acceptor incoming peer rows for two local
 daemons sharing one router, and can optionally record
 `sam_connectable_with_outbound_peers_real_pair_soak` with periodic
-`rnstatus-rs` samples for bounded single-router stability. Nightly HIL exposes
-that pair path with `HIL_I2P_PAIR_ENABLED=true` and uploads
+`rnstatus-rs` samples for bounded single-router stability. The nightly HIL
+matrix includes that pair path through the `i2p-pair` profile and uploads
 `i2p-prepared-host-pair-artifacts`. Broader public I2P peer-set and
 long-running production evidence remain pending.
 Ordinary serial/TCP and feature-gated BLE `RNodeInterface` now refresh transport-side probe/radio
@@ -532,8 +532,8 @@ full-parity mode can pass. The hardware reports are collected by
 `evidence_scope = "reticulum_interfaces_384_385_hil_matrix"` plus
 `target/reticulum-interface-hil-matrix/artifact-manifest.json` with SHA-256
 digests. Nightly HIL
-exposes this collection path as `reticulum-interface-hil-matrix` behind
-`HIL_RNODE_MATRIX_ENABLED=true`; strict hardware reports must include endpoint,
+exposes this collection path through the `reticulum-interface-matrix` profile;
+strict hardware reports must include endpoint,
 bearer, firmware, platform, MCU identity, and capture provenance fields.
 Display-capable BLE RNode shutdown now disables the external framebuffer before
 radio-off/leave frames. Android configured RNode BLE reconnect now excludes
@@ -622,7 +622,7 @@ display/status payload, and operator-workflow combinations remains pending.
 
 - Workspace unit and integration tests cover core, transport, daemon, serial,
   BLE, LoRa, AutoInterface, link, channel, buffer, and resource behavior.
-- `.github/workflows/python-interop.yml` runs pinned live Python channel/link/request/resource and
+- `.github/workflows/verify.yml` runs pinned live Python channel/link/request/resource and
   LXMF compatibility scenarios plus Python selector/epoll and live Python
   Reticulum BackboneClientInterface slow-reader probes for Backbone
   backpressure evidence.

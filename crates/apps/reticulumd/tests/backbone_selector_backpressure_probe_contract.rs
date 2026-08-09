@@ -33,25 +33,32 @@ fn backbone_selector_probe_preserves_evidence_contract() {
 #[test]
 fn python_interop_workflow_runs_backbone_selector_probe() {
     let root = repo_root();
-    let workflow_path = root.join(".github/workflows/python-interop.yml");
-    let workflow = fs::read_to_string(&workflow_path).expect("read Python interop workflow");
+    let matrix_path = root.join("tests/hil/cases/interop.toml");
+    let matrix = fs::read_to_string(&matrix_path).expect("read HIL interop case matrix");
+    let workflow_path = root.join(".github/workflows/verify.yml");
+    let workflow = fs::read_to_string(&workflow_path).expect("read PR HIL workflow");
 
     for required in [
-        "Python selector Backbone slow-reader probe",
+        "python-backbone-selector",
+        "python-backbone-reference-selector",
         "tools/scripts/backbone_selector_backpressure_probe.py",
         "tools/scripts/backbone_python_reference_backpressure_probe.py",
         "--python-rns-path",
-        "target/backbone-selector/python-reference-backpressure.json",
         "--require-epoll",
-        "target/backbone-selector/backpressure.json",
-        "cargo test -p reticulum-rs-transport",
+        "program = \"cargo\"",
+        "reticulum-rs-transport",
         "backbone_hdlc_stream_backpressures_when_peer_stops_reading",
     ] {
         assert!(
-            workflow.contains(required),
-            "Python interop workflow should include required token {required:?}"
+            matrix.contains(required) || workflow.contains(required),
+            "repository-native HIL controller should include required token {required:?}"
         );
     }
+
+    assert!(
+        workflow.contains("cargo xtask hil run --level pr --all"),
+        "PR verification should invoke the HIL controller"
+    );
 }
 
 #[test]

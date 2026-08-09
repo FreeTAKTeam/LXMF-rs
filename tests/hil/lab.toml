@@ -1,0 +1,326 @@
+version = 1
+rack_id = "primary"
+lock_env = "HIL_LOCK_PATH"
+lock_ttl_secs = 14400
+rf_confirmation_env = "HIL_RF_ENCLOSURE_CONFIRMED"
+
+[[profiles]]
+id = "virtual"
+label = "Virtual linked peers"
+adapter = "virtual"
+host = "any"
+physical = false
+suites = ["core", "resource", "routing", "recovery"]
+capabilities = ["fault-injection", "three-peer", "deterministic"]
+
+[[profiles]]
+id = "python-reference"
+label = "Pinned Python Reticulum/LXMF"
+adapter = "python-rns"
+host = "linux"
+physical = false
+suites = ["interop"]
+capabilities = ["reticulum-1.4.2", "lxmf-reference"]
+
+[[profiles]]
+id = "heltec"
+label = "Heltec V3/V4 RNode pair"
+adapter = "rnode"
+host = "linux"
+physical = true
+suites = ["smoke", "resource", "routing", "recovery"]
+capabilities = ["rnode", "rnode-pair", "rf", "serial"]
+identity_env = "HIL_HELTEC_ID"
+endpoint_env = "HIL_HELTEC_ENDPOINT"
+firmware_env = "HIL_HELTEC_FIRMWARE"
+firmware_hash_env = "HIL_HELTEC_FIRMWARE_HASH"
+power_hub_env = "HIL_HELTEC_HUB"
+power_port_env = "HIL_HELTEC_POWER_PORT"
+reset_command_env = "HIL_HELTEC_RESET_COMMAND"
+executor_env = "HIL_RNODE_EXECUTOR"
+rf_required = true
+
+[[profiles]]
+id = "tbeam"
+label = "LilyGO T-Beam RNode pair"
+adapter = "rnode"
+host = "linux"
+physical = true
+suites = ["smoke", "resource", "routing", "recovery"]
+capabilities = ["rnode", "rnode-pair", "rf", "serial"]
+identity_env = "HIL_TBEAM_ID"
+endpoint_env = "HIL_TBEAM_ENDPOINT"
+firmware_env = "HIL_TBEAM_FIRMWARE"
+firmware_hash_env = "HIL_TBEAM_FIRMWARE_HASH"
+power_hub_env = "HIL_TBEAM_HUB"
+power_port_env = "HIL_TBEAM_POWER_PORT"
+reset_command_env = "HIL_TBEAM_RESET_COMMAND"
+executor_env = "HIL_RNODE_EXECUTOR"
+rf_required = true
+
+[[profiles]]
+id = "vr-n76"
+label = "VR-N76"
+adapter = "rnode"
+host = "linux"
+physical = true
+suites = ["smoke", "resource", "routing", "recovery"]
+capabilities = ["rnode", "rf", "serial"]
+identity_env = "HIL_VR_N76_ID"
+endpoint_env = "HIL_VR_N76_ENDPOINT"
+firmware_env = "HIL_VR_N76_FIRMWARE"
+firmware_hash_env = "HIL_VR_N76_FIRMWARE_HASH"
+power_hub_env = "HIL_VR_N76_HUB"
+power_port_env = "HIL_VR_N76_POWER_PORT"
+reset_command_env = "HIL_VR_N76_RESET_COMMAND"
+executor_env = "HIL_RNODE_EXECUTOR"
+rf_required = true
+
+[[profiles]]
+id = "kiss"
+label = "KISS TNC"
+adapter = "kiss"
+host = "linux"
+physical = true
+suites = ["smoke", "resource", "routing", "recovery"]
+capabilities = ["kiss", "ax25", "serial"]
+identity_env = "HIL_KISS_ID"
+endpoint_env = "HIL_KISS_ENDPOINT"
+firmware_env = "HIL_KISS_FIRMWARE"
+firmware_hash_env = "HIL_KISS_FIRMWARE_HASH"
+power_hub_env = "HIL_KISS_HUB"
+power_port_env = "HIL_KISS_POWER_PORT"
+reset_command_env = "HIL_KISS_RESET_COMMAND"
+executor_env = "HIL_KISS_EXECUTOR"
+
+[[profiles]]
+id = "ax25"
+label = "AX.25 modem"
+adapter = "ax25"
+host = "linux"
+physical = true
+suites = ["smoke", "resource", "routing", "recovery"]
+capabilities = ["ax25", "serial"]
+identity_env = "HIL_AX25_ID"
+endpoint_env = "HIL_AX25_ENDPOINT"
+firmware_env = "HIL_AX25_FIRMWARE"
+firmware_hash_env = "HIL_AX25_FIRMWARE_HASH"
+power_hub_env = "HIL_AX25_HUB"
+power_port_env = "HIL_AX25_POWER_PORT"
+reset_command_env = "HIL_AX25_RESET_COMMAND"
+executor_env = "HIL_AX25_EXECUTOR"
+
+[[profiles]]
+id = "serial"
+label = "Serial interface"
+adapter = "serial"
+host = "linux"
+physical = true
+suites = ["smoke", "resource", "routing", "recovery"]
+capabilities = ["serial"]
+identity_env = "HIL_SERIAL_ID"
+endpoint_env = "HIL_SERIAL_ENDPOINT"
+firmware_env = "HIL_SERIAL_FIRMWARE"
+firmware_hash_env = "HIL_SERIAL_FIRMWARE_HASH"
+power_hub_env = "HIL_SERIAL_HUB"
+power_port_env = "HIL_SERIAL_POWER_PORT"
+reset_command_env = "HIL_SERIAL_RESET_COMMAND"
+executor_env = "HIL_SERIAL_EXECUTOR"
+
+[[profiles]]
+id = "tcp"
+label = "TCP interface"
+adapter = "tcp"
+host = "linux"
+physical = true
+suites = ["smoke", "resource", "routing", "recovery"]
+capabilities = ["tcp", "three-peer"]
+identity_env = "HIL_TCP_ID"
+endpoint_env = "HIL_TCP_ENDPOINT"
+firmware_env = "HIL_TCP_FIRMWARE"
+firmware_hash_env = "HIL_TCP_FIRMWARE_HASH"
+reset_command_env = "HIL_TCP_RESET_COMMAND"
+executor_env = "HIL_TCP_EXECUTOR"
+
+[[profiles]]
+id = "ble"
+label = "Bluetooth LE interface"
+adapter = "ble"
+host = "linux"
+physical = true
+suites = ["smoke", "resource", "routing", "recovery"]
+capabilities = ["ble"]
+identity_env = "HIL_BLE_ID"
+endpoint_env = "HIL_BLE_ENDPOINT"
+firmware_env = "HIL_BLE_FIRMWARE"
+firmware_hash_env = "HIL_BLE_FIRMWARE_HASH"
+reset_command_env = "HIL_BLE_RESET_COMMAND"
+executor_env = "HIL_BLE_EXECUTOR"
+
+[[profiles]]
+id = "spp"
+label = "Bluetooth SPP interface"
+adapter = "spp"
+host = "windows"
+physical = true
+suites = ["smoke", "resource", "routing", "recovery"]
+capabilities = ["spp", "windows"]
+identity_env = "HIL_SPP_ID"
+endpoint_env = "HIL_SPP_ENDPOINT"
+firmware_env = "HIL_SPP_FIRMWARE"
+firmware_hash_env = "HIL_SPP_FIRMWARE_HASH"
+reset_command_env = "HIL_SPP_RESET_COMMAND"
+executor_env = "HIL_SPP_EXECUTOR"
+
+[[profiles]]
+id = "android"
+label = "Android Bluetooth/RNode"
+adapter = "android"
+host = "android"
+physical = true
+suites = ["smoke", "resource", "routing", "recovery"]
+capabilities = ["android", "adb", "bluetooth"]
+identity_env = "HIL_ANDROID_ID"
+endpoint_env = "HIL_ANDROID_ENDPOINT"
+firmware_env = "HIL_ANDROID_FIRMWARE"
+firmware_hash_env = "HIL_ANDROID_FIRMWARE_HASH"
+reset_command_env = "HIL_ANDROID_RESET_COMMAND"
+executor_env = "HIL_ANDROID_EXECUTOR"
+
+[[profiles]]
+id = "windows"
+label = "Windows host interface"
+adapter = "windows"
+host = "windows"
+physical = true
+suites = ["smoke", "resource", "routing", "recovery"]
+capabilities = ["windows", "spp"]
+identity_env = "HIL_WINDOWS_ID"
+endpoint_env = "HIL_WINDOWS_ENDPOINT"
+firmware_env = "HIL_WINDOWS_FIRMWARE"
+firmware_hash_env = "HIL_WINDOWS_FIRMWARE_HASH"
+reset_command_env = "HIL_WINDOWS_RESET_COMMAND"
+executor_env = "HIL_WINDOWS_EXECUTOR"
+
+[[profiles]]
+id = "esp32"
+label = "ESP32 prepared host"
+adapter = "prepared-esp32"
+host = "linux"
+physical = true
+suites = ["smoke", "resource", "routing", "recovery", "prepared"]
+capabilities = ["esp32", "rpc"]
+identity_env = "HIL_ESP32_ID"
+endpoint_env = "HIL_ESP32_RPC_ENDPOINT"
+firmware_env = "HIL_ESP32_FIRMWARE"
+firmware_hash_env = "HIL_ESP32_FIRMWARE_HASH"
+reset_command_env = "HIL_ESP32_RESET_COMMAND"
+executor_env = "HIL_ESP32_EXECUTOR"
+
+[[profiles]]
+id = "i2p"
+label = "I2P prepared host"
+adapter = "prepared-i2p"
+host = "linux"
+physical = true
+suites = ["smoke", "resource", "routing", "recovery", "prepared"]
+capabilities = ["i2p", "sam"]
+identity_env = "HIL_I2P_ID"
+endpoint_env = "HIL_I2P_SAM_HOST"
+firmware_env = "HIL_I2P_FIRMWARE"
+firmware_hash_env = "HIL_I2P_FIRMWARE_HASH"
+reset_command_env = "HIL_I2P_RESET_COMMAND"
+executor_env = "HIL_I2P_EXECUTOR"
+
+[[profiles]]
+id = "i2p-pair"
+label = "I2P prepared pair"
+adapter = "prepared-i2p-pair"
+host = "linux"
+physical = true
+suites = ["smoke", "resource", "routing", "recovery", "prepared"]
+capabilities = ["i2p", "pair", "soak"]
+identity_env = "HIL_I2P_PAIR_ID"
+endpoint_env = "HIL_I2P_PAIR_SAM_HOST"
+firmware_env = "HIL_I2P_PAIR_FIRMWARE"
+firmware_hash_env = "HIL_I2P_PAIR_FIRMWARE_HASH"
+reset_command_env = "HIL_I2P_PAIR_RESET_COMMAND"
+executor_env = "HIL_I2P_PAIR_EXECUTOR"
+
+[[profiles]]
+id = "auto-interface"
+label = "AutoInterface prepared host"
+adapter = "prepared-auto-interface"
+host = "linux"
+physical = true
+suites = ["smoke", "resource", "routing", "recovery", "prepared"]
+capabilities = ["auto-interface", "network-namespace"]
+identity_env = "HIL_AUTO_INTERFACE_ID"
+endpoint_env = "HIL_AUTO_INTERFACE_DEVICE"
+firmware_env = "HIL_AUTO_INTERFACE_FIRMWARE"
+firmware_hash_env = "HIL_AUTO_INTERFACE_FIRMWARE_HASH"
+reset_command_env = "HIL_AUTO_INTERFACE_RESET_COMMAND"
+executor_env = "HIL_AUTO_INTERFACE_EXECUTOR"
+
+[[profiles]]
+id = "rnode-multi"
+label = "RNodeMulti prepared host"
+adapter = "prepared-rnode-multi"
+host = "linux"
+physical = true
+suites = ["smoke", "resource", "routing", "recovery", "prepared"]
+capabilities = ["rnode", "multi-port", "rf"]
+identity_env = "HIL_RNODE_MULTI_ID"
+endpoint_env = "HIL_RNODE_MULTI_PORT"
+firmware_env = "HIL_RNODE_MULTI_FIRMWARE"
+firmware_hash_env = "HIL_RNODE_MULTI_FIRMWARE_HASH"
+reset_command_env = "HIL_RNODE_MULTI_RESET_COMMAND"
+executor_env = "HIL_RNODE_MULTI_EXECUTOR"
+rf_required = true
+
+[[profiles]]
+id = "rnode-prepared"
+label = "RNode prepared host"
+adapter = "prepared-rnode"
+host = "linux"
+physical = true
+suites = ["smoke", "resource", "routing", "recovery", "prepared"]
+capabilities = ["rnode", "rf"]
+identity_env = "HIL_RNODE_ID"
+endpoint_env = "HIL_RNODE_PORT"
+firmware_env = "HIL_RNODE_FIRMWARE"
+firmware_hash_env = "HIL_RNODE_FIRMWARE_HASH"
+reset_command_env = "HIL_RNODE_RESET_COMMAND"
+executor_env = "HIL_RNODE_EXECUTOR"
+rf_required = true
+
+[[profiles]]
+id = "reticulum-interface-matrix"
+label = "Reticulum interface matrix"
+adapter = "prepared-interface-matrix"
+host = "linux"
+physical = true
+suites = ["smoke", "resource", "routing", "recovery", "prepared"]
+capabilities = ["serial", "tcp", "ble", "matrix"]
+identity_env = "HIL_RNODE_MATRIX_ID"
+endpoint_env = "HIL_RNODE_MATRIX_SERIAL_PORT"
+firmware_env = "HIL_RNODE_MATRIX_FIRMWARE"
+firmware_hash_env = "HIL_RNODE_MATRIX_FIRMWARE_HASH"
+reset_command_env = "HIL_RNODE_MATRIX_RESET_COMMAND"
+executor_env = "HIL_RNODE_MATRIX_EXECUTOR"
+rf_required = true
+
+[[profiles]]
+id = "weave"
+label = "Weave prepared host"
+adapter = "prepared-weave"
+host = "linux"
+physical = true
+suites = ["smoke", "resource", "routing", "recovery", "prepared"]
+capabilities = ["weave", "transport"]
+identity_env = "HIL_WEAVE_ID"
+endpoint_env = "HIL_WEAVE_ENDPOINT"
+firmware_env = "HIL_WEAVE_FIRMWARE"
+firmware_hash_env = "HIL_WEAVE_FIRMWARE_HASH"
+reset_command_env = "HIL_WEAVE_RESET_COMMAND"
+executor_env = "HIL_WEAVE_EXECUTOR"

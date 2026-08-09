@@ -453,8 +453,8 @@ Scoped release evidence is split as follows:
   `evidence_scope = "reticulum_interfaces_384_385_hil_matrix"` plus
   `target/reticulum-interface-hil-matrix/artifact-manifest.json` with SHA-256
   digests. Nightly HIL
-  exposes the same path as `reticulum-interface-hil-matrix` behind
-  `HIL_RNODE_MATRIX_ENABLED=true`, and strict reports must include endpoint,
+  exposes the same path through the `reticulum-interface-matrix` profile, and
+  strict reports must include endpoint,
   bearer, firmware, platform, MCU identity, and capture provenance fields.
   Display-capable BLE
   RNode shutdown now disables the external framebuffer before radio-off/leave
@@ -579,8 +579,8 @@ Scoped release evidence is split as follows:
   connected dialer outbound and acceptor incoming peer rows for two local
   daemons sharing one router, and can optionally record
   `sam_connectable_with_outbound_peers_real_pair_soak` with periodic
-  `rnstatus-rs` samples for bounded single-router stability. Nightly HIL exposes
-  that pair path with `HIL_I2P_PAIR_ENABLED=true` and uploads
+  `rnstatus-rs` samples for bounded single-router stability. The nightly HIL
+  matrix includes that pair path through the `i2p-pair` profile and uploads
   `i2p-prepared-host-pair-artifacts`. Broader public I2P peer-set and
   long-running production evidence remain pending.
 - Feature-gated VR-N76 KISS-over-BLE now refreshes transport-side runtime
@@ -1550,7 +1550,7 @@ do not block this software release.
 ## Verification Baseline
 
 - Primary CI: `.github/workflows/ci.yml`
-- Pinned Python interop: `.github/workflows/python-interop.yml`
+- Pinned Python interop: `.github/workflows/verify.yml` (repository-native `cargo xtask hil` controller)
 - Reference revisions are declared in the interop workflow rather than copied
   into status prose.
 - Current run status belongs in GitHub Actions, not in this maintained document.

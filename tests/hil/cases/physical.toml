@@ -1,0 +1,200 @@
+[[cases]]
+id = "rnode-two-peer-smoke"
+suite = "smoke"
+description = "Two provisioned physical nodes discover, link, and exchange a payload."
+levels = ["nightly", "release"]
+timeout_secs = 900
+failure_class = "FAIL_DEVICE"
+
+[[cases]]
+id = "device-discover-identify"
+suite = "smoke"
+description = "Discover the adapter and verify stable identity, firmware, and configuration."
+levels = ["nightly", "release"]
+timeout_secs = 300
+failure_class = "FAIL_DEVICE"
+
+[[cases]]
+id = "device-connection-reopen"
+suite = "smoke"
+description = "Open, close, and reopen the adapter connection without stale state."
+levels = ["nightly", "release"]
+timeout_secs = 300
+failure_class = "FAIL_DEVICE"
+
+[[cases]]
+id = "packet-single-roundtrip"
+suite = "smoke"
+description = "Send and receive a single exact-byte packet through the physical path."
+levels = ["nightly", "release"]
+timeout_secs = 600
+failure_class = "FAIL_PROTOCOL"
+
+[[cases]]
+id = "packet-boundary-roundtrip"
+suite = "smoke"
+description = "Send boundary-sized packets and verify exact bytes and timeout behavior."
+levels = ["nightly", "release"]
+timeout_secs = 600
+failure_class = "FAIL_PROTOCOL"
+
+[[cases]]
+id = "link-response-and-teardown"
+suite = "smoke"
+description = "Establish and tear down an RNS link while checking response packets."
+levels = ["nightly", "release"]
+timeout_secs = 900
+failure_class = "FAIL_PROTOCOL"
+
+[[cases]]
+id = "announce-and-path"
+suite = "routing"
+description = "Exercise announce, path request, and path response over the adapter."
+levels = ["nightly", "release"]
+timeout_secs = 900
+failure_class = "FAIL_PROTOCOL"
+
+[[cases]]
+id = "rnode-resource-transfer"
+suite = "resource"
+description = "Two provisioned physical nodes complete a resource transfer and verify its digest."
+levels = ["nightly", "release"]
+timeout_secs = 1800
+failure_class = "FAIL_PROTOCOL"
+
+[[cases]]
+id = "resource-cancel"
+suite = "resource"
+description = "Cancel a resource and verify terminal state and exact cancellation signaling."
+levels = ["nightly", "release"]
+timeout_secs = 1200
+failure_class = "FAIL_PROTOCOL"
+
+[[cases]]
+id = "resource-interrupted-recovery"
+suite = "recovery"
+description = "Interrupt a transfer, recover the link, and verify terminal failure signaling."
+levels = ["nightly", "release"]
+timeout_secs = 1500
+failure_class = "FAIL_PROTOCOL"
+
+[[cases]]
+id = "terminal-inbound-failed"
+suite = "resource"
+description = "A peer failure produces terminal InboundFailed without a hang."
+levels = ["nightly", "release"]
+timeout_secs = 1200
+failure_class = "FAIL_PROTOCOL"
+
+[[cases]]
+id = "rns-mtu-8192"
+suite = "resource"
+description = "Verify negotiated MTU 8192 and compatible resource fragment sizing."
+levels = ["nightly", "release"]
+timeout_secs = 1200
+failure_class = "FAIL_PROTOCOL"
+
+[[cases]]
+id = "rns-fragment-8156"
+suite = "resource"
+description = "Transfer an 8156-byte payload fragment across the physical link."
+levels = ["nightly", "release"]
+timeout_secs = 1200
+failure_class = "FAIL_PROTOCOL"
+
+[[cases]]
+id = "rns-resource-compressed"
+suite = "resource"
+description = "Transfer a compressed resource and verify its reassembled hash."
+levels = ["nightly", "release"]
+timeout_secs = 1500
+failure_class = "FAIL_PROTOCOL"
+
+[[cases]]
+id = "rns-resource-uncompressed"
+suite = "resource"
+description = "Transfer an uncompressed resource and verify its reassembled hash."
+levels = ["nightly", "release"]
+timeout_secs = 1500
+failure_class = "FAIL_PROTOCOL"
+
+[[cases]]
+id = "rns-resource-no-hang-peer-failure"
+suite = "recovery"
+description = "A failed peer leaves no stuck resource worker or pending transfer."
+levels = ["nightly", "release"]
+timeout_secs = 1200
+failure_class = "FAIL_PROTOCOL"
+
+[[cases]]
+id = "rnode-routing-fanout"
+suite = "routing"
+description = "Three provisioned nodes exercise announce, path selection, and forwarding."
+levels = ["nightly", "release"]
+timeout_secs = 1800
+failure_class = "FAIL_PROTOCOL"
+
+[[cases]]
+id = "routing-gravity-change"
+suite = "routing"
+description = "Changing reachability or path quality updates gravity selection."
+levels = ["nightly", "release"]
+timeout_secs = 1500
+failure_class = "FAIL_PROTOCOL"
+
+[[cases]]
+id = "routing-path-rebalance"
+suite = "routing"
+description = "A changed path quality causes route rebalancing without stale forwarding."
+levels = ["nightly", "release"]
+timeout_secs = 1500
+failure_class = "FAIL_PROTOCOL"
+
+[[cases]]
+id = "routing-multi-peer-selection"
+suite = "routing"
+description = "At least three peers exercise multi-peer route selection and forwarding."
+levels = ["nightly", "release"]
+timeout_secs = 1800
+failure_class = "FAIL_PROTOCOL"
+
+[[cases]]
+id = "rnode-link-recovery"
+suite = "recovery"
+description = "A controlled reset recovers a link without accepting stale state."
+levels = ["nightly", "release"]
+timeout_secs = 1200
+failure_class = "FAIL_DEVICE"
+
+[[cases]]
+id = "unplug-reconnect"
+suite = "recovery"
+description = "Unplug/reconnect or its controlled equivalent recovers the adapter."
+levels = ["nightly", "release"]
+timeout_secs = 1500
+failure_class = "FAIL_DEVICE"
+
+[[cases]]
+id = "power-cycle-recovery"
+suite = "recovery"
+description = "A power-cycle reset recovers the device and repeats a transfer."
+levels = ["nightly", "release"]
+timeout_secs = 1800
+failure_class = "FAIL_DEVICE"
+
+[[cases]]
+id = "repeated-resource-transfer"
+suite = "recovery"
+description = "Repeated transfers after reset remain byte- and hash-exact."
+levels = ["nightly", "release"]
+timeout_secs = 3600
+failure_class = "FAIL_PROTOCOL"
+
+[[cases]]
+id = "prepared-host-matrix"
+suite = "prepared"
+description = "The prepared-host adapter emits its native report and preserves raw evidence."
+levels = ["nightly", "release"]
+profiles = ["esp32", "i2p", "i2p-pair", "auto-interface", "rnode-multi", "rnode-prepared", "reticulum-interface-matrix", "weave"]
+timeout_secs = 1800
+failure_class = "FAIL_DEVICE"

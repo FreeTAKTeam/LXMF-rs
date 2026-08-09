@@ -1,0 +1,32 @@
+name: HIL lab health
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hil-rack-primary-health
+  cancel-in-progress: false
+
+jobs:
+  doctor:
+    name: Check configured lab prerequisites
+    runs-on: [self-hosted, hil-linux]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run HIL doctor
+        run: |
+          mkdir -p target/hil
+          cargo xtask hil doctor --all --host linux --json > target/hil/doctor.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hil-lab-health-${{ github.run_id }}
+          path: target/hil/doctor.json
+          if-no-files-found: error

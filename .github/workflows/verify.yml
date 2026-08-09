@@ -1,0 +1,93 @@
+name: Verify
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RETICULUM_CONFORMANCE_REF: 0319444b20e0815f26c6b9ceeba8fa44de037c9b
+  PYTHON_RETICULUM_REF: b48b96e61676504e0a4e527b33b9a0b4495c6872
+  PYTHON_LXMF_REF: 727830cefda83d9c6e3982b48675425f3f988f9c
+
+jobs:
+  hil-pr:
+    name: HIL PR level
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      LXMF_PYTHON_BIN: python
+      RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum
+      LXMF_PY_REPO: ${{ github.workspace }}/LXMF
+      PYTHON_RNS_PATH: ${{ github.workspace }}/Reticulum
+      PYTHON_LXMF_PATH: ${{ github.workspace }}/LXMF
+      LXMF_PY_COMPAT_HARNESS: ${{ github.workspace }}/tools/scripts/python_compat_harness.py
+    steps:
+      - name: Checkout LXMF-rs
+        uses: actions/checkout@v4
+
+      - name: Checkout reticulum-conformance
+        uses: actions/checkout@v4
+        with:
+          repository: torlando-tech/reticulum-conformance
+          ref: ${{ env.RETICULUM_CONFORMANCE_REF }}
+          path: reticulum-conformance
+
+      - name: Checkout pinned Python Reticulum
+        uses: actions/checkout@v4
+        with:
+          repository: markqvist/Reticulum
+          ref: ${{ env.PYTHON_RETICULUM_REF }}
+          path: Reticulum
+
+      - name: Checkout pinned Python LXMF
+        uses: actions/checkout@v4
+        with:
+          repository: markqvist/LXMF
+          ref: ${{ env.PYTHON_LXMF_REF }}
+          path: LXMF
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python reference dependencies
+        working-directory: reticulum-conformance
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install 'cryptography>=3.4.7' 'pyserial>=3.5' 'qrcode>=7.4.2'
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux BLE build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libdbus-1-dev
+
+      - name: Record pinned revisions
+        run: |
+          git -C reticulum-conformance rev-parse HEAD
+          git -C Reticulum rev-parse HEAD
+          git -C LXMF rev-parse HEAD
+
+      - name: Run repository-native PR HIL controller
+        run: cargo xtask hil run --level pr --all --output target/hil/runs/pr-${{ github.run_id }}
+
+      - name: Upload PR HIL evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hil-pr-${{ github.run_id }}
+          path: target/hil/runs/pr-${{ github.run_id }}/**
+          if-no-files-found: error

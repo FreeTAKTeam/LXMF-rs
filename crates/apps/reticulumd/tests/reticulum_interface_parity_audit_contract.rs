@@ -163,40 +163,17 @@ fn runbooks_document_reticulum_interface_parity_audit() {
 #[test]
 fn nightly_hil_workflow_exposes_reticulum_interface_matrix_job() {
     let root = repo_root();
-    let workflow_path = root.join(".github/workflows/nightly-embedded-hil.yml");
+    let workflow_path = root.join(".github/workflows/hil-nightly.yml");
     let workflow = fs::read_to_string(&workflow_path).expect("read nightly HIL workflow");
 
     for required in [
-        "reticulum-interface-hil-matrix",
-        "HIL_RNODE_MATRIX_ENABLED",
-        "HIL_RNODE_MATRIX_SERIAL_PORT",
-        "HIL_RNODE_MATRIX_TCP_PORT",
-        "HIL_RNODE_MATRIX_BLE_PORT",
-        "HIL_RNODE_MATRIX_RUN_LOCAL_SMOKES",
-        "HIL_RNODE_MATRIX_SERIAL_FREQUENCY",
-        "HIL_RNODE_MATRIX_TCP_FREQUENCY",
-        "HIL_RNODE_MATRIX_BLE_FREQUENCY",
-        "HIL_RNODE_MATRIX_BLE_ADAPTER",
-        "HIL_RNODE_MATRIX_BLE_MAX_WRITE_LEN",
-        "HIL_RNODE_MATRIX_BLE_TIMEOUT_SECS",
-        "RIF_RNODE_SERIAL_PORT",
-        "RIF_RNODE_TCP_PORT",
-        "RIF_RNODE_BLE_PORT",
-        "RIF_RUN_LOCAL_SMOKES",
-        "RIF_RNODE_SERIAL_FREQUENCY",
-        "RIF_RNODE_TCP_FREQUENCY",
-        "RIF_RNODE_BLE_FREQUENCY",
-        "RIF_RNODE_BLE_ADAPTER",
-        "RIF_RNODE_BLE_MAX_WRITE_LEN",
-        "RIF_RNODE_BLE_TIMEOUT_SECS",
-        "Install Linux BLE build dependencies",
-        "pkg-config libdbus-1-dev",
-        "./tools/scripts/reticulum-interface-hil-matrix.sh",
-        "reticulum-interface-hil-matrix-artifacts",
-        "target/reticulum-interface-hil-matrix/report.json",
-        "target/reticulum-interface-hil-matrix/parity-audit-report.json",
-        "target/reticulum-interface-hil-matrix/artifact-manifest.json",
-        "target/rnode-hil/matrix/*.report.json",
+        "- reticulum-interface-matrix",
+        "Run repository-native nightly profile",
+        "cargo xtask hil run --level nightly --profile ${{ matrix.profile }}",
+        "Create or update profile failure issue",
+        "[HIL] ${{ matrix.profile }} nightly failure",
+        "hil-nightly-${{ matrix.profile }}-${{ github.run_id }}",
+        "target/hil/runs/${{ matrix.profile }}-${{ github.run_id }}/**",
     ] {
         assert!(
             workflow.contains(required),

@@ -1,0 +1,153 @@
+[[cases]]
+id = "python-channel-interop"
+suite = "interop"
+description = "Rust and pinned Python Reticulum exchange channel frames."
+levels = ["pr", "nightly", "release"]
+profiles = ["python-reference"]
+requires_env = ["RETICULUM_PY_REPO", "LXMF_PYTHON_BIN"]
+timeout_secs = 900
+failure_class = "FAIL_PROTOCOL"
+
+[cases.command]
+program = "cargo"
+args = ["test", "-p", "reticulumd", "--test", "python_channel_interop", "--", "--ignored", "--nocapture"]
+
+[[cases]]
+id = "python-paper-interop"
+suite = "interop"
+description = "Rust and pinned Python LXMF exchange paper messages."
+levels = ["pr", "nightly", "release"]
+profiles = ["python-reference"]
+requires_env = ["RETICULUM_PY_REPO", "LXMF_PY_REPO", "LXMF_PYTHON_BIN"]
+timeout_secs = 900
+failure_class = "FAIL_PROTOCOL"
+
+[cases.command]
+program = "cargo"
+args = ["test", "-p", "reticulumd", "--test", "python_paper_interop", "--", "--ignored", "--nocapture"]
+
+[[cases]]
+id = "python-lxmd-compatibility"
+suite = "interop"
+description = "The pinned Python LXMF compatibility matrix stays aligned."
+levels = ["pr", "nightly", "release"]
+profiles = ["python-reference"]
+requires_env = ["RETICULUM_PY_REPO", "LXMF_PY_REPO", "LXMF_PY_COMPAT_HARNESS", "LXMF_PYTHON_BIN"]
+timeout_secs = 1200
+failure_class = "FAIL_PROTOCOL"
+
+[cases.command]
+program = "cargo"
+args = ["test", "-p", "reticulumd", "--test", "python_compat_matrix", "--", "--ignored", "--nocapture", "--test-threads=1"]
+
+[[cases]]
+id = "python-remote-relay"
+suite = "interop"
+description = "The Rust LXMD remote relay path interoperates with Python."
+levels = ["nightly", "release"]
+profiles = ["python-reference"]
+requires_env = ["RETICULUM_PY_REPO", "LXMF_PY_REPO", "LXMF_PYTHON_BIN"]
+timeout_secs = 1200
+failure_class = "FAIL_PROTOCOL"
+
+[cases.command]
+program = "cargo"
+args = ["test", "-p", "lxmf-cli", "--test", "python_lxmd_remote_relay", "--", "--ignored", "--nocapture"]
+
+[[cases]]
+id = "python-reference-conformance"
+suite = "interop"
+description = "The pinned Python reference conformance suite remains reproducible."
+levels = ["pr", "nightly", "release"]
+profiles = ["python-reference"]
+requires_env = ["PYTHON_RNS_PATH", "PYTHON_LXMF_PATH"]
+timeout_secs = 1200
+failure_class = "FAIL_PROTOCOL"
+
+[cases.command]
+program = "python"
+args = ["-m", "pytest", "tests/", "--reference-only", "-v", "--tb=short", "--deselect", "tests/wire/test_path_discovery.py::test_discover_paths_for_mode_gating[reference->reference->reference-boundary]"]
+cwd = "reticulum-conformance"
+
+[[cases]]
+id = "python-surface-inventory"
+suite = "interop"
+description = "The pinned Python public surface inventory remains reproducible."
+levels = ["pr", "nightly", "release"]
+profiles = ["python-reference"]
+requires_env = ["PYTHON_RNS_PATH", "PYTHON_LXMF_PATH"]
+timeout_secs = 600
+failure_class = "FAIL_PROTOCOL"
+
+[cases.command]
+program = "python"
+args = ["tools/scripts/python_surface_inventory.py", "--python-rns-path", "Reticulum", "--python-lxmf-path", "LXMF", "--mapping", "docs/status/python-surface-mapping.json", "--json-out", "target/hil/python-surface-parity.json", "--check"]
+
+[[cases]]
+id = "python-resolver-reference"
+suite = "interop"
+description = "The pinned Python Resolver surface probe remains reproducible."
+levels = ["pr", "nightly", "release"]
+profiles = ["python-reference"]
+requires_env = ["PYTHON_RNS_PATH"]
+timeout_secs = 300
+failure_class = "FAIL_PROTOCOL"
+
+[cases.command]
+program = "python"
+args = ["tools/scripts/python_resolver_reference_probe.py", "--python-rns-path", "Reticulum", "--json-out", "target/hil/python-resolver.json"]
+
+[[cases]]
+id = "python-resource-segments"
+suite = "interop"
+description = "Pinned Python resource segment metadata stays compatible."
+levels = ["pr", "nightly", "release"]
+profiles = ["python-reference"]
+requires_env = ["PYTHON_RNS_PATH"]
+timeout_secs = 300
+failure_class = "FAIL_PROTOCOL"
+
+[cases.command]
+program = "python"
+args = ["tools/scripts/python_resource_segment_probe.py", "--python-rns-path", "Reticulum", "--json-out", "target/hil/python-resource-segments.json"]
+
+[[cases]]
+id = "python-backbone-selector"
+suite = "interop"
+description = "Python selector Backbone slow-reader probe."
+levels = ["pr", "nightly", "release"]
+profiles = ["python-reference"]
+requires_env = ["PYTHON_RNS_PATH"]
+timeout_secs = 600
+failure_class = "FAIL_PROTOCOL"
+
+[cases.command]
+program = "python"
+args = ["tools/scripts/backbone_selector_backpressure_probe.py", "--require-epoll", "--json-out", "target/hil/backbone-selector.json"]
+
+[[cases]]
+id = "python-backbone-reference-selector"
+suite = "interop"
+description = "Pinned Python Reticulum Backbone slow-reader probe."
+levels = ["pr", "nightly", "release"]
+profiles = ["python-reference"]
+requires_env = ["PYTHON_RNS_PATH"]
+timeout_secs = 600
+failure_class = "FAIL_PROTOCOL"
+
+[cases.command]
+program = "python"
+args = ["tools/scripts/backbone_python_reference_backpressure_probe.py", "--python-rns-path", "Reticulum", "--require-epoll", "--json-out", "target/hil/python-backbone-reference.json"]
+
+[[cases]]
+id = "rust-backbone-slow-reader"
+suite = "interop"
+description = "Rust Backbone transport remains bounded under a stopped reader."
+levels = ["pr", "nightly", "release"]
+profiles = ["python-reference"]
+timeout_secs = 600
+failure_class = "FAIL_PROTOCOL"
+
+[cases.command]
+program = "cargo"
+args = ["test", "-p", "reticulum-rs-transport", "iface::tcp_client::tests::backbone_hdlc_stream_backpressures_when_peer_stops_reading", "--", "--nocapture"]

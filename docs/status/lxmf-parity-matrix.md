@@ -958,7 +958,7 @@ the named software scenarios.
 
 ## Evidence
 
-- `.github/workflows/python-interop.yml` runs pinned Python reference
+- `.github/workflows/verify.yml` runs pinned Python reference
   conformance plus live channel, paper, compatibility-matrix, and LXMD
   remote-relay tests.
 - The compatibility matrix includes ignored live `propagation_remote_status_bidir`,

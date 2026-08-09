@@ -108,23 +108,17 @@ fn weave_fake_pty_smoke_preserves_software_evidence_contract() {
 #[test]
 fn nightly_hil_workflow_exposes_weave_prepared_host_job() {
     let root = repo_root();
-    let workflow_path = root.join(".github/workflows/nightly-embedded-hil.yml");
+    let workflow_path = root.join(".github/workflows/hil-nightly.yml");
     let workflow = fs::read_to_string(&workflow_path).expect("read nightly HIL workflow");
 
     for required in [
-        "weave-prepared-host",
-        "HIL_WEAVE_ENABLED",
-        "HIL_WEAVE_PORT",
-        "HIL_WEAVE_BAUD_RATE",
-        "HIL_WEAVE_MTU",
-        "HIL_WEAVE_CONFIGURED_BITRATE",
-        "HIL_WEAVE_REQUIRE_CONNECTED",
-        "HIL_WEAVE_REMOTE_DISPLAY_CONTROL",
-        "HIL_WEAVE_TIMEOUT_SECS",
-        "./tools/scripts/weave-prepared-host-smoke.sh",
-        "weave-prepared-host-artifacts",
-        "target/weave-hil/report.json",
-        "target/weave-hil/run.*",
+        "- weave",
+        "Run repository-native nightly profile",
+        "cargo xtask hil run --level nightly --profile ${{ matrix.profile }}",
+        "Create or update profile failure issue",
+        "[HIL] ${{ matrix.profile }} nightly failure",
+        "hil-nightly-${{ matrix.profile }}-${{ github.run_id }}",
+        "target/hil/runs/${{ matrix.profile }}-${{ github.run_id }}/**",
     ] {
         assert!(
             workflow.contains(required),
@@ -159,7 +153,7 @@ fn weave_runbook_documents_prepared_host_smoke_artifacts() {
         "prepared_host_serial_discovery_only",
         "product_boundary",
         "broader production parity",
-        "HIL_WEAVE_ENABLED",
+        "through the `weave` profile",
     ] {
         assert!(
             runbook.contains(required),

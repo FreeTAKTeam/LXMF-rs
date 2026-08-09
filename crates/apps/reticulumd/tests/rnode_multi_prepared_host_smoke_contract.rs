@@ -151,27 +151,17 @@ fn rnode_multi_fake_pty_smoke_preserves_serial_software_evidence_contract() {
 #[test]
 fn nightly_hil_workflow_exposes_rnode_multi_prepared_host_job() {
     let root = repo_root();
-    let workflow_path = root.join(".github/workflows/nightly-embedded-hil.yml");
+    let workflow_path = root.join(".github/workflows/hil-nightly.yml");
     let workflow = fs::read_to_string(&workflow_path).expect("read nightly HIL workflow");
 
     for required in [
-        "rnode-multi-prepared-host",
-        "HIL_RNODE_MULTI_ENABLED",
-        "HIL_RNODE_MULTI_PORT",
-        "HIL_RNODE_MULTI_BAUD_RATE",
-        "HIL_RNODE_MULTI_VPORTS",
-        "HIL_RNODE_MULTI_REGION",
-        "HIL_RNODE_MULTI_FREQUENCIES",
-        "HIL_RNODE_MULTI_BANDWIDTHS",
-        "HIL_RNODE_MULTI_SPREADING_FACTORS",
-        "HIL_RNODE_MULTI_CODING_RATES",
-        "HIL_RNODE_MULTI_TX_POWERS",
-        "HIL_RNODE_MULTI_OUTGOING",
-        "HIL_RNODE_MULTI_TIMEOUT_SECS",
-        "./tools/scripts/rnode-multi-prepared-host-smoke.sh",
-        "rnode-multi-prepared-host-artifacts",
-        "target/rnode-multi-hil/report.json",
-        "target/rnode-multi-hil/run.*",
+        "- rnode-multi",
+        "Run repository-native nightly profile",
+        "cargo xtask hil run --level nightly --profile ${{ matrix.profile }}",
+        "Create or update profile failure issue",
+        "[HIL] ${{ matrix.profile }} nightly failure",
+        "hil-nightly-${{ matrix.profile }}-${{ github.run_id }}",
+        "target/hil/runs/${{ matrix.profile }}-${{ github.run_id }}/**",
     ] {
         assert!(
             workflow.contains(required),
@@ -262,7 +252,7 @@ fn rnode_multi_runbook_documents_prepared_host_smoke_artifacts() {
         "prepared_host_single_device_vport_probe",
         "product_boundary",
         "not broad production parity",
-        "HIL_RNODE_MULTI_ENABLED",
+        "through the `rnode-multi` profile",
     ] {
         assert!(
             runbook.contains(required),

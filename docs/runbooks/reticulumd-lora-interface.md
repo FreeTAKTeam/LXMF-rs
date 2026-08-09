@@ -521,7 +521,7 @@ bearer; the `product_boundary` note records that broader hardware parity still
 requires evidence across serial, TCP/Wi-Fi, BLE, device, firmware, and radio
 combinations.
 
-Nightly HIL exposes the same smoke through `HIL_RNODE_ENABLED=true` with
+Nightly HIL exposes the same smoke through the `rnode-prepared` profile with
 `HIL_RNODE_PORT`, optional `HIL_RNODE_BAUD_RATE`, optional `HIL_RNODE_REGION`,
 optional `HIL_RNODE_FREQUENCY`, optional `HIL_RNODE_BANDWIDTH`, optional
 `HIL_RNODE_SPREADING_FACTOR`, optional `HIL_RNODE_CODING_RATE`, optional
@@ -602,7 +602,8 @@ settings for every bearer, but each bearer can override them with
 `RIF_RNODE_BLE_MAX_WRITE_LEN`, and `RIF_RNODE_BLE_TIMEOUT_SECS` override only
 the selected bearer while the others keep the shared `RNODE_*` default.
 
-Nightly HIL exposes the same matrix through `HIL_RNODE_MATRIX_ENABLED=true`.
+Nightly HIL exposes the same matrix through the `reticulum-interface-matrix`
+profile.
 Set `HIL_RNODE_MATRIX_SERIAL_PORT`, `HIL_RNODE_MATRIX_TCP_PORT`, and
 `HIL_RNODE_MATRIX_BLE_PORT`; the job reuses the ordinary `HIL_RNODE_*` radio,
 timeout, BLE adapter, and management variables documented above unless a

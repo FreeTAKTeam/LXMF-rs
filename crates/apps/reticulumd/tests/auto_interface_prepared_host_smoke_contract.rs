@@ -87,21 +87,17 @@ fn auto_interface_software_smoke_preserves_evidence_contract() {
 #[test]
 fn nightly_hil_workflow_exposes_auto_interface_prepared_host_job() {
     let root = repo_root();
-    let workflow_path = root.join(".github/workflows/nightly-embedded-hil.yml");
+    let workflow_path = root.join(".github/workflows/hil-nightly.yml");
     let workflow = fs::read_to_string(&workflow_path).expect("read nightly HIL workflow");
 
     for required in [
-        "auto-interface-prepared-host",
-        "HIL_AUTO_INTERFACE_ENABLED",
-        "HIL_AUTO_INTERFACE_NETNS",
-        "HIL_AUTO_INTERFACE_DEVICE",
-        "HIL_AUTO_INTERFACE_INITIAL_ADDR",
-        "HIL_AUTO_INTERFACE_REPLACEMENT_ADDR",
-        "HIL_AUTO_INTERFACE_TIMEOUT_SECS",
-        "./tools/scripts/auto-interface-prepared-host-smoke.sh",
-        "auto-interface-prepared-host-artifacts",
-        "target/auto-interface-hil/report.json",
-        "target/auto-interface-hil/run.*",
+        "- auto-interface",
+        "Run repository-native nightly profile",
+        "cargo xtask hil run --level nightly --profile ${{ matrix.profile }}",
+        "Create or update profile failure issue",
+        "[HIL] ${{ matrix.profile }} nightly failure",
+        "hil-nightly-${{ matrix.profile }}-${{ github.run_id }}",
+        "target/hil/runs/${{ matrix.profile }}-${{ github.run_id }}/**",
     ] {
         assert!(
             workflow.contains(required),
@@ -131,7 +127,7 @@ fn auto_interface_runbook_documents_prepared_host_churn_artifacts() {
         "product_boundary",
         "broader prepared-host parity",
         "phase snapshots",
-        "HIL_AUTO_INTERFACE_ENABLED",
+        "through the `auto-interface` profile",
     ] {
         assert!(
             runbook.contains(required),

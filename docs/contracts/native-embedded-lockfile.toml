@@ -11,7 +11,7 @@ firmware_repo = "github.com/FreeTAKTeam/lxmf-embedded-fw"
 firmware_ref = "5db94fe"
 owners = ["@FreeTAKTeam/lxmf-maintainers"]
 
-ci_workflow = ".github/workflows/nightly-embedded-hil.yml"
+ci_workflow = ".github/workflows/hil-nightly.yml"
 xtask_gate = "embedded-native-lock-check"
 release_revision_mode = "pinned"
 tcp_read_timeout_secs = 8

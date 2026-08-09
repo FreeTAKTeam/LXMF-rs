@@ -83,7 +83,7 @@ const BLE_CAMERA_WIRE_CONTRACT_PATH: &str = "docs/contracts/ble-camera-wire-v1.m
 const BLE_TRANSPORT_RUNTIME_CONTRACT_PATH: &str =
     "docs/contracts/ble-transport-runtime-contract.md";
 
-const EMBEDDED_NATIVE_WORKFLOW_PATH: &str = ".github/workflows/nightly-embedded-hil.yml";
+const EMBEDDED_NATIVE_WORKFLOW_PATH: &str = ".github/workflows/hil-nightly.yml";
 
 const BACKUP_RESTORE_DRILL_SCRIPT_PATH: &str = "tools/scripts/backup-restore-drill.sh";
 

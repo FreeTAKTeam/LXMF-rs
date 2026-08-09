@@ -1,0 +1,198 @@
+name: HIL nightly
+
+on:
+  schedule:
+    - cron: "30 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: hil-rack-primary
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  virtual:
+    name: Virtual nightly matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo xtask hil run --level nightly --profile virtual --output target/hil/runs/virtual-${{ github.run_id }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hil-nightly-virtual-${{ github.run_id }}
+          path: target/hil/runs/virtual-${{ github.run_id }}/**
+          if-no-files-found: error
+
+  python-reference:
+    name: Pinned Python nightly matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      LXMF_PYTHON_BIN: python
+      RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum
+      LXMF_PY_REPO: ${{ github.workspace }}/LXMF
+      PYTHON_RNS_PATH: ${{ github.workspace }}/Reticulum
+      PYTHON_LXMF_PATH: ${{ github.workspace }}/LXMF
+      LXMF_PY_COMPAT_HARNESS: ${{ github.workspace }}/tools/scripts/python_compat_harness.py
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: torlando-tech/reticulum-conformance
+          ref: 0319444b20e0815f26c6b9ceeba8fa44de037c9b
+          path: reticulum-conformance
+      - uses: actions/checkout@v4
+        with:
+          repository: markqvist/Reticulum
+          ref: b48b96e61676504e0a4e527b33b9a0b4495c6872
+          path: Reticulum
+      - uses: actions/checkout@v4
+        with:
+          repository: markqvist/LXMF
+          ref: 727830cefda83d9c6e3982b48675425f3f988f9c
+          path: LXMF
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Python reference dependencies
+        working-directory: reticulum-conformance
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install 'cryptography>=3.4.7' 'pyserial>=3.5' 'qrcode>=7.4.2'
+      - name: Install Linux BLE build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libdbus-1-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo xtask hil run --level nightly --profile python-reference --output target/hil/runs/python-${{ github.run_id }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hil-nightly-python-${{ github.run_id }}
+          path: target/hil/runs/python-${{ github.run_id }}/**
+          if-no-files-found: error
+
+  linux-lab:
+    name: Linux physical ${{ matrix.profile }}
+    runs-on: [self-hosted, hil-linux]
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        profile:
+          - heltec
+          - tbeam
+          - vr-n76
+          - kiss
+          - ax25
+          - serial
+          - tcp
+          - ble
+          - esp32
+          - i2p
+          - i2p-pair
+          - auto-interface
+          - rnode-multi
+          - rnode-prepared
+          - reticulum-interface-matrix
+          - weave
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run repository-native nightly profile
+        run: cargo xtask hil run --level nightly --profile ${{ matrix.profile }} --output target/hil/runs/${{ matrix.profile }}-${{ github.run_id }}
+      - name: Create or update profile failure issue
+        if: failure()
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = '[HIL] ${{ matrix.profile }} nightly failure';
+            const body = `Profile: ${{ matrix.profile }}\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\nEvidence artifact: hil-nightly-${{ matrix.profile }}-${{ github.run_id }}`;
+            const open = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100,
+            });
+            const existing = open.find(issue => issue.title === title);
+            if (existing) {
+              await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: existing.number, body });
+            } else {
+              await github.rest.issues.create({ owner: context.repo.owner, repo: context.repo.repo, title, body });
+            }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hil-nightly-${{ matrix.profile }}-${{ github.run_id }}
+          path: target/hil/runs/${{ matrix.profile }}-${{ github.run_id }}/**
+          if-no-files-found: error
+
+  windows-lab:
+    name: Windows physical ${{ matrix.profile }}
+    runs-on: [self-hosted, hil-windows]
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        profile: [spp, windows]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo xtask hil run --level nightly --profile ${{ matrix.profile }} --output target/hil/runs/${{ matrix.profile }}-${{ github.run_id }}
+      - name: Create or update profile failure issue
+        if: failure()
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = '[HIL] ${{ matrix.profile }} nightly failure';
+            const body = `Profile: ${{ matrix.profile }}\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\nEvidence artifact: hil-nightly-${{ matrix.profile }}-${{ github.run_id }}`;
+            const open = await github.paginate(github.rest.issues.listForRepo, { owner: context.repo.owner, repo: context.repo.repo, state: 'open', per_page: 100 });
+            const existing = open.find(issue => issue.title === title);
+            if (existing) await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: existing.number, body });
+            else await github.rest.issues.create({ owner: context.repo.owner, repo: context.repo.repo, title, body });
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hil-nightly-${{ matrix.profile }}-${{ github.run_id }}
+          path: target/hil/runs/${{ matrix.profile }}-${{ github.run_id }}/**
+          if-no-files-found: error
+
+  android-lab:
+    name: Android physical
+    runs-on: [self-hosted, hil-android]
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo xtask hil run --level nightly --profile android --output target/hil/runs/android-${{ github.run_id }}
+      - name: Create or update Android failure issue
+        if: failure()
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = '[HIL] android nightly failure';
+            const body = `Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\nEvidence artifact: hil-nightly-android-${{ github.run_id }}`;
+            const open = await github.paginate(github.rest.issues.listForRepo, { owner: context.repo.owner, repo: context.repo.repo, state: 'open', per_page: 100 });
+            const existing = open.find(issue => issue.title === title);
+            if (existing) await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: existing.number, body });
+            else await github.rest.issues.create({ owner: context.repo.owner, repo: context.repo.repo, title, body });
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hil-nightly-android-${{ github.run_id }}
+          path: target/hil/runs/android-${{ github.run_id }}/**
+          if-no-files-found: error

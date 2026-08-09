@@ -153,31 +153,18 @@ fn i2p_fake_sam_smoke_preserves_software_evidence_contract() {
 #[test]
 fn nightly_hil_workflow_exposes_i2p_prepared_host_job() {
     let root = repo_root();
-    let workflow_path = root.join(".github/workflows/nightly-embedded-hil.yml");
+    let workflow_path = root.join(".github/workflows/hil-nightly.yml");
     let workflow = fs::read_to_string(&workflow_path).expect("read nightly HIL workflow");
 
     for required in [
-        "i2p-prepared-host",
-        "i2p-prepared-host-pair",
-        "HIL_I2P_ENABLED",
-        "HIL_I2P_PAIR_ENABLED",
-        "HIL_I2P_SAM_HOST",
-        "HIL_I2P_SAM_PORT",
-        "HIL_I2P_PEERS",
-        "HIL_I2P_TIMEOUT_SECS",
-        "HIL_I2P_PAIR_SAM_HOST",
-        "HIL_I2P_PAIR_SAM_PORT",
-        "HIL_I2P_PAIR_TIMEOUT_SECS",
-        "HIL_I2P_PAIR_SOAK_SECS",
-        "HIL_I2P_PAIR_SOAK_POLL_SECS",
-        "./tools/scripts/i2p-prepared-host-smoke.sh",
-        "./tools/scripts/i2p-prepared-host-pair-smoke.sh",
-        "i2p-prepared-host-artifacts",
-        "i2p-prepared-host-pair-artifacts",
-        "target/i2p-hil/report.json",
-        "target/i2p-hil/run.*",
-        "target/i2p-hil-pair/report.json",
-        "target/i2p-hil-pair/run.*",
+        "- i2p",
+        "- i2p-pair",
+        "Run repository-native nightly profile",
+        "cargo xtask hil run --level nightly --profile ${{ matrix.profile }}",
+        "Create or update profile failure issue",
+        "[HIL] ${{ matrix.profile }} nightly failure",
+        "hil-nightly-${{ matrix.profile }}-${{ github.run_id }}",
+        "target/hil/runs/${{ matrix.profile }}-${{ github.run_id }}/**",
     ] {
         assert!(
             workflow.contains(required),
@@ -223,8 +210,7 @@ fn i2p_runbook_documents_prepared_host_smoke_artifacts() {
         "sam_connectable_with_outbound_peers_real_pair_soak",
         "target/i2p-hil-pair/",
         "I2P_PAIR_SOAK_SECS",
-        "HIL_I2P_PAIR_ENABLED",
-        "HIL_I2P_PAIR_SAM_HOST",
+        "through the `i2p-pair`",
         "HIL_I2P_PAIR_SOAK_SECS",
         "i2p-prepared-host-pair-artifacts",
         "soak_samples",
@@ -232,7 +218,7 @@ fn i2p_runbook_documents_prepared_host_smoke_artifacts() {
         "broader public peer-set parity",
         "product_boundary",
         "not outbound peer production parity",
-        "HIL_I2P_ENABLED",
+        "through the `i2p` profile",
     ] {
         assert!(
             runbook.contains(required),
