@@ -2,6 +2,7 @@ version = 1
 rack_id = "primary"
 lock_env = "HIL_LOCK_PATH"
 lock_ttl_secs = 14400
+reset_timeout_secs = 120
 rf_confirmation_env = "HIL_RF_ENCLOSURE_CONFIRMED"
 
 [[profiles]]

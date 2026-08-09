@@ -196,3 +196,25 @@ jobs:
           name: hil-nightly-android-${{ github.run_id }}
           path: target/hil/runs/android-${{ github.run_id }}/**
           if-no-files-found: error
+
+  report:
+    name: Generate nightly support matrix
+    if: always()
+    needs: [virtual, python-reference, linux-lab, windows-lab, android-lab]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: hil-nightly-*
+          path: target/hil/runs
+      - name: Generate support matrix
+        run: cargo xtask hil report --evidence target/hil/runs --output target/hil/report
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hil-nightly-report-${{ github.run_id }}
+          path: target/hil/report/**
+          if-no-files-found: error

@@ -84,6 +84,10 @@ jobs:
       - name: Run repository-native PR HIL controller
         run: cargo xtask hil run --level pr --all --output target/hil/runs/pr-${{ github.run_id }}
 
+      - name: Generate PR HIL support report
+        if: always()
+        run: cargo xtask hil report --evidence target/hil/runs/pr-${{ github.run_id }} --output target/hil/runs/pr-${{ github.run_id }}/support-report
+
       - name: Upload PR HIL evidence
         if: always()
         uses: actions/upload-artifact@v4

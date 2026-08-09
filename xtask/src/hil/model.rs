@@ -110,6 +110,8 @@ pub struct LabConfig {
     pub lock_env: String,
     #[serde(default = "default_lock_ttl_secs")]
     pub lock_ttl_secs: u64,
+    #[serde(default = "default_reset_timeout_secs")]
+    pub reset_timeout_secs: u64,
     #[serde(default = "default_rf_confirmation_env")]
     pub rf_confirmation_env: String,
     #[serde(default)]
@@ -126,6 +128,10 @@ fn default_rf_confirmation_env() -> String {
 
 fn default_lock_ttl_secs() -> u64 {
     14_400
+}
+
+fn default_reset_timeout_secs() -> u64 {
+    120
 }
 
 #[derive(Clone, Debug, Serialize)]

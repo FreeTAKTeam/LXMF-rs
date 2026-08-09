@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: hil-release-rack-primary
+  group: hil-rack-primary
   cancel-in-progress: false
 
 jobs:
@@ -143,4 +143,28 @@ jobs:
         with:
           name: hil-release-android-${{ github.run_id }}
           path: target/hil/runs/android-${{ github.run_id }}/**
+          if-no-files-found: error
+
+  report:
+    name: Generate release support matrix
+    if: always()
+    needs: [virtual-reference, linux-lab, windows-lab, android-lab]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_ref }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: hil-release-*
+          path: target/hil/runs
+      - name: Generate support matrix
+        run: cargo xtask hil report --evidence target/hil/runs --output target/hil/report
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hil-release-report-${{ github.run_id }}
+          path: target/hil/report/**
           if-no-files-found: error

@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: hil-rack-primary-health
+  group: hil-rack-primary
   cancel-in-progress: false
 
 jobs:

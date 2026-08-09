@@ -189,7 +189,7 @@ pub(super) fn report(
         };
         let virtual_status = if profile.id == "virtual" {
             profile_observations
-                .and_then(|values| values.values().next())
+                .and_then(|values| values.values().max_by_key(|value| result_rank(value)))
                 .map(String::as_str)
                 .unwrap_or("PENDING")
         } else {
@@ -197,13 +197,17 @@ pub(super) fn report(
         };
         let interop_status =
             if profile.id == "python-reference" { status("interop") } else { "PENDING" };
+        let soak_status = profile_observations
+            .and_then(|values| values.get("soak").or_else(|| values.get("recovery")))
+            .map(String::as_str)
+            .unwrap_or("PENDING");
         markdown.push_str(&format!(
             "| {} | {} | {} | {} | {} | {} |\n",
             profile.label,
             virtual_status,
             profile.host,
             status("smoke"),
-            status("recovery"),
+            soak_status,
             interop_status
         ));
     }

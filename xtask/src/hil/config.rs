@@ -1,6 +1,7 @@
 use super::model::{CaseDefinition, ExecutionLevel, LabConfig, Profile};
 use anyhow::{bail, Context, Result};
 use std::collections::BTreeSet;
+use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -92,6 +93,9 @@ fn validate(lab: &LabConfig, cases: &[CaseDefinition]) -> Result<()> {
     if lab.lock_ttl_secs == 0 {
         bail!("HIL lock_ttl_secs must be greater than zero");
     }
+    if lab.reset_timeout_secs == 0 {
+        bail!("HIL reset_timeout_secs must be greater than zero");
+    }
     if lab.profiles.is_empty() {
         bail!("HIL lab must define at least one profile");
     }
@@ -165,7 +169,7 @@ pub fn missing_profile_environment(profile: &Profile, lab: &LabConfig) -> Vec<St
     .into_iter()
     .filter_map(|(label, name)| name.map(|value| (label, value)))
     {
-        if std::env::var_os(name).is_none() {
+        if !has_nonempty_env(name) {
             missing.push(format!("{label}:{name}"));
         }
     }
@@ -174,15 +178,28 @@ pub fn missing_profile_environment(profile: &Profile, lab: &LabConfig) -> Vec<St
     {
         missing.push(format!("rf-confirmation:{}=true", lab.rf_confirmation_env));
     }
-    let reset_ready =
-        profile.reset_command_env.as_deref().is_some_and(|name| std::env::var_os(name).is_some())
-            || profile.power_hub_env.as_deref().zip(profile.power_port_env.as_deref()).is_some_and(
-                |(hub, port)| std::env::var_os(hub).is_some() && std::env::var_os(port).is_some(),
-            );
+    let reset_ready = reset_hook_configured(profile)
+        || profile
+            .power_hub_env
+            .as_deref()
+            .zip(profile.power_port_env.as_deref())
+            .is_some_and(|(hub, port)| has_nonempty_env(hub) && has_nonempty_env(port));
     if !reset_ready {
         missing.push("reset:command-or-uhubctl-mapping".to_string());
     }
     missing
+}
+
+pub fn has_nonempty_env(name: &str) -> bool {
+    std::env::var_os(name).is_some_and(|value| has_nonempty_value(&value))
+}
+
+pub fn reset_hook_configured(profile: &Profile) -> bool {
+    profile.reset_command_env.as_deref().is_some_and(has_nonempty_env)
+}
+
+fn has_nonempty_value(value: &OsStr) -> bool {
+    !value.to_string_lossy().trim().is_empty()
 }
 
 pub fn case_applies(
@@ -201,6 +218,7 @@ pub fn case_applies(
 mod tests {
     use super::case_applies;
     use crate::hil::model::{CaseDefinition, ExecutionLevel, Profile};
+    use std::ffi::OsStr;
 
     fn profile() -> Profile {
         Profile {
@@ -238,5 +256,11 @@ mod tests {
         };
         assert!(case_applies(&case, &profile(), ExecutionLevel::Pr, Some("core")));
         assert!(!case_applies(&case, &profile(), ExecutionLevel::Nightly, Some("core")));
+    }
+
+    #[test]
+    fn whitespace_environment_values_are_not_configured() {
+        assert!(!super::has_nonempty_value(OsStr::new(" \t")));
+        assert!(super::has_nonempty_value(OsStr::new("device-1")));
     }
 }

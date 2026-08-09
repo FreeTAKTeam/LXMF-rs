@@ -24,7 +24,8 @@ Nightly RF runs require a shielded enclosure or cabled path with attenuation
 and dummy loads; do not use unattended open-air transmissions.
 Set HIL_LOCK_PATH to the rack's shared lock location when more than one
 runner can reach the same hardware; the controller also expires locks after
-the configured lock_ttl_secs interval.
+the configured lock_ttl_secs interval. Reset hooks and uhubctl power cycles
+are bounded by the configured reset_timeout_secs value.
 
 The profile executor command receives HIL_PROFILE_ID, HIL_CASE_ID,
 HIL_SUITE, HIL_EXECUTION_LEVEL, HIL_RANDOM_SEED, and HIL_ATTEMPT.

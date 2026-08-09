@@ -1,4 +1,6 @@
-use super::config::{case_applies, missing_profile_environment, HilConfig};
+use super::config::{
+    case_applies, has_nonempty_env, missing_profile_environment, reset_hook_configured, HilConfig,
+};
 use super::model::{
     CaseDefinition, CaseResult, CommandSpec, ExecutionLevel, Profile, ResultClass, RunReport,
 };
@@ -124,7 +126,11 @@ pub fn doctor(config: &HilConfig, args: DoctorArgs) -> Result<()> {
             } else {
                 Vec::new()
             };
-            if profile.physical && profile.power_hub_env.is_some() && !tool_available("uhubctl") {
+            if profile.physical
+                && profile.power_hub_env.is_some()
+                && !reset_hook_configured(profile)
+                && !tool_available("uhubctl")
+            {
                 missing.push("tool:uhubctl".to_string());
             }
             DoctorEntry {
@@ -202,7 +208,6 @@ pub fn run(config: &HilConfig, args: RunArgs) -> Result<()> {
         "reticulum_conformance_revision".to_string(),
         "0319444b20e0815f26c6b9ceeba8fa44de037c9b".to_string(),
     );
-
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -216,19 +221,14 @@ pub fn run(config: &HilConfig, args: RunArgs) -> Result<()> {
         if cases.is_empty() {
             continue;
         }
-
         let mut missing = if profile.physical {
             missing_profile_environment(profile, &config.lab)
         } else {
             Vec::new()
         };
-        let reset_hook_configured = profile
-            .reset_command_env
-            .as_deref()
-            .is_some_and(|name| std::env::var_os(name).is_some());
         if profile.physical
             && profile.power_hub_env.is_some()
-            && !reset_hook_configured
+            && !reset_hook_configured(profile)
             && !tool_available("uhubctl")
         {
             missing.push("tool:uhubctl".to_string());
@@ -244,9 +244,13 @@ pub fn run(config: &HilConfig, args: RunArgs) -> Result<()> {
             }
             continue;
         }
-
         if profile.physical {
-            let reset_result = reset::reset_with_retry(profile, seed, &output);
+            let reset_result = runtime.block_on(reset::reset_with_retry(
+                profile,
+                seed,
+                &output,
+                config.lab.reset_timeout_secs,
+            ));
             let reset_failed = !reset_result.result.is_pass();
             report.cases.push(reset_result);
             if reset_failed {
@@ -267,7 +271,6 @@ pub fn run(config: &HilConfig, args: RunArgs) -> Result<()> {
                 .push(runtime.block_on(run_case(config, profile, case, args.level, seed, &output)));
         }
     }
-
     if report.cases.is_empty() {
         bail!("no HIL cases matched the requested level/profile/suite");
     }
@@ -285,7 +288,6 @@ pub fn run(config: &HilConfig, args: RunArgs) -> Result<()> {
     }
     Ok(())
 }
-
 async fn run_case(
     config: &HilConfig,
     profile: &Profile,
@@ -345,7 +347,7 @@ async fn run_case_attempt(
     let missing_env = case
         .requires_env
         .iter()
-        .filter(|name| std::env::var_os(name).is_none())
+        .filter(|name| !has_nonempty_env(name))
         .cloned()
         .collect::<Vec<_>>();
     if !missing_env.is_empty() {
