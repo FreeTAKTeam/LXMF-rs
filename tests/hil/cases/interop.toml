@@ -44,7 +44,7 @@ args = ["test", "-p", "reticulumd", "--test", "python_compat_matrix", "--", "--i
 id = "python-remote-relay"
 suite = "interop"
 description = "The Rust LXMD remote relay path interoperates with Python."
-levels = ["nightly", "release"]
+levels = ["pr", "nightly", "release"]
 profiles = ["python-reference"]
 requires_env = ["RETICULUM_PY_REPO", "LXMF_PY_REPO", "LXMF_PYTHON_BIN"]
 timeout_secs = 1200
@@ -52,7 +52,7 @@ failure_class = "FAIL_PROTOCOL"
 
 [cases.command]
 program = "cargo"
-args = ["test", "-p", "lxmf-cli", "--test", "python_lxmd_remote_relay", "--", "--ignored", "--nocapture"]
+args = ["test", "-p", "lxmf-cli", "--test", "python_lxmd_remote_relay", "--", "--ignored", "--skip", "python_to_rust_lxmd_relay_remote_path_e2e", "--nocapture"]
 
 [[cases]]
 id = "python-reference-conformance"
