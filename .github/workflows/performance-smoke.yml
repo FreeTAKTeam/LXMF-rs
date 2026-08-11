@@ -49,6 +49,7 @@ jobs:
         run: |
           cargo build --release -p reticulumd --bin reticulumd
           cargo build --release -p lxmf-sdk --example sdk_transport_benchmark
+          cargo build --release -p lxmf-runtime --example in_process_sdk_benchmark
           python3 tools/scripts/sdk_transport_bench.py \
             --output target/performance/sdk-transport.json
       - name: Same-topology workload smoke

@@ -260,10 +260,25 @@ def performance_page(data: dict[str, Any], release: str, scale_data: dict[str, A
     transport = data.get("sdk_transport_comparisons", [])
     lines.extend(["", "## Rust SDK transport comparison", ""])
     if transport:
-        lines.extend(["| Operation | ZeroMQ p50 | HTTP p50 | Unix p50 | ZeroMQ/HTTP | ZeroMQ/Unix |", "|---|---:|---:|---:|---:|---:|"])
+        lines.extend(
+            [
+                "In-process latency is normalized per call from fixed 100-call batches to avoid timer-resolution noise; "
+                "ZeroMQ, HTTP, and Unix measurements time individual daemon requests.",
+                "",
+                "| Operation | In-process p50 | ZeroMQ p50 | HTTP p50 | Unix p50 | ZeroMQ/HTTP | ZeroMQ/Unix |",
+                "|---|---:|---:|---:|---:|---:|---:|",
+            ]
+        )
         for row in transport:
+            in_process = (
+                fmt_ns(row["in_process_p50_ns"])
+                if row.get("in_process_status") == "measured"
+                else "UNSUPPORTED"
+                if row.get("in_process_status") == "not_supported"
+                else "N/A"
+            )
             lines.append(
-                f"| {row['operation']} | {fmt_ns(row['zmq_p50_ns'])} | {fmt_ns(row['http_p50_ns'])} | {fmt_ns(row['unix_p50_ns'])} | {row['http_p50_ns'] / row['zmq_p50_ns']:.2f}x | {row['unix_p50_ns'] / row['zmq_p50_ns']:.2f}x |"
+                f"| {row['operation']} | {in_process} | {fmt_ns(row['zmq_p50_ns'])} | {fmt_ns(row['http_p50_ns'])} | {fmt_ns(row['unix_p50_ns'])} | {row['http_p50_ns'] / row['zmq_p50_ns']:.2f}x | {row['unix_p50_ns'] / row['zmq_p50_ns']:.2f}x |"
             )
     else:
         lines.append("No SDK transport measurements are present in this dataset; release publication must add them before claiming a ZeroMQ performance advantage.")

@@ -46,14 +46,16 @@ The report uses `5` interleaved comparison runs and `3` isolated resource runs. 
 
 ## Rust SDK transport comparison
 
-| Operation | ZeroMQ p50 | HTTP p50 | Unix p50 | ZeroMQ/HTTP | ZeroMQ/Unix |
-|---|---:|---:|---:|---:|---:|
-| negotiate | 206.86 us | 188.93 us | 115.57 us | 0.91x | 0.56x |
-| snapshot | 254.90 us | 193.38 us | 154.42 us | 0.76x | 0.61x |
-| status | 208.15 us | 257.42 us | 94.15 us | 1.24x | 0.45x |
-| poll_events | 176.76 us | 135.50 us | 88.36 us | 0.77x | 0.50x |
-| operation_registry | 1.19 ms | 1.31 ms | 1.20 ms | 1.10x | 1.00x |
-| router_stats | 194.43 us | 126.00 us | 88.01 us | 0.65x | 0.45x |
+In-process latency is normalized per call from fixed 100-call batches to avoid timer-resolution noise; ZeroMQ, HTTP, and Unix measurements time individual daemon requests.
+
+| Operation | In-process p50 | ZeroMQ p50 | HTTP p50 | Unix p50 | ZeroMQ/HTTP | ZeroMQ/Unix |
+|---|---:|---:|---:|---:|---:|---:|
+| negotiate | N/A | 206.86 us | 188.93 us | 115.57 us | 0.91x | 0.56x |
+| snapshot | N/A | 254.90 us | 193.38 us | 154.42 us | 0.76x | 0.61x |
+| status | N/A | 208.15 us | 257.42 us | 94.15 us | 1.24x | 0.45x |
+| poll_events | N/A | 176.76 us | 135.50 us | 88.36 us | 0.77x | 0.50x |
+| operation_registry | N/A | 1.19 ms | 1.31 ms | 1.20 ms | 1.10x | 1.00x |
+| router_stats | N/A | 194.43 us | 126.00 us | 88.01 us | 0.65x | 0.45x |
 
 ## Same-topology end-to-end comparison
 
