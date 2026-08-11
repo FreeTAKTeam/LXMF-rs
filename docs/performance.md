@@ -67,6 +67,10 @@ These matched sender workloads use the same two-node loopback TCP topology with 
 | Loopback TCP propagated delivery | warm | 256 | 721.21 ms | 7858.45 ms | 10.90x | 890.08 ms | 7873.64 ms | 3.440s | 6.480s | 80.4 MiB | 80.2 MiB | 3.49% | 0.07% |
 | Loopback TCP resource delivery | warm | 16384 | 513.15 ms | 817.19 ms | 1.59x | 596.14 ms | 836.28 ms | 4.670s | 1.870s | 80.4 MiB | 80.4 MiB | 0.99% | 0.57% |
 
+## Independent rns-rs network comparison
+
+No independent rns-rs measurements are present; rns-rs dashboard cells remain N/A.
+
 ## 100-node chain scale tests
 
 Exploratory single-host scale results are stored in [`docs/performance/100-node-chain-2026-07-20.json`](performance/100-node-chain-2026-07-20.json). Each run created `100` nodes in a linear chain over `99` simulated media at `1` Mbit/s, a `500`-byte MTU, `1` ms propagation per medium, and `0.0%` configured loss. The `98` interior nodes acted as transports.
@@ -95,6 +99,7 @@ These are single runs per composition, not a repeated benchmark distribution. Th
 ```bash
 cargo xtask python-impl-bench-report
 python3 tools/scripts/e2e_performance.py --profile report
+python3 tools/scripts/independent_performance.py --samples 3 --links 1000
 python3 tools/scripts/performance_docs.py --release v0.9.5 --report target/criterion/python-impl-report/report.json
 python3 tools/scripts/performance_docs.py --check
 ```

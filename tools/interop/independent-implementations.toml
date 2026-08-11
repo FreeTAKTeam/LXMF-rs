@@ -14,7 +14,7 @@ repository = "https://github.com/lelloman/rns-rs.git"
 version = "rns-net-v0.7.0"
 revision = "6c6d79b83516feff271d15c97d39dd1de7798afe"
 toolchain = "Rust stable; Cargo.lock from pinned revision"
-build = ["cargo", "build", "--locked", "--release", "-p", "rns-ctl", "--bin", "rns-ctl"]
+build = ["cargo", "build", "--locked", "--release", "--target-dir", "target", "-p", "rns-ctl", "--bin", "rns-ctl"]
 binary = "target/release/rns-ctl"
 capabilities = [
   "identity",
