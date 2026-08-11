@@ -37,6 +37,13 @@ The project is best described by capability level:
 | Operationally substitutable | achieved against RNS 1.4.2 | The software-controlled runtime includes the focused 1.4.2 routing, policy, and `rngit` repository-service slices. |
 | Full Python software surface parity | achieved | The strict inventory reports 1,810 complete, 0 partial, and 1 provenance-backed not-applicable entry. |
 | ZeroMQ SDK-access parity | achieved in v0.9.5 implementation | Generated classification and daemon-operation inventory live in `sdk-zmq-parity.json`; release evidence must still pass all gates. |
+| Independent implementation evidence | implemented; hosted publication pending this PR | Pinned rns-rs and Reticulum-Go profiles cover two-node/multi-hop behavior; rns-rs additionally covers mixed/all-Rust five-node chains, routing policy, restart, shared daemon, exact large Resources, and deterministic chaos. Explicit peer divergences remain failures owned by the peer and are allowlisted narrowly by CI. |
+
+The independent evidence axis is documented in [`docs/interop`](../interop/README.md).
+It does not promote Python parity rows, third-party clients, physical interfaces,
+or public-network soak. Pull requests run the bounded rns-rs profile; nightly and
+release tiers add both peers, expanded chaos, exact 50 MiB transfers, raw logs,
+and standalone JSON/Markdown/HTML artifacts.
 
 ## v0.9.9-rc.6 Release Candidate
 

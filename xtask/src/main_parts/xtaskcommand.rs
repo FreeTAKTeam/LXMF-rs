@@ -45,6 +45,17 @@ enum XtaskCommand {
         #[arg(long)]
         update: bool,
     },
+    /// Run network interoperability against an independently implemented Reticulum stack.
+    InteropIndependent {
+        #[arg(long, value_enum, default_value_t = IndependentInteropPeer::RnsRs)]
+        peer: IndependentInteropPeer,
+        #[arg(long, value_enum, default_value_t = IndependentInteropLevel::Pr)]
+        level: IndependentInteropLevel,
+        #[arg(long)]
+        output: Option<PathBuf>,
+        #[arg(long)]
+        keep: bool,
+    },
     SchemaClientCheck,
     SchemaClientGenerate {
         #[arg(long)]
@@ -273,6 +284,19 @@ enum E2eBenchImplementation {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
+enum IndependentInteropPeer {
+    RnsRs,
+    ReticulumGo,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
+enum IndependentInteropLevel {
+    Pr,
+    Nightly,
+    Release,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
 enum PublishWave {
     Wave1,
     Facades,
@@ -313,6 +337,9 @@ fn main() -> Result<()> {
         XtaskCommand::InteropMatrixCheck => run_interop_matrix_check(),
         XtaskCommand::InteropCorpusCheck => run_interop_corpus_check(),
         XtaskCommand::InteropDriftCheck { update } => run_interop_drift_check(update),
+        XtaskCommand::InteropIndependent { peer, level, output, keep } => {
+            run_independent_interop(peer, level, output.as_deref(), keep)
+        }
         XtaskCommand::SchemaClientCheck => run_schema_client_check(),
         XtaskCommand::SchemaClientGenerate { check } => {
             run_schema_client_generate(check).map(|_| ())

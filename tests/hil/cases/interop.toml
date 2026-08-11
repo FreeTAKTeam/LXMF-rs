@@ -65,7 +65,7 @@ timeout_secs = 1200
 failure_class = "FAIL_PROTOCOL"
 
 [cases.command]
-program = "python"
+program = "python3"
 args = ["-m", "pytest", "tests/", "--reference-only", "-v", "--tb=short", "--deselect", "tests/wire/test_path_discovery.py::test_discover_paths_for_mode_gating[reference->reference->reference-boundary]"]
 cwd = "reticulum-conformance"
 
@@ -80,7 +80,7 @@ timeout_secs = 600
 failure_class = "FAIL_PROTOCOL"
 
 [cases.command]
-program = "python"
+program = "python3"
 args = ["tools/scripts/python_surface_inventory.py", "--python-rns-path", "Reticulum/RNS", "--python-lxmf-path", "LXMF/LXMF", "--mapping", "docs/status/python-surface-mapping.json", "--json-out", "docs/status/python-surface-parity.json", "--check", "--require-complete"]
 
 [[cases]]
@@ -94,7 +94,7 @@ timeout_secs = 300
 failure_class = "FAIL_PROTOCOL"
 
 [cases.command]
-program = "python"
+program = "python3"
 args = ["tools/scripts/python_resolver_reference_probe.py", "--python-rns-path", "Reticulum", "--json-out", "target/hil/python-resolver.json"]
 
 [[cases]]
@@ -108,7 +108,7 @@ timeout_secs = 300
 failure_class = "FAIL_PROTOCOL"
 
 [cases.command]
-program = "python"
+program = "python3"
 args = ["tools/scripts/python_resource_segment_probe.py", "--python-rns-path", "Reticulum", "--json-out", "target/hil/python-resource-segments.json"]
 
 [[cases]]
@@ -122,7 +122,7 @@ timeout_secs = 600
 failure_class = "FAIL_PROTOCOL"
 
 [cases.command]
-program = "python"
+program = "python3"
 args = ["tools/scripts/backbone_selector_backpressure_probe.py", "--require-epoll", "--json-out", "target/hil/backbone-selector.json"]
 
 [[cases]]
@@ -136,7 +136,7 @@ timeout_secs = 600
 failure_class = "FAIL_PROTOCOL"
 
 [cases.command]
-program = "python"
+program = "python3"
 args = ["tools/scripts/backbone_python_reference_backpressure_probe.py", "--python-rns-path", "Reticulum", "--require-epoll", "--json-out", "target/hil/python-backbone-reference.json"]
 
 [[cases]]

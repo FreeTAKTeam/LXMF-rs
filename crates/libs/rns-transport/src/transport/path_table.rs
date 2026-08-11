@@ -34,16 +34,14 @@ pub struct PathEntry {
 }
 
 impl PathEntry {
-    /// Direct-hop invariant (issue #515): a genuinely direct destination
-    /// is `hops == 0`, matching reference Reticulum's `for_local_client`
-    /// criterion (`Transport.path_table[dest][IDX_PT_HOPS] == 0`). The
-    /// invariant holds only because inbound packets get their hop count
-    /// incremented on receipt (`apply_receive_hop_increment` in
-    /// transport/jobs.rs) before any routing/path decision is made —
-    /// centralizing the checks here means a future refactor of that
-    /// ordering has exactly one place to break, loudly, in tests.
+    /// Final-hop forwarding invariant: a path with at most one remaining hop
+    /// must leave transport mode before transmission. Reference Reticulum's
+    /// inbound forwarding branch strips `HEADER_2` when
+    /// `remaining_hops == 1`; zero-hop entries additionally cover local/shared
+    /// destinations. Inbound packets are incremented before path bookkeeping,
+    /// so a directly attached network destination is stored as one hop away.
     pub fn is_direct(&self) -> bool {
-        self.hops == 0
+        self.hops <= 1
     }
 
     /// Reference Reticulum `Transport.outbound()` header rule (confirmed
@@ -53,8 +51,8 @@ impl PathEntry {
     ///   hops == 1 and connected_to_shared_instance → Type2
     ///   else → Type1
     ///
-    /// Like [`PathEntry::is_direct`], this assumes `hops` reflects real
-    /// distance (see its doc comment).
+    /// This assumes `hops` reflects real distance after receive-side hop
+    /// accounting (see [`PathEntry::is_direct`]).
     pub fn type1_eligible(&self, connected_to_shared_instance: bool) -> bool {
         match self.hops {
             0 => true,

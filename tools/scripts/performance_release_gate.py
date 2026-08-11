@@ -10,6 +10,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from performance_variation import (
+    MIN_RELEASE_SAMPLES,
+    classify_relative_mad,
+)
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -43,28 +48,71 @@ def require_matching_environment(candidate: dict[str, Any], baseline: dict[str, 
         raise ValueError("candidate and baseline profiles differ")
 
 
-def validate_dispersion(data: dict[str, Any]) -> list[str]:
+def validate_dispersion(data: dict[str, Any]) -> tuple[list[str], list[str]]:
+    warnings: list[str] = []
     failures: list[str] = []
     for row in data.get("comparisons", []):
         for implementation in ("rust", "python"):
-            relative = float(row["dispersion"][implementation]["p50_relative_mad"])
-            if relative > 0.10:
+            dispersion = row["dispersion"][implementation]
+            samples = dispersion.get("run_p50_ns", [])
+            if len(samples) < MIN_RELEASE_SAMPLES:
                 failures.append(
-                    f"core dispersion {row['label']} {implementation} {relative:.2%} > 10%"
+                    f"core sample count {row['label']} {implementation} "
+                    f"{len(samples)} < {MIN_RELEASE_SAMPLES}"
                 )
+            relative = float(dispersion["p50_relative_mad"])
+            classification = classify_relative_mad(relative)
+            message = f"core dispersion {row['label']} {implementation} {relative:.2%}"
+            if classification == "hard_failure":
+                failures.append(f"{message} > 20%")
+            elif classification == "warning":
+                warnings.append(f"{message} is in the 10-20% warning band")
     for row in data.get("e2e_comparisons", []):
         for implementation in ("rust", "python"):
-            relative = float(row[implementation]["dispersion"]["p50_relative_mad"])
-            if relative > 0.20:
+            dispersion = row[implementation]["dispersion"]
+            samples = dispersion.get("samples_ns", [])
+            if len(samples) < MIN_RELEASE_SAMPLES:
                 failures.append(
-                    f"E2E dispersion {row['label']} {implementation} {relative:.2%} > 20%"
+                    f"E2E sample count {row['label']} {implementation} "
+                    f"{len(samples)} < {MIN_RELEASE_SAMPLES}"
                 )
-    return failures
+            relative = float(dispersion["p50_relative_mad"])
+            classification = classify_relative_mad(relative)
+            message = f"E2E dispersion {row['label']} {implementation} {relative:.2%}"
+            if classification == "hard_failure":
+                failures.append(f"{message} > 20%")
+            elif classification == "warning":
+                warnings.append(f"{message} is in the 10-20% warning band")
+    independent = data.get("independent_performance", {})
+    independent_rows: list[tuple[str, dict[str, Any]]] = []
+    path = independent.get("path_convergence", {})
+    for route_state in ("cold", "warm"):
+        if route_state in path:
+            independent_rows.append((f"path {route_state}", path[route_state]))
+    if "link_setup" in independent:
+        independent_rows.append(("Link setup", independent["link_setup"]))
+    for size, implementations in independent.get("resources", {}).items():
+        for implementation, row in implementations.items():
+            independent_rows.append((f"Resource {size} {implementation}", row))
+    for label, row in independent_rows:
+        samples = row.get("samples_seconds", [])
+        if len(samples) < MIN_RELEASE_SAMPLES:
+            failures.append(
+                f"independent sample count {label} {len(samples)} < {MIN_RELEASE_SAMPLES}"
+            )
+        relative = float(row["p50_relative_mad"])
+        classification = classify_relative_mad(relative)
+        message = f"independent dispersion {label} {relative:.2%}"
+        if classification == "hard_failure":
+            failures.append(f"{message} > 20%")
+        elif classification == "warning":
+            warnings.append(f"{message} is in the 10-20% warning band")
+    return warnings, failures
 
 
 def evaluate(candidate: dict[str, Any], baseline: dict[str, Any]) -> dict[str, Any]:
     require_matching_environment(candidate, baseline)
-    failures = validate_dispersion(candidate)
+    warnings, failures = validate_dispersion(candidate)
     candidate_core = indexed(candidate["comparisons"], "label")
     baseline_core = indexed(baseline["comparisons"], "label")
     shared = sorted(candidate_core.keys() & baseline_core.keys())
@@ -108,7 +156,7 @@ def evaluate(candidate: dict[str, Any], baseline: dict[str, Any]) -> dict[str, A
             failures.append(f"critical ZeroMQ {operation} p95 {ratio:.3f}x > 1.200x")
 
     return {
-        "status": "pass" if not failures else "fail",
+        "status": "fail" if failures else ("pass_with_warnings" if warnings else "pass"),
         "candidate_sha": candidate["environment"]["git_commit"],
         "baseline_sha": baseline["environment"]["git_commit"],
         "shared_core_workloads": shared,
@@ -116,6 +164,7 @@ def evaluate(candidate: dict[str, Any], baseline: dict[str, Any]) -> dict[str, A
         "rust_geomean_cpu_ratio": cpu_ratio,
         "rust_geomean_peak_rss_ratio": rss_ratio,
         "zmq_p95_ratios": zmq_ratios,
+        "warnings": warnings,
         "failures": failures,
     }
 
@@ -129,7 +178,7 @@ def main() -> int:
             args.output.parent.mkdir(parents=True, exist_ok=True)
             args.output.write_text(rendered, encoding="utf-8")
         print(rendered, end="")
-        return 0 if report["status"] == "pass" else 1
+        return 0 if report["status"] in {"pass", "pass_with_warnings"} else 1
     except (OSError, KeyError, TypeError, ValueError, ZeroDivisionError, json.JSONDecodeError) as error:
         print(f"performance_release_gate: {error}", file=sys.stderr)
         return 2

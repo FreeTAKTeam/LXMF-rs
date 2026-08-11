@@ -172,7 +172,10 @@ impl Link {
             ifac: None,
             destination: self.id,
             transport: None,
-            context: PacketContext::LinkProof,
+            // Python Reticulum emits ordinary per-packet Link proofs with
+            // CONTEXT_NONE. LINKPROOF is accepted on receive for compatibility
+            // with older LXMF-rs peers, but must not be our wire default.
+            context: PacketContext::None,
             data: packet_data,
         }
     }

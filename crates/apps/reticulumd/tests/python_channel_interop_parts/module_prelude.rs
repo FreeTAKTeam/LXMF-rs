@@ -16,6 +16,8 @@ use rns_core::identity::PrivateIdentity;
 
 use rns_transport::channel_buffer::Buffer;
 
+use rns_transport::channel::MessageState as ChannelMessageState;
+
 use rns_transport::destination::DestinationName;
 
 use rns_transport::hash::{address_hash, AddressHash};
@@ -33,6 +35,23 @@ use rns_transport::transport::{Transport, TransportConfig};
 use tokio::time::sleep;
 
 const MSG_TYPE: u16 = 0xABCD;
+
+async fn wait_for_channel_delivery(transport: &Transport, link_id: AddressHash, sequence: u16) {
+    tokio::time::timeout(Duration::from_secs(8), async {
+        loop {
+            match transport.channel_message_state(&link_id, sequence).await {
+                Ok(ChannelMessageState::Delivered) => return,
+                Ok(ChannelMessageState::Failed) => {
+                    panic!("Channel sequence {sequence} exhausted its proof retries")
+                }
+                Ok(_) => sleep(Duration::from_millis(20)).await,
+                Err(error) => panic!("Channel sequence {sequence} lost its Link: {error:?}"),
+            }
+        }
+    })
+    .await
+    .expect("timed out waiting for Python Channel delivery proof");
+}
 
 fn rust_client_for_python_interop(kind: PythonInteropInterfaceKind, server_port: u16) -> TcpClient {
     let client = TcpClient::new(format!("127.0.0.1:{server_port}"));
@@ -115,9 +134,10 @@ async fn rust_to_python_channel_roundtrip() {
 
     let payload = rmp_serde::to_vec(&(String::from("rust-1"), String::from("hello-python")))
         .expect("encode channel message");
-    channel.send(MSG_TYPE, payload).await.expect("send channel message");
+    let sequence = channel.send(MSG_TYPE, payload).await.expect("send channel message");
 
     wait_for_reply(&seen, Duration::from_secs(8)).await;
+    wait_for_channel_delivery(&transport, link_id, sequence).await;
 }
 
 #[tokio::test]

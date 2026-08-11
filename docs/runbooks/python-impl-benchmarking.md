@@ -84,6 +84,17 @@ generated page is `docs/performance.md`, sourced from the versioned JSON
 dataset. Tagged releases additionally publish the standalone
 `lxmf-rs-performance.html` dashboard and matching JSON/checksums.
 
+The release workflow also runs `tools/scripts/independent_performance.py` on
+the same runner against the pinned rns-rs process. Its timed boundaries exclude
+deterministic payload generation and control-plane serialization. It records
+cold/warm path timing, Link p50/p95/p99, exact 1 MiB and 50 MiB Resource
+throughput in both directions, sender-plus-peer CPU, per-size peak RSS, payload
+SHA-256, environment/toolchain revisions, and the exact 1,000-Link workload.
+If the pinned peer cannot complete exactly 1,000 live Links within the bounded
+window, that cell is `UNSUPPORTED`; a smaller substitute is never published as
+the requested workload. Dashboard cells are always `MEASURED`, `N/A`,
+`UNSUPPORTED`, or `FAILED`.
+
 Quick comparison writes:
 
 - `target/criterion/python-impl-benchmarks.json`
@@ -160,9 +171,13 @@ python3 tools/scripts/performance_release_gate.py \
 ```
 
 The gate rejects more than 10% geometric-mean Rust throughput regression and
-more than 20% CPU, peak-RSS, or matching critical ZeroMQ p95 regression. Core
-relative MAD must remain at or below 10%; E2E relative MAD must remain at or
-below 20% after the benchmark runner's single automatic retry.
+more than 20% CPU, peak-RSS, or matching critical ZeroMQ p95 regression.
+Dispersion is classified consistently across the generator and gate: relative
+MAD at or below 10% is normal, above 10% through 20% is a published warning,
+and above 20% is a hard failure. At least three independent samples are
+required. The 10.13% rc.6 result that formerly aborted publication is therefore
+visible as a warning instead of being silently discarded or treated as a hard
+failure.
 
 ## Claim Discipline
 

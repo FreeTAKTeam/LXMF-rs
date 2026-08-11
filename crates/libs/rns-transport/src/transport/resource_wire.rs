@@ -1,3 +1,4 @@
+use super::path::send_to_next_hop;
 use super::*;
 use crate::resource::{build_link_packet, ResourceAdvertisement};
 
@@ -52,6 +53,24 @@ pub(super) async fn handle_resource_proof(
                 target_iface
             );
             handler.send(TxMessage { tx_type: TxMessageType::Direct(target_iface), packet }).await;
+            return;
+        }
+
+        // A Link can carry a Resource in either direction. When the Link
+        // initiator is receiving a reverse-direction Resource, its proof
+        // arrives on the requester side and must continue toward the original
+        // Link destination. The reverse-table branch above intentionally only
+        // handles packets arriving from the responder side; mirror normal Link
+        // data forwarding for the opposite direction.
+        let lookup = handler.link_table.original_destination(&packet.destination);
+        if lookup.is_some() {
+            let sent = send_to_next_hop(&packet, &handler, lookup).await;
+            log::debug!(
+                "[tp-diag] resource_proof_forward node={} link={} sent={}",
+                handler.config.name,
+                packet.destination,
+                sent
+            );
         }
     }
 }

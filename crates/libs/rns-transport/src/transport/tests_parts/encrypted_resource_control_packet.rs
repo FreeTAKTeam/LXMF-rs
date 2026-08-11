@@ -874,6 +874,80 @@ async fn routed_link_resource_proof_forwards_back_to_link_requester() {
 }
 
 #[tokio::test]
+async fn routed_reverse_transfer_resource_proof_forwards_to_link_responder() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut config = TransportConfig::new("test", &local_identity, true);
+    config.set_transport_enabled(true);
+    let transport = Transport::new(config);
+    let handler = transport.get_handler();
+    let requester_iface = transport.iface_manager.lock().await.new_channel(8);
+    let mut responder_iface = transport.iface_manager.lock().await.new_channel(8);
+
+    let remote_identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut remote_destination =
+        SingleInputDestination::new(remote_identity, DestinationName::new("lxmf", "delivery"));
+    let announce = remote_destination.announce(OsRng, None).expect("valid announce packet");
+    handle_announce(
+        &announce,
+        handler.lock().await,
+        responder_iface.address,
+        crate::iface::IfaceSource::None,
+    )
+    .await;
+
+    let (tx, _) = tokio::sync::broadcast::channel(4);
+    let mut outbound_link = Link::new(remote_destination.desc, tx.clone());
+    let request = outbound_link.request();
+    let mut inbound = Link::new_from_request(
+        &request,
+        remote_destination.sign_key().clone(),
+        remote_destination.desc,
+        tx,
+    )
+    .expect("link from request");
+    let link_request_proof = inbound.prove();
+
+    {
+        let mut guard = handler.lock().await;
+        guard.link_table.add(
+            &request,
+            request.destination,
+            requester_iface.address,
+            request.destination,
+            responder_iface.address,
+        );
+        assert!(guard.link_table.handle_proof(&link_request_proof).is_some());
+    }
+
+    let proof_payload = ResourceProof {
+        resource_hash: crate::hash::Hash::new_from_slice(&[0x66; 32]),
+        proof: crate::hash::Hash::new_from_slice(&[0x77; 32]),
+    };
+    let resource_proof = Packet {
+        header: Header {
+            destination_type: DestinationType::Link,
+            packet_type: PacketType::Proof,
+            ..Default::default()
+        },
+        destination: *outbound_link.id(),
+        context: PacketContext::ResourceProof,
+        data: PacketDataBuffer::new_from_slice(&proof_payload.encode()),
+        ..Default::default()
+    };
+
+    handle_proof(resource_proof, handler, requester_iface.address).await;
+
+    let sent = timeout(Duration::from_millis(200), responder_iface.tx_channel.recv())
+        .await
+        .expect("resource proof should be forwarded to responder iface")
+        .expect("tx channel open");
+    assert_eq!(sent.tx_type, TxMessageType::Direct(responder_iface.address));
+    assert_eq!(sent.packet.destination, *outbound_link.id());
+    assert_eq!(sent.packet.header.packet_type, PacketType::Proof);
+    assert_eq!(sent.packet.context, PacketContext::ResourceProof);
+}
+
+#[tokio::test]
 async fn routed_link_packet_proof_forwards_back_to_link_requester() {
     let local_identity = PrivateIdentity::new_from_rand(OsRng);
     let mut config = TransportConfig::new("test", &local_identity, true);

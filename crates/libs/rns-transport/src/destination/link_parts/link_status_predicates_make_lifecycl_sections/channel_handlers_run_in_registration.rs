@@ -375,6 +375,7 @@
             LinkHandleResult::Proof(proof) => proof,
             _ => panic!("channel packet should generate link proof"),
         };
+        assert_eq!(proof.context, PacketContext::None);
         assert!(matches!(outbound.handle_packet(&proof, iface), LinkHandleResult::None));
         assert_eq!(outbound.channel_state(sequence), ChannelMessageState::Delivered);
     }

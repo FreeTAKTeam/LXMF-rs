@@ -455,6 +455,11 @@ impl ResourceManager {
         let cancelled = self.pending_outgoing.remove(&hash);
         if let Some(sender) = self.outgoing.remove(&hash).or(cancelled) {
             self.outgoing_segment_chains.remove(&sender.original_hash);
+            self.events.push(ResourceEvent {
+                hash: sender.original_hash,
+                link_id: sender.link_id,
+                kind: ResourceEventKind::OutboundCancelled,
+            });
         }
     }
 }

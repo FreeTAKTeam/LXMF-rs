@@ -1,0 +1,21 @@
+[package]
+name = "lxmf-rs-rns-rs-control"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "lxmf-rs-rns-rs-shared-client"
+path = "src/bin/shared_client.rs"
+
+[workspace]
+
+[dependencies]
+base64 = "0.22"
+hex = "0.4"
+rns-ctl = { git = "https://github.com/lelloman/rns-rs.git", rev = "6c6d79b83516feff271d15c97d39dd1de7798afe" }
+rns-core = { git = "https://github.com/lelloman/rns-rs.git", rev = "6c6d79b83516feff271d15c97d39dd1de7798afe" }
+rns-crypto = { git = "https://github.com/lelloman/rns-rs.git", rev = "6c6d79b83516feff271d15c97d39dd1de7798afe" }
+rns-net = { git = "https://github.com/lelloman/rns-rs.git", rev = "6c6d79b83516feff271d15c97d39dd1de7798afe" }
+serde_json = "1"
+sha2 = "0.10"

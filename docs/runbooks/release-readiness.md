@@ -63,6 +63,12 @@ reference compatibility. It invokes `cargo xtask hil run --level pr --all`,
 which runs the virtual transport cases, the pinned Python conformance
 baseline, and live Rust/Python channel, paper, compatibility-matrix, and LXMD
 remote-relay cases. The resulting evidence bundle is retained with the run.
+- Independent implementation interoperability is a separate evidence axis,
+  enforced by `.github/workflows/independent-interop.yml` and published through
+  `tools/scripts/independent_evidence_publish.py`. Its readiness output reports
+  rns-rs, Reticulum-Go, performance, physical HIL, and third-party-client status
+  independently; it must not merge those categories into the software-parity
+  percentage.
 
 The SDK reports the parity checkpoint as its crate version plus the pinned
 reference revisions from `.github/workflows/verify.yml`: Reticulum

@@ -21,6 +21,8 @@ include!("main_parts/run_python_impl_bench_report.rs");
 
 include!("main_parts/run_public_benchmark.rs");
 
+include!("main_parts/run_independent_interop.rs");
+
 include!("main_parts/write_python_impl_compare_report.rs");
 
 include!("main_parts/rust_python_benchmark_fixtures.rs");

@@ -12,6 +12,7 @@ build = "build.rs"
 clap.workspace = true
 tempfile.workspace = true
 serde_json.workspace = true
+serde = { workspace = true, features = ["derive"] }
 rmp-serde.workspace = true
 rmpv = { workspace = true, features = ["with-serde"] }
 base64.workspace = true

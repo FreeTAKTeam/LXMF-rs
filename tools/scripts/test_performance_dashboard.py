@@ -6,7 +6,7 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
-from performance_dashboard import PUBLIC_ROWS, fallback_matrix, render_dashboard
+from performance_dashboard import PUBLIC_ROWS, fallback_matrix, format_value, render_dashboard
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -43,11 +43,38 @@ class PerformanceDashboardTests(unittest.TestCase):
 
         self.assertEqual([row["id"] for row in rows], [row[0] for row in PUBLIC_ROWS])
         self.assertEqual(rows[0]["cells"]["lxmf_rs"]["value"], 20.0)
-        self.assertEqual(rows[2]["cells"]["python"]["p99"], 0.003)
-        self.assertEqual(rows[4]["cells"]["python"]["status"], "not_available")
-        self.assertIn("1 MB Resource", rows[4]["cells"]["python"]["reason"])
-        self.assertIn("rns-rs adapter", rows[0]["cells"]["rns_rs"]["reason"])
-        self.assertEqual(rows[8]["cells"]["rns_rs"]["status"], "not_available")
+        indexed = {row["id"]: row for row in rows}
+        self.assertEqual(indexed["path_convergence_cold"]["cells"]["python"]["p99"], 0.003)
+        self.assertEqual(indexed["resource_1mib"]["cells"]["python"]["status"], "not_available")
+        self.assertIn("1 MiB Resource", indexed["resource_1mib"]["cells"]["python"]["reason"])
+        self.assertIn("No exact rns-rs", rows[0]["cells"]["rns_rs"]["reason"])
+        self.assertEqual(indexed["active_links_1000"]["cells"]["rns_rs"]["status"], "not_available")
+
+    def test_independent_measurements_overlay_only_exact_cells(self) -> None:
+        data = {
+            "independent_performance": {
+                "public_cells": {
+                    "resource_1mib": {
+                        "rns_rs": {"status": "measured", "value": 4.5},
+                        "lxmf_rs": {"status": "measured", "value": 5.5},
+                    },
+                    "packet_encode": {
+                        "rns_rs": {"status": "not_supported", "reason": "no isolated API"}
+                    },
+                }
+            }
+        }
+
+        indexed = {row["id"]: row for row in fallback_matrix(data)}
+
+        self.assertEqual(indexed["resource_1mib"]["cells"]["rns_rs"]["value"], 4.5)
+        self.assertEqual(indexed["packet_encode"]["cells"]["rns_rs"]["status"], "not_supported")
+        self.assertEqual(indexed["resource_50mib"]["cells"]["rns_rs"]["status"], "not_available")
+
+    def test_non_measurement_statuses_remain_explicit(self) -> None:
+        self.assertEqual(format_value({"status": "not_available"}, "s"), "N/A")
+        self.assertEqual(format_value({"status": "not_supported"}, "s"), "UNSUPPORTED")
+        self.assertEqual(format_value({"status": "failed"}, "s"), "FAILED")
 
     def test_render_is_standalone_and_escapes_metadata(self) -> None:
         data = {

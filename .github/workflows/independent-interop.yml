@@ -1,0 +1,134 @@
+name: Independent interoperability
+
+on:
+  pull_request:
+  schedule:
+    - cron: "17 3 * * *"
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      level:
+        description: Evidence tier
+        type: choice
+        options: [pr, nightly, release]
+        default: nightly
+
+permissions:
+  contents: read
+
+jobs:
+  evidence:
+    if: github.event_name != 'pull_request' || matrix.peer == 'rns-rs'
+    strategy:
+      fail-fast: false
+      matrix:
+        peer: [rns-rs, reticulum-go]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85.0"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-go@v5
+        if: matrix.peer == 'reticulum-go'
+        with:
+          go-version: "1.26.5"
+      - name: Select evidence tier
+        id: tier
+        shell: bash
+        run: |
+          level=pr
+          if [[ "${{ github.event_name }}" == schedule ]]; then level=nightly; fi
+          if [[ "${{ github.ref_type }}" == tag ]]; then level=release; fi
+          if [[ "${{ github.event_name }}" == workflow_dispatch ]]; then level="${{ inputs.level }}"; fi
+          echo "level=$level" >> "$GITHUB_OUTPUT"
+      - name: Run pinned independent implementation
+        id: interop
+        continue-on-error: true
+        run: |
+          python3 tools/scripts/independent_interop.py \
+            --peer "${{ matrix.peer }}" \
+            --level "${{ steps.tier.outputs.level }}" \
+            --output "target/independent-${{ matrix.peer }}" \
+            --keep
+      - name: Apply explicit compatibility gate
+        run: python3 tools/scripts/independent_interop_gate.py "target/independent-${{ matrix.peer }}/independent-interop.json"
+      - name: Measure same-runner independent performance
+        if: matrix.peer == 'rns-rs' && github.event_name != 'pull_request' && steps.tier.outputs.level != 'pr'
+        run: |
+          python3 tools/scripts/independent_performance.py \
+            --peer-root target/interop/independent/external/rns-rs \
+            --samples 3 \
+            --links 1000 \
+            --output target/independent-rns-rs/independent-performance.json \
+            --skip-build
+      - name: Validate evidence and performance policy code
+        run: |
+          python3 -m unittest discover -s tools/scripts -p 'test_independent_*.py'
+          python3 -m unittest discover -s tools/scripts -p 'test_performance_*.py'
+      - name: Bundle raw evidence
+        if: always()
+        run: |
+          tar -C target -czf "target/independent-${{ matrix.peer }}-raw.tar.gz" "independent-${{ matrix.peer }}"
+          sha256sum "target/independent-${{ matrix.peer }}-raw.tar.gz" > "target/independent-${{ matrix.peer }}-raw.tar.gz.sha256"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: independent-${{ matrix.peer }}-${{ steps.tier.outputs.level }}
+          if-no-files-found: error
+          path: |
+            target/independent-${{ matrix.peer }}/independent-interop.json
+            target/independent-${{ matrix.peer }}/independent-interop.md
+            target/independent-${{ matrix.peer }}/independent-performance.json
+            target/independent-${{ matrix.peer }}-raw.tar.gz
+            target/independent-${{ matrix.peer }}-raw.tar.gz.sha256
+  publish:
+    if: github.event_name != 'pull_request'
+    needs: evidence
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: independent-*
+          path: target/public-input
+          merge-multiple: true
+      - name: Generate standalone public evidence
+        run: |
+          version="${{ github.ref_type == 'tag' && github.ref_name || 'nightly' }}"
+          performance_args=()
+          if [[ -s target/public-input/independent-rns-rs/independent-performance.json ]]; then
+            performance_args=(--performance target/public-input/independent-rns-rs/independent-performance.json)
+          fi
+          python3 tools/scripts/independent_evidence_publish.py \
+            --version "$version" \
+            --rns-rs target/public-input/independent-rns-rs/independent-interop.json \
+            --reticulum-go target/public-input/independent-reticulum-go/independent-interop.json \
+            "${performance_args[@]}" \
+            --output-dir target/public-evidence
+      - uses: actions/upload-artifact@v4
+        with:
+          name: independent-public-evidence
+          path: target/public-evidence/*
+      - name: Publish standalone release evidence
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp target/public-input/independent-rns-rs/independent-interop.json target/public-evidence/independent-rns-rs.json
+          cp target/public-input/independent-rns-rs/independent-interop.md target/public-evidence/independent-rns-rs.md
+          cp target/public-input/independent-reticulum-go/independent-interop.json target/public-evidence/independent-reticulum-go.json
+          cp target/public-input/independent-reticulum-go/independent-interop.md target/public-evidence/independent-reticulum-go.md
+          cp target/public-input/independent-rns-rs-raw.tar.gz* target/public-evidence/
+          cp target/public-input/independent-reticulum-go-raw.tar.gz* target/public-evidence/
+          gh release upload "${{ github.ref_name }}" --clobber target/public-evidence/*

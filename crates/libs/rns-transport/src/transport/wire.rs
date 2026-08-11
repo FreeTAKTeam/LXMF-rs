@@ -38,6 +38,17 @@ pub(super) async fn handle_proof(
         }
     }
 
+    // Responder-side links live in `in_links`, but they can still originate
+    // proved Link packets (Channel messages in particular). Offer ordinary
+    // Link proofs to them as well so their sender state can advance.
+    let inbound_links = {
+        let handler = handler.lock().await;
+        handler.in_links.values().cloned().collect::<Vec<_>>()
+    };
+    for link in inbound_links {
+        link.lock().await.handle_packet(&packet, iface);
+    }
+
     let mut handler = handler.lock().await;
 
     if packet.header.destination_type != DestinationType::Link {

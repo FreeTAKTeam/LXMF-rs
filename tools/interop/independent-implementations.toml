@@ -1,0 +1,51 @@
+schema_version = 1
+rns_reference_version = "1.4.2"
+rns_reference_revision = "b48b96e61676504e0a4e527b33b9a0b4495c6872"
+
+[python_reference]
+implementation = "Reticulum-Python"
+repository = "https://github.com/markqvist/Reticulum.git"
+version = "1.4.2"
+revision = "b48b96e61676504e0a4e527b33b9a0b4495c6872"
+
+[peers.rns_rs]
+implementation = "rns-rs"
+repository = "https://github.com/lelloman/rns-rs.git"
+version = "rns-net-v0.7.0"
+revision = "6c6d79b83516feff271d15c97d39dd1de7798afe"
+toolchain = "Rust stable; Cargo.lock from pinned revision"
+build = ["cargo", "build", "--locked", "--release", "-p", "rns-ctl", "--bin", "rns-ctl"]
+binary = "target/release/rns-ctl"
+capabilities = [
+  "identity",
+  "announce",
+  "path",
+  "packet",
+  "proof",
+  "link",
+  "resource",
+  "channel",
+  "multi_hop",
+  "node_restart",
+  "shared_instance",
+]
+
+[peers.reticulum_go]
+implementation = "Reticulum-Go"
+repository = "https://github.com/Quad4-Software/Reticulum-Go.git"
+version = "v1.0.1"
+revision = "48f15178f6fbc34aeb69ad428679db9deddae7f4"
+toolchain = "Go 1.26.5; committed vendor tree from pinned revision"
+build = ["go", "build", "-mod=vendor", "-buildvcs=false", "-o", "bin/reticulum-go", "./cmd/reticulum-go"]
+binary = "bin/reticulum-go"
+capabilities = [
+  "identity",
+  "announce",
+  "path",
+  "packet",
+  "proof",
+  "link",
+  "request_response",
+  "resource",
+  "multi_hop",
+]

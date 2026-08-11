@@ -200,6 +200,53 @@ mod tests {
     }
 
     #[test]
+    fn inbound_one_hop_path_strips_transport_header() {
+        let destination = AddressHash::new_from_hash(&Hash::new_from_slice(b"destination"));
+        let iface = AddressHash::new_from_hash(&Hash::new_from_slice(b"iface"));
+        let table = path_table_with_route(destination, destination, 1, iface);
+        let prior_hop = AddressHash::new_from_hash(&Hash::new_from_slice(b"prior_hop"));
+        let packet = packet_for_route(
+            destination,
+            HeaderType::Type2,
+            PropagationType::Transport,
+            PacketType::Data,
+            1,
+            Some(prior_hop),
+        );
+
+        let decision = route_inbound_packet(&table, &packet, None);
+
+        assert_eq!(decision.next_iface, Some(iface));
+        assert_eq!(decision.packet.header.header_type, HeaderType::Type1);
+        assert_eq!(decision.packet.header.propagation_type, PropagationType::Broadcast);
+        assert_eq!(decision.packet.header.hops, 1);
+        assert_eq!(decision.packet.transport, None);
+    }
+
+    #[test]
+    fn inbound_shared_instance_distance_strips_transport_at_direct_identity() {
+        let destination = AddressHash::new_from_hash(&Hash::new_from_slice(b"destination"));
+        let iface = AddressHash::new_from_hash(&Hash::new_from_slice(b"iface"));
+        let table = path_table_with_route(destination, destination, 2, iface);
+        let prior_hop = AddressHash::new_from_hash(&Hash::new_from_slice(b"shared_instance"));
+        let packet = packet_for_route(
+            destination,
+            HeaderType::Type2,
+            PropagationType::Transport,
+            PacketType::Data,
+            1,
+            Some(prior_hop),
+        );
+
+        let decision = route_inbound_packet(&table, &packet, None);
+
+        assert_eq!(decision.next_iface, Some(iface));
+        assert_eq!(decision.packet.header.header_type, HeaderType::Type1);
+        assert_eq!(decision.packet.header.propagation_type, PropagationType::Broadcast);
+        assert_eq!(decision.packet.transport, None);
+    }
+
+    #[test]
     fn inbound_direct_hop_type1_stays_direct() {
         let destination = AddressHash::new_from_hash(&Hash::new_from_slice(b"destination"));
         let iface = AddressHash::new_from_hash(&Hash::new_from_slice(b"iface"));
@@ -224,17 +271,17 @@ mod tests {
     }
 
     #[test]
-    fn inbound_one_hop_transport_keeps_type2() {
+    fn inbound_two_hop_transport_keeps_type2() {
         let destination = AddressHash::new_from_hash(&Hash::new_from_slice(b"destination"));
         let iface = AddressHash::new_from_hash(&Hash::new_from_slice(b"iface"));
         let transport_hop = AddressHash::new_from_hash(&Hash::new_from_slice(b"transport_hop"));
-        let table = path_table_with_route(destination, transport_hop, 1, iface);
+        let table = path_table_with_route(destination, transport_hop, 2, iface);
         let packet = packet_for_route(
             destination,
             HeaderType::Type1,
             PropagationType::Broadcast,
             PacketType::LinkRequest,
-            1,
+            2,
             None,
         );
 
@@ -243,7 +290,7 @@ mod tests {
         assert_eq!(decision.next_iface, Some(iface));
         assert_eq!(decision.packet.header.header_type, HeaderType::Type2);
         assert_eq!(decision.packet.header.propagation_type, PropagationType::Transport);
-        assert_eq!(decision.packet.header.hops, 1);
+        assert_eq!(decision.packet.header.hops, 2);
         assert_eq!(decision.packet.transport, Some(transport_hop));
     }
 

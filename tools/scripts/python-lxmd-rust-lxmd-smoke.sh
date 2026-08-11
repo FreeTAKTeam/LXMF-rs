@@ -805,7 +805,7 @@ HOOK_STATE_DIR="${TMP_ROOT}/hook-state"
 RUST_LXMD_LOG="${TMP_ROOT}/rust-lxmd.log"
 # Delivery/resource traces are emitted at trace level; enable them for the rust
 # node so the resource-transfer assertions below can find them (overridable).
-RUST_LOG="${RUST_LOG:-reticulumd=trace,reticulum_rs_transport=trace}"
+RUST_LOG="${RUST_LOG:+${RUST_LOG},}reticulumd=trace,rns_transport=trace"
 PY_LOG="${TMP_ROOT}/python-lxmd.log"
 PY_REMOTE_STATUS_LOG="${TMP_ROOT}/python-remote-status.log"
 RUST_REMOTE_STATUS_LOG="${TMP_ROOT}/rust-remote-status.log"

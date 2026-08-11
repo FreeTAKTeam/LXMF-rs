@@ -23,7 +23,10 @@ pub(super) fn route_inbound_packet(
     // Centralized direct-hop criterion (issue #515): see
     // `PathEntry::is_direct` for the full invariant and its dependency on
     // `apply_receive_hop_increment` in transport/jobs.rs.
-    let is_direct_hop = entry.is_direct();
+    // A shared-instance client contributes an extra local hop to the stored
+    // distance. The final network peer is still direct when the selected
+    // next-hop identity is the destination itself, so it must receive Type 1.
+    let is_direct_hop = entry.is_direct() || entry.received_from == lookup;
     let packet = if is_direct_hop {
         Packet {
             header: Header {

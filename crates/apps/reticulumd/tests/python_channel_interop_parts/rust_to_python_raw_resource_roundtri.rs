@@ -196,7 +196,8 @@ async fn python_to_rust_channel_roundtrip() {
     wait_for_python_message(&seen, Duration::from_secs(8)).await;
     let payload = rmp_serde::to_vec(&(String::from("python-1"), String::from("reply:hello-rust")))
         .expect("encode channel reply");
-    channel.send(MSG_TYPE, payload).await.expect("send channel reply");
+    let sequence = channel.send(MSG_TYPE, payload).await.expect("send channel reply");
+    wait_for_channel_delivery(&transport, link_id, sequence).await;
 
     let child = guard.child.take().expect("python child");
     let output = tokio::task::spawn_blocking(move || child.wait_with_output())

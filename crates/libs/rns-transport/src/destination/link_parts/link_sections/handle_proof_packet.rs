@@ -2,7 +2,9 @@ impl Link {
     /// Handle an inbound `Proof` packet: either a per-packet delivery proof on
     /// an active link, or the `LinkRequestProof` that activates a pending one.
     fn handle_proof_packet(&mut self, packet: &Packet, iface: AddressHash) -> LinkHandleResult {
-        if self.status == LinkStatus::Active && packet.context == PacketContext::LinkProof {
+        if self.status == LinkStatus::Active
+            && matches!(packet.context, PacketContext::None | PacketContext::LinkProof)
+        {
             if let Ok(hash) = self.validate_packet_proof(packet) {
                 self.note_inbound(packet.context);
                 if let Some(pending) = self.channel_pending.remove(&hash) {

@@ -37,6 +37,9 @@ with 1,810 complete, zero partial, and one not-applicable entry. The seven
 tracked LXMF rows are complete for their software scenarios. Physical devices,
 public networks, and external-client compatibility remain separate evidence
 tracks rather than hidden implementation gaps.
+Independent implementation evidence is published separately in
+[`docs/interop`](docs/interop/README.md), with pinned rns-rs and Reticulum-Go
+revisions, explicit peer limitations, raw logs, and checksummed release assets.
 External-client compatibility claims for REM, RCH, Sideband, MeshChatX,
 Columba, or other third-party clients require separate interop gate evidence.
 
@@ -237,6 +240,7 @@ cargo run -p rns-tools --bin rnx -- e2e --timeout-secs 20
 - Extension registry: `docs/contracts/extension-registry.md`
 - RPC contract: `docs/contracts/rpc-contract.md`
 - Payload contract: `docs/contracts/payload-contract.md`
+- Independent implementation evidence: `docs/interop/README.md`
 - Historical performance comparison archive: `docs/PerformancesComparison.html`; current generated results: [`docs/performance.md`](docs/performance.md); public release dashboard: [latest GitHub Release asset](https://github.com/FreeTAKTeam/LXMF-rs/releases/latest/download/lxmf-rs-performance.html)
 - reticulumd operational deployment: `docs/runbooks/reticulumd-operational-deployment.md`
 - Logging and diagnostics: `docs/runbooks/logging-and-diagnostics.md`

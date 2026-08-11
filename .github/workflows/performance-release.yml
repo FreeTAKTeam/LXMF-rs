@@ -89,6 +89,13 @@ jobs:
       - name: Measure matched E2E workloads
         working-directory: candidate
         run: python3 tools/scripts/e2e_performance.py --profile report --output target/performance/e2e.json
+      - name: Measure independent rns-rs workloads
+        working-directory: candidate
+        run: >-
+          python3 tools/scripts/independent_performance.py
+          --samples 3
+          --links 1000
+          --output target/performance/independent.json
       - name: Generate candidate publication dataset
         working-directory: candidate
         run: |
@@ -97,12 +104,23 @@ jobs:
             --report target/criterion/python-impl-report/report.json \
             --sdk-transport-report target/performance/sdk-transport.json \
             --e2e-report target/performance/e2e.json \
+            --independent-performance-report target/performance/independent.json \
             --dashboard-output target/performance/lxmf-rs-performance.html
           cp "docs/performance/${RELEASE_TAG}.json" target/performance/candidate.json
           cp "docs/performance/${RELEASE_TAG}.json" target/performance/lxmf-rs-performance.json
+          tar -czf target/performance/lxmf-rs-performance-raw.tar.gz \
+            target/criterion/python-impl-report \
+            target/performance/e2e-runs \
+            target/performance/e2e.json \
+            target/performance/independent-runs \
+            target/performance/independent.json \
+            target/performance/sdk-transport.json
           (
             cd target/performance
-            sha256sum lxmf-rs-performance.html lxmf-rs-performance.json
+            sha256sum \
+              lxmf-rs-performance.html \
+              lxmf-rs-performance.json \
+              lxmf-rs-performance-raw.tar.gz
           ) > target/performance/SHA256SUMS
       - name: Apply release regression budgets
         working-directory: candidate
@@ -116,6 +134,7 @@ jobs:
             --dashboard-output target/performance/lxmf-rs-performance.html \
             --check
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: performance-release-${{ github.run_id }}
           path: |
@@ -143,9 +162,11 @@ jobs:
           find dist -type f -name 'lxmf-rs-performance.html' -exec cp {} release-assets/lxmf-rs-performance.html \;
           find dist -type f -name 'lxmf-rs-performance.json' -exec cp {} release-assets/lxmf-rs-performance.json \;
           find dist -type f -name 'SHA256SUMS' -exec cp {} release-assets/SHA256SUMS \;
+          find dist -type f -name 'lxmf-rs-performance-raw.tar.gz' -exec cp {} release-assets/lxmf-rs-performance-raw.tar.gz \;
           test -s release-assets/lxmf-rs-performance.html
           test -s release-assets/lxmf-rs-performance.json
           test -s release-assets/SHA256SUMS
+          test -s release-assets/lxmf-rs-performance-raw.tar.gz
       - name: Attach public performance assets
         uses: softprops/action-gh-release@v2
         with:

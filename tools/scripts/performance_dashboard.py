@@ -19,12 +19,15 @@ IMPLEMENTATIONS = (
 PUBLIC_ROWS = (
     ("packet_encode", "Packet encode/s", "ops/s"),
     ("announce_validation", "Announce validation/s", "ops/s"),
-    ("path_convergence", "Path convergence", "s"),
+    ("path_convergence_cold", "Cold path convergence", "s"),
+    ("path_lookup_warm", "Warm path lookup", "s"),
     ("link_setup", "Link setup p50/p99", "s"),
-    ("resource_1mb_mtu500", "1 MB Resource @ MTU 500", "MB/s"),
-    ("resource_50mb_mtu8192", "50 MB Resource @ MTU 8192", "MB/s"),
-    ("peak_ram", "Peak RAM", "MiB"),
-    ("cpu_per_mb", "CPU/MB", "ms/MB"),
+    ("resource_1mib", "Exact 1 MiB Resource", "MiB/s"),
+    ("resource_50mib", "Exact 50 MiB Resource", "MiB/s"),
+    ("resource_1mib_peak_ram", "1 MiB Resource peak RAM", "MiB"),
+    ("resource_50mib_peak_ram", "50 MiB Resource peak RAM", "MiB"),
+    ("resource_1mib_cpu", "1 MiB Resource CPU", "ms/MiB"),
+    ("resource_50mib_cpu", "50 MiB Resource CPU", "ms/MiB"),
     ("active_links_1000", "1000 active links", "links"),
 )
 
@@ -55,13 +58,16 @@ def unavailable(reason: str) -> dict[str, Any]:
 
 def unavailable_reason(row_id: str, implementation: str) -> str:
     if implementation == "rns_rs":
-        return "rns-rs adapter is not configured for this release"
+        return "No exact rns-rs measurement is present in this release dataset"
     return {
-        "resource_1mb_mtu500": "No exact 1 MB Resource @ MTU 500 measurement is present",
-        "resource_50mb_mtu8192": "No exact 50 MB Resource @ MTU 8192 measurement is present",
+        "resource_1mib": "No exact 1 MiB Resource measurement is present",
+        "resource_50mib": "No exact 50 MiB Resource measurement is present",
         "link_setup": "No exact link setup measurement is present",
-        "peak_ram": "No exact peak RAM measurement is present",
-        "cpu_per_mb": "No exact CPU/MB measurement is present",
+        "path_lookup_warm": "No exact warm path lookup measurement is present",
+        "resource_1mib_peak_ram": "No exact 1 MiB Resource peak-RAM measurement is present",
+        "resource_50mib_peak_ram": "No exact 50 MiB Resource peak-RAM measurement is present",
+        "resource_1mib_cpu": "No exact 1 MiB Resource CPU measurement is present",
+        "resource_50mib_cpu": "No exact 50 MiB Resource CPU measurement is present",
         "active_links_1000": "No exact 1000-active-link measurement is present",
     }.get(row_id, "No exact release measurement is present")
 
@@ -105,7 +111,7 @@ def fallback_matrix(data: dict[str, Any]) -> list[dict[str, Any]]:
         elif row_id == "announce_validation" and announce:
             cells["python"] = comparison_cell(announce, "python")
             cells["lxmf_rs"] = comparison_cell(announce, "lxmf_rs")
-        elif row_id == "path_convergence" and discovery:
+        elif row_id == "path_convergence_cold" and discovery:
             for implementation, source_key in (("python", "python"), ("lxmf_rs", "rust")):
                 source = discovery[source_key]
                 cells[implementation] = measured(
@@ -121,6 +127,9 @@ def fallback_matrix(data: dict[str, Any]) -> list[dict[str, Any]]:
                     p99=float(source["p99_ns"]) / 1_000_000_000.0,
                     details={"topology": link_setup.get("topology"), "timed_boundary": link_setup.get("timed_boundary")},
                 )
+        independent = data.get("independent_performance", {}).get("public_cells", {})
+        if isinstance(independent, dict) and isinstance(independent.get(row_id), dict):
+            cells.update(independent[row_id])
         rows.append({"id": row_id, "label": label, "unit": unit, "cells": cells})
 
     return rows
@@ -134,8 +143,12 @@ def public_rows(data: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def format_value(cell: dict[str, Any], unit: str) -> str:
-    if cell.get("status") != "measured":
-        return "N/A"
+    status = cell.get("status")
+    if status != "measured":
+        return {
+            "failed": "FAILED",
+            "not_supported": "UNSUPPORTED",
+        }.get(str(status), "N/A")
     value = float(cell["value"])
     if cell.get("p99") is not None:
         return f"{value:.3f} / {float(cell['p99']):.3f}"
