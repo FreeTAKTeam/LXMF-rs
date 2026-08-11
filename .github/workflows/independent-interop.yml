@@ -20,11 +20,10 @@ permissions:
 
 jobs:
   evidence:
-    if: github.event_name != 'pull_request' || matrix.peer == 'rns-rs'
     strategy:
       fail-fast: false
       matrix:
-        peer: [rns-rs, reticulum-go]
+        peer: ${{ fromJSON((github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.level == 'pr')) && '["rns-rs"]' || '["rns-rs","reticulum-go"]') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
