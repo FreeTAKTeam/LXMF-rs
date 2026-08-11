@@ -57,14 +57,16 @@ fn entry_with_hops(hops: u8) -> PathEntry {
     }
 }
 
-/// Issue #515: the direct-hop invariant is centralized in `PathEntry`
-/// helpers so every routing decision agrees on what "direct" means. These
-/// tests pin the full matrix, including the inconsistent intermediate
-/// states a broken `apply_receive_hop_increment` ordering could produce.
+/// The final-hop invariant is centralized in `PathEntry` helpers so every
+/// routing decision agrees on when to strip transport mode. Zero hops covers
+/// local/shared destinations; one hop covers a directly attached network
+/// destination after receive-side hop accounting.
 #[test]
-fn direct_hop_invariant_hops_zero_is_direct() {
-    assert!(entry_with_hops(0).is_direct());
-    for hops in [1u8, 2, 3, u8::MAX] {
+fn final_hop_invariant_covers_zero_and_one_hop_entries() {
+    for hops in [0u8, 1] {
+        assert!(entry_with_hops(hops).is_direct(), "hops={hops} must be direct");
+    }
+    for hops in [2u8, 3, u8::MAX] {
         assert!(!entry_with_hops(hops).is_direct(), "hops={hops} must not be direct");
     }
 }
