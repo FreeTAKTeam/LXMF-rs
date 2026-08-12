@@ -67,7 +67,7 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}/refs/Reticulum:${{ github.workspace }}/refs/LXMF
         run: >-
           cargo xtask python-impl-bench-report
-          --compare-runs 3
+          --compare-runs 5
           --resource-runs 2
           --resource-iterations 1000
       - name: Measure release candidate
@@ -76,7 +76,7 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}/refs/Reticulum:${{ github.workspace }}/refs/LXMF
         run: >-
           cargo xtask python-impl-bench-report
-          --compare-runs 3
+          --compare-runs 5
           --resource-runs 2
           --resource-iterations 1000
       - name: Measure ZeroMQ and HTTP SDK transports
@@ -94,7 +94,7 @@ jobs:
         working-directory: candidate
         run: >-
           python3 tools/scripts/independent_performance.py
-          --samples 3
+          --samples 5
           --links 1000
           --output target/performance/independent.json
       - name: Generate candidate publication dataset

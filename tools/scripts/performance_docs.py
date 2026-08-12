@@ -366,7 +366,7 @@ def performance_page(data: dict[str, Any], release: str, scale_data: dict[str, A
             "```bash",
             "cargo xtask python-impl-bench-report",
             "python3 tools/scripts/e2e_performance.py --profile report",
-            "python3 tools/scripts/independent_performance.py --samples 3 --links 1000",
+            "python3 tools/scripts/independent_performance.py --samples 5 --links 1000",
             f"python3 tools/scripts/performance_docs.py --release {release} --report target/criterion/python-impl-report/report.json",
             "python3 tools/scripts/performance_docs.py --check",
             "```",

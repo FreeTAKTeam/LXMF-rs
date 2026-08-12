@@ -65,7 +65,7 @@ jobs:
         run: |
           python3 tools/scripts/independent_performance.py \
             --peer-root target/interop/independent/external/rns-rs \
-            --samples 3 \
+            --samples 5 \
             --links 1000 \
             --output target/independent-rns-rs/independent-performance.json \
             --skip-build

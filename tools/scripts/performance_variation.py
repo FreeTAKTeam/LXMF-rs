@@ -8,7 +8,7 @@ from typing import Literal
 
 NORMAL_VARIATION_MAX = 0.10
 WARNING_VARIATION_MAX = 0.20
-MIN_RELEASE_SAMPLES = 3
+MIN_RELEASE_SAMPLES = 5
 
 VariationClass = Literal["normal", "warning", "hard_failure"]
 

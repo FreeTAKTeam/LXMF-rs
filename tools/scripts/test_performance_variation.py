@@ -6,11 +6,11 @@ from __future__ import annotations
 import unittest
 
 from performance_release_gate import evaluate
-from performance_variation import classify_relative_mad
+from performance_variation import MIN_RELEASE_SAMPLES, classify_relative_mad
 
 
 def dataset(relative_mad: float, samples: list[float] | None = None) -> dict:
-    run_samples = samples if samples is not None else [100.0, 101.0, 102.0]
+    run_samples = samples if samples is not None else [100.0, 101.0, 102.0, 101.5, 100.5]
     implementation = {
         "throughput_ops_per_sec": 100.0,
     }
@@ -49,6 +49,9 @@ def dataset(relative_mad: float, samples: list[float] | None = None) -> dict:
 
 
 class PerformanceVariationTests(unittest.TestCase):
+    def test_release_dispersion_requires_five_samples(self) -> None:
+        self.assertEqual(MIN_RELEASE_SAMPLES, 5)
+
     def test_classification_has_distinct_normal_warning_and_hard_bands(self) -> None:
         self.assertEqual(classify_relative_mad(0.10), "normal")
         self.assertEqual(classify_relative_mad(0.1013), "warning")
@@ -66,8 +69,8 @@ class PerformanceVariationTests(unittest.TestCase):
         self.assertEqual(report["failures"], [])
         self.assertEqual(len(report["warnings"]), 2)
 
-    def test_hard_variation_and_insufficient_samples_fail(self) -> None:
-        candidate = dataset(0.21, [100.0, 120.0])
+    def test_hard_variation_and_four_samples_fail(self) -> None:
+        candidate = dataset(0.21, [100.0, 120.0, 101.0, 99.0])
         baseline = dataset(0.01)
         baseline["environment"]["git_commit"] = "baseline"
 
@@ -82,7 +85,7 @@ class PerformanceVariationTests(unittest.TestCase):
         candidate["independent_performance"] = {
             "path_convergence": {
                 "cold": {
-                    "samples_seconds": [1.0, 1.1, 1.2],
+                    "samples_seconds": [1.0, 1.1, 1.2, 1.05, 1.15],
                     "p50_relative_mad": 0.1013,
                 }
             },

@@ -101,7 +101,7 @@ These are single runs per composition, not a repeated benchmark distribution. Th
 ```bash
 cargo xtask python-impl-bench-report
 python3 tools/scripts/e2e_performance.py --profile report
-python3 tools/scripts/independent_performance.py --samples 3 --links 1000
+python3 tools/scripts/independent_performance.py --samples 5 --links 1000
 python3 tools/scripts/performance_docs.py --release v0.9.5 --report target/criterion/python-impl-report/report.json
 python3 tools/scripts/performance_docs.py --check
 ```
