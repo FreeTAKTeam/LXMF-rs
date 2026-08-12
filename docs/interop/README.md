@@ -16,6 +16,27 @@ requests, both peers nightly, and the strongest profiles on release tags. Every
 run uploads JSON, Markdown, logs/configuration in a raw tarball, and a checksum.
 Tag runs also publish standalone combined JSON/Markdown/HTML release assets.
 
+The current versioned evidence is:
+
+- [`v0.9.9-independent.json`](v0.9.9-independent.json) — complete structured
+  peer results, readiness axes, pins, limitations, and five-sample independent
+  performance evidence;
+- [`v0.9.9-independent.md`](v0.9.9-independent.md) — concise human-readable
+  matrix;
+- [`v0.9.9-independent.html`](v0.9.9-independent.html) — standalone report with
+  the complete JSON embedded;
+- [`../performance/v0.9.9.json`](../performance/v0.9.9.json) and
+  [`../performance/v0.9.9.html`](../performance/v0.9.9.html) — canonical
+  performance dataset and dashboard;
+- hosted raw interop evidence from workflow
+  [`31521912894`](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/31521912894)
+  and checksummed raw performance evidence from workflow
+  [`31550356625`](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/31550356625).
+
+Actions artifacts are retention-bound. The same workflows attach the public
+reports, raw bundles, and checksums to GitHub Releases on tags so permanent
+release evidence remains tied to the exact released commit.
+
 The rns-rs gate allows only the named, Python-controlled peer divergences in
 `tools/scripts/independent_interop_gate.py`: local-destination path response,
 Channel proof, peer activation of an LXMF-rs-initiated Link, and the two teardown

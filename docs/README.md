@@ -13,6 +13,9 @@ These are the first places to update when behavior changes:
 - `docs/status/reticulum-parity-matrix.md`: maintained Reticulum row-level
   parity status
 - `docs/status/lxmf-parity-matrix.md`: maintained LXMF row-level parity status
+- `docs/interop/README.md`: independent implementation evidence ledger and
+  versioned reports
+- `docs/performance.md`: generated current performance methodology and results
 - `docs/status/v0.9.9-release-candidate.md`: active release-candidate
   requirements, findings, and release evidence
 - `docs/contracts/`: public contracts, compatibility policy, support policy, API

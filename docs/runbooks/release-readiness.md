@@ -69,6 +69,14 @@ remote-relay cases. The resulting evidence bundle is retained with the run.
   rns-rs, Reticulum-Go, performance, physical HIL, and third-party-client status
   independently; it must not merge those categories into the software-parity
   percentage.
+- `.github/workflows/performance-release.yml` is the dedicated release
+  performance gate. It must use at least five same-runner comparison and
+  independent-peer samples, apply the maintained normal/warning/hard-regression
+  budgets, and publish `lxmf-rs-performance.json`,
+  `lxmf-rs-performance.html`, `lxmf-rs-performance-raw.tar.gz`, and
+  `SHA256SUMS`. Every dashboard cell must be measured or explicitly report N/A,
+  UNSUPPORTED, or FAILED; blank cells and smaller substitutes for exact
+  workloads are not accepted.
 
 The SDK reports the parity checkpoint as its crate version plus the pinned
 reference revisions from `.github/workflows/verify.yml`: Reticulum
@@ -259,8 +267,10 @@ Rollback triggers (objective):
 4. security checklist PASS rows below required floor (`CANARY_MIN_SECURITY_PASS_ROWS`, default `8`)
 5. supply-chain artifact count below required floor (`CANARY_MIN_SUPPLY_CHAIN_ARTIFACTS`, default `1`)
 
-`performance_status` in the release scorecard is advisory only until the legacy Criterion
-budgets are re-baselined and maintained again.
+`performance_status` in the legacy release scorecard remains advisory. This
+does not waive the separate required same-runner gate in
+`.github/workflows/performance-release.yml`, whose regression budget and
+publication result are authoritative for release performance evidence.
 
 Report artifacts:
 

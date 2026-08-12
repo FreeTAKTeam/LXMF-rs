@@ -37,9 +37,11 @@ with 1,810 complete, zero partial, and one not-applicable entry. The seven
 tracked LXMF rows are complete for their software scenarios. Physical devices,
 public networks, and external-client compatibility remain separate evidence
 tracks rather than hidden implementation gaps.
-Independent implementation evidence is published separately in
+
+Reference interoperability is tested against pinned Python Reticulum/LXMF.
+Independent interoperability is published separately in
 [`docs/interop`](docs/interop/README.md), with pinned rns-rs and Reticulum-Go
-revisions, explicit peer limitations, raw logs, and checksummed release assets.
+revisions, explicit peer limitations, raw logs, and checksummed evidence assets.
 External-client compatibility claims for REM, RCH, Sideband, MeshChatX,
 Columba, or other third-party clients require separate interop gate evidence.
 
@@ -448,14 +450,14 @@ If you are using Linux and the Linux daemon guide above, point `--config` at the
 <!-- performance-summary:start -->
 ## Measured performance
 
-Release dataset: `v0.9.5` at `c4fd18761e41caf2f7d2c7307d49c37aa6dc43ca`; Python Reticulum `15320e4d2cfa` and LXMF `727830cefda8`.
+Release dataset: `v0.9.9` at `7199c4038a3ba786abb4dfbc95cbd6cd16ed9116`; Python Reticulum `b48b96e61676` and LXMF `727830cefda8`.
 
 | Matched workload | Rust p50 | Python p50 | Rust/Python |
 |---|---:|---:|---:|
-| LXMF message decode | 150 ns | 86.56 us | 576.59x |
-| LXMF message encode | 260 ns | 36.27 us | 139.59x |
-| LXMF large message decode | 250 ns | 92.94 us | 371.58x |
-| LXMF large message encode | 500 ns | 43.43 us | 86.95x |
+| LXMF message decode | 285 ns | 8.33 ms | 29222.35x |
+| LXMF message encode | 370 ns | 2.17 ms | 5864.16x |
+| LXMF large message decode | 455 ns | 8.31 ms | 18252.45x |
+| LXMF large message encode | 762 ns | 2.19 ms | 2869.52x |
 
 These are matched-workload comparisons, not a claim of whole-system superiority. See [methodology, complete results, variability, and limitations](docs/performance.md).
 <!-- performance-summary:end -->

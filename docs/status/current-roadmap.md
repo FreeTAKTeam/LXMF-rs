@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last reassessed: 2026-08-10
+Last reassessed: 2026-08-12
 
 This file is the repository-level source of truth for parity posture, release
 confidence, and execution order. Detailed row-level status lives in:
@@ -37,13 +37,25 @@ The project is best described by capability level:
 | Operationally substitutable | achieved against RNS 1.4.2 | The software-controlled runtime includes the focused 1.4.2 routing, policy, and `rngit` repository-service slices. |
 | Full Python software surface parity | achieved | The strict inventory reports 1,810 complete, 0 partial, and 1 provenance-backed not-applicable entry. |
 | ZeroMQ SDK-access parity | achieved in v0.9.5 implementation | Generated classification and daemon-operation inventory live in `sdk-zmq-parity.json`; release evidence must still pass all gates. |
-| Independent implementation evidence | implemented; hosted publication pending this PR | Pinned rns-rs and Reticulum-Go profiles cover two-node/multi-hop behavior; rns-rs additionally covers mixed/all-Rust five-node chains, routing policy, restart, shared daemon, exact large Resources, and deterministic chaos. Explicit peer divergences remain failures owned by the peer and are allowlisted narrowly by CI. |
+| Independent implementation evidence | hosted exact-SHA Actions evidence published; release attachment pending merge/tag | Pinned rns-rs and Reticulum-Go release profiles cover two-node/multi-hop behavior; rns-rs additionally covers mixed/all-Rust five-node chains, routing policy, restart, shared daemon, exact large Resources, and deterministic chaos. Explicit peer divergences remain failures owned by the peer and are allowlisted narrowly by CI. |
+| Performance evidence | five-sample workflow and regression gate passed; release attachment pending merge/tag | Exact-SHA run `31550356625` produced checksummed JSON, HTML, and 4,031-entry raw evidence. The gate passed without warnings: throughput `1.005x`, CPU `0.996x`, and peak RSS `1.072x` versus the same-runner v0.9.1 baseline. |
 
 The independent evidence axis is documented in [`docs/interop`](../interop/README.md).
 It does not promote Python parity rows, third-party clients, physical interfaces,
 or public-network soak. Pull requests run the bounded rns-rs profile; nightly and
 release tiers add both peers, expanded chaos, exact 50 MiB transfers, raw logs,
 and standalone JSON/Markdown/HTML artifacts.
+
+The canonical post-rc performance dataset is
+[`docs/performance/v0.9.9.json`](../performance/v0.9.9.json), with the standalone
+dashboard at [`docs/performance/v0.9.9.html`](../performance/v0.9.9.html). It
+records candidate `7199c4038a3ba786abb4dfbc95cbd6cd16ed9116`, five interleaved
+comparison runs, five independent peer samples, exact 1 MiB and 50 MiB
+Resource measurements, all SDK transport surfaces, and the explicit bounded
+1000-Link unsupported result. The passing hosted workflow is
+[`31550356625`](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/31550356625).
+Final release attachment remains tag-triggered and must use the eventual tag's
+exact commit; this evidence is not attached retroactively to `v0.9.9-rc.6`.
 
 ## v0.9.9-rc.6 Release Candidate
 

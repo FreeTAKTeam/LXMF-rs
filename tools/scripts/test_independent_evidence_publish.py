@@ -9,6 +9,7 @@ from independent_evidence_publish import build_bundle, render_html, render_markd
 class IndependentEvidencePublishTests(unittest.TestCase):
     def setUp(self) -> None:
         self.rns = {
+            "artifact_root": "/home/runner/work/repo/target/independent-rns-rs",
             "peer": {"revision": "rns-pin"},
             "summary": {"counts": {"PASS": 1, "FAIL": 1}},
             "scenarios": [
@@ -27,6 +28,7 @@ class IndependentEvidencePublishTests(unittest.TestCase):
             ],
         }
         self.retgo = {
+            "artifact_root": "/home/runner/work/repo/target/independent-reticulum-go",
             "peer": {"revision": "go-pin"},
             "summary": {"counts": {"PASS": 1, "UNSUPPORTED": 1}},
             "scenarios": [{"scenario": "resource", "status": "PASS"}],
@@ -43,6 +45,9 @@ class IndependentEvidencePublishTests(unittest.TestCase):
     def test_bundle_preserves_pins_and_divergences(self) -> None:
         bundle = build_bundle("v-test", self.rns, self.retgo, None, self.parity)
         self.assertEqual(bundle["interop"]["rns-rs"]["peer"]["revision"], "rns-pin")
+        self.assertNotIn("artifact_root", bundle["interop"]["rns-rs"])
+        self.assertNotIn("artifact_root", bundle["interop"]["Reticulum-Go"])
+        self.assertIn("artifact_root", self.rns)
         self.assertEqual(len(bundle["known_peer_divergences"]), 1)
         self.assertEqual(bundle["readiness_axes"]["performance_evidence"]["status"], "NOT_RUN")
         self.assertEqual(

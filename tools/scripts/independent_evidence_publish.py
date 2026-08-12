@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import html
 import json
 import time
@@ -81,6 +82,10 @@ def build_bundle(
 ) -> dict[str, Any]:
     rns_gate_errors = validate_interop(rns_rs)
     retgo_gate_errors = validate_interop(reticulum_go)
+    public_rns_rs = copy.deepcopy(rns_rs)
+    public_reticulum_go = copy.deepcopy(reticulum_go)
+    public_rns_rs.pop("artifact_root", None)
+    public_reticulum_go.pop("artifact_root", None)
     return {
         "schema": "lxmf-rs-independent-evidence-v1",
         "version": version,
@@ -89,7 +94,10 @@ def build_bundle(
             "Python RNS/LXMF is the compatibility reference; rns-rs and Reticulum-Go "
             "are independently authored peer implementations."
         ),
-        "interop": {"rns-rs": rns_rs, "Reticulum-Go": reticulum_go},
+        "interop": {
+            "rns-rs": public_rns_rs,
+            "Reticulum-Go": public_reticulum_go,
+        },
         "performance": performance,
         "topology_performance": five_node_timings(rns_rs),
         "readiness_axes": {

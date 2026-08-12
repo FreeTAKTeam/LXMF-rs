@@ -78,6 +78,15 @@ def verify_report_refs(data: dict[str, Any], references: dict[str, str]) -> None
         raise ValueError("report LXMF revision differs from benchmark configuration")
 
 
+def make_environment_paths_portable(data: dict[str, Any]) -> None:
+    """Replace runner-local reference paths with repository-relative locations."""
+    environment = data["environment"]
+    if "python_rns_module" in environment:
+        environment["python_rns_module"] = "refs/Reticulum/RNS/__init__.py"
+    if "python_lxmf_module" in environment:
+        environment["python_lxmf_module"] = "refs/LXMF/LXMF/__init__.py"
+
+
 def enrich_dispersion(report_path: Path, data: dict[str, Any]) -> None:
     run_paths = sorted((report_path.parent / "runs").glob("run-*/python-impl-compare.json"))
     if len(run_paths) != data["compare_runs"]:
@@ -396,6 +405,7 @@ def main() -> int:
         if args.report:
             data = load(args.report)
             verify_report_refs(data, references)
+            make_environment_paths_portable(data)
             enrich_dispersion(args.report, data)
             if args.sdk_transport_report:
                 data.update(load(args.sdk_transport_report))

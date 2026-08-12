@@ -67,3 +67,16 @@ A release is valid only if:
 3. RPC contract tests pass.
 4. API surface and architecture boundary checks pass.
 5. Compatibility matrix and migration notes are updated.
+6. Pinned Python reference interoperability passes for the released commit.
+7. Independent rns-rs interoperability passes every required mutually
+   supported row, and Reticulum-Go passes its required supported subset with
+   only explicitly capability-scoped unsupported rows.
+8. The same-runner release performance workflow passes its five-sample
+   dispersion and regression budgets and emits checksummed JSON, HTML, and raw
+   evidence.
+
+Reference interoperability and independent interoperability are separate
+evidence axes. Python Reticulum/LXMF remains normative when an independently
+implemented peer disagrees with LXMF-rs; peer divergences require explicit
+Python-reference evidence and must not change core semantics merely to satisfy
+the peer.
