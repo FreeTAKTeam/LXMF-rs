@@ -23,11 +23,12 @@ START = "<!-- performance-summary:start -->"
 END = "<!-- performance-summary:end -->"
 PYTHON_INTEROP_WORKFLOW = ROOT / ".github/workflows/verify.yml"
 PYTHON_BENCHMARK_CONFIG = ROOT / "tools/benchmarks/python_impl.toml"
+DEFAULT_RELEASE = "v0.9.9"
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--release", default="v0.9.5")
+    parser.add_argument("--release", default=DEFAULT_RELEASE)
     parser.add_argument("--report", type=Path)
     parser.add_argument("--sdk-transport-report", type=Path)
     parser.add_argument("--e2e-report", type=Path)
