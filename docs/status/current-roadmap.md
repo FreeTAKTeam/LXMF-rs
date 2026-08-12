@@ -57,10 +57,25 @@ Resource measurements, all SDK transport surfaces, and the explicit bounded
 Final release attachment remains tag-triggered and must use the eventual tag's
 exact commit; this evidence is not attached retroactively to `v0.9.9-rc.6`.
 
-## v0.9.9-rc.6 Release Candidate
+## v0.9.9 Stable Release Preparation
 
-The current candidate is `v0.9.9-rc.6`, with workspace and publishable crate
-version `0.9.9`. It is the RNS 1.4.2 software-parity prerelease: the pinned
+The reviewed RNS 1.4.2 parity and independent-evidence work is merged on
+`main`, and the workspace and publishable crate version is `0.9.9`. Stable
+release notes are in [`docs/release-notes-v0.9.9.md`](../release-notes-v0.9.9.md).
+The immutable `v0.9.9` tag is the final truth owner for bundle, OCI, crates.io,
+independent-interoperability, and performance publication; those outcomes must
+be verified from the tag workflows before the stable release is declared
+complete.
+
+The software-parity boundary remains 1,811 generated entries: 1,810 applicable
+and complete, zero partial, zero unmapped, and one provenance-backed
+not-applicable entry. Physical interfaces, public networks, and third-party
+clients remain separate evidence axes described above.
+
+## v0.9.9-rc.6 Historical Release Candidate
+
+The final candidate was `v0.9.9-rc.6`, with workspace and publishable crate
+version `0.9.9`. It was the RNS 1.4.2 software-parity prerelease: the pinned
 Reticulum reference is `b48b96e61676504e0a4e527b33b9a0b4495c6872`, the pinned
 LXMF reference is `727830cefda83d9c6e3982b48675425f3f988f9c`, and the generated
 strict inventory target is 1,811 total, 1,810 complete, zero partial, and one
@@ -74,7 +89,7 @@ Weave, VR-N76, BLE, serial-radio, public-I2P/public-Reticulum, and
 third-party-client evidence remains separately tracked and does not become a
 hidden implementation partial.
 
-Candidate notes are in `docs/release-notes-v0.9.9-rc.6.md`; the exact gate,
+Historical candidate notes are in `docs/release-notes-v0.9.9-rc.6.md`; the exact gate,
 artifact, signing, OCI, and performance record is in
 `docs/status/v0.9.9-release-candidate.md`.
 

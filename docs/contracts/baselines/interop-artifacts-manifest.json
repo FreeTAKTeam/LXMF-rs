@@ -28,8 +28,8 @@
     },
     {
       "path": "docs/contracts/compatibility-contract.md",
-      "bytes": 3008,
-      "sha256": "f0bd1210ec3b08d9a3309e0f29d25aa159c2c089f02cfa8ea8d8a46d9151e007"
+      "bytes": 3764,
+      "sha256": "f50e1c172f391fbad2b9cdc691c455b03c67c7819319ad4fa83f2ebba19e08b3"
     },
     {
       "path": "docs/contracts/compatibility-matrix.md",
