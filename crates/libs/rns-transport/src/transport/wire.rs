@@ -39,13 +39,13 @@ pub(super) async fn handle_proof(
     }
 
     // Responder-side links live in `in_links`, but they can still originate
-    // proved Link packets (Channel messages in particular). Offer ordinary
-    // Link proofs to them as well so their sender state can advance.
-    let inbound_links = {
+    // proved Link packets (Channel messages in particular). A Link proof is
+    // addressed to exactly one link ID, so avoid locking unrelated links.
+    let inbound_link = {
         let handler = handler.lock().await;
-        handler.in_links.values().cloned().collect::<Vec<_>>()
+        handler.in_links.get(&packet.destination).cloned()
     };
-    for link in inbound_links {
+    if let Some(link) = inbound_link {
         link.lock().await.handle_packet(&packet, iface);
     }
 
