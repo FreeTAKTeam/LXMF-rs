@@ -36,6 +36,9 @@ const HDLC_KEEPALIVE_FRAME: &[u8] = &[0x7e, 0x7e];
 // iterations rather than many.
 const MIN_STABLE_CONNECTION: Duration = Duration::from_secs(2);
 pub(crate) const HDLC_STREAM_EVENT_CHANNEL_CAPACITY: usize = 128;
+const TCP_READ_BUFFER_SIZE: usize = 32 * 1024;
+const MIN_TCP_READ_BUFFER_SIZE: usize = 1024;
+const INITIAL_HDLC_FRAME_BUFFER_CAPACITY: usize = 4 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct TcpSocketTuning {
@@ -359,7 +362,7 @@ async fn track_tcp_stream_events(
 
 fn tcp_wire_buffer_capacity(mtu: usize) -> usize {
     // Worst-case HDLC expansion doubles bytes (all escaped) plus frame delimiters.
-    mtu.saturating_mul(2).saturating_add(16)
+    mtu.saturating_mul(2).saturating_add(2)
 }
 
 /// Maximum number of bytes the HDLC frame reassembly buffer may hold
@@ -373,6 +376,64 @@ fn tcp_wire_buffer_capacity(mtu: usize) -> usize {
 /// this caps it at ~1 MiB instead.
 fn max_hdlc_frame_buffer_len(mtu: usize) -> usize {
     tcp_wire_buffer_capacity(mtu).saturating_mul(2)
+}
+
+fn tcp_read_buffer_len(mtu: usize) -> usize {
+    TCP_READ_BUFFER_SIZE.min(tcp_wire_buffer_capacity(mtu).max(MIN_TCP_READ_BUFFER_SIZE))
+}
+
+fn initial_hdlc_frame_buffer_capacity(mtu: usize) -> usize {
+    INITIAL_HDLC_FRAME_BUFFER_CAPACITY.min(max_hdlc_frame_buffer_len(mtu))
+}
+
+struct TcpRxBuffers {
+    decoded: Vec<u8>,
+    frame: Vec<u8>,
+    tcp: Vec<u8>,
+}
+
+impl TcpRxBuffers {
+    fn new(mtu: usize) -> Self {
+        Self {
+            decoded: Vec::new(),
+            frame: Vec::with_capacity(initial_hdlc_frame_buffer_capacity(mtu)),
+            tcp: vec![0_u8; tcp_read_buffer_len(mtu)],
+        }
+    }
+}
+
+#[derive(Default)]
+struct TcpTxBuffers {
+    raw: Vec<u8>,
+    wire: Vec<u8>,
+}
+
+impl TcpTxBuffers {
+    fn encode_packet<'a>(
+        &'a mut self,
+        packet: &Packet,
+        mtu: usize,
+    ) -> Result<(usize, &'a [u8]), RnsError> {
+        let raw_capacity = packet.serialized_len()?;
+        if raw_capacity > mtu {
+            return Err(RnsError::OutOfMemory);
+        }
+
+        self.raw.resize(raw_capacity, 0);
+        let raw_len = {
+            let mut output = OutputBuffer::new(self.raw.as_mut_slice());
+            packet.serialize(&mut output)?;
+            output.offset()
+        };
+
+        self.wire.resize(tcp_wire_buffer_capacity(raw_len), 0);
+        let wire_len = {
+            let mut output = OutputBuffer::new(self.wire.as_mut_slice());
+            Hdlc::encode(&self.raw[..raw_len], &mut output)?;
+            output.offset()
+        };
+        Ok((raw_len, &self.wire[..wire_len]))
+    }
 }
 
 /// Drops malformed backlog from the HDLC frame reassembly buffer once it
@@ -480,9 +541,7 @@ pub(crate) async fn run_hdlc_stream_with_runtime<R, W>(
         let events = events.clone();
 
         tokio::spawn(async move {
-            let mut hdlc_rx_buffer = vec![0u8; mtu];
-            let mut frame_buffer: Vec<u8> = Vec::with_capacity(mtu.saturating_mul(4));
-            let mut tcp_buffer = vec![0u8; mtu.saturating_mul(16)];
+            let mut buffers = TcpRxBuffers::new(mtu);
 
             loop {
                 tokio::select! {
@@ -496,7 +555,7 @@ pub(crate) async fn run_hdlc_stream_with_runtime<R, W>(
                     _ = stop.cancelled() => {
                             break;
                     }
-                    result = stream.read(&mut tcp_buffer[..]) => {
+                    result = stream.read(buffers.tcp.as_mut_slice()) => {
                             match result {
                                 Ok(0) => {
                                     log::warn!("connection closed");
@@ -511,11 +570,16 @@ pub(crate) async fn run_hdlc_stream_with_runtime<R, W>(
                                         Instant::now();
                                     send_hdlc_stream_event(&events, HdlcStreamEvent::Read { bytes: n });
                                     // TCP and Unix streams can deliver partial or multiple HDLC frames.
-                                    frame_buffer.extend_from_slice(&tcp_buffer[..n]);
+                                    buffers.frame.extend_from_slice(&buffers.tcp[..n]);
 
-                                    while let Some((start, end)) = Hdlc::find(&frame_buffer) {
-                                        let frame = &frame_buffer[start..=end];
-                                        let mut output = OutputBuffer::new(&mut hdlc_rx_buffer[..]);
+                                    while let Some((start, end)) = Hdlc::find(&buffers.frame) {
+                                        // Removing the two HDLC flags is an upper bound for
+                                        // decoded data; escaped frames decode to less. The MTU
+                                        // remains the hard ceiling.
+                                        let decoded_len = (end - start + 1).saturating_sub(2).min(mtu);
+                                        buffers.decoded.resize(decoded_len, 0);
+                                        let frame = &buffers.frame[start..=end];
+                                        let mut output = OutputBuffer::new(buffers.decoded.as_mut_slice());
                                         if Hdlc::decode(frame, &mut output).is_ok() {
                                             if let Ok(packet) =
                                                 Packet::deserialize(&mut InputBuffer::new(output.as_slice()))
@@ -558,13 +622,13 @@ pub(crate) async fn run_hdlc_stream_with_runtime<R, W>(
 
                                         // Drop all bytes up to and including the closing
                                         // flag of the frame we just handled.
-                                        frame_buffer.drain(..=end);
+                                        buffers.frame.drain(..=end);
                                     }
 
                                     let frame_buffer_limit = max_hdlc_frame_buffer_len(mtu);
-                                    let buffered = frame_buffer.len();
+                                    let buffered = buffers.frame.len();
                                     if trim_malformed_hdlc_backlog(
-                                        &mut frame_buffer,
+                                        &mut buffers.frame,
                                         frame_buffer_limit,
                                         mtu,
                                     ) {
@@ -578,7 +642,7 @@ pub(crate) async fn run_hdlc_stream_with_runtime<R, W>(
                                             label,
                                             iface_address,
                                             buffered,
-                                            frame_buffer.len(),
+                                            buffers.frame.len(),
                                             frame_buffer_limit
                                         );
                                     }
@@ -623,15 +687,13 @@ pub(crate) async fn run_hdlc_stream_with_runtime<R, W>(
         tokio::spawn(async move {
             let mut last_write_at = Instant::now();
             let mut stale = false;
+            let mut buffers = TcpTxBuffers::default();
             let mut watchdog_tick = tokio::time::interval(Duration::from_secs(1));
             watchdog_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
             loop {
                 if stop.is_cancelled() {
                     break;
                 }
-
-                let mut hdlc_tx_buffer = vec![0u8; tcp_wire_buffer_capacity(mtu)];
-                let mut tx_buffer = vec![0u8; mtu];
 
                 let mut tx_channel = tx_channel.lock().await;
 
@@ -709,10 +771,10 @@ pub(crate) async fn run_hdlc_stream_with_runtime<R, W>(
                             log::trace!("tx >> ({}) {}", iface_address, packet);
                         }
                         log::debug!("[tp-diag] {} tx_dequeue iface={} {}", label, iface_address, packet);
-                        let mut output = OutputBuffer::new(&mut tx_buffer);
-                        if packet.serialize(&mut output).is_ok() {
+                        match buffers.encode_packet(&packet, mtu) {
+                            Ok((raw_len, wire)) => {
                             if let Some(bitrate_bps) = forced_bitrate_bps {
-                                if let Some(delay) = forced_bitrate_delay(output.as_slice().len(), bitrate_bps) {
+                                if let Some(delay) = forced_bitrate_delay(raw_len, bitrate_bps) {
                                     tokio::select! {
                                         _ = cancel.cancelled() => break,
                                         _ = iface_stop_tx.cancelled() => {
@@ -724,9 +786,7 @@ pub(crate) async fn run_hdlc_stream_with_runtime<R, W>(
                                     }
                                 }
                             }
-                            let mut hdlc_output = OutputBuffer::new(&mut hdlc_tx_buffer[..]);
-                            if Hdlc::encode(output.as_slice(), &mut hdlc_output).is_ok() {
-                                if let Err(err) = stream.write_all(hdlc_output.as_slice()).await {
+                                if let Err(err) = stream.write_all(wire).await {
                                     log::warn!("[tp-diag] write_all failed iface={} err={}", iface_address, err);
                                     send_hdlc_stream_event(
                                         &events,
@@ -747,28 +807,24 @@ pub(crate) async fn run_hdlc_stream_with_runtime<R, W>(
                                 last_write_at = Instant::now();
                                 send_hdlc_stream_event(
                                     &events,
-                                    HdlcStreamEvent::Write { bytes: hdlc_output.as_slice().len() },
+                                    HdlcStreamEvent::Write { bytes: wire.len() },
                                 );
                                 log::debug!(
                                     "[tp-diag] {} tx_write_ok iface={} wire_len={} raw_len={}",
                                     label,
                                     iface_address,
-                                    hdlc_output.as_slice().len(),
-                                    output.as_slice().len()
-                                );
-                            } else {
-                                log::warn!(
-                                    "[tp-diag] hdlc_encode failed iface={} raw_len={}",
-                                    iface_address,
-                                    output.as_slice().len()
+                                    wire.len(),
+                                    raw_len
                                 );
                             }
-                        } else {
+                            Err(err) => {
                             log::warn!(
-                                "[tp-diag] serialize failed iface={} buffer_cap={}",
+                                "[tp-diag] serialize or HDLC encode failed iface={} mtu={} err={:?}",
                                 iface_address,
-                                tx_buffer.len()
+                                mtu,
+                                err
                             );
+                            }
                         }
                     }
                 };
@@ -2111,3 +2167,7 @@ mod tests {
         assert!(saw_error_event, "expected an Error event from the simulated reset");
     }
 }
+
+#[cfg(test)]
+#[path = "tcp_client_memory_tests.rs"]
+mod memory_tests;

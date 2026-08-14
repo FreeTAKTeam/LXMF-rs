@@ -261,8 +261,8 @@ enum TxIfaceSendResult {
 }
 
 fn packet_wire_len_for_dispatch(message: &TxMessage) -> Option<usize> {
-    match message.packet.to_bytes() {
-        Ok(raw) => Some(raw.len()),
+    match message.packet.serialized_len() {
+        Ok(wire_len) => Some(wire_len),
         Err(err) => {
             log::warn!(
                 "tx packet serialize failed before interface enqueue tx_type={:?} \

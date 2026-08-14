@@ -233,7 +233,7 @@ impl Packet {
     }
 
     pub fn to_bytes(&self) -> Result<Vec<u8>, RnsError> {
-        let mut out = Vec::with_capacity(2 + ADDRESS_HASH_SIZE + 1 + self.data.len());
+        let mut out = Vec::with_capacity(self.serialized_len()?);
 
         out.push(self.header.to_meta());
         out.push(self.header.hops);
@@ -248,6 +248,20 @@ impl Packet {
         out.extend_from_slice(self.data.as_slice());
 
         Ok(out)
+    }
+
+    /// Exact number of bytes produced by the Reticulum packet serializer.
+    ///
+    /// This excludes HDLC framing and validates the same type-2 transport
+    /// address requirement as [`Self::to_bytes`].
+    pub fn serialized_len(&self) -> Result<usize, RnsError> {
+        let transport_len = if self.header.header_type == HeaderType::Type2 {
+            self.transport.ok_or(RnsError::InvalidArgument)?;
+            ADDRESS_HASH_SIZE
+        } else {
+            0
+        };
+        Ok(2 + transport_len + ADDRESS_HASH_SIZE + 1 + self.data.len())
     }
 
     /// Packet hash used for deduplication, cache keys, and proofs.
@@ -416,5 +430,31 @@ mod tests {
             different_packet_type.hash(),
             "packet_type is inside the mask and must affect the hash"
         );
+    }
+
+    #[test]
+    fn serialized_len_matches_type1_and_type2_wire_output() {
+        let type1 = base_packet();
+        assert_eq!(
+            type1.serialized_len().expect("type-1 length"),
+            type1.to_bytes().expect("type-1 bytes").len()
+        );
+
+        let mut type2 = base_packet();
+        type2.header.header_type = HeaderType::Type2;
+        type2.transport = Some(AddressHash::new([0x24; 16]));
+        assert_eq!(
+            type2.serialized_len().expect("type-2 length"),
+            type2.to_bytes().expect("type-2 bytes").len()
+        );
+    }
+
+    #[test]
+    fn serialized_len_rejects_type2_packet_without_transport_address() {
+        let mut packet = base_packet();
+        packet.header.header_type = HeaderType::Type2;
+
+        assert!(packet.serialized_len().is_err());
+        assert!(packet.to_bytes().is_err());
     }
 }
