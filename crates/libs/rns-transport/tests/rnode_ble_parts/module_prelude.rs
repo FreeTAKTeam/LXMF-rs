@@ -348,6 +348,7 @@ struct TestRnodeBleBackend {
     events: Vec<&'static str>,
     writes: Vec<RnodeBleWrite>,
     notifications: std::collections::VecDeque<Option<Vec<u8>>>,
+    drain_stale_startup_notifications: bool,
 }
 
 impl TestRnodeBleBackend {
@@ -357,6 +358,14 @@ impl TestRnodeBleBackend {
 
     fn with_notification_sequence(notifications: Vec<Option<Vec<u8>>>) -> Self {
         Self { notifications: notifications.into(), ..Default::default() }
+    }
+
+    fn with_stale_notifications(notifications: Vec<Option<Vec<u8>>>) -> Self {
+        Self {
+            notifications: notifications.into(),
+            drain_stale_startup_notifications: true,
+            ..Default::default()
+        }
     }
 }
 
@@ -381,6 +390,10 @@ impl RnodeBleBackend for TestRnodeBleBackend {
         self.events.push("next_notification");
         Ok(self.notifications.pop_front().flatten())
     }
+
+    fn drains_stale_startup_notifications(&self) -> bool {
+        self.drain_stale_startup_notifications
+    }
 }
 
 #[tokio::test]
@@ -397,21 +410,6 @@ async fn rnode_ble_runtime_connects_subscribes_and_writes_startup_frames() {
     assert_eq!(runtime.status().pending_payloads, 0);
     assert_eq!(runtime.status().pending_writes, 0);
     let backend = runtime.backend();
-    #[cfg(feature = "rnode-ble")]
-    assert_eq!(
-        backend.events,
-        vec![
-            "connect",
-            "subscribe_notifications",
-            "next_notification",
-            "write",
-            "write",
-            "write",
-            "write",
-            "write",
-        ]
-    );
-    #[cfg(not(feature = "rnode-ble"))]
     assert_eq!(
         backend.events,
         vec!["connect", "subscribe_notifications", "write", "write", "write", "write", "write",]
@@ -426,12 +424,6 @@ async fn rnode_ble_runtime_connects_subscribes_and_writes_startup_frames() {
 
 #[tokio::test]
 async fn rnode_ble_runtime_writes_packets_and_polls_notifications() {
-    #[cfg(feature = "rnode-ble")]
-    let backend = TestRnodeBleBackend::with_notification_sequence(vec![
-        None,
-        Some(encode_data_frame(&[0xAA, 0xBB])),
-    ]);
-    #[cfg(not(feature = "rnode-ble"))]
     let backend =
         TestRnodeBleBackend::with_notification_sequence(vec![Some(encode_data_frame(&[
             0xAA, 0xBB,
@@ -453,10 +445,9 @@ async fn rnode_ble_runtime_writes_packets_and_polls_notifications() {
     );
 }
 
-#[cfg(feature = "rnode-ble")]
 #[tokio::test]
 async fn rnode_ble_runtime_drains_stale_notifications_before_startup_writes() {
-    let backend = TestRnodeBleBackend::with_notification_sequence(vec![
+    let backend = TestRnodeBleBackend::with_stale_notifications(vec![
         Some(encode_command_frame(CMD_DETECT, &[DETECT_RESP])),
         Some(encode_data_frame(&[0xAA, 0xBB])),
         None,

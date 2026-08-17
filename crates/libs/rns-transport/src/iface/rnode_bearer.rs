@@ -32,6 +32,10 @@ pub struct RnodeBearerInfo {
 pub trait RnodeBearerBackend {
     async fn open(&mut self) -> Result<RnodeBearerInfo, String>;
 
+    /// Read the next available chunk.
+    ///
+    /// `Ok(None)` means no bytes are currently available. A closed or failed
+    /// transport must return `Err` so the single-attempt interface can stop.
     async fn read(&mut self) -> Result<Option<Vec<u8>>, String>;
 
     async fn write(&mut self, payload: Vec<u8>) -> Result<(), String>;
@@ -121,8 +125,8 @@ where
         self.inner.send_management_frame(frame).await
     }
 
-    pub async fn poll(&mut self) -> Result<RnodeBleNotification, RnodeBleKissError> {
-        self.inner.poll_notification_events().await
+    pub async fn poll(&mut self) -> Result<Option<RnodeBleNotification>, RnodeBleKissError> {
+        self.inner.poll_optional_notification_events().await
     }
 
     pub async fn shutdown(&mut self) -> Result<(), RnodeBleKissError> {
@@ -171,7 +175,6 @@ mod tests {
     struct TestBackend {
         opens: usize,
         closes: usize,
-        startup_drain_completed: bool,
         reads: VecDeque<Vec<u8>>,
         writes: Vec<Vec<u8>>,
     }
@@ -186,10 +189,6 @@ mod tests {
         }
 
         async fn read(&mut self) -> Result<Option<Vec<u8>>, String> {
-            if !self.startup_drain_completed {
-                self.startup_drain_completed = true;
-                return Ok(None);
-            }
             Ok(self.reads.pop_front())
         }
 
@@ -213,7 +212,7 @@ mod tests {
         let info = runtime.startup().await.expect("startup");
         assert_eq!(info.kind, RnodeBearerKind::BluetoothClassic);
         assert_eq!(runtime.negotiated_mtu(), Some(64));
-        let notification = runtime.poll().await.expect("poll");
+        let notification = runtime.poll().await.expect("poll").expect("notification");
         assert_eq!(notification.packets, vec![b"hello".to_vec()]);
         runtime.send_packet(b"world").await.expect("send packet");
         runtime.shutdown().await.expect("shutdown");
@@ -263,6 +262,16 @@ mod tests {
         let error = runtime.shutdown().await.expect_err("shutdown write should fail");
         assert!(matches!(error, RnodeBleKissError::Backend { operation: "shutdown_write", .. }));
         assert_eq!(runtime.into_backend().closes, 1);
+    }
+
+    #[tokio::test]
+    async fn empty_bearer_reads_remain_distinct_from_empty_notifications() {
+        let backend = TestBackend::default();
+        let mut runtime = RnodeBearerKissRuntime::new(backend, RnodeBleKissConfig::default());
+
+        runtime.startup().await.expect("startup");
+
+        assert_eq!(runtime.poll().await.expect("empty poll"), None);
     }
 
     #[derive(Clone, Copy)]

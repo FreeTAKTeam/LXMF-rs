@@ -162,6 +162,15 @@ pub trait RnodeBleBackend {
 
     async fn next_notification(&mut self) -> Result<Option<Vec<u8>>, String>;
 
+    /// Whether startup should discard notifications queued before the probe frames.
+    ///
+    /// Compatibility and platform-owned backends default to preserving all bytes.
+    /// Native BLE enables this to discard stale notifications left by an earlier
+    /// GATT subscription.
+    fn drains_stale_startup_notifications(&self) -> bool {
+        false
+    }
+
     /// Close the current connection and release native resources.
     ///
     /// Compatibility backends may rely on this no-op default for one release.
@@ -623,6 +632,10 @@ impl RnodeBleBackend for NativeRnodeBleBackend {
             ));
         }
         Ok(Some(notification.value))
+    }
+
+    fn drains_stale_startup_notifications(&self) -> bool {
+        true
     }
 
     async fn close(&mut self) -> Result<(), String> {

@@ -46,7 +46,9 @@ where
         self.backend.subscribe_notifications().await.map_err(|message| {
             RnodeBleKissError::Backend { operation: "subscribe_notifications", message }
         })?;
-        self.drain_startup_notifications().await?;
+        if self.backend.drains_stale_startup_notifications() {
+            self.drain_startup_notifications().await?;
+        }
         let writes = self.session.startup_frames();
         self.write_all(writes, "startup_write").await?;
         self.connected = true;
@@ -116,12 +118,18 @@ where
     pub async fn poll_notification_events(
         &mut self,
     ) -> Result<RnodeBleNotification, RnodeBleKissError> {
+        Ok(self.poll_optional_notification_events().await?.unwrap_or_default())
+    }
+
+    pub(crate) async fn poll_optional_notification_events(
+        &mut self,
+    ) -> Result<Option<RnodeBleNotification>, RnodeBleKissError> {
         let Some(payload) = self.backend.next_notification().await.map_err(|message| {
             self.connected = false;
             RnodeBleKissError::Backend { operation: "next_notification", message }
         })?
         else {
-            return Ok(RnodeBleNotification::default());
+            return Ok(None);
         };
         {
             let hex: String = payload
@@ -134,7 +142,7 @@ where
         let notification = self.session.accept_notification_events(&payload)?;
         let writes = self.session.take_pending_writes();
         self.write_all(writes, "write_pending").await?;
-        Ok(notification)
+        Ok(Some(notification))
     }
 
     async fn write_all(

@@ -2,7 +2,7 @@ use std::future::Future;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use tokio::time::{timeout, Instant};
+use tokio::time::{sleep, timeout, Instant};
 
 use crate::buffer::InputBuffer;
 use crate::iface::{IfaceSource, Interface, InterfaceContext, RxMessage};
@@ -214,7 +214,20 @@ impl<B> RnodeBearerKissInterface<B> {
                     set_error_status(&status, &format!("RNode bearer read failed: {error:?}"));
                     break;
                 }
-                Ok(Ok(notification)) => {
+                Ok(Ok(None)) => {
+                    tokio::select! {
+                        () = sleep(IO_POLL_INTERVAL) => {}
+                        () = context.cancel.cancelled() => {
+                            cancelled = true;
+                            break;
+                        }
+                        () = iface_stop.cancelled() => {
+                            cancelled = true;
+                            break;
+                        }
+                    }
+                }
+                Ok(Ok(Some(notification))) => {
                     if let Err(error) = monitor.accept_notification(&notification) {
                         set_error_status(&status, &error);
                         break;
