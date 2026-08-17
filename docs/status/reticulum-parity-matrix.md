@@ -265,6 +265,14 @@ placeholders:
   requests, and live daemon/RPC `rnode_status` refresh plus compact
   `rnstatus-rs` human summaries for probe and radio state, with an opt-in
   prepared-host smoke harness for serial, TCP/Wi-Fi, or BLE RNode devices.
+  The bearer-neutral `RnodeBearerBackend` and single-attempt
+  `RnodeBearerKissInterface` reuse that KISS/probe/configuration runtime for
+  platform-owned BLE and Bluetooth Classic streams. Focused
+  no-default-feature tests cover shared framing, notification preservation,
+  empty-read backoff, cancellation-safe and idempotent close, and contextual
+  close-failure status during aborted startup. Native Android callback/resource
+  behavior, physical RNode BLE/SPP lifecycle cycling, and long-running hardware
+  soak evidence remain `hardware-unverified` external mobile/HIL work.
 - Meshtastic tunnel support includes the reference `RETICULUM_TUNNEL_APP`
   framing/reassembly layer, modem-preset pacing, missing-chunk requests,
   node/destination route learning, an injectable bearer handle, daemon config

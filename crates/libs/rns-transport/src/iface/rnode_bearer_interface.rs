@@ -95,13 +95,25 @@ impl<B> RnodeBearerKissInterface<B> {
                 Ok(info) => info,
                 Err(error) => {
                     set_error_status(&status, &format!("RNode bearer startup failed: {error:?}"));
-                    let _ = runtime.close().await;
+                    close_after_aborted_startup(
+                        &mut runtime,
+                        &status,
+                        &label,
+                        "startup_failure",
+                    )
+                    .await;
                     iface_stop.cancel();
                     return;
                 }
             },
             () = context.cancel.cancelled() => {
-                let _ = runtime.close().await;
+                close_after_aborted_startup(
+                    &mut runtime,
+                    &status,
+                    &label,
+                    "startup_cancellation",
+                )
+                .await;
                 iface_stop.cancel();
                 return;
             }
@@ -350,3 +362,38 @@ fn set_error_status(status: &Arc<Mutex<serde_json::Value>>, error: &str) {
     object.insert("online".to_string(), serde_json::Value::Bool(false));
     object.insert("last_command_error".to_string(), serde_json::Value::String(error.to_string()));
 }
+
+async fn close_after_aborted_startup<B>(
+    runtime: &mut RnodeBearerKissRuntime<B>,
+    status: &Arc<Mutex<serde_json::Value>>,
+    label: &str,
+    phase: &str,
+) where
+    B: RnodeBearerBackend,
+{
+    if let Err(error) = runtime.close().await {
+        let message =
+            format!("RNode bearer close failed iface={label} phase={phase} error={error:?}");
+        log::warn!("{message}");
+        append_error_status(status, &message);
+    }
+}
+
+fn append_error_status(status: &Arc<Mutex<serde_json::Value>>, error: &str) {
+    let mut guard = status.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let previous = guard
+        .get("last_command_error")
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned);
+    let Some(object) = guard.as_object_mut() else {
+        return;
+    };
+    let combined = previous.map_or_else(|| error.to_string(), |value| format!("{value}; {error}"));
+    object.insert("online".to_string(), serde_json::Value::Bool(false));
+    object.insert("last_command_error".to_string(), serde_json::Value::String(combined));
+}
+
+#[cfg(test)]
+#[path = "rnode_bearer_interface_tests.rs"]
+mod tests;

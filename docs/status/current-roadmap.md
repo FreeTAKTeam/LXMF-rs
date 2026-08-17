@@ -529,6 +529,16 @@ Scoped release evidence is split as follows:
   display/NeoPixel controls, interference-avoidance control, Wi-Fi settings,
   config save/delete, firmware-update metadata, and ROM/EEPROM read/write/wipe
   requests.
+- A bearer-neutral `RnodeBearerBackend` and single-attempt
+  `RnodeBearerKissInterface` now let mobile platform owners provide ordered BLE
+  or Bluetooth Classic byte streams while this crate retains shared KISS
+  framing, RNode probe/configuration, MTU and flow-control enforcement, runtime
+  status, and teardown. Focused no-default-feature tests cover shared BLE/SPP
+  framing, notification preservation, empty-read backoff, cancellation-safe and
+  idempotent close, and close-failure reporting during aborted startup. Native
+  Android callback/resource lifecycle validation, physical RNode BLE/SPP
+  lifecycle cycling, and long-running hardware soak evidence remain external
+  mobile/HIL gaps and are not claimed by this software increment.
 - WeaveInterface has a transport-side WDCL/HDLC slice: a shared serial parent
   can answer discovery, learn endpoint events, register virtual endpoint
   children, receive endpoint packets, write direct endpoint commands, and expose
