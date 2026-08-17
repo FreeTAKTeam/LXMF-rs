@@ -79,6 +79,7 @@ pub use reticulum_path_store::{
     ReticulumPathTableRestoreSkipped,
 };
 
+#[cfg(feature = "storage")]
 pub mod test_bridge {
     use std::cell::RefCell;
     use std::collections::HashMap;

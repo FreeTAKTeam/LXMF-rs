@@ -27,7 +27,7 @@ rmp-serde.workspace = true
 rmpv.workspace = true
 rmp = "0.8.14"
 rand_core = { workspace = true, features = ["getrandom"] }
-rusqlite = { workspace = true }
+rusqlite = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_bytes = { workspace = true }
 serde_json.workspace = true
@@ -48,7 +48,8 @@ x25519-dalek = { workspace = true, features = ["static_secrets"] }
 rns-core.workspace = true
 
 [features]
-default = []
+default = ["storage"]
+storage = ["dep:rusqlite"]
 fernet-aes128 = []
 rnode-ble = ["dep:btleplug", "btleplug/serde", "dep:futures", "dep:uuid"]
 vrn76-kiss-ble = ["rnode-ble"]

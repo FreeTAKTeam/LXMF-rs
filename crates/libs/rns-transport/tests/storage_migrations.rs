@@ -1,3 +1,4 @@
+#![cfg(feature = "storage")]
 use rns_transport::storage::messages::MessagesStore;
 use rusqlite::Connection;
 

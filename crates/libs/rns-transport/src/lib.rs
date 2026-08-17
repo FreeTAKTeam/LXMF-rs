@@ -24,6 +24,7 @@ pub mod ratchets;
 pub mod receipt;
 pub mod resource;
 pub mod serde;
+#[cfg(feature = "storage")]
 pub mod storage;
 pub mod time;
 pub mod transport;
