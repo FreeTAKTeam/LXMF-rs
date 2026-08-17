@@ -33,8 +33,10 @@ use btleplug::platform::PeripheralId;
 #[cfg(feature = "rnode-ble")]
 use futures::{stream::Stream, StreamExt};
 
+use tokio::time::{timeout, Instant as TokioInstant};
+
 #[cfg(feature = "rnode-ble")]
-use tokio::time::{sleep, timeout, Instant as TokioInstant};
+use tokio::time::sleep;
 
 #[cfg(feature = "rnode-ble")]
 use uuid::Uuid;
@@ -61,10 +63,8 @@ pub const RNODE_BLE_READ_FRAME_TIMEOUT: Duration = Duration::from_millis(1_250);
 
 const DEFAULT_ATT_NOTIFICATION_PAYLOAD_BYTES: usize = 20;
 
-#[cfg(feature = "rnode-ble")]
 const RNODE_BLE_STARTUP_STABILIZATION_TIMEOUT: Duration = Duration::from_secs(2);
 
-#[cfg(feature = "rnode-ble")]
 const RNODE_BLE_STARTUP_NOTIFICATION_QUIET_TIMEOUT: Duration = Duration::from_millis(100);
 
 #[cfg(feature = "rnode-ble")]
@@ -161,6 +161,13 @@ pub trait RnodeBleBackend {
     async fn write(&mut self, write: RnodeBleWrite) -> Result<(), String>;
 
     async fn next_notification(&mut self) -> Result<Option<Vec<u8>>, String>;
+
+    /// Close the current connection and release native resources.
+    ///
+    /// Compatibility backends may rely on this no-op default for one release.
+    async fn close(&mut self) -> Result<(), String> {
+        Ok(())
+    }
 
     fn negotiated_mtu(&self) -> Option<u16> {
         None
@@ -616,6 +623,10 @@ impl RnodeBleBackend for NativeRnodeBleBackend {
             ));
         }
         Ok(Some(notification.value))
+    }
+
+    async fn close(&mut self) -> Result<(), String> {
+        self.cleanup().await
     }
 }
 

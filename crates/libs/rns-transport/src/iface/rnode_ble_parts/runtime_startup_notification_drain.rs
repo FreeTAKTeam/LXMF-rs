@@ -2,7 +2,6 @@ impl<B> RnodeBleKissRuntime<B>
 where
     B: RnodeBleBackend,
 {
-    #[cfg(feature = "rnode-ble")]
     async fn drain_startup_notifications(&mut self) -> Result<(), RnodeBleKissError> {
         let deadline = TokioInstant::now() + RNODE_BLE_STARTUP_STABILIZATION_TIMEOUT;
         let mut drained = 0_usize;

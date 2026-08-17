@@ -21,6 +21,10 @@ pub mod rnode_multi;
 
 pub mod rnode_ble;
 
+pub mod rnode_bearer;
+
+mod rnode_bearer_interface;
+
 pub mod rnode_spp;
 
 pub mod serial;

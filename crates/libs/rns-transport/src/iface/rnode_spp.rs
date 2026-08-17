@@ -67,6 +67,11 @@ pub trait RnodeSppBackend {
     async fn write(&mut self, payload: Vec<u8>) -> Result<(), String>;
 
     async fn read(&mut self) -> Result<Option<Vec<u8>>, String>;
+
+    /// Close the current RFCOMM stream. The default preserves existing backends for one release.
+    async fn close(&mut self) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -276,7 +281,14 @@ where
     }
 
     pub async fn shutdown(&mut self) -> Result<(), RnodeSppKissError> {
-        self.write_all(self.session.shutdown_frames(), "shutdown_write").await
+        let write_result = self.write_all(self.session.shutdown_frames(), "shutdown_write").await;
+        let close_result = self
+            .backend
+            .close()
+            .await
+            .map_err(|message| RnodeSppKissError::Backend { operation: "close", message });
+        self.connected = false;
+        write_result.and(close_result)
     }
 
     pub async fn poll_read(&mut self) -> Result<Vec<Vec<u8>>, RnodeSppKissError> {

@@ -46,7 +46,6 @@ where
         self.backend.subscribe_notifications().await.map_err(|message| {
             RnodeBleKissError::Backend { operation: "subscribe_notifications", message }
         })?;
-        #[cfg(feature = "rnode-ble")]
         self.drain_startup_notifications().await?;
         let writes = self.session.startup_frames();
         self.write_all(writes, "startup_write").await?;
@@ -54,7 +53,6 @@ where
         Ok(())
     }
 
-    #[cfg(feature = "rnode-ble")]
     pub async fn send_deferred_frames(&mut self) -> Result<(), RnodeBleKissError> {
         let writes = self.session.deferred_frames();
         self.write_all(writes, "deferred_frames_write").await
@@ -93,7 +91,22 @@ where
         prefix_frames: Vec<Vec<u8>>,
     ) -> Result<(), RnodeBleKissError> {
         let writes = self.session.shutdown_frames_with_prefix(prefix_frames);
-        self.write_all(writes, "shutdown_write").await
+        let write_result = self.write_all(writes, "shutdown_write").await;
+        let close_result = self.backend.close().await.map_err(|message| RnodeBleKissError::Backend {
+            operation: "close",
+            message,
+        });
+        self.connected = false;
+        write_result.and(close_result)
+    }
+
+    pub async fn close(&mut self) -> Result<(), RnodeBleKissError> {
+        let result = self.backend.close().await.map_err(|message| RnodeBleKissError::Backend {
+            operation: "close",
+            message,
+        });
+        self.connected = false;
+        result
     }
 
     pub async fn poll_notification(&mut self) -> Result<Vec<Vec<u8>>, RnodeBleKissError> {
