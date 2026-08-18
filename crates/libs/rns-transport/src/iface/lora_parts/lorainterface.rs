@@ -73,6 +73,7 @@ pub struct LoraInterface {
     hardware_errors: Vec<RNodeHardwareError>,
     last_command_error: Option<String>,
     online: bool,
+    radio_state_response_seen: bool,
     flow_control: bool,
     id_beacon: Option<KissIdBeaconConfig>,
     reconnect_backoff: Duration,
@@ -95,6 +96,7 @@ impl LoraInterface {
             hardware_errors: Vec::new(),
             last_command_error: None,
             online: false,
+            radio_state_response_seen: false,
             flow_control: false,
             id_beacon: None,
             reconnect_backoff: Duration::from_millis(500),
@@ -117,6 +119,7 @@ impl LoraInterface {
             hardware_errors: Vec::new(),
             last_command_error: None,
             online: false,
+            radio_state_response_seen: false,
             flow_control: false,
             id_beacon: None,
             reconnect_backoff: Duration::from_millis(500),
@@ -218,9 +221,13 @@ impl LoraInterface {
         self.hardware_errors.clear();
         self.last_command_error = None;
         self.online = false;
+        self.radio_state_response_seen = false;
     }
 
     pub fn record_command_response(&mut self, command: u8, payload: &[u8]) -> Result<bool, String> {
+        if command == CMD_RADIO_STATE {
+            self.radio_state_response_seen = true;
+        }
         if self.probe_status.accept_command(command, payload)? {
             return Ok(true);
         }
@@ -282,7 +289,7 @@ impl LoraInterface {
     /// requirement, hardware error, and explicit radio-state mismatch. It is
     /// only usable when the radio-state response is absent.
     pub fn accept_missing_radio_state_compatibility(&mut self) -> Result<bool, String> {
-        if self.radio_status.radio_state.is_some() {
+        if self.radio_status.radio_state.is_some() || self.radio_state_response_seen {
             return Ok(false);
         }
         if let Some(err) = self.last_command_error() {

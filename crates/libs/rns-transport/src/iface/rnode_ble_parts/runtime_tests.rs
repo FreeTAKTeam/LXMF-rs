@@ -1,7 +1,7 @@
 use crate::iface::lora::{
     CMD_BANDWIDTH, CMD_BLINK, CMD_CR, CMD_DETECT, CMD_FB_EXT, CMD_FREQUENCY, CMD_FW_VERSION,
     CMD_LEAVE, CMD_MCU, CMD_PLATFORM, CMD_RADIO_STATE, CMD_SF, CMD_TXPOWER, DETECT_RESP,
-    PLATFORM_ESP32, RADIO_STATE_ASK, RADIO_STATE_OFF,
+    PLATFORM_ESP32, RADIO_STATE_ASK, RADIO_STATE_OFF, RADIO_STATE_ON,
 };
 use crate::kiss::decode_frames;
 
@@ -109,6 +109,7 @@ fn payload_writes_wait_for_validated_radio_startup() {
     let mut monitor = RnodeBleCommandMonitor::new(config, Duration::ZERO);
 
     assert!(!rnode_ble_payload_writes_enabled(true, Some(&monitor)));
+    assert!(!monitor.startup_validated());
     monitor
         .accept_notification(&startup_notification_without_radio_state(config))
         .expect("accept startup responses");
@@ -116,9 +117,60 @@ fn payload_writes_wait_for_validated_radio_startup() {
         .validate_startup_deadline()
         .expect("compatible startup should validate");
 
+    assert!(monitor.startup_validated());
     assert!(rnode_ble_payload_writes_enabled(true, Some(&monitor)));
     assert!(rnode_ble_payload_writes_enabled(true, None));
     assert!(!rnode_ble_payload_writes_enabled(false, None));
+}
+
+#[test]
+fn payload_writes_wait_when_radio_state_arrives_before_startup_validation() {
+    let config = LoraConfig::us915_default();
+    let mut monitor = RnodeBleCommandMonitor::new(config, Duration::ZERO);
+    monitor
+        .accept_notification(&RnodeBleNotification {
+            commands: vec![(CMD_RADIO_STATE, vec![RADIO_STATE_ON])],
+            packets: Vec::new(),
+        })
+        .expect("accept radio-state response");
+
+    assert!(monitor.online());
+    assert!(!monitor.startup_validated());
+    assert!(!rnode_ble_payload_writes_enabled(true, Some(&monitor)));
+
+    let mut mismatched = startup_notification_without_radio_state(config);
+    let (_, bandwidth) = mismatched
+        .commands
+        .iter_mut()
+        .find(|(command, _)| *command == CMD_BANDWIDTH)
+        .expect("bandwidth response");
+    *bandwidth = (config.bandwidth_hz + 1).to_be_bytes().to_vec();
+    monitor.accept_notification(&mismatched).expect("accept startup responses");
+
+    let error = monitor
+        .validate_startup_deadline()
+        .expect_err("mismatched startup response must remain fatal");
+    assert!(error.contains("rnode bandwidth mismatch"));
+    assert!(!monitor.startup_validated());
+    assert!(!rnode_ble_payload_writes_enabled(true, Some(&monitor)));
+}
+
+#[test]
+fn startup_compatibility_rejects_malformed_radio_state_response() {
+    let config = LoraConfig::us915_default();
+    let mut monitor = RnodeBleCommandMonitor::new(config, Duration::ZERO);
+    let mut notification = startup_notification_without_radio_state(config);
+    notification.commands.push((CMD_RADIO_STATE, Vec::new()));
+    monitor
+        .accept_notification(&notification)
+        .expect("malformed radio-state response should not abort notification handling");
+
+    let error = monitor
+        .validate_startup_deadline()
+        .expect_err("malformed radio-state response must not use compatibility mode");
+    assert!(error.contains("rnode radio state response is missing"));
+    assert!(!monitor.startup_validated());
+    assert!(!rnode_ble_payload_writes_enabled(true, Some(&monitor)));
 }
 
 #[tokio::test]

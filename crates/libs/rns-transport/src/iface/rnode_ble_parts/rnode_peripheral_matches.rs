@@ -646,5 +646,6 @@ impl Interface for NativeRnodeBleKissInterface {
 pub struct RnodeBleCommandMonitor {
     lora: LoraInterface,
     startup_deadline: Option<Instant>,
+    startup_validated: bool,
     startup_compatibility_warning: Option<String>,
 }

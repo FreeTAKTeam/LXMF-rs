@@ -6,6 +6,7 @@ impl RnodeBleCommandMonitor {
         Self {
             lora,
             startup_deadline: Some(Instant::now() + startup_response_timeout),
+            startup_validated: false,
             startup_compatibility_warning: None,
         }
     }
@@ -72,6 +73,11 @@ impl RnodeBleCommandMonitor {
     }
 
     #[must_use]
+    pub fn startup_validated(&self) -> bool {
+        self.startup_validated
+    }
+
+    #[must_use]
     pub fn online(&self) -> bool {
         self.lora.online()
     }
@@ -110,7 +116,7 @@ impl RnodeBleCommandMonitor {
             return Ok(());
         }
         self.startup_deadline = None;
-        match self.lora.validate_startup_responses() {
+        let validation = match self.lora.validate_startup_responses() {
             Ok(()) => Ok(()),
             Err(error) => match self.lora.accept_missing_radio_state_compatibility() {
                 Ok(true) => {
@@ -121,7 +127,11 @@ impl RnodeBleCommandMonitor {
                 }
                 Ok(false) | Err(_) => Err(error),
             },
+        };
+        if validation.is_ok() {
+            self.startup_validated = true;
         }
+        validation
     }
 }
 
@@ -129,7 +139,7 @@ pub(crate) fn rnode_ble_payload_writes_enabled(
     radio_config_sent: bool,
     command_monitor: Option<&RnodeBleCommandMonitor>,
 ) -> bool {
-    radio_config_sent && command_monitor.is_none_or(RnodeBleCommandMonitor::online)
+    radio_config_sent && command_monitor.is_none_or(RnodeBleCommandMonitor::startup_validated)
 }
 
 #[must_use]
