@@ -1,6 +1,7 @@
 use crate::iface::lora::{
-    CMD_BLINK, CMD_DETECT, CMD_FB_EXT, CMD_FW_VERSION, CMD_LEAVE, CMD_MCU, CMD_PLATFORM,
-    CMD_RADIO_STATE, DETECT_RESP, PLATFORM_ESP32, RADIO_STATE_ASK, RADIO_STATE_OFF,
+    CMD_BANDWIDTH, CMD_BLINK, CMD_CR, CMD_DETECT, CMD_FB_EXT, CMD_FREQUENCY, CMD_FW_VERSION,
+    CMD_LEAVE, CMD_MCU, CMD_PLATFORM, CMD_RADIO_STATE, CMD_SF, CMD_TXPOWER, DETECT_RESP,
+    PLATFORM_ESP32, RADIO_STATE_ASK, RADIO_STATE_OFF,
 };
 use crate::kiss::decode_frames;
 
@@ -34,6 +35,92 @@ impl RnodeBleBackend for TestBackend {
     }
 }
 
+fn startup_notification_without_radio_state(config: LoraConfig) -> RnodeBleNotification {
+    RnodeBleNotification {
+        commands: vec![
+            (CMD_DETECT, vec![DETECT_RESP]),
+            (CMD_FW_VERSION, vec![1, 83]),
+            (CMD_PLATFORM, vec![PLATFORM_ESP32]),
+            (CMD_MCU, vec![1]),
+            (
+                CMD_FREQUENCY,
+                u32::try_from(config.frequency_hz)
+                    .expect("test frequency fits RNode response")
+                    .to_be_bytes()
+                    .to_vec(),
+            ),
+            (CMD_BANDWIDTH, config.bandwidth_hz.to_be_bytes().to_vec()),
+            (CMD_TXPOWER, config.tx_power_dbm.to_be_bytes().to_vec()),
+            (CMD_SF, vec![config.spreading_factor]),
+            (CMD_CR, vec![config.coding_rate]),
+        ],
+        packets: Vec::new(),
+    }
+}
+
+#[test]
+fn startup_accepts_only_missing_radio_state_for_compatible_firmware() {
+    let config = LoraConfig::us915_default();
+    let mut monitor = RnodeBleCommandMonitor::new(config, Duration::ZERO);
+    monitor
+        .accept_notification(&startup_notification_without_radio_state(config))
+        .expect("accept startup responses");
+
+    monitor
+        .validate_startup_deadline()
+        .expect("missing radio-state echo should use compatibility mode");
+
+    assert!(monitor.online());
+    let status = monitor.runtime_status_json("ble://legacy-rnode");
+    assert_eq!(status["last_command_error"], serde_json::Value::Null);
+    assert!(status["startup_compatibility_warning"]
+        .as_str()
+        .is_some_and(|warning| warning.contains("omitted the startup radio-state response")));
+}
+
+#[test]
+fn startup_compatibility_rejects_other_radio_mismatches() {
+    let config = LoraConfig::us915_default();
+    let mut notification = startup_notification_without_radio_state(config);
+    let (_, bandwidth) = notification
+        .commands
+        .iter_mut()
+        .find(|(command, _)| *command == CMD_BANDWIDTH)
+        .expect("bandwidth response");
+    *bandwidth = (config.bandwidth_hz + 1).to_be_bytes().to_vec();
+    let mut monitor = RnodeBleCommandMonitor::new(config, Duration::ZERO);
+    monitor.accept_notification(&notification).expect("accept startup responses");
+
+    let error = monitor
+        .validate_startup_deadline()
+        .expect_err("bandwidth mismatch must remain fatal");
+
+    assert!(error.contains("rnode bandwidth mismatch"));
+    assert!(!monitor.online());
+    assert_eq!(
+        monitor.runtime_status_json("ble://wrong-rnode")["startup_compatibility_warning"],
+        serde_json::Value::Null
+    );
+}
+
+#[test]
+fn payload_writes_wait_for_validated_radio_startup() {
+    let config = LoraConfig::us915_default();
+    let mut monitor = RnodeBleCommandMonitor::new(config, Duration::ZERO);
+
+    assert!(!rnode_ble_payload_writes_enabled(true, Some(&monitor)));
+    monitor
+        .accept_notification(&startup_notification_without_radio_state(config))
+        .expect("accept startup responses");
+    monitor
+        .validate_startup_deadline()
+        .expect("compatible startup should validate");
+
+    assert!(rnode_ble_payload_writes_enabled(true, Some(&monitor)));
+    assert!(rnode_ble_payload_writes_enabled(true, None));
+    assert!(!rnode_ble_payload_writes_enabled(false, None));
+}
+
 #[tokio::test]
 async fn startup_caps_max_write_len_to_negotiated_att_payload() {
     let backend =
@@ -51,6 +138,28 @@ async fn startup_caps_max_write_len_to_negotiated_att_payload() {
         runtime.session.config.max_write_len,
         20,
         "startup should clamp writes to the negotiated ATT payload length"
+    );
+}
+
+#[tokio::test]
+async fn startup_preserves_a_conservative_configured_write_cap() {
+    let backend = TestBackend {
+        negotiated_mtu: Some(517),
+        notifications: VecDeque::new(),
+        writes: Vec::new(),
+    };
+    let config = RnodeBleKissConfig {
+        mtu: 508,
+        max_write_len: 20,
+        ..RnodeBleKissConfig::default()
+    };
+    let mut runtime = RnodeBleKissRuntime::new(backend, config);
+
+    runtime.startup().await.expect("startup should succeed");
+
+    assert_eq!(
+        runtime.session.config.max_write_len, 20,
+        "a large negotiated ATT payload must not override the configured firmware-safe write cap"
     );
 }
 

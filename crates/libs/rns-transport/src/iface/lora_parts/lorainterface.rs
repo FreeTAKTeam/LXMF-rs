@@ -275,6 +275,27 @@ impl LoraInterface {
         self.validate_radio_status()
     }
 
+    /// Accept older RNode firmware that applies the requested radio state but
+    /// does not echo `CMD_RADIO_STATE` during startup.
+    ///
+    /// This remains fail-closed for every reported radio parameter, probe
+    /// requirement, hardware error, and explicit radio-state mismatch. It is
+    /// only usable when the radio-state response is absent.
+    pub fn accept_missing_radio_state_compatibility(&mut self) -> Result<bool, String> {
+        if self.radio_status.radio_state.is_some() {
+            return Ok(false);
+        }
+        if let Some(err) = self.last_command_error() {
+            return Err(err.to_string());
+        }
+        self.validate_probe_status()?;
+        let mut compatible_status = self.radio_status.clone();
+        compatible_status.radio_state = Some(RADIO_STATE_ON);
+        compatible_status.validate_config(self.config, RADIO_STATE_ON)?;
+        self.online = true;
+        Ok(true)
+    }
+
     pub fn reported_bitrate_bps(&self) -> Option<f64> {
         self.radio_status.reported_bitrate_bps()
     }

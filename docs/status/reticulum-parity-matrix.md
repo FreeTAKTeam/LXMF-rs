@@ -558,7 +558,11 @@ bearer, firmware, platform, MCU identity, and capture provenance fields.
 Display-capable BLE RNode shutdown now disables the external framebuffer before
 radio-off/leave frames. Android configured RNode BLE reconnect now excludes
 the failed configured peripheral from fallback scan matching, with shared alias
-matching helpers and stable service-UUID fallback log context. Serial/TCP RNode
+matching helpers and stable service-UUID fallback log context. Bearer-neutral
+RNode startup preserves platform write caps after ATT MTU negotiation, blocks
+payload writes until radio validation completes, and accepts older firmware
+that omits only the radio-state echo after all other probe and radio parameters
+match; focused regressions keep mismatches fail-closed. Serial/TCP RNode
 streams now expose a transport-local management dispatch handle that writes
 pre-encoded KISS command frames through the live KISS runtime; feature-gated
 BLE RNode streams expose the same management dispatch through the Nordic UART

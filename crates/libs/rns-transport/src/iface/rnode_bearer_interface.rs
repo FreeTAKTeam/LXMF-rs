@@ -13,7 +13,8 @@ use super::rnode_bearer::{
     RnodeBearerBackend, RnodeBearerInfo, RnodeBearerKind, RnodeBearerKissRuntime,
 };
 use super::rnode_ble::{
-    rnode_ble_initial_runtime_status_json, RnodeBleCommandMonitor, RnodeBleKissConfig,
+    rnode_ble_initial_runtime_status_json, rnode_ble_payload_writes_enabled,
+    RnodeBleCommandMonitor, RnodeBleKissConfig,
 };
 
 const IO_POLL_INTERVAL: Duration = Duration::from_millis(100);
@@ -150,7 +151,7 @@ impl<B> RnodeBearerKissInterface<B> {
                 }
             }
 
-            if radio_config_sent {
+            if rnode_ble_payload_writes_enabled(radio_config_sent, Some(&monitor)) {
                 while let Ok(message) = tx_channel.try_recv() {
                     let raw = match message.packet.to_bytes() {
                         Ok(raw) => raw,
@@ -292,6 +293,7 @@ impl<B> RnodeBearerKissInterface<B> {
                 }
             }
             if let Err(error) = monitor.validate_startup_deadline() {
+                log::warn!("RNode startup response validation failed iface={label} error={error}");
                 set_error_status(&status, &error);
                 break;
             }

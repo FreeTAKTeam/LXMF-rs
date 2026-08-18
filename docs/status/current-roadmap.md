@@ -533,9 +533,14 @@ Scoped release evidence is split as follows:
   `RnodeBearerKissInterface` now let mobile platform owners provide ordered BLE
   or Bluetooth Classic byte streams while this crate retains shared KISS
   framing, RNode probe/configuration, MTU and flow-control enforcement, runtime
-  status, and teardown. Focused no-default-feature tests cover shared BLE/SPP
+  status, and teardown. Platform backends can retain a conservative write cap
+  after ATT MTU negotiation, payload writes wait until radio startup is
+  validated, and older firmware that omits only the radio-state echo can enter
+  an explicit compatibility mode after every other probe and radio parameter
+  matches. Focused no-default-feature tests cover shared BLE/SPP
   framing, notification preservation, empty-read backoff, cancellation-safe and
-  idempotent close, and close-failure reporting during aborted startup. Native
+  idempotent close, close-failure reporting during aborted startup, the
+  firmware compatibility boundary, and conservative BLE chunking. Native
   Android callback/resource lifecycle validation, physical RNode BLE/SPP
   lifecycle cycling, and long-running hardware soak evidence remain external
   mobile/HIL gaps and are not claimed by this software increment.

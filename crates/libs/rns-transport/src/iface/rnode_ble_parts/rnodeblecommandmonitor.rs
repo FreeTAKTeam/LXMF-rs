@@ -3,7 +3,11 @@ impl RnodeBleCommandMonitor {
     pub fn new(config: LoraConfig, startup_response_timeout: Duration) -> Self {
         let mut lora = LoraInterface::new_tcp("ble://rnode", config);
         lora.begin_startup_response_collection();
-        Self { lora, startup_deadline: Some(Instant::now() + startup_response_timeout) }
+        Self {
+            lora,
+            startup_deadline: Some(Instant::now() + startup_response_timeout),
+            startup_compatibility_warning: None,
+        }
     }
 
     pub fn accept_notification(
@@ -84,7 +88,18 @@ impl RnodeBleCommandMonitor {
 
     #[must_use]
     pub fn runtime_status_json(&self, endpoint: &str) -> serde_json::Value {
-        rnode_ble_runtime_status_json(&self.lora, endpoint)
+        let mut value = rnode_ble_runtime_status_json(&self.lora, endpoint);
+        if let Some(object) = value.as_object_mut() {
+            object.insert(
+                "startup_compatibility_warning".to_string(),
+                self.startup_compatibility_warning
+                    .as_ref()
+                    .map_or(serde_json::Value::Null, |warning| {
+                        serde_json::Value::String(warning.clone())
+                    }),
+            );
+        }
+        value
     }
 
     pub fn validate_startup_deadline(&mut self) -> Result<(), String> {
@@ -95,8 +110,26 @@ impl RnodeBleCommandMonitor {
             return Ok(());
         }
         self.startup_deadline = None;
-        self.lora.validate_startup_responses()
+        match self.lora.validate_startup_responses() {
+            Ok(()) => Ok(()),
+            Err(error) => match self.lora.accept_missing_radio_state_compatibility() {
+                Ok(true) => {
+                    let warning = "RNode omitted the startup radio-state response; accepted after all other probe and radio parameters validated".to_string();
+                    log::warn!("{warning}");
+                    self.startup_compatibility_warning = Some(warning);
+                    Ok(())
+                }
+                Ok(false) | Err(_) => Err(error),
+            },
+        }
     }
+}
+
+pub(crate) fn rnode_ble_payload_writes_enabled(
+    radio_config_sent: bool,
+    command_monitor: Option<&RnodeBleCommandMonitor>,
+) -> bool {
+    radio_config_sent && command_monitor.is_none_or(RnodeBleCommandMonitor::online)
 }
 
 #[must_use]
@@ -119,6 +152,10 @@ pub fn rnode_ble_runtime_status_json(
         object.insert("endpoint".to_string(), serde_json::Value::String(endpoint.to_string()));
         object.insert("bearer".to_string(), serde_json::Value::String("ble".to_string()));
         object.insert("baud_rate".to_string(), serde_json::Value::Null);
+        object.insert(
+            "startup_compatibility_warning".to_string(),
+            serde_json::Value::Null,
+        );
     }
     value
 }

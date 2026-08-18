@@ -41,7 +41,12 @@ where
             .map_err(|message| RnodeBleKissError::Backend { operation: "connect", message })?;
         if let Some(mtu) = self.backend.negotiated_mtu() {
             let att_payload = (mtu as usize).saturating_sub(3);
-            self.session.config.max_write_len = att_payload.min(self.session.config.mtu);
+            self.session.config.max_write_len = self
+                .session
+                .config
+                .max_write_len
+                .min(att_payload)
+                .min(self.session.config.mtu);
         }
         self.backend.subscribe_notifications().await.map_err(|message| {
             RnodeBleKissError::Backend { operation: "subscribe_notifications", message }
@@ -413,7 +418,7 @@ impl NativeRnodeBleKissInterface {
                     break;
                 }
 
-                if radio_config_sent {
+                if rnode_ble_payload_writes_enabled(radio_config_sent, command_monitor.as_ref()) {
                     while let Ok(message) = tx_channel.try_recv() {
                         let raw = match message.packet.to_bytes() {
                             Ok(raw) => raw,
@@ -641,4 +646,5 @@ impl Interface for NativeRnodeBleKissInterface {
 pub struct RnodeBleCommandMonitor {
     lora: LoraInterface,
     startup_deadline: Option<Instant>,
+    startup_compatibility_warning: Option<String>,
 }
