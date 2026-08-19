@@ -124,6 +124,18 @@ fn payload_writes_wait_for_validated_radio_startup() {
 }
 
 #[test]
+fn degraded_startup_enables_payload_writes_after_fallback() {
+    let config = LoraConfig::us915_default();
+    let mut monitor = RnodeBleCommandMonitor::new(config, Duration::from_secs(5));
+
+    monitor.accept_degraded_startup();
+
+    assert!(!monitor.startup_validated());
+    assert!(rnode_ble_payload_writes_enabled(true, Some(&monitor)));
+    assert!(!rnode_ble_payload_writes_enabled(false, Some(&monitor)));
+}
+
+#[test]
 fn payload_writes_wait_when_radio_state_arrives_before_startup_validation() {
     let config = LoraConfig::us915_default();
     let mut monitor = RnodeBleCommandMonitor::new(config, Duration::ZERO);

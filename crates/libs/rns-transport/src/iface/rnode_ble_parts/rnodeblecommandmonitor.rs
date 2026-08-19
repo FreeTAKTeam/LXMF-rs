@@ -7,6 +7,7 @@ impl RnodeBleCommandMonitor {
             lora,
             startup_deadline: Some(Instant::now() + startup_response_timeout),
             startup_validated: false,
+            startup_payload_writes_enabled: false,
             startup_compatibility_warning: None,
         }
     }
@@ -70,11 +71,17 @@ impl RnodeBleCommandMonitor {
 
     pub fn accept_degraded_startup(&mut self) {
         self.startup_deadline = None;
+        self.startup_payload_writes_enabled = true;
     }
 
     #[must_use]
     pub fn startup_validated(&self) -> bool {
         self.startup_validated
+    }
+
+    #[must_use]
+    fn startup_payload_writes_enabled(&self) -> bool {
+        self.startup_payload_writes_enabled
     }
 
     #[must_use]
@@ -130,6 +137,7 @@ impl RnodeBleCommandMonitor {
         };
         if validation.is_ok() {
             self.startup_validated = true;
+            self.startup_payload_writes_enabled = true;
         }
         validation
     }
@@ -139,7 +147,8 @@ pub(crate) fn rnode_ble_payload_writes_enabled(
     radio_config_sent: bool,
     command_monitor: Option<&RnodeBleCommandMonitor>,
 ) -> bool {
-    radio_config_sent && command_monitor.is_none_or(RnodeBleCommandMonitor::startup_validated)
+    radio_config_sent
+        && command_monitor.is_none_or(RnodeBleCommandMonitor::startup_payload_writes_enabled)
 }
 
 #[must_use]
