@@ -104,9 +104,7 @@
     }
 
     // Outbound-side counterpart to `inbound_link_request_clamps_peer_mtu_
-    // to_supported_packet_capacity` above, which only ever exercised the
-    // receiving half — `Link::request()` never wrote the signalling
-    // suffix at all before this.
+    // to_supported_packet_capacity` above.
     fn decode_signalling(request: &Packet) -> (u32, u32) {
         let data = request.data.as_slice();
         let signalling = &data[data.len() - LINK_MTU_SIZE..];
@@ -125,14 +123,24 @@
     }
 
     #[test]
-    fn outbound_link_request_signals_the_compiled_in_mode_and_a_conservative_mtu() {
+    fn outbound_link_request_signals_the_compiled_in_mode_and_legacy_mtu_fallback() {
         let mut link = test_link();
         let request = link.request();
 
         assert_eq!(request.data.len(), PUBLIC_KEY_LENGTH * 2 + LINK_MTU_SIZE);
         let (mode_bits, mtu) = decode_signalling(&request);
         assert_eq!(mode_bits, LinkMode::DEFAULT.mode_bits());
-        assert_eq!(mtu, RETICULUM_COMPAT_MTU);
+        assert_eq!(mtu, LEGACY_RETICULUM_MTU as u32);
+    }
+
+    #[test]
+    fn outbound_link_request_preserves_explicit_constrained_interface_mtu() {
+        let mut link = test_link();
+        let request = link.request_with_mtu(384);
+
+        let (mode_bits, mtu) = decode_signalling(&request);
+        assert_eq!(mode_bits, LinkMode::DEFAULT.mode_bits());
+        assert_eq!(mtu, 384);
     }
 
     #[test]

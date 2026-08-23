@@ -16,9 +16,9 @@ pub(crate) fn link_signalled_mtu(signalling: Option<[u8; LINK_MTU_SIZE]>) -> usi
     };
     let value = ((bytes[0] as u32) << 16) | ((bytes[1] as u32) << 8) | bytes[2] as u32;
     let mtu = (value & LINK_MTU_MASK) as usize;
-    // A peer that signals something absurdly small would otherwise make
-    // every derived size underflow; the legacy MTU is the floor.
-    mtu.max(LEGACY_RETICULUM_MTU)
+    // Python treats a zero signalling value as the legacy MTU fallback, while a non-zero
+    // hardware MTU below 500 remains meaningful for constrained interfaces.
+    if mtu == 0 { LEGACY_RETICULUM_MTU } else { mtu }
 }
 
 fn clamp_link_signalling(bytes: [u8; LINK_MTU_SIZE]) -> [u8; LINK_MTU_SIZE] {

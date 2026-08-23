@@ -9,7 +9,7 @@ fn rns_1_5_channel_packet_uses_negotiated_link_mdu_above_legacy_packet_mdu() {
     };
     let (tx, _) = tokio::sync::broadcast::channel(8);
     let mut outbound = Link::new(destination, tx.clone());
-    let request = outbound.request();
+    let request = outbound.request_with_mtu(1024);
     let mut inbound = Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
         .expect("link request should parse");
     let iface = AddressHash::new_from_rand(OsRng);

@@ -66,23 +66,22 @@ impl Link {
         // (`LINK_MTU_SIZE`/`clamp_link_signalling`) but this method never
         // wrote at all — every outbound request signalled cipher mode `0`
         // by accident of the field being entirely absent, not by choice.
-        // `LinkMode::DEFAULT` is always the one mode this build can
-        // actually use (see its own doc comment for why there's no
-        // fallback to try instead), and `RETICULUM_COMPAT_MTU` is the same
-        // conservative ceiling this crate already clamps an *incoming*
-        // signalled value to — advertising a larger value here was
-        // confirmed live to make single-packet Request/Response traffic
-        // fail against at least one real destination, even after the Link
-        // itself activates successfully.
-        let mtu_value =
-            (RETICULUM_COMPAT_MTU & LINK_MTU_MASK) | ((LinkMode::DEFAULT.mode_bits() << 21) & LINK_MODE_MASK);
+        // `LinkMode::DEFAULT` is always the one mode this build can actually use. Match RNS 1.5:
+        // signal the known next-hop hardware MTU when supplied, otherwise fall back to the
+        // original Reticulum MTU instead of advertising an unverified high-capacity path.
+        let advertised_mtu = max_mtu
+            .and_then(|mtu| u32::try_from(mtu).ok())
+            .unwrap_or(LEGACY_RETICULUM_MTU as u32)
+            .min(RETICULUM_COMPAT_MTU);
+        let mtu_value = (advertised_mtu & LINK_MTU_MASK)
+            | ((LinkMode::DEFAULT.mode_bits() << 21) & LINK_MODE_MASK);
         packet_data.safe_write(&[
             ((mtu_value >> 16) & 0xFF) as u8,
             ((mtu_value >> 8) & 0xFF) as u8,
             (mtu_value & 0xFF) as u8,
         ]);
 
-        let mut packet = Packet {
+        let packet = Packet {
             header: Header { packet_type: PacketType::LinkRequest, ..Default::default() },
             ifac: None,
             destination: self.destination.address_hash,
@@ -90,10 +89,6 @@ impl Link {
             context: PacketContext::None,
             data: packet_data,
         };
-        if let Some(max_mtu) = max_mtu {
-            clamp_link_request_signalling_mtu(&mut packet, max_mtu);
-        }
-
         self.status = LinkStatus::Pending;
         self.id = LinkId::from(&packet);
         self.derived_key = DerivedKey::new_empty();
