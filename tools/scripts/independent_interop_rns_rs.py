@@ -92,7 +92,7 @@ def run_two_node(
             lambda: request_path_rust_to_rns(rust, rns_destination),
             failure_owner="rns-rs",
             classification="peer_divergence",
-            normative_reference="Python RNS 1.4.2 answers the same LXMF-rs path request",
+            normative_reference="Python RNS 1.5.0 answers the same LXMF-rs path request",
         )
         evidence.run(
             "path request and establishment",
@@ -162,7 +162,7 @@ def run_two_node(
             ),
             failure_owner="rns-rs",
             classification="peer_divergence",
-            normative_reference="Python RNS 1.4.2 activates the same LXMF-rs-initiated Link",
+            normative_reference="Python RNS 1.5.0 activates the same LXMF-rs-initiated Link",
         )
         if rust_link:
             close_bidirectional_link(evidence, rust, rns, rust_link["link_id"])
@@ -526,7 +526,7 @@ def run_link_payload_scenarios(
             failure_owner="rns-rs",
             classification="peer_divergence",
             normative_reference=(
-                "Python RNS 1.4.2 proves the same bidirectional LXMF-rs Channel exchange"
+                "Python RNS 1.5.0 proves the same bidirectional LXMF-rs Channel exchange"
             ),
         )
         is not None

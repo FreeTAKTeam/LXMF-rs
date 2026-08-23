@@ -95,7 +95,16 @@ pub(in crate::transport) async fn handle_check_links<'a>(
             LinkStatus::Pending => {
                 if link.elapsed() > INTERVAL_OUTPUT_LINK_REPEAT {
                     log::warn!("tp({}): repeat link request {}", handler.config.name, link.id());
-                    pending_packets.push(link.request());
+                    let destination = link.destination().address_hash;
+                    let next_hop_mtu = match handler.path_table.next_hop_iface(&destination) {
+                        Some(iface) => handler.iface_manager.lock().await.mtu(&iface),
+                        None => None,
+                    };
+                    let packet = match next_hop_mtu {
+                        Some(mtu) => link.request_with_mtu(mtu),
+                        None => link.request(),
+                    };
+                    pending_packets.push(packet);
                 }
             }
             LinkStatus::Handshake => {}

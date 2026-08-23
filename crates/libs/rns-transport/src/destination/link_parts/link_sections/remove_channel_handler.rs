@@ -34,6 +34,14 @@ impl Link {
         if self.channel_pending.len() >= self.channel_send_window() {
             return Err(ChannelError::LinkNotReady);
         }
+        const CHANNEL_ENVELOPE_LENGTH: usize = 6;
+        let max_payload = self
+            .link_mdu()
+            .saturating_sub(CHANNEL_ENVELOPE_LENGTH)
+            .min(u16::MAX as usize);
+        if payload.len() > max_payload {
+            return Err(ChannelError::PayloadTooLarge);
+        }
 
         let sequence = self.next_channel_sequence;
         self.next_channel_sequence = self.next_channel_sequence.wrapping_add(1);

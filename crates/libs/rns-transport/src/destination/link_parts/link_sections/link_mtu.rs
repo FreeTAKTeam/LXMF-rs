@@ -13,4 +13,19 @@ impl Link {
     pub fn link_mtu(&self) -> usize {
         link_signalled_mtu(self.signalling)
     }
+
+    /// Maximum cleartext carried by one encrypted Link packet.
+    pub fn link_mdu(&self) -> usize {
+        const IFAC_MIN_SIZE: usize = 1;
+        const HEADER_MIN_SIZE: usize = 2 + 1 + ADDRESS_HASH_SIZE;
+        const TOKEN_OVERHEAD: usize = 48;
+        const AES_BLOCK_SIZE: usize = 16;
+
+        let cleartext_room = self
+            .link_mtu()
+            .saturating_sub(IFAC_MIN_SIZE + HEADER_MIN_SIZE + TOKEN_OVERHEAD);
+        (cleartext_room / AES_BLOCK_SIZE)
+            .saturating_mul(AES_BLOCK_SIZE)
+            .saturating_sub(1)
+    }
 }

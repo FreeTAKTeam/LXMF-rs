@@ -178,7 +178,7 @@ impl<O: ChannelOutlet> Channel<O> {
     }
 
     pub fn send(&mut self, msg_type: u16, payload: Vec<u8>) -> Result<u16, ChannelError> {
-        if payload.len() + 6 > self.outlet.mdu() {
+        if payload.len() > u16::MAX as usize || payload.len() + 6 > self.outlet.mdu() {
             return Err(ChannelError::PayloadTooLarge);
         }
 
@@ -292,6 +292,39 @@ mod tests {
         fn is_usable(&self) -> bool {
             true
         }
+    }
+
+    struct LargeMduOutlet;
+
+    impl ChannelOutlet for LargeMduOutlet {
+        fn send(&mut self, _raw: &[u8]) -> Result<(), ChannelError> {
+            Ok(())
+        }
+
+        fn resend(&mut self, _raw: &[u8]) -> Result<(), ChannelError> {
+            Ok(())
+        }
+
+        fn mdu(&self) -> usize {
+            262_144
+        }
+
+        fn rtt(&self) -> Duration {
+            Duration::from_millis(10)
+        }
+
+        fn is_usable(&self) -> bool {
+            true
+        }
+    }
+
+    #[test]
+    fn rns_1_5_channel_rejects_payload_above_u16_envelope_limit() {
+        let mut channel = Channel::new(LargeMduOutlet);
+        assert!(matches!(
+            channel.send(0x1234, vec![0x5a; u16::MAX as usize + 1]),
+            Err(ChannelError::PayloadTooLarge)
+        ));
     }
 
     #[derive(Debug, Clone, PartialEq, Eq)]

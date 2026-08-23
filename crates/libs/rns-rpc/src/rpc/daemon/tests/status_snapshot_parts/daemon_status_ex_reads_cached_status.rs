@@ -234,13 +234,13 @@ fn assert_status_snapshot_fields(result: &JsonValue) {
     );
     assert_eq!(
         result["reticulum"]["parity"]["overall"]["complete_ratio"],
-        json!({"numerator": 1810, "denominator": 1810})
+        json!({"numerator": 1838, "denominator": 1838})
     );
     assert_eq!(
         result["reticulum"]["parity"]["reticulum"]["inventory"],
         json!({
-            "total": 1608,
-            "complete": 1608,
+            "total": 1636,
+            "complete": 1636,
             "partial": 0,
             "not_applicable": 0
         })

@@ -453,6 +453,8 @@ impl SerialInterface {
             status.iface = Some(iface_address.to_string());
         });
 
+        let online = context.channel.online.clone();
+        online.store(false, std::sync::atomic::Ordering::Release);
         let (rx_channel, tx_channel) = context.channel.split();
         let tx_channel = Arc::new(tokio::sync::Mutex::new(tx_channel));
         let mut active_backoff = reconnect_backoff;
@@ -508,6 +510,7 @@ impl SerialInterface {
                 status.link_state = "open".to_string();
                 status.last_error = None;
             });
+            online.store(true, std::sync::atomic::Ordering::Release);
 
             run_serial_stream(
                 port,
@@ -522,6 +525,7 @@ impl SerialInterface {
                 },
             )
             .await;
+            online.store(false, std::sync::atomic::Ordering::Release);
 
             if context.cancel.is_cancelled() {
                 break;
@@ -530,6 +534,7 @@ impl SerialInterface {
             active_backoff = bounded_backoff_next(active_backoff, max_reconnect_backoff);
         }
 
+        online.store(false, std::sync::atomic::Ordering::Release);
         iface_stop.cancel();
         runtime_status.update(|status| {
             status.link_state = "stopped".to_string();

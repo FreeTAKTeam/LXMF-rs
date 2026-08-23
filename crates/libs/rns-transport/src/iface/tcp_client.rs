@@ -1083,6 +1083,8 @@ impl TcpClient {
         };
         tracing::Span::current().record("addr", addr.as_str());
         let iface_address = context.channel.address;
+        let online = context.channel.online.clone();
+        online.store(false, std::sync::atomic::Ordering::Release);
         let (mut stream, reconnect_events) = {
             let mut guard = context.inner.lock().unwrap();
             (guard.stream.take(), guard.reconnect_events.clone())
@@ -1122,6 +1124,7 @@ impl TcpClient {
             };
 
             if stream.is_err() {
+                online.store(false, std::sync::atomic::Ordering::Release);
                 failed_connect_attempts = failed_connect_attempts.saturating_add(1);
                 runtime_status
                     .lock()
@@ -1147,6 +1150,7 @@ impl TcpClient {
             }
 
             let stream = stream.unwrap();
+            online.store(true, std::sync::atomic::Ordering::Release);
             runtime_status.lock().expect("tcp runtime status mutex poisoned").mark_connected();
             if let Err(err) = socket_tuning.apply_to_stream(&stream) {
                 log::warn!("failed to apply TCP socket tuning to <{}>: {}", addr, err);
@@ -1210,6 +1214,7 @@ impl TcpClient {
             }
 
             log::info!("disconnected from <{}>", addr);
+            online.store(false, std::sync::atomic::Ordering::Release);
 
             // A deliberate shutdown requested during those first couple of
             // seconds (context.cancel/iface_stop already cancelled) is not
@@ -1269,6 +1274,7 @@ impl TcpClient {
         }
 
         runtime_status.lock().expect("tcp runtime status mutex poisoned").mark_closed();
+        online.store(false, std::sync::atomic::Ordering::Release);
         iface_stop.cancel();
     }
 }

@@ -746,37 +746,16 @@ interfaces = [
 }
 
 #[test]
-fn parses_common_reticulum_ifac_and_rate_control_fields() {
+fn rejects_unimplemented_reticulum_ifac_authentication() {
     let input = r#"
 interfaces = [
   { type = "KISSInterface", enabled = true, name = "kiss-main", port = "/dev/ttyACM0", speed = 19200, ifac_size = 16, networkname = "field-net", pass_phrase = "shared-secret", announce_rate_target = 12, ingress_control = false, egress_control = true, ic_burst_hold = 1.5, ic_pr_burst_freq = 0.25, ec_pr_freq = 0.5, bootstrap_only = true }
 ]
 "#;
-    let cfg = DaemonConfig::from_toml(input).expect("parse common IFAC and rate control fields");
-    let iface = &cfg.interfaces[0];
-    assert_eq!(iface.ifac_size, Some(16));
-    assert_eq!(iface.networkname.as_deref(), Some("field-net"));
-    assert_eq!(iface.pass_phrase.as_deref(), Some("shared-secret"));
-    assert_eq!(iface.announce_rate_target, Some(12));
-    assert_eq!(iface.announce_rate_grace, None);
-    assert_eq!(iface.announce_rate_penalty, None);
-    assert_eq!(iface.ingress_control, Some(false));
-    assert_eq!(iface.egress_control, Some(true));
-    assert_eq!(iface.bootstrap_only, Some(true));
-
-    let settings = iface.settings_json().expect("kiss settings");
-    assert_eq!(settings["ifac_size"], 16);
-    assert_eq!(settings["network_name"], "field-net");
-    assert_eq!(settings["passphrase"], "shared-secret");
-    assert_eq!(settings["announce_rate_target"], 12);
-    assert_eq!(settings["announce_rate_grace"], 0);
-    assert_eq!(settings["announce_rate_penalty"], 0);
-    assert_eq!(settings["ingress_control"], false);
-    assert_eq!(settings["egress_control"], true);
-    assert_eq!(settings["ic_burst_hold"], 1.5);
-    assert_eq!(settings["ic_pr_burst_freq"], 0.25);
-    assert_eq!(settings["ec_pr_freq"], 0.5);
-    assert_eq!(settings["bootstrap_only"], true);
+    let error = DaemonConfig::from_toml(input).expect_err("IFAC must fail closed");
+    let error = error.to_string();
+    assert!(error.contains("does not implement"));
+    assert!(error.contains("ifac_size/network_name/passphrase"));
 }
 
 #[test]
@@ -1196,7 +1175,7 @@ interfaces = [
 fn parses_reticulum_i2p_interface_defaults() {
     let input = r#"
 interfaces = [
-  { type = "I2PInterface", enabled = true, name = "i2p-main", peers = "peer-one.b32.i2p, peer-two.b32.i2p", storagepath = "/tmp/rns", configured_bitrate = 128000, reconnect_backoff_ms = 100, ifac_netname = "i2p-field", ifac_netkey = "i2p-secret" }
+  { type = "I2PInterface", enabled = true, name = "i2p-main", peers = "peer-one.b32.i2p, peer-two.b32.i2p", storagepath = "/tmp/rns", configured_bitrate = 128000, reconnect_backoff_ms = 100 }
 ]
 "#;
     let cfg = DaemonConfig::from_toml(input).expect("parse Python I2PInterface config");
@@ -1213,8 +1192,6 @@ interfaces = [
     assert_eq!(iface.bitrate, Some(128_000));
     assert_eq!(iface.reconnect_backoff_ms, Some(100));
     assert_eq!(iface.state_path.as_deref(), Some("/tmp/rns"));
-    assert_eq!(iface.network_name.as_deref(), Some("i2p-field"));
-    assert_eq!(iface.passphrase.as_deref(), Some("i2p-secret"));
 
     let settings = iface.settings_json().expect("settings");
     assert_eq!(settings["peers"], serde_json::json!(["peer-one.b32.i2p", "peer-two.b32.i2p"]));
@@ -1223,26 +1200,17 @@ interfaces = [
     assert_eq!(settings["mtu"], 1064);
     assert_eq!(settings["reconnect_backoff_ms"], 100);
     assert_eq!(settings["state_path"], "/tmp/rns");
-    assert_eq!(settings["network_name"], "i2p-field");
-    assert_eq!(settings["passphrase"], "i2p-secret");
 }
 
 #[test]
-fn i2p_ifac_net_aliases_do_not_override_canonical_fields() {
+fn rejects_i2p_ifac_compatibility_aliases() {
     let input = r#"
 interfaces = [
-  { type = "I2PInterface", enabled = true, name = "i2p-main", connectable = true, network_name = "canonical-net", passphrase = "canonical-secret", ifac_netname = "i2p-field", ifac_netkey = "i2p-secret" }
+  { type = "I2PInterface", enabled = true, name = "i2p-main", connectable = true, ifac_netname = "i2p-field", ifac_netkey = "i2p-secret" }
 ]
 "#;
-    let cfg = DaemonConfig::from_toml(input).expect("parse Python I2PInterface IFAC aliases");
-    let iface = &cfg.interfaces[0];
-
-    assert_eq!(iface.network_name.as_deref(), Some("canonical-net"));
-    assert_eq!(iface.passphrase.as_deref(), Some("canonical-secret"));
-
-    let settings = iface.settings_json().expect("settings");
-    assert_eq!(settings["network_name"], "canonical-net");
-    assert_eq!(settings["passphrase"], "canonical-secret");
+    let error = DaemonConfig::from_toml(input).expect_err("IFAC aliases must fail closed");
+    assert!(error.to_string().contains("does not implement"));
 }
 
 #[test]

@@ -93,8 +93,17 @@ impl Transport {
         }
 
         let mut link = Link::new(destination, self.link_out_event_tx.clone());
-
-        let packet = link.request();
+        let next_hop_iface = self.handler.lock().await.path_table.next_hop_iface(
+            &destination.address_hash,
+        );
+        let next_hop_mtu = match next_hop_iface {
+            Some(iface) => self.iface_manager.lock().await.mtu(&iface),
+            None => None,
+        };
+        let packet = match next_hop_mtu {
+            Some(mtu) => link.request_with_mtu(mtu),
+            None => link.request(),
+        };
 
         log::debug!(
             "tp({}): create new link {} for destination {}",
@@ -133,15 +142,19 @@ impl Transport {
             on_iface.map(|iface| iface.to_string()).unwrap_or_else(|| "-".to_string())
         );
         let dispatch = if let Some(iface) = on_iface {
-            self.iface_manager.lock().await.send_broadcast_on_iface(iface, packet).await
+            self.iface_manager
+                .lock()
+                .await
+                .send_path_request_on_iface(iface, packet)
+                .await
         } else {
             self.iface_manager
                 .lock()
                 .await
-                .send_with_announce_policy(
-                    TxMessage { tx_type: TxMessageType::Broadcast(None), packet },
-                    None,
-                )
+                .send_path_request(TxMessage {
+                    tx_type: TxMessageType::Broadcast(None),
+                    packet,
+                })
                 .await
         };
         log::debug!(
@@ -277,6 +290,77 @@ impl Transport {
         self.handler.lock().await.link_table.len()
     }
 
+    pub async fn active_link_count(&self) -> usize {
+        self.handler.lock().await.link_table.active_len()
+    }
+
+    pub async fn inbound_queue_snapshot(&self) -> InboundQueueSnapshot {
+        self.handler.lock().await.inbound_queues.snapshot()
+    }
+
+    pub async fn interface_traffic_snapshots(
+        &self,
+    ) -> Vec<crate::iface::InterfaceTrafficSnapshot> {
+        let announce_burst_ifaces = self.handler.lock().await.announce_limits.active_interfaces();
+        let mut snapshots = self.iface_manager.lock().await.traffic_snapshots();
+        for snapshot in &mut snapshots {
+            snapshot.announce_burst_active = announce_burst_ifaces.contains(&snapshot.address);
+        }
+        let parents = snapshots
+            .iter()
+            .filter_map(|snapshot| snapshot.parent)
+            .collect::<alloc::collections::BTreeSet<_>>();
+        for parent in parents {
+            let children = snapshots
+                .iter()
+                .filter(|snapshot| snapshot.parent == Some(parent))
+                .cloned()
+                .collect::<Vec<_>>();
+            let announce_count =
+                children.iter().filter(|snapshot| snapshot.announce_burst_active).count() as u64;
+            let path_request_count = children
+                .iter()
+                .filter(|snapshot| snapshot.path_request_burst_active)
+                .count() as u64;
+            if let Some(parent_snapshot) =
+                snapshots.iter_mut().find(|snapshot| snapshot.address == parent)
+            {
+                for child in &children {
+                    parent_snapshot.aggregate_child(child);
+                }
+                parent_snapshot.ic_burst_count = Some(announce_count);
+                parent_snapshot.ic_pr_burst_count = Some(path_request_count);
+            }
+        }
+        snapshots
+    }
+
+    pub const fn default_data_queue_length() -> usize {
+        DEFAULT_DATA_QUEUE_LENGTH
+    }
+
+    pub const fn default_announce_queue_length() -> usize {
+        DEFAULT_ANNOUNCE_QUEUE_LENGTH
+    }
+
+    pub const fn default_path_request_queue_length() -> usize {
+        DEFAULT_PATH_REQUEST_QUEUE_LENGTH
+    }
+
+    pub const fn default_ingress_limited_queue_length() -> usize {
+        DEFAULT_INGRESS_LIMITED_QUEUE_LENGTH
+    }
+
+    pub async fn lowest_interface_bitrate(&self) -> Option<u64> {
+        self.iface_manager.lock().await.lowest_interface_bitrate()
+    }
+
+    /// RNS 1.5 medium timeout: one MTU round trip at the slowest bitrate,
+    /// clamped to the five-bit/s protocol minimum, plus six seconds grace.
+    pub async fn medium_path_timeout(&self) -> Duration {
+        medium_path_timeout_for_bitrate(self.lowest_interface_bitrate().await)
+    }
+
     pub async fn path_status(&self, address: &AddressHash) -> crate::transport::TransportPathStatus {
         let handler = self.handler.lock().await;
         if let Some(entry) = handler.path_table.get(address) {
@@ -355,6 +439,38 @@ impl Transport {
             .into_iter()
             .filter(|destination| handler.path_table.expire_path(destination))
             .count()
+    }
+
+    /// Updates the transport-level announce filter for an identity.
+    ///
+    /// Returns the number of currently learned paths removed when the identity
+    /// becomes blackholed. This mirrors RNS 1.5's signalled blackhole result at
+    /// the Rust transport boundary without coupling core signature validation
+    /// to daemon-owned policy state.
+    pub async fn set_identity_blackholed(&self, identity: AddressHash, blackholed: bool) -> usize {
+        self.set_identity_blackholed_until(identity, blackholed, None).await
+    }
+
+    pub async fn set_identity_blackholed_until(
+        &self,
+        identity: AddressHash,
+        blackholed: bool,
+        until: Option<f64>,
+    ) -> usize {
+        {
+            let mut handler = self.handler.lock().await;
+            if blackholed {
+                handler.blackholed_identities.insert(identity, until);
+            } else {
+                handler.blackholed_identities.remove(&identity);
+                return 0;
+            }
+        }
+        self.expire_paths_for_identity(&identity).await
+    }
+
+    pub async fn is_identity_blackholed(&self, identity: &AddressHash) -> bool {
+        self.handler.lock().await.is_identity_blackholed(identity)
     }
 
     pub async fn destination_identity(&self, address: &AddressHash) -> Option<Identity> {

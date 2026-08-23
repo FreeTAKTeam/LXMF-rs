@@ -357,6 +357,7 @@ fn apply_interface_runtime_config(
             announce_interval: iface.discovery_announce_interval_secs(),
             discovery_stamp_value: iface.discovery_stamp_value,
             discovery_name: iface.discovery_name.clone(),
+            discovery_lxmf_address: iface.discovery_lxmf_address.clone(),
             discovery_encrypt: iface.discovery_encrypt,
             reachable_on: iface.reachable_on.clone(),
             publish_ifac: iface.publish_ifac,

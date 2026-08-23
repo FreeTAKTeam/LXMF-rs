@@ -8,7 +8,11 @@ impl InterfaceManager {
         message: TxMessage,
         announce_policy: Option<AnnounceBroadcastPolicy>,
     ) -> TxDispatchTrace {
-        self.send_with_options(message, announce_policy, false, None).await
+        self.send_with_options(message, announce_policy, false, false, None).await
+    }
+
+    pub async fn send_path_request(&mut self, message: TxMessage) -> TxDispatchTrace {
+        self.send_with_options(message, None, false, true, None).await
     }
 
     pub async fn send_recursive_path_request(&mut self, message: TxMessage) -> TxDispatchTrace {
@@ -20,7 +24,7 @@ impl InterfaceManager {
         message: TxMessage,
         allowed_modes: Option<&[InterfaceMode]>,
     ) -> TxDispatchTrace {
-        self.send_with_options(message, None, true, allowed_modes).await
+        self.send_with_options(message, None, true, true, allowed_modes).await
     }
 
     async fn send_with_options(
@@ -28,6 +32,7 @@ impl InterfaceManager {
         message: TxMessage,
         announce_policy: Option<AnnounceBroadcastPolicy>,
         apply_egress_control: bool,
+        is_path_request: bool,
         allowed_modes: Option<&[InterfaceMode]>,
     ) -> TxDispatchTrace {
         self.cleanup();
@@ -90,8 +95,6 @@ impl InterfaceManager {
             if should_send && iface.outgoing && !iface.stop.is_cancelled() {
                 trace.matched_ifaces += 1;
                 let now = Instant::now();
-                let is_path_request =
-                    apply_egress_control && matches!(message.tx_type, TxMessageType::Broadcast(_));
                 if is_path_request && scoped_path_request_blocked {
                     trace.failed_ifaces += 1;
                     continue;
@@ -135,6 +138,13 @@ impl InterfaceManager {
                 match Self::send_to_iface(iface, message.clone()).await {
                     TxIfaceSendResult::Sent => {
                         trace.sent_ifaces += 1;
+                        Self::record_outbound_traffic(
+                            iface,
+                            message.packet.header.packet_type,
+                            is_path_request,
+                            wire_len,
+                            now,
+                        );
                         if is_path_request {
                             Self::record_outgoing_pr(iface, now);
                         }
@@ -157,10 +167,28 @@ impl InterfaceManager {
         trace
     }
 
+    #[cfg(test)]
     pub(crate) async fn send_broadcast_on_iface(
         &mut self,
         address: AddressHash,
         packet: Packet,
+    ) -> TxDispatchTrace {
+        self.send_broadcast_on_iface_with_class(address, packet, false).await
+    }
+
+    pub(crate) async fn send_path_request_on_iface(
+        &mut self,
+        address: AddressHash,
+        packet: Packet,
+    ) -> TxDispatchTrace {
+        self.send_broadcast_on_iface_with_class(address, packet, true).await
+    }
+
+    async fn send_broadcast_on_iface_with_class(
+        &mut self,
+        address: AddressHash,
+        packet: Packet,
+        is_path_request: bool,
     ) -> TxDispatchTrace {
         self.cleanup();
         let mut trace = TxDispatchTrace::default();
@@ -183,7 +211,19 @@ impl InterfaceManager {
                 continue;
             }
             match Self::send_to_iface(iface, message.clone()).await {
-                TxIfaceSendResult::Sent => trace.sent_ifaces += 1,
+                TxIfaceSendResult::Sent => {
+                    trace.sent_ifaces += 1;
+                    Self::record_outbound_traffic(
+                        iface,
+                        message.packet.header.packet_type,
+                        is_path_request,
+                        wire_len,
+                        Instant::now(),
+                    );
+                    if is_path_request {
+                        Self::record_outgoing_pr(iface, Instant::now());
+                    }
+                }
                 TxIfaceSendResult::Failed => trace.failed_ifaces += 1,
                 TxIfaceSendResult::Closed => {
                     trace.failed_ifaces += 1;

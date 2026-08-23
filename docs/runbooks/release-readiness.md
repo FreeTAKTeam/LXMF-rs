@@ -81,7 +81,7 @@ remote-relay cases. The resulting evidence bundle is retained with the run.
 The SDK reports the parity checkpoint as its crate version plus the pinned
 reference revisions from `.github/workflows/verify.yml`: Reticulum
 conformance `0319444b20e0815f26c6b9ceeba8fa44de037c9b`, Python Reticulum
-`b48b96e61676504e0a4e527b33b9a0b4495c6872`, and Python LXMF
+`e32d4df754a7b87b1bf1bb0d08675d12ff505ae6`, and Python LXMF
 `727830cefda83d9c6e3982b48675425f3f988f9c`. Check GitHub Actions for current
 run status; do not copy transient run IDs or conclusions into runtime SDK
 responses or long-lived documentation.

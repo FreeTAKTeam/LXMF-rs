@@ -42,7 +42,7 @@ fn blackhole_identity_rpc_matches_reticulum_boolean_semantics() {
             "blackhole_identity",
             json!({
                 "identity_hash": identity,
-                "until": 1_700_000_100_i64,
+                "until": 4_102_444_800_i64,
                 "reason": "operator"
             }),
         ))
@@ -63,7 +63,7 @@ fn blackhole_identity_rpc_matches_reticulum_boolean_semantics() {
         .expect("get blackholed identities");
     let listed = listed.result.expect("listed result");
     assert_eq!(listed[normalized]["source"], json!("test-identity"));
-    assert_eq!(listed[normalized]["until"], json!(1_700_000_100_i64));
+    assert_eq!(listed[normalized]["until"], json!(4_102_444_800_i64));
     assert_eq!(listed[normalized]["reason"], json!("operator"));
 
     let removed = daemon
@@ -79,6 +79,62 @@ fn blackhole_identity_rpc_matches_reticulum_boolean_semantics() {
         ))
         .expect("duplicate unblackhole identity");
     assert_eq!(duplicate_remove.result.expect("duplicate remove result"), JsonValue::Null);
+}
+
+#[test]
+fn rns_1_5_expired_blackholes_are_pruned_from_rpc_state() {
+    let daemon = RpcDaemon::test_instance();
+    let identity = "00112233445566778899aabbccddeeff";
+    let added = daemon
+        .handle_rpc(rpc_request(
+            30,
+            "blackhole_identity",
+            json!({ "identity": identity, "until": 1.0 }),
+        ))
+        .expect("add already-expired blackhole");
+    assert_eq!(added.result, Some(json!(true)));
+    assert!(!daemon.is_blackholed(identity).expect("expired blackhole check"));
+    let listed = daemon
+        .handle_rpc(RpcRequest {
+            id: 31,
+            method: "get_blackholed_identities".to_string(),
+            params: None,
+        })
+        .expect("list blackholes");
+    assert_eq!(listed.result, Some(json!({})));
+}
+
+struct FailingBlackholeBridge;
+
+impl PathLookupBridge for FailingBlackholeBridge {
+    fn has_path(&self, _destination: &str) -> Result<bool, std::io::Error> {
+        Ok(false)
+    }
+
+    fn request_path(&self, _destination: &str) -> Result<(), std::io::Error> {
+        Ok(())
+    }
+
+    fn set_identity_blackholed_until(
+        &self,
+        _identity: &str,
+        _blackholed: bool,
+        _until: Option<f64>,
+    ) -> Result<usize, std::io::Error> {
+        Err(std::io::Error::other("transport unavailable"))
+    }
+}
+
+#[test]
+fn rns_1_5_blackhole_bridge_failure_is_not_reported_as_success() {
+    let daemon = RpcDaemon::test_instance();
+    daemon.set_path_lookup_bridge(Arc::new(FailingBlackholeBridge));
+    let identity = "00112233445566778899aabbccddeeff";
+    let error = daemon
+        .handle_rpc(rpc_request(32, "blackhole_identity", json!({ "identity": identity })))
+        .expect_err("bridge failure must propagate");
+    assert_eq!(error.kind(), std::io::ErrorKind::Other);
+    assert!(!daemon.is_blackholed(identity).expect("failed add must not mutate state"));
 }
 
 #[test]

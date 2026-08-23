@@ -17,6 +17,7 @@ impl TransportConfig {
             path_request_timeout_secs: 30,
             link_proof_timeout_secs: 600,
             link_idle_timeout_secs: 900,
+            inbound_queue_limits: InboundQueueLimits::default(),
             resource_retry_interval_secs: DEFAULT_RESOURCE_RETRY_INTERVAL_SECS,
             resource_retry_limit: DEFAULT_RESOURCE_MAX_RETRIES,
             ratchet_store_path: None,
@@ -78,6 +79,17 @@ impl TransportConfig {
         self.link_idle_timeout_secs = secs;
     }
 
+    pub fn set_inbound_queue_limits(
+        &mut self,
+        limits: InboundQueueLimits,
+    ) -> Result<(), &'static str> {
+        if !limits.is_valid() {
+            return Err("inbound queue limits must all be non-zero");
+        }
+        self.inbound_queue_limits = limits;
+        Ok(())
+    }
+
     pub fn set_resource_retry_interval_secs(&mut self, secs: u64) {
         self.resource_retry_interval_secs = secs;
     }
@@ -107,6 +119,7 @@ impl Default for TransportConfig {
             path_request_timeout_secs: 30,
             link_proof_timeout_secs: 600,
             link_idle_timeout_secs: 900,
+            inbound_queue_limits: InboundQueueLimits::default(),
             resource_retry_interval_secs: DEFAULT_RESOURCE_RETRY_INTERVAL_SECS,
             resource_retry_limit: DEFAULT_RESOURCE_MAX_RETRIES,
             ratchet_store_path: None,
@@ -135,5 +148,37 @@ mod tests {
         assert!(config.transport_enabled);
         config.set_transport_enabled(false);
         assert!(!config.transport_enabled);
+    }
+
+    #[test]
+    fn rns_1_5_queue_limits_default_and_validate_like_python() {
+        let mut config = TransportConfig::default();
+        assert_eq!(config.inbound_queue_limits, InboundQueueLimits::default());
+        assert!(config
+            .set_inbound_queue_limits(InboundQueueLimits {
+                data: 0,
+                ..InboundQueueLimits::default()
+            })
+            .is_err());
+    }
+
+    #[tokio::test]
+    async fn rns_1_5_runtime_accessors_report_empty_runtime_consistently() {
+        let transport = Transport::new(TransportConfig::default());
+        assert_eq!(Transport::default_data_queue_length(), 4096);
+        assert_eq!(Transport::default_announce_queue_length(), 256);
+        assert_eq!(Transport::default_path_request_queue_length(), 256);
+        assert_eq!(Transport::default_ingress_limited_queue_length(), 128);
+        assert_eq!(transport.link_count().await, 0);
+        assert_eq!(transport.active_link_count().await, 0);
+        assert_eq!(transport.lowest_interface_bitrate().await, None);
+        assert_eq!(transport.medium_path_timeout().await, Duration::ZERO);
+        assert_eq!(
+            transport.inbound_queue_snapshot().await,
+            InboundQueueSnapshot {
+                limits: InboundQueueLimits::default().as_array(),
+                ..InboundQueueSnapshot::default()
+            }
+        );
     }
 }

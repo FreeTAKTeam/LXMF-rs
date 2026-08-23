@@ -1,7 +1,8 @@
 # Independent interoperability evidence
 
-Python Reticulum 1.4.2 and pinned Python LXMF remain the compatibility
-reference. This directory records a separate evidence axis against independently
+Python Reticulum 1.5.0 at `e32d4df754a7b87b1bf1bb0d08675d12ff505ae6`
+and pinned Python LXMF remain the compatibility reference for active release
+gates. This directory records a separate evidence axis against independently
 authored implementations; it does not replace the Python parity inventory.
 
 The canonical command is:

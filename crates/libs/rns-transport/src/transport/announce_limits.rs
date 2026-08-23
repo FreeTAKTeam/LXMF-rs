@@ -473,6 +473,13 @@ impl AnnounceLimits {
             .collect()
     }
 
+    pub fn active_interfaces(&self) -> Vec<AddressHash> {
+        self.limits
+            .iter()
+            .filter_map(|(iface, entry)| entry.burst_active.then_some(*iface))
+            .collect()
+    }
+
     pub fn release_ready(&mut self) -> Vec<ReleasedAnnounce> {
         self.release_ready_at(Instant::now())
     }

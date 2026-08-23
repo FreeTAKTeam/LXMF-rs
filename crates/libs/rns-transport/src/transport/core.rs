@@ -50,6 +50,7 @@ impl Transport {
 
         let path_request_dest = create_path_request_destination().desc.address_hash;
         let tunnel_synthesize_dest = create_tunnel_synthesize_destination().desc.address_hash;
+        let inbound_queues = Arc::new(InboundQueues::new(config.inbound_queue_limits));
 
         let cancel = CancellationToken::new();
         let name = config.name.clone();
@@ -65,13 +66,15 @@ impl Transport {
             single_in_destinations: HashMap::new(),
             single_in_destination_app_data: HashMap::new(),
             single_out_destinations: HashMap::new(),
+            blackholed_identities: HashMap::new(),
             announce_limits: AnnounceLimits::new(),
             packet_signal_cache: VecDeque::new(),
             network_identity: None,
             discovery_enabled: false,
             out_links: HashMap::new(),
             in_links: HashMap::new(),
-            packet_cache: Mutex::new(PacketCache::new()),
+            packet_cache: Arc::new(Mutex::new(PacketCache::new())),
+            inbound_queues,
             path_requests,
             announce_tx,
             link_in_event_tx: link_in_event_tx.clone(),

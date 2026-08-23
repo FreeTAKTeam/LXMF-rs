@@ -38,7 +38,9 @@ use rns_transport::destination::SingleInputDestination;
 use rns_transport::hash::AddressHash;
 use rns_transport::iface::tcp_client::TcpSocketTuning;
 use rns_transport::iface::tcp_server::{FastFlapPolicy, TcpServer};
-use rns_transport::transport::{RestoredReticulumPathIdentity, Transport, TransportConfig};
+use rns_transport::transport::{
+    InboundQueueLimits, RestoredReticulumPathIdentity, Transport, TransportConfig,
+};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -98,6 +100,7 @@ pub(super) struct TransportStartupInput<'a> {
     pub(super) propagation_control_enabled: bool,
     pub(super) propagation_announce_config: PropagationNodeAnnounceConfig,
     pub(super) local_hops_delta: bool,
+    pub(super) inbound_queue_limits: InboundQueueLimits,
 }
 
 fn spawn_stream_reconnect_tunnel_synthesizer(
@@ -175,6 +178,7 @@ pub(super) async fn start_transport_and_interfaces(
         propagation_control_enabled,
         propagation_announce_config,
         local_hops_delta,
+        inbound_queue_limits,
     } = input;
 
     for record in &mut configured_interfaces {
@@ -239,6 +243,9 @@ pub(super) async fn start_transport_and_interfaces(
         let mut config = TransportConfig::new("daemon", &transport_identity, true);
         config.set_transport_enabled(reticulum_transport_enabled(daemon_config));
         config.set_local_hops_delta(if local_hops_delta { 1 } else { 0 });
+        config
+            .set_inbound_queue_limits(inbound_queue_limits)
+            .expect("runtime policy validates inbound queue limits");
         let mut transport_instance = Transport::new(config);
         transport_instance
             .set_receipt_handler(Box::new(ReceiptBridge::new(receipt_map, receipt_tx.clone())))

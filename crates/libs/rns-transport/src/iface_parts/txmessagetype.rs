@@ -107,6 +107,7 @@ pub struct InterfaceSharedConfig {
     pub announce_interval: Option<u64>,
     pub discovery_stamp_value: Option<u64>,
     pub discovery_name: Option<String>,
+    pub discovery_lxmf_address: Option<String>,
     pub discovery_encrypt: Option<bool>,
     pub reachable_on: Option<String>,
     pub publish_ifac: Option<bool>,
@@ -165,6 +166,7 @@ pub struct InterfaceChannel {
     pub rx_channel: InterfaceRxSender,
     pub tx_channel: InterfaceTxReceiver,
     pub stop: CancellationToken,
+    online: Arc<AtomicBool>,
 }
 
 impl InterfaceChannel {
@@ -182,11 +184,16 @@ impl InterfaceChannel {
         address: AddressHash,
         stop: CancellationToken,
     ) -> Self {
-        Self { address, rx_channel, tx_channel, stop }
+        Self { address, rx_channel, tx_channel, stop, online: Arc::new(AtomicBool::new(true)) }
     }
 
     pub fn address(&self) -> &AddressHash {
         &self.address
+    }
+
+    /// Updates whether this channel currently has an operational carrier.
+    pub fn set_online(&self, online: bool) {
+        self.online.store(online, Ordering::Release);
     }
 
     pub fn split(self) -> (InterfaceRxSender, InterfaceTxReceiver) {
@@ -204,9 +211,11 @@ pub trait Interface {
 
 struct LocalInterface {
     address: AddressHash,
+    parent: Option<AddressHash>,
     full_hash: Hash,
     tx_send: InterfaceTxSender,
     stop: CancellationToken,
+    online: Arc<AtomicBool>,
     mtu: usize,
     role: IfaceRole,
     mode: InterfaceMode,
@@ -219,6 +228,7 @@ struct LocalInterface {
     shared_config: InterfaceSharedConfig,
     is_shared_instance: bool,
     outgoing_pr_history: VecDeque<Instant>,
+    traffic: InterfaceTraffic,
 }
 
 #[derive(Debug, Clone)]

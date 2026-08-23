@@ -229,6 +229,7 @@ impl TransportHandler {
         self.single_out_destinations.contains_key(address)
     }
 
+    #[cfg(test)]
     pub(super) async fn filter_duplicate_packets(&self, packet: &Packet) -> bool {
         let mut allow_duplicate = false;
 
@@ -296,8 +297,12 @@ impl TransportHandler {
     ) {
         let packet = self.path_requests.generate(address, tag);
 
-        let trace =
-            self.send(TxMessage { tx_type: TxMessageType::Broadcast(on_iface), packet }).await;
+        let trace = self
+            .send_recursive_path_request_with_modes(
+                TxMessage { tx_type: TxMessageType::Broadcast(on_iface), packet },
+                None,
+            )
+            .await;
         if trace.sent_ifaces > 0 || trace.queued_ifaces > 0 {
             self.path_requests.record_outgoing_request(address);
         }

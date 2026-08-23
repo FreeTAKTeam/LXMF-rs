@@ -254,8 +254,10 @@ pub fn plan_autoconnect_with_policy(
     existing: &[RuntimeInterfaceState],
     policy: AutoconnectInterfacePolicy<'_>,
 ) -> Option<AutoconnectPlan> {
-    if !matches!(info.interface_type.as_str(), "BackboneInterface" | "TCPServerInterface")
-        || interface_exists(info, existing)
+    if !matches!(
+        info.interface_type.as_str(),
+        "BackboneInterface" | "TCPServerInterface" | "TCPClientInterface"
+    ) || interface_exists(info, existing)
     {
         return None;
     }

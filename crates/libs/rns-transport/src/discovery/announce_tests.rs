@@ -9,6 +9,7 @@ fn backbone() -> DiscoverableInterface {
         latitude: Some(44.0),
         longitude: Some(-63.0),
         height: Some(10.0),
+        operator_lxmf_address: None,
         reachable_on: Some("relay.example".to_string()),
         port: Some(4242),
         ifac_netname: Some("field-net".to_string()),
@@ -51,6 +52,31 @@ fn plain_announce_roundtrip_validates_stamp_and_python_fields() {
     assert_eq!(decoded.port, Some(4242));
     assert_eq!(decoded.hops, 2);
     assert!(decoded.value >= 5);
+}
+
+#[test]
+fn rns_1_5_operator_lxmf_address_roundtrips() {
+    let mut interface = backbone();
+    interface.operator_lxmf_address = Some([0x42; 16]);
+    let payload = encode_plain_announce(&interface, 4).expect("encode");
+    let decoded = decode_plain_announce(&payload, "22", &[], 1, 1.0, 4).expect("decode");
+    assert_eq!(decoded.operator_lxmf_address.as_deref(), Some("42424242424242424242424242424242"));
+}
+
+#[test]
+fn rns_1_5_wrong_length_operator_address_is_ignored_like_python() {
+    let packed = encode_interface(&backbone()).expect("encode interface");
+    let decoded = rmpv::decode::read_value(&mut std::io::Cursor::new(packed))
+        .expect("decode interface map");
+    let mut entries = decoded.as_map().expect("interface map").to_vec();
+    entries.push((Value::from(OPERATOR_LXMF_ADDRESS), Value::Binary(vec![0x42; 15])));
+    let decoded = Value::Map(entries);
+    let mut malformed_optional = Vec::new();
+    rmpv::encode::write_value(&mut malformed_optional, &decoded).expect("encode malformed field");
+
+    let record = decode_interface(&malformed_optional, &[0; STAMP_SIZE], 4, "22", 1, 1.0)
+        .expect("wrong-length optional address must not invalidate the announce");
+    assert_eq!(record.operator_lxmf_address, None);
 }
 
 #[test]

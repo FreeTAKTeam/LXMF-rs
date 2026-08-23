@@ -235,6 +235,8 @@ pub struct InterfaceConfig {
     #[serde(default)]
     pub discovery_name: Option<String>,
     #[serde(default)]
+    pub discovery_lxmf_address: Option<String>,
+    #[serde(default)]
     pub discovery_encrypt: Option<bool>,
     #[serde(default)]
     pub reachable_on: Option<String>,

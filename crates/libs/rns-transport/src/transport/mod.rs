@@ -4,6 +4,7 @@ use announce_table::AnnounceTable;
 use link_table::LinkTable;
 use packet_cache::PacketCache;
 use path_requests::create_path_request_destination;
+use path_requests::PathRequest;
 use path_requests::PathRequests;
 use path_requests::TagBytes;
 use path_table::PathTable;
@@ -58,9 +59,23 @@ use crate::packet::PacketType;
 use crate::ratchets::{encrypt_for_public_key, now_secs, RatchetStore};
 use crate::resource::{build_resource_request_packet, ResourceEvent, ResourceManager};
 
+fn medium_path_timeout_for_bitrate(bitrate: Option<u64>) -> Duration {
+    const RETICULUM_MTU_BYTES: f64 = 500.0;
+    const MINIMUM_BITRATE: u64 = 5;
+    const DEFAULT_PER_HOP_TIMEOUT_SECS: f64 = 6.0;
+
+    let Some(bitrate) = bitrate else { return Duration::ZERO };
+    Duration::from_secs_f64(
+        2.0 * (RETICULUM_MTU_BYTES * 8.0 / bitrate.max(MINIMUM_BITRATE) as f64)
+            + DEFAULT_PER_HOP_TIMEOUT_SECS,
+    )
+}
+
 mod announce_limits;
 mod announce_table;
 mod diag;
+mod inbound_processing;
+mod inbound_queues;
 mod link_table;
 mod packet_cache;
 mod packet_disk_cache;
@@ -72,6 +87,11 @@ mod runtime_management;
 mod tunnels;
 
 pub use announce_limits::AnnounceRateTableEntry;
+pub use inbound_queues::{
+    InboundQueueLimits, InboundQueueSnapshot, InboundQueues, InboundTrafficClass,
+    DEFAULT_ANNOUNCE_QUEUE_LENGTH, DEFAULT_DATA_QUEUE_LENGTH, DEFAULT_INGRESS_LIMITED_QUEUE_LENGTH,
+    DEFAULT_PATH_REQUEST_QUEUE_LENGTH,
+};
 pub use packet_disk_cache::{CachedPacket, ReticulumPacketDiskCache};
 
 pub use reticulum_path_store::{
@@ -186,6 +206,7 @@ pub struct TransportConfig {
     link_proof_timeout_secs: u64,
     // Retains propagated LinkTable entries; direct-link watchdog timing stays RTT-driven in Link.
     link_idle_timeout_secs: u64,
+    inbound_queue_limits: InboundQueueLimits,
     resource_retry_interval_secs: u64,
     resource_retry_limit: u8,
     ratchet_store_path: Option<PathBuf>,
@@ -239,6 +260,7 @@ pub(crate) struct TransportHandler {
     single_in_destinations: HashMap<AddressHash, Arc<Mutex<SingleInputDestination>>>,
     single_in_destination_app_data: HashMap<AddressHash, Vec<u8>>,
     single_out_destinations: HashMap<AddressHash, Arc<Mutex<SingleOutputDestination>>>,
+    blackholed_identities: HashMap<AddressHash, Option<f64>>,
 
     announce_limits: AnnounceLimits,
     packet_signal_cache: VecDeque<(Hash, PacketSignal)>,
@@ -248,7 +270,8 @@ pub(crate) struct TransportHandler {
     out_links: HashMap<AddressHash, Arc<Mutex<Link>>>,
     in_links: HashMap<AddressHash, Arc<Mutex<Link>>>,
 
-    packet_cache: Mutex<PacketCache>,
+    packet_cache: Arc<Mutex<PacketCache>>,
+    inbound_queues: Arc<InboundQueues<QueuedInbound>>,
 
     path_requests: PathRequests,
 
@@ -285,6 +308,14 @@ pub(crate) struct TransportHandler {
 
     cancel: CancellationToken,
     receipt_handler: Option<Arc<dyn ReceiptHandler>>,
+}
+
+#[derive(Debug, Clone)]
+struct QueuedInbound {
+    message: RxMessage,
+    ingress_limited: bool,
+    packet_cache_inserted: bool,
+    path_request: Option<PathRequest>,
 }
 
 impl TransportHandler {

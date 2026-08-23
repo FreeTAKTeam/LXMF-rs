@@ -4,7 +4,7 @@ use rmpv::Value;
 use sha2::{Digest, Sha256};
 use std::io;
 
-pub const DEFAULT_STAMP_VALUE: u32 = 14;
+pub const DEFAULT_STAMP_VALUE: u32 = 16;
 pub const WORKBLOCK_EXPAND_ROUNDS: u32 = 20;
 pub const STAMP_SIZE: usize = 32;
 pub const FLAG_SIGNED: u8 = 0b0000_0001;
@@ -27,6 +27,7 @@ const SPREADING_FACTOR: i64 = 0x0b;
 const CODING_RATE: i64 = 0x0c;
 const MODULATION: i64 = 0x0d;
 const CHANNEL: i64 = 0x0e;
+const OPERATOR_LXMF_ADDRESS: i64 = 0xf0;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DiscoverableInterface {
@@ -37,6 +38,7 @@ pub struct DiscoverableInterface {
     pub latitude: Option<f64>,
     pub longitude: Option<f64>,
     pub height: Option<f64>,
+    pub operator_lxmf_address: Option<[u8; 16]>,
     pub reachable_on: Option<String>,
     pub port: Option<u16>,
     pub ifac_netname: Option<String>,
@@ -58,6 +60,7 @@ pub enum DiscoveryAnnounceError {
     StampGenerationExhausted,
     PayloadTooShort,
     UnauthorizedSource,
+    MissingNetworkIdentity,
     EncryptedWithoutDecryptor,
     DecryptionFailed,
     InvalidStamp,
@@ -227,7 +230,10 @@ fn encode_interface(interface: &DiscoverableInterface) -> Result<Vec<u8>, Discov
         field(LONGITUDE, option_f64(interface.longitude)),
         field(HEIGHT, option_f64(interface.height)),
     ];
-    if matches!(interface_type, "BackboneInterface" | "TCPServerInterface" | "I2PInterface") {
+    if matches!(
+        interface_type,
+        "BackboneInterface" | "TCPServerInterface" | "TCPClientInterface" | "I2PInterface"
+    ) {
         let endpoint =
             interface.reachable_on.as_deref().ok_or(DiscoveryAnnounceError::MissingEndpoint)?;
         if !super::valid_endpoint(endpoint) {
@@ -235,7 +241,7 @@ fn encode_interface(interface: &DiscoverableInterface) -> Result<Vec<u8>, Discov
         }
         fields.push(field(REACHABLE_ON, Value::from(sanitize(endpoint))));
     }
-    if matches!(interface_type, "BackboneInterface" | "TCPServerInterface") {
+    if matches!(interface_type, "BackboneInterface" | "TCPServerInterface" | "TCPClientInterface") {
         fields.push(field(
             PORT,
             Value::from(interface.port.ok_or(DiscoveryAnnounceError::MissingEndpoint)?),
@@ -246,6 +252,9 @@ fn encode_interface(interface: &DiscoverableInterface) -> Result<Vec<u8>, Discov
     }
     if let Some(value) = &interface.ifac_netkey {
         fields.push(field(IFAC_NETKEY, Value::from(sanitize(value))));
+    }
+    if let Some(address) = interface.operator_lxmf_address {
+        fields.push(field(OPERATOR_LXMF_ADDRESS, Value::Binary(address.to_vec())));
     }
     match interface_type {
         "RNodeInterface" => {
@@ -319,6 +328,7 @@ fn decode_interface(
         latitude: optional_f64(map, LATITUDE)?,
         longitude: optional_f64(map, LONGITUDE)?,
         height: optional_f64(map, HEIGHT)?,
+        operator_lxmf_address: optional_binary(map, OPERATOR_LXMF_ADDRESS)?.map(hex::encode),
         reachable_on,
         port: optional_u64(map, PORT)?.map(|port| port as u16),
         ifac_netname: optional_string(map, IFAC_NETNAME)?,
@@ -374,6 +384,17 @@ fn optional(map: &[(Value, Value)], key: i64) -> Option<&Value> {
         .find(|(candidate, _)| candidate.as_i64() == Some(key))
         .map(|(_, value)| value)
         .filter(|value| !value.is_nil())
+}
+fn optional_binary(
+    map: &[(Value, Value)],
+    key: i64,
+) -> Result<Option<Vec<u8>>, DiscoveryAnnounceError> {
+    optional(map, key)
+        .map(|value| {
+            value.as_slice().map(ToOwned::to_owned).ok_or(DiscoveryAnnounceError::InvalidField(key))
+        })
+        .transpose()
+        .map(|value| value.filter(|bytes| bytes.len() == 16))
 }
 fn string(map: &[(Value, Value)], key: i64) -> Result<String, DiscoveryAnnounceError> {
     value(map, key)?

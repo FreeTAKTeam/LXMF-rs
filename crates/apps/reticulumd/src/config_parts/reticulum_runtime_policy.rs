@@ -2,6 +2,7 @@
 pub struct ReticulumRuntimePolicy {
     pub link_mtu_discovery: bool,
     pub static_transport_identity: bool,
+    pub network_identity_path: Option<std::path::PathBuf>,
     pub local_hops_delta: bool,
     pub default_gravity: i64,
     pub remote_management_enabled: bool,
@@ -17,6 +18,7 @@ pub struct ReticulumRuntimePolicy {
     pub autoconnect_interface_gravity: Option<i64>,
     pub autoconnect_announces_to_internal: Option<bool>,
     pub blackhole_update_interval_secs: f64,
+    pub inbound_queue_limits: rns_transport::transport::InboundQueueLimits,
 }
 
 impl Default for ReticulumRuntimePolicy {
@@ -24,6 +26,7 @@ impl Default for ReticulumRuntimePolicy {
         Self {
             link_mtu_discovery: true,
             static_transport_identity: false,
+            network_identity_path: None,
             local_hops_delta: false,
             default_gravity: 0,
             remote_management_enabled: false,
@@ -39,6 +42,7 @@ impl Default for ReticulumRuntimePolicy {
             autoconnect_interface_gravity: None,
             autoconnect_announces_to_internal: None,
             blackhole_update_interval_secs: 60.0 * 60.0,
+            inbound_queue_limits: rns_transport::transport::InboundQueueLimits::default(),
         }
     }
 }
@@ -84,6 +88,12 @@ impl ReticulumRuntimePolicy {
     pub const fn local_hops_delta(&self) -> bool {
         self.local_hops_delta
     }
+
+    pub const fn inbound_queue_limits(
+        &self,
+    ) -> rns_transport::transport::InboundQueueLimits {
+        self.inbound_queue_limits
+    }
 }
 
 impl ReticulumConfigRaw {
@@ -91,6 +101,7 @@ impl ReticulumConfigRaw {
         Ok(ReticulumRuntimePolicy {
             link_mtu_discovery: self.link_mtu_discovery.unwrap_or(true),
             static_transport_identity: self.static_transport_identity.unwrap_or(false),
+            network_identity_path: self.network_identity.clone(),
             local_hops_delta: self.local_hops_delta.unwrap_or(false),
             default_gravity: self.default_gravity.unwrap_or(0),
             remote_management_enabled: self.enable_remote_management.unwrap_or(false),
@@ -143,6 +154,20 @@ impl ReticulumConfigRaw {
                 .unwrap_or(60.0)
                 .max(2.0)
                 * 60.0,
+            inbound_queue_limits: rns_transport::transport::InboundQueueLimits {
+                data: self.qlen_in_data.filter(|value| *value > 0).unwrap_or(
+                    rns_transport::transport::DEFAULT_DATA_QUEUE_LENGTH,
+                ),
+                announce: self.qlen_in_announce.filter(|value| *value > 0).unwrap_or(
+                    rns_transport::transport::DEFAULT_ANNOUNCE_QUEUE_LENGTH,
+                ),
+                path_request: self.qlen_in_pr.filter(|value| *value > 0).unwrap_or(
+                    rns_transport::transport::DEFAULT_PATH_REQUEST_QUEUE_LENGTH,
+                ),
+                ingress_limited: self.qlen_in_il.filter(|value| *value > 0).unwrap_or(
+                    rns_transport::transport::DEFAULT_INGRESS_LIMITED_QUEUE_LENGTH,
+                ),
+            },
         })
     }
 }

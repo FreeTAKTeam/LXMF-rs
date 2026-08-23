@@ -26,7 +26,9 @@ const STREAM_EOF_MASK: u16 = 0x8000;
 
 const STREAM_COMPRESSED_MASK: u16 = 0x4000;
 
-const STREAM_DATA_OVERHEAD: usize = 2 + 6;
+const STREAM_DATA_HEADER_LEN: usize = 2;
+
+const STREAM_DATA_OVERHEAD: usize = STREAM_DATA_HEADER_LEN + 6;
 
 const STREAM_DATA_MAX_LEN: usize = PACKET_MDU - STREAM_DATA_OVERHEAD;
 
@@ -274,7 +276,12 @@ impl RawChannelWriter {
             return Ok(0);
         }
 
-        let (message, processed) = Self::encode_chunk(self.stream_id, bytes, false)?;
+        let stream_mdu = self.channel.mdu().await?.saturating_sub(STREAM_DATA_HEADER_LEN);
+        if stream_mdu == 0 {
+            return Err(ChannelError::PayloadTooLarge);
+        }
+        let (message, processed) =
+            Self::encode_chunk_with_mdu(self.stream_id, bytes, false, stream_mdu)?;
         self.channel.open().await?;
         match self.channel.send_typed(&message).await {
             Ok(_) => Ok(processed),
@@ -342,8 +349,20 @@ impl RawChannelWriter {
         bytes: &[u8],
         eof: bool,
     ) -> Result<(StreamDataMessage, usize), ChannelError> {
+        Self::encode_chunk_with_mdu(stream_id, bytes, eof, STREAM_DATA_MAX_LEN)
+    }
+
+    pub fn encode_chunk_with_mdu(
+        stream_id: u16,
+        bytes: &[u8],
+        eof: bool,
+        stream_mdu: usize,
+    ) -> Result<(StreamDataMessage, usize), ChannelError> {
         if stream_id > STREAM_ID_MAX {
             return Err(ChannelError::InvalidFrame);
+        }
+        if stream_mdu == 0 {
+            return Err(ChannelError::PayloadTooLarge);
         }
 
         let mut chunk_len = bytes.len().min(MAX_CHUNK_LEN);
@@ -360,7 +379,7 @@ impl RawChannelWriter {
                 let mut encoder = BzEncoder::new(Vec::new(), Compression::default());
                 encoder.write_all(&bytes[..segment_len]).map_err(|_| ChannelError::InvalidFrame)?;
                 let candidate = encoder.finish().map_err(|_| ChannelError::InvalidFrame)?;
-                if candidate.len() <= STREAM_DATA_MAX_LEN && candidate.len() < segment_len {
+                if candidate.len() < stream_mdu && candidate.len() < segment_len {
                     compressed_data = Some(candidate);
                     processed_length = segment_len;
                     break;
@@ -373,7 +392,7 @@ impl RawChannelWriter {
             return Ok((message, processed_length));
         }
 
-        chunk_len = chunk_len.min(STREAM_DATA_MAX_LEN);
+        chunk_len = chunk_len.min(stream_mdu);
         let raw = bytes[..chunk_len].to_vec();
         let message = StreamDataMessage::new(stream_id, raw, eof, false)?;
         Ok((message, chunk_len))

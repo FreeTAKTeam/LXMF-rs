@@ -24,6 +24,8 @@ struct ReticulumConfigRaw {
     #[serde(default)]
     static_transport_identity: Option<bool>,
     #[serde(default)]
+    network_identity: Option<std::path::PathBuf>,
+    #[serde(default)]
     local_hops_delta: Option<bool>,
     #[serde(default)]
     default_gravity: Option<i64>,
@@ -53,6 +55,14 @@ struct ReticulumConfigRaw {
     autoconnect_announces_to_internal: Option<bool>,
     #[serde(default)]
     blackhole_update_interval: Option<f64>,
+    #[serde(default)]
+    qlen_in_data: Option<usize>,
+    #[serde(default)]
+    qlen_in_announce: Option<usize>,
+    #[serde(default)]
+    qlen_in_pr: Option<usize>,
+    #[serde(default)]
+    qlen_in_il: Option<usize>,
 }
 
 impl ReticulumConfigRaw {

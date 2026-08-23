@@ -603,6 +603,57 @@ mod tests {
         assert_eq!(manager.ifaces[1].address, slow);
     }
 
+    #[test]
+    fn rns_1_5_lowest_interface_bitrate_ignores_stopped_interfaces() {
+        let mut manager = InterfaceManager::new(4);
+        let slow = manager.new_channel(1);
+        let fast = manager.new_channel(1);
+        assert!(manager.set_announce_pacing(slow.address, 1_000, 2));
+        assert!(manager.set_announce_pacing(fast.address, 10_000, 2));
+        slow.stop.cancel();
+        assert_eq!(manager.lowest_interface_bitrate(), Some(10_000));
+    }
+
+    #[test]
+    fn rns_1_5_lowest_interface_bitrate_ignores_offline_interfaces() {
+        let mut manager = InterfaceManager::new(4);
+        let slow = manager.new_channel(1);
+        let fast = manager.new_channel(1);
+        assert!(manager.set_announce_pacing(slow.address, 1_000, 2));
+        assert!(manager.set_announce_pacing(fast.address, 10_000, 2));
+        slow.set_online(false);
+        assert_eq!(manager.lowest_interface_bitrate(), Some(10_000));
+        fast.set_online(false);
+        assert_eq!(manager.lowest_interface_bitrate(), None);
+    }
+
+    #[tokio::test]
+    async fn rns_1_5_unavailable_weave_carrier_is_not_counted_as_online() {
+        let manager = Arc::new(tokio::sync::Mutex::new(InterfaceManager::new(4)));
+        let missing_device = std::env::temp_dir().join(format!(
+            "lxmf-rs-rns-1-5-missing-weave-{}",
+            std::process::id()
+        ));
+        let weave = crate::iface::weave::WeaveInterface::new(
+            missing_device.to_string_lossy(),
+            manager.clone(),
+        );
+        let address = manager.lock().await.spawn(weave, crate::iface::weave::WeaveInterface::spawn);
+        assert!(manager.lock().await.set_announce_pacing(address, 1_000, 2));
+
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                if manager.lock().await.lowest_interface_bitrate().is_none() {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("unavailable Weave carrier should transition offline");
+        assert!(manager.lock().await.stop_interface(address));
+    }
+
     #[tokio::test]
     async fn recursive_path_request_waits_for_active_announce_cap_like_python() {
         let mut mgr = InterfaceManager::new(16);

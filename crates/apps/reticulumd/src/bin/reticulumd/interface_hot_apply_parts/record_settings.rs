@@ -36,11 +36,6 @@ pub(crate) fn interface_record_shared_config(record: &InterfaceRecord) -> Interf
         announce_rate_grace: setting_u64(record, "announce_rate_grace"),
         announce_rate_penalty: setting_u64(record, "announce_rate_penalty"),
         bootstrap_only: setting_bool(record, "bootstrap_only"),
-        ifac_size: setting_u64(record, "ifac_size"),
-        network_name: setting_string(record, "network_name")
-            .or_else(|| setting_string(record, "networkname")),
-        passphrase: setting_string(record, "passphrase")
-            .or_else(|| setting_string(record, "pass_phrase")),
         ingress_control: setting_bool(record, "ingress_control"),
         egress_control: setting_bool(record, "egress_control"),
         ic_max_held_announces: setting_u64(record, "ic_max_held_announces"),
@@ -57,6 +52,7 @@ pub(crate) fn interface_record_shared_config(record: &InterfaceRecord) -> Interf
         announce_interval: setting_u64(record, "announce_interval"),
         discovery_stamp_value: setting_u64(record, "discovery_stamp_value"),
         discovery_name: setting_string(record, "discovery_name"),
+        discovery_lxmf_address: setting_string(record, "discovery_lxmf_address"),
         discovery_encrypt: setting_bool(record, "discovery_encrypt"),
         reachable_on: setting_string(record, "reachable_on"),
         publish_ifac: setting_bool(record, "publish_ifac"),
@@ -66,5 +62,6 @@ pub(crate) fn interface_record_shared_config(record: &InterfaceRecord) -> Interf
         discovery_frequency: setting_u64(record, "discovery_frequency"),
         discovery_bandwidth: setting_u64(record, "discovery_bandwidth"),
         discovery_modulation: setting_u64(record, "discovery_modulation"),
+        ..InterfaceSharedConfig::default()
     }
 }

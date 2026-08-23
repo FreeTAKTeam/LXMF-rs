@@ -37,6 +37,9 @@ Update these documents when their corresponding behavior changes:
 - [v0.9.9 release notes](release-notes-v0.9.9.md): current stable release
   summary. The historical rc.6 evidence remains in the
   [candidate ledger](status/v0.9.9-release-candidate.md).
+- [v0.10.0-rc.1 release notes](release-notes-v0.10.0-rc.1.md): RNS 1.5.0
+  alignment candidate, with exact-head readiness tracked in its
+  [candidate ledger](status/v0.10.0-release-candidate.md).
 - [Contracts](contracts/): public compatibility, support, API, payload, RPC,
   and protocol guarantees.
 - [Interfaces](interfaces/): interface-specific configuration and integration
@@ -74,6 +77,9 @@ Update these documents when their corresponding behavior changes:
 
 - [Latest GitHub release](https://github.com/FreeTAKTeam/LXMF-rs/releases/latest)
 - [v0.9.9 release notes](release-notes-v0.9.9.md)
+- [v0.10.0-rc.1 release notes](release-notes-v0.10.0-rc.1.md)
+- [v0.10.0 candidate evidence](status/v0.10.0-release-candidate.md)
+- [v0.10.0 RNS 1.5 migration guide](migrations/v0.10.0-rns-1.5.md)
 - [Release readiness](runbooks/release-readiness.md)
 - [Release process](RELEASING.md)
 - [crates.io publication plan](runbooks/crates-io-publish-plan.md)

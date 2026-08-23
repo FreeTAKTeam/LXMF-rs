@@ -187,6 +187,16 @@ impl RpcDaemon {
             self.metrics_record_daemon_status_wait(snapshot_wait_ns, message_count_wait_ns);
         }
 
+        let transport_bridge =
+            self.path_lookup_bridge.lock().expect("path_lookup_bridge mutex poisoned").clone();
+        let transport_status = transport_bridge
+            .map(|bridge| bridge.transport_status())
+            .transpose()
+            .map_err(|error| {
+                log::warn!("[daemon] failed to collect live transport status: {error}");
+                std::io::Error::other(format!("live transport status unavailable: {error}"))
+            })?;
+
         Ok(json!({
             "identity_hash": self.identity_hash,
             "delivery_destination_hash": self.local_delivery_hash(),
@@ -198,6 +208,7 @@ impl RpcDaemon {
             "reticulum": {
                 "shared_instance": Self::shared_instance_status(&snapshot.interfaces),
                 "parity": software_parity_orientation(),
+                "transport": transport_status,
             },
             "delivery_policy": snapshot.delivery_policy,
             "propagation": snapshot.propagation,

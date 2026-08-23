@@ -56,13 +56,25 @@ fn main() -> std::process::ExitCode {
 }
 
 fn run(cli: &Cli, output: &mut dyn Write) -> io::Result<()> {
+    let medium_timeout = rpc_call(cli, 0, "medium_path_timeout", None)
+        .ok()
+        .and_then(|response| response.result)
+        .and_then(|value| value.as_f64())
+        .unwrap_or(0.0);
+    let timeout = adaptive_timeout(cli.timeout, medium_timeout);
     let params = json!({
         "destination_hash": cli.destination_hash,
-        "timeout_secs": cli.timeout,
+        "timeout_secs": timeout,
         "on_iface": cli.on_iface,
         "tag_hex": cli.tag_hex,
     });
-    let response = rpc_call(cli, 1, REQUEST_PATH_METHOD, Some(params))?;
+    let response = rpc_call_with_adaptive_timeout(
+        cli,
+        1,
+        REQUEST_PATH_METHOD,
+        Some(params),
+        Duration::from_secs(timeout),
+    )?;
     let result = ensure_rpc_ok(response, REQUEST_PATH_METHOD)?.ok_or_else(|| {
         io::Error::new(io::ErrorKind::InvalidData, "missing path discovery result")
     })?;
@@ -82,18 +94,34 @@ fn run(cli: &Cli, output: &mut dyn Write) -> io::Result<()> {
     Ok(())
 }
 
+fn adaptive_timeout(configured: u64, medium_path_timeout: f64) -> u64 {
+    configured.max(medium_path_timeout.max(0.0).ceil() as u64).max(1)
+}
+
 fn rpc_call(
     cli: &Cli,
     id: u64,
     method: &str,
     params: Option<serde_json::Value>,
 ) -> io::Result<rns_rpc::RpcResponse> {
+    rpc_call_with_adaptive_timeout(cli, id, method, params, cli.rpc_timeout())
+}
+
+fn rpc_call_with_adaptive_timeout(
+    cli: &Cli,
+    id: u64,
+    method: &str,
+    params: Option<serde_json::Value>,
+    adaptive_timeout: Duration,
+) -> io::Result<rns_rpc::RpcResponse> {
     let frame = build_rpc_frame(id, method, params)?;
+    let write_timeout = cli.rpc_timeout().max(adaptive_timeout);
+    let read_timeout = write_timeout + RPC_READ_HEADROOM;
     #[cfg(unix)]
     if let Some(path) = cli.rpc_unix.as_ref() {
         let request = build_http_post("/rpc", "localhost", &frame);
-        let stream = connect_unix_with_timeout(path, cli.rpc_timeout())?;
-        return rpc_call_with_stream(stream, &request, cli.rpc_timeout(), cli.rpc_read_timeout());
+        let stream = connect_unix_with_timeout(path, write_timeout)?;
+        return rpc_call_with_stream(stream, &request, write_timeout, read_timeout);
     }
 
     let rpc = cli.rpc_addr();
@@ -101,8 +129,8 @@ fn rpc_call(
     let addr = rpc.to_socket_addrs()?.next().ok_or_else(|| {
         io::Error::new(io::ErrorKind::InvalidInput, "RPC address did not resolve")
     })?;
-    let stream = TcpStream::connect_timeout(&addr, cli.rpc_timeout())?;
-    rpc_call_with_stream(stream, &request, cli.rpc_timeout(), cli.rpc_read_timeout())
+    let stream = TcpStream::connect_timeout(&addr, write_timeout)?;
+    rpc_call_with_stream(stream, &request, write_timeout, read_timeout)
 }
 
 #[cfg(unix)]
@@ -251,9 +279,6 @@ impl Cli {
         Duration::from_secs(self.timeout.max(1))
     }
 
-    fn rpc_read_timeout(&self) -> Duration {
-        self.rpc_timeout() + RPC_READ_HEADROOM
-    }
 }
 
 #[cfg(test)]
@@ -281,6 +306,13 @@ mod tests {
         let cli = Cli::parse_from(["rnpath-rs", DESTINATION_HASH, "--timeout", "1"]);
 
         assert_eq!(cli.rpc_timeout(), Duration::from_secs(1));
-        assert_eq!(cli.rpc_read_timeout(), Duration::from_secs(3));
+        assert_eq!(cli.rpc_timeout() + RPC_READ_HEADROOM, Duration::from_secs(3));
+    }
+
+    #[test]
+    fn rns_1_5_adaptive_timeout_uses_medium_timeout_as_a_lower_bound() {
+        assert_eq!(adaptive_timeout(30, 120.1), 121);
+        assert_eq!(adaptive_timeout(300, 120.1), 300);
+        assert_eq!(adaptive_timeout(0, -1.0), 1);
     }
 }

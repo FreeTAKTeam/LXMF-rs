@@ -43,16 +43,23 @@ pub fn create_path_request_destination() -> PlainInputDestination {
 
 pub type TagBytes = Vec<u8>;
 
-type DuplicateKey = (AddressHash, Option<AddressHash>, TagBytes, AddressHash);
-
-type DiscoveryKey = (AddressHash, Option<AddressHash>);
+type DuplicateKey = (AddressHash, TagBytes);
 
 type LocalResponseKey = (AddressHash, Option<AddressHash>, TagBytes, AddressHash);
+
+#[derive(Debug, Clone)]
+struct InflightPathRequest {
+    expires_at: Instant,
+    outbound_iface: Option<AddressHash>,
+    requesting_ifaces: Vec<AddressHash>,
+    engaged: bool,
+}
 
 pub fn create_random_tag() -> TagBytes {
     AddressHash::new_from_rand(OsRng).as_slice().into()
 }
 
+#[derive(Debug, Clone)]
 pub struct PathRequest {
     pub destination: AddressHash,
     pub requesting_transport: Option<AddressHash>,
@@ -101,12 +108,13 @@ pub struct PathRequests {
     name: String,
     transport_id: Option<AddressHash>,
     controlled_destination: PlainInputDestination,
-    discovery: BTreeMap<DiscoveryKey, Instant>,
+    discovery: BTreeMap<AddressHash, InflightPathRequest>,
     pending_recursive_by_iface: BTreeMap<Option<AddressHash>, usize>,
     announce_queue_len: usize,
     announce_cap: usize,
+    configured_request_timeout: Duration,
     request_timeout: Duration,
-    queue: VecDeque<(DiscoveryKey, Instant)>,
+    queue: VecDeque<(AddressHash, Instant)>,
     outgoing_requests: BTreeMap<AddressHash, Instant>,
     outgoing_request_queue: VecDeque<(AddressHash, Instant)>,
     local_response_cache: BTreeMap<LocalResponseKey, Instant>,
@@ -132,6 +140,7 @@ impl PathRequests {
             pending_recursive_by_iface: BTreeMap::new(),
             announce_queue_len,
             announce_cap,
+            configured_request_timeout: Duration::from_secs(request_timeout_secs.max(1)),
             request_timeout: Duration::from_secs(request_timeout_secs.max(1)),
             queue: alloc::collections::VecDeque::new(),
             outgoing_requests: BTreeMap::new(),
@@ -148,18 +157,25 @@ impl PathRequests {
                 break;
             }
             self.cache_queue.pop_front();
-            self.cache.remove(&key);
+            if self.cache.get(&key).copied() == Some(timeout) {
+                self.cache.remove(&key);
+            }
         }
     }
 
     fn prune_discovery(&mut self, now: Instant) {
-        while let Some((queued_key, timeout)) = self.queue.front().copied() {
+        while let Some((destination, timeout)) = self.queue.front().copied() {
             if timeout > now {
                 break;
             }
             self.queue.pop_front();
-            if self.discovery.remove(&queued_key).is_some() {
-                self.decrement_pending_recursive_count(queued_key.1);
+            if let Some(inflight) = self.discovery.get(&destination) {
+                if inflight.expires_at != timeout {
+                    continue;
+                }
+            }
+            if let Some(inflight) = self.discovery.remove(&destination) {
+                self.decrement_pending_recursive_count(inflight.outbound_iface);
             }
         }
     }
@@ -214,17 +230,14 @@ impl PathRequests {
         self.decode_at(data, on_iface, Instant::now())
     }
 
-    fn decode_at(&mut self, data: &[u8], on_iface: AddressHash, now: Instant) -> Option<PathRequest> {
+    fn decode_at(&mut self, data: &[u8], _on_iface: AddressHash, now: Instant) -> Option<PathRequest> {
         let path_request = PathRequest::decode(data, &self.name);
         self.prune_cache(now);
 
         if let Some(ref request) = path_request {
-            let key = (
-                request.destination,
-                request.requesting_transport,
-                request.tag_bytes.clone(),
-                on_iface,
-            );
+            // RNS 1.5 suppresses replays by exact destination+tag bytes. Requesting transport
+            // and ingress interface must not weaken the duplicate key.
+            let key = (request.destination, request.tag_bytes.clone());
             let expires_at = now + self.request_timeout;
             let is_new = self.cache.insert(key.clone(), expires_at).is_none();
 
@@ -326,22 +339,35 @@ impl PathRequests {
         on_iface: Option<AddressHash>,
         now: Instant,
     ) -> bool {
-        let key = (*destination, on_iface);
-
         self.prune_discovery(now);
 
-        if let Some(timeout) = self.discovery.get(&key) {
-            if *timeout >= now {
+        if let Some(inflight) = self.discovery.get_mut(destination) {
+            if inflight.expires_at >= now {
+                if let Some(iface) = on_iface {
+                    if !inflight.requesting_ifaces.contains(&iface) {
+                        inflight.requesting_ifaces.push(iface);
+                    }
+                }
+                let should_engage = !inflight.engaged;
+                if should_engage {
+                    // Prequeue admission may have created this record before the interface
+                    // bitrate was sampled. Rebase its expiry on the current adaptive timeout
+                    // when the recursive request is actually engaged.
+                    inflight.expires_at = now + self.request_timeout;
+                    self.queue.push_back((*destination, inflight.expires_at));
+                }
+                inflight.engaged = true;
                 log::debug!(
-                    "tp({}): rejecting discovery path request for destination {} on iface {:?} as a request is already pending",
+                    "tp({}): batching discovery path request for destination {} from iface {:?}",
                     self.name,
                     destination,
                     on_iface
                 );
-                return false;
+                return should_engage;
             }
-            self.discovery.remove(&key);
-            self.decrement_pending_recursive_count(on_iface);
+        }
+        if let Some(expired) = self.discovery.remove(destination) {
+            self.decrement_pending_recursive_count(expired.outbound_iface);
         }
 
         let pending_for_iface = self.pending_recursive_count(on_iface);
@@ -367,9 +393,17 @@ impl PathRequests {
         }
 
         let expiry = now + self.request_timeout;
-        self.discovery.insert(key, expiry);
+        self.discovery.insert(
+            *destination,
+            InflightPathRequest {
+                expires_at: expiry,
+                outbound_iface: on_iface,
+                requesting_ifaces: on_iface.into_iter().collect(),
+                engaged: true,
+            },
+        );
         self.increment_pending_recursive_count(on_iface);
-        self.queue.push_back((key, expiry));
+        self.queue.push_back((*destination, expiry));
 
         true
     }
@@ -410,26 +444,25 @@ impl PathRequests {
         }
     }
 
+    pub fn set_request_timeout_lower_bound(&mut self, timeout: Duration) {
+        self.request_timeout = self.configured_request_timeout.max(timeout);
+    }
+
     pub fn take_discovery_requesters(&mut self, destination: &AddressHash) -> Vec<AddressHash> {
         self.prune_discovery(Instant::now());
 
-        let keys: Vec<DiscoveryKey> = self
-            .discovery
-            .keys()
-            .copied()
-            .filter(|(queued_destination, _)| queued_destination == destination)
-            .collect();
-        let mut requesters = Vec::new();
+        let Some(inflight) = self.discovery.remove(destination) else {
+            return Vec::new();
+        };
+        self.decrement_pending_recursive_count(inflight.outbound_iface);
+        inflight.requesting_ifaces
+    }
 
-        for key in keys {
-            if self.discovery.remove(&key).is_some() {
-                self.decrement_pending_recursive_count(key.1);
-                if let Some(iface) = key.1 {
-                    requesters.push(iface);
-                }
-            }
-        }
-
-        requesters
+    #[cfg(test)]
+    pub fn discovery_requesters(&self, destination: &AddressHash) -> Vec<AddressHash> {
+        self.discovery
+            .get(destination)
+            .map(|request| request.requesting_ifaces.clone())
+            .unwrap_or_default()
     }
 }

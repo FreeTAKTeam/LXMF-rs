@@ -45,6 +45,8 @@ include!("iface_types.rs");
 
 include!("iface_parts/txmessagetype.rs");
 
+include!("iface_parts/interface_traffic.rs");
+
 include!("iface_runtime.rs");
 
 include!("iface_parts/interfacemanager.rs");

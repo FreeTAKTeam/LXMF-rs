@@ -122,59 +122,7 @@ pub trait InterfaceMutationBridge: Send + Sync {
     ) -> Result<Vec<InterfaceRecord>, std::io::Error>;
 }
 
-pub trait PathLookupBridge: Send + Sync {
-    fn has_path(&self, destination: &str) -> Result<bool, std::io::Error>;
-
-    fn request_path(&self, destination: &str) -> Result<(), std::io::Error>;
-
-    fn request_path_scoped(
-        &self,
-        destination: &str,
-        _on_iface: Option<&str>,
-        _tag: Option<&[u8]>,
-    ) -> Result<(), std::io::Error> {
-        self.request_path(destination)
-    }
-
-    fn path_status(&self, destination: &str) -> Result<JsonValue, std::io::Error> {
-        let path_found = self.has_path(destination)?;
-        Ok(json!({
-            "path_found": path_found,
-        }))
-    }
-
-    fn link_count(&self) -> Result<usize, std::io::Error> {
-        Err(std::io::Error::other("link count bridge is not configured"))
-    }
-
-    fn drop_path(&self, _destination: &str) -> Result<bool, std::io::Error> {
-        Err(std::io::Error::other("path mutation bridge is not configured"))
-    }
-
-    fn drop_all_via(&self, _transport: &str) -> Result<usize, std::io::Error> {
-        Err(std::io::Error::other("path mutation bridge is not configured"))
-    }
-
-    fn drop_announce_queues(&self) -> Result<usize, std::io::Error> {
-        Err(std::io::Error::other("announce queue bridge is not configured"))
-    }
-
-    fn rate_table(&self) -> Result<JsonValue, std::io::Error> {
-        Err(std::io::Error::other("rate table bridge is not configured"))
-    }
-
-    fn packet_signal(&self, _packet_hash: &str) -> Result<JsonValue, std::io::Error> {
-        Err(std::io::Error::other("packet signal bridge is not configured"))
-    }
-
-    fn discovered_interfaces(&self) -> Result<JsonValue, std::io::Error> {
-        Err(std::io::Error::other("interface discovery bridge is not configured"))
-    }
-
-    fn remove_paths_for_identity(&self, _identity: &str) -> Result<usize, std::io::Error> {
-        Ok(0)
-    }
-}
+include!("path_lookup_bridge.rs");
 
 pub trait RNodeManagementBridge: Send + Sync {
     fn dispatch_rnode_management(

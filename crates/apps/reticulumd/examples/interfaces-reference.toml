@@ -21,6 +21,9 @@
 # force_shared_instance_bitrate = 1000000000
 # instance_control_port = 37429
 # rpc_key = "change-me"
+# network_identity = "/var/lib/reticulumd/network.identity"
+# A shared network identity is required on every peer that publishes or
+# receives discovery announcements with discovery_encrypt = true.
 
 # [propagation_node]
 # enabled = false
@@ -49,11 +52,8 @@
 # announce_rate_penalty = 0
 # bootstrap_only = false
 # ignore_config_warnings = false
-# ifac_size = 16
-# network_name = "private-ifac"
-# networkname = "private-ifac"        # compatibility alias for network_name
-# passphrase = "change-me"
-# pass_phrase = "change-me"           # compatibility alias for passphrase
+# Reticulum IFAC authentication is not implemented in v0.10.0. Configuring
+# ifac_size/network_name/passphrase (or their aliases) is rejected at startup.
 # ingress_control = false
 # egress_control = false
 # ic_max_held_announces = 256
@@ -200,8 +200,8 @@ name = "i2p-example"
 # reconnect_backoff_ms = 1000
 # state_path = "./state/i2p"
 # storagepath = "./state/i2p"          # compatibility alias for state_path
-# ifac_netname = "private-ifac"        # compatibility alias for network_name
-# ifac_netkey = "change-me"            # compatibility alias for passphrase
+# ifac_netname/ifac_netkey are recognised compatibility aliases, but are
+# rejected until Reticulum IFAC authentication is implemented.
 
 # UDP unicast interface with optional forwarding target.
 [[interfaces]]

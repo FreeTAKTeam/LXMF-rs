@@ -28,6 +28,25 @@ mod tests {
     }
 
     #[test]
+    fn rns_1_5_channel_buffer_uses_negotiated_channel_mdu_minus_stream_header() {
+        let mut state = 0x1234_5678_u32;
+        let payload = (0..600)
+            .map(|_| {
+                state ^= state << 13;
+                state ^= state >> 17;
+                state ^= state << 5;
+                state as u8
+            })
+            .collect::<Vec<_>>();
+
+        let (message, processed) =
+            RawChannelWriter::encode_chunk_with_mdu(9, &payload, false, 600).expect("chunk");
+        assert_eq!(processed, 600);
+        assert_eq!(message.data.len(), 600);
+        assert!(!message.compressed);
+    }
+
+    #[test]
     fn stream_data_message_rejects_oversized_compressed_payloads() {
         let payload = vec![b'A'; MAX_CHUNK_LEN + 1];
         let mut encoder = BzEncoder::new(Vec::new(), Compression::default());

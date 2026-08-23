@@ -48,7 +48,7 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_path_requests_are_scoped_to_same_requester_and_interface() {
+    fn duplicate_path_requests_use_exact_destination_and_tag_key() {
         let mut receiver = PathRequests::new("", None, 16, 16, 30);
         let requester = AddressHash::new_from_rand(OsRng);
         let mut sender = PathRequests::new("", Some(requester), 16, 16, 30);
@@ -66,7 +66,7 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_path_requests_allow_distinct_requesters_and_interfaces() {
+    fn duplicate_path_requests_suppress_replays_across_requesters_and_interfaces() {
         let mut receiver = PathRequests::new("", None, 16, 16, 30);
         let requester_a = AddressHash::new_from_rand(OsRng);
         let requester_b = AddressHash::new_from_rand(OsRng);
@@ -82,12 +82,12 @@ mod tests {
 
         assert!(receiver.decode_at(packet_a.data.as_slice(), iface_a, now).is_some());
         assert!(
-            receiver.decode_at(packet_b.data.as_slice(), iface_a, now).is_some(),
-            "same destination/tag on the same iface should be accepted for a distinct requester"
+            receiver.decode_at(packet_b.data.as_slice(), iface_a, now).is_none(),
+            "same destination/tag must be suppressed for a distinct requester"
         );
         assert!(
-            receiver.decode_at(packet_a.data.as_slice(), iface_b, now).is_some(),
-            "same destination/tag from the same requester should be accepted on a distinct iface"
+            receiver.decode_at(packet_a.data.as_slice(), iface_b, now).is_none(),
+            "same destination/tag must be suppressed on a distinct interface"
         );
         assert!(
             receiver.decode_at(packet_a.data.as_slice(), iface_a, now).is_none(),
@@ -96,7 +96,7 @@ mod tests {
     }
 
     #[test]
-    fn recursive_requests_are_tracked_per_interface() {
+    fn rns_1_5_path_request_batch_coalesces_destination_and_retains_interfaces() {
         let mut testee = PathRequests::new("", None, 16, 16, 30);
         let destination = AddressHash::new_from_rand(OsRng);
         let iface_a = AddressHash::new_from_rand(OsRng);
@@ -104,7 +104,65 @@ mod tests {
 
         assert!(testee.generate_recursive(&destination, Some(iface_a), None).is_some());
         assert!(testee.generate_recursive(&destination, Some(iface_a), None).is_none());
+        assert!(testee.generate_recursive(&destination, Some(iface_b), None).is_none());
+        assert_eq!(testee.take_discovery_requesters(&destination), vec![iface_a, iface_b]);
         assert!(testee.generate_recursive(&destination, Some(iface_b), None).is_some());
+    }
+
+    #[test]
+    fn rns_1_5_discovery_timeout_uses_slow_medium_lower_bound() {
+        let mut testee = PathRequests::new("", None, 16, 16, 15);
+        let destination = AddressHash::new_from_rand(OsRng);
+        let iface = AddressHash::new_from_rand(OsRng);
+        let now = Instant::now();
+
+        testee.set_request_timeout_lower_bound(Duration::from_secs(90));
+        assert!(testee.allow_recursive_at(&destination, Some(iface), now));
+        assert!(!testee.allow_recursive_at(
+            &destination,
+            Some(iface),
+            now + Duration::from_secs(89)
+        ));
+        assert!(testee.allow_recursive_at(
+            &destination,
+            Some(iface),
+            now + Duration::from_secs(91)
+        ));
+    }
+
+    #[test]
+    fn rns_1_5_discovery_timeout_tracks_the_current_medium_lower_bound() {
+        let mut testee = PathRequests::new("", None, 16, 16, 15);
+
+        testee.set_request_timeout_lower_bound(Duration::from_secs(90));
+        assert_eq!(testee.request_timeout, Duration::from_secs(90));
+
+        testee.set_request_timeout_lower_bound(Duration::from_secs(30));
+        assert_eq!(testee.request_timeout, Duration::from_secs(30));
+
+        testee.set_request_timeout_lower_bound(Duration::from_secs(5));
+        assert_eq!(testee.request_timeout, Duration::from_secs(15));
+    }
+
+    #[test]
+    fn rns_1_5_prequeue_discovery_expiry_rebases_when_slow_request_engages() {
+        let mut testee = PathRequests::new("", None, 16, 16, 15);
+        let destination = AddressHash::new_from_rand(OsRng);
+        let iface = AddressHash::new_from_rand(OsRng);
+        assert!(testee.register_discovery_before_queue(&destination, iface));
+        let prequeue_expiry = testee
+            .discovery
+            .get(&destination)
+            .expect("prequeue discovery")
+            .expires_at;
+
+        testee.set_request_timeout_lower_bound(Duration::from_secs(90));
+        let engaged_at = Instant::now();
+        assert!(testee.allow_recursive_at(&destination, Some(iface), engaged_at));
+        let engaged = testee.discovery.get(&destination).expect("engaged discovery");
+        assert!(engaged.engaged);
+        assert!(engaged.expires_at >= engaged_at + Duration::from_secs(90));
+        assert!(engaged.expires_at > prequeue_expiry);
     }
 
     #[test]

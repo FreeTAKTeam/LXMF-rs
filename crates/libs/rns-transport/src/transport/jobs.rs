@@ -1,6 +1,7 @@
-use super::announce::{handle_announce, release_held_announces, retransmit_announces};
-use super::path::{handle_fixed_destinations, handle_link_request};
-use super::wire::{handle_data, handle_proof};
+use super::announce::{release_held_announces, retransmit_announces};
+use super::inbound_processing::{
+    preprocess_inbound_message, process_inbound_message, rollback_rejected_inbound,
+};
 use super::*;
 use crate::destination::link::LinkWatchdogAction;
 
@@ -21,7 +22,7 @@ const PATH_REQUEST_MI: Duration = Duration::from_secs(20);
 /// disturb duplicate detection. `saturating_add` rather than wrapping,
 /// matching the header's hop count never being meant to overflow past its
 /// practical (u8) ceiling.
-fn apply_receive_hop_increment(packet: &mut Packet) {
+pub(super) fn apply_receive_hop_increment(packet: &mut Packet) {
     packet.header.hops = packet.header.hops.saturating_add(1);
 }
 
@@ -162,125 +163,54 @@ pub(super) async fn manage_transport(
     let mut workers = WorkerSet::new();
     let mut worker_names = WorkerNames::new();
 
+    let inbound_queues = handler_arc.lock().await.inbound_queues.clone();
+
+    {
+        let handler_arc = handler_arc.clone();
+        let cancel = cancel.clone();
+        let inbound_queues = inbound_queues.clone();
+
+        spawn_named_worker(&mut workers, &mut worker_names, "packet-ingress", async move {
+            loop {
+                let message = {
+                    let mut receiver = rx_receiver.lock().await;
+                    tokio::select! {
+                        _ = cancel.cancelled() => break,
+                        message = receiver.recv() => message,
+                    }
+                };
+                let Some(message) = message else {
+                    break;
+                };
+                let Some((class, message)) =
+                    preprocess_inbound_message(&handler_arc, &iface_messages_tx, message).await
+                else {
+                    continue;
+                };
+                if let Err(full) = inbound_queues.enqueue(class, message) {
+                    rollback_rejected_inbound(&handler_arc, &full.item).await;
+                    log::warn!(
+                        "dropping inbound packet because {:?} queue is full iface={} hash={}",
+                        full.class,
+                        full.item.message.address,
+                        full.item.message.packet.hash()
+                    );
+                }
+            }
+        });
+    }
+
     {
         let handler_arc = handler_arc.clone();
         let cancel = cancel.clone();
 
-        log::trace!("tp({}): start packet task", handler_arc.lock().await.config.name);
-
-        spawn_named_worker(&mut workers, &mut worker_names, "packet", async move {
+        spawn_named_worker(&mut workers, &mut worker_names, "packet-drain", async move {
             loop {
-                let mut rx_receiver = rx_receiver.lock().await;
-
-                if cancel.is_cancelled() {
-                    break;
-                }
-
-                tokio::select! {
-                    _ = cancel.cancelled() => {
-                        break;
-                    },
-                    Some(message) = rx_receiver.recv() => {
-                        if iface_messages_tx.send(message.clone()).is_err() {
-                            log::trace!(
-                                "[tp-diag] interface message has no active subscribers iface={}",
-                                message.address
-                            );
-                        }
-
-                        let mut packet = message.packet;
-                        let (configured_hops_delta, iface_manager) = {
-                            let handler = handler_arc.lock().await;
-                            (
-                                handler.local_hops_delta_for_packet(&packet),
-                                handler.iface_manager.clone(),
-                            )
-                        };
-                        let local_hops_delta = if let Some(delta) = configured_hops_delta {
-                            if !iface_manager.lock().await.is_shared_instance(&message.address) {
-                                Some(delta)
-                            } else {
-                                None
-                            }
-                        } else {
-                            None
-                        };
-                        if let Some(delta) = local_hops_delta {
-                            packet.header.hops = packet.header.hops.saturating_add(delta);
-                        }
-                        apply_receive_hop_increment(&mut packet);
-
-                        let mut handler = handler_arc.lock().await;
-
-                        if PACKET_TRACE {
-                            log::debug!("<< rx({}) = {} {}", message.address, packet, packet.hash());
-                        }
-
-                        log::info!(
-                            "[tp-diag] inbound_packet node={} iface={} src={:?} dst={} type={:?} dest_type={:?} propagation={:?} ctx={:?} len={} hash={}",
-                            handler.config.name,
-                            message.address,
-                            message.source,
-                            packet.destination,
-                            packet.header.packet_type,
-                            packet.header.destination_type,
-                            packet.header.propagation_type,
-                            packet.context,
-                            packet.data.len(),
-                            packet.hash()
-                        );
-
-                        if handle_fixed_destinations(
-                            &packet,
-                            &mut handler,
-                            message.address
-                        ).await {
-                            continue;
-                        }
-
-                        if !handler.filter_duplicate_packets(&packet).await {
-                            log::debug!(
-                                "tp({}): dropping duplicate packet: dst={}, ctx={:?}, type={:?}",
-                                handler.config.name,
-                                packet.destination,
-                                packet.context,
-                                packet.header.packet_type
-                            );
-                            continue;
-                        }
-
-                        match packet.header.packet_type {
-                            PacketType::Announce => handle_announce(
-                                &packet,
-                                handler,
-                                message.address,
-                                message.source,
-                            ).await,
-                            // Link traffic: learn the sender's unicast route and
-                            // bind the link to that virtual iface, so replies are
-                            // unicast
-                            PacketType::LinkRequest => {
-                                let route_iface = handler
-                                    .ingress_route_iface(&packet, message.address, message.source)
-                                    .await;
-                                handle_link_request(&packet, route_iface, handler).await
-                            }
-                            PacketType::Proof => {
-                                let route_iface = handler
-                                    .ingress_route_iface(&packet, message.address, message.source)
-                                    .await;
-                                drop(handler);
-                                handle_proof(packet, handler_arc.clone(), route_iface).await;
-                            }
-                            PacketType::Data => {
-                                let route_iface = handler
-                                    .ingress_route_iface(&packet, message.address, message.source)
-                                    .await;
-                                handle_data(&packet, route_iface, handler).await
-                            }
-                        }
-                    }
+                let message = tokio::select! {
+                    _ = cancel.cancelled() => break,
+                    message = inbound_queues.dequeue() => message,
                 };
+                process_inbound_message(handler_arc.clone(), message).await;
             }
         });
     }
@@ -302,6 +232,22 @@ pub(super) async fn manage_transport(
                     },
                     _ = time::sleep(delay) => {
                         handle_check_links(handler.lock().await).await;
+                    }
+                }
+            }
+        });
+    }
+
+    {
+        let iface_manager = handler_arc.lock().await.iface_manager.clone();
+        let cancel = cancel.clone();
+
+        spawn_named_worker(&mut workers, &mut worker_names, "traffic-sampler", async move {
+            loop {
+                tokio::select! {
+                    _ = cancel.cancelled() => break,
+                    _ = time::sleep(Duration::from_secs(1)) => {
+                        iface_manager.lock().await.sample_traffic();
                     }
                 }
             }

@@ -355,6 +355,20 @@ mod tests {
     }
 
     #[test]
+    fn rns_1_5_rngit_adaptive_timeout_is_a_lower_bound() {
+        let mut client = ReticulumGitClient::default();
+        client.set_medium_path_timeout(42.1);
+        client
+            .connect_remote("rns://00112233445566778899aabbccddeeff/group/repo")
+            .expect("remote connection setup");
+        assert_eq!(client.path_timeout_secs, 43);
+        assert_eq!(client.link_timeout_secs, 43);
+        client.apply_medium_path_timeout(2.0);
+        assert_eq!(client.path_timeout_secs, 43);
+        assert_eq!(client.link_timeout_secs, 43);
+    }
+
+    #[test]
     fn local_client_and_node_roundtrip_repository_creation_and_listing() {
         let temp = tempfile::tempdir().expect("tempdir");
         let group_path = temp.path().join("group");

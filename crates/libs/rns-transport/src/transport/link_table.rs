@@ -53,6 +53,10 @@ impl LinkTable {
         self.entries.len()
     }
 
+    pub fn active_len(&self) -> usize {
+        self.entries.values().filter(|entry| entry.validated).count()
+    }
+
     pub fn add(
         &mut self,
         link_request: &Packet,

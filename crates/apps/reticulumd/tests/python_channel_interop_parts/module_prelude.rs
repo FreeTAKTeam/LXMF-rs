@@ -582,7 +582,7 @@ async fn rust_to_python_channel_buffer_roundtrip() {
     let temp = tempfile::tempdir().expect("tempdir");
     let py_config_dir = temp.path().join("python-rns-buffer");
     fs::create_dir_all(&py_config_dir).expect("python config dir");
-    write_python_config(&py_config_dir, server_port);
+    write_python_config_for_kind(&py_config_dir, server_port, PythonInteropInterfaceKind::Backbone);
 
     let mut child = paths.spawn_endpoint(&py_config_dir, "buffer");
     let ready = read_ready(&mut child).expect("python endpoint ready");
@@ -596,11 +596,10 @@ async fn rust_to_python_channel_buffer_roundtrip() {
     let mut config = TransportConfig::new("python-buffer-interop", &rust_identity, true);
     config.set_path_request_timeout_secs(2);
     let transport = Transport::new(config);
-    transport
-        .iface_manager()
-        .lock()
-        .await
-        .spawn(TcpClient::new(format!("127.0.0.1:{server_port}")), TcpClient::spawn);
+    transport.iface_manager().lock().await.spawn(
+        rust_client_for_python_interop(PythonInteropInterfaceKind::Backbone, server_port),
+        TcpClient::spawn,
+    );
 
     let destination = wait_for_announce(&transport, target_hash, Duration::from_secs(8)).await;
     let mut link_events = transport.out_link_events();
@@ -611,8 +610,18 @@ async fn rust_to_python_channel_buffer_roundtrip() {
     let pair = Buffer::create_bidirectional_buffer(0, 0, transport.channel(link_id))
         .await
         .expect("buffer pair");
-    let written = pair.writer.write_all(b"Hi there").await.expect("write buffer");
-    assert_eq!(written, "Hi there".len());
-
-    wait_for_buffer_data(&pair.reader, b"Hi there back at you", Duration::from_secs(8)).await;
+    let mut state = 0x1234_5678_u32;
+    let payload = (0..600)
+        .map(|_| {
+            state ^= state << 13;
+            state ^= state >> 17;
+            state ^= state << 5;
+            33 + (state % 94) as u8
+        })
+        .collect::<Vec<_>>();
+    let written = pair.writer.write_all(&payload).await.expect("write buffer");
+    assert_eq!(written, payload.len());
+    let mut expected = payload;
+    expected.extend_from_slice(b" back at you");
+    wait_for_buffer_data(&pair.reader, &expected, Duration::from_secs(8)).await;
 }

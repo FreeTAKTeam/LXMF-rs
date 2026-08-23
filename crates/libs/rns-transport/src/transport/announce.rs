@@ -20,6 +20,78 @@ fn identity_drifted(existing: &Identity, announced: &Identity) -> bool {
     existing.public_key != announced.public_key || existing.verifying_key != announced.verifying_key
 }
 
+impl TransportHandler {
+    pub(super) fn is_identity_blackholed(&mut self, identity: &AddressHash) -> bool {
+        let expired = self
+            .blackholed_identities
+            .get(identity)
+            .and_then(|until| *until)
+            .is_some_and(|until| now_secs() > until);
+        if expired {
+            self.blackholed_identities.remove(identity);
+            false
+        } else {
+            self.blackholed_identities.contains_key(identity)
+        }
+    }
+}
+
+pub(super) async fn admit_announce_before_queue(
+    packet: &Packet,
+    handler_arc: &Arc<Mutex<TransportHandler>>,
+    iface: AddressHash,
+    source: IfaceSource,
+) -> bool {
+    let announce = match DestinationAnnounce::validate(packet) {
+        Ok(result) => result,
+        Err(err) => {
+            let iface_manager = handler_arc.lock().await.iface_manager.clone();
+            iface_manager
+                .lock()
+                .await
+                .record_protocol_violation(iface, "invalid announce signature");
+            log::debug!(
+                "dropping invalid announce before queue iface={} dst={} err={err:?}",
+                iface,
+                packet.destination
+            );
+            return false;
+        }
+    };
+
+    let mut handler = handler_arc.lock().await;
+    if handler.is_identity_blackholed(&announce.destination.identity.address_hash) {
+        log::debug!(
+            "dropping announce from blackholed identity {} before queue for {}",
+            announce.destination.identity.address_hash,
+            packet.destination
+        );
+        return false;
+    }
+    let destination_known = handler.has_destination(&packet.destination)
+        || handler.knows_destination(&packet.destination);
+    let shared_config = {
+        let manager = handler.iface_manager.lock().await;
+        manager.shared_config(&iface).cloned().unwrap_or_default()
+    };
+    if let AnnounceLimitAction::Hold(delay) = handler.announce_limits.check_with_shared_config(
+        iface,
+        packet,
+        source,
+        destination_known,
+        &shared_config,
+    ) {
+        log::debug!(
+            "tp({}): holding announce for {} before queue for {:?}",
+            handler.config.name,
+            packet.destination,
+            delay
+        );
+        return false;
+    }
+    true
+}
+
 async fn process_announce<'a>(
     packet: &Packet,
     mut handler: MutexGuard<'a, TransportHandler>,
@@ -226,29 +298,51 @@ pub(super) async fn handle_announce<'a>(
             return;
         }
     };
-
-    let destination_known = handler.has_destination(&packet.destination)
-        || handler.knows_destination(&packet.destination);
-    let shared_config = {
-        let manager = handler.iface_manager.lock().await;
-        manager.shared_config(&iface).cloned().unwrap_or_default()
-    };
-    if let AnnounceLimitAction::Hold(delay) = handler.announce_limits.check_with_shared_config(
-        iface,
-        packet,
-        source,
-        destination_known,
-        &shared_config,
-    ) {
+    if handler.is_identity_blackholed(&announce.destination.identity.address_hash) {
         log::debug!(
-            "tp({}): holding announce for {} for {:?}",
-            handler.config.name,
-            packet.destination,
-            delay
+            "dropping announce from blackholed identity {} for {}",
+            announce.destination.identity.address_hash,
+            packet.destination
         );
         return;
     }
 
+    let shared_config = {
+        let manager = handler.iface_manager.lock().await;
+        manager.shared_config(&iface).cloned().unwrap_or_default()
+    };
+    let _ = process_announce(packet, handler, iface, source, announce, shared_config).await;
+}
+
+pub(super) async fn handle_ingress_limited_announce<'a>(
+    packet: &Packet,
+    mut handler: MutexGuard<'a, TransportHandler>,
+    iface: AddressHash,
+    source: IfaceSource,
+) {
+    let announce = match DestinationAnnounce::validate(packet) {
+        Ok(result) => result,
+        Err(err) => {
+            log::warn!(
+                "dropping ingress-limited announce for {} after revalidate failure: {:?}",
+                packet.destination,
+                err
+            );
+            return;
+        }
+    };
+    if handler.is_identity_blackholed(&announce.destination.identity.address_hash) {
+        log::debug!(
+            "dropping ingress-limited announce from blackholed identity {} for {}",
+            announce.destination.identity.address_hash,
+            packet.destination
+        );
+        return;
+    }
+    let shared_config = {
+        let manager = handler.iface_manager.lock().await;
+        manager.shared_config(&iface).cloned().unwrap_or_default()
+    };
     let _ = process_announce(packet, handler, iface, source, announce, shared_config).await;
 }
 
@@ -264,28 +358,25 @@ pub(super) async fn retransmit_announces<'a>(mut handler: MutexGuard<'a, Transpo
 pub(super) async fn release_held_announces<'a>(handler: MutexGuard<'a, TransportHandler>) {
     let mut handler = handler;
     let released = handler.announce_limits.release_ready();
+    let inbound_queues = handler.inbound_queues.clone();
 
     for released_announce in released {
-        let packet = released_announce.packet;
-        let iface = released_announce.iface;
-        let source = released_announce.source;
-        let announce = match DestinationAnnounce::validate(&packet) {
-            Ok(result) => result,
-            Err(err) => {
-                log::warn!(
-                    "dropping held announce for {} after revalidate failure: {:?}",
-                    packet.destination,
-                    err
-                );
-                continue;
-            }
+        let queued = QueuedInbound {
+            message: RxMessage {
+                address: released_announce.iface,
+                packet: released_announce.packet,
+                source: released_announce.source,
+            },
+            ingress_limited: true,
+            packet_cache_inserted: false,
+            path_request: None,
         };
-
-        let shared_config = {
-            let manager = handler.iface_manager.lock().await;
-            manager.shared_config(&iface).cloned().unwrap_or_default()
-        };
-
-        handler = process_announce(&packet, handler, iface, source, announce, shared_config).await;
+        if let Err(full) = inbound_queues.enqueue(InboundTrafficClass::IngressLimited, queued) {
+            log::warn!(
+                "dropping released announce because ingress-limited queue is full iface={} hash={}",
+                full.item.message.address,
+                full.item.message.packet.hash()
+            );
+        }
     }
 }

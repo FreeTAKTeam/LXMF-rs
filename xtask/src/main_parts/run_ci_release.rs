@@ -3,9 +3,9 @@ use super::*;
 pub(super) fn run_release_check() -> Result<()> {
     run_pr_core_ci()?;
     run_correctness_check()?;
+    run("python3", &["tools/scripts/check_python_reference_pins.py", "--self-test"])?;
     run("cargo", &["doc", "--workspace", "--no-deps", "--lib"])?;
-    // The v0.9.9 release candidate is the RNS 1.4.2 software-parity release.
-    // The inventory gate enforces the exact 1,811-entry target rather than
+    // The inventory gate enforces the exact RNS 1.5.0 target rather than
     // accepting a merely well-formed or partially mapped manifest.
     run_python_surface_parity_check(true)?;
     run_sdk_zmq_parity_check()?;

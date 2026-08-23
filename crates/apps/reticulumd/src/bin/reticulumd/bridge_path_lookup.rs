@@ -176,6 +176,35 @@ impl PathLookupBridge for DaemonPathLookupBridge {
         })
     }
 
+    fn set_identity_blackholed(
+        &self,
+        identity: &str,
+        blackholed: bool,
+    ) -> Result<usize, std::io::Error> {
+        self.set_identity_blackholed_until(identity, blackholed, None)
+    }
+    fn set_identity_blackholed_until(
+        &self,
+        identity: &str,
+        blackholed: bool,
+        until: Option<f64>,
+    ) -> Result<usize, std::io::Error> {
+        let identity = Self::destination_hash(identity)?;
+        self.run_transport(move |transport| {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|err| {
+                    std::io::Error::other(format!(
+                        "failed to build expiring blackhole synchronization runtime: {err}"
+                    ))
+                })?;
+            Ok(runtime.block_on(async move {
+                transport.set_identity_blackholed_until(identity, blackholed, until).await
+            }))
+        })
+    }
+
     fn drop_path(&self, destination: &str) -> Result<bool, std::io::Error> {
         let destination = Self::destination_hash(destination)?;
         self.run_transport(move |transport| {
@@ -280,6 +309,40 @@ impl PathLookupBridge for DaemonPathLookupBridge {
             Ok(runtime.block_on(async move { transport.link_count().await }))
         })
     }
+
+    fn active_link_count(&self) -> Result<usize, std::io::Error> {
+        self.run_transport(move |transport| {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|err| std::io::Error::other(format!("active link runtime: {err}")))?;
+            Ok(runtime.block_on(async move { transport.active_link_count().await }))
+        })
+    }
+
+    fn lowest_interface_bitrate(&self) -> Result<Option<u64>, std::io::Error> {
+        self.run_transport(move |transport| {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|err| std::io::Error::other(format!("bitrate runtime: {err}")))?;
+            Ok(runtime.block_on(async move { transport.lowest_interface_bitrate().await }))
+        })
+    }
+
+    fn medium_path_timeout(&self) -> Result<f64, std::io::Error> {
+        self.run_transport(move |transport| {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|err| std::io::Error::other(format!("timeout runtime: {err}")))?;
+            Ok(runtime.block_on(async move { transport.medium_path_timeout().await }).as_secs_f64())
+        })
+    }
+
+    fn transport_status(&self) -> Result<JsonValue, std::io::Error> {
+        self.run_transport(crate::bridge_transport_status::build_transport_status)
+    }
 }
 
 #[cfg(test)]
@@ -329,6 +392,40 @@ mod tests {
         let bridge = bridge();
 
         assert_eq!(bridge.link_count().expect("link count"), 0);
+    }
+
+    #[test]
+    fn rns_1_5_transport_status_exposes_queue_traffic_and_violation_contract() {
+        let (bridge, iface) = bridge_with_iface();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("status fixture runtime");
+        runtime.block_on(async {
+            let manager = bridge.transport.iface_manager();
+            let mut manager = manager.lock().await;
+            assert!(manager.record_inbound_traffic(
+                iface,
+                rns_transport::packet::PacketType::Announce,
+                false,
+                100
+            ));
+            assert!(manager.record_protocol_violation(iface, "fixture"));
+            assert!(manager.record_ifac_violation(iface, "fixture"));
+            assert!(manager.record_packet_filter_hit(iface));
+        });
+
+        let status = bridge.transport_status().expect("transport status");
+        assert_eq!(status["inbound_queues"]["total"], 0);
+        assert_eq!(status["inbound_queues"]["total_limit"], 4736);
+        assert_eq!(status["traffic"]["rx_bytes"], 100);
+        assert_eq!(status["traffic"]["announce_rx_count"], 1);
+        assert_eq!(status["link_count"], 0);
+        assert_eq!(status["active_link_count"], 0);
+        assert_eq!(status["interfaces"][0]["address"], iface.to_hex_string());
+        assert_eq!(status["interfaces"][0]["violations"]["protocol"], 1);
+        assert_eq!(status["interfaces"][0]["violations"]["ifac"], 1);
+        assert_eq!(status["interfaces"][0]["violations"]["packet_filter_hits"], 1);
     }
 
     #[test]

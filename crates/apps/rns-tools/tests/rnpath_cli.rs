@@ -152,6 +152,19 @@ fn rnpath_uses_default_tcp_rpc_when_no_transport_flag_is_supplied() {
         return;
     };
     let server = thread::spawn(move || {
+        let (mut timeout_stream, _) = listener.accept().expect("accept timeout rpc request");
+        let mut timeout_request = Vec::new();
+        timeout_stream.read_to_end(&mut timeout_request).expect("read timeout rpc request");
+        let timeout_text = String::from_utf8_lossy(&timeout_request);
+        assert!(timeout_text.contains("\r\nHost: 127.0.0.1:4243\r\n"), "request: {timeout_text}");
+        let timeout_rpc = codec::decode_frame::<rns_rpc::RpcRequest>(http_body(&timeout_request))
+            .expect("decode timeout request");
+        assert_eq!(timeout_rpc.method, "medium_path_timeout");
+        write_rpc_response(
+            &mut timeout_stream,
+            &RpcResponse { id: timeout_rpc.id, result: Some(json!(0.0)), error: None },
+        );
+
         let (mut stream, _) = listener.accept().expect("accept rpc request");
         let mut request = Vec::new();
         stream.read_to_end(&mut request).expect("read rpc request");
@@ -199,6 +212,21 @@ fn rnpath_fetches_path_over_unix_rpc() {
     let socket_path = temp.path().join("rnpath.sock");
     let listener = UnixListener::bind(&socket_path).expect("bind mock unix rpc");
     let server = thread::spawn(move || {
+        let (mut timeout_stream, _) = listener.accept().expect("accept unix timeout request");
+        let mut timeout_request = Vec::new();
+        timeout_stream.read_to_end(&mut timeout_request).expect("read unix timeout request");
+        let timeout_text = String::from_utf8_lossy(&timeout_request);
+        assert!(timeout_text.starts_with("POST /rpc HTTP/1.1\r\n"), "request: {timeout_text}");
+        assert!(timeout_text.contains("\r\nHost: localhost\r\n"), "request: {timeout_text}");
+        let timeout_rpc = codec::decode_frame::<rns_rpc::RpcRequest>(http_body(&timeout_request))
+            .expect("decode timeout request");
+        assert_eq!(timeout_rpc.id, 0);
+        assert_eq!(timeout_rpc.method, "medium_path_timeout");
+        write_rpc_response(
+            &mut timeout_stream,
+            &RpcResponse { id: timeout_rpc.id, result: Some(json!(0.0)), error: None },
+        );
+
         let (mut stream, _) = listener.accept().expect("accept unix rpc request");
         let mut request = Vec::new();
         stream.read_to_end(&mut request).expect("read rpc request");
@@ -383,6 +411,18 @@ where
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind mock rpc");
     let addr = listener.local_addr().expect("mock rpc addr").to_string();
     let thread = thread::spawn(move || {
+        let (mut timeout_stream, _) = listener.accept().expect("accept timeout rpc request");
+        let mut timeout_request = Vec::new();
+        timeout_stream.read_to_end(&mut timeout_request).expect("read timeout rpc request");
+        let timeout_rpc = codec::decode_frame::<rns_rpc::RpcRequest>(http_body(&timeout_request))
+            .expect("decode timeout request");
+        assert_eq!(timeout_rpc.id, 0);
+        assert_eq!(timeout_rpc.method, "medium_path_timeout");
+        write_rpc_response(
+            &mut timeout_stream,
+            &RpcResponse { id: timeout_rpc.id, result: Some(json!(0.0)), error: None },
+        );
+
         let (mut stream, _) = listener.accept().expect("accept rpc request");
         let mut request = Vec::new();
         stream.read_to_end(&mut request).expect("read rpc request");

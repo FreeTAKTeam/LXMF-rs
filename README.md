@@ -32,12 +32,13 @@ These are matched-workload comparisons, not a claim of whole-system superiority.
 
 The latest stable release is
 [`v0.9.9`](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.9.9),
-published on 2026-08-12. The workspace packages are version `0.9.9` and target
-the pinned Python Reticulum 1.4.2 software surface.
+published on 2026-08-12. The release-candidate workspace packages are version
+`0.10.0`; current development targets Python Reticulum 1.5.0 at
+`e32d4df754a7b87b1bf1bb0d08675d12ff505ae6` for the next release candidate.
 
 | Area | Current position |
 | --- | --- |
-| Reticulum software parity | 1,810 applicable entries complete, 0 partial, 0 unmapped, and 1 provenance-backed not-applicable entry |
+| Reticulum software parity | 1,838 applicable entries complete, 0 partial, 0 unmapped, and 1 provenance-backed not-applicable entry |
 | LXMF software parity | All seven tracked software scenarios complete |
 | Rust/Python interoperability | Direct, link, channel, paper, propagation, and daemon scenarios exercised against pinned references |
 | Independent interoperability | Versioned rns-rs and Reticulum-Go evidence published separately |

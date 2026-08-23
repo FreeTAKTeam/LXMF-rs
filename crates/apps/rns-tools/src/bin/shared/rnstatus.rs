@@ -247,6 +247,7 @@ fn write_human_status(output: &mut dyn Write, status: &Value) -> io::Result<()> 
             status.get("interfaces").and_then(Value::as_array).map_or(0, |rows| rows.len() as u64)
         })
     )?;
+    write_transport_status(output, status)?;
     write_propagation_status(output, status)?;
 
     let Some(interfaces) = status.get("interfaces").and_then(Value::as_array) else {
@@ -270,8 +271,111 @@ fn write_human_status(output: &mut dyn Write, status: &Value) -> io::Result<()> 
         let runtime = interface_runtime(interface);
         let annotations = interface_annotations(interface);
         writeln!(output, "{name:<24} {kind:<16} {enabled:<8} {endpoint:<22} {runtime}{annotations}")?;
+        for blocked_ip in interface_blocked_ips(interface) {
+            writeln!(output, "  blocked IP: {blocked_ip}")?;
+        }
     }
     Ok(())
+}
+
+fn write_transport_status(output: &mut dyn Write, status: &Value) -> io::Result<()> {
+    let Some(transport) = status
+        .get("reticulum")
+        .and_then(|reticulum| reticulum.get("transport"))
+        .filter(|transport| transport.is_object())
+    else {
+        return Ok(());
+    };
+    writeln!(
+        output,
+        "Links: {}/{} active",
+        value_u64(transport, "active_link_count"),
+        value_u64(transport, "link_count")
+    )?;
+    if let Some(queues) = transport.get("inbound_queues") {
+        let heights = queues.get("heights").unwrap_or(&Value::Null);
+        let limits = queues.get("limits").unwrap_or(&Value::Null);
+        let dropped = queues.get("dropped").unwrap_or(&Value::Null);
+        let pressure = queues.get("pressure").unwrap_or(&Value::Null);
+        writeln!(
+            output,
+            "Inbound queues: total={}/{} ({:.1}%) data={}/{} announce={}/{} path_request={}/{} ingress_limited={}/{} dropped={}/{}/{}/{}",
+            value_u64(queues, "total"),
+            value_u64(queues, "total_limit"),
+            value_f64_or_zero(pressure, "total") * 100.0,
+            value_u64(heights, "data"),
+            value_u64(limits, "data"),
+            value_u64(heights, "announce"),
+            value_u64(limits, "announce"),
+            value_u64(heights, "path_request"),
+            value_u64(limits, "path_request"),
+            value_u64(heights, "ingress_limited"),
+            value_u64(limits, "ingress_limited"),
+            value_u64(dropped, "data"),
+            value_u64(dropped, "announce"),
+            value_u64(dropped, "path_request"),
+            value_u64(dropped, "ingress_limited")
+        )?;
+    }
+    if let Some(traffic) = transport.get("traffic").filter(|value| value.is_object()) {
+        writeln!(
+            output,
+            "Traffic: rx={}B ({:.1}bps) tx={}B ({:.1}bps)",
+            value_u64(traffic, "rx_bytes"),
+            value_f64_or_zero(traffic, "rx_speed"),
+            value_u64(traffic, "tx_bytes"),
+            value_f64_or_zero(traffic, "tx_speed")
+        )?;
+        writeln!(
+            output,
+            "Announces: rx={} / {}B ({:.2}Hz, {:.1}bps) tx={} / {}B ({:.2}Hz, {:.1}bps)",
+            value_u64(traffic, "announce_rx_count"),
+            value_u64(traffic, "announce_rx_bytes"),
+            value_f64_or_zero(traffic, "announce_rx_frequency"),
+            value_f64_or_zero(traffic, "announce_rx_speed"),
+            value_u64(traffic, "announce_tx_count"),
+            value_u64(traffic, "announce_tx_bytes"),
+            value_f64_or_zero(traffic, "announce_tx_frequency"),
+            value_f64_or_zero(traffic, "announce_tx_speed")
+        )?;
+        writeln!(
+            output,
+            "Path requests: rx={} / {}B ({:.2}Hz, {:.1}bps) tx={} / {}B ({:.2}Hz, {:.1}bps)",
+            value_u64(traffic, "path_request_rx_count"),
+            value_u64(traffic, "path_request_rx_bytes"),
+            value_f64_or_zero(traffic, "path_request_rx_frequency"),
+            value_f64_or_zero(traffic, "path_request_rx_speed"),
+            value_u64(traffic, "path_request_tx_count"),
+            value_u64(traffic, "path_request_tx_bytes"),
+            value_f64_or_zero(traffic, "path_request_tx_frequency"),
+            value_f64_or_zero(traffic, "path_request_tx_speed")
+        )?;
+    }
+    let (protocol, ifac, filtered) = transport
+        .get("interfaces")
+        .and_then(Value::as_array)
+        .map(|rows| {
+            rows.iter().fold((0, 0, 0), |(protocol, ifac, filtered), row| {
+                let violations = row.get("violations").unwrap_or(&Value::Null);
+                (
+                    protocol + violations.get("protocol").and_then(Value::as_u64).unwrap_or(0),
+                    ifac + violations.get("ifac").and_then(Value::as_u64).unwrap_or(0),
+                    filtered
+                        + violations
+                            .get("packet_filter_hits")
+                            .and_then(Value::as_u64)
+                            .unwrap_or(0),
+                )
+            })
+        })
+        .unwrap_or((0, 0, 0));
+    writeln!(output, "Ingress diagnostics: protocol={protocol} IFAC={ifac} filtered={filtered}")?;
+    writeln!(
+        output,
+        "Adaptive path timeout: {}s (lowest bitrate {} bps)",
+        transport.get("medium_path_timeout").and_then(Value::as_f64).unwrap_or(0.0),
+        value_u64(transport, "lowest_interface_bitrate")
+    )
 }
 
 fn sort_interfaces(status: &mut Value, field: &str, reverse: bool) -> io::Result<()> {
@@ -309,6 +413,25 @@ fn interface_blocked_ip_count(interface: &Value) -> usize {
         Some(value) => value.as_u64().unwrap_or(0) as usize,
         None => 0,
     }
+}
+
+fn interface_blocked_ips(interface: &Value) -> Vec<String> {
+    interface
+        .get("blocked_ip_list")
+        .or_else(|| interface.get("blocked_ips"))
+        .or_else(|| {
+            interface
+                .get("settings")
+                .and_then(|settings| settings.get("blocked_ip_list").or_else(|| settings.get("blocked_ips")))
+        })
+        .and_then(Value::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(|value| value.as_str().map(ToOwned::to_owned))
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn interface_annotations(interface: &Value) -> String {
@@ -363,6 +486,10 @@ fn value_u64(value: &Value, key: &str) -> String {
         .and_then(Value::as_u64)
         .map(|value| value.to_string())
         .unwrap_or_else(|| "-".to_string())
+}
+
+fn value_f64_or_zero(value: &Value, key: &str) -> f64 {
+    value.get(key).and_then(Value::as_f64).unwrap_or(0.0)
 }
 
 fn value_str(value: &Value, key: &str) -> String {
@@ -1037,6 +1164,49 @@ mod tests {
         assert!(output.contains("uplink"));
         assert!(output.contains("tcp_server"));
         assert!(output.contains("failed (bind denied)"));
+    }
+
+    #[test]
+    fn rns_1_5_human_status_renders_transport_telemetry_without_invalid_stats_failure() {
+        let status = json!({
+            "identity_hash": "abc",
+            "running": true,
+            "interfaces": [],
+            "reticulum": { "transport": {
+                "link_count": 3,
+                "active_link_count": 2,
+                "lowest_interface_bitrate": 1200,
+                "medium_path_timeout": 12.67,
+                "inbound_queues": {
+                    "total": 4,
+                    "total_limit": 8,
+                    "limits": {"data": 2, "announce": 2, "path_request": 2, "ingress_limited": 2},
+                    "heights": {"data": 1, "announce": 1, "path_request": 1, "ingress_limited": 1},
+                    "dropped": {"data": 2, "announce": 3, "path_request": 4, "ingress_limited": 5},
+                    "pressure": {"total": 0.5}
+                },
+                "traffic": {
+                    "rx_bytes": 100, "tx_bytes": 200,
+                    "rx_speed": null, "tx_speed": "invalid",
+                    "announce_rx_count": 1, "announce_rx_bytes": 10,
+                    "announce_tx_count": 2, "announce_tx_bytes": 20,
+                    "path_request_rx_count": 3, "path_request_rx_bytes": 30,
+                    "path_request_tx_count": 4, "path_request_tx_bytes": 40
+                },
+                "interfaces": [{"violations": {"protocol": 5, "ifac": 6, "packet_filter_hits": 7}}]
+            }}
+        });
+        let mut output = Vec::new();
+
+        write_human_status(&mut output, &status).expect("write transport status");
+        let output = String::from_utf8(output).expect("utf8");
+        assert!(output.contains("Links: 2/3 active"));
+        assert!(output.contains("Inbound queues: total=4/8 (50.0%)"));
+        assert!(output.contains("data=1/2 announce=1/2 path_request=1/2 ingress_limited=1/2"));
+        assert!(output.contains("dropped=2/3/4/5"));
+        assert!(output.contains("Traffic: rx=100B (0.0bps) tx=200B (0.0bps)"));
+        assert!(output.contains("Ingress diagnostics: protocol=5 IFAC=6 filtered=7"));
+        assert!(output.contains("Adaptive path timeout: 12.67s (lowest bitrate 1200 bps)"));
     }
 
     #[test]

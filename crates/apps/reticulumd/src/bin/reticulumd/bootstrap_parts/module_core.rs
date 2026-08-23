@@ -142,6 +142,10 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         },
         None => ReticulumRuntimePolicy::default(),
     };
+    let network_identity = reticulum_runtime_policy
+        .network_identity_path
+        .as_ref()
+        .map(|path| load_or_create_identity(path).expect("load configured network identity"));
     let identity_hash = hex::encode(identity.address_hash().as_slice());
     let local_display_name = std::env::var("LXMF_DISPLAY_NAME")
         .ok()
@@ -193,6 +197,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         propagation_control_enabled,
         propagation_announce_config: propagation_node_config.announce_config,
         local_hops_delta: reticulum_runtime_policy.local_hops_delta(),
+        inbound_queue_limits: reticulum_runtime_policy.inbound_queue_limits(),
     })
     .await;
 
@@ -372,6 +377,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     }
     daemon.set_delivery_destination_hash(delivery_destination_hash_hex);
     daemon.set_propagation_destination_hash(propagation_destination_hash_hex.clone());
+    let discovery_interfaces = configured_interfaces.clone();
     daemon.replace_interfaces(configured_interfaces);
     spawn_auto_runtime_status_refresher(daemon.clone(), auto_runtime_refreshes);
     spawn_pipe_runtime_status_refresher(daemon.clone(), pipe_runtime_refreshes);
@@ -516,6 +522,12 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
 
     let mut path_table_persistence = None;
     if let Some(transport) = transport {
+        let transport_network_identity = network_identity
+            .as_ref()
+            .map(rns_transport::identity_bridge::to_transport_private_identity);
+        if let Some(network_identity) = transport_network_identity.as_ref() {
+            let _ = transport.set_network_identity(network_identity.clone()).await;
+        }
         path_table_persistence = Some(PathTablePersistenceContext::new(
             transport.clone(),
             reticulum_storage_path.clone(),
@@ -537,11 +549,26 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
             receipt_tx.clone(),
             outbound_resource_map,
         );
-        let discovery = reticulum_runtime_policy.discover_interfaces.then(|| {
+        let discovery_identity =
+            rns_transport::identity_bridge::to_transport_private_identity(&identity);
+        let outbound = crate::discovery_publish::configured_discovery_announcements(
+            &discovery_interfaces,
+            transport_network_identity
+                .as_ref()
+                .map_or(*discovery_identity.address_hash(), |identity| *identity.address_hash()),
+            daemon_config.as_ref().is_some_and(|config| config.reticulum_transport_enabled()),
+            transport_network_identity.is_some(),
+        );
+        let discovery = (reticulum_runtime_policy.discover_interfaces || !outbound.is_empty()).then(|| {
             crate::announce_worker::DiscoveryWorkerConfig {
                 storage_path: reticulum_storage_path.clone(),
                 allowed_network_ids: reticulum_runtime_policy.interface_discovery_sources.clone(),
-                required_value: reticulum_runtime_policy.required_discovery_value.unwrap_or(14),
+                required_value: reticulum_runtime_policy
+                    .required_discovery_value
+                    .unwrap_or(rns_transport::discovery::announce::DEFAULT_STAMP_VALUE),
+                local_identity: discovery_identity,
+                network_identity: transport_network_identity,
+                outbound,
             }
         });
         spawn_announce_worker(

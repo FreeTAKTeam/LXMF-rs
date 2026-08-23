@@ -1,6 +1,6 @@
 [package]
 name = "rns-embedded-ffi"
-version = "0.9.9"
+version = "0.10.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -13,8 +13,8 @@ crate-type = ["rlib", "staticlib", "cdylib"]
 [dependencies]
 critical-section = { version = "1.2", optional = true }
 embedded-alloc = { version = "0.6", default-features = false, features = ["llff"], optional = true }
-rns-embedded-core = { path = "../rns-embedded-core", version = "0.9.9", default-features = false, features = ["alloc"] }
-rns-embedded-runtime = { path = "../rns-embedded-runtime", version = "0.9.9", default-features = false, features = ["alloc"] }
+rns-embedded-core = { path = "../rns-embedded-core", version = "0.10.0", default-features = false, features = ["alloc"] }
+rns-embedded-runtime = { path = "../rns-embedded-runtime", version = "0.10.0", default-features = false, features = ["alloc"] }
 
 [features]
 default = ["std"]

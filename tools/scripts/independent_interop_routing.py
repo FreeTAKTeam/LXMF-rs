@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Network-observable RNS 1.4.2 routing policy evidence."""
+"""Network-observable RNS 1.5.0 routing policy evidence."""
 
 from __future__ import annotations
 

@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last reassessed: 2026-08-13
+Last reassessed: 2026-08-23
 
 This file is the repository-level source of truth for parity posture, release
 confidence, and execution order. Detailed row-level status lives in:
@@ -19,13 +19,17 @@ override these status files.
 ## Current Position
 
 LXMF-rs retains the v0.9.5 SDK-access baseline and now reaches complete
-software-surface parity against the pinned RNS 1.4.2 reference. The focused
-reassessment covers gravity-based routing, dynamic path rebalancing,
-request/response size controls, boundary path-request behavior, resource
-serving-window enforcement, blocked-IP statistics, typed runtime/lifecycle
-policy surfaces, and the full `rngit` client/server repository, release,
-permission, work-item, and transport-neutral request surface. The legacy RPC
-return framing helper is also implemented and tested.
+software-surface parity against Python RNS 1.5.0 at
+`e32d4df754a7b87b1bf1bb0d08675d12ff505ae6`. The 1.5 alignment adds bounded
+priority ingress queues, early filtering and protocol accounting, in-flight
+path-request batching, negotiated Channel/Buffer MDU use, discovery operator
+addresses, queue/interface/link telemetry, and medium-bitrate timeout accessors.
+The exact upstream-to-Rust disposition is recorded in
+[`rns-1.5-delta.md`](rns-1.5-delta.md).
+
+This alignment is prepared on the `0.10.0` release train. The `-rc.1` suffix
+belongs to the eventual immutable Git tag; public package manifests and the
+root `VERSION` use `0.10.0`, consistent with the repository release policy.
 
 The project is best described by capability level:
 
@@ -34,8 +38,8 @@ The project is best described by capability level:
 | Wire compatible | achieved | Core Reticulum packet/identity primitives and LXMF message encodings are implemented and tested. |
 | Direct-message interoperable | achieved | Selected bidirectional Rust/Python direct, link, channel, paper, and daemon paths are exercised in CI. |
 | Propagation interoperable | achieved | Propagated delivery, complete Python-only `LXMPeer.py` lifecycle coverage, and Python-reference propagation router fetch/download/sync lifecycle coverage are implemented and tested. |
-| Operationally substitutable | achieved against RNS 1.4.2 | The software-controlled runtime includes the focused 1.4.2 routing, policy, and `rngit` repository-service slices. |
-| Full Python software surface parity | achieved | The strict inventory reports 1,810 complete, 0 partial, and 1 provenance-backed not-applicable entry. |
+| Operationally substitutable | achieved against RNS 1.5.0 | The software-controlled runtime includes the 1.5 ingress, routing, telemetry, timeout, discovery, and `rngit` slices. |
+| Full Python software surface parity | achieved | The strict inventory reports 1,838 complete, 0 partial, and 1 provenance-backed not-applicable entry. |
 | ZeroMQ SDK-access parity | achieved in v0.9.5 implementation | Generated classification and daemon-operation inventory live in `sdk-zmq-parity.json`; release evidence must still pass all gates. |
 | Independent implementation evidence | published for stable `v0.9.9` | Pinned rns-rs and Reticulum-Go release profiles cover two-node/multi-hop behavior; rns-rs additionally covers mixed/all-Rust five-node chains, routing policy, restart, shared daemon, exact large Resources, and deterministic chaos. Explicit peer divergences remain failures owned by the peer and are allowlisted narrowly by CI. |
 | Performance evidence | published for stable `v0.9.9` | The stable release includes checksummed JSON, HTML, and raw evidence. The five-sample regression gate passed without warnings: throughput `1.005x`, CPU `0.996x`, and peak RSS `1.072x` versus the same-runner v0.9.1 baseline. |
@@ -70,10 +74,22 @@ provenance, and standalone interoperability/performance evidence. Stable
 release notes are in
 [`docs/release-notes-v0.9.9.md`](../release-notes-v0.9.9.md).
 
-The software-parity boundary remains 1,811 generated entries: 1,810 applicable
+The current development boundary is 1,839 generated entries: 1,838 applicable
 and complete, zero partial, zero unmapped, and one provenance-backed
-not-applicable entry. Physical interfaces, public networks, and third-party
-clients remain separate evidence axes described above.
+not-applicable entry. The published v0.9.9 tag retains its historical 1.4.2
+inventory. Physical interfaces, public networks, and third-party clients remain
+separate evidence axes described above.
+
+## v0.10.0-rc.1 Release Candidate Preparation
+
+The current candidate preparation aligns the complete software-controlled RNS
+surface with Python Reticulum 1.5.0. Its implementation ledger is
+[`rns-1.5-delta.md`](rns-1.5-delta.md), its candidate evidence ledger is
+[`v0.10.0-release-candidate.md`](v0.10.0-release-candidate.md), and its release
+notes are [`release-notes-v0.10.0-rc.1.md`](../release-notes-v0.10.0-rc.1.md).
+The candidate is not a published release until its exact reviewed commit is
+tagged and the tag-triggered artifact, signing, provenance, and performance
+workflows are verified.
 
 ## v0.9.9-rc.6 Historical Release Candidate
 
@@ -200,8 +216,8 @@ stale or unmapped entries.
 
 The RNS 1.2.2 baseline recorded **1,664 implementation-complete, 0 partial,
 and 1 provenance-backed not-applicable entry across 1,665 entries**. The
-current RNS 1.4.2 inventory records **1,810 implementation-complete, 0
-partial, and 1 provenance-backed not-applicable entry across 1,811 entries**.
+current RNS 1.5.0 inventory records **1,838 implementation-complete, 0
+partial, and 1 provenance-backed not-applicable entry across 1,839 entries**.
 Documentation CI checks inventory drift; the release gate continues to require
 zero partial entries. SDK negotiation and daemon runtime status expose this as
 an advisory consumer orientation with separate overall, Reticulum, and LXMF
@@ -1607,7 +1623,7 @@ validated without their own evidence.
 
 ## Active Execution Order
 
-1. Keep the generated RNS 1.4.2 inventory and both parity matrices at zero
+1. Keep the generated RNS 1.5.0 inventory and both parity matrices at zero
    partial or unmapped software entries as maintenance changes land.
 2. Preserve exact-SHA Python-reference, independent-interoperability, and
    performance evidence for release-facing changes.

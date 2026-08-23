@@ -41,12 +41,15 @@ impl InterfaceManager {
         log::debug!("create channel {} role={:?} mode={:?}", address, role, mode);
 
         let stop = CancellationToken::new();
+        let online = Arc::new(AtomicBool::new(true));
 
         self.ifaces.push(LocalInterface {
             address,
+            parent: None,
             full_hash,
             tx_send,
             stop: stop.clone(),
+            online: online.clone(),
             mtu,
             role,
             mode,
@@ -59,9 +62,16 @@ impl InterfaceManager {
             shared_config: InterfaceSharedConfig::default(),
             is_shared_instance: false,
             outgoing_pr_history: VecDeque::new(),
+            traffic: InterfaceTraffic::default(),
         });
 
-        InterfaceChannel { rx_channel: self.rx_send.clone(), tx_channel: tx_recv, address, stop }
+        InterfaceChannel {
+            rx_channel: self.rx_send.clone(),
+            tx_channel: tx_recv,
+            address,
+            stop,
+            online,
+        }
     }
 
     pub fn new_context<T: Interface>(&mut self, inner: T) -> InterfaceContext<T> {
@@ -255,6 +265,7 @@ impl InterfaceManager {
             return false;
         };
         target_iface.mode = mode;
+        target_iface.parent = Some(source);
         target_iface.gravity = gravity;
         target_iface.outgoing = outgoing;
         target_iface.announce_bitrate_bps = announce_bitrate_bps;
@@ -281,6 +292,7 @@ impl InterfaceManager {
     ) -> Option<AddressHash> {
         let host_iface = self.ifaces.iter().find(|i| i.address == host)?;
         let host_tx = host_iface.tx_send.clone();
+        let host_online = host_iface.online.clone();
         let mtu = host_iface.mtu;
         let mode = host_iface.mode;
         let gravity = host_iface.gravity;
@@ -306,9 +318,11 @@ impl InterfaceManager {
 
         self.ifaces.push(LocalInterface {
             address,
+            parent: Some(host),
             full_hash,
             tx_send: host_tx,
             stop,
+            online: host_online,
             mtu,
             role,
             mode,
@@ -321,29 +335,10 @@ impl InterfaceManager {
             shared_config: host_iface.shared_config.clone(),
             is_shared_instance: host_iface.is_shared_instance,
             outgoing_pr_history: VecDeque::new(),
+            traffic: InterfaceTraffic::default(),
         });
 
         Some(address)
-    }
-
-    pub fn receiver(&self) -> Arc<tokio::sync::Mutex<InterfaceRxReceiver>> {
-        self.rx_recv.clone()
-    }
-
-    pub fn cleanup(&mut self) {
-        self.ifaces.retain(|iface| !iface.stop.is_cancelled());
-    }
-
-    pub fn stop_interface(&mut self, address: AddressHash) -> bool {
-        let mut stopped = false;
-        for iface in &self.ifaces {
-            if iface.address == address {
-                iface.stop.cancel();
-                stopped = true;
-            }
-        }
-        self.cleanup();
-        stopped
     }
 
     /// Test-only: returns the number of tracked ifaces (live or stopped).
@@ -461,6 +456,7 @@ impl InterfaceManager {
             let Some(message) = Self::pop_next_announce(iface, now) else {
                 continue;
             };
+            let wire_len = packet_wire_len_for_dispatch(&message);
 
             trace.matched_ifaces += 1;
             iface.announce_allowed_at = now
@@ -470,7 +466,18 @@ impl InterfaceManager {
                     iface.announce_cap_percent,
                 );
             match Self::send_to_iface(iface, message).await {
-                TxIfaceSendResult::Sent => trace.sent_ifaces += 1,
+                TxIfaceSendResult::Sent => {
+                    trace.sent_ifaces += 1;
+                    if let Some(wire_len) = wire_len {
+                        Self::record_outbound_traffic(
+                            iface,
+                            PacketType::Announce,
+                            false,
+                            wire_len,
+                            now,
+                        );
+                    }
+                }
                 TxIfaceSendResult::Failed => trace.failed_ifaces += 1,
                 TxIfaceSendResult::Closed => {
                     trace.failed_ifaces += 1;

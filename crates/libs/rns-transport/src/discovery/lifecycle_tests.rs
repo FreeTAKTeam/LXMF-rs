@@ -16,6 +16,7 @@ fn discovered(name: &str, host: &str, port: u16) -> DiscoveredInterface {
         latitude: None,
         longitude: None,
         height: None,
+        operator_lxmf_address: None,
         reachable_on: Some(host.to_string()),
         port: Some(port),
         ifac_netname: None,

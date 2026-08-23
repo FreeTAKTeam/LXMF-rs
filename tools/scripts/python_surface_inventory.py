@@ -26,8 +26,8 @@ VALID_EVIDENCE = {
     "hardware-unverified",
 }
 EXPECTED_RELEASE_SUMMARY = {
-    "total": 1811,
-    "complete": 1810,
+    "total": 1839,
+    "complete": 1838,
     "partial": 0,
     "not-applicable": 1,
 }
@@ -262,7 +262,7 @@ def validate_inventory(payload: dict[str, Any], require_complete: bool) -> list[
             }
             if actual != EXPECTED_RELEASE_SUMMARY:
                 errors.append(
-                    "release inventory counts differ from the RNS 1.4.2 target: "
+                    "release inventory counts differ from the RNS 1.5.0 target: "
                     f"expected {EXPECTED_RELEASE_SUMMARY}, got {actual}"
                 )
     return errors

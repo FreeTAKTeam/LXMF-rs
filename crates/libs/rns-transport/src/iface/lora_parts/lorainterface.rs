@@ -428,6 +428,8 @@ impl LoraInterface {
             )
         };
 
+        let online = context.channel.online.clone();
+        online.store(false, std::sync::atomic::Ordering::Release);
         let (rx_channel, tx_channel) = context.channel.split();
         let tx_channel = Arc::new(tokio::sync::Mutex::new(tx_channel));
         let mut active_backoff = reconnect_backoff;
@@ -471,6 +473,7 @@ impl LoraInterface {
                         config.spreading_factor,
                         config.coding_rate
                     );
+                    online.store(true, std::sync::atomic::Ordering::Release);
                     active_backoff = reconnect_backoff;
                     run_lora_kiss_stream(
                         port,
@@ -490,6 +493,7 @@ impl LoraInterface {
                         },
                     )
                     .await;
+                    online.store(false, std::sync::atomic::Ordering::Release);
                 }
                 LoraEndpoint::Tcp { addr } => {
                     let stream = match TcpStream::connect(addr.clone()).await {
@@ -512,6 +516,7 @@ impl LoraInterface {
                         config.spreading_factor,
                         config.coding_rate
                     );
+                    online.store(true, std::sync::atomic::Ordering::Release);
                     active_backoff = reconnect_backoff;
                     run_lora_kiss_stream(
                         stream,
@@ -531,6 +536,7 @@ impl LoraInterface {
                         },
                     )
                     .await;
+                    online.store(false, std::sync::atomic::Ordering::Release);
                 }
             };
 
@@ -541,6 +547,7 @@ impl LoraInterface {
             active_backoff = bounded_backoff_next(active_backoff, max_reconnect_backoff);
         }
 
+        online.store(false, std::sync::atomic::Ordering::Release);
         iface_stop.cancel();
     }
 }

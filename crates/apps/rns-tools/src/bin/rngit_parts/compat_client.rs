@@ -5,6 +5,7 @@ pub struct ReticulumGitClient {
     pub link_failed: bool,
     pub path_timeout_secs: u64,
     pub link_timeout_secs: u64,
+    pub medium_path_timeout_secs: Option<f64>,
     pub last_remote: Option<RemoteRepository>,
     pub local_node: Option<Arc<Mutex<ReticulumGitNode>>>,
 }
@@ -17,6 +18,7 @@ impl Default for ReticulumGitClient {
             link_failed: false,
             path_timeout_secs: 15,
             link_timeout_secs: 15,
+            medium_path_timeout_secs: None,
             last_remote: None,
             local_node: None,
         }
@@ -25,6 +27,18 @@ impl Default for ReticulumGitClient {
 
 impl ReticulumGitClient {
     pub const PROTO_SPEC: &'static str = "rns://";
+
+    pub fn apply_medium_path_timeout(&mut self, medium_timeout_secs: f64) {
+        if medium_timeout_secs.is_finite() && medium_timeout_secs > 0.0 {
+            let adaptive = medium_timeout_secs.ceil() as u64;
+            self.path_timeout_secs = self.path_timeout_secs.max(adaptive);
+            self.link_timeout_secs = self.link_timeout_secs.max(adaptive);
+        }
+    }
+
+    pub fn set_medium_path_timeout(&mut self, medium_timeout_secs: f64) {
+        self.medium_path_timeout_secs = Some(medium_timeout_secs);
+    }
 
     pub fn abort(&self, message: impl Into<String>) -> Result<(), String> {
         Err(message.into())
@@ -90,6 +104,9 @@ impl ReticulumGitClient {
     }
 
     pub fn connect_remote(&mut self, remote: &str) -> Result<RemoteRepository, String> {
+        if let Some(medium_timeout_secs) = self.medium_path_timeout_secs {
+            self.apply_medium_path_timeout(medium_timeout_secs);
+        }
         let parsed = self.parse_remote_url(remote)?;
         self.link_ready = false;
         self.link_failed = false;

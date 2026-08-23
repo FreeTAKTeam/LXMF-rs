@@ -70,14 +70,14 @@ impl Link {
         data: &[u8],
         packet_data: &mut PacketDataBuffer,
     ) -> Result<(), RnsError> {
+        if data.len() > self.link_mdu() {
+            return Err(RnsError::OutOfMemory);
+        }
         packet_data.reset();
         let cipher_text_len = {
             let cipher_text = self.encrypt(data, packet_data.accuire_buf_max())?;
             cipher_text.len()
         };
-        if cipher_text_len > crate::packet::PACKET_MDU {
-            return Err(RnsError::OutOfMemory);
-        }
         packet_data.resize(cipher_text_len);
         Ok(())
     }

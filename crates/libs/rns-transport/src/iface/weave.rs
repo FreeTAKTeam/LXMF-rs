@@ -184,6 +184,8 @@ impl WeaveInterface {
                 guard.management_frame_rx.clone(),
             )
         };
+        let online = context.channel.online.clone();
+        online.store(false, std::sync::atomic::Ordering::Release);
         let (rx_channel, tx_channel) = context.channel.split();
         let tx_channel = Arc::new(tokio::sync::Mutex::new(tx_channel));
 
@@ -228,6 +230,7 @@ impl WeaveInterface {
                 baud_rate,
                 parent_iface
             );
+            online.store(true, std::sync::atomic::Ordering::Release);
             update_weave_status(&runtime_status, |status| {
                 status.link_state = WeaveLinkState::Discovering;
                 status.last_error = None;
@@ -250,8 +253,10 @@ impl WeaveInterface {
                 management_frame_rx.clone(),
             )
             .await;
+            online.store(false, std::sync::atomic::Ordering::Release);
         }
 
+        online.store(false, std::sync::atomic::Ordering::Release);
         update_weave_status(&runtime_status, |status| {
             status.link_state = WeaveLinkState::Closed;
             status.wdcl_connected = false;

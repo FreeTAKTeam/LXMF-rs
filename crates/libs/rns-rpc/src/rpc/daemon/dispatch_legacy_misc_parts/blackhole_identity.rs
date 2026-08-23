@@ -6,6 +6,7 @@ impl RpcDaemon {
                 "identity hash must be 16 bytes encoded as hexadecimal",
             )
         })?;
+        self.prune_expired_blackholes()?;
         let guard = self
             .blackholed_identities
             .lock()
@@ -20,7 +21,7 @@ impl RpcDaemon {
         match request.method.as_str() {
             "get_blackholed_identities" => {
                 let _domain_state_guard = self.lock_and_restore_sdk_domain_snapshot()?;
-                let identities = self.blackholed_identities_json();
+                let identities = self.blackholed_identities_json()?;
                 Ok(RpcResponse { id: request.id, result: Some(identities), error: None })
             }
             "blackhole_identity" => {
@@ -33,44 +34,67 @@ impl RpcDaemon {
                         error: None,
                     });
                 };
+                let until = parse_blackhole_until(parsed.until.as_ref())?;
                 let _domain_state_guard = self.lock_and_restore_sdk_domain_snapshot()?;
-                let changed = {
+                self.prune_expired_blackholes()?;
+                let exists = self
+                    .blackholed_identities
+                    .lock()
+                    .expect("blackholed_identities mutex poisoned")
+                    .contains_key(identity_hash.as_str());
+                if exists {
+                    return Ok(RpcResponse {
+                        id: request.id,
+                        result: Some(JsonValue::Null),
+                        error: None,
+                    });
+                }
+                let bridge = self
+                    .path_lookup_bridge
+                    .lock()
+                    .expect("path_lookup_bridge mutex poisoned")
+                    .clone();
+                if let Some(bridge) = bridge.as_ref() {
+                    bridge.set_identity_blackholed_until(
+                        identity_hash.as_str(),
+                        true,
+                        until,
+                    )?;
+                }
+                {
                     let mut guard = self
                         .blackholed_identities
                         .lock()
                         .expect("blackholed_identities mutex poisoned");
-                    if guard.contains_key(identity_hash.as_str()) {
-                        JsonValue::Null
-                    } else {
-                        guard.insert(
-                            identity_hash.clone(),
-                            json!({
-                                "source": self.identity_hash.as_str(),
-                                "until": parsed.until.unwrap_or(JsonValue::Null),
-                                "reason": parsed.reason.unwrap_or(JsonValue::Null),
-                            }),
-                        );
-                        json!(true)
-                    }
-                };
-                if changed == json!(true) {
-                    self.persist_sdk_domain_snapshot()?;
-                    if let Some(bridge) = self
-                        .path_lookup_bridge
+                    guard.insert(
+                        identity_hash.clone(),
+                        json!({
+                            "source": self.identity_hash.as_str(),
+                            "until": parsed.until.unwrap_or(JsonValue::Null),
+                            "reason": parsed.reason.unwrap_or(JsonValue::Null),
+                        }),
+                    );
+                }
+                if let Err(err) = self.persist_sdk_domain_snapshot() {
+                    self.blackholed_identities
                         .lock()
-                        .expect("path_lookup_bridge mutex poisoned")
-                        .clone()
-                    {
-                        if let Err(err) = bridge.remove_paths_for_identity(identity_hash.as_str()) {
-                            log::warn!(
-                                "[daemon] failed to remove paths for blackholed identity {}: {}",
+                        .expect("blackholed_identities mutex poisoned")
+                        .remove(identity_hash.as_str());
+                    if let Some(bridge) = bridge {
+                        if let Err(rollback_err) = bridge.set_identity_blackholed(
+                            identity_hash.as_str(),
+                            false,
+                        ) {
+                            log::error!(
+                                "[daemon] failed to roll back transport blackhole {}: {}",
                                 identity_hash,
-                                err
+                                rollback_err
                             );
                         }
                     }
+                    return Err(err);
                 }
-                Ok(RpcResponse { id: request.id, result: Some(changed), error: None })
+                Ok(RpcResponse { id: request.id, result: Some(json!(true)), error: None })
             }
             "unblackhole_identity" => {
                 let parsed = parse_blackhole_identity_params(request.params)?;
@@ -83,27 +107,43 @@ impl RpcDaemon {
                     });
                 };
                 let _domain_state_guard = self.lock_and_restore_sdk_domain_snapshot()?;
-                let removed = {
+                self.prune_expired_blackholes()?;
+                let exists = self
+                    .blackholed_identities
+                    .lock()
+                    .expect("blackholed_identities mutex poisoned")
+                    .contains_key(identity_hash.as_str());
+                if !exists {
+                    return Ok(RpcResponse {
+                        id: request.id,
+                        result: Some(JsonValue::Null),
+                        error: None,
+                    });
+                }
+                if let Some(bridge) = self
+                    .path_lookup_bridge
+                    .lock()
+                    .expect("path_lookup_bridge mutex poisoned")
+                    .clone()
+                {
+                    bridge.set_identity_blackholed(identity_hash.as_str(), false)?;
+                }
+                {
                     let mut guard = self
                         .blackholed_identities
                         .lock()
                         .expect("blackholed_identities mutex poisoned");
-                    if guard.remove(identity_hash.as_str()).is_some() {
-                        json!(true)
-                    } else {
-                        JsonValue::Null
-                    }
-                };
-                if removed == json!(true) {
-                    self.persist_sdk_domain_snapshot()?;
+                    guard.remove(identity_hash.as_str());
                 }
-                Ok(RpcResponse { id: request.id, result: Some(removed), error: None })
+                self.persist_sdk_domain_snapshot()?;
+                Ok(RpcResponse { id: request.id, result: Some(json!(true)), error: None })
             }
             _ => unreachable!("legacy blackhole identity route: {}", request.method),
         }
     }
 
-    fn blackholed_identities_json(&self) -> JsonValue {
+    fn blackholed_identities_json(&self) -> Result<JsonValue, std::io::Error> {
+        self.prune_expired_blackholes()?;
         let guard =
             self.blackholed_identities.lock().expect("blackholed_identities mutex poisoned");
         let mut identities = JsonMap::new();
@@ -114,7 +154,61 @@ impl RpcDaemon {
                 identities.insert(key.clone(), value.clone());
             }
         }
-        JsonValue::Object(identities)
+        Ok(JsonValue::Object(identities))
+    }
+
+    fn prune_expired_blackholes(&self) -> Result<(), std::io::Error> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs_f64();
+        let expired = self
+            .blackholed_identities
+            .lock()
+            .expect("blackholed_identities mutex poisoned")
+            .iter()
+            .filter(|(_, entry)| {
+                entry
+                    .get("until")
+                    .and_then(JsonValue::as_f64)
+                    .is_some_and(|until| now > until)
+            })
+            .map(|(identity, _)| identity.clone())
+            .collect::<Vec<_>>();
+        if expired.is_empty() {
+            return Ok(());
+        }
+        let bridge = self
+            .path_lookup_bridge
+            .lock()
+            .expect("path_lookup_bridge mutex poisoned")
+            .clone();
+        if let Some(bridge) = bridge {
+            for identity in &expired {
+                bridge.set_identity_blackholed(identity.as_str(), false)?;
+            }
+        }
+        let mut guard = self
+            .blackholed_identities
+            .lock()
+            .expect("blackholed_identities mutex poisoned");
+        for identity in expired {
+            guard.remove(identity.as_str());
+        }
+        drop(guard);
+        self.persist_sdk_domain_snapshot()
+    }
+}
+
+fn parse_blackhole_until(until: Option<&JsonValue>) -> Result<Option<f64>, std::io::Error> {
+    match until {
+        None | Some(JsonValue::Null) => Ok(None),
+        Some(value) => value.as_f64().filter(|value| value.is_finite()).map(Some).ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "blackhole expiry must be a finite Unix timestamp",
+            )
+        }),
     }
 }
 

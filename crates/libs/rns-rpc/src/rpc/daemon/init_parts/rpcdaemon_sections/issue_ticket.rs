@@ -380,6 +380,26 @@ impl RpcDaemon {
     }
 
     pub fn set_path_lookup_bridge(&self, bridge: Arc<dyn PathLookupBridge>) {
+        let blackholed = self
+            .blackholed_identities
+            .lock()
+            .expect("blackholed_identities mutex poisoned")
+            .iter()
+            .map(|(identity, entry)| {
+                (identity.clone(), entry.get("until").and_then(JsonValue::as_f64))
+            })
+            .collect::<Vec<_>>();
+        for (identity, until) in blackholed {
+            if let Err(err) =
+                bridge.set_identity_blackholed_until(identity.as_str(), true, until)
+            {
+                log::warn!(
+                    "[daemon] failed to synchronize blackholed identity {} with transport: {}",
+                    identity,
+                    err
+                );
+            }
+        }
         let mut guard = self.path_lookup_bridge.lock().expect("path_lookup_bridge mutex poisoned");
         *guard = Some(bridge);
     }

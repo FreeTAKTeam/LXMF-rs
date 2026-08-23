@@ -39,8 +39,44 @@ async fn blackholed_identity_path_eviction_removes_only_associated_destinations(
     assert!(transport.has_path(&first_announce.destination).await);
     assert!(transport.has_path(&other_announce.destination).await);
 
-    assert_eq!(transport.expire_paths_for_identity(&blackholed_identity_hash).await, 1);
+    assert_eq!(
+        transport.set_identity_blackholed(blackholed_identity_hash, true).await,
+        1
+    );
+    assert!(transport.is_identity_blackholed(&blackholed_identity_hash).await);
     assert!(!transport.has_path(&first_announce.destination).await);
     assert!(transport.has_path(&other_announce.destination).await);
     assert_eq!(transport.expire_paths_for_identity(&blackholed_identity_hash).await, 0);
+
+    handle_announce(
+        &first_announce,
+        handler.lock().await,
+        iface,
+        crate::iface::IfaceSource::None,
+    )
+    .await;
+    assert!(
+        !transport.has_path(&first_announce.destination).await,
+        "blackholed identity announce must expose a distinct filtered outcome"
+    );
+
+    transport.set_identity_blackholed(blackholed_identity_hash, false).await;
+    assert!(!transport.is_identity_blackholed(&blackholed_identity_hash).await);
+    handle_announce(
+        &first_announce,
+        handler.lock().await,
+        iface,
+        crate::iface::IfaceSource::None,
+    )
+    .await;
+    assert!(transport.has_path(&first_announce.destination).await);
+}
+
+#[tokio::test]
+async fn rns_1_5_expiring_transport_blackhole_stops_filtering() {
+    let local_identity = PrivateIdentity::new_from_rand(OsRng);
+    let transport = Transport::new(TransportConfig::new("blackhole-expiry", &local_identity, true));
+    let identity = AddressHash::new_from_slice(&[0x44; 16]);
+    transport.set_identity_blackholed_until(identity, true, Some(1.0)).await;
+    assert!(!transport.is_identity_blackholed(&identity).await);
 }

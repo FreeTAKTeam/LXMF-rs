@@ -53,7 +53,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: markqvist/Reticulum
-          ref: b48b96e61676504e0a4e527b33b9a0b4495c6872
+          ref: e32d4df754a7b87b1bf1bb0d08675d12ff505ae6
           path: Reticulum
       - uses: actions/checkout@v4
         with:

@@ -4,6 +4,7 @@ fn parses_python_reticulum_runtime_policy_accessors() {
 [reticulum]
 link_mtu_discovery = false
 static_transport_identity = true
+network_identity = "/tmp/rns-network.identity"
 local_hops_delta = true
 default_gravity = 3
 enable_remote_management = true
@@ -26,6 +27,10 @@ blackhole_update_interval = 2.5
 
     assert!(!policy.link_mtu_discovery);
     assert!(policy.static_transport_identity());
+    assert_eq!(
+        policy.network_identity_path.as_deref(),
+        Some(std::path::Path::new("/tmp/rns-network.identity"))
+    );
     assert!(policy.local_hops_delta());
     assert_eq!(policy.default_gravity, 3);
     assert!(policy.remote_management_enabled);
@@ -53,6 +58,7 @@ fn reticulum_runtime_policy_defaults_match_pinned_python() {
 
     assert!(policy.link_mtu_discovery);
     assert!(!policy.static_transport_identity());
+    assert!(policy.network_identity_path.is_none());
     assert!(!policy.local_hops_delta());
     assert_eq!(policy.default_gravity, 0);
     assert!(!policy.remote_management_enabled);

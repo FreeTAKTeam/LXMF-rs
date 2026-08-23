@@ -12,8 +12,8 @@
     "sdk_version": "0.2.1",
     "python_reference": {
       "reticulum_conformance_ref": "0319444b20e0815f26c6b9ceeba8fa44de037c9b",
-      "python_reticulum_version": "1.4.2",
-      "python_reticulum_ref": "b48b96e61676504e0a4e527b33b9a0b4495c6872",
+      "python_reticulum_version": "1.5.0",
+      "python_reticulum_ref": "e32d4df754a7b87b1bf1bb0d08675d12ff505ae6",
       "python_lxmf_version": "0.9.6",
       "python_lxmf_ref": "727830cefda83d9c6e3982b48675425f3f988f9c"
     },
@@ -21,8 +21,8 @@
       "advisory": true,
       "references": {
         "reticulum": {
-          "version": "1.4.2",
-          "revision": "b48b96e61676504e0a4e527b33b9a0b4495c6872"
+          "version": "1.5.0",
+          "revision": "e32d4df754a7b87b1bf1bb0d08675d12ff505ae6"
         },
         "lxmf": {
           "version": "0.9.6",
@@ -32,12 +32,12 @@
       "overall": {
           "level": "complete",
         "complete_ratio": {
-          "numerator": 1810,
-          "denominator": 1810
+          "numerator": 1838,
+          "denominator": 1838
         },
         "inventory": {
-          "total": 1811,
-          "complete": 1810,
+          "total": 1839,
+          "complete": 1838,
           "partial": 0,
           "not_applicable": 1
         }
@@ -45,12 +45,12 @@
       "reticulum": {
         "level": "complete",
         "complete_ratio": {
-          "numerator": 1608,
-          "denominator": 1608
+          "numerator": 1636,
+          "denominator": 1636
         },
         "inventory": {
-          "total": 1608,
-          "complete": 1608,
+          "total": 1636,
+          "complete": 1636,
           "partial": 0,
           "not_applicable": 0
         }
@@ -75,8 +75,8 @@
       "sdk_version": "0.2.1",
       "python_reference": {
         "reticulum_conformance_ref": "0319444b20e0815f26c6b9ceeba8fa44de037c9b",
-        "python_reticulum_version": "1.4.2",
-        "python_reticulum_ref": "b48b96e61676504e0a4e527b33b9a0b4495c6872",
+        "python_reticulum_version": "1.5.0",
+        "python_reticulum_ref": "e32d4df754a7b87b1bf1bb0d08675d12ff505ae6",
         "python_lxmf_version": "0.9.6",
         "python_lxmf_ref": "727830cefda83d9c6e3982b48675425f3f988f9c"
       },

@@ -57,4 +57,23 @@ peering_cost = 21
         assert_eq!(parse_i2p_sam_address(":7656"), None);
         assert_eq!(parse_i2p_sam_address("127.0.0.1:not-a-port"), None);
     }
+
+    #[test]
+    fn rns_1_5_queue_lengths_parse_with_python_defaults_and_positive_overrides() {
+        let defaults =
+            ReticulumRuntimePolicy::from_toml("[reticulum]").expect("parse default policy");
+        assert_eq!(
+            defaults.inbound_queue_limits(),
+            rns_transport::transport::InboundQueueLimits::default()
+        );
+
+        let configured = ReticulumRuntimePolicy::from_toml(
+            "[reticulum]\nqlen_in_data=10\nqlen_in_announce=11\nqlen_in_pr=12\nqlen_in_il=13",
+        )
+        .expect("parse configured policy");
+        assert_eq!(configured.inbound_queue_limits().data, 10);
+        assert_eq!(configured.inbound_queue_limits().announce, 11);
+        assert_eq!(configured.inbound_queue_limits().path_request, 12);
+        assert_eq!(configured.inbound_queue_limits().ingress_limited, 13);
+    }
 }

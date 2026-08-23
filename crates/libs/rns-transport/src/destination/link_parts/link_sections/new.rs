@@ -45,6 +45,14 @@ impl Link {
     }
 
     pub fn request(&mut self) -> Packet {
+        self.request_with_mtu_limit(None)
+    }
+
+    pub(crate) fn request_with_mtu(&mut self, max_mtu: usize) -> Packet {
+        self.request_with_mtu_limit(Some(max_mtu))
+    }
+
+    fn request_with_mtu_limit(&mut self, max_mtu: Option<usize>) -> Packet {
         if self.status != LinkStatus::Pending {
             self.refresh_local_identity();
         }
@@ -74,7 +82,7 @@ impl Link {
             (mtu_value & 0xFF) as u8,
         ]);
 
-        let packet = Packet {
+        let mut packet = Packet {
             header: Header { packet_type: PacketType::LinkRequest, ..Default::default() },
             ifac: None,
             destination: self.destination.address_hash,
@@ -82,6 +90,9 @@ impl Link {
             context: PacketContext::None,
             data: packet_data,
         };
+        if let Some(max_mtu) = max_mtu {
+            clamp_link_request_signalling_mtu(&mut packet, max_mtu);
+        }
 
         self.status = LinkStatus::Pending;
         self.id = LinkId::from(&packet);

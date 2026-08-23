@@ -1,4 +1,35 @@
 impl InterfaceManager {
+    pub fn receiver(&self) -> Arc<tokio::sync::Mutex<InterfaceRxReceiver>> {
+        self.rx_recv.clone()
+    }
+
+    pub fn cleanup(&mut self) {
+        self.ifaces.retain(|iface| !iface.stop.is_cancelled());
+    }
+
+    pub fn stop_interface(&mut self, address: AddressHash) -> bool {
+        let mut stopped = false;
+        for iface in &self.ifaces {
+            if iface.address == address {
+                iface.stop.cancel();
+                stopped = true;
+            }
+        }
+        self.cleanup();
+        stopped
+    }
+
+    pub fn lowest_interface_bitrate(&self) -> Option<u64> {
+        self.ifaces
+            .iter()
+            .filter(|iface| {
+                !iface.stop.is_cancelled() && iface.online.load(Ordering::Acquire)
+            })
+            .map(|iface| iface.announce_bitrate_bps)
+            .filter(|bitrate| *bitrate > 0)
+            .min()
+    }
+
     /// Drops every pending announce and returns the number removed.
     pub fn drop_announce_queues(&mut self) -> usize {
         self.ifaces

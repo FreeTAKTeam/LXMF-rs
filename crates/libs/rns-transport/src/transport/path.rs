@@ -165,137 +165,142 @@ pub(super) async fn handle_path_request<'a>(
     iface: AddressHash,
 ) {
     if let Some(request) = handler.path_requests.decode(packet.data.as_slice(), iface) {
-        if let Some(dest) = handler.single_in_destinations.get(&request.destination).cloned() {
-            let app_data =
-                handler.single_in_destination_app_data.get(&request.destination).cloned();
-            if !handler.path_requests.allow_local_response(
-                &request.destination,
-                request.requesting_transport,
-                &request.tag_bytes,
-                iface,
-            ) {
-                log::trace!(
-                    "tp({}): suppressing repeated local path response for {} on {}",
-                    handler.config.name,
-                    request.destination,
-                    iface
-                );
-                return;
-            }
+        handle_decoded_path_request(request, handler, iface).await;
+    }
+}
 
-            let response = dest
-                .lock()
-                .await
-                .path_response_with_tag(
-                    OsRng,
-                    app_data.as_deref(),
-                    Some(request.tag_bytes.as_slice()),
-                )
-                .expect("valid path response");
-
-            handler
-                .send(TxMessage { tx_type: TxMessageType::Direct(iface), packet: response })
-                .await;
-
-            log::trace!("tp({}): send direct path response over {}", handler.config.name, iface);
-
+pub(super) async fn handle_decoded_path_request<'a>(
+    request: PathRequest,
+    handler: &mut MutexGuard<'a, TransportHandler>,
+    iface: AddressHash,
+) {
+    if let Some(dest) = handler.single_in_destinations.get(&request.destination).cloned() {
+        let app_data = handler.single_in_destination_app_data.get(&request.destination).cloned();
+        if !handler.path_requests.allow_local_response(
+            &request.destination,
+            request.requesting_transport,
+            &request.tag_bytes,
+            iface,
+        ) {
+            log::trace!(
+                "tp({}): suppressing repeated local path response for {} on {}",
+                handler.config.name,
+                request.destination,
+                iface
+            );
             return;
         }
 
-        if handler.config.transport_enabled {
-            if let Some(entry) = handler.path_table.get(&request.destination) {
-                let next_hop = entry.received_from;
-                let learned_iface = entry.iface;
-                let hops = entry.hops;
+        let response = dest
+            .lock()
+            .await
+            .path_response_with_tag(OsRng, app_data.as_deref(), Some(request.tag_bytes.as_slice()))
+            .expect("valid path response");
 
-                if let Some(requestor_id) = request.requesting_transport {
-                    if requestor_id == next_hop {
-                        log::trace!(
-                            "tp({}): dropping circular path request from {}",
-                            handler.config.name,
-                            request.destination
-                        );
-                        return;
-                    }
-                }
+        handler.send(TxMessage { tx_type: TxMessageType::Direct(iface), packet: response }).await;
 
-                let incoming_iface_mode = handler.iface_manager.lock().await.mode(&iface);
-                // Reference parity (issue #516): Python Reticulum
-                // `Transport.py` (~line 3044) suppresses a known-path
-                // response when the request arrived on a MODE_ROAMING
-                // interface and the known next hop is attached to that
-                // same interface (`attached_interface == received_from`),
-                // because roaming peers are expected to move and answering
-                // would pin a stale route. Behavior here matches the
-                // reference exactly; regression coverage lives in
-                // `tests_parts/module_prelude.rs`
-                // (`roaming_iface_suppresses_known_path_response_when_next_hop_is_same_iface`,
-                // `roaming_iface_delays_known_path_response_when_next_hop_differs`,
-                // `roaming_suppression_only_applies_to_roaming_mode`).
-                if incoming_iface_mode == Some(InterfaceMode::Roaming) && learned_iface == iface {
+        log::trace!("tp({}): send direct path response over {}", handler.config.name, iface);
+
+        return;
+    }
+
+    if handler.config.transport_enabled {
+        if let Some(entry) = handler.path_table.get(&request.destination) {
+            let next_hop = entry.received_from;
+            let learned_iface = entry.iface;
+            let hops = entry.hops;
+
+            if let Some(requestor_id) = request.requesting_transport {
+                if requestor_id == next_hop {
                     log::trace!(
-                        "tp({}): suppressing roaming same-iface path response for {}",
+                        "tp({}): dropping circular path request from {}",
                         handler.config.name,
                         request.destination
                     );
                     return;
                 }
+            }
 
-                if incoming_iface_mode == Some(InterfaceMode::Roaming) {
-                    handler.announce_table.add_response_with_extra_grace(
-                        request.destination,
-                        iface,
-                        hops,
-                        super::announce_table::PATH_RESPONSE_ROAMING_GRACE,
-                    );
-                } else {
-                    handler.announce_table.add_response(request.destination, iface, hops);
-                }
-
+            let incoming_iface_mode = handler.iface_manager.lock().await.mode(&iface);
+            // Reference parity (issue #516): Python Reticulum
+            // `Transport.py` (~line 3044) suppresses a known-path
+            // response when the request arrived on a MODE_ROAMING
+            // interface and the known next hop is attached to that
+            // same interface (`attached_interface == received_from`),
+            // because roaming peers are expected to move and answering
+            // would pin a stale route. Behavior here matches the
+            // reference exactly; regression coverage lives in
+            // `tests_parts/module_prelude.rs`
+            // (`roaming_iface_suppresses_known_path_response_when_next_hop_is_same_iface`,
+            // `roaming_iface_delays_known_path_response_when_next_hop_differs`,
+            // `roaming_suppression_only_applies_to_roaming_mode`).
+            if incoming_iface_mode == Some(InterfaceMode::Roaming) && learned_iface == iface {
                 log::trace!(
-                    "tp({}): scheduled remote path response to {} ({} hops) over {}",
+                    "tp({}): suppressing roaming same-iface path response for {}",
                     handler.config.name,
+                    request.destination
+                );
+                return;
+            }
+
+            if incoming_iface_mode == Some(InterfaceMode::Roaming) {
+                handler.announce_table.add_response_with_extra_grace(
                     request.destination,
+                    iface,
                     hops,
-                    iface
+                    super::announce_table::PATH_RESPONSE_ROAMING_GRACE,
                 );
-
-                return;
+            } else {
+                handler.announce_table.add_response(request.destination, iface, hops);
             }
+
+            log::trace!(
+                "tp({}): scheduled remote path response to {} ({} hops) over {}",
+                handler.config.name,
+                request.destination,
+                hops,
+                iface
+            );
+
+            return;
         }
+    }
 
-        if handler.config.transport_enabled {
-            let should_search_for_unknown = handler
-                .iface_manager
-                .lock()
-                .await
-                .mode(&iface)
-                .map(|mode| mode.discovers_unknown_paths() || mode == InterfaceMode::Boundary)
-                .unwrap_or(false);
-            if !should_search_for_unknown {
-                log::trace!(
-                    "tp({}): not searching for unknown path {} from non-discovery iface {}",
-                    handler.config.name,
-                    request.destination,
-                    iface
-                );
-                return;
-            }
-            if let Some(packet) = handler.path_requests.generate_recursive(
-                &request.destination,
-                Some(iface),
-                Some(request.tag_bytes.clone()),
-            ) {
-                let boundary_search_modes = (handler.iface_manager.lock().await.mode(&iface)
-                    == Some(InterfaceMode::Boundary))
-                .then_some([InterfaceMode::Boundary, InterfaceMode::Gateway]);
-                handler
-                    .send_recursive_path_request_with_modes(
-                        TxMessage { tx_type: TxMessageType::Broadcast(Some(iface)), packet },
-                        boundary_search_modes.as_ref().map(|modes| modes.as_slice()),
-                    )
-                    .await;
-            }
+    if handler.config.transport_enabled {
+        let should_search_for_unknown = handler
+            .iface_manager
+            .lock()
+            .await
+            .mode(&iface)
+            .map(|mode| mode.discovers_unknown_paths() || mode == InterfaceMode::Boundary)
+            .unwrap_or(false);
+        if !should_search_for_unknown {
+            log::trace!(
+                "tp({}): not searching for unknown path {} from non-discovery iface {}",
+                handler.config.name,
+                request.destination,
+                iface
+            );
+            return;
+        }
+        let slowest_bitrate = handler.iface_manager.lock().await.lowest_interface_bitrate();
+        handler
+            .path_requests
+            .set_request_timeout_lower_bound(medium_path_timeout_for_bitrate(slowest_bitrate));
+        if let Some(packet) = handler.path_requests.generate_recursive(
+            &request.destination,
+            Some(iface),
+            Some(request.tag_bytes.clone()),
+        ) {
+            let boundary_search_modes = (handler.iface_manager.lock().await.mode(&iface)
+                == Some(InterfaceMode::Boundary))
+            .then_some([InterfaceMode::Boundary, InterfaceMode::Gateway]);
+            handler
+                .send_recursive_path_request_with_modes(
+                    TxMessage { tx_type: TxMessageType::Broadcast(Some(iface)), packet },
+                    boundary_search_modes.as_ref().map(|modes| modes.as_slice()),
+                )
+                .await;
         }
     }
 }
@@ -304,9 +309,14 @@ pub(super) async fn handle_fixed_destinations<'a>(
     packet: &Packet,
     handler: &mut MutexGuard<'a, TransportHandler>,
     iface: AddressHash,
+    path_request: Option<PathRequest>,
 ) -> bool {
     if packet.destination == handler.fixed_dest_path_requests {
-        handle_path_request(packet, handler, iface).await;
+        if let Some(request) = path_request {
+            handle_decoded_path_request(request, handler, iface).await;
+        } else {
+            handle_path_request(packet, handler, iface).await;
+        }
         true
     } else if packet.destination == handler.fixed_dest_tunnel_synthesize {
         super::tunnels::handle_tunnel_synthesize_packet(packet, handler, iface).await;

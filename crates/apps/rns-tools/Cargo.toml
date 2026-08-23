@@ -1,6 +1,6 @@
 [package]
 name = "rns-tools"
-version = "0.9.9"
+version = "0.10.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -21,10 +21,10 @@ hex.workspace = true
 socket2 = { version = "0.5", features = ["all"] }
 log = { workspace = true }
 tracing-subscriber = { workspace = true }
-rns-embedded-core = { path = "../../libs/rns-embedded-core", version = "0.9.9" }
-rns-embedded-runtime = { path = "../../libs/rns-embedded-runtime", version = "0.9.9", features = ["std"] }
-rns_rpc = { package = "reticulum-rs-rpc", path = "../../libs/rns-rpc", version = "0.9.9" }
-rns_transport = { package = "reticulum-rs-transport", path = "../../libs/rns-transport", version = "0.9.9" }
+rns-embedded-core = { path = "../../libs/rns-embedded-core", version = "0.10.0" }
+rns-embedded-runtime = { path = "../../libs/rns-embedded-runtime", version = "0.10.0", features = ["std"] }
+rns_rpc = { package = "reticulum-rs-rpc", path = "../../libs/rns-rpc", version = "0.10.0" }
+rns_transport = { package = "reticulum-rs-transport", path = "../../libs/rns-transport", version = "0.10.0" }
 rand_core = { workspace = true, features = ["getrandom"] }
 
 [target.'cfg(any(target_os = "android", target_os = "linux", target_os = "macos", target_os = "windows"))'.dependencies]

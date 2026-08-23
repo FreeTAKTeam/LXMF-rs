@@ -15,6 +15,7 @@ pub const THRESHOLD_REMOVE_SECS: f64 = 7.0 * 24.0 * 60.0 * 60.0;
 const DISCOVERABLE_TYPES: &[&str] = &[
     "BackboneInterface",
     "TCPServerInterface",
+    "TCPClientInterface",
     "I2PInterface",
     "RNodeInterface",
     "WeaveInterface",
@@ -38,6 +39,8 @@ pub struct DiscoveredInterface {
     pub latitude: Option<f64>,
     pub longitude: Option<f64>,
     pub height: Option<f64>,
+    #[serde(default)]
+    pub operator_lxmf_address: Option<String>,
     #[serde(default)]
     pub reachable_on: Option<String>,
     #[serde(default)]
@@ -200,6 +203,14 @@ pub fn is_ip_address(endpoint: &str) -> bool {
     endpoint.parse::<IpAddr>().is_ok()
 }
 
+pub fn is_invalid_ip_address(endpoint: &str) -> bool {
+    matches!(endpoint, "127.0.0.1" | "0.0.0.0")
+}
+
+pub fn is_onion_address(endpoint: &str) -> bool {
+    endpoint.to_ascii_lowercase().ends_with(".onion")
+}
+
 pub fn is_hostname(endpoint: &str) -> bool {
     let endpoint = endpoint.trim_end_matches('.');
     if endpoint
@@ -243,6 +254,15 @@ fn write_record(path: &Path, info: &DiscoveredInterface) -> io::Result<()> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn rns_1_5_discovery_endpoint_helpers_match_python() {
+        assert!(is_invalid_ip_address("127.0.0.1"));
+        assert!(is_invalid_ip_address("0.0.0.0"));
+        assert!(!is_invalid_ip_address("127.0.0.2"));
+        assert!(is_onion_address("EXAMPLE.ONION"));
+        assert!(!is_onion_address("example.onion.test"));
+    }
+
     fn record(hash: u8, received: f64) -> DiscoveredInterface {
         DiscoveredInterface {
             discovery_hash: vec![hash; 32],
@@ -258,6 +278,7 @@ mod tests {
             latitude: None,
             longitude: None,
             height: None,
+            operator_lxmf_address: None,
             reachable_on: Some("localhost".to_string()),
             port: Some(4242),
             ifac_netname: None,

@@ -31,6 +31,7 @@ use interface_hot_apply_parts::record_hot_apply::{
 use interface_hot_apply_parts::record_hot_apply::{
     tcp_server_bind_addr_with_device_resolver, udp_bind_and_forward_addr_with_device_resolver,
 };
+use interface_hot_apply_parts::record_settings::setting;
 #[cfg(test)]
 use interface_hot_apply_parts::tcp_runtime_refresh::refresh_hot_apply_tcp_listener_runtime_status_once;
 use interface_hot_apply_parts::tcp_runtime_refresh::{
@@ -149,6 +150,7 @@ impl InterfaceMutationBridge for InterfaceHotApplyBridge {
         interfaces: Vec<InterfaceRecord>,
     ) -> Result<Vec<InterfaceRecord>, io::Error> {
         validate_hot_apply_uniqueness(&interfaces)?;
+        validate_hot_apply_ifac_not_configured(&interfaces)?;
         let effective = interfaces
             .iter()
             .cloned()
@@ -182,6 +184,29 @@ impl InterfaceMutationBridge for InterfaceHotApplyBridge {
         })?;
         Ok(effective)
     }
+}
+
+fn validate_hot_apply_ifac_not_configured(interfaces: &[InterfaceRecord]) -> Result<(), io::Error> {
+    const IFAC_FIELDS: &[&str] = &[
+        "ifac_size",
+        "network_name",
+        "networkname",
+        "passphrase",
+        "pass_phrase",
+        "ifac_netname",
+        "ifac_netkey",
+    ];
+    for (index, record) in interfaces.iter().enumerate() {
+        if IFAC_FIELDS.iter().any(|field| setting(record, field).is_some()) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "interfaces[{index}] configures Reticulum IFAC authentication, which this release does not implement"
+                ),
+            ));
+        }
+    }
+    Ok(())
 }
 
 enum InterfaceHotApplyCommand {

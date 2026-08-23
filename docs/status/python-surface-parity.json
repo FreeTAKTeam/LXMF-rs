@@ -6650,11 +6650,37 @@
         "unit",
         "pinned-python"
       ],
+      "id": "RNS.Discovery.is_invalid_ip_address",
+      "implementation": "complete",
+      "kind": "function",
+      "rust_surface": [
+        "reticulum-rs-transport::discovery::is_invalid_ip_address"
+      ],
+      "source": "Discovery.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
       "id": "RNS.Discovery.is_ip_address",
       "implementation": "complete",
       "kind": "function",
       "rust_surface": [
         "reticulum-rs-transport::discovery::is_ip_address/is_hostname"
+      ],
+      "source": "Discovery.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Discovery.is_onion_address",
+      "implementation": "complete",
+      "kind": "function",
+      "rust_surface": [
+        "reticulum-rs-transport::discovery::is_onion_address"
       ],
       "source": "Discovery.py"
     },
@@ -10464,6 +10490,23 @@
         "pinned-python",
         "hardware-unverified"
       ],
+      "id": "RNS.Interfaces.BackboneInterface.BackboneInterface.ic_burst_count",
+      "implementation": "complete",
+      "kind": "method",
+      "notes": "Backbone child connections retain distinct snapshots; the parent snapshot reports the number of active child announce limiters without aliasing a shared counter.",
+      "rust_surface": [
+        "reticulum-rs-transport::Transport::interface_traffic_snapshots",
+        "reticulum-rs-transport::InterfaceTrafficSnapshot"
+      ],
+      "source": "Interfaces/BackboneInterface.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python",
+        "hardware-unverified"
+      ],
       "id": "RNS.Interfaces.BackboneInterface.BackboneInterface.ic_pr_burst_activated",
       "implementation": "complete",
       "kind": "method",
@@ -10488,6 +10531,24 @@
         "reticulum-rs-transport::iface::tcp_client",
         "reticulum-rs-transport::iface::tcp_server",
         "reticulum-rs-transport::iface::hdlc"
+      ],
+      "source": "Interfaces/BackboneInterface.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python",
+        "hardware-unverified"
+      ],
+      "id": "RNS.Interfaces.BackboneInterface.BackboneInterface.ic_pr_burst_count",
+      "implementation": "complete",
+      "kind": "method",
+      "notes": "The Backbone parent snapshot reports the number of active child path-request limiters from live child interface records.",
+      "rust_surface": [
+        "reticulum-rs-transport::Transport::interface_traffic_snapshots",
+        "reticulum-rs-transport::transport::PathRequests",
+        "reticulum-rs-transport::InterfaceTrafficSnapshot"
       ],
       "source": "Interfaces/BackboneInterface.py"
     },
@@ -11437,6 +11498,55 @@
         "simulated",
         "pinned-python"
       ],
+      "id": "RNS.Interfaces.Interface.Interface.ic_burst_count",
+      "implementation": "complete",
+      "kind": "method",
+      "notes": "The Python base property returns None; Rust exposes concrete per-interface announce-limiter state and Backbone parent snapshots aggregate active child counts.",
+      "rust_surface": [
+        "reticulum-rs-transport::transport::AnnounceLimits",
+        "reticulum-rs-transport::InterfaceTrafficSnapshot"
+      ],
+      "source": "Interfaces/Interface.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Interfaces.Interface.Interface.ic_pr_burst_count",
+      "implementation": "complete",
+      "kind": "method",
+      "notes": "The Python base property returns None; Rust exposes scoped per-interface path-request limiter state and Backbone parent snapshots aggregate active child counts.",
+      "rust_surface": [
+        "reticulum-rs-transport::transport::PathRequests",
+        "reticulum-rs-transport::InterfaceTrafficSnapshot"
+      ],
+      "source": "Interfaces/Interface.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python",
+        "hardware-unverified"
+      ],
+      "id": "RNS.Interfaces.Interface.Interface.ifac_violation",
+      "implementation": "complete",
+      "kind": "method",
+      "notes": "The production prequeue path records configured-missing and unconfigured-authenticated IFAC flag-policy violations. Cryptographic IFAC authentication remains carrier-decoder owned; physical fault injection is hardware-unverified.",
+      "rust_surface": [
+        "reticulum-rs-transport::InterfaceManager::record_ifac_violation",
+        "reticulum-rs-transport::InterfaceTrafficSnapshot"
+      ],
+      "source": "Interfaces/Interface.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
       "id": "RNS.Interfaces.Interface.Interface.incoming_announce_frequency",
       "implementation": "complete",
       "kind": "method",
@@ -11512,6 +11622,21 @@
         "simulated",
         "pinned-python"
       ],
+      "id": "RNS.Interfaces.Interface.Interface.packet_filter_hit",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::InterfaceManager::record_packet_filter_hit",
+        "reticulum-rs-transport::transport::inbound_processing"
+      ],
+      "source": "Interfaces/Interface.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
       "id": "RNS.Interfaces.Interface.Interface.process_announce_queue",
       "implementation": "complete",
       "kind": "method",
@@ -11533,6 +11658,21 @@
       "rust_surface": [
         "reticulum-rs-transport::iface::Interface",
         "reticulum-rs-transport::InterfaceManager"
+      ],
+      "source": "Interfaces/Interface.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Interfaces.Interface.Interface.protocol_violation",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::InterfaceManager::record_protocol_violation",
+        "reticulum-rs-transport::InterfaceTrafficSnapshot"
       ],
       "source": "Interfaces/Interface.py"
     },
@@ -18770,6 +18910,62 @@
     {
       "evidence": [
         "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Reticulum.Reticulum.default_announce_queue_length",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::Transport::default_announce_queue_length",
+        "reticulumd::config::qlen_in_announce"
+      ],
+      "source": "Reticulum.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Reticulum.Reticulum.default_data_queue_length",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::Transport::default_data_queue_length",
+        "reticulumd::config::qlen_in_data"
+      ],
+      "source": "Reticulum.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Reticulum.Reticulum.default_il_queue_length",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::Transport::default_ingress_limited_queue_length",
+        "reticulumd::config::qlen_in_il"
+      ],
+      "source": "Reticulum.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Reticulum.Reticulum.default_pr_queue_length",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::Transport::default_path_request_queue_length",
+        "reticulumd::config::qlen_in_pr"
+      ],
+      "source": "Reticulum.py"
+    },
+    {
+      "evidence": [
+        "unit",
         "simulated",
         "pinned-python"
       ],
@@ -18848,6 +19044,21 @@
         "simulated",
         "pinned-python"
       ],
+      "id": "RNS.Reticulum.Reticulum.get_active_link_count",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::Transport::active_link_count",
+        "reticulum-rs-rpc::active_link_count"
+      ],
+      "source": "Reticulum.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
       "id": "RNS.Reticulum.Reticulum.get_blackholed_identities",
       "implementation": "complete",
       "kind": "method",
@@ -18910,6 +19121,36 @@
       "kind": "method",
       "rust_surface": [
         "reticulum-rs-rpc::daemon_status_ex"
+      ],
+      "source": "Reticulum.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Reticulum.Reticulum.get_lowest_interface_bitrate",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::Transport::lowest_interface_bitrate",
+        "reticulum-rs-rpc::lowest_interface_bitrate"
+      ],
+      "source": "Reticulum.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Reticulum.Reticulum.get_medium_path_timeout",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::Transport::medium_path_timeout",
+        "reticulum-rs-rpc::medium_path_timeout"
       ],
       "source": "Reticulum.py"
     },
@@ -19325,6 +19566,71 @@
     {
       "evidence": [
         "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Transport.InboundQueues",
+      "implementation": "complete",
+      "kind": "class",
+      "rust_surface": [
+        "reticulum-rs-transport::transport::InboundQueues"
+      ],
+      "source": "Transport.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Transport.InboundQueues.get",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::transport::InboundQueues::dequeue"
+      ],
+      "source": "Transport.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Transport.InboundQueues.put",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::transport::InboundQueues::enqueue"
+      ],
+      "source": "Transport.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Transport.InboundQueues.qsize",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::transport::InboundQueues::snapshot"
+      ],
+      "source": "Transport.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Transport.InboundQueues.snapshot",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::transport::InboundQueueSnapshot"
+      ],
+      "source": "Transport.py"
+    },
+    {
+      "evidence": [
+        "unit",
         "simulated",
         "pinned-python"
       ],
@@ -19351,6 +19657,20 @@
         "reticulum-rs-transport::destination::link",
         "reticulum-rs-transport::transport::LinkTable",
         "reticulum-rs-transport::transport::NextHopMetrics"
+      ],
+      "source": "Transport.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Transport.Transport.active_link_count",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::Transport::active_link_count"
       ],
       "source": "Transport.py"
     },
@@ -19864,6 +20184,21 @@
     {
       "evidence": [
         "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Transport.Transport.inbound_job",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::transport::jobs::packet-ingress",
+        "reticulum-rs-transport::transport::jobs::packet-drain"
+      ],
+      "source": "Transport.py"
+    },
+    {
+      "evidence": [
+        "unit",
         "pinned-python"
       ],
       "id": "RNS.Transport.Transport.interface_hashes",
@@ -19966,6 +20301,20 @@
         "simulated",
         "pinned-python"
       ],
+      "id": "RNS.Transport.Transport.link_count",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::Transport::link_count"
+      ],
+      "source": "Transport.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
       "id": "RNS.Transport.Transport.mangle_hops",
       "implementation": "complete",
       "kind": "method",
@@ -20020,6 +20369,20 @@
         "reticulum-rs-transport::transport::PathTable",
         "reticulum-rs-transport::Transport",
         "reticulum-rs-rpc::path_status/request_path/drop_path"
+      ],
+      "source": "Transport.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Transport.Transport.medium_path_timeout",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::Transport::medium_path_timeout"
       ],
       "source": "Transport.py"
     },
@@ -20133,6 +20496,22 @@
         "simulated",
         "pinned-python"
       ],
+      "id": "RNS.Transport.Transport.outbound_job",
+      "implementation": "complete",
+      "kind": "method",
+      "notes": "Python 1.5 raises NotImplementedError for this disabled worker; Rust retains the direct bounded interface dispatch path.",
+      "rust_surface": [
+        "reticulum-rs-transport::Transport::send_packet",
+        "reticulum-rs-transport::InterfaceManager::send"
+      ],
+      "source": "Transport.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
       "id": "RNS.Transport.Transport.packet_filter",
       "implementation": "complete",
       "kind": "method",
@@ -20216,6 +20595,20 @@
       "kind": "method",
       "rust_surface": [
         "reticulum-rs-transport::Transport::persist_data"
+      ],
+      "source": "Transport.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Transport.Transport.preprocess_inbound",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::transport::inbound_processing::preprocess_inbound_message"
       ],
       "source": "Transport.py"
     },
@@ -23805,6 +24198,21 @@
         "rns-tools::rngit",
         "rns-tools::rncp",
         "rns-tools::rnsh"
+      ],
+      "source": "Utilities/rngit/util.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Utilities.rngit.util.medium_path_timeout",
+      "implementation": "complete",
+      "kind": "function",
+      "notes": "connect_remote applies a caller-injected typed medium timeout before transport-neutral remote operations; the shipped CLI remains a local Git workflow.",
+      "rust_surface": [
+        "rns-tools::rngit::ReticulumGitClient::connect_remote",
+        "rns-tools::rngit::ReticulumGitClient::apply_medium_path_timeout"
       ],
       "source": "Utilities/rngit/util.py"
     },
@@ -27972,7 +28380,7 @@
   ],
   "references": {
     "lxmf": "727830cefda83d9c6e3982b48675425f3f988f9c",
-    "reticulum": "b48b96e61676504e0a4e527b33b9a0b4495c6872"
+    "reticulum": "e32d4df754a7b87b1bf1bb0d08675d12ff505ae6"
   },
   "schema_version": 1,
   "scope": {
@@ -27984,8 +28392,8 @@
     "includes": "public RNS/LXMF callables and committed manual product contracts"
   },
   "summary": {
-    "complete": 1810,
+    "complete": 1838,
     "not-applicable": 1,
-    "total": 1811
+    "total": 1839
   }
 }

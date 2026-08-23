@@ -84,6 +84,8 @@ impl PipeInterface {
     pub async fn spawn(context: InterfaceContext<Self>) {
         let iface_stop = context.channel.stop.clone();
         let iface_address = context.channel.address;
+        let online = context.channel.online.clone();
+        online.store(false, std::sync::atomic::Ordering::Release);
         let (rx_channel, tx_channel) = context.channel.split();
         let tx_channel = Arc::new(tokio::sync::Mutex::new(tx_channel));
 
@@ -116,6 +118,7 @@ impl PipeInterface {
                 rx_channel.clone(),
                 tx_channel.clone(),
                 runtime_status.clone(),
+                online.clone(),
             )
             .await
             {
@@ -153,6 +156,7 @@ impl PipeInterface {
             status.process_state = "stopped".to_string();
             status.pipe_is_open = false;
         });
+        online.store(false, std::sync::atomic::Ordering::Release);
         iface_stop.cancel();
     }
 }
@@ -231,6 +235,7 @@ async fn run_pipe_process(
     rx_channel: tokio::sync::mpsc::Sender<RxMessage>,
     tx_channel: Arc<tokio::sync::Mutex<tokio::sync::mpsc::Receiver<TxMessage>>>,
     runtime_status: Arc<std::sync::Mutex<PipeRuntimeStatus>>,
+    online: Arc<std::sync::atomic::AtomicBool>,
 ) -> Result<(), String> {
     let argv = PipeInterface::parse_command(command)?;
     let mut child = Command::new(&argv[0])
@@ -248,6 +253,7 @@ async fn run_pipe_process(
         status.pipe_is_open = true;
         status.last_error = None;
     });
+    online.store(true, std::sync::atomic::Ordering::Release);
 
     run_pipe_stream(
         stdout,
@@ -261,6 +267,7 @@ async fn run_pipe_process(
         runtime_status,
     )
     .await;
+    online.store(false, std::sync::atomic::Ordering::Release);
 
     terminate_pipe_child(&mut child, command).await?;
     Ok(())

@@ -101,7 +101,7 @@ def build_bundle(
         "performance": performance,
         "topology_performance": five_node_timings(rns_rs),
         "readiness_axes": {
-            "rns_1_4_2_software_parity": parity_readiness(parity),
+            "rns_1_5_0_software_parity": parity_readiness(parity),
             "pinned_python_interoperability": {
                 "status": "SEPARATE_REQUIRED_GATE",
                 "source": ".github/workflows/verify.yml",
@@ -153,7 +153,7 @@ def render_markdown(bundle: dict[str, Any]) -> str:
             "",
             "| Axis | Result |",
             "|---|---|",
-            f"| RNS 1.4.2 software parity | {bundle['readiness_axes']['rns_1_4_2_software_parity']['complete']} / {bundle['readiness_axes']['rns_1_4_2_software_parity']['applicable']} PASS |",
+            f"| RNS 1.5.0 software parity | {bundle['readiness_axes']['rns_1_5_0_software_parity']['complete']} / {bundle['readiness_axes']['rns_1_5_0_software_parity']['applicable']} PASS |",
             f"| Pinned Python interoperability | {bundle['readiness_axes']['pinned_python_interoperability']['status']} |",
             f"| Independent rns-rs interoperability | {bundle['readiness_axes']['independent_interoperability']['rns-rs']} |",
             f"| Independent Reticulum-Go interoperability | {bundle['readiness_axes']['independent_interoperability']['Reticulum-Go']} |",

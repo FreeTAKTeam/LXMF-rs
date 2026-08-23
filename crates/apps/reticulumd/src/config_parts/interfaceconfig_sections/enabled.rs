@@ -83,6 +83,11 @@ impl InterfaceConfig {
             self.discovery_stamp_value,
         );
         insert_opt_string(&mut settings, "discovery_name", self.discovery_name.as_ref());
+        insert_opt_string(
+            &mut settings,
+            "discovery_lxmf_address",
+            self.discovery_lxmf_address.as_ref(),
+        );
         insert_opt_bool(&mut settings, "discovery_encrypt", self.discovery_encrypt);
         insert_opt_string(&mut settings, "reachable_on", self.reachable_on.as_ref());
         insert_opt_bool(&mut settings, "publish_ifac", self.publish_ifac);
@@ -487,6 +492,7 @@ impl InterfaceConfig {
             return Err(format!("interfaces[{index}].type is required"));
         }
         self.interface_mode().map_err(|err| format!("interfaces[{index}].{err}"))?;
+        self.validate_ifac_not_configured(index)?;
         self.validate_announce_pacing(index)?;
         match kind {
             "tcp_client" => self.validate_tcp_client(index),
@@ -511,6 +517,25 @@ impl InterfaceConfig {
             "rnode_multi" => self.validate_rnode_multi(index),
             _ => Ok(()),
         }
+    }
+
+    fn validate_ifac_not_configured(&self, index: usize) -> Result<(), String> {
+        let has_network_name = self
+            .network_name
+            .as_deref()
+            .or(self.networkname.as_deref())
+            .is_some_and(|value| !value.trim().is_empty());
+        let has_passphrase = self
+            .passphrase
+            .as_deref()
+            .or(self.pass_phrase.as_deref())
+            .is_some_and(|value| !value.trim().is_empty());
+        if self.ifac_size.is_some() || has_network_name || has_passphrase {
+            return Err(format!(
+                "interfaces[{index}] configures Reticulum IFAC authentication, which this release does not implement; remove ifac_size/network_name/passphrase (including compatibility aliases)"
+            ));
+        }
+        Ok(())
     }
 
     pub fn interface_mode(&self) -> Result<rns_transport::iface::InterfaceMode, String> {

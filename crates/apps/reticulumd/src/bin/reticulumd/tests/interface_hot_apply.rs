@@ -111,6 +111,31 @@ fn test_bridge(
     }
 }
 
+#[test]
+fn hot_apply_rejects_ifac_without_queueing_a_mutation() {
+    let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+    let bridge = test_bridge(tx);
+    for field in [
+        "ifac_size",
+        "network_name",
+        "networkname",
+        "passphrase",
+        "pass_phrase",
+        "ifac_netname",
+        "ifac_netkey",
+    ] {
+        let mut record = tcp_record("loopback", "127.0.0.1", 1);
+        record.settings = Some(
+            json!({ (field): if field == "ifac_size" { json!(16) } else { json!("secret") } }),
+        );
+        let error =
+            bridge.apply_interfaces(vec![record]).expect_err("IFAC hot apply must fail closed");
+        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+        assert!(error.to_string().contains("does not implement"));
+        assert!(rx.try_recv().is_err(), "rejected IFAC update must not be queued");
+    }
+}
+
 async fn wait_for_tcp_server_connect(host: &str, port: u16) -> TcpStream {
     let endpoint = format!("{host}:{port}");
     let mut last_error = None;
@@ -324,7 +349,6 @@ async fn hot_apply_spawns_tcp_client_with_record_runtime_settings() {
         "announce_rate_target": 120,
         "announce_rate_grace": 2,
         "announce_rate_penalty": 30,
-        "network_name": "field-net",
         "discoverable": true,
         "announce_interval": 21600
     }));
@@ -351,7 +375,6 @@ async fn hot_apply_spawns_tcp_client_with_record_runtime_settings() {
             announce_rate_target: Some(120),
             announce_rate_grace: Some(2),
             announce_rate_penalty: Some(30),
-            network_name: Some("field-net".to_string()),
             discoverable: Some(true),
             announce_interval: Some(21_600),
             ..InterfaceSharedConfig::default()
@@ -374,8 +397,7 @@ async fn hot_apply_updates_existing_tcp_client_runtime_settings() {
     record.settings = Some(json!({
         "interface_mode": "access_point",
         "outgoing": false,
-        "passphrase": "shared-secret",
-        "publish_ifac": true
+        "publish_ifac": false
     }));
 
     let refreshes = runtime_refreshes();
@@ -395,8 +417,7 @@ async fn hot_apply_updates_existing_tcp_client_runtime_settings() {
     assert_eq!(
         manager.shared_config(&address),
         Some(&InterfaceSharedConfig {
-            passphrase: Some("shared-secret".to_string()),
-            publish_ifac: Some(true),
+            publish_ifac: Some(false),
             ..InterfaceSharedConfig::default()
         })
     );

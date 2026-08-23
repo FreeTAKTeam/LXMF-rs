@@ -25,6 +25,18 @@ impl TransportChannel {
         self.link_id
     }
 
+    pub async fn mdu(&self) -> Result<usize, crate::channel::ChannelError> {
+        const CHANNEL_ENVELOPE_LENGTH: usize = 6;
+        let link = self.find_link().await.ok_or(crate::channel::ChannelError::LinkNotReady)?;
+        let channel_mdu = link
+            .lock()
+            .await
+            .link_mdu()
+            .saturating_sub(CHANNEL_ENVELOPE_LENGTH)
+            .min(u16::MAX as usize);
+        Ok(channel_mdu)
+    }
+
     pub async fn send(
         &self,
         msg_type: u16,

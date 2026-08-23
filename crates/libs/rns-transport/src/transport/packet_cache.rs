@@ -78,6 +78,12 @@ impl PacketCache {
         is_new_packet
     }
 
+    pub fn remove(&mut self, hash: &Hash) {
+        if self.map.remove(hash).is_some() {
+            self.by_proof_destination.remove(&AddressHash::new_from_hash(hash));
+        }
+    }
+
     pub fn note_source(&mut self, packet: &Packet, iface: AddressHash) {
         let hash = packet.hash();
         let now = Instant::now();
