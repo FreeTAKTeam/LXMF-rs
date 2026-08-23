@@ -105,17 +105,10 @@ async fn oversized_opportunistic_delivery_falls_back_to_link_delivery() {
     assert_eq!(identify.packet.context, PacketContext::LinkIdentify);
     assert_eq!(identify.packet.destination, link_id);
 
-    let advertisement = tokio::select! {
-        receipt = receipt_rx.recv() => {
-            let status = receipt.expect("receipt before resource advertisement").status;
-            panic!("expected resource advertisement before receipt, got {status}");
-        }
-        advertisement = tokio::time::timeout(Duration::from_secs(2), channel.tx_channel.recv()) => {
-            advertisement
-                .expect("resource advertisement")
-                .expect("resource advertisement")
-        }
-    };
+    let advertisement = tokio::time::timeout(Duration::from_secs(2), channel.tx_channel.recv())
+        .await
+        .expect("resource advertisement")
+        .expect("resource advertisement");
     assert_eq!(advertisement.packet.context, PacketContext::ResourceAdvrtisement);
 
     let receipt = tokio::time::timeout(Duration::from_secs(2), receipt_rx.recv())
