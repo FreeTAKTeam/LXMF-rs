@@ -29,7 +29,7 @@
     {
       "path": "docs/contracts/compatibility-contract.md",
       "bytes": 3764,
-      "sha256": "f50e1c172f391fbad2b9cdc691c455b03c67c7819319ad4fa83f2ebba19e08b3"
+      "sha256": "b322d3424523fc7dde8545898e5f97006c89ef377a33a8bfb54f73028672ef9a"
     },
     {
       "path": "docs/contracts/compatibility-matrix.md",
@@ -1409,7 +1409,7 @@
     {
       "path": "docs/fixtures/sdk-v2/rpc/sdk_negotiate_v2.response.valid.json",
       "bytes": 2359,
-      "sha256": "abda3d19d9df6214cece1d6de9c75a07fa30b538de8e8e3bec3109acbdb3d82e"
+      "sha256": "9f9d21f5c534f5d397bb0058fcfac7a465a686c82b319781167e259b95f19e0b"
     },
     {
       "path": "docs/fixtures/sdk-v2/rpc/sdk_poll_events_v2.request.invalid.json",
@@ -1484,7 +1484,7 @@
     {
       "path": "docs/fixtures/sdk-v2/rpc/sdk_snapshot_v2.response.valid.json",
       "bytes": 820,
-      "sha256": "c11bc7620272df1448273465e52e662e5dcc2fd1f4dc4d31a5a904e686696ed9"
+      "sha256": "cbd338cc66c8d6d9bffae0cfb3b4247c61ec809b41c3b1b18b4b78edd4cd969f"
     },
     {
       "path": "docs/fixtures/sdk-v2/rpc/sdk_status_v2.request.invalid.json",
@@ -1499,7 +1499,7 @@
     {
       "path": "docs/fixtures/sdk-v2/rpc/sdk_status_v2.response.valid.json",
       "bytes": 600,
-      "sha256": "4ba0ab1f9dbf4499a0cef366c43548d20568c540fedfa7860cb3d5c811c21ef2"
+      "sha256": "9745d92f9a357928252a018cc131aea944570f1a37eb919e3be92ab6a7bb26c8"
     },
     {
       "path": "docs/fixtures/sdk-v2/telemetry.point.valid.json",

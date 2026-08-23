@@ -3,7 +3,7 @@
 
 impl Link {
     /// The MTU negotiated for this link — the smaller of what the two peers
-    /// signalled, or [`LEGACY_RETICULUM_MTU`] if the peer signalled nothing.
+    /// signalled, or `LEGACY_RETICULUM_MTU` if the peer signalled nothing.
     ///
     /// **This, not the local interface MTU, is what may size anything put on
     /// the wire.** The interface bounds what this node can physically carry;
