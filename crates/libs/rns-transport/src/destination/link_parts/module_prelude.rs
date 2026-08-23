@@ -35,10 +35,9 @@ const LINK_MTU_MASK: u32 = 0x1F_FFFF;
 
 const LINK_MODE_MASK: u32 = 0xE0_0000;
 
-/// What a peer that signalled nothing at all is assumed to support, and the
-/// floor for anything it did signal. This is Reticulum's original fixed MTU
-/// and is a property of the *protocol's history*, not of this build — it
-/// must not move when the ceiling below does.
+/// What a peer that signalled nothing, or an explicit zero, is assumed to support.
+/// This is Reticulum's original fixed MTU and is a property of the *protocol's
+/// history*, not of this build — it must not move when the ceiling below does.
 pub(crate) const LEGACY_RETICULUM_MTU: usize = PACKET_MDU + 2 + 1 + ADDRESS_HASH_SIZE * 2 + 1;
 
 /// The largest MTU this build will advertise, or accept from a peer.
