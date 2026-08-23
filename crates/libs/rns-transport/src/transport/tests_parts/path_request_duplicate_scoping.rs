@@ -1,7 +1,7 @@
 use super::path_requests::PathRequests;
 
 #[tokio::test]
-async fn local_path_response_duplicate_scoping_reaches_requester_and_iface_policy() {
+async fn rns_1_5_duplicate_path_request_key_ignores_requester_and_iface() {
     let local_identity = PrivateIdentity::new_from_rand(OsRng);
     let mut config = TransportConfig::new("test", &local_identity, true);
     config.set_retransmit(true);
@@ -60,23 +60,23 @@ async fn local_path_response_duplicate_scoping_reaches_requester_and_iface_polic
         let mut guard = handler.lock().await;
         handle_path_request(&request_b, &mut guard, iface_a).await;
     }
-    let second = timeout(Duration::from_millis(200), iface_a_channel.tx_channel.recv())
-        .await
-        .expect("distinct requester should receive a local path response")
-        .expect("second path response message");
-    assert!(matches!(second.tx_type, TxMessageType::Direct(iface) if iface == iface_a));
-    assert_eq!(second.packet.destination, destination);
-    assert_eq!(second.packet.context, PacketContext::PathResponse);
+    assert!(
+        matches!(
+            iface_a_channel.tx_channel.try_recv(),
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+        ),
+        "same destination/tag must be suppressed across requesting transports"
+    );
 
     {
         let mut guard = handler.lock().await;
         handle_path_request(&request_a, &mut guard, iface_b).await;
     }
-    let third = timeout(Duration::from_millis(200), iface_b_channel.tx_channel.recv())
-        .await
-        .expect("distinct iface should receive a local path response")
-        .expect("third path response message");
-    assert!(matches!(third.tx_type, TxMessageType::Direct(iface) if iface == iface_b));
-    assert_eq!(third.packet.destination, destination);
-    assert_eq!(third.packet.context, PacketContext::PathResponse);
+    assert!(
+        matches!(
+            iface_b_channel.tx_channel.try_recv(),
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+        ),
+        "same destination/tag must be suppressed across ingress interfaces"
+    );
 }
