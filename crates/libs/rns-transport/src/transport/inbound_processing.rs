@@ -217,8 +217,9 @@ pub(super) async fn preprocess_inbound_message(
         return None;
     }
 
-    // Path requests have requester/tag/interface-scoped duplicate semantics. The global packet
-    // hash cache would discard the same request heard on another interface before it can batch.
+    // Path requests use their own exact (destination, tag) replay key, independent of requester
+    // and ingress interface. Bypass the global packet hash cache so the path-request handler can
+    // apply that RNS 1.5 replay rule before deciding whether to batch or forward the request.
     let (accepted, packet_cache_inserted) = if is_path_request {
         (true, false)
     } else {
