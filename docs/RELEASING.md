@@ -43,12 +43,12 @@ prepare ─► build (matrix: linux-musl x3, windows, macos x2)
 
 1. Bump `VERSION` and the crate versions (`cargo xtask` release helpers already
    exist for crates.io publishing).
-2. For this candidate, tag the reviewed commit: `git tag -a v0.9.9-rc.6 -m "LXMF-rs v0.9.9-rc.6" && git push origin v0.9.9-rc.6`.
+2. For this release, tag the reviewed commit: `git tag -a v0.10.0 -m "LXMF-rs v0.10.0" && git push origin v0.10.0`.
 3. The workflow runs end to end. A manual dry run is available via
    **Actions → Release → Run workflow** (set `publish: false` to build and
    smoke-test everything without publishing).
-4. Promote only the same immutable commit to `v0.9.9` after the RC evidence
-   ledger recommends stable publication.
+4. Promote only the same immutable commit to the stable `v0.10.0` release after
+   the release evidence ledger recommends publication.
 
 Pre-release tags containing `-rc`, `-alpha`, `-beta`, or `preview` are
 published as GitHub pre-releases automatically.
@@ -80,13 +80,13 @@ cosign verify-blob \
   SHA256SUMS.txt
 
 # 3. Verify build provenance of any file:
-  gh attestation verify lxmf-rs_0.9.9-rc.6_linux-x86_64.tar.gz --owner FreeTAKTeam
+  gh attestation verify lxmf-rs_0.10.0_linux-x86_64.tar.gz --owner FreeTAKTeam
 
 # 4. Verify the container image:
-  cosign verify ghcr.io/freetakteam/lxmf-rs:0.9.9-rc.6 \
+  cosign verify ghcr.io/freetakteam/lxmf-rs:0.10.0 \
   --certificate-identity-regexp "https://github.com/FreeTAKTeam/LXMF-rs/.*" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
-  gh attestation verify oci://ghcr.io/freetakteam/lxmf-rs:0.9.9-rc.6 --owner FreeTAKTeam
+  gh attestation verify oci://ghcr.io/freetakteam/lxmf-rs:0.10.0 --owner FreeTAKTeam
 ```
 
 ## Consumer usage
@@ -102,10 +102,10 @@ docker run --rm -v $PWD/data:/data ghcr.io/freetakteam/lxmf-rs:latest
 brew tap freetakteam/tap && brew install lxmf-rs
 
 # Debian/Ubuntu/Raspberry Pi OS:
-sudo dpkg -i lxmf-rs_0.9.9_arm64.deb     # or amd64 / armhf
+sudo dpkg -i lxmf-rs_0.10.0_arm64.deb     # or amd64 / armhf
 
 # Fedora/RHEL/openSUSE:
-sudo rpm -i lxmf-rs-0.9.9-1.aarch64.rpm  # or x86_64
+sudo rpm -i lxmf-rs-0.10.0-1.aarch64.rpm  # or x86_64
 ```
 
 ## Design notes

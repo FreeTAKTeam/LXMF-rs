@@ -30,11 +30,13 @@ These are matched-workload comparisons, not a claim of whole-system superiority.
 
 ## Current status
 
-The latest stable release is
+The latest published stable release is
 [`v0.9.9`](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.9.9),
-published on 2026-08-12. The release-candidate workspace packages are version
-`0.10.0`; current development targets Python Reticulum 1.5.0 at
-`e32d4df754a7b87b1bf1bb0d08675d12ff505ae6` for the next release candidate.
+and the reviewed `0.10.0` release aligned with Python Reticulum 1.5.0 is
+prepared on `main` pending its immutable tag and tag-triggered publication.
+The workspace packages are version `0.10.0`. Current development targets Python Reticulum 1.5.0 at
+`e32d4df754a7b87b1bf1bb0d08675d12ff505ae6` for the next release candidate;
+the [release ledger](docs/status/v0.10.0-release.md) tracks stable publication.
 
 | Area | Current position |
 | --- | --- |
@@ -45,8 +47,9 @@ published on 2026-08-12. The release-candidate workspace packages are version
 | Hardware and external clients | Physical devices, public networks, and third-party clients remain separate evidence tracks and are not claimed by the software-parity result |
 
 Read the [current roadmap](docs/status/current-roadmap.md) for the authoritative
-project posture, the [v0.9.9 release notes](docs/release-notes-v0.9.9.md) for
-the stable release summary, and the
+project posture, the [v0.10.0 release notes](docs/release-notes-v0.10.0.md) and
+[release ledger](docs/status/v0.10.0-release.md) for the prepared stable
+release, and the
 [Reticulum](docs/status/reticulum-parity-matrix.md) and
 [LXMF](docs/status/lxmf-parity-matrix.md) parity matrices for row-level detail.
 
@@ -82,8 +85,8 @@ Library consumers can start with the umbrella crates:
 
 ```toml
 [dependencies]
-lxmf = "0.9.9"
-reticulum-rs = "0.9.9"
+lxmf = "0.10.0"
+reticulum-rs = "0.10.0"
 ```
 
 See [Getting started](docs/getting-started.md) for release downloads, checksum

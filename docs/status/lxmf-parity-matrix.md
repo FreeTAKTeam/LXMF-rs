@@ -23,7 +23,7 @@ traits. Row-level transport classification is generated in
 `docs/status/sdk-zmq-parity.json`.
 
 The historical v0.9.8 record retains its release boundary. Current `main` and
-`v0.9.9-rc.6` keeps all seven tracked LXMF module rows `complete` for their
+the v0.10.0 release train keep all seven tracked LXMF module rows `complete` for their
 named software scenarios, with hardware, public-network, and third-party-client
 evidence tracked independently.
 

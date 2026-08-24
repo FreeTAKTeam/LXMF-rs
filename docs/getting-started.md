@@ -6,22 +6,23 @@ an application.
 
 ## Install a stable release
 
-The [`v0.9.9` release](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.9.9)
-provides Linux, macOS, and Windows archives, Debian and RPM packages, a Windows
-MSI, SBOMs, and checksum files. Choose the asset for your platform and verify
-it against `SHA256SUMS` before extracting or installing it.
+The [`v0.10.0` release](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.10.0)
+is the prepared RNS 1.5.0-aligned release train. Once its immutable tag is
+published, it provides Linux, macOS, and Windows archives, Debian and RPM
+packages, a Windows MSI, SBOMs, and checksum files. Choose the asset for your
+platform and verify it against `SHA256SUMS` before extracting or installing it.
 
 For example, after downloading the Linux x86-64 archive and `SHA256SUMS` into
 the same directory:
 
 ```bash
-grep 'lxmf-rs_0.9.9_linux-x86_64.tar.gz$' SHA256SUMS | sha256sum -c -
-tar -xzf lxmf-rs_0.9.9_linux-x86_64.tar.gz
+grep 'lxmf-rs_0.10.0_linux-x86_64.tar.gz$' SHA256SUMS | sha256sum -c -
+tar -xzf lxmf-rs_0.10.0_linux-x86_64.tar.gz
 ```
 
 The [latest release page](https://github.com/FreeTAKTeam/LXMF-rs/releases/latest)
 is the durable entry point for future versions. Release claims and evidence
-boundaries are described in the [release notes](release-notes-v0.9.9.md) and
+boundaries are described in the [release notes](release-notes-v0.10.0.md) and
 [current roadmap](status/current-roadmap.md).
 
 ## Build from source
@@ -84,19 +85,19 @@ The umbrella crates provide the simplest dependency surface:
 
 ```toml
 [dependencies]
-lxmf = "0.9.9"
-reticulum-rs = "0.9.9"
+lxmf = "0.10.0"
+reticulum-rs = "0.10.0"
 ```
 
 Applications that need narrower features can depend on component crates:
 
 ```toml
 [dependencies]
-lxmf-sdk = "0.9.9"
-lxmf-wire = "0.9.9"
-reticulum-rs-core = "0.9.9"
-reticulum-rs-transport = "0.9.9"
-reticulum-rs-rpc = "0.9.9"
+lxmf-sdk = "0.10.0"
+lxmf-wire = "0.10.0"
+reticulum-rs-core = "0.10.0"
+reticulum-rs-transport = "0.10.0"
+reticulum-rs-rpc = "0.10.0"
 ```
 
 Use the [SDK quickstart](sdk/quickstart.md) for a minimal client, the

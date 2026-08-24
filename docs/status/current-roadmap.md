@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last reassessed: 2026-08-23
+Last reassessed: 2026-08-24
 
 This file is the repository-level source of truth for parity posture, release
 confidence, and execution order. Detailed row-level status lives in:
@@ -27,9 +27,11 @@ addresses, queue/interface/link telemetry, and medium-bitrate timeout accessors.
 The exact upstream-to-Rust disposition is recorded in
 [`rns-1.5-delta.md`](rns-1.5-delta.md).
 
-This alignment is prepared on the `0.10.0` release train. The `-rc.1` suffix
-belongs to the eventual immutable Git tag; public package manifests and the
-root `VERSION` use `0.10.0`, consistent with the repository release policy.
+This alignment is merged on `main` at
+`e9111b2621afc31329fa403a61696b7a3d8987f1` and is prepared for stable
+`0.10.0` publication. Public package manifests and the root `VERSION` use
+`0.10.0`, consistent with the repository release policy. The immutable tag and
+tag-triggered artifact workflows remain the final publication authority.
 
 The project is best described by capability level:
 
@@ -80,16 +82,20 @@ not-applicable entry. The published v0.9.9 tag retains its historical 1.4.2
 inventory. Physical interfaces, public networks, and third-party clients remain
 separate evidence axes described above.
 
-## v0.10.0-rc.1 Release Candidate Preparation
+## v0.10.0 Stable Release Preparation
 
-The current candidate preparation aligns the complete software-controlled RNS
-surface with Python Reticulum 1.5.0. Its implementation ledger is
-[`rns-1.5-delta.md`](rns-1.5-delta.md), its candidate evidence ledger is
-[`v0.10.0-release-candidate.md`](v0.10.0-release-candidate.md), and its release
-notes are [`release-notes-v0.10.0-rc.1.md`](../release-notes-v0.10.0-rc.1.md).
-The candidate is not a published release until its exact reviewed commit is
-tagged and the tag-triggered artifact, signing, provenance, and performance
-workflows are verified.
+The reviewed implementation aligns the complete software-controlled RNS
+surface with Python Reticulum 1.5.0 and is merged on `main` at
+`e9111b2621afc31329fa403a61696b7a3d8987f1`. Its implementation ledger is
+[`rns-1.5-delta.md`](rns-1.5-delta.md), its stable release ledger is
+[`v0.10.0-release.md`](v0.10.0-release.md), and its release notes are
+[`release-notes-v0.10.0.md`](../release-notes-v0.10.0.md). The historical
+candidate record remains [`v0.10.0-release-candidate.md`](v0.10.0-release-candidate.md).
+
+The release is not published until the release-preparation commit is merged,
+`v0.10.0` is created on that immutable commit, and the tag-triggered artifact,
+signing, provenance, crates.io, OCI, Homebrew, and performance workflows are
+verified.
 
 ## v0.9.9-rc.6 Historical Release Candidate
 
@@ -1613,7 +1619,9 @@ Scoped release evidence is split as follows:
 Stable `v0.9.9` publication is complete. The exact tag workflows, 35 release
 assets, checksums, SBOMs, provenance, OCI publication, independent
 interoperability reports, performance reports, and crates.io packages were
-published for the immutable release commit.
+published for the immutable release commit. Stable `v0.10.0` preparation is
+complete on the software and hosted-PR axes; tag-triggered publication remains
+pending and is tracked in `docs/status/v0.10.0-release.md`.
 
 Physical RNode/RNodeMulti, Weave, VR-N76, BLE, serial-radio, public I2P,
 public Reticulum networks, and Sideband/MeshChatX/Columba or other
@@ -1629,8 +1637,8 @@ validated without their own evidence.
    performance evidence for release-facing changes.
 3. Treat physical hardware, public-network operation, and third-party clients
    as separate evidence programs for the v1.0 boundary.
-4. Use the maintained release-readiness and release runbooks for the next
-   version instead of reopening the historical rc.6 checklist.
+4. Merge the stable `v0.10.0` release-preparation slice, tag only that exact
+   commit, and verify all tag-triggered release evidence before publication.
 
 ## Verification Baseline
 
