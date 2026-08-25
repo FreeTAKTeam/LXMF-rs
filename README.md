@@ -15,14 +15,14 @@ plus embedded and FFI surfaces.
 <!-- performance-summary:start -->
 ## Measured performance
 
-Release dataset: `v0.9.9` at `7199c4038a3ba786abb4dfbc95cbd6cd16ed9116`; Python Reticulum `b48b96e61676` and LXMF `727830cefda8`.
+Release dataset: `v0.10.0` at `5436ee715f94f81e18abb0808cfca52fcd7cc9bc`; Python Reticulum `e32d4df754a7` and LXMF `727830cefda8`.
 
 | Matched workload | Rust p50 | Python p50 | Rust/Python |
 |---|---:|---:|---:|
-| LXMF message decode | 285 ns | 8.33 ms | 29222.35x |
-| LXMF message encode | 370 ns | 2.17 ms | 5864.16x |
-| LXMF large message decode | 455 ns | 8.31 ms | 18252.45x |
-| LXMF large message encode | 762 ns | 2.19 ms | 2869.52x |
+| LXMF message decode | 225 ns | 7.87 ms | 35029.62x |
+| LXMF message encode | 386 ns | 2.10 ms | 5432.72x |
+| LXMF large message decode | 378 ns | 7.93 ms | 20991.57x |
+| LXMF large message encode | 761 ns | 2.12 ms | 2783.14x |
 
 These are matched-workload comparisons, not a claim of whole-system superiority. See [methodology, complete results, variability, and limitations](docs/performance.md).
 <!-- performance-summary:end -->
@@ -31,24 +31,25 @@ These are matched-workload comparisons, not a claim of whole-system superiority.
 ## Current status
 
 The latest published stable release is
-[`v0.9.9`](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.9.9),
-and the reviewed `0.10.0` release aligned with Python Reticulum 1.5.0 is
-prepared on `main` pending its immutable tag and tag-triggered publication.
-The workspace packages are version `0.10.0`. Current development targets Python Reticulum 1.5.0 at
-`e32d4df754a7b87b1bf1bb0d08675d12ff505ae6` for the next release candidate;
-the [release ledger](docs/status/v0.10.0-release.md) tracks stable publication.
+[`v0.10.0`](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.10.0),
+aligned with Python Reticulum 1.5.0. The immutable tag resolves to the
+reviewed release commit, and the release artifacts, crates.io publication,
+independent interoperability reports, provenance, and OCI image are published
+for that exact boundary. The workspace packages are version `0.10.0`; current
+maintenance targets the pinned Python Reticulum 1.5.0 reference at
+`e32d4df754a7b87b1bf1bb0d08675d12ff505ae6`.
 
 | Area | Current position |
 | --- | --- |
 | Reticulum software parity | 1,838 applicable entries complete, 0 partial, 0 unmapped, and 1 provenance-backed not-applicable entry |
 | LXMF software parity | All seven tracked software scenarios complete |
 | Rust/Python interoperability | Direct, link, channel, paper, propagation, and daemon scenarios exercised against pinned references |
-| Independent interoperability | Versioned rns-rs and Reticulum-Go evidence published separately |
+| Independent interoperability | Versioned rns-rs and Reticulum-Go evidence published separately for `v0.10.0` |
 | Hardware and external clients | Physical devices, public networks, and third-party clients remain separate evidence tracks and are not claimed by the software-parity result |
 
 Read the [current roadmap](docs/status/current-roadmap.md) for the authoritative
 project posture, the [v0.10.0 release notes](docs/release-notes-v0.10.0.md) and
-[release ledger](docs/status/v0.10.0-release.md) for the prepared stable
+[release ledger](docs/status/v0.10.0-release.md) for the published stable
 release, and the
 [Reticulum](docs/status/reticulum-parity-matrix.md) and
 [LXMF](docs/status/lxmf-parity-matrix.md) parity matrices for row-level detail.

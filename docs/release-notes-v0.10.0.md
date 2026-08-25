@@ -1,10 +1,9 @@
 # LXMF-rs v0.10.0
 
-v0.10.0 is the stable release train for the Reticulum 1.5.0 alignment. It
-promotes the reviewed implementation merged on `main` and keeps hardware,
-public-network, and third-party-client validation as separate evidence tracks.
-Stable artifacts and package publication are produced only from the immutable
-`v0.10.0` tag.
+v0.10.0 is the stable release for the Reticulum 1.5.0 alignment. It promotes
+the reviewed implementation merged on `main` and keeps hardware, public-network,
+and third-party-client validation as separate evidence tracks. Stable artifacts
+and package publication are tied to the immutable `v0.10.0` tag.
 
 ## Reticulum 1.5.0 alignment
 
@@ -51,8 +50,14 @@ does not imply that those environments were tested by this release.
 The reviewed RNS 1.5.0 implementation passed the complete local release gate,
 the pinned-Python interoperability and HIL matrix, strict parity/inventory
 checks, independent review, and the hosted pull-request workflows. The
-tag-triggered Release, crates.io, performance, signing, provenance, OCI, and
-Homebrew workflows are the publication authority for the immutable `v0.10.0`
-tag. Their artifacts must be verified against that tag before stable
-publication is declared complete.
+tag-triggered Release, crates.io, performance, signing, provenance, and OCI
+workflows published evidence for the immutable `v0.10.0` tag. Homebrew was
+skipped because the tap repository/token is not configured; this does not affect
+the archives, native packages, crates, or OCI publication.
 
+The performance comparison used five interleaved comparison runs, two isolated
+resource runs, and 1,000 resource iterations on the same runner. Its release
+budget passed with geomean throughput `1.008x`, CPU `1.005x`, and peak RSS
+`1.086x` versus the v0.9.1 baseline, with no warnings or failures. The release
+attaches checksummed JSON, HTML, and raw performance evidence alongside the
+standalone independent-interoperability reports.

@@ -34,11 +34,11 @@ Update these documents when their corresponding behavior changes:
   and Reticulum-Go evidence.
 - [Performance report](performance.md): current methodology and generated
   results.
-- [v0.9.9 release notes](release-notes-v0.9.9.md): current stable release
+- [v0.9.9 release notes](release-notes-v0.9.9.md): historical stable release
   summary. The historical rc.6 evidence remains in the
   [candidate ledger](status/v0.9.9-release-candidate.md).
-- [v0.10.0 release notes](release-notes-v0.10.0.md): RNS 1.5.0 stable-release
-  preparation, with tag-boundary readiness tracked in its
+- [v0.10.0 release notes](release-notes-v0.10.0.md): current RNS 1.5.0 stable
+  release summary, with immutable-tag evidence tracked in its
   [release ledger](status/v0.10.0-release.md). The superseded rc.1 record
   remains in the [historical candidate ledger](status/v0.10.0-release-candidate.md).
 - [Contracts](contracts/): public compatibility, support, API, payload, RPC,
@@ -80,6 +80,8 @@ Update these documents when their corresponding behavior changes:
 - [v0.9.9 release notes](release-notes-v0.9.9.md)
 - [v0.10.0 release notes](release-notes-v0.10.0.md)
 - [v0.10.0 release evidence](status/v0.10.0-release.md)
+- [v0.10.0 performance dataset](performance/v0.10.0.json) and
+  [dashboard](performance/v0.10.0.html)
 - [v0.10.0 historical candidate evidence](status/v0.10.0-release-candidate.md)
 - [v0.10.0 RNS 1.5 migration guide](migrations/v0.10.0-rns-1.5.md)
 - [Release readiness](runbooks/release-readiness.md)

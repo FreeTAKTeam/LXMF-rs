@@ -28,10 +28,11 @@ The exact upstream-to-Rust disposition is recorded in
 [`rns-1.5-delta.md`](rns-1.5-delta.md).
 
 This alignment is merged on `main` at
-`e9111b2621afc31329fa403a61696b7a3d8987f1` and is prepared for stable
-`0.10.0` publication. Public package manifests and the root `VERSION` use
-`0.10.0`, consistent with the repository release policy. The immutable tag and
-tag-triggered artifact workflows remain the final publication authority.
+`e9111b2621afc31329fa403a61696b7a3d8987f1` and published as stable `v0.10.0`
+on immutable release commit `5436ee715f94f81e18abb0808cfca52fcd7cc9bc`. Public
+package manifests and the root `VERSION` use `0.10.0`, consistent with the
+repository release policy. Tag-triggered artifacts, provenance, independent
+interop, and crates.io evidence are tied to that exact commit.
 
 The project is best described by capability level:
 
@@ -43,8 +44,8 @@ The project is best described by capability level:
 | Operationally substitutable | achieved against RNS 1.5.0 | The software-controlled runtime includes the 1.5 ingress, routing, telemetry, timeout, discovery, and `rngit` slices. |
 | Full Python software surface parity | achieved | The strict inventory reports 1,838 complete, 0 partial, and 1 provenance-backed not-applicable entry. |
 | ZeroMQ SDK-access parity | achieved in v0.9.5 implementation | Generated classification and daemon-operation inventory live in `sdk-zmq-parity.json`; release evidence must still pass all gates. |
-| Independent implementation evidence | published for stable `v0.9.9` | Pinned rns-rs and Reticulum-Go release profiles cover two-node/multi-hop behavior; rns-rs additionally covers mixed/all-Rust five-node chains, routing policy, restart, shared daemon, exact large Resources, and deterministic chaos. Explicit peer divergences remain failures owned by the peer and are allowlisted narrowly by CI. |
-| Performance evidence | published for stable `v0.9.9` | The stable release includes checksummed JSON, HTML, and raw evidence. The five-sample regression gate passed without warnings: throughput `1.005x`, CPU `0.996x`, and peak RSS `1.072x` versus the same-runner v0.9.1 baseline. |
+| Independent implementation evidence | published for stable `v0.10.0` | Pinned rns-rs and Reticulum-Go release profiles cover two-node/multi-hop behavior; rns-rs additionally covers mixed/all-Rust five-node chains, routing policy, restart, shared daemon, exact large Resources, and deterministic chaos. Explicit peer divergences remain failures owned by the peer and are allowlisted narrowly by CI. |
+| Performance evidence | published for stable `v0.10.0` | The immutable tag workflow passed with checksummed JSON, HTML, raw evidence, and a clean regression gate: throughput `1.008x`, CPU `1.005x`, and peak RSS `1.086x` versus the same-runner v0.9.1 baseline. |
 
 The independent evidence axis is documented in [`docs/interop`](../interop/README.md).
 It does not promote Python parity rows, third-party clients, physical interfaces,
@@ -53,20 +54,21 @@ release tiers add both peers, expanded chaos, exact 50 MiB transfers, raw logs,
 and standalone JSON/Markdown/HTML artifacts.
 
 The canonical stable performance dataset is
-[`docs/performance/v0.9.9.json`](../performance/v0.9.9.json), with the standalone
-dashboard at [`docs/performance/v0.9.9.html`](../performance/v0.9.9.html). It
-records candidate `7199c4038a3ba786abb4dfbc95cbd6cd16ed9116`, five interleaved
-comparison runs, five independent peer samples, exact 1 MiB and 50 MiB
-Resource measurements, all SDK transport surfaces, and the explicit bounded
-1000-Link unsupported result. The stable tag workflows for
-[independent interoperability](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/31595565333)
-and [performance](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/31595565193)
+[`docs/performance/v0.10.0.json`](../performance/v0.10.0.json), with the
+standalone dashboard at [`docs/performance/v0.10.0.html`](../performance/v0.10.0.html).
+It records candidate `5436ee715f94f81e18abb0808cfca52fcd7cc9bc`, five interleaved
+comparison runs, two resource runs, five independent peer samples, exact 1 MiB
+and 50 MiB Resource measurements, all SDK transport surfaces, and the explicit
+bounded 1000-Link unsupported result. The independent interoperability workflow
+[`32736249030`](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/32736249030)
+and performance workflow
+[`32736249025`](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/32736249025)
 passed on the immutable release commit, and their public artifacts are attached
-to the [`v0.9.9` release](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.9.9).
+to the [`v0.10.0` release](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.10.0).
 
-## v0.9.9 Stable Release
+## v0.9.9 Historical Stable Release
 
-`v0.9.9` is the current stable release. The immutable tag resolves to
+`v0.9.9` is the prior stable release. Its immutable tag resolves to
 `51fd3beebdace78d6c7f38748c6bcfe452032559`, and its CI, Verify, Release,
 independent-interoperability, performance, leader-readiness, and crates.io
 publication workflows passed. The
@@ -82,20 +84,23 @@ not-applicable entry. The published v0.9.9 tag retains its historical 1.4.2
 inventory. Physical interfaces, public networks, and third-party clients remain
 separate evidence axes described above.
 
-## v0.10.0 Stable Release Preparation
+## v0.10.0 Stable Release
 
 The reviewed implementation aligns the complete software-controlled RNS
 surface with Python Reticulum 1.5.0 and is merged on `main` at
-`e9111b2621afc31329fa403a61696b7a3d8987f1`. Its implementation ledger is
+`e9111b2621afc31329fa403a61696b7a3d8987f1`. The immutable `v0.10.0` tag
+resolves to `5436ee715f94f81e18abb0808cfca52fcd7cc9bc`. Its implementation ledger is
 [`rns-1.5-delta.md`](rns-1.5-delta.md), its stable release ledger is
 [`v0.10.0-release.md`](v0.10.0-release.md), and its release notes are
 [`release-notes-v0.10.0.md`](../release-notes-v0.10.0.md). The historical
 candidate record remains [`v0.10.0-release-candidate.md`](v0.10.0-release-candidate.md).
 
-The release is not published until the release-preparation commit is merged,
-`v0.10.0` is created on that immutable commit, and the tag-triggered artifact,
-signing, provenance, crates.io, OCI, Homebrew, and performance workflows are
-verified.
+The release, independent interoperability, signing, provenance, OCI, crates.io,
+and performance workflows are verified for that exact tag. The performance
+workflow passed on attempt 3 after two earlier attempts hit distinct transient
+loopback port races; the final publication job attached the checksummed JSON,
+HTML, raw bundle, and gate checksum. Homebrew is explicitly skipped because its
+tap/token is not configured.
 
 ## v0.9.9-rc.6 Historical Release Candidate
 
@@ -1616,12 +1621,12 @@ Scoped release evidence is split as follows:
 
 ## Current Release State
 
-Stable `v0.9.9` publication is complete. The exact tag workflows, 35 release
-assets, checksums, SBOMs, provenance, OCI publication, independent
-interoperability reports, performance reports, and crates.io packages were
-published for the immutable release commit. Stable `v0.10.0` preparation is
-complete on the software and hosted-PR axes; tag-triggered publication remains
-pending and is tracked in `docs/status/v0.10.0-release.md`.
+Stable `v0.9.9` publication is historical. Stable `v0.10.0` publication is
+complete on the software, hosted-PR, release-artifact, independent-interop,
+provenance, OCI, and crates.io axes for immutable commit
+`5436ee715f94f81e18abb0808cfca52fcd7cc9bc`. The performance comparison and all
+four public performance assets are verified and tracked in
+`docs/status/v0.10.0-release.md`.
 
 Physical RNode/RNodeMulti, Weave, VR-N76, BLE, serial-radio, public I2P,
 public Reticulum networks, and Sideband/MeshChatX/Columba or other
@@ -1637,8 +1642,8 @@ validated without their own evidence.
    performance evidence for release-facing changes.
 3. Treat physical hardware, public-network operation, and third-party clients
    as separate evidence programs for the v1.0 boundary.
-4. Merge the stable `v0.10.0` release-preparation slice, tag only that exact
-   commit, and verify all tag-triggered release evidence before publication.
+4. Preserve the exact-SHA release ledger and evidence while maintenance work
+   proceeds toward the next release boundary.
 
 ## Verification Baseline
 

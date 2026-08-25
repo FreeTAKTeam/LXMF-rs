@@ -1,0 +1,2894 @@
+{
+  "generated_at_utc": "2026-08-24T14:21:22Z",
+  "interop": {
+    "Reticulum-Go": {
+      "control_adapter": {
+        "implementation": "pinned Reticulum-Go stdlib control client",
+        "peer_api": "Reticulum-Go authenticated HTTP/WebSocket control API",
+        "peer_revision": "48f15178f6fbc34aeb69ad428679db9deddae7f4"
+      },
+      "environment": {
+        "architecture": "x86_64",
+        "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)",
+        "cpu": "AMD EPYC 7763 64-Core Processor",
+        "os": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+        "python": "3.12.14",
+        "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)"
+      },
+      "generated_at_utc": "2026-08-24T14:08:42Z",
+      "level": "release",
+      "lxmf_rs": {
+        "build": "cargo build --locked --release -p rns-tools --bin independent-interop-node",
+        "revision": "5436ee715f94f81e18abb0808cfca52fcd7cc9bc",
+        "version": "0.10.0"
+      },
+      "peer": {
+        "binary": "bin/reticulum-go",
+        "build": [
+          "go",
+          "build",
+          "-mod=vendor",
+          "-buildvcs=false",
+          "-o",
+          "bin/reticulum-go",
+          "./cmd/reticulum-go"
+        ],
+        "capabilities": [
+          "identity",
+          "announce",
+          "path",
+          "packet",
+          "proof",
+          "link",
+          "request_response",
+          "resource",
+          "multi_hop"
+        ],
+        "implementation": "Reticulum-Go",
+        "repository": "https://github.com/Quad4-Software/Reticulum-Go.git",
+        "revision": "48f15178f6fbc34aeb69ad428679db9deddae7f4",
+        "toolchain": "Go 1.26.5; committed vendor tree from pinned revision",
+        "version": "v1.0.1"
+      },
+      "rns_reference": {
+        "revision": "e32d4df754a7b87b1bf1bb0d08675d12ff505ae6",
+        "version": "1.5.0"
+      },
+      "scenarios": [
+        {
+          "bytes_transferred": null,
+          "cached_paths": true,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "bidirectional",
+          "failure_owner": null,
+          "failure_reason": null,
+          "lxmf_rs_hops": 1,
+          "normative_reference": null,
+          "reticulum_go_hops": 1,
+          "runtime_seconds": 0.205242,
+          "scenario": "path unknown, request, response, establishment and cache",
+          "status": "PASS",
+          "topology": "two-node",
+          "unknown_confirmed": true
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "bidirectional",
+          "failure_owner": null,
+          "failure_reason": null,
+          "lxmf_rs_hops": 1,
+          "lxmf_rs_path_hops": 1,
+          "normative_reference": null,
+          "reticulum_go_hops": 1,
+          "reticulum_go_path_hops": 1,
+          "runtime_seconds": 0.101646,
+          "scenario": "announce identity signature and app-data",
+          "status": "PASS",
+          "topology": "two-node"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "Reticulum-Go -> LXMF-rs",
+          "failure_owner": null,
+          "failure_reason": null,
+          "link_id": "7f0ea896e1d2f3bacf946ced1e9c0d92",
+          "lxmf_rs_state": "activated",
+          "normative_reference": null,
+          "runtime_seconds": 0.10063,
+          "scenario": "Link establishment proof RTT",
+          "status": "PASS",
+          "topology": "two-node"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "bidirectional",
+          "failure_owner": null,
+          "failure_reason": null,
+          "lxmf_rs_payload_sha256": "b157b53d135d5307f76a2ae6d13a3404d7d34e890dd8a3b6e9db5832232c8996",
+          "normative_reference": null,
+          "reticulum_go_payload_sha256": "76cc34931ec2b4ab1a7cb001300d795a8103b903c199a517480fd9bac54cd49c",
+          "runtime_seconds": 0.202115,
+          "scenario": "Link data",
+          "status": "PASS",
+          "topology": "two-node"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "Reticulum-Go -> LXMF-rs",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "request_id": "1609c3cfc4f940a83ba46349df2a3393",
+          "response_sha256": "965b0c091fcbb6134e706565b489c96301aa49ce06418ab5220a294b6cdc25b4",
+          "runtime_seconds": 0.202147,
+          "scenario": "packet-sized request response and correlation",
+          "status": "PASS",
+          "topology": "two-node"
+        },
+        {
+          "bytes_transferred": 4096,
+          "classification": null,
+          "content_sha256": "d67c656e01756650d77717b0839985a056ec28ffe174601d690fc407a2ceffca",
+          "direction": "Reticulum-Go -> LXMF-rs",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "received_bytes": 4096,
+          "received_sha256": "d67c656e01756650d77717b0839985a056ec28ffe174601d690fc407a2ceffca",
+          "runtime_seconds": 0.102039,
+          "scenario": "Resource small",
+          "status": "PASS",
+          "topology": "two-node"
+        },
+        {
+          "bytes_transferred": 4096,
+          "classification": null,
+          "content_sha256": "d67c656e01756650d77717b0839985a056ec28ffe174601d690fc407a2ceffca",
+          "direction": "LXMF-rs -> Reticulum-Go",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "received_bytes": 4096,
+          "received_sha256": "d67c656e01756650d77717b0839985a056ec28ffe174601d690fc407a2ceffca",
+          "resource_hash": "018bdb4c1bfed3aa290e1f3154dfed2a8ee879571ac99a3a9b15b03424f8d561",
+          "runtime_seconds": 0.102007,
+          "scenario": "Resource small",
+          "sender_state": "outbound_complete",
+          "status": "PASS",
+          "topology": "two-node"
+        },
+        {
+          "bytes_transferred": 1048576,
+          "classification": null,
+          "content_sha256": "cc12f732453c24fb0d78ff590c8c580771b58917880ebc0a166f8a1fdc1fa450",
+          "direction": "LXMF-rs -> Reticulum-Go",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "received_bytes": 1048576,
+          "received_sha256": "cc12f732453c24fb0d78ff590c8c580771b58917880ebc0a166f8a1fdc1fa450",
+          "resource_hash": "07cfa4c2529ba11a7ec26b497e53feab031159963637b0132830bdab6addb0d1",
+          "runtime_seconds": 4.029662,
+          "scenario": "Resource 1 MiB",
+          "sender_state": "outbound_complete",
+          "status": "PASS",
+          "topology": "two-node"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": "peer_surface_unavailable",
+          "content_sha256": null,
+          "direction": "Reticulum-Go control API -> LXMF-rs",
+          "failure_owner": "Reticulum-Go",
+          "failure_reason": "peer control API caps inbound WebSocket commands at 1 MiB before base64 expansion",
+          "normative_reference": null,
+          "runtime_seconds": 0.0,
+          "scenario": "Resource 1 MiB",
+          "status": "UNSUPPORTED",
+          "topology": "two-node"
+        },
+        {
+          "bytes_transferred": 52428800,
+          "classification": null,
+          "content_sha256": "6d635a17fdfe684afc01102c15c3a382cd014660c264f6fef7a117f2a7165d37",
+          "direction": "LXMF-rs -> Reticulum-Go",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "received_bytes": 52428800,
+          "received_sha256": "6d635a17fdfe684afc01102c15c3a382cd014660c264f6fef7a117f2a7165d37",
+          "resource_hash": "e5b12528a0f94ace355f2b53a9a6f1de5302f4c8056db0ed4f57ce58ea565005",
+          "runtime_seconds": 223.135809,
+          "scenario": "Resource 50 MiB",
+          "sender_state": "outbound_complete",
+          "status": "PASS",
+          "topology": "two-node"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": "peer_surface_unavailable",
+          "content_sha256": null,
+          "direction": "Reticulum-Go control API -> LXMF-rs",
+          "failure_owner": "Reticulum-Go",
+          "failure_reason": "peer control API caps inbound WebSocket commands at 1 MiB before base64 expansion",
+          "normative_reference": null,
+          "runtime_seconds": 0.0,
+          "scenario": "Resource 50 MiB",
+          "status": "UNSUPPORTED",
+          "topology": "two-node"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "Reticulum-Go -> LXMF-rs",
+          "failure_owner": null,
+          "failure_reason": null,
+          "go": "link.closed",
+          "lxmf_rs": "closed",
+          "normative_reference": null,
+          "runtime_seconds": 0.100959,
+          "scenario": "Link teardown",
+          "status": "PASS",
+          "topology": "two-node"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "LXMF-rs -> Reticulum-Go",
+          "failure_owner": null,
+          "failure_reason": null,
+          "link_id": "0b6e5bdd1767fcceb6b7d904148b63e8",
+          "lxmf_rs_state": "activated",
+          "normative_reference": null,
+          "reticulum_go_state": "link.established",
+          "runtime_seconds": 0.101839,
+          "scenario": "Link establishment proof RTT",
+          "status": "PASS",
+          "topology": "two-node"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "LXMF-rs -> Reticulum-Go",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "response_sha256": "9dfc38580c04b14e8857cab44aabcbdc6d1116e21f3fc31bbbdba3d3d2d655c4",
+          "runtime_seconds": 0.202298,
+          "rust_request_id": "302566f2fde4a946aeb0ef4a3eeba6c5",
+          "rust_response_request_id": "302566f2fde4a946aeb0ef4a3eeba6c5",
+          "scenario": "packet-sized request response and correlation",
+          "status": "PASS",
+          "topology": "two-node"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "LXMF-rs -> Reticulum-Go",
+          "failure_owner": null,
+          "failure_reason": null,
+          "go": "link.closed",
+          "lxmf_rs": "closed",
+          "normative_reference": null,
+          "runtime_seconds": 0.100646,
+          "scenario": "Link teardown",
+          "status": "PASS",
+          "topology": "two-node"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "bidirectional",
+          "failure_owner": null,
+          "failure_reason": null,
+          "left_hops": 2,
+          "left_rediscovered_path": {
+            "hops": 2,
+            "interface": "d86e8112f3c4c4442126f8e9f44f1686",
+            "next_hop": "66808b8e286fc4e5da4b31c2c55c8f51",
+            "path_found": true
+          },
+          "normative_reference": null,
+          "right_hops": 2,
+          "right_rediscovered_path": {
+            "hops": 2,
+            "interface": "d86e8112f3c4c4442126f8e9f44f1686",
+            "next_hop": "66808b8e286fc4e5da4b31c2c55c8f51",
+            "path_found": true
+          },
+          "runtime_seconds": 2.311477,
+          "scenario": "multi-hop announce propagation, path expiry and rediscovery",
+          "status": "PASS",
+          "topology": "LXMF-rs \u2014 Reticulum-Go \u2014 LXMF-rs"
+        },
+        {
+          "bytes_transferred": 33,
+          "classification": null,
+          "content_sha256": "e126b6e64d837f62ffdb820d2ca9fd20c970becdab5015725d06d47f10e879b8",
+          "direction": "left -> right",
+          "failure_owner": null,
+          "failure_reason": null,
+          "hops": 2,
+          "normative_reference": null,
+          "packet_hash": "f6d870f2b73f599b94b19997dbdd6adc5990b8e23a1227c7fa383cbd045ddde3",
+          "proof_packet_hash": "f6d870f2b73f599b94b19997dbdd6adc5990b8e23a1227c7fa383cbd045ddde3",
+          "runtime_seconds": 0.102256,
+          "scenario": "multi-hop encrypted packet and delivery proof",
+          "status": "PASS",
+          "topology": "LXMF-rs \u2014 Reticulum-Go \u2014 LXMF-rs"
+        },
+        {
+          "bytes_transferred": 33,
+          "classification": null,
+          "content_sha256": "9301d0c21d5e732b0b7a5e34c914211282ee4fc7c58be515d48b5e509c780688",
+          "direction": "right -> left",
+          "failure_owner": null,
+          "failure_reason": null,
+          "hops": 2,
+          "normative_reference": null,
+          "packet_hash": "bacd43aab29dffc23f94468131c730f5c0e91999604497d828ff0d3f126bfa0b",
+          "proof_packet_hash": "bacd43aab29dffc23f94468131c730f5c0e91999604497d828ff0d3f126bfa0b",
+          "runtime_seconds": 0.101794,
+          "scenario": "multi-hop encrypted packet and delivery proof",
+          "status": "PASS",
+          "topology": "LXMF-rs \u2014 Reticulum-Go \u2014 LXMF-rs"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "left -> right",
+          "failure_owner": null,
+          "failure_reason": null,
+          "initiator": {
+            "destination_hash": "733102659af01dc34e4a8a24da9d0028",
+            "direction": "outbound",
+            "link_id": "eaa2894017968b24d6c942e2f6462e7d",
+            "state": "activated"
+          },
+          "link_id": "eaa2894017968b24d6c942e2f6462e7d",
+          "normative_reference": null,
+          "responder": {
+            "destination_hash": "733102659af01dc34e4a8a24da9d0028",
+            "direction": "inbound",
+            "link_id": "eaa2894017968b24d6c942e2f6462e7d",
+            "state": "activated"
+          },
+          "runtime_seconds": 0.101452,
+          "scenario": "multi-hop Link establishment proof",
+          "status": "PASS",
+          "topology": "LXMF-rs \u2014 Reticulum-Go \u2014 LXMF-rs"
+        },
+        {
+          "bytes_transferred": 1048576,
+          "classification": null,
+          "content_sha256": "631b84027d6b9e52b539c4e8373622d23032dfadc64d60af87339c9037e4f769",
+          "direction": "left -> right",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "received_bytes": 1048576,
+          "received_sha256": "631b84027d6b9e52b539c4e8373622d23032dfadc64d60af87339c9037e4f769",
+          "resource_hash": "a71a89a8a1e39e96e2951935d6b88fc9e950118dbe661a2ea41c88d22abea7de",
+          "runtime_seconds": 0.289234,
+          "scenario": "multi-hop Resource 1 MiB",
+          "sender_state": "outbound_complete",
+          "status": "PASS",
+          "topology": "LXMF-rs \u2014 Reticulum-Go \u2014 LXMF-rs"
+        },
+        {
+          "bytes_transferred": 1048576,
+          "classification": null,
+          "content_sha256": "631b84027d6b9e52b539c4e8373622d23032dfadc64d60af87339c9037e4f769",
+          "direction": "right -> left",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "received_bytes": 1048576,
+          "received_sha256": "631b84027d6b9e52b539c4e8373622d23032dfadc64d60af87339c9037e4f769",
+          "resource_hash": "189b2c94fa16b83cb949c82a4b5db681bdc1d13a37d4fea223b287af477beeff",
+          "runtime_seconds": 0.287021,
+          "scenario": "multi-hop Resource 1 MiB",
+          "sender_state": "outbound_complete",
+          "status": "PASS",
+          "topology": "LXMF-rs \u2014 Reticulum-Go \u2014 LXMF-rs"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "bidirectional",
+          "failure_owner": null,
+          "failure_reason": null,
+          "link_id": "eaa2894017968b24d6c942e2f6462e7d",
+          "normative_reference": null,
+          "runtime_seconds": 0.000819,
+          "scenario": "Link teardown",
+          "status": "PASS",
+          "topology": "LXMF-rs \u2014 Reticulum-Go \u2014 LXMF-rs"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "right -> left",
+          "failure_owner": null,
+          "failure_reason": null,
+          "initiator": {
+            "destination_hash": "d3222d9761e54871ebbc489a8e5fe272",
+            "direction": "outbound",
+            "link_id": "803f78b3c72f4840caf410b08c3f8a6c",
+            "state": "activated"
+          },
+          "link_id": "803f78b3c72f4840caf410b08c3f8a6c",
+          "normative_reference": null,
+          "responder": {
+            "destination_hash": "d3222d9761e54871ebbc489a8e5fe272",
+            "direction": "inbound",
+            "link_id": "803f78b3c72f4840caf410b08c3f8a6c",
+            "state": "activated"
+          },
+          "runtime_seconds": 0.101316,
+          "scenario": "multi-hop Link establishment proof",
+          "status": "PASS",
+          "topology": "LXMF-rs \u2014 Reticulum-Go \u2014 LXMF-rs"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "right -> left",
+          "failure_owner": null,
+          "failure_reason": null,
+          "link_id": "803f78b3c72f4840caf410b08c3f8a6c",
+          "normative_reference": null,
+          "runtime_seconds": 0.000899,
+          "scenario": "Link teardown",
+          "status": "PASS",
+          "topology": "LXMF-rs \u2014 Reticulum-Go \u2014 LXMF-rs"
+        }
+      ],
+      "schema": "lxmf-rs-independent-interop-v1",
+      "summary": {
+        "counts": {
+          "PASS": 22,
+          "UNSUPPORTED": 2
+        },
+        "status": "PASS"
+      },
+      "test_topology": "isolated loopback TCP; independent processes and control planes"
+    },
+    "rns-rs": {
+      "control_adapter": {
+        "implementation": "tools/interop/adapters/rns-rs-control",
+        "peer_api": "pinned rns-rs public RnsNode API",
+        "peer_revision": "6c6d79b83516feff271d15c97d39dd1de7798afe"
+      },
+      "environment": {
+        "architecture": "x86_64",
+        "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)",
+        "cpu": "AMD EPYC 7763 64-Core Processor",
+        "os": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+        "python": "3.12.14",
+        "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)"
+      },
+      "generated_at_utc": "2026-08-24T14:11:51Z",
+      "level": "release",
+      "lxmf_rs": {
+        "build": "cargo build --locked --release -p rns-tools --bin independent-interop-node",
+        "revision": "5436ee715f94f81e18abb0808cfca52fcd7cc9bc",
+        "version": "0.10.0"
+      },
+      "peer": {
+        "binary": "target/release/rns-ctl",
+        "build": [
+          "cargo",
+          "build",
+          "--locked",
+          "--release",
+          "--target-dir",
+          "target",
+          "-p",
+          "rns-ctl",
+          "--bin",
+          "rns-ctl"
+        ],
+        "capabilities": [
+          "identity",
+          "announce",
+          "path",
+          "packet",
+          "proof",
+          "link",
+          "resource",
+          "channel",
+          "multi_hop",
+          "node_restart",
+          "shared_instance"
+        ],
+        "implementation": "rns-rs",
+        "repository": "https://github.com/lelloman/rns-rs.git",
+        "revision": "6c6d79b83516feff271d15c97d39dd1de7798afe",
+        "toolchain": "Rust stable; Cargo.lock from pinned revision",
+        "version": "rns-net-v0.7.0"
+      },
+      "rns_reference": {
+        "revision": "e32d4df754a7b87b1bf1bb0d08675d12ff505ae6",
+        "version": "1.5.0"
+      },
+      "scenarios": [
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "bidirectional",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "runtime_seconds": 0.000877,
+          "scenario": "path unknown",
+          "status": "PASS",
+          "topology": "two-node",
+          "unknown_confirmed": true
+        },
+        {
+          "bytes_transferred": null,
+          "classification": "peer_divergence",
+          "content_sha256": null,
+          "direction": "LXMF-rs -> rns-rs",
+          "failure_owner": "rns-rs",
+          "failure_reason": "timed out waiting for LXMF-rs path",
+          "normative_reference": "Python RNS 1.5.0 answers the same LXMF-rs path request",
+          "runtime_seconds": 15.006158,
+          "scenario": "path request and establishment",
+          "status": "FAIL",
+          "topology": "two-node"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "rns-rs -> LXMF-rs",
+          "failure_owner": null,
+          "failure_reason": null,
+          "hops": 1,
+          "normative_reference": null,
+          "path_found": true,
+          "runtime_seconds": 0.002397,
+          "scenario": "path request and establishment",
+          "status": "PASS",
+          "topology": "two-node"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "bidirectional",
+          "failure_owner": null,
+          "failure_reason": null,
+          "identity_hash": "cbdbe8c70ded0e20ecd9ac9ab436b1f3",
+          "lxmf_rs_hops": 1,
+          "normative_reference": null,
+          "rns_rs_hops": 1,
+          "runtime_seconds": 0.104718,
+          "scenario": "announce identity signature and app-data",
+          "status": "PASS",
+          "topology": "two-node"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "bidirectional",
+          "failure_owner": null,
+          "failure_reason": null,
+          "lxmf_rs_hops": 1,
+          "normative_reference": null,
+          "runtime_seconds": 0.000924,
+          "scenario": "cached path",
+          "status": "PASS",
+          "topology": "two-node"
+        },
+        {
+          "bytes_transferred": 17,
+          "classification": null,
+          "content_sha256": "037e7458b0b9e25f61bf87dc4f34c54610773f1c374ec59d19d6b296efb55cac",
+          "direction": "rns-rs -> LXMF-rs",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "packet_hash": "d404cf1b9c080971e2b5a2fbd473da4ee41058cd2302638fdf819d2ac0ff0a3d",
+          "proof_rtt_seconds": 0.0005400180816650391,
+          "runtime_seconds": 0.00298,
+          "scenario": "encrypted data packet and delivery proof",
+          "status": "PASS",
+          "topology": "two-node"
+        },
+        {
+          "bytes_transferred": 17,
+          "classification": null,
+          "content_sha256": "3f1eb0a691fd4b61849a3cd0d559be7eeb16cfb4273965ff2e1c2f72e2d9a8cb",
+          "direction": "LXMF-rs -> rns-rs",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "packet_hash": "31431fdd02570465f3aaf1f4032a13dd5843056600dbf97e423e41734d9b4628",
+          "proof_packet_hash": "31431fdd02570465f3aaf1f4032a13dd5843056600dbf97e423e41734d9b4628",
+          "runtime_seconds": 0.103221,
+          "scenario": "encrypted data packet and delivery proof",
+          "status": "PASS",
+          "topology": "two-node"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "rns-rs -> LXMF-rs",
+          "failure_owner": null,
+          "failure_reason": null,
+          "link_id": "14e32000f7d786e47c2d3f4c28292fa1",
+          "normative_reference": null,
+          "rtt_seconds": 0.0006153583526611328,
+          "runtime_seconds": 0.002067,
+          "scenario": "Link establishment proof RTT",
+          "status": "PASS",
+          "topology": "two-node"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "LXMF-rs -> rns-rs",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "request_id": "e5659a705577a5c203ad01cb25da927e",
+          "response_request_id": "e5659a705577a5c203ad01cb25da927e",
+          "response_sha256": "24d1c4fc87d4be58809fc02cb224b6cce34b9000dbfcee977ff0d6cf45aecc24",
+          "runtime_seconds": 0.101772,
+          "scenario": "packet-sized request response and correlation",
+          "status": "PASS",
+          "topology": "two-node"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "rns-rs -> LXMF-rs",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "request_id": "ba72957dee80b5bef18db1c34662e769",
+          "response_destination": "response:14e32000f7d786e47c2d3f4c28292fa1:ba72957dee80b5bef18db1c34662e769",
+          "response_sha256": "687af36bf833b7af05a008077f90c00f08c1e4ee8acd7969d2cb0f2533a9c1da",
+          "runtime_seconds": 0.002756,
+          "scenario": "packet-sized request response and correlation",
+          "status": "PASS",
+          "topology": "two-node"
+        },
+        {
+          "auto_compress": true,
+          "bytes_transferred": 1048576,
+          "classification": null,
+          "compressed_transfer_parts": 34,
+          "compressed_transfer_upper_bound_bytes": 17000,
+          "content_sha256": "631b84027d6b9e52b539c4e8373622d23032dfadc64d60af87339c9037e4f769",
+          "direction": "LXMF-rs -> rns-rs -> LXMF-rs",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "received_bytes": 1048576,
+          "received_sha256": "631b84027d6b9e52b539c4e8373622d23032dfadc64d60af87339c9037e4f769",
+          "request_id": "0f75d989d815d3214367cb779292743c",
+          "resource_envelope_bytes": 1048600,
+          "resource_envelope_sha256": "d0cb69049cd2ecbc927bf08f0db5e8ef01f2f83e7fe8737f223ca7daa06f4565",
+          "response_request_id": "0f75d989d815d3214367cb779292743c",
+          "runtime_seconds": 0.305982,
+          "scenario": "compressed resource-sized request response",
+          "status": "PASS",
+          "topology": "two-node"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "rns-rs -> LXMF-rs",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "runtime_seconds": 3.03662,
+          "scenario": "request timeout",
+          "status": "PASS",
+          "timeout_observed_seconds": 3.036,
+          "topology": "two-node"
+        },
+        {
+          "bytes_transferred": null,
+          "cancelled_payload_bytes": 1048576,
+          "cancelled_payload_sha256": "550f709fa0757c9340077a792b9824122939b2a01d5cb3aed032d0aed607f7d0",
+          "classification": null,
+          "content_sha256": null,
+          "direction": "rns-rs receiver -> LXMF-rs sender",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "peer_strategy": "AcceptNone",
+          "resource_hash": "b42adace6b16b74d8d80c53163697775e338297a9ee624a3723fb883ea752a60",
+          "runtime_seconds": 0.126705,
+          "scenario": "Resource cancellation",
+          "sender_state": "outbound_cancelled",
+          "status": "PASS",
+          "topology": "two-node"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "bidirectional",
+          "failure_owner": null,
+          "failure_reason": null,
+          "lxmf_rs_received_sha256": "c67300de5be5a5d51196e6695660abefc0e2d7190a35b78ef809d76fefbf9f89",
+          "normative_reference": null,
+          "rns_rs_received_payload_bytes": 22,
+          "rns_rs_rx_bytes_delta": 80,
+          "rns_rs_rx_packets_delta": 1,
+          "runtime_seconds": 0.103865,
+          "scenario": "Link data",
+          "status": "PASS",
+          "topology": "two-node"
+        },
+        {
+          "bytes_transferred": 4096,
+          "classification": null,
+          "content_sha256": "d67c656e01756650d77717b0839985a056ec28ffe174601d690fc407a2ceffca",
+          "direction": "rns-rs -> LXMF-rs",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "resource_hash": "a2618c08cbc558b4c0c308f6c938e9d8f6ef9aee09d49c7280eba4c4ba477efc",
+          "runtime_seconds": 0.102101,
+          "scenario": "Resource small",
+          "status": "PASS",
+          "topology": "two-node"
+        },
+        {
+          "bytes_transferred": 4096,
+          "classification": null,
+          "content_sha256": "d67c656e01756650d77717b0839985a056ec28ffe174601d690fc407a2ceffca",
+          "direction": "LXMF-rs -> rns-rs",
+          "encoded_bytes": 5464,
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "resource_hash": "ab62336c20fccc050caf843d0cf57f37a5e4c7e7de451eaff8fb244721f1823d",
+          "runtime_seconds": 0.253811,
+          "scenario": "Resource small",
+          "status": "PASS",
+          "topology": "two-node"
+        },
+        {
+          "bytes_transferred": 1048576,
+          "classification": null,
+          "content_sha256": "631b84027d6b9e52b539c4e8373622d23032dfadc64d60af87339c9037e4f769",
+          "direction": "rns-rs -> LXMF-rs",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "resource_hash": "e1539761a87c7b161d1cbd4b298f5a32435a10aeedca9fa9a8bc04fa629caf43",
+          "runtime_seconds": 0.214483,
+          "scenario": "Resource 1 MiB",
+          "status": "PASS",
+          "topology": "two-node"
+        },
+        {
+          "bytes_transferred": 1048576,
+          "classification": null,
+          "content_sha256": "631b84027d6b9e52b539c4e8373622d23032dfadc64d60af87339c9037e4f769",
+          "direction": "LXMF-rs -> rns-rs",
+          "encoded_bytes": 1398104,
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "resource_hash": "e01743f98f1e5ba7f119b41db0b94ed227bda4b4be32e8a53414b5ff4929c4e4",
+          "runtime_seconds": 0.443782,
+          "scenario": "Resource 1 MiB",
+          "status": "PASS",
+          "topology": "two-node"
+        },
+        {
+          "bytes_transferred": 52428800,
+          "classification": null,
+          "content_sha256": "3a7aef326b898081e6fb7b9599db2618b4f5e5301b64078f0f4e1f5382f634b9",
+          "direction": "rns-rs -> LXMF-rs",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "resource_hash": "fe3e0b39d8f422663bccaca4ef5a01e32a83ebff3042ac35100f62f4ccd4d175",
+          "runtime_seconds": 9.178961,
+          "scenario": "Resource 50 MiB",
+          "status": "PASS",
+          "topology": "two-node"
+        },
+        {
+          "bytes_transferred": 52428800,
+          "classification": null,
+          "content_sha256": "3a7aef326b898081e6fb7b9599db2618b4f5e5301b64078f0f4e1f5382f634b9",
+          "direction": "LXMF-rs -> rns-rs",
+          "encoded_bytes": 69905068,
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "resource_hash": "ce84a917792c0f473b89cca7c8c222e52aac0a29b764162a8ddab9ab9098fadb",
+          "runtime_seconds": 9.844488,
+          "scenario": "Resource 50 MiB",
+          "status": "PASS",
+          "topology": "two-node"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": "peer_divergence",
+          "content_sha256": null,
+          "direction": "bidirectional",
+          "failure_owner": "rns-rs",
+          "failure_reason": "timed out waiting for LXMF-rs Channel delivery proof: read channel message state: LinkNotReady",
+          "normative_reference": "Python RNS 1.5.0 proves the same bidirectional LXMF-rs Channel exchange",
+          "runtime_seconds": 15.10142,
+          "scenario": "Channel ordered exchange and proof",
+          "status": "FAIL",
+          "topology": "two-node"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": "dependency_failed",
+          "content_sha256": null,
+          "direction": "rns-rs -> LXMF-rs",
+          "failure_owner": "rns-rs",
+          "failure_reason": "Channel proof divergence closed the Link before teardown",
+          "normative_reference": null,
+          "runtime_seconds": 0.0,
+          "scenario": "Link teardown",
+          "status": "BLOCKED",
+          "topology": "two-node"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": "peer_divergence",
+          "content_sha256": null,
+          "direction": "LXMF-rs -> rns-rs",
+          "failure_owner": "rns-rs",
+          "failure_reason": "timed out waiting for rns-rs link 83e731e28e3e1f0036686475a15bc4ed active",
+          "normative_reference": "Python RNS 1.5.0 activates the same LXMF-rs-initiated Link",
+          "runtime_seconds": 12.134632,
+          "scenario": "Link establishment proof RTT",
+          "status": "FAIL",
+          "topology": "two-node"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": "dependency_failed",
+          "content_sha256": null,
+          "direction": "LXMF-rs -> rns-rs",
+          "failure_owner": "rns-rs",
+          "failure_reason": "Link teardown cannot execute because the peer did not activate the Link",
+          "normative_reference": null,
+          "runtime_seconds": 0.0,
+          "scenario": "Link teardown",
+          "status": "BLOCKED",
+          "topology": "two-node"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "bidirectional",
+          "failure_owner": null,
+          "failure_reason": null,
+          "lxmf_rs_hops": 2,
+          "normative_reference": null,
+          "observable_path_hops": 2,
+          "rns_rs_hops": 2,
+          "runtime_seconds": 0.708855,
+          "scenario": "multi-hop announce propagation and path establishment",
+          "status": "PASS",
+          "topology": "LXMF-rs \u2014 LXMF-rs \u2014 rns-rs"
+        },
+        {
+          "bytes_transferred": 27,
+          "classification": null,
+          "content_sha256": "963f01cd0ac6300f3ffe508decc8acf870ff6fc8c6f9c627dec8c9bc00086a45",
+          "direction": "rns-rs -> LXMF-rs",
+          "failure_owner": null,
+          "failure_reason": null,
+          "hops": 2,
+          "normative_reference": null,
+          "packet_hash": "e7050b7bc250279db2f225260ec9f0d65015f7359e9a56c912024fe0dacdff38",
+          "proof_rtt_seconds": 0.0007507801055908203,
+          "runtime_seconds": 0.002939,
+          "scenario": "multi-hop encrypted packet and delivery proof",
+          "status": "PASS",
+          "topology": "LXMF-rs \u2014 LXMF-rs \u2014 rns-rs"
+        },
+        {
+          "bytes_transferred": 27,
+          "classification": null,
+          "content_sha256": "f516f2bbe14152e43d70cbfff16255b44d1ec9cb48e076aaa2ccc39d0e985b25",
+          "direction": "LXMF-rs -> rns-rs",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "packet_hash": "1a08ae04f40de0a8da980b7c2f1bdf91c463c599faf0711a38f6fc18bb599f80",
+          "peer_packet_hash": "1a08ae04f40de0a8da980b7c2f1bdf91c463c599faf0711a38f6fc18bb599f80",
+          "runtime_seconds": 0.102533,
+          "scenario": "multi-hop encrypted packet",
+          "status": "PASS",
+          "topology": "LXMF-rs \u2014 LXMF-rs \u2014 rns-rs"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "rns-rs -> LXMF-rs",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "proof_packet_hash": "1a08ae04f40de0a8da980b7c2f1bdf91c463c599faf0711a38f6fc18bb599f80",
+          "runtime_seconds": 0.000378,
+          "scenario": "multi-hop delivery proof",
+          "status": "PASS",
+          "topology": "LXMF-rs \u2014 LXMF-rs \u2014 rns-rs"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "rns-rs -> LXMF-rs",
+          "failure_owner": null,
+          "failure_reason": null,
+          "hops": 2,
+          "link_id": "4fb480826df988403f8d088b4ad12287",
+          "lxmf_rs_state": "activated",
+          "normative_reference": null,
+          "rtt_seconds": 0.0007684230804443359,
+          "runtime_seconds": 0.102949,
+          "scenario": "multi-hop Link establishment proof RTT",
+          "status": "PASS",
+          "topology": "LXMF-rs \u2014 LXMF-rs \u2014 rns-rs"
+        },
+        {
+          "bytes_transferred": 1048576,
+          "classification": null,
+          "content_sha256": "631b84027d6b9e52b539c4e8373622d23032dfadc64d60af87339c9037e4f769",
+          "direction": "rns-rs -> LXMF-rs",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "resource_hash": "83fc57bf3b5e78fde3a8ba6c88da5c7b7831cb1ea7255a40d253a3da22180f5a",
+          "runtime_seconds": 0.212893,
+          "scenario": "multi-hop Resource 1 MiB",
+          "status": "PASS",
+          "topology": "LXMF-rs \u2014 LXMF-rs \u2014 rns-rs"
+        },
+        {
+          "bytes_transferred": 1048576,
+          "classification": null,
+          "content_sha256": "631b84027d6b9e52b539c4e8373622d23032dfadc64d60af87339c9037e4f769",
+          "direction": "LXMF-rs -> rns-rs",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "received_bytes": 1048576,
+          "received_sha256": "631b84027d6b9e52b539c4e8373622d23032dfadc64d60af87339c9037e4f769",
+          "resource_hash": "a3edf0845017947ddd91a52873539862917b1144add19df9c3a5deb13cd64051",
+          "runtime_seconds": 0.443711,
+          "scenario": "multi-hop Resource 1 MiB",
+          "status": "PASS",
+          "topology": "LXMF-rs \u2014 LXMF-rs \u2014 rns-rs"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "bidirectional",
+          "failure_owner": null,
+          "failure_reason": null,
+          "link_id": "4fb480826df988403f8d088b4ad12287",
+          "normative_reference": null,
+          "runtime_seconds": 0.001041,
+          "scenario": "Link teardown",
+          "status": "PASS",
+          "topology": "LXMF-rs \u2014 LXMF-rs \u2014 rns-rs"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "bidirectional",
+          "failure_owner": null,
+          "failure_reason": null,
+          "left_hops": 2,
+          "normative_reference": null,
+          "right_hops": 2,
+          "runtime_seconds": 1.914823,
+          "scenario": "multi-hop announce propagation and path establishment",
+          "status": "PASS",
+          "topology": "LXMF-rs \u2014 rns-rs \u2014 LXMF-rs"
+        },
+        {
+          "bytes_transferred": 27,
+          "classification": null,
+          "content_sha256": "20811e7b6bbb52d25548a259f72cd9ba97ee57c9de2eaecd4cc3b6f4bff4f979",
+          "direction": "left -> right",
+          "failure_owner": null,
+          "failure_reason": null,
+          "hops": 2,
+          "normative_reference": null,
+          "packet_hash": "152b0b81ed03f35f5127d1e2e6f48249912df6ce33135f0b10ed6fbde9503ebf",
+          "proof_packet_hash": "152b0b81ed03f35f5127d1e2e6f48249912df6ce33135f0b10ed6fbde9503ebf",
+          "runtime_seconds": 0.102158,
+          "scenario": "multi-hop encrypted packet and delivery proof",
+          "status": "PASS",
+          "topology": "LXMF-rs \u2014 rns-rs \u2014 LXMF-rs"
+        },
+        {
+          "bytes_transferred": 27,
+          "classification": null,
+          "content_sha256": "01977086305bca9b5a566fe314b72de7e5f5ecbec7323b7516a9dfe5940d667f",
+          "direction": "right -> left",
+          "failure_owner": null,
+          "failure_reason": null,
+          "hops": 2,
+          "normative_reference": null,
+          "packet_hash": "6f93dd08c01f7b30e5fd9db0fa9a28e284a2ab2bd43a0846b30e7182ecbdd84f",
+          "proof_packet_hash": "6f93dd08c01f7b30e5fd9db0fa9a28e284a2ab2bd43a0846b30e7182ecbdd84f",
+          "runtime_seconds": 0.102222,
+          "scenario": "multi-hop encrypted packet and delivery proof",
+          "status": "PASS",
+          "topology": "LXMF-rs \u2014 rns-rs \u2014 LXMF-rs"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "left -> right",
+          "failure_owner": null,
+          "failure_reason": null,
+          "initiator": {
+            "destination_hash": "ed77dbc8115f51c215e41f2975187e77",
+            "direction": "outbound",
+            "link_id": "6d58ae67e91f7720a82cc698b95bdbc9",
+            "state": "activated"
+          },
+          "link_id": "6d58ae67e91f7720a82cc698b95bdbc9",
+          "normative_reference": null,
+          "responder": {
+            "destination_hash": "ed77dbc8115f51c215e41f2975187e77",
+            "direction": "inbound",
+            "link_id": "6d58ae67e91f7720a82cc698b95bdbc9",
+            "state": "activated"
+          },
+          "runtime_seconds": 0.101757,
+          "scenario": "multi-hop Link establishment proof",
+          "status": "PASS",
+          "topology": "LXMF-rs \u2014 rns-rs \u2014 LXMF-rs"
+        },
+        {
+          "bytes_transferred": 1048576,
+          "classification": null,
+          "content_sha256": "631b84027d6b9e52b539c4e8373622d23032dfadc64d60af87339c9037e4f769",
+          "direction": "left -> right",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "received_bytes": 1048576,
+          "received_sha256": "631b84027d6b9e52b539c4e8373622d23032dfadc64d60af87339c9037e4f769",
+          "resource_hash": "6aecf57e61a041849b3ee90c34b041bb948848398be1631dfde835d38cf1af3c",
+          "runtime_seconds": 0.283883,
+          "scenario": "multi-hop Resource 1 MiB",
+          "sender_state": "outbound_complete",
+          "status": "PASS",
+          "topology": "LXMF-rs \u2014 rns-rs \u2014 LXMF-rs"
+        },
+        {
+          "bytes_transferred": 1048576,
+          "classification": null,
+          "content_sha256": "631b84027d6b9e52b539c4e8373622d23032dfadc64d60af87339c9037e4f769",
+          "direction": "right -> left",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "received_bytes": 1048576,
+          "received_sha256": "631b84027d6b9e52b539c4e8373622d23032dfadc64d60af87339c9037e4f769",
+          "resource_hash": "6f1d6479dd27c913827654d88c5ce9ad749211c0ac3d321f9569833cb556d1f9",
+          "runtime_seconds": 0.285305,
+          "scenario": "multi-hop Resource 1 MiB",
+          "sender_state": "outbound_complete",
+          "status": "PASS",
+          "topology": "LXMF-rs \u2014 rns-rs \u2014 LXMF-rs"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "bidirectional",
+          "failure_owner": null,
+          "failure_reason": null,
+          "link_id": "6d58ae67e91f7720a82cc698b95bdbc9",
+          "normative_reference": null,
+          "runtime_seconds": 0.0008,
+          "scenario": "Link teardown",
+          "status": "PASS",
+          "topology": "LXMF-rs \u2014 rns-rs \u2014 LXMF-rs"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "right -> left",
+          "failure_owner": null,
+          "failure_reason": null,
+          "initiator": {
+            "destination_hash": "3264602a6459e79b7afafd3d7aabc381",
+            "direction": "outbound",
+            "link_id": "4240e93dce8676889aa964eb971bcef3",
+            "state": "activated"
+          },
+          "link_id": "4240e93dce8676889aa964eb971bcef3",
+          "normative_reference": null,
+          "responder": {
+            "destination_hash": "3264602a6459e79b7afafd3d7aabc381",
+            "direction": "inbound",
+            "link_id": "4240e93dce8676889aa964eb971bcef3",
+            "state": "activated"
+          },
+          "runtime_seconds": 0.10158,
+          "scenario": "multi-hop Link establishment proof",
+          "status": "PASS",
+          "topology": "LXMF-rs \u2014 rns-rs \u2014 LXMF-rs"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "right -> left",
+          "failure_owner": null,
+          "failure_reason": null,
+          "link_id": "4240e93dce8676889aa964eb971bcef3",
+          "normative_reference": null,
+          "runtime_seconds": 0.000849,
+          "scenario": "Link teardown",
+          "status": "PASS",
+          "topology": "LXMF-rs \u2014 rns-rs \u2014 LXMF-rs"
+        },
+        {
+          "a_hops": 4,
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "bidirectional",
+          "e_hops": 4,
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "runtime_seconds": 5.639162,
+          "scenario": "five-node path convergence",
+          "status": "PASS",
+          "topology": "A \u2014 B \u2014 C \u2014 D \u2014 E (all LXMF-rs)"
+        },
+        {
+          "bytes_transferred": 16,
+          "classification": null,
+          "content_sha256": "c37edef532afbae7ec5f276155b391b46649cc47c040ebebd47f0a5c6b2ed2ec",
+          "direction": "A -> E",
+          "failure_owner": null,
+          "failure_reason": null,
+          "hops": 4,
+          "normative_reference": null,
+          "packet_hash": "32e41f5133b278ca35d78e6b8a0bd0ea5f400c12ddc5d9e01c43ae1731e3fd14",
+          "proof_packet_hash": "32e41f5133b278ca35d78e6b8a0bd0ea5f400c12ddc5d9e01c43ae1731e3fd14",
+          "runtime_seconds": 0.10237,
+          "scenario": "five-node encrypted packet and proof",
+          "status": "PASS",
+          "topology": "A \u2014 B \u2014 C \u2014 D \u2014 E (all LXMF-rs)"
+        },
+        {
+          "bytes_transferred": 16,
+          "classification": null,
+          "content_sha256": "e9c1f40d9e1e51efb4f3981bdcdc8f41e0370528f3f1e99b1f40b343fec01092",
+          "direction": "E -> A",
+          "failure_owner": null,
+          "failure_reason": null,
+          "hops": 4,
+          "normative_reference": null,
+          "packet_hash": "4c520a2689f31bdeb73b3d29688c0f36b309e0a2f08a62444fd3b33bfc0f4477",
+          "proof_packet_hash": "4c520a2689f31bdeb73b3d29688c0f36b309e0a2f08a62444fd3b33bfc0f4477",
+          "runtime_seconds": 0.102155,
+          "scenario": "five-node encrypted packet and proof",
+          "status": "PASS",
+          "topology": "A \u2014 B \u2014 C \u2014 D \u2014 E (all LXMF-rs)"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "A -> E",
+          "failure_owner": null,
+          "failure_reason": null,
+          "initiator": {
+            "destination_hash": "52994dcaa9d813f93e6c597b8d419a52",
+            "direction": "outbound",
+            "link_id": "124d444522318d0ec5d9616e7b67b173",
+            "state": "activated"
+          },
+          "link_id": "124d444522318d0ec5d9616e7b67b173",
+          "normative_reference": null,
+          "responder": {
+            "destination_hash": "52994dcaa9d813f93e6c597b8d419a52",
+            "direction": "inbound",
+            "link_id": "124d444522318d0ec5d9616e7b67b173",
+            "state": "activated"
+          },
+          "runtime_seconds": 0.101615,
+          "scenario": "five-node Link establishment proof",
+          "status": "PASS",
+          "topology": "A \u2014 B \u2014 C \u2014 D \u2014 E (all LXMF-rs)"
+        },
+        {
+          "bytes_transferred": 1048576,
+          "classification": null,
+          "content_sha256": "631b84027d6b9e52b539c4e8373622d23032dfadc64d60af87339c9037e4f769",
+          "direction": "A -> E",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "received_bytes": 1048576,
+          "received_sha256": "631b84027d6b9e52b539c4e8373622d23032dfadc64d60af87339c9037e4f769",
+          "resource_hash": "6e40e4fa8d663888a38fbe361d3cb427c25be19d0bcecad5389a43663a7f1aea",
+          "runtime_seconds": 0.287673,
+          "scenario": "five-node Resource 1 MiB",
+          "sender_state": "outbound_complete",
+          "status": "PASS",
+          "topology": "A \u2014 B \u2014 C \u2014 D \u2014 E (all LXMF-rs)"
+        },
+        {
+          "bytes_transferred": 1048576,
+          "classification": null,
+          "content_sha256": "631b84027d6b9e52b539c4e8373622d23032dfadc64d60af87339c9037e4f769",
+          "direction": "E -> A",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "received_bytes": 1048576,
+          "received_sha256": "631b84027d6b9e52b539c4e8373622d23032dfadc64d60af87339c9037e4f769",
+          "resource_hash": "ad696e3cfe8a3f2f342b159a707122f6e6b7dde229d18437b1eb516e1be350fc",
+          "runtime_seconds": 0.283285,
+          "scenario": "five-node Resource 1 MiB",
+          "sender_state": "outbound_complete",
+          "status": "PASS",
+          "topology": "A \u2014 B \u2014 C \u2014 D \u2014 E (all LXMF-rs)"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "bidirectional",
+          "failure_owner": null,
+          "failure_reason": null,
+          "link_id": "124d444522318d0ec5d9616e7b67b173",
+          "normative_reference": null,
+          "runtime_seconds": 0.101481,
+          "scenario": "five-node Link teardown",
+          "status": "PASS",
+          "topology": "A \u2014 B \u2014 C \u2014 D \u2014 E (all LXMF-rs)"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "C restart",
+          "failure_owner": null,
+          "failure_reason": null,
+          "new_pid": 21964,
+          "normative_reference": null,
+          "old_pid": 21949,
+          "runtime_seconds": 0.102772,
+          "scenario": "five-node intermediate C restart",
+          "status": "PASS",
+          "topology": "A \u2014 B \u2014 C \u2014 D \u2014 E (all LXMF-rs)"
+        },
+        {
+          "a_hops": 4,
+          "bytes_transferred": 25,
+          "classification": null,
+          "content_sha256": "eef3127d88bfcde205dae46f2c2fbfae3069b4502ccb0dc17ad9078e3f19cc0b",
+          "direction": "A -> E",
+          "e_hops": 4,
+          "failure_owner": null,
+          "failure_reason": null,
+          "hops": 4,
+          "normative_reference": null,
+          "packet_hash": "7b8f93dc76b49b78b8bac576b8600e612e7d5d5472b7eb8a971ac03a35071030",
+          "proof_packet_hash": "7b8f93dc76b49b78b8bac576b8600e612e7d5d5472b7eb8a971ac03a35071030",
+          "runtime_seconds": 5.035633,
+          "scenario": "five-node path and traffic recovery",
+          "status": "PASS",
+          "topology": "A \u2014 B \u2014 C \u2014 D \u2014 E (all LXMF-rs)"
+        },
+        {
+          "a_hops": 4,
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "bidirectional",
+          "e_hops": 4,
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "runtime_seconds": 4.63177,
+          "scenario": "five-node path convergence",
+          "status": "PASS",
+          "topology": "A \u2014 B \u2014 C \u2014 D \u2014 E (mixed LXMF-rs/rns-rs)"
+        },
+        {
+          "bytes_transferred": 16,
+          "classification": null,
+          "content_sha256": "c37edef532afbae7ec5f276155b391b46649cc47c040ebebd47f0a5c6b2ed2ec",
+          "direction": "A -> E",
+          "failure_owner": null,
+          "failure_reason": null,
+          "hops": 4,
+          "normative_reference": null,
+          "packet_hash": "92809ef57575f0cf47df350669b525d50a2d640e17c74d08cfbb019ad38f6c85",
+          "proof_packet_hash": "92809ef57575f0cf47df350669b525d50a2d640e17c74d08cfbb019ad38f6c85",
+          "runtime_seconds": 0.102262,
+          "scenario": "five-node encrypted packet and proof",
+          "status": "PASS",
+          "topology": "A \u2014 B \u2014 C \u2014 D \u2014 E (mixed LXMF-rs/rns-rs)"
+        },
+        {
+          "bytes_transferred": 16,
+          "classification": null,
+          "content_sha256": "e9c1f40d9e1e51efb4f3981bdcdc8f41e0370528f3f1e99b1f40b343fec01092",
+          "direction": "E -> A",
+          "failure_owner": null,
+          "failure_reason": null,
+          "hops": 4,
+          "normative_reference": null,
+          "packet_hash": "215746fb367ec2415c7de246c1269e2ee128f62d3163a36edb4f3952850cd217",
+          "proof_packet_hash": "215746fb367ec2415c7de246c1269e2ee128f62d3163a36edb4f3952850cd217",
+          "runtime_seconds": 0.10206,
+          "scenario": "five-node encrypted packet and proof",
+          "status": "PASS",
+          "topology": "A \u2014 B \u2014 C \u2014 D \u2014 E (mixed LXMF-rs/rns-rs)"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "A -> E",
+          "failure_owner": null,
+          "failure_reason": null,
+          "initiator": {
+            "destination_hash": "52994dcaa9d813f93e6c597b8d419a52",
+            "direction": "outbound",
+            "link_id": "5536e1f2914e66dd2d7b9884c45b3253",
+            "state": "activated"
+          },
+          "link_id": "5536e1f2914e66dd2d7b9884c45b3253",
+          "normative_reference": null,
+          "responder": {
+            "destination_hash": "52994dcaa9d813f93e6c597b8d419a52",
+            "direction": "inbound",
+            "link_id": "5536e1f2914e66dd2d7b9884c45b3253",
+            "state": "activated"
+          },
+          "runtime_seconds": 0.101624,
+          "scenario": "five-node Link establishment proof",
+          "status": "PASS",
+          "topology": "A \u2014 B \u2014 C \u2014 D \u2014 E (mixed LXMF-rs/rns-rs)"
+        },
+        {
+          "bytes_transferred": 1048576,
+          "classification": null,
+          "content_sha256": "631b84027d6b9e52b539c4e8373622d23032dfadc64d60af87339c9037e4f769",
+          "direction": "A -> E",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "received_bytes": 1048576,
+          "received_sha256": "631b84027d6b9e52b539c4e8373622d23032dfadc64d60af87339c9037e4f769",
+          "resource_hash": "a8399d05c59ca4a42557bc7c134b94a10deffb6bf49043e80f778d83d14ef3d1",
+          "runtime_seconds": 0.286079,
+          "scenario": "five-node Resource 1 MiB",
+          "sender_state": "outbound_complete",
+          "status": "PASS",
+          "topology": "A \u2014 B \u2014 C \u2014 D \u2014 E (mixed LXMF-rs/rns-rs)"
+        },
+        {
+          "bytes_transferred": 1048576,
+          "classification": null,
+          "content_sha256": "631b84027d6b9e52b539c4e8373622d23032dfadc64d60af87339c9037e4f769",
+          "direction": "E -> A",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "received_bytes": 1048576,
+          "received_sha256": "631b84027d6b9e52b539c4e8373622d23032dfadc64d60af87339c9037e4f769",
+          "resource_hash": "1e93fd766b7d9c5e54214f3fbc2f8d3be5d5cd68df5c369f14cf37d16f572038",
+          "runtime_seconds": 0.283508,
+          "scenario": "five-node Resource 1 MiB",
+          "sender_state": "outbound_complete",
+          "status": "PASS",
+          "topology": "A \u2014 B \u2014 C \u2014 D \u2014 E (mixed LXMF-rs/rns-rs)"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "bidirectional",
+          "failure_owner": null,
+          "failure_reason": null,
+          "link_id": "5536e1f2914e66dd2d7b9884c45b3253",
+          "normative_reference": null,
+          "runtime_seconds": 0.101567,
+          "scenario": "five-node Link teardown",
+          "status": "PASS",
+          "topology": "A \u2014 B \u2014 C \u2014 D \u2014 E (mixed LXMF-rs/rns-rs)"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "C restart",
+          "failure_owner": null,
+          "failure_reason": null,
+          "new_pid": 22000,
+          "normative_reference": null,
+          "old_pid": 21979,
+          "runtime_seconds": 0.105854,
+          "scenario": "five-node intermediate C restart",
+          "status": "PASS",
+          "topology": "A \u2014 B \u2014 C \u2014 D \u2014 E (mixed LXMF-rs/rns-rs)"
+        },
+        {
+          "a_hops": 4,
+          "bytes_transferred": 25,
+          "classification": null,
+          "content_sha256": "eef3127d88bfcde205dae46f2c2fbfae3069b4502ccb0dc17ad9078e3f19cc0b",
+          "direction": "A -> E",
+          "e_hops": 4,
+          "failure_owner": null,
+          "failure_reason": null,
+          "hops": 4,
+          "normative_reference": null,
+          "packet_hash": "8817f2df649bce9c7ebb09e2de4ecf7e2c00b7058a77f0b140230cc8927998c3",
+          "proof_packet_hash": "8817f2df649bce9c7ebb09e2de4ecf7e2c00b7058a77f0b140230cc8927998c3",
+          "runtime_seconds": 5.036292,
+          "scenario": "five-node path and traffic recovery",
+          "status": "PASS",
+          "topology": "A \u2014 B \u2014 C \u2014 D \u2014 E (mixed LXMF-rs/rns-rs)"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "rns-rs -> LXMF-rs",
+          "failure_owner": null,
+          "failure_reason": null,
+          "interface_policy": {
+            "address": "f0a0278e4372459cca6159cd5e71cfee",
+            "gravity": 10,
+            "mode": "full",
+            "outgoing": true,
+            "role": "Unicast"
+          },
+          "normative_reference": null,
+          "path": {
+            "hops": 2,
+            "interface": "f0a0278e4372459cca6159cd5e71cfee",
+            "next_hop": "6297c086aa764d4b1b36afe6781adfc1",
+            "path_found": true
+          },
+          "runtime_seconds": 0.80749,
+          "scenario": "same-hop path selection uses higher interface gravity",
+          "status": "PASS",
+          "topology": "rns-rs \u2014 LXMF-rs transports \u2014 LXMF-rs selector"
+        },
+        {
+          "bytes_transferred": 12,
+          "classification": null,
+          "content_sha256": "35ebb99e6efe0bcc4ef7b5adc2b6b153a6263b1072c552b524ad4ada90958681",
+          "direction": "LXMF-rs -> rns-rs",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "packet_hash": "1b4748fa1ae6acc8b53726f10eb50888d29084f29815e0020ddd89011a4b736b",
+          "proof_observed": true,
+          "proof_packet_hash": "1b4748fa1ae6acc8b53726f10eb50888d29084f29815e0020ddd89011a4b736b",
+          "runtime_seconds": 0.103675,
+          "scenario": "observable forwarding over gravity-selected path",
+          "status": "PASS",
+          "topology": "rns-rs \u2014 LXMF-rs transports \u2014 LXMF-rs selector"
+        },
+        {
+          "after": {
+            "interface_policy": {
+              "address": "35be322d094f9d154a8aba4733b8497f",
+              "gravity": 20,
+              "mode": "full",
+              "outgoing": true,
+              "role": "Unicast"
+            },
+            "path": {
+              "hops": 2,
+              "interface": "35be322d094f9d154a8aba4733b8497f",
+              "next_hop": "e2a308e1dd9f7ca48f1147b38e956846",
+              "path_found": true
+            }
+          },
+          "before": {
+            "hops": 2,
+            "interface": "f0a0278e4372459cca6159cd5e71cfee",
+            "next_hop": "6297c086aa764d4b1b36afe6781adfc1",
+            "path_found": true
+          },
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "rns-rs -> LXMF-rs",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "runtime_seconds": 1.814571,
+          "scenario": "dynamic path rebalancing after gravity change",
+          "status": "PASS",
+          "topology": "rns-rs \u2014 LXMF-rs transports \u2014 LXMF-rs selector"
+        },
+        {
+          "bytes_transferred": 18,
+          "classification": null,
+          "content_sha256": "6da016d80dfdb56d93247f1185379b9dac366c59224c96441e7a2362269aa3a0",
+          "direction": "LXMF-rs -> rns-rs",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "packet_hash": "44bc0bd54d1906ef472c26fcddde91a2c6313c0faceb4068a915f05d89bcb99c",
+          "proof_observed": true,
+          "proof_packet_hash": "44bc0bd54d1906ef472c26fcddde91a2c6313c0faceb4068a915f05d89bcb99c",
+          "runtime_seconds": 0.102869,
+          "scenario": "observable forwarding after dynamic rebalancing",
+          "status": "PASS",
+          "topology": "rns-rs \u2014 LXMF-rs transports \u2014 LXMF-rs selector"
+        },
+        {
+          "announcements_sent": 1,
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "LXMF-rs -> rns-rs",
+          "expired_intermediates": 1,
+          "failed_next_hop": "e2a308e1dd9f7ca48f1147b38e956846",
+          "failure_owner": null,
+          "failure_reason": null,
+          "fallback": {
+            "interface_policy": {
+              "address": "f0a0278e4372459cca6159cd5e71cfee",
+              "gravity": 0,
+              "mode": "full",
+              "outgoing": true,
+              "role": "Unicast"
+            },
+            "path": {
+              "hops": 2,
+              "interface": "f0a0278e4372459cca6159cd5e71cfee",
+              "next_hop": "6297c086aa764d4b1b36afe6781adfc1",
+              "path_found": true
+            }
+          },
+          "normative_reference": null,
+          "runtime_seconds": 2.017471,
+          "scenario": "interface failure selects viable alternate path",
+          "status": "PASS",
+          "stopped_interfaces": [
+            "35be322d094f9d154a8aba4733b8497f"
+          ],
+          "topology": "rns-rs \u2014 LXMF-rs transports \u2014 LXMF-rs selector"
+        },
+        {
+          "bytes_transferred": 16,
+          "classification": null,
+          "content_sha256": "adcb1d7c9f65b71da854f5121832a4ed03cccbcfd4141eeaf940abe68293532e",
+          "direction": "LXMF-rs -> rns-rs",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "packet_hash": "80c5a43cf3c6a5b4466e5ed2d66ea196c534ed93d482a47601b20981e795b42b",
+          "proof_observed": true,
+          "proof_packet_hash": "80c5a43cf3c6a5b4466e5ed2d66ea196c534ed93d482a47601b20981e795b42b",
+          "runtime_seconds": 0.103556,
+          "scenario": "communication resumes after interface failure",
+          "status": "PASS",
+          "topology": "rns-rs \u2014 LXMF-rs transports \u2014 LXMF-rs selector"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "rns-rs -> LXMF-rs",
+          "failure_owner": null,
+          "failure_reason": null,
+          "interface_policy": {
+            "address": "35be322d094f9d154a8aba4733b8497f",
+            "gravity": 1,
+            "mode": "full",
+            "outgoing": true,
+            "role": "Unicast"
+          },
+          "normative_reference": null,
+          "path": {
+            "hops": 2,
+            "interface": "35be322d094f9d154a8aba4733b8497f",
+            "next_hop": "e2a308e1dd9f7ca48f1147b38e956846",
+            "path_found": true
+          },
+          "runtime_seconds": 0.606098,
+          "scenario": "different hop count takes the shorter route despite higher alternate gravity",
+          "status": "PASS",
+          "topology": "rns-rs \u2014 LXMF-rs transports \u2014 LXMF-rs selector"
+        },
+        {
+          "bytes_transferred": 19,
+          "classification": null,
+          "content_sha256": "2a5db0505e5ecbc955b49e3e199f02f919a1495ba2aa382ce80490b04e5dde3a",
+          "direction": "LXMF-rs -> rns-rs",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "packet_hash": "5421b4505126207e30d120e6a44103abdd98275521da59fa517ed0c7021ac3fe",
+          "proof_observed": true,
+          "proof_packet_hash": "5421b4505126207e30d120e6a44103abdd98275521da59fa517ed0c7021ac3fe",
+          "runtime_seconds": 0.10332,
+          "scenario": "observable forwarding over shorter lower-gravity path",
+          "status": "PASS",
+          "topology": "rns-rs \u2014 LXMF-rs transports \u2014 LXMF-rs selector"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "rns-rs -> LXMF-rs",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "packet_hops": 2,
+          "path_hops": 2,
+          "payload_sha256": "b54d5998b53369b8283a749d359ec8323770733dc53db035d606dfa00f856876",
+          "proof_rtt_seconds": 0.0008213520050048828,
+          "runtime_seconds": 0.206436,
+          "scenario": "boundary path request to boundary interface",
+          "status": "PASS",
+          "topology": "rns-rs boundary \u2014 LXMF-rs \u2014 boundary/gateway endpoints"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "rns-rs -> LXMF-rs",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "packet_hops": 2,
+          "path_hops": 2,
+          "payload_sha256": "a32baf73aba40682b1cfc24e3c23b55aa67a11306f307cff661850ef4f3a61a6",
+          "proof_rtt_seconds": 0.0008471012115478516,
+          "runtime_seconds": 0.207083,
+          "scenario": "boundary path request to gateway interface",
+          "status": "PASS",
+          "topology": "rns-rs boundary \u2014 LXMF-rs \u2014 boundary/gateway endpoints"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "rns-rs -> LXMF-rs",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "runtime_seconds": 3.035977,
+          "scenario": "boundary path request suppresses full-interface recursion",
+          "status": "PASS",
+          "suppression_observed_seconds": 3.035,
+          "topology": "rns-rs boundary \u2014 LXMF-rs \u2014 boundary/gateway endpoints"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "bidirectional",
+          "failure_owner": null,
+          "failure_reason": null,
+          "left_hops": 2,
+          "normative_reference": null,
+          "right_hops": 2,
+          "runtime_seconds": 1.914263,
+          "scenario": "restart topology initial path establishment",
+          "status": "PASS",
+          "topology": "LXMF-rs \u2014 rns-rs \u2014 LXMF-rs restart topology"
+        },
+        {
+          "bytes_transferred": 14,
+          "classification": null,
+          "content_sha256": "b332a7360673a82dab7f1d80a1999bc542d4e712de21099293da44f35c518822",
+          "direction": "left -> right",
+          "failure_owner": null,
+          "failure_reason": null,
+          "hops": 2,
+          "normative_reference": null,
+          "packet_hash": "ef9b71b8d47774881d6e8ad2919d1d902ee90a1900430d3d1ad6c43b1f6c4174",
+          "proof_packet_hash": "ef9b71b8d47774881d6e8ad2919d1d902ee90a1900430d3d1ad6c43b1f6c4174",
+          "runtime_seconds": 0.102118,
+          "scenario": "traffic before restart",
+          "status": "PASS",
+          "topology": "LXMF-rs \u2014 rns-rs \u2014 LXMF-rs restart topology"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "destination_after": "5e3557140e6d86c49cff46671279c8ca",
+          "destination_before": "5e3557140e6d86c49cff46671279c8ca",
+          "direction": "right endpoint",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "runtime_seconds": 5.944312,
+          "scenario": "endpoint restart, rediscovery and identity continuity",
+          "status": "PASS",
+          "topology": "LXMF-rs \u2014 rns-rs \u2014 LXMF-rs restart topology"
+        },
+        {
+          "bytes_transferred": 22,
+          "classification": null,
+          "content_sha256": "c8a92805dd2de426e5571008e58fa14eda3dc76a56414130f7eed8f76d6bbd50",
+          "direction": "left -> right",
+          "failure_owner": null,
+          "failure_reason": null,
+          "hops": 2,
+          "normative_reference": null,
+          "packet_hash": "83867afb15ce8411df584acc10425fe66651c361a12b7db2e02ceb0f09055922",
+          "proof_packet_hash": "83867afb15ce8411df584acc10425fe66651c361a12b7db2e02ceb0f09055922",
+          "runtime_seconds": 0.102006,
+          "scenario": "traffic resumes after endpoint restart",
+          "status": "PASS",
+          "topology": "LXMF-rs \u2014 rns-rs \u2014 LXMF-rs restart topology"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "rns-rs intermediary",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "rediscovered": {
+            "left_hops": 2,
+            "right_hops": 2
+          },
+          "runtime_seconds": 2.02011,
+          "scenario": "intermediate transport restart and rediscovery",
+          "status": "PASS",
+          "topology": "LXMF-rs \u2014 rns-rs \u2014 LXMF-rs restart topology"
+        },
+        {
+          "bytes_transferred": 24,
+          "classification": null,
+          "content_sha256": "628bb153b0111215b40bd3ee1d70995393b2444d3ca1bc77fe4e81a0220bacab",
+          "direction": "left -> right",
+          "failure_owner": null,
+          "failure_reason": null,
+          "hops": 2,
+          "normative_reference": null,
+          "packet_hash": "153f91c4bbe682a59331e4eaf62af97f2cce55d2602ae4a4dc2863583dc1630f",
+          "proof_packet_hash": "153f91c4bbe682a59331e4eaf62af97f2cce55d2602ae4a4dc2863583dc1630f",
+          "runtime_seconds": 0.102131,
+          "scenario": "traffic resumes after intermediate restart",
+          "status": "PASS",
+          "topology": "LXMF-rs \u2014 rns-rs \u2014 LXMF-rs restart topology"
+        },
+        {
+          "bytes_transferred": 24,
+          "classification": null,
+          "content_sha256": "449ca3633071e02e6aa43e07cc1cad5d2f2641315bfff4676d717faac1b479c6",
+          "direction": "right -> left",
+          "failure_owner": null,
+          "failure_reason": null,
+          "hops": 2,
+          "normative_reference": null,
+          "packet_hash": "02230668b845d5cca57f2d008d43b746032acd5a5ff126cdb4a44fbcafaad5e2",
+          "proof_packet_hash": "02230668b845d5cca57f2d008d43b746032acd5a5ff126cdb4a44fbcafaad5e2",
+          "runtime_seconds": 0.102192,
+          "scenario": "traffic resumes after intermediate restart",
+          "status": "PASS",
+          "topology": "LXMF-rs \u2014 rns-rs \u2014 LXMF-rs restart topology"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "client_connected": true,
+          "client_destination": "d74ce72b96a6962ac89cf48642998603",
+          "client_discovery_attempts": 1,
+          "client_reconnects": 1,
+          "content_sha256": null,
+          "direction": "bidirectional discovery",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "peer_destination": "92ffdf829039787b093cdd027ae14358",
+          "runtime_seconds": 1.91606,
+          "scenario": "shared daemon starts, local client attaches, and remote peer is discovered",
+          "status": "PASS",
+          "topology": "rns-rs local client \u2014 LXMF-rs reticulumd \u2014 LXMF-rs remote endpoint"
+        },
+        {
+          "bytes_transferred": 22,
+          "classification": null,
+          "content_sha256": "9660d02f29fbbdd2ab495d142e47a17d6aa56de5124d12e6c7f596ffad50a0e4",
+          "direction": "LXMF-rs remote -> rns-rs local client",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "packet_hash": "19c911f3e8731e0226b7bae218fb32e0e6208404e299b384943a220dfe393e21",
+          "received_sha256": "9660d02f29fbbdd2ab495d142e47a17d6aa56de5124d12e6c7f596ffad50a0e4",
+          "runtime_seconds": 0.102652,
+          "scenario": "shared-instance encrypted packet and delivery proof before restart",
+          "status": "PASS",
+          "topology": "rns-rs local client \u2014 LXMF-rs reticulumd \u2014 LXMF-rs remote endpoint"
+        },
+        {
+          "bytes_transferred": 21,
+          "classification": null,
+          "content_sha256": "0c54ade947865fbf4035026ee7bbd13ac182fff850a47f7aaead136c4fc58e60",
+          "direction": "rns-rs local client -> LXMF-rs remote",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "packet_hash": "43213b8878b31a82514959bd1785f83eeeba6aedc4b87e74e60ca5e941e072f2",
+          "received_sha256": "0c54ade947865fbf4035026ee7bbd13ac182fff850a47f7aaead136c4fc58e60",
+          "runtime_seconds": 0.102635,
+          "scenario": "shared-instance encrypted packet and delivery proof before restart",
+          "status": "PASS",
+          "topology": "rns-rs local client \u2014 LXMF-rs reticulumd \u2014 LXMF-rs remote endpoint"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "client_connected": true,
+          "client_destination": "d74ce72b96a6962ac89cf48642998603",
+          "client_discovery_attempts": 1,
+          "client_reconnects": 2,
+          "content_sha256": null,
+          "direction": "daemon restart",
+          "disconnect_observed": true,
+          "failure_owner": null,
+          "failure_reason": null,
+          "identity_continuity": true,
+          "initial_daemon_pid": 22260,
+          "normative_reference": null,
+          "peer_destination": "92ffdf829039787b093cdd027ae14358",
+          "restarted_daemon_pid": 22289,
+          "runtime_seconds": 7.96796,
+          "scenario": "daemon restart preserves client identity and reconnects shared-instance traffic",
+          "status": "PASS",
+          "topology": "rns-rs local client \u2014 LXMF-rs reticulumd \u2014 LXMF-rs remote endpoint"
+        },
+        {
+          "bytes_transferred": 21,
+          "classification": null,
+          "content_sha256": "339d25989c85fedab4a5a70452ded67cb9a1c469443d64baaf933b8b066c05bc",
+          "direction": "LXMF-rs remote -> rns-rs local client",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "packet_hash": "16f39a69aa1612688aedad35190a0abd77ea1aca6d2b88acdddb06693560101c",
+          "received_sha256": "339d25989c85fedab4a5a70452ded67cb9a1c469443d64baaf933b8b066c05bc",
+          "runtime_seconds": 0.102905,
+          "scenario": "shared-instance encrypted packet and delivery proof after restart",
+          "status": "PASS",
+          "topology": "rns-rs local client \u2014 LXMF-rs reticulumd \u2014 LXMF-rs remote endpoint"
+        },
+        {
+          "bytes_transferred": 20,
+          "classification": null,
+          "content_sha256": "dbce6bee50e7a961a795b9524f93a4846fab80a68a2b6f619dd73a5f72a57332",
+          "direction": "rns-rs local client -> LXMF-rs remote",
+          "failure_owner": null,
+          "failure_reason": null,
+          "normative_reference": null,
+          "packet_hash": "ba37e22f4d1bf6ceb8224d90983147726359e127aca7ef8fe125dd30d25d124e",
+          "received_sha256": "dbce6bee50e7a961a795b9524f93a4846fab80a68a2b6f619dd73a5f72a57332",
+          "runtime_seconds": 0.103086,
+          "scenario": "shared-instance encrypted packet and delivery proof after restart",
+          "status": "PASS",
+          "topology": "rns-rs local client \u2014 LXMF-rs reticulumd \u2014 LXMF-rs remote endpoint"
+        },
+        {
+          "bytes": 1048576,
+          "bytes_transferred": 1048576,
+          "classification": null,
+          "content_sha256": "8faf6360a195017ed4f3c3475a925fbd095a5a376fc685df08b324125ee008e4",
+          "direction": "rns-rs -> LXMF-rs",
+          "dropped": 1,
+          "duplicated": 0,
+          "failure_owner": null,
+          "failure_reason": null,
+          "frames": 122,
+          "normative_reference": null,
+          "reordered": 0,
+          "resource_hash": "d7d149cd64a757e4e5947b4f69f69882c41d6bb7a3e87c2be11aa3fd36e4a923",
+          "runtime_seconds": 3.324654,
+          "scenario": "Resource recovery with 1% deterministic frame loss",
+          "status": "PASS",
+          "topology": "rns-rs \u2014 HDLC fault proxy \u2014 LXMF-rs",
+          "transfers": 3
+        },
+        {
+          "bytes": 1048576,
+          "bytes_transferred": 1048576,
+          "classification": null,
+          "content_sha256": "8faf6360a195017ed4f3c3475a925fbd095a5a376fc685df08b324125ee008e4",
+          "direction": "rns-rs -> LXMF-rs",
+          "dropped": 2,
+          "duplicated": 0,
+          "failure_owner": null,
+          "failure_reason": null,
+          "frames": 44,
+          "normative_reference": null,
+          "reordered": 0,
+          "resource_hash": "99154f952d5c47fde5a98c67a81eead10bc1645db6b787b79ba4799180984914",
+          "runtime_seconds": 4.281553,
+          "scenario": "Resource recovery with 5% deterministic frame loss",
+          "status": "PASS",
+          "topology": "rns-rs \u2014 HDLC fault proxy \u2014 LXMF-rs",
+          "transfers": 1
+        },
+        {
+          "bytes": 1048576,
+          "bytes_transferred": 1048576,
+          "classification": null,
+          "content_sha256": "8faf6360a195017ed4f3c3475a925fbd095a5a376fc685df08b324125ee008e4",
+          "direction": "rns-rs -> LXMF-rs",
+          "dropped": 4,
+          "duplicated": 0,
+          "failure_owner": null,
+          "failure_reason": null,
+          "frames": 48,
+          "normative_reference": null,
+          "reordered": 0,
+          "resource_hash": "dec090ffc9ff2a82e761b9ad32fb886624253f1f40a2f0923b58def7b872b836",
+          "runtime_seconds": 8.310705,
+          "scenario": "Resource recovery with 10% deterministic frame loss",
+          "status": "PASS",
+          "topology": "rns-rs \u2014 HDLC fault proxy \u2014 LXMF-rs",
+          "transfers": 1
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "rns-rs -> LXMF-rs",
+          "dropped": 10,
+          "duplicated": 0,
+          "elapsed_seconds": 10.048749081999972,
+          "failure_owner": null,
+          "failure_reason": null,
+          "frames": 10,
+          "normative_reference": null,
+          "payload_bytes": 4096,
+          "payload_sha256": "b6b95ed1539fce9eb68bb4399a46fc9a2161c66bb4b276080bb5154c4b607649",
+          "peer_error": "Resource transfer timeout",
+          "reordered": 0,
+          "runtime_seconds": 10.359885,
+          "scenario": "Resource terminal timeout under complete frame loss",
+          "status": "PASS",
+          "topology": "rns-rs \u2014 HDLC fault proxy \u2014 LXMF-rs"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "rns-rs -> LXMF-rs",
+          "dropped": 0,
+          "duplicated": 0,
+          "failure_owner": null,
+          "failure_reason": null,
+          "frames": 2,
+          "normative_reference": null,
+          "observed_seconds": 0.2047259920000215,
+          "packet_hash": "1abeb7493294fb2b6612bd508ec9ef73c8fc82099255995995927ee2b672e7f8",
+          "proof_rtt_seconds": 0.14185786247253418,
+          "reordered": 0,
+          "runtime_seconds": 0.515177,
+          "scenario": "packet and proof with 50 ms per-frame latency",
+          "status": "PASS",
+          "topology": "rns-rs \u2014 HDLC fault proxy \u2014 LXMF-rs"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "rns-rs -> LXMF-rs",
+          "dropped": 0,
+          "duplicated": 0,
+          "failure_owner": null,
+          "failure_reason": null,
+          "frames": 2,
+          "normative_reference": null,
+          "observed_seconds": 0.607427572000006,
+          "packet_hash": "495e737baafb4c3305c28f1b66da9bc68659c289a6b1d2b4ce00462b7ea83db6",
+          "proof_rtt_seconds": 0.5410821437835693,
+          "reordered": 0,
+          "runtime_seconds": 0.919622,
+          "scenario": "packet and proof with 250 ms per-frame latency",
+          "status": "PASS",
+          "topology": "rns-rs \u2014 HDLC fault proxy \u2014 LXMF-rs"
+        },
+        {
+          "bytes_transferred": null,
+          "classification": null,
+          "content_sha256": null,
+          "direction": "rns-rs -> LXMF-rs",
+          "dropped": 0,
+          "duplicated": 0,
+          "failure_owner": null,
+          "failure_reason": null,
+          "frames": 2,
+          "normative_reference": null,
+          "observed_seconds": 1.1107703109998965,
+          "packet_hash": "d40832f06374f730bc7f5b433da21484f34cb05125426864ad973eab39d37f64",
+          "proof_rtt_seconds": 1.0418994426727295,
+          "reordered": 0,
+          "runtime_seconds": 1.423552,
+          "scenario": "packet and proof with 500 ms per-frame latency",
+          "status": "PASS",
+          "topology": "rns-rs \u2014 HDLC fault proxy \u2014 LXMF-rs"
+        },
+        {
+          "bytes": 1048576,
+          "bytes_transferred": 1048576,
+          "classification": null,
+          "content_sha256": "8faf6360a195017ed4f3c3475a925fbd095a5a376fc685df08b324125ee008e4",
+          "direction": "rns-rs -> LXMF-rs",
+          "dropped": 0,
+          "duplicated": 13,
+          "failure_owner": null,
+          "failure_reason": null,
+          "frames": 40,
+          "normative_reference": null,
+          "reordered": 0,
+          "resource_hash": "2f143f11b0fc4f89448841434fae67a6869079e4d2da1c838b00495bbe9f0b55",
+          "runtime_seconds": 0.962941,
+          "scenario": "Resource robustness with duplicated frames",
+          "status": "PASS",
+          "topology": "rns-rs \u2014 HDLC fault proxy \u2014 LXMF-rs",
+          "transfers": 1
+        },
+        {
+          "bytes": 1048576,
+          "bytes_transferred": 1048576,
+          "classification": null,
+          "content_sha256": "8faf6360a195017ed4f3c3475a925fbd095a5a376fc685df08b324125ee008e4",
+          "direction": "rns-rs -> LXMF-rs",
+          "dropped": 0,
+          "duplicated": 0,
+          "failure_owner": null,
+          "failure_reason": null,
+          "frames": 50,
+          "normative_reference": null,
+          "reordered": 12,
+          "resource_hash": "ad4b5eb720f0d528ee5862b1bc96936fd53173a30f17a81992210449fc638826",
+          "runtime_seconds": 10.129815,
+          "scenario": "Resource robustness with reordered adjacent frames",
+          "status": "PASS",
+          "topology": "rns-rs \u2014 HDLC fault proxy \u2014 LXMF-rs",
+          "transfers": 1
+        }
+      ],
+      "schema": "lxmf-rs-independent-interop-v1",
+      "summary": {
+        "counts": {
+          "BLOCKED": 2,
+          "FAIL": 3,
+          "PASS": 87
+        },
+        "status": "FAIL"
+      },
+      "test_topology": "isolated loopback TCP; independent processes and control planes"
+    }
+  },
+  "known_peer_divergences": [
+    {
+      "bytes_transferred": null,
+      "classification": "peer_divergence",
+      "content_sha256": null,
+      "direction": "LXMF-rs -> rns-rs",
+      "failure_owner": "rns-rs",
+      "failure_reason": "timed out waiting for LXMF-rs path",
+      "normative_reference": "Python RNS 1.5.0 answers the same LXMF-rs path request",
+      "runtime_seconds": 15.006158,
+      "scenario": "path request and establishment",
+      "status": "FAIL",
+      "topology": "two-node"
+    },
+    {
+      "bytes_transferred": null,
+      "classification": "peer_divergence",
+      "content_sha256": null,
+      "direction": "bidirectional",
+      "failure_owner": "rns-rs",
+      "failure_reason": "timed out waiting for LXMF-rs Channel delivery proof: read channel message state: LinkNotReady",
+      "normative_reference": "Python RNS 1.5.0 proves the same bidirectional LXMF-rs Channel exchange",
+      "runtime_seconds": 15.10142,
+      "scenario": "Channel ordered exchange and proof",
+      "status": "FAIL",
+      "topology": "two-node"
+    },
+    {
+      "bytes_transferred": null,
+      "classification": "dependency_failed",
+      "content_sha256": null,
+      "direction": "rns-rs -> LXMF-rs",
+      "failure_owner": "rns-rs",
+      "failure_reason": "Channel proof divergence closed the Link before teardown",
+      "normative_reference": null,
+      "runtime_seconds": 0.0,
+      "scenario": "Link teardown",
+      "status": "BLOCKED",
+      "topology": "two-node"
+    },
+    {
+      "bytes_transferred": null,
+      "classification": "peer_divergence",
+      "content_sha256": null,
+      "direction": "LXMF-rs -> rns-rs",
+      "failure_owner": "rns-rs",
+      "failure_reason": "timed out waiting for rns-rs link 83e731e28e3e1f0036686475a15bc4ed active",
+      "normative_reference": "Python RNS 1.5.0 activates the same LXMF-rs-initiated Link",
+      "runtime_seconds": 12.134632,
+      "scenario": "Link establishment proof RTT",
+      "status": "FAIL",
+      "topology": "two-node"
+    },
+    {
+      "bytes_transferred": null,
+      "classification": "dependency_failed",
+      "content_sha256": null,
+      "direction": "LXMF-rs -> rns-rs",
+      "failure_owner": "rns-rs",
+      "failure_reason": "Link teardown cannot execute because the peer did not activate the Link",
+      "normative_reference": null,
+      "runtime_seconds": 0.0,
+      "scenario": "Link teardown",
+      "status": "BLOCKED",
+      "topology": "two-node"
+    }
+  ],
+  "performance": {
+    "active_links_1000": {
+      "attempted_links": 1000,
+      "reason": "pinned rns-rs public create_link surface did not complete exactly 1000 real Links within the bounded 300-second workload; no smaller count substituted",
+      "status": "not_supported",
+      "timeout_seconds": 300.0
+    },
+    "configuration": {
+      "large_links": 1000,
+      "large_links_timeout_seconds": 300.0,
+      "resource_boundary": "prepared send dispatch to receiver SHA-256 evidence",
+      "resource_payload": "seeded xorshift64 bytes prepared outside timed boundary",
+      "samples": 5,
+      "topology": "two-node isolated loopback TCP"
+    },
+    "environment": {
+      "architecture": "x86_64",
+      "build_mode": "release",
+      "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)",
+      "cpu": "AMD EPYC 7763 64-Core Processor",
+      "os": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+      "python": "3.12.14",
+      "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+      "same_runner": true
+    },
+    "generated_at_utc": "2026-08-24T14:16:08Z",
+    "implementations": {
+      "lxmf_rs": "5436ee715f94f81e18abb0808cfca52fcd7cc9bc",
+      "rns_rs": "6c6d79b83516feff271d15c97d39dd1de7798afe"
+    },
+    "link_setup": {
+      "p50_relative_mad": 0.01886129516534801,
+      "p50_seconds": 0.0017332850000002509,
+      "p95_seconds": 0.1031255529999271,
+      "p99_seconds": 0.1031255529999271,
+      "sample_count": 5,
+      "samples_seconds": [
+        0.1031255529999271,
+        0.0017245410000441552,
+        0.001700593000009576,
+        0.10260484100001577,
+        0.0017332850000002509
+      ],
+      "variation_class": "normal"
+    },
+    "path_convergence": {
+      "cold": {
+        "p50_relative_mad": 0.050097005006199714,
+        "p50_seconds": 0.0013452899999037982,
+        "p95_seconds": 0.0016173610000578265,
+        "p99_seconds": 0.0016173610000578265,
+        "sample_count": 5,
+        "samples_seconds": [
+          0.0016173610000578265,
+          0.0015157080000562928,
+          0.0013284389999626,
+          0.0013452899999037982,
+          0.0012778950000438272
+        ],
+        "variation_class": "normal"
+      },
+      "warm": {
+        "p50_relative_mad": 0.11241217762616214,
+        "p50_seconds": 0.0005128270000795965,
+        "p95_seconds": 0.0007100150000951544,
+        "p99_seconds": 0.0007100150000951544,
+        "sample_count": 5,
+        "samples_seconds": [
+          0.0007100150000951544,
+          0.0005704749999040359,
+          0.0005066450000867917,
+          0.0005128270000795965,
+          0.0004377369999701841
+        ],
+        "variation_class": "warning"
+      }
+    },
+    "public_cells": {
+      "active_links_1000": {
+        "lxmf_rs": {
+          "reason": "pinned rns-rs public create_link surface did not complete exactly 1000 real Links within the bounded 300-second workload; no smaller count substituted",
+          "status": "not_supported"
+        },
+        "rns_rs": {
+          "reason": "pinned rns-rs public create_link surface did not complete exactly 1000 real Links within the bounded 300-second workload; no smaller count substituted",
+          "status": "not_supported"
+        }
+      },
+      "announce_validation": {
+        "rns_rs": {
+          "reason": "peer does not expose an isolated announce-validation timing boundary",
+          "status": "not_supported"
+        }
+      },
+      "link_setup": {
+        "rns_rs": {
+          "details": {
+            "p50_relative_mad": 0.01886129516534801,
+            "p50_seconds": 0.0017332850000002509,
+            "p95_seconds": 0.1031255529999271,
+            "p99_seconds": 0.1031255529999271,
+            "sample_count": 5,
+            "samples_seconds": [
+              0.1031255529999271,
+              0.0017245410000441552,
+              0.001700593000009576,
+              0.10260484100001577,
+              0.0017332850000002509
+            ],
+            "variation_class": "normal"
+          },
+          "p99": 0.1031255529999271,
+          "status": "measured",
+          "value": 0.0017332850000002509
+        }
+      },
+      "packet_encode": {
+        "rns_rs": {
+          "reason": "peer exposes network send APIs, not an isolated packet codec benchmark",
+          "status": "not_supported"
+        }
+      },
+      "path_convergence_cold": {
+        "rns_rs": {
+          "details": {
+            "p50_relative_mad": 0.050097005006199714,
+            "p50_seconds": 0.0013452899999037982,
+            "p95_seconds": 0.0016173610000578265,
+            "p99_seconds": 0.0016173610000578265,
+            "sample_count": 5,
+            "samples_seconds": [
+              0.0016173610000578265,
+              0.0015157080000562928,
+              0.0013284389999626,
+              0.0013452899999037982,
+              0.0012778950000438272
+            ],
+            "variation_class": "normal"
+          },
+          "p99": 0.0016173610000578265,
+          "status": "measured",
+          "value": 0.0013452899999037982
+        }
+      },
+      "path_lookup_warm": {
+        "rns_rs": {
+          "details": {
+            "p50_relative_mad": 0.11241217762616214,
+            "p50_seconds": 0.0005128270000795965,
+            "p95_seconds": 0.0007100150000951544,
+            "p99_seconds": 0.0007100150000951544,
+            "sample_count": 5,
+            "samples_seconds": [
+              0.0007100150000951544,
+              0.0005704749999040359,
+              0.0005066450000867917,
+              0.0005128270000795965,
+              0.0004377369999701841
+            ],
+            "variation_class": "warning"
+          },
+          "p99": 0.0007100150000951544,
+          "status": "measured",
+          "value": 0.0005128270000795965
+        }
+      },
+      "resource_1mib": {
+        "lxmf_rs": {
+          "details": {
+            "bytes": 1048576,
+            "p50_seconds": 0.19316683399995327,
+            "p99_seconds": 0.19532242599996152,
+            "sha256": "cba3982ca4b9eed509792f63b1a517c101c95dab791ee31c96d1c7a66dd95d45"
+          },
+          "status": "measured",
+          "value": 5.176872133237127
+        },
+        "rns_rs": {
+          "details": {
+            "bytes": 1048576,
+            "p50_seconds": 0.20212424699991516,
+            "p99_seconds": 0.20223838599997634,
+            "sha256": "cba3982ca4b9eed509792f63b1a517c101c95dab791ee31c96d1c7a66dd95d45"
+          },
+          "status": "measured",
+          "value": 4.947451950187944
+        }
+      },
+      "resource_1mib_cpu": {
+        "lxmf_rs": {
+          "details": {
+            "workload_bytes": 1048576
+          },
+          "status": "measured",
+          "value": 99.99999999999997
+        },
+        "rns_rs": {
+          "details": {
+            "workload_bytes": 1048576
+          },
+          "status": "measured",
+          "value": 110.0
+        }
+      },
+      "resource_1mib_peak_ram": {
+        "lxmf_rs": {
+          "details": {
+            "workload_bytes": 1048576
+          },
+          "status": "measured",
+          "value": 27.2421875
+        },
+        "rns_rs": {
+          "details": {
+            "workload_bytes": 1048576
+          },
+          "status": "measured",
+          "value": 50.6640625
+        }
+      },
+      "resource_50mib": {
+        "lxmf_rs": {
+          "details": {
+            "bytes": 52428800,
+            "p50_seconds": 7.705481821000035,
+            "p99_seconds": 7.806883482999979,
+            "sha256": "649936cc2358a123d40923066aedd638f99981e940809bcd5f361be5b883f2c4"
+          },
+          "status": "measured",
+          "value": 6.4888868939685445
+        },
+        "rns_rs": {
+          "details": {
+            "bytes": 52428800,
+            "p50_seconds": 8.221782792999988,
+            "p99_seconds": 8.32456503200001,
+            "sha256": "649936cc2358a123d40923066aedd638f99981e940809bcd5f361be5b883f2c4"
+          },
+          "status": "measured",
+          "value": 6.08140609632377
+        }
+      },
+      "resource_50mib_cpu": {
+        "lxmf_rs": {
+          "details": {
+            "workload_bytes": 52428800
+          },
+          "status": "measured",
+          "value": 91.4
+        },
+        "rns_rs": {
+          "details": {
+            "workload_bytes": 52428800
+          },
+          "status": "measured",
+          "value": 109.80000000000004
+        }
+      },
+      "resource_50mib_peak_ram": {
+        "lxmf_rs": {
+          "details": {
+            "workload_bytes": 52428800
+          },
+          "status": "measured",
+          "value": 155.83984375
+        },
+        "rns_rs": {
+          "details": {
+            "workload_bytes": 52428800
+          },
+          "status": "measured",
+          "value": 272.5
+        }
+      }
+    },
+    "resources": {
+      "1048576": {
+        "lxmf_rs": {
+          "bytes": 1048576,
+          "cpu_ms_per_mib": 99.99999999999997,
+          "p50_relative_mad": 0.008040490014969755,
+          "p50_seconds": 0.19316683399995327,
+          "p95_seconds": 0.19532242599996152,
+          "p99_seconds": 0.19532242599996152,
+          "peak_rss_mib": 27.2421875,
+          "peer_cpu_ms_per_mib": 70.0,
+          "peer_peak_rss_mib": 50.6640625,
+          "raw_samples": [
+            {
+              "bytes": 1048576,
+              "cpu_seconds": 0.1,
+              "peak_rss_bytes": 20054016.0,
+              "peer_cpu_seconds": 0.08000000000000002,
+              "peer_peak_rss_bytes": 50159616.0,
+              "seconds": 0.19532242599996152,
+              "sha256": "cba3982ca4b9eed509792f63b1a517c101c95dab791ee31c96d1c7a66dd95d45"
+            },
+            {
+              "bytes": 1048576,
+              "cpu_seconds": 0.1,
+              "peak_rss_bytes": 27713536.0,
+              "peer_cpu_seconds": 0.07,
+              "peer_peak_rss_bytes": 52240384.0,
+              "seconds": 0.19316683399995327,
+              "sha256": "276cfbf2f0b8512c595527e6dffc93039133ac2726973b2b7dd559badfe209a3"
+            },
+            {
+              "bytes": 1048576,
+              "cpu_seconds": 0.08999999999999997,
+              "peak_rss_bytes": 28565504.0,
+              "peer_cpu_seconds": 0.06000000000000005,
+              "peer_peak_rss_bytes": 53125120.0,
+              "seconds": 0.19410848400002578,
+              "sha256": "d8c1185075fe9b970a0990fde9655feea8b09f7374de7d1ffd0ab0234ded738d"
+            },
+            {
+              "bytes": 1048576,
+              "cpu_seconds": 0.09999999999999998,
+              "peak_rss_bytes": 32870400.0,
+              "peer_cpu_seconds": 0.05999999999999994,
+              "peer_peak_rss_bytes": 53125120.0,
+              "seconds": 0.19161367799995332,
+              "sha256": "39b347aa18987a2ef210bcff083aa2d1c2cb67ffcd2e435d8f884fd409586e4a"
+            },
+            {
+              "bytes": 1048576,
+              "cpu_seconds": 0.09000000000000008,
+              "peak_rss_bytes": 32870400.0,
+              "peer_cpu_seconds": 0.07000000000000006,
+              "peer_peak_rss_bytes": 53227520.0,
+              "seconds": 0.1914821130000064,
+              "sha256": "64a1cb3e8ee11719ffab239f85a28a9861a9c8bc3b260f7e0ce9853d16f2500d"
+            }
+          ],
+          "sample_count": 5,
+          "samples_seconds": [
+            0.19532242599996152,
+            0.19316683399995327,
+            0.19410848400002578,
+            0.19161367799995332,
+            0.1914821130000064
+          ],
+          "sha256": "cba3982ca4b9eed509792f63b1a517c101c95dab791ee31c96d1c7a66dd95d45",
+          "throughput_mib_per_second": 5.176872133237127,
+          "variation_class": "normal"
+        },
+        "rns_rs": {
+          "bytes": 1048576,
+          "cpu_ms_per_mib": 110.0,
+          "p50_relative_mad": 0.00019864019588911085,
+          "p50_seconds": 0.20212424699991516,
+          "p95_seconds": 0.20223838599997634,
+          "p99_seconds": 0.20223838599997634,
+          "peak_rss_mib": 50.6640625,
+          "peer_cpu_ms_per_mib": 60.0,
+          "peer_peak_rss_mib": 26.4296875,
+          "raw_samples": [
+            {
+              "bytes": 1048576,
+              "cpu_seconds": 0.11,
+              "peak_rss_bytes": 48054272.0,
+              "peer_cpu_seconds": 0.06,
+              "peer_peak_rss_bytes": 15818752.0,
+              "seconds": 0.20199378800009526,
+              "sha256": "cba3982ca4b9eed509792f63b1a517c101c95dab791ee31c96d1c7a66dd95d45"
+            },
+            {
+              "bytes": 1048576,
+              "cpu_seconds": 0.10999999999999999,
+              "peak_rss_bytes": 52256768.0,
+              "peer_cpu_seconds": 0.06,
+              "peer_peak_rss_bytes": 20054016.0,
+              "seconds": 0.20223838599997634,
+              "sha256": "276cfbf2f0b8512c595527e6dffc93039133ac2726973b2b7dd559badfe209a3"
+            },
+            {
+              "bytes": 1048576,
+              "cpu_seconds": 0.12,
+              "peak_rss_bytes": 53284864.0,
+              "peer_cpu_seconds": 0.06,
+              "peer_peak_rss_bytes": 27713536.0,
+              "seconds": 0.20216439699993316,
+              "sha256": "d8c1185075fe9b970a0990fde9655feea8b09f7374de7d1ffd0ab0234ded738d"
+            },
+            {
+              "bytes": 1048576,
+              "cpu_seconds": 0.1100000000000001,
+              "peak_rss_bytes": 53125120.0,
+              "peer_cpu_seconds": 0.06000000000000005,
+              "peer_peak_rss_bytes": 29364224.0,
+              "seconds": 0.2021079240000745,
+              "sha256": "39b347aa18987a2ef210bcff083aa2d1c2cb67ffcd2e435d8f884fd409586e4a"
+            },
+            {
+              "bytes": 1048576,
+              "cpu_seconds": 0.10999999999999999,
+              "peak_rss_bytes": 53452800.0,
+              "peer_cpu_seconds": 0.05999999999999994,
+              "peer_peak_rss_bytes": 32870400.0,
+              "seconds": 0.20212424699991516,
+              "sha256": "64a1cb3e8ee11719ffab239f85a28a9861a9c8bc3b260f7e0ce9853d16f2500d"
+            }
+          ],
+          "sample_count": 5,
+          "samples_seconds": [
+            0.20199378800009526,
+            0.20223838599997634,
+            0.20216439699993316,
+            0.2021079240000745,
+            0.20212424699991516
+          ],
+          "sha256": "cba3982ca4b9eed509792f63b1a517c101c95dab791ee31c96d1c7a66dd95d45",
+          "throughput_mib_per_second": 4.947451950187944,
+          "variation_class": "normal"
+        }
+      },
+      "52428800": {
+        "lxmf_rs": {
+          "bytes": 52428800,
+          "cpu_ms_per_mib": 91.4,
+          "p50_relative_mad": 0.0004493449054126131,
+          "p50_seconds": 7.705481821000035,
+          "p95_seconds": 7.806883482999979,
+          "p99_seconds": 7.806883482999979,
+          "peak_rss_mib": 155.83984375,
+          "peer_cpu_ms_per_mib": 67.80000000000001,
+          "peer_peak_rss_mib": 272.83203125,
+          "raw_samples": [
+            {
+              "bytes": 52428800,
+              "cpu_seconds": 4.59,
+              "peak_rss_bytes": 144343040.0,
+              "peer_cpu_seconds": 3.3999999999999995,
+              "peer_peak_rss_bytes": 285736960.0,
+              "seconds": 7.806883482999979,
+              "sha256": "649936cc2358a123d40923066aedd638f99981e940809bcd5f361be5b883f2c4"
+            },
+            {
+              "bytes": 52428800,
+              "cpu_seconds": 4.549999999999999,
+              "peak_rss_bytes": 160026624.0,
+              "peer_cpu_seconds": 3.41,
+              "peer_peak_rss_bytes": 285736960.0,
+              "seconds": 7.702019402000019,
+              "sha256": "b1b850b0afb8b4487c8dd74e8f7f3f84d5a1653741c38ad80a0e93736df80f35"
+            },
+            {
+              "bytes": 52428800,
+              "cpu_seconds": 4.540000000000003,
+              "peak_rss_bytes": 163409920.0,
+              "peer_cpu_seconds": 3.3900000000000006,
+              "peer_peak_rss_bytes": 286085120.0,
+              "seconds": 7.703981066999972,
+              "sha256": "f07a7f87e86ecec3441adb514ba63571caa1a1652fd12233512ba0f1786a4142"
+            },
+            {
+              "bytes": 52428800,
+              "cpu_seconds": 4.57,
+              "peak_rss_bytes": 169148416.0,
+              "peer_cpu_seconds": 3.3799999999999955,
+              "peer_peak_rss_bytes": 288829440.0,
+              "seconds": 7.705481821000035,
+              "sha256": "ef01f226982d877954a64a8c9e75fbdbf35f3b818de6c2a16319c1d8e9f8387e"
+            },
+            {
+              "bytes": 52428800,
+              "cpu_seconds": 4.630000000000003,
+              "peak_rss_bytes": 171864064.0,
+              "peer_cpu_seconds": 3.3900000000000006,
+              "peer_peak_rss_bytes": 288829440.0,
+              "seconds": 7.803901006999922,
+              "sha256": "e600d9c9af81e80b72783aee4d96cc6c484f09b40187acdaa2ecfe90dd6a3a71"
+            }
+          ],
+          "sample_count": 5,
+          "samples_seconds": [
+            7.806883482999979,
+            7.702019402000019,
+            7.703981066999972,
+            7.705481821000035,
+            7.803901006999922
+          ],
+          "sha256": "649936cc2358a123d40923066aedd638f99981e940809bcd5f361be5b883f2c4",
+          "throughput_mib_per_second": 6.4888868939685445,
+          "variation_class": "normal"
+        },
+        "rns_rs": {
+          "bytes": 52428800,
+          "cpu_ms_per_mib": 109.80000000000004,
+          "p50_relative_mad": 0.00016989283651913097,
+          "p50_seconds": 8.221782792999988,
+          "p95_seconds": 8.32456503200001,
+          "p99_seconds": 8.32456503200001,
+          "peak_rss_mib": 272.5,
+          "peer_cpu_ms_per_mib": 61.400000000000006,
+          "peer_peak_rss_mib": 155.83984375,
+          "raw_samples": [
+            {
+              "bytes": 52428800,
+              "cpu_seconds": 5.5600000000000005,
+              "peak_rss_bytes": 145604608.0,
+              "peer_cpu_seconds": 3.14,
+              "peer_peak_rss_bytes": 144343040.0,
+              "seconds": 8.32456503200001,
+              "sha256": "649936cc2358a123d40923066aedd638f99981e940809bcd5f361be5b883f2c4"
+            },
+            {
+              "bytes": 52428800,
+              "cpu_seconds": 5.51,
+              "peak_rss_bytes": 285736960.0,
+              "peer_cpu_seconds": 3.0599999999999996,
+              "peer_peak_rss_bytes": 160026624.0,
+              "seconds": 8.214781043000016,
+              "sha256": "b1b850b0afb8b4487c8dd74e8f7f3f84d5a1653741c38ad80a0e93736df80f35"
+            },
+            {
+              "bytes": 52428800,
+              "cpu_seconds": 5.48,
+              "peak_rss_bytes": 285736960.0,
+              "peer_cpu_seconds": 3.0700000000000003,
+              "peer_peak_rss_bytes": 163409920.0,
+              "seconds": 8.220385971000042,
+              "sha256": "f07a7f87e86ecec3441adb514ba63571caa1a1652fd12233512ba0f1786a4142"
+            },
+            {
+              "bytes": 52428800,
+              "cpu_seconds": 5.490000000000002,
+              "peak_rss_bytes": 286085120.0,
+              "peer_cpu_seconds": 3.0700000000000003,
+              "peer_peak_rss_bytes": 169148416.0,
+              "seconds": 8.222587134000037,
+              "sha256": "ef01f226982d877954a64a8c9e75fbdbf35f3b818de6c2a16319c1d8e9f8387e"
+            },
+            {
+              "bytes": 52428800,
+              "cpu_seconds": 5.450000000000003,
+              "peak_rss_bytes": 288829440.0,
+              "peer_cpu_seconds": 3.129999999999999,
+              "peer_peak_rss_bytes": 171864064.0,
+              "seconds": 8.221782792999988,
+              "sha256": "e600d9c9af81e80b72783aee4d96cc6c484f09b40187acdaa2ecfe90dd6a3a71"
+            }
+          ],
+          "sample_count": 5,
+          "samples_seconds": [
+            8.32456503200001,
+            8.214781043000016,
+            8.220385971000042,
+            8.222587134000037,
+            8.221782792999988
+          ],
+          "sha256": "649936cc2358a123d40923066aedd638f99981e940809bcd5f361be5b883f2c4",
+          "throughput_mib_per_second": 6.08140609632377,
+          "variation_class": "normal"
+        }
+      }
+    },
+    "schema": "lxmf-rs-independent-performance-v1"
+  },
+  "raw_assets": [
+    "independent-rns-rs-raw.tar.gz",
+    "independent-reticulum-go-raw.tar.gz",
+    "lxmf-rs-performance-raw.tar.gz"
+  ],
+  "readiness_axes": {
+    "independent_interoperability": {
+      "Reticulum-Go": "PASS_SUPPORTED_SUBSET",
+      "rns-rs": "PASS"
+    },
+    "performance_evidence": {
+      "status": "PASS"
+    },
+    "physical_hil": {
+      "status": "SEPARATE_EVIDENCE_AXIS"
+    },
+    "pinned_python_interoperability": {
+      "source": ".github/workflows/verify.yml",
+      "status": "SEPARATE_REQUIRED_GATE"
+    },
+    "rns_1_5_0_software_parity": {
+      "applicable": 1838,
+      "complete": 1838,
+      "not_applicable": 1,
+      "partial": 0,
+      "source": "docs/status/python-surface-parity.json",
+      "status": "PASS",
+      "total": 1839,
+      "unmapped": 0
+    },
+    "third_party_clients": {
+      "status": "SEPARATE_EVIDENCE_AXIS"
+    }
+  },
+  "reference_boundary": "Python RNS/LXMF is the compatibility reference; rns-rs and Reticulum-Go are independently authored peer implementations.",
+  "schema": "lxmf-rs-independent-evidence-v1",
+  "topology_performance": [
+    {
+      "direction": "bidirectional",
+      "runtime_seconds": 5.639162,
+      "scenario": "five-node path convergence",
+      "topology": "A \u2014 B \u2014 C \u2014 D \u2014 E (all LXMF-rs)"
+    },
+    {
+      "direction": "A -> E",
+      "runtime_seconds": 0.10237,
+      "scenario": "five-node encrypted packet and proof",
+      "topology": "A \u2014 B \u2014 C \u2014 D \u2014 E (all LXMF-rs)"
+    },
+    {
+      "direction": "E -> A",
+      "runtime_seconds": 0.102155,
+      "scenario": "five-node encrypted packet and proof",
+      "topology": "A \u2014 B \u2014 C \u2014 D \u2014 E (all LXMF-rs)"
+    },
+    {
+      "direction": "A -> E",
+      "runtime_seconds": 0.101615,
+      "scenario": "five-node Link establishment proof",
+      "topology": "A \u2014 B \u2014 C \u2014 D \u2014 E (all LXMF-rs)"
+    },
+    {
+      "direction": "A -> E",
+      "runtime_seconds": 0.287673,
+      "scenario": "five-node Resource 1 MiB",
+      "topology": "A \u2014 B \u2014 C \u2014 D \u2014 E (all LXMF-rs)"
+    },
+    {
+      "direction": "E -> A",
+      "runtime_seconds": 0.283285,
+      "scenario": "five-node Resource 1 MiB",
+      "topology": "A \u2014 B \u2014 C \u2014 D \u2014 E (all LXMF-rs)"
+    },
+    {
+      "direction": "bidirectional",
+      "runtime_seconds": 0.101481,
+      "scenario": "five-node Link teardown",
+      "topology": "A \u2014 B \u2014 C \u2014 D \u2014 E (all LXMF-rs)"
+    },
+    {
+      "direction": "C restart",
+      "runtime_seconds": 0.102772,
+      "scenario": "five-node intermediate C restart",
+      "topology": "A \u2014 B \u2014 C \u2014 D \u2014 E (all LXMF-rs)"
+    },
+    {
+      "direction": "A -> E",
+      "runtime_seconds": 5.035633,
+      "scenario": "five-node path and traffic recovery",
+      "topology": "A \u2014 B \u2014 C \u2014 D \u2014 E (all LXMF-rs)"
+    },
+    {
+      "direction": "bidirectional",
+      "runtime_seconds": 4.63177,
+      "scenario": "five-node path convergence",
+      "topology": "A \u2014 B \u2014 C \u2014 D \u2014 E (mixed LXMF-rs/rns-rs)"
+    },
+    {
+      "direction": "A -> E",
+      "runtime_seconds": 0.102262,
+      "scenario": "five-node encrypted packet and proof",
+      "topology": "A \u2014 B \u2014 C \u2014 D \u2014 E (mixed LXMF-rs/rns-rs)"
+    },
+    {
+      "direction": "E -> A",
+      "runtime_seconds": 0.10206,
+      "scenario": "five-node encrypted packet and proof",
+      "topology": "A \u2014 B \u2014 C \u2014 D \u2014 E (mixed LXMF-rs/rns-rs)"
+    },
+    {
+      "direction": "A -> E",
+      "runtime_seconds": 0.101624,
+      "scenario": "five-node Link establishment proof",
+      "topology": "A \u2014 B \u2014 C \u2014 D \u2014 E (mixed LXMF-rs/rns-rs)"
+    },
+    {
+      "direction": "A -> E",
+      "runtime_seconds": 0.286079,
+      "scenario": "five-node Resource 1 MiB",
+      "topology": "A \u2014 B \u2014 C \u2014 D \u2014 E (mixed LXMF-rs/rns-rs)"
+    },
+    {
+      "direction": "E -> A",
+      "runtime_seconds": 0.283508,
+      "scenario": "five-node Resource 1 MiB",
+      "topology": "A \u2014 B \u2014 C \u2014 D \u2014 E (mixed LXMF-rs/rns-rs)"
+    },
+    {
+      "direction": "bidirectional",
+      "runtime_seconds": 0.101567,
+      "scenario": "five-node Link teardown",
+      "topology": "A \u2014 B \u2014 C \u2014 D \u2014 E (mixed LXMF-rs/rns-rs)"
+    },
+    {
+      "direction": "C restart",
+      "runtime_seconds": 0.105854,
+      "scenario": "five-node intermediate C restart",
+      "topology": "A \u2014 B \u2014 C \u2014 D \u2014 E (mixed LXMF-rs/rns-rs)"
+    },
+    {
+      "direction": "A -> E",
+      "runtime_seconds": 5.036292,
+      "scenario": "five-node path and traffic recovery",
+      "topology": "A \u2014 B \u2014 C \u2014 D \u2014 E (mixed LXMF-rs/rns-rs)"
+    }
+  ],
+  "version": "v0.10.0"
+}

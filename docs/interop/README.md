@@ -19,6 +19,13 @@ Tag runs also publish standalone combined JSON/Markdown/HTML release assets.
 
 The current versioned evidence is:
 
+- [`v0.10.0-independent.json`](v0.10.0-independent.json) — complete structured
+  peer results, readiness axes, pins, limitations, and five-sample independent
+  performance evidence;
+- [`v0.10.0-independent.md`](v0.10.0-independent.md) — concise human-readable
+  matrix;
+- [`v0.10.0-independent.html`](v0.10.0-independent.html) — standalone report
+  with the complete JSON embedded;
 - [`v0.9.9-independent.json`](v0.9.9-independent.json) — complete structured
   peer results, readiness axes, pins, limitations, and five-sample independent
   performance evidence;
@@ -27,12 +34,15 @@ The current versioned evidence is:
 - [`v0.9.9-independent.html`](v0.9.9-independent.html) — standalone report with
   the complete JSON embedded;
 - [`../performance/v0.9.9.json`](../performance/v0.9.9.json) and
-  [`../performance/v0.9.9.html`](../performance/v0.9.9.html) — canonical
+  [`../performance/v0.9.9.html`](../performance/v0.9.9.html) — historical
+  performance dataset and dashboard;
+- [`../performance/v0.10.0.json`](../performance/v0.10.0.json) and
+  [`../performance/v0.10.0.html`](../performance/v0.10.0.html) — current stable
   performance dataset and dashboard;
 - hosted raw interop evidence from workflow
-  [`31521912894`](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/31521912894)
+  [`32736249030`](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/32736249030)
   and checksummed raw performance evidence from workflow
-  [`31550356625`](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/31550356625).
+  [`32736249025`](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/32736249025).
 
 Actions artifacts are retention-bound. The same workflows attach the public
 reports, raw bundles, and checksums to GitHub Releases on tags so permanent

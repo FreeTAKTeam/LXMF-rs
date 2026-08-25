@@ -7,16 +7,16 @@ an application.
 ## Install a stable release
 
 The [`v0.10.0` release](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.10.0)
-is the prepared RNS 1.5.0-aligned release train. Once its immutable tag is
-published, it provides Linux, macOS, and Windows archives, Debian and RPM
-packages, a Windows MSI, SBOMs, and checksum files. Choose the asset for your
-platform and verify it against `SHA256SUMS` before extracting or installing it.
+is the published RNS 1.5.0-aligned stable release. It provides Linux, macOS,
+and Windows archives, Debian and RPM packages, a Windows MSI, SBOMs, and
+checksum files. Choose the asset for your platform and verify it against
+`SHA256SUMS.txt` before extracting or installing it.
 
-For example, after downloading the Linux x86-64 archive and `SHA256SUMS` into
+For example, after downloading the Linux x86-64 archive and `SHA256SUMS.txt` into
 the same directory:
 
 ```bash
-grep 'lxmf-rs_0.10.0_linux-x86_64.tar.gz$' SHA256SUMS | sha256sum -c -
+grep 'lxmf-rs_0.10.0_linux-x86_64.tar.gz$' SHA256SUMS.txt | sha256sum -c -
 tar -xzf lxmf-rs_0.10.0_linux-x86_64.tar.gz
 ```
 
