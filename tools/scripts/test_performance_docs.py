@@ -7,7 +7,7 @@ from performance_docs import DEFAULT_RELEASE, make_environment_paths_portable
 
 class PerformanceDocsTests(unittest.TestCase):
     def test_default_release_tracks_current_published_dataset(self) -> None:
-        self.assertEqual(DEFAULT_RELEASE, "v0.10.0")
+        self.assertEqual(DEFAULT_RELEASE, "v0.10.1")
 
     def test_environment_reference_paths_are_repository_relative(self) -> None:
         data = {

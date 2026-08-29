@@ -33,8 +33,11 @@ The v0.10.0 baseline is superseded by stable v0.10.1, merged on `main` at
 maintenance release carries the exact RNS 1.5.2 pin, queue/keepalive/shared-
 instance fixes, IFAC/profiling parity surfaces, and owned-buffer Resource
 sender equivalent. Platform artifacts, provenance, independent interop, OCI,
-and all 17 public crates are published for that immutable boundary; the
-tag-triggered performance comparison remains a separate hosted evidence run.
+performance evidence, and all 17 public crates are published for that immutable
+boundary. The performance gate is `pass_with_warnings` with throughput `1.013x`,
+CPU `1.010x`, and peak RSS `1.084x` versus the same-runner v0.9.1 baseline; its
+sole warning is the documented 13.99% Rust resource-sized message-encode
+dispersion.
 
 The project is best described by capability level:
 
@@ -47,7 +50,7 @@ The project is best described by capability level:
 | Full Python software surface parity | achieved | The strict inventory reports 1,857 complete, 0 partial, and 1 provenance-backed not-applicable entry. |
 | ZeroMQ SDK-access parity | achieved in v0.9.5 implementation | Generated classification and daemon-operation inventory live in `sdk-zmq-parity.json`; release evidence must still pass all gates. |
 | Independent implementation evidence | published for stable `v0.10.1` | Pinned rns-rs and Reticulum-Go release profiles cover two-node/multi-hop behavior; rns-rs additionally covers mixed/all-Rust five-node chains, routing policy, restart, shared daemon, exact large Resources, and deterministic chaos. Explicit peer divergences remain failures owned by the peer and are allowlisted narrowly by CI. |
-| Performance evidence | hosted release run in progress | The tag workflow is measuring the bounded v0.10.1 dataset; publish its checksummed JSON, HTML, raw evidence, and regression-gate result when run `33254264175` completes. |
+| Performance evidence | published for stable `v0.10.1` | Tag workflow [`33254264175`](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/33254264175) passed with the bounded checksummed JSON, HTML, raw evidence, and regression-gate result. The gate is `pass_with_warnings` for one documented 13.99% Rust resource-sized encode dispersion; throughput/CPU/RSS ratios are `1.013x`/`1.010x`/`1.084x`. |
 
 The independent evidence axis is documented in [`docs/interop`](../interop/README.md).
 It does not promote Python parity rows, third-party clients, physical interfaces,
@@ -55,16 +58,18 @@ or public-network soak. Pull requests run the bounded rns-rs profile; nightly an
 release tiers add both peers, expanded chaos, exact 50 MiB transfers, raw logs,
 and standalone JSON/Markdown/HTML artifacts.
 
-The canonical historical stable performance dataset is
-[`docs/performance/v0.10.0.json`](../performance/v0.10.0.json), with its
-standalone dashboard at [`docs/performance/v0.10.0.html`](../performance/v0.10.0.html).
+The canonical stable performance dataset is
+[`docs/performance/v0.10.1.json`](../performance/v0.10.1.json), with its
+standalone dashboard at [`docs/performance/v0.10.1.html`](../performance/v0.10.1.html).
+The historical v0.10.0 dataset remains available at
+[`docs/performance/v0.10.0.json`](../performance/v0.10.0.json).
 The v0.10.1 independent interoperability workflow
 [`33254264125`](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/33254264125)
 passed on the immutable release commit and its public reports are attached to
 the [`v0.10.1` release](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.10.1).
 The v0.10.1 performance workflow is
 [`33254264175`](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/33254264175)
-and remains pending while the bounded comparison completes.
+and passed with the four performance assets attached to the public release.
 
 ## v0.9.9 Historical Stable Release
 
@@ -122,8 +127,10 @@ crates.io publication workflow
 and independent interoperability workflow
 [33254264125](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/33254264125)
 passed; Homebrew was skipped because `HOMEBREW_TAP_TOKEN` is not configured.
-The tag-triggered performance comparison is tracked separately by workflow
-[33254264175](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/33254264175).
+The tag-triggered performance comparison [33254264175](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/33254264175)
+passed with the documented bounded warning and attached its checksummed JSON,
+HTML, raw bundle, and checksum to the release; the gate result is recorded in
+the stable release ledger.
 
 ## v0.9.9-rc.6 Historical Release Candidate
 

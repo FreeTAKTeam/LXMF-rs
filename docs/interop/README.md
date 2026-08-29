@@ -28,6 +28,9 @@ The current versioned evidence is:
   — standalone release-tag report with the complete JSON embedded;
 - [v0.10.1 release assets](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.10.1)
   — checksummed raw peer bundles and per-peer checksums;
+- [`v0.10.1 performance JSON`](https://github.com/FreeTAKTeam/LXMF-rs/releases/download/v0.10.1/lxmf-rs-performance.json)
+  and [`v0.10.1 performance dashboard`](https://github.com/FreeTAKTeam/LXMF-rs/releases/download/v0.10.1/lxmf-rs-performance.html)
+  — the bounded stable release performance dataset;
 
 - [`v0.10.0-independent.json`](v0.10.0-independent.json) — complete structured
   peer results, readiness axes, pins, limitations, and five-sample independent
@@ -46,9 +49,12 @@ The current versioned evidence is:
 - [`../performance/v0.9.9.json`](../performance/v0.9.9.json) and
   [`../performance/v0.9.9.html`](../performance/v0.9.9.html) — historical
   performance dataset and dashboard;
-- [`../performance/v0.10.0.json`](../performance/v0.10.0.json) and
-  [`../performance/v0.10.0.html`](../performance/v0.10.0.html) — current stable
+- [`../performance/v0.10.1.json`](../performance/v0.10.1.json) and
+  [`../performance/v0.10.1.html`](../performance/v0.10.1.html) — current stable
   performance dataset and dashboard;
+- [`../performance/v0.10.0.json`](../performance/v0.10.0.json) and
+  [`../performance/v0.10.0.html`](../performance/v0.10.0.html) — historical
+  stable performance dataset and dashboard;
 - hosted raw interop evidence from workflow
   [`33254264125`](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/33254264125)
   and the v0.10.1 release assets, plus historical workflow

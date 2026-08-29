@@ -23,7 +23,7 @@ START = "<!-- performance-summary:start -->"
 END = "<!-- performance-summary:end -->"
 PYTHON_INTEROP_WORKFLOW = ROOT / ".github/workflows/verify.yml"
 PYTHON_BENCHMARK_CONFIG = ROOT / "tools/benchmarks/python_impl.toml"
-DEFAULT_RELEASE = "v0.10.0"
+DEFAULT_RELEASE = "v0.10.1"
 
 
 def parse_args() -> argparse.Namespace:

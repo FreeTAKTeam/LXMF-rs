@@ -15,14 +15,14 @@ plus embedded and FFI surfaces.
 <!-- performance-summary:start -->
 ## Measured performance
 
-Release dataset: `v0.10.0` at `5436ee715f94f81e18abb0808cfca52fcd7cc9bc`; Python Reticulum `e32d4df754a7` and LXMF `727830cefda8`.
+Release dataset: `v0.10.1` at `25a976945cb335dff3be692981151c8741a5fdeb`; Python Reticulum `ea98db4f53dc` and LXMF `727830cefda8`.
 
 | Matched workload | Rust p50 | Python p50 | Rust/Python |
 |---|---:|---:|---:|
-| LXMF message decode | 225 ns | 7.87 ms | 35029.62x |
-| LXMF message encode | 386 ns | 2.10 ms | 5432.72x |
-| LXMF large message decode | 378 ns | 7.93 ms | 20991.57x |
-| LXMF large message encode | 761 ns | 2.12 ms | 2783.14x |
+| LXMF message decode | 225 ns | 7.99 ms | 35459.28x |
+| LXMF message encode | 385 ns | 2.10 ms | 5450.73x |
+| LXMF large message decode | 370 ns | 7.96 ms | 21536.64x |
+| LXMF large message encode | 773 ns | 2.12 ms | 2743.59x |
 
 These are matched-workload comparisons, not a claim of whole-system superiority. See [methodology, complete results, variability, and limitations](docs/performance.md).
 <!-- performance-summary:end -->
@@ -36,7 +36,8 @@ aligned with Python Reticulum 1.5.2 at
 `ea98db4f53dcf0defc0e71a16e60d28b1229c4e6`. The immutable tag resolves to
 reviewed release commit `25a976945cb335dff3be692981151c8741a5fdeb`; release
 artifacts, crates.io packages, independent interoperability reports,
-provenance, and the OCI image are published for that exact boundary.
+performance evidence, provenance, and the OCI image are published for that
+exact boundary.
 
 | Area | Current position |
 | --- | --- |

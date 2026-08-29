@@ -55,5 +55,8 @@ architecture and boundary checks, and the hosted pull-request workflows. The
 tag-triggered Release, crates.io, independent-interoperability, performance,
 signing, provenance, and OCI workflows publish evidence for the immutable
 `v0.10.1` tag. Homebrew publication is skipped when its tap/token is not
-configured; that does not affect the archives, native packages, crates, or OCI
-publication.
+configured; that does not affect the archives, native packages, crates, OCI, or
+performance publication. The performance release gate completed as
+`pass_with_warnings` with throughput `1.013x`, CPU `1.010x`, and peak RSS
+`1.084x` versus the same-runner v0.9.1 baseline; the only warning is the
+documented 13.99% Rust resource-sized message-encode dispersion.
