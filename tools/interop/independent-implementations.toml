@@ -1,12 +1,12 @@
 schema_version = 1
-rns_reference_version = "1.5.0"
-rns_reference_revision = "e32d4df754a7b87b1bf1bb0d08675d12ff505ae6"
+rns_reference_version = "1.5.2"
+rns_reference_revision = "ea98db4f53dcf0defc0e71a16e60d28b1229c4e6"
 
 [python_reference]
 implementation = "Reticulum-Python"
 repository = "https://github.com/markqvist/Reticulum.git"
-version = "1.5.0"
-revision = "e32d4df754a7b87b1bf1bb0d08675d12ff505ae6"
+version = "1.5.2"
+revision = "ea98db4f53dcf0defc0e71a16e60d28b1229c4e6"
 
 [peers.rns_rs]
 implementation = "rns-rs"

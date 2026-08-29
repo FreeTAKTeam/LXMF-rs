@@ -40,7 +40,7 @@ class IndependentInteropGateTests(unittest.TestCase):
                 "classification": classification,
                 "failure_owner": "rns-rs",
                 "normative_reference": (
-                    "Python RNS 1.5.0 confirms the peer divergence"
+                    "Python RNS 1.5.2 confirms the peer divergence"
                     if classification == "peer_divergence"
                     else None
                 ),
@@ -88,7 +88,7 @@ class IndependentInteropGateTests(unittest.TestCase):
         )
         self.assertTrue(
             any(
-                "lacks Python RNS 1.5.0 evidence" in error
+                "lacks Python RNS 1.5.2 evidence" in error
                 for error in validate(
                     {"level": "pr", "peer": {"implementation": "rns-rs"}, "scenarios": rows}
                 )

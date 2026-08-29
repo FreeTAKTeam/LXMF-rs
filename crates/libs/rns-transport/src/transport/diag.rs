@@ -3,6 +3,15 @@ use crate::hash::AddressHash;
 use super::path_table::PathTable;
 use super::{SendPacketOutcome, TxDispatchTrace};
 
+pub(super) fn bytes_to_hex(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        use std::fmt::Write;
+        let _ = write!(&mut out, "{:02x}", byte);
+    }
+    out
+}
+
 pub(super) fn log_route_lookup(path_table: &PathTable, destination: &AddressHash) {
     if let Some(entry) = path_table.get(destination) {
         log::trace!(

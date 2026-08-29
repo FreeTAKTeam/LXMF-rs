@@ -2,6 +2,41 @@
   "schema_version": 1,
   "rules": [
     {
+      "pattern": "RNS.Reticulum.Reticulum.get_profiling_results",
+      "implementation": "complete",
+      "rust_surface": ["reticulum-rs-transport::Transport::get_profiling_results", "reticulum-rs-transport::Profiler"],
+      "evidence": ["unit", "simulated", "pinned-python"],
+      "notes": "Returns the process-wide RNS 1.5-compatible profiler snapshot after the first completed capture and None before any capture. Shared-instance RPC consumers use the same transport status surface."
+    },
+    {
+      "pattern": "RNS.Transport.Transport.handle_ifac",
+      "implementation": "complete",
+      "rust_surface": ["reticulum-rs-transport::Transport::handle_ifac", "reticulum-rs-transport::IfacContext"],
+      "evidence": ["unit", "pinned-python"],
+      "notes": "RNS 1.5.2 optimized IFAC unmasking, tag verification, and payload recovery are parity-tested against a deterministic Python vector. Carrier configuration remains fail-closed until a runtime interface opts into the codec."
+    },
+    {
+      "pattern": "RNS.Transport.Transport.handle_ifac_legacy",
+      "implementation": "complete",
+      "rust_surface": ["reticulum-rs-transport::Transport::handle_ifac_legacy", "reticulum-rs-transport::IfacContext"],
+      "evidence": ["unit", "pinned-python"],
+      "notes": "The legacy byte-loop entry point shares the parity-tested codec and is kept for callers that select the reference implementation path."
+    },
+    {
+      "pattern": "RNS.Transport.Transport.handle_outgoing_ifac",
+      "implementation": "complete",
+      "rust_surface": ["reticulum-rs-transport::Transport::handle_outgoing_ifac", "reticulum-rs-transport::IfacContext"],
+      "evidence": ["unit", "pinned-python"],
+      "notes": "RNS 1.5.2 optimized IFAC tag generation and payload masking are parity-tested against a deterministic Python vector."
+    },
+    {
+      "pattern": "RNS.Transport.Transport.handle_outgoing_ifac_legacy",
+      "implementation": "complete",
+      "rust_surface": ["reticulum-rs-transport::Transport::handle_outgoing_ifac_legacy", "reticulum-rs-transport::IfacContext"],
+      "evidence": ["unit", "pinned-python"],
+      "notes": "The legacy byte-loop entry point shares the parity-tested codec and is kept for callers that select the reference implementation path."
+    },
+    {
       "pattern": "RNS.Discovery.is_invalid_ip_address",
       "implementation": "complete",
       "rust_surface": ["reticulum-rs-transport::discovery::is_invalid_ip_address"],

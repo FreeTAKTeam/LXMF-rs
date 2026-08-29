@@ -35,13 +35,13 @@ The latest published stable release is
 aligned with Python Reticulum 1.5.0. The immutable tag resolves to the
 reviewed release commit, and the release artifacts, crates.io publication,
 independent interoperability reports, provenance, and OCI image are published
-for that exact boundary. The workspace packages are version `0.10.0`; current
-maintenance targets the pinned Python Reticulum 1.5.0 reference at
-`e32d4df754a7b87b1bf1bb0d08675d12ff505ae6`.
+for that exact boundary. The current candidate workspace packages are version
+`0.10.1`; the candidate targets Python Reticulum 1.5.2 at
+`ea98db4f53dcf0defc0e71a16e60d28b1229c4e6`.
 
 | Area | Current position |
 | --- | --- |
-| Reticulum software parity | 1,838 applicable entries complete, 0 partial, 0 unmapped, and 1 provenance-backed not-applicable entry |
+| Reticulum software parity | 1,857 applicable entries complete, 0 partial, 0 unmapped, and 1 provenance-backed not-applicable entry |
 | LXMF software parity | All seven tracked software scenarios complete |
 | Rust/Python interoperability | Direct, link, channel, paper, propagation, and daemon scenarios exercised against pinned references |
 | Independent interoperability | Versioned rns-rs and Reticulum-Go evidence published separately for `v0.10.0` |
@@ -86,8 +86,8 @@ Library consumers can start with the umbrella crates:
 
 ```toml
 [dependencies]
-lxmf = "0.10.0"
-reticulum-rs = "0.10.0"
+lxmf = "0.10.1"
+reticulum-rs = "0.10.1"
 ```
 
 See [Getting started](docs/getting-started.md) for release downloads, checksum

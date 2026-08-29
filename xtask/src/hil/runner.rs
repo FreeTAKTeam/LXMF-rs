@@ -195,10 +195,10 @@ pub fn run(config: &HilConfig, args: RunArgs) -> Result<()> {
             .unwrap_or_else(|_| "unknown".to_string()),
     );
     report.environment.insert("seed".to_string(), seed.to_string());
-    report.environment.insert("python_rns_version".to_string(), "1.5.0".to_string());
+    report.environment.insert("python_rns_version".to_string(), "1.5.2".to_string());
     report.environment.insert(
         "python_rns_revision".to_string(),
-        "e32d4df754a7b87b1bf1bb0d08675d12ff505ae6".to_string(),
+        "ea98db4f53dcf0defc0e71a16e60d28b1229c4e6".to_string(),
     );
     report.environment.insert(
         "python_lxmf_revision".to_string(),

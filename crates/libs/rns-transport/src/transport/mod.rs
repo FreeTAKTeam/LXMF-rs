@@ -470,12 +470,14 @@ mod config;
 mod core;
 // handler: packet send pipeline and routing/encryption outcomes.
 mod handler;
+mod ifac;
 // jobs: background maintenance loops and periodic work.
 mod jobs;
 // links: link lifecycle and link-scoped data/resource operations.
 mod links;
 // path: path request/response forwarding and intermediate handling.
 mod path;
+mod profiling;
 // resource_wire: link-scoped resource packet handling on inbound wire paths.
 mod resource_wire;
 // wire_encryption: packet-context policy for transport-layer encryption.
@@ -485,14 +487,8 @@ mod wire_receipt;
 // wire: inbound packet handlers and wire-level packet logic.
 mod wire;
 
-fn bytes_to_hex(bytes: &[u8]) -> String {
-    let mut out = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        use std::fmt::Write;
-        let _ = write!(&mut out, "{:02x}", byte);
-    }
-    out
-}
+pub use ifac::{IfacContext, IFAC_MIN_SIZE, IFAC_SALT};
+pub use profiling::{Profiler, ProfilerGuard};
 
 #[cfg(test)]
 mod tests;

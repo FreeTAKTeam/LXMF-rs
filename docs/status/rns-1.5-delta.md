@@ -1,12 +1,12 @@
-# RNS 1.5.0 Alignment Ledger
+# RNS 1.5.2 Alignment Ledger
 
-Last reassessed: 2026-08-23
+Last reassessed: 2026-08-29
 
-This ledger classifies every item in the upstream Reticulum 1.5.0 `Changes`
-section. The authority is tag `1.5.0`, peeled to
-`e32d4df754a7b87b1bf1bb0d08675d12ff505ae6`; the previous active reference was
-`1.4.2`. The source comparison is `1.4.2..1.5.0` (88 commits, 65 changed
-files). Callable classification is independently generated in
+This ledger preserves the historical RNS 1.5.0 baseline and classifies the
+maintenance delta through upstream Reticulum 1.5.2. The authority is tag `1.5.2`, peeled to
+`ea98db4f53dcf0defc0e71a16e60d28b1229c4e6`; the previous active reference was
+`1.5.0`. The source comparison is `1.5.0..1.5.2` (15 commits, with the
+release-note fixes listed below). Callable classification is independently generated in
 `python-surface-parity.json`; this file covers release-note behavior that an
 AST inventory cannot prove.
 
@@ -14,6 +14,22 @@ AST inventory cannot prove.
 means the Rust architecture avoids the Python-specific failure mechanism while
 preserving the observable contract. `hardware-unverified` and
 `platform-unverified` constrain evidence, not implementation.
+
+## RNS 1.5.1/1.5.2 maintenance delta
+
+| # | Upstream change | Rust disposition | Focused evidence | Remaining boundary |
+|---:|---|---|---|---|
+| 1 | Stream-based Resource initialization regression fixed in RNS 1.5.2 | equivalent: Rust Resource senders own an explicit `Vec<u8>` and never infer a zero-sized file stat for a readable stream; the owned-buffer boundary cannot reproduce the Python 1.5.1 failure | `cargo test -p reticulum-rs-transport resource` and split/lazy sender tests | A file/stream adapter is not part of the Rust API; cross-implementation `rngit` stream downloads remain separate. |
+| 2 | Empty I2P keepalive frames no longer enter transport processing | complete: empty HDLC frames are drained and ignored before packet decode/admission | `cargo test -p reticulum-rs-transport tcp_client` (watchdog keepalive regression) | I2P hardware/network timing remains separately evidenced. |
+| 3 | Backbone dataplane control defaults tuned to 90/68/10 | complete: queue and ingress/egress control defaults are 1024/128/128/8 for the RNS 1.5.2 transport baseline; shared LocalClient interfaces bypass the control loop | `cargo test -p reticulum-rs-transport rns_1_5_2_shared_instance_interfaces_bypass_dataplane_control`; `cargo test -p reticulum-rs-transport rns_1_5_queue_limits` | Sustained high-rate carrier calibration remains a performance/HIL concern. |
+| 4 | Shared LocalClient interfaces excluded from ingress/egress dataplane control | complete: shared-instance interfaces are excluded from path-request admission, announce pacing, and egress limiter accounting | same shared-instance regression and interface traffic tests | Physical shared-instance deployments remain separately evidenced. |
+| 5 | IFAC optimized/legacy handlers and live profiler surfaces retained in RNS 1.5.x | complete at the library boundary: `IfacContext` implements optimized and legacy framing with a pinned Python vector; `Profiler` and `Transport::get_profiling_results` expose RNS-compatible status snapshots. Daemon IFAC configuration remains fail-closed until carrier wiring is added. | `cargo test -p reticulum-rs-transport ifac`; `cargo test -p reticulum-rs-transport profiling` | Raw IFAC carrier configuration and live multi-process profiler RPC remain outside this release. |
+
+## Historical RNS 1.5.0 baseline
+
+The rows below are the retained RNS 1.5.0 alignment record. They remain
+historical evidence for the immutable v0.10.0 release; active pins and counts
+are updated only in the maintenance section above and in the current matrices.
 
 ## Added and improved behavior
 
@@ -68,7 +84,7 @@ preserving the observable contract. `hardware-unverified` and
 
 ## Exact inventory and evidence boundary
 
-The exact RNS 1.5.0/LXMF reference regeneration reports 1,839 entries: 1,838
+The exact RNS 1.5.2/LXMF reference regeneration reports 1,858 entries: 1,857
 complete, zero partial, zero unmapped, and one provenance-backed
 not-applicable `CRNS` package. The 28 callables added since the previous pin
 have explicit mapping rules; none is promoted by a wildcard alone.

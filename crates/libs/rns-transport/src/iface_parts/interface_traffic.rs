@@ -333,7 +333,7 @@ impl InterfaceManager {
         let Some(iface) = self.ifaces.iter_mut().find(|iface| iface.address == address) else {
             return false;
         };
-        if iface.shared_config.ingress_control == Some(false) {
+        if iface.is_shared_instance || iface.shared_config.ingress_control == Some(false) {
             iface.traffic.path_request_burst_active = false;
             return false;
         }

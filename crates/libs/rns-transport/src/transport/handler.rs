@@ -1,4 +1,5 @@
 use super::diag;
+use super::diag::bytes_to_hex;
 use super::wire_encryption::should_encrypt_packet;
 use super::*;
 use crate::iface::InterfaceMode;

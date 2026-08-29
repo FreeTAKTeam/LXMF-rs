@@ -3814,6 +3814,19 @@
         "unit",
         "pinned-python"
       ],
+      "id": "RNS.Cryptography.HKDF.hkdf_legacy",
+      "implementation": "complete",
+      "kind": "function",
+      "rust_surface": [
+        "reticulum-rs-core::crypto"
+      ],
+      "source": "Cryptography/HKDF.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
       "id": "RNS.Cryptography.HMAC.HMAC",
       "implementation": "complete",
       "kind": "class",
@@ -10067,23 +10080,6 @@
         "pinned-python",
         "hardware-unverified"
       ],
-      "id": "RNS.Interfaces.BackboneInterface.BackboneClientInterface.check_frame_len",
-      "implementation": "complete",
-      "kind": "method",
-      "rust_surface": [
-        "reticulum-rs-transport::iface::tcp_client",
-        "reticulum-rs-transport::iface::tcp_server",
-        "reticulum-rs-transport::iface::hdlc"
-      ],
-      "source": "Interfaces/BackboneInterface.py"
-    },
-    {
-      "evidence": [
-        "unit",
-        "simulated",
-        "pinned-python",
-        "hardware-unverified"
-      ],
       "id": "RNS.Interfaces.BackboneInterface.BackboneClientInterface.connect",
       "implementation": "complete",
       "kind": "method",
@@ -10696,40 +10692,6 @@
         "hardware-unverified"
       ],
       "id": "RNS.Interfaces.BackboneInterface.BackboneInterface.tx_ready",
-      "implementation": "complete",
-      "kind": "method",
-      "rust_surface": [
-        "reticulum-rs-transport::iface::tcp_client",
-        "reticulum-rs-transport::iface::tcp_server",
-        "reticulum-rs-transport::iface::hdlc"
-      ],
-      "source": "Interfaces/BackboneInterface.py"
-    },
-    {
-      "evidence": [
-        "unit",
-        "simulated",
-        "pinned-python",
-        "hardware-unverified"
-      ],
-      "id": "RNS.Interfaces.BackboneInterface.HDLC",
-      "implementation": "complete",
-      "kind": "class",
-      "rust_surface": [
-        "reticulum-rs-transport::iface::tcp_client",
-        "reticulum-rs-transport::iface::tcp_server",
-        "reticulum-rs-transport::iface::hdlc"
-      ],
-      "source": "Interfaces/BackboneInterface.py"
-    },
-    {
-      "evidence": [
-        "unit",
-        "simulated",
-        "pinned-python",
-        "hardware-unverified"
-      ],
-      "id": "RNS.Interfaces.BackboneInterface.HDLC.escape",
       "implementation": "complete",
       "kind": "method",
       "rust_surface": [
@@ -12052,36 +12014,6 @@
         "reticulum-rs-transport::kiss"
       ],
       "source": "Interfaces/KISSInterface.py"
-    },
-    {
-      "evidence": [
-        "unit",
-        "simulated",
-        "pinned-python"
-      ],
-      "id": "RNS.Interfaces.LocalInterface.HDLC",
-      "implementation": "complete",
-      "kind": "class",
-      "rust_surface": [
-        "reticulum-rs-transport::iface::local",
-        "reticulumd::bootstrap_interface_startup"
-      ],
-      "source": "Interfaces/LocalInterface.py"
-    },
-    {
-      "evidence": [
-        "unit",
-        "simulated",
-        "pinned-python"
-      ],
-      "id": "RNS.Interfaces.LocalInterface.HDLC.escape",
-      "implementation": "complete",
-      "kind": "method",
-      "rust_surface": [
-        "reticulum-rs-transport::iface::local",
-        "reticulumd::bootstrap_interface_startup"
-      ],
-      "source": "Interfaces/LocalInterface.py"
     },
     {
       "evidence": [
@@ -16361,6 +16293,231 @@
         "simulated",
         "pinned-python"
       ],
+      "id": "RNS.Interfaces.util.HDLC.HDLC",
+      "implementation": "complete",
+      "kind": "class",
+      "rust_surface": [
+        "reticulum-rs-transport::iface::driver",
+        "reticulum-rs-transport::iface::hdlc"
+      ],
+      "source": "Interfaces/util/HDLC.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Interfaces.util.HDLC.HDLC.escape",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::iface::driver",
+        "reticulum-rs-transport::iface::hdlc"
+      ],
+      "source": "Interfaces/util/HDLC.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Interfaces.util.HDLC.HDLC.unescape",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::iface::driver",
+        "reticulum-rs-transport::iface::hdlc"
+      ],
+      "source": "Interfaces/util/HDLC.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Interfaces.util.HDLC.ReceiveBuffer",
+      "implementation": "complete",
+      "kind": "class",
+      "rust_surface": [
+        "reticulum-rs-transport::iface::driver",
+        "reticulum-rs-transport::iface::hdlc"
+      ],
+      "source": "Interfaces/util/HDLC.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Interfaces.util.HDLC.ReceiveBuffer.feed",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::iface::driver",
+        "reticulum-rs-transport::iface::hdlc"
+      ],
+      "source": "Interfaces/util/HDLC.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Interfaces.util.HDLC.ReceiveBuffer.max",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::iface::driver",
+        "reticulum-rs-transport::iface::hdlc"
+      ],
+      "source": "Interfaces/util/HDLC.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Interfaces.util.HDLC.ReceiveBuffer.mtu",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::iface::driver",
+        "reticulum-rs-transport::iface::hdlc"
+      ],
+      "source": "Interfaces/util/HDLC.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Interfaces.util.HDLC.ReceiveBuffer.reset",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::iface::driver",
+        "reticulum-rs-transport::iface::hdlc"
+      ],
+      "source": "Interfaces/util/HDLC.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Interfaces.util.TransmitBuffer.TransmitBuffer",
+      "implementation": "complete",
+      "kind": "class",
+      "rust_surface": [
+        "reticulum-rs-transport::iface::driver",
+        "reticulum-rs-transport::iface::hdlc"
+      ],
+      "source": "Interfaces/util/TransmitBuffer.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Interfaces.util.TransmitBuffer.TransmitBuffer.append",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::iface::driver",
+        "reticulum-rs-transport::iface::hdlc"
+      ],
+      "source": "Interfaces/util/TransmitBuffer.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Interfaces.util.TransmitBuffer.TransmitBuffer.chunks_buffered",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::iface::driver",
+        "reticulum-rs-transport::iface::hdlc"
+      ],
+      "source": "Interfaces/util/TransmitBuffer.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Interfaces.util.TransmitBuffer.TransmitBuffer.drain_to",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::iface::driver",
+        "reticulum-rs-transport::iface::hdlc"
+      ],
+      "source": "Interfaces/util/TransmitBuffer.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Interfaces.util.TransmitBuffer.TransmitBuffer.flush",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::iface::driver",
+        "reticulum-rs-transport::iface::hdlc"
+      ],
+      "source": "Interfaces/util/TransmitBuffer.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Interfaces.util.TransmitBuffer.TransmitBuffer.frames_buffered",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::iface::driver",
+        "reticulum-rs-transport::iface::hdlc"
+      ],
+      "source": "Interfaces/util/TransmitBuffer.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
+      "id": "RNS.Interfaces.util.TransmitBuffer.TransmitBuffer.sendable",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-transport::iface::driver",
+        "reticulum-rs-transport::iface::hdlc"
+      ],
+      "source": "Interfaces/util/TransmitBuffer.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
       "id": "RNS.Interfaces.util.netinfo.Adapter",
       "implementation": "complete",
       "kind": "class",
@@ -17786,6 +17943,20 @@
         "unit",
         "pinned-python"
       ],
+      "id": "RNS.Packet.Packet.truncated_packet_hash",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-core::packet",
+        "reticulum-rs-transport::packet"
+      ],
+      "source": "Packet.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
       "id": "RNS.Packet.Packet.unpack",
       "implementation": "complete",
       "kind": "method",
@@ -18052,6 +18223,20 @@
         "unit",
         "pinned-python"
       ],
+      "id": "RNS.Profiler.format_results",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-core",
+        "reticulum-rs-transport"
+      ],
+      "source": "__init__.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
       "id": "RNS.Profiler.get_profiler",
       "implementation": "complete",
       "kind": "method",
@@ -18067,6 +18252,20 @@
         "pinned-python"
       ],
       "id": "RNS.Profiler.pause",
+      "implementation": "complete",
+      "kind": "method",
+      "rust_surface": [
+        "reticulum-rs-core",
+        "reticulum-rs-transport"
+      ],
+      "source": "__init__.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Profiler.profile",
       "implementation": "complete",
       "kind": "method",
       "rust_surface": [
@@ -19253,6 +19452,22 @@
         "simulated",
         "pinned-python"
       ],
+      "id": "RNS.Reticulum.Reticulum.get_profiling_results",
+      "implementation": "complete",
+      "kind": "method",
+      "notes": "Returns the process-wide RNS 1.5-compatible profiler snapshot after the first completed capture and None before any capture. Shared-instance RPC consumers use the same transport status surface.",
+      "rust_surface": [
+        "reticulum-rs-transport::Transport::get_profiling_results",
+        "reticulum-rs-transport::Profiler"
+      ],
+      "source": "Reticulum.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "simulated",
+        "pinned-python"
+      ],
       "id": "RNS.Reticulum.Reticulum.get_rate_table",
       "implementation": "complete",
       "kind": "method",
@@ -20096,6 +20311,36 @@
     {
       "evidence": [
         "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Transport.Transport.handle_ifac",
+      "implementation": "complete",
+      "kind": "method",
+      "notes": "RNS 1.5.2 optimized IFAC unmasking, tag verification, and payload recovery are parity-tested against a deterministic Python vector. Carrier configuration remains fail-closed until a runtime interface opts into the codec.",
+      "rust_surface": [
+        "reticulum-rs-transport::Transport::handle_ifac",
+        "reticulum-rs-transport::IfacContext"
+      ],
+      "source": "Transport.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Transport.Transport.handle_ifac_legacy",
+      "implementation": "complete",
+      "kind": "method",
+      "notes": "The legacy byte-loop entry point shares the parity-tested codec and is kept for callers that select the reference implementation path.",
+      "rust_surface": [
+        "reticulum-rs-transport::Transport::handle_ifac_legacy",
+        "reticulum-rs-transport::IfacContext"
+      ],
+      "source": "Transport.py"
+    },
+    {
+      "evidence": [
+        "unit",
         "simulated",
         "pinned-python"
       ],
@@ -20106,6 +20351,36 @@
         "reticulum-rs-transport::Transport::recv_announces",
         "reticulum-rs-transport::transport::announce",
         "reticulum-rs-transport::InterfaceManager::drop_announce_queues"
+      ],
+      "source": "Transport.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Transport.Transport.handle_outgoing_ifac",
+      "implementation": "complete",
+      "kind": "method",
+      "notes": "RNS 1.5.2 optimized IFAC tag generation and payload masking are parity-tested against a deterministic Python vector.",
+      "rust_surface": [
+        "reticulum-rs-transport::Transport::handle_outgoing_ifac",
+        "reticulum-rs-transport::IfacContext"
+      ],
+      "source": "Transport.py"
+    },
+    {
+      "evidence": [
+        "unit",
+        "pinned-python"
+      ],
+      "id": "RNS.Transport.Transport.handle_outgoing_ifac_legacy",
+      "implementation": "complete",
+      "kind": "method",
+      "notes": "The legacy byte-loop entry point shares the parity-tested codec and is kept for callers that select the reference implementation path.",
+      "rust_surface": [
+        "reticulum-rs-transport::Transport::handle_outgoing_ifac_legacy",
+        "reticulum-rs-transport::IfacContext"
       ],
       "source": "Transport.py"
     },
@@ -28380,7 +28655,7 @@
   ],
   "references": {
     "lxmf": "727830cefda83d9c6e3982b48675425f3f988f9c",
-    "reticulum": "e32d4df754a7b87b1bf1bb0d08675d12ff505ae6"
+    "reticulum": "ea98db4f53dcf0defc0e71a16e60d28b1229c4e6"
   },
   "schema_version": 1,
   "scope": {
@@ -28392,8 +28667,8 @@
     "includes": "public RNS/LXMF callables and committed manual product contracts"
   },
   "summary": {
-    "complete": 1838,
+    "complete": 1857,
     "not-applicable": 1,
-    "total": 1839
+    "total": 1858
   }
 }

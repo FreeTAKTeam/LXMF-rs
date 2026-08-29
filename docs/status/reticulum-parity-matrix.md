@@ -26,21 +26,26 @@ v0.9.5 exposes software-controlled daemon operations through capability-gated
 cryptography/wire behavior remains local-library access. Physical equipment and
 human-operated validation remain the explicit v1.0 boundary.
 
-## RNS 1.5.0 baseline update
+## RNS 1.5.2 baseline update
 
-The pinned Python baseline is RNS `1.5.0` at
-`e32d4df754a7b87b1bf1bb0d08675d12ff505ae6`. Regenerating the strict public
-surface inventory produces **1,838 complete, 0 partial, and 1
+The pinned Python baseline is RNS `1.5.2` at
+`ea98db4f53dcf0defc0e71a16e60d28b1229c4e6`. Regenerating the strict public
+surface inventory produces **1,857 complete, 0 partial, and 1
 not-applicable entry across 1,839 entries**.
 
-The focused work preserves the completed 1.4.2 surface and closes the RNS 1.5
+The focused work preserves the completed 1.5.0 surface and closes the RNS 1.5.1
+and 1.5.2 maintenance deltas: stream-resource initialization behavior is
+compatible with the Rust owned-buffer boundary, empty HDLC keepalives are
+discarded before packet admission, shared LocalClient interfaces bypass
+Backbone dataplane control, queue defaults match the new upstream values, and
+IFAC/profiling helpers are parity-tested. The RNS 1.5
 ingress scheduling/filtering, path batching, telemetry, timeout, discovery, and
 Channel/Buffer deltas. The generated inventory has no remaining partial or
 unmapped entries; the one not-applicable entry is the provenance-backed absent
 `CRNS` package.
 
-The historical v0.9.8 release record retains its own release-boundary inventory.
-Current development `main` supersedes it with this 1,838/0/1 software
+The historical v0.10.0 release record retains its own release-boundary inventory.
+Current development `main` supersedes it with this 1,857/0/1 software
 inventory. The Rust resource sender enforces the Python
 `receiver_min_consecutive_height` serving window; collision-list regeneration
 and cross-implementation transfer evidence remain narrower follow-up concerns.
@@ -63,7 +68,7 @@ negotiation, runtime feature checks, or the separate hardware-evidence axis.
 | `RNS/Identity.py` | `crates/libs/rns-core` | complete | unit, pinned-python | Identity material, hashing, signing, encryption, recall, and key conversion. | No confirmed parity blocker. |
 | `RNS/Destination.py` | `crates/libs/rns-core`, `crates/libs/rns-transport` | complete | unit, pinned-python | Destination hashing, descriptors, announces, proof generation and validation, ratchets, known-key stability checks, and bounded request/response enforcement. Single-destination Data delivery proofs are correlated through the packet cache before identity verification. | No generated callable software gap remains; broader scenario and external-client evidence is tracked independently. |
 | `RNS/Packet.py` | `crates/libs/rns-core`, `crates/libs/rns-transport` | complete | unit, pinned-python | Framing, serialization, contexts, proofs, receipts, public post-encryption packet-hash correlation, explicit and implicit proof-destination correlation, Python-default link proof context, and header semantics. | No confirmed parity blocker. |
-| `RNS/Transport.py` | `crates/libs/rns-transport`, `crates/apps/reticulumd` | complete | unit, simulated, pinned-python | Path and announce handling, bounded four-class priority ingress, early filtering, protocol accounting, same-destination request batching, gravity-aware replacement, dynamic path rebalancing, boundary path requests, path replacement/state/await semantics, routed links/resources/receipts/tunnels, next-hop formulas, interface lifecycle, discovery and blackhole state, persistence, runtime jobs, graceful shutdown, and focused scoped-request, pacing, duplicate-suppression, MTU, restore/restart, transport-disabled, and announce-table-admission evidence. | No generated 1.5.0 callable software gap remains; multi-device, public-network, and broader scenario evidence remains separate. Python's local-client announce timing (immediate single retransmit) is not implemented, and the shared-instance condition reads the receiving interface rather than Python's parent-interface `is_local_client_interface`. |
+| `RNS/Transport.py` | `crates/libs/rns-transport`, `crates/apps/reticulumd` | complete | unit, simulated, pinned-python | Path and announce handling, bounded four-class priority ingress, early filtering, protocol accounting, same-destination request batching, gravity-aware replacement, dynamic path rebalancing, boundary path requests, path replacement/state/await semantics, routed links/resources/receipts/tunnels, next-hop formulas, interface lifecycle, discovery and blackhole state, persistence, runtime jobs, graceful shutdown, RNS 1.5.2 shared-instance dataplane control, queue defaults, IFAC helpers, profiling results, `announces_from_internal`/`announces_to_internal` policy propagation, and focused scoped-request, pacing, duplicate-suppression, MTU, restore/restart, transport-disabled, and announce-table-admission evidence. | No generated 1.5.2 callable software gap remains; multi-device, public-network, and broader scenario evidence remains separate. Python's local-client announce timing (immediate single retransmit) is not implemented, and the shared-instance condition reads the receiving interface rather than Python's parent-interface `is_local_client_interface`. |
 | `RNS/Link.py` | `crates/libs/rns-transport` | complete | unit, pinned-python | Establishment, proof validation, bounded request/response correlation, bound-interface enforcement for data/channel fan-out, RTT-derived liveness, protocol close, cleanup, and the focused dynamic path-rebalancing slice. | No generated callable software gap remains; cross-implementation and external-client evidence is separate. |
 | `RNS/Resource.py` | `crates/libs/rns-transport` | complete | unit, simulated, pinned-python | Bounded receive allocation, advertisement validation, retries, receiver-minimum collision-guard serving window, window-local hashmap exhaustion gating, bz2 compression, adaptive fragment scheduling, timeout/failure events, cancellation, cleanup, split-resource sequencing, ordered reassembly, per-segment metadata, and whole-resource completion. | Serving-window software contract is complete; collision-list regeneration and cross-implementation transfer evidence are narrower follow-ups. |
 | `RNS/Channel.py` | `crates/libs/rns-transport` | complete | unit, pinned-python | Channel packet handling, retry scheduling, negotiated full-link MDU, buffering, ordered receive delivery, callback ordering/short-circuit/panic containment, delivery-on-proof, timeout retry, exhaustion cleanup, and live Rust/Python channel sequence tests. | No confirmed channel parity blocker. |

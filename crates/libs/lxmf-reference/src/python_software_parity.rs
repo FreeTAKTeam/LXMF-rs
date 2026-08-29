@@ -2,14 +2,14 @@
 // Do not edit manually.
 
 pub const PYTHON_SOFTWARE_PARITY_LEVEL: &str = "complete";
-pub const PYTHON_SOFTWARE_PARITY_TOTAL: usize = 1_839;
-pub const PYTHON_SOFTWARE_PARITY_COMPLETE: usize = 1_838;
+pub const PYTHON_SOFTWARE_PARITY_TOTAL: usize = 1_858;
+pub const PYTHON_SOFTWARE_PARITY_COMPLETE: usize = 1_857;
 pub const PYTHON_SOFTWARE_PARITY_PARTIAL: usize = 0;
 pub const PYTHON_SOFTWARE_PARITY_NOT_APPLICABLE: usize = 1;
 
 pub const PYTHON_RETICULUM_PARITY_LEVEL: &str = "complete";
-pub const PYTHON_RETICULUM_PARITY_TOTAL: usize = 1_636;
-pub const PYTHON_RETICULUM_PARITY_COMPLETE: usize = 1_636;
+pub const PYTHON_RETICULUM_PARITY_TOTAL: usize = 1_655;
+pub const PYTHON_RETICULUM_PARITY_COMPLETE: usize = 1_655;
 pub const PYTHON_RETICULUM_PARITY_PARTIAL: usize = 0;
 pub const PYTHON_RETICULUM_PARITY_NOT_APPLICABLE: usize = 0;
 

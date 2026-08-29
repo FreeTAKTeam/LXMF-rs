@@ -165,10 +165,10 @@ mod tests {
     #[tokio::test]
     async fn rns_1_5_runtime_accessors_report_empty_runtime_consistently() {
         let transport = Transport::new(TransportConfig::default());
-        assert_eq!(Transport::default_data_queue_length(), 4096);
-        assert_eq!(Transport::default_announce_queue_length(), 256);
-        assert_eq!(Transport::default_path_request_queue_length(), 256);
-        assert_eq!(Transport::default_ingress_limited_queue_length(), 128);
+        assert_eq!(Transport::default_data_queue_length(), 1024);
+        assert_eq!(Transport::default_announce_queue_length(), 128);
+        assert_eq!(Transport::default_path_request_queue_length(), 128);
+        assert_eq!(Transport::default_ingress_limited_queue_length(), 8);
         assert_eq!(transport.link_count().await, 0);
         assert_eq!(transport.active_link_count().await, 0);
         assert_eq!(transport.lowest_interface_bitrate().await, None);

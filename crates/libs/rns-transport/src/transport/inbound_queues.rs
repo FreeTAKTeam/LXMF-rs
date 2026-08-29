@@ -3,10 +3,11 @@ use std::sync::Mutex;
 
 use tokio::sync::Notify;
 
-pub const DEFAULT_DATA_QUEUE_LENGTH: usize = 4096;
-pub const DEFAULT_ANNOUNCE_QUEUE_LENGTH: usize = 256;
-pub const DEFAULT_PATH_REQUEST_QUEUE_LENGTH: usize = 256;
-pub const DEFAULT_INGRESS_LIMITED_QUEUE_LENGTH: usize = 128;
+// Keep these defaults in lock-step with RNS 1.5.2 `Transport.py`.
+pub const DEFAULT_DATA_QUEUE_LENGTH: usize = 1024;
+pub const DEFAULT_ANNOUNCE_QUEUE_LENGTH: usize = 128;
+pub const DEFAULT_PATH_REQUEST_QUEUE_LENGTH: usize = 128;
+pub const DEFAULT_INGRESS_LIMITED_QUEUE_LENGTH: usize = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(usize)]

@@ -51,7 +51,7 @@ class IndependentEvidencePublishTests(unittest.TestCase):
         self.assertEqual(len(bundle["known_peer_divergences"]), 1)
         self.assertEqual(bundle["readiness_axes"]["performance_evidence"]["status"], "NOT_RUN")
         self.assertEqual(
-            bundle["readiness_axes"]["rns_1_5_0_software_parity"]["applicable"], 2
+            bundle["readiness_axes"]["rns_1_5_2_software_parity"]["applicable"], 2
         )
 
     def test_renderers_embed_results_and_escape_html(self) -> None:

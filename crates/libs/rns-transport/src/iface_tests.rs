@@ -485,6 +485,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn rns_1_5_2_shared_instance_interfaces_bypass_dataplane_control() {
+        let mut manager = InterfaceManager::new(16);
+        let channel = manager.new_channel(16);
+        let address = *channel.address();
+        assert!(manager.set_shared_instance(address, true));
+        assert!(manager.set_shared_config(
+            address,
+            crate::iface::InterfaceSharedConfig {
+                ingress_control: Some(true),
+                egress_control: Some(true),
+                ic_pr_burst_freq_new: Some(0.0),
+                ic_pr_burst_freq: Some(0.0),
+                ec_pr_freq: Some(0.0),
+                ..Default::default()
+            },
+        ));
+
+        for _ in 0..8 {
+            assert!(manager.record_inbound_traffic(address, PacketType::Data, true, 32));
+            manager.ifaces[0].outgoing_pr_history.push_back(Instant::now());
+        }
+        assert!(!manager.should_ingress_limit_path_request(address));
+        assert!(!InterfaceManager::should_egress_limit_pr(
+            &mut manager.ifaces[0],
+            Instant::now(),
+        ));
+    }
+
+    #[tokio::test]
     async fn egress_control_false_does_not_limit_path_request_broadcasts() {
         let mut mgr = InterfaceManager::new(16);
         let mut rx = mgr.new_channel(16).tx_channel;

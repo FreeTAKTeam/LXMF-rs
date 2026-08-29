@@ -9,8 +9,8 @@
 - Compatibility track: LXMF-rs `0.5.x` keeps the `lxmf` `0.3.x` and
   `reticulum-rs` `0.2.x` package line unless release notes declare otherwise.
 - During active refactor development, integration CI may pin exact git revisions.
-- Python Reticulum compatibility is assessed against version `1.5.0` at commit
-  `e32d4df754a7b87b1bf1bb0d08675d12ff505ae6`. The version is diagnostic; the
+- Python Reticulum compatibility is assessed against version `1.5.2` at commit
+  `ea98db4f53dcf0defc0e71a16e60d28b1229c4e6`. The version is diagnostic; the
   commit remains the reproducible compatibility identity.
 - Python LXMF compatibility is validated against version `0.9.6` at commit
   `727830cefda83d9c6e3982b48675425f3f988f9c`. The version is diagnostic; the

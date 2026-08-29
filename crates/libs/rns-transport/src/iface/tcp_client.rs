@@ -581,6 +581,15 @@ pub(crate) async fn run_hdlc_stream_with_runtime<R, W>(
                                         let frame = &buffers.frame[start..=end];
                                         let mut output = OutputBuffer::new(buffers.decoded.as_mut_slice());
                                         if Hdlc::decode(frame, &mut output).is_ok() {
+                                            // RNS 1.5.2 treats an empty HDLC
+                                            // frame as a keepalive, not as a
+                                            // malformed packet. It must not
+                                            // enter packet admission or emit a
+                                            // protocol warning.
+                                            if output.as_slice().is_empty() {
+                                                buffers.frame.drain(..=end);
+                                                continue;
+                                            }
                                             if let Ok(packet) =
                                                 Packet::deserialize(&mut InputBuffer::new(output.as_slice()))
                                             {

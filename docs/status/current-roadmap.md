@@ -19,20 +19,22 @@ override these status files.
 ## Current Position
 
 LXMF-rs retains the v0.9.5 SDK-access baseline and now reaches complete
-software-surface parity against Python RNS 1.5.0 at
-`e32d4df754a7b87b1bf1bb0d08675d12ff505ae6`. The 1.5 alignment adds bounded
+software-surface parity against Python RNS 1.5.2 at
+`ea98db4f53dcf0defc0e71a16e60d28b1229c4e6`. The 1.5 alignment adds bounded
 priority ingress queues, early filtering and protocol accounting, in-flight
 path-request batching, negotiated Channel/Buffer MDU use, discovery operator
 addresses, queue/interface/link telemetry, and medium-bitrate timeout accessors.
 The exact upstream-to-Rust disposition is recorded in
 [`rns-1.5-delta.md`](rns-1.5-delta.md).
 
-This alignment is merged on `main` at
-`e9111b2621afc31329fa403a61696b7a3d8987f1` and published as stable `v0.10.0`
-on immutable release commit `5436ee715f94f81e18abb0808cfca52fcd7cc9bc`. Public
-package manifests and the root `VERSION` use `0.10.0`, consistent with the
-repository release policy. Tag-triggered artifacts, provenance, independent
-interop, and crates.io evidence are tied to that exact commit.
+The v0.10.0 baseline is merged on `main` at
+`9f4dd91e210bb57add7ffba514d9546a956d423a` and published on immutable release
+commit `5436ee715f94f81e18abb0808cfca52fcd7cc9bc`. The v0.10.1 maintenance
+candidate carries the RNS 1.5.2 pin, the queue/keepalive/shared-instance fixes,
+and the IFAC/profiling parity surfaces. Public package manifests and the root
+`VERSION` use `0.10.1` on the candidate branch; tag-triggered artifacts,
+provenance, independent interop, and crates.io evidence remain pending until
+that candidate is reviewed and tagged.
 
 The project is best described by capability level:
 
@@ -41,8 +43,8 @@ The project is best described by capability level:
 | Wire compatible | achieved | Core Reticulum packet/identity primitives and LXMF message encodings are implemented and tested. |
 | Direct-message interoperable | achieved | Selected bidirectional Rust/Python direct, link, channel, paper, and daemon paths are exercised in CI. |
 | Propagation interoperable | achieved | Propagated delivery, complete Python-only `LXMPeer.py` lifecycle coverage, and Python-reference propagation router fetch/download/sync lifecycle coverage are implemented and tested. |
-| Operationally substitutable | achieved against RNS 1.5.0 | The software-controlled runtime includes the 1.5 ingress, routing, telemetry, timeout, discovery, and `rngit` slices. |
-| Full Python software surface parity | achieved | The strict inventory reports 1,838 complete, 0 partial, and 1 provenance-backed not-applicable entry. |
+| Operationally substitutable | achieved against RNS 1.5.2 | The software-controlled runtime includes the 1.5 ingress, routing, telemetry, timeout, discovery, dataplane-control, keepalive, IFAC, profiling, and `rngit` slices. |
+| Full Python software surface parity | achieved | The strict inventory reports 1,857 complete, 0 partial, and 1 provenance-backed not-applicable entry. |
 | ZeroMQ SDK-access parity | achieved in v0.9.5 implementation | Generated classification and daemon-operation inventory live in `sdk-zmq-parity.json`; release evidence must still pass all gates. |
 | Independent implementation evidence | published for stable `v0.10.0` | Pinned rns-rs and Reticulum-Go release profiles cover two-node/multi-hop behavior; rns-rs additionally covers mixed/all-Rust five-node chains, routing policy, restart, shared daemon, exact large Resources, and deterministic chaos. Explicit peer divergences remain failures owned by the peer and are allowlisted narrowly by CI. |
 | Performance evidence | published for stable `v0.10.0` | The immutable tag workflow passed with checksummed JSON, HTML, raw evidence, and a clean regression gate: throughput `1.008x`, CPU `1.005x`, and peak RSS `1.086x` versus the same-runner v0.9.1 baseline. |
@@ -78,8 +80,9 @@ provenance, and standalone interoperability/performance evidence. Stable
 release notes are in
 [`docs/release-notes-v0.9.9.md`](../release-notes-v0.9.9.md).
 
-The current development boundary is 1,839 generated entries: 1,838 applicable
-and complete, zero partial, zero unmapped, and one provenance-backed
+The historical v0.10.0 boundary was 1,839 generated entries. The current
+RNS 1.5.2 development boundary is 1,858 entries: 1,857 applicable and complete,
+zero partial, zero unmapped, and one provenance-backed
 not-applicable entry. The published v0.9.9 tag retains its historical 1.4.2
 inventory. Physical interfaces, public networks, and third-party clients remain
 separate evidence axes described above.
@@ -227,8 +230,8 @@ stale or unmapped entries.
 
 The RNS 1.2.2 baseline recorded **1,664 implementation-complete, 0 partial,
 and 1 provenance-backed not-applicable entry across 1,665 entries**. The
-current RNS 1.5.0 inventory records **1,838 implementation-complete, 0
-partial, and 1 provenance-backed not-applicable entry across 1,839 entries**.
+current RNS 1.5.2 inventory records **1,857 implementation-complete, 0
+partial, and 1 provenance-backed not-applicable entry across 1,858 entries**.
 Documentation CI checks inventory drift; the release gate continues to require
 zero partial entries. SDK negotiation and daemon runtime status expose this as
 an advisory consumer orientation with separate overall, Reticulum, and LXMF
@@ -1670,7 +1673,7 @@ validated without their own evidence.
 
 ## Active Execution Order
 
-1. Keep the generated RNS 1.5.0 inventory and both parity matrices at zero
+1. Keep the generated RNS 1.5.2 inventory and both parity matrices at zero
    partial or unmapped software entries as maintenance changes land.
 2. Preserve exact-SHA Python-reference, independent-interoperability, and
    performance evidence for release-facing changes.

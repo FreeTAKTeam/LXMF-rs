@@ -5,7 +5,7 @@ pub(super) fn run_release_check() -> Result<()> {
     run_correctness_check()?;
     run("python3", &["tools/scripts/check_python_reference_pins.py", "--self-test"])?;
     run("cargo", &["doc", "--workspace", "--no-deps", "--lib"])?;
-    // The inventory gate enforces the exact RNS 1.5.0 target rather than
+    // The inventory gate enforces the exact RNS 1.5.2 target rather than
     // accepting a merely well-formed or partially mapped manifest.
     run_python_surface_parity_check(true)?;
     run_sdk_zmq_parity_check()?;

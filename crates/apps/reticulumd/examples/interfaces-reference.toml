@@ -52,7 +52,7 @@
 # announce_rate_penalty = 0
 # bootstrap_only = false
 # ignore_config_warnings = false
-# Reticulum IFAC authentication is not implemented in v0.10.0. Configuring
+# Reticulum IFAC authentication is not enabled in v0.10.1. Configuring
 # ifac_size/network_name/passphrase (or their aliases) is rejected at startup.
 # ingress_control = false
 # egress_control = false

@@ -1,6 +1,6 @@
 # Independent interoperability evidence
 
-Python Reticulum 1.5.0 at `e32d4df754a7b87b1bf1bb0d08675d12ff505ae6`
+Python Reticulum 1.5.2 at `ea98db4f53dcf0defc0e71a16e60d28b1229c4e6`
 and pinned Python LXMF remain the compatibility reference for active release
 gates. This directory records a separate evidence axis against independently
 authored implementations; it does not replace the Python parity inventory.

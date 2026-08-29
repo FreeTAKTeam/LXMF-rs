@@ -417,7 +417,7 @@ mod tests {
 
         let status = bridge.transport_status().expect("transport status");
         assert_eq!(status["inbound_queues"]["total"], 0);
-        assert_eq!(status["inbound_queues"]["total_limit"], 4736);
+        assert_eq!(status["inbound_queues"]["total_limit"], 1288);
         assert_eq!(status["traffic"]["rx_bytes"], 100);
         assert_eq!(status["traffic"]["announce_rx_count"], 1);
         assert_eq!(status["link_count"], 0);

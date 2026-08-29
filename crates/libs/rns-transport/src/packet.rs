@@ -296,6 +296,13 @@ impl Packet {
         )
     }
 
+    /// Returns the 128-bit packet hash used by Reticulum proof destinations
+    /// and reverse-table keys in RNS 1.5.2.
+    #[must_use]
+    pub fn truncated_packet_hash(&self) -> AddressHash {
+        AddressHash::new_from_hash(&self.hash())
+    }
+
     pub fn fragment_for_lxmf(data: &[u8]) -> Result<Vec<Packet>, RnsError> {
         let mut out = Vec::new();
         for chunk in data.chunks(Self::LXMF_MAX_PAYLOAD) {

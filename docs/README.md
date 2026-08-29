@@ -41,6 +41,10 @@ Update these documents when their corresponding behavior changes:
   release summary, with immutable-tag evidence tracked in its
   [release ledger](status/v0.10.0-release.md). The superseded rc.1 record
   remains in the [historical candidate ledger](status/v0.10.0-release-candidate.md).
+- [v0.10.1 release notes](release-notes-v0.10.1.md): RNS 1.5.2 maintenance
+  candidate, with qualification tracked in the
+  [candidate ledger](status/v0.10.1-release-candidate.md) and the reserved
+  [stable ledger](status/v0.10.1-release.md).
 - [Contracts](contracts/): public compatibility, support, API, payload, RPC,
   and protocol guarantees.
 - [Interfaces](interfaces/): interface-specific configuration and integration
@@ -84,6 +88,7 @@ Update these documents when their corresponding behavior changes:
   [dashboard](performance/v0.10.0.html)
 - [v0.10.0 historical candidate evidence](status/v0.10.0-release-candidate.md)
 - [v0.10.0 RNS 1.5 migration guide](migrations/v0.10.0-rns-1.5.md)
+- [v0.10.1 RNS 1.5.2 migration guide](migrations/v0.10.1-rns-1.5.2.md)
 - [Release readiness](runbooks/release-readiness.md)
 - [Release process](RELEASING.md)
 - [crates.io publication plan](runbooks/crates-io-publish-plan.md)

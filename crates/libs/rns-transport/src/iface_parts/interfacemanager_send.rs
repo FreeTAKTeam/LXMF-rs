@@ -46,6 +46,7 @@ impl InterfaceManager {
         let now = Instant::now();
         let scoped_path_request_blocked = scoped_path_request_iface
             .and_then(|address| self.ifaces.iter().find(|iface| iface.address == address))
+            .filter(|iface| !iface.is_shared_instance)
             .map(|iface| !iface.announce_queue.is_empty() || now < iface.announce_allowed_at)
             .unwrap_or(false);
         if !scoped_path_request_blocked {
@@ -117,6 +118,7 @@ impl InterfaceManager {
                     && message.packet.header.hops > 0
                     && matches!(message.tx_type, TxMessageType::Broadcast(_));
                 if is_paced_announce
+                    && !iface.is_shared_instance
                     && (!iface.announce_queue.is_empty() || now < iface.announce_allowed_at)
                 {
                     if Self::queue_announce(iface, message.clone(), now) {
@@ -127,7 +129,7 @@ impl InterfaceManager {
                     continue;
                 }
 
-                if is_paced_announce {
+                if is_paced_announce && !iface.is_shared_instance {
                     iface.announce_allowed_at = now
                         + announce_wait(
                             &message.packet,

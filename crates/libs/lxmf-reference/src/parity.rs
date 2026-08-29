@@ -137,20 +137,20 @@ mod tests {
         assert_eq!(orientation.overall.level, ParityLevel::Complete);
         assert_eq!(
             orientation.overall.complete_ratio,
-            ParityRatio { numerator: 1_838, denominator: 1_838 }
+            ParityRatio { numerator: 1_857, denominator: 1_857 }
         );
         assert_eq!(
             orientation.overall.inventory,
-            ParityInventory { total: 1_839, complete: 1_838, partial: 0, not_applicable: 1 }
+            ParityInventory { total: 1_858, complete: 1_857, partial: 0, not_applicable: 1 }
         );
         assert_eq!(orientation.reticulum.level, ParityLevel::Complete);
         assert_eq!(
             orientation.reticulum.complete_ratio,
-            ParityRatio { numerator: 1_636, denominator: 1_636 }
+            ParityRatio { numerator: 1_655, denominator: 1_655 }
         );
         assert_eq!(
             orientation.reticulum.inventory,
-            ParityInventory { total: 1_636, complete: 1_636, partial: 0, not_applicable: 0 }
+            ParityInventory { total: 1_655, complete: 1_655, partial: 0, not_applicable: 0 }
         );
         assert_eq!(orientation.lxmf.level, ParityLevel::Complete);
         assert_eq!(

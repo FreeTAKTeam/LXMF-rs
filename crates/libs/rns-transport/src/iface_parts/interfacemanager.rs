@@ -406,7 +406,11 @@ impl InterfaceManager {
     }
 
     fn should_egress_limit_pr(iface: &mut LocalInterface, now: Instant) -> bool {
-        if iface.shared_config.egress_control != Some(true) {
+        // RNS 1.5.2 deliberately leaves the local shared-instance carrier
+        // outside Backbone ingress/egress dataplane control. The shared
+        // instance already owns admission and pacing for that socket; adding
+        // a second limiter here can unnecessarily throttle local clients.
+        if iface.is_shared_instance || iface.shared_config.egress_control != Some(true) {
             return false;
         }
         let threshold = iface
@@ -434,6 +438,7 @@ impl InterfaceManager {
         for iface in &mut self.ifaces {
             if iface.stop.is_cancelled()
                 || !iface.outgoing
+                || iface.is_shared_instance
                 || iface.announce_queue.is_empty()
                 || now < iface.announce_allowed_at
             {
@@ -479,5 +484,4 @@ impl InterfaceManager {
         self.cleanup();
         trace
     }
-
 }

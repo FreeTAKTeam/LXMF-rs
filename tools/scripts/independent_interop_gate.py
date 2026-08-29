@@ -180,8 +180,8 @@ def validate(report: dict[str, Any]) -> list[str]:
             if key in RNS_RS_ALLOWED and row.get("failure_owner") == "rns-rs":
                 if row.get("classification") == "peer_divergence" and not str(
                     row.get("normative_reference") or ""
-                ).startswith("Python RNS 1.5.0"):
-                    errors.append(f"peer divergence lacks Python RNS 1.5.0 evidence: {key}")
+                ).startswith("Python RNS 1.5.2"):
+                    errors.append(f"peer divergence lacks Python RNS 1.5.2 evidence: {key}")
                 continue
             else:
                 errors.append(f"unexpected rns-rs result: {key}: {row.get('failure_reason')}")

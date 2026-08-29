@@ -177,7 +177,7 @@ pub(super) fn report(
         }
     }
     let mut markdown = String::from(
-        "# Hardware Support Matrix\n\n| Adapter | Virtual | Host | Physical smoke | Soak | RNS 1.5.0 interop |\n|---|---|---|---|---|---|\n",
+        "# Hardware Support Matrix\n\n| Adapter | Virtual | Host | Physical smoke | Soak | RNS 1.5.2 interop |\n|---|---|---|---|---|---|\n",
     );
     for profile in &config.lab.profiles {
         let profile_observations = observations.get(&profile.id);

@@ -21,7 +21,7 @@ adapter = "python-rns"
 host = "linux"
 physical = false
 suites = ["interop"]
-capabilities = ["reticulum-1.5.0", "lxmf-reference"]
+capabilities = ["reticulum-1.5.2", "lxmf-reference"]
 
 [[profiles]]
 id = "heltec"
