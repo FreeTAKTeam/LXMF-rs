@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last reassessed: 2026-08-24
+Last reassessed: 2026-08-29
 
 This file is the repository-level source of truth for parity posture, release
 confidence, and execution order. Detailed row-level status lives in:
@@ -27,14 +27,14 @@ addresses, queue/interface/link telemetry, and medium-bitrate timeout accessors.
 The exact upstream-to-Rust disposition is recorded in
 [`rns-1.5-delta.md`](rns-1.5-delta.md).
 
-The v0.10.0 baseline is merged on `main` at
-`9f4dd91e210bb57add7ffba514d9546a956d423a` and published on immutable release
-commit `5436ee715f94f81e18abb0808cfca52fcd7cc9bc`. The v0.10.1 maintenance
-candidate carries the RNS 1.5.2 pin, the queue/keepalive/shared-instance fixes,
-and the IFAC/profiling parity surfaces. Public package manifests and the root
-`VERSION` use `0.10.1` on the candidate branch; tag-triggered artifacts,
-provenance, independent interop, and crates.io evidence remain pending until
-that candidate is reviewed and tagged.
+The v0.10.0 baseline is superseded by stable v0.10.1, merged on `main` at
+`25a976945cb335dff3be692981151c8741a5fdeb` and published at
+[`v0.10.1`](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.10.1). The
+maintenance release carries the exact RNS 1.5.2 pin, queue/keepalive/shared-
+instance fixes, IFAC/profiling parity surfaces, and owned-buffer Resource
+sender equivalent. Platform artifacts, provenance, independent interop, OCI,
+and all 17 public crates are published for that immutable boundary; the
+tag-triggered performance comparison remains a separate hosted evidence run.
 
 The project is best described by capability level:
 
@@ -46,8 +46,8 @@ The project is best described by capability level:
 | Operationally substitutable | achieved against RNS 1.5.2 | The software-controlled runtime includes the 1.5 ingress, routing, telemetry, timeout, discovery, dataplane-control, keepalive, IFAC, profiling, and `rngit` slices. |
 | Full Python software surface parity | achieved | The strict inventory reports 1,857 complete, 0 partial, and 1 provenance-backed not-applicable entry. |
 | ZeroMQ SDK-access parity | achieved in v0.9.5 implementation | Generated classification and daemon-operation inventory live in `sdk-zmq-parity.json`; release evidence must still pass all gates. |
-| Independent implementation evidence | published for stable `v0.10.0` | Pinned rns-rs and Reticulum-Go release profiles cover two-node/multi-hop behavior; rns-rs additionally covers mixed/all-Rust five-node chains, routing policy, restart, shared daemon, exact large Resources, and deterministic chaos. Explicit peer divergences remain failures owned by the peer and are allowlisted narrowly by CI. |
-| Performance evidence | published for stable `v0.10.0` | The immutable tag workflow passed with checksummed JSON, HTML, raw evidence, and a clean regression gate: throughput `1.008x`, CPU `1.005x`, and peak RSS `1.086x` versus the same-runner v0.9.1 baseline. |
+| Independent implementation evidence | published for stable `v0.10.1` | Pinned rns-rs and Reticulum-Go release profiles cover two-node/multi-hop behavior; rns-rs additionally covers mixed/all-Rust five-node chains, routing policy, restart, shared daemon, exact large Resources, and deterministic chaos. Explicit peer divergences remain failures owned by the peer and are allowlisted narrowly by CI. |
+| Performance evidence | hosted release run in progress | The tag workflow is measuring the bounded v0.10.1 dataset; publish its checksummed JSON, HTML, raw evidence, and regression-gate result when run `33254264175` completes. |
 
 The independent evidence axis is documented in [`docs/interop`](../interop/README.md).
 It does not promote Python parity rows, third-party clients, physical interfaces,
@@ -55,18 +55,16 @@ or public-network soak. Pull requests run the bounded rns-rs profile; nightly an
 release tiers add both peers, expanded chaos, exact 50 MiB transfers, raw logs,
 and standalone JSON/Markdown/HTML artifacts.
 
-The canonical stable performance dataset is
-[`docs/performance/v0.10.0.json`](../performance/v0.10.0.json), with the
+The canonical historical stable performance dataset is
+[`docs/performance/v0.10.0.json`](../performance/v0.10.0.json), with its
 standalone dashboard at [`docs/performance/v0.10.0.html`](../performance/v0.10.0.html).
-It records candidate `5436ee715f94f81e18abb0808cfca52fcd7cc9bc`, five interleaved
-comparison runs, two resource runs, five independent peer samples, exact 1 MiB
-and 50 MiB Resource measurements, all SDK transport surfaces, and the explicit
-bounded 1000-Link unsupported result. The independent interoperability workflow
-[`32736249030`](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/32736249030)
-and performance workflow
-[`32736249025`](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/32736249025)
-passed on the immutable release commit, and their public artifacts are attached
-to the [`v0.10.0` release](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.10.0).
+The v0.10.1 independent interoperability workflow
+[`33254264125`](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/33254264125)
+passed on the immutable release commit and its public reports are attached to
+the [`v0.10.1` release](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.10.1).
+The v0.10.1 performance workflow is
+[`33254264175`](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/33254264175)
+and remains pending while the bounded comparison completes.
 
 ## v0.9.9 Historical Stable Release
 
@@ -104,6 +102,28 @@ workflow passed on attempt 3 after two earlier attempts hit distinct transient
 loopback port races; the final publication job attached the checksummed JSON,
 HTML, raw bundle, and gate checksum. Homebrew is explicitly skipped because its
 tap/token is not configured.
+
+## v0.10.1 Stable Release
+
+The RNS 1.5.2 maintenance release is merged on `main` at
+`25a976945cb335dff3be692981151c8741a5fdeb`; immutable tag `v0.10.1` and the
+[public release](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.10.1)
+resolve to that commit. It carries the exact Python Reticulum 1.5.2 reference
+(`ea98db4f53dcf0defc0e71a16e60d28b1229c4e6`), the strict 1,858-entry inventory
+(1,857 applicable complete, zero partial/unmapped, one not applicable), and
+the queue, shared-instance, keepalive, IFAC, profiling, and Resource sender
+parity slices described in [`rns-1.5-delta.md`](rns-1.5-delta.md).
+
+PR [#584](https://github.com/FreeTAKTeam/LXMF-rs/pull/584) passed the hosted CI,
+Verify/HIL, and independent-interoperability checks before merge. The release
+workflow [33254264203](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/33254264203),
+crates.io publication workflow
+[33255408925](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/33255408925),
+and independent interoperability workflow
+[33254264125](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/33254264125)
+passed; Homebrew was skipped because `HOMEBREW_TAP_TOKEN` is not configured.
+The tag-triggered performance comparison is tracked separately by workflow
+[33254264175](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/33254264175).
 
 ## v0.9.9-rc.6 Historical Release Candidate
 

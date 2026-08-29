@@ -6,8 +6,8 @@ an application.
 
 ## Install a stable release
 
-The [`v0.10.0` release](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.10.0)
-is the published RNS 1.5.0-aligned stable release. It provides Linux, macOS,
+The [`v0.10.1` release](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.10.1)
+is the published RNS 1.5.2-aligned stable release. It provides Linux, macOS,
 and Windows archives, Debian and RPM packages, a Windows MSI, SBOMs, and
 checksum files. Choose the asset for your platform and verify it against
 `SHA256SUMS.txt` before extracting or installing it.
@@ -16,13 +16,13 @@ For example, after downloading the Linux x86-64 archive and `SHA256SUMS.txt` int
 the same directory:
 
 ```bash
-grep 'lxmf-rs_0.10.0_linux-x86_64.tar.gz$' SHA256SUMS.txt | sha256sum -c -
-tar -xzf lxmf-rs_0.10.0_linux-x86_64.tar.gz
+grep 'lxmf-rs_0.10.1_linux-x86_64.tar.gz$' SHA256SUMS.txt | sha256sum -c -
+tar -xzf lxmf-rs_0.10.1_linux-x86_64.tar.gz
 ```
 
 The [latest release page](https://github.com/FreeTAKTeam/LXMF-rs/releases/latest)
 is the durable entry point for future versions. Release claims and evidence
-boundaries are described in the [release notes](release-notes-v0.10.0.md) and
+boundaries are described in the [release notes](release-notes-v0.10.1.md) and
 [current roadmap](status/current-roadmap.md).
 
 ## Build from source
@@ -85,19 +85,19 @@ The umbrella crates provide the simplest dependency surface:
 
 ```toml
 [dependencies]
-lxmf = "0.10.0"
-reticulum-rs = "0.10.0"
+lxmf = "0.10.1"
+reticulum-rs = "0.10.1"
 ```
 
 Applications that need narrower features can depend on component crates:
 
 ```toml
 [dependencies]
-lxmf-sdk = "0.10.0"
-lxmf-wire = "0.10.0"
-reticulum-rs-core = "0.10.0"
-reticulum-rs-transport = "0.10.0"
-reticulum-rs-rpc = "0.10.0"
+lxmf-sdk = "0.10.1"
+lxmf-wire = "0.10.1"
+reticulum-rs-core = "0.10.1"
+reticulum-rs-transport = "0.10.1"
+reticulum-rs-rpc = "0.10.1"
 ```
 
 Use the [SDK quickstart](sdk/quickstart.md) for a minimal client, the

@@ -31,25 +31,24 @@ These are matched-workload comparisons, not a claim of whole-system superiority.
 ## Current status
 
 The latest published stable release is
-[`v0.10.0`](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.10.0),
-aligned with Python Reticulum 1.5.0. The immutable tag resolves to the
-reviewed release commit, and the release artifacts, crates.io publication,
-independent interoperability reports, provenance, and OCI image are published
-for that exact boundary. The current candidate workspace packages are version
-`0.10.1`; the candidate targets Python Reticulum 1.5.2 at
-`ea98db4f53dcf0defc0e71a16e60d28b1229c4e6`.
+[`v0.10.1`](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.10.1),
+aligned with Python Reticulum 1.5.2 at
+`ea98db4f53dcf0defc0e71a16e60d28b1229c4e6`. The immutable tag resolves to
+reviewed release commit `25a976945cb335dff3be692981151c8741a5fdeb`; release
+artifacts, crates.io packages, independent interoperability reports,
+provenance, and the OCI image are published for that exact boundary.
 
 | Area | Current position |
 | --- | --- |
 | Reticulum software parity | 1,857 applicable entries complete, 0 partial, 0 unmapped, and 1 provenance-backed not-applicable entry |
 | LXMF software parity | All seven tracked software scenarios complete |
 | Rust/Python interoperability | Direct, link, channel, paper, propagation, and daemon scenarios exercised against pinned references |
-| Independent interoperability | Versioned rns-rs and Reticulum-Go evidence published separately for `v0.10.0` |
+| Independent interoperability | Versioned rns-rs and Reticulum-Go evidence published separately for `v0.10.1` |
 | Hardware and external clients | Physical devices, public networks, and third-party clients remain separate evidence tracks and are not claimed by the software-parity result |
 
 Read the [current roadmap](docs/status/current-roadmap.md) for the authoritative
-project posture, the [v0.10.0 release notes](docs/release-notes-v0.10.0.md) and
-[release ledger](docs/status/v0.10.0-release.md) for the published stable
+project posture, the [v0.10.1 release notes](docs/release-notes-v0.10.1.md) and
+[release ledger](docs/status/v0.10.1-release.md) for the published stable
 release, and the
 [Reticulum](docs/status/reticulum-parity-matrix.md) and
 [LXMF](docs/status/lxmf-parity-matrix.md) parity matrices for row-level detail.

@@ -19,6 +19,16 @@ Tag runs also publish standalone combined JSON/Markdown/HTML release assets.
 
 The current versioned evidence is:
 
+- [`v0.10.1-independent.json`](https://github.com/FreeTAKTeam/LXMF-rs/releases/download/v0.10.1/v0.10.1-independent.json)
+  — release-tag structured peer results for RNS 1.5.2 at
+  `ea98db4f53dcf0defc0e71a16e60d28b1229c4e6`;
+- [`v0.10.1-independent.md`](https://github.com/FreeTAKTeam/LXMF-rs/releases/download/v0.10.1/v0.10.1-independent.md)
+  — concise release-tag interoperability matrix;
+- [`v0.10.1-independent.html`](https://github.com/FreeTAKTeam/LXMF-rs/releases/download/v0.10.1/v0.10.1-independent.html)
+  — standalone release-tag report with the complete JSON embedded;
+- [v0.10.1 release assets](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.10.1)
+  — checksummed raw peer bundles and per-peer checksums;
+
 - [`v0.10.0-independent.json`](v0.10.0-independent.json) — complete structured
   peer results, readiness axes, pins, limitations, and five-sample independent
   performance evidence;
@@ -40,8 +50,12 @@ The current versioned evidence is:
   [`../performance/v0.10.0.html`](../performance/v0.10.0.html) — current stable
   performance dataset and dashboard;
 - hosted raw interop evidence from workflow
-  [`32736249030`](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/32736249030)
-  and checksummed raw performance evidence from workflow
+  [`33254264125`](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/33254264125)
+  and the v0.10.1 release assets, plus historical workflow
+  [`32736249030`](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/32736249030).
+  The v0.10.1 checksummed raw performance evidence is published by workflow
+  [`33254264175`](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/33254264175);
+  historical checksummed raw performance evidence is from workflow
   [`32736249025`](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/32736249025).
 
 Actions artifacts are retention-bound. The same workflows attach the public

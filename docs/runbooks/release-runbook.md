@@ -46,6 +46,14 @@ publishes the public library crates listed in
 The workflow rejects the release if any public crate version differs from the
 GitHub release tag after removing the leading `v`.
 
+After publication, verify that a `Publish crates.io` run exists for the exact
+tag and commit. GitHub suppresses recursive workflow events created with the
+default `GITHUB_TOKEN`; if the release event did not create a crates run,
+dispatch the workflow manually with `ref=<tag>`, `version=<version>`, and
+`dry_run=false`, then verify every package through the crates.io API. The
+v0.10.1 train required this explicit dispatch as run
+[33255408925](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/33255408925).
+
 Repository setup required before the first automated publish:
 
 - add a `CARGO_REGISTRY_TOKEN` repository secret with permission to publish the
