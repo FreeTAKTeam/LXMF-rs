@@ -735,6 +735,11 @@ def exchange_rust_endpoint_announces(
         "right endpoint announce through rns-rs",
         timeout=30,
     )
+    # A reconnect can deliver an automatic announce while the first
+    # direction is being observed.  Expire that path before the reverse
+    # probe so the explicit announce is evaluated as rediscovery rather than
+    # being discarded as a stale path refresh.
+    endpoint_c.call("expire_path", {"destination_hash": destination_a})
     endpoint_a.call("announce", {"app_data": b64(app_a)})
     seen_at_c = rust_event(
         endpoint_c,
