@@ -353,6 +353,7 @@ fn startup_retries_only_missing_responses_and_is_bounded() {
 #[test]
 fn native_lxmf_att_mtu_floor_covers_full_rnode_notification() {
     assert_eq!(RNODE_LXMF_MIN_ATT_MTU, 170 + 3);
-    assert!(172 < RNODE_LXMF_MIN_ATT_MTU);
-    assert!(173 >= RNODE_LXMF_MIN_ATT_MTU);
+    for (mtu, expected) in [(23, false), (172, false), (173, true), (517, true)] {
+        assert_eq!(rnode_lxmf_att_mtu_supported(mtu), expected, "MTU {mtu}");
+    }
 }

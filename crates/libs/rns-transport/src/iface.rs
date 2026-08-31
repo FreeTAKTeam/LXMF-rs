@@ -24,6 +24,7 @@ pub mod rnode_ble;
 pub mod rnode_bearer;
 
 mod rnode_bearer_interface;
+mod rnode_bearer_status;
 
 pub mod rnode_spp;
 

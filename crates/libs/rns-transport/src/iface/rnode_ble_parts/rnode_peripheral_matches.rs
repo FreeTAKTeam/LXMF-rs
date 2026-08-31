@@ -379,7 +379,7 @@ impl NativeRnodeBleKissInterface {
             // Fail closed here, matching the Android transport: accepting a smaller MTU would
             // silently truncate complete RNode notification frames.
             match runtime.negotiated_mtu() {
-                Some(mtu) if mtu < RNODE_LXMF_MIN_ATT_MTU => {
+                Some(mtu) if !rnode_lxmf_att_mtu_supported(mtu) => {
                     log::warn!(
                         "RNode BLE negotiated ATT MTU {} < {} minimum for LXMF; \
                          rejecting session iface={}",

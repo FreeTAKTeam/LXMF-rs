@@ -75,6 +75,11 @@ const RNODE_BLE_COMMAND_WRITE_SPACING: Duration = Duration::from_millis(20);
 const RNODE_LXMF_MIN_ATT_MTU: u16 = 173;
 
 #[cfg(feature = "rnode-ble")]
+const fn rnode_lxmf_att_mtu_supported(mtu: u16) -> bool {
+    mtu >= RNODE_LXMF_MIN_ATT_MTU
+}
+
+#[cfg(feature = "rnode-ble")]
 const RNODE_BLE_MANAGEMENT_CHANNEL_CAPACITY: usize = 64;
 
 #[cfg(feature = "rnode-ble")]
