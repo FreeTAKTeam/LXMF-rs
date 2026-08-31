@@ -23,7 +23,15 @@ impl RnodeBleCommandMonitor {
                 Err(err) => self.lora.last_command_error() == Some(err.as_str()),
             };
             match (result, fatal) {
-                (Ok(_), _) => {}
+                (Ok(_), _) => {
+                    if matches!(*command, CMD_STAT_RX | CMD_STAT_TX) && payload.len() == 4 {
+                        let value = u32::from_be_bytes([
+                            payload[0], payload[1], payload[2], payload[3],
+                        ]);
+                        let counter = if *command == CMD_STAT_RX { "stat_rx" } else { "stat_tx" };
+                        log::info!("RNode radio counter counter={counter} value={value}");
+                    }
+                }
                 (Err(err), true) => return Err(err),
                 (Err(err), false) => {
                     log::warn!(

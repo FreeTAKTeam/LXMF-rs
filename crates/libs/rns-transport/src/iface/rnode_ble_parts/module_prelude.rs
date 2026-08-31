@@ -44,7 +44,8 @@ use uuid::Uuid;
 use crate::iface::kiss::KissConfig;
 
 use crate::iface::lora::{
-    LoraConfig, LoraInterface, RNodeHardwareError, RNodeProbeStatus, RNodeRadioStatus,
+    LoraConfig, LoraInterface, RNodeHardwareError, RNodeProbeStatus, RNodeRadioStatus, CMD_STAT_RX,
+    CMD_STAT_TX,
 };
 
 use crate::kiss::{encode_data_frame, KissCommand, KissDecodeError, KissFrame, KissStreamDecoder};
