@@ -104,6 +104,23 @@ fn startup_compatibility_rejects_other_radio_mismatches() {
 }
 
 #[test]
+fn startup_compatibility_rejects_missing_frequency_response() {
+    let config = LoraConfig::us915_default();
+    let mut notification = startup_notification_without_radio_state(config);
+    notification.commands.retain(|(command, _)| *command != CMD_FREQUENCY);
+    let mut monitor = RnodeBleCommandMonitor::new(config, Duration::ZERO);
+    monitor.accept_notification(&notification).expect("accept startup responses");
+
+    let error = monitor
+        .validate_startup_deadline()
+        .expect_err("missing frequency response must remain fatal");
+
+    assert!(error.contains("rnode frequency response is missing"));
+    assert!(!monitor.online());
+    assert!(!monitor.startup_validated());
+}
+
+#[test]
 fn payload_writes_wait_for_validated_radio_startup() {
     let config = LoraConfig::us915_default();
     let mut monitor = RnodeBleCommandMonitor::new(config, Duration::ZERO);

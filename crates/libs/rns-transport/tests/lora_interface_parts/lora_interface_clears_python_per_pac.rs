@@ -223,8 +223,11 @@ fn lora_interface_startup_response_validation_reports_first_python_gap() {
     iface.record_command_response(CMD_FW_VERSION, &[1, 52]).expect("firmware");
     iface.record_command_response(CMD_PLATFORM, &[PLATFORM_ESP32]).expect("platform");
     iface.record_command_response(CMD_MCU, &[0x01]).expect("mcu");
+    iface
+        .record_command_response(CMD_FREQUENCY, &915_000_000_u32.to_be_bytes())
+        .expect("frequency");
 
-    let err = iface.validate_startup_responses().expect_err("missing radio state must fail");
+    let err = iface.validate_startup_responses().expect_err("missing bandwidth must fail");
     assert!(err.contains("bandwidth"), "unexpected startup validation error: {err}");
 }
 

@@ -438,7 +438,26 @@ fn rnode_radio_status_rejects_python_radio_state_mismatches() {
         .expect_err("frequency mismatch above Python tolerance must fail");
     assert!(err.contains("frequency"), "unexpected validation error: {err}");
 
+    let mut missing_frequency = RNodeRadioStatus::default();
+    missing_frequency
+        .accept_command(CMD_BANDWIDTH, &125_000_u32.to_be_bytes())
+        .expect("bandwidth");
+    missing_frequency.accept_command(CMD_TXPOWER, &[17]).expect("tx power");
+    missing_frequency.accept_command(CMD_SF, &[9]).expect("spreading factor");
+    missing_frequency.accept_command(CMD_CR, &[5]).expect("coding rate");
+    missing_frequency
+        .accept_command(CMD_RADIO_STATE, &[RADIO_STATE_ON])
+        .expect("radio state");
+
+    let err = missing_frequency
+        .validate_config(config, RADIO_STATE_ON)
+        .expect_err("missing frequency response must fail");
+    assert!(err.contains("frequency"), "unexpected validation error: {err}");
+
     let mut missing_bandwidth = RNodeRadioStatus::default();
+    missing_bandwidth
+        .accept_command(CMD_FREQUENCY, &915_000_000_u32.to_be_bytes())
+        .expect("frequency");
     missing_bandwidth.accept_command(CMD_TXPOWER, &[17]).expect("tx power");
     missing_bandwidth.accept_command(CMD_SF, &[9]).expect("spreading factor");
     missing_bandwidth.accept_command(CMD_RADIO_STATE, &[RADIO_STATE_ON]).expect("radio state");
@@ -449,6 +468,9 @@ fn rnode_radio_status_rejects_python_radio_state_mismatches() {
     assert!(err.contains("bandwidth"), "unexpected validation error: {err}");
 
     let mut missing_coding_rate = RNodeRadioStatus::default();
+    missing_coding_rate
+        .accept_command(CMD_FREQUENCY, &915_000_000_u32.to_be_bytes())
+        .expect("frequency");
     missing_coding_rate
         .accept_command(CMD_BANDWIDTH, &125_000_u32.to_be_bytes())
         .expect("bandwidth");
@@ -462,6 +484,9 @@ fn rnode_radio_status_rejects_python_radio_state_mismatches() {
     assert!(err.contains("coding rate"), "unexpected validation error: {err}");
 
     let mut mismatched_coding_rate = RNodeRadioStatus::default();
+    mismatched_coding_rate
+        .accept_command(CMD_FREQUENCY, &915_000_000_u32.to_be_bytes())
+        .expect("frequency");
     mismatched_coding_rate
         .accept_command(CMD_BANDWIDTH, &125_000_u32.to_be_bytes())
         .expect("bandwidth");

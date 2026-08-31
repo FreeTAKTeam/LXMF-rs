@@ -160,16 +160,19 @@ impl RNodeRadioStatus {
         config: LoraConfig,
         expected_radio_state: u8,
     ) -> Result<(), String> {
-        if let Some(frequency_hz) = self.frequency_hz {
-            let configured = i64::try_from(config.frequency_hz)
-                .expect("validated LoRa frequency fits signed comparison range");
-            let reported = i64::from(frequency_hz);
-            if (configured - reported).abs() > 100 {
-                return Err(format!(
-                    "rnode frequency mismatch configured={} reported={}",
-                    config.frequency_hz, frequency_hz
-                ));
+        match self.frequency_hz {
+            Some(frequency_hz) => {
+                let configured = i64::try_from(config.frequency_hz)
+                    .expect("validated LoRa frequency fits signed comparison range");
+                let reported = i64::from(frequency_hz);
+                if (configured - reported).abs() > 100 {
+                    return Err(format!(
+                        "rnode frequency mismatch configured={} reported={}",
+                        config.frequency_hz, frequency_hz
+                    ));
+                }
             }
+            None => return Err("rnode frequency response is missing".to_string()),
         }
         match self.bandwidth_hz {
             Some(value) if value == config.bandwidth_hz => {}
