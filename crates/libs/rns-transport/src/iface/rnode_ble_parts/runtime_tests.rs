@@ -334,26 +334,3 @@ async fn native_rnode_ble_management_handle_queues_frames() {
 
     assert_eq!(frames, vec![KissFrame::Command(KissCommand::Unknown(CMD_BLINK, vec![0x04]))]);
 }
-
-#[test]
-fn startup_retries_only_missing_responses_and_is_bounded() {
-    let mut monitor =
-        RnodeBleCommandMonitor::new(LoraConfig::us915_default(), Duration::from_secs(1));
-
-    assert!(!monitor.consume_missing_response_retry(
-        "rnode bandwidth mismatch configured=250000 reported=125000"
-    ));
-    assert!(monitor.consume_missing_response_retry(
-        "rnode detect response did not confirm an RNode device"
-    ));
-    assert!(monitor.consume_missing_response_retry("rnode firmware response is missing"));
-    assert!(!monitor.consume_missing_response_retry("rnode coding rate response is missing"));
-}
-
-#[test]
-fn native_lxmf_att_mtu_floor_covers_full_rnode_notification() {
-    assert_eq!(RNODE_LXMF_MIN_ATT_MTU, 170 + 3);
-    for (mtu, expected) in [(23, false), (172, false), (173, true), (517, true)] {
-        assert_eq!(rnode_lxmf_att_mtu_supported(mtu), expected, "MTU {mtu}");
-    }
-}

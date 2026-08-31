@@ -2,7 +2,7 @@ use std::future::Future;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use tokio::time::{sleep, timeout, Instant};
+use tokio::time::{sleep, Instant};
 
 use crate::buffer::InputBuffer;
 use crate::iface::{IfaceSource, Interface, InterfaceContext, RxMessage};
@@ -21,7 +21,12 @@ use super::rnode_ble::{
     RnodeBleCommandMonitor, RnodeBleKissConfig,
 };
 
-const IO_POLL_INTERVAL: Duration = Duration::from_millis(100);
+// Platform bearers own their bounded read wait. In particular, the Android
+// backend waits on a Java notification queue in a blocking worker, so wrapping
+// that read in a shorter Tokio timeout would leave an abandoned worker that can
+// consume and discard the next notification. Keep only a small backoff for
+// backends that return `Ok(None)` immediately.
+const EMPTY_READ_BACKOFF: Duration = Duration::from_millis(10);
 const STARTUP_RESPONSE_TIMEOUT: Duration = Duration::from_secs(5);
 const DETECTION_FALLBACK_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -230,26 +235,23 @@ impl<B> RnodeBearerKissInterface<B> {
                 }
             }
 
-            let polled = tokio::select! {
-                result = timeout(IO_POLL_INTERVAL, runtime.poll()) => result,
-                () = context.cancel.cancelled() => {
-                    cancelled = true;
-                    break;
-                },
-                () = iface_stop.cancelled() => {
-                    cancelled = true;
-                    break;
-                },
-            };
+            // `RnodeBearerBackend::read` is the single owner of the bounded
+            // wait. Do not cancel it with a shorter outer timeout: an Android
+            // JNI read continues on its blocking worker after a future is
+            // dropped, and a second read would then race it for notifications.
+            let polled = runtime.poll().await;
+            if context.cancel.is_cancelled() || iface_stop.is_cancelled() {
+                cancelled = true;
+                break;
+            }
             match polled {
-                Err(_) => {}
-                Ok(Err(error)) => {
+                Err(error) => {
                     set_error_status(&status, &format!("RNode bearer read failed: {error:?}"));
                     break;
                 }
-                Ok(Ok(None)) => {
+                Ok(None) => {
                     tokio::select! {
-                        () = sleep(IO_POLL_INTERVAL) => {}
+                        () = sleep(EMPTY_READ_BACKOFF) => {}
                         () = context.cancel.cancelled() => {
                             cancelled = true;
                             break;
@@ -260,7 +262,7 @@ impl<B> RnodeBearerKissInterface<B> {
                         }
                     }
                 }
-                Ok(Ok(Some(notification))) => {
+                Ok(Some(notification)) => {
                     if let Err(error) = monitor.accept_notification(&notification) {
                         set_error_status(&status, &error);
                         break;
@@ -334,35 +336,9 @@ impl<B> RnodeBearerKissInterface<B> {
                 }
             }
             if let Err(error) = monitor.validate_startup_deadline() {
-                if monitor.consume_missing_response_retry(&error) {
-                    log::warn!(
-                        "RNode startup response missing; retrying paced startup sequence iface={label} error={error}"
-                    );
-                    let Some(result) = run_or_cancel(
-                        runtime.retry_startup_sequence(),
-                        &context.cancel,
-                        &iface_stop,
-                    )
-                    .await
-                    else {
-                        cancelled = true;
-                        break;
-                    };
-                    if let Err(retry_error) = result {
-                        set_error_status(
-                            &status,
-                            &format!("RNode startup sequence retry failed: {retry_error:?}"),
-                        );
-                        break;
-                    }
-                    monitor.reset_startup_deadline(STARTUP_RESPONSE_TIMEOUT);
-                } else {
-                    log::warn!(
-                        "RNode startup response validation failed iface={label} error={error}"
-                    );
-                    set_error_status(&status, &error);
-                    break;
-                }
+                log::warn!("RNode startup response validation failed iface={label} error={error}");
+                set_error_status(&status, &error);
+                break;
             }
             publish_monitor_status(
                 &status,

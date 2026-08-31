@@ -9,7 +9,6 @@ impl RnodeBleCommandMonitor {
             startup_validated: false,
             startup_payload_writes_enabled: false,
             startup_compatibility_warning: None,
-            missing_response_retries_remaining: 2,
         }
     }
 
@@ -68,26 +67,6 @@ impl RnodeBleCommandMonitor {
 
     pub fn reset_startup_deadline(&mut self, timeout: Duration) {
         self.startup_deadline = Some(Instant::now() + timeout);
-    }
-
-    pub fn consume_missing_response_retry(&mut self, error: &str) -> bool {
-        let retryable = matches!(
-            error,
-            "rnode detect response did not confirm an RNode device"
-                | "rnode firmware response is missing"
-                | "rnode platform response is missing"
-                | "rnode mcu response is missing"
-                | "rnode bandwidth response is missing"
-                | "rnode tx power response is missing"
-                | "rnode spreading factor response is missing"
-                | "rnode coding rate response is missing"
-                | "rnode radio state response is missing"
-        );
-        if self.missing_response_retries_remaining == 0 || !retryable {
-            return false;
-        }
-        self.missing_response_retries_remaining -= 1;
-        true
     }
 
     #[must_use]
@@ -406,15 +385,6 @@ impl RnodeBleKissSession {
         }
         self.last_read_at = Instant::now();
         let frames = self.decoder.push_bytes(payload)?;
-        if frames.is_empty()
-            && payload.len() == DEFAULT_ATT_NOTIFICATION_PAYLOAD_BYTES
-            && self.decoder.has_partial_frame()
-        {
-            return Err(RnodeBleKissError::Backend {
-                operation: "accept_notification_events",
-                message: "incomplete 20-byte RNode BLE notification; likely ATT MTU 23 / 20-byte notification payload. The BLE host/backend did not report a usable negotiated MTU before notifications; verify btleplug 0.12+ platform MTU support or configure a host adapter that negotiates a larger ATT MTU.".to_string(),
-            });
-        }
         let mut notification = RnodeBleNotification::default();
         for frame in frames {
             match frame {
@@ -468,28 +438,5 @@ impl RnodeBleKissSession {
                 payload: chunk.to_vec(),
             })
             .collect()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{RnodeBleKissConfig, RnodeBleKissError, RnodeBleKissSession};
-
-    #[test]
-    fn rnode_ble_notification_reports_likely_default_att_mtu_cap() {
-        let mut session = RnodeBleKissSession::new(RnodeBleKissConfig::default());
-        let err = session
-            .accept_notification_events(&[0x42; 20])
-            .expect_err("20-byte incomplete notification should be diagnosed");
-
-        match err {
-            RnodeBleKissError::Backend { operation, message } => {
-                assert_eq!(operation, "accept_notification_events");
-                assert!(message.contains("likely ATT MTU 23"));
-                assert!(message.contains("did not report a usable negotiated MTU"));
-                assert!(message.contains("btleplug 0.12+"));
-            }
-            other => panic!("unexpected error: {other:?}"),
-        }
     }
 }

@@ -68,13 +68,19 @@ pub fn decode_frames(
 pub struct KissStreamDecoder {
     max_payload_len: usize,
     frame: Vec<u8>,
+    discard_until_fend: bool,
     strip_command_port_nibble: bool,
 }
 
 impl KissStreamDecoder {
     #[must_use]
     pub fn new(max_payload_len: usize) -> Self {
-        Self { max_payload_len, frame: Vec::new(), strip_command_port_nibble: false }
+        Self {
+            max_payload_len,
+            frame: Vec::new(),
+            discard_until_fend: false,
+            strip_command_port_nibble: false,
+        }
     }
 
     #[must_use]
@@ -90,11 +96,18 @@ impl KissStreamDecoder {
 
     pub fn clear_partial_frame(&mut self) {
         self.frame.clear();
+        self.discard_until_fend = false;
     }
 
     pub fn push_bytes(&mut self, input: &[u8]) -> Result<Vec<KissFrame>, KissDecodeError> {
         let mut frames = Vec::new();
         for byte in input {
+            if self.discard_until_fend {
+                if *byte == FEND {
+                    self.discard_until_fend = false;
+                }
+                continue;
+            }
             if *byte == FEND {
                 if !self.frame.is_empty() {
                     let raw = std::mem::take(&mut self.frame);
@@ -105,6 +118,18 @@ impl KissStreamDecoder {
                     ));
                 }
                 continue;
+            }
+            // A valid raw frame contains one command byte and at most two
+            // encoded bytes for each decoded payload byte. Enforce that bound
+            // before the closing delimiter so a noisy byte stream cannot grow
+            // this buffer indefinitely. After overflow, discard through FEND
+            // to avoid interpreting the tail of the bad frame as a new one.
+            let raw_frame_limit = self.max_payload_len.saturating_mul(2).saturating_add(1);
+            if self.frame.len() >= raw_frame_limit {
+                let actual = self.frame.len().saturating_add(1);
+                self.frame.clear();
+                self.discard_until_fend = true;
+                return Err(KissDecodeError::FrameTooLarge { limit: raw_frame_limit, actual });
             }
             self.frame.push(*byte);
         }

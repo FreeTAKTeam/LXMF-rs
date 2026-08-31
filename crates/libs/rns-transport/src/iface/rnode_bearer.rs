@@ -34,7 +34,10 @@ pub trait RnodeBearerBackend {
 
     /// Read the next available chunk.
     ///
-    /// `Ok(None)` means no bytes are currently available. A closed or failed
+    /// `Ok(None)` means no bytes are currently available. The backend owns any
+    /// bounded wait used to produce that result; callers must not wrap this
+    /// future in a shorter timeout because platform implementations may use a
+    /// blocking worker to wait for native notifications. A closed or failed
     /// transport must return `Err` so the single-attempt interface can stop.
     async fn read(&mut self) -> Result<Option<Vec<u8>>, String>;
 
@@ -115,10 +118,6 @@ where
 
     pub async fn send_deferred_frames(&mut self) -> Result<(), RnodeBleKissError> {
         self.inner.send_deferred_frames().await
-    }
-
-    pub async fn retry_startup_sequence(&mut self) -> Result<(), RnodeBleKissError> {
-        self.inner.retry_startup_sequence().await
     }
 
     pub async fn send_id_beacon(&mut self) -> Result<(), RnodeBleKissError> {

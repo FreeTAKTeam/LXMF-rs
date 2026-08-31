@@ -206,6 +206,52 @@ fn rnode_ble_notifications_decode_raw_kiss_payloads() {
 }
 
 #[test]
+fn rnode_ble_notifications_buffer_a_frame_across_every_chunk_boundary() {
+    let payload = vec![0x01, 0xC0, 0x02, 0xDB, 0x03, 0x04];
+    let frame = encode_data_frame(&payload);
+
+    for split in 1..frame.len() {
+        let mut session = RnodeBleKissSession::new(RnodeBleKissConfig::default());
+        assert!(session
+            .accept_notification(&frame[..split])
+            .expect("first frame fragment")
+            .is_empty());
+        assert_eq!(
+            session.accept_notification(&frame[split..]).expect("second frame fragment"),
+            vec![payload.clone()],
+            "split boundary {split}"
+        );
+    }
+}
+
+#[test]
+fn rnode_ble_notifications_buffer_normal_twenty_byte_ble_chunks() {
+    let payload = (0_u8..64).collect::<Vec<_>>();
+    let frame = encode_data_frame(&payload);
+    let mut session = RnodeBleKissSession::new(RnodeBleKissConfig::default());
+    let mut packets = Vec::new();
+
+    for chunk in frame.chunks(20) {
+        packets.extend(session.accept_notification(chunk).expect("BLE notification chunk"));
+    }
+
+    assert_eq!(packets, vec![payload]);
+}
+
+#[test]
+fn rnode_ble_notification_decodes_multiple_complete_frames_once() {
+    let first = vec![0x10, 0xC0, 0x11];
+    let second = vec![0x20, 0xDB, 0x21];
+    let mut notification = encode_data_frame(&first);
+    notification.extend(encode_data_frame(&second));
+    let mut session = RnodeBleKissSession::new(RnodeBleKissConfig::default());
+
+    let packets = session.accept_notification(&notification).expect("combined notification");
+
+    assert_eq!(packets, vec![first, second]);
+}
+
+#[test]
 fn rnode_ble_notifications_preserve_command_responses() {
     let mut session = RnodeBleKissSession::new(RnodeBleKissConfig::default());
 

@@ -66,30 +66,14 @@ where
             self.drain_startup_notifications().await?;
         }
         let writes = self.session.startup_frames();
-        self.write_all_paced(writes, "startup_write", RNODE_BLE_COMMAND_WRITE_SPACING)
-            .await?;
+        self.write_all(writes, "startup_write").await?;
         self.connected = true;
         Ok(())
     }
 
     pub async fn send_deferred_frames(&mut self) -> Result<(), RnodeBleKissError> {
         let writes = self.session.deferred_frames();
-        self.write_all_paced(writes, "deferred_frames_write", RNODE_BLE_COMMAND_WRITE_SPACING)
-            .await
-    }
-
-    /// Replays the complete idempotent startup/configuration exchange after a missing response.
-    /// Probe replies and radio-state replies are both required, so replaying only deferred radio
-    /// frames cannot recover a dropped firmware, platform, MCU, or detect command.
-    pub async fn retry_startup_sequence(&mut self) -> Result<(), RnodeBleKissError> {
-        let mut writes = self.session.startup_frames();
-        writes.extend(self.session.deferred_frames());
-        self.write_all_paced(
-            writes,
-            "startup_retry_write",
-            RNODE_BLE_COMMAND_WRITE_SPACING,
-        )
-        .await
+        self.write_all(writes, "deferred_frames_write").await
     }
 
     pub async fn send_packet(&mut self, payload: &[u8]) -> Result<(), RnodeBleKissError> {
@@ -187,17 +171,7 @@ where
         writes: Vec<RnodeBleWrite>,
         operation: &'static str,
     ) -> Result<(), RnodeBleKissError> {
-        self.write_all_paced(writes, operation, Duration::ZERO).await
-    }
-
-    async fn write_all_paced(
-        &mut self,
-        writes: Vec<RnodeBleWrite>,
-        operation: &'static str,
-        spacing: Duration,
-    ) -> Result<(), RnodeBleKissError> {
-        let write_count = writes.len();
-        for (index, write) in writes.into_iter().enumerate() {
+        for write in writes {
             let payload_len = write.payload.len();
             self.backend.write(write).await.map_err(|message| {
                 self.connected = false;
@@ -208,9 +182,6 @@ where
                 .io_stats
                 .write_bytes
                 .saturating_add(u64::try_from(payload_len).unwrap_or(u64::MAX));
-            if !spacing.is_zero() && index + 1 < write_count {
-                tokio::time::sleep(spacing).await;
-            }
         }
         Ok(())
     }
@@ -375,31 +346,7 @@ impl NativeRnodeBleKissInterface {
                 iface_address,
                 settings.peripheral_id
             );
-            // 170 notification payload bytes + 3 ATT header.
-            // Fail closed here, matching the Android transport: accepting a smaller MTU would
-            // silently truncate complete RNode notification frames.
             match runtime.negotiated_mtu() {
-                Some(mtu) if !rnode_lxmf_att_mtu_supported(mtu) => {
-                    log::warn!(
-                        "RNode BLE negotiated ATT MTU {} < {} minimum for LXMF; \
-                         rejecting session iface={}",
-                        mtu,
-                        RNODE_LXMF_MIN_ATT_MTU,
-                        label
-                    );
-                    let mut backend = runtime.into_backend();
-                    if let Err(cleanup_error) = backend.cleanup().await {
-                        log::warn!(
-                            "RNode BLE cleanup failed after MTU rejection iface={} \
-                             error={cleanup_error:?}",
-                            label
-                        );
-                    }
-                    sleep(active_backoff).await;
-                    active_backoff =
-                        bounded_backoff_next(active_backoff, max_reconnect_backoff);
-                    continue;
-                }
                 Some(mtu) => log::info!("RNode BLE negotiated ATT MTU {} iface={}", mtu, label),
                 None => log::debug!(
                     "RNode BLE negotiated ATT MTU unknown (macOS or non-native backend) iface={}",
@@ -659,31 +606,13 @@ impl NativeRnodeBleKissInterface {
                 }
                 if let Some(monitor) = command_monitor.as_mut() {
                     if let Err(err) = monitor.validate_startup_deadline() {
-                        if monitor.consume_missing_response_retry(&err) {
-                            log::warn!(
-                                "RNode BLE startup response missing; retrying paced startup sequence iface={} err={}",
-                                label,
-                                err
-                            );
-                            if let Err(retry_error) = runtime.retry_startup_sequence().await {
-                                log::warn!(
-                                    "RNode BLE startup sequence retry failed iface={} err={:?}",
-                                    label,
-                                    retry_error
-                                );
-                                reconnect_needed = true;
-                                break;
-                            }
-                            monitor.reset_startup_deadline(startup_response_timeout);
-                        } else {
-                            log::warn!(
-                                "RNode BLE startup response validation failed iface={} err={}",
-                                label,
-                                err
-                            );
-                            reconnect_needed = true;
-                            break;
-                        }
+                        log::warn!(
+                            "RNode BLE startup response validation failed iface={} err={}",
+                            label,
+                            err
+                        );
+                        reconnect_needed = true;
+                        break;
                     }
                     if let Some(status) = rnode_status.as_ref() {
                         *status.lock().expect("RNode BLE status mutex poisoned") = monitor
@@ -735,5 +664,4 @@ pub struct RnodeBleCommandMonitor {
     startup_validated: bool,
     startup_payload_writes_enabled: bool,
     startup_compatibility_warning: Option<String>,
-    missing_response_retries_remaining: u8,
 }

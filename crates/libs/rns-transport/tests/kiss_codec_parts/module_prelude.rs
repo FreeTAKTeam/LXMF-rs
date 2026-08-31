@@ -12,9 +12,9 @@ use rns_transport::iface::kiss::{
 use rns_transport::iface::{TxMessage, TxMessageType};
 
 use rns_transport::kiss::{
-    decode_frames, encode_command_frame, encode_data_frame, KissCommand, KissFrame,
-    KissStreamDecoder, CMD_DATA, CMD_P, CMD_READY, CMD_SLOTTIME, CMD_TXDELAY, CMD_TXTAIL, FEND,
-    FESC, TFEND, TFESC,
+    decode_frames, encode_command_frame, encode_data_frame, KissCommand, KissDecodeError,
+    KissFrame, KissStreamDecoder, CMD_DATA, CMD_P, CMD_READY, CMD_SLOTTIME, CMD_TXDELAY,
+    CMD_TXTAIL, FEND, FESC, TFEND, TFESC,
 };
 
 use rns_transport::packet::Packet;
@@ -189,6 +189,29 @@ fn stream_decoder_buffers_split_frames() {
     let frames = decoder.push_bytes(&[b'i', b'n', b'g', FEND]).expect("finish decode");
 
     assert_eq!(frames, vec![KissFrame::Data(b"ping".to_vec())]);
+}
+
+#[test]
+fn stream_decoder_bounds_fragmented_raw_frames_and_resynchronizes() {
+    let mut decoder = KissStreamDecoder::new(4);
+
+    assert!(decoder
+        .push_bytes(&[FEND, CMD_DATA, 1, 2, 3])
+        .expect("first oversized fragment")
+        .is_empty());
+    assert!(decoder
+        .push_bytes(&[4, 5, 6, 7, 8])
+        .expect("second fragment reaches the encoded bound")
+        .is_empty());
+    assert_eq!(
+        decoder.push_bytes(&[9]),
+        Err(KissDecodeError::FrameTooLarge { limit: 9, actual: 10 })
+    );
+
+    let frames = decoder
+        .push_bytes(&[0x42, FEND, FEND, CMD_DATA, b'o', b'k', FEND])
+        .expect("decoder should recover at the next frame delimiter");
+    assert_eq!(frames, vec![KissFrame::Data(b"ok".to_vec())]);
 }
 
 #[tokio::test]
