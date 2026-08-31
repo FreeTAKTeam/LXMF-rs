@@ -21,6 +21,14 @@ const IO_POLL_INTERVAL: Duration = Duration::from_millis(100);
 const STARTUP_RESPONSE_TIMEOUT: Duration = Duration::from_secs(5);
 const DETECTION_FALLBACK_TIMEOUT: Duration = Duration::from_secs(5);
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct RnodeBearerTraffic {
+    tx_packets: u64,
+    tx_bytes: u64,
+    rx_packets: u64,
+    rx_bytes: u64,
+}
+
 #[derive(Clone)]
 pub struct RnodeBearerRuntimeStatusHandle {
     inner: Arc<Mutex<serde_json::Value>>,
@@ -122,7 +130,22 @@ impl<B> RnodeBearerKissInterface<B> {
 
         let bearer = bearer_label(info);
         let mut monitor = RnodeBleCommandMonitor::new(lora, STARTUP_RESPONSE_TIMEOUT);
-        publish_monitor_status(&status, &monitor, &endpoint, bearer);
+        let mut traffic = RnodeBearerTraffic::default();
+        publish_monitor_status(
+            &status,
+            &monitor,
+            &endpoint,
+            bearer,
+            info.negotiated_mtu,
+            traffic,
+            runtime.io_stats(),
+        );
+        log::info!(
+            "RNode bearer opened iface={} bearer={} negotiated_mtu={:?}",
+            label,
+            bearer,
+            info.negotiated_mtu
+        );
         let mut radio_config_sent = false;
         let detection_deadline = Instant::now() + DETECTION_FALLBACK_TIMEOUT;
         let mut first_tx_at: Option<Instant> = None;
@@ -140,7 +163,7 @@ impl<B> RnodeBearerKissInterface<B> {
                     break;
                 };
                 match result {
-                    Ok(()) => monitor.accept_degraded_startup(),
+                    Ok(()) => monitor.reset_startup_deadline(STARTUP_RESPONSE_TIMEOUT),
                     Err(error) => {
                         set_error_status(
                             &status,
@@ -184,6 +207,19 @@ impl<B> RnodeBearerKissInterface<B> {
                         attempt_failed = true;
                         break;
                     }
+                    traffic.tx_packets = traffic.tx_packets.saturating_add(1);
+                    traffic.tx_bytes = traffic
+                        .tx_bytes
+                        .saturating_add(u64::try_from(raw.len()).unwrap_or(u64::MAX));
+                    let io = runtime.io_stats();
+                    log::debug!(
+                        "RNode packet handed to bearer iface={} packet_bytes={} tx_packets={} kiss_write_chunks={} kiss_write_bytes={}",
+                        label,
+                        raw.len(),
+                        traffic.tx_packets,
+                        io.write_chunks,
+                        io.write_bytes
+                    );
                     first_tx_at.get_or_insert_with(Instant::now);
                 }
             }
@@ -266,8 +302,29 @@ impl<B> RnodeBearerKissInterface<B> {
                         }
                         monitor.reset_startup_deadline(STARTUP_RESPONSE_TIMEOUT);
                     }
-                    publish_monitor_status(&status, &monitor, &endpoint, bearer);
+                    publish_monitor_status(
+                        &status,
+                        &monitor,
+                        &endpoint,
+                        bearer,
+                        info.negotiated_mtu,
+                        traffic,
+                        runtime.io_stats(),
+                    );
                     for payload in notification.packets {
+                        traffic.rx_packets = traffic.rx_packets.saturating_add(1);
+                        traffic.rx_bytes = traffic
+                            .rx_bytes
+                            .saturating_add(u64::try_from(payload.len()).unwrap_or(u64::MAX));
+                        let io = runtime.io_stats();
+                        log::debug!(
+                            "RNode packet received from bearer iface={} packet_bytes={} rx_packets={} kiss_read_chunks={} kiss_read_bytes={}",
+                            label,
+                            payload.len(),
+                            traffic.rx_packets,
+                            io.read_chunks,
+                            io.read_bytes
+                        );
                         match Packet::deserialize(&mut InputBuffer::new(&payload)) {
                             Ok(packet) => {
                                 if rx_channel
@@ -293,11 +350,45 @@ impl<B> RnodeBearerKissInterface<B> {
                 }
             }
             if let Err(error) = monitor.validate_startup_deadline() {
-                log::warn!("RNode startup response validation failed iface={label} error={error}");
-                set_error_status(&status, &error);
-                break;
+                if monitor.consume_missing_response_retry(&error) {
+                    log::warn!(
+                        "RNode startup response missing; retrying paced startup sequence iface={label} error={error}"
+                    );
+                    let Some(result) = run_or_cancel(
+                        runtime.retry_startup_sequence(),
+                        &context.cancel,
+                        &iface_stop,
+                    )
+                    .await
+                    else {
+                        cancelled = true;
+                        break;
+                    };
+                    if let Err(retry_error) = result {
+                        set_error_status(
+                            &status,
+                            &format!("RNode startup sequence retry failed: {retry_error:?}"),
+                        );
+                        break;
+                    }
+                    monitor.reset_startup_deadline(STARTUP_RESPONSE_TIMEOUT);
+                } else {
+                    log::warn!(
+                        "RNode startup response validation failed iface={label} error={error}"
+                    );
+                    set_error_status(&status, &error);
+                    break;
+                }
             }
-            publish_monitor_status(&status, &monitor, &endpoint, bearer);
+            publish_monitor_status(
+                &status,
+                &monitor,
+                &endpoint,
+                bearer,
+                info.negotiated_mtu,
+                traffic,
+                runtime.io_stats(),
+            );
         }
 
         if cancelled || context.cancel.is_cancelled() || iface_stop.is_cancelled() {
@@ -348,10 +439,30 @@ fn publish_monitor_status(
     monitor: &RnodeBleCommandMonitor,
     endpoint: &str,
     bearer: &str,
+    negotiated_mtu: Option<u16>,
+    traffic: RnodeBearerTraffic,
+    io: super::rnode_ble::RnodeBleKissIoStats,
 ) {
     let mut value = monitor.runtime_status_json(endpoint);
     if let Some(object) = value.as_object_mut() {
         object.insert("bearer".to_string(), serde_json::Value::String(bearer.to_string()));
+        object.insert(
+            "negotiated_mtu".to_string(),
+            negotiated_mtu.map_or(serde_json::Value::Null, serde_json::Value::from),
+        );
+        object.insert(
+            "traffic".to_string(),
+            serde_json::json!({
+                "tx_packets": traffic.tx_packets,
+                "tx_bytes": traffic.tx_bytes,
+                "rx_packets": traffic.rx_packets,
+                "rx_bytes": traffic.rx_bytes,
+                "kiss_write_chunks": io.write_chunks,
+                "kiss_write_bytes": io.write_bytes,
+                "kiss_read_chunks": io.read_chunks,
+                "kiss_read_bytes": io.read_bytes,
+            }),
+        );
     }
     *status.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = value;
 }

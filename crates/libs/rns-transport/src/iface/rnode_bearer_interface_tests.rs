@@ -51,6 +51,28 @@ fn test_interface(
     (manager.new_context(interface), status)
 }
 
+#[test]
+fn runtime_status_exposes_packet_and_kiss_boundary_counters() {
+    let status = Arc::new(Mutex::new(serde_json::Value::Null));
+    let monitor = RnodeBleCommandMonitor::new(LoraConfig::us915_default(), Duration::from_secs(1));
+    let traffic = RnodeBearerTraffic { tx_packets: 2, tx_bytes: 270, rx_packets: 1, rx_bytes: 48 };
+    let io = super::super::rnode_ble::RnodeBleKissIoStats {
+        read_chunks: 3,
+        read_bytes: 60,
+        write_chunks: 15,
+        write_bytes: 300,
+    };
+
+    publish_monitor_status(&status, &monitor, "ble://test", "ble", Some(517), traffic, io);
+
+    let snapshot = status.lock().expect("status mutex").clone();
+    assert_eq!(snapshot["negotiated_mtu"], 517);
+    assert_eq!(snapshot["traffic"]["tx_packets"], 2);
+    assert_eq!(snapshot["traffic"]["kiss_write_chunks"], 15);
+    assert_eq!(snapshot["traffic"]["rx_packets"], 1);
+    assert_eq!(snapshot["traffic"]["kiss_read_bytes"], 60);
+}
+
 #[tokio::test]
 async fn failed_startup_records_close_failure_without_losing_open_error() {
     let (context, status) = test_interface(OpenBehavior::Fail);

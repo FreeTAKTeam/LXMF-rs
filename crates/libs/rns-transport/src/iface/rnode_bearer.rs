@@ -5,8 +5,8 @@
 //! this crate's shared protocol runtime.
 
 use super::rnode_ble::{
-    RnodeBleBackend, RnodeBleKissConfig, RnodeBleKissError, RnodeBleKissRuntime,
-    RnodeBleKissStatus, RnodeBleNotification, RnodeBleWrite,
+    RnodeBleBackend, RnodeBleKissConfig, RnodeBleKissError, RnodeBleKissIoStats,
+    RnodeBleKissRuntime, RnodeBleKissStatus, RnodeBleNotification, RnodeBleWrite,
 };
 
 pub use super::rnode_bearer_interface::{RnodeBearerKissInterface, RnodeBearerRuntimeStatusHandle};
@@ -117,6 +117,10 @@ where
         self.inner.send_deferred_frames().await
     }
 
+    pub async fn retry_startup_sequence(&mut self) -> Result<(), RnodeBleKissError> {
+        self.inner.retry_startup_sequence().await
+    }
+
     pub async fn send_id_beacon(&mut self) -> Result<(), RnodeBleKissError> {
         self.inner.send_id_beacon().await
     }
@@ -147,6 +151,11 @@ where
     #[must_use]
     pub fn status(&self) -> RnodeBleKissStatus {
         self.inner.status()
+    }
+
+    #[must_use]
+    pub fn io_stats(&self) -> RnodeBleKissIoStats {
+        self.inner.io_stats()
     }
 
     #[must_use]
@@ -215,6 +224,11 @@ mod tests {
         let notification = runtime.poll().await.expect("poll").expect("notification");
         assert_eq!(notification.packets, vec![b"hello".to_vec()]);
         runtime.send_packet(b"world").await.expect("send packet");
+        let io_stats = runtime.io_stats();
+        assert_eq!(io_stats.read_chunks, 1);
+        assert_eq!(io_stats.read_bytes, 8);
+        assert!(io_stats.write_chunks > 0);
+        assert!(io_stats.write_bytes > 0);
         runtime.shutdown().await.expect("shutdown");
 
         let backend = runtime.into_backend();

@@ -67,6 +67,13 @@ const RNODE_BLE_STARTUP_STABILIZATION_TIMEOUT: Duration = Duration::from_secs(2)
 
 const RNODE_BLE_STARTUP_NOTIFICATION_QUIET_TIMEOUT: Duration = Duration::from_millis(100);
 
+// Nordic UART writes complete at the Android GATT boundary before every RNode
+// firmware has consumed the preceding command. Pacing applies only to the
+// short startup/configuration command burst, never to payload chunks.
+const RNODE_BLE_COMMAND_WRITE_SPACING: Duration = Duration::from_millis(20);
+#[cfg(feature = "rnode-ble")]
+const RNODE_LXMF_MIN_ATT_MTU: u16 = 173;
+
 #[cfg(feature = "rnode-ble")]
 const RNODE_BLE_MANAGEMENT_CHANNEL_CAPACITY: usize = 64;
 
@@ -131,6 +138,14 @@ pub struct RnodeBleKissStatus {
     pub interface_ready: bool,
     pub pending_payloads: usize,
     pub pending_writes: usize,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RnodeBleKissIoStats {
+    pub read_chunks: u64,
+    pub read_bytes: u64,
+    pub write_chunks: u64,
+    pub write_bytes: u64,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

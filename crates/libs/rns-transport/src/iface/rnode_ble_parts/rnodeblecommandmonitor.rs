@@ -9,6 +9,7 @@ impl RnodeBleCommandMonitor {
             startup_validated: false,
             startup_payload_writes_enabled: false,
             startup_compatibility_warning: None,
+            missing_response_retries_remaining: 2,
         }
     }
 
@@ -69,9 +70,24 @@ impl RnodeBleCommandMonitor {
         self.startup_deadline = Some(Instant::now() + timeout);
     }
 
-    pub fn accept_degraded_startup(&mut self) {
-        self.startup_deadline = None;
-        self.startup_payload_writes_enabled = true;
+    pub fn consume_missing_response_retry(&mut self, error: &str) -> bool {
+        let retryable = matches!(
+            error,
+            "rnode detect response did not confirm an RNode device"
+                | "rnode firmware response is missing"
+                | "rnode platform response is missing"
+                | "rnode mcu response is missing"
+                | "rnode bandwidth response is missing"
+                | "rnode tx power response is missing"
+                | "rnode spreading factor response is missing"
+                | "rnode coding rate response is missing"
+                | "rnode radio state response is missing"
+        );
+        if self.missing_response_retries_remaining == 0 || !retryable {
+            return false;
+        }
+        self.missing_response_retries_remaining -= 1;
+        true
     }
 
     #[must_use]
@@ -103,6 +119,10 @@ impl RnodeBleCommandMonitor {
     pub fn runtime_status_json(&self, endpoint: &str) -> serde_json::Value {
         let mut value = rnode_ble_runtime_status_json(&self.lora, endpoint);
         if let Some(object) = value.as_object_mut() {
+            object.insert(
+                "startup_validated".to_string(),
+                serde_json::Value::Bool(self.startup_validated),
+            );
             object.insert(
                 "startup_compatibility_warning".to_string(),
                 self.startup_compatibility_warning

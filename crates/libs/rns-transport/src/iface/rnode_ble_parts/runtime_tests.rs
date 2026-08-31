@@ -124,14 +124,17 @@ fn payload_writes_wait_for_validated_radio_startup() {
 }
 
 #[test]
-fn degraded_startup_enables_payload_writes_after_fallback() {
+fn fallback_configuration_keeps_payload_writes_blocked_without_validation() {
     let config = LoraConfig::us915_default();
-    let mut monitor = RnodeBleCommandMonitor::new(config, Duration::from_secs(5));
+    let mut monitor = RnodeBleCommandMonitor::new(config, Duration::ZERO);
 
-    monitor.accept_degraded_startup();
+    let error = monitor
+        .validate_startup_deadline()
+        .expect_err("fallback without probe responses must fail closed");
 
+    assert!(error.contains("detect"));
     assert!(!monitor.startup_validated());
-    assert!(rnode_ble_payload_writes_enabled(true, Some(&monitor)));
+    assert!(!rnode_ble_payload_writes_enabled(true, Some(&monitor)));
     assert!(!rnode_ble_payload_writes_enabled(false, Some(&monitor)));
 }
 
@@ -330,4 +333,26 @@ async fn native_rnode_ble_management_handle_queues_frames() {
     let frames = decode_frames(&frame, 512).expect("decode queued management frame");
 
     assert_eq!(frames, vec![KissFrame::Command(KissCommand::Unknown(CMD_BLINK, vec![0x04]))]);
+}
+
+#[test]
+fn startup_retries_only_missing_responses_and_is_bounded() {
+    let mut monitor =
+        RnodeBleCommandMonitor::new(LoraConfig::us915_default(), Duration::from_secs(1));
+
+    assert!(!monitor.consume_missing_response_retry(
+        "rnode bandwidth mismatch configured=250000 reported=125000"
+    ));
+    assert!(monitor.consume_missing_response_retry(
+        "rnode detect response did not confirm an RNode device"
+    ));
+    assert!(monitor.consume_missing_response_retry("rnode firmware response is missing"));
+    assert!(!monitor.consume_missing_response_retry("rnode coding rate response is missing"));
+}
+
+#[test]
+fn native_lxmf_att_mtu_floor_covers_full_rnode_notification() {
+    assert_eq!(RNODE_LXMF_MIN_ATT_MTU, 170 + 3);
+    assert!(172 < RNODE_LXMF_MIN_ATT_MTU);
+    assert!(173 >= RNODE_LXMF_MIN_ATT_MTU);
 }

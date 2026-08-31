@@ -61,6 +61,26 @@ async fn rnode_ble_runtime_sends_packet_at_mtu_after_deferred_radio_config() {
 }
 
 #[tokio::test]
+async fn rnode_ble_runtime_retry_replays_probes_and_deferred_radio_config() {
+    let deferred = encode_command_frame(CMD_RADIO_STATE, &[RADIO_STATE_OFF]);
+    let config = RnodeBleKissConfig {
+        max_write_len: 1024,
+        deferred_frames: vec![deferred.clone()],
+        ..Default::default()
+    };
+    let backend = TestRnodeBleBackend::default();
+    let mut runtime = RnodeBleKissRuntime::new(backend, config);
+
+    runtime.startup().await.expect("startup");
+    let startup_writes = runtime.backend().writes.clone();
+    runtime.retry_startup_sequence().await.expect("complete startup retry");
+    let retry_writes = &runtime.backend().writes[startup_writes.len()..];
+
+    assert_eq!(&retry_writes[..startup_writes.len()], startup_writes.as_slice());
+    assert_eq!(retry_writes.last().map(|write| write.payload.as_slice()), Some(deferred.as_slice()));
+}
+
+#[tokio::test]
 async fn rnode_ble_runtime_splits_outbound_kiss_frames_by_ble_write_limit() {
     let config = RnodeBleKissConfig { max_write_len: 4, ..Default::default() };
     let backend = TestRnodeBleBackend::default();
@@ -178,13 +198,15 @@ fn rnode_ble_command_monitor_rejects_missing_startup_responses_after_deadline() 
 }
 
 #[test]
-fn rnode_ble_command_monitor_keeps_degraded_fallback_session() {
+fn rnode_ble_command_monitor_rejects_unvalidated_fallback_session() {
     let config = LoraConfig::us915_default();
     let mut monitor = RnodeBleCommandMonitor::new(config, Duration::ZERO);
 
-    monitor.accept_degraded_startup();
+    let error = monitor
+        .validate_startup_deadline()
+        .expect_err("fallback without startup responses must fail");
 
-    monitor.validate_startup_deadline().expect("fallback startup remains connected");
+    assert!(error.contains("detect"));
 }
 
 #[test]
