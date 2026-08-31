@@ -136,7 +136,7 @@ impl RnodeBearerBackend for DelayedNativeReadBackend {
             let active = state.active_reads.fetch_add(1, Ordering::SeqCst) + 1;
             state.max_active_reads.fetch_max(active, Ordering::SeqCst);
             let read_number = state.started_reads.fetch_add(1, Ordering::SeqCst) + 1;
-            let _ = read_started.send(read_number);
+            read_started.send(read_number).expect("read-start observer should remain available");
             tokio::time::sleep(Duration::from_millis(150)).await;
             let notification = state
                 .notifications
@@ -147,7 +147,9 @@ impl RnodeBearerBackend for DelayedNativeReadBackend {
                 state.consumed_notifications.fetch_add(1, Ordering::SeqCst);
             }
             state.active_reads.fetch_sub(1, Ordering::SeqCst);
-            let _ = sender.send(Ok(notification));
+            sender
+                .send(Ok(notification))
+                .expect("bearer read future must remain owned until the native worker completes");
         });
         receiver.await.map_err(|_| "synthetic read worker stopped".to_string())?
     }
