@@ -249,7 +249,10 @@ impl RnodeBleKissSession {
     pub fn new(config: RnodeBleKissConfig) -> Self {
         Self {
             decoder: KissStreamDecoder::new(config.mtu),
-            interface_ready: !config.kiss.flow_control,
+            // Match the reference RNode interface: the first packet is allowed
+            // through, then flow control locks until firmware emits READY.
+            // Starting locked deadlocks because READY is a post-transmit signal.
+            interface_ready: true,
             subscribed: false,
             last_read_at: Instant::now(),
             pending_payloads: VecDeque::new(),
