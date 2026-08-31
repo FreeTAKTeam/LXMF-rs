@@ -858,7 +858,9 @@ Scoped release evidence is split as follows:
   into stamp generation, so relays enforcing a minimum above 16 still
   reject this path.
 - Direct and propagated resource sends support receipt-state separation,
-  timeout/failure propagation, and active resource cancellation.
+  timeout/failure propagation, and active resource cancellation. In-process
+  accepted-result Resources use the backend transfer bound, and every failed
+  Resource await cancels its transport-owned transfer before a retry can start.
 - Link sends now register packet/resource receipt tracking before handoff and
   accept Python-style link proofs with default packet context, so Python
   delivery receipts can advance daemon-originated sends from `sent:*` to

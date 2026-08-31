@@ -1,4 +1,6 @@
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 use lxmf_core::{MessageMethod, TransportMethod};
@@ -18,7 +20,7 @@ use crate::delivery::{
     forced_representation, request_link_attempts, request_link_timeout, request_resource_timeout,
     requested_method, resolve_destination,
 };
-use crate::link_delivery::await_resource_completion;
+use crate::link_delivery::{await_resource_completion, await_resource_completion_with_cancel};
 use crate::{
     InProcessBackend, InProcessBackendConfig, EXT_ACCEPTED_RESULT_ACK,
     EXT_DIRECT_PACKET_MAX_WIRE_BYTES, EXT_LINK_CONNECT_TIMEOUT_MS,
@@ -58,18 +60,68 @@ fn explicit_unknown_delivery_method_is_rejected() {
 }
 
 #[test]
-fn accepted_result_uses_short_link_timeout_unless_overridden() {
+fn accepted_result_uses_short_link_timeout_and_normal_resource_timeout() {
     let mut request = request();
     request.extensions.insert(EXT_ACCEPTED_RESULT_ACK.to_owned(), json!(true));
     assert_eq!(request_link_timeout(&request, Duration::from_secs(20)), Duration::from_secs(5));
     assert_eq!(request_link_attempts(&request, 3), 1);
     assert_eq!(
         request_resource_timeout(&request, Duration::from_secs(120)),
-        Duration::from_secs(8)
+        Duration::from_secs(120)
     );
 
     request.extensions.insert(EXT_LINK_CONNECT_TIMEOUT_MS.to_owned(), json!(75_000));
     assert_eq!(request_link_timeout(&request, Duration::from_secs(20)), Duration::from_secs(75));
+}
+
+#[tokio::test]
+async fn resource_wait_failure_runs_cancellation_before_returning() {
+    let (_sender, mut receiver) = broadcast::channel(2);
+    let expected_hash = Hash::new_from_slice(b"expected");
+    let cancelled = Arc::new(AtomicBool::new(false));
+    let cancellation_observer = cancelled.clone();
+
+    let error = await_resource_completion_with_cancel(
+        &mut receiver,
+        expected_hash,
+        Duration::from_millis(10),
+        async move {
+            cancellation_observer.store(true, Ordering::SeqCst);
+        },
+    )
+    .await
+    .expect_err("timed-out resource must fail");
+
+    assert_eq!(error.category, lxmf_sdk::ErrorCategory::Transport);
+    assert!(cancelled.load(Ordering::SeqCst));
+}
+
+#[tokio::test]
+async fn resource_wait_success_does_not_cancel_completed_transfer() {
+    let (sender, mut receiver) = broadcast::channel(2);
+    let expected_hash = Hash::new_from_slice(b"expected");
+    sender
+        .send(ResourceEvent {
+            hash: expected_hash,
+            link_id: AddressHash::new_from_slice(b"link"),
+            kind: ResourceEventKind::OutboundComplete,
+        })
+        .expect("queue completion");
+    let cancelled = Arc::new(AtomicBool::new(false));
+    let cancellation_observer = cancelled.clone();
+
+    await_resource_completion_with_cancel(
+        &mut receiver,
+        expected_hash,
+        Duration::from_secs(1),
+        async move {
+            cancellation_observer.store(true, Ordering::SeqCst);
+        },
+    )
+    .await
+    .expect("matching completion succeeds");
+
+    assert!(!cancelled.load(Ordering::SeqCst));
 }
 
 #[tokio::test]

@@ -340,13 +340,12 @@ pub(crate) fn request_link_attempts(request: &SendRequest, fallback: usize) -> u
     }
 }
 
-pub(crate) fn request_resource_timeout(request: &SendRequest, fallback: Duration) -> Duration {
-    if request.extensions.get(EXT_ACCEPTED_RESULT_ACK).and_then(JsonValue::as_bool).unwrap_or(false)
-    {
-        Duration::from_secs(8)
-    } else {
-        fallback
-    }
+pub(crate) fn request_resource_timeout(_request: &SendRequest, fallback: Duration) -> Duration {
+    // An accepted-result acknowledgement can exceed the direct packet budget
+    // and become a Resource. It must therefore inherit the backend's normal
+    // Resource bound: a short acknowledgement-specific timeout can abandon a
+    // live low-bitrate transfer and let the caller start a competing retry.
+    fallback
 }
 
 fn decode_required_base64(

@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -40,7 +41,13 @@ pub(crate) async fn send_link_payload(
             .send_resource(&link_id, payload.to_vec(), None)
             .await
             .map_err(|err| transport_error(format!("resource send failed: {err:?}")))?;
-        await_resource_completion(&mut resource_events, resource_hash, resource_timeout).await?;
+        await_resource_completion_with_cancel(
+            &mut resource_events,
+            resource_hash,
+            resource_timeout,
+            cancel_resource(transport, link_id, resource_hash),
+        )
+        .await?;
         (DeliveryRepresentation::Resource, None)
     } else {
         match send_on_link(transport, &link, payload)
@@ -51,8 +58,14 @@ pub(crate) async fn send_link_payload(
                 (DeliveryRepresentation::Packet, Some(hex::encode(packet.hash().to_bytes())))
             }
             LinkSendResult::Resource(resource_hash) => {
-                await_resource_completion(&mut resource_events, resource_hash, resource_timeout)
-                    .await?;
+                let link_id = *link.lock().await.id();
+                await_resource_completion_with_cancel(
+                    &mut resource_events,
+                    resource_hash,
+                    resource_timeout,
+                    cancel_resource(transport, link_id, resource_hash),
+                )
+                .await?;
                 (DeliveryRepresentation::Resource, None)
             }
         }
@@ -90,6 +103,33 @@ async fn activate_link(
         "link activation failed: {}",
         last_error.map_or_else(|| "no attempts made".to_owned(), |error| error.to_string())
     )))
+}
+
+async fn cancel_resource(
+    transport: &Transport,
+    link_id: rns_transport::hash::AddressHash,
+    resource_hash: rns_transport::hash::Hash,
+) {
+    // Preserve the original transfer failure as the caller-facing error. The
+    // transport cancellation is cleanup: it may already be absent if the
+    // resource manager emitted a terminal failure first.
+    let _ = transport.cancel_resource(&link_id, resource_hash).await;
+}
+
+pub(crate) async fn await_resource_completion_with_cancel<F>(
+    events: &mut tokio::sync::broadcast::Receiver<rns_transport::resource::ResourceEvent>,
+    resource_hash: rns_transport::hash::Hash,
+    timeout: Duration,
+    cancel: F,
+) -> Result<(), SdkError>
+where
+    F: Future<Output = ()>,
+{
+    let result = await_resource_completion(events, resource_hash, timeout).await;
+    if result.is_err() {
+        cancel.await;
+    }
+    result
 }
 
 pub(crate) async fn await_resource_completion(
