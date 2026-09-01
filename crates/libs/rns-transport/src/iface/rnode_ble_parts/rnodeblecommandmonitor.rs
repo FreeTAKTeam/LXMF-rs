@@ -239,7 +239,6 @@ pub struct RnodeBleKissSession {
     decoder: KissStreamDecoder,
     subscribed: bool,
     interface_ready: bool,
-    flow_control_locked_at: Option<Instant>,
     last_read_at: Instant,
     pending_payloads: VecDeque<Vec<u8>>,
     pending_writes: VecDeque<RnodeBleWrite>,
@@ -250,11 +249,7 @@ impl RnodeBleKissSession {
     pub fn new(config: RnodeBleKissConfig) -> Self {
         Self {
             decoder: KissStreamDecoder::new(config.mtu),
-            // Match the reference RNode interface: the first packet is allowed
-            // through, then flow control locks until firmware emits READY.
-            // Starting locked deadlocks because READY is a post-transmit signal.
-            interface_ready: true,
-            flow_control_locked_at: None,
+            interface_ready: !config.kiss.flow_control,
             subscribed: false,
             last_read_at: Instant::now(),
             pending_payloads: VecDeque::new(),
@@ -342,7 +337,6 @@ impl RnodeBleKissSession {
         let writes = self.kiss_writes(encode_data_frame(payload));
         if self.config.kiss.flow_control {
             self.interface_ready = false;
-            self.flow_control_locked_at = Some(Instant::now());
         }
         writes
     }
@@ -372,7 +366,6 @@ impl RnodeBleKissSession {
         let writes = self.kiss_writes(encode_data_frame(&payload));
         if self.config.kiss.flow_control {
             self.interface_ready = false;
-            self.flow_control_locked_at = Some(Instant::now());
         }
         writes
     }
@@ -416,7 +409,6 @@ impl RnodeBleKissSession {
                 }
                 KissFrame::Command(KissCommand::Ready) => {
                     self.interface_ready = true;
-                    self.flow_control_locked_at = None;
                     self.flush_pending_payloads();
                 }
                 KissFrame::Command(KissCommand::Unknown(command, payload)) => {
@@ -432,25 +424,6 @@ impl RnodeBleKissSession {
         self.pending_writes.drain(..).collect()
     }
 
-    fn recover_missed_flow_control_ready(&mut self) {
-        if !self.config.kiss.flow_control || self.interface_ready {
-            return;
-        }
-        if self
-            .flow_control_locked_at
-            .is_none_or(|locked_at| locked_at.elapsed() < RNODE_BLE_FLOW_CONTROL_TIMEOUT)
-        {
-            return;
-        }
-
-        log::warn!(
-            "RNode flow control timed out waiting for READY; releasing one queued payload"
-        );
-        self.interface_ready = true;
-        self.flow_control_locked_at = None;
-        self.flush_pending_payloads();
-    }
-
     fn flush_pending_payloads(&mut self) {
         while self.interface_ready {
             let Some(payload) = self.pending_payloads.pop_front() else {
@@ -459,7 +432,6 @@ impl RnodeBleKissSession {
             self.pending_writes.extend(self.kiss_writes(encode_data_frame(&payload)));
             if self.config.kiss.flow_control {
                 self.interface_ready = false;
-                self.flow_control_locked_at = Some(Instant::now());
             }
         }
     }

@@ -271,15 +271,7 @@ fn rnode_ble_flow_control_queues_until_ready_notification() {
     };
     let mut session = RnodeBleKissSession::new(config);
 
-    assert_eq!(
-        session.enqueue_packet(&[0x01, 0x02]),
-        vec![RnodeBleWrite {
-            characteristic_uuid: RNODE_BLE_WRITE_CHARACTERISTIC_UUID,
-            with_response: false,
-            payload: encode_data_frame(&[0x01, 0x02]),
-        }]
-    );
-    assert!(session.enqueue_packet(&[0x03, 0x04]).is_empty());
+    assert!(session.enqueue_packet(&[0x01, 0x02]).is_empty());
     assert_eq!(session.pending_payloads(), 1);
 
     let packets = session
@@ -292,7 +284,7 @@ fn rnode_ble_flow_control_queues_until_ready_notification() {
         vec![RnodeBleWrite {
             characteristic_uuid: RNODE_BLE_WRITE_CHARACTERISTIC_UUID,
             with_response: false,
-            payload: encode_data_frame(&[0x03, 0x04]),
+            payload: encode_data_frame(&[0x01, 0x02]),
         }]
     );
 }
@@ -379,14 +371,6 @@ fn rnode_ble_flow_control_queues_id_beacon_until_ready_notification() {
     };
     let mut session = RnodeBleKissSession::new(config);
 
-    assert_eq!(
-        session.enqueue_id_beacon(),
-        vec![RnodeBleWrite {
-            characteristic_uuid: RNODE_BLE_WRITE_CHARACTERISTIC_UUID,
-            with_response: false,
-            payload: encode_data_frame(b"MYCALL-0"),
-        }]
-    );
     assert!(session.enqueue_id_beacon().is_empty());
     assert_eq!(session.pending_payloads(), 1);
 
