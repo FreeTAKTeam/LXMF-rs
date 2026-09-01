@@ -62,6 +62,11 @@ pub const RNODE_BLE_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub const RNODE_BLE_READ_FRAME_TIMEOUT: Duration = Duration::from_millis(1_250);
 
+// Match Python RNS KISS flow-control recovery: a missing firmware READY
+// notification must not leave the shared KISS session locked forever. Only one
+// queued payload is released per timeout, then flow control locks again.
+const RNODE_BLE_FLOW_CONTROL_TIMEOUT: Duration = Duration::from_secs(5);
+
 const RNODE_BLE_STARTUP_STABILIZATION_TIMEOUT: Duration = Duration::from_secs(2);
 
 const RNODE_BLE_STARTUP_NOTIFICATION_QUIET_TIMEOUT: Duration = Duration::from_millis(100);

@@ -288,6 +288,50 @@ async fn flow_control_sends_first_packet_then_waits_for_ready() {
 }
 
 #[tokio::test]
+async fn flow_control_timeout_releases_exactly_one_packet_when_ready_is_missed() {
+    let backend = TestBackend::default();
+    let config = RnodeBleKissConfig {
+        kiss: KissConfig { flow_control: true, ..KissConfig::default() },
+        ..RnodeBleKissConfig::default()
+    };
+    let mut runtime = RnodeBleKissRuntime::new(backend, config);
+    runtime.startup().await.expect("startup should succeed");
+
+    runtime.send_packet(b"first").await.expect("first packet should be admitted");
+    runtime.send_packet(b"second").await.expect("second packet should queue");
+    runtime.send_packet(b"third").await.expect("third packet should queue");
+    let after_first = runtime.backend.writes.len();
+    assert_eq!(runtime.status().pending_payloads, 2);
+
+    runtime.session.flow_control_locked_at =
+        Some(Instant::now() - RNODE_BLE_FLOW_CONTROL_TIMEOUT);
+    assert!(runtime
+        .poll_optional_notification_events()
+        .await
+        .expect("empty poll should recover missed READY")
+        .is_none());
+
+    assert!(runtime.backend.writes.len() > after_first);
+    assert_eq!(runtime.status().pending_payloads, 1);
+    assert!(!runtime.status().interface_ready);
+    assert!(runtime.session.flow_control_locked_at.is_some());
+
+    let frames = decode_frames(
+        &runtime
+            .backend
+            .writes
+            .iter()
+            .flat_map(|write| write.payload.iter().copied())
+            .collect::<Vec<_>>(),
+        508,
+    )
+    .expect("writes should remain valid KISS frames");
+    assert!(frames.contains(&KissFrame::Data(b"first".to_vec())));
+    assert!(frames.contains(&KissFrame::Data(b"second".to_vec())));
+    assert!(!frames.contains(&KissFrame::Data(b"third".to_vec())));
+}
+
+#[tokio::test]
 async fn shutdown_can_prefix_display_disable_for_display_capable_rnode() {
     let mut monitor =
         RnodeBleCommandMonitor::new(LoraConfig::us915_default(), Duration::from_secs(1));

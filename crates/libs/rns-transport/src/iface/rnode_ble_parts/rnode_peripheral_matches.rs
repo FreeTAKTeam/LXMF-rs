@@ -145,6 +145,9 @@ where
             RnodeBleKissError::Backend { operation: "next_notification", message }
         })?
         else {
+            self.session.recover_missed_flow_control_ready();
+            let writes = self.session.take_pending_writes();
+            self.write_all(writes, "write_pending_after_ready_timeout").await?;
             return Ok(None);
         };
         self.io_stats.read_chunks = self.io_stats.read_chunks.saturating_add(1);
@@ -161,6 +164,7 @@ where
             log::trace!("RNode BLE raw notification {} bytes: [{}]", payload.len(), hex);
         }
         let notification = self.session.accept_notification_events(&payload)?;
+        self.session.recover_missed_flow_control_ready();
         let writes = self.session.take_pending_writes();
         self.write_all(writes, "write_pending").await?;
         Ok(Some(notification))
