@@ -1,6 +1,6 @@
 [package]
 name = "lxmf-runtime"
-version = "0.10.1"
+version = "0.11.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -15,7 +15,7 @@ categories = ["network-programming"]
 base64.workspace = true
 hex.workspace = true
 lxmf-core.workspace = true
-lxmf-sdk = { version = "0.10.1", path = "../lxmf-sdk", default-features = false, features = ["std"] }
+lxmf-sdk = { version = "0.11.0", path = "../lxmf-sdk", default-features = false, features = ["std"] }
 rand_core = { workspace = true, features = ["getrandom"] }
 rmp-serde.workspace = true
 rns-transport.workspace = true

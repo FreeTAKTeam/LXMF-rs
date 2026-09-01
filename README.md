@@ -30,27 +30,30 @@ These are matched-workload comparisons, not a claim of whole-system superiority.
 
 ## Current status
 
-The latest published stable release is
-[`v0.10.1`](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.10.1),
-aligned with Python Reticulum 1.5.2 at
-`ea98db4f53dcf0defc0e71a16e60d28b1229c4e6`. The immutable tag resolves to
-reviewed release commit `25a976945cb335dff3be692981151c8741a5fdeb`; release
-artifacts, crates.io packages, independent interoperability reports,
-performance evidence, provenance, and the OCI image are published for that
-exact boundary.
+The current release train is
+[`v0.11.0`](https://github.com/FreeTAKTeam/LXMF-rs/releases/tag/v0.11.0),
+based on the reviewed RNode repair merged as
+`56ea9f06c474426b2245739e9cb5e2c325cdb1e2`. It keeps the v0.10.1 RNS 1.5.2
+compatibility baseline while tightening BLE/RNode read ownership, KISS
+fragmentation, and firmware queue admission. The v0.10.1 release remains the
+previous stable evidence boundary.
+
+The compatibility surface targets Python Reticulum 1.5.2 at
+`ea98db4f53dcf0defc0e71a16e60d28b1229c4e6` for the next release candidate;
+that canonical pin remains unchanged in v0.11.0.
 
 | Area | Current position |
 | --- | --- |
 | Reticulum software parity | 1,857 applicable entries complete, 0 partial, 0 unmapped, and 1 provenance-backed not-applicable entry |
 | LXMF software parity | All seven tracked software scenarios complete |
 | Rust/Python interoperability | Direct, link, channel, paper, propagation, and daemon scenarios exercised against pinned references |
-| Independent interoperability | Versioned rns-rs and Reticulum-Go evidence published separately for `v0.10.1` |
+| Independent interoperability | Versioned rns-rs and Reticulum-Go evidence published separately for `v0.10.1`; v0.11.0 evidence is qualified by its tag workflows |
 | Hardware and external clients | Physical devices, public networks, and third-party clients remain separate evidence tracks and are not claimed by the software-parity result |
 
 Read the [current roadmap](docs/status/current-roadmap.md) for the authoritative
-project posture, the [v0.10.1 release notes](docs/release-notes-v0.10.1.md) and
-[release ledger](docs/status/v0.10.1-release.md) for the published stable
-release, and the
+project posture, the [v0.11.0 release notes](docs/release-notes-v0.11.0.md),
+[v0.11.0 migration guide](docs/migrations/v0.11.0-rnode.md), and the previous
+[v0.10.1 release ledger](docs/status/v0.10.1-release.md), and the
 [Reticulum](docs/status/reticulum-parity-matrix.md) and
 [LXMF](docs/status/lxmf-parity-matrix.md) parity matrices for row-level detail.
 
@@ -86,8 +89,8 @@ Library consumers can start with the umbrella crates:
 
 ```toml
 [dependencies]
-lxmf = "0.10.1"
-reticulum-rs = "0.10.1"
+lxmf = "0.11.0"
+reticulum-rs = "0.11.0"
 ```
 
 See [Getting started](docs/getting-started.md) for release downloads, checksum

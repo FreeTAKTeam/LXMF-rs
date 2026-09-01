@@ -43,11 +43,11 @@ prepare ─► build (matrix: linux-musl x3, windows, macos x2)
 
 1. Bump `VERSION` and the crate versions (`cargo xtask` release helpers already
    exist for crates.io publishing).
-2. For this release, tag the reviewed commit: `git tag -a v0.10.1 -m "LXMF-rs v0.10.1" && git push origin v0.10.1`.
+2. For this release, tag the reviewed commit: `git tag -a v0.11.0 -m "LXMF-rs v0.11.0" && git push origin v0.11.0`.
 3. The workflow runs end to end. A manual dry run is available via
    **Actions → Release → Run workflow** (set `publish: false` to build and
    smoke-test everything without publishing).
-4. Promote only the same immutable commit to the stable `v0.10.1` release after
+4. Promote only the same immutable commit to the stable `v0.11.0` release after
    the release evidence ledger recommends publication.
 
 Pre-release tags containing `-rc`, `-alpha`, `-beta`, or `preview` are
@@ -80,13 +80,13 @@ cosign verify-blob \
   SHA256SUMS.txt
 
 # 3. Verify build provenance of any file:
-  gh attestation verify lxmf-rs_0.10.1_linux-x86_64.tar.gz --owner FreeTAKTeam
+  gh attestation verify lxmf-rs_0.11.0_linux-x86_64.tar.gz --owner FreeTAKTeam
 
 # 4. Verify the container image:
-  cosign verify ghcr.io/freetakteam/lxmf-rs:0.10.1 \
+  cosign verify ghcr.io/freetakteam/lxmf-rs:0.11.0 \
   --certificate-identity-regexp "https://github.com/FreeTAKTeam/LXMF-rs/.*" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
-  gh attestation verify oci://ghcr.io/freetakteam/lxmf-rs:0.10.1 --owner FreeTAKTeam
+  gh attestation verify oci://ghcr.io/freetakteam/lxmf-rs:0.11.0 --owner FreeTAKTeam
 ```
 
 ## Consumer usage
@@ -102,10 +102,10 @@ docker run --rm -v $PWD/data:/data ghcr.io/freetakteam/lxmf-rs:latest
 brew tap freetakteam/tap && brew install lxmf-rs
 
 # Debian/Ubuntu/Raspberry Pi OS:
-sudo dpkg -i lxmf-rs_0.10.1_arm64.deb     # or amd64 / armhf
+sudo dpkg -i lxmf-rs_0.11.0_arm64.deb     # or amd64 / armhf
 
 # Fedora/RHEL/openSUSE:
-sudo rpm -i lxmf-rs-0.10.1-1.aarch64.rpm  # or x86_64
+sudo rpm -i lxmf-rs-0.11.0-1.aarch64.rpm  # or x86_64
 ```
 
 ## Design notes

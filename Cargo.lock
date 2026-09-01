@@ -1569,7 +1569,7 @@ dependencies = [
 
 [[package]]
 name = "lxmf"
-version = "0.10.1"
+version = "0.11.0"
 dependencies = [
  "lxmf-sdk",
  "lxmf-wire",
@@ -1577,7 +1577,7 @@ dependencies = [
 
 [[package]]
 name = "lxmf-cli"
-version = "0.10.1"
+version = "0.11.0"
 dependencies = [
  "clap",
  "clap_complete",
@@ -1596,7 +1596,7 @@ dependencies = [
 
 [[package]]
 name = "lxmf-embedded-mini"
-version = "0.10.1"
+version = "0.11.0"
 dependencies = [
  "heapless",
  "lxmf-wire",
@@ -1604,14 +1604,14 @@ dependencies = [
 
 [[package]]
 name = "lxmf-reference"
-version = "0.10.1"
+version = "0.11.0"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "lxmf-runtime"
-version = "0.10.1"
+version = "0.11.0"
 dependencies = [
  "base64 0.22.1",
  "hex",
@@ -1627,7 +1627,7 @@ dependencies = [
 
 [[package]]
 name = "lxmf-sdk"
-version = "0.10.1"
+version = "0.11.0"
 dependencies = [
  "criterion",
  "hex",
@@ -1651,7 +1651,7 @@ dependencies = [
 
 [[package]]
 name = "lxmf-wire"
-version = "0.10.1"
+version = "0.11.0"
 dependencies = [
  "base64 0.22.1",
  "criterion",
@@ -2173,7 +2173,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "reticulum-rs"
-version = "0.10.1"
+version = "0.11.0"
 dependencies = [
  "reticulum-rs-core",
  "reticulum-rs-rpc",
@@ -2182,7 +2182,7 @@ dependencies = [
 
 [[package]]
 name = "reticulum-rs-core"
-version = "0.10.1"
+version = "0.11.0"
 dependencies = [
  "aes",
  "atomicwrites",
@@ -2205,7 +2205,7 @@ dependencies = [
 
 [[package]]
 name = "reticulum-rs-rpc"
-version = "0.10.1"
+version = "0.11.0"
 dependencies = [
  "base64 0.22.1",
  "ciborium",
@@ -2231,7 +2231,7 @@ dependencies = [
 
 [[package]]
 name = "reticulum-rs-transport"
-version = "0.10.1"
+version = "0.11.0"
 dependencies = [
  "aes",
  "base64 0.22.1",
@@ -2270,7 +2270,7 @@ dependencies = [
 
 [[package]]
 name = "reticulumd"
-version = "0.10.1"
+version = "0.11.0"
 dependencies = [
  "base64 0.22.1",
  "btleplug",
@@ -2352,7 +2352,7 @@ dependencies = [
 
 [[package]]
 name = "rns-embedded-core"
-version = "0.10.1"
+version = "0.11.0"
 dependencies = [
  "hex",
  "serde",
@@ -2362,7 +2362,7 @@ dependencies = [
 
 [[package]]
 name = "rns-embedded-ffi"
-version = "0.10.1"
+version = "0.11.0"
 dependencies = [
  "critical-section",
  "embedded-alloc",
@@ -2373,7 +2373,7 @@ dependencies = [
 
 [[package]]
 name = "rns-embedded-mininode"
-version = "0.10.1"
+version = "0.11.0"
 dependencies = [
  "hex",
  "lxmf-wire",
@@ -2385,14 +2385,14 @@ dependencies = [
 
 [[package]]
 name = "rns-embedded-runtime"
-version = "0.10.1"
+version = "0.11.0"
 dependencies = [
  "rns-embedded-core",
 ]
 
 [[package]]
 name = "rns-tools"
-version = "0.10.1"
+version = "0.11.0"
 dependencies = [
  "base64 0.22.1",
  "btleplug",

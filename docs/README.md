@@ -45,6 +45,8 @@ Update these documents when their corresponding behavior changes:
   candidate, with qualification tracked in the
   [candidate ledger](status/v0.10.1-release-candidate.md) and the reserved
   [stable ledger](status/v0.10.1-release.md).
+- [v0.11.0 release notes](release-notes-v0.11.0.md): RNode transport repair
+  and pre-1.0 compatibility boundary.
 - [Contracts](contracts/): public compatibility, support, API, payload, RPC,
   and protocol guarantees.
 - [Interfaces](interfaces/): interface-specific configuration and integration
@@ -89,6 +91,7 @@ Update these documents when their corresponding behavior changes:
 - [v0.10.0 historical candidate evidence](status/v0.10.0-release-candidate.md)
 - [v0.10.0 RNS 1.5 migration guide](migrations/v0.10.0-rns-1.5.md)
 - [v0.10.1 RNS 1.5.2 migration guide](migrations/v0.10.1-rns-1.5.2.md)
+- [v0.11.0 RNode migration guide](migrations/v0.11.0-rnode.md)
 - [Release readiness](runbooks/release-readiness.md)
 - [Release process](RELEASING.md)
 - [crates.io publication plan](runbooks/crates-io-publish-plan.md)

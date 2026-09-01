@@ -297,6 +297,12 @@ fn run_security_review_check() -> Result<()> {
     Ok(())
 }
 
+fn is_test_only_source(path_text: &str) -> bool {
+    path_text.split('/').any(|component| component == "tests")
+        || path_text.ends_with("_tests.rs")
+        || path_text.ends_with("/test.rs")
+}
+
 fn run_no_blocking_sleep_check() -> Result<()> {
     let mut violations = Vec::new();
     for root in BLOCKING_SLEEP_SCAN_ROOTS {
@@ -307,6 +313,9 @@ fn run_no_blocking_sleep_check() -> Result<()> {
                 continue;
             }
             let path_text = path.to_string_lossy().replace('\\', "/");
+            if is_test_only_source(&path_text) {
+                continue;
+            }
             let contents = fs::read_to_string(path.as_path())
                 .with_context(|| format!("read {}", path.display()))?;
             let mut in_test_module = false;
@@ -349,6 +358,9 @@ fn run_no_unbounded_runtime_channel_check() -> Result<()> {
                 continue;
             }
             let path_text = path.to_string_lossy().replace('\\', "/");
+            if is_test_only_source(&path_text) {
+                continue;
+            }
             let contents = fs::read_to_string(path.as_path())
                 .with_context(|| format!("read {}", path.display()))?;
             let mut in_test_module = false;

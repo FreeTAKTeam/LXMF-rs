@@ -668,14 +668,14 @@ checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 
 [[package]]
 name = "lxmf-reference"
-version = "0.10.1"
+version = "0.11.0"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "lxmf-sdk"
-version = "0.10.1"
+version = "0.11.0"
 dependencies = [
  "hex",
  "hmac",
@@ -706,7 +706,7 @@ dependencies = [
 
 [[package]]
 name = "lxmf-wire"
-version = "0.10.1"
+version = "0.11.0"
 dependencies = [
  "base64",
  "ed25519-dalek",
@@ -917,7 +917,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "reticulum-rs-core"
-version = "0.10.1"
+version = "0.11.0"
 dependencies = [
  "aes",
  "atomicwrites",
@@ -937,7 +937,7 @@ dependencies = [
 
 [[package]]
 name = "reticulum-rs-rpc"
-version = "0.10.1"
+version = "0.11.0"
 dependencies = [
  "base64",
  "ciborium",
