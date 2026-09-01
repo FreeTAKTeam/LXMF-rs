@@ -128,6 +128,10 @@ where
         self.inner.send_management_frame(frame).await
     }
 
+    pub async fn poll_queue_admission(&mut self) -> Result<(), RnodeBleKissError> {
+        self.inner.poll_queue_admission().await
+    }
+
     pub async fn poll(&mut self) -> Result<Option<RnodeBleNotification>, RnodeBleKissError> {
         self.inner.poll_optional_notification_events().await
     }

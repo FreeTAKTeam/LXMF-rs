@@ -100,6 +100,11 @@ where
         self.write_all(writes, "write_management_frame").await
     }
 
+    pub async fn poll_queue_admission(&mut self) -> Result<(), RnodeBleKissError> {
+        let writes = self.session.queue_admission_probe_if_due();
+        self.write_all(writes, "write_queue_admission_probe").await
+    }
+
     pub async fn shutdown(&mut self) -> Result<(), RnodeBleKissError> {
         self.shutdown_with_prefix_frames(Vec::new()).await
     }
@@ -505,6 +510,16 @@ impl NativeRnodeBleKissInterface {
                         }
                         first_tx_at = None;
                     }
+                }
+
+                if let Err(err) = runtime.poll_queue_admission().await {
+                    log::warn!(
+                        "RNode BLE queue-admission probe failed iface={} err={:?}",
+                        label,
+                        err
+                    );
+                    reconnect_needed = true;
+                    break;
                 }
 
                 match timeout(Duration::from_millis(100), runtime.poll_notification_events()).await

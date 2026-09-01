@@ -235,6 +235,20 @@ impl<B> RnodeBearerKissInterface<B> {
                 }
             }
 
+            let Some(result) =
+                run_or_cancel(runtime.poll_queue_admission(), &context.cancel, &iface_stop).await
+            else {
+                cancelled = true;
+                break;
+            };
+            if let Err(error) = result {
+                set_error_status(
+                    &status,
+                    &format!("RNode queue-admission probe failed: {error:?}"),
+                );
+                break;
+            }
+
             // `RnodeBearerBackend::read` is the single owner of the bounded
             // wait. Do not cancel it with a shorter outer timeout: an Android
             // JNI read continues on its blocking worker after a future is

@@ -3,7 +3,7 @@ use crate::iface::lora::{
     CMD_LEAVE, CMD_MCU, CMD_PLATFORM, CMD_RADIO_STATE, CMD_SF, CMD_TXPOWER, DETECT_RESP,
     PLATFORM_ESP32, RADIO_STATE_ASK, RADIO_STATE_OFF, RADIO_STATE_ON,
 };
-use crate::kiss::decode_frames;
+use crate::kiss::{decode_frames, encode_command_frame};
 
 #[derive(Default)]
 struct TestBackend {
@@ -33,6 +33,77 @@ impl RnodeBleBackend for TestBackend {
     fn negotiated_mtu(&self) -> Option<u16> {
         self.negotiated_mtu
     }
+}
+
+#[test]
+fn rnode_queue_admission_sends_one_packet_per_ready_response() {
+    let config = RnodeBleKissConfig {
+        max_write_len: 508,
+        kiss: KissConfig { flow_control: true, ..KissConfig::default() },
+        ..RnodeBleKissConfig::default()
+    };
+    let mut session = RnodeBleKissSession::new(config);
+    let _startup = session.startup_frames();
+
+    assert!(session.enqueue_packet(b"first").is_empty());
+    assert!(session.enqueue_packet(b"second").is_empty());
+    assert_eq!(session.status().pending_payloads, 2);
+
+    session
+        .accept_notification_events(&encode_command_frame(CMD_READY, &[1]))
+        .expect("accept ready response");
+    let first_writes = session.take_pending_writes();
+    let first_frames = decode_frames(
+        &first_writes.into_iter().flat_map(|write| write.payload).collect::<Vec<_>>(),
+        508,
+    )
+    .expect("decode first admitted write");
+    assert_eq!(
+        first_frames,
+        vec![
+            KissFrame::Data(b"first".to_vec()),
+            KissFrame::Command(KissCommand::Ready),
+        ]
+    );
+    assert!(!session.status().interface_ready);
+    assert_eq!(session.status().pending_payloads, 1);
+
+    session
+        .accept_notification_events(&encode_command_frame(CMD_READY, &[0]))
+        .expect("accept full-queue response");
+    assert!(session.take_pending_writes().is_empty());
+    assert!(!session.status().interface_ready);
+
+    session.last_queue_admission_probe_at =
+        Some(Instant::now() - RNODE_QUEUE_ADMISSION_POLL_INTERVAL);
+    let retry_probe = session.queue_admission_probe_if_due();
+    assert_eq!(
+        decode_frames(
+            &retry_probe.into_iter().flat_map(|write| write.payload).collect::<Vec<_>>(),
+            508,
+        )
+        .expect("decode retry probe"),
+        vec![KissFrame::Command(KissCommand::Ready)]
+    );
+    assert!(session.queue_admission_probe_if_due().is_empty());
+
+    session
+        .accept_notification_events(&encode_command_frame(CMD_READY, &[1]))
+        .expect("accept drained-queue response");
+    let second_writes = session.take_pending_writes();
+    let second_frames = decode_frames(
+        &second_writes.into_iter().flat_map(|write| write.payload).collect::<Vec<_>>(),
+        508,
+    )
+    .expect("decode second admitted write");
+    assert_eq!(
+        second_frames,
+        vec![
+            KissFrame::Data(b"second".to_vec()),
+            KissFrame::Command(KissCommand::Ready),
+        ]
+    );
+    assert_eq!(session.status().pending_payloads, 0);
 }
 
 fn startup_notification_without_radio_state(config: LoraConfig) -> RnodeBleNotification {

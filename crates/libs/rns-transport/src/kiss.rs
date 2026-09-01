@@ -145,6 +145,9 @@ fn decode_frame(raw: &[u8], max_payload_len: usize, strip_command_port_nibble: b
     let payload = decode_payload(payload, max_payload_len);
     match command {
         CMD_DATA => KissFrame::Data(payload),
+        CMD_READY if payload.first().copied() == Some(0) => {
+            KissFrame::Command(KissCommand::Unknown(CMD_READY, payload))
+        }
         CMD_READY => KissFrame::Command(KissCommand::Ready),
         command => KissFrame::Command(KissCommand::Unknown(command, payload)),
     }

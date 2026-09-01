@@ -240,6 +240,7 @@ pub struct RnodeBleKissSession {
     subscribed: bool,
     interface_ready: bool,
     last_read_at: Instant,
+    last_queue_admission_probe_at: Option<Instant>,
     pending_payloads: VecDeque<Vec<u8>>,
     pending_writes: VecDeque<RnodeBleWrite>,
 }
@@ -252,6 +253,7 @@ impl RnodeBleKissSession {
             interface_ready: !config.kiss.flow_control,
             subscribed: false,
             last_read_at: Instant::now(),
+            last_queue_admission_probe_at: None,
             pending_payloads: VecDeque::new(),
             pending_writes: VecDeque::new(),
             config,
@@ -291,6 +293,9 @@ impl RnodeBleKissSession {
     #[must_use]
     pub fn startup_frames(&mut self) -> Vec<RnodeBleWrite> {
         self.subscribed = true;
+        if self.config.kiss.flow_control {
+            self.last_queue_admission_probe_at = Some(Instant::now());
+        }
         self.config
             .kiss
             .command_frames()
@@ -334,9 +339,10 @@ impl RnodeBleKissSession {
             return Vec::new();
         }
 
-        let writes = self.kiss_writes(encode_data_frame(payload));
+        let mut writes = self.kiss_writes(encode_data_frame(payload));
         if self.config.kiss.flow_control {
             self.interface_ready = false;
+            writes.extend(self.queue_admission_probe_writes());
         }
         writes
     }
@@ -363,9 +369,10 @@ impl RnodeBleKissSession {
             return Vec::new();
         }
 
-        let writes = self.kiss_writes(encode_data_frame(&payload));
+        let mut writes = self.kiss_writes(encode_data_frame(&payload));
         if self.config.kiss.flow_control {
             self.interface_ready = false;
+            writes.extend(self.queue_admission_probe_writes());
         }
         writes
     }
@@ -408,8 +415,17 @@ impl RnodeBleKissSession {
                     }
                 }
                 KissFrame::Command(KissCommand::Ready) => {
-                    self.interface_ready = true;
-                    self.flush_pending_payloads();
+                    if self.config.kiss.flow_control {
+                        self.interface_ready = true;
+                        self.flush_pending_payloads();
+                    }
+                }
+                KissFrame::Command(KissCommand::Unknown(CMD_READY, payload))
+                    if payload.first().copied() == Some(0) =>
+                {
+                    if self.config.kiss.flow_control {
+                        self.interface_ready = false;
+                    }
                 }
                 KissFrame::Command(KissCommand::Unknown(command, payload)) => {
                     notification.commands.push((command, payload));
@@ -424,6 +440,20 @@ impl RnodeBleKissSession {
         self.pending_writes.drain(..).collect()
     }
 
+    #[must_use]
+    pub fn queue_admission_probe_if_due(&mut self) -> Vec<RnodeBleWrite> {
+        if !self.config.kiss.flow_control
+            || self.interface_ready
+            || self.pending_payloads.is_empty()
+            || self.last_queue_admission_probe_at.is_some_and(|last| {
+                last.elapsed() < RNODE_QUEUE_ADMISSION_POLL_INTERVAL
+            })
+        {
+            return Vec::new();
+        }
+        self.queue_admission_probe_writes()
+    }
+
     fn flush_pending_payloads(&mut self) {
         while self.interface_ready {
             let Some(payload) = self.pending_payloads.pop_front() else {
@@ -432,8 +462,15 @@ impl RnodeBleKissSession {
             self.pending_writes.extend(self.kiss_writes(encode_data_frame(&payload)));
             if self.config.kiss.flow_control {
                 self.interface_ready = false;
+                let probe_writes = self.queue_admission_probe_writes();
+                self.pending_writes.extend(probe_writes);
             }
         }
+    }
+
+    fn queue_admission_probe_writes(&mut self) -> Vec<RnodeBleWrite> {
+        self.last_queue_admission_probe_at = Some(Instant::now());
+        self.kiss_writes(crate::kiss::encode_command_frame(crate::kiss::CMD_READY, &[1]))
     }
 
     fn kiss_writes(&self, payload: Vec<u8>) -> Vec<RnodeBleWrite> {

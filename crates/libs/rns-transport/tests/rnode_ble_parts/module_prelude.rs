@@ -281,11 +281,18 @@ fn rnode_ble_flow_control_queues_until_ready_notification() {
     assert!(packets.is_empty());
     assert_eq!(
         session.take_pending_writes(),
-        vec![RnodeBleWrite {
-            characteristic_uuid: RNODE_BLE_WRITE_CHARACTERISTIC_UUID,
-            with_response: false,
-            payload: encode_data_frame(&[0x01, 0x02]),
-        }]
+        vec![
+            RnodeBleWrite {
+                characteristic_uuid: RNODE_BLE_WRITE_CHARACTERISTIC_UUID,
+                with_response: false,
+                payload: encode_data_frame(&[0x01, 0x02]),
+            },
+            RnodeBleWrite {
+                characteristic_uuid: RNODE_BLE_WRITE_CHARACTERISTIC_UUID,
+                with_response: false,
+                payload: encode_command_frame(CMD_READY, &[1]),
+            },
+        ]
     );
 }
 
@@ -381,11 +388,18 @@ fn rnode_ble_flow_control_queues_id_beacon_until_ready_notification() {
     assert!(packets.is_empty());
     assert_eq!(
         session.take_pending_writes(),
-        vec![RnodeBleWrite {
-            characteristic_uuid: RNODE_BLE_WRITE_CHARACTERISTIC_UUID,
-            with_response: false,
-            payload: encode_data_frame(b"MYCALL-0"),
-        }]
+        vec![
+            RnodeBleWrite {
+                characteristic_uuid: RNODE_BLE_WRITE_CHARACTERISTIC_UUID,
+                with_response: false,
+                payload: encode_data_frame(b"MYCALL-0"),
+            },
+            RnodeBleWrite {
+                characteristic_uuid: RNODE_BLE_WRITE_CHARACTERISTIC_UUID,
+                with_response: false,
+                payload: encode_command_frame(CMD_READY, &[1]),
+            },
+        ]
     );
 }
 

@@ -95,6 +95,18 @@ fn decode_ready_frame_reports_flow_control_command() {
 }
 
 #[test]
+fn decode_not_ready_frame_preserves_firmware_queue_state() {
+    let input = [FEND, CMD_READY, 0, FEND];
+
+    let frames = decode_frames(&input, 64).expect("decode not-ready frame");
+
+    assert_eq!(
+        frames,
+        vec![KissFrame::Command(KissCommand::Unknown(CMD_READY, vec![0]))]
+    );
+}
+
+#[test]
 fn stream_decoder_can_strip_python_kiss_port_nibble() {
     let mut decoder = KissStreamDecoder::new(64).with_command_port_nibble_stripping(true);
 
