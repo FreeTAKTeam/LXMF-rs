@@ -87,6 +87,7 @@ async fn resource_wait_failure_runs_cancellation_before_returning() {
         Duration::from_millis(10),
         async move {
             cancellation_observer.store(true, Ordering::SeqCst);
+            Ok(())
         },
     )
     .await
@@ -116,12 +117,32 @@ async fn resource_wait_success_does_not_cancel_completed_transfer() {
         Duration::from_secs(1),
         async move {
             cancellation_observer.store(true, Ordering::SeqCst);
+            Ok(())
         },
     )
     .await
     .expect("matching completion succeeds");
 
     assert!(!cancelled.load(Ordering::SeqCst));
+}
+
+#[tokio::test]
+async fn resource_wait_surfaces_cancellation_failure_with_transfer_error() {
+    let (_sender, mut receiver) = broadcast::channel(2);
+    let expected_hash = Hash::new_from_slice(b"expected");
+
+    let error = await_resource_completion_with_cancel(
+        &mut receiver,
+        expected_hash,
+        Duration::from_millis(10),
+        async { Err(crate::delivery::transport_error("cancel dispatch failed")) },
+    )
+    .await
+    .expect_err("failed cleanup must remain visible");
+
+    assert_eq!(error.category, lxmf_sdk::ErrorCategory::Transport);
+    assert!(error.message.contains("resource transfer timed out"));
+    assert!(error.message.contains("cleanup failed: cancel dispatch failed"));
 }
 
 #[tokio::test]

@@ -1,6 +1,6 @@
 # LXMF Parity Matrix
 
-Last reassessed: 2026-08-06
+Last reassessed: 2026-09-01
 
 This is the maintained row-level status for Python LXMF compatibility.
 Repository-level posture and execution order live in
@@ -34,7 +34,7 @@ evidence tracked independently.
 | `LXMF/LXMF.py` | `crates/libs/lxmf-core` | complete | unit, pinned-python | Pinned module constants, payload fields, message identity, inbound decoding, wire helpers, delivery app-data helpers, compression support detection, and propagation-node announce helper validation. | No confirmed `LXMF.py` blocker in the pinned Python reference. |
 | `LXMF/LXMessage.py` | `crates/libs/lxmf-core` | complete | unit, pinned-python | Wire, storage, propagation, paper, signatures, message IDs, binary fidelity, and timestamp precision metadata. | No confirmed base-message blocker. |
 | `LXMF/LXMPeer.py` | `crates/libs/rns-rpc`, `crates/apps/reticulumd` | complete | unit, pinned-python | Persistent peers, queue marks, offer selection, policy gates, peering keys, throttling, maintenance, source accounting, cumulative acceptance, serialized restored queue snapshots, boolean/list/numeric offer responses, transfer/retry/restart recovery, and unpeer cleanup. | No confirmed `LXMPeer.py` blocker in the pinned Python-only coverage. |
-| `LXMF/LXMRouter.py` | `crates/libs/rns-rpc`, `crates/apps/reticulumd`, `crates/apps/lxmf-cli`, `crates/libs/lxmf-sdk`, `crates/libs/lxmf-runtime` | complete | unit, simulated, pinned-python | Outbound modes and progress/cancellation, selected propagation nodes, direct/propagated resources, fetch/download/sync RPCs, receipts, persistence and maintenance, propagation-node side effects, retry/failure handling, delivery policy, ticket and stamp lifecycle, peer distribution, announce metadata, delivery-link/resource callbacks, transient caches, typed router statistics, and typed message/information storage policy. `SdkBackend`, RPC, ZeroMQ, and in-process backends share the additive router-management contract. | No generated public-callable software gap remains in `LXMRouter.py`; physical/public-network and third-party-client evidence remain separate. The in-process propagated-delivery path (`lxmf-runtime` `send_propagated`) generates a real propagation stamp at the Python default target cost 16, which satisfies default-configured relays (minimum accepted 13); it does not yet honor a relay's announced stamp cost, so relays enforcing a minimum above 16 still reject these transfers until the announced `pn_stamp_cost` is plumbed into stamp generation. |
+| `LXMF/LXMRouter.py` | `crates/libs/rns-rpc`, `crates/apps/reticulumd`, `crates/apps/lxmf-cli`, `crates/libs/lxmf-sdk`, `crates/libs/lxmf-runtime` | complete | unit, simulated, pinned-python | Outbound modes and progress/cancellation, selected propagation nodes, direct/propagated resources, accepted-result Resource timeout/failure propagation with transport cancellation before retry, cleanup-failure visibility, fetch/download/sync RPCs, receipts, persistence and maintenance, propagation-node side effects, retry/failure handling, delivery policy, ticket and stamp lifecycle, peer distribution, announce metadata, delivery-link/resource callbacks, transient caches, typed router statistics, and typed message/information storage policy. `SdkBackend`, RPC, ZeroMQ, and in-process backends share the additive router-management contract. | No generated public-callable software gap remains in `LXMRouter.py`; physical/public-network and third-party-client evidence remain separate. The in-process propagated-delivery path (`lxmf-runtime` `send_propagated`) generates a real propagation stamp at the Python default target cost 16, which satisfies default-configured relays (minimum accepted 13); it does not yet honor a relay's announced stamp cost, so relays enforcing a minimum above 16 still reject these transfers until the announced `pn_stamp_cost` is plumbed into stamp generation. |
 | `LXMF/Handlers.py` | `crates/apps/reticulumd`, `crates/libs/rns-rpc` | complete | unit, simulated, pinned-python | Delivery and propagation announce handlers implement stamp-cost updates, pending direct/opportunistic wakeup, path-response handling, static-peer refresh, autopeer depth policy, peer removal, malformed announce visibility, and the router-coupled delivery/receipt/drop side effects exposed through daemon events and the typed SDK. | No confirmed software blocker in the pinned four-item public handler surface. |
 | `LXMF/LXStamper.py` | `crates/libs/lxmf-core`, `crates/libs/rns-rpc`, `crates/apps/reticulumd` | complete | unit, pinned-python | Validation, generation, ticket-derived stamps, cancellation-aware task work, background deferred worker queue ownership, retry state, cancellation, propagation-stamp pre-handoff preparation, progress metadata, and default-cost propagation stamp mining/validation in `lxmf-wire` (`stamp.rs`, ported `LXStamper` workblock HKDF) with fail-fast rejection of unattainable costs above 256. | No confirmed deferred-stamp lifecycle blocker. |
 | `LXMF/Utilities/lxmd.py` | `crates/apps/lxmf-cli`, `crates/apps/reticulumd` | complete | unit, simulated, pinned-python | Canonical `lxmd` workflows, configuration, announce cadence, propagation controls, status, and daemon lifecycle map to the shared Rust daemon and CLI surfaces. | No generated public utility callable is unmapped. |
@@ -67,6 +67,7 @@ evidence tracked independently.
 - PARITY_ITEM id=router.adapter_transport implementation=complete evidence=unit,pinned-python
 - PARITY_ITEM id=router.paper_uri_ingest implementation=complete evidence=unit,pinned-python
 - PARITY_ITEM id=router.cancel_outbound implementation=complete evidence=unit,pinned-python
+- PARITY_ITEM id=router.accepted_result_resource_cancel implementation=complete evidence=unit,simulated
 - PARITY_ITEM id=router.propagation_ingest_fetch implementation=complete evidence=unit,pinned-python
 - PARITY_ITEM id=router.transfer_state_lifecycle implementation=complete evidence=unit,pinned-python
 - PARITY_ITEM id=router.node_app_data implementation=complete evidence=unit,pinned-python
@@ -148,6 +149,9 @@ evidence tracked independently.
   direct `delivered`, `sent: link resource`, and `sent: propagated resource`.
 - Resource advertisement failure, retry exhaustion, timeout, and explicit
   cancellation reach daemon message state.
+- In-process accepted-result Resource sends retain the backend transfer timeout,
+  cancel a failed transfer before returning, and surface both the transfer error
+  and any failed cancellation dispatch with the link and Resource hashes.
 - Outbound SDK sends enter the daemon-owned queue before bridge handoff, run
   validation/policy checks before scheduling, expose delivery-pipeline queue and
   lane state, and preserve queued identity/path misses for delivery-announce

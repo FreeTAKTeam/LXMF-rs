@@ -109,11 +109,12 @@ async fn cancel_resource(
     transport: &Transport,
     link_id: rns_transport::hash::AddressHash,
     resource_hash: rns_transport::hash::Hash,
-) {
-    // Preserve the original transfer failure as the caller-facing error. The
-    // transport cancellation is cleanup: it may already be absent if the
-    // resource manager emitted a terminal failure first.
-    let _ = transport.cancel_resource(&link_id, resource_hash).await;
+) -> Result<(), SdkError> {
+    transport.cancel_resource(&link_id, resource_hash).await.map(|_| ()).map_err(|error| {
+        transport_error(format!(
+            "resource cancellation failed link={link_id} hash={resource_hash}: {error}"
+        ))
+    })
 }
 
 pub(crate) async fn await_resource_completion_with_cancel<F>(
@@ -123,13 +124,19 @@ pub(crate) async fn await_resource_completion_with_cancel<F>(
     cancel: F,
 ) -> Result<(), SdkError>
 where
-    F: Future<Output = ()>,
+    F: Future<Output = Result<(), SdkError>>,
 {
     let result = await_resource_completion(events, resource_hash, timeout).await;
-    if result.is_err() {
-        cancel.await;
+    if let Err(transfer_error) = result {
+        return match cancel.await {
+            Ok(()) => Err(transfer_error),
+            Err(cancel_error) => Err(transport_error(format!(
+                "{}; cleanup failed: {}",
+                transfer_error.message, cancel_error.message
+            ))),
+        };
     }
-    result
+    Ok(())
 }
 
 pub(crate) async fn await_resource_completion(
