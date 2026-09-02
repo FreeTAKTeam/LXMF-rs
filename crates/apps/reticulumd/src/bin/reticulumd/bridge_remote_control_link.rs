@@ -53,33 +53,20 @@ pub(super) fn build_link_identify_payload(
     identity: &PrivateIdentity,
     link_id: &AddressHash,
 ) -> Vec<u8> {
-    let mut public_key = Vec::with_capacity(64);
-    public_key.extend_from_slice(identity.as_identity().public_key.as_bytes());
-    public_key.extend_from_slice(identity.as_identity().verifying_key.as_bytes());
-
-    let mut signed_data = Vec::with_capacity(16 + public_key.len());
-    signed_data.extend_from_slice(link_id.as_slice());
-    signed_data.extend_from_slice(public_key.as_slice());
-    let signature = identity.sign(signed_data.as_slice());
-
-    let mut payload = Vec::with_capacity(public_key.len() + signature.to_bytes().len());
-    payload.extend_from_slice(public_key.as_slice());
-    payload.extend_from_slice(signature.to_bytes().as_slice());
-    payload
+    let signer = rns_transport::identity::PrivateIdentity::from_private_key_bytes(
+        &identity.to_private_key_bytes(),
+    )
+    .expect("a private identity's own key bytes round-trip");
+    rns_transport::destination::link::identify_payload(&signer, link_id)
 }
 
 pub(super) fn build_link_request_payload(
     path: &str,
     data: rmpv::Value,
 ) -> Result<Vec<u8>, std::io::Error> {
-    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs_f64();
-    let path_hash = address_hash(path.as_bytes());
-    rmp_serde::to_vec(&rmpv::Value::Array(vec![
-        rmpv::Value::F64(timestamp),
-        rmpv::Value::Binary(path_hash.to_vec()),
-        data,
-    ]))
-    .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err))
+    Link::request_payload(path, data)
+        .map(|request| request.packed)
+        .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err.to_string()))
 }
 
 pub(super) async fn send_link_context_packet(
