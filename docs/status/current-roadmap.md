@@ -839,6 +839,15 @@ Scoped release evidence is split as follows:
   fields, so direct-chat links/body text do not get JSON-stringified.
 - Delivery modes are honored by the daemon; the old claim that requested modes
   are ignored is obsolete.
+- In-process opportunistic sends reach the far side. `LXMessage.send` packs
+  `self.packed[DESTINATION_LENGTH:]` into an opportunistic packet because the
+  destination rides in the packet header and the receiving router prepends its
+  own hash before unpacking; `lxmf-runtime`'s `send_opportunistic` handed the
+  whole wire to `data_packet`, so a receiver saw the destination hash twice and
+  a message it could not verify, and every such send was dropped silently. It
+  strips the prefix with `rns_transport::delivery::strip_destination_prefix`,
+  the same helper the daemon uses, and a test pins the packet data to the wire
+  without its leading destination.
 - RPC daemon `lxmf.delivery` announce ingestion now wakes stored pending
   direct/default-direct and opportunistic outbound messages for the announced
   destination while leaving propagated, paper, terminal, already-sending, and

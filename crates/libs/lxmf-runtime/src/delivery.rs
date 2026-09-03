@@ -122,13 +122,27 @@ pub(crate) async fn send(
     }
 }
 
+/// What an opportunistic packet carries: the packed message without its
+/// leading destination hash, which the packet's own destination field
+/// already names — `LXMessage.send` packs `self.packed[DESTINATION_LENGTH:]`,
+/// and a receiver puts its own hash back before unpacking.
+pub(crate) fn opportunistic_packet_data<'a>(wire: &'a [u8], destination: &AddressHash) -> &'a [u8] {
+    let mut destination_bytes = [0u8; 16];
+    destination_bytes.copy_from_slice(destination.as_slice());
+    rns_transport::delivery::strip_destination_prefix(wire, &destination_bytes)
+}
+
 async fn send_opportunistic(
     transport: &Transport,
     destination: AddressHash,
     wire: &[u8],
     message_id: MessageId,
 ) -> Result<InProcessSendReport, SdkError> {
-    let packet = data_packet(destination, PropagationType::Transport, wire)?;
+    let packet = data_packet(
+        destination,
+        PropagationType::Transport,
+        opportunistic_packet_data(wire, &destination),
+    )?;
     let receipt_hash = hex::encode(packet.hash().to_bytes());
     let outcome =
         ensure_sent(transport.send_packet_with_outcome(packet).await, "opportunistic send")?;

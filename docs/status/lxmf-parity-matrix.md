@@ -130,6 +130,16 @@ evidence tracked independently.
 ### Delivery and receipts
 
 - Direct, opportunistic, propagated, and paper modes are distinct.
+- An opportunistic packet carries the wire without its leading destination
+  hash, as `LXMessage.send` packs `self.packed[DESTINATION_LENGTH:]`: the
+  destination rides in the packet header and the receiving router prepends its
+  own hash before unpacking (`LXMRouter.delivery_packet` into
+  `LXMessage.unpack_from_bytes`). `lxmf-runtime`'s `send_opportunistic` handed
+  over the whole wire, so a receiver saw the destination twice and a message it
+  could not verify, and every opportunistic send from the in-process backend
+  was dropped silently on the far side. It strips the prefix with
+  `rns_transport::delivery::strip_destination_prefix`, as the daemon's
+  `bridge_helpers::opportunistic_payload` already did.
 - Opportunistic Single/Data delivery now generates receiver-policy-controlled
   proofs on the ingress interface; explicit proof validation requires the
   packet-cache correlation for the proved destination and rejects signatures

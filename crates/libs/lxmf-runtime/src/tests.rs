@@ -318,3 +318,24 @@ async fn in_process_backend_implements_typed_router_management_contract() {
     assert!(policy.retain_node_lxms);
     assert_eq!(backend.router_stats().expect("stats").storage_policy, policy);
 }
+
+/// `LXMessage.send` packs `self.packed[DESTINATION_LENGTH:]` into an
+/// opportunistic packet: the destination rides in the packet header, and a
+/// receiver prepends its own hash before unpacking. Sending the whole wire
+/// gave the receiver the hash twice, and nothing it could verify.
+#[test]
+fn an_opportunistic_packet_carries_the_wire_without_its_destination_prefix() {
+    let destination = rns_transport::hash::AddressHash::new([0x11; 16]);
+    let mut wire = destination.as_slice().to_vec();
+    wire.extend_from_slice(&[0x22; 16]);
+    wire.extend_from_slice(b"signature and payload");
+
+    assert_eq!(super::delivery::opportunistic_packet_data(&wire, &destination), &wire[16..]);
+
+    let other = rns_transport::hash::AddressHash::new([0x33; 16]);
+    assert_eq!(
+        super::delivery::opportunistic_packet_data(&wire, &other),
+        &wire[..],
+        "a wire that does not start with the destination is left alone"
+    );
+}
