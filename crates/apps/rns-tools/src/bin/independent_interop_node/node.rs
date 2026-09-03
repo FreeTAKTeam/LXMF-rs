@@ -34,7 +34,7 @@ pub async fn run(cli: Cli) -> Result<(), String> {
     config.set_path_request_timeout_secs(5);
     config.set_link_proof_timeout_secs(30);
     config.set_resource_retry_interval_secs(1);
-    let mut transport = Transport::new(config);
+    let transport = Transport::new(config);
     let destination =
         transport.add_destination(identity.clone(), DestinationName::new("interop", "probe")).await;
     destination.lock().await.set_proof_strategy(ProofStrategy::All);

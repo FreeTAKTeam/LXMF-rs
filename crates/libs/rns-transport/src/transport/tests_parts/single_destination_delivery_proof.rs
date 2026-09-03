@@ -133,7 +133,7 @@ async fn proof_strategy_all_generates_a_valid_delivery_proof() {
     // synthetic/malformed payload the receiver would just fail to decrypt.
     let sender_identity = PrivateIdentity::new_from_rand(OsRng);
     let sender_config = TransportConfig::new("sender", &sender_identity, true);
-    let mut sender_transport = Transport::new(sender_config);
+    let sender_transport = Transport::new(sender_config);
     let mut sender_iface = sender_transport.iface_manager().lock().await.new_channel(8);
     let receiver_announce = own_destination.lock().await.announce(OsRng, None).expect("valid announce");
     handle_announce(

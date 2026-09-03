@@ -7,6 +7,7 @@ include!("tests_parts/path_request_duplicate_scoping.rs");
 include!("tests_parts/unknown_path_request_answered_by_announce.rs");
 
 include!("tests_parts/pending_out_link_rediscovery.rs");
+include!("tests_parts/receipt_handler_on_shared_transport.rs");
 
 include!("tests_parts/tunnel_restore_freshness.rs");
 

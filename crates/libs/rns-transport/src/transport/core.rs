@@ -388,7 +388,10 @@ impl Transport {
         }
     }
 
-    pub async fn set_receipt_handler(&mut self, handler: Box<dyn ReceiptHandler>) {
+    /// Installs the handler delivery proofs are reported to. Takes `&self`:
+    /// the handler lives behind the transport's own lock, and a `Transport`
+    /// is shared as an `Arc` by the time a client is ready to install one.
+    pub async fn set_receipt_handler(&self, handler: Box<dyn ReceiptHandler>) {
         self.handler.lock().await.receipt_handler = Some(Arc::from(handler));
     }
 

@@ -68,7 +68,7 @@ impl ReceiptHandler for CountingReceiptHandler {
 async fn handle_inbound_for_test_rejects_forged_destination_proof() {
     let local_identity = PrivateIdentity::new_from_rand(OsRng);
     let config = TransportConfig::new("test", &local_identity, true);
-    let mut transport = Transport::new(config);
+    let transport = Transport::new(config);
     let handler = transport.get_handler();
 
     let remote_identity = PrivateIdentity::new_from_rand(OsRng);
@@ -107,7 +107,7 @@ async fn handle_inbound_for_test_rejects_forged_destination_proof() {
 async fn handle_inbound_for_test_accepts_valid_destination_proof() {
     let local_identity = PrivateIdentity::new_from_rand(OsRng);
     let config = TransportConfig::new("test", &local_identity, true);
-    let mut transport = Transport::new(config);
+    let transport = Transport::new(config);
     let handler = transport.get_handler();
 
     let remote_identity = PrivateIdentity::new_from_rand(OsRng);
@@ -170,7 +170,7 @@ async fn handle_inbound_for_test_rejects_untracked_hash_even_with_a_known_identi
     // with this hash, so there's nothing to check the proof against.
     let local_identity = PrivateIdentity::new_from_rand(OsRng);
     let config = TransportConfig::new("test", &local_identity, true);
-    let mut transport = Transport::new(config);
+    let transport = Transport::new(config);
     let handler = transport.get_handler();
 
     let remote_identity = PrivateIdentity::new_from_rand(OsRng);
@@ -335,7 +335,7 @@ async fn routed_implicit_destination_proof_forwards_back_to_packet_source() {
 async fn handle_inbound_for_test_accepts_python_style_link_proof_with_none_context() {
     let local_identity = PrivateIdentity::new_from_rand(OsRng);
     let config = TransportConfig::new("test", &local_identity, true);
-    let mut transport = Transport::new(config);
+    let transport = Transport::new(config);
     let handler = transport.get_handler();
 
     let signer = PrivateIdentity::new_from_rand(OsRng);

@@ -348,6 +348,13 @@ Scoped release evidence is split as follows:
   the stale path is expired, rediscovery requests are throttled by the
   `PATH_REQUEST_MI` window, and shared-instance clients leave rediscovery to
   the shared instance.
+- A delivery-proof receipt handler can be installed through a shared
+  `Transport`. `set_receipt_handler` took `&mut self`, which bought nothing
+  because the handler it installs lives behind the transport's own lock, and
+  cost the case that matters: a `Transport` is held as an `Arc` by the time a
+  client is ready to install one, so through `&mut self` such a transport could
+  never receive delivery proofs. It takes `&self` now, and callers that held a
+  `mut` binding only for it lose the `mut`.
 - Routed link-table proof timeouts now model Python's unresponsive-path
   exception: one-hop or topology-change routes are marked unresponsive,
   rediscovery requests avoid the ingress interface, and equal-timebase
