@@ -348,6 +348,15 @@ Scoped release evidence is split as follows:
   the stale path is expired, rediscovery requests are throttled by the
   `PATH_REQUEST_MI` window, and shared-instance clients leave rediscovery to
   the shared instance.
+- `Link::request_packet` and `Link::identify_packet` took already-packed bytes
+  and nothing in the library packed them, so `reticulumd` carried its own
+  builders and every other client of the crate wrote the same two functions.
+  `Link::request_payload`, `Link::identify_payload` and
+  `unpack_response_envelope` now build and read them beside the packet
+  constructors, including the non-obvious Python rule that a request body is
+  packed as its own msgpack type rather than as a byte string because
+  `Link.handle_request` passes `unpacked_request[2]` through untouched. The
+  daemon's builders delegate to them.
 - Routed link-table proof timeouts now model Python's unresponsive-path
   exception: one-hop or topology-change routes are marked unresponsive,
   rediscovery requests avoid the ingress interface, and equal-timebase

@@ -62,7 +62,7 @@ use rns_transport::destination::{
     DestinationDesc, DestinationName, SingleInputDestination, SingleOutputDestination,
 };
 use rns_transport::destination_hash::parse_destination_hash_required;
-use rns_transport::hash::{address_hash, AddressHash};
+use rns_transport::hash::AddressHash;
 use rns_transport::identity::Identity;
 use rns_transport::packet::{
     ContextFlag, DestinationType, Header, HeaderType, IfacFlag, Packet, PacketContext,
