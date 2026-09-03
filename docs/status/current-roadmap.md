@@ -348,6 +348,18 @@ Scoped release evidence is split as follows:
   the stale path is expired, rediscovery requests are throttled by the
   `PATH_REQUEST_MI` window, and shared-instance clients leave rediscovery to
   the shared instance.
+- A pending outbound link is now closed once it outlives an establishment
+  timeout sized the way `RNS.Link.__init__` sizes it: the first hop's own
+  timeout plus `ESTABLISHMENT_TIMEOUT_PER_HOP` (6 seconds) for every hop to the
+  destination, from the `NextHopMetrics::first_hop_timeout` the path table
+  already carried. That is what lets a link that never came up reach the
+  rediscovery handling above, which a caller previously had to trigger by
+  closing the link by hand; before it, the link request was repeated every
+  `INTERVAL_OUTPUT_LINK_REPEAT` for the life of the process. Inside the timeout
+  the request is still repeated as before, and a repeat does not restart the
+  clock, while an explicit restart or a request from a state the link had left
+  begins a new attempt with a fresh one. Python's `teardown_reason = TIMEOUT` is
+  not yet surfaced to callers as a distinct close reason.
 - Routed link-table proof timeouts now model Python's unresponsive-path
   exception: one-hop or topology-change routes are marked unresponsive,
   rediscovery requests avoid the ingress interface, and equal-timebase

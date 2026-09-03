@@ -93,13 +93,20 @@ impl Transport {
         }
 
         let mut link = Link::new(destination, self.link_out_event_tx.clone());
-        let next_hop_iface = self.handler.lock().await.path_table.next_hop_iface(
-            &destination.address_hash,
-        );
+        let (next_hop_iface, hops) = {
+            let handler = self.handler.lock().await;
+            (
+                handler.path_table.next_hop_iface(&destination.address_hash),
+                handler.path_table.hops_to(&destination.address_hash),
+            )
+        };
         let next_hop_mtu = match next_hop_iface {
             Some(iface) => self.iface_manager.lock().await.mtu(&iface),
             None => None,
         };
+        link.set_establishment_timeout(
+            self.establishment_timeout_for(&destination.address_hash, next_hop_mtu, hops).await,
+        );
         let packet = match next_hop_mtu {
             Some(mtu) => link.request_with_mtu(mtu),
             None => link.request(),

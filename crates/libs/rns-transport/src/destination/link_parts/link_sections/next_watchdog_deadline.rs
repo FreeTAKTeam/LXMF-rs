@@ -158,6 +158,7 @@ impl Link {
         }
         self.channel_rx_ring.clear();
         self.status = LinkStatus::Pending;
+        self.start_establishment();
         self.peer_identity = Identity::default();
         self.identified_peer_identity = None;
         self.derived_key = DerivedKey::new_empty();

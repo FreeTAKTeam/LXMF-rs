@@ -92,6 +92,23 @@ pub(in crate::transport) async fn handle_check_links<'a>(
                 }
                 LinkWatchdogAction::None => {}
             },
+            LinkStatus::Pending | LinkStatus::Handshake if link.establishment_timed_out(now) => {
+                // `RNS.Link`'s watchdog: a link that never came up is closed
+                // rather than requested forever, and a non-transport instance
+                // expires the path it was tried on and asks for a fresh one.
+                log::debug!(
+                    "tp({}): link {} establishment timed out",
+                    handler.config.name,
+                    link.id()
+                );
+                let destination = link.destination().address_hash;
+                link.close();
+                links_to_remove.push(*link_entry.0);
+                closed_link_ids.push(*link.id());
+                if !handler.config.transport_enabled {
+                    closed_pending_destinations.push(destination);
+                }
+            }
             LinkStatus::Pending => {
                 if link.elapsed() > INTERVAL_OUTPUT_LINK_REPEAT {
                     log::warn!("tp({}): repeat link request {}", handler.config.name, link.id());
