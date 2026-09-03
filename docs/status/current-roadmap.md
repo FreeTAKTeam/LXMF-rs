@@ -834,6 +834,16 @@ Scoped release evidence is split as follows:
   `lxmf-wire`, including delivery app-data display-name and stamp-cost parsing,
   compression support defaults, and propagation-node announce name/cost
   validation with both Python-style boolean and typed Rust diagnostic paths.
+- The pinned Python delivery-stamp and ticket surface is exposed there too.
+  `reticulumd::lxmf_stamps` held `generate_stamp`, `validate_stamp` with
+  tickets, `ticket_stamp`, `COST_TICKET`, `TICKET_LENGTH`, the peering-key pair
+  and the cancellable generators, so a library consumer wanting Python-parity
+  delivery stamps or tickets had to reimplement them; they now live in
+  `lxmf-wire::stamp` with the `LXMessage` ticket lifetime constants beside
+  them, and the daemon re-exports the same names. Ticket checking precedes the
+  workblock as in `LXMessage.validate_stamp`, every generator shares the
+  `MAX_STAMP_COST` fail-fast, and a byte-for-byte pinned-Python `ticket_stamp`
+  vector is new evidence.
 - The typed ZeroMQ SDK send and batch-send paths now treat payload `body` as
   message content when `content` is absent, while still preserving `body` in
   fields, so direct-chat links/body text do not get JSON-stringified.
