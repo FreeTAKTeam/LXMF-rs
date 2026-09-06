@@ -327,6 +327,47 @@ fn rnodeconf_sends_guarded_rnode_multi_vport_rpc() {
     rpc.thread.join().expect("mock rpc server");
 }
 
+/// `read-rom` asks the radio and `stored-config` collects the answer, so this
+/// is the one management command that queues no frame. The reply carries a
+/// state name rather than a bare configuration, because "nothing stored" and
+/// "the read was cut short" must not both arrive as an empty result.
+#[test]
+fn rnodeconf_sends_stored_config_rpc() {
+    let rpc = spawn_mock_rpc(|request| {
+        assert_eq!(request.method, "rnode_management");
+        let params = request.params.expect("params");
+        assert_eq!(params["iface"].as_str(), Some("rnode-main"));
+        assert_eq!(params["command"].as_str(), Some("stored_config"));
+        RpcResponse {
+            id: request.id,
+            result: Some(json!({
+                "queued": false,
+                "iface": "rnode-main",
+                "command": "stored_config",
+                "stored_config": { "state": "read", "frequency_hz": 917_375_000 },
+            })),
+            error: None,
+        }
+    });
+
+    let output = Command::new(rnodeconf_bin())
+        .arg("--rpc")
+        .arg(rpc.addr)
+        .arg("stored-config")
+        .arg("--interface")
+        .arg("rnode-main")
+        .output()
+        .expect("run rnodeconf-rs");
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
+    let value: serde_json::Value = serde_json::from_str(&stdout).expect("json stdout");
+    assert_eq!(value["queued"].as_bool(), Some(false));
+    assert_eq!(value["stored_config"]["state"].as_str(), Some("read"));
+    assert_eq!(value["stored_config"]["frequency_hz"].as_u64(), Some(917_375_000));
+    rpc.thread.join().expect("mock rpc server");
+}
+
 #[test]
 fn rnodeconf_cli_covers_extended_python_management_surface() {
     let cases = vec![

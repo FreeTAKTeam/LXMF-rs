@@ -2,6 +2,9 @@ type RNodeManagementFrameSender = tokio::sync::mpsc::Sender<Vec<u8>>;
 type RNodeManagementFrameReceiver =
     Arc<tokio::sync::Mutex<tokio::sync::mpsc::Receiver<Vec<u8>>>>;
 type RNodeManagementStatus = Arc<std::sync::Mutex<LoraRNodeManagementStatus>>;
+/// The last `CMD_ROM_READ` reply, shared so a caller holding the interface
+/// sees what the running stream task received.
+type RNodeStoredConfigImage = Arc<std::sync::Mutex<Option<Vec<u8>>>>;
 
 #[derive(Debug, Clone, Default)]
 struct LoraRNodeManagementStatus {
@@ -82,6 +85,7 @@ pub struct LoraInterface {
     management_frame_tx: RNodeManagementFrameSender,
     management_frame_rx: RNodeManagementFrameReceiver,
     management_status: RNodeManagementStatus,
+    stored_config_image: RNodeStoredConfigImage,
 }
 
 impl LoraInterface {
@@ -105,6 +109,7 @@ impl LoraInterface {
             management_frame_tx,
             management_frame_rx,
             management_status: Arc::new(std::sync::Mutex::new(LoraRNodeManagementStatus::default())),
+            stored_config_image: Arc::new(std::sync::Mutex::new(None)),
         }
     }
 
@@ -128,6 +133,7 @@ impl LoraInterface {
             management_frame_tx,
             management_frame_rx,
             management_status: Arc::new(std::sync::Mutex::new(LoraRNodeManagementStatus::default())),
+            stored_config_image: Arc::new(std::sync::Mutex::new(None)),
         }
     }
 
@@ -191,11 +197,19 @@ impl LoraInterface {
         self.startup_response_timeout
     }
 
+    /// The radio settings this RNode has in EEPROM, from the last
+    /// `CMD_ROM_READ` reply. Request one with [`LoraConfig::rom_read_frame`];
+    /// until a reply arrives this is [`StoredConfigError::NotRead`].
+    pub fn stored_config(&self) -> Result<Option<StoredRadioConfig>, StoredConfigError> {
+        stored_config_from_image(&self.stored_config_image)
+    }
+
     #[must_use]
     pub fn rnode_management_handle(&self) -> LoraRNodeManagementHandle {
         LoraRNodeManagementHandle {
             tx: self.management_frame_tx.clone(),
             status: self.management_status.clone(),
+            stored_config_image: self.stored_config_image.clone(),
         }
     }
 
@@ -227,6 +241,14 @@ impl LoraInterface {
     pub fn record_command_response(&mut self, command: u8, payload: &[u8]) -> Result<bool, String> {
         if command == CMD_RADIO_STATE {
             self.radio_state_response_seen = true;
+        }
+        if command == CMD_ROM_READ {
+            // Kept whole rather than parsed here: the parse is what a caller
+            // asks for, and holding the image lets a short read be reported as
+            // one instead of as a device with nothing stored.
+            *self.stored_config_image.lock().expect("lora stored config mutex poisoned") =
+                Some(payload.to_vec());
+            return Ok(true);
         }
         if self.probe_status.accept_command(command, payload)? {
             return Ok(true);
@@ -343,6 +365,7 @@ impl LoraInterface {
             },
             "baud_rate": self.baud_rate(),
             "configured": configured,
+            "stored_config": stored_config_status_json(&self.stored_config()),
             "probe_status": self.probe_status.to_json(),
             "radio_status": self.radio_status.to_json(),
             "hardware_errors": self
@@ -561,9 +584,16 @@ fn rnode_management_channel() -> (RNodeManagementFrameSender, RNodeManagementFra
 pub struct LoraRNodeManagementHandle {
     tx: RNodeManagementFrameSender,
     status: RNodeManagementStatus,
+    stored_config_image: RNodeStoredConfigImage,
 }
 
 impl LoraRNodeManagementHandle {
+    /// See [`LoraInterface::stored_config`]. A `rom_read` dispatch only asks
+    /// the radio; this is where the answer arrives.
+    pub fn stored_config(&self) -> Result<Option<StoredRadioConfig>, StoredConfigError> {
+        stored_config_from_image(&self.stored_config_image)
+    }
+
     fn record_queued(&self, command: &str) {
         let mut status = self.status.lock().expect("lora management status mutex poisoned");
         status.record_queued(command);
