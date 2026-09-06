@@ -1,4 +1,17 @@
 //! Private filesystem persistence helpers.
+//!
+//! What the crate itself uses to keep key material on disk — `FileKeyManager`
+//! and the ratchet store both write through [`atomic_write_private`] — and
+//! what a consumer persisting an identity or a ratchet file wants for the
+//! same reasons: the file is written whole to a randomised sibling, synced,
+//! and renamed over the target, so a crash leaves either the old file or the
+//! new one and never a partial.
+//!
+//! **The owner-only half is Unix.** The 0700/0600 modes below are behind
+//! `cfg(unix)`, and no Windows ACL is installed in their place, so there the
+//! temporary and final files inherit whatever their parent directory allows.
+//! A consumer on Windows that needs key material kept from other local users
+//! has to arrange the directory's permissions itself.
 
 use rand_core::{OsRng, RngCore};
 use std::fs::{self, File, OpenOptions};
@@ -11,7 +24,8 @@ const PRIVATE_DIRECTORY_MODE: u32 = 0o700;
 const PRIVATE_FILE_MODE: u32 = 0o600;
 const TEMP_CREATE_ATTEMPTS: usize = 128;
 
-/// Creates a directory and restricts it to its owner on Unix.
+/// Creates a directory, and on Unix restricts it to its owner. On Windows it
+/// keeps whatever permissions it inherits; see the module documentation.
 pub fn ensure_private_directory(path: &Path) -> io::Result<()> {
     fs::create_dir_all(path)?;
 
@@ -24,7 +38,9 @@ pub fn ensure_private_directory(path: &Path) -> io::Result<()> {
     Ok(())
 }
 
-/// Atomically replaces a private file using a randomized, exclusively-created sibling.
+/// Atomically replaces a file using a randomized, exclusively-created sibling.
+/// Owner-only on Unix; see the module documentation for what Windows does not
+/// get.
 pub fn atomic_write_private(path: &Path, contents: &[u8]) -> io::Result<()> {
     if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
         ensure_private_directory(parent)?;
