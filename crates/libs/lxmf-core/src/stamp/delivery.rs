@@ -5,7 +5,10 @@ use alloc::vec::Vec;
 
 use sha2::{Digest, Sha256};
 
-use super::{stamp_valid, stamp_value, stamp_value_with_prefix, stamp_workblock, MAX_STAMP_COST};
+use super::{
+    stamp_valid, stamp_value, stamp_value_with_prefix, stamp_workblock, MAX_MINEABLE_STAMP_COST,
+    MAX_STAMP_COST,
+};
 
 /// `LXStamper.WORKBLOCK_EXPAND_ROUNDS`: the delivery-stamp workblock.
 pub const WORKBLOCK_EXPAND_ROUNDS: usize = 3000;
@@ -51,7 +54,7 @@ pub fn ticket_stamp(ticket: &[u8], message_id: &[u8; 32]) -> Vec<u8> {
 
 /// Generates a delivery stamp reaching `stamp_cost` for `message_id`,
 /// mirroring `LXStamper.generate_stamp`. Returns `None` when `stamp_cost`
-/// exceeds [`MAX_STAMP_COST`] or the nonce space is exhausted.
+/// is unmineable or the nonce space is exhausted.
 pub fn generate_stamp(message_id: &[u8; 32], stamp_cost: u32) -> Option<Vec<u8>> {
     generate_stamp_until_cancelled(message_id, stamp_cost, || false)
 }
@@ -144,7 +147,11 @@ fn mine(
     stamp_cost: u32,
     mut cancelled: impl FnMut() -> bool,
 ) -> Option<(Vec<u8>, u32)> {
-    if stamp_cost > MAX_STAMP_COST {
+    // `COST_TICKET` is `MAX_STAMP_COST`, and a caller reaches this with a cost
+    // a peer announced. Admitting it would spend the whole nonce space looking
+    // for an all-zero digest, so the sentinel and everything above it fail
+    // fast rather than being mined for.
+    if stamp_cost > MAX_MINEABLE_STAMP_COST {
         return None;
     }
 

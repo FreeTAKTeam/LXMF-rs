@@ -48,10 +48,18 @@ pub const DEFAULT_PROPAGATION_STAMP_COST: u32 = 16;
 /// `LXStamper.WORKBLOCK_EXPAND_ROUNDS_PN`: the propagation-stamp workblock.
 pub const PROPAGATION_WORKBLOCK_EXPAND_ROUNDS: usize = 1000;
 
-/// Maximum attainable stamp cost: the stamp value is the number of leading
-/// zero bits of a SHA-256 digest, so it can never exceed 256. Requests
-/// above this limit are rejected immediately instead of mining forever.
+/// Maximum stamp cost a value can carry: the stamp value is the number of
+/// leading zero bits of a SHA-256 digest, so it can never exceed 256. A
+/// validator accepts a target this high, since [`COST_TICKET`] is exactly it
+/// and a ticket-paid message is worth that much. A miner does not: reaching
+/// 256 needs an all-zero digest, so a search for one runs out the whole 64-bit
+/// nonce space and finds nothing.
 pub const MAX_STAMP_COST: u32 = 256;
+
+/// The highest cost a search can actually be given. [`MAX_STAMP_COST`] and
+/// above are rejected before the workblock is built rather than mined for,
+/// which is the bound to clamp a peer's announced cost against.
+pub const MAX_MINEABLE_STAMP_COST: u32 = MAX_STAMP_COST - 1;
 
 /// `LXMessage.LXMF_OVERHEAD`: 2 destination hashes + signature + timestamp
 /// + msgpack struct overhead.
@@ -63,8 +71,8 @@ const CANCEL_CHECK_MASK: u64 = 0x3ff;
 /// Generates a propagation stamp reaching `stamp_cost` for the given
 /// transient id, mirroring `LXStamper.generate_stamp` with
 /// `WORKBLOCK_EXPAND_ROUNDS_PN`. Returns `None` when `stamp_cost` exceeds
-/// [`MAX_STAMP_COST`] (unattainable, would otherwise mine forever) or if
-/// the nonce space is exhausted, which is unreachable for realistic costs.
+/// [`MAX_MINEABLE_STAMP_COST`] (unattainable, would otherwise mine forever) or
+/// if the nonce space is exhausted, which is unreachable for realistic costs.
 pub fn generate_propagation_stamp(transient_id: &[u8; 32], stamp_cost: u32) -> Option<Vec<u8>> {
     generate_propagation_stamp_until_cancelled(transient_id, stamp_cost, || false)
 }
@@ -89,7 +97,7 @@ pub fn generate_propagation_stamp_with_value_until_cancelled(
     stamp_cost: u32,
     mut cancelled: impl FnMut() -> bool,
 ) -> Option<(Vec<u8>, u32)> {
-    if stamp_cost > MAX_STAMP_COST {
+    if stamp_cost > MAX_MINEABLE_STAMP_COST {
         return None;
     }
 

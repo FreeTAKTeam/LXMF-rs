@@ -60,6 +60,28 @@ fn unattainable_stamp_costs_are_rejected_before_mining() {
     assert!(validate_propagation_stamp(&transient, MAX_STAMP_COST + 1).is_none());
 }
 
+/// `COST_TICKET` is `MAX_STAMP_COST` itself, so a guard written as "above the
+/// maximum" let the sentinel through. A caller reaches this with a cost a peer
+/// announced, and reaching 256 needs an all-zero digest, so the search would
+/// have spent the whole 64-bit nonce space finding nothing.
+#[test]
+#[cfg_attr(miri, ignore = "proof-of-work expansion is prohibitively slow under Miri")]
+fn the_ticket_sentinel_is_not_a_mineable_cost() {
+    let message_id = sha256_array(b"ticket sentinel");
+    assert!(generate_stamp(&message_id, COST_TICKET).is_none());
+    assert!(generate_propagation_stamp(&message_id, COST_TICKET).is_none());
+    assert!(generate_peering_key(&message_id, COST_TICKET).is_none());
+
+    // Validation keeps accepting it: that is what a ticket-paid message is
+    // worth, and `validate_stamp` is called with exactly this target.
+    let ticket = alloc::vec![7u8; TICKET_LENGTH];
+    let stamp = ticket_stamp(&ticket, &message_id);
+    assert_eq!(
+        validate_stamp(Some(&stamp), &message_id, COST_TICKET, &[ticket]),
+        Some(COST_TICKET)
+    );
+}
+
 #[test]
 #[cfg_attr(miri, ignore = "proof-of-work expansion is prohibitively slow under Miri")]
 fn generated_propagation_stamp_validates_at_default_minimum_accepted_cost() {

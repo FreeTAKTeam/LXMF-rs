@@ -841,9 +841,13 @@ Scoped release evidence is split as follows:
   delivery stamps or tickets had to reimplement them; they now live in
   `lxmf-wire::stamp` with the `LXMessage` ticket lifetime constants beside
   them, and the daemon re-exports the same names. Ticket checking precedes the
-  workblock as in `LXMessage.validate_stamp`, every generator shares the
-  `MAX_STAMP_COST` fail-fast, and a byte-for-byte pinned-Python `ticket_stamp`
-  vector is new evidence.
+  workblock as in `LXMessage.validate_stamp`, and a byte-for-byte pinned-Python
+  `ticket_stamp` vector is new evidence. Every generator shares the propagation
+  one's fail-fast, now rejecting `COST_TICKET` as well: the sentinel is
+  `MAX_STAMP_COST` itself, so the old "above the maximum" guard admitted it, and
+  a cost a peer announced would have been mined for across the whole nonce
+  space with an all-zero digest as the only answer. Validators still take that
+  target, which is what a ticket pays.
 - `lxmf-wire`'s `Message` can stamp itself. The daemon's `lxmf_bridge` did that
   job around it, computing the message id over a throwaway `WireMessage`,
   deriving or mining a stamp and merging the ticket field by hand, so any other
