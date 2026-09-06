@@ -11,7 +11,12 @@ use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 pub(super) const PROPAGATION_INVALID_STAMP_SIGNAL: u8 = 0xF5;
-pub(super) const DEFAULT_PROPAGATION_STAMP_COST: u32 = 13;
+/// `LXMRouter.PROPAGATION_COST`: the cost to mine when the relay's announced
+/// cost is unknown. A default relay accepts three less
+/// (`PROPAGATION_COST_FLEX`), but that minimum is the relay's leniency, not
+/// the sender's target, and a relay run with no flexibility accepts nothing
+/// below its own cost.
+pub(crate) const DEFAULT_PROPAGATION_STAMP_COST: u32 = lxmf::stamp::DEFAULT_PROPAGATION_STAMP_COST;
 const PROPAGATION_LINK_ACTIVATION_GRACE: Duration = Duration::from_secs(25);
 
 pub(super) struct PropagationPayload {

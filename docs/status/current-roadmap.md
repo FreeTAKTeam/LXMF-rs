@@ -857,6 +857,17 @@ Scoped release evidence is split as follows:
   announced stamp cost (`pn_stamp_cost_from_app_data`) is not yet plumbed
   into stamp generation, so relays enforcing a minimum above 16 still
   reject this path.
+- The daemon bridge now mines propagation stamps at that same Python target
+  when the relay's announced cost is unknown. It used 13, which is
+  `PROPAGATION_COST - PROPAGATION_COST_FLEX`: the minimum a default relay
+  accepts, which is the relay's leniency and not the sender's target. A search
+  stops at the first nonce reaching its target, so mining to 13 yields 13, 14,
+  15, 16 and up, and roughly one in eight clears 16 by chance: a relay run with
+  no flexibility rejected most of what the daemon produced, not all of it. It
+  takes `lxmf-wire::stamp::DEFAULT_PROPAGATION_STAMP_COST` instead of its own
+  literal, and a unit test pins the two together and to
+  `LXMRouter.PROPAGATION_COST`. The announced-cost gap above is unchanged and
+  applies to both paths.
 - Direct and propagated resource sends support receipt-state separation,
   timeout/failure propagation, and active resource cancellation. In-process
   accepted-result Resources use the backend transfer bound, and every failed
