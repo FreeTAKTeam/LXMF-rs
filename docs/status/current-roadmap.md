@@ -848,6 +848,15 @@ Scoped release evidence is split as follows:
   peer's destination of the same name as the link's and compares that. The test
   had encoded the same misreading, counting an unidentified inbound link as
   available for the local destination.
+- The in-process send path now sends on that backchannel instead of only
+  counting it. `Transport::delivery_link` returns the link, direct first and
+  then the peer's, and `delivery_link_available` is that answer reduced to a
+  boolean. `lxmf-runtime`'s `activate_link` takes an established one before
+  reaching for `Transport::link`, which reads `out_links` alone and so opened a
+  second link to a peer already reachable on the first. Against a peer who
+  cannot accept a link that second one never activates, and a send that would
+  have gone out as a single opportunistic packet timed out instead. The daemon
+  path has done this since `DirectBackchannelLinks::active_link`.
 - RPC daemon `lxmf.delivery` announce ingestion now wakes stored pending
   direct/default-direct and opportunistic outbound messages for the announced
   destination while leaving propagated, paper, terminal, already-sending, and
