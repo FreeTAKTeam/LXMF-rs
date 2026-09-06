@@ -834,6 +834,31 @@ Scoped release evidence is split as follows:
   `lxmf-wire`, including delivery app-data display-name and stamp-cost parsing,
   compression support defaults, and propagation-node announce name/cost
   validation with both Python-style boolean and typed Rust diagnostic paths.
+- The pinned Python delivery-stamp and ticket surface is exposed there too.
+  `reticulumd::lxmf_stamps` held `generate_stamp`, `validate_stamp` with
+  tickets, `ticket_stamp`, `COST_TICKET`, `TICKET_LENGTH`, the peering-key pair
+  and the cancellable generators, so a library consumer wanting Python-parity
+  delivery stamps or tickets had to reimplement them; they now live in
+  `lxmf-wire::stamp` with the `LXMessage` ticket lifetime constants beside
+  them, and the daemon re-exports the same names. Ticket checking precedes the
+  workblock as in `LXMessage.validate_stamp`, and a byte-for-byte pinned-Python
+  `ticket_stamp` vector is new evidence. Every generator shares the propagation
+  one's fail-fast, now rejecting `COST_TICKET` as well: the sentinel is
+  `MAX_STAMP_COST` itself, so the old "above the maximum" guard admitted it, and
+  a cost a peer announced would have been mined for across the whole nonce
+  space with an all-zero digest as the only answer. Validators still take that
+  target, which is what a ticket pays.
+- `lxmf-wire`'s `Message` can stamp itself. The daemon's `lxmf_bridge` did that
+  job around it, computing the message id over a throwaway `WireMessage`,
+  deriving or mining a stamp and merging the ticket field by hand, so any other
+  consumer copied the same code and the same trap: the id has to be computed
+  before the stamp is set, over the payload without it, with the timestamp
+  fixed first. `Message::message_id`, `Message::stamp_for_delivery` and
+  `Message::include_ticket` are `LXMessage.pack`'s id, `LXMessage.get_stamp`
+  and `LXMRouter.handle_outbound`'s `include_ticket` respectively, and the
+  daemon's builder uses them. Its behaviour is unchanged apart from the ticket
+  expiry being packed as the float the reference writes, which the daemon's own
+  reader and Python accept alike.
 - The typed ZeroMQ SDK send and batch-send paths now treat payload `body` as
   message content when `content` is absent, while still preserving `body` in
   fields, so direct-chat links/body text do not get JSON-stringified.

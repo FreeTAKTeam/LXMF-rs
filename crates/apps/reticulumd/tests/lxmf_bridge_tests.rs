@@ -232,7 +232,8 @@ fn build_wire_message_with_include_ticket_adds_ticket_field() {
     let fields = message.fields.expect("fields");
     let json = rmpv_to_json(&fields).expect("json");
 
-    assert_eq!(json["12"][0].as_i64(), Some(expires_at));
+    // A float: the reference writes `time.time() + TICKET_EXPIRY`.
+    assert_eq!(json["12"][0].as_f64(), Some(expires_at as f64));
     assert_eq!(
         json["12"][1],
         serde_json::json!([

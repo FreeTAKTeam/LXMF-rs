@@ -1,5 +1,8 @@
 mod container;
 mod delivery;
+mod delivery_stamp;
+#[cfg(test)]
+mod delivery_stamp_tests;
 mod payload;
 mod state;
 mod types;

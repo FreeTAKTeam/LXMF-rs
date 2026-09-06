@@ -32,11 +32,11 @@ evidence tracked independently.
 | Python module | Rust surface | Implementation | Evidence | Implemented baseline | Residual gap |
 | --- | --- | --- | --- | --- | --- |
 | `LXMF/LXMF.py` | `crates/libs/lxmf-core` | complete | unit, pinned-python | Pinned module constants, payload fields, message identity, inbound decoding, wire helpers, delivery app-data helpers, compression support detection, and propagation-node announce helper validation. | No confirmed `LXMF.py` blocker in the pinned Python reference. |
-| `LXMF/LXMessage.py` | `crates/libs/lxmf-core` | complete | unit, pinned-python | Wire, storage, propagation, paper, signatures, message IDs, binary fidelity, and timestamp precision metadata. | No confirmed base-message blocker. |
+| `LXMF/LXMessage.py` | `crates/libs/lxmf-core` | complete | unit, pinned-python | Wire, storage, propagation, paper, signatures, message IDs, binary fidelity, timestamp precision metadata, and the `pack`/`get_stamp`/`include_ticket` members that stamp a message and carry its ticket. | No confirmed base-message blocker. |
 | `LXMF/LXMPeer.py` | `crates/libs/rns-rpc`, `crates/apps/reticulumd` | complete | unit, pinned-python | Persistent peers, queue marks, offer selection, policy gates, peering keys, throttling, maintenance, source accounting, cumulative acceptance, serialized restored queue snapshots, boolean/list/numeric offer responses, transfer/retry/restart recovery, and unpeer cleanup. | No confirmed `LXMPeer.py` blocker in the pinned Python-only coverage. |
 | `LXMF/LXMRouter.py` | `crates/libs/rns-rpc`, `crates/apps/reticulumd`, `crates/apps/lxmf-cli`, `crates/libs/lxmf-sdk`, `crates/libs/lxmf-runtime` | complete | unit, simulated, pinned-python | Outbound modes and progress/cancellation, selected propagation nodes, direct/propagated resources, accepted-result Resource timeout/failure propagation with transport cancellation before retry, cleanup-failure visibility, fetch/download/sync RPCs, receipts, persistence and maintenance, propagation-node side effects, retry/failure handling, delivery policy, ticket and stamp lifecycle, peer distribution, announce metadata, delivery-link/resource callbacks, transient caches, typed router statistics, and typed message/information storage policy. `SdkBackend`, RPC, ZeroMQ, and in-process backends share the additive router-management contract. | No generated public-callable software gap remains in `LXMRouter.py`; physical/public-network and third-party-client evidence remain separate. The in-process propagated-delivery path (`lxmf-runtime` `send_propagated`) generates a real propagation stamp at the Python default target cost 16, which satisfies default-configured relays (minimum accepted 13); it does not yet honor a relay's announced stamp cost, so relays enforcing a minimum above 16 still reject these transfers until the announced `pn_stamp_cost` is plumbed into stamp generation. |
 | `LXMF/Handlers.py` | `crates/apps/reticulumd`, `crates/libs/rns-rpc` | complete | unit, simulated, pinned-python | Delivery and propagation announce handlers implement stamp-cost updates, pending direct/opportunistic wakeup, path-response handling, static-peer refresh, autopeer depth policy, peer removal, malformed announce visibility, and the router-coupled delivery/receipt/drop side effects exposed through daemon events and the typed SDK. | No confirmed software blocker in the pinned four-item public handler surface. |
-| `LXMF/LXStamper.py` | `crates/libs/lxmf-core`, `crates/libs/rns-rpc`, `crates/apps/reticulumd` | complete | unit, pinned-python | Validation, generation, ticket-derived stamps, cancellation-aware task work, background deferred worker queue ownership, retry state, cancellation, propagation-stamp pre-handoff preparation, progress metadata, and default-cost propagation stamp mining/validation in `lxmf-wire` (`stamp.rs`, ported `LXStamper` workblock HKDF) with fail-fast rejection of unattainable costs above 256. | No confirmed deferred-stamp lifecycle blocker. |
+| `LXMF/LXStamper.py` | `crates/libs/lxmf-core`, `crates/libs/rns-rpc`, `crates/apps/reticulumd` | complete | unit, pinned-python | Validation, generation, ticket-derived stamps, cancellation-aware task work, background deferred worker queue ownership, retry state, cancellation, propagation-stamp pre-handoff preparation, progress metadata, and default-cost propagation stamp mining/validation in `lxmf-wire` (`stamp.rs`, ported `LXStamper` workblock HKDF) with fail-fast rejection of unattainable costs at or above 256: `COST_TICKET` is exactly 256, which a validator accepts as a ticket-paid message's worth and a miner cannot reach. Delivery stamps, ticket stamps and peering keys are library surface in `lxmf-wire` alongside the propagation ones, with the `LXMessage` ticket lifetime constants, so a consumer gets the Python behaviour without reimplementing it. | No confirmed deferred-stamp lifecycle blocker. |
 | `LXMF/Utilities/lxmd.py` | `crates/apps/lxmf-cli`, `crates/apps/reticulumd` | complete | unit, simulated, pinned-python | Canonical `lxmd` workflows, configuration, announce cadence, propagation controls, status, and daemon lifecycle map to the shared Rust daemon and CLI surfaces. | No generated public utility callable is unmapped. |
 
 ## Method Checklist
@@ -174,6 +174,31 @@ evidence tracked independently.
 ### Tickets and stamps
 
 - Ticket grace, renewal, derivation, persistence, and reply reuse are complete.
+- The delivery-stamp, ticket and peering-key halves of `LXStamper`/`LXMessage`
+  are in `lxmf-wire::stamp` rather than only in the daemon: `generate_stamp`,
+  `validate_stamp` with tickets, `ticket_stamp`, `COST_TICKET`,
+  `TICKET_LENGTH`, the peering-key pair, the cancellable generators, and the
+  `TICKET_EXPIRY`/`GRACE`/`RENEW`/`INTERVAL` lifetime constants. Every
+  generator shares the propagation one's fail-fast, tightened here to reject
+  the `COST_TICKET` sentinel too: it is `MAX_STAMP_COST` itself, so a guard
+  written as "above the maximum" admitted it, and a caller passing a cost a
+  peer announced would have spent the whole 64-bit nonce space looking for an
+  all-zero digest. Validation still accepts that target, which is what a
+  ticket-paid message is worth. `validate_stamp` checks tickets before the
+  workblock as `LXMessage.validate_stamp` does. Evidence adds a byte-for-byte
+  `ticket_stamp` vector from the pinned Python reference and
+  `the_ticket_sentinel_is_not_a_mineable_cost`.
+- `Message` carries the `LXMessage` members that use them, so a consumer no
+  longer copies the daemon's forty lines and its ordering trap. `message_id()`
+  is `LXMessage.pack`'s id over destination, source and the payload without its
+  stamp, and requires the timestamp to be set first, since `to_wire` would
+  otherwise fill it at pack time and the id could not be known before sending.
+  `stamp_for_delivery` is `LXMessage.get_stamp`: a ticket stamp worth
+  `COST_TICKET` when a ticket is held, else a mined stamp at the cost, else
+  none, failing rather than leaving the message unstamped when the search is
+  stopped. `include_ticket` writes `LXMRouter.handle_outbound`'s
+  `FIELD_TICKET => [expires_at, ticket]` with the float expiry the reference
+  writes.
 - `app.delivery.ticket.generate` now exposes ticket generation through the
   registered SDK envelope path and typed ZeroMQ backend, with `ticket_generate`
   alias support and ticket-interval suppression metadata preserved.
