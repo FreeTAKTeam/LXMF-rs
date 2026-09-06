@@ -860,8 +860,10 @@ Scoped release evidence is split as follows:
 - The daemon bridge now mines propagation stamps at that same Python target
   when the relay's announced cost is unknown. It used 13, which is
   `PROPAGATION_COST - PROPAGATION_COST_FLEX`: the minimum a default relay
-  accepts, which is the relay's leniency and not the sender's target, so a
-  relay run with no flexibility rejected every stamp the daemon produced. It
+  accepts, which is the relay's leniency and not the sender's target. A search
+  stops at the first nonce reaching its target, so mining to 13 yields 13, 14,
+  15, 16 and up, and roughly one in eight clears 16 by chance: a relay run with
+  no flexibility rejected most of what the daemon produced, not all of it. It
   takes `lxmf-wire::stamp::DEFAULT_PROPAGATION_STAMP_COST` instead of its own
   literal, and a unit test pins the two together and to
   `LXMRouter.PROPAGATION_COST`. The announced-cost gap above is unchanged and
