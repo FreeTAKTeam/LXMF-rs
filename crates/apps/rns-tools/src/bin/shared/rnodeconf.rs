@@ -29,6 +29,11 @@ enum Command {
         #[command(flatten)]
         target: Target,
     },
+    /// Report the radio configuration the last `read-rom` reply carried.
+    StoredConfig {
+        #[command(flatten)]
+        target: Target,
+    },
     Blink {
         #[command(flatten)]
         target: Target,
@@ -249,6 +254,7 @@ fn run(cli: &Cli, output: &mut dyn Write) -> io::Result<()> {
         Command::QueryRadioState { target } => rpc_params(target, "radio_state_query", json!({})),
         Command::ReadConfig { target } => rpc_params(target, "config_read", json!({})),
         Command::ReadRom { target } => rpc_params(target, "rom_read", json!({})),
+        Command::StoredConfig { target } => rpc_params(target, "stored_config", json!({})),
         Command::Blink { target, pattern } => {
             rpc_params(target, "blink", json!({ "pattern": pattern }))
         }
@@ -466,32 +472,4 @@ fn is_destructive_command(command: &str) -> bool {
     matches!(command, "config_delete" | "rom_write" | "rom_wipe" | "hard_reset")
 }
 
-fn rpc_call(
-    rpc: &str,
-    id: u64,
-    method: &str,
-    params: Option<serde_json::Value>,
-) -> io::Result<rns_rpc::RpcResponse> {
-    let frame = build_rpc_frame(id, method, params)?;
-    let request = build_http_post("/rpc", rpc, &frame);
-    let mut stream = TcpStream::connect(rpc)?;
-    stream.write_all(&request)?;
-    stream.shutdown(Shutdown::Write)?;
-    let mut response = Vec::new();
-    stream.read_to_end(&mut response)?;
-    let body = parse_http_response_body(&response)?;
-    rns_rpc::rpc::codec::decode_frame(&body)
-}
-
-fn ensure_rpc_ok(
-    response: rns_rpc::RpcResponse,
-    context: &str,
-) -> io::Result<Option<serde_json::Value>> {
-    if let Some(error) = response.error {
-        return Err(io::Error::other(format!(
-            "{} failed: {} ({})",
-            context, error.message, error.code
-        )));
-    }
-    Ok(response.result)
-}
+include!("rnodeconf_rpc.rs");

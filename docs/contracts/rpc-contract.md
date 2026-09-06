@@ -169,7 +169,8 @@ All methods below are required for full CLI feature coverage.
   display/NeoPixel fields, interference-avoidance flags, and, for
   `RNodeMultiInterface`, required child `vport`. Supported commands are
   `radio_state_query`/`query_radio_state`, `blink`,
-  `config_read`/`read_config`, `rom_read`/`read_rom`, display
+  `config_read`/`read_config`, `rom_read`/`read_rom`,
+  `stored_config`/`read_stored_config`/`config_stored`, display
   intensity/blanking/rotation/recondition/address controls, NeoPixel
   intensity, interference-avoidance enable/disable controls, Bluetooth
   enable/disable/pair controls, config save/delete, ROM write/wipe, hard
@@ -177,7 +178,9 @@ All methods below are required for full CLI feature coverage.
   SSID/PSK set or clear controls. Persistent/disruptive commands require
   `confirm_persistent=true`; destructive commands require
   `confirm_destructive=true` and `confirm_command` exactly matching the
-  canonical command. Serial/TCP RNodeInterface handles, plus feature-gated BLE
+  canonical command. `stored_config` is the only read: it queues no frame,
+  answers `{"queued": false, "stored_config": {"state": ...}}` from the last
+  `rom_read` reply, and is recorded on the serial/TCP bearer alone. Serial/TCP RNodeInterface handles, plus feature-gated BLE
   RNodeInterface handles when `reticulumd` is built with `rnode-ble`, are
   selected by runtime iface id or an unambiguous configured interface name.
   RNodeMulti handles are selected by parent runtime iface id or unambiguous

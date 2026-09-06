@@ -627,8 +627,19 @@ Scoped release evidence is split as follows:
   applies `radio_config_frames` unconditionally: without reading first, a
   client reprograms whatever it finds. The result is a `StoredRadioConfig`
   rather than a `LoraConfig`, keeping what a device reported distinct from what
-  a caller intends to apply, and `None` means nothing is stored or the image is
-  too short to tell rather than a default.
+  a caller intends to apply. `Ok(None)` is a complete image whose sentinel says
+  nothing is stored; a short read is `StoredConfigError::TruncatedImage`, since
+  a caller that cannot tell the two apart is one that may reprogram a radio
+  because a serial read was cut short.
+  The reply reaches that parser on the supported bearers rather than only for a
+  caller owning its own transport: `record_command_response` records a
+  `CMD_ROM_READ` payload, `LoraInterface::stored_config` and the management
+  handle return the parse, `runtime_status_json` carries it as a state name, and
+  the daemon's `stored_config` command plus `rnodeconf-rs stored-config` read it
+  back. That command queues no frame, because `rom_read` is what asks and the
+  answer arrives on the stream later. The BLE and RNodeMulti bearers answer
+  `Unsupported`; each owns its own monitor and would need the same slot threaded
+  out of it.
 - A bearer-neutral `RnodeBearerBackend` and single-attempt
   `RnodeBearerKissInterface` now let mobile platform owners provide ordered BLE
   or Bluetooth Classic byte streams while this crate retains shared KISS

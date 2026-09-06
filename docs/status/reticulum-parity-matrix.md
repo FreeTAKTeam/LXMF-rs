@@ -618,11 +618,19 @@ requests. The library also reads the answer to a ROM read:
 way `rnodeconf` reads it, only when `ADDR_CONF_OK` carries `CONF_OK_BYTE` and
 with the two multi-byte fields big-endian. It returns a `StoredRadioConfig`
 rather than a `LoraConfig`, since what a device reported is a different fact
-from what a caller intends to apply, and `None` means no configuration is
-stored or the image is too short to tell, never a default. Evidence is a real
+from what a caller intends to apply. `Ok(None)` is a complete image holding no
+configuration and a short read is `StoredConfigError::TruncatedImage`, so a
+caller deciding whether to write settings cannot mistake a cut-short serial
+read for a blank radio. `record_command_response` records the `CMD_ROM_READ`
+payload and `LoraInterface::stored_config`, the management handle,
+`runtime_status_json`, the daemon's `stored_config` command and
+`rnodeconf-rs stored-config` return the parse, so the read is reachable on the
+serial and TCP bearers rather than only to a caller owning its own transport;
+the BLE and RNodeMulti bearers answer `Unsupported`. Evidence is a real
 Heltec LoRa32 v4's values as `rnodeconf -i` reports them, plus the sentinel,
-truncation and byte-order rules; hardware evidence for the read against a live
-device stays `hardware-unverified`. Shared transport dispatch also removes interface records whose TX
+truncation and byte-order rules and the command-path capture; hardware evidence
+for the read against a live device stays `hardware-unverified`.
+Shared transport dispatch also removes interface records whose TX
 queues have closed, including shared virtual-interface queues, preventing stale
 closed paths from lingering after failed dispatch. Broad BLE management
 hardware evidence across device, firmware, and operator workflows plus full

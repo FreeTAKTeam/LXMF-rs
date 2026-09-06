@@ -1,6 +1,8 @@
 use rns_rpc::RNodeManagementBridge;
 use rns_transport::hash::AddressHash;
-use rns_transport::iface::lora::{LoraConfig, LoraRNodeManagementHandle, RNodeProbeStatus};
+use rns_transport::iface::lora::{
+    stored_config_status_json, LoraConfig, LoraRNodeManagementHandle, RNodeProbeStatus,
+};
 #[cfg(feature = "rnode-ble")]
 use rns_transport::iface::rnode_ble::RnodeBleManagementHandle;
 use rns_transport::iface::rnode_multi::RNodeMultiManagementHandle;
@@ -45,6 +47,24 @@ impl DaemonRNodeManagementHandle {
                     ))
                 }
             }
+        }
+    }
+
+    /// What the radio told us it has in EEPROM. Only the serial/TCP bearer
+    /// records a `CMD_ROM_READ` reply today; the other two would need the same
+    /// slot threaded out of their own monitors.
+    fn stored_config(&self) -> Result<JsonValue, std::io::Error> {
+        match self {
+            Self::Lora(handle) => Ok(stored_config_status_json(&handle.stored_config())),
+            #[cfg(feature = "rnode-ble")]
+            Self::RnodeBle(_) => Err(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "stored_config is not recorded on the RNode BLE bearer",
+            )),
+            Self::RNodeMulti { .. } => Err(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "stored_config is not recorded on an RNodeMulti interface",
+            )),
         }
     }
 
@@ -128,6 +148,20 @@ impl RNodeManagementBridge for DaemonRNodeManagementBridge {
     ) -> Result<JsonValue, std::io::Error> {
         let target = self.resolve(iface)?;
         let normalized = command.trim().to_ascii_lowercase().replace('-', "_");
+
+        // A read, not a write. `rom_read` asks the radio; the reply arrives on
+        // the stream some time later, and this is where it is collected. There
+        // is no frame to queue, so it returns before the dispatch below.
+        if matches!(normalized.as_str(), "stored_config" | "read_stored_config" | "config_stored") {
+            return Ok(json!({
+                "queued": false,
+                "name": target.name,
+                "command": "stored_config",
+                "iface": target.runtime_iface,
+                "stored_config": target.handle.stored_config()?,
+            }));
+        }
+
         let (canonical, frame, echoed) = match normalized.as_str() {
             "radio_state_query" | "query_radio_state" => {
                 ("radio_state_query", LoraConfig::radio_state_query_frame(), json!({}))
