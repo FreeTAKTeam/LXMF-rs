@@ -5,7 +5,7 @@ use std::time::Duration;
 use lxmf_core::MessageMethod;
 use lxmf_sdk::{MessageId, SdkError};
 use rns_transport::delivery::{await_link_activation, send_on_link, LinkSendResult};
-use rns_transport::destination::link::Link;
+use rns_transport::destination::link::{Link, LinkStatus};
 use rns_transport::destination::DestinationDesc;
 use rns_transport::resource::ResourceEventKind;
 use rns_transport::transport::Transport;
@@ -88,6 +88,18 @@ async fn activate_link(
     timeout: Duration,
     attempts: usize,
 ) -> Result<Arc<Mutex<Link>>, SdkError> {
+    // An established direct link or an identified peer's backchannel is what
+    // the delivery-method decision was made on, so send on that one.
+    // `Transport::link` searches `out_links` alone, so asking it instead opens
+    // a second link to a peer already reachable on the first, and a peer who
+    // cannot accept one times out with their backchannel sitting open. The
+    // daemon path has done this since `DirectBackchannelLinks::active_link`.
+    if let Some(link) = transport.delivery_link(&destination.address_hash).await {
+        if link.lock().await.status() == LinkStatus::Active {
+            return Ok(link);
+        }
+    }
+
     let mut last_error = None;
     for _ in 0..attempts.max(1) {
         let link = transport.link(destination).await;

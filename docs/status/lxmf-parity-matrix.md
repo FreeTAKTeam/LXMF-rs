@@ -83,6 +83,19 @@ evidence tracked independently.
 - Direct delivery can reuse an identified inbound backchannel link for the
   same LXMF delivery destination, while closed or failed cached links are
   removed before normal link establishment resumes.
+  `Transport::delivery_link_available` finds that backchannel the way Python
+  keys `backchannel_links`, by the destination
+  `delivery_remote_identified` derives from the identity a peer presented over
+  the inbound link (`hash_from_name_and_identity("lxmf.delivery",
+  remote_identity)`). It compared each inbound link's own destination, which is
+  ours and not the peer's, so it could only ever match a caller asking about
+  one of its own destinations and `lxmf-runtime`'s send path never reused a
+  backchannel at all. `Transport::delivery_link` returns that link so a sender
+  can use it; `activate_link` takes an established one rather than asking
+  `Transport::link`, which searches `out_links` and would build a second link
+  to the peer. Evidence:
+  `delivery_link_returns_the_backchannel_transport_link_would_miss` pins the
+  returned link to the inbound one and the empty `out_links` entry beside it.
 - Atomic `allow_destination`, `disallow_destination`, and
   `prioritise_destination` RPC/SDK operations coexist with the broader
   Python-style authentication, allow/ignore, and priority convenience surface.

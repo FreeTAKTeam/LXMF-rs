@@ -4,6 +4,20 @@ impl Transport {
     /// This mirrors Python LXMRouter membership semantics while excluding
     /// links that have already reached the closed state.
     pub async fn delivery_link_available(&self, destination: &AddressHash) -> bool {
+        self.delivery_link(destination).await.is_some()
+    }
+
+    /// The link a send to `destination` can reuse: the direct link first, then
+    /// the peer's backchannel — Python `LXMRouter.direct_links` before
+    /// `LXMRouter.backchannel_links`.
+    ///
+    /// A caller about to send needs the link itself, not
+    /// [`delivery_link_available`](Self::delivery_link_available)'s answer.
+    /// Reaching a peer over their backchannel means sending on that inbound
+    /// link; [`Transport::link`] searches `out_links` alone, so asking it for
+    /// the same destination opens a second link to a peer already reachable on
+    /// the first.
+    pub async fn delivery_link(&self, destination: &AddressHash) -> Option<Arc<Mutex<Link>>> {
         let (out_link, in_links) = {
             let handler = self.handler.lock().await;
             (
@@ -14,19 +28,35 @@ impl Transport {
 
         if let Some(link) = out_link {
             if link.lock().await.status() != LinkStatus::Closed {
-                return true;
+                return Some(link);
             }
         }
 
+        // A peer who identified over a link to one of our destinations is
+        // reachable at their own destination of the same name: Python
+        // `LXMRouter.backchannel_links`, keyed by the hash
+        // `delivery_remote_identified` derives from the identified identity.
+        // The link's own destination is ours, and never the one being asked
+        // about.
         for link in in_links {
-            let link = link.lock().await;
-            if link.destination().address_hash == *destination && link.status() != LinkStatus::Closed
-            {
-                return true;
+            let guard = link.lock().await;
+            if guard.status() == LinkStatus::Closed {
+                continue;
+            }
+            let Some(peer) = guard.identified_peer_identity() else {
+                continue;
+            };
+            let peer_destination =
+                crate::destination::SingleOutputDestination::new(*peer, guard.destination().name)
+                    .desc
+                    .address_hash;
+            if peer_destination == *destination {
+                drop(guard);
+                return Some(link);
             }
         }
 
-        false
+        None
     }
 
 
