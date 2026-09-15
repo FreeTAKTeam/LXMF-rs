@@ -1271,7 +1271,7 @@ mod tests {
         let carrier_events = vec![rns_transport::iface::auto::AutoMulticastCarrierEvent::CarrierLost {
             ifname: "eth0".to_string(),
         }];
-        status.record_peer_job_summary(&crate::interfaces::auto::AutoPeerJobRuntimeSummary {
+        status.record_peer_job_summary(&rns_transport::iface::auto_runtime::AutoPeerJobRuntimeSummary {
             expired_peer_count: 2,
             reverse_peer_announce_count: 1,
             missing_initial_echo_count: 3,

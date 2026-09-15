@@ -596,6 +596,21 @@ fn select_tcp_listener_device_ip_honors_prefer_ipv6_and_oper_state() {
 }
 
 #[test]
+fn select_tcp_listener_device_ip_skips_link_local_addresses() {
+    let candidates = [
+        ("eth0", std::net::IpAddr::V6("fe80::1".parse().expect("test IPv6")), true),
+        ("eth0", std::net::IpAddr::V6("2001:db8::10".parse().expect("test IPv6")), true),
+        ("eth1", std::net::IpAddr::V6("fe80::2".parse().expect("test IPv6")), true),
+    ];
+
+    let ipv6 =
+        select_tcp_listener_device_ip("eth0", true, &candidates).expect("select IPv6 address");
+
+    assert_eq!(ipv6, std::net::IpAddr::V6("2001:db8::10".parse().expect("test IPv6")));
+    assert!(select_tcp_listener_device_ip("eth1", true, &candidates).is_err());
+}
+
+#[test]
 fn select_tcp_server_bind_uses_single_local_listener_when_transport_not_set() {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind free local port");
     let port = listener.local_addr().expect("local addr").port();

@@ -105,7 +105,7 @@
             source_link_local_address: "fe80::1111".to_string(),
             destination_address: "fe80::2222%wlan0".to_string(),
             destination_port: 29_717,
-            payload: vec![0; rns_transport::hash::HASH_SIZE],
+            payload: vec![0; crate::hash::HASH_SIZE],
         };
 
         assert_eq!(
@@ -155,8 +155,8 @@
         let receiver = tokio::net::UdpSocket::bind("127.0.0.1:0").await.expect("bind receiver");
         let receiver_addr = receiver.local_addr().expect("receiver addr");
         let sender = tokio::net::UdpSocket::bind("127.0.0.1:0").await.expect("bind sender");
-        let token = [0x42; rns_transport::hash::HASH_SIZE];
-        let plan = AutoDaemonStartupPlan {
+        let token = [0x42; crate::hash::HASH_SIZE];
+        let plan = AutoRuntimePlan {
             config: AutoInterfaceConfig::default(),
             platform: AutoInterfacePlatform::Other,
             device_filter: AutoInterfaceDeviceFilter::default(),
@@ -180,10 +180,51 @@
             .await
             .expect("send datagram");
 
-        let mut payload = [0u8; rns_transport::hash::HASH_SIZE];
+        let mut payload = [0u8; crate::hash::HASH_SIZE];
         let (received, _) = receiver.recv_from(&mut payload).await.expect("receive datagram");
         assert_eq!(count, 1);
-        assert_eq!(received, rns_transport::hash::HASH_SIZE);
+        assert_eq!(received, crate::hash::HASH_SIZE);
+        assert_eq!(payload, token);
+    }
+
+    #[tokio::test]
+    async fn auto_peer_announce_skips_a_device_it_cannot_send_on_and_sends_the_rest() {
+        let receiver = tokio::net::UdpSocket::bind("127.0.0.1:0").await.expect("bind receiver");
+        let receiver_addr = receiver.local_addr().expect("receiver addr");
+        let sender = tokio::net::UdpSocket::bind("127.0.0.1:0").await.expect("bind sender");
+        let token = [7u8; crate::hash::HASH_SIZE];
+        let packet = |ifname: &str, destination_address: &str, destination_port: u16| AutoPeeringPacket {
+            kind: AutoPeeringPacketKind::ReverseUnicast,
+            ifname: ifname.to_string(),
+            source_link_local_address: "127.0.0.1".to_string(),
+            destination_address: destination_address.to_string(),
+            destination_port,
+            token,
+        };
+        let plan = AutoRuntimePlan {
+            config: AutoInterfaceConfig::default(),
+            platform: AutoInterfacePlatform::Other,
+            device_filter: AutoInterfaceDeviceFilter::default(),
+            candidates: Vec::new(),
+            adopted_devices: Vec::new(),
+            peering_packets: vec![
+                packet("utun0", "fe80::1", receiver_addr.port()),
+                packet("lo", &receiver_addr.ip().to_string(), receiver_addr.port()),
+            ],
+            startup_plan: empty_startup_plan(),
+        };
+
+        let count = plan
+            .send_initial_peer_announces_with_udp_socket(&sender, |ifname| {
+                Err(format!("no scope id for {ifname}"))
+            })
+            .await
+            .expect("one bad device does not fail the round");
+
+        let mut payload = [0u8; crate::hash::HASH_SIZE];
+        let (received, _) = receiver.recv_from(&mut payload).await.expect("receive datagram");
+        assert_eq!(count, 1);
+        assert_eq!(received, crate::hash::HASH_SIZE);
         assert_eq!(payload, token);
     }
 
@@ -210,6 +251,36 @@
         assert_eq!(sockets[0].multicast_group_addr, None);
         assert!(sockets[0].bind_addr.is_ipv6());
         assert_ne!(sockets[0].bind_addr.port(), 0);
+    }
+
+    /// Two multicast listeners on one discovery port, as every adopted NIC
+    /// needs and as a second Reticulum instance on the host needs. The
+    /// reference sets `SO_REUSEADDR`/`SO_REUSEPORT` for exactly this.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn auto_discovery_sockets_share_the_discovery_port_like_python() {
+        let listener = |port: u16| AutoDiscoveryListenerBinding {
+            ifname: "lo".to_string(),
+            link_local_address: "127.0.0.1".to_string(),
+            unicast_bind_address: "127.0.0.1".to_string(),
+            unicast_bind_port: 0,
+            multicast_group_address: "239.255.0.1".to_string(),
+            multicast_bind_address: "239.255.0.1".to_string(),
+            multicast_bind_port: port,
+        };
+        let first = plan_with_discovery_listener(listener(0))
+            .bind_multicast_discovery_sockets(|_| panic!("IPv4 multicast bind is unscoped"))
+            .await
+            .expect("bind first multicast discovery socket");
+        let port = first[0].bind_addr.port();
+        assert_ne!(port, 0);
+
+        let second = plan_with_discovery_listener(listener(port))
+            .bind_multicast_discovery_sockets(|_| panic!("IPv4 multicast bind is unscoped"))
+            .await
+            .expect("a second listener binds the same discovery port");
+
+        assert_eq!(second[0].bind_addr.port(), port);
     }
 
     #[tokio::test]
@@ -304,7 +375,7 @@
 
         let sender = tokio::net::UdpSocket::bind("127.0.0.1:0").await.expect("bind sender");
         let source_address = sender.local_addr().expect("sender addr").ip().to_string();
-        let payload = rns_transport::iface::auto::peering_token(
+        let payload = crate::iface::auto::peering_token(
             plan.config.group_id.as_bytes(),
             &source_address,
         );
@@ -396,7 +467,7 @@
             plan.spawn_discovery_receive_loops(sockets, Arc::clone(&state), events_tx, shutdown_rx);
         let sender = tokio::net::UdpSocket::bind("127.0.0.1:0").await.expect("bind sender");
         let source_address = sender.local_addr().expect("sender addr").ip().to_string();
-        let payload = rns_transport::iface::auto::peering_token(
+        let payload = crate::iface::auto::peering_token(
             plan.config.group_id.as_bytes(),
             &source_address,
         );
@@ -412,7 +483,7 @@
                 assert_eq!(processed.source_address, source_address);
                 assert_eq!(
                     processed.event,
-                    AutoDiscoveryEvent::Peer(rns_transport::iface::auto::AutoPeerEvent::Added)
+                    AutoDiscoveryEvent::Peer(crate::iface::auto::AutoPeerEvent::Added)
                 );
             }
             other => panic!("unexpected accepted event: {other:?}"),
@@ -420,7 +491,7 @@
         assert!(state.lock().await.peer(&source_address).is_some());
 
         sender
-            .send_to(&[0; rns_transport::hash::HASH_SIZE], bind_addr)
+            .send_to(&[0; crate::hash::HASH_SIZE], bind_addr)
             .await
             .expect("send invalid discovery datagram");
         let rejected = tokio::time::timeout(std::time::Duration::from_secs(1), events_rx.recv())
@@ -471,14 +542,14 @@
             plan.spawn_discovery_receive_loops(sockets, Arc::clone(&state), events_tx, shutdown_rx);
         let sender = tokio::net::UdpSocket::bind("127.0.0.1:0").await.expect("bind sender");
         let source_address = sender.local_addr().expect("sender addr").ip().to_string();
-        let payload = rns_transport::iface::auto::peering_token(
+        let payload = crate::iface::auto::peering_token(
             plan.config.group_id.as_bytes(),
             &source_address,
         );
 
         sender.send_to(&payload, bind_addr).await.expect("send early valid discovery datagram");
         sender
-            .send_to(&[0; rns_transport::hash::HASH_SIZE], bind_addr)
+            .send_to(&[0; crate::hash::HASH_SIZE], bind_addr)
             .await
             .expect("send early invalid discovery datagram");
         assert!(
@@ -544,7 +615,7 @@
 
         let sender = tokio::net::UdpSocket::bind("127.0.0.1:0").await.expect("bind sender");
         let source_address = sender.local_addr().expect("sender addr").ip().to_string();
-        let payload = rns_transport::iface::auto::peering_token(
+        let payload = crate::iface::auto::peering_token(
             plan.config.group_id.as_bytes(),
             &source_address,
         );

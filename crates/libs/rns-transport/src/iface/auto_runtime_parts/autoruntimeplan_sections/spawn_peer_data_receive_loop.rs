@@ -1,4 +1,4 @@
-impl AutoDaemonStartupPlan {
+impl AutoRuntimePlan {
 
     #[allow(dead_code)]
     fn spawn_peer_data_receive_loop(
@@ -41,7 +41,7 @@ impl AutoDaemonStartupPlan {
                                     .is_err()
                                 {
                                     log::debug!(
-                                        "[daemon-auto] peer-data failure receiver closed ifname={} bind_addr={}",
+                                        "[auto] peer-data failure receiver closed ifname={} bind_addr={}",
                                         socket.ifname,
                                         socket.bind_addr
                                     );

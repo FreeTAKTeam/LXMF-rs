@@ -1,5 +1,7 @@
 pub mod auto;
 
+pub mod auto_runtime;
+
 pub mod driver;
 
 pub mod hdlc;
