@@ -357,6 +357,7 @@ impl AutoRuntimePlan {
         ));
         data_listener_supervisor.lock().await.spawn_sockets(data_sockets, &data_events_tx);
         let data_receive_loop_count = data_listener_supervisor.lock().await.len();
+        let peer_route_bridge = transport_bridge.clone();
         let runtime_loop_handles = AutoInterfaceRuntimeLoopHandles {
             discovery_supervisor: Arc::clone(&discovery_listener_supervisor),
             data_supervisor: Arc::clone(&data_listener_supervisor),
@@ -391,6 +392,9 @@ impl AutoRuntimePlan {
             shutdown_rx.clone(),
         );
         let peer_job_scheduler_count = 1;
+        let peer_route_bridge = peer_route_bridge;
+        let peer_route_data_supervisor = Arc::clone(&data_listener_supervisor);
+        let peer_route_config = self.config.clone();
         let supervisor = tokio::spawn(async move {
             let shutdown_tx = supervisor_shutdown_tx;
             let mut shutdown_sent = false;
@@ -405,6 +409,13 @@ impl AutoRuntimePlan {
                                     &event,
                                     AutoDiscoveryLoopEvent::ReceiveFailed { .. }
                                 );
+                                register_discovered_peer_route(
+                                    &event,
+                                    &peer_route_bridge,
+                                    &peer_route_data_supervisor,
+                                    &peer_route_config,
+                                )
+                                .await;
                                 log_auto_discovery_loop_event(event);
                                 if receive_failed && !shutdown_sent {
                                     shutdown_tx.send_replace(true);

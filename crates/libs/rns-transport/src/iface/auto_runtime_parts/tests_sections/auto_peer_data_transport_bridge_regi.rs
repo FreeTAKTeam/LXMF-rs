@@ -52,6 +52,9 @@
             .expect("bind software peer socket");
         let peer_addr = peer_socket.local_addr().expect("software peer addr");
         let peer_address = peer_addr.ip().to_string();
+        // A peer is reached at the data port, so that is where this peer
+        // listens. Python's peers do the same and transmit from elsewhere.
+        plan.config.data_port = peer_addr.port();
         let bind_addr = "127.0.0.1:0".parse().expect("software bind addr");
         let discovery_payload = crate::iface::auto::peering_token(
             plan.config.group_id.as_bytes(),
@@ -187,7 +190,7 @@
         assert!(matches!(accepted.decision, AutoPeerInboundDecision::Accepted { .. }));
         assert_eq!(dedupe.len(), 1);
 
-        let accepted_forward = bridge.forward_peer_data(&accepted, Arc::clone(&route_socket)).await;
+        let accepted_forward = bridge.forward_peer_data(&accepted, Arc::clone(&route_socket), plan.config.data_port).await;
         assert_eq!(accepted_forward, AutoPeerDataForwardResult::Delivered);
         runtime_status.record_peer_data(&accepted, Some(accepted_forward));
         let rx_message =
@@ -218,7 +221,7 @@
             .expect("malformed known-peer data after final init");
         assert!(matches!(malformed.decision, AutoPeerInboundDecision::Accepted { .. }));
         let malformed_forward =
-            bridge.forward_peer_data(&malformed, Arc::clone(&route_socket)).await;
+            bridge.forward_peer_data(&malformed, Arc::clone(&route_socket), plan.config.data_port).await;
         assert_eq!(malformed_forward, AutoPeerDataForwardResult::DecodeFailed);
         runtime_status.record_peer_data(&malformed, Some(malformed_forward));
         assert!(
@@ -247,7 +250,7 @@
         assert_eq!(duplicate.decision, AutoPeerInboundDecision::Duplicate);
         assert_eq!(dedupe.len(), 2);
         let duplicate_forward =
-            bridge.forward_peer_data(&duplicate, Arc::clone(&route_socket)).await;
+            bridge.forward_peer_data(&duplicate, Arc::clone(&route_socket), plan.config.data_port).await;
         assert_eq!(duplicate_forward, AutoPeerDataForwardResult::NotForwarded);
         runtime_status.record_peer_data(&duplicate, Some(duplicate_forward));
         assert!(
@@ -318,7 +321,7 @@
             )
             .expect("closed-channel known-peer data after final init");
         let closed_forward =
-            closed_bridge.forward_peer_data(&closed_channel, Arc::clone(&route_socket)).await;
+            closed_bridge.forward_peer_data(&closed_channel, Arc::clone(&route_socket), plan.config.data_port).await;
         assert_eq!(closed_forward, AutoPeerDataForwardResult::RxChannelClosed);
         runtime_status.record_peer_data(&closed_channel, Some(closed_forward));
 
@@ -395,6 +398,9 @@
 
     #[tokio::test]
     async fn auto_peer_data_transport_bridge_registers_virtual_iface_and_routes_direct_tx() {
+        // The peer both sends from and listens on this socket, so it stands in
+        // for a real peer's data port, which is where a reply belongs.
+        let sender = tokio::net::UdpSocket::bind("127.0.0.1:0").await.expect("bind sender");
         let mut plan = plan_with_data_listener(AutoDataListenerBinding {
             ifname: "lo".to_string(),
             link_local_address: "127.0.0.1".to_string(),
@@ -402,6 +408,7 @@
             bind_port: 0,
         });
         plan.startup_plan.initial_peering_wait = core::time::Duration::ZERO;
+        plan.config.data_port = sender.local_addr().expect("sender addr").port();
         let sockets = plan
             .bind_data_sockets(|_| panic!("IPv4 data bind is unscoped"))
             .await
@@ -429,7 +436,6 @@
             shutdown_rx.clone(),
         );
         let tx_handle = plan.spawn_peer_data_transport_tx_loop(bridge, tx_channel, shutdown_rx);
-        let sender = tokio::net::UdpSocket::bind("127.0.0.1:0").await.expect("bind sender");
         let source_address = sender.local_addr().expect("sender addr").ip().to_string();
         state.lock().await.observe_discovery_packet(
             &source_address,
@@ -513,6 +519,9 @@
 
     #[tokio::test]
     async fn auto_peer_data_listener_removal_prunes_direct_tx_route() {
+        // The peer both sends from and listens on this socket, so it stands in
+        // for a real peer's data port, which is where a reply belongs.
+        let sender = tokio::net::UdpSocket::bind("127.0.0.1:0").await.expect("bind sender");
         let mut plan = plan_with_data_listener(AutoDataListenerBinding {
             ifname: "lo".to_string(),
             link_local_address: "127.0.0.1".to_string(),
@@ -520,6 +529,7 @@
             bind_port: 0,
         });
         plan.startup_plan.initial_peering_wait = core::time::Duration::ZERO;
+        plan.config.data_port = sender.local_addr().expect("sender addr").port();
         let sockets = plan
             .bind_data_sockets(|_| panic!("IPv4 data bind is unscoped"))
             .await
@@ -547,7 +557,6 @@
             shutdown_rx,
         );
         data_supervisor.spawn_sockets(sockets, &events_tx);
-        let sender = tokio::net::UdpSocket::bind("127.0.0.1:0").await.expect("bind sender");
         let source_address = sender.local_addr().expect("sender addr").ip().to_string();
         state.lock().await.observe_discovery_packet(
             &source_address,
@@ -642,6 +651,9 @@
 
     #[tokio::test]
     async fn auto_peer_data_listener_restart_prunes_and_refreshes_direct_tx_route() {
+        // The peer both sends from and listens on this socket, so it stands in
+        // for a real peer's data port, which is where a reply belongs.
+        let sender = tokio::net::UdpSocket::bind("127.0.0.1:0").await.expect("bind sender");
         let mut plan = plan_with_data_listener(AutoDataListenerBinding {
             ifname: "lo".to_string(),
             link_local_address: "127.0.0.1".to_string(),
@@ -649,6 +661,7 @@
             bind_port: 0,
         });
         plan.startup_plan.initial_peering_wait = core::time::Duration::ZERO;
+        plan.config.data_port = sender.local_addr().expect("sender addr").port();
         let sockets = plan
             .bind_data_sockets(|_| panic!("IPv4 data bind is unscoped"))
             .await
@@ -676,7 +689,6 @@
             shutdown_rx,
         );
         data_supervisor.spawn_sockets(sockets, &events_tx);
-        let sender = tokio::net::UdpSocket::bind("127.0.0.1:0").await.expect("bind sender");
         let source_address = sender.local_addr().expect("sender addr").ip().to_string();
         state.lock().await.observe_discovery_packet(
             &source_address,

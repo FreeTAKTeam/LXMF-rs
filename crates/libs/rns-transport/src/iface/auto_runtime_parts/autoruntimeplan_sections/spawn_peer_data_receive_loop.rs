@@ -63,7 +63,11 @@ impl AutoRuntimePlan {
                         };
                         let forwarding = if let Some(transport) = &transport {
                             Some(transport
-                                .forward_peer_data(&processed, Arc::clone(&socket.socket))
+                                .forward_peer_data(
+                                    &processed,
+                                    Arc::clone(&socket.socket),
+                                    plan.config.data_port,
+                                )
                                 .await)
                         } else {
                             None

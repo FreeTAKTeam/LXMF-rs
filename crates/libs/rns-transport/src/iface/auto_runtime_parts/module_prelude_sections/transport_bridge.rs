@@ -22,6 +22,26 @@ impl AutoInterfaceTransportRuntime {
     }
 }
 
+/// Where a peer receives data, derived from any address we have heard it on.
+///
+/// A peer is reached at its data port, never at the port its datagram came
+/// from: Python's AutoInterface transmits from an unbound socket, so the
+/// source port on the wire is ephemeral and nothing is listening there. This
+/// is `AutoInterfaceConfig::peer_data_target` applied to an address the OS
+/// already resolved, which keeps the IPv6 scope rather than rebuilding it
+/// from the interface name.
+fn peer_data_addr(heard_on: SocketAddr, data_port: u16) -> SocketAddr {
+    match heard_on {
+        SocketAddr::V4(addr) => SocketAddr::new(std::net::IpAddr::V4(*addr.ip()), data_port),
+        SocketAddr::V6(addr) => SocketAddr::V6(std::net::SocketAddrV6::new(
+            *addr.ip(),
+            data_port,
+            addr.flowinfo(),
+            addr.scope_id(),
+        )),
+    }
+}
+
 impl AutoInterfaceTransportBridge {
     async fn ensure_peer_iface(
         &self,
@@ -42,19 +62,35 @@ impl AutoInterfaceTransportBridge {
         Some(virtual_iface)
     }
 
+    /// Gives the transport somewhere to send the moment a peering announce
+    /// authenticates, which is when Python spawns its peer interface. Without
+    /// this a peer that has not written to us first is undeliverable, so our
+    /// own announces reach nobody and it never learns we are here.
+    pub(crate) async fn register_discovered_peer(
+        &self,
+        config: &AutoInterfaceConfig,
+        admitted: &AutoProcessedDiscoveryDatagram,
+        socket: Arc<tokio::net::UdpSocket>,
+    ) -> Option<AddressHash> {
+        if !matches!(admitted.event, AutoDiscoveryEvent::Peer(_)) {
+            return None;
+        }
+        let destination = peer_data_addr(admitted.datagram.source_addr, config.data_port);
+        self.ensure_peer_iface(destination, AutoPeerOutboundRoute { socket, destination }).await
+    }
+
     async fn forward_peer_data(
         &self,
         processed: &AutoProcessedPeerDataDatagram,
         socket: Arc<tokio::net::UdpSocket>,
+        data_port: u16,
     ) -> AutoPeerDataForwardResult {
         if !matches!(processed.decision, AutoPeerInboundDecision::Accepted { .. }) {
             return AutoPeerDataForwardResult::NotForwarded;
         }
+        let destination = peer_data_addr(processed.datagram.source_addr, data_port);
         let Some(virtual_iface) = self
-            .ensure_peer_iface(
-                processed.datagram.source_addr,
-                AutoPeerOutboundRoute { socket, destination: processed.datagram.source_addr },
-            )
+            .ensure_peer_iface(destination, AutoPeerOutboundRoute { socket, destination })
             .await
         else {
             log::warn!(
