@@ -30,7 +30,7 @@ pub enum StoredConfigError {
     /// No `CMD_ROM_READ` reply has arrived on this interface.
     #[error("no ROM read response has been received")]
     NotRead,
-    /// The reply stopped before [`rom::ADDR_CONF_OK`], the byte that says
+    /// The reply stopped before `rom::ADDR_CONF_OK`, the byte that says
     /// whether a configuration is stored at all.
     #[error("ROM read response is {len} bytes, short of the {STORED_CONFIG_IMAGE_LEN} needed")]
     TruncatedImage { len: usize },
