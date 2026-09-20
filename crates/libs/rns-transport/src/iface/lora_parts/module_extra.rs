@@ -564,4 +564,64 @@ mod tests {
             "failed queue handoff should report the last management error"
         );
     }
+
+    #[test]
+    fn a_lost_link_stops_the_radio_reading_online() {
+        let mut iface = LoraInterface::new("COM9", 115_200, LoraConfig::us915_default());
+        iface
+            .record_command_response(CMD_RADIO_STATE, &[RADIO_STATE_ON])
+            .expect("accept radio state");
+        assert_eq!(iface.runtime_status_json()["online"].as_bool(), Some(true));
+
+        iface.mark_link_offline();
+
+        assert_eq!(
+            iface.runtime_status_json()["online"].as_bool(),
+            Some(false),
+            "the radio's last echo must not outlive the link that carried it"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_peer_that_stops_answering_the_probe_ends_the_stream() {
+        let iface =
+            Arc::new(Mutex::new(LoraInterface::new("COM9", 115_200, LoraConfig::us915_default())));
+        let management_frame_rx = {
+            let guard = iface.lock().expect("lora interface mutex poisoned");
+            guard.management_frame_rx.clone()
+        };
+        let (stream, _peer) = tokio::io::duplex(4096);
+        let cancel = CancellationToken::new();
+        let (rx_channel, _rx_recv) = tokio::sync::mpsc::channel(1);
+        let (_tx_send, tx_recv) = tokio::sync::mpsc::channel(1);
+
+        let task = tokio::spawn(run_lora_kiss_stream(
+            stream,
+            LoraStreamRun {
+                interface: iface,
+                cancel: cancel.clone(),
+                iface_address: crate::hash::AddressHash::default(),
+                endpoint_label: "silent-rnode".to_string(),
+                config: LoraConfig::us915_default(),
+                flow_control: false,
+                id_beacon: None,
+                activity_probe: Some(KissActivityProbeConfig {
+                    interval: Duration::from_millis(40),
+                    frames: vec![LoraConfig::blink_frame(0x01)],
+                    silence_timeout: Some(Duration::from_millis(160)),
+                }),
+                startup_response_timeout: Duration::from_secs(60),
+                management_frame_rx,
+                rx_channel,
+                tx_channel: Arc::new(tokio::sync::Mutex::new(tx_recv)),
+            },
+        ));
+
+        // `_peer` stays open, so nothing but the silence deadline can end this.
+        tokio::time::timeout(Duration::from_secs(5), task)
+            .await
+            .expect("a silent peer should end the stream rather than hold it open")
+            .expect("lora stream exits");
+        assert!(!cancel.is_cancelled(), "the stream ended on its own, not by cancellation");
+    }
 }
