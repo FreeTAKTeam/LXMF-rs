@@ -124,6 +124,16 @@ fixture. The row remains partial and unverified because live Python↔Rust
 request exchange, Reticulum public-key signature validation, restart/concurrent
 writer/fault transcripts, and end-to-end rngit network workflows remain open.
 
+The #613 implementation slice now has committed local evidence in
+[`evidence/613-rngit-pages.md`](../goals/reticulum-reference-parity-605/evidence/613-rngit-pages.md):
+the `nomadnetwork.node` service path, page/file endpoints, `var_*` request
+fields, access/no-identity behavior, image markup, media filename metadata,
+bounded WebP conversion with raw fallback, link-scoped temporary cleanup, and
+explicit no-compression Resource responses. The row remains partial and
+unverified because a pinned Python/NomadNet client transcript, live page/media
+checksums, encoder-success fixture, complete reference rendering, and
+end-to-end rngit network workflows remain open.
+
 ## Acceptance gate
 
 This candidate is not release-complete until the contract coverage is complete,
