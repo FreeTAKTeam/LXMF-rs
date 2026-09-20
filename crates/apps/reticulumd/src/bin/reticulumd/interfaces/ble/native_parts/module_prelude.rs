@@ -14,15 +14,14 @@ use futures::{stream::Stream, StreamExt};
 
 use reticulum_daemon::config::InterfaceConfig;
 
-use rns_transport::buffer::{InputBuffer, OutputBuffer};
+use rns_transport::buffer::OutputBuffer;
 
 use rns_transport::iface::hdlc::Hdlc;
 
-use rns_transport::iface::{IfaceSource, Interface, InterfaceContext, InterfaceManager, RxMessage};
-
-use rns_transport::packet::Packet;
-
-use rns_transport::serde::Serialize;
+use rns_transport::iface::{
+    decode_packet_ifac, encode_packet_ifac, is_ifac_violation, record_ifac_violation, IfaceSource,
+    Interface, InterfaceContext, InterfaceManager, RxMessage, MAX_IFAC_SIZE_BYTES,
+};
 
 use std::pin::Pin;
 
@@ -90,6 +89,8 @@ impl BleGattInterface {
     async fn run(context: InterfaceContext<Self>) {
         let iface_stop = context.channel.stop.clone();
         let iface_address = context.channel.address;
+        let ifac_state = context.channel.ifac_state.clone();
+        let ifac_violations = context.channel.ifac_violations.clone();
         let (rx_channel, mut tx_channel) = context.channel.split();
         let (backend_name, settings, label, runtime_status) = {
             let guard = context.inner.lock().expect("ble interface mutex poisoned");
@@ -143,9 +144,8 @@ impl BleGattInterface {
                 iface_address
             );
 
-            let mut tx_buffer = [0_u8; BLE_RAW_PACKET_BUFFER];
             let mut hdlc_tx_buffer = [0_u8; BLE_HDLC_BUFFER];
-            let mut hdlc_rx_buffer = [0_u8; BLE_RAW_PACKET_BUFFER];
+            let mut hdlc_rx_buffer = [0_u8; BLE_RAW_PACKET_BUFFER + MAX_IFAC_SIZE_BYTES];
             let mut reconnect_needed = false;
 
             while !context.cancel.is_cancelled() && !iface_stop.is_cancelled() {
@@ -154,20 +154,21 @@ impl BleGattInterface {
                         break;
                     }
                     Some(message) = tx_channel.recv() => {
-                        let packet = message.packet;
-                        let mut output = OutputBuffer::new(&mut tx_buffer);
-                        if packet.serialize(&mut output).is_err() {
-                            log::error!("packet serialize failed iface={}", label);
-                            runtime_status.update(|status| {
-                                status.serialize_errors =
-                                    status.serialize_errors.saturating_add(1);
-                                status.last_error = Some("packet serialize failed".to_string());
-                            });
-                            continue;
-                        }
+                        let raw = match encode_packet_ifac(&ifac_state, &message.packet) {
+                            Ok(raw) => raw,
+                            Err(err) => {
+                                log::error!("packet serialize failed iface={} error={err:?}", label);
+                                runtime_status.update(|status| {
+                                    status.serialize_errors =
+                                        status.serialize_errors.saturating_add(1);
+                                    status.last_error = Some("packet serialize failed".to_string());
+                                });
+                                continue;
+                            }
+                        };
                         let mut hdlc_output = OutputBuffer::new(&mut hdlc_tx_buffer);
-                        if Hdlc::encode(output.as_slice(), &mut hdlc_output).is_err() {
-                            log::error!("hdlc encode failed iface={}", label);
+                        if Hdlc::encode(raw.as_slice(), &mut hdlc_output).is_err() {
+                            log::error!("packet serialize failed iface={}", label);
                             runtime_status.update(|status| {
                                 status.hdlc_encode_errors =
                                     status.hdlc_encode_errors.saturating_add(1);
@@ -229,9 +230,10 @@ impl BleGattInterface {
                                                     .bytes_rx
                                                     .saturating_add(output.as_slice().len() as u64);
                                             });
-                                            match Packet::deserialize(&mut InputBuffer::new(
+                                            match decode_packet_ifac(
+                                                &ifac_state,
                                                 output.as_slice(),
-                                            )) {
+                                            ) {
                                                 Ok(packet) => {
                                                     if let Err(err) = rx_channel
                                                         .send(RxMessage {
@@ -258,7 +260,13 @@ impl BleGattInterface {
                                                         });
                                                     }
                                                 }
-                                                Err(_) => {
+                                                Err(err) => {
+                                                    if is_ifac_violation(&err) {
+                                                        record_ifac_violation(
+                                                            &ifac_violations,
+                                                            &err,
+                                                        );
+                                                    }
                                                     runtime_status.update(|status| {
                                                         status.deserialize_errors = status
                                                             .deserialize_errors

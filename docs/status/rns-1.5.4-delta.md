@@ -65,7 +65,7 @@ incomplete requirements:
 | Owner | Requirement | Current status |
 | ---: | --- | --- |
 | #607 | Review and integrate the initial PR increment | partial / unverified |
-| #608 | Wire IFAC into production carrier ingress and egress | partial / unverified |
+| #608 | Wire IFAC into production carrier ingress and egress | implemented but unproven; mixed-peer evidence pending |
 | #609 | Close transport, local-client, and shared-instance gaps | partial / unverified |
 | #610 | Prove Resource collision, stream, and mixed-peer behavior | partial / unverified |
 | #611 | Exercise every reference utility through real network workflows | partial / unverified |
@@ -79,6 +79,14 @@ The generated Rust constants expose the forward behavioral level and target
 revision for runtime consumers without changing the existing advisory SDK/RPC
 schema before the contract is proven. No row is promoted by a local parser,
 mock, attached-node-only check, or old release artifact.
+
+The #608 implementation slice now has committed local software evidence in
+[`evidence/608-ifac.md`](../goals/reticulum-reference-parity-605/evidence/608-ifac.md):
+configured carrier ingress/egress, live reconfiguration, child inheritance,
+fail-closed malformed-frame handling, and feature-gated carrier builds are
+covered. The row remains unverified until pinned Python↔Rust daemon traffic
+proves bidirectional behavior through real carriers; hardware and public-network
+evidence remain separate acceptance axes.
 
 ## Acceptance gate
 

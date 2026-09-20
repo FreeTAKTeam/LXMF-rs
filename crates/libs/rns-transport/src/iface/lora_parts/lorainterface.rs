@@ -428,6 +428,8 @@ impl LoraInterface {
     pub async fn spawn(context: InterfaceContext<LoraInterface>) {
         let iface_stop = context.channel.stop.clone();
         let iface_address = context.channel.address;
+        let ifac_state = context.channel.ifac_state.clone();
+        let ifac_violations = context.channel.ifac_violations.clone();
         let (
             endpoint,
             config,
@@ -513,6 +515,8 @@ impl LoraInterface {
                             management_frame_rx: management_frame_rx.clone(),
                             rx_channel: rx_channel.clone(),
                             tx_channel: tx_channel.clone(),
+                            ifac_state: ifac_state.clone(),
+                            ifac_violations: ifac_violations.clone(),
                         },
                     )
                     .await;
@@ -556,6 +560,8 @@ impl LoraInterface {
                             management_frame_rx: management_frame_rx.clone(),
                             rx_channel: rx_channel.clone(),
                             tx_channel: tx_channel.clone(),
+                            ifac_state: ifac_state.clone(),
+                            ifac_violations: ifac_violations.clone(),
                         },
                     )
                     .await;
@@ -707,4 +713,6 @@ struct LoraStreamRun {
     management_frame_rx: RNodeManagementFrameReceiver,
     rx_channel: tokio::sync::mpsc::Sender<crate::iface::RxMessage>,
     tx_channel: Arc<tokio::sync::Mutex<tokio::sync::mpsc::Receiver<crate::iface::TxMessage>>>,
+    ifac_state: IfacState,
+    ifac_violations: Arc<std::sync::atomic::AtomicU64>,
 }

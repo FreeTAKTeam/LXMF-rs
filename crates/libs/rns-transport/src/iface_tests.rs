@@ -186,11 +186,66 @@ mod tests {
 
         assert!(mgr.set_shared_config(*channel.address(), config.clone()));
         assert_eq!(mgr.shared_config(channel.address()), Some(&config));
+        assert!(channel
+            .ifac_state
+            .read()
+            .expect("IFAC state lock")
+            .is_some());
 
         let virtual_iface = mgr
             .register_virtual_iface(*channel.address(), IfaceRole::Unicast)
             .expect("virtual iface");
         assert_eq!(mgr.shared_config(&virtual_iface), Some(&config));
+        let virtual_state = mgr
+            .ifaces
+            .iter()
+            .find(|iface| iface.address == virtual_iface)
+            .expect("virtual interface state")
+            .ifac_state
+            .read()
+            .expect("virtual IFAC state lock");
+        assert!(virtual_state.is_some());
+    }
+
+    #[test]
+    fn invalid_ifac_reconfiguration_preserves_the_previous_live_context() {
+        let mut mgr = InterfaceManager::new(16);
+        let channel = mgr.new_channel(16);
+        let address = *channel.address();
+        let valid = InterfaceSharedConfig {
+            network_name: Some("field-net".to_string()),
+            ..Default::default()
+        };
+        assert!(mgr.set_shared_config(address, valid.clone()));
+        assert!(!mgr.set_shared_config(
+            address,
+            InterfaceSharedConfig { ifac_size: Some(16), ..Default::default() },
+        ));
+        assert_eq!(mgr.shared_config(&address), Some(&valid));
+        assert!(channel
+            .ifac_state
+            .read()
+            .expect("IFAC state lock")
+            .is_some());
+    }
+
+    #[test]
+    fn interface_context_uses_carrier_specific_ifac_default_size() {
+        struct EightByteCarrier;
+
+        impl Interface for EightByteCarrier {
+            fn mtu() -> usize {
+                508
+            }
+
+            fn ifac_default_size_bytes() -> usize {
+                8
+            }
+        }
+
+        let mut mgr = InterfaceManager::new(16);
+        let context = mgr.new_context(EightByteCarrier);
+        assert_eq!(context.channel.ifac_default_size_bytes, 8);
     }
 
     #[test]

@@ -92,14 +92,55 @@ impl InterfaceManager {
         address: AddressHash,
         shared_config: InterfaceSharedConfig,
     ) -> bool {
+        let default_size_bytes = self
+            .ifaces
+            .iter()
+            .find(|iface| iface.address == address)
+            .map_or(DEFAULT_IFAC_SIZE_BYTES, |iface| iface.ifac_default_size_bytes);
+        let Ok(ifac_context) =
+            shared_config.ifac_context_with_default_size(default_size_bytes)
+        else {
+            log::warn!("rejecting invalid IFAC configuration for interface {address}");
+            return false;
+        };
         let mut updated = false;
         for iface in &mut self.ifaces {
             if iface.address == address || iface.parent == Some(address) {
                 iface.shared_config = shared_config.clone();
+                if let Ok(mut state) = iface.ifac_state.write() {
+                    *state = ifac_context.clone();
+                }
                 updated |= iface.address == address;
             }
         }
         updated
+    }
+
+    /// Apply a shared configuration while exposing invalid IFAC material to
+    /// callers that need to report the exact startup or hot-apply failure.
+    pub fn try_set_shared_config(
+        &mut self,
+        address: AddressHash,
+        shared_config: InterfaceSharedConfig,
+    ) -> Result<bool, crate::error::RnsError> {
+        let default_size_bytes = self
+            .ifaces
+            .iter()
+            .find(|iface| iface.address == address)
+            .map_or(DEFAULT_IFAC_SIZE_BYTES, |iface| iface.ifac_default_size_bytes);
+        let ifac_context =
+            shared_config.ifac_context_with_default_size(default_size_bytes)?;
+        let mut updated = false;
+        for iface in &mut self.ifaces {
+            if iface.address == address || iface.parent == Some(address) {
+                iface.shared_config = shared_config.clone();
+                if let Ok(mut state) = iface.ifac_state.write() {
+                    *state = ifac_context.clone();
+                }
+                updated |= iface.address == address;
+            }
+        }
+        Ok(updated)
     }
 
     pub fn detach_interfaces(&mut self) -> usize {

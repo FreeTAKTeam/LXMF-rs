@@ -10,6 +10,8 @@ impl AutoInterfaceTransportRuntime {
                 host_iface,
                 iface_manager,
                 rx_channel: channel.rx_channel,
+                ifac_state: channel.ifac_state,
+                ifac_violations: channel.ifac_violations,
                 peer_ifaces: Arc::new(tokio::sync::Mutex::new(BTreeMap::new())),
                 outbound_routes: Arc::new(tokio::sync::Mutex::new(BTreeMap::new())),
             },
@@ -63,9 +65,15 @@ impl AutoInterfaceTransportBridge {
             );
             return AutoPeerDataForwardResult::VirtualIfaceUnavailable;
         };
-        let packet = match Packet::deserialize(&mut InputBuffer::new(&processed.datagram.payload)) {
+        let packet = match crate::iface::decode_packet_ifac(
+            &self.ifac_state,
+            &processed.datagram.payload,
+        ) {
             Ok(packet) => packet,
             Err(err) => {
+                if crate::iface::is_ifac_violation(&err) {
+                    crate::iface::record_ifac_violation(&self.ifac_violations, &err);
+                }
                 log::warn!(
                     "[auto] failed to decode peer data packet from {}: {:?}",
                     processed.datagram.source_addr,
@@ -118,7 +126,7 @@ impl AutoInterfaceTransportBridge {
         let Some(route) = self.outbound_routes.lock().await.get(&iface).cloned() else {
             return;
         };
-        let payload = match packet.to_bytes() {
+        let payload = match crate::iface::encode_packet_ifac(&self.ifac_state, &packet) {
             Ok(payload) => payload,
             Err(err) => {
                 log::warn!("[auto] failed to serialize outbound peer data packet: {err:?}");

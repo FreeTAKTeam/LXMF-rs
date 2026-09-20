@@ -38,6 +38,13 @@ pub(crate) fn interface_record_shared_config(record: &InterfaceRecord) -> Interf
         bootstrap_only: setting_bool(record, "bootstrap_only"),
         announces_from_internal: setting_bool(record, "announces_from_internal"),
         announces_to_internal: setting_bool(record, "announces_to_internal"),
+        ifac_size: setting_u64(record, "ifac_size"),
+        network_name: setting_string(record, "network_name")
+            .or_else(|| setting_string(record, "networkname"))
+            .or_else(|| setting_string(record, "ifac_netname")),
+        passphrase: setting_string(record, "passphrase")
+            .or_else(|| setting_string(record, "pass_phrase"))
+            .or_else(|| setting_string(record, "ifac_netkey")),
         ingress_control: setting_bool(record, "ingress_control"),
         egress_control: setting_bool(record, "egress_control"),
         ic_max_held_announces: setting_u64(record, "ic_max_held_announces"),
@@ -64,6 +71,5 @@ pub(crate) fn interface_record_shared_config(record: &InterfaceRecord) -> Interf
         discovery_frequency: setting_u64(record, "discovery_frequency"),
         discovery_bandwidth: setting_u64(record, "discovery_bandwidth"),
         discovery_modulation: setting_u64(record, "discovery_modulation"),
-        ..InterfaceSharedConfig::default()
     }
 }

@@ -218,6 +218,7 @@ impl InterfaceTraffic {
         address: AddressHash,
         parent: Option<AddressHash>,
         now: Instant,
+        ifac_violations: u64,
     ) -> InterfaceTrafficSnapshot {
         InterfaceTrafficSnapshot {
             address,
@@ -243,7 +244,7 @@ impl InterfaceTraffic {
             path_request_rx_frequency: Self::frequency(&mut self.path_request_rx_times, now),
             path_request_tx_frequency: Self::frequency(&mut self.path_request_tx_times, now),
             protocol_violations: self.protocol_violations,
-            ifac_violations: self.ifac_violations,
+            ifac_violations: self.ifac_violations.max(ifac_violations),
             packet_filter_hits: self.packet_filter_hits,
             announce_burst_active: false,
             path_request_burst_active: self.path_request_burst_active,
@@ -317,6 +318,7 @@ impl InterfaceManager {
             return false;
         };
         iface.traffic.ifac_violations = iface.traffic.ifac_violations.saturating_add(1);
+        iface.ifac_violations.fetch_add(1, Ordering::Relaxed);
         log::debug!("IFAC violation iface={address} description={description}");
         true
     }
@@ -406,7 +408,14 @@ impl InterfaceManager {
         let now = Instant::now();
         self.ifaces
             .iter_mut()
-            .map(|iface| iface.traffic.snapshot(iface.address, iface.parent, now))
+            .map(|iface| {
+                iface.traffic.snapshot(
+                    iface.address,
+                    iface.parent,
+                    now,
+                    iface.ifac_violations.load(Ordering::Relaxed),
+                )
+            })
             .collect()
     }
 

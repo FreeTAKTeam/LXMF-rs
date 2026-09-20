@@ -8,9 +8,10 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 
 use crate::hash::{AddressHash, ADDRESS_HASH_SIZE};
-use crate::iface::{IfaceRole, IfaceSource, InterfaceManager, RxMessage};
-use crate::packet::Packet;
-
+use crate::iface::{
+    decode_packet_ifac, encode_packet_ifac, is_ifac_violation, record_ifac_violation, IfacState,
+    IfaceRole, IfaceSource, InterfaceManager, RxMessage,
+};
 use super::{Interface, InterfaceContext, TxMessage};
 
 const REQUEST_PREFIX: &[u8; 3] = b"REQ";

@@ -8,15 +8,14 @@ use tokio_serial::{DataBits, FlowControl, Parity, SerialPortBuilderExt, StopBits
 
 use tokio_util::sync::CancellationToken;
 
-use crate::buffer::{InputBuffer, OutputBuffer};
+use crate::buffer::OutputBuffer;
 
 use crate::hash::AddressHash;
 
-use crate::iface::{IfaceSource, RxMessage, TxMessage};
-
-use crate::packet::Packet;
-
-use crate::serde::Serialize;
+use crate::iface::{
+    decode_packet_ifac, encode_packet_ifac, is_ifac_violation, record_ifac_violation, IfacState,
+    IfaceSource, RxMessage, TxMessage, MAX_IFAC_SIZE_BYTES,
+};
 
 use super::hdlc::Hdlc;
 
@@ -423,6 +422,8 @@ impl SerialInterface {
     pub async fn spawn(context: InterfaceContext<SerialInterface>) {
         let iface_stop = context.channel.stop.clone();
         let iface_address = context.channel.address;
+        let ifac_state = context.channel.ifac_state.clone();
+        let ifac_violations = context.channel.ifac_violations.clone();
         let (
             device,
             baud_rate,
@@ -512,7 +513,7 @@ impl SerialInterface {
             });
             online.store(true, std::sync::atomic::Ordering::Release);
 
-            run_serial_stream(
+            run_serial_stream_with_ifac(
                 port,
                 SerialStreamOptions {
                     iface_address,
@@ -523,6 +524,8 @@ impl SerialInterface {
                     tx_channel: tx_channel.clone(),
                     runtime_status: runtime_status.clone(),
                 },
+                ifac_state.clone(),
+                ifac_violations.clone(),
             )
             .await;
             online.store(false, std::sync::atomic::Ordering::Release);
@@ -543,6 +546,10 @@ impl SerialInterface {
 }
 
 impl Interface for SerialInterface {
+    fn ifac_default_size_bytes() -> usize {
+        8
+    }
+
     fn mtu() -> usize {
         SerialInterface::DEFAULT_MTU
     }

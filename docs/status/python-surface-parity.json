@@ -46,6 +46,8 @@
       },
       {
         "evidence": [
+          "unit",
+          "simulated",
           "planned"
         ],
         "evidence_artifact": "target/issue-605/evidence/608-ifac.json",
@@ -53,7 +55,7 @@
         "id": "reticulum-605-608-ifac-carrier-wiring",
         "implementation": "partial",
         "kind": "behavioral-requirement",
-        "notes": "Library IFAC helpers are not evidence that configured carriers authenticate ingress and egress in production.",
+        "notes": "Configured carrier ingress/egress and local fail-closed regressions are implemented; pinned Python-Rust daemon traffic and physical carrier evidence remain unverified.",
         "owner_issue": 608,
         "reference": {
           "revision": "99de23c040d507e3fefca19e87b182302902725d",
@@ -68,7 +70,12 @@
           "crates/libs/rns-transport",
           "crates/apps/reticulumd"
         ],
-        "test_command": "cargo test -p reticulum-rs-transport ifac && cargo test -p reticulumd"
+        "test_command": [
+          "cargo test -p reticulum-rs-transport --lib",
+          "cargo test -p reticulum-rs-transport --all-features --lib",
+          "cargo test -p reticulumd --test config",
+          "cargo test -p reticulumd --bin reticulumd interface_hot_apply"
+        ]
       },
       {
         "evidence": [

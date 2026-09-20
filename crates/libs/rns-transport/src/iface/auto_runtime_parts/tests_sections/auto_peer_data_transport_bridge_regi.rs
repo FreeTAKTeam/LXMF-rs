@@ -293,6 +293,8 @@
             host_iface,
             iface_manager: Arc::clone(&iface_manager),
             rx_channel: closed_rx_channel,
+            ifac_state: std::sync::Arc::new(std::sync::RwLock::new(None)),
+            ifac_violations: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
             peer_ifaces: Arc::new(tokio::sync::Mutex::new(BTreeMap::new())),
             outbound_routes: Arc::new(tokio::sync::Mutex::new(BTreeMap::new())),
         };

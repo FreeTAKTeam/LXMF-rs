@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod tests {
+use crate::buffer::InputBuffer;
 use crate::iface::auto::{AutoDiscoveryScope, MulticastAddressType};
 include!("tests_sections/core_tests.rs");
 include!("tests_sections/auto_multicast_discovery_bind_resolv.rs");

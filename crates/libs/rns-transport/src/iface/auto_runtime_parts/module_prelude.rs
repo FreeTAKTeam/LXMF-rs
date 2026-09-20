@@ -1,5 +1,3 @@
-use crate::buffer::InputBuffer;
-
 use crate::hash::AddressHash;
 
 use crate::iface::auto::{
@@ -13,7 +11,7 @@ use crate::iface::auto::{
 };
 
 use crate::iface::{
-    IfaceRole, IfaceSource, InterfaceChannel, InterfaceManager, InterfaceRxSender,
+    IfaceRole, IfaceSource, IfacState, InterfaceChannel, InterfaceManager, InterfaceRxSender,
     InterfaceTxReceiver, RxMessage, TxMessage, TxMessageType,
 };
 
@@ -312,6 +310,8 @@ pub struct AutoInterfaceTransportBridge {
     host_iface: AddressHash,
     iface_manager: Arc<tokio::sync::Mutex<InterfaceManager>>,
     rx_channel: InterfaceRxSender,
+    ifac_state: IfacState,
+    ifac_violations: Arc<std::sync::atomic::AtomicU64>,
     peer_ifaces: Arc<tokio::sync::Mutex<BTreeMap<SocketAddr, AddressHash>>>,
     outbound_routes: Arc<tokio::sync::Mutex<BTreeMap<AddressHash, AutoPeerOutboundRoute>>>,
 }

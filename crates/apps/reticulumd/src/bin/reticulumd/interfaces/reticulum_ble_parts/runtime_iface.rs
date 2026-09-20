@@ -2,10 +2,8 @@ use super::fragment_packet;
 
 use reticulum_daemon::config::InterfaceConfig;
 
-use rns_transport::buffer::OutputBuffer;
 use rns_transport::hash::AddressHash;
-use rns_transport::iface::{Interface, InterfaceContext, InterfaceManager};
-use rns_transport::serde::Serialize;
+use rns_transport::iface::{encode_packet_ifac, Interface, InterfaceContext, InterfaceManager};
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -18,8 +16,6 @@ pub(crate) const IDENTITY_CHAR_UUID: &str = "37145b00-442d-4a94-917f-8f42c5da28e
 const DEFAULT_MTU: usize = 185;
 const MIN_MTU: usize = 23;
 const MAX_MTU: usize = 517;
-const RETICULUM_BLE_PACKET_BUFFER: usize = 8192;
-
 #[derive(Debug, Clone)]
 pub(crate) struct ReticulumBleSpawnResult {
     pub(crate) iface: AddressHash,
@@ -283,22 +279,24 @@ impl ReticulumBleInterface {
             label
         );
 
+        let ifac_state = context.channel.ifac_state.clone();
         let (_, mut tx_channel) = context.channel.split();
-        let mut tx_buffer = [0_u8; RETICULUM_BLE_PACKET_BUFFER];
         loop {
             tokio::select! {
                 _ = context.cancel.cancelled() => break,
                 maybe = tx_channel.recv() => {
                     let Some(message) = maybe else { break };
-                    let mut output = OutputBuffer::new(&mut tx_buffer);
-                    if message.packet.serialize(&mut output).is_err() {
-                        status.update(|runtime| {
-                            runtime.serialize_errors = runtime.serialize_errors.saturating_add(1);
-                            runtime.last_error = Some("packet serialize failed".to_string());
-                        });
-                        continue;
-                    }
-                    match fragment_packet(output.as_slice(), settings.mtu) {
+                    let raw = match encode_packet_ifac(&ifac_state, &message.packet) {
+                        Ok(raw) => raw,
+                        Err(err) => {
+                            status.update(|runtime| {
+                                runtime.serialize_errors = runtime.serialize_errors.saturating_add(1);
+                                runtime.last_error = Some(format!("packet serialize failed: {err:?}"));
+                            });
+                            continue;
+                        }
+                    };
+                    match fragment_packet(raw.as_slice(), settings.mtu) {
                         Ok(fragments) => status.update(|runtime| {
                             runtime.packets_tx = runtime.packets_tx.saturating_add(1);
                             runtime.fragments_tx = runtime

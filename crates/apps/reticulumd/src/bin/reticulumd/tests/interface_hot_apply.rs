@@ -112,28 +112,31 @@ fn test_bridge(
 }
 
 #[test]
-fn hot_apply_rejects_ifac_without_queueing_a_mutation() {
+fn hot_apply_accepts_ifac_aliases_and_rejects_incomplete_configuration() {
     let (tx, mut rx) = tokio::sync::mpsc::channel(1);
     let bridge = test_bridge(tx);
-    for field in [
-        "ifac_size",
-        "network_name",
-        "networkname",
-        "passphrase",
-        "pass_phrase",
-        "ifac_netname",
-        "ifac_netkey",
-    ] {
+    let mut sized = tcp_record("sized", "127.0.0.1", 1);
+    sized.settings = Some(json!({ "ifac_size": 16, "network_name": "field-net" }));
+    bridge.apply_interfaces(vec![sized]).expect("sized IFAC hot apply is supported");
+    assert!(rx.try_recv().is_ok(), "accepted sized IFAC update must be queued");
+
+    for field in
+        ["network_name", "networkname", "passphrase", "pass_phrase", "ifac_netname", "ifac_netkey"]
+    {
         let mut record = tcp_record("loopback", "127.0.0.1", 1);
-        record.settings = Some(
-            json!({ (field): if field == "ifac_size" { json!(16) } else { json!("secret") } }),
-        );
-        let error =
-            bridge.apply_interfaces(vec![record]).expect_err("IFAC hot apply must fail closed");
-        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
-        assert!(error.to_string().contains("does not implement"));
-        assert!(rx.try_recv().is_err(), "rejected IFAC update must not be queued");
+        record.settings = Some(json!({ (field): "secret" }));
+        bridge.apply_interfaces(vec![record]).expect("IFAC hot apply alias is supported");
+        assert!(rx.try_recv().is_ok(), "accepted IFAC update must be queued");
     }
+
+    let mut invalid = tcp_record("incomplete", "127.0.0.1", 2);
+    invalid.settings = Some(json!({ "ifac_size": 16 }));
+    let error = bridge
+        .apply_interfaces(vec![invalid])
+        .expect_err("IFAC size without credentials must fail closed");
+    assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+    assert!(error.to_string().contains("invalid Reticulum IFAC configuration"));
+    assert!(rx.try_recv().is_err(), "rejected IFAC update must not be queued");
 }
 
 async fn wait_for_tcp_server_connect(host: &str, port: u16) -> TcpStream {

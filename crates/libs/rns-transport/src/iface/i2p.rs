@@ -13,12 +13,13 @@ use tokio_util::sync::CancellationToken;
 
 use crate::hash::AddressHash;
 use crate::iface::tcp_client::{
-    run_hdlc_stream_with_runtime, HdlcStreamEvent, HdlcStreamRuntime, HdlcStreamWatchdog,
+    run_hdlc_stream_with_runtime_and_ifac, HdlcStreamEvent, HdlcStreamRuntime, HdlcStreamWatchdog,
     HDLC_STREAM_EVENT_CHANNEL_CAPACITY,
 };
 
 use super::{
-    IfaceRole, Interface, InterfaceContext, InterfaceManager, RxMessage, TxMessage, TxMessageType,
+    IfacState, IfaceRole, Interface, InterfaceContext, InterfaceManager, RxMessage, TxMessage,
+    TxMessageType,
 };
 
 const DEFAULT_SAM_ADDR: &str = "127.0.0.1:7656";
@@ -562,6 +563,8 @@ impl I2pInterface {
     pub async fn spawn(context: InterfaceContext<Self>) {
         let iface_stop = context.channel.stop.clone();
         let parent_iface = context.channel.address;
+        let ifac_state = context.channel.ifac_state.clone();
+        let ifac_violations = context.channel.ifac_violations.clone();
         let (
             name,
             sam_addr,
@@ -606,7 +609,7 @@ impl I2pInterface {
             let (peer_tx, peer_rx) = tokio::sync::mpsc::channel(128);
             peer_routes.lock().await.insert(child_iface, peer_tx);
 
-            tokio::spawn(run_i2p_peer_loop(
+            tokio::spawn(run_i2p_peer_loop_with_ifac(
                 peer,
                 child_iface,
                 sam_addr.clone(),
@@ -618,11 +621,13 @@ impl I2pInterface {
                 iface_stop.clone(),
                 rx_channel.clone(),
                 peer_rx,
+                ifac_state.clone(),
+                ifac_violations.clone(),
             ));
         }
 
         if connectable {
-            tokio::spawn(run_i2p_accept_loop(
+            tokio::spawn(run_i2p_accept_loop_with_ifac(
                 parent_iface,
                 name,
                 sam_addr.clone(),
@@ -636,6 +641,8 @@ impl I2pInterface {
                 rx_channel.clone(),
                 iface_manager.clone(),
                 peer_routes.clone(),
+                ifac_state.clone(),
+                ifac_violations.clone(),
             ));
         }
 
@@ -685,6 +692,7 @@ impl Interface for I2pInterface {
 }
 
 #[allow(clippy::too_many_arguments)]
+#[cfg(test)]
 async fn run_i2p_peer_loop(
     peer: String,
     iface_address: AddressHash,
@@ -697,6 +705,40 @@ async fn run_i2p_peer_loop(
     iface_stop: CancellationToken,
     rx_channel: tokio::sync::mpsc::Sender<RxMessage>,
     peer_rx: tokio::sync::mpsc::Receiver<TxMessage>,
+) {
+    run_i2p_peer_loop_with_ifac(
+        peer,
+        iface_address,
+        sam_addr,
+        transport_identity_hash,
+        mtu,
+        reconnect_wait,
+        runtime_status,
+        cancel,
+        iface_stop,
+        rx_channel,
+        peer_rx,
+        Arc::new(std::sync::RwLock::new(None)),
+        Arc::new(std::sync::atomic::AtomicU64::new(0)),
+    )
+    .await;
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_i2p_peer_loop_with_ifac(
+    peer: String,
+    iface_address: AddressHash,
+    sam_addr: String,
+    transport_identity_hash: Option<[u8; 16]>,
+    mtu: usize,
+    reconnect_wait: Duration,
+    runtime_status: Arc<std::sync::Mutex<I2pRuntimeStatus>>,
+    cancel: CancellationToken,
+    iface_stop: CancellationToken,
+    rx_channel: tokio::sync::mpsc::Sender<RxMessage>,
+    peer_rx: tokio::sync::mpsc::Receiver<TxMessage>,
+    ifac_state: IfacState,
+    ifac_violations: Arc<std::sync::atomic::AtomicU64>,
 ) {
     let peer_rx = Arc::new(tokio::sync::Mutex::new(peer_rx));
     let session_id = sam_session_id(iface_address, transport_identity_hash.as_ref());
@@ -743,7 +785,7 @@ async fn run_i2p_peer_loop(
         let status_task =
             tokio::spawn(track_i2p_stream_events(peer.clone(), runtime_status.clone(), event_rx));
         let (read_stream, write_stream) = stream.into_split();
-        run_hdlc_stream_with_runtime(
+        run_hdlc_stream_with_runtime_and_ifac(
             "i2p".to_string(),
             iface_address,
             mtu,
@@ -751,6 +793,8 @@ async fn run_i2p_peer_loop(
             iface_stop.clone(),
             rx_channel.clone(),
             peer_rx.clone(),
+            ifac_state.clone(),
+            ifac_violations.clone(),
             read_stream,
             write_stream,
             i2p_hdlc_runtime(event_tx),
@@ -797,6 +841,7 @@ async fn cleanup_i2p_peer_routes(
 }
 
 #[allow(clippy::too_many_arguments)]
+#[cfg(test)]
 async fn run_i2p_accept_loop(
     parent_iface: AddressHash,
     name: String,
@@ -813,6 +858,46 @@ async fn run_i2p_accept_loop(
     peer_routes: Arc<
         tokio::sync::Mutex<BTreeMap<AddressHash, tokio::sync::mpsc::Sender<TxMessage>>>,
     >,
+) {
+    run_i2p_accept_loop_with_ifac(
+        parent_iface,
+        name,
+        sam_addr,
+        state_path,
+        transport_identity_hash,
+        mtu,
+        reconnect_wait,
+        runtime_status,
+        cancel,
+        iface_stop,
+        rx_channel,
+        iface_manager,
+        peer_routes,
+        Arc::new(std::sync::RwLock::new(None)),
+        Arc::new(std::sync::atomic::AtomicU64::new(0)),
+    )
+    .await;
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_i2p_accept_loop_with_ifac(
+    parent_iface: AddressHash,
+    name: String,
+    sam_addr: String,
+    state_path: Option<PathBuf>,
+    transport_identity_hash: Option<[u8; 16]>,
+    mtu: usize,
+    reconnect_wait: Duration,
+    runtime_status: Arc<std::sync::Mutex<I2pRuntimeStatus>>,
+    cancel: CancellationToken,
+    iface_stop: CancellationToken,
+    rx_channel: tokio::sync::mpsc::Sender<RxMessage>,
+    iface_manager: Arc<tokio::sync::Mutex<InterfaceManager>>,
+    peer_routes: Arc<
+        tokio::sync::Mutex<BTreeMap<AddressHash, tokio::sync::mpsc::Sender<TxMessage>>>,
+    >,
+    ifac_state: IfacState,
+    ifac_violations: Arc<std::sync::atomic::AtomicU64>,
 ) {
     let session_id =
         format!("{}-accept", sam_session_id(parent_iface, transport_identity_hash.as_ref()));
@@ -895,6 +980,8 @@ async fn run_i2p_accept_loop(
             rx_channel.clone(),
             iface_manager.clone(),
             peer_routes.clone(),
+            ifac_state.clone(),
+            ifac_violations.clone(),
         )
         .await;
     }
@@ -917,6 +1004,8 @@ async fn run_i2p_accept_session(
     peer_routes: Arc<
         tokio::sync::Mutex<BTreeMap<AddressHash, tokio::sync::mpsc::Sender<TxMessage>>>,
     >,
+    ifac_state: IfacState,
+    ifac_violations: Arc<std::sync::atomic::AtomicU64>,
 ) {
     loop {
         if cancel.is_cancelled() || iface_stop.is_cancelled() {
@@ -969,7 +1058,7 @@ async fn run_i2p_accept_session(
             remote_destination,
             child_iface
         );
-        tokio::spawn(run_i2p_accepted_stream(
+        tokio::spawn(run_i2p_accepted_stream_with_ifac(
             remote_destination,
             child_iface,
             mtu,
@@ -981,12 +1070,14 @@ async fn run_i2p_accept_session(
             iface_manager.clone(),
             stream,
             peer_rx,
+            ifac_state.clone(),
+            ifac_violations.clone(),
         ));
     }
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn run_i2p_accepted_stream(
+async fn run_i2p_accepted_stream_with_ifac(
     remote_destination: String,
     child_iface: AddressHash,
     mtu: usize,
@@ -1000,6 +1091,8 @@ async fn run_i2p_accepted_stream(
     iface_manager: Arc<tokio::sync::Mutex<InterfaceManager>>,
     stream: TcpStream,
     peer_rx: tokio::sync::mpsc::Receiver<TxMessage>,
+    ifac_state: IfacState,
+    ifac_violations: Arc<std::sync::atomic::AtomicU64>,
 ) {
     let peer_rx = Arc::new(tokio::sync::Mutex::new(peer_rx));
     let status_key = format!("incoming:{child_iface}");
@@ -1007,7 +1100,7 @@ async fn run_i2p_accepted_stream(
     let status_task =
         tokio::spawn(track_i2p_stream_events(status_key, runtime_status.clone(), event_rx));
     let (read_stream, write_stream) = stream.into_split();
-    run_hdlc_stream_with_runtime(
+    run_hdlc_stream_with_runtime_and_ifac(
         "i2p_accept".to_string(),
         child_iface,
         mtu,
@@ -1015,6 +1108,8 @@ async fn run_i2p_accepted_stream(
         iface_stop,
         rx_channel,
         peer_rx,
+        ifac_state,
+        ifac_violations,
         read_stream,
         write_stream,
         i2p_hdlc_runtime(event_tx),

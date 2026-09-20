@@ -86,6 +86,8 @@ impl KissTcpClientInterface {
     pub async fn spawn(context: InterfaceContext<KissTcpClientInterface>) {
         let iface_stop = context.channel.stop.clone();
         let iface_address = context.channel.address;
+        let ifac_state = context.channel.ifac_state.clone();
+        let ifac_violations = context.channel.ifac_violations.clone();
         let (addr, mtu, reconnect_backoff, max_reconnect_backoff, kiss, runtime_status) = {
             let guard = context.inner.lock().expect("kiss tcp client interface mutex poisoned");
             (
@@ -150,7 +152,7 @@ impl KissTcpClientInterface {
                 }
             });
 
-            run_kiss_stream(
+            run_kiss_stream_with_ifac(
                 stream,
                 KissStreamOptions {
                     iface_address,
@@ -173,6 +175,8 @@ impl KissTcpClientInterface {
                 stream_cancel.clone(),
                 rx_channel.clone(),
                 tx_channel.clone(),
+                ifac_state.clone(),
+                ifac_violations.clone(),
             )
             .await;
             stream_cancel.cancel();
@@ -194,6 +198,10 @@ impl KissTcpClientInterface {
 }
 
 impl Interface for KissTcpClientInterface {
+    fn ifac_default_size_bytes() -> usize {
+        8
+    }
+
     fn mtu() -> usize {
         564
     }
@@ -348,18 +356,40 @@ struct PendingKissPayload {
 }
 
 pub async fn run_kiss_stream<IO>(
-    mut stream: IO,
-    mut options: KissStreamOptions,
+    stream: IO,
+    options: KissStreamOptions,
     cancel: CancellationToken,
     rx_channel: tokio::sync::mpsc::Sender<RxMessage>,
     tx_channel: Arc<tokio::sync::Mutex<tokio::sync::mpsc::Receiver<TxMessage>>>,
 ) where
     IO: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
+    run_kiss_stream_with_ifac(
+        stream,
+        options,
+        cancel,
+        rx_channel,
+        tx_channel,
+        Arc::new(std::sync::RwLock::new(None)),
+        Arc::new(std::sync::atomic::AtomicU64::new(0)),
+    )
+    .await;
+}
+
+pub async fn run_kiss_stream_with_ifac<IO>(
+    mut stream: IO,
+    mut options: KissStreamOptions,
+    cancel: CancellationToken,
+    rx_channel: tokio::sync::mpsc::Sender<RxMessage>,
+    tx_channel: Arc<tokio::sync::Mutex<tokio::sync::mpsc::Receiver<TxMessage>>>,
+    ifac_state: IfacState,
+    ifac_violations: Arc<std::sync::atomic::AtomicU64>,
+) where
+    IO: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
     let mut decoder = KissStreamDecoder::new(options.mtu)
         .with_command_port_nibble_stripping(options.strip_command_port_nibble);
     let mut read_buffer = vec![0_u8; options.mtu.max(256)];
-    let mut tx_buffer = vec![0_u8; options.mtu];
     let mut pending = VecDeque::<PendingKissPayload>::new();
     let mut interface_ready = true;
     let mut flow_control_locked_at: Option<Instant> = None;
@@ -542,7 +572,8 @@ pub async fn run_kiss_stream<IO>(
                                                 });
                                                 continue;
                                             };
-                                            if let Ok(packet) = Packet::deserialize(&mut InputBuffer::new(&payload)) {
+                                            match decode_packet_ifac(&ifac_state, &payload) {
+                                                Ok(packet) => {
                                                 match rx_channel
                                                     .send(RxMessage {
                                                         address: options.iface_address,
@@ -567,13 +598,18 @@ pub async fn run_kiss_stream<IO>(
                                                         });
                                                     }
                                                 }
-                                            } else {
-                                                update_kiss_status(&options, |status| {
-                                                    status.deserialize_errors =
-                                                        status.deserialize_errors.saturating_add(1);
-                                                    status.last_error =
-                                                        Some("packet deserialize failed".to_string());
-                                                });
+                                                }
+                                                Err(error) => {
+                                                    if is_ifac_violation(&error) {
+                                                        record_ifac_violation(&ifac_violations, &error);
+                                                    }
+                                                    update_kiss_status(&options, |status| {
+                                                        status.deserialize_errors =
+                                                            status.deserialize_errors.saturating_add(1);
+                                                        status.last_error =
+                                                            Some("packet deserialize failed".to_string());
+                                                    });
+                                                }
                                             }
                                         }
                                         KissFrame::Command(KissCommand::Ready) => {
@@ -652,43 +688,46 @@ pub async fn run_kiss_stream<IO>(
                 }
             }
             Some(message) = tx_channel.recv() => {
-                let mut output = OutputBuffer::new(&mut tx_buffer[..]);
-                if message.packet.serialize(&mut output).is_ok() {
-                    let payload = options.payload_adapter.outbound(output.as_slice());
-                    if options.flow_control && !interface_ready {
-                        pending.push_back(PendingKissPayload {
-                            payload,
-                            kind: KissDataFrameKind::Packet,
+                let encoded = match encode_packet_ifac(&ifac_state, &message.packet) {
+                    Ok(encoded) => encoded,
+                    Err(err) => {
+                        log::warn!(
+                            "KISS packet serialize failed iface={} device={} mtu={} err={:?}",
+                            options.iface_address,
+                            options.device,
+                            options.mtu,
+                            err
+                        );
+                        update_kiss_status(&options, |status| {
+                            status.serialize_errors = status.serialize_errors.saturating_add(1);
+                            status.last_error = Some(format!("packet serialize failed: {err:?}"));
                         });
-                        update_kiss_pending_depth(&options, pending.len());
-                    } else {
-                        if write_kiss_payload(
-                            &mut stream,
-                            &options,
-                            &mut interface_ready,
-                            &mut flow_control_locked_at,
-                            payload,
-                            KissDataFrameKind::Packet,
-                        )
-                        .await
-                        {
-                            last_write_at = Instant::now();
-                        }
-                        if first_tx_at.is_none() {
-                            first_tx_at = Some(Instant::now());
-                        }
+                        continue;
                     }
-                } else {
-                    log::warn!(
-                        "KISS packet serialize failed iface={} device={} mtu={}",
-                        options.iface_address,
-                        options.device,
-                        options.mtu
-                    );
-                    update_kiss_status(&options, |status| {
-                        status.serialize_errors = status.serialize_errors.saturating_add(1);
-                        status.last_error = Some("packet serialize failed".to_string());
+                };
+                let payload = options.payload_adapter.outbound(&encoded);
+                if options.flow_control && !interface_ready {
+                    pending.push_back(PendingKissPayload {
+                        payload,
+                        kind: KissDataFrameKind::Packet,
                     });
+                    update_kiss_pending_depth(&options, pending.len());
+                } else {
+                    if write_kiss_payload(
+                        &mut stream,
+                        &options,
+                        &mut interface_ready,
+                        &mut flow_control_locked_at,
+                        payload,
+                        KissDataFrameKind::Packet,
+                    )
+                    .await
+                    {
+                        last_write_at = Instant::now();
+                    }
+                    if first_tx_at.is_none() {
+                        first_tx_at = Some(Instant::now());
+                    }
                 }
             }
         }

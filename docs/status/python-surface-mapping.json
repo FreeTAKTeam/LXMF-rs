@@ -1620,12 +1620,17 @@
         "reference_paths": ["RNS/Interfaces/Interface.py", "RNS/Transport.py"],
         "rust_surface": ["crates/libs/rns-transport", "crates/apps/reticulumd"],
         "implementation": "partial",
-        "evidence": ["planned"],
+        "evidence": ["unit", "simulated", "planned"],
         "evidence_status": "unverified",
-        "test_command": "cargo test -p reticulum-rs-transport ifac && cargo test -p reticulumd",
+        "test_command": [
+          "cargo test -p reticulum-rs-transport --lib",
+          "cargo test -p reticulum-rs-transport --all-features --lib",
+          "cargo test -p reticulumd --test config",
+          "cargo test -p reticulumd --bin reticulumd interface_hot_apply"
+        ],
         "evidence_artifact": "target/issue-605/evidence/608-ifac.json",
         "owner_issue": 608,
-        "notes": "Library IFAC helpers are not evidence that configured carriers authenticate ingress and egress in production."
+        "notes": "Configured carrier ingress/egress and local fail-closed regressions are implemented; pinned Python-Rust daemon traffic and physical carrier evidence remain unverified."
       },
       {
         "id": "reticulum-605-609-transport-local-shared",

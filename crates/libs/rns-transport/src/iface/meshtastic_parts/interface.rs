@@ -68,6 +68,8 @@ impl MeshtasticInterface {
     pub async fn spawn(context: InterfaceContext<Self>) {
         let iface_stop = context.channel.stop.clone();
         let iface_address = context.channel.address;
+        let ifac_state = context.channel.ifac_state.clone();
+        let ifac_violations = context.channel.ifac_violations.clone();
         let (rx_channel, mut tx_channel) = context.channel.split();
         let (name, config, mut inbound_rx, outbound_tx, runtime_status) = {
             let guard = context.inner.lock().expect("meshtastic interface mutex poisoned");
@@ -103,13 +105,17 @@ impl MeshtasticInterface {
                         received,
                         iface_address,
                         &rx_channel,
+                        &ifac_state,
+                        &ifac_violations,
                     ).await {
                         break;
                     }
                     record_meshtastic_status(&runtime_status, tunnel.status());
                 }
                 Some(message) = tx_channel.recv() => {
-                    if let Err(err) = queue_packet_for_meshtastic(&mut tunnel, message) {
+                    if let Err(err) =
+                        queue_packet_for_meshtastic(&mut tunnel, message, &ifac_state)
+                    {
                         tunnel.status.last_error = Some(err);
                     }
                     record_meshtastic_status(&runtime_status, tunnel.status());
@@ -146,9 +152,11 @@ async fn process_received_for_interface(
     received: MeshtasticReceivedFrame,
     iface_address: AddressHash,
     rx_channel: &mpsc::Sender<RxMessage>,
+    ifac_state: &IfacState,
+    ifac_violations: &std::sync::Arc<std::sync::atomic::AtomicU64>,
 ) -> bool {
     match tunnel.process_received(received) {
-        Ok(Some(data)) => match Packet::from_bytes(&data) {
+        Ok(Some(data)) => match decode_packet_ifac(ifac_state, &data) {
             Ok(packet) => {
                 if rx_channel
                     .send(RxMessage {
@@ -167,6 +175,9 @@ async fn process_received_for_interface(
                 }
             }
             Err(err) => {
+                if is_ifac_violation(&err) {
+                    record_ifac_violation(ifac_violations, &err);
+                }
                 tunnel.status.decode_errors = tunnel.status.decode_errors.saturating_add(1);
                 tunnel.status.last_error = Some(format!("{err:?}"));
             }
@@ -183,8 +194,9 @@ async fn process_received_for_interface(
 fn queue_packet_for_meshtastic(
     tunnel: &mut MeshtasticTunnel,
     message: TxMessage,
+    ifac_state: &IfacState,
 ) -> Result<(), String> {
-    let data = message.packet.to_bytes().map_err(|err| format!("{err:?}"))?;
+    let data = encode_packet_ifac(ifac_state, &message.packet).map_err(|err| format!("{err:?}"))?;
     tunnel.queue_outgoing_packet(&data)
 }
 
