@@ -114,19 +114,40 @@ impl ResourceManager {
         is_response: bool,
         interface_mtu: usize,
     ) -> Result<PreparedSend, RnsError> {
+        Self::prepare_send_with_compression(
+            link,
+            data,
+            metadata,
+            request_id,
+            is_response,
+            interface_mtu,
+            true,
+        )
+    }
+
+    pub fn prepare_send_with_compression(
+        link: &Link,
+        data: Vec<u8>,
+        metadata: Option<Vec<u8>>,
+        request_id: Option<Vec<u8>>,
+        is_response: bool,
+        interface_mtu: usize,
+        auto_compress: bool,
+    ) -> Result<PreparedSend, RnsError> {
         let metadata_size = metadata
             .as_ref()
             .map(|value| value.len().saturating_add(3))
             .unwrap_or(0);
         let total_size = metadata_size.checked_add(data.len()).ok_or(RnsError::InvalidArgument)?;
         if total_size <= MAX_EFFICIENT_SIZE {
-            let sender = ResourceSender::new_with_options_mtu(
+            let sender = ResourceSender::new_with_options_mtu_and_compression(
                 link,
                 data,
                 metadata,
                 request_id,
                 is_response,
                 interface_mtu,
+                auto_compress,
             )?;
             return Ok(PreparedSend { first: sender, pending: None });
         }
@@ -136,7 +157,7 @@ impl ResourceManager {
 
         let total_segments = total_size.div_ceil(MAX_EFFICIENT_SIZE) as u32;
         let first_data_len = (MAX_EFFICIENT_SIZE - metadata_size).min(data.len());
-        let first = ResourceSender::new_segment_with_options_mtu(
+        let first = ResourceSender::new_segment_with_options_mtu_and_compression(
             link,
             data[..first_data_len].to_vec(),
             metadata,
@@ -147,6 +168,7 @@ impl ResourceManager {
             1,
             total_segments,
             Some(total_size as u64),
+            auto_compress,
         )?;
         let original_hash = first.original_hash;
         // Only segment 1 is built here. The rest are built as each preceding
@@ -163,6 +185,7 @@ impl ResourceManager {
                 is_response,
                 interface_mtu,
                 original_hash,
+                auto_compress,
             }),
             first,
         })

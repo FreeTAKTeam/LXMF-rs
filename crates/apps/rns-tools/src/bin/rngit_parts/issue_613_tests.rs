@@ -1,0 +1,279 @@
+use super::{decode_page_request, page_paths};
+use rns_transport::destination::link::Link;
+use std::path::Path;
+
+fn run_git(directory: &Path, args: &[&str]) {
+    assert!(
+        std::process::Command::new("git")
+            .args(args)
+            .current_dir(directory)
+            .status()
+            .expect("git command")
+            .success(),
+        "git {:?} failed",
+        args
+    );
+}
+
+fn page_fixture() -> (tempfile::TempDir, ReticulumGitNode) {
+    let temporary = tempfile::tempdir().expect("fixture tempdir");
+    let root = temporary.path().join("root");
+    let group = root.join("group");
+    let repository = group.join("repo");
+    let source = temporary.path().join("source");
+    std::fs::create_dir_all(&group).expect("group directory");
+    std::fs::create_dir_all(&source).expect("source directory");
+
+    run_git(&source, &["init", "-q"]);
+    run_git(&source, &["config", "user.email", "rngit@example.invalid"]);
+    run_git(&source, &["config", "user.name", "rngit-test"]);
+    run_git(&source, &["checkout", "-qb", "main"]);
+    std::fs::write(source.join("README.md"), "# page fixture\n").expect("README");
+    std::fs::write(source.join("image.png"), b"\x89PNG\r\n\x1a\n\x00\x01").expect("image");
+    run_git(&source, &["add", "README.md", "image.png"]);
+    run_git(&source, &["commit", "-qm", "initial"]);
+
+    run_git(&group, &["init", "--bare", "-q", "repo"]);
+    run_git(&repository, &["symbolic-ref", "HEAD", "refs/heads/main"]);
+    run_git(&source, &["remote", "add", "origin", repository.to_string_lossy().as_ref()]);
+    run_git(&source, &["push", "-q", "origin", "main"]);
+
+    let mut node = ReticulumGitNode::default();
+    assert_eq!(node.load_repository_root(&root).expect("load page fixture"), 1);
+    let group_state = node.groups.get_mut("group").expect("loaded group");
+    group_state.permissions.read.add(PermissionTarget::All);
+    group_state.permissions.stats.add(PermissionTarget::All);
+    group_state.permissions.release.add(PermissionTarget::All);
+    (temporary, node)
+}
+
+fn request_map(entries: &[(&str, rmpv::Value)]) -> rmpv::Value {
+    rmpv::Value::Map(
+        entries
+            .iter()
+            .map(|(key, value)| (rmpv::Value::String((*key).into()), value.clone()))
+            .collect(),
+    )
+}
+
+#[test]
+fn nomadnet_request_decode_and_handler_registration_match_link_contract() {
+    let (_temporary, node) = page_fixture();
+    let request = Link::request_payload(
+        "/page/index.mu",
+        request_map(&[("var_g", rmpv::Value::String("group".into()))]),
+    )
+    .expect("request payload");
+    let decoded = decode_page_request(&request.packed)
+        .expect("decode request")
+        .expect("known page path");
+    assert_eq!(decoded.path, "/page/index.mu");
+    assert!(decoded.requested_at > 0.0);
+    assert!(decoded.data.is_map());
+    assert!(decode_page_request(&[0xc0]).expect("valid nil").is_none());
+
+    let handlers = node.register_request_handlers();
+    for path in page_paths() {
+        assert!(handlers.contains(path), "missing registered path {path}");
+    }
+}
+
+#[test]
+fn pages_accept_nomadnet_var_fields_and_render_not_found_errors() {
+    let (_temporary, mut node) = page_fixture();
+    let remote = [7_u8; 16];
+    let link = [8_u8; 16];
+    let response = node
+        .handle_page_request(
+            "/page/repo.mu",
+            &request_map(&[
+                ("var_g", rmpv::Value::String("group".into())),
+                ("var_r", rmpv::Value::String("repo".into())),
+                ("var_ref", rmpv::Value::String("HEAD".into())),
+            ]),
+            remote,
+            link,
+        )
+        .expect("repository page response");
+    assert!(String::from_utf8_lossy(&response.data).contains("Repository"));
+
+    let response = node
+        .handle_page_request(
+            "/page/blob.mu",
+            &request_map(&[
+                ("var_g", rmpv::Value::String("group".into())),
+                ("var_r", rmpv::Value::String("repo".into())),
+                ("var_ref", rmpv::Value::String("HEAD".into())),
+                ("var_path", rmpv::Value::String("README.md".into())),
+            ]),
+            remote,
+            link,
+        )
+        .expect("blob page response");
+    assert!(String::from_utf8_lossy(&response.data).contains("page fixture"));
+
+    let response = node
+        .handle_page_request(
+            "/page/blob.mu",
+            &request_map(&[
+                ("var_g", rmpv::Value::String("group".into())),
+                ("var_r", rmpv::Value::String("repo".into())),
+                ("var_ref", rmpv::Value::String("HEAD".into())),
+                ("var_path", rmpv::Value::String("image.png".into())),
+            ]),
+            remote,
+            link,
+        )
+        .expect("image blob page response");
+    assert!(String::from_utf8_lossy(&response.data).contains("/media/group/repo/HEAD/image.png"));
+
+    let response = node
+        .handle_page_request(
+            "/page/repo.mu",
+            &request_map(&[
+                ("var_g", rmpv::Value::String("missing".into())),
+                ("var_r", rmpv::Value::String("repo".into())),
+            ]),
+            remote,
+            link,
+        )
+        .expect("not-found page response");
+    assert!(String::from_utf8_lossy(&response.data).contains("Not Found"));
+}
+
+#[test]
+fn media_and_file_endpoints_enforce_keys_refs_permissions_and_metadata() {
+    let (_temporary, mut node) = page_fixture();
+    node.media_conversion = false;
+    let remote = [7_u8; 16];
+    let link = [8_u8; 16];
+    let media_request = request_map(&[
+        ("key", rmpv::Value::Binary(vec![1, 2, 3])),
+        (
+            "path",
+            rmpv::Value::String("/media/group/repo/HEAD/image.png".into()),
+        ),
+    ]);
+    let response = node
+        .handle_page_request("/media", &media_request, remote, link)
+        .expect("media response");
+    assert_eq!(response.data, b"\x89PNG\r\n\x1a\n\x00\x01");
+    let metadata = rmpv::decode::read_value(&mut std::io::Cursor::new(response.metadata.unwrap()))
+        .expect("media metadata");
+    assert_eq!(
+        metadata
+            .as_map()
+            .and_then(|map| super::map_value(map, &rmpv::Value::String("name".into())))
+            .and_then(rmpv::Value::as_slice),
+        Some(&b"image.png"[..])
+    );
+
+    let download = node
+        .handle_page_request(
+            "/file/download",
+            &request_map(&[
+                ("var_g", rmpv::Value::String("group".into())),
+                ("var_r", rmpv::Value::String("repo".into())),
+                ("var_ref", rmpv::Value::String("HEAD".into())),
+                ("var_path", rmpv::Value::String("README.md".into())),
+            ]),
+            remote,
+            link,
+        )
+        .expect("download response");
+    assert_eq!(download.data, b"# page fixture\n");
+
+    assert!(node
+        .handle_page_request(
+            "/media",
+            &request_map(&[(
+                "path",
+                rmpv::Value::String("/media/group/repo/does-not-exist/image.png".into())
+            )]),
+            remote,
+            link,
+        )
+        .is_none());
+    assert!(node
+        .handle_page_request(
+            "/media",
+            &request_map(&[(
+                "key",
+                rmpv::Value::Binary(vec![1]),
+            )]),
+            remote,
+            link,
+        )
+        .is_none());
+
+    node.groups.get_mut("group").expect("group").permissions.read = Default::default();
+    assert!(node
+        .handle_page_request("/media", &media_request, remote, link)
+        .is_none());
+}
+
+#[test]
+fn media_conversion_failure_falls_back_to_raw_and_link_cleanup_removes_temp_files() {
+    let (_temporary, mut node) = page_fixture();
+    let remote = [7_u8; 16];
+    let link = [8_u8; 16];
+    node.page_link_connected(link);
+    let directory = node.next_media_directory(link).expect("media directory");
+    assert!(directory.is_dir());
+    assert_eq!(node.page_link_closed(link), 1);
+    assert!(!directory.exists());
+
+    node.page_link_connected(link);
+    let response = node
+        .handle_page_request(
+            "/media",
+            &request_map(&[
+                ("key", rmpv::Value::Binary(vec![1])),
+                (
+                    "path",
+                    rmpv::Value::String("/media/group/repo/HEAD/image.png".into()),
+                ),
+            ]),
+            remote,
+            link,
+        )
+        .expect("raw fallback response");
+    assert_eq!(response.data, b"\x89PNG\r\n\x1a\n\x00\x01");
+    assert!(node.active_page_links.get(&link).is_some_and(|paths| paths.is_empty()));
+}
+
+#[test]
+fn blocked_unidentified_clients_receive_no_identity_template() {
+    let (_temporary, mut node) = page_fixture();
+    node.blocked_identities.insert([0_u8; 16]);
+    let response = node
+        .handle_page_request(
+            "/page/index.mu",
+            &rmpv::Value::Map(Vec::new()),
+            [0_u8; 16],
+            [9_u8; 16],
+        )
+        .expect("no-identity response");
+    assert!(String::from_utf8_lossy(&response.data).contains("No Identity"));
+}
+
+#[test]
+fn custom_page_templates_replace_the_default_no_identity_page() {
+    let (_temporary, mut node) = page_fixture();
+    let templates = tempfile::tempdir().expect("templates directory");
+    std::fs::write(templates.path().join("no_ident.mu"), "custom identity required")
+        .expect("custom template");
+    assert_eq!(node.load_page_templates(templates.path()).expect("load template"), 1);
+    node.blocked_identities.insert([0_u8; 16]);
+    let response = node
+        .handle_page_request(
+            "/page/index.mu",
+            &rmpv::Value::Map(Vec::new()),
+            [0_u8; 16],
+            [9_u8; 16],
+        )
+        .expect("custom no-identity response");
+    let rendered = String::from_utf8_lossy(&response.data);
+    assert!(rendered.contains("custom identity required"));
+    assert!(!rendered.contains("This page requires identification"));
+}

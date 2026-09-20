@@ -5,37 +5,24 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-#[derive(Debug, Parser)]
-#[command(name = "rngit", about = "Run local Git workflows prepared for Reticulum file transport")]
-struct Cli {
-    #[arg(long)]
-    root: PathBuf,
-    #[command(subcommand)]
-    command: GitCommand,
+mod rngit_network {
+    include!("rngit_parts/network.rs");
 }
 
-#[derive(Debug, Subcommand)]
-enum GitCommand {
-    Init {
-        path: PathBuf,
-    },
-    Status {
-        path: PathBuf,
-    },
-    Bundle {
-        path: PathBuf,
-        output: PathBuf,
-        #[arg(default_value = "--all")]
-        revision: String,
-    },
-    Unbundle {
-        path: PathBuf,
-        bundle: PathBuf,
-    },
-}
+include!("rngit_parts/cli.rs");
 
 pub fn main() -> std::process::ExitCode {
-    match run(&Cli::parse()) {
+    let cli = Cli::parse();
+    if cli.network_mode() {
+        return match rngit_network::run(&cli) {
+            Ok(()) => std::process::ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("rngit: {error}");
+                std::process::ExitCode::FAILURE
+            }
+        };
+    }
+    match run(&cli) {
         Ok(status) => std::process::ExitCode::from(status.code().unwrap_or(1) as u8),
         Err(error) => {
             eprintln!("rngit: {error}");
@@ -46,7 +33,13 @@ pub fn main() -> std::process::ExitCode {
 
 fn run(cli: &Cli) -> io::Result<ExitStatus> {
     let root = cli.root.canonicalize()?;
-    match &cli.command {
+    let Some(command) = &cli.command else {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "missing Git subcommand or network interface",
+        ));
+    };
+    match command {
         GitCommand::Init { path } => git(&root, path, &["init"]),
         GitCommand::Status { path } => git(&root, path, &["status", "--short"]),
         GitCommand::Bundle { path, output, revision } => {
@@ -57,6 +50,16 @@ fn run(cli: &Cli) -> io::Result<ExitStatus> {
             let bundle = scoped(&root, bundle)?;
             git(&root, path, &["bundle", "unbundle", bundle.to_string_lossy().as_ref()])
         }
+    }
+}
+
+impl Cli {
+    fn network_mode(&self) -> bool {
+        !self.listen.is_empty()
+            || !self.connect.is_empty()
+            || self.print_identity
+            || self.identity_seed.is_some()
+            || self.identity.is_some()
     }
 }
 
@@ -344,6 +347,7 @@ mod tests {
     }
 
     include!("rngit_parts/issue_612_tests.rs");
+    include!("rngit_parts/issue_613_tests.rs");
 
     #[test]
     fn statistics_hooks_record_python_rngit_event_buckets() {

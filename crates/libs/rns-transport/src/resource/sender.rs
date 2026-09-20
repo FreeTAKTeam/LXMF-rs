@@ -64,30 +64,8 @@ impl ResourceSender {
         )
     }
 
-    pub(super) fn new_with_options_mtu(
-        link: &Link,
-        data: Vec<u8>,
-        metadata: Option<Vec<u8>>,
-        request_id: Option<Vec<u8>>,
-        is_response: bool,
-        interface_mtu: usize,
-    ) -> Result<Self, RnsError> {
-        Self::new_segment_with_options_mtu(
-            link,
-            data,
-            metadata,
-            request_id,
-            is_response,
-            interface_mtu,
-            None,
-            1,
-            1,
-            None,
-        )
-    }
-
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn new_segment_with_options_mtu(
+    pub(super) fn new_segment_with_options_mtu_and_compression(
         link: &Link,
         data: Vec<u8>,
         metadata: Option<Vec<u8>>,
@@ -98,6 +76,7 @@ impl ResourceSender {
         segment_index: u32,
         total_segments: u32,
         total_data_size: Option<u64>,
+        auto_compress: bool,
     ) -> Result<Self, RnsError> {
         let resource_mdu = resource_packet_mdu_for_mtu(interface_mtu)?;
         let hashmap_segment_len = resource_hashmap_segment_len_for_mtu(interface_mtu)?;
@@ -137,7 +116,9 @@ impl ResourceSender {
         // and decompresses back to exactly this same `combined` before
         // parsing metadata/data — this was the one half of that round trip
         // never previously exercised on send.
-        let compressed_candidate = if combined.len() as u64 <= AUTO_COMPRESS_MAX_SIZE as u64 {
+        let compressed_candidate = if auto_compress
+            && combined.len() as u64 <= AUTO_COMPRESS_MAX_SIZE as u64
+        {
             let mut encoder = BzEncoder::new(Vec::new(), Compression::best());
             match encoder.write_all(&combined).and_then(|_| encoder.finish()) {
                 Ok(compressed) => {
@@ -432,6 +413,8 @@ impl ResourceSender {
         false
     }
 }
+
+include!("sender_parts/builders.rs");
 
 /// Choose the resource random hash and derive every hash that depends on it.
 ///

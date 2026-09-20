@@ -43,6 +43,7 @@ struct PendingSegments {
     is_response: bool,
     interface_mtu: usize,
     original_hash: Hash,
+    auto_compress: bool,
 }
 
 impl PendingSegments {
@@ -52,7 +53,7 @@ impl PendingSegments {
             return None;
         }
         let end = self.offset.saturating_add(MAX_EFFICIENT_SIZE).min(self.data.len());
-        let sender = ResourceSender::new_segment_with_options_mtu(
+        let sender = ResourceSender::new_segment_with_options_mtu_and_compression(
             link,
             self.data[self.offset..end].to_vec(),
             None,
@@ -63,6 +64,7 @@ impl PendingSegments {
             self.next_segment_index,
             self.total_segments,
             Some(self.total_size),
+            self.auto_compress,
         );
         if sender.is_ok() {
             self.offset = end;

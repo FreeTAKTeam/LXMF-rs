@@ -106,7 +106,7 @@ impl ReticulumGitNode {
     }
 
     pub fn register_request_handlers(&self) -> Vec<&'static str> {
-        vec![
+        let mut paths = vec![
             RNGIT_PATH_LIST,
             RNGIT_PATH_FETCH,
             RNGIT_PATH_PUSH,
@@ -118,7 +118,9 @@ impl ReticulumGitNode {
             RNGIT_PATH_RELEASE,
             RNGIT_PATH_WORK,
             RNGIT_PATH_PERMS,
-        ]
+        ];
+        paths.extend_from_slice(page_paths());
+        paths
     }
 
     pub fn remote_connected(&self) -> bool {

@@ -205,6 +205,22 @@ impl Transport {
         data: Vec<u8>,
         metadata: Option<Vec<u8>>,
     ) -> Result<Hash, RnsError> {
+        self.send_response_resource_with_compression(link_id, request_id, data, metadata, true)
+            .await
+    }
+
+    /// Send a response Resource with explicit control over opportunistic
+    /// outbound compression. Some registered response handlers, such as
+    /// NomadNet media, deliberately return raw binary data and set
+    /// `auto_compress=False` in the Python implementation.
+    pub async fn send_response_resource_with_compression(
+        &self,
+        link_id: &AddressHash,
+        request_id: Vec<u8>,
+        data: Vec<u8>,
+        metadata: Option<Vec<u8>>,
+        auto_compress: bool,
+    ) -> Result<Hash, RnsError> {
         let link = self.find_any_link(link_id).await.ok_or(RnsError::InvalidArgument)?;
         let iface = {
             let link_guard = link.lock().await;
@@ -217,13 +233,14 @@ impl Transport {
             // See `resource_wire.rs`: the negotiated link MTU, not the local
             // interface alone, is what a fragment has to fit through.
             let interface_mtu = interface_mtu.min(link_guard.link_mtu());
-            ResourceManager::prepare_send(
+            ResourceManager::prepare_send_with_compression(
                 &link_guard,
                 data,
                 metadata,
                 Some(request_id),
                 true,
                 interface_mtu,
+                auto_compress,
             )?
         };
         let mut handler = self.handler.lock().await;

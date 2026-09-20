@@ -137,7 +137,7 @@ pub struct RngitStats {
     pub groups: BTreeMap<String, BTreeMap<String, BTreeMap<String, u64>>>,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct ReticulumGitNode {
     pub groups: BTreeMap<String, RepositoryGroup>,
     pub configured_permissions: BTreeMap<String, PermissionSet>,
@@ -146,12 +146,43 @@ pub struct ReticulumGitNode {
     pub stats: RngitStats,
     pub should_run: bool,
     pub last_announce: u64,
+    pub page_node_name: String,
+    pub page_templates: BTreeMap<String, String>,
+    pub media_conversion: bool,
+    pub media_quality: u8,
+    pub media_max_dimension: Option<u32>,
+    pub active_page_links: BTreeMap<[u8; 16], BTreeSet<PathBuf>>,
+}
+
+impl Default for ReticulumGitNode {
+    fn default() -> Self {
+        Self {
+            groups: BTreeMap::new(),
+            configured_permissions: BTreeMap::new(),
+            identity_aliases: BTreeMap::new(),
+            blocked_identities: BTreeSet::new(),
+            stats: RngitStats::default(),
+            should_run: false,
+            last_announce: 0,
+            page_node_name: "Anonymous Git Node".to_string(),
+            page_templates: BTreeMap::new(),
+            media_conversion: true,
+            media_quality: 85,
+            media_max_dimension: None,
+            active_page_links: BTreeMap::new(),
+        }
+    }
 }
 
 include!("protocol.rs");
 include!("compat_client.rs");
 include!("compat_permissions.rs");
 include!("compat_node.rs");
+include!("media.rs");
+include!("pages.rs");
+include!("page_git.rs");
+include!("page_git_work.rs");
+include!("page_media.rs");
 
 // Python appends companion suffixes. Replacing an extension makes `repo.git`
 // collide with `repo.allowed`/`repo.work` belonging to another repository.
