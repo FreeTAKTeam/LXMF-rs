@@ -7,14 +7,18 @@ import argparse
 import ast
 import fnmatch
 import json
+import re
 import subprocess
 import sys
 import tempfile
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 
+ROOT = Path(__file__).resolve().parents[2]
+MANIFEST = ROOT / "tools/interop/independent-implementations.toml"
 EXCLUDED_PARTS = {"vendor", "__pycache__"}
 EXCLUDED_FILES = {"_version.py"}
 VALID_IMPLEMENTATION = {"complete", "partial", "not-applicable"}
@@ -25,12 +29,22 @@ VALID_EVIDENCE = {
     "prepared-host",
     "hardware-unverified",
 }
-EXPECTED_RELEASE_SUMMARY = {
-    "total": 1858,
-    "complete": 1857,
-    "partial": 0,
-    "not-applicable": 1,
+VALID_BEHAVIORAL_COVERAGE = {"incomplete", "complete", "blocked", "hardware-unverified"}
+VALID_BEHAVIORAL_EVIDENCE = VALID_EVIDENCE | {
+    "cross-implementation",
+    "third-party-client",
+    "hardware",
+    "public-network",
+    "planned",
 }
+VALID_BEHAVIORAL_EVIDENCE_STATUS = {
+    "unverified",
+    "verified",
+    "blocked",
+    "hardware-unverified",
+}
+VALID_REFERENCE_PROJECTS = {"reticulum", "lxmf", "both", "operational"}
+FULL_REVISION = re.compile(r"[0-9a-f]{40}")
 
 
 @dataclass(frozen=True)
@@ -62,7 +76,223 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--require-complete", action="store_true")
+    parser.add_argument("--require-behavioral-complete", action="store_true")
     return parser.parse_args()
+
+
+def load_manifest() -> dict[str, Any]:
+    try:
+        with MANIFEST.open("rb") as handle:
+            payload = tomllib.load(handle)
+    except (OSError, tomllib.TOMLDecodeError) as error:
+        raise ValueError(f"failed to load canonical reference manifest: {error}") from error
+    if not isinstance(payload, dict):
+        raise ValueError("canonical reference manifest must be an object")
+    return payload
+
+
+def canonical_active_reference(manifest: dict[str, Any]) -> dict[str, str]:
+    version = manifest.get("rns_reference_version")
+    revision = manifest.get("rns_reference_revision")
+    python_reference = manifest.get("python_reference")
+    if not isinstance(version, str) or not isinstance(revision, str):
+        raise ValueError("canonical RNS baseline version and revision are required")
+    if not isinstance(python_reference, dict):
+        raise ValueError("canonical python_reference section is required")
+    if python_reference.get("version") != version or python_reference.get("revision") != revision:
+        raise ValueError("canonical RNS baseline and python_reference pins differ")
+    if FULL_REVISION.fullmatch(revision) is None:
+        raise ValueError(f"canonical RNS baseline revision is not a full Git commit: {revision}")
+    return {"version": version, "revision": revision}
+
+
+def canonical_parity_target(manifest: dict[str, Any]) -> dict[str, Any]:
+    target = manifest.get("parity_target")
+    if not isinstance(target, dict):
+        raise ValueError("canonical parity_target section is required")
+    required_strings = ("implementation", "repository", "version", "revision", "scope")
+    if any(not isinstance(target.get(key), str) or not target[key] for key in required_strings):
+        raise ValueError("parity_target contains a missing string field")
+    if target["implementation"] != "Reticulum-Python":
+        raise ValueError("parity_target implementation must be Reticulum-Python")
+    if target["repository"] != "https://github.com/markqvist/Reticulum.git":
+        raise ValueError("parity_target repository is not the canonical Reticulum repository")
+    if FULL_REVISION.fullmatch(target["revision"]) is None:
+        raise ValueError(f"parity target revision is not a full Git commit: {target['revision']}")
+    if target.get("owner_issue") != 605:
+        raise ValueError("parity_target owner_issue must be issue 605")
+    return {key: target[key] for key in (*required_strings, "owner_issue")}
+
+
+def validate_behavioral_contract(
+    contract: Any,
+    *,
+    baseline: dict[str, str] | None = None,
+    target: dict[str, Any] | None = None,
+    reference_revisions: dict[str, Any] | None = None,
+    require_references: bool = False,
+    require_complete: bool = False,
+) -> list[str]:
+    errors: list[str] = []
+    if not isinstance(contract, dict):
+        return ["behavioral contract must be an object"]
+    if contract.get("schema_version") != 1:
+        errors.append("behavioral contract schema_version must be 1")
+    if not isinstance(contract.get("scope"), str) or not contract["scope"]:
+        errors.append("behavioral contract scope must be a non-empty string")
+    coverage_status = contract.get("coverage_status")
+    if coverage_status not in VALID_BEHAVIORAL_COVERAGE:
+        errors.append(f"behavioral contract has invalid coverage_status: {coverage_status!r}")
+
+    reference = contract.get("reference")
+    if reference is not None:
+        if not isinstance(reference, dict):
+            errors.append("behavioral contract reference must be an object")
+        elif target is not None:
+            reticulum = reference.get("reticulum")
+            if not isinstance(reticulum, dict):
+                errors.append("behavioral contract reference is missing reticulum")
+            elif (
+                reticulum.get("version") != target["version"]
+                or reticulum.get("revision") != target["revision"]
+            ):
+                errors.append("behavioral contract reference does not match parity_target")
+            active_baseline = reference.get("active_baseline")
+            if active_baseline is not None and active_baseline != baseline:
+                errors.append("behavioral contract active_baseline does not match the manifest")
+
+    requirements = contract.get("requirements")
+    if not isinstance(requirements, list) or not requirements:
+        errors.append("behavioral contract requirements must be a non-empty list")
+        return errors
+
+    seen: set[str] = set()
+    for requirement in requirements:
+        if not isinstance(requirement, dict):
+            errors.append("behavioral contract requirement must be an object")
+            continue
+        requirement_id = requirement.get("id")
+        if not isinstance(requirement_id, str) or not requirement_id:
+            errors.append("behavioral contract requirement is missing id")
+            continue
+        if requirement_id in seen:
+            errors.append(f"duplicate behavioral requirement: {requirement_id}")
+        seen.add(requirement_id)
+
+        if requirement.get("kind") != "behavioral-requirement":
+            errors.append(f"{requirement_id}: kind must be behavioral-requirement")
+        project = requirement.get("reference_project")
+        if project not in VALID_REFERENCE_PROJECTS:
+            errors.append(f"{requirement_id}: invalid reference_project {project!r}")
+        for field in ("reference_paths", "rust_surface", "evidence"):
+            values = requirement.get(field)
+            if not isinstance(values, list) or not values or any(
+                not isinstance(value, str) or not value for value in values
+            ):
+                errors.append(f"{requirement_id}: {field} must be a non-empty string list")
+        evidence = requirement.get("evidence")
+        if isinstance(evidence, list):
+            invalid_evidence = sorted(set(evidence) - VALID_BEHAVIORAL_EVIDENCE)
+            if invalid_evidence:
+                errors.append(f"{requirement_id}: invalid evidence values {invalid_evidence}")
+        evidence_status = requirement.get("evidence_status")
+        if evidence_status not in VALID_BEHAVIORAL_EVIDENCE_STATUS:
+            errors.append(f"{requirement_id}: invalid evidence_status {evidence_status!r}")
+        test_command = requirement.get("test_command")
+        if not (
+            isinstance(test_command, str)
+            and test_command
+            or isinstance(test_command, list)
+            and test_command
+            and all(isinstance(value, str) and value for value in test_command)
+        ):
+            errors.append(f"{requirement_id}: test_command must be a non-empty string or list")
+        artifact = requirement.get("evidence_artifact")
+        if not (
+            isinstance(artifact, str)
+            and artifact
+            or isinstance(artifact, list)
+            and artifact
+            and all(isinstance(value, str) and value for value in artifact)
+        ):
+            errors.append(f"{requirement_id}: evidence_artifact must be a non-empty string or list")
+        owner_issue = requirement.get("owner_issue")
+        if isinstance(owner_issue, bool) or not isinstance(owner_issue, int) or owner_issue <= 0:
+            errors.append(f"{requirement_id}: owner_issue must be a positive integer")
+        implementation = requirement.get("implementation")
+        if implementation not in VALID_IMPLEMENTATION:
+            errors.append(f"{requirement_id}: invalid implementation {implementation!r}")
+        if implementation == "not-applicable" and not requirement.get("notes"):
+            errors.append(f"{requirement_id}: not-applicable requirements need notes")
+        requirement_reference = requirement.get("reference")
+        if requirement_reference is None:
+            if require_references:
+                errors.append(f"{requirement_id}: exact generated reference is missing")
+        elif not isinstance(requirement_reference, dict):
+            errors.append(f"{requirement_id}: generated reference must be an object")
+        else:
+            expected_projects = {
+                "reticulum": ("revision",),
+                "lxmf": ("revision",),
+                "both": ("reticulum", "lxmf"),
+                "operational": ("reticulum", "lxmf"),
+            }[project] if project in VALID_REFERENCE_PROJECTS else ()
+            for reference_key in expected_projects:
+                if reference_key not in requirement_reference:
+                    errors.append(f"{requirement_id}: generated reference is missing {reference_key}")
+            if project in {"reticulum", "lxmf"}:
+                revision = requirement_reference.get("revision")
+                if not isinstance(revision, str) or FULL_REVISION.fullmatch(revision) is None:
+                    errors.append(f"{requirement_id}: generated reference revision is invalid")
+            else:
+                for reference_key in ("reticulum", "lxmf"):
+                    nested = requirement_reference.get(reference_key)
+                    if not isinstance(nested, dict):
+                        continue
+                    revision = nested.get("revision")
+                    if not isinstance(revision, str) or FULL_REVISION.fullmatch(revision) is None:
+                        errors.append(
+                            f"{requirement_id}: generated {reference_key} revision is invalid"
+                        )
+            if target is not None and project in {"reticulum", "both", "operational"}:
+                reticulum_reference = (
+                    requirement_reference
+                    if project == "reticulum"
+                    else requirement_reference.get("reticulum")
+                )
+                if isinstance(reticulum_reference, dict) and (
+                    reticulum_reference.get("revision") != target["revision"]
+                    or reticulum_reference.get("version") != target["version"]
+                ):
+                    errors.append(f"{requirement_id}: generated Reticulum reference is stale")
+            if reference_revisions is not None and project in {"lxmf", "both", "operational"}:
+                lxmf_reference = (
+                    requirement_reference
+                    if project == "lxmf"
+                    else requirement_reference.get("lxmf")
+                )
+                if isinstance(lxmf_reference, dict) and lxmf_reference.get("revision") != reference_revisions.get("lxmf"):
+                    errors.append(f"{requirement_id}: generated LXMF reference is stale")
+        if evidence_status == "verified" and isinstance(evidence, list) and "planned" in evidence:
+            errors.append(f"{requirement_id}: verified evidence cannot remain planned")
+        if implementation == "complete" and evidence_status != "verified":
+            errors.append(f"{requirement_id}: complete implementation requires verified evidence")
+
+    if coverage_status == "complete":
+        for requirement in requirements:
+            if not isinstance(requirement, dict):
+                continue
+            if requirement.get("implementation") not in {"complete", "not-applicable"}:
+                errors.append(
+                    f"{requirement.get('id', '<unknown>')}: complete coverage has a non-complete implementation"
+                )
+            if requirement.get("evidence_status") != "verified":
+                errors.append(
+                    f"{requirement.get('id', '<unknown>')}: complete coverage has unverified evidence"
+                )
+    if require_complete and coverage_status != "complete":
+        errors.append(f"behavioral contract coverage is {coverage_status!r}, not complete")
+    return errors
 
 
 def public_name(name: str) -> bool:
@@ -162,11 +392,62 @@ def validate_rule(item_id: str, rule: dict[str, Any]) -> None:
         raise ValueError(f"{item_id}: not-applicable mappings require notes")
 
 
+def materialize_behavioral_contract(
+    contract: dict[str, Any],
+    *,
+    baseline: dict[str, str],
+    target: dict[str, Any],
+    references: dict[str, str],
+) -> dict[str, Any]:
+    materialized = dict(contract)
+    materialized["reference"] = {
+        "reticulum": {
+            "implementation": target["implementation"],
+            "repository": target["repository"],
+            "version": target["version"],
+            "revision": target["revision"],
+        },
+        "active_baseline": baseline,
+        "lxmf": {"revision": references["lxmf"]},
+    }
+    requirements: list[dict[str, Any]] = []
+    for requirement in contract["requirements"]:
+        materialized_requirement = dict(requirement)
+        project = requirement["reference_project"]
+        if project == "reticulum":
+            reference = {
+                "version": target["version"],
+                "revision": target["revision"],
+            }
+        elif project == "lxmf":
+            reference = {"revision": references["lxmf"]}
+        else:
+            reference = {
+                "reticulum": {
+                    "version": target["version"],
+                    "revision": target["revision"],
+                },
+                "lxmf": {"revision": references["lxmf"]},
+            }
+        materialized_requirement["reference"] = reference
+        requirements.append(materialized_requirement)
+    materialized["requirements"] = requirements
+    return materialized
+
+
 def build_inventory(args: argparse.Namespace) -> dict[str, Any]:
     if args.python_rns_path is None or args.python_lxmf_path is None:
         raise ValueError("--python-rns-path and --python-lxmf-path are required outside --check mode")
 
     mapping = load_mapping(args.mapping)
+    manifest = load_manifest()
+    baseline = canonical_active_reference(manifest)
+    target = canonical_parity_target(manifest)
+    contract_errors = validate_behavioral_contract(
+        mapping.get("behavioral_contract"), baseline=baseline, target=target
+    )
+    if contract_errors:
+        raise ValueError("; ".join(contract_errors))
     rules = mapping["rules"]
     scanned_items = scan_root("RNS", args.python_rns_path) + scan_root(
         "LXMF", args.python_lxmf_path
@@ -182,6 +463,20 @@ def build_inventory(args: argparse.Namespace) -> dict[str, Any]:
         if item.item_id in scanned_by_id:
             raise ValueError(f"manual inventory item duplicates scanned callable: {item.item_id}")
         scanned_by_id[item.item_id] = item
+
+    references = {
+        "reticulum": git_revision(args.python_rns_path),
+        "lxmf": git_revision(args.python_lxmf_path),
+    }
+    if any(
+        not isinstance(revision, str) or FULL_REVISION.fullmatch(revision) is None
+        for revision in references.values()
+    ):
+        raise ValueError("both Python reference paths must resolve to full Git revisions")
+    forward_candidate = (
+        references["reticulum"] == target["revision"]
+        and references["reticulum"] != baseline["revision"]
+    )
 
     entries: list[dict[str, Any]] = []
     for item in sorted(scanned_by_id.values(), key=lambda value: value.item_id):
@@ -199,43 +494,83 @@ def build_inventory(args: argparse.Namespace) -> dict[str, Any]:
             )
             continue
         validate_rule(item.item_id, rule)
+        implementation = rule["implementation"]
+        notes = rule.get("notes")
+        if forward_candidate and implementation == "complete":
+            implementation = "partial"
+            candidate_note = (
+                "Forward-target callable classification is provisional; this mapping does not "
+                "constitute behavioral evidence."
+            )
+            notes = f"{notes} {candidate_note}" if notes else candidate_note
         entries.append(
             {
                 "id": item.item_id,
                 "kind": item.kind,
                 "source": item.source,
-                "implementation": rule["implementation"],
+                "implementation": implementation,
                 "rust_surface": rule["rust_surface"],
                 "evidence": rule["evidence"],
-                **({"notes": rule["notes"]} if rule.get("notes") else {}),
+                **({"notes": notes} if notes else {}),
             }
         )
 
     counts: dict[str, int] = {}
     for entry in entries:
         counts[entry["implementation"]] = counts.get(entry["implementation"], 0) + 1
+    behavioral_contract = materialize_behavioral_contract(
+        mapping["behavioral_contract"],
+        baseline=baseline,
+        target=target,
+        references=references,
+    )
     return {
         "schema_version": 1,
-        "references": {
-            "reticulum": git_revision(args.python_rns_path),
-            "lxmf": git_revision(args.python_lxmf_path),
-        },
+        "inventory_profile": "forward-parity-candidate" if forward_candidate else "active-baseline",
+        "references": references,
+        "parity_target": target,
         "scope": {
             "includes": "public RNS/LXMF callables and committed manual product contracts",
             "excludes": ["private and dunder callables", "vendor", "_version.py"],
         },
         "summary": {"total": len(entries), **dict(sorted(counts.items()))},
         "items": entries,
+        "behavioral_contract": behavioral_contract,
     }
 
 
-def validate_inventory(payload: dict[str, Any], require_complete: bool) -> list[str]:
+def validate_inventory(
+    payload: dict[str, Any],
+    require_complete: bool,
+    require_behavioral_complete: bool = False,
+    expected_baseline: dict[str, str] | None = None,
+    expected_target: dict[str, Any] | None = None,
+) -> list[str]:
     errors: list[str] = []
     items = payload.get("items")
     if payload.get("schema_version") != 1 or not isinstance(items, list):
         return ["inventory schema is invalid"]
+    profile = payload.get("inventory_profile")
+    if profile not in {"active-baseline", "forward-parity-candidate"}:
+        errors.append("inventory profile is missing or invalid")
+    if expected_target is not None and payload.get("parity_target") != expected_target:
+        errors.append("inventory parity_target does not match the canonical manifest")
+    references = payload.get("references")
+    if not isinstance(references, dict):
+        errors.append("inventory references are missing")
+    else:
+        expected_revision = None
+        if profile == "active-baseline" and expected_baseline is not None:
+            expected_revision = expected_baseline["revision"]
+        elif profile == "forward-parity-candidate" and expected_target is not None:
+            expected_revision = expected_target["revision"]
+        if expected_revision is not None and references.get("reticulum") != expected_revision:
+            errors.append("inventory Reticulum reference does not match its declared profile")
     seen: set[str] = set()
     for entry in items:
+        if not isinstance(entry, dict):
+            errors.append("inventory item must be an object")
+            continue
         item_id = entry.get("id")
         if not isinstance(item_id, str) or not item_id:
             errors.append("inventory item is missing id")
@@ -252,19 +587,38 @@ def validate_inventory(payload: dict[str, Any], require_complete: bool) -> list[
             errors.append(f"{item_id}: missing evidence mapping")
         if require_complete and implementation == "partial":
             errors.append(f"{item_id}: partial implementation is not release-complete")
-    if require_complete:
-        summary = payload.get("summary")
-        if not isinstance(summary, dict):
-            errors.append("release inventory is missing a summary")
-        else:
-            actual = {
-                key: summary.get(key, 0) for key in EXPECTED_RELEASE_SUMMARY
-            }
-            if actual != EXPECTED_RELEASE_SUMMARY:
-                errors.append(
-                    "release inventory counts differ from the RNS 1.5.2 target: "
-                    f"expected {EXPECTED_RELEASE_SUMMARY}, got {actual}"
-                )
+    summary = payload.get("summary")
+    if not isinstance(summary, dict):
+        errors.append("inventory is missing a summary")
+    else:
+        actual = {
+            "total": summary.get("total", 0),
+            "complete": summary.get("complete", 0),
+            "partial": summary.get("partial", 0),
+            "not-applicable": summary.get("not-applicable", 0),
+        }
+        try:
+            validate_counts("summary", actual)
+        except ValueError as error:
+            errors.append(str(error))
+        if isinstance(items, list):
+            try:
+                if inventory_counts(items) != actual:
+                    errors.append("inventory summary does not match item classifications")
+            except ValueError as error:
+                errors.append(str(error))
+
+    contract = payload.get("behavioral_contract")
+    errors.extend(
+        validate_behavioral_contract(
+            contract,
+            baseline=expected_baseline,
+            target=expected_target,
+            reference_revisions=references if isinstance(references, dict) else None,
+            require_references=True,
+            require_complete=require_behavioral_complete,
+        )
+    )
     return errors
 
 
@@ -321,10 +675,49 @@ def rust_parity_constants(name: str, counts: dict[str, int]) -> str:
     )
 
 
+def rust_behavioral_constants(contract: dict[str, Any]) -> str:
+    requirements = contract.get("requirements")
+    reference = contract.get("reference")
+    if not isinstance(requirements, list) or not isinstance(reference, dict):
+        raise ValueError("behavioral contract requirements or reference are invalid")
+    reticulum = reference.get("reticulum")
+    if not isinstance(reticulum, dict):
+        raise ValueError("behavioral contract reticulum reference is invalid")
+    coverage_status = contract.get("coverage_status")
+    if coverage_status not in VALID_BEHAVIORAL_COVERAGE:
+        raise ValueError("behavioral contract coverage status is invalid")
+    verified = sum(
+        1
+        for requirement in requirements
+        if isinstance(requirement, dict) and requirement.get("evidence_status") == "verified"
+    )
+    applicable = sum(
+        1
+        for requirement in requirements
+        if isinstance(requirement, dict)
+        and requirement.get("implementation") != "not-applicable"
+    )
+    level = "unknown" if not applicable else ("complete" if coverage_status == "complete" else "partial")
+    return (
+        f'pub const PYTHON_BEHAVIORAL_PARITY_LEVEL: &str = "{level}";\n'
+        f'pub const PYTHON_BEHAVIORAL_PARITY_COVERAGE_STATUS: &str = "{coverage_status}";\n'
+        f"pub const PYTHON_BEHAVIORAL_PARITY_REQUIREMENTS: usize = {len(requirements)};\n"
+        f"pub const PYTHON_BEHAVIORAL_PARITY_VERIFIED: usize = {verified};\n"
+        f"pub const PYTHON_BEHAVIORAL_PARITY_APPLICABLE: usize = {applicable};\n"
+        f'pub const PYTHON_BEHAVIORAL_PARITY_REFERENCE_VERSION: &str = "{reticulum["version"]}";\n'
+        f'pub const PYTHON_BEHAVIORAL_PARITY_REFERENCE_REF: &str = "{reticulum["revision"]}";'
+    )
+
+
 def render_rust_parity(payload: dict[str, Any]) -> str:
     items = payload.get("items")
     summary = payload.get("summary")
-    if not isinstance(items, list) or not isinstance(summary, dict):
+    behavioral_contract = payload.get("behavioral_contract")
+    if (
+        not isinstance(items, list)
+        or not isinstance(summary, dict)
+        or not isinstance(behavioral_contract, dict)
+    ):
         raise ValueError("inventory items or summary are invalid")
 
     overall = inventory_counts(items)
@@ -362,7 +755,8 @@ def render_rust_parity(payload: dict[str, Any]) -> str:
         "// Do not edit manually.\n\n"
         f"{rust_parity_constants('SOFTWARE', overall)}\n"
         f"{rust_parity_constants('RETICULUM', reticulum)}\n"
-        f"{rust_parity_constants('LXMF', lxmf)}"
+        f"{rust_parity_constants('LXMF', lxmf)}\n"
+        f"{rust_behavioral_constants(behavioral_contract)}"
     )
 
 
@@ -393,6 +787,48 @@ def run_generator_self_tests() -> None:
         "LXMF grouping",
     )
 
+    behavioral_contract = {
+        "schema_version": 1,
+        "scope": "self-test behavioral contract",
+        "coverage_status": "incomplete",
+        "reference": {
+            "reticulum": {"version": "1.5.4-dev", "revision": "a" * 40}
+        },
+        "requirements": [
+            {
+                "id": "self-test.partial",
+                "kind": "behavioral-requirement",
+                "reference_project": "reticulum",
+                "reference_paths": ["RNS/Transport.py"],
+                "rust_surface": ["reticulum-rs-transport"],
+                "implementation": "partial",
+                "evidence": ["planned"],
+                "evidence_status": "unverified",
+                "test_command": "cargo test -p reticulum-rs-transport",
+                "evidence_artifact": "target/self-test.json",
+                "owner_issue": 605,
+            },
+            {
+                "id": "self-test.na",
+                "kind": "behavioral-requirement",
+                "reference_project": "operational",
+                "reference_paths": ["RNS/Interfaces/Interface.py"],
+                "rust_surface": ["docs/status"],
+                "implementation": "not-applicable",
+                "evidence": ["planned"],
+                "evidence_status": "unverified",
+                "test_command": "documented workflow",
+                "evidence_artifact": "target/self-test.json",
+                "owner_issue": 616,
+                "notes": "Operational validation is a separate evidence axis.",
+            },
+        ],
+    }
+    expect(not validate_behavioral_contract(behavioral_contract), "behavioral contract schema")
+    malformed_contract = dict(behavioral_contract)
+    malformed_contract["requirements"] = [{"id": "broken"}]
+    expect(validate_behavioral_contract(malformed_contract), "malformed behavioral contract")
+
     rendered = render_rust_parity(
         {
             "items": items,
@@ -402,6 +838,7 @@ def run_generator_self_tests() -> None:
                 "partial": 1,
                 "not-applicable": 1,
             },
+            "behavioral_contract": behavioral_contract,
         }
     )
     expect(
@@ -423,6 +860,10 @@ def run_generator_self_tests() -> None:
             {"total": 1, "complete": 0, "partial": 0, "not-applicable": 1},
         ),
         "zero-applicable unknown level",
+    )
+    expect(
+        'PYTHON_BEHAVIORAL_PARITY_COVERAGE_STATUS: &str = "incomplete"' in rendered,
+        "behavioral incomplete level",
     )
     try:
         render_rust_parity(
@@ -465,7 +906,16 @@ def main() -> int:
                 if not generated_file_matches(args.json_out, rendered):
                     print(f"inventory drift: regenerate {args.json_out}", file=sys.stderr)
                     return 1
-        errors = validate_inventory(payload, args.require_complete)
+        manifest = load_manifest()
+        expected_baseline = canonical_active_reference(manifest)
+        expected_target = canonical_parity_target(manifest)
+        errors = validate_inventory(
+            payload,
+            args.require_complete,
+            args.require_behavioral_complete,
+            expected_baseline,
+            expected_target,
+        )
         if not errors:
             rust_parity = render_rust_parity(payload)
             if args.check:

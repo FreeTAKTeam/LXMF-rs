@@ -246,6 +246,31 @@ interactive signing ceremonies are explicitly deferred to v1.0. Until then
 they remain hardware-unverified or human-validation targets and are not v0.9.5
 release blockers.
 
+## Issue #605 forward parity candidate
+
+The repository's current release posture remains anchored to the RNS 1.5.2
+baseline above, but the next full-parity target is the immutable RNS 1.5.4-dev
+development revision `99de23c040d507e3fefca19e87b182302902725d`. The target is
+recorded in the canonical `[parity_target]` section of
+`tools/interop/independent-implementations.toml`; changing it requires a
+reviewed reference update and a regenerated delta ledger.
+
+The callable inventory is now treated as historical navigation evidence for the
+active release, not as proof of forward behavioral parity. The generated
+`docs/status/python-surface-parity.json` carries a machine-checked behavioral
+contract covering issues #607–#616. Its current status is `incomplete`: each
+requirement names the exact reference path/commit, Rust owner, planned test
+command, evidence artifact, implementation status, and evidence status. The
+candidate inventory intentionally demotes inherited mappings to provisional
+`partial` until behavior is exercised.
+
+The forward ledger is [`docs/status/rns-1.5.4-delta.md`](rns-1.5.4-delta.md).
+No current release, SDK orientation, or runtime status may describe the
+1.5.4-development target as complete until the behavioral contract, exact
+candidate software gate, and independently reviewed child issues pass. Physical,
+platform, third-party-client, public-network, and soak evidence remain a
+separate operational axis.
+
 ## v0.9.0 Full Software-Parity Baseline
 
 The v0.9.0 release criterion was zero partial or unmapped entries in the

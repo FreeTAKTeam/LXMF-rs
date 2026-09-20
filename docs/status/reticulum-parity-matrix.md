@@ -31,7 +31,7 @@ human-operated validation remain the explicit v1.0 boundary.
 The pinned Python baseline is RNS `1.5.2` at
 `ea98db4f53dcf0defc0e71a16e60d28b1229c4e6`. Regenerating the strict public
 surface inventory produces **1,857 complete, 0 partial, and 1
-not-applicable entry across 1,839 entries**.
+not-applicable entry across 1,858 entries**.
 
 The focused work preserves the completed 1.5.0 surface and closes the RNS 1.5.1
 and 1.5.2 maintenance deltas: stream-resource initialization behavior is
@@ -59,6 +59,24 @@ checkpoints, includes pinned reference versions and revisions, and reports
 exact complete/applicable ratios alongside the inventory counts. It is marked
 `advisory: true` for consumer orientation and does not replace capability
 negotiation, runtime feature checks, or the separate hardware-evidence axis.
+
+## RNS 1.5.4 forward candidate
+
+Issue #605 audits the immutable development revision
+`99de23c040d507e3fefca19e87b182302902725d`, recorded as `1.5.4-dev` in the
+canonical parity-target manifest. This is an open candidate, not a replacement
+for the active 1.5.2 release baseline. A detached scan against the target finds
+1,868 callable/manual rows, including ten new callable IDs; inherited mappings
+are deliberately provisional `partial` rows because wildcard matches and
+callable presence do not prove behavior.
+
+The generated Python surface artifact now carries the issue #605 behavioral
+contract for child issues #607–#616. The contract is `incomplete` with no
+verified applicable requirements. It is the authoritative forward status for
+this matrix; the baseline rows below remain historical/current-release claims
+and must not be read as completion of the 1.5.4 candidate. See
+[`rns-1.5.4-delta.md`](rns-1.5.4-delta.md) for the exact target, measured delta,
+evidence fields, and acceptance boundary.
 
 ## Surface Matrix
 

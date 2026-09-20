@@ -1593,5 +1593,147 @@
       "kind": "provenance",
       "source": "pinned references"
     }
-  ]
+  ],
+  "behavioral_contract": {
+    "schema_version": 1,
+    "scope": "Issue #605 behavioral requirements and evidence gates; callable mappings remain a historical inventory and do not prove forward parity.",
+    "coverage_status": "incomplete",
+    "requirements": [
+      {
+        "id": "reticulum-605-607-reference-increment",
+        "kind": "behavioral-requirement",
+        "reference_project": "reticulum",
+        "reference_paths": ["RNS/Reticulum.py", "RNS/Transport.py", "RNS/Resource.py"],
+        "rust_surface": ["crates/libs/lxmf-reference", "docs/status/rns-1.5.4-delta.md"],
+        "implementation": "partial",
+        "evidence": ["planned"],
+        "evidence_status": "unverified",
+        "test_command": "python3 tools/scripts/python_surface_inventory.py --check",
+        "evidence_artifact": "target/issue-605/evidence/607-reference-review.json",
+        "owner_issue": 607,
+        "notes": "PR #604 is an initial increment and remains separately reviewable; this row does not claim that it closes the epic."
+      },
+      {
+        "id": "reticulum-605-608-ifac-carrier-wiring",
+        "kind": "behavioral-requirement",
+        "reference_project": "reticulum",
+        "reference_paths": ["RNS/Interfaces/Interface.py", "RNS/Transport.py"],
+        "rust_surface": ["crates/libs/rns-transport", "crates/apps/reticulumd"],
+        "implementation": "partial",
+        "evidence": ["planned"],
+        "evidence_status": "unverified",
+        "test_command": "cargo test -p reticulum-rs-transport ifac && cargo test -p reticulumd",
+        "evidence_artifact": "target/issue-605/evidence/608-ifac.json",
+        "owner_issue": 608,
+        "notes": "Library IFAC helpers are not evidence that configured carriers authenticate ingress and egress in production."
+      },
+      {
+        "id": "reticulum-605-609-transport-local-shared",
+        "kind": "behavioral-requirement",
+        "reference_project": "reticulum",
+        "reference_paths": ["RNS/Transport.py", "RNS/Reticulum.py", "RNS/Interfaces/LocalInterface.py"],
+        "rust_surface": ["crates/libs/rns-transport", "crates/apps/reticulumd"],
+        "implementation": "partial",
+        "evidence": ["planned"],
+        "evidence_status": "unverified",
+        "test_command": "cargo test -p reticulum-rs-transport local && cargo test -p reticulumd",
+        "evidence_artifact": "target/issue-605/evidence/609-shared-instance.json",
+        "owner_issue": 609
+      },
+      {
+        "id": "reticulum-605-610-resource-stream-collision",
+        "kind": "behavioral-requirement",
+        "reference_project": "reticulum",
+        "reference_paths": ["RNS/Resource.py", "RNS/Link.py", "RNS/Transport.py"],
+        "rust_surface": ["crates/libs/rns-transport::resource"],
+        "implementation": "partial",
+        "evidence": ["planned"],
+        "evidence_status": "unverified",
+        "test_command": "cargo test -p reticulum-rs-transport resource",
+        "evidence_artifact": "target/issue-605/evidence/610-resource.json",
+        "owner_issue": 610
+      },
+      {
+        "id": "reticulum-605-611-utility-network-workflows",
+        "kind": "behavioral-requirement",
+        "reference_project": "reticulum",
+        "reference_paths": ["RNS/Utilities/rncp.py", "RNS/Utilities/rnpath.py", "RNS/Utilities/rnprobe.py", "RNS/Utilities/rnsd.py"],
+        "rust_surface": ["crates/apps/rns-tools", "tools/interop"],
+        "implementation": "partial",
+        "evidence": ["planned"],
+        "evidence_status": "unverified",
+        "test_command": "cargo test -p rns-tools",
+        "evidence_artifact": "target/issue-605/evidence/611-utilities.json",
+        "owner_issue": 611
+      },
+      {
+        "id": "reticulum-605-612-rngit-permission-work-storage",
+        "kind": "behavioral-requirement",
+        "reference_project": "reticulum",
+        "reference_paths": ["RNS/Utilities/rngit/client.py", "RNS/Utilities/rngit/server.py", "RNS/Utilities/rngit/util.py"],
+        "rust_surface": ["crates/apps/rns-tools::rngit"],
+        "implementation": "partial",
+        "evidence": ["planned"],
+        "evidence_status": "unverified",
+        "test_command": "cargo test -p rns-tools rngit",
+        "evidence_artifact": "target/issue-605/evidence/612-rngit.json",
+        "owner_issue": 612
+      },
+      {
+        "id": "reticulum-605-613-rngit-pages-media",
+        "kind": "behavioral-requirement",
+        "reference_project": "reticulum",
+        "reference_paths": ["RNS/Utilities/rngit/pages.py", "RNS/Utilities/rngit/media.py", "RNS/Utilities/rngit/highlight.py"],
+        "rust_surface": ["crates/apps/rns-tools::rngit"],
+        "implementation": "partial",
+        "evidence": ["planned"],
+        "evidence_status": "unverified",
+        "test_command": "cargo test -p rns-tools rngit",
+        "evidence_artifact": "target/issue-605/evidence/613-rngit-pages.json",
+        "owner_issue": 613
+      },
+      {
+        "id": "reticulum-605-614-native-interface-runtimes",
+        "kind": "behavioral-requirement",
+        "reference_project": "reticulum",
+        "reference_paths": ["RNS/Interfaces/AutoInterface.py", "RNS/Interfaces/BLEInterface.py", "RNS/Interfaces/RNodeInterface.py", "RNS/Interfaces/SerialInterface.py"],
+        "rust_surface": ["crates/libs/rns-transport::iface", "crates/apps/reticulumd"],
+        "implementation": "partial",
+        "evidence": ["planned", "hardware-unverified"],
+        "evidence_status": "hardware-unverified",
+        "test_command": "cargo test -p reticulum-rs-transport --tests",
+        "evidence_artifact": "target/issue-605/evidence/614-native-interfaces.json",
+        "owner_issue": 614,
+        "notes": "Software state-machine tests and physical carrier evidence are separate claims."
+      },
+      {
+        "id": "reticulum-605-615-differential-release-acceptance",
+        "kind": "behavioral-requirement",
+        "reference_project": "both",
+        "reference_paths": ["RNS/", "LXMF/", "RNS/Resource.py", "RNS/Transport.py"],
+        "rust_surface": ["tools/interop", "xtask", "crates/libs/test-support"],
+        "implementation": "partial",
+        "evidence": ["planned"],
+        "evidence_status": "unverified",
+        "test_command": "cargo xtask release-check",
+        "evidence_artifact": "target/issue-605/evidence/615-release-acceptance.json",
+        "owner_issue": 615,
+        "notes": "The exact candidate release gate must not be inferred from callable inventory or a parser-only comparison."
+      },
+      {
+        "id": "reticulum-605-616-operational-platform-evidence",
+        "kind": "behavioral-requirement",
+        "reference_project": "operational",
+        "reference_paths": ["RNS/Interfaces/", "RNS/Utilities/", "LXMF/"],
+        "rust_surface": ["tests/hil", "tools/interop", "docs/status"],
+        "implementation": "not-applicable",
+        "evidence": ["planned", "hardware-unverified"],
+        "evidence_status": "hardware-unverified",
+        "test_command": "cargo xtask hil --help",
+        "evidence_artifact": "target/issue-605/evidence/616-operational-matrix.json",
+        "owner_issue": 616,
+        "notes": "Operational physical, platform, client, public-network, and soak evidence is a separate acceptance axis, not a software implementation status."
+      }
+    ]
+  }
 }
