@@ -167,9 +167,7 @@ impl ReticulumGitNode {
         let Some(repository) = group.repositories.get(repository_name) else {
             return false;
         };
-        let allowed_path = repository
-            .path
-            .with_extension("work")
+        let allowed_path = companion_path(&repository.path, "work")
             .join(format!("{doc_id}.allowed"));
         let doc_permissions = fs::read_to_string(allowed_path)
             .ok()

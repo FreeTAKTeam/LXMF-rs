@@ -42,7 +42,10 @@ impl ReticulumGitNode {
                 if !self.resolve_group_permission(&remote, &group, Self::PERM_ADMIN) {
                     return response(Self::RES_DISALLOWED, "Not allowed", None);
                 }
-                let allowed_path = state.path.with_extension("allowed");
+                let allowed_path = match permission_sidecar(&state.path) {
+                    Ok(path) => path,
+                    Err(error) => return response(Self::RES_REMOTE_FAIL, error.to_string(), None),
+                };
                 match step.as_str() {
                     "get" => Self::permission_response(&allowed_path),
                     "set" => self.set_permission_file(&allowed_path, request),
@@ -62,7 +65,10 @@ impl ReticulumGitNode {
                 if !self.resolve_permission(&remote, &group, &repository, Self::PERM_ADMIN) {
                     return response(Self::RES_DISALLOWED, "Not allowed", None);
                 }
-                let allowed_path = state.path.with_extension("allowed");
+                let allowed_path = match permission_sidecar(&state.path) {
+                    Ok(path) => path,
+                    Err(error) => return response(Self::RES_REMOTE_FAIL, error.to_string(), None),
+                };
                 match step.as_str() {
                     "get" => Self::permission_response(&allowed_path),
                     "set" => self.set_permission_file(&allowed_path, request),
@@ -82,8 +88,24 @@ impl ReticulumGitNode {
         if let Err(error) = self.validate_allowed_content(&content) {
             return response(Self::RES_INVALID_REQ, error, None);
         }
+        match fs::metadata(path) {
+            Ok(metadata) => {
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    if metadata.permissions().mode() & 0o111 != 0 {
+                        return response(Self::RES_DISALLOWED,
+                            "Executable permission resolvers can only be modified node-side", None);
+                    }
+                }
+                #[cfg(not(unix))]
+                let _ = metadata;
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return response(Self::RES_REMOTE_FAIL, error.to_string(), None),
+        }
         let permissions = self.permissions_from_allowed_input(Some(&content));
-        let temporary = path.with_extension("allowed.tmp");
+        let temporary = companion_path(path, "tmp");
         if let Err(error) = fs::write(&temporary, &content) {
             return response(Self::RES_REMOTE_FAIL, error.to_string(), None);
         }
@@ -91,11 +113,11 @@ impl ReticulumGitNode {
             return response(Self::RES_REMOTE_FAIL, error.to_string(), None);
         }
         for group in self.groups.values_mut() {
-            if group.path.with_extension("allowed") == path {
+            if companion_path(&group.path, "allowed") == path {
                 group.permissions = permissions.clone();
             }
             for repository in group.repositories.values_mut() {
-                if repository.path.with_extension("allowed") == path {
+                if companion_path(&repository.path, "allowed") == path {
                     repository.permissions = permissions.clone();
                 }
             }

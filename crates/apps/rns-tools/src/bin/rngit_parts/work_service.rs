@@ -2,7 +2,7 @@ impl ReticulumGitNode {
     const WORK_DOC_LIMIT: usize = 256 * 1024;
 
     fn work_root(record: &RepositoryRecord) -> PathBuf {
-        record.path.with_extension("work")
+        companion_path(&record.path, "work")
     }
 
     pub fn work_get_next_id(&self, work_root: &Path) -> u64 {
@@ -102,12 +102,15 @@ impl ReticulumGitNode {
             Err(error) => return error,
         };
         let operation = map_string(request, &rmpv::Value::String("operation".into())).unwrap_or_default();
+        if matches!(operation.as_str(), "complete" | "activate") {
+            return self.work_transition(request, remote, &group, &repository, operation == "activate");
+        }
         let required = match operation.as_str() {
             "list" | "view" => Self::PERM_READ,
             "propose" => Self::PERM_PROPOSE,
             "perms" => Self::PERM_ADMIN,
             "comment" => Self::PERM_INTERACT,
-            "create" | "edit" | "delete" | "complete" | "activate" => Self::PERM_WRITE,
+            "create" | "edit" | "delete" => Self::PERM_WRITE,
             _ => return response(Self::RES_INVALID_REQ, "Invalid request", None),
         };
         if !self.resolve_permission(&remote, &group, &repository, required) {
@@ -115,7 +118,7 @@ impl ReticulumGitNode {
         }
         if matches!(
             operation.as_str(),
-            "view" | "edit" | "delete" | "comment" | "complete" | "activate" | "perms"
+            "view" | "edit" | "delete" | "comment" | "perms"
         ) {
             let Some(doc_id) = map_value(request, &rmpv::Value::String("doc_id".into()))
                 .and_then(rmpv::Value::as_u64)
@@ -134,8 +137,6 @@ impl ReticulumGitNode {
             "edit" => self.work_edit(&root, request),
             "delete" => self.work_delete(&root, request),
             "comment" => self.work_comment(&root, request, remote),
-            "complete" => self.work_move(&root, request, "active", "completed"),
-            "activate" => self.work_move(&root, request, "completed", "active"),
             "perms" => self.work_permissions(&root, request),
             _ => response(Self::RES_INVALID_REQ, "Invalid request", None),
         }
@@ -284,25 +285,6 @@ impl ReticulumGitNode {
                 (rmpv::Value::String("id".into()), rmpv::Value::from(comment_id)),
             ]))),
             Err(error) => response(Self::RES_REMOTE_FAIL, error, None),
-        }
-    }
-
-    fn work_move(&self, root: &Path, request: &[(rmpv::Value, rmpv::Value)], from: &str, to: &str) -> Vec<u8> {
-        let Some((scope, id, _)) = self.work_request_document(root, request) else {
-            return response(Self::RES_NOT_FOUND, "Document not found", None);
-        };
-        if scope != from {
-            return response(Self::RES_INVALID_REQ, "Invalid document scope", None);
-        }
-        if let Err(error) = fs::create_dir_all(root.join(to)) {
-            return response(Self::RES_REMOTE_FAIL, error.to_string(), None);
-        }
-        match fs::rename(root.join(from).join(id.to_string()), root.join(to).join(id.to_string())) {
-            Ok(()) => response(Self::RES_OK, "", Some(&rmpv::Value::Map(vec![
-                (rmpv::Value::String("id".into()), rmpv::Value::from(id)),
-                (rmpv::Value::String("scope".into()), rmpv::Value::String(to.into())),
-            ]))),
-            Err(error) => response(Self::RES_REMOTE_FAIL, error.to_string(), None),
         }
     }
 

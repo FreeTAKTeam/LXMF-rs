@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last reassessed: 2026-08-29
+Last reassessed: 2026-09-20
 
 This file is the repository-level source of truth for parity posture, release
 confidence, and execution order. Detailed row-level status lives in:
@@ -18,7 +18,15 @@ override these status files.
 
 ## Current Position
 
-LXMF-rs retains the v0.9.5 SDK-access baseline and now reaches complete
+The 2026-09-20 behavior audit confirms that mapped surface coverage is **not
+full operational parity**. The implemented BLE/HDLC/rngit increment and explicit
+remaining acceptance gates are recorded in
+[`rns-1.5.4-delta.md`](rns-1.5.4-delta.md). The 1.5.4 development reference is
+not the canonical release baseline. IFAC daemon wiring, remaining remote
+utility behavior, transport policy differences, and platform validation remain
+open; published inventory counts are not promoted or rewritten by this change.
+
+LXMF-rs retains the v0.9.5 SDK-access baseline. The generated inventory records
 software-surface parity against Python RNS 1.5.2 at
 `ea98db4f53dcf0defc0e71a16e60d28b1229c4e6`. The 1.5 alignment adds bounded
 priority ingress queues, early filtering and protocol accounting, in-flight
@@ -46,8 +54,8 @@ The project is best described by capability level:
 | Wire compatible | achieved | Core Reticulum packet/identity primitives and LXMF message encodings are implemented and tested. |
 | Direct-message interoperable | achieved | Selected bidirectional Rust/Python direct, link, channel, paper, and daemon paths are exercised in CI. |
 | Propagation interoperable | achieved | Propagated delivery, complete Python-only `LXMPeer.py` lifecycle coverage, and Python-reference propagation router fetch/download/sync lifecycle coverage are implemented and tested. |
-| Operationally substitutable | achieved against RNS 1.5.2 | The software-controlled runtime includes the 1.5 ingress, routing, telemetry, timeout, discovery, dataplane-control, keepalive, IFAC, profiling, and `rngit` slices. |
-| Full Python software surface parity | achieved | The strict inventory reports 1,857 complete, 0 partial, and 1 provenance-backed not-applicable entry. |
+| Operationally substitutable | partial | IFAC daemon authentication, remaining remote utility workflows, and recorded transport-policy differences still prevent unconditional substitution. See the 1.5.4 delta acceptance gates. |
+| Python callable inventory coverage | mapped, not a full behavior guarantee | The strict inventory reports 1,857 complete, 0 partial, and 1 provenance-backed not-applicable entry; runtime exclusions and failed differential tests take precedence over these classifications. |
 | ZeroMQ SDK-access parity | achieved in v0.9.5 implementation | Generated classification and daemon-operation inventory live in `sdk-zmq-parity.json`; release evidence must still pass all gates. |
 | Independent implementation evidence | published for stable `v0.10.1` | Pinned rns-rs and Reticulum-Go release profiles cover two-node/multi-hop behavior; rns-rs additionally covers mixed/all-Rust five-node chains, routing policy, restart, shared daemon, exact large Resources, and deterministic chaos. Explicit peer divergences remain failures owned by the peer and are allowlisted narrowly by CI. |
 | Performance evidence | published for stable `v0.10.1` | Tag workflow [`33254264175`](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/33254264175) passed with the bounded checksummed JSON, HTML, raw evidence, and regression-gate result. The gate is `pass_with_warnings` for one documented 13.99% Rust resource-sized encode dispersion; throughput/CPU/RSS ratios are `1.013x`/`1.010x`/`1.084x`. |

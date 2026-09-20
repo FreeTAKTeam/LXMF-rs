@@ -19,10 +19,7 @@ impl ReticulumGitNode {
                 },
             );
         }
-        let group_permissions = fs::read_to_string(group_path.with_extension("allowed"))
-            .ok()
-            .map(|value| self.permissions_from_allowed_input(Some(&value)))
-            .unwrap_or_default();
+        let group_permissions = self.read_companion_permissions(group_path)?;
         if let Some(group) = self.groups.get_mut(group_name) {
             group.permissions = group_permissions;
         }
@@ -52,10 +49,7 @@ impl ReticulumGitNode {
             return Ok(false);
         }
         let name = path.file_name().and_then(|value| value.to_str()).unwrap_or_default();
-        let permissions = fs::read_to_string(path.with_extension("allowed"))
-            .ok()
-            .map(|value| self.permissions_from_allowed_input(Some(&value)))
-            .unwrap_or_default();
+        let permissions = self.read_companion_permissions(path)?;
         let record = RepositoryRecord {
             name: name.to_string(),
             path: path.to_path_buf(),
@@ -75,10 +69,7 @@ impl ReticulumGitNode {
         let Some(path) = self.groups.get(group_name).map(|group| group.path.clone()) else {
             return Ok(());
         };
-        let permissions = fs::read_to_string(path.with_extension("allowed"))
-            .ok()
-            .map(|value| self.permissions_from_allowed_input(Some(&value)))
-            .unwrap_or_default();
+        let permissions = self.read_companion_permissions(&path)?;
         if let Some(group) = self.groups.get_mut(group_name) {
             group.permissions = permissions;
         }

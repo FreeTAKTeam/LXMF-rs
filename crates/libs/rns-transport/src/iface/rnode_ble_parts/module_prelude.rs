@@ -176,7 +176,15 @@ pub trait RnodeBleBackend {
 
     async fn write(&mut self, write: RnodeBleWrite) -> Result<(), String>;
 
+    /// Read a notification. Native streams use `None` for EOF; compatibility
+    /// backends may use it for an idle read (see `notification_stream_ends_on_none`).
     async fn next_notification(&mut self) -> Result<Option<Vec<u8>>, String>;
+
+    /// Whether `None` is permanent EOF rather than a temporarily empty queue.
+    /// The default preserves platform-owned bearer and compatibility backends.
+    fn notification_stream_ends_on_none(&self) -> bool {
+        false
+    }
 
     /// Whether startup should discard notifications queued before the probe frames.
     ///
@@ -280,39 +288,6 @@ impl NativeRnodeBleBackend {
     #[must_use]
     pub fn negotiated_mtu(&self) -> Option<u16> {
         self.negotiated_mtu
-    }
-
-    pub async fn cleanup(&mut self) -> Result<(), String> {
-        let mut failures = Vec::new();
-        if let (Some(peripheral), Some(notify_char)) =
-            (self.peripheral.as_ref(), self.notify_char.as_ref())
-        {
-            if let Err(err) = peripheral.unsubscribe(notify_char).await {
-                failures.push(format!("unsubscribe RNode BLE notify characteristic: {err}"));
-            }
-        }
-        if let Some(adapter) = self.adapter.as_ref() {
-            if let Err(err) = adapter.stop_scan().await {
-                failures.push(format!("stop BLE scan: {err}"));
-            }
-        }
-        if let Some(peripheral) = self.peripheral.as_ref() {
-            match peripheral.is_connected().await {
-                Ok(true) => {
-                    if let Err(err) = peripheral.disconnect().await {
-                        failures.push(format!("disconnect peripheral: {err}"));
-                    }
-                }
-                Ok(false) => {}
-                Err(err) => failures.push(format!("read connection state: {err}")),
-            }
-        }
-        self.clear_session_state();
-        if failures.is_empty() {
-            Ok(())
-        } else {
-            Err(failures.join("; "))
-        }
     }
 
     fn clear_session_state(&mut self) {
@@ -522,69 +497,14 @@ impl RnodeBleBackend for NativeRnodeBleBackend {
     }
 
     async fn connect(&mut self) -> Result<(), String> {
-        self.clear_session_state();
-        let adapter = Self::select_adapter(&self.settings).await?;
-        let peripheral = match Self::configured_peripheral(&adapter, &self.settings).await? {
-            Some(peripheral) => {
-                match Self::connect_selected_peripheral(&peripheral, self.settings.connect_timeout)
-                    .await
-                {
-                    Ok(()) => peripheral,
-                    Err(configured_err) => {
-                        log::warn!(
-                            "RNode BLE configured Android peripheral connect failed peripheral_id={} err={}; falling back to BLE scan",
-                            self.settings.peripheral_id,
-                            configured_err
-                        );
-                        if let Err(err) = peripheral.disconnect().await {
-                            log::debug!(
-                                "RNode BLE configured Android peripheral cleanup failed peripheral_id={} err={}",
-                                self.settings.peripheral_id,
-                                err
-                            );
-                        }
-                        let excluded_identifiers =
-                            vec![self.settings.peripheral_id.clone(), peripheral.id().to_string()];
-                        let scanned = Self::scan_for_peripheral(
-                            &adapter,
-                            &self.settings,
-                            Some(&self.settings.peripheral_id),
-                            false,
-                            &excluded_identifiers,
-                        )
-                        .await
-                        .map_err(|scan_err| {
-                            format!("{configured_err}; fallback scan failed: {scan_err}")
-                        })?;
-                        Self::connect_selected_peripheral(&scanned, self.settings.connect_timeout)
-                            .await
-                            .map_err(|scan_err| {
-                                format!(
-                                    "{configured_err}; fallback scanned peripheral connect failed: {scan_err}"
-                                )
-                            })?;
-                        scanned
-                    }
-                }
+        self.cleanup().await?;
+        let result = self.connect_session().await;
+        if result.is_err() {
+            if let Err(error) = self.cleanup().await {
+                log::warn!("RNode BLE native setup cleanup failed peripheral_id={} error={error}", self.settings.peripheral_id);
             }
-            None => {
-                let scanned =
-                    Self::scan_for_peripheral(&adapter, &self.settings, None, false, &[]).await?;
-                Self::connect_selected_peripheral(&scanned, self.settings.connect_timeout).await?;
-                scanned
-            }
-        };
-
-        self.adapter = Some(adapter);
-        self.peripheral = Some(peripheral);
-        let mtu = self.peripheral.as_ref().expect("just set above").mtu();
-        // On macOS, CoreBluetooth never updates its cached AtomicU16, so peripheral.mtu()
-        // always returns DEFAULT_MTU_SIZE (23) regardless of the actual negotiated value.
-        // On all other platforms btleplug reports the real negotiated MTU, including 23
-        // when that is genuinely what was negotiated.
-        self.negotiated_mtu =
-            if cfg!(target_os = "macos") && mtu == DEFAULT_MTU_SIZE { None } else { Some(mtu) };
-        self.resolve_characteristics()
+        }
+        result
     }
 
     async fn subscribe_notifications(&mut self) -> Result<(), String> {
@@ -648,6 +568,10 @@ impl RnodeBleBackend for NativeRnodeBleBackend {
             ));
         }
         Ok(Some(notification.value))
+    }
+
+    fn notification_stream_ends_on_none(&self) -> bool {
+        true
     }
 
     fn drains_stale_startup_notifications(&self) -> bool {

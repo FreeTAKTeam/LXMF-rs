@@ -427,6 +427,7 @@ mod tests {
     }
 
     include!("rngit_parts/document_permissions_tests.rs");
+    include!("rngit_parts/rns_1_5_4_tests.rs");
 
     #[test]
     fn local_git_bundle_fetch_and_push_use_the_registered_request_paths() {

@@ -7,6 +7,23 @@ const HDLC_ESCAPE_MASK: u8 = 0b00100000;
 pub struct Hdlc {}
 
 impl Hdlc {
+    /// Build a complete frame using the same encoder as stream interfaces.
+    /// Escaping and delimiters match Python RNS 1.5.4's `HDLC.frame`.
+    pub fn frame(data: &[u8]) -> Result<Vec<u8>, RnsError> {
+        let escapes =
+            data.iter().filter(|&&byte| matches!(byte, HDLC_FRAME_FLAG | HDLC_ESCAPE_BYTE)).count();
+        let length = data
+            .len()
+            .checked_add(escapes)
+            .and_then(|size| size.checked_add(2))
+            .ok_or(RnsError::OutOfMemory)?;
+        let mut frame = Vec::new();
+        frame.try_reserve_exact(length).map_err(|_| RnsError::OutOfMemory)?;
+        frame.resize(length, 0);
+        Self::encode(data, &mut OutputBuffer::new(&mut frame))?;
+        Ok(frame)
+    }
+
     pub fn encode(data: &[u8], buffer: &mut OutputBuffer) -> Result<usize, RnsError> {
         buffer.write_byte(HDLC_FRAME_FLAG)?;
 

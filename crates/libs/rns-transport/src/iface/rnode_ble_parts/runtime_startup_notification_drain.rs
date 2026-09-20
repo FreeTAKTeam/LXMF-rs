@@ -17,7 +17,14 @@ where
                 Ok(Ok(Some(_))) => {
                     drained += 1;
                 }
-                Ok(Ok(None)) | Err(_) => break,
+                Err(_) => break,
+                Ok(Ok(None)) if !self.backend.notification_stream_ends_on_none() => break,
+                Ok(Ok(None)) => {
+                    return Err(RnodeBleKissError::Backend {
+                        operation: "drain_startup_notifications",
+                        message: "RNode BLE notification stream closed during startup".into(),
+                    });
+                }
                 Ok(Err(message)) => {
                     self.connected = false;
                     return Err(RnodeBleKissError::Backend {
