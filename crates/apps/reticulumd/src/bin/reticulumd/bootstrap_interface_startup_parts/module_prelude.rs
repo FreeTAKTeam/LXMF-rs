@@ -284,7 +284,10 @@ pub(super) async fn startup_configured_interfaces(
                 )
                 .await
                 {
-                    LocalUnixStartup::Active => startup_successes += 1,
+                    LocalUnixStartup::Active(local_iface) => {
+                        startup_successes += 1;
+                        iface_manager.lock().await.set_shared_instance(local_iface, true);
+                    }
                     LocalUnixStartup::Attached(client_iface) => {
                         startup_successes += 1;
                         iface_manager.lock().await.set_shared_instance(client_iface, true);
@@ -312,7 +315,7 @@ pub(super) async fn startup_configured_interfaces(
                         tunnel_synth_ifaces.push(client_iface);
                         connected_to_shared_instance = true;
                     }
-                    LocalUnixStartup::Active | LocalUnixStartup::Failed => {}
+                    LocalUnixStartup::Active(_) | LocalUnixStartup::Failed => {}
                 }
             }
             "local" => {
@@ -348,7 +351,10 @@ pub(super) async fn startup_configured_interfaces(
                     )
                     .await
                     {
-                        LocalTcpSidecarStartup::Active => startup_successes += 1,
+                        LocalTcpSidecarStartup::Active(local_iface) => {
+                            startup_successes += 1;
+                            iface_manager.lock().await.set_shared_instance(local_iface, true);
+                        }
                         LocalTcpSidecarStartup::Attached(client_iface) => {
                             startup_successes += 1;
                             iface_manager.lock().await.set_shared_instance(client_iface, true);
@@ -374,6 +380,7 @@ pub(super) async fn startup_configured_interfaces(
                         let mut manager = iface_manager.lock().await;
                         manager.set_mode(*active_iface, mode);
                         apply_interface_runtime_config(&mut manager, *active_iface, iface);
+                        manager.set_shared_instance(*active_iface, true);
                     }
                 }
             }
@@ -794,13 +801,13 @@ fn startup_tcp_server_record(
 
 #[cfg_attr(not(unix), allow(dead_code))]
 enum LocalUnixStartup {
-    Active,
+    Active(AddressHash),
     Attached(AddressHash),
     Failed,
 }
 
 enum LocalTcpSidecarStartup {
-    Active,
+    Active(AddressHash),
     Attached(AddressHash),
     Failed,
 }
@@ -883,7 +890,7 @@ async fn startup_synthetic_local_tcp_sidecar(
     );
     let runtime_iface = local_iface.to_string();
     mark_interface_startup_status(record, "active", None, Some(runtime_iface.as_str()));
-    LocalTcpSidecarStartup::Active
+    LocalTcpSidecarStartup::Active(local_iface)
 }
 
 #[cfg(unix)]
@@ -969,7 +976,7 @@ async fn startup_local_unix(
     );
     let runtime_iface = local_iface.to_string();
     mark_interface_startup_status(record, "active", None, Some(runtime_iface.as_str()));
-    LocalUnixStartup::Active
+    LocalUnixStartup::Active(local_iface)
 }
 
 #[cfg(unix)]

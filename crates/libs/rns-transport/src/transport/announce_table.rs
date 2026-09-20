@@ -174,6 +174,28 @@ impl AnnounceTable {
         self.map.insert(destination, entry);
     }
 
+    /// Queue an announce received from a local shared-instance client.
+    /// Python Reticulum gives this path an immediate first retransmit and
+    /// initializes it at the retry limit so that exactly one rebroadcast is
+    /// emitted before the entry moves to the bounded cache.
+    pub(super) fn add_local_client(
+        &mut self,
+        announce: &Packet,
+        destination: AddressHash,
+        received_from: AddressHash,
+    ) {
+        let entry = AnnounceEntry {
+            packet: announce.clone(),
+            timeout: Instant::now(),
+            received_from,
+            retries: self.retry_limit,
+            hops: announce.header.hops,
+            response_to_iface: None,
+        };
+
+        self.map.insert(destination, entry);
+    }
+
     pub(crate) fn add_cached(
         &mut self,
         announce: &Packet,

@@ -40,6 +40,28 @@ fn announce_entries_use_random_window_and_grace_retry() {
 }
 
 #[test]
+fn local_client_announces_retransmit_once_immediately() {
+    let mut table = AnnounceTable::new(16, 1);
+    let destination = AddressHash::new_from_rand(OsRng);
+    let received_from = AddressHash::new_from_rand(OsRng);
+    let transport_id = AddressHash::new_from_rand(OsRng);
+    let packet = Packet { destination, ..Packet::default() };
+
+    table.add_local_client(&packet, destination, received_from);
+    let entry = table.map.get(&destination).expect("local announce entry inserted");
+    assert!(entry.timeout <= Instant::now(), "local-client retransmit is immediate");
+    assert_eq!(entry.retries, 1, "the immediate send consumes the only local retry");
+
+    let messages = table.drain_retransmissions(&transport_id);
+    assert_eq!(messages.len(), 1);
+    assert!(matches!(
+        messages[0].tx_type,
+        TxMessageType::Broadcast(Some(iface)) if iface == received_from
+    ));
+    assert_eq!(table.tier_sizes(), (0, 1));
+}
+
+#[test]
 fn path_response_entries_use_shorter_window_without_later_broadcast() {
     let mut table = AnnounceTable::new(16, 1);
     let destination = AddressHash::new_from_rand(OsRng);

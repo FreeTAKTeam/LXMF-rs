@@ -70,14 +70,63 @@ async fn transport_enabled_still_queues_announces_for_retransmission() {
 async fn a_shared_instance_iface_still_queues_on_a_passive_node() {
     let identity = PrivateIdentity::new_from_rand(OsRng);
     let transport = Transport::new(TransportConfig::new("passive-shared", &identity, false));
-    let iface = transport.iface_manager().lock().await.new_channel(16).address;
-    assert!(transport.iface_manager().lock().await.set_shared_instance(iface, true));
+    let iface = {
+        let manager = transport.iface_manager();
+        let mut manager = manager.lock().await;
+        let parent = *manager.new_channel(16).address();
+        assert!(manager.set_shared_instance(parent, true));
+        manager
+            .register_virtual_iface(parent, crate::iface::IfaceRole::Unicast)
+            .expect("local client iface")
+    };
 
     feed_announce(&transport, iface, "local-client").await;
 
     let (queued, cached) = tier_sizes(&transport).await;
     assert_eq!(queued, 1, "the reference queues a local client's announce even when not transport-enabled");
     assert_eq!(cached, 0);
+}
+
+#[tokio::test]
+async fn accepted_announce_fans_out_directly_to_other_local_clients() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let transport = Transport::new(TransportConfig::new("local-client-fanout", &identity, false));
+    let (mut host_channel, local_client, other_local_client) = {
+        let manager = transport.iface_manager();
+        let mut manager = manager.lock().await;
+        let host_channel = manager.new_channel(16);
+        let parent = *host_channel.address();
+        assert!(manager.set_shared_instance(parent, true));
+        let local_client = manager
+            .register_virtual_iface(parent, crate::iface::IfaceRole::Unicast)
+            .expect("first local client iface");
+        let other_local_client = manager
+            .register_virtual_iface(parent, crate::iface::IfaceRole::Unicast)
+            .expect("second local client iface");
+        (host_channel, local_client, other_local_client)
+    };
+
+    let announce = feed_announce(&transport, local_client, "local-client-fanout").await;
+    let message = timeout(Duration::from_millis(250), host_channel.tx_channel.recv())
+        .await
+        .expect("local-client fanout should be immediate")
+        .expect("host transmit queue remains open");
+
+    assert!(matches!(
+        message.tx_type,
+        crate::iface::TxMessageType::Direct(iface) if iface == other_local_client
+    ));
+    assert_eq!(message.packet.destination, announce.destination);
+    assert_eq!(message.packet.data, announce.data);
+    assert_eq!(message.packet.context, PacketContext::None);
+    assert_eq!(message.packet.transport, Some(*identity.address_hash()));
+    assert_eq!(message.packet.header.header_type, crate::packet::HeaderType::Type2);
+    assert_eq!(
+        message.packet.header.propagation_type,
+        crate::packet::PropagationType::Transport
+    );
+    assert_eq!(message.packet.header.hops, announce.header.hops);
+    assert!(timeout(Duration::from_millis(25), host_channel.tx_channel.recv()).await.is_err());
 }
 
 /// The third clause of the same reference condition. A path response is a

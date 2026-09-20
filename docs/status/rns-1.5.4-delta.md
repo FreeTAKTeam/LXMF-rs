@@ -66,7 +66,7 @@ incomplete requirements:
 | ---: | --- | --- |
 | #607 | Review and integrate the initial PR increment | partial / unverified |
 | #608 | Wire IFAC into production carrier ingress and egress | implemented but unproven; mixed-peer evidence pending |
-| #609 | Close transport, local-client, and shared-instance gaps | partial / unverified |
+| #609 | Close transport, local-client, and shared-instance gaps | implemented but unproven; mixed-peer evidence pending |
 | #610 | Prove Resource collision, stream, and mixed-peer behavior | partial / unverified |
 | #611 | Exercise every reference utility through real network workflows | partial / unverified |
 | #612 | Match rngit permission, resolver, work, storage, and wire schemas | partial / unverified |
@@ -87,6 +87,14 @@ fail-closed malformed-frame handling, and feature-gated carrier builds are
 covered. The row remains unverified until pinned Python↔Rust daemon traffic
 proves bidirectional behavior through real carriers; hardware and public-network
 evidence remain separate acceptance axes.
+
+The #609 implementation slice now has committed local software evidence in
+[`evidence/609-transport-local-shared.md`](../goals/reticulum-reference-parity-605/evidence/609-transport-local-shared.md):
+parent/child classification, immediate single local-client retransmit, direct
+sibling announce fan-out, and daemon local TCP/Unix parent marking are covered.
+The row remains unverified until pinned Python↔Rust shared-instance and
+multi-hop production traces compare ordering, suppression, persistence, and
+close/reconnect behavior.
 
 ## Acceptance gate
 

@@ -79,6 +79,8 @@
       },
       {
         "evidence": [
+          "unit",
+          "simulated",
           "planned"
         ],
         "evidence_artifact": "target/issue-605/evidence/609-shared-instance.json",
@@ -86,6 +88,7 @@
         "id": "reticulum-605-609-transport-local-shared",
         "implementation": "partial",
         "kind": "behavioral-requirement",
+        "notes": "Parent/child classification, immediate local-client retransmit, direct sibling fan-out, and local TCP/Unix parent marking are implemented; pinned Python-Rust shared-instance and multi-hop production traces remain unverified.",
         "owner_issue": 609,
         "reference": {
           "revision": "99de23c040d507e3fefca19e87b182302902725d",
@@ -101,7 +104,11 @@
           "crates/libs/rns-transport",
           "crates/apps/reticulumd"
         ],
-        "test_command": "cargo test -p reticulum-rs-transport local && cargo test -p reticulumd"
+        "test_command": [
+          "cargo test -p reticulum-rs-transport --lib",
+          "cargo test -p reticulumd --bin reticulumd",
+          "cargo clippy -p reticulum-rs-transport --lib --all-features --no-deps -- -D warnings"
+        ]
       },
       {
         "evidence": [

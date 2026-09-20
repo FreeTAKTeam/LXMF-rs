@@ -408,6 +408,30 @@ mod tests {
     }
 
     #[test]
+    fn local_client_classification_uses_the_shared_parent() {
+        let mut mgr = InterfaceManager::new(16);
+        let parent = *mgr.new_channel(16).address();
+        let child = *mgr.new_channel(16).address();
+        let ordinary = *mgr.new_channel(16).address();
+
+        assert!(!mgr.is_local_client_interface(&parent));
+        assert!(!mgr.is_local_client_interface(&child));
+        assert!(mgr.local_client_interfaces().is_empty());
+
+        assert!(mgr.set_shared_instance(parent, true));
+        assert!(mgr.inherit_runtime_config(parent, child));
+
+        assert!(!mgr.is_local_client_interface(&parent));
+        assert!(mgr.is_local_client_interface(&child));
+        assert!(!mgr.is_local_client_interface(&ordinary));
+        assert_eq!(mgr.local_client_interfaces(), vec![child]);
+
+        assert!(mgr.set_shared_instance(parent, false));
+        assert!(!mgr.is_local_client_interface(&child));
+        assert!(mgr.local_client_interfaces().is_empty());
+    }
+
+    #[test]
     fn virtual_iface_inherits_host_mtu() {
         let mut mgr = InterfaceManager::new(16);
         let host = *mgr.new_channel_with_role_mode_mtu(
