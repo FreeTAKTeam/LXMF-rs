@@ -25,7 +25,7 @@ impl AutoDiscoverySocketBindTarget {
         }
     }
 
-    pub(crate) fn display_bind_addr(&self) -> String {
+    pub fn display_bind_addr(&self) -> String {
         let host = if let Some(scope_ifname) = &self.scope_ifname {
             format!("{}%{scope_ifname}", self.bind_host)
         } else {
@@ -140,7 +140,7 @@ impl AutoDataSocketBindTarget {
         }
     }
 
-    pub(crate) fn display_bind_addr(&self) -> String {
+    pub fn display_bind_addr(&self) -> String {
         let host = if let Some(scope_ifname) = &self.scope_ifname {
             format!("{}%{scope_ifname}", self.bind_host)
         } else {

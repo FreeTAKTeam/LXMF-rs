@@ -258,6 +258,9 @@ pub(crate) fn select_tcp_listener_device_ip(
         .filter(|(name, _, is_up)| *name == device && *is_up)
         .map(|(_, ip, _)| ip)
         .filter(|ip| !ip.is_unspecified())
+        // A link-local address needs a zone to bind. if-addrs only reports them
+        // because rns-transport asks for them, so keep the pick as it was.
+        .filter(|ip| !matches!(ip, std::net::IpAddr::V6(v6) if v6.is_unicast_link_local()))
         .filter(|ip| !ip.is_loopback() || device.starts_with("lo"))
         .collect::<Vec<_>>();
     matches.sort_by_key(|ip| match (prefer_ipv6, ip) {

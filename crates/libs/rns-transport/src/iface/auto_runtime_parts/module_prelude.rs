@@ -1,26 +1,23 @@
-use reticulum_daemon::config::InterfaceConfig;
+use crate::buffer::InputBuffer;
 
-use rns_transport::buffer::InputBuffer;
+use crate::hash::AddressHash;
 
-use rns_transport::hash::AddressHash;
-
-use rns_transport::iface::auto::{
+use crate::iface::auto::{
     AutoAdoptedInterfaceChange, AutoDataListenerBinding, AutoDiscoveryEvent,
-    AutoDiscoveryListenerBinding,
-    AutoDiscoveryRejectReason, AutoDiscoveryScope, AutoDiscoveryState,
+    AutoDiscoveryListenerBinding, AutoDiscoveryRejectReason, AutoDiscoveryState,
     AutoInboundPacketDeduplicator, AutoInterfaceAdoptedDevice, AutoInterfaceConfig,
     AutoInterfaceDeviceCandidate, AutoInterfaceDeviceFilter, AutoInterfacePlatform,
     AutoInterfaceTiming, AutoLinkLocalAddressUpdate, AutoMulticastCarrierEvent,
     AutoPeerInboundDecision, AutoPeeringPacket, AutoPeeringPacketKind, AutoRuntimeState,
-    AutoStartupPlan, MulticastAddressType,
+    AutoStartupPlan,
 };
 
-use rns_transport::iface::{
+use crate::iface::{
     IfaceRole, IfaceSource, InterfaceChannel, InterfaceManager, InterfaceRxSender,
     InterfaceTxReceiver, RxMessage, TxMessage, TxMessageType,
 };
 
-use rns_transport::packet::Packet;
+use crate::packet::Packet;
 
 use serde_json::{json, Value as JsonValue};
 
@@ -33,118 +30,118 @@ use std::sync::Arc;
 use std::time::Instant;
 
 #[derive(Clone)]
-pub(crate) struct AutoDaemonStartupPlan {
-    pub(crate) config: AutoInterfaceConfig,
-    pub(crate) platform: AutoInterfacePlatform,
-    pub(crate) device_filter: AutoInterfaceDeviceFilter,
-    pub(crate) candidates: Vec<AutoInterfaceDeviceCandidate>,
-    pub(crate) adopted_devices: Vec<AutoInterfaceAdoptedDevice>,
+pub struct AutoRuntimePlan {
+    pub config: AutoInterfaceConfig,
+    pub platform: AutoInterfacePlatform,
+    pub device_filter: AutoInterfaceDeviceFilter,
+    pub candidates: Vec<AutoInterfaceDeviceCandidate>,
+    pub adopted_devices: Vec<AutoInterfaceAdoptedDevice>,
     peering_packets: Vec<AutoPeeringPacket>,
-    pub(crate) startup_plan: AutoStartupPlan,
+    pub startup_plan: AutoStartupPlan,
 }
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct AutoInterfaceIndexResolver {
+pub struct AutoInterfaceIndexResolver {
     indexes_by_ifname: BTreeMap<String, u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct AutoPeerAnnounceDatagram {
-    pub(crate) kind: AutoPeeringPacketKind,
-    pub(crate) ifname: String,
-    pub(crate) source_link_local_address: String,
-    pub(crate) destination_address: String,
-    pub(crate) destination_port: u16,
-    pub(crate) payload: Vec<u8>,
+pub struct AutoPeerAnnounceDatagram {
+    pub kind: AutoPeeringPacketKind,
+    pub ifname: String,
+    pub source_link_local_address: String,
+    pub destination_address: String,
+    pub destination_port: u16,
+    pub payload: Vec<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct AutoPeerAnnounceSocketTarget {
-    pub(crate) host: String,
-    pub(crate) port: u16,
-    pub(crate) scope_ifname: Option<String>,
+pub struct AutoPeerAnnounceSocketTarget {
+    pub host: String,
+    pub port: u16,
+    pub scope_ifname: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AutoDiscoverySocketKind {
+pub enum AutoDiscoverySocketKind {
     Unicast,
     Multicast,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct AutoDiscoverySocketBindTarget {
-    pub(crate) kind: AutoDiscoverySocketKind,
-    pub(crate) ifname: String,
-    pub(crate) bind_host: String,
-    pub(crate) bind_port: u16,
-    pub(crate) scope_ifname: Option<String>,
-    pub(crate) multicast_group_host: Option<String>,
+pub struct AutoDiscoverySocketBindTarget {
+    pub kind: AutoDiscoverySocketKind,
+    pub ifname: String,
+    pub bind_host: String,
+    pub bind_port: u16,
+    pub scope_ifname: Option<String>,
+    pub multicast_group_host: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct AutoDataSocketBindTarget {
-    pub(crate) ifname: String,
-    pub(crate) bind_host: String,
-    pub(crate) bind_port: u16,
-    pub(crate) scope_ifname: Option<String>,
+pub struct AutoDataSocketBindTarget {
+    pub ifname: String,
+    pub bind_host: String,
+    pub bind_port: u16,
+    pub scope_ifname: Option<String>,
 }
 
 #[allow(dead_code)]
-pub(crate) struct AutoBoundDiscoverySocket {
-    pub(crate) kind: AutoDiscoverySocketKind,
-    pub(crate) ifname: String,
-    pub(crate) bind_addr: SocketAddr,
-    pub(crate) multicast_group_addr: Option<SocketAddr>,
-    pub(crate) socket: tokio::net::UdpSocket,
+pub struct AutoBoundDiscoverySocket {
+    pub kind: AutoDiscoverySocketKind,
+    pub ifname: String,
+    pub bind_addr: SocketAddr,
+    pub multicast_group_addr: Option<SocketAddr>,
+    pub socket: tokio::net::UdpSocket,
 }
 
 #[allow(dead_code)]
-pub(crate) struct AutoBoundDataSocket {
-    pub(crate) ifname: String,
-    pub(crate) bind_addr: SocketAddr,
-    pub(crate) socket: Arc<tokio::net::UdpSocket>,
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct AutoDiscoveryDatagram {
-    pub(crate) kind: AutoDiscoverySocketKind,
-    pub(crate) ifname: String,
-    pub(crate) bind_addr: SocketAddr,
-    pub(crate) multicast_group_addr: Option<SocketAddr>,
-    pub(crate) source_addr: SocketAddr,
-    pub(crate) payload: Vec<u8>,
+pub struct AutoBoundDataSocket {
+    pub ifname: String,
+    pub bind_addr: SocketAddr,
+    pub socket: Arc<tokio::net::UdpSocket>,
 }
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct AutoPeerDataDatagram {
-    pub(crate) ifname: String,
-    pub(crate) bind_addr: SocketAddr,
-    pub(crate) source_addr: SocketAddr,
-    pub(crate) payload: Vec<u8>,
+pub struct AutoDiscoveryDatagram {
+    pub kind: AutoDiscoverySocketKind,
+    pub ifname: String,
+    pub bind_addr: SocketAddr,
+    pub multicast_group_addr: Option<SocketAddr>,
+    pub source_addr: SocketAddr,
+    pub payload: Vec<u8>,
 }
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct AutoProcessedDiscoveryDatagram {
-    pub(crate) datagram: AutoDiscoveryDatagram,
-    pub(crate) source_address: String,
-    pub(crate) event: AutoDiscoveryEvent,
+pub struct AutoPeerDataDatagram {
+    pub ifname: String,
+    pub bind_addr: SocketAddr,
+    pub source_addr: SocketAddr,
+    pub payload: Vec<u8>,
 }
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct AutoProcessedPeerDataDatagram {
-    pub(crate) datagram: AutoPeerDataDatagram,
-    pub(crate) peer_address: String,
-    pub(crate) decision: AutoPeerInboundDecision,
+pub struct AutoProcessedDiscoveryDatagram {
+    pub datagram: AutoDiscoveryDatagram,
+    pub source_address: String,
+    pub event: AutoDiscoveryEvent,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AutoProcessedPeerDataDatagram {
+    pub datagram: AutoPeerDataDatagram,
+    pub peer_address: String,
+    pub decision: AutoPeerInboundDecision,
 }
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AutoPeerDataForwardResult {
+pub enum AutoPeerDataForwardResult {
     NotForwarded,
     Delivered,
     VirtualIfaceUnavailable,
@@ -154,16 +151,16 @@ pub(crate) enum AutoPeerDataForwardResult {
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct AutoPeerDataRuntimeSummary {
-    pub(crate) ifname: String,
-    pub(crate) peer_address: String,
-    pub(crate) decision: String,
-    pub(crate) forwarding: Option<String>,
+pub struct AutoPeerDataRuntimeSummary {
+    pub ifname: String,
+    pub peer_address: String,
+    pub decision: String,
+    pub forwarding: Option<String>,
 }
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum AutoDiscoveryLoopEvent {
+pub enum AutoDiscoveryLoopEvent {
     Processed(AutoProcessedDiscoveryDatagram),
     Rejected {
         datagram: AutoDiscoveryDatagram,
@@ -180,7 +177,7 @@ pub(crate) enum AutoDiscoveryLoopEvent {
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum AutoPeerDataLoopEvent {
+pub enum AutoPeerDataLoopEvent {
     Processed(AutoProcessedPeerDataDatagram),
     ReceiveFailed { ifname: String, bind_addr: SocketAddr, error: String },
 }
@@ -198,8 +195,8 @@ struct AutoPeerDataReceiveLoopRuntime {
 }
 
 #[allow(dead_code)]
-pub(crate) struct AutoDiscoveryListenerSupervisor {
-    plan: AutoDaemonStartupPlan,
+pub struct AutoDiscoveryListenerSupervisor {
+    plan: AutoRuntimePlan,
     state: Arc<tokio::sync::Mutex<AutoDiscoveryState>>,
     shutdown: tokio::sync::watch::Receiver<bool>,
     started_at: Instant,
@@ -213,8 +210,8 @@ struct AutoDiscoveryListenerHandle {
 }
 
 #[allow(dead_code)]
-pub(crate) struct AutoPeerDataListenerSupervisor {
-    plan: AutoDaemonStartupPlan,
+pub struct AutoPeerDataListenerSupervisor {
+    plan: AutoRuntimePlan,
     state: Arc<tokio::sync::Mutex<AutoDiscoveryState>>,
     dedupe: Arc<tokio::sync::Mutex<AutoInboundPacketDeduplicator>>,
     transport: Option<AutoInterfaceTransportBridge>,
@@ -231,32 +228,54 @@ struct AutoPeerDataListenerHandle {
     join: tokio::task::JoinHandle<()>,
 }
 
+/// A running AutoInterface: what came up, and the means to take it down.
+///
+/// The daemon never stops one, but an embedder that rebuilds its transport
+/// has to, and the sockets must be closed before a replacement can bind the
+/// same ports. Dropping this detaches nothing: the runtime keeps running.
+pub struct AutoDiscoveryRuntime {
+    pub summary: AutoDiscoveryRuntimeSummary,
+    shutdown: Arc<tokio::sync::watch::Sender<bool>>,
+    supervisor: tokio::task::JoinHandle<()>,
+}
+
+impl AutoDiscoveryRuntime {
+    /// Signals every listener and scheduler to stop and waits for the
+    /// supervisor to release the sockets.
+    pub async fn stop(self) {
+        self.shutdown.send_replace(true);
+        if let Err(err) = self.supervisor.await {
+            log::warn!("[auto] runtime supervisor stopped: {err}");
+        }
+    }
+}
+
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct AutoDiscoveryRuntimeSummary {
-    pub(crate) bound_socket_count: usize,
-    pub(crate) receive_loop_count: usize,
-    pub(crate) initial_peer_announce_count: usize,
-    pub(crate) repeat_peer_announce_scheduler_count: usize,
-    pub(crate) peer_job_scheduler_count: usize,
-    pub(crate) adopted_interface_reconciler_count: usize,
-    pub(crate) data_socket_count: usize,
-    pub(crate) data_receive_loop_count: usize,
+pub struct AutoDiscoveryRuntimeSummary {
+    pub bound_socket_count: usize,
+    pub receive_loop_count: usize,
+    pub initial_peer_announce_count: usize,
+    pub repeat_peer_announce_scheduler_count: usize,
+    pub peer_job_scheduler_count: usize,
+    pub adopted_interface_reconciler_count: usize,
+    pub data_socket_count: usize,
+    pub data_receive_loop_count: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct AutoPeerJobRuntimeSummary {
-    pub(crate) expired_peer_count: usize,
-    pub(crate) reverse_peer_announce_count: usize,
-    pub(crate) missing_initial_echo_count: usize,
-    pub(crate) carrier_changed: bool,
-    pub(crate) carrier_event_count: usize,
-    pub(crate) carrier_events: Vec<AutoMulticastCarrierEvent>,
-    pub(crate) peer_count_after: usize,
+pub struct AutoPeerJobRuntimeSummary {
+    pub expired_peer_count: usize,
+    pub reverse_peer_announce_count: usize,
+    pub missing_initial_echo_count: usize,
+    pub carrier_changed: bool,
+    pub carrier_event_count: usize,
+    pub carrier_events: Vec<AutoMulticastCarrierEvent>,
+    pub peer_count_after: usize,
 }
 
 #[derive(Clone)]
-pub(crate) struct AutoRuntimeStatusHandle {
+pub struct AutoRuntimeStatusHandle {
     inner: Arc<std::sync::Mutex<AutoRuntimeStatus>>,
 }
 
@@ -282,14 +301,14 @@ struct AutoRuntimeStatus {
 }
 
 #[allow(dead_code)]
-pub(crate) struct AutoInterfaceTransportRuntime {
+pub struct AutoInterfaceTransportRuntime {
     bridge: AutoInterfaceTransportBridge,
     tx_channel: InterfaceTxReceiver,
 }
 
 #[allow(dead_code)]
 #[derive(Clone)]
-pub(crate) struct AutoInterfaceTransportBridge {
+pub struct AutoInterfaceTransportBridge {
     host_iface: AddressHash,
     iface_manager: Arc<tokio::sync::Mutex<InterfaceManager>>,
     rx_channel: InterfaceRxSender,
@@ -305,17 +324,17 @@ struct AutoPeerOutboundRoute {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AutoResolvedMulticastDiscoveryBind {
-    pub(crate) bind_addr: SocketAddr,
-    pub(crate) multicast_group_addr: SocketAddr,
-    pub(crate) multicast_scope_id: u32,
+pub struct AutoResolvedMulticastDiscoveryBind {
+    pub bind_addr: SocketAddr,
+    pub multicast_group_addr: SocketAddr,
+    pub multicast_scope_id: u32,
 }
 
 const AUTO_DISCOVERY_DATAGRAM_BUFFER_SIZE: usize = 2_048;
 
 impl AutoBoundDiscoverySocket {
     #[allow(dead_code)]
-    pub(crate) async fn recv_discovery_datagram(&self) -> Result<AutoDiscoveryDatagram, String> {
+    pub async fn recv_discovery_datagram(&self) -> Result<AutoDiscoveryDatagram, String> {
         let mut payload = vec![0u8; AUTO_DISCOVERY_DATAGRAM_BUFFER_SIZE];
         let (received, source_addr) = self.socket.recv_from(&mut payload).await.map_err(|err| {
             format!(
@@ -339,7 +358,7 @@ impl AutoBoundDiscoverySocket {
 
 impl AutoBoundDataSocket {
     #[allow(dead_code)]
-    pub(crate) async fn recv_peer_data_datagram(&self) -> Result<AutoPeerDataDatagram, String> {
+    pub async fn recv_peer_data_datagram(&self) -> Result<AutoPeerDataDatagram, String> {
         let mut payload = vec![0u8; AUTO_DISCOVERY_DATAGRAM_BUFFER_SIZE];
         let (received, source_addr) = self.socket.recv_from(&mut payload).await.map_err(|err| {
             format!(
@@ -359,7 +378,7 @@ impl AutoBoundDataSocket {
 
 impl AutoInterfaceIndexResolver {
     #[allow(dead_code)]
-    pub(crate) fn from_system() -> Result<Self, String> {
+    pub fn from_system() -> Result<Self, String> {
         let interfaces =
             if_addrs::get_if_addrs().map_err(|err| format!("enumerate interfaces: {err}"))?;
         Ok(Self::from_index_entries(interfaces.into_iter().map(|iface| (iface.name, iface.index))))
@@ -374,7 +393,7 @@ impl AutoInterfaceIndexResolver {
     }
 
     #[allow(dead_code)]
-    pub(crate) fn resolve(&self, ifname: &str) -> Result<u32, String> {
+    pub fn resolve(&self, ifname: &str) -> Result<u32, String> {
         self.indexes_by_ifname
             .get(ifname)
             .copied()
@@ -383,7 +402,7 @@ impl AutoInterfaceIndexResolver {
 }
 
 impl AutoPeerAnnounceDatagram {
-    pub(crate) fn socket_target(&self) -> AutoPeerAnnounceSocketTarget {
+    pub fn socket_target(&self) -> AutoPeerAnnounceSocketTarget {
         let (host, explicit_scope) = split_ipv6_scope(&self.destination_address);
         let scope_ifname = if let Some(scope) = explicit_scope {
             Some(scope.to_string())
@@ -401,13 +420,13 @@ impl AutoPeerAnnounceDatagram {
         }
     }
 
-    pub(crate) fn destination_socket_target(&self) -> String {
+    pub fn destination_socket_target(&self) -> String {
         self.socket_target().display()
     }
 }
 
 impl AutoPeerAnnounceSocketTarget {
-    pub(crate) fn display(&self) -> String {
+    pub fn display(&self) -> String {
         let host = if let Some(scope_ifname) = &self.scope_ifname {
             format!("{}%{scope_ifname}", self.host)
         } else {
@@ -419,7 +438,7 @@ impl AutoPeerAnnounceSocketTarget {
     // Shared by startup and tests to keep scoped IPv6 target resolution
     // deterministic before a UDP send is attempted.
     #[allow(dead_code)]
-    pub(crate) fn resolve_socket_addr(
+    pub fn resolve_socket_addr(
         &self,
         mut scope_id_for_ifname: impl FnMut(&str) -> Result<u32, String>,
     ) -> Result<SocketAddr, String> {

@@ -1,29 +1,46 @@
     use super::*;
 
-    fn auto_iface() -> InterfaceConfig {
-        InterfaceConfig {
-            kind: "auto".to_string(),
-            group_id: Some("field-net".to_string()),
-            discovery_scope: Some("global".to_string()),
-            multicast_address_type: Some("permanent".to_string()),
-            discovery_port: Some(48_555),
-            data_port: Some(49_555),
-            devices: Some(vec!["eth0".to_string()]),
-            ignored_devices: Some(vec!["tun0".to_string()]),
-            ..InterfaceConfig::default()
+    /// What the daemon's ini stanza becomes once parsed: the typed config and
+    /// the device filter. One value, so the cases below read as they did when
+    /// they took an `InterfaceConfig`.
+    struct TestIface {
+        config: AutoInterfaceConfig,
+        filter: AutoInterfaceDeviceFilter,
+    }
+
+    fn build_startup_plan_from_candidates(
+        iface: &TestIface,
+        candidates: Vec<AutoInterfaceDeviceCandidate>,
+    ) -> Result<AutoRuntimePlan, String> {
+        Ok(AutoRuntimePlan::from_candidates(iface.config.clone(), iface.filter.clone(), candidates))
+    }
+
+    fn auto_iface() -> TestIface {
+        TestIface {
+            config: AutoInterfaceConfig {
+                group_id: "field-net".to_string(),
+                discovery_scope: AutoDiscoveryScope::Global,
+                multicast_address_type: MulticastAddressType::Permanent,
+                discovery_port: 48_555,
+                data_port: 49_555,
+            },
+            filter: AutoInterfaceDeviceFilter {
+                allowed: vec!["eth0".to_string()],
+                ignored: vec!["tun0".to_string()],
+            },
         }
     }
 
-    fn default_link_auto_iface() -> InterfaceConfig {
-        InterfaceConfig {
-            kind: "auto".to_string(),
-            group_id: Some("reticulum".to_string()),
-            discovery_scope: Some("link".to_string()),
-            multicast_address_type: Some("temporary".to_string()),
-            discovery_port: Some(29_716),
-            data_port: Some(42_671),
-            devices: Some(vec!["eth0".to_string()]),
-            ..InterfaceConfig::default()
+    fn default_link_auto_iface() -> TestIface {
+        TestIface {
+            config: AutoInterfaceConfig {
+                group_id: "reticulum".to_string(),
+                discovery_scope: AutoDiscoveryScope::Link,
+                multicast_address_type: MulticastAddressType::Temporary,
+                discovery_port: 29_716,
+                data_port: 42_671,
+            },
+            filter: AutoInterfaceDeviceFilter { allowed: vec!["eth0".to_string()], ignored: Vec::new() },
         }
     }
 
@@ -38,8 +55,8 @@
 
     fn plan_with_discovery_listener(
         listener: AutoDiscoveryListenerBinding,
-    ) -> AutoDaemonStartupPlan {
-        AutoDaemonStartupPlan {
+    ) -> AutoRuntimePlan {
+        AutoRuntimePlan {
             config: AutoInterfaceConfig::default(),
             platform: AutoInterfacePlatform::Other,
             device_filter: AutoInterfaceDeviceFilter::default(),
@@ -55,8 +72,8 @@
         }
     }
 
-    fn plan_with_data_listener(listener: AutoDataListenerBinding) -> AutoDaemonStartupPlan {
-        AutoDaemonStartupPlan {
+    fn plan_with_data_listener(listener: AutoDataListenerBinding) -> AutoRuntimePlan {
+        AutoRuntimePlan {
             config: AutoInterfaceConfig::default(),
             platform: AutoInterfacePlatform::Other,
             device_filter: AutoInterfaceDeviceFilter::default(),
@@ -186,7 +203,7 @@
             .and_then(|items| items.first())
             .and_then(|item| item.get("payload_hex"))
             .and_then(JsonValue::as_str)
-            .is_some_and(|payload| payload.len() == rns_transport::hash::HASH_SIZE * 2));
+            .is_some_and(|payload| payload.len() == crate::hash::HASH_SIZE * 2));
         assert_eq!(
             runtime
                 .get("initial_peer_announces")
@@ -306,7 +323,8 @@
         let summary = plan
             .spawn_discovery_runtime_with_native_scope_ids()
             .await
-            .expect("start zero-initial runtime");
+            .expect("start zero-initial runtime")
+            .summary;
 
         assert_eq!(summary.bound_socket_count, 0);
         assert_eq!(summary.receive_loop_count, 0);
@@ -517,9 +535,9 @@
         );
         let inbound_packet = Packet {
             destination: AddressHash::new_from_slice(
-                &[0x66; rns_transport::hash::ADDRESS_HASH_SIZE],
+                &[0x66; crate::hash::ADDRESS_HASH_SIZE],
             ),
-            data: rns_transport::packet::PacketDataBuffer::new_from_slice(b"restart"),
+            data: crate::packet::PacketDataBuffer::new_from_slice(b"restart"),
             ..Default::default()
         };
         let inbound_payload = inbound_packet.to_bytes().expect("serialize inbound packet");
@@ -565,9 +583,9 @@
 
         let restarted_packet = Packet {
             destination: AddressHash::new_from_slice(
-                &[0x77; rns_transport::hash::ADDRESS_HASH_SIZE],
+                &[0x77; crate::hash::ADDRESS_HASH_SIZE],
             ),
-            data: rns_transport::packet::PacketDataBuffer::new_from_slice(b"restarted"),
+            data: crate::packet::PacketDataBuffer::new_from_slice(b"restarted"),
             ..Default::default()
         };
         let restarted_payload = restarted_packet.to_bytes().expect("serialize restarted packet");
@@ -954,7 +972,7 @@
     #[test]
     fn auto_runtime_status_records_last_peer_job_lifecycle_summary() {
         let mut iface = auto_iface();
-        iface.devices = Some(vec!["eth0".to_string(), "wlan0".to_string()]);
+        iface.filter.allowed = vec!["eth0".to_string(), "wlan0".to_string()];
         let plan = build_startup_plan_from_candidates(
             &iface,
             vec![

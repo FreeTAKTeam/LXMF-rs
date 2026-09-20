@@ -1,6 +1,6 @@
     fn loopback_software_auto_plan(
         initial_peering_wait: core::time::Duration,
-    ) -> AutoDaemonStartupPlan {
+    ) -> AutoRuntimePlan {
         let config = AutoInterfaceConfig {
             group_id: "software-auto".to_string(),
             discovery_scope: AutoDiscoveryScope::Global,
@@ -12,7 +12,7 @@
             ifname: "lo".to_string(),
             link_local_address: "127.0.0.2".to_string(),
         };
-        AutoDaemonStartupPlan {
+        AutoRuntimePlan {
             config: config.clone(),
             platform: AutoInterfacePlatform::Other,
             device_filter: AutoInterfaceDeviceFilter::default(),
@@ -53,7 +53,7 @@
         let peer_addr = peer_socket.local_addr().expect("software peer addr");
         let peer_address = peer_addr.ip().to_string();
         let bind_addr = "127.0.0.1:0".parse().expect("software bind addr");
-        let discovery_payload = rns_transport::iface::auto::peering_token(
+        let discovery_payload = crate::iface::auto::peering_token(
             plan.config.group_id.as_bytes(),
             &peer_address,
         )
@@ -67,7 +67,7 @@
             payload: discovery_payload,
         };
         let invalid_discovery_datagram = AutoDiscoveryDatagram {
-            payload: vec![0; rns_transport::hash::HASH_SIZE],
+            payload: vec![0; crate::hash::HASH_SIZE],
             ..discovery_datagram.clone()
         };
         let mut state = plan.discovery_state();
@@ -103,7 +103,7 @@
         assert_eq!(admitted.source_address, peer_address);
         assert_eq!(
             admitted.event,
-            AutoDiscoveryEvent::Peer(rns_transport::iface::auto::AutoPeerEvent::Added)
+            AutoDiscoveryEvent::Peer(crate::iface::auto::AutoPeerEvent::Added)
         );
         assert!(state.peer(&peer_address).is_some());
 
@@ -143,9 +143,9 @@
         let route_bind_addr = route_socket.local_addr().expect("route bind addr");
         let inbound_packet = Packet {
             destination: AddressHash::new_from_slice(
-                &[0x33; rns_transport::hash::ADDRESS_HASH_SIZE],
+                &[0x33; crate::hash::ADDRESS_HASH_SIZE],
             ),
-            data: rns_transport::packet::PacketDataBuffer::new_from_slice(b"software-ingress"),
+            data: crate::packet::PacketDataBuffer::new_from_slice(b"software-ingress"),
             ..Default::default()
         };
         let inbound_payload = inbound_packet.to_bytes().expect("serialize inbound packet");
@@ -262,9 +262,9 @@
 
         let outbound_packet = Packet {
             destination: AddressHash::new_from_slice(
-                &[0x44; rns_transport::hash::ADDRESS_HASH_SIZE],
+                &[0x44; crate::hash::ADDRESS_HASH_SIZE],
             ),
-            data: rns_transport::packet::PacketDataBuffer::new_from_slice(b"software-egress"),
+            data: crate::packet::PacketDataBuffer::new_from_slice(b"software-egress"),
             ..Default::default()
         };
         iface_manager
@@ -298,9 +298,9 @@
         };
         let closed_packet = Packet {
             destination: AddressHash::new_from_slice(
-                &[0x55; rns_transport::hash::ADDRESS_HASH_SIZE],
+                &[0x55; crate::hash::ADDRESS_HASH_SIZE],
             ),
-            data: rns_transport::packet::PacketDataBuffer::new_from_slice(b"rx-closed"),
+            data: crate::packet::PacketDataBuffer::new_from_slice(b"rx-closed"),
             ..Default::default()
         };
         let closed_payload = closed_packet.to_bytes().expect("serialize closed-channel packet");
@@ -438,9 +438,9 @@
         );
         let inbound_packet = Packet {
             destination: AddressHash::new_from_slice(
-                &[0x44; rns_transport::hash::ADDRESS_HASH_SIZE],
+                &[0x44; crate::hash::ADDRESS_HASH_SIZE],
             ),
-            data: rns_transport::packet::PacketDataBuffer::new_from_slice(b"inbound"),
+            data: crate::packet::PacketDataBuffer::new_from_slice(b"inbound"),
             ..Default::default()
         };
         let inbound_payload = inbound_packet.to_bytes().expect("serialize inbound packet");
@@ -473,9 +473,9 @@
 
         let outbound_packet = Packet {
             destination: AddressHash::new_from_slice(
-                &[0x55; rns_transport::hash::ADDRESS_HASH_SIZE],
+                &[0x55; crate::hash::ADDRESS_HASH_SIZE],
             ),
-            data: rns_transport::packet::PacketDataBuffer::new_from_slice(b"outbound"),
+            data: crate::packet::PacketDataBuffer::new_from_slice(b"outbound"),
             ..Default::default()
         };
         iface_manager
@@ -556,9 +556,9 @@
         );
         let inbound_packet = Packet {
             destination: AddressHash::new_from_slice(
-                &[0x44; rns_transport::hash::ADDRESS_HASH_SIZE],
+                &[0x44; crate::hash::ADDRESS_HASH_SIZE],
             ),
-            data: rns_transport::packet::PacketDataBuffer::new_from_slice(b"inbound"),
+            data: crate::packet::PacketDataBuffer::new_from_slice(b"inbound"),
             ..Default::default()
         };
         let inbound_payload = inbound_packet.to_bytes().expect("serialize inbound packet");
@@ -590,9 +590,9 @@
 
         let outbound_packet = Packet {
             destination: AddressHash::new_from_slice(
-                &[0x55; rns_transport::hash::ADDRESS_HASH_SIZE],
+                &[0x55; crate::hash::ADDRESS_HASH_SIZE],
             ),
-            data: rns_transport::packet::PacketDataBuffer::new_from_slice(b"outbound"),
+            data: crate::packet::PacketDataBuffer::new_from_slice(b"outbound"),
             ..Default::default()
         };
         iface_manager
@@ -685,9 +685,9 @@
         );
         let inbound_packet = Packet {
             destination: AddressHash::new_from_slice(
-                &[0x66; rns_transport::hash::ADDRESS_HASH_SIZE],
+                &[0x66; crate::hash::ADDRESS_HASH_SIZE],
             ),
-            data: rns_transport::packet::PacketDataBuffer::new_from_slice(b"restart-before"),
+            data: crate::packet::PacketDataBuffer::new_from_slice(b"restart-before"),
             ..Default::default()
         };
         let inbound_payload = inbound_packet.to_bytes().expect("serialize inbound packet");
@@ -714,9 +714,9 @@
 
         let outbound_packet = Packet {
             destination: AddressHash::new_from_slice(
-                &[0x77; rns_transport::hash::ADDRESS_HASH_SIZE],
+                &[0x77; crate::hash::ADDRESS_HASH_SIZE],
             ),
-            data: rns_transport::packet::PacketDataBuffer::new_from_slice(b"restart-route"),
+            data: crate::packet::PacketDataBuffer::new_from_slice(b"restart-route"),
             ..Default::default()
         };
         let update = AutoLinkLocalAddressUpdate {
@@ -759,9 +759,9 @@
 
         let refreshed_packet = Packet {
             destination: AddressHash::new_from_slice(
-                &[0x88; rns_transport::hash::ADDRESS_HASH_SIZE],
+                &[0x88; crate::hash::ADDRESS_HASH_SIZE],
             ),
-            data: rns_transport::packet::PacketDataBuffer::new_from_slice(b"restart-after"),
+            data: crate::packet::PacketDataBuffer::new_from_slice(b"restart-after"),
             ..Default::default()
         };
         let refreshed_payload = refreshed_packet.to_bytes().expect("serialize refreshed packet");
@@ -834,7 +834,7 @@
                 "[ff0e:0:77b9:4bfd:9488:364b:4bbe:119d]:48555".parse().expect("group addr"),
             ),
             source_addr: "[fe80::1234]:48555".parse().expect("source addr"),
-            payload: rns_transport::iface::auto::peering_token(b"field-net", "fe80::1234").to_vec(),
+            payload: crate::iface::auto::peering_token(b"field-net", "fe80::1234").to_vec(),
         };
 
         let processed = plan
@@ -866,7 +866,7 @@
             bind_addr: "[fe80::1234]:48556".parse().expect("bind addr"),
             multicast_group_addr: None,
             source_addr: "[fe80::2222]:48556".parse().expect("source addr"),
-            payload: rns_transport::iface::auto::peering_token(b"field-net", "fe80::2222").to_vec(),
+            payload: crate::iface::auto::peering_token(b"field-net", "fe80::2222").to_vec(),
         };
 
         let processed = plan
@@ -877,7 +877,7 @@
         assert_eq!(processed.source_address, "fe80::2222");
         assert_eq!(
             processed.event,
-            AutoDiscoveryEvent::Peer(rns_transport::iface::auto::AutoPeerEvent::Added)
+            AutoDiscoveryEvent::Peer(crate::iface::auto::AutoPeerEvent::Added)
         );
         assert!(state.peer("fe80::2222").is_some());
     }
@@ -899,10 +899,10 @@
             bind_addr: "[fe80::1234]:48556".parse().expect("bind addr"),
             multicast_group_addr: None,
             source_addr: "[fe80::2222]:48556".parse().expect("source addr"),
-            payload: rns_transport::iface::auto::peering_token(b"field-net", "fe80::2222").to_vec(),
+            payload: crate::iface::auto::peering_token(b"field-net", "fe80::2222").to_vec(),
         };
         let invalid_datagram =
-            AutoDiscoveryDatagram { payload: vec![0; rns_transport::hash::HASH_SIZE], ..valid_datagram.clone() };
+            AutoDiscoveryDatagram { payload: vec![0; crate::hash::HASH_SIZE], ..valid_datagram.clone() };
         let before_final_init =
             plan.startup_plan.initial_peering_wait - core::time::Duration::from_millis(1);
 
@@ -926,7 +926,7 @@
             .expect("final init should allow discovery processing");
         assert_eq!(
             processed.event,
-            AutoDiscoveryEvent::Peer(rns_transport::iface::auto::AutoPeerEvent::Added)
+            AutoDiscoveryEvent::Peer(crate::iface::auto::AutoPeerEvent::Added)
         );
         assert!(state.peer("fe80::2222").is_some());
     }
@@ -998,7 +998,7 @@
             bind_addr: "[fe80::1234]:48556".parse().expect("bind addr"),
             multicast_group_addr: None,
             source_addr: "[fe80::2222]:48556".parse().expect("source addr"),
-            payload: vec![0; rns_transport::hash::HASH_SIZE],
+            payload: vec![0; crate::hash::HASH_SIZE],
         };
 
         let err = plan

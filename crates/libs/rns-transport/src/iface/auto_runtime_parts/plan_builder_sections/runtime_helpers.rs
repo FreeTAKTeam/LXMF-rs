@@ -45,7 +45,7 @@ fn link_local_update_json(update: &AutoLinkLocalAddressUpdate) -> JsonValue {
     })
 }
 
-pub(crate) fn discovery_runtime_summary_json(summary: &AutoDiscoveryRuntimeSummary) -> JsonValue {
+pub fn discovery_runtime_summary_json(summary: &AutoDiscoveryRuntimeSummary) -> JsonValue {
     json!({
         "bound_socket_count": summary.bound_socket_count,
         "receive_loop_count": summary.receive_loop_count,
@@ -70,7 +70,7 @@ fn log_auto_discovery_loop_event(event: AutoDiscoveryLoopEvent) {
     match event {
         AutoDiscoveryLoopEvent::Processed(processed) => {
             log::debug!(
-                "[daemon-auto] discovery accepted iface={} source={} event={:?}",
+                "[auto] discovery accepted iface={} source={} event={:?}",
                 processed.datagram.ifname,
                 processed.source_address,
                 processed.event
@@ -82,7 +82,7 @@ fn log_auto_discovery_loop_event(event: AutoDiscoveryLoopEvent) {
             reason,
         } => {
             log::debug!(
-                "[daemon-auto] discovery rejected iface={} source={} reason={:?}",
+                "[auto] discovery rejected iface={} source={} reason={:?}",
                 datagram.ifname,
                 source_address,
                 reason
@@ -95,7 +95,7 @@ fn log_auto_discovery_loop_event(event: AutoDiscoveryLoopEvent) {
             error,
         } => {
             log::warn!(
-                "[daemon-auto] discovery receive failed iface={} kind={} bind={} err={}",
+                "[auto] discovery receive failed iface={} kind={} bind={} err={}",
                 ifname,
                 discovery_socket_kind(kind),
                 bind_addr,
@@ -109,7 +109,7 @@ fn log_auto_peer_data_loop_event(event: AutoPeerDataLoopEvent) {
     match event {
         AutoPeerDataLoopEvent::Processed(processed) => {
             log::debug!(
-                "[daemon-auto] peer data processed iface={} peer={} decision={:?}",
+                "[auto] peer data processed iface={} peer={} decision={:?}",
                 processed.datagram.ifname,
                 processed.peer_address,
                 processed.decision
@@ -121,7 +121,7 @@ fn log_auto_peer_data_loop_event(event: AutoPeerDataLoopEvent) {
             error,
         } => {
             log::warn!(
-                "[daemon-auto] peer data receive failed iface={} bind={} err={}",
+                "[auto] peer data receive failed iface={} bind={} err={}",
                 ifname,
                 bind_addr,
                 error
@@ -144,10 +144,12 @@ fn discovery_socket_kind(kind: AutoDiscoverySocketKind) -> &'static str {
     }
 }
 
-fn current_platform() -> AutoInterfacePlatform {
+/// The platform the ignore lists and timings are chosen for. iOS is Darwin:
+/// the same kernel names its interfaces, so the same list applies.
+pub fn current_platform() -> AutoInterfacePlatform {
     if cfg!(target_os = "windows") {
         AutoInterfacePlatform::Windows
-    } else if cfg!(target_os = "macos") {
+    } else if cfg!(any(target_os = "macos", target_os = "ios")) {
         AutoInterfacePlatform::Darwin
     } else if cfg!(target_os = "android") {
         AutoInterfacePlatform::Android

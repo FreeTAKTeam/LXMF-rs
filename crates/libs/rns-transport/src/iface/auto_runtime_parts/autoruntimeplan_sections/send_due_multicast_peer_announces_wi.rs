@@ -6,7 +6,7 @@ struct AutoInterfaceRuntimeLoopHandles {
     data_events: tokio::sync::mpsc::Sender<AutoPeerDataLoopEvent>,
 }
 
-impl AutoDaemonStartupPlan {
+impl AutoRuntimePlan {
 
     async fn send_due_multicast_peer_announces_with_runtime_socket(
         &self,
@@ -63,11 +63,11 @@ impl AutoDaemonStartupPlan {
                             .await
                         {
                             Ok(sent) if sent > 0 => {
-                                log::debug!("[daemon-auto] repeat peer-announce scheduler sent {sent} packet(s)");
+                                log::debug!("[auto] repeat peer-announce scheduler sent {sent} packet(s)");
                             }
                             Ok(_) => {}
                             Err(err) => {
-                                log::warn!("[daemon-auto] repeat peer-announce scheduler failed: {err}");
+                                log::warn!("[auto] repeat peer-announce scheduler failed: {err}");
                             }
                         }
                     }
@@ -146,7 +146,7 @@ impl AutoDaemonStartupPlan {
                                     || summary.carrier_changed =>
                             {
                                 log::debug!(
-                                    "[daemon-auto] peer-job scheduler expired={} reverse_announces={} missing_initial_echoes={} carrier_events={}",
+                                    "[auto] peer-job scheduler expired={} reverse_announces={} missing_initial_echoes={} carrier_events={}",
                                     summary.expired_peer_count,
                                     summary.reverse_peer_announce_count,
                                     summary.missing_initial_echo_count,
@@ -155,7 +155,7 @@ impl AutoDaemonStartupPlan {
                             }
                             Ok(_) => {}
                             Err(err) => {
-                                log::warn!("[daemon-auto] peer-job scheduler failed: {err}");
+                                log::warn!("[auto] peer-job scheduler failed: {err}");
                             }
                         }
                     }
@@ -320,14 +320,14 @@ impl AutoDaemonStartupPlan {
                         let candidates = match enumerate_link_local_candidates() {
                             Ok(candidates) => candidates,
                             Err(err) => {
-                                log::warn!("[daemon-auto] link-local reconciler failed to enumerate interfaces: {err}");
+                                log::warn!("[auto] link-local reconciler failed to enumerate interfaces: {err}");
                                 continue;
                             }
                         };
                         let resolver = match AutoInterfaceIndexResolver::from_system() {
                             Ok(resolver) => resolver,
                             Err(err) => {
-                                log::warn!("[daemon-auto] link-local reconciler failed to resolve interface indexes: {err}");
+                                log::warn!("[auto] link-local reconciler failed to resolve interface indexes: {err}");
                                 continue;
                             }
                         };
@@ -343,11 +343,11 @@ impl AutoDaemonStartupPlan {
                             .await
                         {
                             Ok(applied) if applied > 0 => {
-                                log::debug!("[daemon-auto] adopted-interface reconciler applied {applied} add/remove change(s)");
+                                log::debug!("[auto] adopted-interface reconciler applied {applied} add/remove change(s)");
                             }
                             Ok(_) => {}
                             Err(err) => {
-                                log::warn!("[daemon-auto] adopted-interface reconciler failed: {err}");
+                                log::warn!("[auto] adopted-interface reconciler failed: {err}");
                                 continue;
                             }
                         }
@@ -363,11 +363,11 @@ impl AutoDaemonStartupPlan {
                             .await
                         {
                             Ok(restarted) if restarted > 0 => {
-                                log::debug!("[daemon-auto] link-local reconciler restarted {restarted} peer data listener(s)");
+                                log::debug!("[auto] link-local reconciler restarted {restarted} peer data listener(s)");
                             }
                             Ok(_) => {}
                             Err(err) => {
-                                log::warn!("[daemon-auto] link-local reconciler failed: {err}");
+                                log::warn!("[auto] link-local reconciler failed: {err}");
                             }
                         }
                     }
@@ -379,7 +379,7 @@ impl AutoDaemonStartupPlan {
     // Binds only the unicast side of discovery; startup combines these sockets
     // with multicast sockets before spawning receive loops.
     #[allow(dead_code)]
-    pub(crate) async fn bind_unicast_discovery_sockets(
+    pub async fn bind_unicast_discovery_sockets(
         &self,
         mut scope_id_for_ifname: impl FnMut(&str) -> Result<u32, String>,
     ) -> Result<Vec<AutoBoundDiscoverySocket>, String> {
@@ -395,7 +395,7 @@ impl AutoDaemonStartupPlan {
     }
 
     #[allow(dead_code)]
-    pub(crate) async fn bind_discovery_sockets_for_listener(
+    pub async fn bind_discovery_sockets_for_listener(
         &self,
         listener: &AutoDiscoveryListenerBinding,
         mut scope_id_for_ifname: impl FnMut(&str) -> Result<u32, String>,
@@ -423,11 +423,14 @@ impl AutoDaemonStartupPlan {
                         target.display_bind_addr()
                     )
                 })?;
-                let socket = tokio::net::UdpSocket::bind(bind_addr).await.map_err(|err| {
+                let std_socket = bind_reusable_udp(bind_addr).map_err(|err| {
                     format!(
                         "bind auto discovery unicast socket {} failed: {err}",
                         target.display_bind_addr()
                     )
+                })?;
+                let socket = tokio::net::UdpSocket::from_std(std_socket).map_err(|err| {
+                    format!("convert auto discovery unicast socket to tokio failed: {err}")
                 })?;
                 Ok(AutoBoundDiscoverySocket {
                     kind: target.kind,
@@ -445,7 +448,7 @@ impl AutoDaemonStartupPlan {
                             target.display_bind_addr()
                         )
                     })?;
-                let std_socket = std::net::UdpSocket::bind(resolved.bind_addr).map_err(|err| {
+                let std_socket = bind_reusable_udp(resolved.bind_addr).map_err(|err| {
                     format!(
                         "bind auto discovery multicast socket {} failed: {err}",
                         target.display_bind_addr()
@@ -469,9 +472,6 @@ impl AutoDaemonStartupPlan {
                             )
                         })?,
                 }
-                std_socket.set_nonblocking(true).map_err(|err| {
-                    format!("set auto discovery multicast socket nonblocking failed: {err}")
-                })?;
                 let socket = tokio::net::UdpSocket::from_std(std_socket).map_err(|err| {
                     format!("convert auto discovery multicast socket to tokio failed: {err}")
                 })?;
@@ -487,7 +487,7 @@ impl AutoDaemonStartupPlan {
     }
 
     #[allow(dead_code)]
-    pub(crate) async fn bind_data_sockets(
+    pub async fn bind_data_sockets(
         &self,
         mut scope_id_for_ifname: impl FnMut(&str) -> Result<u32, String>,
     ) -> Result<Vec<AutoBoundDataSocket>, String> {
@@ -499,7 +499,7 @@ impl AutoDaemonStartupPlan {
     }
 
     #[allow(dead_code)]
-    pub(crate) async fn bind_data_socket_for_listener(
+    pub async fn bind_data_socket_for_listener(
         &self,
         listener: &AutoDataListenerBinding,
         mut scope_id_for_ifname: impl FnMut(&str) -> Result<u32, String>,
@@ -532,7 +532,7 @@ impl AutoDaemonStartupPlan {
     // Binds and joins only the multicast side of discovery; startup combines
     // these sockets with unicast sockets before spawning receive loops.
     #[allow(dead_code)]
-    pub(crate) async fn bind_multicast_discovery_sockets(
+    pub async fn bind_multicast_discovery_sockets(
         &self,
         mut scope_id_for_ifname: impl FnMut(&str) -> Result<u32, String>,
     ) -> Result<Vec<AutoBoundDiscoverySocket>, String> {
@@ -548,7 +548,7 @@ impl AutoDaemonStartupPlan {
     }
 
     #[allow(dead_code)]
-    pub(crate) fn spawn_discovery_receive_loops(
+    pub fn spawn_discovery_receive_loops(
         &self,
         sockets: Vec<AutoBoundDiscoverySocket>,
         state: Arc<tokio::sync::Mutex<AutoDiscoveryState>>,
@@ -607,7 +607,7 @@ impl AutoDaemonStartupPlan {
                                     .is_err()
                                 {
                                     log::debug!(
-                                        "[daemon-auto] discovery failure receiver closed ifname={} bind_addr={}",
+                                        "[auto] discovery failure receiver closed ifname={} bind_addr={}",
                                         socket.ifname,
                                         socket.bind_addr
                                     );
@@ -654,7 +654,7 @@ impl AutoDaemonStartupPlan {
     }
 
     #[allow(dead_code)]
-    pub(crate) fn spawn_peer_data_receive_loops(
+    pub fn spawn_peer_data_receive_loops(
         &self,
         sockets: Vec<AutoBoundDataSocket>,
         state: Arc<tokio::sync::Mutex<AutoDiscoveryState>>,
@@ -680,10 +680,35 @@ impl AutoDaemonStartupPlan {
     }
 }
 
+/// Binds a discovery socket the way `AutoInterface.py` does: `SO_REUSEADDR`
+/// and, where the platform has it, `SO_REUSEPORT` set before the bind.
+///
+/// Every adopted NIC's multicast listener binds the unspecified address on the
+/// same discovery port and joins its own scoped group, so the second NIC's
+/// bind fails without these. They are also what lets two Reticulum instances
+/// on one host share the discovery port. The data socket does not get them;
+/// the reference binds it plainly too, and a shared data port would hand one
+/// peer's packets to the other.
+///
+/// Non-blocking, ready for `tokio::net::UdpSocket::from_std`.
+fn bind_reusable_udp(bind_addr: SocketAddr) -> std::io::Result<std::net::UdpSocket> {
+    let socket = socket2::Socket::new(
+        socket2::Domain::for_address(bind_addr),
+        socket2::Type::DGRAM,
+        Some(socket2::Protocol::UDP),
+    )?;
+    socket.set_reuse_address(true)?;
+    #[cfg(unix)]
+    socket.set_reuse_port(true)?;
+    socket.bind(&bind_addr.into())?;
+    socket.set_nonblocking(true)?;
+    Ok(socket.into())
+}
+
 impl AutoDiscoveryListenerSupervisor {
     #[allow(dead_code)]
-    pub(crate) fn new(
-        plan: AutoDaemonStartupPlan,
+    pub fn new(
+        plan: AutoRuntimePlan,
         state: Arc<tokio::sync::Mutex<AutoDiscoveryState>>,
         shutdown: tokio::sync::watch::Receiver<bool>,
     ) -> Self {
@@ -697,7 +722,7 @@ impl AutoDiscoveryListenerSupervisor {
         }
     }
 
-    pub(crate) fn spawn_sockets(
+    pub fn spawn_sockets(
         &mut self,
         sockets: Vec<AutoBoundDiscoverySocket>,
         events: &tokio::sync::mpsc::Sender<AutoDiscoveryLoopEvent>,
@@ -737,7 +762,7 @@ impl AutoDiscoveryListenerSupervisor {
     }
 
     #[allow(dead_code)]
-    pub(crate) fn spawn_bound_listener(
+    pub fn spawn_bound_listener(
         &mut self,
         ifname: String,
         sockets: Vec<AutoBoundDiscoverySocket>,
@@ -747,7 +772,7 @@ impl AutoDiscoveryListenerSupervisor {
     }
 
     #[allow(dead_code)]
-    pub(crate) async fn add_listener(
+    pub async fn add_listener(
         &mut self,
         listener: &AutoDiscoveryListenerBinding,
         events: &tokio::sync::mpsc::Sender<AutoDiscoveryLoopEvent>,
@@ -762,7 +787,7 @@ impl AutoDiscoveryListenerSupervisor {
     }
 
     #[allow(dead_code)]
-    pub(crate) async fn remove_listener(&mut self, ifname: &str) -> bool {
+    pub async fn remove_listener(&mut self, ifname: &str) -> bool {
         let Some(old) = self.listeners.remove(ifname) else {
             return false;
         };
@@ -772,17 +797,17 @@ impl AutoDiscoveryListenerSupervisor {
     }
 
     #[allow(dead_code)]
-    pub(crate) fn receive_loop_count(&self) -> usize {
+    pub fn receive_loop_count(&self) -> usize {
         self.listeners.values().map(|listener| listener.joins.len()).sum()
     }
 
     #[allow(dead_code)]
-    pub(crate) fn pending_stop_count(&self) -> usize {
+    pub fn pending_stop_count(&self) -> usize {
         self.pending_stops.len()
     }
 
     #[allow(dead_code)]
-    pub(crate) async fn shutdown_all(&mut self) {
+    pub async fn shutdown_all(&mut self) {
         let listeners = std::mem::take(&mut self.listeners);
         for handle in listeners.into_values() {
             handle.stop().await;
@@ -795,7 +820,7 @@ impl AutoDiscoveryListenerSupervisor {
         for stop in pending_stops {
             if let Err(err) = stop.await {
                 if !err.is_cancelled() {
-                    log::warn!("[daemon-auto] discovery replacement-stop task failed: {err}");
+                    log::warn!("[auto] discovery replacement-stop task failed: {err}");
                 }
             }
         }
@@ -808,7 +833,7 @@ impl AutoDiscoveryListenerHandle {
             join.abort();
             if let Err(err) = join.await {
                 if !err.is_cancelled() {
-                    log::warn!("[daemon-auto] discovery receive loop task stopped: {err}");
+                    log::warn!("[auto] discovery receive loop task stopped: {err}");
                 }
             }
         }
@@ -817,8 +842,8 @@ impl AutoDiscoveryListenerHandle {
 
 impl AutoPeerDataListenerSupervisor {
     #[allow(dead_code)]
-    pub(crate) fn new(
-        plan: AutoDaemonStartupPlan,
+    pub fn new(
+        plan: AutoRuntimePlan,
         state: Arc<tokio::sync::Mutex<AutoDiscoveryState>>,
         dedupe: Arc<tokio::sync::Mutex<AutoInboundPacketDeduplicator>>,
         transport: Option<AutoInterfaceTransportBridge>,
@@ -837,7 +862,7 @@ impl AutoPeerDataListenerSupervisor {
         }
     }
 
-    pub(crate) fn with_runtime_status(
+    pub fn with_runtime_status(
         mut self,
         runtime_status: Option<AutoRuntimeStatusHandle>,
     ) -> Self {
@@ -845,7 +870,7 @@ impl AutoPeerDataListenerSupervisor {
         self
     }
 
-    pub(crate) fn spawn_sockets(
+    pub fn spawn_sockets(
         &mut self,
         sockets: Vec<AutoBoundDataSocket>,
         events: &tokio::sync::mpsc::Sender<AutoPeerDataLoopEvent>,
@@ -882,7 +907,7 @@ impl AutoPeerDataListenerSupervisor {
     }
 
     #[allow(dead_code)]
-    pub(crate) fn spawn_bound_socket(
+    pub fn spawn_bound_socket(
         &mut self,
         socket: AutoBoundDataSocket,
         events: &tokio::sync::mpsc::Sender<AutoPeerDataLoopEvent>,
@@ -893,7 +918,7 @@ impl AutoPeerDataListenerSupervisor {
     }
 
     #[allow(dead_code)]
-    pub(crate) async fn add_listener(
+    pub async fn add_listener(
         &mut self,
         listener: &AutoDataListenerBinding,
         events: &tokio::sync::mpsc::Sender<AutoPeerDataLoopEvent>,
@@ -906,7 +931,7 @@ impl AutoPeerDataListenerSupervisor {
     }
 
     #[allow(dead_code)]
-    pub(crate) async fn remove_listener(&mut self, ifname: &str) -> bool {
+    pub async fn remove_listener(&mut self, ifname: &str) -> bool {
         let Some(old) = self.listeners.remove(ifname) else {
             return false;
         };
@@ -920,17 +945,22 @@ impl AutoPeerDataListenerSupervisor {
     }
 
     #[allow(dead_code)]
-    pub(crate) fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.listeners.len()
     }
 
     #[allow(dead_code)]
-    pub(crate) fn pending_stop_count(&self) -> usize {
+    pub fn is_empty(&self) -> bool {
+        self.listeners.is_empty()
+    }
+
+    #[allow(dead_code)]
+    pub fn pending_stop_count(&self) -> usize {
         self.pending_stops.len()
     }
 
     #[allow(dead_code)]
-    pub(crate) async fn restart_link_local_listener(
+    pub async fn restart_link_local_listener(
         &mut self,
         update: &AutoLinkLocalAddressUpdate,
         runtime_status: Option<&AutoRuntimeStatusHandle>,
@@ -959,7 +989,7 @@ impl AutoPeerDataListenerSupervisor {
     }
 
     #[allow(dead_code)]
-    pub(crate) async fn shutdown_all(&mut self) {
+    pub async fn shutdown_all(&mut self) {
         let listeners = std::mem::take(&mut self.listeners);
         for handle in listeners.into_values() {
             handle.stop().await;
@@ -972,7 +1002,7 @@ impl AutoPeerDataListenerSupervisor {
         for stop in pending_stops {
             if let Err(err) = stop.await {
                 if !err.is_cancelled() {
-                    log::warn!("[daemon-auto] peer-data replacement-stop task failed: {err}");
+                    log::warn!("[auto] peer-data replacement-stop task failed: {err}");
                 }
             }
         }
@@ -984,7 +1014,7 @@ impl AutoPeerDataListenerHandle {
         self.join.abort();
         if let Err(err) = self.join.await {
             if !err.is_cancelled() {
-                log::warn!("[daemon-auto] peer data receive loop task stopped: {err}");
+                log::warn!("[auto] peer data receive loop task stopped: {err}");
             }
         }
     }

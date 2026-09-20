@@ -6,10 +6,10 @@ crates/apps/reticulumd/src/bin/reticulumd/bootstrap_parts/module_core.rs
 crates/apps/reticulumd/src/bin/reticulumd/bridge_rnode_management.rs
 crates/apps/reticulumd/src/bin/reticulumd/bridge_delivery_scheduler.rs
 crates/apps/reticulumd/src/bin/reticulumd/inbound_control_peer.rs
-crates/apps/reticulumd/src/bin/reticulumd/interfaces/auto_parts/auto_iface_sections/auto_multicast_discovery_bind_resolv.rs
-crates/apps/reticulumd/src/bin/reticulumd/interfaces/auto_parts/auto_iface_sections/auto_peer_data_transport_bridge_regi.rs
-crates/apps/reticulumd/src/bin/reticulumd/interfaces/auto_parts/auto_iface_sections/core_tests.rs
-crates/apps/reticulumd/src/bin/reticulumd/interfaces/auto_parts/autodaemonstartupplan_sections/send_due_multicast_peer_announces_wi.rs
+crates/libs/rns-transport/src/iface/auto_runtime_parts/tests_sections/auto_multicast_discovery_bind_resolv.rs
+crates/libs/rns-transport/src/iface/auto_runtime_parts/tests_sections/auto_peer_data_transport_bridge_regi.rs
+crates/libs/rns-transport/src/iface/auto_runtime_parts/tests_sections/core_tests.rs
+crates/libs/rns-transport/src/iface/auto_runtime_parts/autoruntimeplan_sections/send_due_multicast_peer_announces_wi.rs
 crates/apps/reticulumd/src/bin/reticulumd/tests_parts/bootstrap_best_effort_marks_vrn76_ki.rs
 crates/apps/reticulumd/src/bin/reticulumd/tests_parts/bootstrap_reports_auto_interface_as.rs
 crates/apps/reticulumd/src/bin/reticulumd/tests_parts/bootstrap_restores_path_cache.rs

@@ -887,6 +887,19 @@ Scoped release evidence is split as follows:
   a cost a peer announced would have been mined for across the whole nonce
   space with an all-zero digest as the only answer. Validators still take that
   target, which is what a ticket pays.
+- The AutoInterface driver is library code too. `reticulumd`'s
+  `interfaces/auto` held the sockets, the peering announce loops, the
+  peer/transport bridge and NIC enumeration over the algorithm in
+  `rns-transport::iface::auto`, inside a `[[bin]]` target nothing could
+  import. They now live in `rns-transport::iface::auto_runtime`:
+  `AutoRuntimePlan` is built from a typed `AutoInterfaceConfig`, a device
+  filter and the host's link-local candidates, and spawns against a multicast
+  `InterfaceChannel` through `AutoInterfaceTransportRuntime`. The daemon
+  keeps the ini-to-plan conversion and re-exports the names, so its callers
+  are unchanged. The spawned runtime hands back an `AutoDiscoveryRuntime`
+  whose `stop` closes its sockets, which an embedder that rebuilds its
+  transport needs and the daemon never did. The driver's 49 tests moved with
+  it.
 - `lxmf-wire`'s `Message` can stamp itself. The daemon's `lxmf_bridge` did that
   job around it, computing the message id over a throwaway `WireMessage`,
   deriving or mining a stamp and merging the ticket field by hand, so any other

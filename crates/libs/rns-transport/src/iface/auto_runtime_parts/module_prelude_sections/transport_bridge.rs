@@ -1,6 +1,6 @@
 impl AutoInterfaceTransportRuntime {
     #[allow(dead_code)]
-    pub(crate) fn from_channel(
+    pub fn from_channel(
         channel: InterfaceChannel,
         iface_manager: Arc<tokio::sync::Mutex<InterfaceManager>>,
     ) -> Self {
@@ -58,7 +58,7 @@ impl AutoInterfaceTransportBridge {
             .await
         else {
             log::warn!(
-                "[daemon-auto] failed to register virtual peer iface for {}",
+                "[auto] failed to register virtual peer iface for {}",
                 processed.datagram.source_addr
             );
             return AutoPeerDataForwardResult::VirtualIfaceUnavailable;
@@ -67,7 +67,7 @@ impl AutoInterfaceTransportBridge {
             Ok(packet) => packet,
             Err(err) => {
                 log::warn!(
-                    "[daemon-auto] failed to decode peer data packet from {}: {:?}",
+                    "[auto] failed to decode peer data packet from {}: {:?}",
                     processed.datagram.source_addr,
                     err
                 );
@@ -85,7 +85,7 @@ impl AutoInterfaceTransportBridge {
             .is_err()
         {
             log::warn!(
-                "[daemon-auto] failed to forward peer data packet from {}: rx channel closed",
+                "[auto] failed to forward peer data packet from {}: rx channel closed",
                 processed.datagram.source_addr
             );
             return AutoPeerDataForwardResult::RxChannelClosed;
@@ -121,13 +121,13 @@ impl AutoInterfaceTransportBridge {
         let payload = match packet.to_bytes() {
             Ok(payload) => payload,
             Err(err) => {
-                log::warn!("[daemon-auto] failed to serialize outbound peer data packet: {err:?}");
+                log::warn!("[auto] failed to serialize outbound peer data packet: {err:?}");
                 return;
             }
         };
         if let Err(err) = route.socket.send_to(&payload, route.destination).await {
             log::warn!(
-                "[daemon-auto] failed to send outbound peer data packet to {}: {err}",
+                "[auto] failed to send outbound peer data packet to {}: {err}",
                 route.destination
             );
         }

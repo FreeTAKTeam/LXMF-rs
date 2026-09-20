@@ -1,6 +1,6 @@
-impl AutoDaemonStartupPlan {
+impl AutoRuntimePlan {
 
-    pub(crate) fn runtime_json(&self) -> JsonValue {
+    pub fn runtime_json(&self) -> JsonValue {
         let initial_runtime_state =
             AutoRuntimeState::from_startup_plan(&self.startup_plan, core::time::Duration::ZERO);
         let mut initial_peer_announces = Vec::new();
@@ -29,12 +29,12 @@ impl AutoDaemonStartupPlan {
         })
     }
 
-    pub(crate) fn initial_peer_announce_datagrams(&self) -> Vec<AutoPeerAnnounceDatagram> {
+    pub fn initial_peer_announce_datagrams(&self) -> Vec<AutoPeerAnnounceDatagram> {
         self.peering_packets.iter().map(AutoPeerAnnounceDatagram::from).collect()
     }
 
     #[allow(dead_code)]
-    pub(crate) fn due_multicast_peer_announce_datagrams(
+    pub fn due_multicast_peer_announce_datagrams(
         &self,
         state: &mut AutoDiscoveryState,
         now: core::time::Duration,
@@ -53,7 +53,7 @@ impl AutoDaemonStartupPlan {
             .collect()
     }
 
-    pub(crate) fn discovery_socket_bind_targets(&self) -> Vec<AutoDiscoverySocketBindTarget> {
+    pub fn discovery_socket_bind_targets(&self) -> Vec<AutoDiscoverySocketBindTarget> {
         self.startup_plan
             .discovery_listeners
             .iter()
@@ -66,7 +66,7 @@ impl AutoDaemonStartupPlan {
             .collect()
     }
 
-    pub(crate) fn data_socket_bind_targets(&self) -> Vec<AutoDataSocketBindTarget> {
+    pub fn data_socket_bind_targets(&self) -> Vec<AutoDataSocketBindTarget> {
         self.startup_plan
             .data_listeners
             .iter()
@@ -75,7 +75,7 @@ impl AutoDaemonStartupPlan {
     }
 
     #[allow(dead_code)]
-    pub(crate) fn discovery_state(&self) -> AutoDiscoveryState {
+    pub fn discovery_state(&self) -> AutoDiscoveryState {
         AutoDiscoveryState::from_timing(
             self.adopted_devices.clone(),
             AutoInterfaceTiming::for_platform(self.platform),
@@ -83,7 +83,7 @@ impl AutoDaemonStartupPlan {
     }
 
     #[allow(dead_code)]
-    pub(crate) fn process_discovery_datagram(
+    pub fn process_discovery_datagram(
         &self,
         state: &mut AutoDiscoveryState,
         datagram: AutoDiscoveryDatagram,
@@ -105,7 +105,7 @@ impl AutoDaemonStartupPlan {
     }
 
     #[allow(dead_code)]
-    pub(crate) fn process_peer_data_datagram(
+    pub fn process_peer_data_datagram(
         &self,
         state: &mut AutoDiscoveryState,
         dedupe: &mut AutoInboundPacketDeduplicator,
@@ -122,7 +122,7 @@ impl AutoDaemonStartupPlan {
         Some(AutoProcessedPeerDataDatagram { datagram, peer_address, decision })
     }
 
-    pub(crate) fn send_initial_peer_announces(
+    pub fn send_initial_peer_announces(
         &self,
         mut send: impl FnMut(&AutoPeerAnnounceDatagram) -> Result<(), String>,
     ) -> Result<usize, String> {
@@ -131,7 +131,7 @@ impl AutoDaemonStartupPlan {
     }
 
     #[allow(dead_code)]
-    pub(crate) fn run_multicast_peer_announce_job(
+    pub fn run_multicast_peer_announce_job(
         &self,
         state: &mut AutoDiscoveryState,
         now: core::time::Duration,
@@ -142,7 +142,7 @@ impl AutoDaemonStartupPlan {
     }
 
     #[allow(dead_code)]
-    pub(crate) fn run_peer_job(
+    pub fn run_peer_job(
         &self,
         state: &mut AutoDiscoveryState,
         now: core::time::Duration,
@@ -208,7 +208,7 @@ impl AutoDaemonStartupPlan {
     // Shared by startup and tests to send a fixed set of peer-announce
     // datagrams through a caller-owned UDP socket.
     #[allow(dead_code)]
-    pub(crate) async fn send_initial_peer_announces_with_udp_socket(
+    pub async fn send_initial_peer_announces_with_udp_socket(
         &self,
         socket: &tokio::net::UdpSocket,
         mut scope_id_for_ifname: impl FnMut(&str) -> Result<u32, String>,
@@ -224,6 +224,11 @@ impl AutoDaemonStartupPlan {
     }
 
     #[allow(dead_code)]
+    // One device's failure is that device's carrier, not the interface's.
+    // Python logs "possible carrier loss" for the device and sends the rest;
+    // a tunnel interface that carries a link-local address but no multicast
+    // route (macOS `utun*`) fails every round and must not take the Wi-Fi
+    // device down with it. The echo timeout is what retires a dead device.
     async fn send_peer_announce_datagrams_with_udp_socket(
         &self,
         datagrams: &[AutoPeerAnnounceDatagram],
@@ -234,40 +239,31 @@ impl AutoDaemonStartupPlan {
         let mut sent = 0;
         for datagram in datagrams {
             let target = datagram.socket_target();
-            let destination =
-                target.resolve_socket_addr(&mut scope_id_for_ifname).map_err(|err| {
-                    format!(
-                        "resolve {label} {}/{} target {} failed: {err}",
-                        sent + 1,
-                        datagrams.len(),
-                        target.display()
-                    )
-                })?;
-            let sent_bytes =
-                socket.send_to(&datagram.payload, destination).await.map_err(|err| {
-                    format!(
-                        "send {label} {}/{} to {} failed: {err}",
-                        sent + 1,
-                        datagrams.len(),
-                        target.display()
-                    )
-                })?;
-            if sent_bytes != datagram.payload.len() {
-                return Err(format!(
-                    "send {label} {}/{} to {} sent {sent_bytes}/{} byte(s)",
-                    sent + 1,
-                    datagrams.len(),
-                    target.display(),
-                    datagram.payload.len()
-                ));
+            let outcome = match target.resolve_socket_addr(&mut scope_id_for_ifname) {
+                Err(err) => Err(format!("resolve target {} failed: {err}", target.display())),
+                Ok(destination) => match socket.send_to(&datagram.payload, destination).await {
+                    Err(err) => Err(format!("send to {} failed: {err}", target.display())),
+                    Ok(sent_bytes) if sent_bytes != datagram.payload.len() => Err(format!(
+                        "send to {} sent {sent_bytes}/{} byte(s)",
+                        target.display(),
+                        datagram.payload.len()
+                    )),
+                    Ok(_) => Ok(()),
+                },
+            };
+            match outcome {
+                Ok(()) => sent += 1,
+                Err(reason) => log::warn!(
+                    "[auto] possible carrier loss on {}: {label} {reason}",
+                    datagram.ifname
+                ),
             }
-            sent += 1;
         }
         Ok(sent)
     }
 
     #[allow(dead_code)]
-    pub(crate) async fn send_initial_peer_announces_with_native_scope_ids(
+    pub async fn send_initial_peer_announces_with_native_scope_ids(
         &self,
         socket: &tokio::net::UdpSocket,
     ) -> Result<usize, String> {
@@ -277,7 +273,7 @@ impl AutoDaemonStartupPlan {
     }
 
     #[allow(dead_code)]
-    pub(crate) async fn bind_discovery_sockets_with_native_scope_ids(
+    pub async fn bind_discovery_sockets_with_native_scope_ids(
         &self,
     ) -> Result<Vec<AutoBoundDiscoverySocket>, String> {
         let resolver = AutoInterfaceIndexResolver::from_system()?;
@@ -290,7 +286,7 @@ impl AutoDaemonStartupPlan {
     }
 
     #[allow(dead_code)]
-    pub(crate) async fn bind_data_sockets_with_native_scope_ids(
+    pub async fn bind_data_sockets_with_native_scope_ids(
         &self,
     ) -> Result<Vec<AutoBoundDataSocket>, String> {
         let resolver = AutoInterfaceIndexResolver::from_system()?;
@@ -298,18 +294,18 @@ impl AutoDaemonStartupPlan {
     }
 
     #[allow(dead_code)]
-    pub(crate) async fn spawn_discovery_runtime_with_native_scope_ids(
+    pub async fn spawn_discovery_runtime_with_native_scope_ids(
         &self,
-    ) -> Result<AutoDiscoveryRuntimeSummary, String> {
+    ) -> Result<AutoDiscoveryRuntime, String> {
         self.spawn_discovery_runtime_with_native_scope_ids_and_transport(None, None).await
     }
 
     #[allow(dead_code)]
-    pub(crate) async fn spawn_discovery_runtime_with_native_scope_ids_and_transport(
+    pub async fn spawn_discovery_runtime_with_native_scope_ids_and_transport(
         &self,
         transport_runtime: Option<AutoInterfaceTransportRuntime>,
         runtime_status: Option<AutoRuntimeStatusHandle>,
-    ) -> Result<AutoDiscoveryRuntimeSummary, String> {
+    ) -> Result<AutoDiscoveryRuntime, String> {
         let (transport_bridge, transport_tx_channel) = match transport_runtime {
             Some(runtime) => {
                 let (bridge, tx_channel) = runtime.split();
@@ -338,6 +334,8 @@ impl AutoDaemonStartupPlan {
         let data_events_capacity = usize::max(data_socket_count * 8, 1);
         let (data_events_tx, mut data_events_rx) = tokio::sync::mpsc::channel(data_events_capacity);
         let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+        let shutdown_tx = Arc::new(shutdown_tx);
+        let supervisor_shutdown_tx = Arc::clone(&shutdown_tx);
         let discovery_listener_supervisor = Arc::new(tokio::sync::Mutex::new(
             AutoDiscoveryListenerSupervisor::new(
                 self.clone(),
@@ -393,8 +391,8 @@ impl AutoDaemonStartupPlan {
             shutdown_rx.clone(),
         );
         let peer_job_scheduler_count = 1;
-        tokio::spawn(async move {
-            let shutdown_tx = shutdown_tx;
+        let supervisor = tokio::spawn(async move {
+            let shutdown_tx = supervisor_shutdown_tx;
             let mut shutdown_sent = false;
             let mut discovery_events_open = true;
             let mut data_events_open = true;
@@ -443,29 +441,33 @@ impl AutoDaemonStartupPlan {
             discovery_listener_supervisor.lock().await.shutdown_all().await;
             data_listener_supervisor.lock().await.shutdown_all().await;
             if let Err(err) = link_local_reconciler_handle.await {
-                log::warn!("[daemon-auto] link-local reconciler stopped: {err}");
+                log::warn!("[auto] link-local reconciler stopped: {err}");
             }
             if let Err(err) = scheduler_handle.await {
-                log::warn!("[daemon-auto] repeat peer-announce scheduler stopped: {err}");
+                log::warn!("[auto] repeat peer-announce scheduler stopped: {err}");
             }
             if let Err(err) = peer_job_scheduler_handle.await {
-                log::warn!("[daemon-auto] peer-job scheduler stopped: {err}");
+                log::warn!("[auto] peer-job scheduler stopped: {err}");
             }
             if let Some(handle) = transport_tx_handle {
                 if let Err(err) = handle.await {
-                    log::warn!("[daemon-auto] peer data transport tx loop stopped: {err}");
+                    log::warn!("[auto] peer data transport tx loop stopped: {err}");
                 }
             }
         });
-        Ok(AutoDiscoveryRuntimeSummary {
-            bound_socket_count,
-            receive_loop_count,
-            initial_peer_announce_count,
-            repeat_peer_announce_scheduler_count,
-            peer_job_scheduler_count,
-            adopted_interface_reconciler_count: 1,
-            data_socket_count,
-            data_receive_loop_count,
+        Ok(AutoDiscoveryRuntime {
+            summary: AutoDiscoveryRuntimeSummary {
+                bound_socket_count,
+                receive_loop_count,
+                initial_peer_announce_count,
+                repeat_peer_announce_scheduler_count,
+                peer_job_scheduler_count,
+                adopted_interface_reconciler_count: 1,
+                data_socket_count,
+                data_receive_loop_count,
+            },
+            shutdown: shutdown_tx,
+            supervisor,
         })
     }
 

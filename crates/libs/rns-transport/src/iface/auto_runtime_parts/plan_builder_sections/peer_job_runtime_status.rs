@@ -1,6 +1,6 @@
 impl AutoRuntimeStatusHandle {
     #[allow(dead_code)]
-    pub(crate) fn record_carrier_events(&self, events: &[AutoMulticastCarrierEvent]) -> bool {
+    pub fn record_carrier_events(&self, events: &[AutoMulticastCarrierEvent]) -> bool {
         let mut guard = self.inner.lock().expect("auto runtime status mutex poisoned");
         if !guard.state.record_carrier_events(events) {
             return false;
@@ -9,7 +9,7 @@ impl AutoRuntimeStatusHandle {
         true
     }
 
-    pub(crate) fn record_peer_job_summary(&self, summary: &AutoPeerJobRuntimeSummary) -> bool {
+    pub fn record_peer_job_summary(&self, summary: &AutoPeerJobRuntimeSummary) -> bool {
         let mut guard = self.inner.lock().expect("auto runtime status mutex poisoned");
         let changed = guard.state.record_carrier_events(&summary.carrier_events);
         if changed {

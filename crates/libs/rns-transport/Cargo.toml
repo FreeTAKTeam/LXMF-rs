@@ -37,6 +37,9 @@ thiserror.workspace = true
 log.workspace = true
 tracing.workspace = true
 hex.workspace = true
+# Without link-local, get_if_addrs drops every fe80:: address and AutoInterface
+# has nothing to adopt.
+if-addrs = { version = "0.15.0", features = ["link-local"] }
 btleplug = { version = "0.12", optional = true }
 futures = { version = "0.3.31", optional = true }
 socket2 = { version = "0.5", features = ["all"] }

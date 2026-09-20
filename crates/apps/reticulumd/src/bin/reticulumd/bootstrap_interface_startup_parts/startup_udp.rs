@@ -119,7 +119,8 @@ async fn startup_auto(
                 ), Some(runtime_status.clone()))
                 .await
             {
-                Ok(summary) => {
+                Ok(runtime) => {
+                    let summary = runtime.summary;
                     with_interface_runtime_metadata(record, |runtime| {
                         runtime.insert(
                             "auto_discovery_runtime".to_string(),
