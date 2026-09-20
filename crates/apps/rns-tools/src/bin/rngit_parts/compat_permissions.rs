@@ -7,7 +7,7 @@ impl ReticulumGitNode {
     pub const PERM_RELEASE: u8 = 0x06;
     pub const PERM_INTERACT: u8 = 0x07;
     pub const PERM_PROPOSE: u8 = 0x08;
-    pub const PERM_ADMIN: u8 = 0x09;
+    pub const PERM_ADMIN: u8 = 0xfe;
 
     pub const TGT_NONE: u8 = 0x01;
     pub const TGT_ALL: u8 = 0x02;
@@ -35,10 +35,11 @@ impl ReticulumGitNode {
             "n" | "none" | "nobody" => PermissionTarget::None,
             "a" | "all" | "everyone" => PermissionTarget::All,
             _ => {
-                if target.len() != RNGIT_HASH_HEX_LENGTH {
-                    return None;
+                if target.len() == RNGIT_HASH_HEX_LENGTH {
+                    PermissionTarget::Identity(hex::decode(target).ok()?.try_into().ok()?)
+                } else {
+                    PermissionTarget::Identity(*self.identity_aliases.get(target)?)
                 }
-                PermissionTarget::Identity(hex::decode(target).ok()?.try_into().ok()?)
             }
         };
         Some((permission, target))
@@ -74,6 +75,21 @@ impl ReticulumGitNode {
             }
         }
         permissions
+    }
+
+    fn parse_permissions_strict(&self, allowed_input: &str) -> Result<PermissionSet, String> {
+        let mut permissions = PermissionSet::default();
+        for (line_number, line) in allowed_input.lines().enumerate() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            let Some((permission, target)) = self.parse_permission(line) else {
+                return Err(format!("invalid permission on line {}", line_number + 1));
+            };
+            permissions.add(permission, target);
+        }
+        Ok(permissions)
     }
 
     fn permission_allowed(
@@ -167,21 +183,22 @@ impl ReticulumGitNode {
         let Some(repository) = group.repositories.get(repository_name) else {
             return false;
         };
-        let allowed_path = repository
-            .path
-            .with_extension("work")
-            .join(format!("{doc_id}.allowed"));
-        let doc_permissions = fs::read_to_string(allowed_path)
-            .ok()
-            .map(|value| self.permissions_from_allowed_input(Some(&value)))
-            .unwrap_or_default();
+        let doc_path = companion_path(&repository.path, "work").join(doc_id.to_string());
+        let doc_permissions = match self.read_companion_permissions(&doc_path) {
+            Ok(permissions) => permissions,
+            Err(_) => return false,
+        };
         let Some(doc_list) = doc_permissions.list(permission) else {
             return false;
         };
         if doc_list.deny {
             return false;
         }
-        if doc_list.all || doc_list.identities.contains(remote_identity) {
+        if doc_list.all
+            || doc_list.identities.contains(remote_identity)
+            || doc_permissions.admin.all
+            || doc_permissions.admin.identities.contains(remote_identity)
+        {
             return true;
         }
         self.resolve_permission(remote_identity, group_name, repository_name, permission)

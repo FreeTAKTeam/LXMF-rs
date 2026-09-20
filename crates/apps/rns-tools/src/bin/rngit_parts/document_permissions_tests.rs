@@ -34,7 +34,11 @@ fn document_permissions_restrict_work_item_operations_and_listing() {
     assert_eq!(listed.first().copied(), Some(ReticulumGitNode::RES_OK));
     let listed = rmpv::decode::read_value(&mut std::io::Cursor::new(&listed[1..]))
         .expect("decode work listing");
-    assert_eq!(listed.as_array().map(Vec::len), Some(0));
+    let active = listed
+        .as_map()
+        .and_then(|map| map_value(map, &rmpv::Value::String("active".into())))
+        .expect("active work scope");
+    assert_eq!(active.as_array().map(Vec::len), Some(0));
 
     assert_eq!(
         client.work_view(remote, 1, "active").expect("view response")[0],

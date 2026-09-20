@@ -12,12 +12,26 @@ impl ReticulumGitNode {
         Ok(())
     }
 
-    fn permission_content(path: &Path) -> String {
-        fs::read_to_string(path).unwrap_or_default()
+    fn permission_content(&self, path: &Path) -> Result<String, String> {
+        let sidecar = permission_sidecar(path).map_err(|error| error.to_string())?;
+        let metadata = match fs::metadata(&sidecar) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(String::new())
+            }
+            Err(error) => return Err(error.to_string()),
+        };
+        if is_executable_file(&metadata) {
+            return Err("Executable permission resolvers are node-owned".to_string());
+        }
+        fs::read_to_string(sidecar).map_err(|error| error.to_string())
     }
 
-    fn permission_response(path: &Path) -> Vec<u8> {
-        let content = Self::permission_content(path);
+    fn permission_response(&self, path: &Path) -> Vec<u8> {
+        let content = match self.permission_content(path) {
+            Ok(content) => content,
+            Err(error) => return response(Self::RES_REMOTE_FAIL, error, None),
+        };
         response(Self::RES_OK, "", Some(&rmpv::Value::Map(vec![(
             rmpv::Value::String("content".into()),
             rmpv::Value::String(content.into()),
@@ -42,9 +56,9 @@ impl ReticulumGitNode {
                 if !self.resolve_group_permission(&remote, &group, Self::PERM_ADMIN) {
                     return response(Self::RES_DISALLOWED, "Not allowed", None);
                 }
-                let allowed_path = state.path.with_extension("allowed");
+                let allowed_path = state.path.clone();
                 match step.as_str() {
-                    "get" => Self::permission_response(&allowed_path),
+                    "get" => self.permission_response(&allowed_path),
                     "set" => self.set_permission_file(&allowed_path, request),
                     _ => response(Self::RES_INVALID_REQ, "Invalid step", None),
                 }
@@ -62,9 +76,9 @@ impl ReticulumGitNode {
                 if !self.resolve_permission(&remote, &group, &repository, Self::PERM_ADMIN) {
                     return response(Self::RES_DISALLOWED, "Not allowed", None);
                 }
-                let allowed_path = state.path.with_extension("allowed");
+                let allowed_path = state.path.clone();
                 match step.as_str() {
-                    "get" => Self::permission_response(&allowed_path),
+                    "get" => self.permission_response(&allowed_path),
                     "set" => self.set_permission_file(&allowed_path, request),
                     _ => response(Self::RES_INVALID_REQ, "Invalid step", None),
                 }
@@ -82,20 +96,53 @@ impl ReticulumGitNode {
         if let Err(error) = self.validate_allowed_content(&content) {
             return response(Self::RES_INVALID_REQ, error, None);
         }
-        let permissions = self.permissions_from_allowed_input(Some(&content));
-        let temporary = path.with_extension("allowed.tmp");
-        if let Err(error) = fs::write(&temporary, &content) {
+        let sidecar = match permission_sidecar(path) {
+            Ok(sidecar) => sidecar,
+            Err(error) => return response(Self::RES_REMOTE_FAIL, error.to_string(), None),
+        };
+        match fs::metadata(&sidecar) {
+            Ok(metadata) if is_executable_file(&metadata) => {
+                return response(
+                    Self::RES_DISALLOWED,
+                    "Executable permission resolvers are node-owned",
+                    None,
+                )
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return response(Self::RES_REMOTE_FAIL, error.to_string(), None),
+        }
+        let permissions = match self.parse_permissions_strict(&content) {
+            Ok(permissions) => permissions,
+            Err(error) => return response(Self::RES_INVALID_REQ, error, None),
+        };
+        let Some(parent) = sidecar.parent() else {
+            return response(Self::RES_REMOTE_FAIL, "Permission path has no parent", None);
+        };
+        let temporary = match tempfile::NamedTempFile::new_in(parent) {
+            Ok(temporary) => temporary,
+            Err(error) => return response(Self::RES_REMOTE_FAIL, error.to_string(), None),
+        };
+        if let Err(error) = fs::write(temporary.path(), &content) {
             return response(Self::RES_REMOTE_FAIL, error.to_string(), None);
         }
-        if let Err(error) = fs::rename(&temporary, path) {
+        if let Err(error) = temporary.as_file().sync_all() {
+            return response(Self::RES_REMOTE_FAIL, error.to_string(), None);
+        }
+        if let Err(error) = fs::rename(temporary.path(), &sidecar) {
             return response(Self::RES_REMOTE_FAIL, error.to_string(), None);
         }
         for group in self.groups.values_mut() {
-            if group.path.with_extension("allowed") == path {
-                group.permissions = permissions.clone();
+            if companion_path(&group.path, "allowed") == sidecar {
+                let configured = self.configured_permissions.get(&group.name).cloned();
+                let mut effective = permissions.clone();
+                if let Some(configured) = configured {
+                    effective.merge(&configured);
+                }
+                group.permissions = effective;
             }
             for repository in group.repositories.values_mut() {
-                if repository.path.with_extension("allowed") == path {
+                if companion_path(&repository.path, "allowed") == sidecar {
                     repository.permissions = permissions.clone();
                 }
             }

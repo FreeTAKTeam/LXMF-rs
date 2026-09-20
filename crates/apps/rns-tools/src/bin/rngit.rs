@@ -1,9 +1,9 @@
 use clap::{Parser, Subcommand};
 use std::collections::{BTreeMap, BTreeSet};
-use std::io;
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitStatus};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::process::{Command, ExitStatus, Stdio};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Parser)]
 #[command(name = "rngit", about = "Run local Git workflows prepared for Reticulum file transport")]
@@ -149,7 +149,7 @@ include!("rngit_parts/compat.rs");
 #[cfg(test)]
 mod tests {
     use super::{
-        escape_for_stdout, san_ref, san_refs, san_sha, PermissionTarget, RemoteGroup,
+        escape_for_stdout, map_value, san_ref, san_refs, san_sha, PermissionTarget, RemoteGroup,
         RemoteRepository, RepositoryGroup, RepositoryRecord, ReticulumGitClient, ReticulumGitNode,
     };
     use std::collections::BTreeMap;
@@ -213,7 +213,8 @@ mod tests {
 
     #[test]
     fn permission_and_path_parsing_match_pinned_rngit_server() {
-        let node = ReticulumGitNode::default();
+        let mut node = ReticulumGitNode::default();
+        node.set_identity_alias("owner", [0xabu8; 16]);
         assert_eq!(
             node.parse_permission("rw:all"),
             Some((ReticulumGitNode::PERM_READWRITE, PermissionTarget::All))
@@ -233,6 +234,10 @@ mod tests {
             ))
         );
         assert!(node.parse_permission("read:bad").is_none());
+        assert_eq!(
+            node.parse_permission("read:owner"),
+            Some((ReticulumGitNode::PERM_READ, PermissionTarget::Identity([0xabu8; 16])))
+        );
         assert_eq!(
             node.parse_request_repository_path("group/repo"),
             Some(("group".to_string(), "repo".to_string()))
@@ -337,6 +342,8 @@ mod tests {
         );
         assert!(!node.resolve_permission(&identity, "group", "repo", ReticulumGitNode::PERM_WRITE));
     }
+
+    include!("rngit_parts/issue_612_tests.rs");
 
     #[test]
     fn statistics_hooks_record_python_rngit_event_buckets() {

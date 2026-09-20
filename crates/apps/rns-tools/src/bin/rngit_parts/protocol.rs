@@ -347,7 +347,7 @@ impl ReticulumGitNode {
             return response(Self::RES_REMOTE_FAIL, output.stderr, None);
         }
         let allowed = format!("read:all\nwrite:{}\n", hex::encode(remote));
-        if let Err(error) = fs::write(repository_path.with_extension("allowed"), allowed) {
+        if let Err(error) = fs::write(companion_path(&repository_path, "allowed"), allowed) {
             return response(Self::RES_REMOTE_FAIL, error.to_string(), None);
         }
         if let Err(error) = self.load_repository(&group_name, &repository_path) {
@@ -427,7 +427,7 @@ impl ReticulumGitNode {
     }
 
     pub fn releases_list_data(&self, repository_path: &Path) -> Vec<u8> {
-        let releases_path = repository_path.with_extension("releases");
+        let releases_path = companion_path(repository_path, "releases");
         let mut releases = Vec::new();
         let mut latest = None;
         if let Ok(entries) = fs::read_dir(&releases_path) {
@@ -483,7 +483,10 @@ impl ReticulumGitNode {
     }
 }
 
+include!("work_storage.rs");
 include!("work_service.rs");
+include!("work_documents.rs");
+include!("work_mutations.rs");
 include!("permissions_service.rs");
 include!("release_service.rs");
 include!("stats_service.rs");
