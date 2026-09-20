@@ -115,6 +115,15 @@ utility option/behavior matrix, rngit network workflows, restart/fault
 transcripts, and explicit no-compression Resource control remain open or owned
 by #612/#613.
 
+The #612 implementation slice now has committed local evidence in
+[`evidence/612-rngit.md`](../goals/reticulum-reference-parity-605/evidence/612-rngit.md):
+bounded node-owned permission resolvers, configured-access merging, canonical
+companion paths, atomic permission refresh, production work-item handlers,
+Python-shaped MessagePack persistence, and a Python-produced binary metadata
+fixture. The row remains partial and unverified because live Python↔Rust
+request exchange, Reticulum public-key signature validation, restart/concurrent
+writer/fault transcripts, and end-to-end rngit network workflows remain open.
+
 ## Acceptance gate
 
 This candidate is not release-complete until the contract coverage is complete,
