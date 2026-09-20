@@ -1657,11 +1657,17 @@
         "reference_paths": ["RNS/Resource.py", "RNS/Link.py", "RNS/Transport.py"],
         "rust_surface": ["crates/libs/rns-transport::resource"],
         "implementation": "partial",
-        "evidence": ["planned"],
+        "evidence": ["unit", "pinned-python", "cross-implementation", "planned"],
         "evidence_status": "unverified",
-        "test_command": "cargo test -p reticulum-rs-transport resource",
-        "evidence_artifact": "target/issue-605/evidence/610-resource.json",
-        "owner_issue": 610
+        "test_command": [
+          "cargo test -p reticulum-rs-transport --all-features --lib",
+          "cargo clippy -p reticulum-rs-transport --lib --all-features --no-deps -- -D warnings",
+          "RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test --release -p reticulumd --test python_channel_interop rust_to_python_resource_size_matrix_roundtrip -- --ignored --nocapture",
+          "RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test --release -p reticulumd --test python_channel_interop python_to_rust_resource_size_matrix_roundtrip -- --ignored --nocapture"
+        ],
+        "evidence_artifact": "docs/goals/reticulum-reference-parity-605/evidence/610-resource.md",
+        "owner_issue": 610,
+        "notes": "Deterministic collision regeneration, collision-guard/hashmap/window unit coverage, link-close terminal event publication, and pinned Python release-profile empty-to-50 MiB checksums are implemented. Loss/duplication/reordering/cancellation fault injection, peak-RSS capture, and any Rust public reader adapter remain unverified; the debug 50 MiB run is slower than the release profile."
       },
       {
         "id": "reticulum-605-611-utility-network-workflows",

@@ -96,6 +96,15 @@ The row remains unverified until pinned Python↔Rust shared-instance and
 multi-hop production traces compare ordering, suppression, persistence, and
 close/reconnect behavior.
 
+The #610 implementation slice now has committed local evidence in
+[`evidence/610-resource.md`](../goals/reticulum-reference-parity-605/evidence/610-resource.md):
+deterministic collision regeneration, link-close terminal resource events, and
+bidirectional pinned-Python release-profile transfers covering empty, boundary,
+split, and 50 MiB payloads with exact SHA-256 checks. The row remains partial
+and unverified because targeted loss/duplication/reordering/cancellation fault
+injection, peak-memory capture, and any required Rust reader/file adapter are
+still open.
+
 ## Acceptance gate
 
 This candidate is not release-complete until the contract coverage is complete,

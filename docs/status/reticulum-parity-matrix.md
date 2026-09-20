@@ -1,6 +1,6 @@
 # Reticulum Parity Matrix
 
-Last reassessed: 2026-08-23
+Last reassessed: 2026-09-20
 
 This is the maintained row-level status for Python Reticulum compatibility.
 Repository-level posture and execution order live in
@@ -47,8 +47,12 @@ unmapped entries; the one not-applicable entry is the provenance-backed absent
 The historical v0.10.0 release record retains its own release-boundary inventory.
 Current development `main` supersedes it with this 1,857/0/1 software
 inventory. The Rust resource sender enforces the Python
-`receiver_min_consecutive_height` serving window; collision-list regeneration
-and cross-implementation transfer evidence remain narrower follow-up concerns.
+`receiver_min_consecutive_height` serving window, deterministically regenerates
+collision-free map hashes, and has pinned Python release-profile transfer
+evidence from empty payloads through 50 MiB in both directions. The forward
+#610 row remains partial because loss/duplication/reordering/cancellation
+fault-injection coverage, peak-memory measurement, and a Rust reader/file
+adapter are not yet proven.
 No hardware, public-network, or third-party-client claim is inferred from the
 software inventory.
 
@@ -91,7 +95,7 @@ evidence fields, and acceptance boundary.
 | `RNS/Transport.py` | `crates/libs/rns-transport`, `crates/apps/reticulumd` | complete | unit, simulated, pinned-python | Path and announce handling, bounded four-class priority ingress, early filtering, protocol accounting, same-destination request batching, gravity-aware replacement, dynamic path rebalancing, boundary path requests, path replacement/state/await semantics, routed links/resources/receipts/tunnels, next-hop formulas, interface lifecycle, discovery and blackhole state, persistence, runtime jobs, graceful shutdown, RNS 1.5.2 shared-instance dataplane control, queue defaults, IFAC helpers, profiling results, `announces_from_internal`/`announces_to_internal` policy propagation, and focused scoped-request, pacing, duplicate-suppression, MTU, restore/restart, transport-disabled, announce-table-admission, and shared-transport receipt-handler evidence. | No generated 1.5.2 callable software gap remains; multi-device, public-network, and broader scenario evidence remains separate. Python's local-client announce timing (immediate single retransmit) is not implemented, and the shared-instance condition reads the receiving interface rather than Python's parent-interface `is_local_client_interface`. |
 | `RNS/Link.py` | `crates/libs/rns-transport` | complete | unit, pinned-python | Establishment, `Link::request_payload` and `Link::identify_payload` construction, proof validation, bounded request/response correlation, bound-interface enforcement for data/channel fan-out, RTT-derived liveness, protocol close, cleanup, and the focused dynamic path-rebalancing slice. | No generated callable software gap remains; cross-implementation and external-client evidence is separate. |
 | `RNS/Link.py` | `crates/libs/rns-transport` | complete | unit, pinned-python | Establishment, proof validation, bounded request/response correlation, bound-interface enforcement for data/channel fan-out, RTT-derived liveness, protocol close, cleanup, and the focused dynamic path-rebalancing slice. | No generated callable software gap remains; cross-implementation and external-client evidence is separate. |
-| `RNS/Resource.py` | `crates/libs/rns-transport` | complete | unit, simulated, pinned-python | Bounded receive allocation, advertisement validation, retries, receiver-minimum collision-guard serving window, window-local hashmap exhaustion gating, bz2 compression, adaptive fragment scheduling, timeout/failure events, cancellation, cleanup, split-resource sequencing, ordered reassembly, per-segment metadata, and whole-resource completion. | Serving-window software contract is complete; collision-list regeneration and cross-implementation transfer evidence are narrower follow-ups. |
+| `RNS/Resource.py` | `crates/libs/rns-transport` | complete | unit, simulated, pinned-python | Bounded receive allocation, advertisement validation, retries, receiver-minimum collision-guard serving window, window-local hashmap exhaustion gating, deterministic collision-list regeneration, bz2 compression, adaptive fragment scheduling, timeout/failure events, cancellation, cleanup, split-resource sequencing, ordered reassembly, per-segment metadata, and whole-resource completion. | The active 1.5.2 baseline has its software contract; forward #610 remains partial pending targeted loss/duplication/reordering/cancellation fault injection, peak-memory measurement, and any required Rust reader/file adapter. |
 | `RNS/Channel.py` | `crates/libs/rns-transport` | complete | unit, pinned-python | Channel packet handling, retry scheduling, negotiated full-link MDU, buffering, ordered receive delivery, callback ordering/short-circuit/panic containment, delivery-on-proof, timeout retry, exhaustion cleanup, and live Rust/Python channel sequence tests. | No confirmed channel parity blocker. |
 | `RNS/Buffer.py` | `crates/libs/rns-core`, `crates/libs/rns-transport` | complete | unit, pinned-python | Packet buffers and stream readers/writers use the negotiated Channel MDU minus the two-byte stream header while retaining compression bounds. | No confirmed parity blocker. |
 | `RNS/Interfaces/*` | `crates/libs/rns-transport`, `crates/apps/reticulumd` | complete | unit, simulated, prepared-host, pinned-python, hardware-unverified | Configuration, framing, startup, reconnect, runtime status/mutation, management, teardown, interface gravity, live IFAC flag-policy accounting, Backbone child traffic/limiter aggregation and blocked-IP statistics, loopback carriers, fake-SAM, PTY/fake-TCP, deterministic Meshtastic faults, BLE mocks, device-management state machines, per-interface `announces_from_internal`/`announces_to_internal` policy carried through startup and hot-apply onto virtual children, and pinned-Python interface probes. | Raw Reticulum IFAC cryptographic authentication is not implemented and IFAC daemon configuration fails closed; physical devices/public networks remain `hardware-unverified`. |
