@@ -7,7 +7,7 @@ use rns_transport::channel_buffer::RawChannelReader;
 use rns_transport::destination::link::{Link, LinkEvent, LinkEventData, LinkStatus};
 use rns_transport::destination::{DestinationDesc, SingleInputDestination};
 use rns_transport::hash::{AddressHash, Hash};
-use rns_transport::resource::{ResourceEvent, ResourceEventKind};
+use rns_transport::resource::{ResourceComplete, ResourceEvent, ResourceEventKind};
 use rns_transport::transport::{ReceivedData, Transport};
 use tokio::time::{sleep, timeout, Instant};
 
@@ -112,6 +112,19 @@ pub(super) async fn wait_for_resource_ack(
     .await;
 }
 
+pub(super) async fn wait_for_resource_digest_ack(
+    seen: &Arc<StdMutex<Vec<(String, String)>>>,
+    expected_size: usize,
+    expected_digest: &str,
+    duration: Duration,
+) {
+    let expected = format!("resource-sha256:{expected_size}:{expected_digest}");
+    wait_for_seen_tuple(seen, duration, "Python resource digest acknowledgement", |id, data| {
+        id == "rust-resource" && data == expected
+    })
+    .await;
+}
+
 pub(super) async fn wait_for_identify_ack(
     seen: &Arc<StdMutex<Vec<(String, String)>>>,
     duration: Duration,
@@ -205,6 +218,26 @@ pub(super) async fn wait_for_inbound_resource_complete(
     })
     .await
     .expect("timed out waiting for inbound resource completion");
+}
+
+pub(super) async fn wait_for_inbound_resource_data(
+    events: &mut tokio::sync::broadcast::Receiver<ResourceEvent>,
+    link_id: AddressHash,
+    duration: Duration,
+) -> ResourceComplete {
+    timeout(duration, async {
+        loop {
+            let event = events.recv().await.expect("resource event");
+            if event.link_id != link_id {
+                continue;
+            }
+            if let ResourceEventKind::Complete(complete) = event.kind {
+                return complete;
+            }
+        }
+    })
+    .await
+    .expect("timed out waiting for inbound resource completion")
 }
 
 pub(super) async fn wait_for_inbound_resource_data_or_child_exit(

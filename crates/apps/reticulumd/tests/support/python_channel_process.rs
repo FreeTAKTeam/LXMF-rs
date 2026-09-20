@@ -39,6 +39,27 @@ impl PythonChannelInteropPaths {
             config_dir,
             destination_hash,
             payload_kind,
+            None,
+            8.0,
+        )
+    }
+
+    pub(super) fn spawn_resource_client(
+        &self,
+        config_dir: &Path,
+        destination_hash: &str,
+        resource_size: usize,
+        timeout: f64,
+    ) -> Child {
+        spawn_python_channel_client(
+            &self.python_bin,
+            &self.reticulum_py_repo,
+            &self.helper,
+            config_dir,
+            destination_hash,
+            "resource",
+            Some(resource_size),
+            timeout,
         )
     }
 }
@@ -193,8 +214,11 @@ pub(super) fn spawn_python_channel_client(
     config_dir: &Path,
     destination_hash: &str,
     payload_kind: &str,
+    resource_size: Option<usize>,
+    timeout: f64,
 ) -> Child {
-    Command::new(python_bin)
+    let mut command = Command::new(python_bin);
+    command
         .arg("-u")
         .arg(helper)
         .arg("--mode")
@@ -209,6 +233,12 @@ pub(super) fn spawn_python_channel_client(
         .arg("python-1")
         .arg("--message-data")
         .arg("hello-rust")
+        .arg("--timeout")
+        .arg(timeout.to_string());
+    if let Some(resource_size) = resource_size {
+        command.arg("--resource-size").arg(resource_size.to_string());
+    }
+    command
         .env("PYTHONPATH", reticulum_py_repo)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

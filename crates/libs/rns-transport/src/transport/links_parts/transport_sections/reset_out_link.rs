@@ -75,7 +75,10 @@ impl Transport {
             link.close();
             link_id
         };
-        self.handler.lock().await.resource_manager.remove_link_state(link_id);
+        let mut handler = self.handler.lock().await;
+        handler.resource_manager.remove_link_state(link_id);
+        let events = handler.resource_manager.drain_events();
+        super::resource_wire::publish_resource_events(&handler, events);
     }
 
     /// The correct way to send any packet addressed to an already-open

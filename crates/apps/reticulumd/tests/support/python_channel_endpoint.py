@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 
 import argparse
+import hashlib
 import json
+import random
 import tempfile
 import sys
 import threading
@@ -102,17 +104,24 @@ class ChannelEndpoint:
                 if resource.status != RNS.Resource.COMPLETE:
                     return
                 data = resource.data.read()
+                digest = hashlib.sha256(data).hexdigest()
+                metadata = resource.metadata
                 with self.lock:
                     self.received.append(
                         {
-                            "data": data.decode("utf-8"),
-                            "metadata": resource.metadata,
+                            "data_size": len(data),
+                            "sha256": digest,
+                            "metadata": metadata,
                         }
                     )
+                if metadata is not None and len(data) < 1024 * 1024:
+                    reply_data = f"resource:{data.decode('utf-8')}:{metadata}"
+                else:
+                    reply_data = f"resource-sha256:{len(data)}:{digest}"
                 link.get_channel().send(
                     MessageTest(
                         "rust-resource",
-                        f"resource:{data.decode('utf-8')}:{resource.metadata}",
+                        reply_data,
                     )
                 )
 
@@ -194,6 +203,7 @@ class ChannelClient:
         destination_hash_hex: str,
         message_id: str,
         message_data: str,
+        resource_size,
         send_delay: float,
         timeout: float,
     ) -> int:
@@ -305,12 +315,25 @@ class ChannelClient:
             done = threading.Event()
             result = {}
 
+            if resource_size is None:
+                resource_data = message_data.encode("utf-8")
+                resource_file = None
+            elif resource_size == 0:
+                resource_data = b""
+                resource_file = None
+            else:
+                resource_data = random.Random(605).randbytes(resource_size)
+                resource_file = tempfile.TemporaryFile(mode="w+b")
+                resource_file.write(resource_data)
+                resource_file.flush()
+                resource_file.seek(0)
+
             def resource_concluded(resource) -> None:
                 result["status"] = resource.status
                 done.set()
 
             RNS.Resource(
-                message_data.encode("utf-8"),
+                resource_file if resource_file is not None else resource_data,
                 active_link,
                 metadata="python-meta",
                 callback=resource_concluded,
@@ -322,7 +345,16 @@ class ChannelClient:
                     return 1
                 time.sleep(0.05)
             if result.get("status") == RNS.Resource.COMPLETE:
-                print(json.dumps({"resource": "complete"}), flush=True)
+                print(
+                    json.dumps(
+                        {
+                            "resource": "complete",
+                            "size": len(resource_data),
+                            "sha256": hashlib.sha256(resource_data).hexdigest(),
+                        }
+                    ),
+                    flush=True,
+                )
                 return 0
             print(f"python_channel_client: resource failed: {result}", file=sys.stderr, flush=True)
             return 1
@@ -444,6 +476,7 @@ def main() -> int:
     parser.add_argument("--destination-hash")
     parser.add_argument("--message-id", default="python-1")
     parser.add_argument("--message-data", default="hello-rust")
+    parser.add_argument("--resource-size", type=int)
     parser.add_argument("--send-delay", type=float, default=0.3)
     parser.add_argument("--timeout", type=float, default=8.0)
     args = parser.parse_args()
@@ -456,6 +489,7 @@ def main() -> int:
             args.destination_hash,
             args.message_id,
             args.message_data,
+            args.resource_size,
             args.send_delay,
             args.timeout,
         )
