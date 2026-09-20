@@ -131,4 +131,23 @@ mod rns_1_5_4 {
         assert!(error.to_string().contains("legacy permission"));
     }
 
+    #[test]
+    fn permission_directories_are_not_treated_as_legacy_files() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let group = temp.path().join("group.allowed");
+        fs::create_dir(&group).expect("group directory");
+        assert_eq!(
+            crate::permission_sidecar(&group).expect("directory name should be valid"),
+            temp.path().join("group.allowed.allowed")
+        );
+
+        let repository = temp.path().join("repo.git");
+        fs::create_dir(&repository).expect("repository directory");
+        fs::create_dir(temp.path().join("repo.allowed")).expect("sibling directory");
+        assert_eq!(
+            crate::permission_sidecar(&repository).expect("sibling directory should be ignored"),
+            temp.path().join("repo.git.allowed")
+        );
+    }
+
 }
