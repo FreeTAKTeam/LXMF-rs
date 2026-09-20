@@ -1673,14 +1673,19 @@
         "id": "reticulum-605-611-utility-network-workflows",
         "kind": "behavioral-requirement",
         "reference_project": "reticulum",
-        "reference_paths": ["RNS/Utilities/rncp.py", "RNS/Utilities/rnpath.py", "RNS/Utilities/rnprobe.py", "RNS/Utilities/rnsd.py"],
+        "reference_paths": ["RNS/Utilities/rncp.py", "RNS/Utilities/rnpath.py", "RNS/Utilities/rnprobe.py", "RNS/Utilities/rnsd.py", "RNS/Utilities/rnid.py", "RNS/Utilities/rnir.py", "RNS/Utilities/rnodeconf.py", "RNS/Utilities/rnpkg.py", "RNS/Utilities/rnsh.py", "RNS/Utilities/rnx.py", "RNS/Utilities/rngit/"],
         "rust_surface": ["crates/apps/rns-tools", "tools/interop"],
         "implementation": "partial",
-        "evidence": ["planned"],
+        "evidence": ["unit", "simulated", "cross-implementation", "planned"],
         "evidence_status": "unverified",
-        "test_command": "cargo test -p rns-tools",
-        "evidence_artifact": "target/issue-605/evidence/611-utilities.json",
-        "owner_issue": 611
+        "test_command": [
+          "cargo test -p rns-tools --all-features",
+          "cargo clippy -p rns-tools --bin rncp --test rncp_process --all-features --no-deps -- -D warnings",
+          "cargo test -p rns-tools --test rncp_process --all-features -- --nocapture"
+        ],
+        "evidence_artifact": "docs/goals/reticulum-reference-parity-605/evidence/611-utilities.md",
+        "owner_issue": 611,
+        "notes": "The native rncp network slice now performs TCP discovery, Link establishment and identification, authenticated send/fetch Resource transfers, binary-safe metadata, jail/save side effects, adaptive timeouts, and terminal failures across two independent processes. Python-client/Python-service roles, the complete utility option matrix, rngit network workflows, restart/cancellation/disk-fault transcripts, and no-compress wire control remain unverified or owned by #612/#613."
       },
       {
         "id": "reticulum-605-612-rngit-permission-work-storage",

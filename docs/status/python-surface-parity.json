@@ -146,13 +146,17 @@
       },
       {
         "evidence": [
+          "unit",
+          "simulated",
+          "cross-implementation",
           "planned"
         ],
-        "evidence_artifact": "target/issue-605/evidence/611-utilities.json",
+        "evidence_artifact": "docs/goals/reticulum-reference-parity-605/evidence/611-utilities.md",
         "evidence_status": "unverified",
         "id": "reticulum-605-611-utility-network-workflows",
         "implementation": "partial",
         "kind": "behavioral-requirement",
+        "notes": "The native rncp network slice now performs TCP discovery, Link establishment and identification, authenticated send/fetch Resource transfers, binary-safe metadata, jail/save side effects, adaptive timeouts, and terminal failures across two independent processes. Python-client/Python-service roles, the complete utility option matrix, rngit network workflows, restart/cancellation/disk-fault transcripts, and no-compress wire control remain unverified or owned by #612/#613.",
         "owner_issue": 611,
         "reference": {
           "revision": "99de23c040d507e3fefca19e87b182302902725d",
@@ -162,14 +166,25 @@
           "RNS/Utilities/rncp.py",
           "RNS/Utilities/rnpath.py",
           "RNS/Utilities/rnprobe.py",
-          "RNS/Utilities/rnsd.py"
+          "RNS/Utilities/rnsd.py",
+          "RNS/Utilities/rnid.py",
+          "RNS/Utilities/rnir.py",
+          "RNS/Utilities/rnodeconf.py",
+          "RNS/Utilities/rnpkg.py",
+          "RNS/Utilities/rnsh.py",
+          "RNS/Utilities/rnx.py",
+          "RNS/Utilities/rngit/"
         ],
         "reference_project": "reticulum",
         "rust_surface": [
           "crates/apps/rns-tools",
           "tools/interop"
         ],
-        "test_command": "cargo test -p rns-tools"
+        "test_command": [
+          "cargo test -p rns-tools --all-features",
+          "cargo clippy -p rns-tools --bin rncp --test rncp_process --all-features --no-deps -- -D warnings",
+          "cargo test -p rns-tools --test rncp_process --all-features -- --nocapture"
+        ]
       },
       {
         "evidence": [
