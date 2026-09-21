@@ -122,14 +122,16 @@ utility option/behavior matrix, rngit network workflows, restart/fault
 transcripts, and explicit no-compression Resource control remain open or owned
 by #612/#613.
 
-The #612 implementation slice now has committed local evidence in
+The #612 implementation slice now has committed evidence in
 [`evidence/612-rngit.md`](../goals/reticulum-reference-parity-605/evidence/612-rngit.md):
 bounded node-owned permission resolvers, configured-access merging, canonical
 companion paths, atomic permission refresh, production work-item handlers,
 Python-shaped MessagePack persistence, and a Python-produced binary metadata
-fixture. The row remains partial and unverified because live Python↔Rust
-request exchange, Reticulum public-key signature validation, restart/concurrent
-writer/fault transcripts, and end-to-end rngit network workflows remain open.
+fixture. A pinned Python Link request now reaches the production
+`git.repositories` service and returns `/git/list` with the expected main ref.
+The row remains partial and unverified because the remaining Git/work request
+matrix, Reticulum public-key signature validation, restart/concurrent-writer/
+fault transcripts, and full end-to-end rngit network workflows remain open.
 
 The #613 implementation slice now has committed evidence in
 [`evidence/613-rngit-pages.md`](../goals/reticulum-reference-parity-605/evidence/613-rngit-pages.md):
@@ -139,9 +141,11 @@ bounded WebP conversion with raw fallback, link-scoped temporary cleanup, and
 explicit no-compression Resource responses. A new pinned Python/NomadNet
 client trace establishes and identifies a real TCP Reticulum Link, fetches a
 repository page, and downloads raw media with checked metadata, size, and
-SHA-256. The row remains partial and unverified because encoder-success,
-complete reference rendering, every page/file/error case, restart/fault
-cleanup, and end-to-end rngit Git/work network workflows remain open.
+SHA-256. The separate `git.repositories` list trace does not complete the
+page issue's broader Git/work acceptance. The row remains partial and
+unverified because encoder-success, complete reference rendering, every
+page/file/error case, restart/fault cleanup, and end-to-end rngit Git/work
+network workflows remain open.
 
 The #614 implementation slice now has committed local evidence in
 [`evidence/614-native-interfaces.md`](../goals/reticulum-reference-parity-605/evidence/614-native-interfaces.md):
