@@ -26,6 +26,32 @@ Python fetch-client completion callback is asserted by `e6f71d21`.
 - No second daemon or utility protocol was introduced. The existing local copy
   mode remains available when no network flags are supplied.
 
+## Frozen utility option/behavior matrix
+
+The matrix below is derived from the frozen Python entry-point help and source
+at `99de23c040d507e3fefca19e87b182302902725d`, then compared with the Rust
+entry points in the parity branch. “Partial” means that the Rust binary has a
+useful product path but does not yet implement the reference workflow or
+option family; it is not a callable-surface completion claim.
+
+| Frozen entry point | Reference behavior families | Rust implementation and evidence | Current classification |
+| --- | --- | --- | --- |
+| `rncp` | Local copy; authenticated listener/send/fetch; jail/save/overwrite; compression; identity allow-list; progress, timeout, cancellation, and file failure status | Native TCP/Link/Resource send/fetch plus isolated Rust processes and pinned-Python send/fetch roles in this record | partial / bounded network slice evidenced |
+| `rnpath` | Path table/rates; discovery; path and announce eviction; transport-via eviction; blackhole list/add/remove; remote management identity and timeout; JSON/human output | `rnpath-rs`/`rnpath` discovery and daemon-backed rate/eviction/blackhole subset; `rnpath_cli` and daemon RPC tests | partial / local daemon management subset evidenced |
+| `rnprobe` | Resolve full destination name and hash, send probe payloads of configurable size/count, wait between probes, report RTT/hops/loss and status | Rust wrapper currently delegates to path availability and supports only destination, timeout, RPC, and JSON | partial / probe packet workflow missing |
+| `rnsd` | Configured daemon launch, service/interactive modes, verbosity, example configuration | Rust compatibility shim resolves and delegates to `reticulumd`; delegation/help/status tests exist | partial / daemon delegation evidenced |
+| `rnid` | Generate/import/export identities; announce/hash; sign/validate; encrypt/decrypt; metadata; optional network identity request and encoding modes | Rust `rnid` generates and displays persisted private identities with overwrite protection | partial / local identity subset evidenced |
+| `rnir` | Resolver configuration, verbosity, example configuration, and resolver runtime integration | Rust accepts global/config/example options but does not expose a resolver network workflow | partial / configuration-only |
+| `rnodeconf` | Serial RNode information, firmware/bootstrap/update, EEPROM, Wi-Fi/Bluetooth/display/radio management, signing/trust operations | Rust `rnodeconf-rs` exposes daemon-backed management commands and mock-RPC coverage; physical serial/firmware rows are separate | partial / software management evidenced; hardware-unverified |
+| `rnpkg` | Package-manager configuration and package workflow entry point | Rust exposes global/example-config options only, matching the currently shipped no-subcommand surface | partial / configuration-only |
+| `rnsh` | Authenticated remote shell listener/initiator; identity/allow-list/no-auth; command policy; stdin/stdout/stderr streams; timeout and mirrored exit status | Rust `rnsh` is a local root-scoped allow-list executor; no Reticulum listener or remote stream protocol is exposed | partial / local safety subset only |
+| `rnx` | Authenticated Reticulum remote execution, listener/initiator, interactive and stream options, identity and timeout controls | Rust `rnx` is a production interop/diagnostic harness with mesh, resource, BLE, TCP, and path scenarios; its scenarios are not a drop-in `rnsh` endpoint | partial / harness workflows evidenced, reference remote shell remains open |
+| `rngit` | Reticulum Git client/server, repository and work operations, bundles, pages/media, permissions, signatures, and network failure/restart behavior | Rust local CLI plus daemon-side service handlers; #612/#613 records pinned-Python request/bundle/page/media seams | partial / split across #611–#613 |
+
+The matrix prevents parser-only or local-only commands from being promoted as
+reference-equivalent network utilities. Hardware-facing `rnodeconf` rows and
+physical/public-network evidence remain outside the software-only pass.
+
 ## Implemented behavior matrix
 
 | Workflow | Implementation-backed behavior | Evidence | Status |
