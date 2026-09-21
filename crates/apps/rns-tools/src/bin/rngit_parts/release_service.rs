@@ -7,6 +7,54 @@ impl ReticulumGitNode {
         }
     }
 
+    pub fn releases_list_data(&self, repository_path: &Path) -> Vec<u8> {
+        let releases_path = companion_path(repository_path, "releases");
+        let mut releases = Vec::new();
+        let mut latest = None;
+        if let Ok(entries) = fs::read_dir(&releases_path) {
+            for entry in entries.flatten() {
+                let directory = entry.path();
+                if !directory.is_dir() || !directory.join("META").is_file() {
+                    continue;
+                }
+                let metadata = fs::read_to_string(directory.join("META")).unwrap_or_default();
+                let mut values = BTreeMap::new();
+                for line in metadata.lines() {
+                    if let Some((key, value)) = line.split_once('=') {
+                        values.insert(key.trim().to_string(), value.trim().to_string());
+                    }
+                }
+                let tag = values
+                    .get("tag")
+                    .cloned()
+                    .or_else(|| directory.file_name().and_then(|name| name.to_str()).map(ToOwned::to_owned))
+                    .unwrap_or_default();
+                let status = values.get("status").cloned().unwrap_or_else(|| "unknown".to_string());
+                let created = values.get("created").and_then(|value| value.parse::<u64>().ok()).unwrap_or(0);
+                let artifacts = fs::read_dir(directory.join("artifacts"))
+                    .map(|entries| entries.flatten().filter(|entry| entry.path().is_file()).count() as u64)
+                    .unwrap_or(0);
+                releases.push(rmpv::Value::Map(vec![
+                    (rmpv::Value::String("tag".into()), rmpv::Value::String(tag.clone().into())),
+                    (rmpv::Value::String("status".into()), rmpv::Value::String(status.clone().into())),
+                    (rmpv::Value::String("created".into()), rmpv::Value::from(created)),
+                    (rmpv::Value::String("artifacts".into()), rmpv::Value::from(artifacts)),
+                ]));
+                if status == "published" && fs::read_to_string(releases_path.join("latest")).ok().as_deref() == Some(tag.as_str()) {
+                    latest = Some(tag);
+                }
+            }
+        }
+        let payload = rmpv::Value::Map(vec![
+            (rmpv::Value::String("releases".into()), rmpv::Value::Array(releases)),
+            (
+                rmpv::Value::String("latest".into()),
+                latest.map_or(rmpv::Value::Nil, |value| rmpv::Value::String(value.into())),
+            ),
+        ]);
+        response(Self::RES_OK, "", Some(&payload))
+    }
+
     pub fn release_data(&self, release_dir: &Path, tag: &str) -> Option<rmpv::Value> {
         let metadata = fs::read_to_string(release_dir.join("META")).ok()?;
         let mut values = BTreeMap::new();
