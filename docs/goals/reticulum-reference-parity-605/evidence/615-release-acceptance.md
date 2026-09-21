@@ -1,8 +1,9 @@
 # #615 differential conformance and release-acceptance evidence
 
 Status: **partial / unverified**. This records the bounded evidence-contract
-increment and local release-gate repairs through candidate commit `78b98aed` on
-`codex/issue-605-parity`; it does not claim completion of #615 or #605.
+increment, local release-gate repairs, and the clean local Python/Rust matrix
+through candidate commit `d4d533ad` on `codex/issue-605-parity`; it does not
+claim completion of #615 or #605.
 
 ## Reference and ownership
 
@@ -33,6 +34,13 @@ own included module. This preserves the existing split-resource terminal-event
 behavior while keeping each regular Rust module within the repository's
 500-line policy.
 
+The new `tools/scripts/python_compat_matrix.py` runner turns the previously
+individually ignored compatibility cases into an explicit evidence gate. It
+checks the dispatch contract, requires clean exact-reference checkouts, records
+the candidate and toolchain revisions, runs all 23 live Python/Rust cases plus
+the seven deterministic local transport cases, rejects missing reports and
+ignored/skipped tests, and writes per-case logs plus one aggregate JSON report.
+
 ## Commands and results
 
 All commands ran in the isolated `codex/issue-605-parity` worktree.
@@ -49,6 +57,14 @@ python3 tools/scripts/python_surface_inventory.py \
   --rust-out target/issue-605/python_software_parity-1.5.4.rs                  PASS
   (forward candidate: 1,868 total; 0 complete; 1,867 partial; 1 not-applicable)
 python3 -m py_compile tools/scripts/python_surface_inventory.py              PASS
+python3 tools/scripts/test_python_compat_matrix.py                            PASS
+python3 tools/scripts/python_compat_matrix.py --all \
+  --output target/interop/python-compat-matrix/full/matrix.json \
+  --timeout 420                                                               PASS
+  (candidate Rust `d4d533ad95776c032399e1078baf79d12b28a347`; Python
+   Reticulum `99de23c040d507e3fefca19e87b182302902725d`; Python LXMF
+   `727830cefda83d9c6e3982b48675425f3f988f9c`; 30/30 passed, 0 failed,
+   0 blocked, 0 skipped, 0 ignored; 2026-09-21 UTC)
 git diff --check                                                               PASS
 cargo test -p reticulum-rs-transport --lib resource                           PASS
   (73 resource tests)
@@ -71,9 +87,15 @@ upload and already-published-crate warnings.
 
 ## Deliberate remaining gaps
 
-- The full Python↔Rust and Rust↔Python differential matrix, all-Rust/multi-hop
-  scenarios, shared-daemon/restart/fault roles, exact HDLC provenance gate,
-  and hosted exact-head evidence have not been certified by this increment.
+- The broader #615 differential surface beyond this 30-case Python/Rust matrix,
+  including all-Rust/multi-hop scenarios, shared-daemon/restart/fault roles,
+  and hosted exact-head evidence, has not been certified by this increment. The
+  local matrix passed, but it currently records no seeded
+  loss/reordering/duplication injection and does not replace those broader
+  acceptance lanes.
+- The matrix's machine-readable report and raw per-case logs are generated
+  under ignored `target/interop/python-compat-matrix/`; they are local evidence
+  for this candidate and are not a hosted exact-head verdict.
 - The local `cargo xtask release-check` now passes for this candidate, but it is
   not a hosted exact-head verdict and does not satisfy #616's physical,
   platform, external-client, or public-network evidence.
