@@ -90,11 +90,12 @@ evidence remain separate acceptance axes.
 
 The #609 implementation slice now has committed local software evidence in
 [`evidence/609-transport-local-shared.md`](../goals/reticulum-reference-parity-605/evidence/609-transport-local-shared.md):
-parent/child classification, immediate single local-client retransmit, direct
-sibling announce fan-out, and daemon local TCP/Unix parent marking are covered.
-The row remains unverified until pinned Python↔Rust shared-instance and
-multi-hop production traces compare ordering, suppression, persistence, and
-close/reconnect behavior.
+parent/child classification, shared-boundary receive-hop accounting, immediate
+single local-client retransmit, direct sibling announce fan-out, daemon local
+TCP/Unix parent marking, and a direct pinned Python↔Rust application/restart
+trace are covered. The row remains unverified until pinned Python↔Rust
+shared-instance and multi-hop production traces compare ordering, suppression,
+announce persistence, Resource traffic, and close/reconnect behavior.
 
 The #610 implementation slice now has committed local evidence in
 [`evidence/610-resource.md`](../goals/reticulum-reference-parity-605/evidence/610-resource.md):

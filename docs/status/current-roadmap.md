@@ -466,8 +466,11 @@ holds the same routes. The local-client implementation now applies Python's
 immediate single-retransmit timing (`retransmit_timeout = now`,
 `retries = PATHFINDER_R`) and parent-interface classification under focused
 regression tests. Pinned shared-instance evidence currently covers TCP/Unix
-attachment and announce fan-out; mixed multi-hop packet/proof/link/Resource
-and restart traces remain open.
+attachment and announce fan-out, plus a pinned Python TCP application trace
+that exchanges LXMF messages in both directions before and after Rust daemon
+restart while preserving the delivery identity. Mixed multi-hop
+packet/proof/link/Resource, announce-persistence, and link-close/reconnect
+traces remain open.
 - Restored Reticulum path-table announces are now cache-only lookup material at
   startup, not fresh rebroadcast work, while still serving known-path response
   requests from the restored cache.
