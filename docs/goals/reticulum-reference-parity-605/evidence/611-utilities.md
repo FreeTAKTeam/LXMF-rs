@@ -43,6 +43,7 @@ Python fetch-client completion callback is asserted by `e6f71d21`.
 | Multi-client | Three independent clients send distinct binary files concurrently to one listener | `rncp_process` | verified for the bounded Rust listener/client path |
 | Adaptive timeout | Initial TCP clients reach `connected` before network work begins, allowing `operation_timeout` to observe the active interface bitrate and apply the RNS medium-path lower bound | `rncp_process::rncp_uses_medium_timeout_after_interface_activation` | verified for an active local TCP interface; genuinely slow-interface timing remains open |
 | Compression option | `--no-compress` disables opportunistic Resource compression for outbound sends and fetch responses while preserving the default auto-compression path | Resource compression regression, `rncp_process`, mixed Python/Rust compression matrix | verified for the focused Python↔Rust send and listener-side fetch-response roles; the successful Python fetch-client completion callback is also asserted, while listener-side save/failure callback telemetry and the complete utility matrix remain open |
+| Path management | `rnpath-rs`/`rnpath` discovers paths through daemon RPC and now exposes daemon-backed rate inspection, path and announce-queue eviction, path-via eviction, blackhole listing, and timed/reasoned blackhole add/remove operations with human and JSON output | `rnpath_cli` mock-RPC and parser/process regressions | verified for the Rust client/daemon RPC boundary; pinned-Python utility roles and the remaining reference path-table/remote-management options remain open |
 | Other shipped utilities | `rnpath`, `rnprobe`, `rnsd`, `rnid`, `rnir`, `rnodeconf`, `rnpkg`, `rnsh`, `rnx`, and `rngit` | existing tests and callable inventory | not promoted by this slice; network/reference gaps remain |
 
 ## Commands and results
@@ -167,6 +168,40 @@ receive-side cancellation/disk faults remain open; `d66b19d1` covers the
 bounded listener restart path. Commit `a5f57dba` covers interrupted Resource
 failure and native phase output.
 
+## Current `rnpath` management increment
+
+Commit `aff10e67` extends the existing daemon-RPC utility path without adding
+another protocol. The positional destination is now optional for management
+operations, while ordinary discovery still requires a validated 16-byte hash.
+The CLI dispatches `--rates` to `get_rate_table`, `--drop` to `drop_path`,
+`--drop-announces` to `drop_announce_queues`, `--drop-via` to `drop_all_via`,
+`--blackholed` to `get_blackholed_identities`, and `--blackhole`/
+`--unblackhole` to the corresponding persisted identity policy operations.
+Timed blackholes are converted from hours to a Unix expiry and the optional
+reason is preserved in the RPC request. All management responses support the
+existing human and JSON output modes; invalid combinations fail before any
+backend connection.
+
+```text
+cargo test -p rns-tools --test rnpath_cli rnpath_ -- --nocapture
+# 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; 32.03s
+
+cargo clippy -p rns-tools --bin rnpath-rs --test rnpath_cli \
+  --all-features --no-deps -- -D warnings
+# passed
+
+cargo test -p rns-tools --bin rnpath-rs --all-features
+# 4 passed; 0 failed
+
+tools/scripts/check-module-size.sh
+# module-size checks: ok
+```
+
+These are implementation-backed daemon-RPC tests with a mock server; they do
+not claim a physical carrier or a Python utility process. `rnprobe` still lacks
+the reference probe-payload/count/wait workflow, and `rnsh`, `rnir`, `rnpkg`,
+and hardware-facing `rnodeconf` remain separate parity rows.
+
 ## Unresolved requirements
 
 The following #611 acceptance items remain open and are deliberately not
@@ -178,8 +213,10 @@ classified as complete:
   trace also proves the listener-side resource-conclusion/save side effect and
   exact overwrite result through bytes on disk.
 - Build the complete utility option/behavior matrix from every frozen
-  `RNS/Utilities` entry point. The current slice does not add network workflows
-  to `rnpath`, `rnprobe`, `rnsd`, or the radio/interactive utilities.
+  `RNS/Utilities` entry point. The current slice now covers the daemon-backed
+  `rnpath` management subset, but does not add the reference probe-payload
+  workflow to `rnprobe`, remote shell behavior to `rnsh`, or network workflows
+  to `rnsd` and the radio/interactive utilities.
 - Prove real `rngit` fetch/push/bundle workflows and configured initial-branch
   behavior under #601; bounded pinned-Python `/git/list`, `/git/fetch`,
   `/git/push`, `/git/delete`, `/git/create`, `/git/sync`, `/git/fork`, and
