@@ -14,7 +14,8 @@ covered by `d66b19d1`; local destination disk-error status is covered by
 Interrupted-link status and flushed non-silent phase output are covered by
 `a5f57dba`. Adaptive medium-path timeout after TCP interface activation is
 covered by `27bb3fac`. Python-listener restart with a Rust client is covered by
-`708dc980`; the interop fixture lock is covered by `a81f0cf6`.
+`708dc980`; the interop fixture lock is covered by `a81f0cf6`; the successful
+Python fetch-client completion callback is asserted by `e6f71d21`.
 
 ## Reference and ownership
 
@@ -35,13 +36,13 @@ covered by `27bb3fac`. Python-listener restart with a Rust client is covered by
 | Fetch | `fetch_file` Link request/response, `True`/`False`/`0xF0`/`nil` status mapping, the pinned Python rncp listener's ordinary metadata-bearing file Resource contract, correlated Rust response Resources for other callers, and metadata-driven save | `rncp_process` Rust client to Rust listener; pinned Python listener/client trace; pinned Python client fetching from Rust | verified for two independent Rust processes and the bounded Python↔Rust fetch paths |
 | Authentication | `--no-auth`, explicit `--allowed-identity`, rejected identified peers, nonzero sender failure, and reciprocal Python/Rust identity allow-lists for send and fetch roles | manual denied-transfer run; pinned Python interop | verified for the bounded send/fetch roles; broader option and callback parity remains open |
 | Jail and save safety | Canonical jail containment, traversal rejection, basename-only metadata, overwrite/suffix behavior | protocol unit tests and process test | verified locally |
-| Timeout/output | `--timeout`, silent mode, nonzero status for denied senders, preserved not-found failure output for missing fetches, malformed identity rejection, unusable save-path rejection, path-discovery timeout status, client Ctrl-C cancellation, interrupted Resource-link failure, and medium-path timeout after an active TCP interface connects | unit/manual process runs, `rncp_process` | nine bounded process-level failure/status and adaptive-timeout outcomes are verified; genuinely slow-interface and remote receive-side cancellation remain open |
-| Status output | Non-silent path request, link-establishment, transfer, and fetch-request phase lines; silent mode suppresses them | `rncp_process`, CLI phase transcript | verified for the native Rust client path |
+| Timeout/output | `--timeout`, silent mode, nonzero status for denied senders, preserved not-found failure output for missing fetches, malformed identity rejection, unusable save-path rejection, path-discovery timeout status, client Ctrl-C cancellation, interrupted Resource-link failure, medium-path timeout after an active TCP interface connects, and the Python fetch client's successful `Transfer complete` callback | unit/manual process runs, `rncp_process`, pinned Python interop | ten bounded process-level failure/status and callback outcomes are verified; genuinely slow-interface, listener-side callback logging, and remote receive-side cancellation/disk faults remain open |
+| Status output | Non-silent path request, link-establishment, transfer, and fetch-request phase lines; silent mode suppresses them; the Python fetch client emits `Transfer complete` on successful save | `rncp_process`, CLI phase transcript, pinned Python interop | verified for the native Rust client path and the bounded Python fetch-client path |
 | Restart | Persisted listener identity, same TCP endpoint, stable destination hash, and a second binary transfer after listener restart | `rncp_process`; ignored `rncp_python_interop` restart process | verified for the bounded Rust listener/client path and the Python-listener/Rust-client role |
 | Disk failure | Fetch save failure when the overwrite target is a directory | `rncp_process` | verified with nonzero status and preserved OS error output; remote receive-side save faults remain open |
 | Multi-client | Three independent clients send distinct binary files concurrently to one listener | `rncp_process` | verified for the bounded Rust listener/client path |
 | Adaptive timeout | Initial TCP clients reach `connected` before network work begins, allowing `operation_timeout` to observe the active interface bitrate and apply the RNS medium-path lower bound | `rncp_process::rncp_uses_medium_timeout_after_interface_activation` | verified for an active local TCP interface; genuinely slow-interface timing remains open |
-| Compression option | `--no-compress` disables opportunistic Resource compression for outbound sends and fetch responses while preserving the default auto-compression path | Resource compression regression, `rncp_process`, mixed Python/Rust compression matrix | verified for the focused Python↔Rust send and listener-side fetch-response roles; direct callback telemetry and the complete utility matrix remain open |
+| Compression option | `--no-compress` disables opportunistic Resource compression for outbound sends and fetch responses while preserving the default auto-compression path | Resource compression regression, `rncp_process`, mixed Python/Rust compression matrix | verified for the focused Python↔Rust send and listener-side fetch-response roles; the successful Python fetch-client completion callback is also asserted, while listener-side save/failure callback telemetry and the complete utility matrix remain open |
 | Other shipped utilities | `rnpath`, `rnprobe`, `rnsd`, `rnid`, `rnir`, `rnodeconf`, `rnpkg`, `rnsh`, `rnx`, and `rngit` | existing tests and callable inventory | not promoted by this slice; network/reference gaps remain |
 
 ## Commands and results
@@ -63,7 +64,11 @@ RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   -- --ignored --nocapture                         1 passed (4.85s)
 RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   cargo test -p rns-tools --test rncp_python_interop \
-  -- --ignored --nocapture                         3 passed (37.13s)
+  rncp_exchanges_binary_files_with_pinned_python_in_both_directions \
+  -- --ignored --nocapture                         1 passed (32.52s)
+RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
+  cargo test -p rns-tools --test rncp_python_interop \
+  -- --ignored --nocapture                         3 passed (37.26s)
 RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   cargo test -p rns-tools --test rncp_python_interop \
   rncp_python_listener_restart_preserves_identity_and_transfer \
@@ -127,6 +132,12 @@ send and fetch roles by their identified identity hashes. This covers bounded
 authenticated send/fetch and overwrite/save-callback behavior through the
 production Link/Resource path.
 
+Commit `e6f71d21` removes the Python fetch client's quiet-mode flag for this
+fixture and asserts its successful `Transfer complete` callback output. The
+listener-side save callback remains represented by the exact saved-byte
+assertion; its console logging is not treated as a stable contract because the
+pinned listener is run with quiet logging and terminated after the transfer.
+
 The `3c6757ba` compression-matrix run adds a highly compressible payload and a
 payload pre-compressed with bzip2. It exercises Python sender default and
 `-C` modes into Rust, Rust sender default and `--no-compress` modes into
@@ -139,7 +150,7 @@ utility flags and mixed-runtime decompression/save behavior.
 The three ignored Python interop fixtures share a process-level lock
 (`a81f0cf6`) because an earlier parallel run allowed listener/announce
 contention to produce one compression-matrix path-discovery timeout. With the
-lock in place, the default three-test command completed all tests in 37.13
+lock in place, the default three-test command completed all tests in 37.26
 seconds; the process isolation and exact file assertions are unchanged.
 
 The `2b281b87` process increment also proves two negative categories through
@@ -161,9 +172,11 @@ failure and native phase output.
 The following #611 acceptance items remain open and are deliberately not
 classified as complete:
 
-- Add direct progress/status callback telemetry and failure-side callback
-  assertions around the completed Python fetch; the current trace proves the
-  successful resource-conclusion/save side effect and exact overwrite result.
+- Add failure-side callback assertions and a stable listener-side save-status
+  callback trace around the completed Python fetch. `e6f71d21` now asserts the
+  successful Python fetch client's `Transfer complete` callback; the current
+  trace also proves the listener-side resource-conclusion/save side effect and
+  exact overwrite result through bytes on disk.
 - Build the complete utility option/behavior matrix from every frozen
   `RNS/Utilities` entry point. The current slice does not add network workflows
   to `rnpath`, `rnprobe`, `rnsd`, or the radio/interactive utilities.
