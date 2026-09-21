@@ -129,10 +129,11 @@ companion paths, atomic permission refresh, production work-item handlers,
 Python-shaped MessagePack persistence, and a Python-produced binary metadata
 fixture. Pinned Python Link requests now reach the production
 `git.repositories` service for `/git/list`, `/git/fetch`, `/git/push`,
-`/git/delete`, and `/git/create`; the returned bundle passes `git bundle
-verify`, contains the expected main ref, creates and removes a Python-named
-remote ref, and registers a new repository. The row remains partial and
-unverified
+`/git/delete`, `/git/create`, `/git/sync`, `/git/fork`, and `/git/mirror`; the
+returned bundle passes `git bundle verify`, contains the expected main ref,
+creates and removes a Python-named remote ref, registers new repositories,
+syncs a configured remote, and clones local-source fork/mirror targets. The
+row remains partial and unverified
 because the remaining Git/work request matrix, Reticulum public-key signature
 validation, restart/concurrent-writer/fault transcripts, and full end-to-end
 rngit network workflows remain open.
@@ -145,7 +146,7 @@ bounded WebP conversion with raw fallback, link-scoped temporary cleanup, and
 explicit no-compression Resource responses. A new pinned Python/NomadNet
 client trace establishes and identifies a real TCP Reticulum Link, fetches a
 repository page, and downloads raw media with checked metadata, size, and
-SHA-256. The separate `git.repositories` list/fetch/push/delete/create trace does not complete the
+SHA-256. The separate `git.repositories` list/fetch/push/delete/create/sync/fork/mirror trace does not complete the
 page issue's broader Git/work acceptance. The row remains partial and
 unverified because encoder-success, complete reference rendering, every
 page/file/error case, restart/fault cleanup, and end-to-end rngit Git/work

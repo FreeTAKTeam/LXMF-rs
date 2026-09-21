@@ -74,9 +74,10 @@ classified as complete:
   to `rnpath`, `rnprobe`, `rnsd`, or the radio/interactive utilities.
 - Prove real `rngit` fetch/push/bundle workflows and configured initial-branch
   behavior under #601; bounded pinned-Python `/git/list`, `/git/fetch`,
-  `/git/push`, `/git/delete`, and `/git/create` requests now prove the
-  `git.repositories` listing/bundle/mutation seam, while the remaining
-  Git/work network implementation belongs to #612/#613.
+  `/git/push`, `/git/delete`, `/git/create`, `/git/sync`, `/git/fork`, and
+  `/git/mirror` requests now prove the `git.repositories`
+  listing/bundle/mutation/clone seam, while the remaining Git/work network
+  implementation belongs to #612/#613.
 - Add restart, interrupted-link, cancellation, slow-interface, disk-error, and
   multi-client transcripts with exact failure/status assertions.
 - Plumb an explicit no-compression Resource option instead of accepting the
