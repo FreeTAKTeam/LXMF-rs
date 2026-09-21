@@ -632,3 +632,62 @@ fn rncp_interrupted_link_reports_resource_failure() -> io::Result<()> {
     let _ = listener.wait();
     result
 }
+
+#[test]
+fn rncp_uses_medium_timeout_after_interface_activation() -> io::Result<()> {
+    let temp = tempfile::tempdir()?;
+    let listener_root = temp.path().join("listener");
+    let client_root = temp.path().join("client");
+    let source = client_root.join("adaptive-timeout.bin");
+    fs::create_dir_all(&listener_root)?;
+    fs::create_dir_all(&client_root)?;
+    fs::write(&source, b"adaptive timeout payload")?;
+
+    let port = free_port()?;
+    let binary = env!("CARGO_BIN_EXE_rncp");
+    let mut listener = Command::new(binary)
+        .args(["--listen", &format!("127.0.0.1:{port}"), "--no-auth"])
+        .arg("--identity-seed")
+        .arg("rncp-process-adaptive-timeout-server")
+        .args(["--silent", "--timeout", "5"])
+        .current_dir(&listener_root)
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let result = (|| {
+        wait_for_port(port, &mut listener)?;
+        let started = Instant::now();
+        let client = Command::new(binary)
+            .arg(&source)
+            .arg("00000000000000000000000000000000")
+            .args([
+                "--connect",
+                &format!("127.0.0.1:{port}"),
+                "--timeout",
+                "1",
+                "--silent",
+                "--identity-seed",
+                "rncp-process-adaptive-timeout-client",
+            ])
+            .current_dir(&client_root)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
+        let output = client.wait_with_output()?;
+        assert!(!output.status.success(), "adaptive-timeout rncp unexpectedly succeeded");
+        assert!(
+            started.elapsed() >= Duration::from_secs(5),
+            "active interface medium timeout was not applied: elapsed {:?}",
+            started.elapsed()
+        );
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains("path discovery timed out"),
+            "adaptive-timeout stderr did not preserve path discovery failure: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        Ok(())
+    })();
+    let _ = listener.kill();
+    let _ = listener.wait();
+    result
+}

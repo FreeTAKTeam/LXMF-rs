@@ -3,7 +3,7 @@ use crate::Cli;
 use rns_transport::destination::{DestinationName, SingleInputDestination};
 use rns_transport::hash::AddressHash;
 use rns_transport::identity::PrivateIdentity;
-use rns_transport::iface::tcp_client::TcpClient;
+use rns_transport::iface::tcp_client::{TcpClient, TcpRuntimeStatusHandle};
 use rns_transport::iface::tcp_server::TcpServer;
 use rns_transport::iface::{IfaceRole, InterfaceMode};
 use rns_transport::transport::{Transport, TransportConfig};
@@ -49,7 +49,8 @@ pub(crate) async fn run(cli: &Cli) -> io::Result<()> {
         return Ok(());
     }
 
-    spawn_interfaces(&transport, cli).await;
+    let tcp_clients = spawn_interfaces(&transport, cli).await;
+    run_with_cancellation(wait_for_tcp_clients(&tcp_clients)).await?;
 
     let runtime = Runtime {
         transport,
@@ -128,8 +129,9 @@ fn validate(cli: &Cli) -> io::Result<()> {
     Ok(())
 }
 
-async fn spawn_interfaces(transport: &Arc<Transport>, cli: &Cli) {
+async fn spawn_interfaces(transport: &Arc<Transport>, cli: &Cli) -> Vec<TcpRuntimeStatusHandle> {
     let manager = transport.iface_manager();
+    let mut tcp_clients = Vec::with_capacity(cli.connect.len());
     for listen in &cli.listen {
         let mut guard = manager.lock().await;
         guard.spawn_as_with_mode(
@@ -140,14 +142,38 @@ async fn spawn_interfaces(transport: &Arc<Transport>, cli: &Cli) {
         );
     }
     for connect in &cli.connect {
-        let mut guard = manager.lock().await;
-        guard.spawn_as_with_mode(
-            TcpClient::new(connect.clone()),
-            TcpClient::spawn,
-            IfaceRole::default(),
-            InterfaceMode::default(),
-        );
+        let client = {
+            let mut guard = manager.lock().await;
+            let (_, client) = guard.spawn_as_with_mode_and_handle(
+                TcpClient::new(connect.clone()),
+                TcpClient::spawn,
+                IfaceRole::default(),
+                InterfaceMode::default(),
+            );
+            client
+        };
+        tcp_clients.push(client.lock().expect("TCP client mutex poisoned").runtime_status_handle());
     }
+    tcp_clients
+}
+
+async fn wait_for_tcp_clients(clients: &[TcpRuntimeStatusHandle]) -> io::Result<()> {
+    if clients.is_empty() {
+        return Ok(());
+    }
+    let _ = tokio::time::timeout(TcpClient::DEFAULT_CONNECT_TIMEOUT, async {
+        loop {
+            if clients
+                .iter()
+                .all(|client| client.to_json()["stream_state"].as_str() == Some("connected"))
+            {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await;
+    Ok(())
 }
 
 pub(crate) async fn operation_timeout(runtime: &Runtime) -> Duration {
