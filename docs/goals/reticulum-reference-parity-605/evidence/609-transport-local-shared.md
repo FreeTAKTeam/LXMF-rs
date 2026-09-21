@@ -149,6 +149,42 @@ local-client child.
   - Rust restarted from the same state, reattached, preserved the delivery destination identity, and exchanged both directions again; Python reported the delivery link active.
   - This is a direct one-hop/application/restart trace, not multi-hop or physical-network acceptance.
 
+## Current pinned-Python refresh
+
+The following runs were repeated at exact checkout
+`099227cce9c7d6bd55f66acf88516b9293a7e1a1`. The source under test is
+unchanged from `6e5b1a4865594432a7fd0405fbaf800e71481cc1`; the intervening
+commit only refreshes parity evidence. Process tests were run serially because
+the pinned Reticulum helpers share a local-instance socket.
+
+```text
+RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
+  cargo test -p reticulumd --test python_channel_interop python_to_python \
+  -- --ignored --nocapture --test-threads=1
+# 4 passed; 0 failed; 0 ignored; 0 measured; 40 filtered out; 7.74s
+
+RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PY_REPO=.tmp/python-refs/LXMF \
+  LXMF_PYTHON_BIN=python3 cargo test -p lxmf-cli --test python_lxmd_remote_relay \
+  python_shared_instance_rust_lxmd_application_and_restart_e2e \
+  -- --ignored --nocapture --test-threads=1
+# 1 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; 4.90s
+
+RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
+  cargo test -p reticulumd --test python_channel_interop pinned_python_link_ \
+  -- --ignored --nocapture --test-threads=1
+# 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; 19.51s
+```
+
+The four current `python_to_python` traces cover Channel round trip,
+application-link reconnect, Channel duplicate suppression, and a split Resource
+through two Rust carriers. The shared-instance trace again covers bidirectional
+application traffic across Rust daemon restart with stable delivery identity.
+The timeout pair covers both dropped link establishment requests and dropped
+keepalives reaching terminal `Closed` state. These are current software traces;
+they do not compare cached versus scheduled announce persistence, reconnect an
+underlying carrier stream, establish caller-visible close-reason taxonomy, or
+cover broader packet/proof duplicate handling.
+
 ## Remaining acceptance boundary
 
 The combined evidence now proves pinned Python↔Rust local attachment, announce

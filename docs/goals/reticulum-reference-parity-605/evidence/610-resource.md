@@ -194,6 +194,33 @@ timeout, and 50 ms per-frame latency. Its peer-owned failures remain in the
 report rather than being treated as Rust passes; this is independent `rns-rs`
 evidence, not a substitute for the pinned Python fault matrix.
 
+## Current pinned-Python refresh
+
+The following runs were repeated at exact checkout
+`099227cce9c7d6bd55f66acf88516b9293a7e1a1`. The source under test is
+unchanged from `6e5b1a4865594432a7fd0405fbaf800e71481cc1`; the intervening
+commit only refreshes parity evidence.
+
+```text
+RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
+  cargo test -p reticulumd --test python_channel_interop \
+  rust_reader_to_python_split_resource_roundtrip -- --ignored --nocapture \
+  --test-threads=1
+# 1 passed; 0 failed; 0 ignored; 0 measured; 43 filtered out; 1.32s
+
+RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
+  cargo test -p reticulumd --test python_channel_interop pinned_python_link_ \
+  -- --ignored --nocapture --test-threads=1
+# 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; 19.51s
+```
+
+The current split reader trace again transfers a Resource over the real Rust
+carrier path and verifies the exact remote SHA-256 acknowledgement. The timeout
+pair supplies current terminal link-establishment and keepalive-watchdog
+evidence adjacent to the Resource fault matrix. These runs do not add peak-RSS
+measurements, file-adapter fault injection, every consumer callback/status
+assertion, or hosted/physical/soak evidence.
+
 ## Remaining acceptance boundary
 
 The following #610 requirements remain unverified and are intentionally not
