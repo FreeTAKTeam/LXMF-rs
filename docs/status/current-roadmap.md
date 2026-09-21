@@ -924,10 +924,10 @@ direction.
   listener modes, root-scoped command execution, frozen Python channel
   envelopes, stream forwarding, timeout, and mirrored exit status are covered
   by Rust process/auth tests plus reciprocal pinned-Python initiator→Rust
-  listener and Rust initiator→pinned-Python listener exchanges (`e57afb99`).
-  PTY/resize, full fault/restart coverage, immediate non-TTY EOF behavior
-  against the pinned listener, and public/multi-hop evidence remain open; this
-  does not promote the broader `RNS/Utilities/*` row.
+  listener and Rust initiator→pinned-Python listener exchanges (`e57afb99`,
+  `662dcdbe`), including the immediate non-TTY EOF case. PTY/resize, full
+  fault/restart coverage, and public/multi-hop evidence remain open; this does
+  not promote the broader `RNS/Utilities/*` row.
 - The pinned Python compatibility matrix now includes
   `rns_path_request_rust_to_python`, a loopback TCP case where Rust
   `reticulumd` starts with an unknown Python delivery path, resolves it through
