@@ -158,7 +158,8 @@ no-compression send modes in both Python↔Rust directions, a bzip2-compressed
 payload, and Python listener default/no-compression fetch responses into a Rust
 client. The row remains partial and unverified because direct callback
 telemetry, the complete utility option/behavior matrix, rngit network workflows,
-and restart/fault transcripts remain open or owned by #612/#613. Commit
+and slow-interface/remote fault transcripts remain open or owned by #612/#613.
+Commit
 `2b281b87` also adds process-level assertions for a missing fetch and a denied
 sender, including nonzero exit status and preserved failure categories.
 Commit `053ef246` extends the same process gate to malformed allowed identities
@@ -172,7 +173,9 @@ client Ctrl-C cancellation handling with a nonzero status and preserved
 `operation cancelled by user` output. Commit `e668ae60` adds three concurrent
 client processes with exact listener-side byte verification. Commit `a5f57dba`
 adds flushed non-silent client phase output and an interrupted-Resource process
-check with nonzero status and no partial saved file.
+check with nonzero status and no partial saved file. Commit `27bb3fac` gates
+network work on initial TCP client readiness, preserving cancellation handling
+while proving the medium-path timeout lower bound after interface activation.
 
 The #612 implementation slice now has committed evidence in
 [`evidence/612-rngit.md`](../goals/reticulum-reference-parity-605/evidence/612-rngit.md):
