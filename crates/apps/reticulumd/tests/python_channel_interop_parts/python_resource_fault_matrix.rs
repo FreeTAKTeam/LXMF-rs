@@ -91,7 +91,6 @@ async fn run_python_resource_fault(mode: ResourceFaultMode, expect_failure: bool
     drop(proxy);
     drop(transport);
 }
-
 #[tokio::test]
 #[ignore = "requires local Python Reticulum checkout"]
 async fn pinned_python_resource_fault_matrix() {
@@ -102,4 +101,3 @@ async fn pinned_python_resource_fault_matrix() {
     run_python_resource_fault(ResourceFaultMode::ReorderFirstTwo, false).await;
     run_python_resource_fault(ResourceFaultMode::DropAll, true).await;
 }
-
