@@ -11,6 +11,8 @@ covered by `053ef246`, and path-discovery timeout status is covered by
 covered by `d66b19d1`; local destination disk-error status is covered by
 `9b8e4ed6`, and client Ctrl-C cancellation status is covered by
 `397a9525`. Concurrent clients are covered by `e668ae60`.
+Interrupted-link status and flushed non-silent phase output are covered by
+`a5f57dba`.
 
 ## Reference and ownership
 
@@ -31,7 +33,8 @@ covered by `d66b19d1`; local destination disk-error status is covered by
 | Fetch | `fetch_file` Link request/response, `True`/`False`/`0xF0`/`nil` status mapping, the pinned Python rncp listener's ordinary metadata-bearing file Resource contract, correlated Rust response Resources for other callers, and metadata-driven save | `rncp_process` Rust client to Rust listener; pinned Python listener/client trace; pinned Python client fetching from Rust | verified for two independent Rust processes and the bounded Python↔Rust fetch paths |
 | Authentication | `--no-auth`, explicit `--allowed-identity`, rejected identified peers, nonzero sender failure, and reciprocal Python/Rust identity allow-lists for send and fetch roles | manual denied-transfer run; pinned Python interop | verified for the bounded send/fetch roles; broader option and callback parity remains open |
 | Jail and save safety | Canonical jail containment, traversal rejection, basename-only metadata, overwrite/suffix behavior | protocol unit tests and process test | verified locally |
-| Timeout/output | `--timeout`, silent mode, nonzero status for denied senders, preserved not-found failure output for missing fetches, malformed identity rejection, unusable save-path rejection, path-discovery timeout status, and client Ctrl-C cancellation | unit/manual process runs, `rncp_process` | bounded Rust behavior and these six process-level failure categories verified; interrupted-link and remote receive-side cancellation remain open |
+| Timeout/output | `--timeout`, silent mode, nonzero status for denied senders, preserved not-found failure output for missing fetches, malformed identity rejection, unusable save-path rejection, path-discovery timeout status, client Ctrl-C cancellation, and interrupted Resource-link failure | unit/manual process runs, `rncp_process` | eight bounded process-level failure/status outcomes are verified; slow-interface and remote receive-side cancellation remain open |
+| Status output | Non-silent path request, link-establishment, transfer, and fetch-request phase lines; silent mode suppresses them | `rncp_process`, CLI phase transcript | verified for the native Rust client path |
 | Restart | Persisted listener identity, same TCP endpoint, stable destination hash, and a second binary transfer after listener restart | `rncp_process` | verified for the bounded Rust listener/client path |
 | Disk failure | Fetch save failure when the overwrite target is a directory | `rncp_process` | verified with nonzero status and preserved OS error output; remote receive-side save faults remain open |
 | Multi-client | Three independent clients send distinct binary files concurrently to one listener | `rncp_process` | verified for the bounded Rust listener/client path |
@@ -50,7 +53,7 @@ cargo clippy -p rns-tools --bin rncp --test rncp_process \
 cargo clippy -p rns-tools --test rncp_python_interop \
   --all-features --no-deps -- -D warnings           PASS
 cargo test -p rns-tools --test rncp_process \
-  --all-features -- --nocapture                     8 passed (6.14s)
+  --all-features -- --nocapture                     9 passed (6.18s)
 RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   cargo test -p rns-tools --test rncp_python_interop \
   rncp_mixed_runtime_compression_matrix_roundtrips_binary_files \
@@ -78,7 +81,9 @@ directory and asserts nonzero status plus the `Is a directory` OS error.
 The Unix process regression also sends SIGINT during path discovery and asserts
 nonzero status plus `operation cancelled by user`. The concurrent-client case
 starts three independent senders and verifies every listener-side file byte for
-all three completed transfers.
+all three completed transfers. The interrupted-link case waits for the flushed
+`Transferring file...` phase line, terminates the listener, and verifies a
+nonzero Resource failure without a saved partial file.
 
 An additional manual run transferred a 4,369-byte binary payload in both
 directions. Both copies had SHA-256
@@ -123,7 +128,8 @@ malformed identity, unusable save-path, path-discovery timeout, and local disk
 failures; `397a9525` covers client Ctrl-C cancellation; and `e668ae60` covers
 the bounded multi-client path. Interrupted-link, slow-interface, and remote
 receive-side cancellation/disk faults remain open; `d66b19d1` covers the
-bounded listener restart path.
+bounded listener restart path. Commit `a5f57dba` covers interrupted Resource
+failure and native phase output.
 
 ## Unresolved requirements
 
@@ -142,8 +148,8 @@ classified as complete:
   `/git/mirror` requests now prove the `git.repositories`
   listing/bundle/mutation/clone seam, while the remaining Git/work network
   implementation belongs to #612/#613.
-- Add interrupted-link, slow-interface, and remote receive-side
-  cancellation/disk-error transcripts with exact failure/status assertions.
+- Add slow-interface and remote receive-side cancellation/disk-error transcripts
+  with exact failure/status assertions.
 - Add process-level advertisement/transfer-size assertions for each remaining
   compression role if the utility evidence must independently expose the wire
   compression flag; the Resource unit tests already cover that direct flag.

@@ -170,7 +170,9 @@ Commit `9b8e4ed6` adds a fetch save-directory disk-error check with nonzero
 status and preserved `Is a directory` output. Commit `397a9525` adds explicit
 client Ctrl-C cancellation handling with a nonzero status and preserved
 `operation cancelled by user` output. Commit `e668ae60` adds three concurrent
-client processes with exact listener-side byte verification.
+client processes with exact listener-side byte verification. Commit `a5f57dba`
+adds flushed non-silent client phase output and an interrupted-Resource process
+check with nonzero status and no partial saved file.
 
 The #612 implementation slice now has committed evidence in
 [`evidence/612-rngit.md`](../goals/reticulum-reference-parity-605/evidence/612-rngit.md):
