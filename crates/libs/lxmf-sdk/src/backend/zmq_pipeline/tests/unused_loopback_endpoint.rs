@@ -27,3 +27,12 @@ impl From<TestZmqEndpoint> for String {
 fn unused_loopback_endpoint() -> TestZmqEndpoint {
     TestZmqEndpoint { resolved: std::sync::Arc::new(std::sync::Mutex::new(None)) }
 }
+
+async fn recv_request_envelope(commands: &mut PullSocket) -> Option<ZmqRpcEnvelope> {
+    let message = tokio::time::timeout(std::time::Duration::from_secs(1), commands.recv())
+        .await
+        .ok()?
+        .ok()?;
+    let bytes = Vec::<u8>::try_from(message).ok()?;
+    zmq::decode_envelope(&bytes).ok()
+}

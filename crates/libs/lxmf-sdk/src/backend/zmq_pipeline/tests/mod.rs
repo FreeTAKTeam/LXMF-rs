@@ -1,6 +1,7 @@
 use super::*;
 use rns_rpc::rpc::zmq::ZmqRpcEnvelopeKind;
 use rns_rpc::rpc::{RpcRequest, RpcResponse};
+use std::collections::BTreeMap;
 use std::sync::{mpsc, Arc, Mutex};
 use zeromq::{PullSocket, PushSocket, Socket, SocketRecv, SocketSend, ZmqMessage};
 
@@ -1189,13 +1190,3 @@ fn spawn_response_sequence_zmq_server(
     ready_rx.recv().expect("zmq server ready");
     handle
 }
-
-async fn recv_request_envelope(commands: &mut PullSocket) -> Option<ZmqRpcEnvelope> {
-    let message = tokio::time::timeout(std::time::Duration::from_secs(1), commands.recv())
-        .await
-        .ok()?
-        .ok()?;
-    let bytes = Vec::<u8>::try_from(message).ok()?;
-    zmq::decode_envelope(&bytes).ok()
-}
-use std::collections::BTreeMap;
