@@ -441,4 +441,5 @@ mod tests {
     include!("rngit_parts/document_permissions_tests.rs");
     include!("rngit_parts/rns_1_5_4_tests.rs");
     include!("rngit_parts/git_bundle_tests.rs");
+    include!("rngit_parts/native_client_tests.rs");
 }

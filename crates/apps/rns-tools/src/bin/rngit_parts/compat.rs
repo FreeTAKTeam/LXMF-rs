@@ -176,6 +176,7 @@ impl Default for ReticulumGitNode {
 
 include!("protocol.rs");
 include!("compat_client.rs");
+include!("native_client.rs");
 include!("compat_permissions.rs");
 include!("compat_node.rs");
 include!("media.rs");
