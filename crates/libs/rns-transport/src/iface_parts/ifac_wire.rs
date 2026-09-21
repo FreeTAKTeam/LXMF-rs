@@ -232,6 +232,26 @@ mod ifac_wire_tests {
     }
 
     #[test]
+    fn authenticated_state_rejects_truncated_and_invalid_length_frames() {
+        let config = InterfaceSharedConfig {
+            network_name: Some("field-net".to_string()),
+            ..InterfaceSharedConfig::default()
+        };
+        let state = state(config);
+        let framed = encode_ifac(&state, &[0x01_u8; 32]).expect("encode");
+
+        assert!(matches!(decode_ifac(&state, &framed[..1]), Err(IfacWireError::Codec(_))));
+        assert!(matches!(
+            decode_ifac(&state, &framed[..framed.len() - 1]),
+            Err(IfacWireError::InvalidTag)
+        ));
+        assert!(matches!(
+            decode_ifac(&state, &[0x80, 0x01]),
+            Err(IfacWireError::Codec(_))
+        ));
+    }
+
+    #[test]
     fn unauthenticated_state_rejects_authenticated_frames() {
         let authenticated = state(InterfaceSharedConfig {
             network_name: Some("field-net".to_string()),
