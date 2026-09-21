@@ -14,4 +14,6 @@ pub enum RnsError {
     PacketError,
     #[error("connection failed")]
     ConnectionError,
+    #[error("resource reader failed: {0}")]
+    ResourceReader(#[source] std::io::Error),
 }

@@ -1184,6 +1184,8 @@ mod tests {
     include!("tests_timeouts_cleanup.rs");
     include!("tests_timeouts_lifecycle.rs");
     include!("tests_collision.rs");
+    include!("tests_fault_injection.rs");
+    include!("tests_reader.rs");
 
     fn resource_packet(context: PacketContext, payload: &[u8], destination: AddressHash) -> Packet {
         Packet {

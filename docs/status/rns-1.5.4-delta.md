@@ -99,12 +99,13 @@ announce persistence, Resource traffic, and close/reconnect behavior.
 
 The #610 implementation slice now has committed local evidence in
 [`evidence/610-resource.md`](../goals/reticulum-reference-parity-605/evidence/610-resource.md):
-deterministic collision regeneration, link-close terminal resource events, and
-bidirectional pinned-Python release-profile transfers covering empty, boundary,
-split, and 50 MiB payloads with exact SHA-256 checks. The row remains partial
-and unverified because targeted loss/duplication/reordering/cancellation fault
-injection, peak-memory capture, and any required Rust reader/file adapter are
-still open.
+deterministic collision regeneration, window-bounded fragment admission,
+link-close terminal resource events, local loss/duplication/reordering recovery,
+split cancellation cleanup, reader-backed source retention, and bidirectional
+pinned-Python release-profile transfers covering empty, boundary, split, and
+50 MiB payloads with exact SHA-256 checks. The row remains partial and
+unverified because cross-implementation fault injection, peak-memory capture,
+and hosted/physical/soak coverage are still open.
 
 The #611 implementation slice now has committed local evidence in
 [`evidence/611-utilities.md`](../goals/reticulum-reference-parity-605/evidence/611-utilities.md):

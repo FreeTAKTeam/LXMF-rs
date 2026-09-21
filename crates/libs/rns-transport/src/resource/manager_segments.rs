@@ -27,13 +27,13 @@ pub struct PreparedSend {
 /// — segment n+1 is built when segment n's proof arrives, at which point the
 /// transfer is idle anyway waiting to advertise it.
 ///
-/// `data` + `offset` rather than a drained buffer, so each segment costs the
-/// same one `to_vec()` copy it always did.
-#[derive(Debug)]
+/// The in-memory variant keeps the historical `Vec<u8>` API working. The
+/// reader variant is the bounded-memory path: it retains only the reader and
+/// the number of logical bytes still expected, and reads one segment when the
+/// preceding segment is proved.
 struct PendingSegments {
     link_id: AddressHash,
-    data: Vec<u8>,
-    offset: usize,
+    source: PendingSegmentSource,
     /// The segment `build_next` will produce, counting from 1. Past
     /// `total_segments` the chain is exhausted.
     next_segment_index: u32,
@@ -46,16 +46,65 @@ struct PendingSegments {
     auto_compress: bool,
 }
 
+enum PendingSegmentSource {
+    InMemory { data: Vec<u8>, offset: usize },
+    Reader { reader: Box<dyn Read + Send + Sync>, remaining: u64 },
+}
+
+fn read_resource_reader(reader: &mut dyn Read, length: usize) -> Result<Vec<u8>, RnsError> {
+    let mut data = vec![0u8; length];
+    reader.read_exact(&mut data).map_err(RnsError::ResourceReader)?;
+    Ok(data)
+}
+
+impl std::fmt::Debug for PendingSegments {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("PendingSegments")
+            .field("link_id", &self.link_id)
+            .field("source", &match &self.source {
+                PendingSegmentSource::InMemory { .. } => "in_memory",
+                PendingSegmentSource::Reader { .. } => "reader",
+            })
+            .field("next_segment_index", &self.next_segment_index)
+            .field("total_segments", &self.total_segments)
+            .field("total_size", &self.total_size)
+            .field("request_id", &self.request_id)
+            .field("is_response", &self.is_response)
+            .field("interface_mtu", &self.interface_mtu)
+            .field("original_hash", &self.original_hash)
+            .field("auto_compress", &self.auto_compress)
+            .finish()
+    }
+}
+
 impl PendingSegments {
     /// Builds the next segment, or `None` once every segment has been built.
     fn build_next(&mut self, link: &Link) -> Option<Result<ResourceSender, RnsError>> {
         if self.next_segment_index > self.total_segments {
             return None;
         }
-        let end = self.offset.saturating_add(MAX_EFFICIENT_SIZE).min(self.data.len());
+        let data = match &mut self.source {
+            PendingSegmentSource::InMemory { data, offset } => {
+                let end = offset.saturating_add(MAX_EFFICIENT_SIZE).min(data.len());
+                let chunk = data[*offset..end].to_vec();
+                *offset = end;
+                chunk
+            }
+            PendingSegmentSource::Reader { reader, remaining } => {
+                let chunk_len = (*remaining).min(MAX_EFFICIENT_SIZE as u64) as usize;
+                match read_resource_reader(reader.as_mut(), chunk_len) {
+                    Ok(chunk) => {
+                        *remaining = remaining.saturating_sub(chunk_len as u64);
+                        chunk
+                    }
+                    Err(error) => return Some(Err(error)),
+                }
+            }
+        };
         let sender = ResourceSender::new_segment_with_options_mtu_and_compression(
             link,
-            self.data[self.offset..end].to_vec(),
+            data,
             None,
             self.request_id.clone(),
             self.is_response,
@@ -67,7 +116,6 @@ impl PendingSegments {
             self.auto_compress,
         );
         if sender.is_ok() {
-            self.offset = end;
             self.next_segment_index = self.next_segment_index.saturating_add(1);
         }
         Some(sender)

@@ -7,7 +7,7 @@ it does not promote the full #610 acceptance contract or close parent issue
 ## Reference and candidate
 
 - Candidate branch: `codex/issue-605-parity`.
-- Candidate commit: `fa84c13291d661486192227ca082a359a0d13a49`.
+- Candidate commit: `WORKTREE_HEAD` (the current `codex/issue-605-parity` candidate).
 - Candidate base: `a5425366` (the merged PR #603 base used by the #605 plan).
 - Pinned Reticulum reference: `99de23c040d507e3fefca19e87b182302902725d`.
 - Reference surfaces: `RNS/Resource.py`, `RNS/Link.py`, and
@@ -27,6 +27,16 @@ it does not promote the full #610 acceptance contract or close parent issue
 - Link-state removal now emits terminal inbound and outbound resource failure
   events, deduplicates split-resource state, preserves unrelated links, and
   publishes the events through the production maintenance and reset paths.
+- Receiver fragment admission is bounded to the active request window, matching
+  `RNS/Resource.py::receive_part`; a delayed or future fragment cannot advance
+  the contiguous frontier outside the round that requested it.
+- Deterministic manager tests cover a reordered round with one dropped and one
+  duplicated fragment, recovery through a retry request, and cancellation at
+  every split-segment position without retaining the unbuilt tail.
+- The public `ResourceManager` and `Transport` surfaces accept a synchronous
+  `Read + Send + Sync` source with an exact byte count. Split sends retain the
+  reader rather than the complete payload, read one segment per proof, and
+  turn later reader failures into a terminal outbound-failure event.
 - The Python interop helper can send a deterministic file-backed resource and
   reports an exact SHA-256 digest. Release-profile mixed-peer tests cover
   empty, one-byte, just-below-efficient, split, and 50 MiB resources in both
@@ -39,7 +49,7 @@ The following checks passed on the candidate:
 ```text
 cargo fmt --all -- --check
 cargo clippy -p reticulum-rs-transport --lib --all-features --no-deps -- -D warnings
-cargo test -p reticulum-rs-transport --all-features --lib  # 810 passed
+cargo test -p reticulum-rs-transport --all-features --lib  # 820 passed
 cargo test -p reticulumd --bin reticulumd --all-features  # 466 passed
 cargo test -p reticulumd --test code_quality_issue_369  # 1 passed
 cargo test -p reticulumd --test python_channel_interop --no-run
@@ -71,20 +81,23 @@ profile/environment limitation, not as a passing debug large-transfer claim.
 The following #610 requirements remain unverified and are intentionally not
 represented as complete:
 
-- deterministic fault-injection evidence for loss, duplication, reordering,
-  missing fragments, cancellation at multiple segment positions, and link
-  timeout recovery or terminal failure;
+- mixed-Python fault-injection evidence for loss, duplication, reordering,
+  missing fragments, cancellation, and link-timeout recovery or terminal
+  failure; the candidate now has deterministic Rust manager coverage for the
+  first four cases, but not the cross-implementation/real-carrier trace;
 - peak-RSS measurements for the 50 MiB mixed-peer transfers and a bounded
   memory report across the full matrix;
-- a Rust public reader/file adapter equivalent to the reference's stream/file
-  sender surface, if that API is required by downstream consumers; the current
-  matrix proves the Python file-backed sender path and the Rust owned-buffer
-  path, not a new Rust reader API;
+- mixed-Python evidence for the new Rust reader/file adapter; local tests prove
+  bounded source retention, split reassembly, and terminal reader failure, but
+  the interop matrix still uses the owned-buffer API;
 - callbacks/status transitions observed through every library and daemon
   consumer after each injected failure;
 - hosted, physical-interface, public-network, and long-running soak evidence.
 
 The current conclusion is therefore: collision regeneration, shutdown cleanup,
-and bidirectional release-profile mixed-peer transfers are implemented with
-local evidence; the broader Resource failure and bounded-memory contract
-remains partial pending targeted fault-injection and resource-usage evidence.
+window-bounded fragment admission, deterministic local loss/duplication/
+reordering recovery, split cancellation cleanup, reader-backed bounded source
+retention, and bidirectional release-profile mixed-peer transfers are
+implemented with local evidence; the broader Resource failure and bounded-
+memory contract remains partial pending cross-implementation fault injection,
+resource-usage evidence, and hosted/physical/soak coverage.

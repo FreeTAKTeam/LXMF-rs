@@ -122,7 +122,7 @@
         "id": "reticulum-605-610-resource-stream-collision",
         "implementation": "partial",
         "kind": "behavioral-requirement",
-        "notes": "Deterministic collision regeneration, collision-guard/hashmap/window unit coverage, link-close terminal event publication, and pinned Python release-profile empty-to-50 MiB checksums are implemented. Loss/duplication/reordering/cancellation fault injection, peak-RSS capture, and any Rust public reader adapter remain unverified; the debug 50 MiB run is slower than the release profile.",
+        "notes": "Deterministic collision regeneration, active-window fragment admission, collision-guard/hashmap/window unit coverage, link-close terminal event publication, local loss/duplication/reordering recovery, split cancellation cleanup, reader-backed bounded source retention, and pinned Python release-profile empty-to-50 MiB checksums are implemented. Cross-implementation fault injection, peak-RSS capture, and hosted/physical/soak coverage remain unverified; the debug 50 MiB run is slower than the release profile.",
         "owner_issue": 610,
         "reference": {
           "revision": "99de23c040d507e3fefca19e87b182302902725d",

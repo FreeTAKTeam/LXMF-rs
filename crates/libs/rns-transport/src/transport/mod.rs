@@ -10,6 +10,7 @@ use path_requests::TagBytes;
 use path_table::PathTable;
 use rand_core::OsRng;
 use std::collections::{HashMap, VecDeque};
+use std::io::Read;
 use std::path::PathBuf;
 use std::time::Duration;
 use tokio::time;
