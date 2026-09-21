@@ -111,6 +111,55 @@ fn python_identity_output(
     )))
 }
 
+fn python_identity_hash(
+    python: &str,
+    config_dir: &Path,
+    identity: &Path,
+    repo: &Path,
+) -> io::Result<String> {
+    let output = Command::new(python)
+        .arg("-c")
+        .arg(
+            "import os, sys, RNS; identity = RNS.Identity.from_file(sys.argv[1]) if os.path.isfile(sys.argv[1]) else RNS.Identity(); identity.to_file(sys.argv[1]); print(identity.hash.hex())",
+        )
+        .arg(identity)
+        .arg(config_dir)
+        .env("PYTHONPATH", repo)
+        .output()?;
+    if !output.status.success() {
+        return Err(io::Error::other(format!(
+            "Python rncp identity hash query failed: {}\nstdout:\n{}\nstderr:\n{}",
+            output.status,
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        )));
+    }
+    let hash = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    if !hash.is_empty() {
+        return Ok(hash);
+    }
+    Err(io::Error::other("Python rncp identity hash query omitted identity"))
+}
+
+fn rust_identity_hash(identity_seed: &str) -> io::Result<String> {
+    let output = Command::new(env!("CARGO_BIN_EXE_rncp"))
+        .args(["--print-identity", "--identity-seed", identity_seed])
+        .output()?;
+    if !output.status.success() {
+        return Err(io::Error::other(format!(
+            "Rust rncp identity query failed: {}\nstdout:\n{}\nstderr:\n{}",
+            output.status,
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        )));
+    }
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .find_map(|line| line.strip_prefix("Identity     : "))
+        .map(ToOwned::to_owned)
+        .ok_or_else(|| io::Error::other("Rust rncp identity query omitted identity hash"))
+}
+
 fn run_python_send(
     python: &str,
     script: &Path,
@@ -187,10 +236,22 @@ fn rncp_exchanges_binary_files_with_pinned_python_in_both_directions() -> io::Re
         ));
     }
 
+    let python_sender_config = temp.path().join("python-sender");
+    fs::create_dir_all(&python_sender_config)?;
+    let python_sender_identity = python_sender_config.join("identity");
+    let python_sender_hash =
+        python_identity_hash(&python, &python_sender_config, &python_sender_identity, &repo)?;
+
     let rust_listener_port = free_port()?;
     let rust_identity_seed = "rncp-python-interop-rust-listener";
     let mut rust_listener = Command::new(env!("CARGO_BIN_EXE_rncp"))
-        .args(["--listen", &format!("127.0.0.1:{rust_listener_port}"), "--no-auth", "--save"])
+        .args([
+            "--listen",
+            &format!("127.0.0.1:{rust_listener_port}"),
+            "--allowed-identity",
+            &python_sender_hash,
+            "--save",
+        ])
         .arg(&rust_listener_root)
         .args(["--identity-seed", rust_identity_seed, "--silent", "--timeout", "30"])
         .stdout(Stdio::null())
@@ -210,10 +271,7 @@ fn rncp_exchanges_binary_files_with_pinned_python_in_both_directions() -> io::Re
             .ok_or_else(|| io::Error::other("Rust rncp identity query omitted destination"))?
             .to_owned();
 
-        let python_sender_config = temp.path().join("python-sender");
-        fs::create_dir_all(&python_sender_config)?;
         write_python_config(&python_sender_config, "client", rust_listener_port)?;
-        let python_sender_identity = python_sender_config.join("identity");
         let python_output = run_python_send(
             &python,
             &script,
@@ -248,7 +306,8 @@ fn rncp_exchanges_binary_files_with_pinned_python_in_both_directions() -> io::Re
     let mut python_listener = Command::new(&python)
         .arg(&script)
         .arg("--listen")
-        .arg("--no-auth")
+        .arg("-a")
+        .arg(rust_identity_hash("rncp-python-interop-rust-sender")?)
         .arg("--save")
         .arg(&python_listener_root)
         .arg("--config")

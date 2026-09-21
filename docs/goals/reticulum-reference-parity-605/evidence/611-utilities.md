@@ -1,8 +1,8 @@
 # #611 utility/network evidence
 
 Status: **partial / unverified**. This record covers the bounded native `rncp`
-slice implemented at candidate commit `10bcd7a0` on top of the forward parity
-branch. It does not close #611 or #605.
+slice on the forward parity branch, including authenticated pinned-Python and
+Rust sender/listener roles. It does not close #611 or #605.
 
 ## Reference and ownership
 
@@ -21,7 +21,7 @@ branch. It does not close #611 or #605.
 | Listener | TCP listener, deterministic/persisted identity, `rncp.receive` announce, periodic re-announce, save directory, collision-safe filename selection | `rncp_process` listener process; pinned Python client/service trace | implemented; no-auth Python interoperability evidenced |
 | Send | TCP announce discovery, Link establishment, local identity identification, Resource send with `{"name": <binary filename>}` metadata, adaptive timeout and terminal failure status | Rust↔Rust process test; pinned Python client/service trace | verified for two independent processes and the bounded Python roles |
 | Fetch | `fetch_file` Link request/response, `True`/`False`/`0xF0`/`nil` status mapping, response Resource, metadata-driven save | `rncp_process` Rust client to Rust listener | verified for two independent processes |
-| Authentication | `--no-auth`, explicit `--allowed-identity`, rejected identified peers, nonzero sender failure | manual denied-transfer run | verified locally for the negative path; Python allow-list parity unverified |
+| Authentication | `--no-auth`, explicit `--allowed-identity`, rejected identified peers, nonzero sender failure, and reciprocal Python/Rust identity allow-lists | manual denied-transfer run; pinned Python interop | verified for the bounded send roles; Python fetch allow-list parity remains open |
 | Jail and save safety | Canonical jail containment, traversal rejection, basename-only metadata, overwrite/suffix behavior | protocol unit tests and process test | verified locally |
 | Timeout/output | `--timeout`, silent mode, accurate failure output for missing/denied/failed transfers | unit/manual process runs | bounded Rust behavior verified |
 | Compression option | `--no-compress` disables opportunistic Resource compression for outbound sends and fetch responses while preserving the default auto-compression path | Resource compression regression, `rncp_process` | locally verified; mixed Python compression matrix remains open |
@@ -57,8 +57,10 @@ listener without the sender in its allow-list returned exit status 1 and
 The pinned-Python interop run starts separate Rust and Python listener/client
 processes with isolated TCP configs and identity files. It sends binary
 `12,345`- and `16,384`-byte payloads in both directions and verifies the saved
-bytes exactly. This covers the no-auth Python client and service roles through
-the production Link/Resource path; it does not promote authenticated allow-list
+bytes exactly. It also authorizes the Python sender in the Rust listener and
+the Rust sender in the Python listener by their identified identity hashes.
+This covers authenticated send roles through the production Link/Resource
+path; it does not promote Python fetch allow-list, jail, overwrite, or callback
 parity.
 
 ## Unresolved requirements
@@ -66,9 +68,9 @@ parity.
 The following #611 acceptance items remain open and are deliberately not
 classified as complete:
 
-- Exercise Python's identity-file, allow-list, jail, overwrite, and callback
-  behavior through the cross-implementation path; the current trace covers
-  isolated identity files and no-auth operation only.
+- Exercise Python's fetch-side identity-file, allow-list, jail, overwrite, and
+  callback behavior through the cross-implementation path; the current trace
+  covers isolated identity files and authenticated send roles.
 - Build the complete utility option/behavior matrix from every frozen
   `RNS/Utilities` entry point. The current slice does not add network workflows
   to `rnpath`, `rnprobe`, `rnsd`, or the radio/interactive utilities.
