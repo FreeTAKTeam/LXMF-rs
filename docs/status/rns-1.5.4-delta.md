@@ -150,9 +150,12 @@ the inventory `--check` path compares generated behavioral requirements with
 the authoritative mapping and rejects stale artifacts; self-tests cover both
 matching and deliberate drift, and the active-baseline plus forward-candidate
 inventories regenerate at their pinned references. The row remains partial and
-unverified because the full differential matrix, exact provenance/release
-gate, hosted exact-head workflows, and #616 operational evidence are still
-open.
+unverified because the full differential matrix, exact provenance and hosted
+exact-head workflows, and #616 operational evidence are still open. The local
+aggregate release gate now passes on candidate `78b98aed`, including the
+workspace tests, Miri, packaging, audit, boundary, reproducible-build,
+embedded-footprint, and soak/mesh checks; this local result does not promote
+the row or the parent to complete.
 
 ## Acceptance gate
 
