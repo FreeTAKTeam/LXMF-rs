@@ -345,6 +345,11 @@ Scoped release evidence is split as follows:
   that steps between the slow, very-slow and fast maxima on measured rate.
   Measured against a real NomadNet node, the same 46 MB fetch runs at 234
   fragments/s where a fixed window of 4 managed 84.
+- Candidate `e0d7249035a51b668ec88b9ce193b3fe0f3fc8e7` records exact 50 MiB
+  pinned-Python Resource transfers in both directions with Linux high-water
+  RSS values under a fixed 512 MiB per-process release-profile budget. This
+  closes the local mixed-peer memory-evidence gap without claiming timeout,
+  file-adapter-fault, hosted, physical, or public-network coverage.
 - `Link::request_packet`/`response_packet` complete the request/response
   pair: the receive half already decrypted both contexts, but nothing could
   build either, so a peer had to send every request and every reply as a

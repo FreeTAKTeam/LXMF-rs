@@ -217,9 +217,36 @@ RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
 The current split reader trace again transfers a Resource over the real Rust
 carrier path and verifies the exact remote SHA-256 acknowledgement. The timeout
 pair supplies current terminal link-establishment and keepalive-watchdog
-evidence adjacent to the Resource fault matrix. These runs do not add peak-RSS
-measurements, file-adapter fault injection, every consumer callback/status
-assertion, or hosted/physical/soak evidence.
+evidence adjacent to the Resource fault matrix. These runs do not add
+file-adapter fault injection, every consumer callback/status assertion, or
+hosted/physical/soak evidence.
+
+The current candidate adds a Linux `/proc` high-water RSS probe at
+`e0d7249035a51b668ec88b9ce193b3fe0f3fc8e7`. It uses an exact 50 MiB transfer
+and a 512 MiB per-process release-profile budget; the Rust sender uses the
+reader-backed API and the Python sender uses the real Python Resource client.
+Both directions passed against the pinned Python checkout:
+
+```text
+RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
+  cargo test --release -p reticulumd --test python_channel_interop \
+  rust_reader_to_python_50_mib_peak_memory -- --ignored --nocapture --test-threads=1
+# 1 passed; 0 failed; 0 ignored; 0 measured; 45 filtered out; 7.89s
+# Rust reader -> Python receiver: 20,744 KiB / 100,292 KiB peak RSS
+# SHA-256: eae47d4d847479acfbdf72c2c26ff457e57a377c4c5a7f2ee756510541c8026f
+
+RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
+  cargo test --release -p reticulumd --test python_channel_interop \
+  python_to_rust_50_mib_peak_memory -- --ignored --nocapture --test-threads=1
+# 1 passed; 0 failed; 0 ignored; 0 measured; 45 filtered out; 10.24s
+# Python sender -> Rust receiver: 242,616 KiB / 110,904 KiB peak RSS
+# SHA-256: d1833c62bbdb9e3467d20466e31b616385c3d97484cc1737ac68fbbf44595554
+```
+
+These are measured process high-water values for the two exact 50 MiB
+directions, not a claim that every fault or hosted workload has the same
+profile. The values are now evidence for the mixed-peer bounded-memory row;
+the remaining acceptance gaps stay explicit below.
 
 ## Remaining acceptance boundary
 
@@ -230,8 +257,6 @@ represented as complete:
   terminal watchdog close; the two pinned-Python matrices now cover loss,
   duplication, reordering, and complete missing-fragment terminal failure in
   both directions;
-- peak-RSS measurements for the 50 MiB mixed-peer transfers and a bounded
-  memory report across the full matrix;
 - mixed-Python fault-injection evidence for a true file-backed adapter;
   reader-backed loss, duplication, reordering, cancellation, and terminal
   reader failure are now covered, while file-adapter failure injection remains
@@ -249,7 +274,8 @@ retention plus a pinned-Python split reader transfer, a two-carrier pinned-
 Python split Resource forwarding trace with an exact remote callback digest,
 bidirectional release-profile mixed-peer transfers, the pinned-Python
 receiver-shutdown terminal-failure trace, and the independent `rns-rs`
-loss/timeout/latency slice are implemented with local evidence; the broader
-Resource failure and bounded-memory contract remains partial pending timeout
-recovery/reconnect and file-adapter fault traces, resource-usage evidence, and
+loss/timeout/latency slice, and exact 50 MiB bidirectional peak-RSS evidence
+under a fixed process budget are implemented with local evidence; the broader
+Resource failure contract remains partial pending timeout recovery/reconnect
+and file-adapter fault traces, every consumer callback/status assertion, and
 hosted/physical/soak coverage.
