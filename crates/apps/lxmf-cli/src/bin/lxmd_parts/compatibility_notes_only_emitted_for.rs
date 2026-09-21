@@ -179,6 +179,9 @@ port = 4242
 ifac_size = 128
 network_name = "field-net"
 passphrase = "shared-secret"
+shared_instance_type = "tcp"
+fixed_mtu = 262144
+force_shared_instance_bitrate = 1000000
 "#,
         )
         .expect("write config");
@@ -208,6 +211,9 @@ passphrase = "shared-secret"
         assert!(generated_contents.contains("ifac_size = 128"));
         assert!(generated_contents.contains("network_name = \"field-net\""));
         assert!(generated_contents.contains("passphrase = \"shared-secret\""));
+        assert!(generated_contents.contains("shared_instance_type = \"tcp\""));
+        assert!(generated_contents.contains("fixed_mtu = 262144"));
+        assert!(generated_contents.contains("force_shared_instance_bitrate = 1000000"));
     }
 
     #[test]

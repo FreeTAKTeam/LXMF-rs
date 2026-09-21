@@ -76,10 +76,19 @@ pub(super) async fn preprocess_inbound_message(
     }
 
     let received_hops = message.packet.header.hops;
-    let (configured_hops_delta, iface_manager, path_request, packet_cache, in_link, node_name) = {
+    let (
+        configured_hops_delta,
+        connected_to_shared_instance,
+        iface_manager,
+        path_request,
+        packet_cache,
+        in_link,
+        node_name,
+    ) = {
         let handler = handler_arc.lock().await;
         (
             handler.local_hops_delta_for_packet(&message.packet),
+            handler.config.connected_to_shared_instance,
             handler.iface_manager.clone(),
             handler.fixed_dest_path_requests,
             handler.packet_cache.clone(),
@@ -102,7 +111,23 @@ pub(super) async fn preprocess_inbound_message(
             message.packet.header.hops = message.packet.header.hops.saturating_add(delta);
         }
     }
+    // Match Reticulum's local/shared-instance hop accounting. A packet received
+    // through a local client is already at the shared-instance boundary, so the
+    // receive-side increment must be removed before path classification. When
+    // this process is itself attached to a shared instance and has no local
+    // child interfaces, the attached interface carries the same meaning.
+    let remove_shared_instance_hop = {
+        let manager = iface_manager.lock().await;
+        if manager.local_client_interfaces().is_empty() {
+            connected_to_shared_instance && manager.is_shared_instance(&message.address)
+        } else {
+            manager.is_local_client_interface(&message.address)
+        }
+    };
     apply_receive_hop_increment(&mut message.packet);
+    if remove_shared_instance_hop {
+        message.packet.header.hops = message.packet.header.hops.saturating_sub(1);
+    }
     let wire_len = message.packet.serialized_len().unwrap_or_else(|_| message.packet.data.len());
     let is_path_request = message.packet.destination == path_request;
     iface_manager.lock().await.record_inbound_traffic(

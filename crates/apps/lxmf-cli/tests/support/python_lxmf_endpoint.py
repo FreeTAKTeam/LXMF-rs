@@ -199,6 +199,13 @@ class EndpointState:
             "delivery_destination_hash": self.delivery_destination.hash.hex(),
             "identity_hash": self.delivery_destination.identity.hash.hex(),
             "inbox_count": len(self.messages),
+            "reticulum": {
+                "is_shared_instance": bool(getattr(self.reticulum, "is_shared_instance", False)),
+                "is_connected_to_shared_instance": bool(
+                    getattr(self.reticulum, "is_connected_to_shared_instance", False)
+                ),
+                "shared_instance_type": getattr(self.reticulum, "shared_instance_type", None),
+            },
             "link": self._link_snapshot(),
         }
 

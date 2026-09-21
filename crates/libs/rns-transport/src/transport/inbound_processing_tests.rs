@@ -14,6 +14,20 @@ fn message(packet_type: PacketType, destination: AddressHash) -> RxMessage {
     }
 }
 
+async fn processed_hops(transport: &Transport, iface: AddressHash, wire_hops: u8) -> u8 {
+    let mut inbound = message(PacketType::Data, AddressHash::new_from_rand(OsRng));
+    inbound.address = iface;
+    inbound.packet.header.hops = wire_hops;
+    preprocess_inbound_message(&transport.get_handler(), &transport.iface_messages_tx, inbound)
+        .await
+        .expect("inbound packet should be queued")
+        .1
+        .message
+        .packet
+        .header
+        .hops
+}
+
 #[test]
 fn rns_1_5_ingress_classifies_management_traffic_before_queueing() {
     let path_request = AddressHash::new_from_rand(OsRng);
@@ -64,6 +78,44 @@ async fn rns_1_5_ingress_plain_and_group_hop_filter_uses_wire_hops() {
             "wire hops 2 must be rejected for {destination_type:?}"
         );
     }
+}
+
+#[tokio::test]
+async fn shared_instance_receive_removes_only_the_local_boundary_hop() {
+    let mut config = TransportConfig::default();
+    config.set_connected_to_shared_instance(true);
+    let transport = Transport::new(config);
+    let (shared_iface, ordinary_iface) = {
+        let manager = transport.iface_manager();
+        let mut manager = manager.lock().await;
+        let shared_iface = *manager.new_channel(8).address();
+        let ordinary_iface = *manager.new_channel(8).address();
+        assert!(manager.set_shared_instance(shared_iface, true));
+        (shared_iface, ordinary_iface)
+    };
+
+    assert_eq!(processed_hops(&transport, shared_iface, 0).await, 0);
+    assert_eq!(processed_hops(&transport, shared_iface, 1).await, 1);
+    assert_eq!(processed_hops(&transport, ordinary_iface, 0).await, 1);
+}
+
+#[tokio::test]
+async fn shared_instance_parent_does_not_remove_child_boundary_hop() {
+    let mut config = TransportConfig::default();
+    config.set_connected_to_shared_instance(true);
+    let transport = Transport::new(config);
+    let (parent, child) = {
+        let manager = transport.iface_manager();
+        let mut manager = manager.lock().await;
+        let parent = *manager.new_channel(8).address();
+        let child = *manager.new_channel(8).address();
+        assert!(manager.set_shared_instance(parent, true));
+        assert!(manager.inherit_runtime_config(parent, child));
+        (parent, child)
+    };
+
+    assert_eq!(processed_hops(&transport, parent, 0).await, 1);
+    assert_eq!(processed_hops(&transport, child, 0).await, 0);
 }
 
 #[tokio::test]

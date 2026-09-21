@@ -189,6 +189,12 @@ pub fn tcp_server_ifac_interface(name: &str, listen_port: u16) -> String {
     )
 }
 
+pub fn local_client_interface(name: &str, shared_port: u16) -> String {
+    format!(
+        "[[interfaces]]\ntype = \"local_client\"\nenabled = true\nname = \"{name}\"\nshared_instance_type = \"tcp\"\nhost = \"127.0.0.1\"\nport = {shared_port}\nfixed_mtu = 262144\nforce_shared_instance_bitrate = 1000000\n"
+    )
+}
+
 pub fn write_rust_config(dir: &Path, config: &str) {
     fs::create_dir_all(dir.join("state")).expect("create state dir");
     fs::write(dir.join("lxmd.toml"), config).expect("write rust config");
@@ -259,6 +265,17 @@ pub fn write_python_client_rns_config_with_ifac(dir: &Path, server_port: u16) {
         ),
     )
     .expect("write Python IFAC client RNS config");
+}
+
+pub fn write_python_shared_instance_rns_config(dir: &Path, shared_port: u16) {
+    fs::create_dir_all(dir).expect("create Python shared-instance RNS dir");
+    fs::write(
+        dir.join("config"),
+        format!(
+            "[reticulum]\nenable_transport = no\nshare_instance = yes\nshared_instance_type = tcp\nshared_instance_port = {shared_port}\ndiscover_interfaces = no\n\n[logging]\nloglevel = 7\n"
+        ),
+    )
+    .expect("write Python shared-instance RNS config");
 }
 
 pub fn spawn_lxmd(
