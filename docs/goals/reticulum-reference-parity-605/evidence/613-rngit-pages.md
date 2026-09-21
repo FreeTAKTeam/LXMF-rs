@@ -1,7 +1,7 @@
 # #613 rngit NomadNet pages, media, and link cleanup evidence
 
 Status: **partial / unverified**. This records the bounded implementation and
-live pinned-Python trace at candidate commit `fc34e5b4` on
+live pinned-Python trace at candidate commit `1bc8af52` on
 `codex/issue-605-parity`; it does not claim the
 full #613 or #605 acceptance gate.
 
@@ -25,7 +25,7 @@ full #613 or #605 acceptance gate.
 | Pages | Index/group/repository/tree/blob/commits/commit/refs/stats/releases/release/work/work-doc paths, `var_*` query fields, ref/path validation, not-found/error rendering, custom static and bounded executable templates, binary-image `/media` markup | local verified; pinned Python live trace covers missing repository, invalid ref, missing blob, and visual/reference rendering remains incomplete |
 | Access control | Repository read/stats/release checks, work-document read checks, blocked unidentified-client no-identity template, malformed/denied/missing request paths fail closed | local verified; pinned Python live trace covers a denied repository |
 | Media/files | `/media` key and path validation, URL decoding, ref/blob resolution, binary-safe filename metadata, download/artifact/work-doc endpoints, published-release filtering and absent-blob handling | local verified; pinned Python Resource payload/metadata and `/file/download` content/filename trace evidenced |
-| WebP conversion | Backend preference and `RNGIT_MEDIA_BACKEND`, argv-only process construction, quality/max-dimension options, 8-second pipeline bound, bounded stderr, output validation, temporary-directory cleanup, raw fallback | local code/tests; real encoder success and image fixture unverified |
+| WebP conversion | Backend preference and `RNGIT_MEDIA_BACKEND`, argv-only process construction, quality/max-dimension options, 8-second pipeline bound, bounded stderr, output validation, temporary-directory cleanup, raw fallback | local code/tests; pinned Python live `ffmpeg` conversion of a valid PNG returns validated WebP; other backends and visual parity remain unverified |
 | Resource wire | Explicit outbound compression control, with `/media` responses sent uncompressed and a regression asserting no compressed advertisement | local verified; live Python Resource delivery and metadata evidenced |
 
 ## Commands and results
@@ -60,9 +60,11 @@ remain not-found responses without private repository content, and the file
 response preserves `README.md` metadata and bytes. The binary media response
 arrives as a Python Resource with `name=image.png`, size `8192`, and SHA-256
 `f8e920545e99cdc9bbc2650eb8282344e8971a7ff0c397c91355d0fcaf6c61fa`.
-The fixture runs with conversion disabled, so this trace validates the raw
-binary path and the reference `auto_compress=False` Resource boundary; it does
-not promote encoder-success or visual-rendering parity.
+The same trace requests a valid PNG with `RNGIT_MEDIA_BACKEND=ffmpeg`; it
+returns `name=valid.webp` and a validated `RIFF/WEBP` payload. The invalid
+image fixture still follows raw fallback, and both Resource responses use the
+explicit `auto_compress=False` boundary; this does not promote
+visual-rendering parity.
 
 The module-size script now reports only the existing
 `crates/libs/rns-transport/src/resource/manager.rs:555` over-budget baseline;
@@ -79,9 +81,11 @@ limit.
 - The Rust page rendering is intentionally a compact service implementation;
   full Markdown highlighting, pagination, diff rendering, signed work-document
   presentation, and every reference template detail remain open.
-- A live encoder-success fixture was not run in this environment; invalid
-  conversion fallback, WebP header validation, timeout/cleanup code paths, and
-  argument construction are covered locally.
+- Only the `ffmpeg` backend has a live encoder-success fixture; the other
+  configured backend families, visual-rendering parity, and full image corpus
+  remain unverified. Invalid conversion fallback, WebP header validation,
+  timeout/cleanup code paths, and argument construction are also covered
+  locally.
 - Missing-key/malformed-media live failure transcripts, Reticulum public-key
   work-document signature verification, restart/concurrent-writer/fault
   transcripts, and end-to-end rngit Git/work network workflows remain open

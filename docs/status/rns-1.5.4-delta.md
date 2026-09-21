@@ -146,13 +146,14 @@ bounded WebP conversion with raw fallback, link-scoped temporary cleanup, and
 explicit no-compression Resource responses. A new pinned Python/NomadNet
 client trace establishes and identifies a real TCP Reticulum Link, checks
 successful and negative repository/page/file requests, verifies denied access,
-downloads raw media, and checks metadata, size, and SHA-256. The separate
+downloads raw media, checks metadata, size, and SHA-256, and validates a live
+`ffmpeg` PNG-to-WebP response with filename metadata. The separate
 `git.repositories` list/fetch/push/delete/create/sync/fork/mirror trace does
 not complete the page issue's broader Git/work acceptance. The row remains
 partial and unverified because missing-key/malformed-media live failures,
-encoder-success, complete reference rendering, remaining page/file cases,
-restart/fault cleanup, and end-to-end rngit Git/work network workflows remain
-open.
+other conversion backends, complete reference rendering, remaining page/file
+cases, restart/fault cleanup, and end-to-end rngit Git/work network workflows
+remain open.
 
 The #614 implementation slice now has committed local evidence in
 [`evidence/614-native-interfaces.md`](../goals/reticulum-reference-parity-605/evidence/614-native-interfaces.md):
