@@ -12,7 +12,7 @@ fn rnsd_honors_reticulumd_bin_and_forwards_help_output() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Request Reticulum path discovery through daemon RPC."));
     let delegated_name = if cfg!(windows) { "rnpath-rs.exe" } else { "rnpath-rs" };
-    assert!(stdout.contains(&format!("Usage: {delegated_name} [OPTIONS] <DESTINATION_HASH>")));
+    assert!(stdout.contains(&format!("Usage: {delegated_name} [OPTIONS] [DESTINATION_HASH]")));
 }
 
 #[test]

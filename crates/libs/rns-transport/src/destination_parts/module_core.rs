@@ -72,6 +72,20 @@ impl DestinationName {
         Self { hash }
     }
 
+    /// Build a destination name that has no aspects.
+    ///
+    /// Python Reticulum hashes an application with no aspects as `app_name`,
+    /// not `app_name.`.  Keeping this constructor explicit avoids changing
+    /// the long-standing two-component `new` API while allowing utilities
+    /// such as `rnsh` to address their reference destination exactly.
+    pub fn new_app(app_name: &str) -> Self {
+        let hash = Hash::new(
+            Hash::generator().chain_update(app_name.as_bytes()).finalize().into(),
+        );
+
+        Self { hash }
+    }
+
     pub fn new_from_hash_slice(hash_slice: &[u8]) -> Self {
         let mut hash = [0u8; 32];
         hash[..hash_slice.len()].copy_from_slice(hash_slice);
