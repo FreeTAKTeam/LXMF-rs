@@ -118,8 +118,10 @@ evidence fields, and acceptance boundary.
 | `CRNS/*` | none | not-applicable | pinned-python | No `CRNS` package exists in either pinned reference tree. | Provenance is resolved; no Rust implementation is required. |
 
 The forward #611 `rncp` evidence also verifies readiness-gated medium-timeout
-selection after an active TCP interface connects (`27bb3fac`); genuinely slow
-interface timing and remote receive-side fault evidence remain open.
+selection after an active TCP interface connects (`27bb3fac`) and a
+Python-listener/Rust-client restart trace with stable identity (`708dc980`);
+genuinely slow interface timing and remote receive-side fault evidence remain
+open.
 
 ### Runtime and daemon compatibility
 

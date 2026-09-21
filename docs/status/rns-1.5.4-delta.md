@@ -176,6 +176,8 @@ adds flushed non-silent client phase output and an interrupted-Resource process
 check with nonzero status and no partial saved file. Commit `27bb3fac` gates
 network work on initial TCP client readiness, preserving cancellation handling
 while proving the medium-path timeout lower bound after interface activation.
+Commit `708dc980` adds a pinned-Python listener/Rust-client restart trace with
+stable identity and exact binary transfers before and after restart.
 
 The #612 implementation slice now has committed evidence in
 [`evidence/612-rngit.md`](../goals/reticulum-reference-parity-605/evidence/612-rngit.md):

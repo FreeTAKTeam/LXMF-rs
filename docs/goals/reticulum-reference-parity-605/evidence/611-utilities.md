@@ -13,7 +13,8 @@ covered by `d66b19d1`; local destination disk-error status is covered by
 `397a9525`. Concurrent clients are covered by `e668ae60`.
 Interrupted-link status and flushed non-silent phase output are covered by
 `a5f57dba`. Adaptive medium-path timeout after TCP interface activation is
-covered by `27bb3fac`.
+covered by `27bb3fac`. Python-listener restart with a Rust client is covered by
+`708dc980`.
 
 ## Reference and ownership
 
@@ -36,7 +37,7 @@ covered by `27bb3fac`.
 | Jail and save safety | Canonical jail containment, traversal rejection, basename-only metadata, overwrite/suffix behavior | protocol unit tests and process test | verified locally |
 | Timeout/output | `--timeout`, silent mode, nonzero status for denied senders, preserved not-found failure output for missing fetches, malformed identity rejection, unusable save-path rejection, path-discovery timeout status, client Ctrl-C cancellation, interrupted Resource-link failure, and medium-path timeout after an active TCP interface connects | unit/manual process runs, `rncp_process` | nine bounded process-level failure/status and adaptive-timeout outcomes are verified; genuinely slow-interface and remote receive-side cancellation remain open |
 | Status output | Non-silent path request, link-establishment, transfer, and fetch-request phase lines; silent mode suppresses them | `rncp_process`, CLI phase transcript | verified for the native Rust client path |
-| Restart | Persisted listener identity, same TCP endpoint, stable destination hash, and a second binary transfer after listener restart | `rncp_process` | verified for the bounded Rust listener/client path |
+| Restart | Persisted listener identity, same TCP endpoint, stable destination hash, and a second binary transfer after listener restart | `rncp_process`; ignored `rncp_python_interop` restart process | verified for the bounded Rust listener/client path and the Python-listener/Rust-client role |
 | Disk failure | Fetch save failure when the overwrite target is a directory | `rncp_process` | verified with nonzero status and preserved OS error output; remote receive-side save faults remain open |
 | Multi-client | Three independent clients send distinct binary files concurrently to one listener | `rncp_process` | verified for the bounded Rust listener/client path |
 | Adaptive timeout | Initial TCP clients reach `connected` before network work begins, allowing `operation_timeout` to observe the active interface bitrate and apply the RNS medium-path lower bound | `rncp_process::rncp_uses_medium_timeout_after_interface_activation` | verified for an active local TCP interface; genuinely slow-interface timing remains open |
@@ -59,10 +60,14 @@ cargo test -p rns-tools --test rncp_process \
 RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   cargo test -p rns-tools --test rncp_python_interop \
   rncp_mixed_runtime_compression_matrix_roundtrips_binary_files \
-  -- --ignored --nocapture                         1 passed (4.78s)
+  -- --ignored --nocapture                         1 passed (4.85s)
 RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   cargo test -p rns-tools --test rncp_python_interop \
-  -- --ignored --nocapture                         2 passed (32.30s)
+  -- --ignored --nocapture --test-threads=1        3 passed (38.87s)
+RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
+  cargo test -p rns-tools --test rncp_python_interop \
+  rncp_python_listener_restart_preserves_identity_and_transfer \
+  -- --ignored --nocapture                         1 passed (1.62s)
 ```
 
 The process tests start independent listener and client processes with isolated
@@ -90,6 +95,12 @@ case starts a real listener, waits for the client-side TCP interface to become
 connected, requests an unknown destination with `--timeout 1`, and observes
 the medium-path timeout lower bound: the run took 6.18 seconds and returned
 `path discovery timed out`.
+
+The mixed-runtime restart regression starts the pinned Python listener with a
+persisted identity and an allow-listed Rust sender, sends a binary file, stops
+the listener, starts it again on the same TCP endpoint, verifies that its
+destination hash is unchanged, and sends a second binary file. Both files were
+saved with exact bytes; the ignored test completed in 1.62 seconds.
 
 An additional manual run transferred a 4,369-byte binary payload in both
 directions. Both copies had SHA-256
@@ -124,6 +135,12 @@ fetch client. Each process uses an isolated TCP interface, identity, and file
 root; every received file matches the original bytes exactly. The Resource
 unit tests remain the direct wire-flag proof; this process trace proves the
 utility flags and mixed-runtime decompression/save behavior.
+
+The complete ignored Python interop suite was run with one test thread because
+the first three-test parallel invocation had one compression-matrix path
+discovery timeout while its isolated rerun passed. The serial run completed all
+three tests in 38.87 seconds; the process isolation and exact file assertions
+are unchanged.
 
 The `2b281b87` process increment also proves two negative categories through
 the production CLI: a missing fetch exits nonzero with `remote file was not
