@@ -8,7 +8,7 @@ it does not promote the full #610 acceptance contract or close parent issue
 
 - Candidate branch: `codex/issue-605-parity`.
 - Historical evidence candidate: `4ebaf762236e03df8ae56fd55696bd51c2e3de46`.
-- Current branch carrying this behavior: `42ef3f29`; later documentation
+- Current branch carrying this behavior: `16085a5e`; later documentation
   commits preserve this slice. The historical checks below are not being
   relabeled as reruns at the newer commit.
 - Candidate base: `a5425366` (the merged PR #603 base used by the #605 plan).
@@ -101,7 +101,21 @@ RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   cargo test -p reticulumd --test python_channel_interop \
   python_to_python_resource_roundtrip_through_rust_transport -- --ignored --nocapture
   # 1 passed; split Resource crosses two Python endpoints over one forwarding Rust transport
+
+RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
+  cargo test -p reticulumd --test python_channel_interop \
+  pinned_python_resource_fault_matrix -- --ignored --nocapture
+  # 1 passed; 35 filtered out; 69.31s
 ```
+
+The fault matrix runs through a production TCP carrier and inspects only
+decoded HDLC frames whose packet context is `Resource`; announces, link setup,
+proofs, requests, and other control frames remain unmodified. In the
+Python-sender → Rust-receiver direction, one dropped segment, one duplicate,
+and a two-segment reorder all recovered to a complete resource. Dropping all
+Resource data segments produced a terminal Rust inbound failure instead of a
+false completion. This is a pinned-Python fault trace in one direction, not
+yet the reverse Rust-sender fault matrix or a link-timeout-specific trace.
 
 The release runs completed in approximately 10.00 seconds and 11.53 seconds.
 The debug Rust-to-Python 50 MiB preparation run exceeded the 180-second
@@ -134,11 +148,10 @@ evidence, not a substitute for the pinned Python fault matrix.
 The following #610 requirements remain unverified and are intentionally not
 represented as complete:
 
-- mixed-Python fault-injection evidence for loss, duplication, reordering,
-  missing fragments, and link-timeout recovery or terminal failure; the new
-  pinned-Python cancellation cases cover both terminal directions, while the
-  full pinned-Python matrix and cross-implementation duplicate/reorder trace
-  remain open;
+- mixed-Python fault-injection evidence for the reverse Rust-sender direction
+  and link-timeout recovery or terminal failure; the pinned-Python matrix now
+  covers Python-sender loss, duplication, reordering, and complete
+  missing-fragment terminal failure, while the reverse matrix remains open;
 - peak-RSS measurements for the 50 MiB mixed-peer transfers and a bounded
   memory report across the full matrix;
 - mixed-Python fault-injection evidence for the reader/file adapter, including
@@ -152,10 +165,11 @@ represented as complete:
 The current conclusion is therefore: collision regeneration, shutdown cleanup,
 window-bounded fragment admission, deterministic local loss/duplication/
 reordering recovery, split cancellation cleanup, bidirectional pinned-Python
-cancellation terminal events, reader-backed bounded source retention plus a
-pinned-Python split reader transfer, a two-carrier pinned-Python split Resource
-forwarding trace with an exact remote callback digest, bidirectional
-release-profile mixed-peer transfers, and the independent `rns-rs`
+cancellation terminal events, Python-sender pinned-Python loss/duplication/
+reordering and missing-fragment terminal evidence, reader-backed bounded source
+retention plus a pinned-Python split reader transfer, a two-carrier pinned-
+Python split Resource forwarding trace with an exact remote callback digest,
+bidirectional release-profile mixed-peer transfers, and the independent `rns-rs`
 loss/timeout/latency slice are implemented with local evidence; the broader
 Resource failure and bounded-memory contract remains
 partial pending the full pinned-Python fault matrix, resource-usage evidence,
