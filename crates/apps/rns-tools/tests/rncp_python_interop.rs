@@ -183,6 +183,49 @@ fn run_python_send(
     Ok(output)
 }
 
+fn run_python_fetch(
+    python: &str,
+    config_dir: &Path,
+    identity: &Path,
+    repo: &Path,
+    remote_file: &str,
+    destination: &str,
+    save_root: &Path,
+) -> io::Result<Output> {
+    let script = repo.join("RNS/Utilities/rncp.py");
+    let mut child = Command::new(python)
+        .arg(&script)
+        .arg(remote_file)
+        .arg(destination)
+        .args(["--fetch", "--config"])
+        .arg(config_dir)
+        .arg("-i")
+        .arg(identity)
+        .arg("-s")
+        .arg(save_root)
+        .args(["-O", "-S", "-C", "-w", "30"])
+        .env("PYTHONPATH", repo)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let deadline = Instant::now() + Duration::from_secs(45);
+    loop {
+        if child.try_wait()?.is_some() {
+            return child.wait_with_output();
+        }
+        if Instant::now() >= deadline {
+            child.kill()?;
+            let output = child.wait_with_output()?;
+            return Err(io::Error::other(format!(
+                "Python rncp fetch timed out\nstdout:\n{}\nstderr:\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            )));
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+}
+
 fn run_rust_send(
     source: &Path,
     destination: &str,
@@ -247,10 +290,15 @@ fn rncp_exchanges_binary_files_with_pinned_python_in_both_directions() -> io::Re
     let rust_payload = (0..16_384).map(|index| (index as u8).wrapping_mul(37)).collect::<Vec<_>>();
     let python_payload =
         (0..12_345).map(|index| (index as u8).wrapping_mul(19).wrapping_add(7)).collect::<Vec<_>>();
+    let rust_fetch_payload =
+        (0..8_765).map(|index| (index as u8).wrapping_mul(29).wrapping_add(5)).collect::<Vec<_>>();
     let rust_source = rust_source_root.join("rust-to-python.bin");
     let python_source = python_source_root.join("python-to-rust.bin");
+    let rust_fetch_source = rust_listener_root.join("rust-fetch-source.bin");
     fs::write(&rust_source, &rust_payload)?;
     fs::write(&python_source, &python_payload)?;
+    fs::write(&rust_fetch_source, &rust_fetch_payload)?;
+    fs::write(rust_listener_root.join("python-to-rust.bin"), b"stale receiver data")?;
 
     let repo = python_repo();
     let python = python_bin();
@@ -279,7 +327,16 @@ fn rncp_exchanges_binary_files_with_pinned_python_in_both_directions() -> io::Re
             "--save",
         ])
         .arg(&rust_listener_root)
-        .args(["--identity-seed", rust_identity_seed, "--silent", "--timeout", "30"])
+        .args([
+            "--identity-seed",
+            rust_identity_seed,
+            "--allow-fetch",
+            "--overwrite",
+            "--silent",
+            "--timeout",
+            "30",
+        ])
+        .current_dir(&rust_listener_root)
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .spawn()?;
@@ -316,6 +373,30 @@ fn rncp_exchanges_binary_files_with_pinned_python_in_both_directions() -> io::Re
             )));
         }
         assert_eq!(fs::read(rust_listener_root.join("python-to-rust.bin"))?, python_payload);
+        assert!(!rust_listener_root.join("python-to-rust.bin.1").exists());
+
+        let python_fetch_root = temp.path().join("python-fetch");
+        fs::create_dir_all(&python_fetch_root)?;
+        fs::write(python_fetch_root.join("rust-fetch-source.bin"), b"stale fetch data")?;
+        let python_fetch_output = run_python_fetch(
+            &python,
+            &python_sender_config,
+            &python_sender_identity,
+            &repo,
+            "rust-fetch-source.bin",
+            &rust_destination,
+            &python_fetch_root,
+        )?;
+        if !python_fetch_output.status.success() {
+            return Err(io::Error::other(format!(
+                "Python rncp fetch from Rust failed: {}\nstdout:\n{}\nstderr:\n{}",
+                python_fetch_output.status,
+                String::from_utf8_lossy(&python_fetch_output.stdout),
+                String::from_utf8_lossy(&python_fetch_output.stderr)
+            )));
+        }
+        assert_eq!(fs::read(python_fetch_root.join("rust-fetch-source.bin"))?, rust_fetch_payload);
+        assert!(!python_fetch_root.join("rust-fetch-source.bin.1").exists());
         Ok(())
     })();
     let _ = rust_listener.kill();

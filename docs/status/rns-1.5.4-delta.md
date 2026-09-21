@@ -131,10 +131,13 @@ fetch jail, the Python reference's unassociated file Resource shape, exact
 binary save, and rejection of a second identity. The `rncp
 --no-compress` option now reaches the Resource manager for both outbound sends
 and fetch responses. A pinned Python/Rust trace now proves reciprocal identity
-allow-list authorization for the send and fetch roles. The row remains partial
-and unverified because Python overwrite/callback behavior, the complete utility
-option/behavior matrix, rngit network workflows, and restart/fault transcripts
-remain open or owned by #612/#613.
+allow-list authorization for the send and fetch roles, the ordinary
+metadata-bearing Resource contract in both directions, and overwrite replacement
+without a collision suffix on both Rust and Python save paths. Its exact file
+assertion also exercises the completed Python fetch resource-conclusion/save
+callback. The row remains partial and unverified because direct callback
+telemetry, the complete utility option/behavior matrix, rngit network workflows,
+and restart/fault transcripts remain open or owned by #612/#613.
 
 The #612 implementation slice now has committed evidence in
 [`evidence/612-rngit.md`](../goals/reticulum-reference-parity-605/evidence/612-rngit.md):

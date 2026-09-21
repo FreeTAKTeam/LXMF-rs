@@ -10,12 +10,16 @@ use std::io;
 use tokio::sync::broadcast;
 use tokio::time::{interval, Duration};
 
+const REQUEST_RESPONSE_GRACE: Duration = Duration::from_millis(50);
+const MAX_PENDING_REQUESTS_PER_LINK: usize = 8;
+
 pub(crate) async fn serve(runtime: Runtime) -> io::Result<()> {
     let mut link_events = runtime.transport.in_link_events();
     let mut data_events = runtime.transport.received_data_events();
     let mut resource_events = runtime.transport.resource_events();
     let mut announce_timer = interval(Duration::from_secs(5));
     let mut authorized = HashMap::<AddressHash, bool>::new();
+    let mut pending_requests = HashMap::<AddressHash, Vec<ReceivedData>>::new();
 
     loop {
         tokio::select! {
@@ -28,14 +32,20 @@ pub(crate) async fn serve(runtime: Runtime) -> io::Result<()> {
                         let accepted = runtime.no_auth || runtime.allowed.contains(&identity.address_hash);
                         authorized.insert(event.id, accepted);
                         if !accepted {
+                            pending_requests.remove(&event.id);
                             if !runtime.silent {
                                 eprintln!("rncp: rejected unauthorised sender {}", identity.address_hash.to_hex_string());
                             }
                             close_link(&runtime, event.id).await;
+                        } else if let Some(requests) = pending_requests.remove(&event.id) {
+                            for request in requests {
+                                handle_fetch_request(&runtime, request).await?;
+                            }
                         }
                     }
                     if matches!(event.event, LinkEvent::Closed) {
                         authorized.remove(&event.id);
+                        pending_requests.remove(&event.id);
                     }
                 }
                 Err(broadcast::error::RecvError::Lagged(_)) => {}
@@ -45,8 +55,32 @@ pub(crate) async fn serve(runtime: Runtime) -> io::Result<()> {
             },
             result = data_events.recv() => match result {
                 Ok(event) if event.context == Some(PacketContext::Request) => {
-                    if authorized.get(&event.destination).copied().unwrap_or(runtime.no_auth) {
-                        handle_fetch_request(&runtime, event).await?;
+                    match authorized.get(&event.destination).copied() {
+                        Some(true) => handle_fetch_request(&runtime, event).await?,
+                        Some(false) => {}
+                        None if runtime.no_auth => handle_fetch_request(&runtime, event).await?,
+                        None => {
+                            let link_id = event.destination;
+                            let queue_full = {
+                                let requests = pending_requests.entry(link_id).or_default();
+                                if requests.len() >= MAX_PENDING_REQUESTS_PER_LINK {
+                                    true
+                                } else {
+                                    requests.push(event);
+                                    false
+                                }
+                            };
+                            if queue_full {
+                                pending_requests.remove(&link_id);
+                                if !runtime.silent {
+                                    eprintln!(
+                                        "rncp: too many requests before peer identification {}",
+                                        link_id
+                                    );
+                                }
+                                close_link(&runtime, link_id).await;
+                            }
+                        }
                     }
                 }
                 Ok(_) => {}
@@ -114,12 +148,17 @@ async fn handle_fetch_request(runtime: &Runtime, event: ReceivedData) -> io::Res
         }
     };
     send_response(runtime, event.destination, request_id, rmpv::Value::Boolean(true)).await?;
+    // Give the Python fetch loop time to switch the link to ACCEPT_ALL after
+    // its response callback resolves the request status. Otherwise the
+    // Resource advertisement can arrive before that callback returns.
+    tokio::time::sleep(REQUEST_RESPONSE_GRACE).await;
     let metadata = protocol::encode_metadata(&path)?;
+    // Python rncp returns True for the request and starts an ordinary,
+    // metadata-bearing Resource; it is not a response-flagged Resource.
     runtime
         .transport
-        .send_response_resource_with_compression(
+        .send_resource_with_compression(
             &event.destination,
-            request_id.to_vec(),
             data,
             Some(metadata),
             !runtime.no_compress,
@@ -135,6 +174,10 @@ async fn send_response(
     request_id: [u8; 16],
     response: rmpv::Value,
 ) -> io::Result<()> {
+    // Python's Link.request sends the packet before it appends its
+    // RequestReceipt to pending_requests. A Rust response can otherwise win
+    // that small race and be discarded before rncp's fetch callback exists.
+    tokio::time::sleep(REQUEST_RESPONSE_GRACE).await;
     let link =
         runtime.transport.find_in_link(&link_id).await.ok_or_else(|| {
             io::Error::new(io::ErrorKind::NotConnected, "incoming link disappeared")
