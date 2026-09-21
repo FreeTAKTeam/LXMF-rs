@@ -64,10 +64,6 @@ impl ReticulumGitNode {
         fs::rename(temporary.path(), path).map_err(|error| error.to_string())
     }
 
-    fn work_document_path(&self, root: &Path, scope: &str, id: u64) -> PathBuf {
-        root.join(scope).join(id.to_string()).join("root")
-    }
-
     fn work_meta(document: &rmpv::Value) -> Option<&[(rmpv::Value, rmpv::Value)]> {
         document
             .as_map()

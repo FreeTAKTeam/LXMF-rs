@@ -152,8 +152,20 @@ impl ReticulumGitNode {
         if let Err(error) = Self::validate_work_signature(request, peer_identity) {
             return response(Self::RES_INVALID_REQ, error, None);
         }
-        let id = self.work_get_next_id(root);
         let scope = if proposed { "proposed" } else { "active" };
+        let scope_root = root.join(scope);
+        if let Err(error) = fs::create_dir_all(&scope_root) {
+            return response(Self::RES_REMOTE_FAIL, error.to_string(), None);
+        }
+        let (id, directory) = loop {
+            let id = self.work_get_next_id(root);
+            let directory = scope_root.join(id.to_string());
+            match fs::create_dir(&directory) {
+                Ok(()) => break (id, directory),
+                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+                Err(error) => return response(Self::RES_REMOTE_FAIL, error.to_string(), None),
+            }
+        };
         let now = Self::work_now();
         let document = rmpv::Value::Map(vec![
             (
@@ -188,9 +200,16 @@ impl ReticulumGitNode {
                 ]),
             ),
         ]);
-        if let Err(error) =
-            self.work_save_document(&self.work_document_path(root, scope, id), &document)
-        {
+        if let Err(error) = self.work_save_document(&directory.join("root"), &document) {
+            let cleanup = fs::remove_dir_all(&directory);
+            if let Err(cleanup_error) = cleanup {
+                log::warn!(
+                    "failed to roll back work document after save failure path={} error={} cleanup_error={}",
+                    directory.display(),
+                    error,
+                    cleanup_error
+                );
+            }
             return response(Self::RES_REMOTE_FAIL, error, None);
         }
         if proposed {
@@ -200,6 +219,14 @@ impl ReticulumGitNode {
                 hex::encode(remote)
             );
             if let Err(error) = Self::work_write_permissions(root, id, &owner) {
+                if let Err(cleanup_error) = fs::remove_dir_all(&directory) {
+                    log::warn!(
+                        "failed to roll back proposed work document after permission failure path={} error={} cleanup_error={}",
+                        directory.display(),
+                        error,
+                        cleanup_error
+                    );
+                }
                 return response(Self::RES_REMOTE_FAIL, error, None);
             }
         }
