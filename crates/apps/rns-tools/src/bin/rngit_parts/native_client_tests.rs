@@ -179,6 +179,70 @@ while node._should_run:
             return Err(test_io::Error::other("Python Git fetch returned an invalid bundle"));
         }
 
+        test_fs::write(source.join("large.bin"), vec![b'P'; 16 * 1024])?;
+        TestCommand::new("git")
+            .current_dir(&source)
+            .args(["add", "large.bin"])
+            .status()?
+            .success()
+            .then_some(())
+            .ok_or_else(|| test_io::Error::other("could not stage Python rngit push source"))?;
+        TestCommand::new("git")
+            .current_dir(&source)
+            .args(["commit", "-q", "-m", "native client push fixture"])
+            .status()?
+            .success()
+            .then_some(())
+            .ok_or_else(|| test_io::Error::other("could not commit Python rngit push source"))?;
+        let expected_head = String::from_utf8_lossy(
+            &TestCommand::new("git")
+                .current_dir(&source)
+                .args(["rev-parse", "HEAD"])
+                .output()?
+                .stdout,
+        )
+        .trim()
+        .to_string();
+        let push_bundle = temp.path().join("native-push.bundle");
+        TestCommand::new("git")
+            .current_dir(&source)
+            .args([
+                "bundle",
+                "create",
+                push_bundle.to_string_lossy().as_ref(),
+                "refs/heads/main",
+            ])
+            .status()?
+            .success()
+            .then_some(())
+            .ok_or_else(|| test_io::Error::other("could not create Python rngit push bundle"))?;
+        let push_bundle = test_fs::read(push_bundle)?;
+        let pushed = client
+            .process_push_queue(
+                &remote,
+                "refs/heads/main",
+                "refs/heads/feature",
+                &push_bundle,
+                false,
+            )
+            .map_err(test_io::Error::other)?;
+        if pushed.first().copied() != Some(0) {
+            return Err(test_io::Error::other(format!("Python Git push failed: {pushed:?}")));
+        }
+        let remote_head = String::from_utf8_lossy(
+            &TestCommand::new("git")
+                .args(["--git-dir", repository.to_string_lossy().as_ref(), "rev-parse", "refs/heads/feature"])
+                .output()?
+                .stdout,
+        )
+        .trim()
+        .to_string();
+        if remote_head != expected_head {
+            return Err(test_io::Error::other(format!(
+                "Python Git push updated {remote_head}, expected {expected_head}"
+            )));
+        }
+
         let created = client
             .work_create(&remote, "Rust native request", &"R".repeat(4096))
             .map_err(test_io::Error::other)?;
