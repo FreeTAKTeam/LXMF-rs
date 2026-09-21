@@ -3,22 +3,23 @@
 Status: **partial / unverified**. This records the bounded evidence-contract
 increment, local release-gate repairs, exact-target inventory gate, and the
 clean local Python/Rust matrix through the latest software candidate
-`919d5924` on `codex/issue-605-parity`; it does not claim completion of #615
-or #605.
+`919d5924` and the latest full release-gate candidate `c4c41e72` on
+`codex/issue-605-parity`; it does not claim completion of #615 or #605.
 
 ## Latest local release-gate run
 
 The latest full `cargo xtask release-check` ran against software candidate
-`364125356f5dc428ace1540df6c345a08000f7f0` on 2026-09-21 UTC and passed with
+`c4c41e72cd2a72428aaddc59762ec6c9985cdc8e` on 2026-09-21 UTC and passed with
 exit code 0. The generated release scorecard records overall `PASS`, soak
-`pass` with zero E2E and mesh failures, 11 security pass rows, and eight
-supply-chain artifacts; the canary report also passed with no rollback
-triggers. The gate reported 2,659 nextest tests passed, Miri 29 passed with
+`pass` with zero E2E and mesh failures in 22 seconds, 11 security pass rows,
+and eight supply-chain artifacts. The gate reported 2,677 nextest tests
+passed, Miri 29 passed with
 14 ignored, exact baseline and forward Python pins, active surface inventory
 `1,858 total / 1,857 complete / 0 partial / 1 not-applicable`, reproducible
 packaging, audit, boundary, module-size, embedded-footprint, SDK,
 backup/restore, code-generation, compatibility-kit, and license/source checks
-passed. The network soak completed with zero failures in 21 seconds.
+passed. The generated provenance and scorecard both identify the exact
+candidate commit above.
 
 The scorecard marks performance as `SKIPPED` and advisory for this run, so no
 performance pass is claimed here. Other non-failing notices were existing
@@ -145,11 +146,12 @@ cargo test -p rns-tools --bin rngit --all-features                            PA
 cargo run -p xtask -- interop-artifacts                                       PASS
 cargo xtask release-check                                                      PASS
   (local candidate run, 2026-09-21 UTC; software candidate
-   `364125356f5dc428ace1540df6c345a08000f7f0`; nextest 2,659 passed; Miri
+   `c4c41e72cd2a72428aaddc59762ec6c9985cdc8e`; nextest 2,677 passed; Miri
    29 passed / 14 ignored; backup/restore, packaging, audit, boundary,
    license/source, reproducible-build, embedded-footprint, code-generation,
    compatibility-kit, SDK, and module-size gates passed; soak/mesh reported
-   zero failures; scorecard overall `PASS`, performance `SKIPPED`/advisory)
+   zero failures in 22 seconds; scorecard overall `PASS`, performance
+   `SKIPPED`/advisory)
 ```
 
 The earlier aggregate Python/Rust matrix run reported only non-failing
