@@ -923,10 +923,11 @@ direction.
   `f24e0038`, hardened by `a32b6d71`: persisted or deterministic identities, allow-list/no-auth
   listener modes, root-scoped command execution, frozen Python channel
   envelopes, stream forwarding, timeout, and mirrored exit status are covered
-  by Rust process/auth tests plus a pinned-Python initiator→Rust listener
-  exchange. PTY/resize, full fault/restart coverage, the reverse Python
-  listener role, and public/multi-hop evidence remain open; this does not
-  promote the broader `RNS/Utilities/*` row.
+  by Rust process/auth tests plus reciprocal pinned-Python initiator→Rust
+  listener and Rust initiator→pinned-Python listener exchanges (`e57afb99`).
+  PTY/resize, full fault/restart coverage, immediate non-TTY EOF behavior
+  against the pinned listener, and public/multi-hop evidence remain open; this
+  does not promote the broader `RNS/Utilities/*` row.
 - The pinned Python compatibility matrix now includes
   `rns_path_request_rust_to_python`, a loopback TCP case where Rust
   `reticulumd` starts with an unknown Python delivery path, resolves it through

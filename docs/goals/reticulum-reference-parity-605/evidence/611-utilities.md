@@ -20,7 +20,8 @@ authenticated `rnsh` channel workflow is implemented by `f24e0038`, with
 channel-window retry, bounded inbound queue overflow handling, and a large-
 output regression added by `a32b6d71`. Its Rust process tests cover command
 output, mirrored exit status, allow-list rejection, and flow-control output,
-while the pinned-Python initiator role is covered by an ignored interop test.
+while both pinned-Python initiator/listener roles are covered by the ignored
+interop fixture at `e57afb99`.
 The two-direction pinned-Python/native `rnprobe` process exchange is covered
 by `f86ecc1c`.
 
@@ -54,7 +55,7 @@ option family; it is not a callable-surface completion claim.
 | `rnir` | Resolver configuration, verbosity, example configuration, and resolver runtime integration | Rust accepts global/config/example options but does not expose a resolver network workflow | partial / configuration-only |
 | `rnodeconf` | Serial RNode information, firmware/bootstrap/update, EEPROM, Wi-Fi/Bluetooth/display/radio management, signing/trust operations | Rust `rnodeconf-rs` exposes daemon-backed management commands and mock-RPC coverage; physical serial/firmware rows are separate | partial / software management evidenced; hardware-unverified |
 | `rnpkg` | Package-manager configuration and package workflow entry point | Rust exposes global/example-config options only, matching the currently shipped no-subcommand surface | partial / configuration-only |
-| `rnsh` | Authenticated remote shell listener/initiator; identity/allow-list/no-auth; command policy; stdin/stdout/stderr streams; timeout and mirrored exit status | `f24e0038` adds a native TCP/Link/Channel listener and initiator using the frozen `0xAC00`–`0xAC07` envelope family, persisted identities, allow-list/no-auth modes, root-scoped command execution, remote-command policy, stream forwarding, timeout, and mirrored exit status. `a32b6d71` retries channel-window backpressure, fails closed on bounded inbound queue overflow, and exercises a 128 KiB output stream. `rnsh_process` covers Rust↔Rust command output and authenticated allow-list rejection; `rnsh_python_interop` covers pinned-Python initiator→Rust listener output and exit status. The existing local root-scoped executor remains the no-network mode. | partial / bounded native and one pinned-Python role evidenced |
+| `rnsh` | Authenticated remote shell listener/initiator; identity/allow-list/no-auth; command policy; stdin/stdout/stderr streams; timeout and mirrored exit status | `f24e0038` adds a native TCP/Link/Channel listener and initiator using the frozen `0xAC00`–`0xAC07` envelope family, persisted identities, allow-list/no-auth modes, root-scoped command execution, remote-command policy, stream forwarding, timeout, and mirrored exit status. `a32b6d71` retries channel-window backpressure, fails closed on bounded inbound queue overflow, and exercises a 128 KiB output stream. `rnsh_process` covers Rust↔Rust command output and authenticated allow-list rejection; `rnsh_python_interop` covers both pinned-Python initiator→Rust listener and Rust initiator→pinned-Python listener output and exit status (`e57afb99`). The existing local root-scoped executor remains the no-network mode. | partial / bounded native and both pinned-Python roles evidenced |
 | `rnx` | Authenticated Reticulum remote execution, listener/initiator, interactive and stream options, identity and timeout controls | Rust `rnx` is a production interop/diagnostic harness with mesh, resource, BLE, TCP, and path scenarios; its scenarios are not a drop-in `rnsh` endpoint | partial / harness workflows evidenced, reference remote shell remains open |
 | `rngit` | Reticulum Git client/server, repository and work operations, bundles, pages/media, permissions, signatures, and network failure/restart behavior | Rust local CLI plus daemon-side service handlers; #612/#613 records pinned-Python request/bundle/page/media seams and the reciprocal native Rust-client `/git/list`/`/git/fetch`/`/git/push`/signed `/mgmt/work` plus bounded release request trace, with exact fetched-bundle and pushed-ref verification | partial / split across #611–#613 |
 
@@ -81,7 +82,7 @@ physical/public-network evidence remain outside the software-only pass.
 | Packet probe exchange | Probe packet delivery and proof correlation between the native daemon path and the pinned Python utility, in both initiator/responder directions | ignored `rnprobe_python_interop` (2 tests, commit `f86ecc1c`) | verified for isolated Rust daemon/Python TCP roles; public/multi-hop, carrier-fault, and physical timing remain open |
 | Compression option | `--no-compress` disables opportunistic Resource compression for outbound sends and fetch responses while preserving the default auto-compression path | Resource compression regression, `rncp_process`, mixed Python/Rust compression matrix | verified for the focused Python↔Rust send and listener-side fetch-response roles; the successful Python fetch-client completion callback is also asserted, while listener-side save/failure callback telemetry and the complete utility matrix remain open |
 | Path management | `rnpath-rs`/`rnpath` discovers paths through daemon RPC and now exposes daemon-backed rate inspection, path and announce-queue eviction, path-via eviction, blackhole listing, and timed/reasoned blackhole add/remove operations with human and JSON output | `rnpath_cli` mock-RPC and parser/process regressions | verified for the Rust client/daemon RPC boundary; pinned-Python utility roles and the remaining reference path-table/remote-management options remain open |
-| Remote shell | Native authenticated listener/initiator, frozen channel message numbers, root-scoped process launch, stdin/stdout/stderr stream framing, command policy, timeout, mirrored exit status, and allow-list rejection | `rnsh` unit tests; `rnsh_process`; ignored `rnsh_python_interop` | verified for the bounded software/TCP slice; PTY/resize, full option/fault/restart matrix, and the reverse Python listener role remain open |
+| Remote shell | Native authenticated listener/initiator, frozen channel message numbers, root-scoped process launch, stdin/stdout/stderr stream framing, command policy, timeout, mirrored exit status, and allow-list rejection | `rnsh` unit tests; `rnsh_process`; ignored `rnsh_python_interop` (`e57afb99`) | verified for the bounded software/TCP slice in both pinned-Python roles; PTY/resize, full option/fault/restart matrix, and immediate non-TTY EOF behavior against the pinned listener remain open |
 | Other shipped utilities | `rnsd`, `rnid`, `rnir`, `rnodeconf`, `rnpkg`, `rnsh`, `rnx`, and `rngit` | existing tests and callable inventory; `rnprobe` is recorded in the row above | not promoted by this slice; network/reference gaps remain |
 
 ## Commands and results
@@ -335,8 +336,8 @@ cargo test -p rns-tools --test rnsh_process -- --nocapture
 
 RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   cargo test -p rns-tools --test rnsh_python_interop -- \
-  --ignored --nocapture
-# 1 passed; 0 failed
+  --ignored --nocapture --test-threads=1
+# 2 passed; 0 failed (2.36s)
 
 cargo test -p rns-tools --tests
 # passed; ignored Python fixtures remain ignored by default
@@ -349,12 +350,16 @@ Its authenticated case allows one client identity, verifies a successful
 command, then verifies a different identity receives a nonzero failure. The
 pinned-Python fixture starts the frozen Python initiator with an isolated TCP
 configuration and identity, and verifies its command output and exit status on
-the Rust listener. This is a bounded software/TCP slice: PTY allocation and
-resize, native outbound compression, full restart/fault/cancellation coverage,
-public or multi-hop transport, and the reverse Python-listener terminal-exit
-role remain unverified. An attempted reverse-role run delivered Python output
-but the frozen listener did not emit `CommandExited` in the non-TTY harness, so
-it is not promoted as acceptance evidence.
+the Rust listener. The reciprocal fixture starts the pinned Python listener
+with a server-side TCP interface and an isolated identity, keeps the Rust
+initiator's stdin stream open briefly to model an interactive session, and
+verifies Rust command output plus the Python `CommandExited(0)` response. This
+is a bounded software/TCP slice: PTY allocation and resize, native outbound
+compression, full restart/fault/cancellation coverage, public or multi-hop
+transport, and immediate non-TTY EOF behavior against the pinned Python
+listener remain unverified. The latter is a reference-side boundary: its
+stdin-close watchdog can race a short-lived command before the terminal exit
+message is published, so this evidence does not conceal that gap.
 
 ## Unresolved requirements
 
@@ -370,10 +375,10 @@ classified as complete:
   `RNS/Utilities` entry point. The current slice now covers the daemon-backed
   `rnpath` management subset, a bounded native `rnprobe` packet workflow with
   both pinned-Python initiator/responder roles, and a bounded native `rnsh`
-  channel workflow with one pinned-Python initiator role, but does not prove
-  full `rnsh` PTY/
-  resize/fault/restart behavior, the reverse Python `rnsh` listener role,
-  public/multi-hop behavior, or network workflows to `rnsd` and the
+  channel workflow with both pinned-Python initiator/listener roles under the
+  bounded interactive stdin trace, but does not prove full `rnsh` PTY/resize/
+  fault/restart behavior, immediate non-TTY EOF behavior against the pinned
+  listener, public/multi-hop behavior, or network workflows to `rnsd` and the
   radio/interactive utilities.
 - Prove real `rngit` fetch/push/bundle workflows and configured initial-branch
   behavior under #601; bounded pinned-Python `/git/list`, `/git/fetch`,

@@ -171,11 +171,12 @@ open.
 The forward #611 `rnsh` increment at `f24e0038`, hardened by `a32b6d71`, adds the frozen Python channel
 message family, exact no-aspect destination hashing, authenticated and no-auth
 TCP listener/initiator modes, root-scoped command launch, stream forwarding,
-timeout, and mirrored exit status. Rust process/auth tests and a pinned-Python
-initiator→Rust listener test cover the bounded software path. PTY/resize,
-native outbound compression, full fault/restart/cancellation coverage, the
-reverse Python listener role, and public/multi-hop evidence remain open, so the
-utilities row stays partial/unverified.
+timeout, and mirrored exit status. Rust process/auth tests and reciprocal
+pinned-Python initiator→Rust listener and Rust initiator→pinned-Python listener
+tests (`e57afb99`) cover the bounded software path. PTY/resize, native
+outbound compression, full fault/restart/cancellation coverage, immediate
+non-TTY EOF behavior against the pinned listener, and public/multi-hop evidence
+remain open, so the utilities row stays partial/unverified.
 
 ### Runtime and daemon compatibility
 
