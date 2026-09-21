@@ -101,7 +101,10 @@ fn create_repository_fixture(temp: &Path) -> io::Result<PathBuf> {
     // The process-facing node has no test-only permission mutation hook. The
     // group sidecar gives the Python client the same read access as the
     // local page fixtures while keeping the production loader in the path.
-    fs::write(root.join("group.allowed"), "read:all\nwrite:all\nstats:all\nrelease:all\n")?;
+    fs::write(
+        root.join("group.allowed"),
+        "read:all\nwrite:all\ncreate:all\nstats:all\nrelease:all\n",
+    )?;
     Ok(root)
 }
 
@@ -423,6 +426,34 @@ if after_push[0] != 0 or b"refs/heads/python" not in after_push:
     raise RuntimeError("Git push did not create the requested ref")
 result["push_status"] = push_response[0]
 result["push_contains_python_ref"] = b"refs/heads/python" in after_push
+delete_response = request(
+    "/git/delete",
+    {0: "group/repo", "ref": "refs/heads/python"},
+)
+if delete_response[0] != 0:
+    raise RuntimeError("Git delete response was not successful")
+after_delete = request(
+    "/git/list",
+    {0: "group/repo", "for_push": False},
+)
+if after_delete[0] != 0 or b"refs/heads/python" in after_delete:
+    raise RuntimeError("Git delete did not remove the requested ref")
+create_response = request(
+    "/git/create",
+    {0: "group/newrepo"},
+)
+if create_response[0] != 0:
+    raise RuntimeError("Git create response was not successful")
+created_listing = request(
+    "/git/list",
+    {0: "group/newrepo", "for_push": False},
+)
+if created_listing[0] != 0 or b" HEAD" not in created_listing:
+    raise RuntimeError("Git create did not register the new repository")
+result["delete_status"] = delete_response[0]
+result["delete_removed_python_ref"] = b"refs/heads/python" not in after_delete
+result["create_status"] = create_response[0]
+result["create_registered_repository"] = created_listing[0] == 0
 link.teardown()
 print(json.dumps(result, sort_keys=True))
 "#;
@@ -518,6 +549,16 @@ fn rngit_serves_pages_and_media_to_pinned_python_client() -> io::Result<()> {
         assert!(
             git_stdout.contains("\"push_contains_python_ref\": true"),
             "Git push ref listing: {git_stdout}"
+        );
+        assert!(git_stdout.contains("\"delete_status\": 0"), "Git delete status: {git_stdout}");
+        assert!(
+            git_stdout.contains("\"delete_removed_python_ref\": true"),
+            "Git delete ref listing: {git_stdout}"
+        );
+        assert!(git_stdout.contains("\"create_status\": 0"), "Git create status: {git_stdout}");
+        assert!(
+            git_stdout.contains("\"create_registered_repository\": true"),
+            "Git create listing: {git_stdout}"
         );
         Ok(())
     })();
