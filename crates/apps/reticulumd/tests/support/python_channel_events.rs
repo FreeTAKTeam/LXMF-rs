@@ -196,6 +196,45 @@ pub(super) async fn wait_for_outbound_resource_complete(
     .expect("timed out waiting for outbound resource completion");
 }
 
+pub(super) async fn wait_for_outbound_resource_cancelled(
+    events: &mut tokio::sync::broadcast::Receiver<ResourceEvent>,
+    expected_hash: Hash,
+    duration: Duration,
+) {
+    timeout(duration, async {
+        loop {
+            let event = events.recv().await.expect("resource event");
+            if event.hash == expected_hash
+                && matches!(event.kind, ResourceEventKind::OutboundCancelled)
+            {
+                return;
+            }
+        }
+    })
+    .await
+    .expect("timed out waiting for outbound resource cancellation");
+}
+
+pub(super) async fn wait_for_inbound_resource_failure(
+    events: &mut tokio::sync::broadcast::Receiver<ResourceEvent>,
+    link_id: AddressHash,
+    duration: Duration,
+) -> String {
+    timeout(duration, async {
+        loop {
+            let event = events.recv().await.expect("resource event");
+            if event.link_id != link_id {
+                continue;
+            }
+            if let ResourceEventKind::InboundFailed(failure) = event.kind {
+                return failure.reason;
+            }
+        }
+    })
+    .await
+    .expect("timed out waiting for inbound resource failure")
+}
+
 pub(super) async fn wait_for_inbound_resource_complete(
     events: &mut tokio::sync::broadcast::Receiver<ResourceEvent>,
     expected_data: &[u8],

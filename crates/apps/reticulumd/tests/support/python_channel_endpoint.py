@@ -97,8 +97,19 @@ class ChannelEndpoint:
                 self.links.append(link)
             return
 
-        if self.payload_kind == "resource":
+        if self.payload_kind in ("resource", "cancel-resource"):
             link.set_resource_strategy(RNS.Link.ACCEPT_ALL)
+
+            if self.payload_kind == "cancel-resource":
+                def on_resource_started(resource) -> None:
+                    print(
+                        "python_channel_endpoint: cancelling incoming resource",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                    resource.cancel()
+
+                link.set_resource_started_callback(on_resource_started)
 
             def on_resource_concluded(resource) -> None:
                 if resource.status != RNS.Resource.COMPLETE:
@@ -311,7 +322,7 @@ class ChannelClient:
         if self.payload_kind == "link-data":
             active_link.set_packet_callback(self._on_link_data)
             RNS.Packet(active_link, message_data.encode("utf-8")).send()
-        elif self.payload_kind == "resource":
+        elif self.payload_kind in ("resource", "cancel-resource"):
             done = threading.Event()
             result = {}
 
@@ -332,18 +343,30 @@ class ChannelClient:
                 result["status"] = resource.status
                 done.set()
 
-            RNS.Resource(
+            resource = RNS.Resource(
                 resource_file if resource_file is not None else resource_data,
                 active_link,
                 metadata="python-meta",
                 callback=resource_concluded,
                 timeout=timeout,
             )
+            if self.payload_kind == "cancel-resource":
+                # Leave enough time for the advertisement to be admitted by
+                # the Rust receiver, then exercise the reference initiator
+                # cancel packet and callback status.
+                time.sleep(0.25)
+                resource.cancel()
             while not done.is_set():
                 if time.time() > deadline:
                     print("python_channel_client: timed out waiting for resource", file=sys.stderr, flush=True)
                     return 1
                 time.sleep(0.05)
+            if self.payload_kind == "cancel-resource":
+                if result.get("status") == RNS.Resource.FAILED:
+                    print(json.dumps({"resource": "cancelled"}), flush=True)
+                    return 0
+                print(f"python_channel_client: resource cancellation failed: {result}", file=sys.stderr, flush=True)
+                return 1
             if result.get("status") == RNS.Resource.COMPLETE:
                 print(
                     json.dumps(
@@ -462,6 +485,7 @@ def main() -> int:
             "channel",
             "buffer",
             "resource",
+            "cancel-resource",
             "link-data",
             "request",
             "large-request",

@@ -1,0 +1,133 @@
+fn cancellation_payload(size: usize) -> Vec<u8> {
+    let mut state = 0x6051_5eed_u64;
+    let mut data = vec![0u8; size];
+    for byte in &mut data {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        *byte = (state >> 24) as u8;
+    }
+    data
+}
+
+#[tokio::test]
+#[ignore = "requires local Python Reticulum checkout"]
+async fn rust_sender_observes_pinned_python_receiver_cancellation() {
+    let _interop_guard = python_interop_guard().await;
+    let paths = python_channel_interop_paths();
+
+    let server_port = free_tcp_port();
+    let temp = tempfile::tempdir().expect("tempdir");
+    let py_config_dir = temp.path().join("python-rns-resource-cancel-server");
+    fs::create_dir_all(&py_config_dir).expect("python config dir");
+    write_python_config(&py_config_dir, server_port);
+
+    let mut child = paths.spawn_endpoint(&py_config_dir, "cancel-resource");
+    let ready = read_ready(&mut child).expect("python endpoint ready");
+    let _guard = ChildGuard { child: Some(child) };
+    wait_for_port(server_port, Duration::from_secs(5)).await;
+
+    let target_hash =
+        AddressHash::new_from_hex_string(&ready.destination_hash).expect("destination hash");
+    let rust_identity = PrivateIdentity::new_from_rand(OsRng);
+    let rust_identity = to_transport_private_identity(&rust_identity);
+    let mut config = TransportConfig::new("python-resource-cancel-rust-sender", &rust_identity, true);
+    config.set_path_request_timeout_secs(2);
+    config.set_resource_retry_interval_secs(1);
+    let transport = Transport::new(config);
+    transport
+        .iface_manager()
+        .lock()
+        .await
+        .spawn(TcpClient::new(format!("127.0.0.1:{server_port}")), TcpClient::spawn);
+
+    let destination = wait_for_announce(&transport, target_hash, Duration::from_secs(8)).await;
+    let mut link_events = transport.out_link_events();
+    let link = transport.link(destination).await;
+    let link_id = wait_for_out_link_active(&mut link_events, &link, Duration::from_secs(8)).await;
+    let mut resource_events = transport.resource_events();
+    let resource_hash = transport
+        .send_resource_with_compression(
+            &link_id,
+            cancellation_payload(MAX_EFFICIENT_SIZE * 2 + 257),
+            None,
+            false,
+        )
+        .await
+        .expect("send cancellable resource");
+
+    wait_for_outbound_resource_cancelled(&mut resource_events, resource_hash, Duration::from_secs(15))
+        .await;
+}
+
+#[tokio::test]
+#[ignore = "requires local Python Reticulum checkout"]
+async fn rust_receiver_reports_pinned_python_sender_cancellation() {
+    let _interop_guard = python_interop_guard().await;
+    let paths = python_channel_interop_paths();
+
+    let server_port = free_tcp_port();
+    let temp = tempfile::tempdir().expect("tempdir");
+    let py_config_dir = temp.path().join("python-rns-resource-cancel-client");
+    fs::create_dir_all(&py_config_dir).expect("python config dir");
+    write_python_client_config(&py_config_dir, server_port);
+
+    let rust_identity = PrivateIdentity::new_from_rand(OsRng);
+    let rust_identity = to_transport_private_identity(&rust_identity);
+    let mut config = TransportConfig::new("python-resource-cancel-rust-receiver", &rust_identity, true);
+    config.set_path_request_timeout_secs(2);
+    config.set_resource_retry_interval_secs(1);
+    let transport = Transport::new(config);
+    let iface_manager = transport.iface_manager();
+    transport
+        .iface_manager()
+        .lock()
+        .await
+        .spawn(TcpServer::new(format!("127.0.0.1:{server_port}"), iface_manager), TcpServer::spawn);
+    wait_for_port(server_port, Duration::from_secs(5)).await;
+
+    let destination = transport
+        .add_destination(rust_identity.clone(), DestinationName::new("test", "channel"))
+        .await;
+    let destination_hash = {
+        let destination = destination.lock().await;
+        hex::encode(destination.desc.address_hash.as_slice())
+    };
+
+    let child = paths.spawn_cancel_resource_client(
+        &py_config_dir,
+        &destination_hash,
+        MAX_EFFICIENT_SIZE * 2 + 257,
+        30.0,
+    );
+    let mut guard = ChildGuard { child: Some(child) };
+    let mut in_events = transport.in_link_events();
+    let link_id = wait_for_in_link_active_with_announces(
+        &transport,
+        &destination,
+        &mut in_events,
+        Duration::from_secs(8),
+    )
+    .await;
+    let mut resource_events = transport.resource_events();
+    let reason =
+        wait_for_inbound_resource_failure(&mut resource_events, link_id, Duration::from_secs(15))
+            .await;
+    assert_eq!(reason, "remote_cancelled");
+
+    let child = guard.child.take().expect("python child");
+    let output = tokio::task::spawn_blocking(move || child.wait_with_output())
+        .await
+        .expect("join python child")
+        .expect("wait for python child");
+    assert!(
+        output.status.success(),
+        "python cancellation client failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("\"cancelled\""),
+        "python cancellation client did not report its callback status"
+    );
+}
