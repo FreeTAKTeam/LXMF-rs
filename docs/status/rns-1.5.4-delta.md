@@ -128,11 +128,12 @@ bounded node-owned permission resolvers, configured-access merging, canonical
 companion paths, atomic permission refresh, production work-item handlers,
 Python-shaped MessagePack persistence, and a Python-produced binary metadata
 fixture. Pinned Python Link requests now reach the production
-`git.repositories` service for `/git/list` and `/git/fetch`; the returned
-bundle passes `git bundle verify` and contains the expected main ref. The row
-remains partial and unverified because the remaining Git/work request matrix,
-Reticulum public-key signature validation, restart/concurrent-writer/fault
-transcripts, and full end-to-end rngit network workflows remain open.
+`git.repositories` service for `/git/list`, `/git/fetch`, and `/git/push`; the
+returned bundle passes `git bundle verify`, contains the expected main ref, and
+creates a Python-named remote ref. The row remains partial and unverified
+because the remaining Git/work request matrix, Reticulum public-key signature
+validation, restart/concurrent-writer/fault transcripts, and full end-to-end
+rngit network workflows remain open.
 
 The #613 implementation slice now has committed evidence in
 [`evidence/613-rngit-pages.md`](../goals/reticulum-reference-parity-605/evidence/613-rngit-pages.md):
@@ -142,7 +143,7 @@ bounded WebP conversion with raw fallback, link-scoped temporary cleanup, and
 explicit no-compression Resource responses. A new pinned Python/NomadNet
 client trace establishes and identifies a real TCP Reticulum Link, fetches a
 repository page, and downloads raw media with checked metadata, size, and
-SHA-256. The separate `git.repositories` list/fetch trace does not complete the
+SHA-256. The separate `git.repositories` list/fetch/push trace does not complete the
 page issue's broader Git/work acceptance. The row remains partial and
 unverified because encoder-success, complete reference rendering, every
 page/file/error case, restart/fault cleanup, and end-to-end rngit Git/work

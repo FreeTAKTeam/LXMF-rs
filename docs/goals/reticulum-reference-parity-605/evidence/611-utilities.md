@@ -73,9 +73,10 @@ classified as complete:
   `RNS/Utilities` entry point. The current slice does not add network workflows
   to `rnpath`, `rnprobe`, `rnsd`, or the radio/interactive utilities.
 - Prove real `rngit` fetch/push/bundle workflows and configured initial-branch
-  behavior under #601; bounded pinned-Python `/git/list` and `/git/fetch`
-  requests now prove the `git.repositories` listing/bundle seam, while push
-  and the remaining Git/work network implementation belong to #612/#613.
+  behavior under #601; bounded pinned-Python `/git/list`, `/git/fetch`, and
+  `/git/push` requests now prove the `git.repositories` listing/bundle/write
+  seam, while the remaining Git/work network implementation belongs to
+  #612/#613.
 - Add restart, interrupted-link, cancellation, slow-interface, disk-error, and
   multi-client transcripts with exact failure/status assertions.
 - Plumb an explicit no-compression Resource option instead of accepting the
