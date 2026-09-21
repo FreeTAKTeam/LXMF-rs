@@ -144,6 +144,16 @@ Linux host lacks a MinGW/Windows SDK sysroot, and native Windows, AutoInterface
 platform, cross-family, live Python/client, and physical carrier evidence are
 still open.
 
+The #615 implementation slice now has committed local evidence in
+[`evidence/615-release-acceptance.md`](../goals/reticulum-reference-parity-605/evidence/615-release-acceptance.md):
+the inventory `--check` path compares generated behavioral requirements with
+the authoritative mapping and rejects stale artifacts; self-tests cover both
+matching and deliberate drift, and the active-baseline plus forward-candidate
+inventories regenerate at their pinned references. The row remains partial and
+unverified because the full differential matrix, exact provenance/release
+gate, hosted exact-head workflows, and #616 operational evidence are still
+open.
+
 ## Acceptance gate
 
 This candidate is not release-complete until the contract coverage is complete,

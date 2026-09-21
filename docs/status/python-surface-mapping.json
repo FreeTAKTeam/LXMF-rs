@@ -1752,12 +1752,16 @@
         "reference_paths": ["RNS/", "LXMF/", "RNS/Resource.py", "RNS/Transport.py"],
         "rust_surface": ["tools/interop", "xtask", "crates/libs/test-support"],
         "implementation": "partial",
-        "evidence": ["planned"],
+        "evidence": ["unit", "planned"],
         "evidence_status": "unverified",
-        "test_command": "cargo xtask release-check",
-        "evidence_artifact": "target/issue-605/evidence/615-release-acceptance.json",
+        "test_command": [
+          "python3 tools/scripts/python_surface_inventory.py --self-test",
+          "python3 tools/scripts/python_surface_inventory.py --check --json-out docs/status/python-surface-parity.json",
+          "cargo xtask release-check"
+        ],
+        "evidence_artifact": "docs/goals/reticulum-reference-parity-605/evidence/615-release-acceptance.md",
         "owner_issue": 615,
-        "notes": "The exact candidate release gate must not be inferred from callable inventory or a parser-only comparison."
+        "notes": "The inventory check now rejects a stale generated behavioral contract by comparing it with the authoritative mapping and exact generated reference revisions. Self-tests and active/forward inventory generation pass locally, but the full differential matrix, exact provenance, hosted checks, and aggregate release gate remain unverified."
       },
       {
         "id": "reticulum-605-616-operational-platform-evidence",
