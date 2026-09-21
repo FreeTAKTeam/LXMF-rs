@@ -748,3 +748,88 @@ fn rncp_mixed_runtime_compression_matrix_roundtrips_binary_files() -> io::Result
     let _ = python_no_compress_listener.wait();
     result
 }
+
+#[test]
+#[ignore = "requires local Python Reticulum checkout"]
+fn rncp_python_listener_restart_preserves_identity_and_transfer() -> io::Result<()> {
+    let temp = tempfile::tempdir()?;
+    let repo = python_repo();
+    let python = python_bin();
+    let script = repo.join("RNS/Utilities/rncp.py");
+    if !script.is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("pinned Python rncp script not found: {}", script.display()),
+        ));
+    }
+    let python_runtime = PythonRuntime { python: &python, script: &script, repo: &repo };
+    let listener_root = temp.path().join("python-listener");
+    let source_root = temp.path().join("rust-source");
+    let config_dir = temp.path().join("python-config");
+    fs::create_dir_all(&listener_root)?;
+    fs::create_dir_all(&source_root)?;
+    fs::create_dir_all(&config_dir)?;
+
+    let port = free_port()?;
+    write_python_config(&config_dir, "server", port)?;
+    let identity = config_dir.join("identity");
+    let destination = python_identity_output(&python, &config_dir, &identity, &repo)?;
+    let rust_sender_seed = "rncp-python-restart-rust-sender";
+    let rust_sender_hash = rust_identity_hash(rust_sender_seed)?;
+    let mut listener = spawn_python_listener(
+        &python_runtime,
+        &config_dir,
+        &identity,
+        &listener_root,
+        &[&rust_sender_hash],
+        true,
+    )?;
+    let result = (|| {
+        wait_for_port(port, &mut listener)?;
+        let first_payload = b"python listener before restart";
+        let first_source = source_root.join("before-restart.bin");
+        fs::write(&first_source, first_payload)?;
+        let first = run_rust_send(&first_source, &destination, port, rust_sender_seed, true)?;
+        if !first.status.success() {
+            return Err(io::Error::other(format!(
+                "Rust rncp send before Python restart failed: {}\nstdout:\n{}\nstderr:\n{}",
+                first.status,
+                String::from_utf8_lossy(&first.stdout),
+                String::from_utf8_lossy(&first.stderr)
+            )));
+        }
+        assert_eq!(fs::read(listener_root.join("before-restart.bin"))?, first_payload);
+
+        listener.kill()?;
+        listener.wait()?;
+        let restarted_destination = python_identity_output(&python, &config_dir, &identity, &repo)?;
+        assert_eq!(restarted_destination, destination);
+        listener = spawn_python_listener(
+            &python_runtime,
+            &config_dir,
+            &identity,
+            &listener_root,
+            &[&rust_sender_hash],
+            true,
+        )?;
+        wait_for_port(port, &mut listener)?;
+
+        let second_payload = b"python listener after restart";
+        let second_source = source_root.join("after-restart.bin");
+        fs::write(&second_source, second_payload)?;
+        let second = run_rust_send(&second_source, &destination, port, rust_sender_seed, true)?;
+        if !second.status.success() {
+            return Err(io::Error::other(format!(
+                "Rust rncp send after Python restart failed: {}\nstdout:\n{}\nstderr:\n{}",
+                second.status,
+                String::from_utf8_lossy(&second.stdout),
+                String::from_utf8_lossy(&second.stderr)
+            )));
+        }
+        assert_eq!(fs::read(listener_root.join("after-restart.bin"))?, second_payload);
+        Ok(())
+    })();
+    let _ = listener.kill();
+    let _ = listener.wait();
+    result
+}
