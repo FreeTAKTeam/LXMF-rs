@@ -170,6 +170,14 @@ while node._should_run:
         if fetched.first().copied() != Some(0) || fetched.len() <= 1 {
             return Err(test_io::Error::other(format!("Python Git fetch failed: {fetched:?}")));
         }
+        let bundle_path = temp.path().join("native-fetch.bundle");
+        test_fs::write(&bundle_path, &fetched[1..])?;
+        let verified = TestCommand::new("git")
+            .args(["bundle", "verify", bundle_path.to_string_lossy().as_ref()])
+            .status()?;
+        if !verified.success() {
+            return Err(test_io::Error::other("Python Git fetch returned an invalid bundle"));
+        }
 
         let created = client
             .work_create(&remote, "Rust native request", &"R".repeat(4096))
