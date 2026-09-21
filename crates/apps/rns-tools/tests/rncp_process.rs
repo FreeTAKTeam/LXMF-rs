@@ -446,3 +446,85 @@ fn rncp_ctrl_c_reports_cancellation() -> io::Result<()> {
     );
     Ok(())
 }
+
+#[test]
+fn rncp_listener_accepts_multiple_concurrent_clients() -> io::Result<()> {
+    let temp = tempfile::tempdir()?;
+    let listener_root = temp.path().join("listener");
+    let client_root = temp.path().join("clients");
+    fs::create_dir_all(&listener_root)?;
+    fs::create_dir_all(&client_root)?;
+    let port = free_port()?;
+    let binary = env!("CARGO_BIN_EXE_rncp");
+    let mut listener = Command::new(binary)
+        .args(["--listen", &format!("127.0.0.1:{port}"), "--no-auth", "--no-compress", "--save"])
+        .arg(&listener_root)
+        .args(["--identity-seed", "rncp-process-multi-server", "--silent"])
+        .current_dir(temp.path())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let result = (|| {
+        wait_for_port(port, &mut listener)?;
+        let destination_output = Command::new(binary)
+            .args(["--print-identity", "--identity-seed", "rncp-process-multi-server"])
+            .output()?;
+        if !destination_output.status.success() {
+            return Err(io::Error::other("rncp identity query failed"));
+        }
+        let destination = String::from_utf8_lossy(&destination_output.stdout)
+            .lines()
+            .find_map(|line| line.strip_prefix("Listening on : "))
+            .map(str::to_owned)
+            .ok_or_else(|| io::Error::other("rncp identity query omitted destination"))?;
+
+        let mut clients = Vec::new();
+        let mut payloads = Vec::new();
+        for index in 0..3u8 {
+            let source = client_root.join(format!("concurrent-{index}.bin"));
+            let payload = (0..8192)
+                .map(|offset| (offset as u8).wrapping_mul(index.wrapping_add(3)))
+                .collect::<Vec<_>>();
+            fs::write(&source, &payload)?;
+            payloads.push((source.clone(), payload));
+            clients.push(
+                Command::new(binary)
+                    .arg(&source)
+                    .arg(&destination)
+                    .args([
+                        "--connect",
+                        &format!("127.0.0.1:{port}"),
+                        "--no-compress",
+                        "--silent",
+                        "--identity-seed",
+                    ])
+                    .arg(format!("rncp-process-multi-client-{index}"))
+                    .current_dir(&client_root)
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    .spawn()?,
+            );
+        }
+
+        for (client, (source, payload)) in clients.into_iter().zip(payloads) {
+            let output = client.wait_with_output()?;
+            if !output.status.success() {
+                return Err(io::Error::other(format!(
+                    "concurrent rncp client for {} failed: {}\nstdout:\n{}\nstderr:\n{}",
+                    source.display(),
+                    output.status,
+                    String::from_utf8_lossy(&output.stdout),
+                    String::from_utf8_lossy(&output.stderr)
+                )));
+            }
+            assert_eq!(
+                fs::read(listener_root.join(source.file_name().expect("source name")))?,
+                payload
+            );
+        }
+        Ok(())
+    })();
+    let _ = listener.kill();
+    let _ = listener.wait();
+    result
+}
