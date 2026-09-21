@@ -89,7 +89,7 @@
         "id": "reticulum-605-609-transport-local-shared",
         "implementation": "partial",
         "kind": "behavioral-requirement",
-        "notes": "Parent/child classification, immediate local-client retransmit, direct sibling fan-out, and local TCP/Unix parent marking are implemented; pinned Python-Rust shared-instance attachment/restart and a two-carrier Python Channel trace through one forwarding Rust transport are evidenced, while persistence, duplicate suppression, Resource, close/reconnect, and broader production traces remain unverified.",
+        "notes": "Parent/child classification, immediate local-client retransmit, direct sibling fan-out, and local TCP/Unix parent marking are implemented; pinned Python-Rust shared-instance attachment/restart and two-carrier Python Channel, application-link reconnect, and split-Resource traces through one forwarding Rust transport are evidenced, while persistence, broader duplicate suppression, carrier-stream reconnect, and broader production traces remain unverified.",
         "owner_issue": 609,
         "reference": {
           "revision": "99de23c040d507e3fefca19e87b182302902725d",

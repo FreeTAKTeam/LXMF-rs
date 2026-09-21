@@ -470,10 +470,12 @@ attachment and announce fan-out, plus a pinned Python TCP application trace
 that exchanges LXMF messages in both directions before and after Rust daemon
 restart while preserving the delivery identity. A two-carrier Python Channel
 trace now also duplicates a real application frame and observes one endpoint
-delivery through the forwarding path. Broader multi-hop packet/proof/link
-duplicate handling, announce-persistence, and link-close/reconnect traces
-remain open; the two-carrier split Resource trace covers the multi-hop Resource
-direction.
+delivery through the forwarding path. A companion trace closes that
+application link, establishes a fresh Python link over the same two carriers,
+and observes one delivery on each link. Broader multi-hop packet/proof/link
+duplicate handling, announce-persistence, and underlying carrier-stream
+reconnect traces remain open; the two-carrier split Resource trace covers the
+multi-hop Resource direction.
 - Restored Reticulum path-table announces are now cache-only lookup material at
   startup, not fresh rebroadcast work, while still serving known-path response
   requests from the restored cache.
