@@ -14,7 +14,7 @@ covered by `d66b19d1`; local destination disk-error status is covered by
 Interrupted-link status and flushed non-silent phase output are covered by
 `a5f57dba`. Adaptive medium-path timeout after TCP interface activation is
 covered by `27bb3fac`. Python-listener restart with a Rust client is covered by
-`708dc980`.
+`708dc980`; the interop fixture lock is covered by `a81f0cf6`.
 
 ## Reference and ownership
 
@@ -63,7 +63,7 @@ RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   -- --ignored --nocapture                         1 passed (4.85s)
 RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   cargo test -p rns-tools --test rncp_python_interop \
-  -- --ignored --nocapture --test-threads=1        3 passed (38.87s)
+  -- --ignored --nocapture                         3 passed (37.13s)
 RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   cargo test -p rns-tools --test rncp_python_interop \
   rncp_python_listener_restart_preserves_identity_and_transfer \
@@ -136,11 +136,11 @@ root; every received file matches the original bytes exactly. The Resource
 unit tests remain the direct wire-flag proof; this process trace proves the
 utility flags and mixed-runtime decompression/save behavior.
 
-The complete ignored Python interop suite was run with one test thread because
-the first three-test parallel invocation had one compression-matrix path
-discovery timeout while its isolated rerun passed. The serial run completed all
-three tests in 38.87 seconds; the process isolation and exact file assertions
-are unchanged.
+The three ignored Python interop fixtures share a process-level lock
+(`a81f0cf6`) because an earlier parallel run allowed listener/announce
+contention to produce one compression-matrix path-discovery timeout. With the
+lock in place, the default three-test command completed all tests in 37.13
+seconds; the process isolation and exact file assertions are unchanged.
 
 The `2b281b87` process increment also proves two negative categories through
 the production CLI: a missing fetch exits nonzero with `remote file was not
