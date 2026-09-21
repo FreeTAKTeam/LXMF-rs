@@ -40,7 +40,9 @@ it does not promote the full #610 acceptance contract or close parent issue
 - The Python interop helper can send a deterministic file-backed resource and
   reports an exact SHA-256 digest. Release-profile mixed-peer tests cover
   empty, one-byte, just-below-efficient, split, and 50 MiB resources in both
-  Rust-to-Python and Python-to-Rust directions.
+  Rust-to-Python and Python-to-Rust directions. A separate pinned-Python trace
+  exercises the Rust `send_resource_from_reader` API with a split
+  `MAX_EFFICIENT_SIZE + 257` payload and verifies the exact cross-peer digest.
 
 ## Local evidence
 
@@ -68,6 +70,11 @@ RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   cargo test --release -p reticulumd --test python_channel_interop \
   python_to_rust_resource_size_matrix_roundtrip -- --ignored --nocapture
   # 1 passed; includes the exact 50 MiB SHA-256 check
+
+RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
+  cargo test -p reticulumd --test python_channel_interop \
+  rust_reader_to_python_split_resource_roundtrip -- --ignored --nocapture
+  # 1 passed; split reader-backed transfer and exact SHA-256 acknowledgement
 ```
 
 The release runs completed in approximately 10.00 seconds and 11.53 seconds.
@@ -109,9 +116,10 @@ represented as complete:
   open;
 - peak-RSS measurements for the 50 MiB mixed-peer transfers and a bounded
   memory report across the full matrix;
-- mixed-Python evidence for the new Rust reader/file adapter; local tests prove
-  bounded source retention, split reassembly, and terminal reader failure, but
-  the interop matrix still uses the owned-buffer API;
+- mixed-Python fault-injection evidence for the reader/file adapter, including
+  loss, duplication, reordering, cancellation, and terminal reader failure;
+  the split reader-backed success path is now covered, while the failure
+  matrix remains open;
 - callbacks/status transitions observed through every library and daemon
   consumer after each injected failure;
 - hosted, physical-interface, public-network, and long-running soak evidence.
@@ -119,8 +127,9 @@ represented as complete:
 The current conclusion is therefore: collision regeneration, shutdown cleanup,
 window-bounded fragment admission, deterministic local loss/duplication/
 reordering recovery, split cancellation cleanup, reader-backed bounded source
-retention, bidirectional release-profile mixed-peer transfers, and the
-independent `rns-rs` loss/timeout/latency slice are implemented with local
-evidence; the broader Resource failure and bounded-memory contract remains
+retention plus a pinned-Python split reader transfer, bidirectional
+release-profile mixed-peer transfers, and the independent `rns-rs`
+loss/timeout/latency slice are implemented with local evidence; the broader
+Resource failure and bounded-memory contract remains
 partial pending the full pinned-Python fault matrix, resource-usage evidence,
 and hosted/physical/soak coverage.

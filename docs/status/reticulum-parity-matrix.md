@@ -61,8 +61,9 @@ inventory. The Rust resource sender enforces the Python
 collision-free map hashes, and has pinned Python release-profile transfer
 evidence from empty payloads through 50 MiB in both directions. The forward
 #610 row remains partial because loss/duplication/reordering/cancellation
-fault-injection coverage, peak-memory measurement, and a Rust reader/file
-adapter are not yet proven.
+fault-injection coverage and peak-memory measurement are not yet proven; a
+pinned-Python split reader-backed transfer now covers the Rust reader/file
+adapter success path.
 No hardware, public-network, or third-party-client claim is inferred from the
 software inventory.
 

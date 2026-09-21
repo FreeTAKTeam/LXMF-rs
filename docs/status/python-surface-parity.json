@@ -124,7 +124,7 @@
         "id": "reticulum-605-610-resource-stream-collision",
         "implementation": "partial",
         "kind": "behavioral-requirement",
-        "notes": "Deterministic collision regeneration, active-window fragment admission, collision-guard/hashmap/window unit coverage, link-close terminal event publication, local loss/duplication/reordering recovery, split cancellation cleanup, reader-backed bounded source retention, pinned Python release-profile empty-to-50 MiB checksums, and an independent rns-rs PR profile covering 1 MiB transfers, loss recovery, terminal timeout, and latency are implemented. Full pinned-Python fault injection, peak-RSS capture, and hosted/physical/soak coverage remain unverified; the debug 50 MiB run is slower than the release profile.",
+        "notes": "Deterministic collision regeneration, active-window fragment admission, collision-guard/hashmap/window unit coverage, link-close terminal event publication, local loss/duplication/reordering recovery, split cancellation cleanup, reader-backed bounded source retention, a pinned-Python split reader transfer with exact digest, pinned Python release-profile empty-to-50 MiB checksums, and an independent rns-rs PR profile covering 1 MiB transfers, loss recovery, terminal timeout, and latency are implemented. Full pinned-Python fault injection, peak-RSS capture, and hosted/physical/soak coverage remain unverified; the debug 50 MiB run is slower than the release profile.",
         "owner_issue": 610,
         "reference": {
           "revision": "99de23c040d507e3fefca19e87b182302902725d",
@@ -143,7 +143,8 @@
           "cargo test -p reticulum-rs-transport --all-features --lib",
           "cargo clippy -p reticulum-rs-transport --lib --all-features --no-deps -- -D warnings",
           "RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test --release -p reticulumd --test python_channel_interop rust_to_python_resource_size_matrix_roundtrip -- --ignored --nocapture",
-          "RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test --release -p reticulumd --test python_channel_interop python_to_rust_resource_size_matrix_roundtrip -- --ignored --nocapture"
+          "RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test --release -p reticulumd --test python_channel_interop python_to_rust_resource_size_matrix_roundtrip -- --ignored --nocapture",
+          "RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop rust_reader_to_python_split_resource_roundtrip -- --ignored --nocapture"
         ]
       },
       {
