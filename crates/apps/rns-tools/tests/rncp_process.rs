@@ -208,3 +208,41 @@ fn rncp_denied_sender_reports_nonzero_status() -> io::Result<()> {
     let _ = listener.wait();
     result
 }
+
+#[test]
+fn rncp_rejects_invalid_identity_and_unusable_save_path() -> io::Result<()> {
+    let temp = tempfile::tempdir()?;
+    let binary = env!("CARGO_BIN_EXE_rncp");
+    let invalid_identity = Command::new(binary)
+        .args([
+            "--connect",
+            "127.0.0.1:1",
+            "--identity-seed",
+            "rncp-process-invalid-identity",
+            "--allowed-identity",
+            "not-a-reticulum-hash",
+        ])
+        .output()?;
+    assert!(!invalid_identity.status.success());
+    assert!(
+        String::from_utf8_lossy(&invalid_identity.stderr)
+            .contains("destination must be a 32-character hex hash"),
+        "invalid identity stderr: {}",
+        String::from_utf8_lossy(&invalid_identity.stderr)
+    );
+
+    let save_file = temp.path().join("save-file");
+    fs::write(&save_file, b"not a directory")?;
+    let unusable_save = Command::new(binary)
+        .args(["--listen", "127.0.0.1:0", "--identity-seed", "rncp-process-save-file", "--save"])
+        .arg(&save_file)
+        .output()?;
+    assert!(!unusable_save.status.success());
+    assert!(
+        String::from_utf8_lossy(&unusable_save.stderr)
+            .contains("save directory is not a directory"),
+        "unusable save stderr: {}",
+        String::from_utf8_lossy(&unusable_save.stderr)
+    );
+    Ok(())
+}
