@@ -237,13 +237,15 @@ the inventory `--check` path compares generated behavioral requirements with
 the authoritative mapping and rejects stale artifacts; self-tests cover both
 matching and deliberate drift, and the active-baseline plus forward-candidate
 inventories regenerate at their pinned references. The row remains partial and
-unverified because the full differential matrix, exact provenance and hosted
-exact-head workflows, and #616 operational evidence are still open. The local
-aggregate release gate now passes on software candidate `070b599c`, including
-2,659 nextest tests, Miri, exact pinned-reference checks, packaging, audit,
-boundary, reproducible-build, embedded-footprint, and soak/mesh checks with
-zero soak failures; this local result does not promote the row or the parent
-to complete.
+unverified because the broader all-Rust/multi-hop/shared-daemon matrix, exact
+provenance and hosted exact-head workflows, and #616 operational evidence are
+still open. The local aggregate release gate passes on fully gated software
+candidate `36412535`, including 2,659 nextest tests, Miri, exact
+pinned-reference checks, packaging, audit, boundary, reproducible-build,
+embedded-footprint, and soak/mesh checks with zero soak failures. A current
+exact-reference Python/Rust matrix on candidate `919d5924` records 30/30
+required cases passed with no failed, blocked, skipped, or ignored cases. These
+local results do not promote the row or the parent to complete.
 
 ## Merged base increment
 
