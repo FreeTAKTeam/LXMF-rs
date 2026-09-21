@@ -97,6 +97,38 @@ fn rnsh_executes_a_remote_command_and_forwards_output_cross_process() -> io::Res
             "rnsh client did not preserve command output: {}",
             String::from_utf8_lossy(&client.stdout)
         );
+
+        let large_output = Command::new(binary)
+            .args([
+                "--connect",
+                &format!("127.0.0.1:{port}"),
+                "--identity",
+                client_identity.to_str().expect("identity path"),
+                "--mirror",
+                "--timeout",
+                "30",
+                &destination,
+                "--",
+                "head",
+                "-c",
+                "131072",
+                "/dev/zero",
+            ])
+            .current_dir(temp.path())
+            .output()?;
+        if !large_output.status.success() {
+            return Err(io::Error::other(format!(
+                "rnsh large-output client failed: {}\nstdout length: {}\nstderr:\n{}",
+                large_output.status,
+                large_output.stdout.len(),
+                String::from_utf8_lossy(&large_output.stderr)
+            )));
+        }
+        assert!(
+            large_output.stdout.len() >= 131_072,
+            "rnsh large-output client returned too little output: {}",
+            large_output.stdout.len()
+        );
         Ok(())
     })();
 

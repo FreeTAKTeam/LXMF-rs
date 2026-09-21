@@ -122,7 +122,14 @@ async fn stream_output<R: AsyncRead + Unpin>(
 async fn write_all_with_retry(writer: &mut RnshChannelWriter, mut bytes: &[u8]) -> io::Result<()> {
     let deadline = Instant::now() + STREAM_WRITE_TIMEOUT;
     while !bytes.is_empty() {
-        let written = writer.write(bytes).await.map_err(channel_error)?;
+        let written = match writer.write(bytes).await {
+            Ok(written) => written,
+            Err(ChannelError::LinkNotReady) if Instant::now() < deadline => {
+                sleep(Duration::from_millis(10)).await;
+                continue;
+            }
+            Err(error) => return Err(channel_error(error)),
+        };
         if written == 0 {
             if Instant::now() >= deadline {
                 return Err(io::Error::new(

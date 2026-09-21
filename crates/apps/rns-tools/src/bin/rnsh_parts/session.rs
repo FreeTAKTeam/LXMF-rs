@@ -7,6 +7,10 @@ use crate::rnsh_parts::protocol::{
 use rns_transport::hash::AddressHash;
 use rns_transport::transport::{SendPacketOutcome, TransportChannel};
 use std::io;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 use tokio::sync::mpsc;
 use tokio::time::{timeout, Duration};
@@ -32,12 +36,16 @@ enum ServerState {
 pub(crate) async fn serve_link(runtime: Runtime, link_id: AddressHash) -> io::Result<()> {
     let channel = runtime.transport.channel(link_id);
     let (message_tx, mut message_rx) = mpsc::channel(64);
-    register_handlers(&channel, &message_tx).await?;
+    let queue_overflowed = Arc::new(AtomicBool::new(false));
+    register_handlers(&channel, &message_tx, queue_overflowed.clone()).await?;
 
     let mut state = ServerState::WaitingForVersion;
     let mut stdin_tx: Option<mpsc::Sender<Vec<u8>>> = None;
 
     while let Some(message) = message_rx.recv().await {
+        if queue_overflowed.load(Ordering::Acquire) {
+            return Err(io::Error::other("rnsh incoming message queue overflowed"));
+        }
         match message {
             IncomingMessage::Version(version) => {
                 if state != ServerState::WaitingForVersion {
@@ -87,9 +95,16 @@ pub(crate) async fn serve_link(runtime: Runtime, link_id: AddressHash) -> io::Re
                     )
                     .await
                     {
-                        let _ = process_channel
+                        if let Err(send_error) = process_channel
                             .send_typed(&ErrorMessage::fatal(error.to_string()))
-                            .await;
+                            .await
+                        {
+                            log::debug!(
+                                "rnsh session {} could not send command error: {:?}",
+                                process_channel.link_id().to_hex_string(),
+                                send_error
+                            );
+                        }
                     }
                 });
                 state = ServerState::Running;
@@ -155,10 +170,12 @@ pub(crate) async fn initiate(
 
     let channel = runtime.transport.channel(link_id);
     let (message_tx, mut message_rx) = mpsc::channel(64);
-    register_handlers(&channel, &message_tx).await?;
+    let queue_overflowed = Arc::new(AtomicBool::new(false));
+    register_handlers(&channel, &message_tx, queue_overflowed.clone()).await?;
     channel.send_typed(&VersionInfoMessage::current()).await.map_err(channel_error)?;
 
-    let peer_version = wait_for_version(&mut message_rx, runtime.timeout).await?;
+    let peer_version =
+        wait_for_version(&mut message_rx, &queue_overflowed, runtime.timeout).await?;
     if peer_version.protocol_version != PROTOCOL_VERSION {
         close_link(&runtime.transport, &link).await;
         return Err(io::Error::other("remote rnsh protocol version is incompatible"));
@@ -181,7 +198,7 @@ pub(crate) async fn initiate(
         .await
         .map_err(channel_error)?;
 
-    let return_code = wait_for_command(&mut message_rx, runtime.timeout).await;
+    let return_code = wait_for_command(&mut message_rx, &queue_overflowed, runtime.timeout).await;
     stdin_task.abort();
     close_link(&runtime.transport, &link).await;
     return_code
@@ -189,10 +206,14 @@ pub(crate) async fn initiate(
 
 async fn wait_for_version(
     messages: &mut mpsc::Receiver<IncomingMessage>,
+    queue_overflowed: &AtomicBool,
     duration: Duration,
 ) -> io::Result<VersionInfoMessage> {
     timeout(duration, async {
         while let Some(message) = messages.recv().await {
+            if queue_overflowed.load(Ordering::Acquire) {
+                return Err(io::Error::other("rnsh incoming message queue overflowed"));
+            }
             match message {
                 IncomingMessage::Version(version) => return Ok(version),
                 IncomingMessage::Error(error) => {
@@ -209,10 +230,14 @@ async fn wait_for_version(
 
 async fn wait_for_command(
     messages: &mut mpsc::Receiver<IncomingMessage>,
+    queue_overflowed: &AtomicBool,
     duration: Duration,
 ) -> io::Result<i64> {
     timeout(duration, async {
         while let Some(message) = messages.recv().await {
+            if queue_overflowed.load(Ordering::Acquire) {
+                return Err(io::Error::other("rnsh incoming message queue overflowed"));
+            }
             match message {
                 IncomingMessage::Stream(stream) => match stream.stream_id {
                     1 => write_output(tokio::io::stdout(), &stream.data).await?,
@@ -263,64 +288,90 @@ async fn write_output<W: AsyncWrite + Unpin>(mut output: W, bytes: &[u8]) -> io:
 async fn register_handlers(
     channel: &TransportChannel,
     sender: &mpsc::Sender<IncomingMessage>,
+    queue_overflowed: Arc<AtomicBool>,
 ) -> io::Result<()> {
     let tx = sender.clone();
+    let overflow = queue_overflowed.clone();
     channel
         .register_typed_handler::<NoopMessage, _>(move |message| {
-            let _ = tx.try_send(IncomingMessage::Noop(message));
+            enqueue_message(&tx, &overflow, IncomingMessage::Noop(message));
             true
         })
         .await
         .map_err(channel_error)?;
     let tx = sender.clone();
+    let overflow = queue_overflowed.clone();
     channel
         .register_typed_handler::<VersionInfoMessage, _>(move |message| {
-            let _ = tx.try_send(IncomingMessage::Version(message));
+            enqueue_message(&tx, &overflow, IncomingMessage::Version(message));
             true
         })
         .await
         .map_err(channel_error)?;
     let tx = sender.clone();
+    let overflow = queue_overflowed.clone();
     channel
         .register_typed_handler::<WindowSizeMessage, _>(move |_message| {
-            let _ = tx.try_send(IncomingMessage::Window);
+            enqueue_message(&tx, &overflow, IncomingMessage::Window);
             true
         })
         .await
         .map_err(channel_error)?;
     let tx = sender.clone();
+    let overflow = queue_overflowed.clone();
     channel
         .register_typed_handler::<ExecuteCommandMessage, _>(move |message| {
-            let _ = tx.try_send(IncomingMessage::Execute(message));
+            enqueue_message(&tx, &overflow, IncomingMessage::Execute(message));
             true
         })
         .await
         .map_err(channel_error)?;
     let tx = sender.clone();
+    let overflow = queue_overflowed.clone();
     channel
         .register_typed_handler::<StreamDataMessage, _>(move |message| {
-            let _ = tx.try_send(IncomingMessage::Stream(message));
+            enqueue_message(&tx, &overflow, IncomingMessage::Stream(message));
             true
         })
         .await
         .map_err(channel_error)?;
     let tx = sender.clone();
+    let overflow = queue_overflowed.clone();
     channel
         .register_typed_handler::<ErrorMessage, _>(move |message| {
-            let _ = tx.try_send(IncomingMessage::Error(message));
+            enqueue_message(&tx, &overflow, IncomingMessage::Error(message));
             true
         })
         .await
         .map_err(channel_error)?;
     let tx = sender.clone();
+    let overflow = queue_overflowed;
     channel
         .register_typed_handler::<CommandExitedMessage, _>(move |message| {
-            let _ = tx.try_send(IncomingMessage::Exited(message));
+            enqueue_message(&tx, &overflow, IncomingMessage::Exited(message));
             true
         })
         .await
         .map_err(channel_error)?;
     Ok(())
+}
+
+fn enqueue_message(
+    sender: &mpsc::Sender<IncomingMessage>,
+    queue_overflowed: &AtomicBool,
+    message: IncomingMessage,
+) {
+    if let Err(error) = sender.try_send(message) {
+        queue_overflowed.store(true, Ordering::Release);
+        match error {
+            mpsc::error::TrySendError::Full(_) => {
+                log::error!("rnsh incoming message queue is full; closing session")
+            }
+            mpsc::error::TrySendError::Closed(_) => {
+                log::debug!("rnsh incoming message queue is closed")
+            }
+        }
+    }
 }
 
 async fn send_protocol_error(channel: &TransportChannel, message: &str) -> io::Result<()> {
