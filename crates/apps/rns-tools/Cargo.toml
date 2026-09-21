@@ -40,3 +40,6 @@ dbus = { version = "0.9.11", features = ["vendored"] }
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+bzip2.workspace = true
