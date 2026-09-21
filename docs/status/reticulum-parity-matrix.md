@@ -131,8 +131,10 @@ Rust-client request path through `NativeRngitClient` and
 `git.repositories` server it verifies `/git/list`, raw `/git/fetch` Resource
 handling with exact `git bundle verify`, an oversized `/git/push` bundle with
 remote-ref verification, signed `/mgmt/work` creation and listing, identity
-identification, a direct request packet, and an oversized request Resource.
-This remains a bounded request direction trace; release workflows,
+identification, a direct request packet, an oversized request Resource, and
+Python-compatible release list/view/latest/delete requests. This remains a
+bounded request direction trace; release creation/upload/finalization and
+artifact fetch,
 restart/fault/concurrency, the complete Python CLI workflow, and public/multi-hop
 evidence remain open.
 

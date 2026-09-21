@@ -32,8 +32,9 @@ local disk-failure check, client-cancellation check, concurrent-client check,
 interrupted-link/status-output check, active-interface medium-timeout check,
 mixed-runtime restart check, and the #612 pinned-Python work-item persistence
   trace across a Rust `rngit` process restart plus the reciprocal native
-  Rust-client `/git/list`/`/git/fetch`/`/git/push` request trace (with exact
-  bundle and remote-ref verification) are evidence for those slices only
+  Rust-client `/git/list`/`/git/fetch`/`/git/push` and bounded release request
+  trace (with exact bundle and remote-ref verification) are evidence for those
+  slices only
 and do not promote the broader utility surface. Published inventory counts are
 not promoted or rewritten by this change.
 
