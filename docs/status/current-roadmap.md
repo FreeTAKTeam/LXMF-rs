@@ -25,7 +25,8 @@ remaining acceptance gates are recorded in
 not the canonical release baseline. IFAC daemon wiring, remaining remote
 utility behavior, transport policy differences, and platform validation remain
 open; the focused #611 `rncp` compression/send/fetch matrix, bounded
-`rnprobe` packet/RPC workflow, negative
+`rnprobe` packet/RPC workflow, and bounded native `rnsh` channel workflow,
+negative
 failure-category checks, path-discovery-timeout check, listener restart check,
 local disk-failure check, client-cancellation check, concurrent-client check,
 interrupted-link/status-output check, active-interface medium-timeout check,
@@ -901,6 +902,14 @@ direction.
   announces the opt-in `rnstransport.probe` responder. The focused
   evidence is software-only; pinned-Python utility exchange and
   public/physical-link timing remain open.
+- `rnsh` now has a bounded native TCP/Link/Channel workflow at
+  `f24e0038`: persisted or deterministic identities, allow-list/no-auth
+  listener modes, root-scoped command execution, frozen Python channel
+  envelopes, stream forwarding, timeout, and mirrored exit status are covered
+  by Rust process/auth tests plus a pinned-Python initiator→Rust listener
+  exchange. PTY/resize, full fault/restart coverage, the reverse Python
+  listener role, and public/multi-hop evidence remain open; this does not
+  promote the broader `RNS/Utilities/*` row.
 - The pinned Python compatibility matrix now includes
   `rns_path_request_rust_to_python`, a loopback TCP case where Rust
   `reticulumd` starts with an unknown Python delivery path, resolves it through
