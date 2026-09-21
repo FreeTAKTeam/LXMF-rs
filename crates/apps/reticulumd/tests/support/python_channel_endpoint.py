@@ -423,8 +423,9 @@ class ChannelClient:
             for index in range(3):
                 channel.send(MessageTest(f"python-seq-{index}", f"hello-rust-{index}"))
                 time.sleep(0.25)
-        elif self.payload_kind == "channel":
+        elif self.payload_kind in ("channel", "channel-reconnect"):
             active_link.get_channel().send(MessageTest(message_id, message_data))
+        reconnect_started = False
         while True:
             with self.lock:
                 replies = list(self.received)
@@ -435,6 +436,39 @@ class ChannelClient:
                 if self.payload_kind == "buffer" and reply["data"] == f"{message_data} back at you":
                     print(json.dumps({"received": reply}), flush=True)
                     return 0
+                if self.payload_kind == "channel-reconnect":
+                    if (
+                        not reconnect_started
+                        and reply["id"] == message_id
+                        and reply["data"] == f"reply:{message_data}"
+                    ):
+                        reconnect_started = True
+                        with self.lock:
+                            self.link = None
+                        active_link.teardown()
+                        reconnect_link = RNS.Link(destination)
+                        reconnect_link.set_link_established_callback(self._on_link_established)
+                        reconnect_link.set_link_closed_callback(self._on_link_closed)
+                        reconnect_deadline = time.time() + timeout
+                        while True:
+                            with self.lock:
+                                reconnected_link = self.link
+                            if reconnected_link is not None:
+                                active_link = reconnected_link
+                                break
+                            if time.time() > reconnect_deadline:
+                                print(
+                                    "python_channel_client: timed out waiting for reconnected link",
+                                    file=sys.stderr,
+                                    flush=True,
+                                )
+                                return 1
+                            time.sleep(0.05)
+                        active_link.get_channel().send(MessageTest("python-reconnect", "hello-reconnect"))
+                        break
+                    if reply["id"] == "python-reconnect" and reply["data"] == "reply:hello-reconnect":
+                        print(json.dumps({"received": reply}), flush=True)
+                        return 0
                 if (
                     self.payload_kind == "channel"
                     and reply["id"] == message_id
@@ -515,6 +549,7 @@ def main() -> int:
         "--payload-kind",
         choices=(
             "channel",
+            "channel-reconnect",
             "buffer",
             "resource",
             "resource-multi-hop",
