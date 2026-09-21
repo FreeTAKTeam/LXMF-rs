@@ -18,8 +18,8 @@ branch. It does not close #611 or #605.
 | Workflow | Implementation-backed behavior | Evidence | Status |
 | --- | --- | --- | --- |
 | Local copy | Root-scoped binary copy, overwrite guard, parent traversal rejection | `rncp.rs` unit test | verified for the existing local convenience mode |
-| Listener | TCP listener, deterministic/persisted identity, `rncp.receive` announce, periodic re-announce, save directory, collision-safe filename selection | `rncp_process` listener process | implemented; Python interoperability unverified |
-| Send | TCP announce discovery, Link establishment, local identity identification, Resource send with `{"name": <binary filename>}` metadata, adaptive timeout and terminal failure status | `rncp_process` Rust client to Rust listener | verified for two independent processes |
+| Listener | TCP listener, deterministic/persisted identity, `rncp.receive` announce, periodic re-announce, save directory, collision-safe filename selection | `rncp_process` listener process; pinned Python client/service trace | implemented; no-auth Python interoperability evidenced |
+| Send | TCP announce discovery, Link establishment, local identity identification, Resource send with `{"name": <binary filename>}` metadata, adaptive timeout and terminal failure status | Rust↔Rust process test; pinned Python client/service trace | verified for two independent processes and the bounded Python roles |
 | Fetch | `fetch_file` Link request/response, `True`/`False`/`0xF0`/`nil` status mapping, response Resource, metadata-driven save | `rncp_process` Rust client to Rust listener | verified for two independent processes |
 | Authentication | `--no-auth`, explicit `--allowed-identity`, rejected identified peers, nonzero sender failure | manual denied-transfer run | verified locally for the negative path; Python allow-list parity unverified |
 | Jail and save safety | Canonical jail containment, traversal rejection, basename-only metadata, overwrite/suffix behavior | protocol unit tests and process test | verified locally |
@@ -38,6 +38,9 @@ cargo clippy -p rns-tools --bin rncp --test rncp_process \
   --all-features --no-deps -- -D warnings           PASS
 cargo test -p rns-tools --test rncp_process \
   --all-features -- --nocapture                     1 passed
+RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
+  cargo test -p rns-tools --test rncp_python_interop \
+  -- --ignored --nocapture                         1 passed
 ```
 
 The process test starts one listener and separate client processes with
@@ -51,14 +54,21 @@ directions. Both copies had SHA-256
 listener without the sender in its allow-list returned exit status 1 and
 `rncp: Resource transfer failed`; it did not report apparent success.
 
+The pinned-Python interop run starts separate Rust and Python listener/client
+processes with isolated TCP configs and identity files. It sends binary
+`12,345`- and `16,384`-byte payloads in both directions and verifies the saved
+bytes exactly. This covers the no-auth Python client and service roles through
+the production Link/Resource path; it does not promote authenticated allow-list
+parity.
+
 ## Unresolved requirements
 
 The following #611 acceptance items remain open and are deliberately not
 classified as complete:
 
-- Run the frozen Python client against the Rust listener and the Rust client
-  against the frozen Python `rncp` listener, including Python's identity-file,
-  allow-list, jail, overwrite, and callback behavior.
+- Exercise Python's identity-file, allow-list, jail, overwrite, and callback
+  behavior through the cross-implementation path; the current trace covers
+  isolated identity files and no-auth operation only.
 - Build the complete utility option/behavior matrix from every frozen
   `RNS/Utilities` entry point. The current slice does not add network workflows
   to `rnpath`, `rnprobe`, `rnsd`, or the radio/interactive utilities.

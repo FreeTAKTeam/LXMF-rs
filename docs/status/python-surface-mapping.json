@@ -1678,16 +1678,17 @@
         "reference_paths": ["RNS/Utilities/rncp.py", "RNS/Utilities/rnpath.py", "RNS/Utilities/rnprobe.py", "RNS/Utilities/rnsd.py", "RNS/Utilities/rnid.py", "RNS/Utilities/rnir.py", "RNS/Utilities/rnodeconf.py", "RNS/Utilities/rnpkg.py", "RNS/Utilities/rnsh.py", "RNS/Utilities/rnx.py", "RNS/Utilities/rngit/"],
         "rust_surface": ["crates/apps/rns-tools", "tools/interop"],
         "implementation": "partial",
-        "evidence": ["unit", "simulated", "cross-implementation", "planned"],
+        "evidence": ["unit", "simulated", "pinned-python", "cross-implementation", "planned"],
         "evidence_status": "unverified",
         "test_command": [
           "cargo test -p rns-tools --all-features",
           "cargo clippy -p rns-tools --bin rncp --test rncp_process --all-features --no-deps -- -D warnings",
-          "cargo test -p rns-tools --test rncp_process --all-features -- --nocapture"
+          "cargo test -p rns-tools --test rncp_process --all-features -- --nocapture",
+          "RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rncp_python_interop -- --ignored --nocapture"
         ],
         "evidence_artifact": "docs/goals/reticulum-reference-parity-605/evidence/611-utilities.md",
         "owner_issue": 611,
-        "notes": "The native rncp network slice now performs TCP discovery, Link establishment and identification, authenticated send/fetch Resource transfers, binary-safe metadata, jail/save side effects, adaptive timeouts, and terminal failures across two independent processes. Python-client/Python-service roles, the complete utility option matrix, rngit network workflows, restart/cancellation/disk-fault transcripts, and no-compress wire control remain unverified or owned by #612/#613."
+        "notes": "The native rncp network slice now performs TCP discovery, Link establishment and identification, authenticated send/fetch Resource transfers, binary-safe metadata, jail/save side effects, adaptive timeouts, and terminal failures across two independent processes. A pinned-Python no-auth client/service trace now covers binary sends in both directions through the production Link/Resource path. Python allow-list/jail/overwrite parity, the complete utility option matrix, rngit network workflows, restart/cancellation/disk-fault transcripts, and no-compress wire control remain unverified or owned by #612/#613."
       },
       {
         "id": "reticulum-605-612-rngit-permission-work-storage",
