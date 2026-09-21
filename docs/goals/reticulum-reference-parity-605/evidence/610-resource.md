@@ -62,6 +62,9 @@ it does not promote the full #610 acceptance contract or close parent issue
   covers dropped, duplicated, reordered, and completely missing Resource
   data. A separate reader-backed trace injects an error while building the
   second segment after the Python receiver has acknowledged the first.
+- A pinned-Python keepalive fault trace drops only `PacketContext::KeepAlive`
+  frames after link establishment, leaves setup and teardown control intact,
+  and observes Rust's watchdog close the link with `LinkEvent::Closed`.
 
 ## Local evidence
 
@@ -134,6 +137,11 @@ RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   cargo test -p reticulumd --test python_channel_interop \
   rust_reader_reports_pinned_python_reader_failure -- --ignored --nocapture
   # 1 passed; 39 filtered out; 0.91s
+
+RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
+  cargo test -p reticulumd --test python_channel_interop \
+  pinned_python_link_timeout_after_dropped_keepalives -- --ignored --nocapture
+  # 1 passed; 40 filtered out; 15.42s
 ```
 
 The fault matrix runs through a production TCP carrier and inspects only
@@ -152,7 +160,8 @@ Resource data frames are missing. Together, the two matrices prove the
 fragment-fault behaviors in both implementation directions; they do not by
 themselves prove the separate link-timeout, reader-adapter, memory, or hosted
 acceptance contracts. The shutdown trace separately proves that an admitted
-split Resource is failed when its pinned Python receiver process exits.
+split Resource is failed when its pinned Python receiver process exits, and
+the keepalive trace proves terminal link timeout on the same pinned carrier.
 The reader-backed matrix uses the same transfer sizes and fault proxy as the
 owned-buffer reverse matrix, while the reader-failure trace proves a later
 source error becomes a terminal Rust failure after Python has accepted the
@@ -189,10 +198,10 @@ evidence, not a substitute for the pinned Python fault matrix.
 The following #610 requirements remain unverified and are intentionally not
 represented as complete:
 
-- mixed-Python link-timeout recovery or terminal-failure evidence beyond the
-  explicit peer-process shutdown trace; the two pinned-Python matrices now
-  cover loss, duplication, reordering, and complete missing-fragment terminal
-  failure in both directions;
+- mixed-Python link-timeout recovery/reconnect evidence beyond the now-covered
+  terminal watchdog close; the two pinned-Python matrices now cover loss,
+  duplication, reordering, and complete missing-fragment terminal failure in
+  both directions;
 - peak-RSS measurements for the 50 MiB mixed-peer transfers and a bounded
   memory report across the full matrix;
 - mixed-Python fault-injection evidence for reader cancellation and a true
@@ -213,6 +222,6 @@ Python split Resource forwarding trace with an exact remote callback digest,
 bidirectional release-profile mixed-peer transfers, the pinned-Python
 receiver-shutdown terminal-failure trace, and the independent `rns-rs`
 loss/timeout/latency slice are implemented with local evidence; the broader
-Resource failure and bounded-memory contract remains partial pending
-link-timeout and reader-adapter fault traces, resource-usage evidence, and
+Resource failure and bounded-memory contract remains partial pending timeout
+recovery/reconnect and file-adapter fault traces, resource-usage evidence, and
 hosted/physical/soak coverage.

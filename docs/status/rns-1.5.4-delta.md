@@ -132,8 +132,8 @@ Rust split send. A reader-backed pinned-Python matrix also covers loss,
 duplication, reordering, and complete missing-fragment failure, while a
 separate trace injects a later source-read error after the first segment is
 accepted. The row remains partial and unverified because file-adapter and
-link-timeout traces, peak-memory capture, and hosted/physical/soak coverage are
-still open.
+timeout recovery/reconnect traces, peak-memory capture, and
+hosted/physical/soak coverage are still open.
 
 The #611 implementation slice now has committed local evidence in
 [`evidence/611-utilities.md`](../goals/reticulum-reference-parity-605/evidence/611-utilities.md):
