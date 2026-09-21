@@ -26,6 +26,12 @@ fn rnpath_help_exposes_path_discovery_rpc_options() {
     assert!(stdout.contains("--json"));
     assert!(stdout.contains("--on-iface"));
     assert!(stdout.contains("--tag-hex"));
+    assert!(stdout.contains("--rates"));
+    assert!(stdout.contains("--drop-announces"));
+    assert!(stdout.contains("--drop-via"));
+    assert!(stdout.contains("--blackholed"));
+    assert!(stdout.contains("--blackhole"));
+    assert!(stdout.contains("--unblackhole"));
 }
 
 #[test]
@@ -395,6 +401,75 @@ fn rnpath_reports_daemon_without_path_rpc_without_claiming_success() {
     rpc.thread.join().expect("mock rpc server");
 }
 
+#[test]
+fn rnpath_rates_use_the_daemon_management_rpc() {
+    let rpc = spawn_direct_mock_rpc(|request| {
+        assert_eq!(request.method, "get_rate_table");
+        assert!(request.params.is_none());
+        RpcResponse {
+            id: request.id,
+            result: Some(json!({
+                "if-test": {
+                    "bitrate": 12_345,
+                    "announce_rate": 2,
+                }
+            })),
+            error: None,
+        }
+    });
+
+    let output = Command::new(rnpath_bin())
+        .arg("--rates")
+        .arg("--rpc")
+        .arg(rpc.addr)
+        .output()
+        .expect("run rnpath-rs rates");
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
+    assert!(stdout.contains("rates={"), "stdout: {stdout}");
+    assert!(stdout.contains("12345"), "stdout: {stdout}");
+    rpc.thread.join().expect("mock rpc server");
+}
+
+#[test]
+fn rnpath_blackhole_sends_identity_expiry_and_reason() {
+    let rpc = spawn_direct_mock_rpc(|request| {
+        assert_eq!(request.method, "blackhole_identity");
+        let params = request.params.expect("blackhole params");
+        assert_eq!(params["identity"].as_str(), Some("00112233445566778899aabbccddeeff"));
+        assert_eq!(params["reason"].as_str(), Some("test policy"));
+        let until = params["until"].as_f64().expect("expiry timestamp");
+        assert!(until > 1_700_000_000.0, "expiry timestamp: {until}");
+        RpcResponse { id: request.id, result: Some(json!(true)), error: None }
+    });
+
+    let output = Command::new(rnpath_bin())
+        .arg("--blackhole")
+        .arg("00112233445566778899aabbccddeeff")
+        .arg("--duration")
+        .arg("1")
+        .arg("--reason")
+        .arg("test policy")
+        .arg("--rpc")
+        .arg(rpc.addr)
+        .output()
+        .expect("run rnpath-rs blackhole");
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "blackhole=true");
+    rpc.thread.join().expect("mock rpc server");
+}
+
+#[test]
+fn rnpath_drop_requires_destination_without_contacting_backend() {
+    let output = Command::new(rnpath_bin()).arg("--drop").output().expect("run rnpath-rs drop");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).expect("utf8 stderr");
+    assert!(stderr.contains("--drop requires a destination hash"), "stderr: {stderr}");
+}
+
 fn rnpath_bin() -> String {
     env!("CARGO_BIN_EXE_rnpath-rs").to_string()
 }
@@ -428,6 +503,25 @@ where
         stream.read_to_end(&mut request).expect("read rpc request");
         let body = http_body(&request);
         let rpc_request = codec::decode_frame::<rns_rpc::RpcRequest>(body).expect("decode request");
+        let response = handler(rpc_request);
+        write_rpc_response(&mut stream, &response);
+    });
+
+    MockRpc { addr, thread }
+}
+
+fn spawn_direct_mock_rpc<F>(handler: F) -> MockRpc
+where
+    F: FnOnce(rns_rpc::RpcRequest) -> RpcResponse + Send + 'static,
+{
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind direct mock rpc");
+    let addr = listener.local_addr().expect("direct mock rpc addr").to_string();
+    let thread = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accept direct rpc request");
+        let mut request = Vec::new();
+        stream.read_to_end(&mut request).expect("read direct rpc request");
+        let rpc_request = codec::decode_frame::<rns_rpc::RpcRequest>(http_body(&request))
+            .expect("decode direct request");
         let response = handler(rpc_request);
         write_rpc_response(&mut stream, &response);
     });
