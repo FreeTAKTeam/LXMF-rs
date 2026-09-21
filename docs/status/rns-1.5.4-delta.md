@@ -162,7 +162,9 @@ and restart/fault transcripts remain open or owned by #612/#613. Commit
 `2b281b87` also adds process-level assertions for a missing fetch and a denied
 sender, including nonzero exit status and preserved failure categories.
 Commit `053ef246` extends the same process gate to malformed allowed identities
-and a save path that is a file rather than a directory.
+and a save path that is a file rather than a directory. Commit `9dc9bd62`
+adds an unused-endpoint process check that preserves the nonzero
+`path discovery timed out` outcome.
 
 The #612 implementation slice now has committed evidence in
 [`evidence/612-rngit.md`](../goals/reticulum-reference-parity-605/evidence/612-rngit.md):

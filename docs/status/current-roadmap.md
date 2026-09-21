@@ -24,10 +24,10 @@ remaining acceptance gates are recorded in
 [`rns-1.5.4-delta.md`](rns-1.5.4-delta.md). The 1.5.4 development reference is
 not the canonical release baseline. IFAC daemon wiring, remaining remote
 utility behavior, transport policy differences, and platform validation remain
-open; the focused #611 `rncp` compression/send/fetch matrix and negative
-failure-category checks are evidence for that slice only and do not promote
-the broader utility surface. Published inventory counts are not promoted or
-rewritten by this change.
+open; the focused #611 `rncp` compression/send/fetch matrix, negative
+failure-category checks, and path-discovery-timeout check are evidence for that
+slice only and do not promote the broader utility surface. Published inventory
+counts are not promoted or rewritten by this change.
 
 LXMF-rs retains the v0.9.5 SDK-access baseline. The generated inventory records
 software-surface parity against Python RNS 1.5.2 at

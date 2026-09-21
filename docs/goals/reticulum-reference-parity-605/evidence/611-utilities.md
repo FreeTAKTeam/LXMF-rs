@@ -6,7 +6,8 @@ Rust sender/listener roles. The mixed-runtime compression increment is
 implemented by `3c6757ba`, and process-level missing-file/denied-identity
 failure assertions are implemented by `2b281b87`; these increments do not
 close #611 or #605. Malformed identity and unusable-save-path failures are
-covered by `053ef246`.
+covered by `053ef246`, and path-discovery timeout status is covered by
+`9dc9bd62`.
 
 ## Reference and ownership
 
@@ -27,7 +28,7 @@ covered by `053ef246`.
 | Fetch | `fetch_file` Link request/response, `True`/`False`/`0xF0`/`nil` status mapping, the pinned Python rncp listener's ordinary metadata-bearing file Resource contract, correlated Rust response Resources for other callers, and metadata-driven save | `rncp_process` Rust client to Rust listener; pinned Python listener/client trace; pinned Python client fetching from Rust | verified for two independent Rust processes and the bounded Python↔Rust fetch paths |
 | Authentication | `--no-auth`, explicit `--allowed-identity`, rejected identified peers, nonzero sender failure, and reciprocal Python/Rust identity allow-lists for send and fetch roles | manual denied-transfer run; pinned Python interop | verified for the bounded send/fetch roles; broader option and callback parity remains open |
 | Jail and save safety | Canonical jail containment, traversal rejection, basename-only metadata, overwrite/suffix behavior | protocol unit tests and process test | verified locally |
-| Timeout/output | `--timeout`, silent mode, nonzero status for denied senders, preserved not-found failure output for missing fetches, malformed identity rejection, and unusable save-path rejection | unit/manual process runs, `rncp_process` | bounded Rust behavior and these four process-level failure categories verified; timeout/interruption coverage remains open |
+| Timeout/output | `--timeout`, silent mode, nonzero status for denied senders, preserved not-found failure output for missing fetches, malformed identity rejection, unusable save-path rejection, and path-discovery timeout status | unit/manual process runs, `rncp_process` | bounded Rust behavior and these five process-level failure categories verified; interruption/cancellation coverage remains open |
 | Compression option | `--no-compress` disables opportunistic Resource compression for outbound sends and fetch responses while preserving the default auto-compression path | Resource compression regression, `rncp_process`, mixed Python/Rust compression matrix | verified for the focused Python↔Rust send and listener-side fetch-response roles; direct callback telemetry and the complete utility matrix remain open |
 | Other shipped utilities | `rnpath`, `rnprobe`, `rnsd`, `rnid`, `rnir`, `rnodeconf`, `rnpkg`, `rnsh`, `rnx`, and `rngit` | existing tests and callable inventory | not promoted by this slice; network/reference gaps remain |
 
@@ -43,7 +44,7 @@ cargo clippy -p rns-tools --bin rncp --test rncp_process \
 cargo clippy -p rns-tools --test rncp_python_interop \
   --all-features --no-deps -- -D warnings           PASS
 cargo test -p rns-tools --test rncp_process \
-  --all-features -- --nocapture                     3 passed (1.04s)
+  --all-features -- --nocapture                     4 passed (1.04s)
 RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   cargo test -p rns-tools --test rncp_python_interop \
   rncp_mixed_runtime_compression_matrix_roundtrips_binary_files \
@@ -61,8 +62,9 @@ status plus the `remote file was not found` category. A separate secure
 listener rejects an unidentified sender and the client asserts nonzero status
 plus `Resource transfer failed`; the listener does not save the payload. The
 same test binary also rejects a malformed allowed identity and a file supplied
-as the save path before network work begins. The observed run completed in
-approximately 1.04 seconds.
+as the save path before network work begins. Its timeout case targets an unused
+TCP endpoint, asserts nonzero status, and preserves `path discovery timed out`.
+The observed run completed in approximately 1.04 seconds.
 
 An additional manual run transferred a 4,369-byte binary payload in both
 directions. Both copies had SHA-256
@@ -102,8 +104,9 @@ The `2b281b87` process increment also proves two negative categories through
 the production CLI: a missing fetch exits nonzero with `remote file was not
 found`, and a sender rejected by the listener's identity policy exits nonzero
 with `Resource transfer failed` without creating a destination file. These
-checks do not cover timeout, interruption, cancellation, disk, or restart
-behavior.
+checks, together with `053ef246` and `9dc9bd62`, also cover malformed identity,
+unusable save-path, and path-discovery timeout failures. Interruption,
+cancellation, disk, and restart behavior remain open.
 
 ## Unresolved requirements
 
