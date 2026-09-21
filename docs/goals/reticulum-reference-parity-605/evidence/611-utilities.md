@@ -16,10 +16,11 @@ Interrupted-link status and flushed non-silent phase output are covered by
 covered by `27bb3fac`. Python-listener restart with a Rust client is covered by
 `708dc980`; the interop fixture lock is covered by `a81f0cf6`; the successful
 Python fetch-client completion callback is asserted by `e6f71d21`. The native
-authenticated `rnsh` channel workflow is implemented by `f24e0038`; its Rust
-process tests cover command output, mirrored exit status, and allow-list
-rejection, while the pinned-Python initiator role is covered by an ignored
-interop test.
+authenticated `rnsh` channel workflow is implemented by `f24e0038`, with
+channel-window retry, bounded inbound queue overflow handling, and a large-
+output regression added by `a32b6d71`. Its Rust process tests cover command
+output, mirrored exit status, allow-list rejection, and flow-control output,
+while the pinned-Python initiator role is covered by an ignored interop test.
 
 ## Reference and ownership
 
@@ -51,7 +52,7 @@ option family; it is not a callable-surface completion claim.
 | `rnir` | Resolver configuration, verbosity, example configuration, and resolver runtime integration | Rust accepts global/config/example options but does not expose a resolver network workflow | partial / configuration-only |
 | `rnodeconf` | Serial RNode information, firmware/bootstrap/update, EEPROM, Wi-Fi/Bluetooth/display/radio management, signing/trust operations | Rust `rnodeconf-rs` exposes daemon-backed management commands and mock-RPC coverage; physical serial/firmware rows are separate | partial / software management evidenced; hardware-unverified |
 | `rnpkg` | Package-manager configuration and package workflow entry point | Rust exposes global/example-config options only, matching the currently shipped no-subcommand surface | partial / configuration-only |
-| `rnsh` | Authenticated remote shell listener/initiator; identity/allow-list/no-auth; command policy; stdin/stdout/stderr streams; timeout and mirrored exit status | `f24e0038` adds a native TCP/Link/Channel listener and initiator using the frozen `0xAC00`–`0xAC07` envelope family, persisted identities, allow-list/no-auth modes, root-scoped command execution, remote-command policy, stream forwarding, timeout, and mirrored exit status. `rnsh_process` covers Rust↔Rust command output and authenticated allow-list rejection; `rnsh_python_interop` covers pinned-Python initiator→Rust listener output and exit status. The existing local root-scoped executor remains the no-network mode. | partial / bounded native and one pinned-Python role evidenced |
+| `rnsh` | Authenticated remote shell listener/initiator; identity/allow-list/no-auth; command policy; stdin/stdout/stderr streams; timeout and mirrored exit status | `f24e0038` adds a native TCP/Link/Channel listener and initiator using the frozen `0xAC00`–`0xAC07` envelope family, persisted identities, allow-list/no-auth modes, root-scoped command execution, remote-command policy, stream forwarding, timeout, and mirrored exit status. `a32b6d71` retries channel-window backpressure, fails closed on bounded inbound queue overflow, and exercises a 128 KiB output stream. `rnsh_process` covers Rust↔Rust command output and authenticated allow-list rejection; `rnsh_python_interop` covers pinned-Python initiator→Rust listener output and exit status. The existing local root-scoped executor remains the no-network mode. | partial / bounded native and one pinned-Python role evidenced |
 | `rnx` | Authenticated Reticulum remote execution, listener/initiator, interactive and stream options, identity and timeout controls | Rust `rnx` is a production interop/diagnostic harness with mesh, resource, BLE, TCP, and path scenarios; its scenarios are not a drop-in `rnsh` endpoint | partial / harness workflows evidenced, reference remote shell remains open |
 | `rngit` | Reticulum Git client/server, repository and work operations, bundles, pages/media, permissions, signatures, and network failure/restart behavior | Rust local CLI plus daemon-side service handlers; #612/#613 records pinned-Python request/bundle/page/media seams | partial / split across #611–#613 |
 
@@ -296,15 +297,16 @@ multi-hop/public-network run, hardware run, or performance claim is included.
 
 ## Current `rnsh` channel increment
 
-Commit `f24e0038` replaces the former local-only `rnsh` implementation with a
+Commits `f24e0038` and `a32b6d71` replace the former local-only `rnsh` implementation with a
 bounded native network workflow while preserving local mode when no network
 flags are supplied. The listener and initiator use the existing Reticulum
 Link/Channel transport and the frozen Python `rnsh` message family: version,
 execute, stream (`0xAC04`), error, window, no-op, and command-exit envelopes.
 The stream codec matches the Python two-byte EOF/compression header and accepts
 Python bzip2-compressed input; native output is chunked with the negotiated
-Channel MDU and retries flow-control backpressure before sending EOF or the
-terminal exit message.
+Channel MDU and retries flow-control backpressure before sending stream data,
+EOF, or the terminal exit message. The bounded inbound session queue reports
+overflow and closes the session instead of silently dropping channel messages.
 
 The network CLI supports persisted or deterministic identities, exact
 no-aspect `rnsh` destination hashing, TCP listener/client interfaces,
@@ -318,6 +320,7 @@ cargo test -p rns-tools --bin rnsh -- --nocapture
 
 cargo test -p rns-tools --test rnsh_process -- --nocapture
 # 2 passed; 0 failed
+# includes a 128 KiB output stream through the negotiated Channel window
 
 RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   cargo test -p rns-tools --test rnsh_python_interop -- \

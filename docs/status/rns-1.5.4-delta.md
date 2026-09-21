@@ -185,7 +185,7 @@ while proving the medium-path timeout lower bound after interface activation.
 Commit `708dc980` adds a pinned-Python listener/Rust-client restart trace with
 stable identity and exact binary transfers before and after restart.
 
-Commit `f24e0038` adds a bounded native `rnsh` TCP/Link/Channel workflow with
+Commits `f24e0038` and `a32b6d71` add a bounded native `rnsh` TCP/Link/Channel workflow with
 the frozen Python message family, exact no-aspect destination hashing,
 authenticated/no-auth listener modes, root-scoped command launch, stream
 forwarding, timeout, and mirrored exit status. Rust process/auth tests and a

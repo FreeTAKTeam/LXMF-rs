@@ -903,7 +903,7 @@ direction.
   evidence is software-only; pinned-Python utility exchange and
   public/physical-link timing remain open.
 - `rnsh` now has a bounded native TCP/Link/Channel workflow at
-  `f24e0038`: persisted or deterministic identities, allow-list/no-auth
+  `f24e0038`, hardened by `a32b6d71`: persisted or deterministic identities, allow-list/no-auth
   listener modes, root-scoped command execution, frozen Python channel
   envelopes, stream forwarding, timeout, and mirrored exit status are covered
   by Rust process/auth tests plus a pinned-Python initiator→Rust listener
