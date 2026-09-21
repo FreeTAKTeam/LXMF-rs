@@ -279,3 +279,70 @@ fn rncp_reports_path_discovery_timeout() -> io::Result<()> {
     );
     Ok(())
 }
+
+#[test]
+fn rncp_listener_restart_preserves_identity_and_transfer() -> io::Result<()> {
+    let temp = tempfile::tempdir()?;
+    let listener_root = temp.path().join("listener");
+    let client_root = temp.path().join("client");
+    let identity = temp.path().join("listener.identity");
+    fs::create_dir_all(&listener_root)?;
+    fs::create_dir_all(&client_root)?;
+    let before = client_root.join("before-restart.bin");
+    let after = client_root.join("after-restart.bin");
+    fs::write(&before, (0..4096).map(|index| (index as u8).wrapping_mul(11)).collect::<Vec<_>>())?;
+    fs::write(&after, (0..4096).map(|index| (index as u8).wrapping_mul(29)).collect::<Vec<_>>())?;
+
+    let port = free_port()?;
+    let binary = env!("CARGO_BIN_EXE_rncp");
+    let start_listener = || {
+        Command::new(binary)
+            .args(["--listen", &format!("127.0.0.1:{port}"), "--no-auth", "--save"])
+            .arg(&listener_root)
+            .args(["--identity", identity.to_str().expect("identity path is UTF-8"), "--silent"])
+            .current_dir(temp.path())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+    };
+    let destination_for = || -> io::Result<String> {
+        let output = Command::new(binary)
+            .args(["--print-identity", "--identity"])
+            .arg(&identity)
+            .output()?;
+        if !output.status.success() {
+            return Err(io::Error::other("rncp identity query failed"));
+        }
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .find_map(|line| line.strip_prefix("Listening on : "))
+            .map(str::to_owned)
+            .ok_or_else(|| io::Error::other("rncp identity query omitted destination"))
+    };
+
+    let mut listener = start_listener()?;
+    let result = (|| {
+        wait_for_port(port, &mut listener)?;
+        let destination = destination_for()?;
+        run_client(&before, &destination, port, &client_root)?;
+        assert_eq!(fs::read(listener_root.join("before-restart.bin"))?, fs::read(&before)?);
+
+        listener.kill()?;
+        listener.wait()?;
+
+        let mut restarted = start_listener()?;
+        let restarted_result = (|| {
+            wait_for_port(port, &mut restarted)?;
+            assert_eq!(destination_for()?, destination);
+            run_client(&after, &destination, port, &client_root)?;
+            assert_eq!(fs::read(listener_root.join("after-restart.bin"))?, fs::read(&after)?);
+            Ok(())
+        })();
+        let _ = restarted.kill();
+        let _ = restarted.wait();
+        restarted_result
+    })();
+    let _ = listener.kill();
+    let _ = listener.wait();
+    result
+}
