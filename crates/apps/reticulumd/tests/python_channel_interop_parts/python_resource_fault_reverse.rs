@@ -1,3 +1,5 @@
+use rns_transport::destination::link::{LinkEvent, LinkStatus};
+
 async fn run_rust_resource_fault(
     mode: ResourceFaultMode,
     expect_failure: bool,
@@ -117,4 +119,56 @@ async fn pinned_python_reader_resource_fault_matrix() {
     run_rust_resource_fault(ResourceFaultMode::DuplicateFirst, false, true).await;
     run_rust_resource_fault(ResourceFaultMode::ReorderFirstTwo, false, true).await;
     run_rust_resource_fault(ResourceFaultMode::DropAll, true, true).await;
+}
+
+#[tokio::test]
+#[ignore = "requires local Python Reticulum checkout"]
+async fn pinned_python_link_timeout_after_dropped_keepalives() {
+    let _interop_guard = python_interop_guard().await;
+    let paths = python_channel_interop_paths();
+
+    let server_port = free_tcp_port();
+    let temp = tempfile::tempdir().expect("tempdir");
+    let py_config_dir = temp.path().join("python-rns-link-timeout-server");
+    fs::create_dir_all(&py_config_dir).expect("python config dir");
+    write_python_config(&py_config_dir, server_port);
+
+    let mut child = paths.spawn_endpoint(&py_config_dir, "channel");
+    let ready = read_ready(&mut child).expect("python endpoint ready");
+    let _guard = ChildGuard { child: Some(child) };
+    wait_for_port(server_port, Duration::from_secs(5)).await;
+
+    let proxy = PythonResourceFaultProxy::bind(server_port, ResourceFaultMode::DropKeepAlive).await;
+    let target_hash =
+        AddressHash::new_from_hex_string(&ready.destination_hash).expect("destination hash");
+    let rust_identity = PrivateIdentity::new_from_rand(OsRng);
+    let rust_identity = to_transport_private_identity(&rust_identity);
+    let mut config = TransportConfig::new("python-link-timeout-rust", &rust_identity, true);
+    config.set_path_request_timeout_secs(2);
+    let transport = Transport::new(config);
+    transport
+        .iface_manager()
+        .lock()
+        .await
+        .spawn(TcpClient::new(format!("127.0.0.1:{}", proxy.port())), TcpClient::spawn);
+
+    let destination = wait_for_announce(&transport, target_hash, Duration::from_secs(8)).await;
+    let mut link_events = transport.out_link_events();
+    let link = transport.link(destination).await;
+    let link_id = wait_for_out_link_active(&mut link_events, &link, Duration::from_secs(8)).await;
+
+    tokio::time::timeout(Duration::from_secs(25), async {
+        loop {
+            let event = link_events.recv().await.expect("link event");
+            if event.id == link_id && matches!(event.event, LinkEvent::Closed) {
+                return;
+            }
+        }
+    })
+    .await
+    .expect("timed out waiting for Rust link timeout after dropped keepalives");
+    assert_eq!(link.lock().await.status(), LinkStatus::Closed);
+
+    drop(proxy);
+    drop(transport);
 }

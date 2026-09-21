@@ -11,6 +11,7 @@ pub(super) enum ResourceFaultMode {
     DuplicateFirst,
     ReorderFirstTwo,
     DropAll,
+    DropKeepAlive,
 }
 
 pub(super) struct PythonResourceFaultProxy {
@@ -107,6 +108,7 @@ where
                         }
                     }
                     ResourceFaultMode::DropAll => {}
+                    ResourceFaultMode::DropKeepAlive => {}
                 }
             } else {
                 write_frame(&mut writer, &frame).await;
@@ -135,6 +137,9 @@ fn should_fault(frame: &[u8], mode: Option<ResourceFaultMode>) -> bool {
     if Hdlc::decode(frame, &mut output).is_err() {
         return false;
     }
-    Packet::from_bytes(output.as_slice())
-        .is_ok_and(|packet| matches!(packet.context, PacketContext::Resource))
+    Packet::from_bytes(output.as_slice()).is_ok_and(|packet| match mode {
+        Some(ResourceFaultMode::DropKeepAlive) => packet.context == PacketContext::KeepAlive,
+        Some(_) => packet.context == PacketContext::Resource,
+        None => false,
+    })
 }
