@@ -158,7 +158,9 @@ no-compression send modes in both Python↔Rust directions, a bzip2-compressed
 payload, and Python listener default/no-compression fetch responses into a Rust
 client. The row remains partial and unverified because direct callback
 telemetry, the complete utility option/behavior matrix, rngit network workflows,
-and restart/fault transcripts remain open or owned by #612/#613.
+and restart/fault transcripts remain open or owned by #612/#613. Commit
+`2b281b87` also adds process-level assertions for a missing fetch and a denied
+sender, including nonzero exit status and preserved failure categories.
 
 The #612 implementation slice now has committed evidence in
 [`evidence/612-rngit.md`](../goals/reticulum-reference-parity-605/evidence/612-rngit.md):

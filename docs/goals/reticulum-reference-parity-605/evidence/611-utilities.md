@@ -3,7 +3,9 @@
 Status: **partial / unverified**. This record covers the bounded native `rncp`
 slice on the forward parity branch, including authenticated pinned-Python and
 Rust sender/listener roles. The mixed-runtime compression increment is
-implemented by `3c6757ba`; it does not close #611 or #605.
+implemented by `3c6757ba`, and process-level missing-file/denied-identity
+failure assertions are implemented by `2b281b87`; these increments do not
+close #611 or #605.
 
 ## Reference and ownership
 
@@ -24,7 +26,7 @@ implemented by `3c6757ba`; it does not close #611 or #605.
 | Fetch | `fetch_file` Link request/response, `True`/`False`/`0xF0`/`nil` status mapping, the pinned Python rncp listener's ordinary metadata-bearing file Resource contract, correlated Rust response Resources for other callers, and metadata-driven save | `rncp_process` Rust client to Rust listener; pinned Python listener/client trace; pinned Python client fetching from Rust | verified for two independent Rust processes and the bounded Python↔Rust fetch paths |
 | Authentication | `--no-auth`, explicit `--allowed-identity`, rejected identified peers, nonzero sender failure, and reciprocal Python/Rust identity allow-lists for send and fetch roles | manual denied-transfer run; pinned Python interop | verified for the bounded send/fetch roles; broader option and callback parity remains open |
 | Jail and save safety | Canonical jail containment, traversal rejection, basename-only metadata, overwrite/suffix behavior | protocol unit tests and process test | verified locally |
-| Timeout/output | `--timeout`, silent mode, accurate failure output for missing/denied/failed transfers | unit/manual process runs | bounded Rust behavior verified |
+| Timeout/output | `--timeout`, silent mode, nonzero status for denied senders, and preserved not-found failure output for missing fetches | unit/manual process runs, `rncp_process` | bounded Rust behavior and these two process-level failure categories verified; timeout/interruption coverage remains open |
 | Compression option | `--no-compress` disables opportunistic Resource compression for outbound sends and fetch responses while preserving the default auto-compression path | Resource compression regression, `rncp_process`, mixed Python/Rust compression matrix | verified for the focused Python↔Rust send and listener-side fetch-response roles; direct callback telemetry and the complete utility matrix remain open |
 | Other shipped utilities | `rnpath`, `rnprobe`, `rnsd`, `rnid`, `rnir`, `rnodeconf`, `rnpkg`, `rnsh`, `rnx`, and `rngit` | existing tests and callable inventory | not promoted by this slice; network/reference gaps remain |
 
@@ -40,7 +42,7 @@ cargo clippy -p rns-tools --bin rncp --test rncp_process \
 cargo clippy -p rns-tools --test rncp_python_interop \
   --all-features --no-deps -- -D warnings           PASS
 cargo test -p rns-tools --test rncp_process \
-  --all-features -- --nocapture                     1 passed
+  --all-features -- --nocapture                     2 passed (1.04s)
 RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   cargo test -p rns-tools --test rncp_python_interop \
   rncp_mixed_runtime_compression_matrix_roundtrips_binary_files \
@@ -50,10 +52,14 @@ RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   -- --ignored --nocapture                         2 passed (32.30s)
 ```
 
-The process test starts one listener and separate client processes with
-isolated temporary roots. It sends an 8,192-byte binary payload, checks the
-listener's saved bytes, fetches the same file back into a third root, and checks
-the bytes again. The observed run completed in approximately 0.25 seconds.
+The process tests start independent listener and client processes with isolated
+temporary roots. The success path sends an 8,192-byte binary payload, checks
+the listener's saved bytes, fetches the same file back into a third root, and
+checks the bytes again. It then fetches a missing file and asserts nonzero
+status plus the `remote file was not found` category. A separate secure
+listener rejects an unidentified sender and the client asserts nonzero status
+plus `Resource transfer failed`; the listener does not save the payload. The
+observed pair completed in approximately 1.04 seconds.
 
 An additional manual run transferred a 4,369-byte binary payload in both
 directions. Both copies had SHA-256
@@ -89,6 +95,13 @@ root; every received file matches the original bytes exactly. The Resource
 unit tests remain the direct wire-flag proof; this process trace proves the
 utility flags and mixed-runtime decompression/save behavior.
 
+The `2b281b87` process increment also proves two negative categories through
+the production CLI: a missing fetch exits nonzero with `remote file was not
+found`, and a sender rejected by the listener's identity policy exits nonzero
+with `Resource transfer failed` without creating a destination file. These
+checks do not cover timeout, interruption, cancellation, disk, or restart
+behavior.
+
 ## Unresolved requirements
 
 The following #611 acceptance items remain open and are deliberately not
@@ -108,9 +121,6 @@ classified as complete:
   implementation belongs to #612/#613.
 - Add restart, interrupted-link, cancellation, slow-interface, disk-error, and
   multi-client transcripts with exact failure/status assertions.
-- Add utility-level progress/status and failure-callback telemetry assertions;
-  the current matrix proves terminal process status and exact file effects but
-  does not expose every callback state.
 - Add process-level advertisement/transfer-size assertions for each remaining
   compression role if the utility evidence must independently expose the wire
   compression flag; the Resource unit tests already cover that direct flag.
