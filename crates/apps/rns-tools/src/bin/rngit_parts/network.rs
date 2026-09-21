@@ -244,12 +244,16 @@ async fn process_request(
         RequestService::Pages => {
             let Some(request) = decode_page_request(&payload).ok().flatten() else { return };
             let _ = request.requested_at;
-            runtime.node.lock().await.handle_page_request(
-                request.path,
-                &request.data,
-                remote,
-                address_array(&link_id),
-            )
+            let page_response = {
+                let mut node = runtime.node.lock().await;
+                node.handle_page_request(
+                    request.path,
+                    &request.data,
+                    remote,
+                    address_array(&link_id),
+                )
+            };
+            page_response
         }
         RequestService::Git => {
             let Some(request) = decode_rngit_request(&payload).ok().flatten() else { return };
@@ -258,7 +262,8 @@ async fn process_request(
             if rmpv::encode::write_value(&mut encoded, &request.data).is_err() {
                 return;
             }
-            let data = runtime.node.lock().await.handle_request(request.path, &encoded, remote);
+            let mut node = runtime.node.lock().await;
+            let data = node.handle_request(request.path, &encoded, remote);
             Some(PageResponse { data, metadata: None })
         }
     };
