@@ -32,12 +32,22 @@ fan-out does not become accidental network broadcast/transit.
   — passed.
 - `tools/scripts/check-module-size.sh` and
   `tools/scripts/check-boundaries.sh` — passed.
+- `RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LOG_DIR=target/interop/local-interface-python-shared-605 REPORT_PATH=target/interop/local-interface-python-shared-605/report.json TIMEOUT_SECS=45 bash tools/scripts/local-interface-python-shared-smoke.sh` — passed.
+  - candidate: `92ce5720` (`codex/issue-605-parity`)
+  - Python Reticulum: `99de23c040d507e3fefca19e87b182302902725d`
+  - TCP and Linux abstract Unix `LocalClientInterface` rows reported
+    `startup_status = attached`.
+  - Both Python shared instances observed two live local clients with
+    non-zero receive/transmit counters; each pinned Python traffic client
+    connected and emitted three announces.
+  - raw report: `target/interop/local-interface-python-shared-605/report.json`
 
 ## Remaining acceptance boundary
 
-No pinned Python↔Rust shared-instance trace or multi-hop production-path trace
-has been run in this slice. Those traces must compare announce ordering,
-duplicate suppression, cached and scheduled announcements, policy and queue
-behavior, persistence/expiry, and close/reconnect behavior before this row can
-be promoted. Hardware and public-network evidence remain separate acceptance
-axes.
+The shared-instance smoke proves only pinned Python↔Rust local attachment and
+announce fan-out. It does not yet compare application packet/proof/link or
+Resource traffic, duplicate suppression across a multi-hop production path,
+daemon replacement/reconnect, cached versus scheduled announce persistence,
+or close/reconnect behavior. Those traces are still required before this row
+can be promoted. Hardware and public-network evidence remain separate
+acceptance axes.

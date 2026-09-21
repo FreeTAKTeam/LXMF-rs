@@ -462,10 +462,12 @@ Scoped release evidence is split as follows:
   refreshing a destination the cache already holds no longer evicts an
   unrelated one. Measured against a public hub over six minutes, the queue grew
   14 -> 317 and never decremented; it now stays at 0 while the bounded cache
-  holds the same routes. Python's local-client announce timing
-  (`retransmit_timeout = now`, `retries = PATHFINDER_R`) is not implemented, and
-  the shared-instance condition reads the receiving interface rather than
-  Python's parent-interface `is_local_client_interface`.
+holds the same routes. The local-client implementation now applies Python's
+immediate single-retransmit timing (`retransmit_timeout = now`,
+`retries = PATHFINDER_R`) and parent-interface classification under focused
+regression tests. Pinned shared-instance evidence currently covers TCP/Unix
+attachment and announce fan-out; mixed multi-hop packet/proof/link/Resource
+and restart traces remain open.
 - Restored Reticulum path-table announces are now cache-only lookup material at
   startup, not fresh rebroadcast work, while still serving known-path response
   requests from the restored cache.
