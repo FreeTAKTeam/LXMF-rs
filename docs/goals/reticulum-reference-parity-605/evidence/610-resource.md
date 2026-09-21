@@ -76,6 +76,26 @@ interactive limit while the smaller cases passed; the same protocol and
 checksum completed in the optimized release profile. This is recorded as a
 profile/environment limitation, not as a passing debug large-transfer claim.
 
+The bounded pinned independent-peer PR profile also completed against
+`rns-rs` `6c6d79b83516feff271d15c97d39dd1de7798afe`:
+
+```text
+python3 tools/scripts/independent_interop.py --peer rns-rs --level pr \
+  --output target/interop/independent/issue-605-pr --keep
+# report: target/interop/independent/issue-605-pr/independent-interop.json
+# 79 PASS; 3 peer-owned FAIL; 2 dependent BLOCKED
+python3 tools/scripts/independent_interop_gate.py \
+  target/interop/independent/issue-605-pr/independent-interop.json
+# independent interop gate: PASS
+```
+
+That independent report includes exact-checksum 1 MiB Resource transfers in
+direct and multi-hop topologies, shared-instance traffic before and after
+daemon restart, deterministic 1% frame-loss recovery, complete-loss terminal
+timeout, and 50 ms per-frame latency. Its peer-owned failures remain in the
+report rather than being treated as Rust passes; this is independent `rns-rs`
+evidence, not a substitute for the pinned Python fault matrix.
+
 ## Remaining acceptance boundary
 
 The following #610 requirements remain unverified and are intentionally not
@@ -83,8 +103,10 @@ represented as complete:
 
 - mixed-Python fault-injection evidence for loss, duplication, reordering,
   missing fragments, cancellation, and link-timeout recovery or terminal
-  failure; the candidate now has deterministic Rust manager coverage for the
-  first four cases, but not the cross-implementation/real-carrier trace;
+  failure; the candidate now has deterministic Rust manager coverage and the
+  independent `rns-rs` profile covers loss, timeout, and latency, but the full
+  pinned-Python matrix and cross-implementation duplicate/reorder trace remain
+  open;
 - peak-RSS measurements for the 50 MiB mixed-peer transfers and a bounded
   memory report across the full matrix;
 - mixed-Python evidence for the new Rust reader/file adapter; local tests prove
@@ -97,7 +119,8 @@ represented as complete:
 The current conclusion is therefore: collision regeneration, shutdown cleanup,
 window-bounded fragment admission, deterministic local loss/duplication/
 reordering recovery, split cancellation cleanup, reader-backed bounded source
-retention, and bidirectional release-profile mixed-peer transfers are
-implemented with local evidence; the broader Resource failure and bounded-
-memory contract remains partial pending cross-implementation fault injection,
-resource-usage evidence, and hosted/physical/soak coverage.
+retention, bidirectional release-profile mixed-peer transfers, and the
+independent `rns-rs` loss/timeout/latency slice are implemented with local
+evidence; the broader Resource failure and bounded-memory contract remains
+partial pending the full pinned-Python fault matrix, resource-usage evidence,
+and hosted/physical/soak coverage.

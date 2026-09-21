@@ -1667,7 +1667,7 @@
         ],
         "evidence_artifact": "docs/goals/reticulum-reference-parity-605/evidence/610-resource.md",
         "owner_issue": 610,
-        "notes": "Deterministic collision regeneration, active-window fragment admission, collision-guard/hashmap/window unit coverage, link-close terminal event publication, local loss/duplication/reordering recovery, split cancellation cleanup, reader-backed bounded source retention, and pinned Python release-profile empty-to-50 MiB checksums are implemented. Cross-implementation fault injection, peak-RSS capture, and hosted/physical/soak coverage remain unverified; the debug 50 MiB run is slower than the release profile."
+        "notes": "Deterministic collision regeneration, active-window fragment admission, collision-guard/hashmap/window unit coverage, link-close terminal event publication, local loss/duplication/reordering recovery, split cancellation cleanup, reader-backed bounded source retention, pinned Python release-profile empty-to-50 MiB checksums, and an independent rns-rs PR profile covering 1 MiB transfers, loss recovery, terminal timeout, and latency are implemented. Full pinned-Python fault injection, peak-RSS capture, and hosted/physical/soak coverage remain unverified; the debug 50 MiB run is slower than the release profile."
       },
       {
         "id": "reticulum-605-611-utility-network-workflows",
