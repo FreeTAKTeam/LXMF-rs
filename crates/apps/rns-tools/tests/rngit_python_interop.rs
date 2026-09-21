@@ -95,8 +95,10 @@ fn create_repository_fixture(temp: &Path) -> io::Result<PathBuf> {
     run_git(&group, &["init", "--bare", "-q", "repo"])?;
     run_git(&repository, &["symbolic-ref", "HEAD", "refs/heads/main"])?;
     let repository_url = repository.to_string_lossy().into_owned();
+    let source_url = source.to_string_lossy().into_owned();
     run_git(&source, &["remote", "add", "origin", &repository_url])?;
     run_git(&source, &["push", "-q", "origin", "main"])?;
+    run_git(&repository, &["remote", "add", "upstream", &source_url])?;
 
     // The process-facing node has no test-only permission mutation hook. The
     // group sidecar gives the Python client the same read access as the
@@ -290,6 +292,7 @@ fn run_python_git_client(
     config_dir: &Path,
     identity: &Path,
     destination: &str,
+    source: &Path,
 ) -> io::Result<Output> {
     const CLIENT: &str = r#"
 import hashlib
@@ -302,7 +305,7 @@ import threading
 import time
 import RNS
 
-config_dir, identity_path, destination_hex = sys.argv[1:4]
+config_dir, identity_path, destination_hex, source_path = sys.argv[1:5]
 RNS.Reticulum(configdir=config_dir, loglevel=0)
 identity = RNS.Identity.from_file(identity_path) if os.path.isfile(identity_path) else RNS.Identity()
 if not os.path.isfile(identity_path):
@@ -426,6 +429,42 @@ if after_push[0] != 0 or b"refs/heads/python" not in after_push:
     raise RuntimeError("Git push did not create the requested ref")
 result["push_status"] = push_response[0]
 result["push_contains_python_ref"] = b"refs/heads/python" in after_push
+sync_response = request(
+    "/git/sync",
+    {0: "group/repo"},
+)
+if sync_response[0] != 0:
+    raise RuntimeError("Git sync response was not successful")
+after_sync = request(
+    "/git/list",
+    {0: "group/repo", "for_push": False},
+)
+if after_sync[0] != 0 or b"refs/remotes/upstream/main" not in after_sync:
+    raise RuntimeError("Git sync did not update the configured remote")
+fork_response = request(
+    "/git/fork",
+    {0: "group/fork", "source": source_path},
+)
+if fork_response[0] != 0:
+    raise RuntimeError("Git fork response was not successful")
+fork_listing = request(
+    "/git/list",
+    {0: "group/fork", "for_push": False},
+)
+if fork_listing[0] != 0 or b"refs/heads/main" not in fork_listing:
+    raise RuntimeError("Git fork did not register the copied repository")
+mirror_response = request(
+    "/git/mirror",
+    {0: "group/mirror", "source": source_path},
+)
+if mirror_response[0] != 0:
+    raise RuntimeError("Git mirror response was not successful")
+mirror_listing = request(
+    "/git/list",
+    {0: "group/mirror", "for_push": False},
+)
+if mirror_listing[0] != 0 or b"refs/heads/main" not in mirror_listing:
+    raise RuntimeError("Git mirror did not register the copied repository")
 delete_response = request(
     "/git/delete",
     {0: "group/repo", "ref": "refs/heads/python"},
@@ -452,6 +491,12 @@ if created_listing[0] != 0 or b" HEAD" not in created_listing:
     raise RuntimeError("Git create did not register the new repository")
 result["delete_status"] = delete_response[0]
 result["delete_removed_python_ref"] = b"refs/heads/python" not in after_delete
+result["sync_status"] = sync_response[0]
+result["sync_contains_upstream_ref"] = b"refs/remotes/upstream/main" in after_sync
+result["fork_status"] = fork_response[0]
+result["fork_contains_main"] = b"refs/heads/main" in fork_listing
+result["mirror_status"] = mirror_response[0]
+result["mirror_contains_main"] = b"refs/heads/main" in mirror_listing
 result["create_status"] = create_response[0]
 result["create_registered_repository"] = created_listing[0] == 0
 link.teardown()
@@ -463,6 +508,7 @@ print(json.dumps(result, sort_keys=True))
         .arg(config_dir)
         .arg(identity)
         .arg(destination)
+        .arg(source)
         .env("PYTHONPATH", repo)
         .output()
 }
@@ -529,8 +575,13 @@ fn rngit_serves_pages_and_media_to_pinned_python_client() -> io::Result<()> {
         fs::create_dir_all(&git_config_dir)?;
         write_python_config(&git_config_dir, port)?;
         let git_identity = git_config_dir.join("identity");
-        let git_output =
-            run_python_git_client(&python_repo, &git_config_dir, &git_identity, &git_destination)?;
+        let git_output = run_python_git_client(
+            &python_repo,
+            &git_config_dir,
+            &git_identity,
+            &git_destination,
+            &temp.path().join("source"),
+        )?;
         if !git_output.status.success() {
             return Err(io::Error::other(format!(
                 "Python rngit Git client failed: {}\nstdout:\n{}\nstderr:\n{}",
@@ -554,6 +605,21 @@ fn rngit_serves_pages_and_media_to_pinned_python_client() -> io::Result<()> {
         assert!(
             git_stdout.contains("\"delete_removed_python_ref\": true"),
             "Git delete ref listing: {git_stdout}"
+        );
+        assert!(git_stdout.contains("\"sync_status\": 0"), "Git sync status: {git_stdout}");
+        assert!(
+            git_stdout.contains("\"sync_contains_upstream_ref\": true"),
+            "Git sync ref listing: {git_stdout}"
+        );
+        assert!(git_stdout.contains("\"fork_status\": 0"), "Git fork status: {git_stdout}");
+        assert!(
+            git_stdout.contains("\"fork_contains_main\": true"),
+            "Git fork ref listing: {git_stdout}"
+        );
+        assert!(git_stdout.contains("\"mirror_status\": 0"), "Git mirror status: {git_stdout}");
+        assert!(
+            git_stdout.contains("\"mirror_contains_main\": true"),
+            "Git mirror ref listing: {git_stdout}"
         );
         assert!(git_stdout.contains("\"create_status\": 0"), "Git create status: {git_stdout}");
         assert!(
