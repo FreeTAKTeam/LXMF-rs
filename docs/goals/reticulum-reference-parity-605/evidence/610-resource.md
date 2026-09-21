@@ -58,6 +58,10 @@ it does not promote the full #610 acceptance contract or close parent issue
   `resource_started` callback, terminates that exact Python process after the
   Rust advertisement is admitted, and observes one Rust `OutboundFailed`
   event for the original split transfer.
+- The same real-carrier matrix now uses a Rust `Read + Send + Sync` source and
+  covers dropped, duplicated, reordered, and completely missing Resource
+  data. A separate reader-backed trace injects an error while building the
+  second segment after the Python receiver has acknowledged the first.
 
 ## Local evidence
 
@@ -120,6 +124,16 @@ RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   cargo test -p reticulumd --test python_channel_interop \
   rust_sender_reports_pinned_python_receiver_shutdown -- --ignored --nocapture
   # 1 passed; 37 filtered out; 15.52s
+
+RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
+  cargo test -p reticulumd --test python_channel_interop \
+  pinned_python_reader_resource_fault_matrix -- --ignored --nocapture
+  # 1 passed; 39 filtered out; 21.93s
+
+RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
+  cargo test -p reticulumd --test python_channel_interop \
+  rust_reader_reports_pinned_python_reader_failure -- --ignored --nocapture
+  # 1 passed; 39 filtered out; 0.91s
 ```
 
 The fault matrix runs through a production TCP carrier and inspects only
@@ -139,6 +153,10 @@ fragment-fault behaviors in both implementation directions; they do not by
 themselves prove the separate link-timeout, reader-adapter, memory, or hosted
 acceptance contracts. The shutdown trace separately proves that an admitted
 split Resource is failed when its pinned Python receiver process exits.
+The reader-backed matrix uses the same transfer sizes and fault proxy as the
+owned-buffer reverse matrix, while the reader-failure trace proves a later
+source error becomes a terminal Rust failure after Python has accepted the
+transfer.
 
 The release runs completed in approximately 10.00 seconds and 11.53 seconds.
 The debug Rust-to-Python 50 MiB preparation run exceeded the 180-second
@@ -177,10 +195,10 @@ represented as complete:
   failure in both directions;
 - peak-RSS measurements for the 50 MiB mixed-peer transfers and a bounded
   memory report across the full matrix;
-- mixed-Python fault-injection evidence for the reader/file adapter, including
-  loss, duplication, reordering, cancellation, and terminal reader failure;
-  the split reader-backed success path is now covered, while the failure
-  matrix remains open;
+- mixed-Python fault-injection evidence for reader cancellation and a true
+  file-backed adapter; reader-backed loss, duplication, reordering, and
+  terminal reader failure are now covered, while those remaining adapter
+  roles are open;
 - callbacks/status transitions observed through every library and daemon
   consumer after each injected failure;
 - hosted, physical-interface, public-network, and long-running soak evidence.

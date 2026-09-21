@@ -127,8 +127,11 @@ matrices now cover loss, duplication, reordering, and complete missing-fragment
 terminal failure in both Python-sender → Rust-receiver and Rust-sender →
 Python-receiver directions through real TCP/HDLC carriers, and a pinned-Python
 receiver-shutdown trace observes Rust's terminal outbound failure after the
-Resource advertisement is admitted. The row remains partial and unverified
-because link-timeout-specific and reader-adapter traces, peak-memory capture,
+Resource advertisement is admitted. A reader-backed pinned-Python matrix also
+covers loss, duplication, reordering, and complete missing-fragment failure,
+while a separate trace injects a later source-read error after the first
+segment is accepted. The row remains partial and unverified because
+reader-cancellation/file-adapter and link-timeout traces, peak-memory capture,
 and hosted/physical/soak coverage are still open.
 
 The #611 implementation slice now has committed local evidence in
