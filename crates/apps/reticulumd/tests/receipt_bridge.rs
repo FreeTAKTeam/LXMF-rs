@@ -1,4 +1,5 @@
 use reticulum_daemon::receipt_bridge::ReceiptBridge;
+use rns_rpc::ProbeReceiptRegistry;
 use rns_transport::transport::{DeliveryReceipt, ReceiptHandler};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -41,4 +42,23 @@ async fn receipt_bridge_drops_when_bounded_queue_is_full() {
     let event = rx.try_recv().expect("first receipt event should fit");
     assert_eq!(event.message_id, "msg-1");
     assert_eq!(rx.try_recv().expect_err("second receipt should be dropped"), TryRecvError::Empty);
+}
+
+#[tokio::test]
+async fn receipt_bridge_notifies_probe_registry_without_consuming_message_mapping() {
+    let (tx, mut rx) = channel(4);
+    let map = Arc::new(Mutex::new(HashMap::new()));
+    let packet_id = [9u8; 32];
+    let packet_hex = hex::encode(packet_id);
+    map.lock().unwrap().insert(packet_hex.clone(), "msg-probe".to_string());
+    let registry = Arc::new(ProbeReceiptRegistry::default());
+    let receipt = registry.register(packet_id);
+
+    let bridge = ReceiptBridge::with_probe_registry(map.clone(), tx, registry);
+    bridge.on_receipt(&DeliveryReceipt::new(packet_id));
+
+    assert!(receipt.await.is_ok());
+    let event = rx.recv().await.expect("receipt event");
+    assert_eq!(event.message_id, "msg-probe");
+    assert_eq!(map.lock().unwrap().get(&packet_hex).map(String::as_str), Some("msg-probe"));
 }

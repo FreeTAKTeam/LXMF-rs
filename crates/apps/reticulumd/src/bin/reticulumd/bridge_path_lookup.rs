@@ -1,4 +1,4 @@
-use rns_rpc::PathLookupBridge;
+use rns_rpc::{PathLookupBridge, ProbeReceiptRegistry};
 use rns_transport::destination_hash::parse_destination_hash_required;
 use rns_transport::discovery::{DiscoveryListFilter, InterfaceDiscoveryStore};
 use rns_transport::hash::{AddressHash, Hash, HASH_SIZE};
@@ -10,23 +10,31 @@ pub(crate) struct DaemonPathLookupBridge {
     transport: Arc<Transport>,
     discovery_store: Option<InterfaceDiscoveryStore>,
     discovery_sources: Vec<String>,
+    probe_receipts: Arc<ProbeReceiptRegistry>,
 }
 
 impl DaemonPathLookupBridge {
     #[cfg(test)]
     pub(crate) fn new(transport: Arc<Transport>) -> Self {
-        Self { transport, discovery_store: None, discovery_sources: Vec::new() }
+        Self {
+            transport,
+            discovery_store: None,
+            discovery_sources: Vec::new(),
+            probe_receipts: Arc::new(ProbeReceiptRegistry::default()),
+        }
     }
 
-    pub(crate) fn with_discovery_store(
+    pub(crate) fn with_discovery_store_and_probe_registry(
         transport: Arc<Transport>,
         storage_path: impl AsRef<std::path::Path>,
         discovery_sources: Vec<String>,
+        probe_receipts: Arc<ProbeReceiptRegistry>,
     ) -> Self {
         Self {
             transport,
             discovery_store: Some(InterfaceDiscoveryStore::new(storage_path)),
             discovery_sources,
+            probe_receipts,
         }
     }
 
@@ -343,7 +351,21 @@ impl PathLookupBridge for DaemonPathLookupBridge {
     fn transport_status(&self) -> Result<JsonValue, std::io::Error> {
         self.run_transport(crate::bridge_transport_status::build_transport_status)
     }
+
+    fn probe(
+        &self,
+        destination: &str,
+        full_name: &str,
+        size: usize,
+        probes: usize,
+        timeout_secs: f64,
+        wait_secs: f64,
+    ) -> Result<JsonValue, std::io::Error> {
+        self.run_probe(destination, full_name, size, probes, timeout_secs, wait_secs)
+    }
 }
+
+include!("bridge_probe.rs");
 
 #[cfg(test)]
 mod tests {
@@ -453,48 +475,5 @@ mod tests {
         bridge.request_path("00112233445566778899aabbccddeeff").expect("dispatch path request");
     }
 
-    #[test]
-    fn path_lookup_bridge_dispatches_scoped_request_path() {
-        let (bridge, iface) = bridge_with_iface();
-
-        bridge
-            .request_path_scoped(
-                "00112233445566778899aabbccddeeff",
-                Some(&hex::encode(iface.as_slice())),
-                Some(&[1, 2, 3, 4]),
-            )
-            .expect("dispatch scoped path request");
-    }
-
-    #[test]
-    fn path_lookup_bridge_rejects_unknown_scoped_iface() {
-        let bridge = bridge();
-
-        let err = bridge
-            .request_path_scoped(
-                "00112233445566778899aabbccddeeff",
-                Some("aabbccddeeff00112233445566778899"),
-                Some(&[1, 2, 3, 4]),
-            )
-            .expect_err("unknown scoped iface should fail");
-
-        assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
-        assert!(err.to_string().contains("scoped path request interface"));
-    }
-
-    #[test]
-    fn path_lookup_bridge_rejects_invalid_scoped_iface() {
-        let bridge = bridge();
-
-        let err = bridge
-            .request_path_scoped(
-                "00112233445566778899aabbccddeeff",
-                Some("abcd"),
-                Some(&[1, 2, 3, 4]),
-            )
-            .expect_err("invalid scoped iface should fail");
-
-        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
-        assert!(err.to_string().contains("on_iface"));
-    }
+    include!("bridge_path_lookup_extra_tests.rs");
 }

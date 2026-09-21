@@ -10,6 +10,21 @@ struct PathLookupParams {
     tag_hex: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct ProbeParams {
+    #[serde(alias = "destination_hash", alias = "hash")]
+    destination: String,
+    full_name: String,
+    #[serde(default)]
+    size: Option<usize>,
+    #[serde(default)]
+    probes: Option<usize>,
+    #[serde(default)]
+    timeout_secs: Option<f64>,
+    #[serde(default)]
+    wait_secs: Option<f64>,
+}
+
 const RETICULUM_MTU_BYTES: f64 = 500.0;
 const RETICULUM_DEFAULT_PER_HOP_TIMEOUT_SECS: f64 = 6.0;
 
@@ -151,6 +166,59 @@ fn first_hop_timeout_from_status(status_fields: &JsonValue) -> f64 {
 }
 
 impl RpcDaemon {
+    fn handle_rpc_legacy_probe(
+        &self,
+        request: RpcRequest,
+    ) -> Result<RpcResponse, std::io::Error> {
+        let params = request.params.ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing params")
+        })?;
+        let parsed: ProbeParams = serde_json::from_value(params)
+            .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
+        let destination = normalize_destination_hash_param(&parsed.destination)?;
+        let full_name = parsed.full_name.trim();
+        if full_name.is_empty() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "full_name is required",
+            ));
+        }
+        let size = parsed.size.unwrap_or(16);
+        let probes = parsed.probes.unwrap_or(1);
+        let timeout_secs = parsed.timeout_secs.unwrap_or(12.0);
+        let wait_secs = parsed.wait_secs.unwrap_or(0.0);
+        let Some(bridge) = self
+            .path_lookup_bridge
+            .lock()
+            .expect("path_lookup_bridge mutex poisoned")
+            .clone()
+        else {
+            return Ok(RpcResponse {
+                id: request.id,
+                result: None,
+                error: Some(RpcError::new(
+                    "PROBE_UNAVAILABLE",
+                    "probe bridge is not configured",
+                )),
+            });
+        };
+        match bridge.probe(
+            destination.as_str(),
+            full_name,
+            size,
+            probes,
+            timeout_secs,
+            wait_secs,
+        ) {
+            Ok(result) => Ok(RpcResponse { id: request.id, result: Some(result), error: None }),
+            Err(error) => Ok(RpcResponse {
+                id: request.id,
+                result: None,
+                error: Some(RpcError::new("PROBE_FAILED", error.to_string())),
+            }),
+        }
+    }
+
     fn handle_rpc_legacy_path_mutation(
         &self,
         request: RpcRequest,

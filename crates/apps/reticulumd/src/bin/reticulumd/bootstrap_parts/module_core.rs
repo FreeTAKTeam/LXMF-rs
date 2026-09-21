@@ -18,7 +18,7 @@ use crate::announce_persistence::PathTablePersistenceContext;
 
 use rns_rpc::{
     AnnounceBridge, InterfaceRecord, MessagesStore, OutboundBridge, RemoteControlBridge,
-    RpcDaemon, RpcRequest, ServiceIdentityBridge,
+    ProbeReceiptRegistry, RpcDaemon, RpcRequest, ServiceIdentityBridge,
 };
 
 use rns_transport::destination::SingleInputDestination;
@@ -171,6 +171,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         })
         .unwrap_or_default();
     let receipt_map: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
+    let probe_receipts = Arc::new(ProbeReceiptRegistry::default());
     let outbound_resource_map: OutboundResourceMap = Arc::new(Mutex::new(HashMap::new()));
     let (receipt_tx, receipt_rx) = channel(RECEIPT_EVENT_QUEUE_CAPACITY);
     let propagation_node_config = resolve_propagation_node_config(daemon_config.as_ref());
@@ -194,7 +195,9 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
         configured_interfaces,
         receipt_map: receipt_map.clone(),
         receipt_tx: receipt_tx.clone(),
+        probe_receipts: probe_receipts.clone(),
         propagation_control_enabled,
+        respond_to_probes: reticulum_runtime_policy.respond_to_probes,
         propagation_announce_config: propagation_node_config.announce_config,
         local_hops_delta: reticulum_runtime_policy.local_hops_delta(),
         inbound_queue_limits: reticulum_runtime_policy.inbound_queue_limits(),
@@ -206,6 +209,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     let announce_destination = startup.announce_destination;
     let propagation_destination = startup.propagation_destination;
     let control_destination = startup.control_destination;
+    let probe_destination = startup.probe_destination;
     let delivery_destination_hash_hex = startup.delivery_destination_hash_hex;
     let propagation_destination_hash_hex = startup.propagation_destination_hash_hex;
     let control_destination_hash_hex = startup.control_destination_hash_hex;
@@ -286,6 +290,7 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
                 identity.clone(),
                 delivery_source_hash,
                 destination.clone(),
+                probe_destination.clone(),
                 local_display_name.as_ref().and_then(|display_name| {
                     encode_delivery_announce_app_data_with_capabilities(
                         display_name,
@@ -333,11 +338,14 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
     configure_startup_rpc_token_auth(&args, daemon.as_ref());
     enforce_rpc_bind_security(rpc_addr.as_ref(), rpc_tls.as_ref(), daemon.as_ref());
     if let Some(transport) = transport.as_ref() {
-        daemon.set_path_lookup_bridge(Arc::new(DaemonPathLookupBridge::with_discovery_store(
-            transport.clone(),
-            &reticulum_storage_path,
-            reticulum_runtime_policy.interface_discovery_sources.clone(),
-        )));
+        daemon.set_path_lookup_bridge(Arc::new(
+            DaemonPathLookupBridge::with_discovery_store_and_probe_registry(
+                transport.clone(),
+                &reticulum_storage_path,
+                reticulum_runtime_policy.interface_discovery_sources.clone(),
+                probe_receipts,
+            ),
+        ));
         daemon.set_interface_mutation_bridge(Arc::new(
             InterfaceHotApplyBridge::spawn_with_transport_and_daemon(
                 transport.clone(),
@@ -474,6 +482,15 @@ pub(super) async fn bootstrap(args: Args) -> BootstrapContext {
             {
                 transport.send_announce(destination, None).await;
             }
+        }
+    }
+    let probe_announced_at_start = propagation_node_config.peer_announce_at_start
+        || (propagation_control_enabled && propagation_node_config.node_announce_at_start);
+    if reticulum_runtime_policy.respond_to_probes && !probe_announced_at_start {
+        if let Some((transport, destination)) =
+            transport.as_ref().zip(probe_destination.as_ref())
+        {
+            transport.send_announce(destination, None).await;
         }
     }
     if let Some(interval_secs) = propagation_node_config.node_announce_interval_secs {
