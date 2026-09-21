@@ -292,7 +292,9 @@ fn run_python_git_list_client(
 import hashlib
 import json
 import os
+import subprocess
 import sys
+import tempfile
 import threading
 import time
 import RNS
@@ -337,36 +339,71 @@ if not link_ready.wait(30):
 if link_failed:
     raise RuntimeError(link_failed[0])
 
-finished = threading.Event()
-result = {}
-
-def response(receipt):
-    payload = receipt.response
+def request(path, data):
+    finished = threading.Event()
+    result = {}
+    def response(receipt):
+        value = receipt.response
+        result["payload"] = value.read() if hasattr(value, "read") else value
+        finished.set()
+    def failed(receipt):
+        result["error"] = "request failed: " + path
+        finished.set()
+    receipt = link.request(
+        path,
+        data,
+        response_callback=response,
+        failed_callback=failed,
+        timeout=30,
+    )
+    if receipt is False:
+        raise RuntimeError("request was not sent: " + path)
+    if not finished.wait(30):
+        raise RuntimeError("request timed out: " + path)
+    if "error" in result:
+        raise RuntimeError(result["error"])
+    payload = result["payload"]
     if not isinstance(payload, bytes):
-        raise RuntimeError("Git list response was not bytes")
-    result["sha256"] = hashlib.sha256(payload).hexdigest()
-    result["status"] = payload[0]
-    result["contains_main"] = b"refs/heads/main" in payload
-    result["payload"] = payload[1:].decode("utf-8", errors="replace")
-    finished.set()
+        raise RuntimeError("response was not bytes: " + path)
+    return payload
 
-def failed(receipt):
-    result["error"] = "Git list request failed"
-    finished.set()
-
-receipt = link.request(
+listing = request(
     "/git/list",
     {0: "group/repo", "for_push": False},
-    response_callback=response,
-    failed_callback=failed,
-    timeout=30,
 )
-if receipt is False:
-    raise RuntimeError("Git list request was not sent")
-if not finished.wait(30):
-    raise RuntimeError("Git list request timed out")
-if "error" in result:
-    raise RuntimeError(result["error"])
+if listing[0] != 0 or b"refs/heads/main" not in listing:
+    raise RuntimeError("Git list response was not successful")
+main_sha = next(
+    line.split(b" ", 1)[0]
+    for line in listing[1:].splitlines()
+    if line.endswith(b" refs/heads/main")
+)
+bundle_response = request(
+    "/git/fetch",
+    {
+        0: "group/repo",
+        "refs": [{"ref": "refs/heads/main", "sha": main_sha.decode("ascii")}],
+    },
+)
+bundle = bundle_response[1:] if bundle_response[0] == 0 else b""
+with tempfile.NamedTemporaryFile() as bundle_file:
+    bundle_file.write(bundle)
+    bundle_file.flush()
+    verification = subprocess.run(
+        ["git", "bundle", "verify", "-q", bundle_file.name],
+        capture_output=True,
+        check=False,
+    )
+
+result = {
+    "sha256": hashlib.sha256(listing).hexdigest(),
+    "status": listing[0],
+    "contains_main": b"refs/heads/main" in listing,
+    "fetch_status": bundle_response[0],
+    "fetch_size": len(bundle),
+    "fetch_sha256": hashlib.sha256(bundle).hexdigest(),
+    "fetch_valid": verification.returncode == 0,
+}
 link.teardown()
 print(json.dumps(result, sort_keys=True))
 "#;
@@ -459,6 +496,9 @@ fn rngit_serves_pages_and_media_to_pinned_python_client() -> io::Result<()> {
         let git_stdout = String::from_utf8_lossy(&git_output.stdout);
         assert!(git_stdout.contains("\"status\": 0"), "Git list status: {git_stdout}");
         assert!(git_stdout.contains("\"contains_main\": true"), "Git list payload: {git_stdout}");
+        assert!(git_stdout.contains("\"fetch_status\": 0"), "Git fetch status: {git_stdout}");
+        assert!(git_stdout.contains("\"fetch_valid\": true"), "Git fetch bundle: {git_stdout}");
+        assert!(!git_stdout.contains("\"fetch_size\": 0"), "Git fetch was empty: {git_stdout}");
         Ok(())
     })();
     let _ = server.kill();
