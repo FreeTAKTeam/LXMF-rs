@@ -1,6 +1,6 @@
 # Reticulum Parity Matrix
 
-Last reassessed: 2026-09-20
+Last reassessed: 2026-09-21
 
 This is the maintained row-level status for Python Reticulum compatibility.
 Repository-level posture and execution order live in
@@ -33,7 +33,9 @@ behavioral equivalence. Known software exclusions make the Transport,
 Interfaces and Utilities rows partial even when their callable mappings say
 complete. See [`rns-1.5.4-delta.md`](rns-1.5.4-delta.md) for the implemented
 BLE cleanup/EOF, HDLC framing and rngit permission/work-transition increment,
-its tests, data-migration requirement, and the remaining acceptance gates.
+its tests, data-migration requirement, one pinned-Python work-item persistence
+trace across a Rust `rngit` process restart, and the remaining acceptance
+gates.
 The stable reference pin is unchanged; physical evidence remains independent.
 
 ## RNS 1.5.2 baseline update
@@ -116,6 +118,12 @@ evidence fields, and acceptance boundary.
 | `RNS/Cryptography/*` | `crates/libs/rns-core` | complete | unit, pinned-python | Required Reticulum primitives used by identities, packets, links, and receipts. | No confirmed parity blocker. |
 | `RNS/Utilities/*` | `crates/apps/rns-tools` | complete | unit, simulated, pinned-python, hardware-unverified | Canonical `rnx`, `rnsd`, `rnstatus`, `rnpath`, `rnodeconf`, `rncp`, `rnid`, `rnir`, `rnpkg`, `rnprobe`, `rnsh`, and `rngit` binaries cover daemon/status delegation, scoped path requests, gravity display, blocked-IP statistics, radio-management software, identity persistence, binary-safe copy, probe status, isolated shell execution plus a bounded native `rnsh` TCP/Link/Channel listener/initiator with frozen channel envelopes, authentication, command policy, stream forwarding, timeout, mirrored exit status, channel-window retry, and bounded queue failure handling, and transport-neutral repository, release, permission, work-item, and Git-bundle workflows. The forward #611 slice adds a native two-process `rncp` TCP/Link/Resource send/fetch path with identity authorization and file side effects, plus pinned-Python authenticated send/fetch roles covering default and explicit no-compression modes, a bzip2-compressed payload, overwrite, and metadata-driven save; its Rust process tests also assert nonzero status and failure categories for missing fetches, denied senders, malformed allowed identities, unusable save paths, path-discovery timeout, a local destination disk error, client Ctrl-C cancellation, and an interrupted Resource link, verify a persisted listener identity and second transfer after listener restart, verify three concurrent clients with exact saved bytes, and cover non-silent client phase output. The #612 slice adds bounded node-owned permission resolvers, canonical companion storage, production work-item handlers, and Python-shaped MessagePack persistence with a Python-produced binary metadata fixture, plus pinned-Python `git.repositories` `/git/list`, `/git/fetch`, `/git/push`, `/git/delete`, `/git/create`, `/git/sync`, `/git/fork`, and `/git/mirror` requests with bundle verification, remote-ref mutation, repository registration, configured-remote synchronization, and local-source cloning. The #613 slice now also has a pinned-Python NomadNet-compatible TCP Link trace for successful and negative page/file requests, denied access, rendered-page content, raw `/media` Resource metadata/content, and live `ffmpeg` PNG-to-WebP conversion with filename metadata. | The active 1.5.2 callable baseline remains complete; forward #611/#612/#613 are partial/unverified pending the full `rnsh` PTY/resize/fault/restart matrix and reverse Python listener role, Python allow-list/jail/overwrite roles, missing-key/malformed-media live failures, complete rngit page/media/error and release/work network workflows, Reticulum-source cloning, signature validation, restart/fault evidence, other conversion-backend and rendering parity, and the complete utility behavior matrix. Physical radio commands and operator/public-network evidence remain `hardware-unverified` or deferred. |
 | `CRNS/*` | none | not-applicable | pinned-python | No `CRNS` package exists in either pinned reference tree. | Provenance is resolved; no Rust implementation is required. |
+
+The forward #612 rngit trace at `409ef98e` now covers a pinned-Python signed
+work creation followed by Rust process restart and list/view persistence on the
+same root and identity. This is one restart trace only; concurrent-writer,
+fault-injection, broader network/CLI, and full utility-matrix evidence remain
+open.
 
 The forward #611 `rncp` evidence also verifies readiness-gated medium-timeout
 selection after an active TCP interface connects (`27bb3fac`) and a

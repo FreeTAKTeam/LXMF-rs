@@ -18,7 +18,7 @@ override these status files.
 
 ## Current Position
 
-The 2026-09-20 behavior audit confirms that mapped surface coverage is **not
+The 2026-09-21 behavior audit confirms that mapped surface coverage is **not
 full operational parity**. The implemented BLE/HDLC/rngit increment and explicit
 remaining acceptance gates are recorded in
 [`rns-1.5.4-delta.md`](rns-1.5.4-delta.md). The 1.5.4 development reference is
@@ -30,9 +30,10 @@ negative
 failure-category checks, path-discovery-timeout check, listener restart check,
 local disk-failure check, client-cancellation check, concurrent-client check,
 interrupted-link/status-output check, active-interface medium-timeout check,
-and mixed-runtime restart check are evidence for that slice only and do not
-promote the broader utility surface. Published inventory counts are not
-promoted or rewritten by this change.
+mixed-runtime restart check, and the #612 pinned-Python work-item persistence
+trace across a Rust `rngit` process restart are evidence for those slices only
+and do not promote the broader utility surface. Published inventory counts are
+not promoted or rewritten by this change.
 
 LXMF-rs retains the v0.9.5 SDK-access baseline. The generated inventory records
 software-surface parity against Python RNS 1.5.2 at
