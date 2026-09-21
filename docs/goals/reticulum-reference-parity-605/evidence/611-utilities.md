@@ -24,7 +24,7 @@ branch. It does not close #611 or #605.
 | Authentication | `--no-auth`, explicit `--allowed-identity`, rejected identified peers, nonzero sender failure | manual denied-transfer run | verified locally for the negative path; Python allow-list parity unverified |
 | Jail and save safety | Canonical jail containment, traversal rejection, basename-only metadata, overwrite/suffix behavior | protocol unit tests and process test | verified locally |
 | Timeout/output | `--timeout`, silent mode, accurate failure output for missing/denied/failed transfers | unit/manual process runs | bounded Rust behavior verified |
-| Compression option | `--no-compress` is parsed and reports that the shared Resource API still chooses compression automatically | CLI/process test | partial; transport option plumbing remains open |
+| Compression option | `--no-compress` disables opportunistic Resource compression for outbound sends and fetch responses while preserving the default auto-compression path | Resource compression regression, `rncp_process` | locally verified; mixed Python compression matrix remains open |
 | Other shipped utilities | `rnpath`, `rnprobe`, `rnsd`, `rnid`, `rnir`, `rnodeconf`, `rnpkg`, `rnsh`, `rnx`, and `rngit` | existing tests and callable inventory | not promoted by this slice; network/reference gaps remain |
 
 ## Commands and results
@@ -80,8 +80,10 @@ classified as complete:
   implementation belongs to #612/#613.
 - Add restart, interrupted-link, cancellation, slow-interface, disk-error, and
   multi-client transcripts with exact failure/status assertions.
-- Plumb an explicit no-compression Resource option instead of accepting the
-  flag while documenting the shared API limitation.
+- Exercise the explicit no-compression path in the full pinned-Python
+  transfer matrix, including compressed and already-compressed payloads and
+  response-side assertions; the production option is now wired and the
+  cross-process payload regression remains green.
 
 These are evidence or implementation gaps, not claims that the local Rust
 process test represents Python interoperability or complete utility parity.

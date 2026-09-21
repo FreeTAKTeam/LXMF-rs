@@ -153,7 +153,30 @@ impl Transport {
         data: Vec<u8>,
         metadata: Option<Vec<u8>>,
     ) -> Result<Hash, RnsError> {
-        self.send_resource_observed(link_id, data, metadata, |_| {}).await
+        self.send_resource_with_compression(link_id, data, metadata, true).await
+    }
+
+    /// Send a resource with explicit control over opportunistic compression.
+    ///
+    /// The default [`Self::send_resource`] path keeps the reference behavior
+    /// of trying bzip2 compression when it reduces the transfer. Callers
+    /// that need wire-level uncompressed data, such as `rncp --no-compress`,
+    /// can disable that choice without changing the resource framing.
+    pub async fn send_resource_with_compression(
+        &self,
+        link_id: &AddressHash,
+        data: Vec<u8>,
+        metadata: Option<Vec<u8>>,
+        auto_compress: bool,
+    ) -> Result<Hash, RnsError> {
+        self.send_resource_observed_with_compression(
+            link_id,
+            data,
+            metadata,
+            |_| {},
+            auto_compress,
+        )
+        .await
     }
 
     pub async fn send_resource_observed(
@@ -162,6 +185,18 @@ impl Transport {
         data: Vec<u8>,
         metadata: Option<Vec<u8>>,
         observe_resource: impl FnOnce(Hash),
+    ) -> Result<Hash, RnsError> {
+        self.send_resource_observed_with_compression(link_id, data, metadata, observe_resource, true)
+            .await
+    }
+
+    pub async fn send_resource_observed_with_compression(
+        &self,
+        link_id: &AddressHash,
+        data: Vec<u8>,
+        metadata: Option<Vec<u8>>,
+        observe_resource: impl FnOnce(Hash),
+        auto_compress: bool,
     ) -> Result<Hash, RnsError> {
         let link = self.find_any_link(link_id).await.ok_or(RnsError::InvalidArgument)?;
         let iface = {
@@ -178,7 +213,15 @@ impl Transport {
             // See `resource_wire.rs`: the negotiated link MTU, not the local
             // interface alone, is what a fragment has to fit through.
             let interface_mtu = interface_mtu.min(link_guard.link_mtu());
-            ResourceManager::prepare_send(&link_guard, data, metadata, None, false, interface_mtu)?
+            ResourceManager::prepare_send_with_compression(
+                &link_guard,
+                data,
+                metadata,
+                None,
+                false,
+                interface_mtu,
+                auto_compress,
+            )?
         };
         let mut handler = self.handler.lock().await;
         let (resource_hash, packet) = handler.resource_manager.track_prepared(prepared);

@@ -117,7 +117,13 @@ async fn handle_fetch_request(runtime: &Runtime, event: ReceivedData) -> io::Res
     let metadata = protocol::encode_metadata(&path)?;
     runtime
         .transport
-        .send_response_resource(&event.destination, request_id.to_vec(), data, Some(metadata))
+        .send_response_resource_with_compression(
+            &event.destination,
+            request_id.to_vec(),
+            data,
+            Some(metadata),
+            !runtime.no_compress,
+        )
         .await
         .map_err(|error| io::Error::other(format!("could not send fetch Resource: {error:?}")))?;
     Ok(())

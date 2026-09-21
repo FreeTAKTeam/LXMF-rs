@@ -125,11 +125,12 @@ The #611 implementation slice now has committed local evidence in
 [`evidence/611-utilities.md`](../goals/reticulum-reference-parity-605/evidence/611-utilities.md):
 native `rncp` listener, discovery, Link identification, authenticated send and
 fetch Resource workflows, binary-safe metadata, jail/save side effects, and
-terminal failures across two independent Rust processes. The row remains
-partial and unverified because frozen-Python client/server roles, the complete
-utility option/behavior matrix, rngit network workflows, restart/fault
-transcripts, and explicit no-compression Resource control remain open or owned
-by #612/#613.
+terminal failures across two independent Rust processes. The `rncp
+--no-compress` option now reaches the Resource manager for both outbound sends
+and fetch responses. The row remains partial and unverified because
+frozen-Python client/server roles, the complete utility option/behavior matrix,
+rngit network workflows, and restart/fault transcripts remain open or owned by
+#612/#613.
 
 The #612 implementation slice now has committed evidence in
 [`evidence/612-rngit.md`](../goals/reticulum-reference-parity-605/evidence/612-rngit.md):

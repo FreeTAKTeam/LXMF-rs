@@ -21,6 +21,7 @@ pub(crate) struct Runtime {
     pub(crate) destination: Arc<Mutex<SingleInputDestination>>,
     pub(crate) timeout: Duration,
     pub(crate) no_auth: bool,
+    pub(crate) no_compress: bool,
     pub(crate) allowed: HashSet<AddressHash>,
     pub(crate) allow_fetch: bool,
     pub(crate) jail: Option<PathBuf>,
@@ -48,11 +49,6 @@ pub(crate) async fn run(cli: &Cli) -> io::Result<()> {
     }
 
     spawn_interfaces(&transport, cli).await;
-    if cli.no_compress && !cli.silent {
-        eprintln!(
-            "rncp: --no-compress is accepted, but the shared Resource API currently chooses compression automatically"
-        );
-    }
 
     let runtime = Runtime {
         transport,
@@ -60,6 +56,7 @@ pub(crate) async fn run(cli: &Cli) -> io::Result<()> {
         destination,
         timeout: Duration::from_secs(cli.timeout),
         no_auth: cli.no_auth,
+        no_compress: cli.no_compress,
         allowed: cli
             .allowed_identity
             .iter()

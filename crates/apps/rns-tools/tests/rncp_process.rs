@@ -66,7 +66,14 @@ fn rncp_send_and_fetch_cross_process_with_binary_data() -> io::Result<()> {
     let port = free_port()?;
     let binary = env!("CARGO_BIN_EXE_rncp");
     let mut listener = Command::new(binary)
-        .args(["--listen", &format!("127.0.0.1:{port}"), "--allow-fetch", "--no-auth", "--save"])
+        .args([
+            "--listen",
+            &format!("127.0.0.1:{port}"),
+            "--allow-fetch",
+            "--no-auth",
+            "--no-compress",
+            "--save",
+        ])
         .arg(&listener_root)
         .args(["--identity-seed", "rncp-process-server", "--silent"])
         .current_dir(temp.path())
@@ -94,7 +101,7 @@ fn rncp_send_and_fetch_cross_process_with_binary_data() -> io::Result<()> {
         let fetched = Command::new(binary)
             .arg(&received)
             .arg(&destination)
-            .args(["--fetch", "--connect", &format!("127.0.0.1:{port}"), "--save"])
+            .args(["--fetch", "--connect", &format!("127.0.0.1:{port}"), "--no-compress", "--save"])
             .arg(&fetch_root)
             .args(["--identity-seed", "rncp-process-fetch-client", "--silent"])
             .current_dir(&client_root)

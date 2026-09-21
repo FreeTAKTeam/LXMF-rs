@@ -22,7 +22,7 @@ pub(crate) async fn send(runtime: &Runtime, source: &Path, destination: &str) ->
     let mut events = runtime.transport.resource_events();
     let resource_hash = runtime
         .transport
-        .send_resource(&link_id, data, Some(metadata))
+        .send_resource_with_compression(&link_id, data, Some(metadata), !runtime.no_compress)
         .await
         .map_err(|error| io::Error::other(format!("could not start Resource: {error:?}")))?;
     wait_for_outbound(&mut events, resource_hash, network::operation_timeout(runtime).await)
