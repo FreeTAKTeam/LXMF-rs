@@ -8,9 +8,9 @@ it does not promote the full #610 acceptance contract or close parent issue
 
 - Candidate branch: `codex/issue-605-parity`.
 - Historical evidence candidate: `4ebaf762236e03df8ae56fd55696bd51c2e3de46`.
-- Current branch carrying this behavior: `2eb2afa0`; later commits preserve
-  this slice while adding adjacent parity work. The historical checks below
-  are not being relabeled as reruns at the newer commit.
+- Current branch carrying this behavior: `42ef3f29`; later documentation
+  commits preserve this slice. The historical checks below are not being
+  relabeled as reruns at the newer commit.
 - Candidate base: `a5425366` (the merged PR #603 base used by the #605 plan).
 - Pinned Reticulum reference: `99de23c040d507e3fefca19e87b182302902725d`.
 - Reference surfaces: `RNS/Resource.py`, `RNS/Link.py`, and
@@ -46,6 +46,9 @@ it does not promote the full #610 acceptance contract or close parent issue
   Rust-to-Python and Python-to-Rust directions. A separate pinned-Python trace
   exercises the Rust `send_resource_from_reader` API with a split
   `MAX_EFFICIENT_SIZE + 257` payload and verifies the exact cross-peer digest.
+- A two-carrier pinned-Python trace now forwards a split Resource through one
+  Rust transport with forwarding enabled. The client waits for the remote
+  Python endpoint callback and verifies the exact size and SHA-256 digest.
 - The pinned-Python interop suite now drives cancellation in both directions:
   a Python receiver cancels a Rust split send and Rust emits one
   `OutboundCancelled` terminal event, while a Python sender cancels after
@@ -93,6 +96,11 @@ RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   cargo test -p reticulumd --test python_channel_interop \
   rust_receiver_reports_pinned_python_sender_cancellation -- --ignored --nocapture
   # 1 passed; Rust reports remote_cancelled and Python reports FAILED
+
+RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
+  cargo test -p reticulumd --test python_channel_interop \
+  python_to_python_resource_roundtrip_through_rust_transport -- --ignored --nocapture
+  # 1 passed; split Resource crosses two Python endpoints over one forwarding Rust transport
 ```
 
 The release runs completed in approximately 10.00 seconds and 11.53 seconds.
@@ -145,8 +153,9 @@ The current conclusion is therefore: collision regeneration, shutdown cleanup,
 window-bounded fragment admission, deterministic local loss/duplication/
 reordering recovery, split cancellation cleanup, bidirectional pinned-Python
 cancellation terminal events, reader-backed bounded source retention plus a
-pinned-Python split reader transfer, bidirectional release-profile mixed-peer
-transfers, and the independent `rns-rs`
+pinned-Python split reader transfer, a two-carrier pinned-Python split Resource
+forwarding trace with an exact remote callback digest, bidirectional
+release-profile mixed-peer transfers, and the independent `rns-rs`
 loss/timeout/latency slice are implemented with local evidence; the broader
 Resource failure and bounded-memory contract remains
 partial pending the full pinned-Python fault matrix, resource-usage evidence,

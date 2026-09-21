@@ -10,6 +10,8 @@ not a claim of mixed-peer or hardware acceptance.
   `RNS/Interfaces/LocalInterface.py`.
 - Rust owners: `rns-transport` interface-manager, announce table, and
   announce processing; `reticulumd` local TCP/Unix startup.
+- Current multi-hop evidence candidate: `42ef3f29` on
+  `codex/issue-605-parity`.
 
 The implementation now classifies a local client from its parent relationship
 and the parent's shared-instance marker. Active local TCP and Unix listeners
@@ -42,7 +44,7 @@ fan-out does not become accidental network broadcast/transit.
     connected and emitted three announces.
   - raw report: `target/interop/local-interface-python-shared-605/report.json`
 
-## Multi-hop Python Channel trace
+## Multi-hop Python Channel and Resource traces
 
 The ignored Python interop suite now includes
 `python_to_python_channel_roundtrip_through_rust_transport`. It starts two
@@ -64,6 +66,18 @@ relative checkout path after the helper resolved relative `RETICULUM_PY_REPO`
 values against the workspace root. This is a software multi-hop Channel trace,
 not a shared-instance restart, Resource fault-injection, physical-carrier, or
 public-network acceptance result.
+
+The same forwarding topology now carries a split Resource between two
+independent pinned-Python nodes. The Python client waits for the remote
+endpoint callback to report the exact `resource-sha256:{size}:{digest}` value,
+so sender completion alone cannot make this trace pass.
+
+```text
+RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
+  cargo test -p reticulumd --test python_channel_interop \
+  python_to_python_resource_roundtrip_through_rust_transport -- --ignored --nocapture
+# 1 passed; 34 filtered out; 2.15s
+```
 
 ## Shared-boundary receive accounting and application trace
 
@@ -90,9 +104,9 @@ local-client child.
 
 The combined evidence now proves pinned Python↔Rust local attachment, announce
 fan-out, a direct application/link exchange, Rust daemon restart with identity
-continuity, and a two-carrier multi-hop Python Channel exchange through one
-forwarding Rust transport. It does not yet compare duplicate suppression across
-a multi-hop production path, cached versus scheduled announce persistence,
-multi-hop Resource traffic, or link-close/stream reconnect behavior. Those
+continuity, and two-carrier multi-hop Python Channel and split Resource
+exchanges through one forwarding Rust transport. It does not yet compare
+duplicate suppression across a multi-hop production path, cached versus
+scheduled announce persistence, or link-close/stream reconnect behavior. Those
 traces are still required before this row can be promoted.
 Hardware and public-network evidence remain separate acceptance axes.

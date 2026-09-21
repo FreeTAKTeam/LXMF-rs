@@ -104,9 +104,11 @@ single local-client retransmit, direct sibling announce fan-out, daemon local
 TCP/Unix parent marking, and a direct pinned Python↔Rust application/restart
 trace are covered. A new ignored pinned-Python trace also exchanges a Channel
 message and reply between two Python nodes over two Rust carrier interfaces
-owned by one forwarding Rust transport. The row remains unverified until
-shared-instance and multi-hop production traces compare duplicate suppression,
-announce persistence, Resource traffic, and close/reconnect behavior.
+owned by one forwarding Rust transport; its companion trace forwards a split
+Resource and waits for the remote endpoint's exact size and SHA-256 callback.
+The row remains unverified until shared-instance and multi-hop production
+traces compare duplicate suppression, announce persistence, and close/reconnect
+behavior.
 
 The #610 implementation slice now has committed local evidence in
 [`evidence/610-resource.md`](../goals/reticulum-reference-parity-605/evidence/610-resource.md):
@@ -115,6 +117,8 @@ link-close terminal resource events, local loss/duplication/reordering recovery,
 split cancellation cleanup, pinned-Python cancellation terminal events in both
 directions, reader-backed source retention, a pinned-Python split reader-backed
 transfer with an exact SHA-256 acknowledgement, and
+two-carrier pinned-Python split Resource forwarding with an exact remote
+endpoint callback, plus
 bidirectional pinned-Python release-profile transfers covering empty, boundary,
 split, and 50 MiB payloads with exact SHA-256 checks. A bounded independent `rns-rs` PR
 profile additionally passes 1 MiB direct/multi-hop transfers, deterministic
