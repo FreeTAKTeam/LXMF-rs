@@ -125,6 +125,14 @@ same root and identity. This is one restart trace only; concurrent-writer,
 fault-injection, broader network/CLI, and full utility-matrix evidence remain
 open.
 
+Commit `3dcd5259` adds the reciprocal native Rust-client request path through
+`NativeRngitClient` and `ReticulumGitClient::attach_native_tcp`. Against a
+pinned Python `git.repositories` server it verifies `/git/list`, signed
+`/mgmt/work` creation and listing, identity identification, a direct request
+packet, and an oversized request Resource. This remains a bounded request
+direction trace; release/fetch Resource responses, restart/fault/concurrency,
+the complete Python CLI workflow, and public/multi-hop evidence remain open.
+
 The forward #611 `rncp` evidence also verifies readiness-gated medium-timeout
 selection after an active TCP interface connects (`27bb3fac`) and a
 Python-listener/Rust-client restart trace with stable identity (`708dc980`);
