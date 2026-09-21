@@ -97,7 +97,7 @@ class ChannelEndpoint:
                 self.links.append(link)
             return
 
-        if self.payload_kind in ("resource", "cancel-resource"):
+        if self.payload_kind in ("resource", "resource-multi-hop", "cancel-resource"):
             link.set_resource_strategy(RNS.Link.ACCEPT_ALL)
 
             if self.payload_kind == "cancel-resource":
@@ -322,7 +322,7 @@ class ChannelClient:
         if self.payload_kind == "link-data":
             active_link.set_packet_callback(self._on_link_data)
             RNS.Packet(active_link, message_data.encode("utf-8")).send()
-        elif self.payload_kind in ("resource", "cancel-resource"):
+        elif self.payload_kind in ("resource", "resource-multi-hop", "cancel-resource"):
             done = threading.Event()
             result = {}
 
@@ -368,6 +368,24 @@ class ChannelClient:
                 print(f"python_channel_client: resource cancellation failed: {result}", file=sys.stderr, flush=True)
                 return 1
             if result.get("status") == RNS.Resource.COMPLETE:
+                if self.payload_kind == "resource-multi-hop":
+                    expected = f"resource-sha256:{len(resource_data)}:{hashlib.sha256(resource_data).hexdigest()}"
+                    while True:
+                        with self.lock:
+                            acknowledged = any(
+                                reply.get("id") == "rust-resource" and reply.get("data") == expected
+                                for reply in self.received
+                            )
+                        if acknowledged:
+                            break
+                        if time.time() > deadline:
+                            print(
+                                "python_channel_client: timed out waiting for endpoint Resource callback",
+                                file=sys.stderr,
+                                flush=True,
+                            )
+                            return 1
+                        time.sleep(0.05)
                 print(
                     json.dumps(
                         {
@@ -485,6 +503,7 @@ def main() -> int:
             "channel",
             "buffer",
             "resource",
+            "resource-multi-hop",
             "cancel-resource",
             "link-data",
             "request",
