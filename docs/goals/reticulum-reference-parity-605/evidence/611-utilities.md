@@ -2,7 +2,8 @@
 
 Status: **partial / unverified**. This record covers the bounded native `rncp`
 slice on the forward parity branch, including authenticated pinned-Python and
-Rust sender/listener roles. It does not close #611 or #605.
+Rust sender/listener roles. The mixed-runtime compression increment is
+implemented by `3c6757ba`; it does not close #611 or #605.
 
 ## Reference and ownership
 
@@ -24,7 +25,7 @@ Rust sender/listener roles. It does not close #611 or #605.
 | Authentication | `--no-auth`, explicit `--allowed-identity`, rejected identified peers, nonzero sender failure, and reciprocal Python/Rust identity allow-lists for send and fetch roles | manual denied-transfer run; pinned Python interop | verified for the bounded send/fetch roles; broader option and callback parity remains open |
 | Jail and save safety | Canonical jail containment, traversal rejection, basename-only metadata, overwrite/suffix behavior | protocol unit tests and process test | verified locally |
 | Timeout/output | `--timeout`, silent mode, accurate failure output for missing/denied/failed transfers | unit/manual process runs | bounded Rust behavior verified |
-| Compression option | `--no-compress` disables opportunistic Resource compression for outbound sends and fetch responses while preserving the default auto-compression path | Resource compression regression, `rncp_process` | locally verified; mixed Python compression matrix remains open |
+| Compression option | `--no-compress` disables opportunistic Resource compression for outbound sends and fetch responses while preserving the default auto-compression path | Resource compression regression, `rncp_process`, mixed Python/Rust compression matrix | verified for the focused Python↔Rust send and listener-side fetch-response roles; direct callback telemetry and the complete utility matrix remain open |
 | Other shipped utilities | `rnpath`, `rnprobe`, `rnsd`, `rnid`, `rnir`, `rnodeconf`, `rnpkg`, `rnsh`, `rnx`, and `rngit` | existing tests and callable inventory | not promoted by this slice; network/reference gaps remain |
 
 ## Commands and results
@@ -36,11 +37,17 @@ cargo fmt --all -- --check                         PASS
 cargo test -p rns-tools --all-features             PASS
 cargo clippy -p rns-tools --bin rncp --test rncp_process \
   --all-features --no-deps -- -D warnings           PASS
+cargo clippy -p rns-tools --test rncp_python_interop \
+  --all-features --no-deps -- -D warnings           PASS
 cargo test -p rns-tools --test rncp_process \
   --all-features -- --nocapture                     1 passed
 RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   cargo test -p rns-tools --test rncp_python_interop \
-  -- --ignored --nocapture                         1 passed
+  rncp_mixed_runtime_compression_matrix_roundtrips_binary_files \
+  -- --ignored --nocapture                         1 passed (4.78s)
+RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
+  cargo test -p rns-tools --test rncp_python_interop \
+  -- --ignored --nocapture                         2 passed (32.30s)
 ```
 
 The process test starts one listener and separate client processes with
@@ -71,8 +78,16 @@ file Resource after its `True` request response, while the Rust listener now
 serves that same ordinary Resource shape to Python. The trace authorizes the
 send and fetch roles by their identified identity hashes. This covers bounded
 authenticated send/fetch and overwrite/save-callback behavior through the
-production Link/Resource path; compression-matrix, fault-transcript, and full
-utility-option parity remain open.
+production Link/Resource path.
+
+The `3c6757ba` compression-matrix run adds a highly compressible payload and a
+payload pre-compressed with bzip2. It exercises Python sender default and
+`-C` modes into Rust, Rust sender default and `--no-compress` modes into
+Python, and Python listener default and `-C` fetch-response modes into a Rust
+fetch client. Each process uses an isolated TCP interface, identity, and file
+root; every received file matches the original bytes exactly. The Resource
+unit tests remain the direct wire-flag proof; this process trace proves the
+utility flags and mixed-runtime decompression/save behavior.
 
 ## Unresolved requirements
 
@@ -93,10 +108,12 @@ classified as complete:
   implementation belongs to #612/#613.
 - Add restart, interrupted-link, cancellation, slow-interface, disk-error, and
   multi-client transcripts with exact failure/status assertions.
-- Exercise the explicit no-compression path in the full pinned-Python
-  transfer matrix, including compressed and already-compressed payloads and
-  response-side assertions; the production option is now wired and the
-  cross-process payload regression remains green.
+- Add utility-level progress/status and failure-callback telemetry assertions;
+  the current matrix proves terminal process status and exact file effects but
+  does not expose every callback state.
+- Add process-level advertisement/transfer-size assertions for each remaining
+  compression role if the utility evidence must independently expose the wire
+  compression flag; the Resource unit tests already cover that direct flag.
 
 These are evidence or implementation gaps, not claims that the local Rust
 process test represents Python interoperability or complete utility parity.

@@ -153,7 +153,10 @@ allow-list authorization for the send and fetch roles, the ordinary
 metadata-bearing Resource contract in both directions, and overwrite replacement
 without a collision suffix on both Rust and Python save paths. Its exact file
 assertion also exercises the completed Python fetch resource-conclusion/save
-callback. The row remains partial and unverified because direct callback
+callback. Commit `3c6757ba` additionally covers default and explicit
+no-compression send modes in both Python↔Rust directions, a bzip2-compressed
+payload, and Python listener default/no-compression fetch responses into a Rust
+client. The row remains partial and unverified because direct callback
 telemetry, the complete utility option/behavior matrix, rngit network workflows,
 and restart/fault transcripts remain open or owned by #612/#613.
 
