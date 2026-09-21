@@ -208,10 +208,13 @@ creates and removes a Python-named remote ref, registers new repositories,
 syncs a configured remote, and clones local-source fork/mirror targets. The
 same trace exercises `/mgmt/perms` and signed `/mgmt/work` create/list/view/
 comment/edit/perms/complete/activate/delete requests, including invalid
-signature rejection and binary identity/signature round-trip. The row remains
-partial and unverified because the hash-only compatibility seam, restart/
-concurrent-writer/fault transcripts, full Python CLI workflow, and complete
-end-to-end rngit network matrix remain open.
+signature rejection and binary identity/signature round-trip. Commit
+`0ad07dc0` adds local regressions for atomic work-directory reservation across
+independent node instances and rollback when proposed-document permission
+setup fails. The row remains partial and unverified because the hash-only
+compatibility seam, cross-process/network restart and concurrent-writer/fault
+transcripts, full Python CLI workflow, and complete end-to-end rngit network
+matrix remain open.
 
 The #613 implementation slice now has committed evidence in
 [`evidence/613-rngit-pages.md`](../goals/reticulum-reference-parity-605/evidence/613-rngit-pages.md):
