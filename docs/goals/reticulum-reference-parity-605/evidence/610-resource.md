@@ -59,6 +59,9 @@ it does not promote the full #610 acceptance contract or close parent issue
   `resource_started` callback, terminates that exact Python process after the
   Rust advertisement is admitted, and observes one Rust `OutboundFailed`
   event for the original split transfer.
+- A pinned-Python file-backed failure trace opens a real Rust `File` reader,
+  truncates the backing file after Python admits the Resource, and observes one
+  Rust `OutboundFailed` event rather than a false completion.
 - The same real-carrier matrix now uses a Rust `Read + Send + Sync` source and
   covers dropped, duplicated, reordered, and completely missing Resource
   data. A separate reader-backed trace injects an error while building the
@@ -140,6 +143,11 @@ RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   # 1 passed; 39 filtered out; 0.91s
 
 RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
+  cargo test --release -p reticulumd --test python_channel_interop \
+  rust_file_reader_reports_pinned_python_file_truncation -- --ignored --nocapture --test-threads=1
+  # 1 passed; 46 filtered out; 0.60s
+
+RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   cargo test -p reticulumd --test python_channel_interop \
   pinned_python_link_timeout_and_reconnect_after_dropped_keepalives -- --ignored --nocapture
   # 1 passed; 45 filtered out; 15.38s
@@ -167,7 +175,9 @@ identifier on the same pinned carrier.
 The reader-backed matrix uses the same transfer sizes and fault proxy as the
 owned-buffer reverse matrix, while the reader-failure trace proves a later
 source error becomes a terminal Rust failure after Python has accepted the
-transfer.
+transfer. Commit `e9087c0c54016f5c2c88873a9cac2704e49db921` adds the real-file
+truncation trace, which exercises the file-backed adapter itself; Python-side
+file-adapter fault injection remains a separate unverified boundary.
 
 The release runs completed in approximately 10.00 seconds and 11.53 seconds.
 The debug Rust-to-Python 50 MiB preparation run exceeded the 180-second
@@ -261,10 +271,9 @@ represented as complete:
   fresh-Link trace; the two pinned-Python matrices now cover loss, duplication,
   reordering, and complete missing-fragment terminal failure in both
   directions;
-- mixed-Python fault-injection evidence for a true file-backed adapter;
-  reader-backed loss, duplication, reordering, cancellation, and terminal
-  reader failure are now covered, while file-adapter failure injection remains
-  open;
+- Python-side file-adapter fault-injection evidence; Rust reader-backed loss,
+  duplication, reordering, cancellation, terminal reader failure, and the
+  real-file truncation path are now covered;
 - callbacks/status transitions observed through every library and daemon
   consumer after each injected failure;
 - hosted, physical-interface, public-network, and long-running soak evidence.
@@ -281,5 +290,5 @@ receiver-shutdown terminal-failure trace, and the independent `rns-rs`
 loss/timeout/latency slice, and exact 50 MiB bidirectional peak-RSS evidence
 under a fixed process budget are implemented with local evidence; the broader
 Resource failure contract remains partial pending broader timeout/reconnect
-and file-adapter fault traces, every consumer callback/status assertion, and
-hosted/physical/soak coverage.
+and Python-side file-adapter fault traces, every consumer callback/status
+assertion, and hosted/physical/soak coverage.
