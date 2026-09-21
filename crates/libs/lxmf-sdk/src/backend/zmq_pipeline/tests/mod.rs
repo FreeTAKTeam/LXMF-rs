@@ -1088,7 +1088,7 @@ async fn zmq_cancel_async_test_guard() -> tokio::sync::OwnedMutexGuard<()> {
 }
 
 fn spawn_single_response_zmq_server(
-    command_endpoint: String,
+    command_endpoint: TestZmqEndpoint,
     response: JsonValue,
     captured: Arc<Mutex<Option<CapturedZmqRequest>>>,
 ) -> std::thread::JoinHandle<()> {
@@ -1097,7 +1097,11 @@ fn spawn_single_response_zmq_server(
         let runtime = tokio::runtime::Runtime::new().expect("test runtime");
         runtime.block_on(async move {
             let mut commands = PullSocket::new();
-            commands.bind(command_endpoint.as_str()).await.expect("bind command endpoint");
+            let bound_endpoint = commands
+                .bind(command_endpoint.bind_request())
+                .await
+                .expect("bind command endpoint");
+            command_endpoint.set_resolved(bound_endpoint.to_string());
             ready_tx.send(()).expect("send zmq server ready");
             let Some(envelope) = recv_request_envelope(&mut commands).await else {
                 return;
@@ -1132,7 +1136,7 @@ fn spawn_single_response_zmq_server(
 }
 
 fn spawn_response_sequence_zmq_server(
-    command_endpoint: String,
+    command_endpoint: TestZmqEndpoint,
     responses: Vec<JsonValue>,
     captured: Arc<Mutex<Vec<CapturedZmqRequest>>>,
 ) -> std::thread::JoinHandle<()> {
@@ -1141,7 +1145,11 @@ fn spawn_response_sequence_zmq_server(
         let runtime = tokio::runtime::Runtime::new().expect("test runtime");
         runtime.block_on(async move {
             let mut commands = PullSocket::new();
-            commands.bind(command_endpoint.as_str()).await.expect("bind command endpoint");
+            let bound_endpoint = commands
+                .bind(command_endpoint.bind_request())
+                .await
+                .expect("bind command endpoint");
+            command_endpoint.set_resolved(bound_endpoint.to_string());
             ready_tx.send(()).expect("send zmq server ready");
             for response in responses {
                 let Some(envelope) = recv_request_envelope(&mut commands).await else {

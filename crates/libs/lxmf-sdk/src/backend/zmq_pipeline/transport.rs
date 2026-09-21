@@ -10,6 +10,7 @@ use zeromq::{DealerSocket, PullSocket, PushSocket, Socket, SocketRecv, SocketSen
 pub(super) struct ZmqPipelineTransport {
     pub(super) command: PushSocket,
     pub(super) responses: PullSocket,
+    pub(super) response_endpoint: String,
 }
 
 pub(super) struct ZmqDealerTransport {
@@ -32,13 +33,28 @@ impl ZmqPipelineTransport {
         let mut command = PushSocket::new();
         apply_role(&mut command, config.command_role, &config.command_endpoint).await?;
         let mut responses = PullSocket::new();
-        apply_role(&mut responses, config.response_role, &config.response_endpoint).await?;
+        let response_endpoint =
+            apply_role(&mut responses, config.response_role, &config.response_endpoint).await?;
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        Ok(Self { command, responses })
+        Ok(Self { command, responses, response_endpoint })
     }
 }
 
 impl ZmqPipelineBackendClient {
+    pub(super) async fn response_endpoint(&self) -> Result<String, SdkError> {
+        if self.config.is_single_endpoint() {
+            return Ok(self.config.response_endpoint.clone());
+        }
+        let mut transport = self.transport.lock().await;
+        if transport.is_none() {
+            *transport = Some(ZmqPipelineTransport::connect(&self.config).await?);
+        }
+        transport
+            .as_ref()
+            .map(|transport| transport.response_endpoint.clone())
+            .ok_or_else(|| sdk_error(ErrorCategory::Internal, "missing zmq transport"))
+    }
+
     pub(super) async fn call_rpc_async(
         &self,
         method: &str,
@@ -48,10 +64,11 @@ impl ZmqPipelineBackendClient {
         let payload = build_rpc_frame(request_id, method, params)
             .map_err(|err| sdk_error(ErrorCategory::Internal, err.to_string()))?;
         let auth = self.auth_metadata_for_request(request_id).ok().flatten();
+        let response_endpoint = self.response_endpoint().await?;
         let envelope = ZmqRpcEnvelope::request(
             self.session_id.clone(),
             request_id,
-            self.config.response_endpoint.clone(),
+            response_endpoint,
             payload,
             auth,
         );
@@ -211,16 +228,20 @@ async fn apply_role<S>(
     socket: &mut S,
     role: ZmqEndpointRole,
     endpoint: &str,
-) -> Result<(), SdkError>
+) -> Result<String, SdkError>
 where
     S: Socket,
 {
     match role {
-        ZmqEndpointRole::Bind => socket.bind(endpoint).await.map(|_| ()).map_err(|err| {
-            sdk_error(ErrorCategory::Transport, format!("zmq bind {endpoint} failed: {err}"))
-        }),
-        ZmqEndpointRole::Connect => socket.connect(endpoint).await.map_err(|err| {
-            sdk_error(ErrorCategory::Transport, format!("zmq connect {endpoint} failed: {err}"))
-        }),
+        ZmqEndpointRole::Bind => {
+            socket.bind(endpoint).await.map(|bound| bound.to_string()).map_err(|err| {
+                sdk_error(ErrorCategory::Transport, format!("zmq bind {endpoint} failed: {err}"))
+            })
+        }
+        ZmqEndpointRole::Connect => {
+            socket.connect(endpoint).await.map(|_| endpoint.to_owned()).map_err(|err| {
+                sdk_error(ErrorCategory::Transport, format!("zmq connect {endpoint} failed: {err}"))
+            })
+        }
     }
 }

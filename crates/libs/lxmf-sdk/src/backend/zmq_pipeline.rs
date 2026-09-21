@@ -152,10 +152,14 @@ impl ZmqPipelineBackendClient {
         let payload = build_rpc_frame(request_id, method, params)
             .map_err(|err| sdk_error(ErrorCategory::Internal, err.to_string()))?;
         let auth = self.auth_metadata_for_request(request_id).ok().flatten();
+        let runtime = self.runtime.as_ref().ok_or_else(|| {
+            sdk_error(ErrorCategory::Internal, "sync call attempted on async-only zmq client")
+        })?;
+        let response_endpoint = runtime.block_on(self.response_endpoint())?;
         let envelope = ZmqRpcEnvelope::request(
             self.session_id.clone(),
             request_id,
-            self.config.response_endpoint.clone(),
+            response_endpoint,
             payload,
             auth,
         );
@@ -168,9 +172,6 @@ impl ZmqPipelineBackendClient {
             ));
         }
 
-        let runtime = self.runtime.as_ref().ok_or_else(|| {
-            sdk_error(ErrorCategory::Internal, "sync call attempted on async-only zmq client")
-        })?;
         let response = runtime.block_on(self.send_and_recv(encoded, request_id))?;
         let rpc_response = parse_rpc_frame(&response.payload)
             .map_err(|err| sdk_error(ErrorCategory::Transport, err.to_string()))?;
