@@ -1,8 +1,9 @@
 # #615 differential conformance and release-acceptance evidence
 
 Status: **partial / unverified**. This records the bounded evidence-contract
-increment, local release-gate repairs, and the clean local Python/Rust matrix
-through candidate commit `d4d533ad` on `codex/issue-605-parity`; it does not
+increment, local release-gate repairs, exact-target inventory gate, and the
+clean local Python/Rust matrix through candidate commit `fd999d2d` on
+`codex/issue-605-parity`; it does not
 claim completion of #615 or #605.
 
 ## Reference and ownership
@@ -45,6 +46,14 @@ the existing 1.5.2 baseline checkout and runs this gate fail-closed on pull
 requests, uploading the aggregate report and raw case evidence without
 changing the baseline HIL lane.
 
+The current candidate adds a separate Verify step that scans the exact
+`Reticulum-parity` checkout with `python_surface_inventory.py`; newly exposed
+or unmapped callable rows fail before the compatibility matrix runs. The
+inventory validator also rejects repository-escaping evidence paths and
+requires an existing artifact whenever a behavioral row is marked verified.
+The same target scan is available to the `xtask` docs/release helper through
+the paired `PYTHON_RNS_PARITY_PATH` and `PYTHON_LXMF_PARITY_PATH` variables.
+
 The existing independent-implementation lane was also executed locally at
 nightly level. Against pinned rns-rs `6c6d79b83516feff271d15c97d39dd1de7798afe`,
 92 scenarios covered two-node, mixed and all-LXMF five-node, multi-hop,
@@ -73,6 +82,11 @@ python3 tools/scripts/python_surface_inventory.py \
   --json-out target/issue-605/python-surface-parity-1.5.4.json \
   --rust-out target/issue-605/python_software_parity-1.5.4.rs                  PASS
   (forward candidate: 1,868 total; 0 complete; 1,867 partial; 1 not-applicable)
+PYTHON_RNS_PARITY_PATH=.tmp/python-refs/Reticulum/RNS \
+PYTHON_LXMF_PARITY_PATH=.tmp/python-refs/LXMF/LXMF \
+cargo xtask ci --stage doc                                             PASS
+  (baseline and exact-target inventories both passed; target: 1,868 total,
+   0 complete, 1,867 partial, 1 not-applicable)
 python3 -m py_compile tools/scripts/python_surface_inventory.py              PASS
 python3 tools/scripts/test_python_compat_matrix.py                            PASS
 python3 tools/scripts/python_compat_matrix.py --all \
