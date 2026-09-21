@@ -218,10 +218,12 @@ comment/edit/perms/complete/activate/delete requests, including invalid
 signature rejection and binary identity/signature round-trip. Commit
 `0ad07dc0` adds local regressions for atomic work-directory reservation across
 independent node instances and rollback when proposed-document permission
-setup fails. The row remains partial and unverified because the hash-only
-compatibility seam, cross-process/network restart and concurrent-writer/fault
-transcripts, full Python CLI workflow, and complete end-to-end rngit network
-matrix remain open.
+setup fails. Commit `409ef98e` adds a pinned-Python production trace that
+creates and signs a work item, restarts the Rust `rngit` process on the same
+root and identity, and verifies list/view persistence. The row remains partial
+and unverified because the hash-only compatibility seam, broader
+cross-process/network restart and concurrent-writer/fault transcripts, full
+Python CLI workflow, and complete end-to-end rngit network matrix remain open.
 
 The #613 implementation slice now has committed evidence in
 [`evidence/613-rngit-pages.md`](../goals/reticulum-reference-parity-605/evidence/613-rngit-pages.md):

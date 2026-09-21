@@ -4,6 +4,8 @@ Status: **partial / unverified**. This records the bounded implementation and
 the live Python Git/work service trace at the current forward-parity candidate.
 The local concurrency/rollback update is sourced from commit
 `0ad07dc054fa7ec21f114491bc0a96b29bb8b8cd`. It does not close #612 or #605.
+The pinned-Python process-restart trace is sourced from commit
+`409ef98e33efc0361cc6b90187ff51b7707ee3c4`.
 
 ## Reference and ownership
 
@@ -25,9 +27,9 @@ The local concurrency/rollback update is sourced from commit
 | Permission sidecars | Canonical suffix paths (`.allowed`, `.work`, `.releases`), dotted repository names, ambiguous legacy file rejection, and legacy sidecar directories ignored | local verified |
 | Dynamic permissions | Executable node-owned resolvers, bounded stdout/stderr (64 KiB), two-second execution limit, UTF-8/exit-status failure propagation, and no remote replacement | local verified on Unix; Python execution parity unverified |
 | Permission state | Identity aliases, strict remote content validation, configured-group merging, deny preservation, blocked identities, administrator fallback, atomic replacement, and immediate in-memory refresh | local verified; differential parity unverified |
-| Work storage | Python-shaped root and response maps, binary identity/signature fields, integer IDs, floating-point timestamps, separate numeric comment files, 256 KiB document bound, atomic MessagePack writes, node reload persistence, atomic work-directory reservation across independent writers, and rollback when proposed-document permission setup fails | local verified |
+| Work storage | Python-shaped root and response maps, binary identity/signature fields, integer IDs, floating-point timestamps, separate numeric comment files, 256 KiB document bound, atomic MessagePack writes, node reload persistence, atomic work-directory reservation across independent writers, rollback when proposed-document permission setup fails, and pinned-Python process-restart persistence | local and pinned-Python restart trace verified |
 | Work operations | List/view/create/propose/edit/comment/delete/complete/activate/perms through `handle_work_request`, with scope/ID validation, document ownership/permissions, atomic transitions, canonical document permission files, and authenticated-peer signature validation for create/propose/edit | local and pinned-Python production-path verified; full service matrix unverified |
-| Cross-language data | A MessagePack fixture generated with Python `msgpack` is loaded and rendered by Rust, retaining binary author/signature/identity values; pinned Python Link requests reach Rust `git.repositories` Git paths plus `/mgmt/perms` and `/mgmt/work`, verify invalid and valid signatures, round-trip binary work metadata, exercise list/view/comment/edit/perms/complete/activate/delete, verify the Git bundle, mutate refs, register repositories, synchronize a configured remote, and clone fork/mirror targets | fixture and bounded request/response verified; cross-process/network restart/concurrency/fault matrix unverified |
+| Cross-language data | A MessagePack fixture generated with Python `msgpack` is loaded and rendered by Rust, retaining binary author/signature/identity values; pinned Python Link requests reach Rust `git.repositories` Git paths plus `/mgmt/perms` and `/mgmt/work`, verify invalid and valid signatures, round-trip binary work metadata, exercise list/view/comment/edit/perms/complete/activate/delete, verify the Git bundle, mutate refs, register repositories, synchronize a configured remote, and clone fork/mirror targets | fixture, bounded request/response, and one process-restart persistence trace verified; broader cross-process/network restart/concurrency/fault matrix unverified |
 
 ## Commands and results
 
@@ -42,14 +44,22 @@ cargo clippy -p rns-tools --bin rngit --all-features --no-deps \
 RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   cargo test -p rns-tools --test rngit_python_interop \
   -- --ignored --nocapture                                     PASS (page/media, Git paths, `/mgmt/perms`, and work lifecycle)
+RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
+  cargo test -p rns-tools --test rngit_python_interop \
+  rngit_work_survives_process_restart_for_pinned_python_client \
+  -- --ignored --nocapture                                     PASS (work create, Rust process restart, list/view persistence)
+RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
+  cargo test -p rns-tools --test rngit_python_interop \
+  -- --ignored --nocapture --test-threads=1                      PASS (2 tests: page/media and work restart)
 ```
 
 The focused `rngit` binary suite contains the resolver failure/remote-
 replacement cases, configured access merging, dotted-name path safety, work
 transitions, Python-produced MessagePack storage, an identified-peer
 signature regression, independent-writer ID reservation, and proposed-work
-rollback. The ignored Python trace passed after exercising both the Git and
-work service paths through real Reticulum Links.
+rollback. The ignored Python traces passed after exercising both the Git and
+work service paths through real Reticulum Links, including work persistence
+across a Rust server process restart.
 
 The repository module-size script still reports the pre-existing
 `crates/libs/rns-transport/src/resource/manager.rs:555` over-budget baseline;
@@ -65,10 +75,11 @@ the active 500-line module limit.
   pinned Python client.
 - The fixture proves Python-produced storage data, the reload regression proves
   work documents and document permission sidecars survive a fresh node load,
-  the new local regression proves independent node instances reserve distinct
-  work directories and roll back failed proposed-document setup, and the live
-  trace proves Python↔Rust Git and management request/response sessions
-  through a raw Python `RNS.Link`. Cross-process/network restart behavior,
+  the local regression proves independent node instances reserve distinct work
+  directories and roll back failed proposed-document setup, and the live
+  traces prove Python↔Rust Git and management request/response sessions
+  through a raw Python `RNS.Link`, including one Rust process restart with
+  list/view persistence. Broader cross-process/network restart behavior,
   malformed-document error transcripts, disk-fault injection, and the full
   Python CLI workflow remain unverified.
 - Static malformed permission sidecars fail closed in Rust rather than being
@@ -80,5 +91,6 @@ the active 500-line module limit.
   validity, invalid-signature rejection, signed work creation/editing, binary
   metadata, work transitions, permission updates, and local-source fork and
   mirror cloning. Reticulum-source cloning, release workflows,
-  cross-process/network restart and concurrent-writer/fault transcripts, the
-  full Python CLI workflow, and the broader #611 utility matrix remain open.
+  broader cross-process/network restart and concurrent-writer/fault transcripts,
+  the full Python CLI workflow, and the broader #611 utility matrix remain
+  open.
