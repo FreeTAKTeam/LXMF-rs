@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import os
 import random
 import tempfile
 import sys
@@ -13,6 +14,44 @@ import RNS
 import RNS.Buffer
 from RNS.Channel import MessageBase
 from RNS.vendor import umsgpack
+
+
+class FaultingReader:
+    def __init__(self, data, fail_at):
+        self.data = data
+        self.offset = 0
+        self.fail_at = fail_at
+        backing_file = tempfile.NamedTemporaryFile(mode="wb", delete=False)
+        backing_file.write(data)
+        backing_file.close()
+        self.name = backing_file.name
+
+    def read(self, size=-1):
+        if self.offset >= self.fail_at:
+            raise OSError("synthetic Python file-reader failure")
+        if size is None or size < 0:
+            size = self.fail_at - self.offset
+        end = min(self.fail_at, self.offset + size)
+        chunk = self.data[self.offset:end]
+        self.offset = end
+        return chunk
+
+    def seek(self, offset, whence=0):
+        if whence == 0:
+            self.offset = offset
+        elif whence == 1:
+            self.offset += offset
+        elif whence == 2:
+            self.offset = len(self.data) + offset
+        else:
+            raise ValueError(f"unsupported seek mode: {whence}")
+        return self.offset
+
+    def close(self):
+        try:
+            os.unlink(self.name)
+        except FileNotFoundError:
+            pass
 
 
 def process_peak_rss_kib():
@@ -347,7 +386,12 @@ class ChannelClient:
         if self.payload_kind == "link-data":
             active_link.set_packet_callback(self._on_link_data)
             RNS.Packet(active_link, message_data.encode("utf-8")).send()
-        elif self.payload_kind in ("resource", "resource-multi-hop", "cancel-resource"):
+        elif self.payload_kind in (
+            "resource",
+            "resource-multi-hop",
+            "cancel-resource",
+            "resource-file-reader-failure",
+        ):
             done = threading.Event()
             result = {}
 
@@ -359,10 +403,13 @@ class ChannelClient:
                 resource_file = None
             else:
                 resource_data = random.Random(605).randbytes(resource_size)
-                resource_file = tempfile.TemporaryFile(mode="w+b")
-                resource_file.write(resource_data)
-                resource_file.flush()
-                resource_file.seek(0)
+                if self.payload_kind == "resource-file-reader-failure":
+                    resource_file = FaultingReader(resource_data, max(1, resource_size // 2))
+                else:
+                    resource_file = tempfile.TemporaryFile(mode="w+b")
+                    resource_file.write(resource_data)
+                    resource_file.flush()
+                    resource_file.seek(0)
 
             def resource_concluded(resource) -> None:
                 result["status"] = resource.status
@@ -568,6 +615,7 @@ def main() -> int:
             "cancel-resource",
             "resource-shutdown",
             "resource-reader-failure",
+            "resource-file-reader-failure",
             "link-data",
             "request",
             "large-request",

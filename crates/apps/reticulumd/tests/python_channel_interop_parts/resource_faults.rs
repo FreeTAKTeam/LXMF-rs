@@ -375,3 +375,89 @@ async fn rust_receiver_reports_pinned_python_sender_cancellation() {
         "python cancellation client did not report its callback status"
     );
 }
+
+#[tokio::test]
+#[ignore = "requires local Python Reticulum checkout"]
+async fn rust_receiver_reports_pinned_python_file_reader_failure() {
+    let _interop_guard = python_interop_guard().await;
+    let paths = python_channel_interop_paths();
+
+    let server_port = free_tcp_port();
+    let temp = tempfile::tempdir().expect("tempdir");
+    let py_config_dir = temp.path().join("python-rns-file-reader-failure-client");
+    fs::create_dir_all(&py_config_dir).expect("python config dir");
+    write_python_client_config(&py_config_dir, server_port);
+
+    let rust_identity = PrivateIdentity::new_from_rand(OsRng);
+    let rust_identity = to_transport_private_identity(&rust_identity);
+    let mut config =
+        TransportConfig::new("python-file-reader-failure-rust-receiver", &rust_identity, true);
+    config.set_path_request_timeout_secs(2);
+    config.set_resource_retry_interval_secs(1);
+    config.set_resource_retry_limit(4);
+    let transport = Transport::new(config);
+    let iface_manager = transport.iface_manager();
+    transport
+        .iface_manager()
+        .lock()
+        .await
+        .spawn(TcpServer::new(format!("127.0.0.1:{server_port}"), iface_manager), TcpServer::spawn);
+    wait_for_port(server_port, Duration::from_secs(5)).await;
+
+    let destination = transport
+        .add_destination(rust_identity.clone(), DestinationName::new("test", "channel"))
+        .await;
+    let destination_hash = {
+        let destination = destination.lock().await;
+        hex::encode(destination.desc.address_hash.as_slice())
+    };
+
+    let child = paths.spawn_faulting_resource_client(
+        &py_config_dir,
+        &destination_hash,
+        MAX_EFFICIENT_SIZE * 2 + 257,
+        12.0,
+    );
+    let mut guard = ChildGuard { child: Some(child) };
+    let mut in_events = transport.in_link_events();
+    let link_id = wait_for_in_link_active_with_announces(
+        &transport,
+        &destination,
+        &mut in_events,
+        Duration::from_secs(8),
+    )
+    .await;
+    let mut resource_events = transport.resource_events();
+    let reason =
+        wait_for_inbound_resource_failure(&mut resource_events, link_id, Duration::from_secs(20))
+            .await;
+    assert!(
+        matches!(reason.as_str(), "retry_limit_exhausted" | "link_closed"),
+        "unexpected terminal reason after Python reader failure: {reason}"
+    );
+
+    let child = guard.child.take().expect("python child");
+    let output = tokio::task::spawn_blocking(move || child.wait_with_output())
+        .await
+        .expect("join python child")
+        .expect("wait for python child");
+    assert!(
+        !output.status.success(),
+        "python file-reader failure client unexpectedly succeeded\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("synthetic Python file-reader failure"),
+        "python file-reader exception was not observed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        stderr
+    );
+    assert!(
+        stderr.contains("timed out waiting for resource"),
+        "python sender did not fail closed after its reader exception\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        stderr
+    );
+}
