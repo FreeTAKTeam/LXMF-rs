@@ -1733,12 +1733,17 @@
         "reference_paths": ["RNS/Interfaces/AutoInterface.py", "RNS/Interfaces/BLEInterface.py", "RNS/Interfaces/RNodeInterface.py", "RNS/Interfaces/SerialInterface.py"],
         "rust_surface": ["crates/libs/rns-transport::iface", "crates/apps/reticulumd"],
         "implementation": "partial",
-        "evidence": ["planned", "hardware-unverified"],
+        "evidence": ["unit", "planned", "hardware-unverified"],
         "evidence_status": "hardware-unverified",
-        "test_command": "cargo test -p reticulum-rs-transport --tests",
-        "evidence_artifact": "target/issue-605/evidence/614-native-interfaces.json",
+        "test_command": [
+          "cargo fmt --all -- --check",
+          "cargo test -p reticulum-rs-transport --features rnode-ble --lib rnode_ble -- --nocapture",
+          "cargo test -p reticulum-rs-transport --features rnode-ble --tests",
+          "cargo clippy -p reticulum-rs-transport --features rnode-ble --lib --all-targets --no-deps -- -D warnings"
+        ],
+        "evidence_artifact": "docs/goals/reticulum-reference-parity-605/evidence/614-native-interfaces.md",
         "owner_issue": 614,
-        "notes": "Software state-machine tests and physical carrier evidence are separate claims."
+        "notes": "Windows paired-device selection now uses the WinRT bonded-device query and filters btleplug scan candidates by address; Android configured-peripheral behavior is unchanged. Local transport tests pass, but this Linux host lacks a MinGW/Windows SDK sysroot so the Windows target did not reach Rust crate checking. Native Windows, AutoInterface platform, cross-family, live Python/client, and physical carrier evidence remain unverified."
       },
       {
         "id": "reticulum-605-615-differential-release-acceptance",

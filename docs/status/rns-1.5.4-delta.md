@@ -134,6 +134,16 @@ unverified because a pinned Python/NomadNet client transcript, live page/media
 checksums, encoder-success fixture, complete reference rendering, and
 end-to-end rngit network workflows remain open.
 
+The #614 implementation slice now has committed local evidence in
+[`evidence/614-native-interfaces.md`](../goals/reticulum-reference-parity-605/evidence/614-native-interfaces.md):
+the Windows BLE backend queries the WinRT paired-device selector and filters
+scan candidates by strict paired Bluetooth address before normal identifier,
+alias, or service matching; the full feature-gated transport test lane and
+Clippy pass. The row remains partial and hardware-unverified because this
+Linux host lacks a MinGW/Windows SDK sysroot, and native Windows, AutoInterface
+platform, cross-family, live Python/client, and physical carrier evidence are
+still open.
+
 ## Acceptance gate
 
 This candidate is not release-complete until the contract coverage is complete,
