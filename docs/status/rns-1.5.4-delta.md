@@ -112,14 +112,15 @@ The #610 implementation slice now has committed local evidence in
 [`evidence/610-resource.md`](../goals/reticulum-reference-parity-605/evidence/610-resource.md):
 deterministic collision regeneration, window-bounded fragment admission,
 link-close terminal resource events, local loss/duplication/reordering recovery,
-split cancellation cleanup, reader-backed source retention, a pinned-Python
-split reader-backed transfer with an exact SHA-256 acknowledgement, and
+split cancellation cleanup, pinned-Python cancellation terminal events in both
+directions, reader-backed source retention, a pinned-Python split reader-backed
+transfer with an exact SHA-256 acknowledgement, and
 bidirectional pinned-Python release-profile transfers covering empty, boundary,
 split, and 50 MiB payloads with exact SHA-256 checks. A bounded independent `rns-rs` PR
 profile additionally passes 1 MiB direct/multi-hop transfers, deterministic
 loss recovery, terminal timeout, and latency cases. The row remains partial and
-unverified because the full pinned-Python fault matrix, peak-memory capture,
-and hosted/physical/soak coverage are still open.
+unverified because the full pinned-Python fault matrix beyond cancellation,
+peak-memory capture, and hosted/physical/soak coverage are still open.
 
 The #611 implementation slice now has committed local evidence in
 [`evidence/611-utilities.md`](../goals/reticulum-reference-parity-605/evidence/611-utilities.md):

@@ -8,9 +8,9 @@ it does not promote the full #610 acceptance contract or close parent issue
 
 - Candidate branch: `codex/issue-605-parity`.
 - Historical evidence candidate: `4ebaf762236e03df8ae56fd55696bd51c2e3de46`.
-- Current branch carrying this behavior: `070b599c`; later commits preserve
-  this slice while adding adjacent parity work. The checks below are not
-  being relabeled as reruns at the newer commit.
+- Current branch carrying this behavior: `2eb2afa0`; later commits preserve
+  this slice while adding adjacent parity work. The historical checks below
+  are not being relabeled as reruns at the newer commit.
 - Candidate base: `a5425366` (the merged PR #603 base used by the #605 plan).
 - Pinned Reticulum reference: `99de23c040d507e3fefca19e87b182302902725d`.
 - Reference surfaces: `RNS/Resource.py`, `RNS/Link.py`, and
@@ -46,6 +46,11 @@ it does not promote the full #610 acceptance contract or close parent issue
   Rust-to-Python and Python-to-Rust directions. A separate pinned-Python trace
   exercises the Rust `send_resource_from_reader` API with a split
   `MAX_EFFICIENT_SIZE + 257` payload and verifies the exact cross-peer digest.
+- The pinned-Python interop suite now drives cancellation in both directions:
+  a Python receiver cancels a Rust split send and Rust emits one
+  `OutboundCancelled` terminal event, while a Python sender cancels after
+  advertisement and Rust emits `InboundFailed(reason=remote_cancelled)`.
+  The Python sender also reports its own `FAILED` callback status.
 
 ## Local evidence
 
@@ -78,6 +83,16 @@ RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   cargo test -p reticulumd --test python_channel_interop \
   rust_reader_to_python_split_resource_roundtrip -- --ignored --nocapture
   # 1 passed; split reader-backed transfer and exact SHA-256 acknowledgement
+
+RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
+  cargo test -p reticulumd --test python_channel_interop \
+  rust_sender_observes_pinned_python_receiver_cancellation -- --ignored --nocapture
+  # 1 passed; Rust observes one outbound cancellation
+
+RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
+  cargo test -p reticulumd --test python_channel_interop \
+  rust_receiver_reports_pinned_python_sender_cancellation -- --ignored --nocapture
+  # 1 passed; Rust reports remote_cancelled and Python reports FAILED
 ```
 
 The release runs completed in approximately 10.00 seconds and 11.53 seconds.
@@ -112,11 +127,10 @@ The following #610 requirements remain unverified and are intentionally not
 represented as complete:
 
 - mixed-Python fault-injection evidence for loss, duplication, reordering,
-  missing fragments, cancellation, and link-timeout recovery or terminal
-  failure; the candidate now has deterministic Rust manager coverage and the
-  independent `rns-rs` profile covers loss, timeout, and latency, but the full
-  pinned-Python matrix and cross-implementation duplicate/reorder trace remain
-  open;
+  missing fragments, and link-timeout recovery or terminal failure; the new
+  pinned-Python cancellation cases cover both terminal directions, while the
+  full pinned-Python matrix and cross-implementation duplicate/reorder trace
+  remain open;
 - peak-RSS measurements for the 50 MiB mixed-peer transfers and a bounded
   memory report across the full matrix;
 - mixed-Python fault-injection evidence for the reader/file adapter, including
@@ -129,9 +143,10 @@ represented as complete:
 
 The current conclusion is therefore: collision regeneration, shutdown cleanup,
 window-bounded fragment admission, deterministic local loss/duplication/
-reordering recovery, split cancellation cleanup, reader-backed bounded source
-retention plus a pinned-Python split reader transfer, bidirectional
-release-profile mixed-peer transfers, and the independent `rns-rs`
+reordering recovery, split cancellation cleanup, bidirectional pinned-Python
+cancellation terminal events, reader-backed bounded source retention plus a
+pinned-Python split reader transfer, bidirectional release-profile mixed-peer
+transfers, and the independent `rns-rs`
 loss/timeout/latency slice are implemented with local evidence; the broader
 Resource failure and bounded-memory contract remains
 partial pending the full pinned-Python fault matrix, resource-usage evidence,
