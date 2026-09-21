@@ -164,7 +164,8 @@ sender, including nonzero exit status and preserved failure categories.
 Commit `053ef246` extends the same process gate to malformed allowed identities
 and a save path that is a file rather than a directory. Commit `9dc9bd62`
 adds an unused-endpoint process check that preserves the nonzero
-`path discovery timed out` outcome.
+`path discovery timed out` outcome. Commit `d66b19d1` adds a persisted-identity
+listener restart check on the same TCP endpoint with a second binary transfer.
 
 The #612 implementation slice now has committed evidence in
 [`evidence/612-rngit.md`](../goals/reticulum-reference-parity-605/evidence/612-rngit.md):
