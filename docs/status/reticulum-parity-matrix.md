@@ -132,11 +132,10 @@ Rust-client request path through `NativeRngitClient` and
 handling with exact `git bundle verify`, an oversized `/git/push` bundle with
 remote-ref verification, signed `/mgmt/work` creation and listing, identity
 identification, a direct request packet, an oversized request Resource, and
-Python-compatible release list/view/latest/delete requests. This remains a
-bounded request direction trace; release creation/upload/finalization and
-artifact fetch,
-restart/fault/concurrency, the complete Python CLI workflow, and public/multi-hop
-evidence remain open.
+the Python-compatible release create/init, artifact, finalize, list, view,
+artifact-fetch, latest, and delete operations. This remains a bounded request
+direction trace; restart/fault/concurrency, the complete Python CLI workflow,
+Reticulum-source cloning, and public/multi-hop evidence remain open.
 
 The forward #611 `rncp` evidence also verifies readiness-gated medium-timeout
 selection after an active TCP interface connects (`27bb3fac`) and a

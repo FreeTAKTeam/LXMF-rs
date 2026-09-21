@@ -232,10 +232,10 @@ request adapter and a production compatibility bridge. Its pinned-Python trace
 covers reciprocal `/git/list` and raw `/git/fetch` Resource handling, verifies
 the returned bundle with `git bundle verify`, covers an oversized `/git/push`
 bundle and remote ref, and covers signed `/mgmt/work` requests including an
-oversized request Resource. Commit `f26ce90d` additionally verifies native
-Python-compatible release list/view/latest/delete request shapes; release
-creation/upload/finalization, artifact fetch, and the broader utility matrix
-remain open.
+oversized request Resource. Commit `f26ce90d` verifies native Python-compatible
+release list/view/latest/delete request shapes, and `e0dedb0e` verifies the
+multi-step release create/init, artifact, finalize, and raw artifact-fetch
+workflow; restart/fault evidence and the broader utility matrix remain open.
 
 The #613 implementation slice now has committed evidence in
 [`evidence/613-rngit-pages.md`](../goals/reticulum-reference-parity-605/evidence/613-rngit-pages.md):

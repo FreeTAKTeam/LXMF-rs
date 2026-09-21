@@ -12,7 +12,9 @@ exact bundle verification are sourced from commits `869b8c84` and `02b75605`;
 reciprocal oversized `/git/push` and remote-ref verification are sourced from
 `f9c5b81e`.
 Native Python release list/view/latest/delete request-shape coverage is
-sourced from `f26ce90d`.
+sourced from `f26ce90d`; the full native `create/init` → `artifact` →
+`finalize` sequence and raw artifact Resource handling are sourced from
+`e0dedb0e`.
 
 ## Reference and ownership
 
@@ -37,7 +39,7 @@ sourced from `f26ce90d`.
 | Permission state | Identity aliases, strict remote content validation, configured-group merging, deny preservation, blocked identities, administrator fallback, atomic replacement, and immediate in-memory refresh | local verified; differential parity unverified |
 | Work storage | Python-shaped root and response maps, binary identity/signature fields, integer IDs, floating-point timestamps, separate numeric comment files, 256 KiB document bound, atomic MessagePack writes, node reload persistence, atomic work-directory reservation across independent writers, rollback when proposed-document permission setup fails, and pinned-Python process-restart persistence | local and pinned-Python restart trace verified |
 | Work operations | List/view/create/propose/edit/comment/delete/complete/activate/perms through `handle_work_request`, with scope/ID validation, document ownership/permissions, atomic transitions, canonical document permission files, and authenticated-peer signature validation for create/propose/edit | local and pinned-Python production-path verified; full service matrix unverified |
-| Cross-language data | A MessagePack fixture generated with Python `msgpack` is loaded and rendered by Rust, retaining binary author/signature/identity values; pinned Python Link requests reach Rust `git.repositories` Git paths plus `/mgmt/perms` and `/mgmt/work`, verify invalid and valid signatures, round-trip binary work metadata, exercise list/view/comment/edit/perms/complete/activate/delete, verify the Git bundle, mutate refs, register repositories, synchronize a configured remote, and clone fork/mirror targets. The native Rust client now sends Python-compatible `/git/list`, `/git/fetch`, and oversized `/git/push` plus signed `/mgmt/work` and release list/view/latest/delete requests to a pinned Python `git.repositories` server, including raw Git bundle Resource handling, exact `git bundle verify`, remote-ref verification after push, and the production compatibility-client bridge. | fixture, both bounded request directions, and one process-restart persistence trace verified; broader cross-process/network restart/concurrency/fault matrix unverified |
+| Cross-language data | A MessagePack fixture generated with Python `msgpack` is loaded and rendered by Rust, retaining binary author/signature/identity values; pinned Python Link requests reach Rust `git.repositories` Git paths plus `/mgmt/perms` and `/mgmt/work`, verify invalid and valid signatures, round-trip binary work metadata, exercise list/view/comment/edit/perms/complete/activate/delete, verify the Git bundle, mutate refs, register repositories, synchronize a configured remote, and clone fork/mirror targets. The native Rust client now sends Python-compatible `/git/list`, `/git/fetch`, and oversized `/git/push` plus signed `/mgmt/work` and the multi-step release protocol to a pinned Python `git.repositories` server, including raw Git bundle and artifact Resource handling, exact `git bundle verify`, remote-ref verification after push, release creation/upload/finalization/list/view/latest/delete, and the production compatibility-client bridge. | fixture, both bounded request directions, and one process-restart persistence trace verified; broader cross-process/network restart/concurrency/fault matrix unverified |
 
 ## Commands and results
 
@@ -53,7 +55,7 @@ RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   cargo test -p rns-tools --bin rngit \
   native_rust_client_requests_pinned_python_rngit -- --ignored --nocapture PASS \
   (list, exact fetch bundle verification, oversized push/ref verification, \
-   signed work, release list/view/latest/delete)
+   signed work, release create/upload/finalize/list/view/fetch/latest/delete)
 RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   cargo test -p rns-tools --test rngit_python_interop \
   -- --ignored --nocapture                                     PASS (page/media, Git paths, `/mgmt/perms`, and work lifecycle)
@@ -79,10 +81,10 @@ verification, Python response handling, and `/git/fetch`'s raw Resource bundle
 shape, and `/git/push`'s bundle-backed ref update. The fetched payload is
 checked with `git bundle verify` and contains the expected `refs/heads/main`
 ref; the pushed `refs/heads/feature` is checked against the source repository's
-new commit. The same session seeds a published release fixture and verifies
-Python-compatible list/view/latest/delete requests, including deletion of the
-release directory. Release creation/upload/finalization and artifact fetch are
-not represented by this bounded trace.
+new commit. The same session creates a Python-compatible release through the
+`create/init`, `create/artifact`, and `create/finalize` steps, verifies list and
+view responses, fetches the uploaded artifact through a raw Resource, updates
+latest, and deletes the release directory.
 
 The repository module-size script still reports the pre-existing
 `crates/libs/rns-transport/src/resource/manager.rs:555` over-budget baseline;
@@ -116,9 +118,9 @@ the active 500-line module limit.
   mirror cloning. The native Rust client now covers the reciprocal `/git/list`
   and `/git/fetch` request direction plus signed `/mgmt/work`, including exact
   `git bundle verify`, an oversized request Resource, and an oversized bundle
-  push with remote-ref verification. Native release list/view/latest/delete is
-  covered, but release creation/upload/finalization and artifact fetch remain
-  open. Reticulum-source cloning and the remaining release workflows,
+  push with remote-ref verification. Native release creation/upload/finalization
+  and artifact fetch are covered for one bounded fixture. Reticulum-source
+  cloning and the remaining release workflows,
   broader cross-process/network restart and concurrent-writer/fault transcripts,
   the full Python CLI workflow, and the broader #611 utility matrix remain
   open.
