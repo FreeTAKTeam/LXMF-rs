@@ -5,6 +5,8 @@ use std::process::{Child, Command, Output, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
+static PYTHON_INTEROP_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 fn free_port() -> io::Result<u16> {
     Ok(std::net::TcpListener::bind("127.0.0.1:0")?.local_addr()?.port())
 }
@@ -318,6 +320,7 @@ fn spawn_python_listener(
 #[test]
 #[ignore = "requires local Python Reticulum checkout"]
 fn rncp_exchanges_binary_files_with_pinned_python_in_both_directions() -> io::Result<()> {
+    let _test_guard = PYTHON_INTEROP_TEST_LOCK.lock().expect("Python interop test lock poisoned");
     let temp = tempfile::tempdir()?;
     let rust_listener_root = temp.path().join("rust-listener");
     let python_listener_root = temp.path().join("python-listener");
@@ -526,6 +529,7 @@ fn rncp_exchanges_binary_files_with_pinned_python_in_both_directions() -> io::Re
 #[test]
 #[ignore = "requires local Python Reticulum checkout"]
 fn rncp_mixed_runtime_compression_matrix_roundtrips_binary_files() -> io::Result<()> {
+    let _test_guard = PYTHON_INTEROP_TEST_LOCK.lock().expect("Python interop test lock poisoned");
     let temp = tempfile::tempdir()?;
     let repo = python_repo();
     let python = python_bin();
@@ -752,6 +756,7 @@ fn rncp_mixed_runtime_compression_matrix_roundtrips_binary_files() -> io::Result
 #[test]
 #[ignore = "requires local Python Reticulum checkout"]
 fn rncp_python_listener_restart_preserves_identity_and_transfer() -> io::Result<()> {
+    let _test_guard = PYTHON_INTEROP_TEST_LOCK.lock().expect("Python interop test lock poisoned");
     let temp = tempfile::tempdir()?;
     let repo = python_repo();
     let python = python_bin();
