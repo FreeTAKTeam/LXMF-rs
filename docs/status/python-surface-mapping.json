@@ -1688,7 +1688,7 @@
         ],
         "evidence_artifact": "docs/goals/reticulum-reference-parity-605/evidence/611-utilities.md",
         "owner_issue": 611,
-        "notes": "The native rncp network slice now performs TCP discovery, Link establishment and identification, authenticated send/fetch Resource transfers, binary-safe metadata, jail/save side effects, adaptive timeouts, and terminal failures across two independent processes. A pinned-Python no-auth client/service trace now covers binary sends in both directions through the production Link/Resource path. Python allow-list/jail/overwrite parity, the complete utility option matrix, rngit network workflows, restart/cancellation/disk-fault transcripts, and no-compress wire control remain unverified or owned by #612/#613."
+        "notes": "The native rncp network slice now performs TCP discovery, Link establishment and identification, authenticated send/fetch Resource transfers, binary-safe metadata, jail/save side effects, adaptive timeouts, and terminal failures across two independent processes. A pinned-Python trace covers authenticated binary sends in both directions plus an identified Rust fetch client receiving Python's metadata-bearing unassociated file Resource and rejecting a second identity. Python overwrite/callback parity, the complete utility option matrix, rngit network workflows, restart/cancellation/disk-fault transcripts, and the full no-compress wire matrix remain unverified or owned by #612/#613."
       },
       {
         "id": "reticulum-605-612-rngit-permission-work-storage",
