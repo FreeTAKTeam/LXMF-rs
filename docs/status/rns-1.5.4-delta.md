@@ -261,7 +261,7 @@ inventories regenerate at their pinned references. The row remains partial and
 unverified because the broader all-Rust/multi-hop/shared-daemon matrix, exact
 provenance and hosted exact-head workflows, and #616 operational evidence are
 still open. The local aggregate release gate passes on fully gated software
-candidate `c4c41e72`, including 2,677 nextest tests, Miri, exact
+candidate `f45bb960`, including 2,677 nextest tests, Miri, exact
 pinned-reference checks, packaging, audit, boundary, reproducible-build,
 embedded-footprint, and soak/mesh checks with zero soak failures. A current
 exact-reference Python/Rust matrix on candidate `919d5924` records 30/30
