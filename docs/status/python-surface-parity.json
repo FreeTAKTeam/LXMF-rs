@@ -209,7 +209,7 @@
         "id": "reticulum-605-612-rngit-permission-work-storage",
         "implementation": "partial",
         "kind": "behavioral-requirement",
-        "notes": "Permission resolver bounds/failure propagation, configured-access merging, canonical companion paths, atomic permission refresh, production work-item handlers, Python-shaped MessagePack storage, and a Python-produced binary metadata fixture are implemented and locally verified. The live Reticulum adapter now carries the identified peer key for create/propose/edit signature validation, and a pinned Python Link trace exercises Git plus permission/work request shapes and lifecycle responses. The hash-only local compatibility seam, restart/concurrency/fault transcripts, full Python CLI workflow, and broader network matrix remain unverified.",
+        "notes": "Permission resolver bounds/failure propagation, configured-access merging, canonical companion paths, atomic permission refresh, production work-item handlers, Python-shaped MessagePack storage, and a Python-produced binary metadata fixture are implemented and locally verified. The live Reticulum adapter now carries the identified peer key for create/propose/edit signature validation, and a pinned Python Link trace exercises Git plus permission/work request shapes and lifecycle responses. The reciprocal native Rust-client trace now covers /git/list and raw /git/fetch Resource handling with exact git bundle verify, plus signed /mgmt/work through the production compatibility bridge. The hash-only local compatibility seam, push/release workflows, restart/concurrency/fault transcripts, full Python CLI workflow, and broader network matrix remain unverified.",
         "owner_issue": 612,
         "reference": {
           "revision": "99de23c040d507e3fefca19e87b182302902725d",
@@ -227,7 +227,8 @@
         "test_command": [
           "cargo fmt --all -- --check",
           "cargo test -p rns-tools --all-features",
-          "cargo clippy -p rns-tools --bin rngit --all-features --no-deps -- -D warnings"
+          "cargo clippy -p rns-tools --bin rngit --all-features --no-deps -- -D warnings",
+          "RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --bin rngit --all-features native_rust_client_requests_pinned_python_rngit -- --ignored --nocapture"
         ]
       },
       {

@@ -227,11 +227,12 @@ and unverified because the hash-only compatibility seam, broader
 cross-process/network restart and concurrent-writer/fault transcripts, full
 Python CLI workflow, and complete end-to-end rngit network matrix remain open.
 
-Commit `3dcd5259` also adds a native Rust-client request adapter and a
-production compatibility bridge. Its pinned-Python trace covers reciprocal
-`/git/list` and signed `/mgmt/work` requests, including an oversized request
-Resource; release/fetch Resource responses and the broader utility matrix
-remain open.
+Commits `3dcd5259`, `869b8c84`, and `02b75605` also add a native Rust-client
+request adapter and a production compatibility bridge. Its pinned-Python trace
+covers reciprocal `/git/list` and raw `/git/fetch` Resource handling, verifies
+the returned bundle with `git bundle verify`, and covers signed `/mgmt/work`
+requests including an oversized request Resource; push/release workflows and
+the broader utility matrix remain open.
 
 The #613 implementation slice now has committed evidence in
 [`evidence/613-rngit-pages.md`](../goals/reticulum-reference-parity-605/evidence/613-rngit-pages.md):
