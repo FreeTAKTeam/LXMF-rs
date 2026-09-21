@@ -63,16 +63,17 @@ async fn rust_sender_observes_pinned_python_receiver_cancellation() {
     let mut link_events = transport.out_link_events();
     let link = transport.link(destination).await;
     let link_id = wait_for_out_link_active(&mut link_events, &link, Duration::from_secs(8)).await;
+    let payload = cancellation_payload(MAX_EFFICIENT_SIZE * 2 + 257);
     let mut resource_events = transport.resource_events();
     let resource_hash = transport
-        .send_resource_with_compression(
+        .send_resource_from_reader(
             &link_id,
-            cancellation_payload(MAX_EFFICIENT_SIZE * 2 + 257),
+            std::io::Cursor::new(payload.clone()),
+            payload.len() as u64,
             None,
-            false,
         )
         .await
-        .expect("send cancellable resource");
+        .expect("send cancellable reader-backed resource");
 
     wait_for_outbound_resource_cancelled(&mut resource_events, resource_hash, Duration::from_secs(15))
         .await;
