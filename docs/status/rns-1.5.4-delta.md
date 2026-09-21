@@ -157,6 +157,16 @@ workspace tests, Miri, packaging, audit, boundary, reproducible-build,
 embedded-footprint, and soak/mesh checks; this local result does not promote
 the row or the parent to complete.
 
+## Merged base increment
+
+The candidate branch now includes the merged PR #604 base increment at
+`3ed5932d` (RNS 1.5.4 BLE lifecycle/EOF handling, HDLC framing vectors, and
+rngit work-transition and companion-sidecar corrections). Those changes are
+preserved here as a bounded increment; they do not promote the forward
+candidate or close issue #605. Their local tests and provenance checks remain
+inputs to the #615 software gate, while native hardware and public-network
+claims remain outside local validation.
+
 ## Acceptance gate
 
 This candidate is not release-complete until the contract coverage is complete,

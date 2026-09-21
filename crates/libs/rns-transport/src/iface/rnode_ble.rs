@@ -4,6 +4,10 @@ include!("rnode_ble_parts/runtime_helpers.rs");
 
 include!("rnode_ble_parts/windows_paired.rs");
 
+include!("rnode_ble_parts/runtime_lifecycle.rs");
+
+include!("rnode_ble_parts/native_connection.rs");
+
 include!("rnode_ble_parts/rnode_peripheral_matches.rs");
 
 include!("rnode_ble_parts/runtime_startup_notification_drain.rs");
