@@ -122,12 +122,12 @@ endpoint callback, plus
 bidirectional pinned-Python release-profile transfers covering empty, boundary,
 split, and 50 MiB payloads with exact SHA-256 checks. A bounded independent `rns-rs` PR
 profile additionally passes 1 MiB direct/multi-hop transfers, deterministic
-loss recovery, terminal timeout, and latency cases. The pinned-Python fault
-matrix now covers Python-sender loss, duplication, reordering, and complete
-missing-fragment terminal failure through a real TCP/HDLC carrier. The row
-remains partial and unverified because the reverse Rust-sender fault matrix,
-link-timeout-specific trace, peak-memory capture, and hosted/physical/soak
-coverage are still open.
+loss recovery, terminal timeout, and latency cases. Two pinned-Python fault
+matrices now cover loss, duplication, reordering, and complete missing-fragment
+terminal failure in both Python-sender → Rust-receiver and Rust-sender →
+Python-receiver directions through real TCP/HDLC carriers. The row remains
+partial and unverified because link-timeout-specific and reader-adapter traces,
+peak-memory capture, and hosted/physical/soak coverage are still open.
 
 The #611 implementation slice now has committed local evidence in
 [`evidence/611-utilities.md`](../goals/reticulum-reference-parity-605/evidence/611-utilities.md):
