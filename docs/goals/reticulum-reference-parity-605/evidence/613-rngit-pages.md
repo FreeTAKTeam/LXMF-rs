@@ -1,7 +1,8 @@
 # #613 rngit NomadNet pages, media, and link cleanup evidence
 
-Status: **partial / unverified**. This records the bounded implementation at
-candidate commit `9edc4a42` on `codex/issue-605-parity`; it does not claim the
+Status: **partial / unverified**. This records the bounded implementation and
+live pinned-Python trace at candidate commit `30b2a8bc` on
+`codex/issue-605-parity`; it does not claim the
 full #613 or #605 acceptance gate.
 
 ## Reference and ownership
@@ -20,12 +21,12 @@ full #613 or #605 acceptance gate.
 
 | Area | Implemented and tested behavior | Status |
 | --- | --- | --- |
-| NomadNet node | Persistent/seeded identity, `nomadnetwork.node` destination, TCP listen/connect interfaces, periodic announce app data, request-path decoding, page/file dispatch, packet or Resource response selection | local verified; live link/client unverified |
+| NomadNet node | Persistent/seeded identity, `nomadnetwork.node` destination, TCP listen/connect interfaces, periodic announce app data, request-path decoding, page/file dispatch, packet or Resource response selection | local verified; pinned Python live TCP page/media trace evidenced |
 | Pages | Index/group/repository/tree/blob/commits/commit/refs/stats/releases/release/work/work-doc paths, `var_*` query fields, ref/path validation, not-found/error rendering, custom static and bounded executable templates, binary-image `/media` markup | local verified; visual/reference rendering parity incomplete |
 | Access control | Repository read/stats/release checks, work-document read checks, blocked unidentified-client no-identity template, malformed/denied/missing request paths fail closed | local verified |
-| Media/files | `/media` key and path validation, URL decoding, ref/blob resolution, binary-safe filename metadata, download/artifact/work-doc endpoints, published-release filtering and absent-blob handling | local verified |
+| Media/files | `/media` key and path validation, URL decoding, ref/blob resolution, binary-safe filename metadata, download/artifact/work-doc endpoints, published-release filtering and absent-blob handling | local verified; pinned Python Resource payload/metadata trace evidenced |
 | WebP conversion | Backend preference and `RNGIT_MEDIA_BACKEND`, argv-only process construction, quality/max-dimension options, 8-second pipeline bound, bounded stderr, output validation, temporary-directory cleanup, raw fallback | local code/tests; real encoder success and image fixture unverified |
-| Resource wire | Explicit outbound compression control, with `/media` responses sent uncompressed and a regression asserting no compressed advertisement | local verified |
+| Resource wire | Explicit outbound compression control, with `/media` responses sent uncompressed and a regression asserting no compressed advertisement | local verified; live Python Resource delivery and metadata evidenced |
 
 ## Commands and results
 
@@ -43,7 +44,23 @@ cargo clippy -p reticulum-rs-transport --lib --all-features \
 git diff --check                                                 PASS
 cargo run -q -p rns-tools --bin rngit -- --root /tmp \
   --identity-seed issue-605 --print-identity --silent             PASS
+RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
+  cargo test -p rns-tools --test rngit_python_interop \
+  -- --ignored --nocapture                                     PASS (1 test, 0.42s)
+cargo clippy -p rns-tools --test rngit_python_interop --all-features \
+  --no-deps -- -D warnings                                     PASS
 ```
+
+The live test starts the production Rust `rngit` service over a TCP interface,
+uses the pinned Python RNS runtime as a NomadNet-compatible client, resolves
+the announced `nomadnetwork.node` destination, establishes and identifies a
+Reticulum Link, and requests both `/page/repo.mu` and `/media`. The page
+response contains the repository marker. The binary media response arrives as
+a Python Resource with `name=image.png`, size `8192`, and SHA-256
+`f8e920545e99cdc9bbc2650eb8282344e8971a7ff0c397c91355d0fcaf6c61fa`.
+The fixture runs with conversion disabled, so this trace validates the raw
+binary path and the reference `auto_compress=False` Resource boundary; it does
+not promote encoder-success or visual-rendering parity.
 
 The module-size script now reports only the existing
 `crates/libs/rns-transport/src/resource/manager.rs:555` over-budget baseline;
@@ -52,10 +69,10 @@ limit.
 
 ## Deliberate remaining gaps
 
-- A pinned Python/NomadNet-compatible client has not yet completed a real
-  Reticulum link, page request, media Resource download, and checksum/fixture
-  transcript against this Rust service. The direct handler tests and the
-  `rngit --print-identity` startup check are not substitutes for that role.
+- The pinned Python/NomadNet-compatible client now completes one real TCP
+  Reticulum link, identifies, requests a rendered page, and downloads raw
+  media as a Resource with deterministic metadata/content checks. This is one
+  bounded role trace, not proof of every page, file, or public-network path.
 - The Rust page rendering is intentionally a compact service implementation;
   full Markdown highlighting, pagination, diff rendering, signed work-document
   presentation, and every reference template detail remain open.
