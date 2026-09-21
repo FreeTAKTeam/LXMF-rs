@@ -40,6 +40,10 @@ checks the dispatch contract, requires clean exact-reference checkouts, records
 the candidate and toolchain revisions, runs all 23 live Python/Rust cases plus
 the seven deterministic local transport cases, rejects missing reports and
 ignored/skipped tests, and writes per-case logs plus one aggregate JSON report.
+The Verify workflow now checks out the exact forward Reticulum target beside
+the existing 1.5.2 baseline checkout and runs this gate fail-closed on pull
+requests, uploading the aggregate report and raw case evidence without
+changing the baseline HIL lane.
 
 The existing independent-implementation lane was also executed locally at
 nightly level. Against pinned rns-rs `6c6d79b83516feff271d15c97d39dd1de7798afe`,
