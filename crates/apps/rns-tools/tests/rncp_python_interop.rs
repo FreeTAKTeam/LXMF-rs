@@ -213,7 +213,7 @@ fn run_python_fetch(
         .arg(identity)
         .arg("-s")
         .arg(save_root)
-        .args(["-O", "-S", "-C", "-w", "30"])
+        .args(["-O", "-C", "-w", "30"])
         .env("PYTHONPATH", repo)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -439,6 +439,11 @@ fn rncp_exchanges_binary_files_with_pinned_python_in_both_directions() -> io::Re
                 String::from_utf8_lossy(&python_fetch_output.stderr)
             )));
         }
+        assert!(
+            String::from_utf8_lossy(&python_fetch_output.stdout).contains("Transfer complete"),
+            "Python fetch callback did not emit completion status: {}",
+            String::from_utf8_lossy(&python_fetch_output.stdout)
+        );
         assert_eq!(fs::read(python_fetch_root.join("rust-fetch-source.bin"))?, rust_fetch_payload);
         assert!(!python_fetch_root.join("rust-fetch-source.bin.1").exists());
         Ok(())
