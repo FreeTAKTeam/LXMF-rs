@@ -3,7 +3,7 @@
 Status: **partial / unverified**. This records the bounded evidence-contract
 increment, local release-gate repairs, exact-target inventory gate, and the
 clean local Python/Rust matrix through the latest software candidate
-`36412535` on `codex/issue-605-parity`; it does not claim completion of #615
+`919d5924` on `codex/issue-605-parity`; it does not claim completion of #615
 or #605.
 
 ## Latest local release-gate run
@@ -114,10 +114,11 @@ python3 tools/scripts/test_python_compat_matrix.py                            PA
 python3 tools/scripts/python_compat_matrix.py --all \
   --output target/interop/python-compat-matrix/full/matrix.json \
   --timeout 420                                                               PASS
-  (candidate Rust `d4d533ad95776c032399e1078baf79d12b28a347`; Python
+  (candidate Rust `919d59248b3e864bddc95f2adbc142743d7acaf6`; Python
    Reticulum `99de23c040d507e3fefca19e87b182302902725d`; Python LXMF
    `727830cefda83d9c6e3982b48675425f3f988f9c`; 30/30 passed, 0 failed,
-   0 blocked, 0 skipped, 0 ignored; 2026-09-21 UTC)
+   0 blocked, 0 skipped, 0 ignored; CPython 3.14.4; rustc/cargo 1.96.0;
+   Linux x86_64; 2026-09-21 UTC)
 python3 tools/scripts/independent_interop.py --peer rns-rs --level nightly \
   --output target/interop/independent/issue-605-nightly --keep \
   --skip-build --peer-root target/interop/independent/external/rns-rs     CLASSIFIED
