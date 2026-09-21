@@ -107,6 +107,13 @@ fn create_repository_fixture(temp: &Path) -> io::Result<PathBuf> {
         root.join("group.allowed"),
         "read:all\nwrite:all\ncreate:all\nstats:all\nrelease:all\n",
     )?;
+    let private_group = root.join("private");
+    let private_repository = private_group.join("repo");
+    fs::create_dir_all(&private_group)?;
+    run_git(&private_group, &["init", "--bare", "-q", "repo"])?;
+    run_git(&private_repository, &["symbolic-ref", "HEAD", "refs/heads/main"])?;
+    fs::write(root.join("private.allowed"), "read:all\n")?;
+    fs::write(private_repository.with_extension("allowed"), "read:none\n")?;
     Ok(root)
 }
 
@@ -244,6 +251,10 @@ def request(path, data):
         result["sha256"] = hashlib.sha256(payload).hexdigest()
         result["size"] = len(payload)
         result["page_has_repository"] = b"Repository" in payload
+        result["has_not_found"] = b"Not Found" in payload
+        result["has_ref_not_found"] = b"reference was not found" in payload
+        result["has_file_not_found"] = b"file was not found" in payload
+        result["is_readme"] = payload == b'# Python rngit interop\n'
         finished.set()
     def failed(receipt):
         result["error"] = "request failed"
@@ -267,6 +278,36 @@ page = request(
     "/page/repo.mu",
     {"var_g": "group", "var_r": "repo", "var_ref": "HEAD"},
 )
+missing_repository = request(
+    "/page/repo.mu",
+    {"var_g": "missing", "var_r": "repo", "var_ref": "HEAD"},
+)
+invalid_reference = request(
+    "/page/repo.mu",
+    {"var_g": "group", "var_r": "repo", "var_ref": "refs/heads/missing"},
+)
+missing_blob = request(
+    "/page/blob.mu",
+    {
+        "var_g": "group",
+        "var_r": "repo",
+        "var_ref": "HEAD",
+        "var_path": "missing.txt",
+    },
+)
+denied_repository = request(
+    "/page/repo.mu",
+    {"var_g": "private", "var_r": "repo", "var_ref": "HEAD"},
+)
+download = request(
+    "/file/download",
+    {
+        "var_g": "group",
+        "var_r": "repo",
+        "var_ref": "HEAD",
+        "var_path": "README.md",
+    },
+)
 media = request(
     "/media",
     {
@@ -275,7 +316,25 @@ media = request(
     },
 )
 link.teardown()
-print(json.dumps({"page": page, "media": media}, sort_keys=True))
+if not missing_repository["has_not_found"]:
+    raise RuntimeError("missing repository did not render a not-found page")
+if not invalid_reference["has_ref_not_found"]:
+    raise RuntimeError("invalid reference did not render a reference error")
+if not missing_blob["has_file_not_found"]:
+    raise RuntimeError("missing blob did not render a file error")
+if not denied_repository["has_not_found"]:
+    raise RuntimeError("denied repository exposed a page")
+if download["name"] != "README.md" or not download["is_readme"]:
+    raise RuntimeError("file download did not preserve content or filename metadata")
+print(json.dumps({
+    "page": page,
+    "missing_repository": missing_repository,
+    "invalid_reference": invalid_reference,
+    "missing_blob": missing_blob,
+    "denied_repository": denied_repository,
+    "download": download,
+    "media": media,
+}, sort_keys=True))
 "#;
     Command::new(python_bin())
         .arg("-c")
