@@ -10,7 +10,7 @@ covered by `053ef246`, and path-discovery timeout status is covered by
 `9dc9bd62`. Listener identity persistence and a post-restart transfer are
 covered by `d66b19d1`; local destination disk-error status is covered by
 `9b8e4ed6`, and client Ctrl-C cancellation status is covered by
-`397a9525`.
+`397a9525`. Concurrent clients are covered by `e668ae60`.
 
 ## Reference and ownership
 
@@ -34,6 +34,7 @@ covered by `d66b19d1`; local destination disk-error status is covered by
 | Timeout/output | `--timeout`, silent mode, nonzero status for denied senders, preserved not-found failure output for missing fetches, malformed identity rejection, unusable save-path rejection, path-discovery timeout status, and client Ctrl-C cancellation | unit/manual process runs, `rncp_process` | bounded Rust behavior and these six process-level failure categories verified; interrupted-link and remote receive-side cancellation remain open |
 | Restart | Persisted listener identity, same TCP endpoint, stable destination hash, and a second binary transfer after listener restart | `rncp_process` | verified for the bounded Rust listener/client path |
 | Disk failure | Fetch save failure when the overwrite target is a directory | `rncp_process` | verified with nonzero status and preserved OS error output; remote receive-side save faults remain open |
+| Multi-client | Three independent clients send distinct binary files concurrently to one listener | `rncp_process` | verified for the bounded Rust listener/client path |
 | Compression option | `--no-compress` disables opportunistic Resource compression for outbound sends and fetch responses while preserving the default auto-compression path | Resource compression regression, `rncp_process`, mixed Python/Rust compression matrix | verified for the focused Python↔Rust send and listener-side fetch-response roles; direct callback telemetry and the complete utility matrix remain open |
 | Other shipped utilities | `rnpath`, `rnprobe`, `rnsd`, `rnid`, `rnir`, `rnodeconf`, `rnpkg`, `rnsh`, `rnx`, and `rngit` | existing tests and callable inventory | not promoted by this slice; network/reference gaps remain |
 
@@ -49,7 +50,7 @@ cargo clippy -p rns-tools --bin rncp --test rncp_process \
 cargo clippy -p rns-tools --test rncp_python_interop \
   --all-features --no-deps -- -D warnings           PASS
 cargo test -p rns-tools --test rncp_process \
-  --all-features -- --nocapture                     7 passed (1.04s)
+  --all-features -- --nocapture                     8 passed (6.14s)
 RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   cargo test -p rns-tools --test rncp_python_interop \
   rncp_mixed_runtime_compression_matrix_roundtrips_binary_files \
@@ -75,7 +76,9 @@ second binary transfer. The observed run completed in approximately 1.04
 seconds. The same run attempts a fetch with an overwrite target that is a
 directory and asserts nonzero status plus the `Is a directory` OS error.
 The Unix process regression also sends SIGINT during path discovery and asserts
-nonzero status plus `operation cancelled by user`.
+nonzero status plus `operation cancelled by user`. The concurrent-client case
+starts three independent senders and verifies every listener-side file byte for
+all three completed transfers.
 
 An additional manual run transferred a 4,369-byte binary payload in both
 directions. Both copies had SHA-256
@@ -117,9 +120,10 @@ found`, and a sender rejected by the listener's identity policy exits nonzero
 with `Resource transfer failed` without creating a destination file. These
 checks, together with `053ef246`, `9dc9bd62`, and `9b8e4ed6`, also cover
 malformed identity, unusable save-path, path-discovery timeout, and local disk
-failures; `397a9525` covers client Ctrl-C cancellation. Interrupted-link,
-remote receive-side cancellation/disk faults, and multi-client behavior remain
-open; `d66b19d1` covers the bounded listener restart path.
+failures; `397a9525` covers client Ctrl-C cancellation; and `e668ae60` covers
+the bounded multi-client path. Interrupted-link, slow-interface, and remote
+receive-side cancellation/disk faults remain open; `d66b19d1` covers the
+bounded listener restart path.
 
 ## Unresolved requirements
 
@@ -138,8 +142,8 @@ classified as complete:
   `/git/mirror` requests now prove the `git.repositories`
   listing/bundle/mutation/clone seam, while the remaining Git/work network
   implementation belongs to #612/#613.
-- Add interrupted-link, slow-interface, remote receive-side cancellation/
-  disk-error, and multi-client transcripts with exact failure/status assertions.
+- Add interrupted-link, slow-interface, and remote receive-side
+  cancellation/disk-error transcripts with exact failure/status assertions.
 - Add process-level advertisement/transfer-size assertions for each remaining
   compression role if the utility evidence must independently expose the wire
   compression flag; the Resource unit tests already cover that direct flag.

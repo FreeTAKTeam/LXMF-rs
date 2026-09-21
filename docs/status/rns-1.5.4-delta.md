@@ -169,7 +169,8 @@ listener restart check on the same TCP endpoint with a second binary transfer.
 Commit `9b8e4ed6` adds a fetch save-directory disk-error check with nonzero
 status and preserved `Is a directory` output. Commit `397a9525` adds explicit
 client Ctrl-C cancellation handling with a nonzero status and preserved
-`operation cancelled by user` output.
+`operation cancelled by user` output. Commit `e668ae60` adds three concurrent
+client processes with exact listener-side byte verification.
 
 The #612 implementation slice now has committed evidence in
 [`evidence/612-rngit.md`](../goals/reticulum-reference-parity-605/evidence/612-rngit.md):
