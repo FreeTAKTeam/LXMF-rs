@@ -89,7 +89,17 @@ fn create_repository_fixture(temp: &Path) -> io::Result<PathBuf> {
     fs::write(source.join("README.md"), b"# Python rngit interop\n")?;
     let media = (0..8192).map(|index| (index as u8).wrapping_mul(29)).collect::<Vec<_>>();
     fs::write(source.join("image.png"), &media)?;
-    run_git(&source, &["add", "README.md", "image.png"])?;
+    fs::write(
+        source.join("valid.png"),
+        [
+            0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48,
+            0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x04, 0x00, 0x00,
+            0x00, 0xb5, 0x1c, 0x0c, 0x02, 0x00, 0x00, 0x00, 0x0b, 0x49, 0x44, 0x41, 0x54, 0x78,
+            0xda, 0x63, 0x64, 0xf8, 0x0f, 0x00, 0x01, 0x05, 0x01, 0x01, 0x27, 0x18, 0xe3, 0x66,
+            0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+        ],
+    )?;
+    run_git(&source, &["add", "README.md", "image.png", "valid.png"])?;
     run_git(&source, &["commit", "-qm", "interop fixture"])?;
 
     run_git(&group, &["init", "--bare", "-q", "repo"])?;
@@ -255,6 +265,7 @@ def request(path, data):
         result["has_ref_not_found"] = b"reference was not found" in payload
         result["has_file_not_found"] = b"file was not found" in payload
         result["is_readme"] = payload == b'# Python rngit interop\n'
+        result["is_webp"] = len(payload) >= 12 and payload[:4] == b"RIFF" and payload[8:12] == b"WEBP"
         finished.set()
     def failed(receipt):
         result["error"] = "request failed"
@@ -315,6 +326,13 @@ media = request(
         "path": "/media/group/repo/HEAD/image.png",
     },
 )
+converted_media = request(
+    "/media",
+    {
+        "key": b"rngit-python-interop",
+        "path": "/media/group/repo/HEAD/valid.png",
+    },
+)
 link.teardown()
 if not missing_repository["has_not_found"]:
     raise RuntimeError("missing repository did not render a not-found page")
@@ -326,6 +344,8 @@ if not denied_repository["has_not_found"]:
     raise RuntimeError("denied repository exposed a page")
 if download["name"] != "README.md" or not download["is_readme"]:
     raise RuntimeError("file download did not preserve content or filename metadata")
+if converted_media["name"] != "valid.webp" or not converted_media["is_webp"]:
+    raise RuntimeError("media conversion did not return validated WebP metadata/content")
 print(json.dumps({
     "page": page,
     "missing_repository": missing_repository,
@@ -334,6 +354,7 @@ print(json.dumps({
     "denied_repository": denied_repository,
     "download": download,
     "media": media,
+    "converted_media": converted_media,
 }, sort_keys=True))
 "#;
     Command::new(python_bin())
@@ -587,6 +608,18 @@ fn rngit_serves_pages_and_media_to_pinned_python_client() -> io::Result<()> {
 
     let port = free_port()?;
     let identity_seed = "rngit-python-interop-server";
+    if !Command::new("ffmpeg")
+        .arg("-version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()?
+        .success()
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "pinned Python rngit interop requires ffmpeg for the conversion trace",
+        ));
+    }
     let mut server = Command::new(env!("CARGO_BIN_EXE_rngit"))
         .args([
             "--root",
@@ -595,9 +628,9 @@ fn rngit_serves_pages_and_media_to_pinned_python_client() -> io::Result<()> {
             &format!("127.0.0.1:{port}"),
             "--identity-seed",
             identity_seed,
-            "--no-media-conversion",
             "--silent",
         ])
+        .env("RNGIT_MEDIA_BACKEND", "ffmpeg")
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .spawn()?;
@@ -628,6 +661,8 @@ fn rngit_serves_pages_and_media_to_pinned_python_client() -> io::Result<()> {
             "media checksum: {stdout}"
         );
         assert!(stdout.contains("\"size\": 8192"), "media size: {stdout}");
+        assert!(stdout.contains("\"name\": \"valid.webp\""), "converted media metadata: {stdout}");
+        assert!(stdout.contains("\"is_webp\": true"), "converted media payload: {stdout}");
 
         let git_destination = rust_git_destination(&root, identity_seed)?;
         let git_config_dir = temp.path().join("python-git-client");
