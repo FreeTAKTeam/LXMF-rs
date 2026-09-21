@@ -25,7 +25,9 @@ impl ProbeReceiptRegistry {
             .expect("probe receipt registry mutex poisoned")
             .remove(&packet_hash);
         if let Some(sender) = sender {
-            let _ = sender.send(());
+            if sender.send(()).is_err() {
+                log::debug!("probe receipt waiter was dropped before delivery notification");
+            }
         }
     }
 
