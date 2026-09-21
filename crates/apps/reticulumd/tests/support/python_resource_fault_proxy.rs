@@ -12,6 +12,7 @@ pub(super) enum ResourceFaultMode {
     ReorderFirstTwo,
     DropAll,
     DropKeepAlive,
+    DuplicateChannelFirst,
 }
 
 pub(super) struct PythonResourceFaultProxy {
@@ -56,6 +57,7 @@ impl Drop for PythonResourceFaultProxy {
 #[derive(Default)]
 struct FaultState {
     first_resource_seen: bool,
+    first_channel_seen: bool,
     reordered_first: Option<Vec<u8>>,
 }
 
@@ -109,6 +111,15 @@ where
                     }
                     ResourceFaultMode::DropAll => {}
                     ResourceFaultMode::DropKeepAlive => {}
+                    ResourceFaultMode::DuplicateChannelFirst => {
+                        if !state.first_channel_seen {
+                            state.first_channel_seen = true;
+                            write_frame(&mut writer, &frame).await;
+                            write_frame(&mut writer, &frame).await;
+                        } else {
+                            write_frame(&mut writer, &frame).await;
+                        }
+                    }
                 }
             } else {
                 write_frame(&mut writer, &frame).await;
@@ -139,6 +150,7 @@ fn should_fault(frame: &[u8], mode: Option<ResourceFaultMode>) -> bool {
     }
     Packet::from_bytes(output.as_slice()).is_ok_and(|packet| match mode {
         Some(ResourceFaultMode::DropKeepAlive) => packet.context == PacketContext::KeepAlive,
+        Some(ResourceFaultMode::DuplicateChannelFirst) => packet.context == PacketContext::Channel,
         Some(_) => packet.context == PacketContext::Resource,
         None => false,
     })
