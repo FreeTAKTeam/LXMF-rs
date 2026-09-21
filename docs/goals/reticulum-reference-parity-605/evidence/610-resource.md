@@ -54,6 +54,10 @@ it does not promote the full #610 acceptance contract or close parent issue
   `OutboundCancelled` terminal event, while a Python sender cancels after
   advertisement and Rust emits `InboundFailed(reason=remote_cancelled)`.
   The Python sender also reports its own `FAILED` callback status.
+- A pinned-Python shutdown trace now waits for the receiver's
+  `resource_started` callback, terminates that exact Python process after the
+  Rust advertisement is admitted, and observes one Rust `OutboundFailed`
+  event for the original split transfer.
 
 ## Local evidence
 
@@ -111,6 +115,11 @@ RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   cargo test -p reticulumd --test python_channel_interop \
   pinned_python_resource_reverse_fault_matrix -- --ignored --nocapture
   # 1 passed; 36 filtered out; 21.82s
+
+RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
+  cargo test -p reticulumd --test python_channel_interop \
+  rust_sender_reports_pinned_python_receiver_shutdown -- --ignored --nocapture
+  # 1 passed; 37 filtered out; 15.52s
 ```
 
 The fault matrix runs through a production TCP carrier and inspects only
@@ -128,7 +137,8 @@ drop/duplicate/reorder cases and observes Rust `OutboundFailed` when all
 Resource data frames are missing. Together, the two matrices prove the
 fragment-fault behaviors in both implementation directions; they do not by
 themselves prove the separate link-timeout, reader-adapter, memory, or hosted
-acceptance contracts.
+acceptance contracts. The shutdown trace separately proves that an admitted
+split Resource is failed when its pinned Python receiver process exits.
 
 The release runs completed in approximately 10.00 seconds and 11.53 seconds.
 The debug Rust-to-Python 50 MiB preparation run exceeded the 180-second
@@ -161,9 +171,10 @@ evidence, not a substitute for the pinned Python fault matrix.
 The following #610 requirements remain unverified and are intentionally not
 represented as complete:
 
-- mixed-Python link-timeout recovery or terminal-failure evidence; the two
-  pinned-Python matrices now cover loss, duplication, reordering, and complete
-  missing-fragment terminal failure in both directions;
+- mixed-Python link-timeout recovery or terminal-failure evidence beyond the
+  explicit peer-process shutdown trace; the two pinned-Python matrices now
+  cover loss, duplication, reordering, and complete missing-fragment terminal
+  failure in both directions;
 - peak-RSS measurements for the 50 MiB mixed-peer transfers and a bounded
   memory report across the full matrix;
 - mixed-Python fault-injection evidence for the reader/file adapter, including
@@ -181,7 +192,8 @@ cancellation terminal events, bidirectional pinned-Python loss/duplication/
 reordering and missing-fragment terminal evidence, reader-backed bounded source
 retention plus a pinned-Python split reader transfer, a two-carrier pinned-
 Python split Resource forwarding trace with an exact remote callback digest,
-bidirectional release-profile mixed-peer transfers, and the independent `rns-rs`
+bidirectional release-profile mixed-peer transfers, the pinned-Python
+receiver-shutdown terminal-failure trace, and the independent `rns-rs`
 loss/timeout/latency slice are implemented with local evidence; the broader
 Resource failure and bounded-memory contract remains partial pending
 link-timeout and reader-adapter fault traces, resource-usage evidence, and
