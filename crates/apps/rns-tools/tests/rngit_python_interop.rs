@@ -115,7 +115,7 @@ fn create_repository_fixture(temp: &Path) -> io::Result<PathBuf> {
     // local page fixtures while keeping the production loader in the path.
     fs::write(
         root.join("group.allowed"),
-        "read:all\nwrite:all\ncreate:all\nstats:all\nrelease:all\n",
+        "read:all\nwrite:all\ncreate:all\nstats:all\nrelease:all\ninteract:all\nadmin:all\n",
     )?;
     let private_group = root.join("private");
     let private_repository = private_group.join("repo");
@@ -383,6 +383,7 @@ import sys
 import tempfile
 import threading
 import time
+from RNS.vendor import umsgpack as mp
 import RNS
 
 config_dir, identity_path, destination_hex, source_path = sys.argv[1:5]
@@ -579,6 +580,183 @@ result["mirror_status"] = mirror_response[0]
 result["mirror_contains_main"] = b"refs/heads/main" in mirror_listing
 result["create_status"] = create_response[0]
 result["create_registered_repository"] = created_listing[0] == 0
+
+group_permissions = request(
+    "/mgmt/perms",
+    {2: "group", "operation": "gperms", "step": "get"},
+)
+if group_permissions[0] != 0:
+    raise RuntimeError("group permissions response was not successful")
+group_permissions_payload = mp.unpackb(group_permissions[1:])
+if "read:all" not in group_permissions_payload.get("content", ""):
+    raise RuntimeError("group permissions did not round-trip")
+repository_permissions = request(
+    "/mgmt/perms",
+    {0: "group/repo", "operation": "rperms", "step": "get"},
+)
+if repository_permissions[0] != 0:
+    raise RuntimeError("repository permissions response was not successful")
+
+work_content = "Python work document body"
+invalid_work = request(
+    "/mgmt/work",
+    {
+        0: "group/repo",
+        "operation": "create",
+        "title": "Invalid work",
+        "content": work_content,
+        "format": "markdown",
+        "signature": bytes(64),
+    },
+)
+if invalid_work[0] != 2:
+    raise RuntimeError("invalid work signature was not rejected")
+work_signature = identity.sign(work_content.encode("utf-8"))
+work_create = request(
+    "/mgmt/work",
+    {
+        0: "group/repo",
+        "operation": "create",
+        "title": "Python work",
+        "content": work_content,
+        "format": "markdown",
+        "signature": work_signature,
+    },
+)
+if work_create[0] != 0:
+    raise RuntimeError("work create response was not successful")
+work_created = mp.unpackb(work_create[1:])
+work_id = work_created["id"]
+if work_created.get("scope") != "active":
+    raise RuntimeError("work create did not return the active scope")
+
+work_list = request(
+    "/mgmt/work",
+    {0: "group/repo", "operation": "list", "scope": "active"},
+)
+if work_list[0] != 0:
+    raise RuntimeError("work list response was not successful")
+work_list_payload = mp.unpackb(work_list[1:])
+if not any(document.get("id") == work_id for document in work_list_payload.get("active", [])):
+    raise RuntimeError("work list did not include the created document")
+
+work_view = request(
+    "/mgmt/work",
+    {0: "group/repo", "operation": "view", "doc_id": work_id, "scope": "active"},
+)
+if work_view[0] != 0:
+    raise RuntimeError("work view response was not successful")
+work_view_payload = mp.unpackb(work_view[1:])
+work_meta = work_view_payload["meta"]
+if work_view_payload.get("content") != work_content:
+    raise RuntimeError("work view content did not round-trip")
+if work_meta.get("signature") != work_signature:
+    raise RuntimeError("work signature did not round-trip")
+if work_meta.get("identity") != identity.get_public_key():
+    raise RuntimeError("work public identity did not round-trip")
+
+work_comment = request(
+    "/mgmt/work",
+    {
+        0: "group/repo",
+        "operation": "comment",
+        "doc_id": work_id,
+        "scope": "active",
+        "content": "Python comment",
+        "format": "markdown",
+    },
+)
+if work_comment[0] != 0:
+    raise RuntimeError("work comment response was not successful")
+comment_id = mp.unpackb(work_comment[1:])["id"]
+
+edited_content = "Python edited work document body"
+edited_signature = identity.sign(edited_content.encode("utf-8"))
+work_edit = request(
+    "/mgmt/work",
+    {
+        0: "group/repo",
+        "operation": "edit",
+        "doc_id": work_id,
+        "scope": "active",
+        "title": "Edited Python work",
+        "content": edited_content,
+        "signature": edited_signature,
+    },
+)
+if work_edit[0] != 0:
+    raise RuntimeError("work edit response was not successful")
+
+work_permissions = request(
+    "/mgmt/work",
+    {0: "group/repo", "operation": "perms", "doc_id": work_id, "step": "get"},
+)
+if work_permissions[0] != 0:
+    raise RuntimeError("work permissions get response was not successful")
+work_permission_content = "read:all\nwrite:all\ninteract:all\nadmin:all\n"
+work_permissions_set = request(
+    "/mgmt/work",
+    {
+        0: "group/repo",
+        "operation": "perms",
+        "doc_id": work_id,
+        "step": "set",
+        "content": work_permission_content,
+    },
+)
+if work_permissions_set[0] != 0:
+    raise RuntimeError("work permissions set response was not successful")
+work_permissions_after = request(
+    "/mgmt/work",
+    {0: "group/repo", "operation": "perms", "doc_id": work_id, "step": "get"},
+)
+if mp.unpackb(work_permissions_after[1:]).get("content") != work_permission_content:
+    raise RuntimeError("work permissions did not round-trip")
+
+work_complete = request(
+    "/mgmt/work",
+    {0: "group/repo", "operation": "complete", "doc_id": work_id},
+)
+if work_complete[0] != 0 or mp.unpackb(work_complete[1:]).get("scope") != "completed":
+    raise RuntimeError("work complete response was not successful")
+work_completed_view = request(
+    "/mgmt/work",
+    {0: "group/repo", "operation": "view", "doc_id": work_id, "scope": "completed"},
+)
+if work_completed_view[0] != 0 or mp.unpackb(work_completed_view[1:])["content"] != edited_content:
+    raise RuntimeError("completed work did not preserve the edited content")
+work_activate = request(
+    "/mgmt/work",
+    {0: "group/repo", "operation": "activate", "doc_id": work_id},
+)
+if work_activate[0] != 0 or mp.unpackb(work_activate[1:]).get("scope") != "active":
+    raise RuntimeError("work activate response was not successful")
+work_delete = request(
+    "/mgmt/work",
+    {0: "group/repo", "operation": "delete", "doc_id": work_id, "scope": "active"},
+)
+if work_delete[0] != 0:
+    raise RuntimeError("work delete response was not successful")
+work_after_delete = request(
+    "/mgmt/work",
+    {0: "group/repo", "operation": "list", "scope": "active"},
+)
+if work_after_delete[0] != 0 or mp.unpackb(work_after_delete[1:]).get("active"):
+    raise RuntimeError("work delete did not remove the document")
+
+result["group_permissions_status"] = group_permissions[0]
+result["repository_permissions_status"] = repository_permissions[0]
+result["invalid_work_signature_status"] = invalid_work[0]
+result["work_create_status"] = work_create[0]
+result["work_list_status"] = work_list[0]
+result["work_view_status"] = work_view[0]
+result["work_comment_status"] = work_comment[0]
+result["work_comment_id"] = comment_id
+result["work_edit_status"] = work_edit[0]
+result["work_permissions_status"] = work_permissions_after[0]
+result["work_complete_status"] = work_complete[0]
+result["work_activate_status"] = work_activate[0]
+result["work_delete_status"] = work_delete[0]
 link.teardown()
 print(json.dumps(result, sort_keys=True))
 "#;

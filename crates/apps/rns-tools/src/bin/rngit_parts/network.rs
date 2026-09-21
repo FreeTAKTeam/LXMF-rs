@@ -2,7 +2,7 @@ use super::{decode_page_request, page_paths, rngit_paths, Cli, PageResponse, Ret
 use rns_transport::destination::link::{LinkEvent, LinkStatus};
 use rns_transport::destination::DestinationName;
 use rns_transport::hash::AddressHash;
-use rns_transport::identity::PrivateIdentity;
+use rns_transport::identity::{Identity, PrivateIdentity};
 use rns_transport::iface::tcp_client::TcpClient;
 use rns_transport::iface::tcp_server::TcpServer;
 use rns_transport::iface::{IfaceRole, InterfaceMode};
@@ -239,7 +239,11 @@ async fn process_request(
     payload: Vec<u8>,
 ) {
     let Some(service) = service_for_link(runtime, &link_id).await else { return };
-    let remote = remote_identity(runtime, &link_id).await;
+    let peer_identity = remote_peer_identity(runtime, &link_id).await;
+    let remote = peer_identity
+        .as_ref()
+        .map(|identity| address_array(&identity.address_hash))
+        .unwrap_or(NULL_IDENTITY);
     let response = match service {
         RequestService::Pages => {
             let Some(request) = decode_page_request(&payload).ok().flatten() else { return };
@@ -263,7 +267,12 @@ async fn process_request(
                 return;
             }
             let mut node = runtime.node.lock().await;
-            let data = node.handle_request(request.path, &encoded, remote);
+            let data = node.handle_request_with_peer_identity(
+                request.path,
+                &encoded,
+                remote,
+                peer_identity,
+            );
             Some(PageResponse { data, metadata: None })
         }
     };
@@ -327,10 +336,10 @@ struct DecodedRngitRequest {
     data: rmpv::Value,
 }
 
-async fn remote_identity(runtime: &Runtime, link_id: &AddressHash) -> [u8; 16] {
-    let Some(link) = runtime.transport.find_in_link(link_id).await else { return NULL_IDENTITY };
+async fn remote_peer_identity(runtime: &Runtime, link_id: &AddressHash) -> Option<Identity> {
+    let link = runtime.transport.find_in_link(link_id).await?;
     let guard = link.lock().await;
-    let Some(identity) = guard.identified_peer_identity() else { return NULL_IDENTITY };
+    let identity = guard.identified_peer_identity()?;
     let address_hash = identity.address_hash.as_slice();
     if address_hash.len() != 16 {
         if !runtime.silent {
@@ -340,11 +349,9 @@ async fn remote_identity(runtime: &Runtime, link_id: &AddressHash) -> [u8; 16] {
                 address_hash.len()
             );
         }
-        return NULL_IDENTITY;
+        return None;
     }
-    let mut result = [0_u8; 16];
-    result.copy_from_slice(address_hash);
-    result
+    Some(*identity)
 }
 
 async fn send_response(

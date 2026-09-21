@@ -255,3 +255,80 @@ fn python_produced_work_document_round_trips_binary_metadata() {
         Some(32)
     );
 }
+
+#[test]
+fn identified_peer_work_requests_verify_signatures_and_store_public_identity() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let group_path = temp.path().join("group");
+    let repository_path = group_path.join("repo");
+    fs::create_dir_all(&group_path).expect("group");
+    assert!(Command::new("git")
+        .args(["init", "--bare", repository_path.to_string_lossy().as_ref()])
+        .status()
+        .expect("git")
+        .success());
+
+    let mut node = ReticulumGitNode::default();
+    node.load_repository_group("group", &group_path).expect("load group");
+    let group = node.groups.get_mut("group").expect("group state");
+    for permissions in [
+        &mut group.permissions.read,
+        &mut group.permissions.write,
+        &mut group.permissions.interact,
+    ] {
+        permissions.add(PermissionTarget::All);
+    }
+
+    let signer = rns_transport::identity::PrivateIdentity::new_from_name("issue-612-signer");
+    let remote: [u8; 16] = signer
+        .address_hash()
+        .as_slice()
+        .try_into()
+        .expect("identity hash");
+    let content = "signed work body";
+    let request = |signature: Vec<u8>| {
+        vec![
+            (rmpv::Value::from(0_u64), rmpv::Value::from("group/repo")),
+            (rmpv::Value::from("operation"), rmpv::Value::from("create")),
+            (rmpv::Value::from("title"), rmpv::Value::from("Signed work")),
+            (rmpv::Value::from("content"), rmpv::Value::from(content)),
+            (rmpv::Value::from("format"), rmpv::Value::from("markdown")),
+            (rmpv::Value::from("signature"), rmpv::Value::Binary(signature)),
+        ]
+    };
+
+    let invalid = node.handle_work_request_with_peer_identity(
+        &request(vec![0; 64]),
+        remote,
+        Some(*signer.as_identity()),
+    );
+    assert_eq!(invalid[0], ReticulumGitNode::RES_INVALID_REQ);
+    assert!(!group_path.join("repo.work/active/1/root").exists());
+
+    let valid = node.handle_work_request_with_peer_identity(
+        &request(signer.sign(content.as_bytes()).to_bytes().to_vec()),
+        remote,
+        Some(*signer.as_identity()),
+    );
+    assert_eq!(valid[0], ReticulumGitNode::RES_OK);
+    let document = node
+        .work_load_document(&group_path.join("repo.work/active/1/root"))
+        .expect("stored work document");
+    let metadata = document
+        .as_map()
+        .and_then(|map| map_value(map, &rmpv::Value::String("meta".into())))
+        .and_then(rmpv::Value::as_map)
+        .expect("stored metadata");
+    assert_eq!(
+        map_value(metadata, &rmpv::Value::String("signature".into()))
+            .and_then(rmpv::Value::as_slice)
+            .map(<[u8]>::len),
+        Some(64)
+    );
+    assert_eq!(
+        map_value(metadata, &rmpv::Value::String("identity".into()))
+            .and_then(rmpv::Value::as_slice)
+            .map(<[u8]>::len),
+        Some(64)
+    );
+}

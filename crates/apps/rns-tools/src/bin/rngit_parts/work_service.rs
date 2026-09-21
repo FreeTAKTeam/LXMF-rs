@@ -74,6 +74,46 @@ impl ReticulumGitNode {
             .unwrap_or(rmpv::Value::Nil)
     }
 
+    fn work_identity_value(
+        request: &[(rmpv::Value, rmpv::Value)],
+        peer_identity: Option<Identity>,
+    ) -> rmpv::Value {
+        if let Some(identity) = peer_identity {
+            let mut public_key = Vec::with_capacity(rns_transport::identity::PUBLIC_KEY_LENGTH * 2);
+            public_key.extend_from_slice(identity.public_key_bytes());
+            public_key.extend_from_slice(identity.verifying_key_bytes());
+            rmpv::Value::Binary(public_key)
+        } else {
+            Self::work_optional_binary(request, "identity")
+        }
+    }
+
+    fn validate_work_signature(
+        request: &[(rmpv::Value, rmpv::Value)],
+        peer_identity: Option<Identity>,
+    ) -> Result<(), &'static str> {
+        let Some(peer_identity) = peer_identity else { return Ok(()) };
+        let Some(signature) = value_bytes(map_value(
+            request,
+            &rmpv::Value::String("signature".into()),
+        )) else {
+            return Err("No signature provided");
+        };
+        if signature.len() != rns_transport::identity::PUBLIC_KEY_LENGTH * 2 {
+            return Err("Invalid signature length");
+        }
+        let content = map_string(request, &rmpv::Value::String("content".into()))
+            .unwrap_or_default();
+        if !rns_transport::identity::verify(
+            *peer_identity.verifying_key_bytes(),
+            content.as_bytes(),
+            &signature,
+        ) {
+            return Err("Invalid signature");
+        }
+        Ok(())
+    }
+
     fn work_now() -> rmpv::Value {
         rmpv::Value::F64(
             SystemTime::now()
@@ -87,6 +127,15 @@ impl ReticulumGitNode {
         &mut self,
         request: &[(rmpv::Value, rmpv::Value)],
         remote: [u8; 16],
+    ) -> Vec<u8> {
+        self.handle_work_request_with_peer_identity(request, remote, None)
+    }
+
+    pub fn handle_work_request_with_peer_identity(
+        &mut self,
+        request: &[(rmpv::Value, rmpv::Value)],
+        remote: [u8; 16],
+        peer_identity: Option<Identity>,
     ) -> Vec<u8> {
         let (group, repository, record) = match self.repository_for_request(request) {
             Ok(value) => value,
@@ -161,7 +210,7 @@ impl ReticulumGitNode {
                 if !self.resolve_permission(&remote, &group, &repository, Self::PERM_PROPOSE) {
                     return response(Self::RES_DISALLOWED, "Not allowed", None);
                 }
-                self.work_create(&root, request, remote, true)
+                self.work_create(&root, request, remote, true, peer_identity)
             }
             "create" => {
                 if !self.resolve_permission(&remote, &group, &repository, Self::PERM_WRITE)
@@ -174,7 +223,7 @@ impl ReticulumGitNode {
                 {
                     return response(Self::RES_DISALLOWED, "Not allowed", None);
                 }
-                self.work_create(&root, request, remote, false)
+                self.work_create(&root, request, remote, false, peer_identity)
             }
             "edit" => {
                 if !Self::valid_work_document_request(request) {
@@ -188,7 +237,7 @@ impl ReticulumGitNode {
                 {
                     return response(Self::RES_DISALLOWED, "Not allowed", None);
                 }
-                self.work_edit(&root, request)
+                self.work_edit(&root, request, peer_identity)
             }
             "delete" => {
                 if !Self::valid_work_document_request(request) {

@@ -10,6 +10,8 @@ const RNGIT_PATH_RELEASE: &str = "/mgmt/release";
 const RNGIT_PATH_WORK: &str = "/mgmt/work";
 const RNGIT_PATH_PERMS: &str = "/mgmt/perms";
 
+use rns_transport::identity::Identity;
+
 pub(crate) fn rngit_paths() -> &'static [&'static str] {
     &[
         RNGIT_PATH_LIST,
@@ -101,6 +103,16 @@ impl ReticulumGitNode {
         data: &[u8],
         remote_identity: [u8; 16],
     ) -> Vec<u8> {
+        self.handle_request_with_peer_identity(path, data, remote_identity, None)
+    }
+
+    pub fn handle_request_with_peer_identity(
+        &mut self,
+        path: &str,
+        data: &[u8],
+        remote_identity: [u8; 16],
+        peer_identity: Option<Identity>,
+    ) -> Vec<u8> {
         let request = match unpack_request(data) {
             Ok(request) => request,
             Err(error) => return response(Self::RES_INVALID_REQ, error, None),
@@ -115,7 +127,9 @@ impl ReticulumGitNode {
             RNGIT_PATH_MIRROR => self.handle_mirror(&request, remote_identity),
             RNGIT_PATH_SYNC => self.handle_sync(&request, remote_identity),
             RNGIT_PATH_RELEASE => self.handle_release(&request, remote_identity),
-            RNGIT_PATH_WORK => self.handle_work(&request, remote_identity),
+            RNGIT_PATH_WORK => {
+                self.handle_work_with_peer_identity(&request, remote_identity, peer_identity)
+            }
             RNGIT_PATH_PERMS => self.handle_perms(&request, remote_identity),
             _ => response(Self::RES_NOT_FOUND, "Unknown request path", None),
         }
@@ -482,6 +496,15 @@ impl ReticulumGitNode {
 
     pub fn handle_work(&mut self, request: &[(rmpv::Value, rmpv::Value)], remote: [u8; 16]) -> Vec<u8> {
         self.handle_work_request(request, remote)
+    }
+
+    pub fn handle_work_with_peer_identity(
+        &mut self,
+        request: &[(rmpv::Value, rmpv::Value)],
+        remote: [u8; 16],
+        peer_identity: Option<Identity>,
+    ) -> Vec<u8> {
+        self.handle_work_request_with_peer_identity(request, remote, peer_identity)
     }
 
     pub fn handle_perms(&mut self, request: &[(rmpv::Value, rmpv::Value)], remote: [u8; 16]) -> Vec<u8> {

@@ -1706,7 +1706,7 @@
         ],
         "evidence_artifact": "docs/goals/reticulum-reference-parity-605/evidence/612-rngit.md",
         "owner_issue": 612,
-        "notes": "Permission resolver bounds/failure propagation, configured-access merging, canonical companion paths, atomic permission refresh, production work-item handlers, Python-shaped MessagePack storage, and a Python-produced binary metadata fixture are implemented and locally verified. Live Python-Rust request exchange, Reticulum public-key signature validation, restart/concurrency/fault transcripts, and network Git/work workflows remain unverified."
+        "notes": "Permission resolver bounds/failure propagation, configured-access merging, canonical companion paths, atomic permission refresh, production work-item handlers, Python-shaped MessagePack storage, and a Python-produced binary metadata fixture are implemented and locally verified. The live Reticulum adapter now carries the identified peer key for create/propose/edit signature validation, and a pinned Python Link trace exercises Git plus permission/work request shapes and lifecycle responses. The hash-only local compatibility seam, restart/concurrency/fault transcripts, full Python CLI workflow, and broader network matrix remain unverified."
       },
       {
         "id": "reticulum-605-613-rngit-pages-media",

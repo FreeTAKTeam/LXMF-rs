@@ -132,6 +132,7 @@ impl ReticulumGitNode {
         request: &[(rmpv::Value, rmpv::Value)],
         remote: [u8; 16],
         proposed: bool,
+        peer_identity: Option<Identity>,
     ) -> Vec<u8> {
         let title = map_string(request, &rmpv::Value::String("title".into()))
             .unwrap_or_default()
@@ -147,6 +148,9 @@ impl ReticulumGitNode {
         }
         if title.len() + content.len() + format.len() > Self::WORK_DOC_LIMIT {
             return response(Self::RES_INVALID_REQ, "Content limit exceeded", None);
+        }
+        if let Err(error) = Self::validate_work_signature(request, peer_identity) {
+            return response(Self::RES_INVALID_REQ, error, None);
         }
         let id = self.work_get_next_id(root);
         let scope = if proposed { "proposed" } else { "active" };
@@ -179,7 +183,7 @@ impl ReticulumGitNode {
                     ),
                     (
                         rmpv::Value::String("identity".into()),
-                        Self::work_optional_binary(request, "identity"),
+                        Self::work_identity_value(request, peer_identity),
                     ),
                 ]),
             ),
@@ -212,7 +216,12 @@ impl ReticulumGitNode {
         )
     }
 
-    fn work_edit(&self, root: &Path, request: &[(rmpv::Value, rmpv::Value)]) -> Vec<u8> {
+    fn work_edit(
+        &self,
+        root: &Path,
+        request: &[(rmpv::Value, rmpv::Value)],
+        peer_identity: Option<Identity>,
+    ) -> Vec<u8> {
         let Some((scope, id, directory, mut document)) = self.work_request_document(root, request)
         else {
             return response(Self::RES_NOT_FOUND, "Document not found", None);
@@ -223,6 +232,9 @@ impl ReticulumGitNode {
             && content.as_deref().unwrap_or_default().trim().is_empty()
         {
             return response(Self::RES_INVALID_REQ, "No changes specified", None);
+        }
+        if let Err(error) = Self::validate_work_signature(request, peer_identity) {
+            return response(Self::RES_INVALID_REQ, error, None);
         }
         let rmpv::Value::Map(map) = &mut document else {
             return response(Self::RES_REMOTE_FAIL, "Malformed work document", None);
@@ -250,6 +262,8 @@ impl ReticulumGitNode {
                     "identity",
                     Self::work_optional_binary(request, "identity"),
                 );
+            } else if peer_identity.is_some() {
+                set_map_value(meta, "identity", Self::work_identity_value(request, peer_identity));
             }
         }
         match self.work_save_document(&directory.join("root"), &document) {

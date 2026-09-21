@@ -135,17 +135,20 @@ The #612 implementation slice now has committed evidence in
 [`evidence/612-rngit.md`](../goals/reticulum-reference-parity-605/evidence/612-rngit.md):
 bounded node-owned permission resolvers, configured-access merging, canonical
 companion paths, atomic permission refresh, production work-item handlers,
-Python-shaped MessagePack persistence, and a Python-produced binary metadata
-fixture. Pinned Python Link requests now reach the production
+Python-shaped MessagePack persistence, Python-produced binary metadata, and
+authenticated-peer signature verification on the live work path. Pinned
+Python Link requests now reach the production
 `git.repositories` service for `/git/list`, `/git/fetch`, `/git/push`,
 `/git/delete`, `/git/create`, `/git/sync`, `/git/fork`, and `/git/mirror`; the
 returned bundle passes `git bundle verify`, contains the expected main ref,
 creates and removes a Python-named remote ref, registers new repositories,
 syncs a configured remote, and clones local-source fork/mirror targets. The
-row remains partial and unverified
-because the remaining Git/work request matrix, Reticulum public-key signature
-validation, restart/concurrent-writer/fault transcripts, and full end-to-end
-rngit network workflows remain open.
+same trace exercises `/mgmt/perms` and signed `/mgmt/work` create/list/view/
+comment/edit/perms/complete/activate/delete requests, including invalid
+signature rejection and binary identity/signature round-trip. The row remains
+partial and unverified because the hash-only compatibility seam, restart/
+concurrent-writer/fault transcripts, full Python CLI workflow, and complete
+end-to-end rngit network matrix remain open.
 
 The #613 implementation slice now has committed evidence in
 [`evidence/613-rngit-pages.md`](../goals/reticulum-reference-parity-605/evidence/613-rngit-pages.md):
