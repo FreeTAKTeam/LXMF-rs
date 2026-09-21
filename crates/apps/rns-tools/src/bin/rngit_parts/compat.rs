@@ -133,3 +133,46 @@ include!("protocol.rs");
 include!("compat_client.rs");
 include!("compat_permissions.rs");
 include!("compat_node.rs");
+
+// Python appends companion suffixes; replacing an extension makes repo.git
+// collide with repo.allowed/repo.work belonging to a different repository.
+fn companion_path(path: &Path, suffix: &str) -> PathBuf {
+    let mut value = path.as_os_str().to_os_string();
+    value.push(".");
+    value.push(suffix);
+    PathBuf::from(value)
+}
+
+include!("work_transitions.rs");
+
+
+fn permission_sidecar(path: &Path) -> io::Result<PathBuf> {
+    let canonical = companion_path(path, "allowed");
+    let legacy = path.with_extension("allowed");
+    if canonical != legacy && !canonical.try_exists()? {
+        let legacy_is_file = match fs::metadata(&legacy) {
+            Ok(metadata) => metadata.is_file(),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => false,
+            Err(error) => return Err(error),
+        };
+        if legacy_is_file {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, format!(
+                "ambiguous legacy permission file {}; migrate node-side to {} before loading",
+                legacy.display(), canonical.display(),
+            )));
+        }
+    }
+    Ok(canonical)
+}
+
+impl ReticulumGitNode {
+    fn read_companion_permissions(&self, path: &Path) -> io::Result<PermissionSet> {
+        let path = permission_sidecar(path)?;
+        let input = match fs::read_to_string(path) {
+            Ok(input) => Some(input),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+            Err(error) => return Err(error),
+        };
+        Ok(self.permissions_from_allowed_input(input.as_deref()))
+    }
+}

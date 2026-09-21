@@ -2,6 +2,8 @@ pub struct RnodeBleKissRuntime<B> {
     backend: B,
     session: RnodeBleKissSession,
     connected: bool,
+    backend_open: bool,
+    configured_max_write_len: usize,
     io_stats: RnodeBleKissIoStats,
 }
 
@@ -13,8 +15,10 @@ where
     pub fn new(backend: B, config: RnodeBleKissConfig) -> Self {
         Self {
             backend,
+            configured_max_write_len: config.max_write_len,
             session: RnodeBleKissSession::new(config),
             connected: false,
+            backend_open: false,
             io_stats: RnodeBleKissIoStats::default(),
         }
     }
@@ -42,33 +46,6 @@ where
     #[must_use]
     pub fn negotiated_mtu(&self) -> Option<u16> {
         self.backend.negotiated_mtu()
-    }
-
-    pub async fn startup(&mut self) -> Result<(), RnodeBleKissError> {
-        self.connected = false;
-        self.backend
-            .connect()
-            .await
-            .map_err(|message| RnodeBleKissError::Backend { operation: "connect", message })?;
-        if let Some(mtu) = self.backend.negotiated_mtu() {
-            let att_payload = (mtu as usize).saturating_sub(3);
-            self.session.config.max_write_len = self
-                .session
-                .config
-                .max_write_len
-                .min(att_payload)
-                .min(self.session.config.mtu);
-        }
-        self.backend.subscribe_notifications().await.map_err(|message| {
-            RnodeBleKissError::Backend { operation: "subscribe_notifications", message }
-        })?;
-        if self.backend.drains_stale_startup_notifications() {
-            self.drain_startup_notifications().await?;
-        }
-        let writes = self.session.startup_frames();
-        self.write_all(writes, "startup_write").await?;
-        self.connected = true;
-        Ok(())
     }
 
     pub async fn send_deferred_frames(&mut self) -> Result<(), RnodeBleKissError> {
@@ -115,20 +92,27 @@ where
     ) -> Result<(), RnodeBleKissError> {
         let writes = self.session.shutdown_frames_with_prefix(prefix_frames);
         let write_result = self.write_all(writes, "shutdown_write").await;
-        let close_result = self.backend.close().await.map_err(|message| RnodeBleKissError::Backend {
-            operation: "close",
-            message,
-        });
-        self.connected = false;
+        let close_result = self.close().await;
+        if write_result.is_err() {
+            if let Err(error) = &close_result {
+                log::warn!("RNode BLE cleanup after shutdown write failure: {error:?}");
+            }
+        }
         write_result.and(close_result)
     }
 
     pub async fn close(&mut self) -> Result<(), RnodeBleKissError> {
+        self.reset_session();
+        if !self.backend_open {
+            return Ok(());
+        }
         let result = self.backend.close().await.map_err(|message| RnodeBleKissError::Backend {
             operation: "close",
             message,
         });
-        self.connected = false;
+        if result.is_ok() {
+            self.backend_open = false;
+        }
         result
     }
 
@@ -139,17 +123,29 @@ where
     pub async fn poll_notification_events(
         &mut self,
     ) -> Result<RnodeBleNotification, RnodeBleKissError> {
-        Ok(self.poll_optional_notification_events().await?.unwrap_or_default())
+        match self.poll_optional_notification_events().await? {
+            Some(notification) => Ok(notification),
+            None if self.backend.notification_stream_ends_on_none() => {
+                Err(RnodeBleKissError::Backend {
+                    operation: "next_notification",
+                    message: "RNode BLE notification stream closed".to_string(),
+                })
+            }
+            None => Ok(RnodeBleNotification::default()),
+        }
     }
 
     pub(crate) async fn poll_optional_notification_events(
         &mut self,
     ) -> Result<Option<RnodeBleNotification>, RnodeBleKissError> {
         let Some(payload) = self.backend.next_notification().await.map_err(|message| {
-            self.connected = false;
+            self.reset_session();
             RnodeBleKissError::Backend { operation: "next_notification", message }
         })?
         else {
+            if self.backend.notification_stream_ends_on_none() {
+                self.reset_session();
+            }
             return Ok(None);
         };
         self.io_stats.read_chunks = self.io_stats.read_chunks.saturating_add(1);
@@ -177,6 +173,9 @@ where
         operation: &'static str,
     ) -> Result<(), RnodeBleKissError> {
         for write in writes {
+            // A caller can supply an already-open backend and write shutdown
+            // frames before startup. Any attempted I/O still requires cleanup.
+            self.backend_open = true;
             let payload_len = write.payload.len();
             self.backend.write(write).await.map_err(|message| {
                 self.connected = false;

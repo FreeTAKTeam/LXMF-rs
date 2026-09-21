@@ -3,7 +3,7 @@ impl ReticulumGitNode {
         if tag.is_empty() || tag.contains('/') || tag.contains('\\') || tag == "." || tag == ".." {
             None
         } else {
-            Some(record.path.with_extension("releases").join(tag))
+            Some(companion_path(&record.path, "releases").join(tag))
         }
     }
 
@@ -73,7 +73,7 @@ impl ReticulumGitNode {
                 )
             }
             "latest" => {
-                let latest = fs::read_to_string(record.path.with_extension("releases").join("latest")).ok();
+                let latest = fs::read_to_string(companion_path(&record.path, "releases").join("latest")).ok();
                 latest.map_or_else(
                     || response(Self::RES_NOT_FOUND, "No published release", None),
                     |value| response(Self::RES_OK, "", Some(&rmpv::Value::String(value.trim().into()))),
@@ -90,7 +90,7 @@ impl ReticulumGitNode {
                 if let Err(error) = fs::write(path.join("META"), metadata) {
                     return response(Self::RES_REMOTE_FAIL, error.to_string(), None);
                 }
-                let releases = record.path.with_extension("releases");
+                let releases = companion_path(&record.path, "releases");
                 if let Err(error) = fs::write(releases.join("latest"), tag) {
                     return response(Self::RES_REMOTE_FAIL, error.to_string(), None);
                 }
