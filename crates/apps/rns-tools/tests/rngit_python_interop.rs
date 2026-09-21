@@ -101,7 +101,7 @@ fn create_repository_fixture(temp: &Path) -> io::Result<PathBuf> {
     // The process-facing node has no test-only permission mutation hook. The
     // group sidecar gives the Python client the same read access as the
     // local page fixtures while keeping the production loader in the path.
-    fs::write(root.join("group.allowed"), "read:all\nstats:all\nrelease:all\n")?;
+    fs::write(root.join("group.allowed"), "read:all\nwrite:all\nstats:all\nrelease:all\n")?;
     Ok(root)
 }
 
@@ -282,7 +282,7 @@ print(json.dumps({"page": page, "media": media}, sort_keys=True))
         .output()
 }
 
-fn run_python_git_list_client(
+fn run_python_git_client(
     repo: &Path,
     config_dir: &Path,
     identity: &Path,
@@ -404,6 +404,25 @@ result = {
     "fetch_sha256": hashlib.sha256(bundle).hexdigest(),
     "fetch_valid": verification.returncode == 0,
 }
+push_response = request(
+    "/git/push",
+    {
+        0: "group/repo",
+        "local_ref": "refs/heads/main",
+        "remote_ref": "refs/heads/python",
+        "bundle": bundle,
+    },
+)
+if push_response[0] != 0:
+    raise RuntimeError("Git push response was not successful")
+after_push = request(
+    "/git/list",
+    {0: "group/repo", "for_push": False},
+)
+if after_push[0] != 0 or b"refs/heads/python" not in after_push:
+    raise RuntimeError("Git push did not create the requested ref")
+result["push_status"] = push_response[0]
+result["push_contains_python_ref"] = b"refs/heads/python" in after_push
 link.teardown()
 print(json.dumps(result, sort_keys=True))
 "#;
@@ -479,12 +498,8 @@ fn rngit_serves_pages_and_media_to_pinned_python_client() -> io::Result<()> {
         fs::create_dir_all(&git_config_dir)?;
         write_python_config(&git_config_dir, port)?;
         let git_identity = git_config_dir.join("identity");
-        let git_output = run_python_git_list_client(
-            &python_repo,
-            &git_config_dir,
-            &git_identity,
-            &git_destination,
-        )?;
+        let git_output =
+            run_python_git_client(&python_repo, &git_config_dir, &git_identity, &git_destination)?;
         if !git_output.status.success() {
             return Err(io::Error::other(format!(
                 "Python rngit Git client failed: {}\nstdout:\n{}\nstderr:\n{}",
@@ -499,6 +514,11 @@ fn rngit_serves_pages_and_media_to_pinned_python_client() -> io::Result<()> {
         assert!(git_stdout.contains("\"fetch_status\": 0"), "Git fetch status: {git_stdout}");
         assert!(git_stdout.contains("\"fetch_valid\": true"), "Git fetch bundle: {git_stdout}");
         assert!(!git_stdout.contains("\"fetch_size\": 0"), "Git fetch was empty: {git_stdout}");
+        assert!(git_stdout.contains("\"push_status\": 0"), "Git push status: {git_stdout}");
+        assert!(
+            git_stdout.contains("\"push_contains_python_ref\": true"),
+            "Git push ref listing: {git_stdout}"
+        );
         Ok(())
     })();
     let _ = server.kill();
