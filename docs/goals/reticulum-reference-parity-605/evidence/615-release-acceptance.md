@@ -41,6 +41,19 @@ the candidate and toolchain revisions, runs all 23 live Python/Rust cases plus
 the seven deterministic local transport cases, rejects missing reports and
 ignored/skipped tests, and writes per-case logs plus one aggregate JSON report.
 
+The existing independent-implementation lane was also executed locally at
+nightly level. Against pinned rns-rs `6c6d79b83516feff271d15c97d39dd1de7798afe`,
+92 scenarios covered two-node, mixed and all-LXMF five-node, multi-hop,
+routing, restart, shared-daemon, and deterministic loss/latency/
+duplication/reordering topologies. It recorded 87 PASS, three explicitly
+classified rns-rs peer divergences, and two dependent teardown blocks; the
+explicit compatibility gate passed. Against pinned Reticulum-Go
+`48f15178f6fbc34aeb69ad428679db9deddae7f4`, 22 scenarios passed and two large
+peer-to-Rust Resource directions were recorded as `UNSUPPORTED` because the
+peer control API has a documented 1 MiB inbound limit; its explicit gate also
+passed. These are classified local evidence, not an unqualified claim that
+every independent peer direction is complete.
+
 ## Commands and results
 
 All commands ran in the isolated `codex/issue-605-parity` worktree.
@@ -65,6 +78,23 @@ python3 tools/scripts/python_compat_matrix.py --all \
    Reticulum `99de23c040d507e3fefca19e87b182302902725d`; Python LXMF
    `727830cefda83d9c6e3982b48675425f3f988f9c`; 30/30 passed, 0 failed,
    0 blocked, 0 skipped, 0 ignored; 2026-09-21 UTC)
+python3 tools/scripts/independent_interop.py --peer rns-rs --level nightly \
+  --output target/interop/independent/issue-605-nightly --keep \
+  --skip-build --peer-root target/interop/independent/external/rns-rs     CLASSIFIED
+  (runner exit 1 for 3 allowlisted `peer_divergence` rows and 2 dependent
+   teardown blocks; 87 PASS of 92 scenarios; candidate
+   `4f968cb8af06661d9dd9831f8ec1cc29556f74df`; peer
+   `6c6d79b83516feff271d15c97d39dd1de7798afe`)
+python3 tools/scripts/independent_interop_gate.py \
+  target/interop/independent/issue-605-nightly/independent-interop.json      PASS
+python3 tools/scripts/independent_interop.py --peer reticulum-go \
+  --level nightly --output target/interop/independent/issue-605-reticulum-go \
+  --keep                                                                    PASS
+  (22 PASS, 2 explicit `UNSUPPORTED` peer-surface rows; candidate
+   `4f968cb8af06661d9dd9831f8ec1cc29556f74df`; peer
+   `48f15178f6fbc34aeb69ad428679db9deddae7f4`)
+python3 tools/scripts/independent_interop_gate.py \
+  target/interop/independent/issue-605-reticulum-go/independent-interop.json  PASS
 git diff --check                                                               PASS
 cargo test -p reticulum-rs-transport --lib resource                           PASS
   (73 resource tests)
@@ -90,9 +120,9 @@ upload and already-published-crate warnings.
 - The broader #615 differential surface beyond this 30-case Python/Rust matrix,
   including all-Rust/multi-hop scenarios, shared-daemon/restart/fault roles,
   and hosted exact-head evidence, has not been certified by this increment. The
-  local matrix passed, but it currently records no seeded
-  loss/reordering/duplication injection and does not replace those broader
-  acceptance lanes.
+  local independent lanes cover the declared local topologies and deterministic
+  fault proxy cases, but the reports do not yet carry a reproducible seed for
+  every fault run, and hosted exact-head evidence is still absent.
 - The matrix's machine-readable report and raw per-case logs are generated
   under ignored `target/interop/python-compat-matrix/`; they are local evidence
   for this candidate and are not a hosted exact-head verdict.
