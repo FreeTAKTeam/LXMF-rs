@@ -414,6 +414,23 @@ def validate_rule(item_id: str, rule: dict[str, Any]) -> None:
         raise ValueError(f"{item_id}: not-applicable mappings require notes")
 
 
+def classify_rule_for_candidate(
+    rule: dict[str, Any], *, forward_candidate: bool
+) -> tuple[str, str | None]:
+    """Keep callable mappings provisional when scanning the forward reference."""
+
+    implementation = rule["implementation"]
+    notes = rule.get("notes")
+    if forward_candidate and implementation == "complete":
+        candidate_note = (
+            "Forward-target callable classification is provisional; this mapping does not "
+            "constitute behavioral evidence."
+        )
+        notes = f"{notes} {candidate_note}" if notes else candidate_note
+        implementation = "partial"
+    return implementation, notes
+
+
 def materialize_behavioral_contract(
     contract: dict[str, Any],
     *,
@@ -519,15 +536,9 @@ def build_inventory(args: argparse.Namespace) -> dict[str, Any]:
             )
             continue
         validate_rule(item.item_id, rule)
-        implementation = rule["implementation"]
-        notes = rule.get("notes")
-        if forward_candidate and implementation == "complete":
-            implementation = "partial"
-            candidate_note = (
-                "Forward-target callable classification is provisional; this mapping does not "
-                "constitute behavioral evidence."
-            )
-            notes = f"{notes} {candidate_note}" if notes else candidate_note
+        implementation, notes = classify_rule_for_candidate(
+            rule, forward_candidate=forward_candidate
+        )
         entries.append(
             {
                 "id": item.item_id,
@@ -896,6 +907,39 @@ def run_generator_self_tests() -> None:
     malformed_contract = dict(behavioral_contract)
     malformed_contract["requirements"] = [{"id": "broken"}]
     expect(validate_behavioral_contract(malformed_contract), "malformed behavioral contract")
+    contradictory_contract = json.loads(json.dumps(behavioral_contract))
+    contradictory_contract["coverage_status"] = "complete"
+    expect(
+        validate_behavioral_contract(contradictory_contract),
+        "contradictory complete coverage claim",
+    )
+    hardware_contract = json.loads(json.dumps(behavioral_contract))
+    hardware_contract["coverage_status"] = "hardware-unverified"
+    hardware_contract["requirements"][0]["evidence_status"] = "hardware-unverified"
+    expect(
+        not validate_behavioral_contract(hardware_contract),
+        "hardware-unverified evidence status",
+    )
+    blocked_contract = json.loads(json.dumps(behavioral_contract))
+    blocked_contract["coverage_status"] = "blocked"
+    blocked_contract["requirements"][0]["evidence_status"] = "blocked"
+    expect(not validate_behavioral_contract(blocked_contract), "blocked evidence status")
+    wildcard_rule = {
+        "pattern": "RNS.*",
+        "implementation": "complete",
+        "rust_surface": ["reticulum-rs"],
+        "evidence": ["unit"],
+    }
+    validate_rule("RNS.future_callable", wildcard_rule)
+    candidate_implementation, candidate_notes = classify_rule_for_candidate(
+        wildcard_rule, forward_candidate=True
+    )
+    expect(candidate_implementation == "partial", "forward wildcard remains provisional")
+    expect(candidate_notes and "provisional" in candidate_notes, "forward wildcard is explained")
+    baseline_implementation, _ = classify_rule_for_candidate(
+        wildcard_rule, forward_candidate=False
+    )
+    expect(baseline_implementation == "complete", "active baseline keeps historical mapping")
 
     baseline = {"version": "1.5.2", "revision": "c" * 40}
     target = {
@@ -934,6 +978,17 @@ def run_generator_self_tests() -> None:
                 generated_payload, mapping_path, baseline=baseline, target=target
             ),
             "generated behavioral contract drift",
+        )
+        stale_payload = {
+            "references": references,
+            "behavioral_contract": json.loads(json.dumps(materialized_contract)),
+        }
+        stale_payload["behavioral_contract"]["requirements"][0]["reference"]["revision"] = "d" * 40
+        expect(
+            validate_generated_behavioral_contract(
+                stale_payload, mapping_path, baseline=baseline, target=target
+            ),
+            "stale generated reference",
         )
 
         verified_contract = json.loads(json.dumps(materialized_contract))
@@ -988,6 +1043,50 @@ def run_generator_self_tests() -> None:
                 expected_target=target,
             ),
             "unmapped target callable",
+        )
+        expanded_payload = json.loads(json.dumps(unmapped_payload))
+        expanded_payload["items"][0].update(
+            {
+                "implementation": "partial",
+                "rust_surface": ["reticulum-rs"],
+                "evidence": ["unit"],
+            }
+        )
+        expanded_payload["summary"] = {
+            "total": 1,
+            "complete": 0,
+            "partial": 1,
+            "not-applicable": 0,
+        }
+        expect(
+            not validate_inventory(
+                expanded_payload,
+                False,
+                expected_baseline=baseline,
+                expected_target=target,
+            ),
+            "inventory accepts a variable item count",
+        )
+        expanded_payload["items"].append(
+            {
+                "id": "RNS.another_callable",
+                "kind": "function",
+                "source": "extra.py",
+                "implementation": "partial",
+                "rust_surface": ["reticulum-rs"],
+                "evidence": ["unit"],
+            }
+        )
+        expanded_payload["summary"]["total"] = 2
+        expanded_payload["summary"]["partial"] = 2
+        expect(
+            not validate_inventory(
+                expanded_payload,
+                False,
+                expected_baseline=baseline,
+                expected_target=target,
+            ),
+            "inventory count is derived from items",
         )
 
     rendered = render_rust_parity(
