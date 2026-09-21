@@ -89,6 +89,12 @@ revision for runtime consumers without changing the existing advisory SDK/RPC
 schema before the contract is proven. No row is promoted by a local parser,
 mock, attached-node-only check, or old release artifact.
 
+The bounded contract-fixture evidence is recorded in
+[`evidence/606-behavioral-contract.md`](../goals/reticulum-reference-parity-605/evidence/606-behavioral-contract.md),
+and the merged PR #604 review/check record is recorded in
+[`evidence/607-pr604-review.md`](../goals/reticulum-reference-parity-605/evidence/607-pr604-review.md).
+Both remain partial and do not promote the forward behavioral rows.
+
 The #608 implementation slice now has committed local software evidence in
 [`evidence/608-ifac.md`](../goals/reticulum-reference-parity-605/evidence/608-ifac.md):
 configured carrier ingress/egress, live reconfiguration, child inheritance,
