@@ -5,6 +5,8 @@ use std::process::{Child, Command, Output, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
+static PYTHON_INTEROP_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 fn free_port() -> io::Result<u16> {
     Ok(std::net::TcpListener::bind("127.0.0.1:0")?.local_addr()?.port())
 }
@@ -771,9 +773,258 @@ print(json.dumps(result, sort_keys=True))
         .output()
 }
 
+fn run_python_work_client(
+    repo: &Path,
+    config_dir: &Path,
+    identity: &Path,
+    destination: &str,
+    mode: &str,
+    work_id: Option<u64>,
+) -> io::Result<Output> {
+    const CLIENT: &str = r#"
+import json
+import os
+import sys
+import threading
+import RNS
+from RNS.vendor import umsgpack as mp
+
+config_dir, identity_path, destination_hex, mode = sys.argv[1:5]
+work_id = int(sys.argv[5]) if len(sys.argv) > 5 else None
+RNS.Reticulum(configdir=config_dir, loglevel=0)
+identity = RNS.Identity.from_file(identity_path) if os.path.isfile(identity_path) else RNS.Identity()
+if not os.path.isfile(identity_path):
+    identity.to_file(identity_path)
+
+destination_hash = bytes.fromhex(destination_hex)
+if not RNS.Transport.await_path(destination_hash, timeout=30):
+    raise RuntimeError("could not resolve rngit Git destination")
+remote_identity = RNS.Identity.recall(destination_hash)
+if remote_identity is None:
+    raise RuntimeError("could not recall rngit Git identity")
+
+destination = RNS.Destination(
+    remote_identity,
+    RNS.Destination.OUT,
+    RNS.Destination.SINGLE,
+    "git",
+    "repositories",
+)
+link_ready = threading.Event()
+link_failed = []
+
+def established(link):
+    link.identify(identity)
+    link_ready.set()
+
+def closed(link):
+    if not link_ready.is_set():
+        link_failed.append("Git link closed before activation")
+        link_ready.set()
+
+link = RNS.Link(destination)
+link.set_link_established_callback(established)
+link.set_link_closed_callback(closed)
+if not link_ready.wait(30):
+    raise RuntimeError("rngit Git link establishment timed out")
+if link_failed:
+    raise RuntimeError(link_failed[0])
+
+def request(data):
+    finished = threading.Event()
+    result = {}
+    def response(receipt):
+        result["payload"] = receipt.response
+        finished.set()
+    def failed(receipt):
+        result["error"] = "request failed"
+        finished.set()
+    receipt = link.request(
+        "/mgmt/work",
+        data,
+        response_callback=response,
+        failed_callback=failed,
+        timeout=30,
+    )
+    if receipt is False:
+        raise RuntimeError("work request was not sent")
+    if not finished.wait(30):
+        raise RuntimeError("work request timed out")
+    if "error" in result:
+        raise RuntimeError(result["error"])
+    return result["payload"]
+
+if mode == "create":
+    content = "Python restart work document body"
+    created = request({
+        0: "group/repo",
+        "operation": "create",
+        "title": "Python restart work",
+        "content": content,
+        "format": "markdown",
+        "signature": identity.sign(content.encode("utf-8")),
+    })
+    if created[0] != 0:
+        raise RuntimeError("work create response was not successful")
+    payload = mp.unpackb(created[1:])
+    result = {"id": payload["id"], "scope": payload["scope"]}
+else:
+    if work_id is None:
+        raise RuntimeError("verification requires a work ID")
+    listed = request({0: "group/repo", "operation": "list", "scope": "active"})
+    if listed[0] != 0:
+        raise RuntimeError("work list response was not successful")
+    listing = mp.unpackb(listed[1:])
+    active = listing.get("active", [])
+    persisted = any(document.get("id") == work_id for document in active)
+    viewed = request({
+        0: "group/repo",
+        "operation": "view",
+        "doc_id": work_id,
+        "scope": "active",
+    })
+    if viewed[0] != 0:
+        raise RuntimeError("work view response was not successful")
+    document = mp.unpackb(viewed[1:])
+    result = {
+        "id": work_id,
+        "persisted": persisted,
+        "content": document.get("content"),
+        "title": document.get("meta", {}).get("title"),
+    }
+link.teardown()
+print(json.dumps(result, sort_keys=True))
+"#;
+    let mut command = Command::new(python_bin());
+    command.arg("-c").arg(CLIENT).arg(config_dir).arg(identity).arg(destination).arg(mode);
+    if let Some(work_id) = work_id {
+        command.arg(work_id.to_string());
+    }
+    command.env("PYTHONPATH", repo).output()
+}
+
+fn spawn_rngit_server(root: &Path, port: u16, identity_seed: &str) -> io::Result<Child> {
+    Command::new(env!("CARGO_BIN_EXE_rngit"))
+        .args([
+            "--root",
+            root.to_string_lossy().as_ref(),
+            "--listen",
+            &format!("127.0.0.1:{port}"),
+            "--identity-seed",
+            identity_seed,
+            "--silent",
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+}
+
+#[test]
+#[ignore = "requires local Python Reticulum checkout"]
+fn rngit_work_survives_process_restart_for_pinned_python_client() -> io::Result<()> {
+    let _test_guard = PYTHON_INTEROP_TEST_LOCK.lock().expect("Python interop test lock poisoned");
+    let temp = tempfile::tempdir()?;
+    let root = create_repository_fixture(temp.path())?;
+    let python_repo = python_repo();
+    if !python_repo.join("RNS/Link.py").is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("pinned Python Reticulum checkout not found: {}", python_repo.display()),
+        ));
+    }
+
+    let port = free_port()?;
+    let identity_seed = "rngit-python-restart-server";
+    let config_dir = temp.path().join("python-client");
+    fs::create_dir_all(&config_dir)?;
+    write_python_config(&config_dir, port)?;
+    let identity = config_dir.join("identity");
+    let destination = rust_git_destination(&root, identity_seed)?;
+    let mut server = spawn_rngit_server(&root, port, identity_seed)?;
+
+    let result = (|| {
+        wait_for_port(port, &mut server)?;
+        let created = run_python_work_client(
+            &python_repo,
+            &config_dir,
+            &identity,
+            &destination,
+            "create",
+            None,
+        )?;
+        if !created.status.success() {
+            return Err(io::Error::other(format!(
+                "Python work creator failed: {}\nstdout:\n{}\nstderr:\n{}",
+                created.status,
+                String::from_utf8_lossy(&created.stdout),
+                String::from_utf8_lossy(&created.stderr)
+            )));
+        }
+        let created_json: serde_json::Value =
+            serde_json::from_slice(&created.stdout).map_err(|error| {
+                io::Error::other(format!(
+                    "Python work creator returned invalid JSON: {error}\nstdout:\n{}",
+                    String::from_utf8_lossy(&created.stdout)
+                ))
+            })?;
+        let work_id = created_json
+            .get("id")
+            .and_then(serde_json::Value::as_u64)
+            .ok_or_else(|| io::Error::other("Python work creator omitted numeric ID"))?;
+        if created_json.get("scope").and_then(serde_json::Value::as_str) != Some("active") {
+            return Err(io::Error::other("Python work creator did not return active scope"));
+        }
+
+        server.kill()?;
+        server.wait()?;
+        server = spawn_rngit_server(&root, port, identity_seed)?;
+        wait_for_port(port, &mut server)?;
+
+        let verified = run_python_work_client(
+            &python_repo,
+            &config_dir,
+            &identity,
+            &destination,
+            "verify",
+            Some(work_id),
+        )?;
+        if !verified.status.success() {
+            return Err(io::Error::other(format!(
+                "Python work verifier failed: {}\nstdout:\n{}\nstderr:\n{}",
+                verified.status,
+                String::from_utf8_lossy(&verified.stdout),
+                String::from_utf8_lossy(&verified.stderr)
+            )));
+        }
+        let verified_json: serde_json::Value =
+            serde_json::from_slice(&verified.stdout).map_err(|error| {
+                io::Error::other(format!(
+                    "Python work verifier returned invalid JSON: {error}\nstdout:\n{}",
+                    String::from_utf8_lossy(&verified.stdout)
+                ))
+            })?;
+        if verified_json.get("persisted") != Some(&serde_json::Value::Bool(true))
+            || verified_json.get("content").and_then(serde_json::Value::as_str)
+                != Some("Python restart work document body")
+            || verified_json.get("title").and_then(serde_json::Value::as_str)
+                != Some("Python restart work")
+        {
+            return Err(io::Error::other(format!(
+                "work document did not survive restart: {verified_json}"
+            )));
+        }
+        Ok(())
+    })();
+
+    let _ = server.kill();
+    let _ = server.wait();
+    result
+}
+
 #[test]
 #[ignore = "requires local Python Reticulum checkout"]
 fn rngit_serves_pages_and_media_to_pinned_python_client() -> io::Result<()> {
+    let _test_guard = PYTHON_INTEROP_TEST_LOCK.lock().expect("Python interop test lock poisoned");
     let temp = tempfile::tempdir()?;
     let root = create_repository_fixture(temp.path())?;
     let python_repo = python_repo();
