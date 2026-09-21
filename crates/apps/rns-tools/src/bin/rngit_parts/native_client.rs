@@ -184,11 +184,11 @@ impl NativeRngitClient {
                                         Ok((received_id, response)) if received_id.as_slice() == request_id.as_slice() => {
                                             return decode_response_value(response);
                                         }
-                                        Ok(_) if path == "/git/fetch" => {
-                                            return Ok(python_fetch_response(complete.data));
+                                        Ok(_) if matches!(path, "/git/fetch" | "/mgmt/release") => {
+                                            return Ok(python_resource_response(complete.data));
                                         }
-                                        Err(_) if path == "/git/fetch" => {
-                                            return Ok(python_fetch_response(complete.data));
+                                        Err(_) if matches!(path, "/git/fetch" | "/mgmt/release") => {
+                                            return Ok(python_resource_response(complete.data));
                                         }
                                         Ok(_) => {}
                                         Err(error) => {
@@ -251,11 +251,11 @@ fn decode_response_value(value: rmpv::Value) -> io::Result<Vec<u8>> {
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "rngit response was not binary"))
 }
 
-fn python_fetch_response(mut bundle: Vec<u8>) -> Vec<u8> {
-    // Python returns a successful Git bundle as the raw Resource body and
-    // carries the zero result code in Resource metadata. The Rust client API
-    // exposes the common rngit response shape, so restore that status byte at
-    // this compatibility boundary.
-    bundle.insert(0, 0);
-    bundle
+fn python_resource_response(mut data: Vec<u8>) -> Vec<u8> {
+    // Python returns successful Git bundles and release artifacts as raw
+    // Resource bodies and carries their success metadata separately. The Rust
+    // client API exposes the common rngit response shape, so restore the zero
+    // status byte at this compatibility boundary.
+    data.insert(0, 0);
+    data
 }

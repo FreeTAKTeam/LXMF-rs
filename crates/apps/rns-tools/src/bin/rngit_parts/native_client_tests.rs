@@ -67,6 +67,13 @@ fn native_rust_client_requests_pinned_python_rngit() -> test_io::Result<()> {
         .then_some(())
         .ok_or_else(|| test_io::Error::other("could not commit Python rngit source"))?;
     TestCommand::new("git")
+        .current_dir(&source)
+        .args(["tag", "v1.0.0"])
+        .status()?
+        .success()
+        .then_some(())
+        .ok_or_else(|| test_io::Error::other("could not tag Python rngit release fixture"))?;
+    TestCommand::new("git")
         .args(["clone", "-q", "--bare", source.to_string_lossy().as_ref(), repository.to_string_lossy().as_ref()])
         .status()?
         .success()
@@ -78,14 +85,6 @@ fn native_rust_client_requests_pinned_python_rngit() -> test_io::Result<()> {
     )?;
     test_fs::write(repository.with_extension("allowed"), "read:all\nwrite:all\ncreate:all\nrelease:all\n")?;
     let release_dir = repository.with_extension("releases").join("v1.0.0");
-    test_fs::create_dir_all(release_dir.join("artifacts"))?;
-    test_fs::write(
-        release_dir.join("META"),
-        "tag=v1.0.0\nstatus=published\ncreated=1700000000\ncreated_by=native-test\n",
-    )?;
-    test_fs::write(release_dir.join("RELEASE.md"), "# Native test release\n")?;
-    test_fs::write(release_dir.join("artifacts/release.txt"), "release artifact\n")?;
-    test_fs::write(repository.with_extension("releases").join("latest"), "v1.0.0\n")?;
 
     let port = std::net::TcpListener::bind("127.0.0.1:0")?.local_addr()?.port();
     let rns_config = temp.path().join("python-rns");
@@ -252,6 +251,31 @@ while node._should_run:
             )));
         }
 
+        let release_init = client
+            .create_release_init(&remote, "v1.0.0", None, "# Native test release\n", "markdown")
+            .map_err(test_io::Error::other)?;
+        if release_init.first().copied() != Some(0) {
+            return Err(test_io::Error::other(format!(
+                "Python release init failed: {release_init:?}"
+            )));
+        }
+        let release_artifact = b"release artifact\n";
+        let artifact_upload = client
+            .upload_release_artifact(&remote, "v1.0.0", "release.txt", release_artifact)
+            .map_err(test_io::Error::other)?;
+        if artifact_upload.first().copied() != Some(0) {
+            return Err(test_io::Error::other(format!(
+                "Python release artifact upload failed: {artifact_upload:?}"
+            )));
+        }
+        let release_finalize = client
+            .finalize_release(&remote, "v1.0.0")
+            .map_err(test_io::Error::other)?;
+        if release_finalize.first().copied() != Some(0) {
+            return Err(test_io::Error::other(format!(
+                "Python release finalize failed: {release_finalize:?}"
+            )));
+        }
         let releases = client
             .list_releases(&remote)
             .map_err(test_io::Error::other)?;
@@ -270,6 +294,16 @@ while node._should_run:
         {
             return Err(test_io::Error::other(format!(
                 "Python release view omitted v1.0.0: {release_view:?}"
+            )));
+        }
+        let fetched_artifact = client
+            .fetch_release_artifact(&remote, "v1.0.0", "release.txt")
+            .map_err(test_io::Error::other)?;
+        if fetched_artifact.first().copied() != Some(0)
+            || fetched_artifact.get(1..) != Some(release_artifact.as_slice())
+        {
+            return Err(test_io::Error::other(format!(
+                "Python release artifact mismatch: {fetched_artifact:?}"
             )));
         }
         let latest_release = client
