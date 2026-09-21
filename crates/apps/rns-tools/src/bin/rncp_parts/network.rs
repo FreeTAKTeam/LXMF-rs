@@ -9,6 +9,7 @@ use rns_transport::iface::{IfaceRole, InterfaceMode};
 use rns_transport::transport::{Transport, TransportConfig};
 use std::collections::HashSet;
 use std::fs;
+use std::future::Future;
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -76,11 +77,24 @@ pub(crate) async fn run(cli: &Cli) -> io::Result<()> {
         ));
     }
     if cli.fetch {
-        client::fetch(&runtime, cli.source()?, cli.destination()?).await
+        run_with_cancellation(client::fetch(&runtime, cli.source()?, cli.destination()?)).await
     } else if cli.source.is_some() || cli.destination.is_some() {
-        client::send(&runtime, cli.source()?, cli.destination()?).await
+        run_with_cancellation(client::send(&runtime, cli.source()?, cli.destination()?)).await
     } else {
         server::serve(runtime).await
+    }
+}
+
+async fn run_with_cancellation<F>(operation: F) -> io::Result<()>
+where
+    F: Future<Output = io::Result<()>>,
+{
+    tokio::select! {
+        result = operation => result,
+        signal = tokio::signal::ctrl_c() => {
+            signal.map_err(|error| io::Error::other(format!("could not install interrupt handler: {error}")))?;
+            Err(io::Error::new(io::ErrorKind::Interrupted, "operation cancelled by user"))
+        }
     }
 }
 

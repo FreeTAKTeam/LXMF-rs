@@ -409,3 +409,40 @@ fn rncp_fetch_reports_destination_disk_error() -> io::Result<()> {
     let _ = listener.wait();
     result
 }
+
+#[cfg(unix)]
+#[test]
+fn rncp_ctrl_c_reports_cancellation() -> io::Result<()> {
+    let temp = tempfile::tempdir()?;
+    let source = temp.path().join("cancel.bin");
+    fs::write(&source, b"cancel payload")?;
+    let port = free_port()?;
+    let binary = env!("CARGO_BIN_EXE_rncp");
+    let client = Command::new(binary)
+        .arg(&source)
+        .arg("00000000000000000000000000000000")
+        .args([
+            "--connect",
+            &format!("127.0.0.1:{port}"),
+            "--timeout",
+            "30",
+            "--silent",
+            "--identity-seed",
+            "rncp-process-cancel",
+        ])
+        .current_dir(temp.path())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    thread::sleep(Duration::from_millis(100));
+    let signal = Command::new("kill").args(["-INT", &client.id().to_string()]).status()?;
+    assert!(signal.success(), "failed to send SIGINT to rncp client");
+    let output = client.wait_with_output()?;
+    assert!(!output.status.success(), "cancelled rncp client unexpectedly succeeded");
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("operation cancelled by user"),
+        "cancelled rncp stderr did not preserve the cancellation category: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    Ok(())
+}
