@@ -193,10 +193,11 @@ matching and deliberate drift, and the active-baseline plus forward-candidate
 inventories regenerate at their pinned references. The row remains partial and
 unverified because the full differential matrix, exact provenance and hosted
 exact-head workflows, and #616 operational evidence are still open. The local
-aggregate release gate now passes on candidate `78b98aed`, including the
-workspace tests, Miri, packaging, audit, boundary, reproducible-build,
-embedded-footprint, and soak/mesh checks; this local result does not promote
-the row or the parent to complete.
+aggregate release gate now passes on software candidate `070b599c`, including
+2,659 nextest tests, Miri, exact pinned-reference checks, packaging, audit,
+boundary, reproducible-build, embedded-footprint, and soak/mesh checks with
+zero soak failures; this local result does not promote the row or the parent
+to complete.
 
 ## Merged base increment
 

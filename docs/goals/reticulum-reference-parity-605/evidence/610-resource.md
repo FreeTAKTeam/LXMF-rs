@@ -7,7 +7,10 @@ it does not promote the full #610 acceptance contract or close parent issue
 ## Reference and candidate
 
 - Candidate branch: `codex/issue-605-parity`.
-- Candidate commit: `4ebaf762236e03df8ae56fd55696bd51c2e3de46`.
+- Historical evidence candidate: `4ebaf762236e03df8ae56fd55696bd51c2e3de46`.
+- Current branch carrying this behavior: `070b599c`; later commits preserve
+  this slice while adding adjacent parity work. The checks below are not
+  being relabeled as reruns at the newer commit.
 - Candidate base: `a5425366` (the merged PR #603 base used by the #605 plan).
 - Pinned Reticulum reference: `99de23c040d507e3fefca19e87b182302902725d`.
 - Reference surfaces: `RNS/Resource.py`, `RNS/Link.py`, and

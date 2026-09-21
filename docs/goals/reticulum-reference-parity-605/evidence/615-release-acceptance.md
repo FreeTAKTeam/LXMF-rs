@@ -2,9 +2,25 @@
 
 Status: **partial / unverified**. This records the bounded evidence-contract
 increment, local release-gate repairs, exact-target inventory gate, and the
-clean local Python/Rust matrix through candidate commit `fd999d2d` on
-`codex/issue-605-parity`; it does not
-claim completion of #615 or #605.
+clean local Python/Rust matrix through the latest software candidate
+`070b599c` on `codex/issue-605-parity`; it does not claim completion of #615
+or #605.
+
+## Latest local release-gate run
+
+The latest full `cargo xtask release-check` ran against software candidate
+`070b599c` on 2026-09-21 UTC and passed. The gate reported 2,659 nextest
+tests passed, Miri 29 passed with 14 ignored, exact baseline and forward
+Python pins, active surface inventory `1,858 total / 1,857 complete / 0
+partial / 1 not-applicable`, reproducible packaging, audit, boundary,
+module-size, embedded-footprint, SDK, backup/restore, and license/source
+checks passed. The network soak completed with zero failures. The only
+non-failing notices were the known loopback dispersion warnings (Rust 18.19%
+and Python 16.77%), existing allowed legacy-shim notices, and expected
+packaging dry-run/already-published-crate warnings.
+
+This is local candidate evidence, not a hosted exact-head verdict and not
+physical, platform, external-client, public-network, or operational evidence.
 
 ## Reference and ownership
 
@@ -121,7 +137,7 @@ cargo test -p rns-tools --bin rngit --all-features                            PA
   (27 tests)
 cargo run -p xtask -- interop-artifacts                                       PASS
 cargo xtask release-check                                                      PASS
-  (local candidate run, 2026-09-21 UTC; nextest 2,639 passed; Miri 29 passed /
+  (local candidate run, 2026-09-21 UTC; software candidate `070b599c`; nextest 2,659 passed; Miri 29 passed /
    14 ignored; backup/restore, packaging, audit, boundary, license/source,
    reproducible-build, embedded-footprint, and SDK gates passed; soak/mesh
    reported zero failures; module-size checks passed)
