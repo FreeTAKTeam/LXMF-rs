@@ -74,9 +74,18 @@ fn native_rust_client_requests_pinned_python_rngit() -> test_io::Result<()> {
         .ok_or_else(|| test_io::Error::other("could not create Python rngit bare repository"))?;
     test_fs::write(
         root.join("group.allowed"),
-        "read:all\nwrite:all\ncreate:all\ninteract:all\nadmin:all\n",
+        "read:all\nwrite:all\ncreate:all\nrelease:all\ninteract:all\nadmin:all\n",
     )?;
-    test_fs::write(repository.with_extension("allowed"), "read:all\nwrite:all\ncreate:all\n")?;
+    test_fs::write(repository.with_extension("allowed"), "read:all\nwrite:all\ncreate:all\nrelease:all\n")?;
+    let release_dir = repository.with_extension("releases").join("v1.0.0");
+    test_fs::create_dir_all(release_dir.join("artifacts"))?;
+    test_fs::write(
+        release_dir.join("META"),
+        "tag=v1.0.0\nstatus=published\ncreated=1700000000\ncreated_by=native-test\n",
+    )?;
+    test_fs::write(release_dir.join("RELEASE.md"), "# Native test release\n")?;
+    test_fs::write(release_dir.join("artifacts/release.txt"), "release artifact\n")?;
+    test_fs::write(repository.with_extension("releases").join("latest"), "v1.0.0\n")?;
 
     let port = std::net::TcpListener::bind("127.0.0.1:0")?.local_addr()?.port();
     let rns_config = temp.path().join("python-rns");
@@ -241,6 +250,46 @@ while node._should_run:
             return Err(test_io::Error::other(format!(
                 "Python Git push updated {remote_head}, expected {expected_head}"
             )));
+        }
+
+        let releases = client
+            .list_releases(&remote)
+            .map_err(test_io::Error::other)?;
+        if releases.first().copied() != Some(0)
+            || !releases.windows("v1.0.0".len()).any(|window| window == b"v1.0.0")
+        {
+            return Err(test_io::Error::other(format!(
+                "Python release list omitted v1.0.0: {releases:?}"
+            )));
+        }
+        let release_view = client
+            .view_release(&remote, "v1.0.0")
+            .map_err(test_io::Error::other)?;
+        if release_view.first().copied() != Some(0)
+            || !release_view.windows("v1.0.0".len()).any(|window| window == b"v1.0.0")
+        {
+            return Err(test_io::Error::other(format!(
+                "Python release view omitted v1.0.0: {release_view:?}"
+            )));
+        }
+        let latest_release = client
+            .latest_release(&remote, "v1.0.0")
+            .map_err(test_io::Error::other)?;
+        if latest_release.first().copied() != Some(0) {
+            return Err(test_io::Error::other(format!(
+                "Python release latest update failed: {latest_release:?}"
+            )));
+        }
+        let deleted_release = client
+            .delete_release(&remote, "v1.0.0")
+            .map_err(test_io::Error::other)?;
+        if deleted_release.first().copied() != Some(0) {
+            return Err(test_io::Error::other(format!(
+                "Python release delete failed: {deleted_release:?}"
+            )));
+        }
+        if release_dir.exists() {
+            return Err(test_io::Error::other("Python release delete left release files"));
         }
 
         let created = client

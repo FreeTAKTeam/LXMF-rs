@@ -286,7 +286,8 @@ impl ReticulumGitClient {
         let parsed = self.ensure_repository_remote(remote)?;
         let mut extra = vec![(rmpv::Value::String("operation".into()), rmpv::Value::String(operation.into()))];
         if let Some(target) = target {
-            extra.push((rmpv::Value::String("target".into()), rmpv::Value::String(target.into())));
+            let target_key = if self.native_transport_attached() { "tag" } else { "target" };
+            extra.push((rmpv::Value::String(target_key.into()), rmpv::Value::String(target.into())));
         }
         self.request_repository(
             RNGIT_PATH_RELEASE,
