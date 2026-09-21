@@ -1,7 +1,7 @@
 # #613 rngit NomadNet pages, media, and link cleanup evidence
 
 Status: **partial / unverified**. This records the bounded implementation and
-live pinned-Python trace at candidate commit `1bc8af52` on
+live pinned-Python trace at candidate commit `e41189c8` on
 `codex/issue-605-parity`; it does not claim the
 full #613 or #605 acceptance gate.
 
@@ -63,8 +63,11 @@ arrives as a Python Resource with `name=image.png`, size `8192`, and SHA-256
 The same trace requests a valid PNG with `RNGIT_MEDIA_BACKEND=ffmpeg`; it
 returns `name=valid.webp` and a validated `RIFF/WEBP` payload. The invalid
 image fixture still follows raw fallback, and both Resource responses use the
-explicit `auto_compress=False` boundary; this does not promote
-visual-rendering parity.
+explicit `auto_compress=False` boundary. The same pinned client then submits
+media requests with a missing key, missing path, and insufficient path
+components; each receives no response/failure callback rather than an
+unexpected payload, proving the live malformed-request boundary fails closed.
+This does not promote visual-rendering parity.
 
 The module-size script now reports only the existing
 `crates/libs/rns-transport/src/resource/manager.rs:555` over-budget baseline;
@@ -86,7 +89,7 @@ limit.
   remain unverified. Invalid conversion fallback, WebP header validation,
   timeout/cleanup code paths, and argument construction are also covered
   locally.
-- Missing-key/malformed-media live failure transcripts, Reticulum public-key
-  work-document signature verification, restart/concurrent-writer/fault
+- Reticulum public-key work-document signature verification,
+  restart/concurrent-writer/fault
   transcripts, and end-to-end rngit Git/work network workflows remain open
   under #612/#613.

@@ -249,10 +249,11 @@ downloads raw media, checks metadata, size, and SHA-256, and validates a live
 `ffmpeg` PNG-to-WebP response with filename metadata. The separate
 `git.repositories` list/fetch/push/delete/create/sync/fork/mirror trace does
 not complete the page issue's broader Git/work acceptance. The row remains
-partial and unverified because missing-key/malformed-media live failures,
-other conversion backends, complete reference rendering, remaining page/file
-cases, restart/fault cleanup, and end-to-end rngit Git/work network workflows
-remain open.
+partial and unverified because other conversion backends, complete reference
+rendering, remaining page/file cases, restart/fault cleanup, and end-to-end
+rngit Git/work network workflows remain open. Commit `e41189c8` adds live
+malformed-media requests with missing keys, missing paths, and insufficient
+path components; each fails closed without an unexpected response.
 
 The #614 implementation slice now has committed local evidence in
 [`evidence/614-native-interfaces.md`](../goals/reticulum-reference-parity-605/evidence/614-native-interfaces.md):
