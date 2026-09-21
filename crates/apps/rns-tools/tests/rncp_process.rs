@@ -246,3 +246,36 @@ fn rncp_rejects_invalid_identity_and_unusable_save_path() -> io::Result<()> {
     );
     Ok(())
 }
+
+#[test]
+fn rncp_reports_path_discovery_timeout() -> io::Result<()> {
+    let temp = tempfile::tempdir()?;
+    let source = temp.path().join("payload.bin");
+    fs::write(&source, b"path discovery timeout payload")?;
+    let port = free_port()?;
+    let binary = env!("CARGO_BIN_EXE_rncp");
+    let destination = "00000000000000000000000000000000";
+    let output = Command::new(binary)
+        .arg(&source)
+        .arg(destination)
+        .args([
+            "--connect",
+            &format!("127.0.0.1:{port}"),
+            "--no-compress",
+            "--silent",
+            "--timeout",
+            "1",
+            "--identity-seed",
+            "rncp-process-timeout",
+        ])
+        .current_dir(temp.path())
+        .output()?;
+
+    assert!(!output.status.success(), "path discovery unexpectedly succeeded");
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("path discovery timed out"),
+        "timeout stderr did not preserve the path-discovery category: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    Ok(())
+}
