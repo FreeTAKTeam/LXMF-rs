@@ -180,9 +180,23 @@ impl NativeRngitClient {
                         Ok(event) if event.link_id == link_id => {
                             if let rns_transport::resource::ResourceEventKind::Complete(complete) = event.kind {
                                 if complete.is_response && complete.request_id.as_deref() == Some(request_id.as_slice()) {
-                                    let (_, response) = rns_transport::destination::link::unpack_response_envelope(&complete.data)
-                                        .map_err(|error| io::Error::other(format!("invalid rngit Resource response: {error:?}")))?;
-                                    return decode_response_value(response);
+                                    match rns_transport::destination::link::unpack_response_envelope(&complete.data) {
+                                        Ok((received_id, response)) if received_id.as_slice() == request_id.as_slice() => {
+                                            return decode_response_value(response);
+                                        }
+                                        Ok(_) if path == "/git/fetch" => {
+                                            return Ok(python_fetch_response(complete.data));
+                                        }
+                                        Err(_) if path == "/git/fetch" => {
+                                            return Ok(python_fetch_response(complete.data));
+                                        }
+                                        Ok(_) => {}
+                                        Err(error) => {
+                                            return Err(io::Error::other(format!(
+                                                "invalid rngit Resource response: {error:?}"
+                                            )))
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -235,4 +249,13 @@ fn decode_response_value(value: rmpv::Value) -> io::Result<Vec<u8>> {
         .as_slice()
         .map(ToOwned::to_owned)
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "rngit response was not binary"))
+}
+
+fn python_fetch_response(mut bundle: Vec<u8>) -> Vec<u8> {
+    // Python returns a successful Git bundle as the raw Resource body and
+    // carries the zero result code in Resource metadata. The Rust client API
+    // exposes the common rngit response shape, so restore that status byte at
+    // this compatibility boundary.
+    bundle.insert(0, 0);
+    bundle
 }

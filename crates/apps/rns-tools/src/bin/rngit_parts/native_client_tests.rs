@@ -26,20 +26,52 @@ fn native_rust_client_requests_pinned_python_rngit() -> test_io::Result<()> {
     let root = temp.path().join("python-rngit-root");
     let group = root.join("group");
     let repository = group.join("repo");
+    let source = temp.path().join("git-source");
     test_fs::create_dir_all(&group)?;
     TestCommand::new("git")
-        .args(["init", "--bare", "-q", repository.to_string_lossy().as_ref()])
+        .args(["init", "-q", source.to_string_lossy().as_ref()])
+        .status()?
+        .success()
+        .then_some(())
+        .ok_or_else(|| test_io::Error::other("could not create Python rngit source repository"))?;
+    TestCommand::new("git")
+        .current_dir(&source)
+        .args(["checkout", "-q", "-b", "main"])
+        .status()?
+        .success()
+        .then_some(())
+        .ok_or_else(|| test_io::Error::other("could not create Python rngit main branch"))?;
+    for (key, value) in [("user.email", "rngit-native@example.invalid"), ("user.name", "rngit-native")]
+    {
+        TestCommand::new("git")
+            .current_dir(&source)
+            .args(["config", key, value])
+            .status()?
+            .success()
+            .then_some(())
+            .ok_or_else(|| test_io::Error::other("could not configure Python rngit source"))?;
+    }
+    test_fs::write(source.join("README.md"), "native client fetch fixture\n")?;
+    TestCommand::new("git")
+        .current_dir(&source)
+        .args(["add", "README.md"])
+        .status()?
+        .success()
+        .then_some(())
+        .ok_or_else(|| test_io::Error::other("could not stage Python rngit source"))?;
+    TestCommand::new("git")
+        .current_dir(&source)
+        .args(["commit", "-q", "-m", "native client fetch fixture"])
+        .status()?
+        .success()
+        .then_some(())
+        .ok_or_else(|| test_io::Error::other("could not commit Python rngit source"))?;
+    TestCommand::new("git")
+        .args(["clone", "-q", "--bare", source.to_string_lossy().as_ref(), repository.to_string_lossy().as_ref()])
         .status()?
         .success()
         .then_some(())
         .ok_or_else(|| test_io::Error::other("could not create Python rngit bare repository"))?;
-    TestCommand::new("git")
-        .current_dir(&repository)
-        .args(["symbolic-ref", "HEAD", "refs/heads/main"])
-        .status()?
-        .success()
-        .then_some(())
-        .ok_or_else(|| test_io::Error::other("could not set Python rngit repository HEAD"))?;
     test_fs::write(
         root.join("group.allowed"),
         "read:all\nwrite:all\ncreate:all\ninteract:all\nadmin:all\n",
@@ -130,6 +162,13 @@ while node._should_run:
         let listing = client.handle_git_list(&remote, false).map_err(test_io::Error::other)?;
         if !listing.iter().any(|reference| reference.contains("HEAD")) {
             return Err(test_io::Error::other(format!("initial Git listing omitted HEAD: {listing:?}")));
+        }
+
+        let fetched = client
+            .process_fetch_queue(&remote, &["refs/heads/main".to_string()])
+            .map_err(test_io::Error::other)?;
+        if fetched.first().copied() != Some(0) || fetched.len() <= 1 {
+            return Err(test_io::Error::other(format!("Python Git fetch failed: {fetched:?}")));
         }
 
         let created = client
