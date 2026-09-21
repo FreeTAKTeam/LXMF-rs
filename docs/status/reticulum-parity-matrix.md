@@ -543,8 +543,11 @@ the cache already holds no longer evicts an unrelated one. The local-client
 implementation now applies the immediate single-retransmit timing and
 parent-interface classification under focused regression tests. Pinned
 shared-instance evidence currently covers TCP/Unix attachment and announce
-fan-out; mixed multi-hop packet/proof/link/Resource and restart traces remain
-open.
+fan-out plus a direct application/restart trace. A pinned two-carrier Python
+Channel trace now covers discovery, link establishment, ordered delivery, and
+the reply path through one forwarding Rust transport. Mixed multi-hop
+duplicate-suppression, Resource, persistence, close/reconnect, physical, and
+public-network evidence remains open.
 
 Enabled unknown interface kinds still parse so operators can see them in daemon
 status, but daemon startup marks them as failed with explicit

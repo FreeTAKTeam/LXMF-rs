@@ -42,6 +42,29 @@ fan-out does not become accidental network broadcast/transit.
     connected and emitted three announces.
   - raw report: `target/interop/local-interface-python-shared-605/report.json`
 
+## Multi-hop Python Channel trace
+
+The ignored Python interop suite now includes
+`python_to_python_channel_roundtrip_through_rust_transport`. It starts two
+independent pinned-Python Reticulum processes on separate Rust `TcpServer`
+interfaces owned by one Rust `Transport` with forwarding explicitly enabled.
+The client path request crosses the Rust transport, the Python endpoint link
+establishes through that route, and a Channel message plus its reply complete
+end to end.
+
+```text
+RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
+  cargo test -p reticulumd --test python_channel_interop \
+  python_to_python_channel_roundtrip_through_rust_transport -- --ignored --nocapture
+# 1 passed; 30 filtered out; 1.63s
+```
+
+The trace also exercised the existing Python process helper with a workspace-
+relative checkout path after the helper resolved relative `RETICULUM_PY_REPO`
+values against the workspace root. This is a software multi-hop Channel trace,
+not a shared-instance restart, Resource fault-injection, physical-carrier, or
+public-network acceptance result.
+
 ## Shared-boundary receive accounting and application trace
 
 The pinned Python `RNS/Transport.py::_inbound` path removes the receive-side
@@ -66,9 +89,10 @@ local-client child.
 ## Remaining acceptance boundary
 
 The combined evidence now proves pinned Python↔Rust local attachment, announce
-fan-out, a direct application/link exchange, and Rust daemon restart with
-identity continuity. It does not yet compare multi-hop packet/proof/link or
-Resource traffic, duplicate suppression across a multi-hop production path,
-cached versus scheduled announce persistence, or link-close/stream reconnect
-behavior. Those traces are still required before this row can be promoted.
+fan-out, a direct application/link exchange, Rust daemon restart with identity
+continuity, and a two-carrier multi-hop Python Channel exchange through one
+forwarding Rust transport. It does not yet compare duplicate suppression across
+a multi-hop production path, cached versus scheduled announce persistence,
+multi-hop Resource traffic, or link-close/stream reconnect behavior. Those
+traces are still required before this row can be promoted.
 Hardware and public-network evidence remain separate acceptance axes.

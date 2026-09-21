@@ -1639,16 +1639,17 @@
         "reference_paths": ["RNS/Transport.py", "RNS/Reticulum.py", "RNS/Interfaces/LocalInterface.py"],
         "rust_surface": ["crates/libs/rns-transport", "crates/apps/reticulumd"],
         "implementation": "partial",
-        "evidence": ["unit", "simulated", "planned"],
+        "evidence": ["unit", "simulated", "pinned-python", "planned"],
         "evidence_status": "unverified",
         "test_command": [
           "cargo test -p reticulum-rs-transport --lib",
           "cargo test -p reticulumd --bin reticulumd",
-          "cargo clippy -p reticulum-rs-transport --lib --all-features --no-deps -- -D warnings"
+          "cargo clippy -p reticulum-rs-transport --lib --all-features --no-deps -- -D warnings",
+          "RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop python_to_python_channel_roundtrip_through_rust_transport -- --ignored --nocapture"
         ],
         "evidence_artifact": "target/issue-605/evidence/609-shared-instance.json",
         "owner_issue": 609,
-        "notes": "Parent/child classification, immediate local-client retransmit, direct sibling fan-out, and local TCP/Unix parent marking are implemented; pinned Python-Rust shared-instance and multi-hop production traces remain unverified."
+        "notes": "Parent/child classification, immediate local-client retransmit, direct sibling fan-out, and local TCP/Unix parent marking are implemented; pinned Python-Rust shared-instance attachment/restart and a two-carrier Python Channel trace through one forwarding Rust transport are evidenced, while persistence, duplicate suppression, Resource, close/reconnect, and broader production traces remain unverified."
       },
       {
         "id": "reticulum-605-610-resource-stream-collision",

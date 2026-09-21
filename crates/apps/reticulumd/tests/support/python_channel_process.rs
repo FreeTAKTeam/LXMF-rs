@@ -196,6 +196,11 @@ pub(super) fn python_channel_interop_paths() -> PythonChannelInteropPaths {
     let reticulum_py_repo = std::env::var("RETICULUM_PY_REPO")
         .map(PathBuf::from)
         .unwrap_or_else(|_| repo_root.join("../reticulum"));
+    let reticulum_py_repo = if reticulum_py_repo.is_absolute() {
+        reticulum_py_repo
+    } else {
+        repo_root.join(reticulum_py_repo)
+    };
     let helper =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/support/python_channel_endpoint.py");
 

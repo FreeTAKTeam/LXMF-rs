@@ -93,8 +93,10 @@ The #609 implementation slice now has committed local software evidence in
 parent/child classification, shared-boundary receive-hop accounting, immediate
 single local-client retransmit, direct sibling announce fan-out, daemon local
 TCP/Unix parent marking, and a direct pinned Python↔Rust application/restart
-trace are covered. The row remains unverified until pinned Python↔Rust
-shared-instance and multi-hop production traces compare ordering, suppression,
+trace are covered. A new ignored pinned-Python trace also exchanges a Channel
+message and reply between two Python nodes over two Rust carrier interfaces
+owned by one forwarding Rust transport. The row remains unverified until
+shared-instance and multi-hop production traces compare duplicate suppression,
 announce persistence, Resource traffic, and close/reconnect behavior.
 
 The #610 implementation slice now has committed local evidence in
