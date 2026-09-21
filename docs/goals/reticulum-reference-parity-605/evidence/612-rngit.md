@@ -24,7 +24,7 @@ It does not close #612 or #605.
 | Permission sidecars | Canonical suffix paths (`.allowed`, `.work`, `.releases`), dotted repository names, ambiguous legacy file rejection, and legacy sidecar directories ignored | local verified |
 | Dynamic permissions | Executable node-owned resolvers, bounded stdout/stderr (64 KiB), two-second execution limit, UTF-8/exit-status failure propagation, and no remote replacement | local verified on Unix; Python execution parity unverified |
 | Permission state | Identity aliases, strict remote content validation, configured-group merging, deny preservation, blocked identities, administrator fallback, atomic replacement, and immediate in-memory refresh | local verified; differential parity unverified |
-| Work storage | Python-shaped root and response maps, binary identity/signature fields, integer IDs, floating-point timestamps, separate numeric comment files, 256 KiB document bound, and atomic MessagePack writes | local verified |
+| Work storage | Python-shaped root and response maps, binary identity/signature fields, integer IDs, floating-point timestamps, separate numeric comment files, 256 KiB document bound, atomic MessagePack writes, and node reload persistence | local verified |
 | Work operations | List/view/create/propose/edit/comment/delete/complete/activate/perms through `handle_work_request`, with scope/ID validation, document ownership/permissions, atomic transitions, canonical document permission files, and authenticated-peer signature validation for create/propose/edit | local and pinned-Python production-path verified; full service matrix unverified |
 | Cross-language data | A MessagePack fixture generated with Python `msgpack` is loaded and rendered by Rust, retaining binary author/signature/identity values; pinned Python Link requests reach Rust `git.repositories` Git paths plus `/mgmt/perms` and `/mgmt/work`, verify invalid and valid signatures, round-trip binary work metadata, exercise list/view/comment/edit/perms/complete/activate/delete, verify the Git bundle, mutate refs, register repositories, synchronize a configured remote, and clone fork/mirror targets | fixture and bounded request/response verified; restart/concurrency/fault matrix unverified |
 
@@ -60,7 +60,9 @@ the active 500-line module limit.
   network adapter supplies the identified peer key and verifies create,
   propose, and edit signatures; comment requests remain unsigned as in the
   pinned Python client.
-- The fixture proves Python-produced storage data, and the live trace proves
+- The fixture proves Python-produced storage data, the reload regression proves
+  work documents and document permission sidecars survive a fresh node load, and
+  the live trace proves
   Python↔Rust Git and management request/response sessions through a raw
   Python `RNS.Link`. Restart reload, malformed-document error transcripts,
   concurrent writers, disk-fault injection, and the full Python CLI workflow

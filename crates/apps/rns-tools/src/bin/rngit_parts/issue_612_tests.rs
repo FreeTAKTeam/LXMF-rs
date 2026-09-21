@@ -332,3 +332,92 @@ fn identified_peer_work_requests_verify_signatures_and_store_public_identity() {
         Some(64)
     );
 }
+
+#[test]
+fn work_documents_and_permission_sidecars_survive_node_reload() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let root = temp.path().join("rngit-root");
+    let group_path = root.join("group");
+    let repository_path = group_path.join("repo");
+    fs::create_dir_all(&group_path).expect("group");
+    assert!(Command::new("git")
+        .args(["init", "--bare", repository_path.to_string_lossy().as_ref()])
+        .status()
+        .expect("git")
+        .success());
+    fs::write(
+        root.join("group.allowed"),
+        "read:all\nwrite:all\ninteract:all\nadmin:all\n",
+    )
+    .expect("group permissions");
+
+    let signer = rns_transport::identity::PrivateIdentity::new_from_name("issue-612-reload");
+    let remote: [u8; 16] = signer
+        .address_hash()
+        .as_slice()
+        .try_into()
+        .expect("identity hash");
+    let content = "persisted work body";
+    let request = vec![
+        (rmpv::Value::from(0_u64), rmpv::Value::from("group/repo")),
+        (rmpv::Value::from("operation"), rmpv::Value::from("create")),
+        (rmpv::Value::from("title"), rmpv::Value::from("Reload me")),
+        (rmpv::Value::from("content"), rmpv::Value::from(content)),
+        (rmpv::Value::from("format"), rmpv::Value::from("markdown")),
+        (
+            rmpv::Value::from("signature"),
+            rmpv::Value::Binary(signer.sign(content.as_bytes()).to_bytes().to_vec()),
+        ),
+    ];
+    let mut node = ReticulumGitNode::default();
+    assert_eq!(node.load_repository_root(&root).expect("initial load"), 1);
+    let response = node.handle_work_request_with_peer_identity(
+        &request,
+        remote,
+        Some(*signer.as_identity()),
+    );
+    assert_eq!(response[0], ReticulumGitNode::RES_OK);
+    fs::write(
+        group_path.join("repo.work/1.allowed"),
+        "read:all\nwrite:all\ninteract:all\nadmin:all\n",
+    )
+    .expect("document permissions");
+
+    let mut restarted = ReticulumGitNode::default();
+    assert_eq!(restarted.load_repository_root(&root).expect("reload"), 1);
+    let listed = restarted.handle_work_request(
+        &[
+            (rmpv::Value::from(0_u64), rmpv::Value::from("group/repo")),
+            (rmpv::Value::from("operation"), rmpv::Value::from("list")),
+            (rmpv::Value::from("scope"), rmpv::Value::from("active")),
+        ],
+        remote,
+    );
+    assert_eq!(listed[0], ReticulumGitNode::RES_OK);
+    let listed = rmpv::decode::read_value(&mut std::io::Cursor::new(&listed[1..]))
+        .expect("decode reloaded list");
+    let active = map_value(
+        listed.as_map().expect("list map"),
+        &rmpv::Value::String("active".into()),
+    )
+    .and_then(rmpv::Value::as_array)
+    .expect("active list");
+    assert_eq!(active.len(), 1);
+    let viewed = restarted.handle_work_request(
+        &[
+            (rmpv::Value::from(0_u64), rmpv::Value::from("group/repo")),
+            (rmpv::Value::from("operation"), rmpv::Value::from("view")),
+            (rmpv::Value::from("doc_id"), rmpv::Value::from(1_u64)),
+            (rmpv::Value::from("scope"), rmpv::Value::from("active")),
+        ],
+        remote,
+    );
+    assert_eq!(viewed[0], ReticulumGitNode::RES_OK);
+    let viewed = rmpv::decode::read_value(&mut std::io::Cursor::new(&viewed[1..]))
+        .expect("decode reloaded view");
+    assert_eq!(
+        map_value(viewed.as_map().expect("view map"), &rmpv::Value::String("content".into()))
+            .and_then(rmpv::Value::as_str),
+        Some(content)
+    );
+}
