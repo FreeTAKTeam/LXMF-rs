@@ -15,6 +15,17 @@ from RNS.Channel import MessageBase
 from RNS.vendor import umsgpack
 
 
+def process_peak_rss_kib():
+    try:
+        import resource
+    except ImportError:
+        return None
+    value = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    if sys.platform == "darwin":
+        value /= 1024
+    return int(value)
+
+
 class MessageTest(MessageBase):
     MSGTYPE = 0xABCD
 
@@ -406,6 +417,7 @@ class ChannelClient:
                             "resource": "complete",
                             "size": len(resource_data),
                             "sha256": hashlib.sha256(resource_data).hexdigest(),
+                            "peak_rss_kib": process_peak_rss_kib(),
                         }
                     ),
                     flush=True,

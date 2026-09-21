@@ -396,3 +396,24 @@ pub(super) fn free_tcp_port() -> u16 {
         .expect("local addr")
         .port()
 }
+
+pub(super) fn process_peak_rss_kib(pid: u32) -> Option<u64> {
+    #[cfg(target_os = "linux")]
+    {
+        let status = fs::read_to_string(format!("/proc/{pid}/status")).ok()?;
+        status.lines().find_map(|line| {
+            line.strip_prefix("VmHWM:")
+                .and_then(|value| value.split_whitespace().next())
+                .and_then(|value| value.parse().ok())
+        })
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = pid;
+        None
+    }
+}
+
+pub(super) fn current_process_peak_rss_kib() -> Option<u64> {
+    process_peak_rss_kib(std::process::id())
+}
