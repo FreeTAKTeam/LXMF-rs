@@ -10,6 +10,22 @@ const RNGIT_PATH_RELEASE: &str = "/mgmt/release";
 const RNGIT_PATH_WORK: &str = "/mgmt/work";
 const RNGIT_PATH_PERMS: &str = "/mgmt/perms";
 
+pub(crate) fn rngit_paths() -> &'static [&'static str] {
+    &[
+        RNGIT_PATH_LIST,
+        RNGIT_PATH_FETCH,
+        RNGIT_PATH_PUSH,
+        RNGIT_PATH_DELETE,
+        RNGIT_PATH_CREATE,
+        RNGIT_PATH_FORK,
+        RNGIT_PATH_SYNC,
+        RNGIT_PATH_MIRROR,
+        RNGIT_PATH_RELEASE,
+        RNGIT_PATH_WORK,
+        RNGIT_PATH_PERMS,
+    ]
+}
+
 const RNGIT_RES_OK: u8 = 0x00;
 const RNGIT_RES_DISALLOWED: u8 = 0x01;
 const RNGIT_RES_INVALID_REQ: u8 = 0x02;
@@ -106,19 +122,7 @@ impl ReticulumGitNode {
     }
 
     pub fn register_request_handlers(&self) -> Vec<&'static str> {
-        let mut paths = vec![
-            RNGIT_PATH_LIST,
-            RNGIT_PATH_FETCH,
-            RNGIT_PATH_PUSH,
-            RNGIT_PATH_DELETE,
-            RNGIT_PATH_CREATE,
-            RNGIT_PATH_FORK,
-            RNGIT_PATH_SYNC,
-            RNGIT_PATH_MIRROR,
-            RNGIT_PATH_RELEASE,
-            RNGIT_PATH_WORK,
-            RNGIT_PATH_PERMS,
-        ];
+        let mut paths = rngit_paths().to_vec();
         paths.extend_from_slice(page_paths());
         paths
     }

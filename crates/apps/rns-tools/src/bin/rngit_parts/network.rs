@@ -1,4 +1,4 @@
-use super::{decode_page_request, page_paths, Cli, PageResponse, ReticulumGitNode};
+use super::{decode_page_request, page_paths, rngit_paths, Cli, PageResponse, ReticulumGitNode};
 use rns_transport::destination::link::{LinkEvent, LinkStatus};
 use rns_transport::destination::DestinationName;
 use rns_transport::hash::AddressHash;
@@ -21,6 +21,9 @@ const NULL_IDENTITY: [u8; 16] = [0; 16];
 struct Runtime {
     transport: Arc<Transport>,
     destination: Arc<Mutex<rns_transport::destination::SingleInputDestination>>,
+    git_destination: Arc<Mutex<rns_transport::destination::SingleInputDestination>>,
+    page_destination_hash: AddressHash,
+    git_destination_hash: AddressHash,
     node: Arc<Mutex<ReticulumGitNode>>,
     announce_app_data: Vec<u8>,
     silent: bool,
@@ -41,12 +44,18 @@ async fn run_async(cli: &Cli) -> io::Result<()> {
     let identity = load_identity(cli)?;
     let identity_hash = *identity.address_hash();
     let transport = Arc::new(Transport::new(TransportConfig::new("rngit", &identity, true)));
-    let destination =
-        transport.add_destination(identity, DestinationName::new("nomadnetwork", "node")).await;
+    let destination = transport
+        .add_destination(identity.clone(), DestinationName::new("nomadnetwork", "node"))
+        .await;
+    let git_destination = transport
+        .add_destination(identity, DestinationName::new("git", "repositories"))
+        .await;
     if cli.print_identity {
         let destination_hash = destination.lock().await.desc.address_hash;
+        let git_destination_hash = git_destination.lock().await.desc.address_hash;
         println!("Identity     : {}", hex::encode(identity_hash.as_slice()));
         println!("Listening on : {}", hex::encode(destination_hash.as_slice()));
+        println!("Git listening on : {}", hex::encode(git_destination_hash.as_slice()));
         return Ok(());
     }
 
@@ -65,9 +74,14 @@ async fn run_async(cli: &Cli) -> io::Result<()> {
         }
     }
     let announce_app_data = node.page_node_name.as_bytes().to_vec();
+    let page_destination_hash = destination.lock().await.desc.address_hash;
+    let git_destination_hash = git_destination.lock().await.desc.address_hash;
     let runtime = Runtime {
         transport,
         destination,
+        git_destination,
+        page_destination_hash,
+        git_destination_hash,
         node: Arc::new(Mutex::new(node)),
         announce_app_data,
         silent: cli.silent,
@@ -138,6 +152,7 @@ async fn serve(runtime: Runtime) -> io::Result<()> {
         tokio::select! {
             _ = announce_timer.tick() => {
                 runtime.transport.send_announce(&runtime.destination, Some(&runtime.announce_app_data)).await;
+                runtime.transport.send_announce(&runtime.git_destination, Some(&runtime.announce_app_data)).await;
             }
             _ = cleanup_timer.tick() => {
                 let candidates = runtime.node.lock().await.active_page_link_ids();
@@ -164,16 +179,19 @@ async fn serve(runtime: Runtime) -> io::Result<()> {
                 Ok(event) => {
                     match event.event {
                         LinkEvent::Activated => {
-                            let link_id = address_array(&event.id);
-                            runtime.node.lock().await.page_link_connected(link_id);
+                            if event.address_hash == runtime.page_destination_hash {
+                                let link_id = address_array(&event.id);
+                                runtime.node.lock().await.page_link_connected(link_id);
+                            }
                         }
-                        LinkEvent::Closed => {
+                        LinkEvent::Closed if event.address_hash == runtime.page_destination_hash => {
                             let removed = runtime.node.lock().await.page_link_closed(address_array(&event.id));
                             if removed > 0 && !runtime.silent {
                                 eprintln!("rngit: cleaned {removed} temporary media director{suffix}",
                                     suffix = if removed == 1 { "y" } else { "ies" });
                             }
                         }
+                        LinkEvent::Closed => {}
                         _ => {}
                     }
                 }
@@ -220,15 +238,30 @@ async fn process_request(
     request_id: Vec<u8>,
     payload: Vec<u8>,
 ) {
-    let Some(request) = decode_page_request(&payload).ok().flatten() else { return };
-    let _ = request.requested_at;
+    let Some(service) = service_for_link(runtime, &link_id).await else { return };
     let remote = remote_identity(runtime, &link_id).await;
-    let response = runtime.node.lock().await.handle_page_request(
-        request.path,
-        &request.data,
-        remote,
-        address_array(&link_id),
-    );
+    let response = match service {
+        RequestService::Pages => {
+            let Some(request) = decode_page_request(&payload).ok().flatten() else { return };
+            let _ = request.requested_at;
+            runtime.node.lock().await.handle_page_request(
+                request.path,
+                &request.data,
+                remote,
+                address_array(&link_id),
+            )
+        }
+        RequestService::Git => {
+            let Some(request) = decode_rngit_request(&payload).ok().flatten() else { return };
+            let _ = request.requested_at;
+            let mut encoded = Vec::new();
+            if rmpv::encode::write_value(&mut encoded, &request.data).is_err() {
+                return;
+            }
+            let data = runtime.node.lock().await.handle_request(request.path, &encoded, remote);
+            Some(PageResponse { data, metadata: None })
+        }
+    };
     if let Some(response) = response {
         if let Err(error) = send_response(runtime, link_id, request_id, response).await {
             if !runtime.silent {
@@ -236,6 +269,57 @@ async fn process_request(
             }
         }
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum RequestService {
+    Pages,
+    Git,
+}
+
+async fn service_for_link(runtime: &Runtime, link_id: &AddressHash) -> Option<RequestService> {
+    let link = runtime.transport.find_in_link(link_id).await?;
+    let destination = link.lock().await.destination().address_hash;
+    if destination == runtime.page_destination_hash {
+        Some(RequestService::Pages)
+    } else if destination == runtime.git_destination_hash {
+        Some(RequestService::Git)
+    } else {
+        None
+    }
+}
+
+fn decode_rngit_request(data: &[u8]) -> Result<Option<DecodedRngitRequest>, String> {
+    let mut cursor = std::io::Cursor::new(data);
+    let value = rmpv::decode::read_value(&mut cursor)
+        .map_err(|error| format!("invalid rngit request: {error}"))?;
+    if cursor.position() != data.len() as u64 {
+        return Err("rngit request has trailing bytes".to_string());
+    }
+    let Some(values) = value.as_array() else { return Ok(None) };
+    if values.len() != 3 {
+        return Ok(None);
+    }
+    let requested_at = values[0]
+        .as_f64()
+        .or_else(|| values[0].as_u64().map(|value| value as f64))
+        .ok_or_else(|| "rngit request timestamp is not numeric".to_string())?;
+    let Some(path_hash) = values[1].as_slice() else { return Ok(None) };
+    let Some(path) = rngit_paths()
+        .iter()
+        .copied()
+        .find(|path| rns_transport::hash::address_hash(path.as_bytes()) == path_hash)
+    else {
+        return Ok(None);
+    };
+    Ok(Some(DecodedRngitRequest { path, requested_at, data: values[2].clone() }))
+}
+
+#[derive(Debug, Clone)]
+struct DecodedRngitRequest {
+    path: &'static str,
+    requested_at: f64,
+    data: rmpv::Value,
 }
 
 async fn remote_identity(runtime: &Runtime, link_id: &AddressHash) -> [u8; 16] {

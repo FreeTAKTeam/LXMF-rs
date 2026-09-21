@@ -135,6 +135,36 @@ fn rust_destination(root: &Path, identity_seed: &str) -> io::Result<String> {
         })
 }
 
+fn rust_git_destination(root: &Path, identity_seed: &str) -> io::Result<String> {
+    let output = Command::new(env!("CARGO_BIN_EXE_rngit"))
+        .args([
+            "--root",
+            root.to_string_lossy().as_ref(),
+            "--print-identity",
+            "--identity-seed",
+            identity_seed,
+        ])
+        .output()?;
+    if !output.status.success() {
+        return Err(io::Error::other(format!(
+            "rngit Git identity query failed: {}\nstdout:\n{}\nstderr:\n{}",
+            output.status,
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        )));
+    }
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .find_map(|line| line.strip_prefix("Git listening on : "))
+        .map(ToOwned::to_owned)
+        .ok_or_else(|| {
+            io::Error::other(format!(
+                "rngit identity query omitted Git destination:\n{}",
+                String::from_utf8_lossy(&output.stdout)
+            ))
+        })
+}
+
 fn run_python_client(
     repo: &Path,
     config_dir: &Path,
@@ -252,6 +282,104 @@ print(json.dumps({"page": page, "media": media}, sort_keys=True))
         .output()
 }
 
+fn run_python_git_list_client(
+    repo: &Path,
+    config_dir: &Path,
+    identity: &Path,
+    destination: &str,
+) -> io::Result<Output> {
+    const CLIENT: &str = r#"
+import hashlib
+import json
+import os
+import sys
+import threading
+import time
+import RNS
+
+config_dir, identity_path, destination_hex = sys.argv[1:4]
+RNS.Reticulum(configdir=config_dir, loglevel=0)
+identity = RNS.Identity.from_file(identity_path) if os.path.isfile(identity_path) else RNS.Identity()
+if not os.path.isfile(identity_path):
+    identity.to_file(identity_path)
+
+destination_hash = bytes.fromhex(destination_hex)
+if not RNS.Transport.await_path(destination_hash, timeout=30):
+    raise RuntimeError("could not resolve rngit Git destination")
+remote_identity = RNS.Identity.recall(destination_hash)
+if remote_identity is None:
+    raise RuntimeError("could not recall rngit Git identity")
+
+destination = RNS.Destination(
+    remote_identity,
+    RNS.Destination.OUT,
+    RNS.Destination.SINGLE,
+    "git",
+    "repositories",
+)
+link_ready = threading.Event()
+link_failed = []
+
+def established(link):
+    link.identify(identity)
+    link_ready.set()
+
+def closed(link):
+    if not link_ready.is_set():
+        link_failed.append("Git link closed before activation")
+        link_ready.set()
+
+link = RNS.Link(destination)
+link.set_link_established_callback(established)
+link.set_link_closed_callback(closed)
+if not link_ready.wait(30):
+    raise RuntimeError("rngit Git link establishment timed out")
+if link_failed:
+    raise RuntimeError(link_failed[0])
+
+finished = threading.Event()
+result = {}
+
+def response(receipt):
+    payload = receipt.response
+    if not isinstance(payload, bytes):
+        raise RuntimeError("Git list response was not bytes")
+    result["sha256"] = hashlib.sha256(payload).hexdigest()
+    result["status"] = payload[0]
+    result["contains_main"] = b"refs/heads/main" in payload
+    result["payload"] = payload[1:].decode("utf-8", errors="replace")
+    finished.set()
+
+def failed(receipt):
+    result["error"] = "Git list request failed"
+    finished.set()
+
+receipt = link.request(
+    "/git/list",
+    {0: "group/repo", "for_push": False},
+    response_callback=response,
+    failed_callback=failed,
+    timeout=30,
+)
+if receipt is False:
+    raise RuntimeError("Git list request was not sent")
+if not finished.wait(30):
+    raise RuntimeError("Git list request timed out")
+if "error" in result:
+    raise RuntimeError(result["error"])
+link.teardown()
+print(json.dumps(result, sort_keys=True))
+"#;
+    Command::new(python_bin())
+        .arg("-c")
+        .arg(CLIENT)
+        .arg(config_dir)
+        .arg(identity)
+        .arg(destination)
+        .env("PYTHONPATH", repo)
+        .output()
+}
+
 #[test]
 #[ignore = "requires local Python Reticulum checkout"]
 fn rngit_serves_pages_and_media_to_pinned_python_client() -> io::Result<()> {
@@ -308,6 +436,29 @@ fn rngit_serves_pages_and_media_to_pinned_python_client() -> io::Result<()> {
             "media checksum: {stdout}"
         );
         assert!(stdout.contains("\"size\": 8192"), "media size: {stdout}");
+
+        let git_destination = rust_git_destination(&root, identity_seed)?;
+        let git_config_dir = temp.path().join("python-git-client");
+        fs::create_dir_all(&git_config_dir)?;
+        write_python_config(&git_config_dir, port)?;
+        let git_identity = git_config_dir.join("identity");
+        let git_output = run_python_git_list_client(
+            &python_repo,
+            &git_config_dir,
+            &git_identity,
+            &git_destination,
+        )?;
+        if !git_output.status.success() {
+            return Err(io::Error::other(format!(
+                "Python rngit Git client failed: {}\nstdout:\n{}\nstderr:\n{}",
+                git_output.status,
+                String::from_utf8_lossy(&git_output.stdout),
+                String::from_utf8_lossy(&git_output.stderr)
+            )));
+        }
+        let git_stdout = String::from_utf8_lossy(&git_output.stdout);
+        assert!(git_stdout.contains("\"status\": 0"), "Git list status: {git_stdout}");
+        assert!(git_stdout.contains("\"contains_main\": true"), "Git list payload: {git_stdout}");
         Ok(())
     })();
     let _ = server.kill();
