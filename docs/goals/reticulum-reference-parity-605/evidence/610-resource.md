@@ -44,8 +44,9 @@ it does not promote the full #610 acceptance contract or close parent issue
   reports an exact SHA-256 digest. Release-profile mixed-peer tests cover
   empty, one-byte, just-below-efficient, split, and 50 MiB resources in both
   Rust-to-Python and Python-to-Rust directions. A separate pinned-Python trace
-  exercises the Rust `send_resource_from_reader` API with a split
-  `MAX_EFFICIENT_SIZE + 257` payload and verifies the exact cross-peer digest.
+  exercises the Rust `send_resource_from_reader` API with a real file handle,
+  a split `MAX_EFFICIENT_SIZE + 257` payload, and verifies the exact
+  cross-peer digest.
 - A two-carrier pinned-Python trace now forwards a split Resource through one
   Rust transport with forwarding enabled. The client waits for the remote
   Python endpoint callback and verifies the exact size and SHA-256 digest.
@@ -204,10 +205,10 @@ represented as complete:
   both directions;
 - peak-RSS measurements for the 50 MiB mixed-peer transfers and a bounded
   memory report across the full matrix;
-- mixed-Python fault-injection evidence for reader cancellation and a true
-  file-backed adapter; reader-backed loss, duplication, reordering, and
-  terminal reader failure are now covered, while those remaining adapter
-  roles are open;
+- mixed-Python fault-injection evidence for a true file-backed adapter;
+  reader-backed loss, duplication, reordering, cancellation, and terminal
+  reader failure are now covered, while file-adapter failure injection remains
+  open;
 - callbacks/status transitions observed through every library and daemon
   consumer after each injected failure;
 - hosted, physical-interface, public-network, and long-running soak evidence.

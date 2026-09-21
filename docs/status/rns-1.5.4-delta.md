@@ -131,7 +131,8 @@ Resource advertisement is admitted. That cancellation now uses a reader-backed
 Rust split send. A reader-backed pinned-Python matrix also covers loss,
 duplication, reordering, and complete missing-fragment failure, while a
 separate trace injects a later source-read error after the first segment is
-accepted. The row remains partial and unverified because file-adapter and
+accepted; the split success trace now reads from a real file handle. The row
+remains partial and unverified because file-adapter failure injection and
 timeout recovery/reconnect traces, peak-memory capture, and
 hosted/physical/soak coverage are still open.
 
