@@ -17,6 +17,7 @@ env:
   CARGO_TERM_COLOR: always
   RETICULUM_CONFORMANCE_REF: 0319444b20e0815f26c6b9ceeba8fa44de037c9b
   PYTHON_RETICULUM_REF: ea98db4f53dcf0defc0e71a16e60d28b1229c4e6
+  PYTHON_RETICULUM_PARITY_REF: 99de23c040d507e3fefca19e87b182302902725d
   PYTHON_LXMF_REF: 727830cefda83d9c6e3982b48675425f3f988f9c
 
 jobs:
@@ -75,14 +76,35 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y pkg-config libdbus-1-dev
 
+      - name: Checkout pinned Python Reticulum parity target
+        uses: actions/checkout@v4
+        with:
+          repository: markqvist/Reticulum
+          ref: ${{ env.PYTHON_RETICULUM_PARITY_REF }}
+          path: Reticulum-parity
+
       - name: Record pinned revisions
         run: |
           git -C reticulum-conformance rev-parse HEAD
           git -C Reticulum rev-parse HEAD
+          git -C Reticulum-parity rev-parse HEAD
           git -C LXMF rev-parse HEAD
 
       - name: Run repository-native PR HIL controller
         run: cargo xtask hil run --level pr --all --output target/hil/runs/pr-${{ github.run_id }}
+
+      - name: Run exact-target Python compatibility matrix
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PY_REPO: ${{ github.workspace }}/LXMF
+          LXMF_PY_COMPAT_HARNESS: ${{ github.workspace }}/tools/scripts/python_compat_harness.py
+          LXMF_PYTHON_BIN: python
+        run: |
+          python3 tools/scripts/test_python_compat_matrix.py
+          python3 tools/scripts/python_compat_matrix.py \
+            --all \
+            --output target/interop/python-compat-matrix/verify-${{ github.run_id }}/matrix.json \
+            --timeout 420
 
       - name: Generate PR HIL support report
         if: always()
@@ -94,4 +116,10 @@ jobs:
         with:
           name: hil-pr-${{ github.run_id }}
           path: target/hil/runs/pr-${{ github.run_id }}/**
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: python-compat-matrix-${{ github.run_id }}
+          path: target/interop/python-compat-matrix/verify-${{ github.run_id }}/**
           if-no-files-found: error
