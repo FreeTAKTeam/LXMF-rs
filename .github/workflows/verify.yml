@@ -31,6 +31,8 @@ jobs:
       LXMF_PY_REPO: ${{ github.workspace }}/LXMF
       PYTHON_RNS_PATH: ${{ github.workspace }}/Reticulum
       PYTHON_LXMF_PATH: ${{ github.workspace }}/LXMF
+      PYTHON_RNS_PARITY_PATH: ${{ github.workspace }}/Reticulum-parity/RNS
+      PYTHON_LXMF_PARITY_PATH: ${{ github.workspace }}/LXMF/LXMF
       LXMF_PY_COMPAT_HARNESS: ${{ github.workspace }}/tools/scripts/python_compat_harness.py
     steps:
       - name: Checkout LXMF-rs
@@ -90,6 +92,16 @@ jobs:
           git -C Reticulum-parity rev-parse HEAD
           git -C LXMF rev-parse HEAD
 
+      - name: Validate exact-target behavioral inventory
+        run: |
+          python3 tools/scripts/python_surface_inventory.py --self-test
+          python3 tools/scripts/python_surface_inventory.py \
+            --python-rns-path Reticulum-parity/RNS \
+            --python-lxmf-path LXMF/LXMF \
+            --mapping docs/status/python-surface-mapping.json \
+            --json-out target/issue-605/python-surface-parity-1.5.4.json \
+            --rust-out target/issue-605/python_software_parity-1.5.4.rs
+
       - name: Run repository-native PR HIL controller
         run: cargo xtask hil run --level pr --all --output target/hil/runs/pr-${{ github.run_id }}
 
@@ -123,3 +135,9 @@ jobs:
           name: python-compat-matrix-${{ github.run_id }}
           path: target/interop/python-compat-matrix/verify-${{ github.run_id }}/**
           if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: python-behavioral-inventory-${{ github.run_id }}
+          path: target/issue-605/**
+          if-no-files-found: warn

@@ -119,7 +119,32 @@ fn run_python_surface_parity_check(require_complete: bool) -> Result<()> {
     if require_complete {
         args.push("--require-complete");
     }
-    run("python3", &args)
+    run("python3", &args)?;
+
+    let parity_rns_path = std::env::var("PYTHON_RNS_PARITY_PATH").ok();
+    let parity_lxmf_path = std::env::var("PYTHON_LXMF_PARITY_PATH").ok();
+    match (parity_rns_path, parity_lxmf_path) {
+        (Some(rns_path), Some(lxmf_path)) => run(
+            "python3",
+            &[
+                "tools/scripts/python_surface_inventory.py",
+                "--python-rns-path",
+                rns_path.as_str(),
+                "--python-lxmf-path",
+                lxmf_path.as_str(),
+                "--mapping",
+                "docs/status/python-surface-mapping.json",
+                "--json-out",
+                "target/issue-605/python-surface-parity-1.5.4.json",
+                "--rust-out",
+                "target/issue-605/python_software_parity-1.5.4.rs",
+            ],
+        ),
+        (None, None) => Ok(()),
+        (Some(_), None) | (None, Some(_)) => bail!(
+            "PYTHON_RNS_PARITY_PATH and PYTHON_LXMF_PARITY_PATH must be supplied together"
+        ),
+    }
 }
 
 fn run_sdk_zmq_parity_check() -> Result<()> {

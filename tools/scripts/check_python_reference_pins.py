@@ -112,6 +112,7 @@ def active_mirrors() -> dict[str, tuple[str, ...]]:
 
 def parity_target_mirrors() -> dict[str, tuple[str, ...]]:
     return {
+        ".github/workflows/verify.yml": ("PYTHON_RETICULUM_PARITY_REF: {revision}",),
         "docs/status/current-roadmap.md": (
             "immutable RNS {version}\ndevelopment revision `{revision}`",
         ),
@@ -167,6 +168,7 @@ def verify() -> list[str]:
 
 def self_test() -> None:
     assert "{version}" in active_mirrors()["crates/libs/lxmf-reference/src/lib.rs"][0]
+    assert "{revision}" in parity_target_mirrors()[".github/workflows/verify.yml"][0]
     assert "{revision}" in parity_target_mirrors()["docs/status/rns-1.5.4-delta.md"][0]
     assert ROOT.name == "LXMF-rs-rns-1.5-alignment" or (ROOT / "Cargo.toml").is_file()
 

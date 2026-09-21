@@ -130,6 +130,7 @@ def validate_behavioral_contract(
     baseline: dict[str, str] | None = None,
     target: dict[str, Any] | None = None,
     reference_revisions: dict[str, Any] | None = None,
+    artifact_root: Path | None = None,
     require_references: bool = False,
     require_complete: bool = False,
 ) -> list[str]:
@@ -216,6 +217,27 @@ def validate_behavioral_contract(
             and all(isinstance(value, str) and value for value in artifact)
         ):
             errors.append(f"{requirement_id}: evidence_artifact must be a non-empty string or list")
+        artifact_values = (
+            [artifact]
+            if isinstance(artifact, str)
+            else artifact
+            if isinstance(artifact, list)
+            else []
+        )
+        for artifact_value in artifact_values:
+            artifact_path = Path(artifact_value)
+            if artifact_path.is_absolute() or ".." in artifact_path.parts:
+                errors.append(
+                    f"{requirement_id}: evidence_artifact must stay within the repository"
+                )
+            elif (
+                artifact_root is not None
+                and evidence_status == "verified"
+                and not (artifact_root / artifact_path).is_file()
+            ):
+                errors.append(
+                    f"{requirement_id}: verified evidence artifact is missing: {artifact_value}"
+                )
         owner_issue = requirement.get("owner_issue")
         if isinstance(owner_issue, bool) or not isinstance(owner_issue, int) or owner_issue <= 0:
             errors.append(f"{requirement_id}: owner_issue must be a positive integer")
@@ -444,7 +466,10 @@ def build_inventory(args: argparse.Namespace) -> dict[str, Any]:
     baseline = canonical_active_reference(manifest)
     target = canonical_parity_target(manifest)
     contract_errors = validate_behavioral_contract(
-        mapping.get("behavioral_contract"), baseline=baseline, target=target
+        mapping.get("behavioral_contract"),
+        baseline=baseline,
+        target=target,
+        artifact_root=ROOT,
     )
     if contract_errors:
         raise ValueError("; ".join(contract_errors))
@@ -545,6 +570,7 @@ def validate_inventory(
     require_behavioral_complete: bool = False,
     expected_baseline: dict[str, str] | None = None,
     expected_target: dict[str, Any] | None = None,
+    artifact_root: Path | None = None,
 ) -> list[str]:
     errors: list[str] = []
     items = payload.get("items")
@@ -615,6 +641,7 @@ def validate_inventory(
             baseline=expected_baseline,
             target=expected_target,
             reference_revisions=references if isinstance(references, dict) else None,
+            artifact_root=artifact_root,
             require_references=True,
             require_complete=require_behavioral_complete,
         )
@@ -641,7 +668,12 @@ def validate_generated_behavioral_contract(
 
     mapping = load_mapping(mapping_path)
     mapping_contract = mapping.get("behavioral_contract")
-    errors = validate_behavioral_contract(mapping_contract, baseline=baseline, target=target)
+    errors = validate_behavioral_contract(
+        mapping_contract,
+        baseline=baseline,
+        target=target,
+        artifact_root=ROOT,
+    )
     if errors:
         return [f"behavioral mapping: {error}" for error in errors]
 
@@ -904,6 +936,60 @@ def run_generator_self_tests() -> None:
             "generated behavioral contract drift",
         )
 
+        verified_contract = json.loads(json.dumps(materialized_contract))
+        verified_requirement = verified_contract["requirements"][0]
+        verified_requirement["evidence"] = ["unit"]
+        verified_requirement["evidence_status"] = "verified"
+        expect(
+            validate_behavioral_contract(
+                verified_contract,
+                baseline=baseline,
+                target=target,
+                artifact_root=Path(temp_dir),
+            ),
+            "missing verified evidence artifact",
+        )
+        artifact_path = Path(temp_dir) / "target" / "self-test.json"
+        artifact_path.parent.mkdir(parents=True)
+        artifact_path.write_text("{}\n", encoding="utf-8")
+        expect(
+            not validate_behavioral_contract(
+                verified_contract,
+                baseline=baseline,
+                target=target,
+                artifact_root=Path(temp_dir),
+            ),
+            "verified evidence artifact exists",
+        )
+
+        unmapped_payload = {
+            "schema_version": 1,
+            "inventory_profile": "forward-parity-candidate",
+            "references": references,
+            "parity_target": target,
+            "summary": {"total": 1, "complete": 0, "partial": 0, "not-applicable": 0},
+            "items": [
+                {
+                    "id": "RNS.new_callable",
+                    "kind": "function",
+                    "source": "extra.py",
+                    "implementation": "unmapped",
+                    "rust_surface": [],
+                    "evidence": [],
+                }
+            ],
+            "behavioral_contract": materialized_contract,
+        }
+        expect(
+            validate_inventory(
+                unmapped_payload,
+                False,
+                expected_baseline=baseline,
+                expected_target=target,
+            ),
+            "unmapped target callable",
+        )
+
     rendered = render_rust_parity(
         {
             "items": items,
@@ -997,6 +1083,7 @@ def main() -> int:
             args.require_behavioral_complete,
             expected_baseline,
             expected_target,
+            ROOT,
         )
         errors = generated_contract_errors + errors
         if not errors:

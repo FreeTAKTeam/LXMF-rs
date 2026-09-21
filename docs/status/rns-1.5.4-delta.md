@@ -52,6 +52,15 @@ The generated active-baseline JSON remains 1,857 complete, zero partial, and
 one not-applicable for historical release compatibility; its separate
 `behavioral_contract` reports the current forward status as incomplete.
 
+The Verify workflow now checks out the exact parity target and runs this
+generator against `Reticulum-parity/RNS` and the pinned LXMF checkout. An
+unmapped target callable or stale target revision fails the job; the generated
+candidate JSON/Rust summary is uploaded as raw evidence. The same `xtask` docs
+and release helper accepts `PYTHON_RNS_PARITY_PATH` and
+`PYTHON_LXMF_PARITY_PATH` for local or hosted exact-target runs. Verified
+behavioral rows additionally require an existing repository-relative evidence
+artifact; planned or unverified rows remain explicitly incomplete.
+
 ## Behavioral contract and child work
 
 The machine-checked contract is stored in
