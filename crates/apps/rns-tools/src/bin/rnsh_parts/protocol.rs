@@ -369,6 +369,7 @@ mod tests {
     fn command_exit_roundtrips_zero_status() {
         let message = CommandExitedMessage { return_code: 0 };
         assert_eq!(CommandExitedMessage::decode(&message.encode()).expect("decode"), message);
+        assert_eq!(CommandExitedMessage::decode(&[0]).expect("Python zero status"), message);
     }
 
     #[test]

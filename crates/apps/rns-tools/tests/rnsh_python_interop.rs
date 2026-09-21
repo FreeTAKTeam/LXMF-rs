@@ -63,6 +63,27 @@ fn write_python_config(dir: &Path, port: u16) -> io::Result<()> {
     )
 }
 
+fn write_python_server_config(dir: &Path, port: u16) -> io::Result<()> {
+    fs::write(
+        dir.join("config"),
+        format!(
+            "[reticulum]\n\
+             enable_transport = no\n\
+             share_instance = no\n\
+             \n\
+             [logging]\n\
+             loglevel = 0\n\
+             \n\
+             [interfaces]\n\
+             [[TCP Server Interface]]\n\
+             type = TCPServerInterface\n\
+             enabled = yes\n\
+             listen_ip = 127.0.0.1\n\
+             listen_port = {port}\n"
+        ),
+    )
+}
+
 fn run_with_timeout(mut child: Child, timeout: Duration) -> io::Result<Output> {
     let deadline = Instant::now() + timeout;
     loop {
@@ -73,7 +94,7 @@ fn run_with_timeout(mut child: Child, timeout: Duration) -> io::Result<Output> {
             child.kill()?;
             let output = child.wait_with_output()?;
             return Err(io::Error::other(format!(
-                "Python rnsh timed out\nstdout:\n{}\nstderr:\n{}",
+                "rnsh process timed out\nstdout:\n{}\nstderr:\n{}",
                 String::from_utf8_lossy(&output.stdout),
                 String::from_utf8_lossy(&output.stderr)
             )));
@@ -183,4 +204,118 @@ fn pinned_python_rnsh_initiator_executes_a_command_on_rust_listener() -> io::Res
     let _ = listener.kill();
     let _ = listener.wait();
     result
+}
+
+#[test]
+#[ignore = "requires local Python Reticulum checkout"]
+fn rust_rnsh_initiator_executes_a_command_on_pinned_python_listener() -> io::Result<()> {
+    let _test_guard = PYTHON_INTEROP_TEST_LOCK.lock().expect("Python interop test lock poisoned");
+    let temp = tempfile::tempdir()?;
+    let python_rnsh_config = temp.path().join("python-rnsh");
+    let python_rns_config = temp.path().join("python-rns");
+    let python_identity = temp.path().join("python-identity");
+    let rust_identity = temp.path().join("rust-identity");
+    for directory in [&python_rnsh_config, &python_rns_config] {
+        fs::create_dir_all(directory)?;
+    }
+
+    let repo = python_repo();
+    let script = repo.join("RNS/Utilities/rnsh/rnsh.py");
+    if !script.is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("pinned Python rnsh script not found: {}", script.display()),
+        ));
+    }
+    let python = python_bin();
+    let port = free_port()?;
+    write_python_server_config(&python_rns_config, port)?;
+
+    let identity_output = Command::new(&python)
+        .arg(&script)
+        .args(["--print-identity", "--listen", "--quiet"])
+        .args(["--config", python_rnsh_config.to_str().expect("config path")])
+        .args(["--rnsconfig", python_rns_config.to_str().expect("RNS config path")])
+        .args(["--identity", python_identity.to_str().expect("identity path")])
+        .env("PYTHONPATH", &repo)
+        .current_dir(temp.path())
+        .output()?;
+    let destination = String::from_utf8_lossy(&identity_output.stdout)
+        .lines()
+        .find_map(|line| line.strip_prefix("Listening on : "))
+        .ok_or_else(|| io::Error::other("Python rnsh identity query omitted destination"))?
+        .trim_matches(|character| character == '<' || character == '>')
+        .to_owned();
+
+    let mut listener = Command::new(&python)
+        .arg(&script)
+        .args(["--listen", "--quiet", "--no-auth", "--announce", "0"])
+        .args(["--config", python_rnsh_config.to_str().expect("config path")])
+        .args(["--rnsconfig", python_rns_config.to_str().expect("RNS config path")])
+        .args(["--identity", python_identity.to_str().expect("identity path")])
+        .args(["--", "/bin/echo", "python-rnsh-default"])
+        .env("PYTHONPATH", &repo)
+        .current_dir(temp.path())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()?;
+
+    let result = (|| {
+        wait_for_port(port, &mut listener)?;
+        let binary = env!("CARGO_BIN_EXE_rnsh");
+        let mut client = Command::new(binary)
+            .args([
+                "--connect",
+                &format!("127.0.0.1:{port}"),
+                "--no-auth",
+                "--identity",
+                rust_identity.to_str().expect("identity path"),
+                "--mirror",
+                "--timeout",
+                "30",
+                &destination,
+                "--",
+                "/bin/echo",
+                "rust-rnsh-to-python",
+            ])
+            .current_dir(temp.path())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
+        // Keep the initiator stream open briefly so the pinned Python listener's
+        // stdin-close watchdog cannot race this short-lived command's exit.
+        let stdin_hold = client.stdin.take();
+        thread::spawn(move || {
+            thread::sleep(Duration::from_secs(1));
+            drop(stdin_hold);
+        });
+        let output = run_with_timeout(client, Duration::from_secs(45))?;
+        if !output.status.success() {
+            return Err(io::Error::other(format!(
+                "Rust rnsh initiator failed: {}\nstdout:\n{}\nstderr:\n{}",
+                output.status,
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            )));
+        }
+        assert!(
+            String::from_utf8_lossy(&output.stdout).contains("rust-rnsh-to-python\n"),
+            "Rust rnsh did not preserve Python listener output: {}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+        Ok(())
+    })();
+
+    let _ = listener.kill();
+    let listener_output = listener.wait_with_output()?;
+    let listener_log = fs::read_to_string(python_rnsh_config.join("logfile"))
+        .unwrap_or_else(|error| format!("<could not read Python rnsh log: {error}>"));
+    match result {
+        Ok(()) => Ok(()),
+        Err(error) => Err(io::Error::other(format!(
+            "{error}\nPython rnsh listener stderr:\n{}\nPython rnsh listener log:\n{listener_log}",
+            String::from_utf8_lossy(&listener_output.stderr),
+        ))),
+    }
 }
