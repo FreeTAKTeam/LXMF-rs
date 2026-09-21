@@ -195,9 +195,6 @@ fn run_python_client(
     identity: &Path,
     destination: &str,
 ) -> io::Result<Output> {
-    // This is intentionally a small NomadNet-compatible client rather than
-    // a Rust-side protocol fixture: RNS.Link.request performs the pinned
-    // Python msgpack/request-id/Resource handling used by real clients.
     const CLIENT: &str = r#"
 import hashlib
 import json
@@ -287,6 +284,29 @@ def request(path, data):
         raise RuntimeError(result["error"] + ": " + path)
     return result
 
+def request_failure(path, data):
+    finished = threading.Event()
+    result = {"failed": False, "timed_out": False, "unexpected_response": False}
+    def response(receipt):
+        result["unexpected_response"] = True
+        finished.set()
+    def failed(receipt):
+        result["failed"] = True
+        finished.set()
+    receipt = link.request(
+        path,
+        data,
+        response_callback=response,
+        failed_callback=failed,
+        timeout=3,
+    )
+    if receipt is False:
+        result["failed"] = True
+        return result
+    if not finished.wait(5):
+        result["timed_out"] = True
+    return result
+
 page = request(
     "/page/repo.mu",
     {"var_g": "group", "var_r": "repo", "var_ref": "HEAD"},
@@ -335,6 +355,18 @@ converted_media = request(
         "path": "/media/group/repo/HEAD/valid.png",
     },
 )
+missing_media_key = request_failure(
+    "/media",
+    {"path": "/media/group/repo/HEAD/image.png"},
+)
+missing_media_path = request_failure(
+    "/media",
+    {"key": b"rngit-python-interop"},
+)
+malformed_media_path = request_failure(
+    "/media",
+    {"key": b"rngit-python-interop", "path": "/media/group/repo"},
+)
 link.teardown()
 if not missing_repository["has_not_found"]:
     raise RuntimeError("missing repository did not render a not-found page")
@@ -348,6 +380,13 @@ if download["name"] != "README.md" or not download["is_readme"]:
     raise RuntimeError("file download did not preserve content or filename metadata")
 if converted_media["name"] != "valid.webp" or not converted_media["is_webp"]:
     raise RuntimeError("media conversion did not return validated WebP metadata/content")
+for label, result in [
+    ("missing media key", missing_media_key),
+    ("missing media path", missing_media_path),
+    ("malformed media path", malformed_media_path),
+]:
+    if (not result["failed"] and not result["timed_out"]) or result["unexpected_response"]:
+        raise RuntimeError(f"{label} did not fail closed: {result}")
 print(json.dumps({
     "page": page,
     "missing_repository": missing_repository,
@@ -357,6 +396,9 @@ print(json.dumps({
     "download": download,
     "media": media,
     "converted_media": converted_media,
+    "missing_media_key": missing_media_key,
+    "missing_media_path": missing_media_path,
+    "malformed_media_path": malformed_media_path,
 }, sort_keys=True))
 "#;
     Command::new(python_bin())
