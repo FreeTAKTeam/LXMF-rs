@@ -12,6 +12,9 @@ use tokio::time::{sleep, Duration, Instant};
 const STREAM_STDIN: u16 = 0;
 const STREAM_STDOUT: u16 = 1;
 const STREAM_STDERR: u16 = 2;
+// Give short-lived reference listeners time to publish command exit before
+// their stdin-close cleanup path tears down a still-starting child.
+const STDIN_EOF_GRACE: Duration = Duration::from_secs(1);
 const STREAM_WRITE_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[derive(Debug, Clone)]
@@ -95,6 +98,7 @@ pub(crate) async fn send_stdin(
     loop {
         let read = input.read(&mut buffer).await?;
         if read == 0 {
+            sleep(STDIN_EOF_GRACE).await;
             break;
         }
         write_all_with_retry(&mut writer, &buffer[..read]).await?;

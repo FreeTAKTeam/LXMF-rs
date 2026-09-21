@@ -263,7 +263,7 @@ fn rust_rnsh_initiator_executes_a_command_on_pinned_python_listener() -> io::Res
     let result = (|| {
         wait_for_port(port, &mut listener)?;
         let binary = env!("CARGO_BIN_EXE_rnsh");
-        let mut client = Command::new(binary)
+        let client = Command::new(binary)
             .args([
                 "--connect",
                 &format!("127.0.0.1:{port}"),
@@ -279,17 +279,10 @@ fn rust_rnsh_initiator_executes_a_command_on_pinned_python_listener() -> io::Res
                 "rust-rnsh-to-python",
             ])
             .current_dir(temp.path())
-            .stdin(Stdio::piped())
+            .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()?;
-        // Keep the initiator stream open briefly so the pinned Python listener's
-        // stdin-close watchdog cannot race this short-lived command's exit.
-        let stdin_hold = client.stdin.take();
-        thread::spawn(move || {
-            thread::sleep(Duration::from_secs(1));
-            drop(stdin_hold);
-        });
         let output = run_with_timeout(client, Duration::from_secs(45))?;
         if !output.status.success() {
             return Err(io::Error::other(format!(

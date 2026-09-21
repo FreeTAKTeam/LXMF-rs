@@ -181,8 +181,6 @@ pub(crate) async fn initiate(
         return Err(io::Error::other("remote rnsh protocol version is incompatible"));
     }
 
-    let stdin = tokio::io::stdin();
-    let stdin_task = tokio::spawn(send_stdin(channel.clone(), stdin));
     channel
         .send_typed(&ExecuteCommandMessage {
             command: (!command.is_empty()).then_some(command),
@@ -197,6 +195,8 @@ pub(crate) async fn initiate(
         })
         .await
         .map_err(channel_error)?;
+    let stdin = tokio::io::stdin();
+    let stdin_task = tokio::spawn(send_stdin(channel.clone(), stdin));
 
     let return_code = wait_for_command(&mut message_rx, &queue_overflowed, runtime.timeout).await;
     stdin_task.abort();
