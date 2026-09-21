@@ -6,7 +6,7 @@ use rns_transport::hash::AddressHash;
 use rns_transport::packet::PacketContext;
 use rns_transport::resource::ResourceEventKind;
 use rns_transport::transport::{ReceivedData, SendPacketOutcome, Transport};
-use std::io;
+use std::io::{self, Write};
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::{broadcast, Mutex};
@@ -17,7 +17,9 @@ pub(crate) async fn send(runtime: &Runtime, source: &Path, destination: &str) ->
     let data = network::read_file(&source_name)?;
     let metadata = protocol::encode_metadata(&source_name)?;
     let target = protocol::parse_address(destination)?;
+    emit_status(runtime.silent, format!("Path to {} requested", target.to_hex_string()))?;
     let description = wait_for_destination(runtime, target).await?;
+    emit_status(runtime.silent, format!("Establishing link with {}", target.to_hex_string()))?;
     let (link, link_id) = establish_link(runtime, description).await?;
     let mut events = runtime.transport.resource_events();
     let resource_hash = runtime
@@ -25,6 +27,7 @@ pub(crate) async fn send(runtime: &Runtime, source: &Path, destination: &str) ->
         .send_resource_with_compression(&link_id, data, Some(metadata), !runtime.no_compress)
         .await
         .map_err(|error| io::Error::other(format!("could not start Resource: {error:?}")))?;
+    emit_status(runtime.silent, "Transferring file...")?;
     wait_for_outbound(&mut events, resource_hash, network::operation_timeout(runtime).await)
         .await?;
     if !runtime.silent {
@@ -40,7 +43,9 @@ pub(crate) async fn fetch(
     destination: &str,
 ) -> io::Result<()> {
     let target = protocol::parse_address(destination)?;
+    emit_status(runtime.silent, format!("Path to {} requested", target.to_hex_string()))?;
     let description = wait_for_destination(runtime, target).await?;
+    emit_status(runtime.silent, format!("Establishing link with {}", target.to_hex_string()))?;
     let (link, link_id) = establish_link(runtime, description).await?;
     let request = Link::request_payload(
         "fetch_file",
@@ -56,6 +61,7 @@ pub(crate) async fn fetch(
     let request_id = request_id_from_packet(&packet);
     let mut data_events = runtime.transport.received_data_events();
     let mut resource_events = runtime.transport.resource_events();
+    emit_status(runtime.silent, "Requesting file from remote...")?;
     send_on_link(&runtime.transport, &link, packet).await?;
     let status = wait_for_response(
         &mut data_events,
@@ -90,6 +96,14 @@ pub(crate) async fn fetch(
     }
     close_link(&runtime.transport, &link).await;
     Ok(())
+}
+
+fn emit_status(silent: bool, message: impl AsRef<str>) -> io::Result<()> {
+    if silent {
+        return Ok(());
+    }
+    println!("{}", message.as_ref());
+    io::stdout().flush()
 }
 
 async fn wait_for_destination(

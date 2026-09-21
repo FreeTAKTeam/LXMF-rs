@@ -1,8 +1,9 @@
 use std::fs;
-use std::io;
+use std::io::{self, BufRead, BufReader};
 use std::net::TcpListener;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
+use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -522,6 +523,109 @@ fn rncp_listener_accepts_multiple_concurrent_clients() -> io::Result<()> {
                 payload
             );
         }
+        Ok(())
+    })();
+    let _ = listener.kill();
+    let _ = listener.wait();
+    result
+}
+
+#[test]
+fn rncp_interrupted_link_reports_resource_failure() -> io::Result<()> {
+    let temp = tempfile::tempdir()?;
+    let listener_root = temp.path().join("listener");
+    let client_root = temp.path().join("client");
+    fs::create_dir_all(&listener_root)?;
+    fs::create_dir_all(&client_root)?;
+    let source = client_root.join("interrupted.bin");
+    let payload = (0..(16 * 1024 * 1024))
+        .map(|index| (index as u8).wrapping_mul(53).wrapping_add(17))
+        .collect::<Vec<_>>();
+    fs::write(&source, &payload)?;
+
+    let port = free_port()?;
+    let binary = env!("CARGO_BIN_EXE_rncp");
+    let mut listener = Command::new(binary)
+        .args(["--listen", &format!("127.0.0.1:{port}"), "--no-auth", "--no-compress", "--save"])
+        .arg(&listener_root)
+        .args(["--identity-seed", "rncp-process-interrupted-server", "--silent"])
+        .current_dir(temp.path())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let result = (|| {
+        wait_for_port(port, &mut listener)?;
+        let destination_output = Command::new(binary)
+            .args(["--print-identity", "--identity-seed", "rncp-process-interrupted-server"])
+            .output()?;
+        if !destination_output.status.success() {
+            return Err(io::Error::other("rncp identity query failed"));
+        }
+        let destination = String::from_utf8_lossy(&destination_output.stdout)
+            .lines()
+            .find_map(|line| line.strip_prefix("Listening on : "))
+            .map(str::to_owned)
+            .ok_or_else(|| io::Error::other("rncp identity query omitted destination"))?;
+
+        let mut client = Command::new(binary)
+            .arg(&source)
+            .arg(&destination)
+            .args([
+                "--connect",
+                &format!("127.0.0.1:{port}"),
+                "--no-compress",
+                "--timeout",
+                "30",
+                "--identity-seed",
+                "rncp-process-interrupted-client",
+            ])
+            .current_dir(&client_root)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
+        let stdout = client
+            .stdout
+            .take()
+            .ok_or_else(|| io::Error::other("rncp client stdout was not captured"))?;
+        let (phase_tx, phase_rx) = mpsc::channel();
+        let stdout_reader = thread::spawn(move || -> io::Result<Vec<u8>> {
+            let mut reader = BufReader::new(stdout);
+            let mut captured = Vec::new();
+            loop {
+                let mut line = String::new();
+                let read = reader.read_line(&mut line)?;
+                if read == 0 {
+                    break;
+                }
+                if line.contains("Transferring file...") {
+                    let _ = phase_tx.send(());
+                }
+                captured.extend_from_slice(line.as_bytes());
+            }
+            Ok(captured)
+        });
+        if phase_rx.recv_timeout(Duration::from_secs(20)).is_err() {
+            let _ = client.kill();
+            let _ = client.wait();
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "rncp client did not reach the transferring phase",
+            ));
+        }
+
+        listener.kill()?;
+        listener.wait()?;
+        let output = client.wait_with_output()?;
+        let stdout =
+            stdout_reader.join().map_err(|_| io::Error::other("rncp stdout reader panicked"))??;
+        assert!(!output.status.success(), "interrupted rncp client unexpectedly succeeded");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("Resource transfer failed") || stderr.contains("Resource transfer timed out"),
+            "interrupted rncp stderr did not preserve a resource failure category: {stderr}\nstdout:\n{}",
+            String::from_utf8_lossy(&stdout)
+        );
+        assert!(!listener_root.join("interrupted.bin").exists());
         Ok(())
     })();
     let _ = listener.kill();
