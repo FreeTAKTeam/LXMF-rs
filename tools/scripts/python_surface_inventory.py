@@ -630,6 +630,42 @@ def generated_file_matches(path: Path, expected: str) -> bool:
     return path.read_text(encoding="utf-8") == expected
 
 
+def validate_generated_behavioral_contract(
+    payload: dict[str, Any],
+    mapping_path: Path,
+    *,
+    baseline: dict[str, str],
+    target: dict[str, Any],
+) -> list[str]:
+    """Reject a generated inventory whose behavioral contract is stale."""
+
+    mapping = load_mapping(mapping_path)
+    mapping_contract = mapping.get("behavioral_contract")
+    errors = validate_behavioral_contract(mapping_contract, baseline=baseline, target=target)
+    if errors:
+        return [f"behavioral mapping: {error}" for error in errors]
+
+    references = payload.get("references")
+    if not isinstance(references, dict) or any(
+        not isinstance(references.get(project), str)
+        for project in ("reticulum", "lxmf")
+    ):
+        return ["generated inventory references are missing or invalid"]
+
+    expected = materialize_behavioral_contract(
+        mapping_contract,
+        baseline=baseline,
+        target=target,
+        references={"reticulum": references["reticulum"], "lxmf": references["lxmf"]},
+    )
+    if payload.get("behavioral_contract") != expected:
+        return [
+            "generated behavioral contract drift: regenerate "
+            "the parity inventory from the pinned Python checkouts"
+        ]
+    return []
+
+
 def inventory_counts(items: list[dict[str, Any]], prefix: str | None = None) -> dict[str, int]:
     counts: dict[str, int] = {}
     selected = (
@@ -829,6 +865,45 @@ def run_generator_self_tests() -> None:
     malformed_contract["requirements"] = [{"id": "broken"}]
     expect(validate_behavioral_contract(malformed_contract), "malformed behavioral contract")
 
+    baseline = {"version": "1.5.2", "revision": "c" * 40}
+    target = {
+        "implementation": "Reticulum-Python",
+        "repository": "https://github.com/markqvist/Reticulum.git",
+        "version": "1.5.4-dev",
+        "revision": "a" * 40,
+    }
+    references = {"reticulum": "a" * 40, "lxmf": "b" * 40}
+    with tempfile.TemporaryDirectory(prefix="python-surface-mapping-") as temp_dir:
+        mapping_path = Path(temp_dir) / "mapping.json"
+        mapping_path.write_text(
+            json.dumps({"rules": [], "behavioral_contract": behavioral_contract}),
+            encoding="utf-8",
+        )
+        materialized_contract = materialize_behavioral_contract(
+            behavioral_contract,
+            baseline=baseline,
+            target=target,
+            references=references,
+        )
+        generated_payload = {
+            "references": references,
+            "behavioral_contract": materialized_contract,
+        }
+        expect(
+            not validate_generated_behavioral_contract(
+                generated_payload, mapping_path, baseline=baseline, target=target
+            ),
+            "generated behavioral contract matches mapping",
+        )
+        generated_payload["behavioral_contract"] = dict(materialized_contract)
+        generated_payload["behavioral_contract"]["coverage_status"] = "complete"
+        expect(
+            validate_generated_behavioral_contract(
+                generated_payload, mapping_path, baseline=baseline, target=target
+            ),
+            "generated behavioral contract drift",
+        )
+
     rendered = render_rust_parity(
         {
             "items": items,
@@ -897,8 +972,18 @@ def main() -> int:
             run_generator_self_tests()
             print("python-surface-inventory: self-test ok")
             return 0
+        manifest = load_manifest()
+        expected_baseline = canonical_active_reference(manifest)
+        expected_target = canonical_parity_target(manifest)
+        generated_contract_errors: list[str] = []
         if args.check and args.python_rns_path is None and args.python_lxmf_path is None:
             payload = json.loads(args.json_out.read_text(encoding="utf-8"))
+            generated_contract_errors = validate_generated_behavioral_contract(
+                payload,
+                args.mapping,
+                baseline=expected_baseline,
+                target=expected_target,
+            )
         else:
             payload = build_inventory(args)
             rendered = canonical_json(payload)
@@ -906,9 +991,6 @@ def main() -> int:
                 if not generated_file_matches(args.json_out, rendered):
                     print(f"inventory drift: regenerate {args.json_out}", file=sys.stderr)
                     return 1
-        manifest = load_manifest()
-        expected_baseline = canonical_active_reference(manifest)
-        expected_target = canonical_parity_target(manifest)
         errors = validate_inventory(
             payload,
             args.require_complete,
@@ -916,6 +998,7 @@ def main() -> int:
             expected_baseline,
             expected_target,
         )
+        errors = generated_contract_errors + errors
         if not errors:
             rust_parity = render_rust_parity(payload)
             if args.check:
