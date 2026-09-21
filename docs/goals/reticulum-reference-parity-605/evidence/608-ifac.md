@@ -1,6 +1,6 @@
 # Issue #608 — IFAC carrier wiring evidence
 
-Status: **implemented but unproven for forward-parity acceptance**.
+Status: **mixed software path evidenced; forward-parity acceptance remains open**.
 
 The implementation is based on the frozen Reticulum `1.5.4-dev` reference at
 `99de23c040d507e3fefca19e87b182302902725d`. It wires the existing Rust
@@ -33,6 +33,18 @@ cargo test -p reticulumd --test transport_policy_evidence
   8 passed; 0 failed
 cargo test -p reticulumd --test code_quality_issue_369
   1 passed; 0 failed
+cargo test -p reticulumd --test python_channel_interop ifac -- --ignored --nocapture
+  4 passed; 0 failed
+  candidate: f26ddfc5ef53ac837e53fe94a717c5af5a3a377b
+  Python Reticulum: 99de23c040d507e3fefca19e87b182302902725d
+  cases: TCP Channel and Resource in both Rust->Python and Python->Rust directions
+cargo test -p lxmf-cli --test python_lxmd_remote_relay python_rust_lxmd_ifac_bidirectional_daemon_e2e -- --ignored --nocapture
+  1 passed; 0 failed
+  candidate: f26ddfc5ef53ac837e53fe94a717c5af5a3a377b
+  Python Reticulum: 99de23c040d507e3fefca19e87b182302902725d
+  Python LXMF: 727830cefda83d9c6e3982b48675425f3f988f9c
+  production path: Rust lxmd/reticulumd TCP server plus Python LXMF TCP client
+  cases: Rust->Python and Python->Rust delivery; Python link status active
 ```
 
 The focused HDLC carrier tests cover valid authenticated ingress, plaintext,
@@ -42,11 +54,17 @@ credential aliases, incomplete configurations, hot-apply queueing, live
 reconfiguration, virtual-interface inheritance, and invalid reconfiguration
 rollback.
 
+The mixed-peer tests use the same non-secret test credentials on both sides and
+exercise the configured TCP carrier rather than a disconnected helper. The
+daemon case also verifies that `lxmd` preserves `ifac_size`, `network_name`,
+and `passphrase` when generating the `reticulumd` configuration.
+
 ## Evidence boundary
 
-This artifact does not promote the #605 behavioral row to verified. A pinned
-Python↔Rust daemon pair has not yet been run through real UDP/TCP carrier
-traffic with bidirectional announces, packets, proofs, links, and Resources.
-Attached serial, RNode, BLE, KISS, LoRa, Meshtastic, Weave, and public-network
-evidence is also outside this local software run. Those rows remain
-`partial / unverified` or `hardware-unverified` in the forward ledger.
+This artifact does not promote the #605 behavioral row or child #608 to
+complete. The daemon evidence covers one explicit authenticated TCP server and
+one Python LXMF client; it does not cover UDP, wrong/tampered/truncated frames
+through the daemon process, restart/reconfiguration bypasses, or every carrier
+family. Attached serial, RNode, BLE, KISS, LoRa, Meshtastic, Weave, and
+public-network evidence is also outside this local software run. Those rows
+remain `partial / unverified` or `hardware-unverified` in the forward ledger.
