@@ -50,7 +50,7 @@ it does not promote the full #610 acceptance contract or close parent issue
   Rust transport with forwarding enabled. The client waits for the remote
   Python endpoint callback and verifies the exact size and SHA-256 digest.
 - The pinned-Python interop suite now drives cancellation in both directions:
-  a Python receiver cancels a Rust split send and Rust emits one
+  a Python receiver cancels a Rust reader-backed split send and Rust emits one
   `OutboundCancelled` terminal event, while a Python sender cancels after
   advertisement and Rust emits `InboundFailed(reason=remote_cancelled)`.
   The Python sender also reports its own `FAILED` callback status.
