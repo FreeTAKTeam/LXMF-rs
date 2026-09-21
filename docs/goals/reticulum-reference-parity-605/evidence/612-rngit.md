@@ -1,8 +1,8 @@
 # #612 rngit permission/work/storage evidence
 
 Status: **partial / unverified**. This records the bounded implementation and
-the live Python `/git/list` service trace at candidate commit `cdb6b682` on the
-forward parity branch. It does not close
+the live Python `/git/list` plus `/git/fetch` service trace at candidate commit
+`78445904` on the forward parity branch. It does not close
 #612 or #605.
 
 ## Reference and ownership
@@ -26,7 +26,7 @@ forward parity branch. It does not close
 | Permission state | Identity aliases, strict remote content validation, configured-group merging, deny preservation, blocked identities, administrator fallback, atomic replacement, and immediate in-memory refresh | local verified; differential parity unverified |
 | Work storage | Python-shaped root and response maps, binary identity/signature fields, integer IDs, floating-point timestamps, separate numeric comment files, 256 KiB document bound, and atomic MessagePack writes | local verified |
 | Work operations | List/view/create/propose/edit/comment/delete/complete/activate/perms through `handle_work_request`, with scope/ID validation, document ownership/permissions, atomic transitions, and canonical document permission files | local verified through attached-node production handlers |
-| Cross-language data | A MessagePack fixture generated with Python `msgpack` is loaded and rendered by Rust, retaining binary author/signature/identity values; a pinned Python Link request reaches Rust `git.repositories` `/git/list` and returns the main ref listing | fixture and bounded request/response verified; full service matrix unverified |
+| Cross-language data | A MessagePack fixture generated with Python `msgpack` is loaded and rendered by Rust, retaining binary author/signature/identity values; pinned Python Link requests reach Rust `git.repositories` `/git/list` and `/git/fetch`, return the main ref, and produce a bundle verified by `git bundle verify` | fixture and bounded request/response verified; full service matrix unverified |
 
 ## Commands and results
 
@@ -39,7 +39,7 @@ cargo clippy -p rns-tools --bin rngit --all-features --no-deps \
   -- -D warnings                                                 PASS
 RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   cargo test -p rns-tools --test rngit_python_interop \
-  -- --ignored --nocapture                                     PASS (page/media plus `/git/list`)
+  -- --ignored --nocapture                                     PASS (page/media plus `/git/list` and `/git/fetch`)
 ```
 
 The package test suite completed three repeated full runs after the resolver
@@ -60,14 +60,15 @@ the active 500-line module limit.
   fields are persisted and returned, but create/propose/edit/comment requests
   are not yet cryptographically verified as Python does.
 - The fixture proves Python-produced storage data, and the live trace proves
-  one Python↔Rust `/git/list` request/response session. Restart reload,
-  malformed-document error transcripts, concurrent writers, and disk-fault
-  injection remain unverified.
+  Python↔Rust `/git/list` and `/git/fetch` request/response sessions. Restart
+  reload, malformed-document error transcripts, concurrent writers, and
+  disk-fault injection remain unverified.
 - Static malformed permission sidecars fail closed in Rust rather than being
   silently ignored like the pinned Python loader; this is an intentional safety
   difference and is not being called exact parity.
-- The live service wiring now covers the pinned Python `/git/list` request
-  through `git.repositories`, including Link identification and the Python
-  integer-key request shape. Fetch/push/delete/create/fork/sync/mirror,
-  release/work network workflows, signature verification, restart/concurrent
-  writer/fault transcripts, and the broader #611 utility matrix remain open.
+- The live service wiring now covers the pinned Python `/git/list` and
+  `/git/fetch` requests through `git.repositories`, including Link
+  identification, the Python integer-key request shape, and bundle validity.
+  Push/delete/create/fork/sync/mirror, release/work network workflows,
+  signature verification, restart/concurrent writer/fault transcripts, and
+  the broader #611 utility matrix remain open.
