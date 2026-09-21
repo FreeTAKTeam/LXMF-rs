@@ -241,10 +241,21 @@ async fn process_request(
 async fn remote_identity(runtime: &Runtime, link_id: &AddressHash) -> [u8; 16] {
     let Some(link) = runtime.transport.find_in_link(link_id).await else { return NULL_IDENTITY };
     let guard = link.lock().await;
-    guard
-        .identified_peer_identity()
-        .and_then(|identity| identity.address_hash.as_slice().try_into().ok())
-        .unwrap_or(NULL_IDENTITY)
+    let Some(identity) = guard.identified_peer_identity() else { return NULL_IDENTITY };
+    let address_hash = identity.address_hash.as_slice();
+    if address_hash.len() != 16 {
+        if !runtime.silent {
+            eprintln!(
+                "rngit: identified peer identity for link {} has an invalid address hash length: {}",
+                hex::encode(link_id.as_slice()),
+                address_hash.len()
+            );
+        }
+        return NULL_IDENTITY;
+    }
+    let mut result = [0_u8; 16];
+    result.copy_from_slice(address_hash);
+    result
 }
 
 async fn send_response(

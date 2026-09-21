@@ -32,7 +32,13 @@ fn percent_decode_plus(value: &str) -> Option<String> {
             }
         }
     }
-    String::from_utf8(decoded).ok()
+    match String::from_utf8(decoded) {
+        Ok(value) => Some(value),
+        Err(error) => {
+            eprintln!("rngit: percent-decoded request value is not UTF-8: {error}");
+            None
+        }
+    }
 }
 
 fn percent_encode_plus(value: &str) -> String {

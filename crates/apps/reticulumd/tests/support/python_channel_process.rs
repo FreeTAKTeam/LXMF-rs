@@ -15,6 +15,14 @@ pub(super) struct PythonChannelInteropPaths {
     helper: PathBuf,
 }
 
+struct PythonChannelClientConfig<'a> {
+    config_dir: &'a Path,
+    destination_hash: &'a str,
+    payload_kind: &'a str,
+    resource_size: Option<usize>,
+    timeout: f64,
+}
+
 impl PythonChannelInteropPaths {
     pub(super) fn spawn_endpoint(&self, config_dir: &Path, payload_kind: &str) -> Child {
         spawn_python_endpoint(
@@ -36,11 +44,13 @@ impl PythonChannelInteropPaths {
             &self.python_bin,
             &self.reticulum_py_repo,
             &self.helper,
-            config_dir,
-            destination_hash,
-            payload_kind,
-            None,
-            8.0,
+            PythonChannelClientConfig {
+                config_dir,
+                destination_hash,
+                payload_kind,
+                resource_size: None,
+                timeout: 8.0,
+            },
         )
     }
 
@@ -55,11 +65,13 @@ impl PythonChannelInteropPaths {
             &self.python_bin,
             &self.reticulum_py_repo,
             &self.helper,
-            config_dir,
-            destination_hash,
-            "resource",
-            Some(resource_size),
-            timeout,
+            PythonChannelClientConfig {
+                config_dir,
+                destination_hash,
+                payload_kind: "resource",
+                resource_size: Some(resource_size),
+                timeout,
+            },
         )
     }
 }
@@ -207,15 +219,11 @@ pub(super) fn spawn_python_endpoint(
         .expect("spawn python endpoint")
 }
 
-pub(super) fn spawn_python_channel_client(
+fn spawn_python_channel_client(
     python_bin: &str,
     reticulum_py_repo: &Path,
     helper: &Path,
-    config_dir: &Path,
-    destination_hash: &str,
-    payload_kind: &str,
-    resource_size: Option<usize>,
-    timeout: f64,
+    config: PythonChannelClientConfig<'_>,
 ) -> Child {
     let mut command = Command::new(python_bin);
     command
@@ -224,18 +232,18 @@ pub(super) fn spawn_python_channel_client(
         .arg("--mode")
         .arg("client")
         .arg("--payload-kind")
-        .arg(payload_kind)
+        .arg(config.payload_kind)
         .arg("--config-dir")
-        .arg(config_dir)
+        .arg(config.config_dir)
         .arg("--destination-hash")
-        .arg(destination_hash)
+        .arg(config.destination_hash)
         .arg("--message-id")
         .arg("python-1")
         .arg("--message-data")
         .arg("hello-rust")
         .arg("--timeout")
-        .arg(timeout.to_string());
-    if let Some(resource_size) = resource_size {
+        .arg(config.timeout.to_string());
+    if let Some(resource_size) = config.resource_size {
         command.arg("--resource-size").arg(resource_size.to_string());
     }
     command

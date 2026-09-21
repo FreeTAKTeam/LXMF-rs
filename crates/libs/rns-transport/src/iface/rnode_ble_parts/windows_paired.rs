@@ -45,6 +45,7 @@ async fn native_rnode_windows_paired_addresses() -> Result<Option<Vec<String>>, 
 }
 
 #[cfg(any(not(feature = "rnode-ble"), not(target_os = "windows")))]
+#[allow(dead_code)]
 async fn native_rnode_windows_paired_addresses() -> Result<Option<Vec<String>>, String> {
     Ok(None)
 }

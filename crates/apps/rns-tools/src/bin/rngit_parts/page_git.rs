@@ -8,7 +8,17 @@ impl ReticulumGitNode {
     }
 
     fn page_git_text(path: &Path, args: &[String], limit: usize) -> Option<String> {
-        String::from_utf8(Self::page_git_output(path, args, limit)?).ok()
+        let output = Self::page_git_output(path, args, limit)?;
+        match String::from_utf8(output) {
+            Ok(text) => Some(text),
+            Err(error) => {
+                eprintln!(
+                    "rngit: git command output is not UTF-8 in {} for {args:?}: {error}",
+                    path.display()
+                );
+                None
+            }
+        }
     }
 
     fn valid_page_ref(reference: &str) -> bool {

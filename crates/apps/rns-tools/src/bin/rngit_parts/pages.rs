@@ -92,7 +92,13 @@ pub(crate) fn decode_page_request(data: &[u8]) -> Result<Option<DecodedPageReque
 fn map_string_value(map: &[(rmpv::Value, rmpv::Value)], key: &str) -> Option<String> {
     map_value(map, &rmpv::Value::String(key.into())).and_then(|value| {
         value.as_str().map(ToOwned::to_owned).or_else(|| {
-            value.as_slice().and_then(|value| String::from_utf8(value.to_vec()).ok())
+            value.as_slice().and_then(|value| match String::from_utf8(value.to_vec()) {
+                Ok(value) => Some(value),
+                Err(error) => {
+                    eprintln!("rngit: request field {key:?} is not UTF-8: {error}");
+                    None
+                }
+            })
         })
     })
 }
