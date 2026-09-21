@@ -97,7 +97,12 @@ class ChannelEndpoint:
                 self.links.append(link)
             return
 
-        if self.payload_kind in ("resource", "resource-multi-hop", "cancel-resource"):
+        if self.payload_kind in (
+            "resource",
+            "resource-multi-hop",
+            "cancel-resource",
+            "resource-shutdown",
+        ):
             link.set_resource_strategy(RNS.Link.ACCEPT_ALL)
 
             if self.payload_kind == "cancel-resource":
@@ -108,6 +113,14 @@ class ChannelEndpoint:
                         flush=True,
                     )
                     resource.cancel()
+
+                link.set_resource_started_callback(on_resource_started)
+
+            if self.payload_kind == "resource-shutdown":
+                channel.register_message_type(MessageTest)
+
+                def on_resource_started(_resource) -> None:
+                    channel.send(MessageTest("resource-started", "ready"))
 
                 link.set_resource_started_callback(on_resource_started)
 
@@ -505,6 +518,7 @@ def main() -> int:
             "resource",
             "resource-multi-hop",
             "cancel-resource",
+            "resource-shutdown",
             "link-data",
             "request",
             "large-request",

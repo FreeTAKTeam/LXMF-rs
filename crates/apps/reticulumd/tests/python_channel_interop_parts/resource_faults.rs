@@ -62,6 +62,78 @@ async fn rust_sender_observes_pinned_python_receiver_cancellation() {
 
 #[tokio::test]
 #[ignore = "requires local Python Reticulum checkout"]
+async fn rust_sender_reports_pinned_python_receiver_shutdown() {
+    let _interop_guard = python_interop_guard().await;
+    let paths = python_channel_interop_paths();
+
+    let server_port = free_tcp_port();
+    let temp = tempfile::tempdir().expect("tempdir");
+    let py_config_dir = temp.path().join("python-rns-resource-shutdown-server");
+    fs::create_dir_all(&py_config_dir).expect("python config dir");
+    write_python_config(&py_config_dir, server_port);
+
+    let mut child = paths.spawn_endpoint(&py_config_dir, "resource-shutdown");
+    let ready = read_ready(&mut child).expect("python endpoint ready");
+    let mut guard = ChildGuard { child: Some(child) };
+    wait_for_port(server_port, Duration::from_secs(5)).await;
+
+    let target_hash =
+        AddressHash::new_from_hex_string(&ready.destination_hash).expect("destination hash");
+    let rust_identity = PrivateIdentity::new_from_rand(OsRng);
+    let rust_identity = to_transport_private_identity(&rust_identity);
+    let mut config =
+        TransportConfig::new("python-resource-shutdown-rust-sender", &rust_identity, true);
+    config.set_path_request_timeout_secs(2);
+    config.set_resource_retry_interval_secs(1);
+    let transport = Transport::new(config);
+    transport
+        .iface_manager()
+        .lock()
+        .await
+        .spawn(TcpClient::new(format!("127.0.0.1:{server_port}")), TcpClient::spawn);
+
+    let destination = wait_for_announce(&transport, target_hash, Duration::from_secs(8)).await;
+    let mut link_events = transport.out_link_events();
+    let link = transport.link(destination).await;
+    let link_id = wait_for_out_link_active(&mut link_events, &link, Duration::from_secs(8)).await;
+
+    let seen = Arc::new(StdMutex::new(Vec::<(String, String)>::new()));
+    let seen_clone = seen.clone();
+    transport
+        .channel(link_id)
+        .register_handler(MSG_TYPE, move |envelope| {
+            if let Ok(decoded) = rmp_serde::from_slice::<(String, String)>(&envelope.payload) {
+                seen_clone.lock().expect("seen lock").push(decoded);
+                true
+            } else {
+                false
+            }
+        })
+        .await
+        .expect("register resource shutdown acknowledgement handler");
+
+    let payload = cancellation_payload(MAX_EFFICIENT_SIZE * 2 + 257);
+    let mut resource_events = transport.resource_events();
+    let resource_hash = transport
+        .send_resource_with_compression(&link_id, payload, None, false)
+        .await
+        .expect("send resource before peer shutdown");
+    wait_for_resource_started(&seen, Duration::from_secs(15)).await;
+
+    let mut child = guard.child.take().expect("python endpoint child");
+    child.kill().expect("kill Python receiver");
+    child.wait().expect("wait for Python receiver shutdown");
+
+    wait_for_outbound_resource_failed(
+        &mut resource_events,
+        resource_hash,
+        Duration::from_secs(15),
+    )
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "requires local Python Reticulum checkout"]
 async fn rust_receiver_reports_pinned_python_sender_cancellation() {
     let _interop_guard = python_interop_guard().await;
     let paths = python_channel_interop_paths();

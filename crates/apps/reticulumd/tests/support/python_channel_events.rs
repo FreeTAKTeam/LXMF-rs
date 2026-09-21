@@ -125,6 +125,16 @@ pub(super) async fn wait_for_resource_digest_ack(
     .await;
 }
 
+pub(super) async fn wait_for_resource_started(
+    seen: &Arc<StdMutex<Vec<(String, String)>>>,
+    duration: Duration,
+) {
+    wait_for_seen_tuple(seen, duration, "Python resource-started acknowledgement", |id, data| {
+        id == "resource-started" && data == "ready"
+    })
+    .await;
+}
+
 pub(super) async fn wait_for_identify_ack(
     seen: &Arc<StdMutex<Vec<(String, String)>>>,
     duration: Duration,
