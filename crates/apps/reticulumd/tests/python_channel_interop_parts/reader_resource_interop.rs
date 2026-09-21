@@ -1,5 +1,3 @@
-use std::io::Cursor;
-
 /// Exercises the reader-backed sender against the pinned Python Resource
 /// receiver, including a split transfer and an exact cross-implementation
 /// digest acknowledgement.
@@ -58,16 +56,14 @@ async fn rust_reader_to_python_split_resource_roundtrip() {
     let payload = rust_resource_fixture(MAX_EFFICIENT_SIZE + 257);
     let expected_digest = digest_hex(&payload);
     let metadata = rmp_serde::to_vec(&String::from("rust-reader-meta")).expect("metadata");
+    let payload_path = temp.path().join("reader-resource.bin");
+    fs::write(&payload_path, &payload).expect("write reader-backed resource fixture");
+    let reader = fs::File::open(&payload_path).expect("open reader-backed resource fixture");
     let mut resource_events = transport.resource_events();
     let resource_hash = transport
-        .send_resource_from_reader(
-            &link_id,
-            Cursor::new(payload.clone()),
-            payload.len() as u64,
-            Some(metadata),
-        )
+        .send_resource_from_reader(&link_id, reader, payload.len() as u64, Some(metadata))
         .await
-        .expect("send reader-backed resource");
+        .expect("send file-backed resource");
     wait_for_outbound_resource_complete(
         &mut resource_events,
         resource_hash,
