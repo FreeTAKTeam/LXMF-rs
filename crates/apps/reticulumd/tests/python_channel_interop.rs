@@ -22,6 +22,8 @@ include!("python_channel_interop_parts/resource_faults.rs");
 
 include!("python_channel_interop_parts/python_resource_fault_matrix.rs");
 
+include!("python_channel_interop_parts/python_resource_fault_reverse.rs");
+
 include!("python_channel_interop_parts/reader_resource_interop.rs");
 
 include!("python_channel_interop_parts/python_to_rust_link_identify_roundtr.rs");
