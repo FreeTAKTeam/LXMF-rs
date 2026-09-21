@@ -141,8 +141,8 @@ RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
 
 RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   cargo test -p reticulumd --test python_channel_interop \
-  pinned_python_link_timeout_after_dropped_keepalives -- --ignored --nocapture
-  # 1 passed; 40 filtered out; 15.42s
+  pinned_python_link_timeout_and_reconnect_after_dropped_keepalives -- --ignored --nocapture
+  # 1 passed; 45 filtered out; 15.38s
 ```
 
 The fault matrix runs through a production TCP carrier and inspects only
@@ -159,10 +159,11 @@ proxy and a 70,000-byte multi-fragment transfer. It passes the same
 drop/duplicate/reorder cases and observes Rust `OutboundFailed` when all
 Resource data frames are missing. Together, the two matrices prove the
 fragment-fault behaviors in both implementation directions; they do not by
-themselves prove the separate link-timeout, reader-adapter, memory, or hosted
-acceptance contracts. The shutdown trace separately proves that an admitted
-split Resource is failed when its pinned Python receiver process exits, and
-the keepalive trace proves terminal link timeout on the same pinned carrier.
+themselves prove the separate reader-adapter, memory, or hosted acceptance
+contracts. The shutdown trace separately proves that an admitted split Resource
+is failed when its pinned Python receiver process exits, and the keepalive trace
+now proves terminal link timeout followed by a fresh Link with a different
+identifier on the same pinned carrier.
 The reader-backed matrix uses the same transfer sizes and fault proxy as the
 owned-buffer reverse matrix, while the reader-failure trace proves a later
 source error becomes a terminal Rust failure after Python has accepted the
@@ -246,17 +247,20 @@ RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
 These are measured process high-water values for the two exact 50 MiB
 directions, not a claim that every fault or hosted workload has the same
 profile. The values are now evidence for the mixed-peer bounded-memory row;
-the remaining acceptance gaps stay explicit below.
+the remaining acceptance gaps stay explicit below. Commit
+`7e310afb878f2230ef46c40b54c0112755397428` extends the same pinned-Python
+keepalive fault trace from terminal watchdog closure to a fresh Link with a
+different identifier; the targeted release run passed in 15.38 seconds.
 
 ## Remaining acceptance boundary
 
 The following #610 requirements remain unverified and are intentionally not
 represented as complete:
 
-- mixed-Python link-timeout recovery/reconnect evidence beyond the now-covered
-  terminal watchdog close; the two pinned-Python matrices now cover loss,
-  duplication, reordering, and complete missing-fragment terminal failure in
-  both directions;
+- broader mixed-Python link-timeout recovery/reconnect coverage beyond the one
+  fresh-Link trace; the two pinned-Python matrices now cover loss, duplication,
+  reordering, and complete missing-fragment terminal failure in both
+  directions;
 - mixed-Python fault-injection evidence for a true file-backed adapter;
   reader-backed loss, duplication, reordering, cancellation, and terminal
   reader failure are now covered, while file-adapter failure injection remains
@@ -276,6 +280,6 @@ bidirectional release-profile mixed-peer transfers, the pinned-Python
 receiver-shutdown terminal-failure trace, and the independent `rns-rs`
 loss/timeout/latency slice, and exact 50 MiB bidirectional peak-RSS evidence
 under a fixed process budget are implemented with local evidence; the broader
-Resource failure contract remains partial pending timeout recovery/reconnect
+Resource failure contract remains partial pending broader timeout/reconnect
 and file-adapter fault traces, every consumer callback/status assertion, and
 hosted/physical/soak coverage.

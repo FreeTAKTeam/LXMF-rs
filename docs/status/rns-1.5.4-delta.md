@@ -142,7 +142,7 @@ duplication, reordering, and complete missing-fragment failure, while a
 separate trace injects a later source-read error after the first segment is
 accepted; the split success trace now reads from a real file handle. The row
 remains partial and unverified because file-adapter failure injection and
-timeout recovery/reconnect traces, every consumer callback/status assertion,
+broader timeout/reconnect traces, every consumer callback/status assertion,
 and hosted/physical/soak coverage are still open; exact 50 MiB peak-RSS values
 in both directions are now recorded by the candidate's Linux release-profile
 memory probe.
