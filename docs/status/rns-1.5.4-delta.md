@@ -106,9 +106,12 @@ trace are covered. A new ignored pinned-Python trace also exchanges a Channel
 message and reply between two Python nodes over two Rust carrier interfaces
 owned by one forwarding Rust transport; its companion trace forwards a split
 Resource and waits for the remote endpoint's exact size and SHA-256 callback.
-The row remains unverified until shared-instance and multi-hop production
-traces compare duplicate suppression, announce persistence, and close/reconnect
-behavior.
+The same topology now proves application-link close/reconnect, and a separate
+fault-injected pinned-Python trace proves Rust pending-link establishment
+cleanup after the path is available. The row remains unverified until broader
+shared-instance and multi-hop production traces compare packet/proof duplicate
+suppression, announce persistence, caller-visible close reasons, and underlying
+carrier-stream reconnect behavior.
 
 The #610 implementation slice now has committed local evidence in
 [`evidence/610-resource.md`](../goals/reticulum-reference-parity-605/evidence/610-resource.md):

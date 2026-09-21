@@ -10,7 +10,7 @@ not a claim of mixed-peer or hardware acceptance.
   `RNS/Interfaces/LocalInterface.py`.
 - Rust owners: `rns-transport` interface-manager, announce table, and
   announce processing; `reticulumd` local TCP/Unix startup.
-- Current multi-hop evidence candidate: `58083f56` on
+- Current mixed-peer evidence candidate: `789774bd` on
   `codex/issue-605-parity`.
 
 The implementation now classifies a local client from its parent relationship
@@ -85,6 +85,23 @@ active. It does not cover reconnecting the underlying TCP carrier stream,
 cached-versus-scheduled announce persistence, or broader packet/proof duplicate
 handling.
 
+A separate fault-injected trace lets a pinned Python endpoint announce and
+populate the Rust path table, then drops every outbound initial link-request
+packet. The Rust link has a test-bounded three-second establishment deadline;
+the trace requires the production link event and status to reach `Closed`.
+
+```text
+RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
+  cargo test -p reticulumd --test python_channel_interop \
+  pinned_python_link_establishment_timeout_after_dropped_request -- --ignored --nocapture
+# 1 passed; 43 filtered out; 4.11s
+```
+
+This proves pending link-establishment cleanup after a real mixed-peer path is
+available. It does not yet prove caller-visible timeout-reason taxonomy,
+underlying carrier-stream reconnect, announce persistence, or broader
+packet/proof duplicate handling.
+
 A companion trace routes the same Python Channel exchange through two Rust
 carriers while a real TCP proxy duplicates the first decoded Channel frame
 from the Python client. The endpoint log records exactly one logical
@@ -140,7 +157,7 @@ continuity, two-carrier multi-hop Python Channel and split Resource exchanges,
 and multi-hop Channel sequence deduplication through one forwarding Rust
 transport, and application-link close/reconnect over that forwarding path. It
 does not yet compare cached versus scheduled announce persistence or underlying
-carrier stream reconnect behavior, and broader packet/proof duplicate handling
-remains separate. Those traces are still required before this row can be
-promoted.
+carrier stream reconnect behavior, caller-visible close-reason taxonomy, and
+broader packet/proof duplicate handling remain separate. Those traces are still
+required before this row can be promoted.
 Hardware and public-network evidence remain separate acceptance axes.
