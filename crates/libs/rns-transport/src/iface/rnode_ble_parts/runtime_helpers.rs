@@ -1,4 +1,5 @@
 #[cfg(feature = "rnode-ble")]
+#[allow(clippy::too_many_arguments)]
 async fn rnode_peripheral_matches(
     peripheral: &Peripheral,
     configured_id: &str,
@@ -7,10 +8,18 @@ async fn rnode_peripheral_matches(
     service_uuid: Uuid,
     allow_service_uuid_match: bool,
     excluded_identifiers: &[String],
+    paired_addresses: Option<&[String]>,
 ) -> Result<bool, String> {
     let peripheral_id = peripheral.id().to_string();
     if rnode_identifier_is_excluded(&peripheral_id, exclude_exact_identifier, excluded_identifiers)
     {
+        return Ok(false);
+    }
+    if paired_addresses.is_some_and(|addresses| {
+        !addresses
+            .iter()
+            .any(|address| native_rnode_identifier_matches(address, &peripheral_id))
+    }) {
         return Ok(false);
     }
     if native_rnode_identifier_matches_any(&peripheral_id, configured_id, aliases) {
@@ -23,6 +32,13 @@ async fn rnode_peripheral_matches(
     if let Some(properties) = properties {
         let address = properties.address.to_string();
         if rnode_identifier_is_excluded(&address, exclude_exact_identifier, excluded_identifiers) {
+            return Ok(false);
+        }
+        if paired_addresses.is_some_and(|addresses| {
+            !addresses
+                .iter()
+                .any(|paired| native_rnode_identifier_matches(paired, &address))
+        }) {
             return Ok(false);
         }
         if native_rnode_identifier_matches_any(&address, configured_id, aliases) {

@@ -352,6 +352,7 @@ impl NativeRnodeBleBackend {
         exclude_exact_identifier: Option<&str>,
         allow_service_uuid_match: bool,
         excluded_identifiers: &[String],
+        paired_addresses: Option<&[String]>,
     ) -> Result<Peripheral, String> {
         adapter
             .start_scan(if allow_service_uuid_match {
@@ -374,6 +375,7 @@ impl NativeRnodeBleBackend {
                     settings.service_uuid,
                     allow_service_uuid_match,
                     excluded_identifiers,
+                    paired_addresses,
                 )
                 .await?
                 {
@@ -521,6 +523,7 @@ impl RnodeBleBackend for NativeRnodeBleBackend {
     async fn connect(&mut self) -> Result<(), String> {
         self.clear_session_state();
         let adapter = Self::select_adapter(&self.settings).await?;
+        let paired_addresses = native_rnode_windows_paired_addresses().await?;
         let peripheral = match Self::configured_peripheral(&adapter, &self.settings).await? {
             Some(peripheral) => {
                 match Self::connect_selected_peripheral(&peripheral, self.settings.connect_timeout)
@@ -548,6 +551,7 @@ impl RnodeBleBackend for NativeRnodeBleBackend {
                             Some(&self.settings.peripheral_id),
                             false,
                             &excluded_identifiers,
+                            paired_addresses.as_deref(),
                         )
                         .await
                         .map_err(|scan_err| {
@@ -566,7 +570,15 @@ impl RnodeBleBackend for NativeRnodeBleBackend {
             }
             None => {
                 let scanned =
-                    Self::scan_for_peripheral(&adapter, &self.settings, None, false, &[]).await?;
+                    Self::scan_for_peripheral(
+                        &adapter,
+                        &self.settings,
+                        None,
+                        false,
+                        &[],
+                        paired_addresses.as_deref(),
+                    )
+                    .await?;
                 Self::connect_selected_peripheral(&scanned, self.settings.connect_timeout).await?;
                 scanned
             }
