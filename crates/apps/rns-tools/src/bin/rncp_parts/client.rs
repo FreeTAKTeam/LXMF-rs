@@ -224,9 +224,7 @@ async fn wait_for_response_resource(
                 continue;
             }
             if let ResourceEventKind::Complete(complete) = event.kind {
-                if complete.is_response
-                    && complete.request_id.as_deref() == Some(request_id.as_slice())
-                {
+                if is_matching_fetch_resource(&complete, request_id) {
                     return Ok(complete);
                 }
             }
@@ -234,6 +232,23 @@ async fn wait_for_response_resource(
     })
     .await
     .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "file Resource timed out"))?
+}
+
+fn is_matching_fetch_resource(
+    complete: &rns_transport::resource::ResourceComplete,
+    request_id: [u8; 16],
+) -> bool {
+    let correlated_response =
+        complete.is_response && complete.request_id.as_deref() == Some(request_id.as_slice());
+    // The pinned Python rncp listener returns True for the Link request and
+    // starts a separate ordinary Resource for the file. That Resource has
+    // metadata but no request id or response flag, so it cannot use the
+    // normal response-resource correlation contract.
+    let python_rncp_file = !complete.is_request
+        && !complete.is_response
+        && complete.request_id.is_none()
+        && complete.metadata.is_some();
+    correlated_response || python_rncp_file
 }
 
 async fn wait_for_outbound(
@@ -276,5 +291,46 @@ async fn close_link(transport: &Transport, link: &Arc<Mutex<Link>>) {
     };
     if let Some(packet) = packet {
         let _ = transport.send_link_packet_on_bound_iface(link, packet).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_matching_fetch_resource;
+    use rns_transport::resource::ResourceComplete;
+
+    fn complete(
+        request_id: Option<Vec<u8>>,
+        is_response: bool,
+        has_metadata: bool,
+    ) -> ResourceComplete {
+        ResourceComplete {
+            data: Vec::new(),
+            metadata: has_metadata.then(|| vec![0x01]),
+            request_id,
+            is_request: false,
+            is_response,
+        }
+    }
+
+    #[test]
+    fn fetch_accepts_correlated_response_resources() {
+        let request_id = [0x11; 16];
+        assert!(is_matching_fetch_resource(
+            &complete(Some(request_id.to_vec()), true, true),
+            request_id,
+        ));
+    }
+
+    #[test]
+    fn fetch_accepts_python_rncp_unassociated_file_resources() {
+        let request_id = [0x22; 16];
+        assert!(is_matching_fetch_resource(&complete(None, false, true), request_id,));
+    }
+
+    #[test]
+    fn fetch_rejects_unassociated_resources_without_file_metadata() {
+        let request_id = [0x33; 16];
+        assert!(!is_matching_fetch_resource(&complete(None, false, false), request_id,));
     }
 }

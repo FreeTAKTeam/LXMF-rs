@@ -20,8 +20,8 @@ Rust sender/listener roles. It does not close #611 or #605.
 | Local copy | Root-scoped binary copy, overwrite guard, parent traversal rejection | `rncp.rs` unit test | verified for the existing local convenience mode |
 | Listener | TCP listener, deterministic/persisted identity, `rncp.receive` announce, periodic re-announce, save directory, collision-safe filename selection | `rncp_process` listener process; pinned Python client/service trace | implemented; no-auth Python interoperability evidenced |
 | Send | TCP announce discovery, Link establishment, local identity identification, Resource send with `{"name": <binary filename>}` metadata, adaptive timeout and terminal failure status | Rust↔Rust process test; pinned Python client/service trace | verified for two independent processes and the bounded Python roles |
-| Fetch | `fetch_file` Link request/response, `True`/`False`/`0xF0`/`nil` status mapping, response Resource, metadata-driven save | `rncp_process` Rust client to Rust listener | verified for two independent processes |
-| Authentication | `--no-auth`, explicit `--allowed-identity`, rejected identified peers, nonzero sender failure, and reciprocal Python/Rust identity allow-lists | manual denied-transfer run; pinned Python interop | verified for the bounded send roles; Python fetch allow-list parity remains open |
+| Fetch | `fetch_file` Link request/response, `True`/`False`/`0xF0`/`nil` status mapping, correlated Rust response Resources, Python rncp's metadata-bearing unassociated file Resource, and metadata-driven save | `rncp_process` Rust client to Rust listener; pinned Python listener/client trace | verified for two independent Rust processes and the bounded Rust→Python fetch path |
+| Authentication | `--no-auth`, explicit `--allowed-identity`, rejected identified peers, nonzero sender failure, and reciprocal Python/Rust identity allow-lists for send and fetch roles | manual denied-transfer run; pinned Python interop | verified for the bounded send/fetch roles; broader option and callback parity remains open |
 | Jail and save safety | Canonical jail containment, traversal rejection, basename-only metadata, overwrite/suffix behavior | protocol unit tests and process test | verified locally |
 | Timeout/output | `--timeout`, silent mode, accurate failure output for missing/denied/failed transfers | unit/manual process runs | bounded Rust behavior verified |
 | Compression option | `--no-compress` disables opportunistic Resource compression for outbound sends and fetch responses while preserving the default auto-compression path | Resource compression regression, `rncp_process` | locally verified; mixed Python compression matrix remains open |
@@ -57,20 +57,26 @@ listener without the sender in its allow-list returned exit status 1 and
 The pinned-Python interop run starts separate Rust and Python listener/client
 processes with isolated TCP configs and identity files. It sends binary
 `12,345`- and `16,384`-byte payloads in both directions and verifies the saved
-bytes exactly. It also authorizes the Python sender in the Rust listener and
-the Rust sender in the Python listener by their identified identity hashes.
-This covers authenticated send roles through the production Link/Resource
-path; it does not promote Python fetch allow-list, jail, overwrite, or callback
-parity.
+bytes exactly. It then fetches a `9,876`-byte binary payload from the Python
+listener using an independently identified Rust fetch identity, verifies the
+metadata-driven save and exact bytes, and confirms a different identity is
+rejected. The Python listener uses its production allow-list and fetch jail;
+the Rust client accepts the Python reference's ordinary metadata-bearing file
+Resource after its `True` request response. The trace authorizes the send and
+fetch roles by their identified identity hashes. This covers bounded
+authenticated send/fetch behavior through the production Link/Resource path;
+it does not promote Python overwrite, callback, compression-matrix, or full
+utility-option parity.
 
 ## Unresolved requirements
 
 The following #611 acceptance items remain open and are deliberately not
 classified as complete:
 
-- Exercise Python's fetch-side identity-file, allow-list, jail, overwrite, and
-  callback behavior through the cross-implementation path; the current trace
-  covers isolated identity files and authenticated send roles.
+- Exercise Python's fetch-side overwrite and callback behavior through the
+  cross-implementation path; the current trace covers isolated identity files,
+  authenticated allow-list roles, jail containment, and the Python file
+  Resource shape.
 - Build the complete utility option/behavior matrix from every frozen
   `RNS/Utilities` entry point. The current slice does not add network workflows
   to `rnpath`, `rnprobe`, `rnsd`, or the radio/interactive utilities.

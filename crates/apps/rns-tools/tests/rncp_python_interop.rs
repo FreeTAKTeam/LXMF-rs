@@ -205,6 +205,32 @@ fn run_rust_send(
         .output()
 }
 
+fn run_rust_fetch(
+    remote_file: &Path,
+    destination: &str,
+    port: u16,
+    identity_seed: &str,
+    save_root: &Path,
+) -> io::Result<Output> {
+    Command::new(env!("CARGO_BIN_EXE_rncp"))
+        .arg(remote_file)
+        .arg(destination)
+        .args([
+            "--fetch",
+            "--connect",
+            &format!("127.0.0.1:{port}"),
+            "--identity-seed",
+            identity_seed,
+            "--save",
+            save_root.to_string_lossy().as_ref(),
+            "--silent",
+            "--no-compress",
+            "--timeout",
+            "30",
+        ])
+        .output()
+}
+
 #[test]
 #[ignore = "requires local Python Reticulum checkout"]
 fn rncp_exchanges_binary_files_with_pinned_python_in_both_directions() -> io::Result<()> {
@@ -303,11 +329,23 @@ fn rncp_exchanges_binary_files_with_pinned_python_in_both_directions() -> io::Re
     let python_listener_identity = python_listener_config.join("identity");
     let python_destination =
         python_identity_output(&python, &python_listener_config, &python_listener_identity, &repo)?;
+    let python_fetch_source = python_listener_root.join("fetch-source.bin");
+    let python_fetch_payload =
+        (0..9_876).map(|index| (index as u8).wrapping_mul(23).wrapping_add(11)).collect::<Vec<_>>();
+    fs::write(&python_fetch_source, &python_fetch_payload)?;
+    let rust_sender_hash = rust_identity_hash("rncp-python-interop-rust-sender")?;
+    let rust_fetch_identity_seed = "rncp-python-interop-rust-fetcher";
+    let rust_fetch_hash = rust_identity_hash(rust_fetch_identity_seed)?;
     let mut python_listener = Command::new(&python)
         .arg(&script)
         .arg("--listen")
         .arg("-a")
-        .arg(rust_identity_hash("rncp-python-interop-rust-sender")?)
+        .arg(&rust_sender_hash)
+        .arg("-a")
+        .arg(&rust_fetch_hash)
+        .arg("--allow-fetch")
+        .arg("--jail")
+        .arg(&python_listener_root)
         .arg("--save")
         .arg(&python_listener_root)
         .arg("--config")
@@ -337,6 +375,36 @@ fn rncp_exchanges_binary_files_with_pinned_python_in_both_directions() -> io::Re
             )));
         }
         assert_eq!(fs::read(python_listener_root.join("rust-to-python.bin"))?, rust_payload);
+
+        let rust_fetch_root = temp.path().join("rust-fetch");
+        fs::create_dir_all(&rust_fetch_root)?;
+        let fetched = run_rust_fetch(
+            Path::new("fetch-source.bin"),
+            &python_destination,
+            python_listener_port,
+            rust_fetch_identity_seed,
+            &rust_fetch_root,
+        )?;
+        if !fetched.status.success() {
+            return Err(io::Error::other(format!(
+                "Rust rncp fetch from Python failed: {}\nstdout:\n{}\nstderr:\n{}",
+                fetched.status,
+                String::from_utf8_lossy(&fetched.stdout),
+                String::from_utf8_lossy(&fetched.stderr)
+            )));
+        }
+        assert_eq!(fs::read(rust_fetch_root.join("fetch-source.bin"))?, python_fetch_payload);
+
+        let denied = run_rust_fetch(
+            Path::new("fetch-source.bin"),
+            &python_destination,
+            python_listener_port,
+            "rncp-python-interop-rust-denied",
+            &rust_fetch_root,
+        )?;
+        if denied.status.success() {
+            return Err(io::Error::other("unauthorised Python rncp fetch unexpectedly succeeded"));
+        }
         Ok(())
     })();
     let _ = python_listener.kill();
