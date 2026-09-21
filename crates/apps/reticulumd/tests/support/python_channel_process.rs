@@ -9,6 +9,10 @@ use tokio::time::{sleep, Instant};
 
 static PYTHON_INTEROP_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
+pub(super) const IFAC_NETWORK_NAME: &str = "lxmf-rs-issue-605-ifac";
+pub(super) const IFAC_PASSPHRASE: &str = "lxmf-rs-issue-605-ifac-secret";
+pub(super) const IFAC_SIZE_BITS: u64 = 128;
+
 pub(super) struct PythonChannelInteropPaths {
     python_bin: String,
     reticulum_py_repo: PathBuf,
@@ -283,6 +287,10 @@ pub(super) fn write_python_config(dir: &Path, port: u16) {
     write_python_config_for_kind(dir, port, PythonInteropInterfaceKind::Tcp);
 }
 
+pub(super) fn write_python_config_with_ifac(dir: &Path, port: u16) {
+    write_python_config_for_kind_with_ifac(dir, port, PythonInteropInterfaceKind::Tcp);
+}
+
 pub(super) fn write_python_config_for_kind(
     dir: &Path,
     port: u16,
@@ -291,8 +299,21 @@ pub(super) fn write_python_config_for_kind(
     fs::write(dir.join("config"), kind.server_config(port)).expect("write python config");
 }
 
+pub(super) fn write_python_config_for_kind_with_ifac(
+    dir: &Path,
+    port: u16,
+    kind: PythonInteropInterfaceKind,
+) {
+    fs::write(dir.join("config"), with_ifac(kind.server_config(port)))
+        .expect("write Python IFAC config");
+}
+
 pub(super) fn write_python_client_config(dir: &Path, port: u16) {
     write_python_client_config_for_kind(dir, port, PythonInteropInterfaceKind::Tcp);
+}
+
+pub(super) fn write_python_client_config_with_ifac(dir: &Path, port: u16) {
+    write_python_client_config_for_kind_with_ifac(dir, port, PythonInteropInterfaceKind::Tcp);
 }
 
 pub(super) fn write_python_client_config_for_kind(
@@ -301,6 +322,24 @@ pub(super) fn write_python_client_config_for_kind(
     kind: PythonInteropInterfaceKind,
 ) {
     fs::write(dir.join("config"), kind.client_config(port)).expect("write python client config");
+}
+
+pub(super) fn write_python_client_config_for_kind_with_ifac(
+    dir: &Path,
+    port: u16,
+    kind: PythonInteropInterfaceKind,
+) {
+    fs::write(dir.join("config"), with_ifac(kind.client_config(port)))
+        .expect("write Python IFAC client config");
+}
+
+fn with_ifac(mut config: String) -> String {
+    config.push_str(&format!(
+        "                     networkname = {IFAC_NETWORK_NAME}\n\
+                     passphrase = {IFAC_PASSPHRASE}\n\
+                     ifac_size = {IFAC_SIZE_BITS}\n"
+    ));
+    config
 }
 
 pub(super) fn free_tcp_port() -> u16 {

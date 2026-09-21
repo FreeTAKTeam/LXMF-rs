@@ -270,6 +270,15 @@ pub(crate) fn write_generated_reticulumd_config(
         if let Some(port) = interface.port {
             output.push_str(&format!("port = {port}\n"));
         }
+        if let Some(ifac_size) = interface.ifac_size {
+            output.push_str(&format!("ifac_size = {ifac_size}\n"));
+        }
+        if let Some(network_name) = interface.network_name.as_ref() {
+            output.push_str(&format!("network_name = {network_name:?}\n"));
+        }
+        if let Some(passphrase) = interface.passphrase.as_ref() {
+            output.push_str(&format!("passphrase = {passphrase:?}\n"));
+        }
         output.push('\n');
     }
     fs::write(output_path, output)

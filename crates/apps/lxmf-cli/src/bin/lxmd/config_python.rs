@@ -167,6 +167,9 @@ pub(crate) fn parse_python_reticulum_interfaces(input: &str) -> Vec<crate::Singl
         enabled: Option<bool>,
         host: Option<String>,
         port: Option<u16>,
+        ifac_size: Option<u64>,
+        network_name: Option<String>,
+        passphrase: Option<String>,
     }
 
     fn push_current(out: &mut Vec<crate::SingleTomlInterface>, current: Option<PythonIface>) {
@@ -190,6 +193,9 @@ pub(crate) fn parse_python_reticulum_interfaces(input: &str) -> Vec<crate::Singl
             name: current.name,
             host: current.host,
             port: Some(port),
+            ifac_size: current.ifac_size,
+            network_name: current.network_name,
+            passphrase: current.passphrase,
         });
     }
 
@@ -243,6 +249,13 @@ pub(crate) fn parse_python_reticulum_interfaces(input: &str) -> Vec<crate::Singl
             }
             "listen_ip" if !value.is_empty() => {
                 current.host = Some(value.to_string());
+            }
+            "ifac_size" => current.ifac_size = value.parse::<u64>().ok(),
+            "networkname" | "network_name" => {
+                current.network_name = Some(value.to_string());
+            }
+            "passphrase" | "pass_phrase" => {
+                current.passphrase = Some(value.to_string());
             }
             _ => {}
         }

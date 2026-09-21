@@ -176,6 +176,9 @@ enabled = true
 name = "rmap.world"
 host = "rmap.world"
 port = 4242
+ifac_size = 128
+network_name = "field-net"
+passphrase = "shared-secret"
 "#,
         )
         .expect("write config");
@@ -202,6 +205,9 @@ port = 4242
         assert!(generated_contents.contains("enable_transport = true"));
         assert!(generated_contents.contains("host = \"rmap.world\""));
         assert!(generated_contents.contains("port = 4242"));
+        assert!(generated_contents.contains("ifac_size = 128"));
+        assert!(generated_contents.contains("network_name = \"field-net\""));
+        assert!(generated_contents.contains("passphrase = \"shared-secret\""));
     }
 
     #[test]

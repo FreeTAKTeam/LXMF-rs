@@ -22,6 +22,10 @@ const RPC_RATE_LIMIT_BACKOFF: Duration = Duration::from_secs(5);
 
 const RPC_MAX_ATTEMPTS: usize = 60;
 
+pub const IFAC_NETWORK_NAME: &str = "lxmf-rs-issue-605-ifac";
+pub const IFAC_PASSPHRASE: &str = "lxmf-rs-issue-605-ifac-secret";
+pub const IFAC_SIZE_BITS: u64 = 128;
+
 pub struct SpawnedNode {
     pub child: Child,
     stderr_log: PathBuf,
@@ -179,6 +183,12 @@ pub fn tcp_client_interface(name: &str, server_port: u16) -> String {
     )
 }
 
+pub fn tcp_server_ifac_interface(name: &str, listen_port: u16) -> String {
+    format!(
+        "[[interfaces]]\ntype = \"tcp_server\"\nenabled = true\nname = \"{name}\"\nhost = \"127.0.0.1\"\nport = {listen_port}\nifac_size = {IFAC_SIZE_BITS}\nnetwork_name = \"{IFAC_NETWORK_NAME}\"\npassphrase = \"{IFAC_PASSPHRASE}\"\n"
+    )
+}
+
 pub fn write_rust_config(dir: &Path, config: &str) {
     fs::create_dir_all(dir.join("state")).expect("create state dir");
     fs::write(dir.join("lxmd.toml"), config).expect("write rust config");
@@ -238,6 +248,17 @@ pub fn write_python_client_rns_config(dir: &Path, server_port: u16) {
         ),
     )
     .expect("write python client rns config");
+}
+
+pub fn write_python_client_rns_config_with_ifac(dir: &Path, server_port: u16) {
+    fs::create_dir_all(dir).expect("create Python IFAC client RNS dir");
+    fs::write(
+        dir.join("config"),
+        format!(
+            "[reticulum]\nenable_transport = no\nshare_instance = no\n\n[logging]\nloglevel = 7\n\n[interfaces]\n  [[TCP Client Interface]]\n    type = TCPClientInterface\n    enabled = yes\n    target_host = 127.0.0.1\n    target_port = {server_port}\n    networkname = {IFAC_NETWORK_NAME}\n    passphrase = {IFAC_PASSPHRASE}\n    ifac_size = {IFAC_SIZE_BITS}\n"
+        ),
+    )
+    .expect("write Python IFAC client RNS config");
 }
 
 pub fn spawn_lxmd(
