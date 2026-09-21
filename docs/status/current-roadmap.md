@@ -38,6 +38,13 @@ mixed-runtime restart check, and the #612 pinned-Python work-item persistence
 and do not promote the broader utility surface. Published inventory counts are
 not promoted or rewritten by this change.
 
+The forward #610 Resource slice also has new pinned-Python evidence at
+`8b29132c`: a sender-side file-like reader raises during a split transfer,
+Rust reports terminal inbound failure, and the Python process exits
+unsuccessfully with the injected exception and bounded timeout preserved. This
+is local mixed-peer evidence only; the #605 candidate and its release posture
+remain open pending the documented broader gates.
+
 LXMF-rs retains the v0.9.5 SDK-access baseline. The generated inventory records
 software-surface parity against Python RNS 1.5.2 at
 `ea98db4f53dcf0defc0e71a16e60d28b1229c4e6`. The 1.5 alignment adds bounded
@@ -350,8 +357,8 @@ Scoped release evidence is split as follows:
 - Candidate `e0d7249035a51b668ec88b9ce193b3fe0f3fc8e7` records exact 50 MiB
   pinned-Python Resource transfers in both directions with Linux high-water
   RSS values under a fixed 512 MiB per-process release-profile budget. This
-  closes the local mixed-peer memory-evidence gap without claiming timeout,
-  file-adapter-fault, hosted, physical, or public-network coverage.
+  closes the local mixed-peer memory-evidence gap without claiming broader
+  timeout/reconnect, callback, hosted, physical, or public-network coverage.
 - `Link::request_packet`/`response_packet` complete the request/response
   pair: the receive half already decrypted both contexts, but nothing could
   build either, so a peer had to send every request and every reply as a

@@ -140,9 +140,12 @@ Resource advertisement is admitted. That cancellation now uses a reader-backed
 Rust split send. A reader-backed pinned-Python matrix also covers loss,
 duplication, reordering, and complete missing-fragment failure, while a
 separate trace injects a later source-read error after the first segment is
-accepted; the split success trace now reads from a real file handle. The row
-remains partial and unverified because Python-side file-adapter failure
-injection and broader timeout/reconnect traces, every consumer callback/status assertion,
+accepted; the split success trace now reads from a real file handle. Commit
+`8b29132c` adds the reciprocal pinned-Python file-like-reader fault trace: the
+reference reader raises during later segment preparation, the Rust receiver
+emits a terminal inbound failure, and the Python sender exits unsuccessfully
+after its bounded timeout. The row remains partial and unverified because
+broader timeout/reconnect traces, every consumer callback/status assertion,
 and hosted/physical/soak coverage are still open; exact 50 MiB peak-RSS values
 in both directions are now recorded by the candidate's Linux release-profile
 memory probe.

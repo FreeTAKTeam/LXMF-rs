@@ -8,7 +8,7 @@ it does not promote the full #610 acceptance contract or close parent issue
 
 - Candidate branch: `codex/issue-605-parity`.
 - Historical evidence candidate: `4ebaf762236e03df8ae56fd55696bd51c2e3de46`.
-- Current branch carrying this behavior: `53d0f14c`; later documentation
+- Current branch carrying this behavior: `8b29132c`; later documentation
   commits preserve this slice. The historical checks below are not being
   relabeled as reruns at the newer commit.
 - Candidate base: `a5425366` (the merged PR #603 base used by the #605 plan).
@@ -62,6 +62,11 @@ it does not promote the full #610 acceptance contract or close parent issue
 - A pinned-Python file-backed failure trace opens a real Rust `File` reader,
   truncates the backing file after Python admits the Resource, and observes one
   Rust `OutboundFailed` event rather than a false completion.
+- A pinned-Python sender-side file-like reader now raises after a partial read
+  while preparing a later split segment. The Rust receiver observes a terminal
+  inbound failure (`retry_limit_exhausted` or `link_closed` under the bounded
+  test deadline), while the Python process exits unsuccessfully and preserves
+  both the injected exception and its bounded resource timeout in stderr.
 - The same real-carrier matrix now uses a Rust `Read + Send + Sync` source and
   covers dropped, duplicated, reordered, and completely missing Resource
   data. A separate reader-backed trace injects an error while building the
@@ -148,6 +153,11 @@ RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   # 1 passed; 46 filtered out; 0.60s
 
 RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
+  cargo test --release -p reticulumd --test python_channel_interop \
+  rust_receiver_reports_pinned_python_file_reader_failure -- --ignored --nocapture --test-threads=1
+  # 1 passed; 47 filtered out; 13.02s
+
+RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   cargo test -p reticulumd --test python_channel_interop \
   pinned_python_link_timeout_and_reconnect_after_dropped_keepalives -- --ignored --nocapture
   # 1 passed; 45 filtered out; 15.38s
@@ -176,8 +186,11 @@ The reader-backed matrix uses the same transfer sizes and fault proxy as the
 owned-buffer reverse matrix, while the reader-failure trace proves a later
 source error becomes a terminal Rust failure after Python has accepted the
 transfer. Commit `e9087c0c54016f5c2c88873a9cac2704e49db921` adds the real-file
-truncation trace, which exercises the file-backed adapter itself; Python-side
-file-adapter fault injection remains a separate unverified boundary.
+truncation trace, which exercises the file-backed adapter itself. Commit
+`8b29132c` adds the reciprocal pinned-Python file-like-reader fault: the
+reference raises from its background segment preparation, the Rust receiver
+reports terminal failure, and the sender exits unsuccessfully after its
+bounded timeout.
 
 The release runs completed in approximately 10.00 seconds and 11.53 seconds.
 The debug Rust-to-Python 50 MiB preparation run exceeded the 180-second
@@ -226,11 +239,13 @@ RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
 ```
 
 The current split reader trace again transfers a Resource over the real Rust
-carrier path and verifies the exact remote SHA-256 acknowledgement. The timeout
-pair supplies current terminal link-establishment and keepalive-watchdog
-evidence adjacent to the Resource fault matrix. These runs do not add
-file-adapter fault injection, every consumer callback/status assertion, or
-hosted/physical/soak evidence.
+carrier path and verifies the exact remote SHA-256 acknowledgement. The new
+file-reader-failure trace uses a pinned Python file-like adapter whose
+mid-transfer `read()` raises; it records the reference sender's background
+exception and bounded timeout alongside Rust's terminal inbound failure. The
+timeout pair supplies current terminal link-establishment and keepalive-watchdog
+evidence adjacent to the Resource fault matrix. These runs do not add every
+consumer callback/status assertion or hosted/physical/soak evidence.
 
 The current candidate adds a Linux `/proc` high-water RSS probe at
 `e0d7249035a51b668ec88b9ce193b3fe0f3fc8e7`. It uses an exact 50 MiB transfer
@@ -271,9 +286,6 @@ represented as complete:
   fresh-Link trace; the two pinned-Python matrices now cover loss, duplication,
   reordering, and complete missing-fragment terminal failure in both
   directions;
-- Python-side file-adapter fault-injection evidence; Rust reader-backed loss,
-  duplication, reordering, cancellation, terminal reader failure, and the
-  real-file truncation path are now covered;
 - callbacks/status transitions observed through every library and daemon
   consumer after each injected failure;
 - hosted, physical-interface, public-network, and long-running soak evidence.
@@ -288,7 +300,10 @@ Python split Resource forwarding trace with an exact remote callback digest,
 bidirectional release-profile mixed-peer transfers, the pinned-Python
 receiver-shutdown terminal-failure trace, and the independent `rns-rs`
 loss/timeout/latency slice, and exact 50 MiB bidirectional peak-RSS evidence
-under a fixed process budget are implemented with local evidence; the broader
-Resource failure contract remains partial pending broader timeout/reconnect
-and Python-side file-adapter fault traces, every consumer callback/status
-assertion, and hosted/physical/soak coverage.
+under a fixed process budget, and the pinned-Python file-like-reader fault
+trace are implemented with local evidence; the broader Resource failure
+contract remains partial pending broader timeout/reconnect, every consumer
+callback/status assertion, and hosted/physical/soak coverage. The Python reference reader
+exception is observed as a background preparation failure followed by the
+sender's bounded timeout, rather than an explicit Resource `FAILED` callback;
+that reference behavior is retained in the evidence rather than normalized.
