@@ -899,9 +899,10 @@ direction.
   the CLI sends configurable named-destination probes over the existing TCP or
   Unix RPC surface, the daemon correlates delivery proofs without consuming
   ordinary LXMF receipt mappings, and `respond_to_probes` registers and
-  announces the opt-in `rnstransport.probe` responder. The focused
-  evidence is software-only; pinned-Python utility exchange and
-  public/physical-link timing remain open.
+  announces the opt-in `rnstransport.probe` responder. Commit `f86ecc1c`
+  adds isolated TCP process exchanges in both pinned-Python→Rust and native
+  Rust→pinned-Python roles. The focused evidence is software-only;
+  public/physical-link timing and fault/restart coverage remain open.
 - `rnsh` now has a bounded native TCP/Link/Channel workflow at
   `f24e0038`, hardened by `a32b6d71`: persisted or deterministic identities, allow-list/no-auth
   listener modes, root-scoped command execution, frozen Python channel

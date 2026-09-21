@@ -21,6 +21,8 @@ channel-window retry, bounded inbound queue overflow handling, and a large-
 output regression added by `a32b6d71`. Its Rust process tests cover command
 output, mirrored exit status, allow-list rejection, and flow-control output,
 while the pinned-Python initiator role is covered by an ignored interop test.
+The two-direction pinned-Python/native `rnprobe` process exchange is covered
+by `f86ecc1c`.
 
 ## Reference and ownership
 
@@ -46,7 +48,7 @@ option family; it is not a callable-surface completion claim.
 | --- | --- | --- | --- |
 | `rncp` | Local copy; authenticated listener/send/fetch; jail/save/overwrite; compression; identity allow-list; progress, timeout, cancellation, and file failure status | Native TCP/Link/Resource send/fetch plus isolated Rust processes and pinned-Python send/fetch roles in this record | partial / bounded network slice evidenced |
 | `rnpath` | Path table/rates; discovery; path and announce eviction; transport-via eviction; blackhole list/add/remove; remote management identity and timeout; JSON/human output | `rnpath-rs`/`rnpath` discovery and daemon-backed rate/eviction/blackhole subset; `rnpath_cli` and daemon RPC tests | partial / local daemon management subset evidenced |
-| `rnprobe` | Resolve full destination name and hash, send probe payloads of configurable size/count, wait between probes, report RTT/hops/loss and status | Native `rnprobe` sends a `probe` RPC with Python-compatible defaults and options; the daemon resolves the destination identity/path, validates the name/hash and packet limits, sends random payload packets, correlates delivery proofs through the existing receipt bridge, and returns per-probe RTT/hops/loss. `respond_to_probes = true` registers the `rnstransport.probe` destination with `ProofStrategy::All` and announces it through the existing transport schedule. | partial / bounded software workflow evidenced; Python utility and physical/public-network evidence remain open |
+| `rnprobe` | Resolve full destination name and hash, send probe payloads of configurable size/count, wait between probes, report RTT/hops/loss and status | Native `rnprobe` sends a `probe` RPC with Python-compatible defaults and options; the daemon resolves the destination identity/path, validates the name/hash and packet limits, sends random payload packets, correlates delivery proofs through the existing receipt bridge, and returns per-probe RTT/hops/loss. `respond_to_probes = true` registers the `rnstransport.probe` destination with `ProofStrategy::All` and announces it through the existing transport schedule. `f86ecc1c` exercises pinned Python→Rust and native Rust→pinned Python probe roles over isolated TCP interfaces. | partial / bounded software workflow evidenced; physical/public-network and fault/restart evidence remain open |
 | `rnsd` | Configured daemon launch, service/interactive modes, verbosity, example configuration | Rust compatibility shim resolves and delegates to `reticulumd`; delegation/help/status tests exist | partial / daemon delegation evidenced |
 | `rnid` | Generate/import/export identities; announce/hash; sign/validate; encrypt/decrypt; metadata; optional network identity request and encoding modes | Rust `rnid` generates and displays persisted private identities with overwrite protection | partial / local identity subset evidenced |
 | `rnir` | Resolver configuration, verbosity, example configuration, and resolver runtime integration | Rust accepts global/config/example options but does not expose a resolver network workflow | partial / configuration-only |
@@ -76,6 +78,7 @@ physical/public-network evidence remain outside the software-only pass.
 | Disk failure | Fetch save failure when the overwrite target is a directory | `rncp_process` | verified with nonzero status and preserved OS error output; remote receive-side save faults remain open |
 | Multi-client | Three independent clients send distinct binary files concurrently to one listener | `rncp_process` | verified for the bounded Rust listener/client path |
 | Adaptive timeout | Initial TCP clients reach `connected` before network work begins, allowing `operation_timeout` to observe the active interface bitrate and apply the RNS medium-path lower bound | `rncp_process::rncp_uses_medium_timeout_after_interface_activation` | verified for an active local TCP interface; genuinely slow-interface timing remains open |
+| Packet probe exchange | Probe packet delivery and proof correlation between the native daemon path and the pinned Python utility, in both initiator/responder directions | ignored `rnprobe_python_interop` (2 tests, commit `f86ecc1c`) | verified for isolated Rust daemon/Python TCP roles; public/multi-hop, carrier-fault, and physical timing remain open |
 | Compression option | `--no-compress` disables opportunistic Resource compression for outbound sends and fetch responses while preserving the default auto-compression path | Resource compression regression, `rncp_process`, mixed Python/Rust compression matrix | verified for the focused Python↔Rust send and listener-side fetch-response roles; the successful Python fetch-client completion callback is also asserted, while listener-side save/failure callback telemetry and the complete utility matrix remain open |
 | Path management | `rnpath-rs`/`rnpath` discovers paths through daemon RPC and now exposes daemon-backed rate inspection, path and announce-queue eviction, path-via eviction, blackhole listing, and timed/reasoned blackhole add/remove operations with human and JSON output | `rnpath_cli` mock-RPC and parser/process regressions | verified for the Rust client/daemon RPC boundary; pinned-Python utility roles and the remaining reference path-table/remote-management options remain open |
 | Remote shell | Native authenticated listener/initiator, frozen channel message numbers, root-scoped process launch, stdin/stdout/stderr stream framing, command policy, timeout, mirrored exit status, and allow-list rejection | `rnsh` unit tests; `rnsh_process`; ignored `rnsh_python_interop` | verified for the bounded software/TCP slice; PTY/resize, full option/fault/restart matrix, and the reverse Python listener role remain open |
@@ -277,6 +280,11 @@ cargo test -p reticulumd --bin reticulumd probe_destination_is_opt_in_and_uses_r
 cargo test -p reticulumd --bin reticulumd path_lookup_bridge_
 # 7 passed; 0 failed
 
+RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
+  cargo test -p rns-tools --test rnprobe_python_interop \
+  -- --ignored --nocapture
+# 2 passed; 0 failed (Python→Rust and native Rust→Python)
+
 cargo clippy -p reticulumd -p reticulum-rs-rpc -p rns-tools --all-targets --all-features --no-deps -- -D warnings
 # passed
 
@@ -291,9 +299,12 @@ The CLI integration tests use a local mock RPC server and verify the exact
 probe option envelope, human RTT formatting, JSON preservation, malformed
 destination rejection, and exit status `2` for partial loss. The focused
 daemon tests verify RPC defaults/aliases, the unavailable-bridge error, the
-receipt-registry handoff, and opt-in responder naming. This is software-only
-evidence: no pinned-Python `rnprobe` process exchange, carrier fault matrix,
-multi-hop/public-network run, hardware run, or performance claim is included.
+receipt-registry handoff, and opt-in responder naming. The ignored process
+test starts a Rust daemon with an announced probe responder for pinned Python,
+then starts a pinned-Python `PROVE_ALL` responder for native `rnprobe`; both
+directions deliver two probes with zero loss over isolated TCP interfaces.
+This is still software-only evidence: no carrier fault matrix, multi-hop/
+public-network run, hardware run, or performance claim is included.
 
 ## Current `rnsh` channel increment
 
@@ -357,9 +368,10 @@ classified as complete:
   exact overwrite result through bytes on disk.
 - Build the complete utility option/behavior matrix from every frozen
   `RNS/Utilities` entry point. The current slice now covers the daemon-backed
-  `rnpath` management subset, a bounded native `rnprobe` packet workflow, and
-  a bounded native `rnsh` channel workflow with one pinned-Python initiator
-  role, but does not prove pinned-Python `rnprobe` exchange, full `rnsh` PTY/
+  `rnpath` management subset, a bounded native `rnprobe` packet workflow with
+  both pinned-Python initiator/responder roles, and a bounded native `rnsh`
+  channel workflow with one pinned-Python initiator role, but does not prove
+  full `rnsh` PTY/
   resize/fault/restart behavior, the reverse Python `rnsh` listener role,
   public/multi-hop behavior, or network workflows to `rnsd` and the
   radio/interactive utilities.

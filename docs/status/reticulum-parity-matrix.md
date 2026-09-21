@@ -128,10 +128,12 @@ The forward #611 `rnprobe` increment at `98e4eb63` replaces the former
 named-destination resolution, configurable payload/count/wait/timeout options,
 delivery-proof correlation, RTT/hops/loss results, TCP/Unix RPC, and the
 opt-in `rnstransport.probe` responder are now covered by focused Rust daemon,
-receipt, CLI, and mock-RPC tests. This does not promote the broad
-`RNS/Utilities/*` row to full forward parity: pinned-Python utility
-exchange, public/multi-hop/physical-link evidence, and the remaining utility
-families remain open.
+receipt, CLI, and mock-RPC tests. Commit `f86ecc1c` adds isolated TCP
+pinned-Python→Rust and native Rust→pinned-Python process exchanges with two
+delivered probes in each direction. This does not promote the broad
+`RNS/Utilities/*` row to full forward parity: public/multi-hop/physical-link
+evidence, fault/restart coverage, and the remaining utility families remain
+open.
 
 The forward #611 `rnsh` increment at `f24e0038`, hardened by `a32b6d71`, adds the frozen Python channel
 message family, exact no-aspect destination hashing, authenticated and no-auth

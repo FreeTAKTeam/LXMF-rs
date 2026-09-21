@@ -185,6 +185,13 @@ while proving the medium-path timeout lower bound after interface activation.
 Commit `708dc980` adds a pinned-Python listener/Rust-client restart trace with
 stable identity and exact binary transfers before and after restart.
 
+Commit `f86ecc1c` adds the first two-direction pinned-Python `rnprobe` process
+exchange: a Python `rnprobe` reaches the Rust daemon's opt-in
+`rnstransport.probe` responder, and native `rnprobe` reaches a Python
+`PROVE_ALL` responder. Both isolated TCP roles deliver two probes with zero
+loss. Public/multi-hop, physical-carrier, and probe fault/restart evidence
+remain open.
+
 Commits `f24e0038` and `a32b6d71` add a bounded native `rnsh` TCP/Link/Channel workflow with
 the frozen Python message family, exact no-aspect destination hashing,
 authenticated/no-auth listener modes, root-scoped command launch, stream
