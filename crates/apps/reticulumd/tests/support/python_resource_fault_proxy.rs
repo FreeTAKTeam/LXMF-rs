@@ -13,6 +13,7 @@ pub(super) enum ResourceFaultMode {
     DropAll,
     DropKeepAlive,
     DuplicateChannelFirst,
+    DropLinkRequest,
 }
 
 pub(super) struct PythonResourceFaultProxy {
@@ -120,6 +121,7 @@ where
                             write_frame(&mut writer, &frame).await;
                         }
                     }
+                    ResourceFaultMode::DropLinkRequest => {}
                 }
             } else {
                 write_frame(&mut writer, &frame).await;
@@ -151,6 +153,7 @@ fn should_fault(frame: &[u8], mode: Option<ResourceFaultMode>) -> bool {
     Packet::from_bytes(output.as_slice()).is_ok_and(|packet| match mode {
         Some(ResourceFaultMode::DropKeepAlive) => packet.context == PacketContext::KeepAlive,
         Some(ResourceFaultMode::DuplicateChannelFirst) => packet.context == PacketContext::Channel,
+        Some(ResourceFaultMode::DropLinkRequest) => packet.context == PacketContext::None,
         Some(_) => packet.context == PacketContext::Resource,
         None => false,
     })

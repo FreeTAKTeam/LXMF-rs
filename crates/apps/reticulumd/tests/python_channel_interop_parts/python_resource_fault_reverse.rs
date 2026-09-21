@@ -172,3 +172,58 @@ async fn pinned_python_link_timeout_after_dropped_keepalives() {
     drop(proxy);
     drop(transport);
 }
+
+#[tokio::test]
+#[ignore = "requires local Python Reticulum checkout"]
+async fn pinned_python_link_establishment_timeout_after_dropped_request() {
+    let _interop_guard = python_interop_guard().await;
+    let paths = python_channel_interop_paths();
+
+    let server_port = free_tcp_port();
+    let temp = tempfile::tempdir().expect("tempdir");
+    let py_config_dir = temp.path().join("python-rns-link-establishment-timeout-server");
+    fs::create_dir_all(&py_config_dir).expect("python config dir");
+    write_python_config(&py_config_dir, server_port);
+
+    let mut child = paths.spawn_endpoint(&py_config_dir, "channel");
+    let ready = read_ready(&mut child).expect("python endpoint ready");
+    let _guard = ChildGuard { child: Some(child) };
+    wait_for_port(server_port, Duration::from_secs(5)).await;
+
+    let proxy = PythonResourceFaultProxy::bind(server_port, ResourceFaultMode::DropLinkRequest).await;
+    let target_hash =
+        AddressHash::new_from_hex_string(&ready.destination_hash).expect("destination hash");
+    let rust_identity = PrivateIdentity::new_from_rand(OsRng);
+    let rust_identity = to_transport_private_identity(&rust_identity);
+    let mut config = TransportConfig::new("python-link-establishment-timeout-rust", &rust_identity, true);
+    config.set_path_request_timeout_secs(2);
+    let transport = Transport::new(config);
+    transport
+        .iface_manager()
+        .lock()
+        .await
+        .spawn(TcpClient::new(format!("127.0.0.1:{}", proxy.port())), TcpClient::spawn);
+
+    let destination = wait_for_announce(&transport, target_hash, Duration::from_secs(8)).await;
+    assert!(
+        transport.await_path(&target_hash, Duration::from_secs(8), None).await,
+        "Python announce did not produce a usable path before link timeout"
+    );
+    let mut link_events = transport.out_link_events();
+    let link = transport.link(destination).await;
+    link.lock().await.set_establishment_timeout(Duration::from_secs(3));
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let event = link_events.recv().await.expect("link event");
+            if matches!(event.event, LinkEvent::Closed) {
+                return;
+            }
+        }
+    })
+    .await
+    .expect("timed out waiting for Rust link establishment timeout");
+    assert_eq!(link.lock().await.status(), LinkStatus::Closed);
+
+    drop(proxy);
+    drop(transport);
+}
