@@ -123,7 +123,7 @@ async fn pinned_python_reader_resource_fault_matrix() {
 
 #[tokio::test]
 #[ignore = "requires local Python Reticulum checkout"]
-async fn pinned_python_link_timeout_after_dropped_keepalives() {
+async fn pinned_python_link_timeout_and_reconnect_after_dropped_keepalives() {
     let _interop_guard = python_interop_guard().await;
     let paths = python_channel_interop_paths();
 
@@ -168,6 +168,15 @@ async fn pinned_python_link_timeout_after_dropped_keepalives() {
     .await
     .expect("timed out waiting for Rust link timeout after dropped keepalives");
     assert_eq!(link.lock().await.status(), LinkStatus::Closed);
+
+    let reconnect_link = transport.link(destination).await;
+    let reconnect_id = wait_for_out_link_active(
+        &mut link_events,
+        &reconnect_link,
+        Duration::from_secs(12),
+    )
+    .await;
+    assert_ne!(reconnect_id, link_id, "timeout recovery reused the closed Link");
 
     drop(proxy);
     drop(transport);
