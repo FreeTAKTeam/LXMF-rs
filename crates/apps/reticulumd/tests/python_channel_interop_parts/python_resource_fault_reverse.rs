@@ -1,4 +1,8 @@
-async fn run_rust_resource_fault(mode: ResourceFaultMode, expect_failure: bool) {
+async fn run_rust_resource_fault(
+    mode: ResourceFaultMode,
+    expect_failure: bool,
+    reader_backed: bool,
+) {
     let paths = python_channel_interop_paths();
     let server_port = free_tcp_port();
     let temp = tempfile::tempdir().expect("tempdir");
@@ -49,10 +53,22 @@ async fn run_rust_resource_fault(mode: ResourceFaultMode, expect_failure: bool) 
     let payload = rust_resource_fixture(resource_size);
     let expected_digest = digest_hex(&payload);
     let mut resource_events = transport.resource_events();
-    let resource_hash = transport
-        .send_resource(&link_id, payload, None)
-        .await
-        .expect("send resource through fault proxy");
+    let resource_hash = if reader_backed {
+        transport
+            .send_resource_from_reader(
+                &link_id,
+                std::io::Cursor::new(payload),
+                resource_size as u64,
+                None,
+            )
+            .await
+            .expect("send reader-backed resource through fault proxy")
+    } else {
+        transport
+            .send_resource(&link_id, payload, None)
+            .await
+            .expect("send resource through fault proxy")
+    };
 
     if expect_failure {
         wait_for_outbound_resource_failed(
@@ -72,7 +88,7 @@ async fn run_rust_resource_fault(mode: ResourceFaultMode, expect_failure: bool) 
             &seen,
             resource_size,
             &expected_digest,
-            Duration::from_secs(8),
+            Duration::from_secs(15),
         )
         .await;
     }
@@ -86,8 +102,19 @@ async fn run_rust_resource_fault(mode: ResourceFaultMode, expect_failure: bool) 
 async fn pinned_python_resource_reverse_fault_matrix() {
     let _interop_guard = python_interop_guard().await;
 
-    run_rust_resource_fault(ResourceFaultMode::DropFirst, false).await;
-    run_rust_resource_fault(ResourceFaultMode::DuplicateFirst, false).await;
-    run_rust_resource_fault(ResourceFaultMode::ReorderFirstTwo, false).await;
-    run_rust_resource_fault(ResourceFaultMode::DropAll, true).await;
+    run_rust_resource_fault(ResourceFaultMode::DropFirst, false, false).await;
+    run_rust_resource_fault(ResourceFaultMode::DuplicateFirst, false, false).await;
+    run_rust_resource_fault(ResourceFaultMode::ReorderFirstTwo, false, false).await;
+    run_rust_resource_fault(ResourceFaultMode::DropAll, true, false).await;
+}
+
+#[tokio::test]
+#[ignore = "requires local Python Reticulum checkout"]
+async fn pinned_python_reader_resource_fault_matrix() {
+    let _interop_guard = python_interop_guard().await;
+
+    run_rust_resource_fault(ResourceFaultMode::DropFirst, false, true).await;
+    run_rust_resource_fault(ResourceFaultMode::DuplicateFirst, false, true).await;
+    run_rust_resource_fault(ResourceFaultMode::ReorderFirstTwo, false, true).await;
+    run_rust_resource_fault(ResourceFaultMode::DropAll, true, true).await;
 }

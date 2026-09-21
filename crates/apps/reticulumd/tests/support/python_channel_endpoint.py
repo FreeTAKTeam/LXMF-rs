@@ -102,6 +102,7 @@ class ChannelEndpoint:
             "resource-multi-hop",
             "cancel-resource",
             "resource-shutdown",
+            "resource-reader-failure",
         ):
             link.set_resource_strategy(RNS.Link.ACCEPT_ALL)
 
@@ -116,7 +117,7 @@ class ChannelEndpoint:
 
                 link.set_resource_started_callback(on_resource_started)
 
-            if self.payload_kind == "resource-shutdown":
+            if self.payload_kind in ("resource-shutdown", "resource-reader-failure"):
                 channel.register_message_type(MessageTest)
 
                 def on_resource_started(_resource) -> None:
@@ -519,6 +520,7 @@ def main() -> int:
             "resource-multi-hop",
             "cancel-resource",
             "resource-shutdown",
+            "resource-reader-failure",
             "link-data",
             "request",
             "large-request",
