@@ -123,6 +123,16 @@ Python-listener/Rust-client restart trace with stable identity (`708dc980`);
 genuinely slow interface timing and remote receive-side fault evidence remain
 open.
 
+The forward #611 `rnprobe` increment at `98e4eb63` replaces the former
+`rnpath` delegation wrapper with a bounded native packet-probe workflow:
+named-destination resolution, configurable payload/count/wait/timeout options,
+delivery-proof correlation, RTT/hops/loss results, TCP/Unix RPC, and the
+opt-in `rnstransport.probe` responder are now covered by focused Rust daemon,
+receipt, CLI, and mock-RPC tests. This does not promote the broad
+`RNS/Utilities/*` row to full forward parity: pinned-Python utility
+exchange, public/multi-hop/physical-link evidence, and the remaining utility
+families remain open.
+
 ### Runtime and daemon compatibility
 
 - `[reticulum] enable_transport` now controls the full Reticulum transport

@@ -24,7 +24,8 @@ remaining acceptance gates are recorded in
 [`rns-1.5.4-delta.md`](rns-1.5.4-delta.md). The 1.5.4 development reference is
 not the canonical release baseline. IFAC daemon wiring, remaining remote
 utility behavior, transport policy differences, and platform validation remain
-open; the focused #611 `rncp` compression/send/fetch matrix, negative
+open; the focused #611 `rncp` compression/send/fetch matrix, bounded
+`rnprobe` packet/RPC workflow, negative
 failure-category checks, path-discovery-timeout check, listener restart check,
 local disk-failure check, client-cancellation check, concurrent-client check,
 interrupted-link/status-output check, active-interface medium-timeout check,
@@ -893,6 +894,13 @@ direction.
   next-hop/interface metadata over the software RPC path, then reissues the
   lookup as a scoped/tagged path request on the learned outgoing interface and
   verifies the daemon echoes the scope fields.
+- `rnprobe` now exercises the native daemon packet-probe workflow:
+  the CLI sends configurable named-destination probes over the existing TCP or
+  Unix RPC surface, the daemon correlates delivery proofs without consuming
+  ordinary LXMF receipt mappings, and `respond_to_probes` registers and
+  announces the opt-in `rnstransport.probe` responder. The focused
+  evidence is software-only; pinned-Python utility exchange and
+  public/physical-link timing remain open.
 - The pinned Python compatibility matrix now includes
   `rns_path_request_rust_to_python`, a loopback TCP case where Rust
   `reticulumd` starts with an unknown Python delivery path, resolves it through

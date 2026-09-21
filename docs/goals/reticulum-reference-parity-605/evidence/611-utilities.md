@@ -1,7 +1,7 @@
 # #611 utility/network evidence
 
 Status: **partial / unverified**. This record covers the bounded native `rncp`
-slice on the forward parity branch, including authenticated pinned-Python and
+and `rnprobe` slices on the forward parity branch, including authenticated pinned-Python and
 Rust sender/listener roles. The mixed-runtime compression increment is
 implemented by `3c6757ba`, and process-level missing-file/denied-identity
 failure assertions are implemented by `2b281b87`; these increments do not
@@ -22,7 +22,8 @@ Python fetch-client completion callback is asserted by `e6f71d21`.
 - Forward reference: Reticulum `99de23c040d507e3fefca19e87b182302902725d`
   (`1.5.4-dev`), including `RNS/Utilities/rncp.py`.
 - Rust owner: `crates/apps/rns-tools` using the existing
-  `reticulum-rs-transport` Link/Resource and TCP interface APIs.
+  `reticulum-rs-transport` Link/Resource, packet/receipt, daemon RPC, and TCP
+  interface APIs.
 - No second daemon or utility protocol was introduced. The existing local copy
   mode remains available when no network flags are supplied.
 
@@ -38,7 +39,7 @@ option family; it is not a callable-surface completion claim.
 | --- | --- | --- | --- |
 | `rncp` | Local copy; authenticated listener/send/fetch; jail/save/overwrite; compression; identity allow-list; progress, timeout, cancellation, and file failure status | Native TCP/Link/Resource send/fetch plus isolated Rust processes and pinned-Python send/fetch roles in this record | partial / bounded network slice evidenced |
 | `rnpath` | Path table/rates; discovery; path and announce eviction; transport-via eviction; blackhole list/add/remove; remote management identity and timeout; JSON/human output | `rnpath-rs`/`rnpath` discovery and daemon-backed rate/eviction/blackhole subset; `rnpath_cli` and daemon RPC tests | partial / local daemon management subset evidenced |
-| `rnprobe` | Resolve full destination name and hash, send probe payloads of configurable size/count, wait between probes, report RTT/hops/loss and status | Rust wrapper currently delegates to path availability and supports only destination, timeout, RPC, and JSON | partial / probe packet workflow missing |
+| `rnprobe` | Resolve full destination name and hash, send probe payloads of configurable size/count, wait between probes, report RTT/hops/loss and status | Native `rnprobe` sends a `probe` RPC with Python-compatible defaults and options; the daemon resolves the destination identity/path, validates the name/hash and packet limits, sends random payload packets, correlates delivery proofs through the existing receipt bridge, and returns per-probe RTT/hops/loss. `respond_to_probes = true` registers the `rnstransport.probe` destination with `ProofStrategy::All` and announces it through the existing transport schedule. | partial / bounded software workflow evidenced; Python utility and physical/public-network evidence remain open |
 | `rnsd` | Configured daemon launch, service/interactive modes, verbosity, example configuration | Rust compatibility shim resolves and delegates to `reticulumd`; delegation/help/status tests exist | partial / daemon delegation evidenced |
 | `rnid` | Generate/import/export identities; announce/hash; sign/validate; encrypt/decrypt; metadata; optional network identity request and encoding modes | Rust `rnid` generates and displays persisted private identities with overwrite protection | partial / local identity subset evidenced |
 | `rnir` | Resolver configuration, verbosity, example configuration, and resolver runtime integration | Rust accepts global/config/example options but does not expose a resolver network workflow | partial / configuration-only |
@@ -70,7 +71,7 @@ physical/public-network evidence remain outside the software-only pass.
 | Adaptive timeout | Initial TCP clients reach `connected` before network work begins, allowing `operation_timeout` to observe the active interface bitrate and apply the RNS medium-path lower bound | `rncp_process::rncp_uses_medium_timeout_after_interface_activation` | verified for an active local TCP interface; genuinely slow-interface timing remains open |
 | Compression option | `--no-compress` disables opportunistic Resource compression for outbound sends and fetch responses while preserving the default auto-compression path | Resource compression regression, `rncp_process`, mixed Python/Rust compression matrix | verified for the focused Python↔Rust send and listener-side fetch-response roles; the successful Python fetch-client completion callback is also asserted, while listener-side save/failure callback telemetry and the complete utility matrix remain open |
 | Path management | `rnpath-rs`/`rnpath` discovers paths through daemon RPC and now exposes daemon-backed rate inspection, path and announce-queue eviction, path-via eviction, blackhole listing, and timed/reasoned blackhole add/remove operations with human and JSON output | `rnpath_cli` mock-RPC and parser/process regressions | verified for the Rust client/daemon RPC boundary; pinned-Python utility roles and the remaining reference path-table/remote-management options remain open |
-| Other shipped utilities | `rnpath`, `rnprobe`, `rnsd`, `rnid`, `rnir`, `rnodeconf`, `rnpkg`, `rnsh`, `rnx`, and `rngit` | existing tests and callable inventory | not promoted by this slice; network/reference gaps remain |
+| Other shipped utilities | `rnsd`, `rnid`, `rnir`, `rnodeconf`, `rnpkg`, `rnsh`, `rnx`, and `rngit` | existing tests and callable inventory; `rnprobe` is recorded in the row above | not promoted by this slice; network/reference gaps remain |
 
 ## Commands and results
 
@@ -224,9 +225,67 @@ tools/scripts/check-module-size.sh
 ```
 
 These are implementation-backed daemon-RPC tests with a mock server; they do
-not claim a physical carrier or a Python utility process. `rnprobe` still lacks
-the reference probe-payload/count/wait workflow, and `rnsh`, `rnir`, `rnpkg`,
+not claim a physical carrier or a Python utility process. `rnsh`, `rnir`, `rnpkg`,
 and hardware-facing `rnodeconf` remain separate parity rows.
+
+## Current `rnprobe` packet increment
+
+Commit `98e4eb63` replaces the old `rnpath` delegation wrapper with the first
+native packet-probe workflow. `rnprobe FULL_NAME DESTINATION_HASH` now sends
+the legacy daemon `probe` RPC with the frozen Python defaults (`size=16`,
+`probes=1`, `timeout=12`, and `wait=0`) and supports configurable payload
+size/count, per-probe timeout, inter-probe wait, human/JSON output, TCP or Unix
+RPC, and packet-loss exit status `2`. The daemon-side bridge waits for a
+destination identity/path, constructs the named `SingleOutputDestination`,
+sends random payload packets through the existing transport, registers the
+final encrypted packet hash before dispatch, and waits for the normal delivery
+receipt. The result retains one row per probe with delivered/timeout status,
+RTT, packet hash, hops, reply count, and loss percentage.
+
+The responder is opt-in through the existing `reticulum.respond_to_probes`
+runtime policy. When enabled, daemon startup registers
+`rnstransport.probe` with `ProofStrategy::All`, prints its destination hash,
+and includes it in existing startup and scheduled announce paths. The
+delivery receipt bridge notifies only the shared probe registry before
+continuing its normal message-receipt mapping, so diagnostic probes do not
+consume or alter ordinary LXMF receipt state.
+
+~~~text
+cargo test -p rns-tools --test rnprobe_cli
+# 4 passed; 0 failed
+
+cargo test -p rns-tools --bin rnprobe
+# 4 passed; 0 failed
+
+cargo test -p reticulum-rs-rpc --lib probe_rpc
+# 3 passed; 0 failed
+
+cargo test -p reticulumd --test receipt_bridge
+# 3 passed; 0 failed
+
+cargo test -p reticulumd --bin reticulumd probe_destination_is_opt_in_and_uses_rnstransport_probe_name
+# 1 passed; 0 failed
+
+cargo test -p reticulumd --bin reticulumd path_lookup_bridge_
+# 7 passed; 0 failed
+
+cargo clippy -p reticulumd -p reticulum-rs-rpc -p rns-tools --all-targets --all-features --no-deps -- -D warnings
+# passed
+
+tools/scripts/check-boundaries.sh
+# boundary checks: ok
+
+tools/scripts/check-module-size.sh
+# module-size checks: ok
+~~~
+
+The CLI integration tests use a local mock RPC server and verify the exact
+probe option envelope, human RTT formatting, JSON preservation, malformed
+destination rejection, and exit status `2` for partial loss. The focused
+daemon tests verify RPC defaults/aliases, the unavailable-bridge error, the
+receipt-registry handoff, and opt-in responder naming. This is software-only
+evidence: no pinned-Python `rnprobe` process exchange, carrier fault matrix,
+multi-hop/public-network run, hardware run, or performance claim is included.
 
 ## Unresolved requirements
 
@@ -240,9 +299,10 @@ classified as complete:
   exact overwrite result through bytes on disk.
 - Build the complete utility option/behavior matrix from every frozen
   `RNS/Utilities` entry point. The current slice now covers the daemon-backed
-  `rnpath` management subset, but does not add the reference probe-payload
-  workflow to `rnprobe`, remote shell behavior to `rnsh`, or network workflows
-  to `rnsd` and the radio/interactive utilities.
+  `rnpath` management subset and a bounded native `rnprobe` packet workflow,
+  but does not prove pinned-Python `rnprobe` exchange, public/multi-hop
+  behavior, remote shell behavior to `rnsh`, or network workflows to `rnsd`
+  and the radio/interactive utilities.
 - Prove real `rngit` fetch/push/bundle workflows and configured initial-branch
   behavior under #601; bounded pinned-Python `/git/list`, `/git/fetch`,
   `/git/push`, `/git/delete`, `/git/create`, `/git/sync`, `/git/fork`, and
