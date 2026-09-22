@@ -180,3 +180,66 @@ async fn a_cached_announce_is_still_findable_for_path_table_persistence() {
         "save_reticulum_path_table drops any path entry whose announce packet it cannot find"
     );
 }
+
+#[tokio::test]
+async fn newer_cached_path_announce_survives_scheduled_queue_restart() {
+    let temp = tempfile::tempdir().expect("path-table storage");
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut config = TransportConfig::new("announce-persistence", &identity, false);
+    config.set_transport_enabled(true);
+    let transport = Transport::new(config);
+    let iface = *transport.iface_manager().lock().await.new_channel(16).address();
+    let mut destination = SingleInputDestination::new(
+        PrivateIdentity::new_from_rand(OsRng),
+        DestinationName::new("lxmf", "cached-scheduled-restart"),
+    );
+
+    let scheduled = destination.announce(OsRng, None).expect("scheduled announce");
+    handle_announce(
+        &scheduled,
+        transport.get_handler().lock().await,
+        iface,
+        crate::iface::IfaceSource::None,
+    )
+    .await;
+    tokio::time::sleep(Duration::from_millis(1_100)).await;
+    let mut cached = destination.announce(OsRng, None).expect("cached announce");
+    cached.context = PacketContext::PathResponse;
+    handle_announce(
+        &cached,
+        transport.get_handler().lock().await,
+        iface,
+        crate::iface::IfaceSource::None,
+    )
+    .await;
+
+    assert_eq!(tier_sizes(&transport).await, (1, 0));
+    let destination_hash = cached.destination;
+    assert_eq!(transport.save_reticulum_path_table(temp.path()).await.expect("save"), 1);
+
+    let mut restored_config = TransportConfig::new("announce-persistence", &identity, false);
+    restored_config.set_transport_enabled(true);
+    let restored = Transport::new(restored_config);
+    let restored_iface = *restored.iface_manager().lock().await.new_channel(16).address();
+    assert_eq!(restored_iface, iface, "test relies on deterministic interface hashes");
+    let report = restored
+        .restore_reticulum_path_table_report(temp.path())
+        .await
+        .expect("restore");
+
+    assert_eq!(report.restored_active_paths, 1);
+    assert!(restored.has_path(&destination_hash).await);
+    assert_eq!(tier_sizes(&restored).await, (0, 1));
+    let handler = restored.get_handler();
+    let handler = handler.lock().await;
+    let persisted = handler
+        .announce_table
+        .cached_packet_for_destination(&destination_hash)
+        .expect("restored announce cache entry");
+    assert_eq!(persisted.data, cached.data, "restart must retain the latest accepted announce");
+    assert_eq!(
+        persisted.context,
+        PacketContext::None,
+        "a restored cache entry must not become scheduled retransmission work"
+    );
+}

@@ -512,9 +512,11 @@ restart while preserving the delivery identity. A two-carrier Python Channel
 trace now also duplicates a real application frame and observes one endpoint
 delivery through the forwarding path. A companion trace closes that
 application link, establishes a fresh Python link over the same two carriers,
-and observes one delivery on each link. Broader multi-hop packet/proof/link
-duplicate handling, announce-persistence, caller-visible close reasons, and
-underlying carrier-stream reconnect traces remain open. A mixed pinned-Python
+and observes one delivery on each link. A transport save/restart regression
+now verifies a newer cached path response supersedes scheduled announce state
+without being requeued after restore. Broader multi-hop packet/proof/link
+duplicate handling, caller-visible close reasons, and underlying
+carrier-stream reconnect traces remain open. A mixed pinned-Python
 link-establishment timeout trace now proves pending cleanup after the path is
 available; the two-carrier split Resource trace covers the multi-hop Resource
 direction.

@@ -118,8 +118,10 @@ cleanup after the path is available. Rust link events now expose the pinned
 `TIMEOUT`, `INITIATOR_CLOSED`, and `DESTINATION_CLOSED` reason codes, with
 role-aware and establishment-timeout regressions. The row remains unverified
 until broader shared-instance and multi-hop production traces compare
-packet/proof duplicate suppression, announce persistence, and underlying
-carrier-stream reconnect behavior.
+packet/proof duplicate suppression and underlying carrier-stream reconnect
+behavior. A focused transport save/restart regression now proves a newer
+cached `PATH_RESPONSE` announce supersedes scheduled state without becoming
+retransmission work after restore.
 
 The #610 implementation slice now has committed local evidence in
 [`evidence/610-resource.md`](../goals/reticulum-reference-parity-605/evidence/610-resource.md):

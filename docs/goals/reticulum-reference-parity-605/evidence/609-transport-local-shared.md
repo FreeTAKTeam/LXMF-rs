@@ -81,9 +81,9 @@ RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
 ```
 
 This covers link close/reconnect while the Rust forwarding transport remains
-active. It does not cover reconnecting the underlying TCP carrier stream,
-cached-versus-scheduled announce persistence, or broader packet/proof duplicate
-handling.
+active. It does not cover reconnecting the underlying TCP carrier stream or
+broader packet/proof duplicate handling; the separate persistence regression
+below covers one scheduled-to-cached restart transition.
 
 A separate fault-injected trace lets a pinned Python endpoint announce and
 populate the Rust path table, then drops every outbound initial link-request
@@ -99,8 +99,8 @@ RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
 
 This proves pending link-establishment cleanup after a real mixed-peer path is
 available. It does not yet prove caller-visible timeout-reason taxonomy,
-underlying carrier-stream reconnect, announce persistence, or broader
-packet/proof duplicate handling.
+underlying carrier-stream reconnect, or broader packet/proof duplicate
+handling.
 
 A companion trace routes the same Python Channel exchange through two Rust
 carriers while a real TCP proxy duplicates the first decoded Channel frame
@@ -180,9 +180,10 @@ application-link reconnect, Channel duplicate suppression, and a split Resource
 through two Rust carriers. The shared-instance trace again covers bidirectional
 application traffic across Rust daemon restart with stable delivery identity.
 The timeout pair covers both dropped link establishment requests and dropped
-keepalives reaching terminal `Closed` state. These are current software traces;
-they do not compare cached versus scheduled announce persistence, reconnect an
-underlying carrier stream, or cover broader packet/proof duplicate handling.
+keepalives reaching terminal `Closed` state. A separate transport restart test
+covers a newer cached path response superseding scheduled announce state.
+Underlying carrier-stream reconnect and broader packet/proof duplicate
+handling remain unverified.
 
 ## Caller-visible close-reason parity
 
@@ -209,9 +210,28 @@ cargo test -p reticulum-rs-transport --lib \
 ```
 
 This closes the previously unobservable close-reason slice without promoting
-the broader #609 row. Carrier-stream reconnect, cached-versus-scheduled
-announce persistence, broader packet/proof duplicate handling, and the wider
-transport matrix remain unverified.
+the broader #609 row. Carrier-stream reconnect, broader packet/proof duplicate
+handling, and the wider transport matrix remain unverified.
+
+## Cached-versus-scheduled announce persistence
+
+`newer_cached_path_announce_survives_scheduled_queue_restart` exercises the
+production announce, path-table save, and restore APIs. It first accepts an
+ordinary scheduled announce, then a strictly newer `PATH_RESPONSE` announce
+for the same destination. After save/restart/restore, the path remains
+reachable, the restored bounded cache contains the newer accepted payload,
+and no retransmission-queue entry is recreated. The test observes the whole
+state transition rather than only the announce table's in-memory lookup.
+
+```text
+cargo test -p reticulum-rs-transport --lib \
+  newer_cached_path_announce_survives_scheduled_queue_restart -- --nocapture
+# 1 passed; 0 failed; 1.13s
+```
+
+This closes that specific local persistence scenario; it is not a Python↔Rust
+restart trace, a carrier-stream reconnect result, or broad duplicate-proof
+coverage.
 
 ## Remaining acceptance boundary
 
@@ -220,8 +240,8 @@ fan-out, a direct application/link exchange, Rust daemon restart with identity
 continuity, two-carrier multi-hop Python Channel and split Resource exchanges,
 and multi-hop Channel sequence deduplication through one forwarding Rust
 transport, and application-link close/reconnect over that forwarding path. It
-does not yet compare cached versus scheduled announce persistence or underlying
-carrier stream reconnect behavior, and broader packet/proof duplicate handling
-remain separate. Those traces are still required before this row can be
-promoted.
+does not yet cover carrier-stream reconnect behavior or broader packet/proof
+duplicate handling. Those traces are still required before this row can be
+promoted; scheduled-to-cached announce persistence is covered by the focused
+transport restart test above.
 Hardware and public-network evidence remain separate acceptance axes.
