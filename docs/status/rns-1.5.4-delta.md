@@ -258,7 +258,12 @@ partial and unverified because other conversion backends, complete reference
 rendering, remaining page/file cases, restart/fault cleanup, and end-to-end
 rngit Git/work network workflows remain open. Commit `e41189c8` adds live
 malformed-media requests with missing keys, missing paths, and insufficient
-path components; each fails closed without an unexpected response.
+path components; each fails closed without an unexpected response. The
+issue-specific follow-up observes the converted-media temp directory during
+the active Python Link and verifies the production `LinkEvent::Closed` handler
+removes it after teardown, against frozen Python commit
+`99de23c040d507e3fefca19e87b182302902725d`. Periodic stale-link, fault, and
+cancellation cleanup remain open.
 
 The #614 implementation slice now has committed local evidence in
 [`evidence/614-native-interfaces.md`](../goals/reticulum-reference-parity-605/evidence/614-native-interfaces.md):

@@ -3,7 +3,8 @@
 Status: **partial / unverified**. This records the bounded implementation and
 live pinned-Python trace at candidate commit `e41189c8` on
 `codex/issue-605-parity`; it does not claim the
-full #613 or #605 acceptance gate.
+full #613 or #605 acceptance gate. The current issue-specific increment adds a
+production-link teardown assertion for conversion temporary files.
 
 ## Reference and ownership
 
@@ -27,6 +28,7 @@ full #613 or #605 acceptance gate.
 | Media/files | `/media` key and path validation, URL decoding, ref/blob resolution, binary-safe filename metadata, download/artifact/work-doc endpoints, published-release filtering and absent-blob handling | local verified; pinned Python Resource payload/metadata and `/file/download` content/filename trace evidenced |
 | WebP conversion | Backend preference and `RNGIT_MEDIA_BACKEND`, argv-only process construction, quality/max-dimension options, 8-second pipeline bound, bounded stderr, output validation, temporary-directory cleanup, raw fallback | local code/tests; pinned Python live `ffmpeg` conversion of a valid PNG returns validated WebP; other backends and visual parity remain unverified |
 | Resource wire | Explicit outbound compression control, with `/media` responses sent uncompressed and a regression asserting no compressed advertisement | local verified; live Python Resource delivery and metadata evidenced |
+| Link-scoped cleanup | A converted-media temp directory exists while its serving Link is active and is removed after the pinned Python client tears down that production Link | ignored `rngit_python_interop::rngit_serves_pages_and_media_to_pinned_python_client` | verified twice against the frozen Python commit; periodic stale-link recovery and fault/cancellation cleanup remain open |
 
 ## Commands and results
 
@@ -69,6 +71,22 @@ components; each receives no response/failure callback rather than an
 unexpected payload, proving the live malformed-request boundary fails closed.
 This does not promote visual-rendering parity.
 
+For the cleanup assertion, the Rust server uses an isolated `TMPDIR`/`TEMP`.
+The Python client observes exactly one `rngit-media-*` directory after the
+successful WebP response and before calling `link.teardown()`. After the client
+process exits, the Rust test polls the isolated temp root and requires it to be
+empty. This exercises the production `LinkEvent::Closed` cleanup path rather
+than only calling `page_link_closed` directly. The pinned checkout is
+`99de23c040d507e3fefca19e87b182302902725d`; the live case passed twice.
+
+```text
+RETICULUM_PY_REPO=<checkout at 99de23c040d507e3fefca19e87b182302902725d> \
+  LXMF_PYTHON_BIN=python3 cargo test -p rns-tools \
+  --test rngit_python_interop \
+  rngit_serves_pages_and_media_to_pinned_python_client \
+  -- --ignored --nocapture                            2 passed
+```
+
 The module-size script now reports only the existing
 `crates/libs/rns-transport/src/resource/manager.rs:555` over-budget baseline;
 the changed `rngit` and Resource sender files are within the active 500-line
@@ -79,8 +97,10 @@ limit.
 - The pinned Python/NomadNet-compatible client now completes one real TCP
   Reticulum link, identifies, exercises successful and negative page/file
   requests, and downloads raw media as a Resource with deterministic
-  metadata/content checks. This is one bounded role trace, not proof of every
-  page, file, or public-network path.
+  metadata/content checks. It also proves one generated conversion directory
+  is present during the active link and gone after client teardown. This is
+  one bounded role trace, not proof of every page, file, or public-network
+  path; periodic stale-link and fault/cancellation cleanup remain open.
 - The Rust page rendering is intentionally a compact service implementation;
   full Markdown highlighting, pagination, diff rendering, signed work-document
   presentation, and every reference template detail remain open.
