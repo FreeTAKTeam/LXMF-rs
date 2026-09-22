@@ -512,12 +512,15 @@ restart while preserving the delivery identity. A two-carrier Python Channel
 trace now also duplicates a real application frame and observes one endpoint
 delivery through the forwarding path. A companion trace closes that
 application link, establishes a fresh Python link over the same two carriers,
-and observes one delivery on each link. A transport save/restart regression
+and observes one delivery on each link. Another fault-injected pinned-Python
+trace duplicates the first link-request proof at the endpoint carrier and
+asserts the Rust forwarding path emits it only once to the client; PR Verify
+runs this regression against the frozen target. A transport save/restart regression
 now verifies a newer cached path response supersedes scheduled announce state
 without being requeued after restore. A real-socket TCP carrier regression
 also proves redial preserves interface identity and resumes bidirectional
-HDLC packet traffic. Broader multi-hop packet/proof/link duplicate handling
-and recovery after daemon replacement remain open. A mixed pinned-Python
+HDLC packet traffic. Other multi-hop packet/proof/link duplicate cases and
+recovery after daemon replacement remain open. A mixed pinned-Python
 link-establishment timeout trace now proves pending cleanup after the path is
 available; the two-carrier split Resource trace covers the multi-hop Resource
 direction.

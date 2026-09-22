@@ -143,6 +143,15 @@ jobs:
             --output target/interop/python-compat-matrix/verify-${{ github.run_id }}/matrix.json \
             --timeout 420
 
+      - name: Verify multi-hop duplicate link-request-proof filtering
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+        run: >-
+          cargo test -p reticulumd --test python_channel_interop
+          python_to_python_duplicate_link_request_proof_is_filtered_by_rust_transport
+          -- --ignored --nocapture --test-threads=1
+
       - name: Generate PR HIL support report
         if: always()
         run: cargo xtask hil report --evidence target/hil/runs/pr-${{ github.run_id }} --output target/hil/runs/pr-${{ github.run_id }}/support-report

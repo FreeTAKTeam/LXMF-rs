@@ -252,15 +252,39 @@ cargo test -p reticulum-rs-transport --test tcp_client_reconnect -- --nocapture
 This is carrier-level software evidence. Multi-hop Python/Rust recovery across
 daemon replacement and broader packet/proof duplicate handling remain open.
 
+## Multi-hop link-request-proof duplicate suppression
+
+`python_to_python_duplicate_link_request_proof_is_filtered_by_rust_transport`
+starts two pinned Python nodes on separate TCP carriers owned by one forwarding
+Rust transport. A real TCP proxy duplicates the endpoint's first
+`LinkRequestProof` before it reaches Rust and confirms that the same proof is
+observed exactly once on the client-facing carrier. The client still completes
+the link and the endpoint observes exactly one Channel delivery. This checks
+the production duplicate filter and both carrier directions, not merely the
+application-level Channel sequence guard.
+
+```text
+RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
+  cargo test -p reticulumd --test python_channel_interop \
+  python_to_python_duplicate_link_request_proof_is_filtered_by_rust_transport \
+  -- --ignored --nocapture --test-threads=1
+# 1 passed; 0 failed; injected duplicate count 1; forwarded proof count 1
+```
+
+The same pinned-reference test is now part of the PR `Verify` workflow. This
+closes only the link-request-proof duplicate case; other packet/proof classes
+and multi-hop recovery after daemon replacement remain unverified.
+
 ## Remaining acceptance boundary
 
 The combined evidence now proves pinned Python↔Rust local attachment, announce
 fan-out, a direct application/link exchange, Rust daemon restart with identity
 continuity, two-carrier multi-hop Python Channel and split Resource exchanges,
 and multi-hop Channel sequence deduplication through one forwarding Rust
-transport, and application-link close/reconnect over that forwarding path. It
-does not yet cover multi-hop recovery across daemon replacement or broader
-packet/proof duplicate handling. Those traces are still required before this
-row can be promoted; scheduled-to-cached announce persistence and direct
-carrier redial are covered by the focused transport tests above.
+transport, application-link close/reconnect, and one link-request-proof
+duplicate through that forwarding path. It does not yet cover multi-hop
+recovery across daemon replacement or broader packet/proof duplicate handling.
+Those traces are still required before this row can be promoted;
+scheduled-to-cached announce persistence and direct carrier redial are covered
+by the focused transport tests above.
 Hardware and public-network evidence remain separate acceptance axes.

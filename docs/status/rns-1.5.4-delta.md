@@ -75,7 +75,7 @@ incomplete requirements:
 | ---: | --- | --- |
 | #607 | Review and integrate the initial PR increment | partial / unverified |
 | #608 | Wire IFAC into production carrier ingress and egress | implemented but unproven; mixed-peer evidence pending |
-| #609 | Close transport, local-client, and shared-instance gaps | implemented but unproven; mixed-peer evidence pending |
+| #609 | Close transport, local-client, and shared-instance gaps | partial; pinned Python multi-hop and carrier-recovery evidence; daemon-replacement and broader duplicate cases pending |
 | #610 | Prove Resource collision, stream, and mixed-peer behavior | partial / unverified |
 | #611 | Exercise every reference utility through real network workflows | partial / unverified |
 | #612 | Match rngit permission, resolver, work, storage, and wire schemas | partial / unverified |
@@ -114,11 +114,14 @@ owned by one forwarding Rust transport; its companion trace forwards a split
 Resource and waits for the remote endpoint's exact size and SHA-256 callback.
 The same topology now proves application-link close/reconnect, and a separate
 fault-injected pinned-Python trace proves Rust pending-link establishment
-cleanup after the path is available. Rust link events now expose the pinned
+cleanup after the path is available. A pinned two-carrier Python trace now
+injects a duplicate link-request proof and asserts Rust forwards it exactly
+once before the Python client completes a single Channel delivery; this case
+runs in PR `Verify` CI. Rust link events now expose the pinned
 `TIMEOUT`, `INITIATOR_CLOSED`, and `DESTINATION_CLOSED` reason codes, with
 role-aware and establishment-timeout regressions. The row remains unverified
-until broader shared-instance and multi-hop production traces compare
-packet/proof duplicate suppression and recovery across daemon replacement. A
+until broader shared-instance and multi-hop production traces compare other
+packet/proof duplicate classes and recovery across daemon replacement. A
 focused transport save/restart regression proves a newer cached `PATH_RESPONSE`
 announce supersedes scheduled state without becoming retransmission work after
 restore. A real-socket `TcpClient` regression also proves redial preserves the

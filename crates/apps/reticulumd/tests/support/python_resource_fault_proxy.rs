@@ -1,6 +1,8 @@
 use rns_transport::buffer::OutputBuffer;
 use rns_transport::iface::hdlc::Hdlc;
-use rns_transport::{Packet, PacketContext};
+use rns_transport::{Packet, PacketContext, PacketType};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::task::JoinHandle;
@@ -14,18 +16,23 @@ pub(super) enum ResourceFaultMode {
     DropAllResourceTraffic,
     DropKeepAlive,
     DuplicateChannelFirst,
+    DuplicateLinkRequestProofFirst,
+    CountLinkRequestProof,
     DropLinkRequest,
 }
 
 pub(super) struct PythonResourceFaultProxy {
     port: u16,
     task: JoinHandle<()>,
+    matched_frames: Arc<AtomicUsize>,
 }
 
 impl PythonResourceFaultProxy {
     pub(super) async fn bind(target_port: u16, mode: ResourceFaultMode) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind resource fault proxy");
         let port = listener.local_addr().expect("resource fault proxy address").port();
+        let matched_frames = Arc::new(AtomicUsize::new(0));
+        let task_matched_frames = matched_frames.clone();
         let task = tokio::spawn(async move {
             let Ok((incoming, _)) = listener.accept().await else {
                 return;
@@ -35,20 +42,38 @@ impl PythonResourceFaultProxy {
             };
             let (incoming_read, incoming_write) = incoming.into_split();
             let (outgoing_read, outgoing_write) = outgoing.into_split();
-            let reverse_mode =
-                matches!(mode, ResourceFaultMode::DropAllResourceTraffic).then_some(mode);
-            let forward_to_target = forward_frames(incoming_read, outgoing_write, Some(mode));
-            let forward_to_client = forward_frames(outgoing_read, incoming_write, reverse_mode);
+            let reverse_mode = matches!(
+                mode,
+                ResourceFaultMode::DropAllResourceTraffic
+                    | ResourceFaultMode::CountLinkRequestProof
+            )
+            .then_some(mode);
+            let forward_to_target = forward_frames(
+                incoming_read,
+                outgoing_write,
+                Some(mode),
+                task_matched_frames.clone(),
+            );
+            let forward_to_client = forward_frames(
+                outgoing_read,
+                incoming_write,
+                reverse_mode,
+                task_matched_frames.clone(),
+            );
             tokio::select! {
                 _ = forward_to_target => {}
                 _ = forward_to_client => {}
             }
         });
-        Self { port, task }
+        Self { port, task, matched_frames }
     }
 
     pub(super) fn port(&self) -> u16 {
         self.port
+    }
+
+    pub(super) fn matched_frame_count(&self) -> usize {
+        self.matched_frames.load(Ordering::SeqCst)
     }
 }
 
@@ -62,11 +87,16 @@ impl Drop for PythonResourceFaultProxy {
 struct FaultState {
     first_resource_seen: bool,
     first_channel_seen: bool,
+    first_link_request_proof_seen: bool,
     reordered_first: Option<Vec<u8>>,
 }
 
-async fn forward_frames<R, W>(mut reader: R, mut writer: W, mode: Option<ResourceFaultMode>)
-where
+async fn forward_frames<R, W>(
+    mut reader: R,
+    mut writer: W,
+    mode: Option<ResourceFaultMode>,
+    matched_frames: Arc<AtomicUsize>,
+) where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
@@ -86,7 +116,7 @@ where
                 pending.drain(..start);
             }
             let frame = pending.drain(..=end - start).collect::<Vec<_>>();
-            if should_fault(&frame, mode) {
+            if should_match(&frame, mode) {
                 match mode.expect("fault mode present") {
                     ResourceFaultMode::DropFirst => {
                         if !state.first_resource_seen {
@@ -124,6 +154,20 @@ where
                             write_frame(&mut writer, &frame).await;
                         }
                     }
+                    ResourceFaultMode::DuplicateLinkRequestProofFirst => {
+                        if !state.first_link_request_proof_seen {
+                            state.first_link_request_proof_seen = true;
+                            matched_frames.fetch_add(1, Ordering::SeqCst);
+                            write_frame(&mut writer, &frame).await;
+                            write_frame(&mut writer, &frame).await;
+                        } else {
+                            write_frame(&mut writer, &frame).await;
+                        }
+                    }
+                    ResourceFaultMode::CountLinkRequestProof => {
+                        matched_frames.fetch_add(1, Ordering::SeqCst);
+                        write_frame(&mut writer, &frame).await;
+                    }
                     ResourceFaultMode::DropLinkRequest => {}
                 }
             } else {
@@ -144,7 +188,7 @@ where
     let _ = writer.write_all(frame).await;
 }
 
-fn should_fault(frame: &[u8], mode: Option<ResourceFaultMode>) -> bool {
+fn should_match(frame: &[u8], mode: Option<ResourceFaultMode>) -> bool {
     if mode.is_none() {
         return false;
     }
@@ -156,6 +200,14 @@ fn should_fault(frame: &[u8], mode: Option<ResourceFaultMode>) -> bool {
     Packet::from_bytes(output.as_slice()).is_ok_and(|packet| match mode {
         Some(ResourceFaultMode::DropKeepAlive) => packet.context == PacketContext::KeepAlive,
         Some(ResourceFaultMode::DuplicateChannelFirst) => packet.context == PacketContext::Channel,
+        Some(ResourceFaultMode::DuplicateLinkRequestProofFirst) => {
+            packet.header.packet_type == PacketType::Proof
+                && packet.context == PacketContext::LinkRequestProof
+        }
+        Some(ResourceFaultMode::CountLinkRequestProof) => {
+            packet.header.packet_type == PacketType::Proof
+                && packet.context == PacketContext::LinkRequestProof
+        }
         Some(ResourceFaultMode::DropLinkRequest) => packet.context == PacketContext::None,
         Some(ResourceFaultMode::DropAllResourceTraffic) => {
             matches!(packet.context, PacketContext::Resource | PacketContext::ResourceRequest)
