@@ -104,6 +104,10 @@ CARGO_INCREMENTAL=0 cargo xtask release-check                               PASS
 - Hosted exact-head workflows have not been run against the final published
   branch head, and the machine-readable result/publication path has not been
   completed. Therefore #615 remains open.
+- The candidate branch is currently local-only. A non-mutating push probe was
+  rejected by GitHub with `403 Permission denied to giu-platania`; the current
+  account has `READ` permission on `FreeTAKTeam/LXMF-rs`. This is an external
+  publication-authority gap, not a software-test failure.
 - The local evidence above does not certify physical carriers, platform
   combinations, external clients, public-network behavior, or physical/long
   soak. Those requirements are intentionally excluded here and remain open
