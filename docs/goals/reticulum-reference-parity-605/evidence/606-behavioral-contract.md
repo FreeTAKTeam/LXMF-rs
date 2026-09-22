@@ -40,11 +40,12 @@ These fixtures make the intended boundaries executable: unavailable hardware
 or a blocked runner cannot become success, a new target callable cannot be
 silently omitted, and a matching symbol is not behavioral evidence by itself.
 
-The finite software, platform, physical-interface, external-client, network,
-and operational support matrix is declared separately in
-`docs/status/current-roadmap.md` and
-`docs/status/reticulum-parity-matrix.md`. Hardware-unverified and unavailable
-rows remain separate from software-contract results.
+The roadmap and parity matrix inventory platform and interface families, but
+the exact required platform/device/client rows have not been frozen as a finite
+support matrix. #606 acceptance item 6 remains open pending an owner decision;
+excluding #616 verification from this software goal does not make that matrix
+decision complete. Hardware-unverified and unavailable rows remain separate
+from software-contract results.
 
 ## Commands and results
 
@@ -92,10 +93,65 @@ checkpoint reports RNS `1.5.4-dev` at
 requirements, 9 applicable, and 0 verified. This is an advisory status, not a
 claim that any behavioral row is complete.
 
+The inventory validator now restricts this `not-applicable` exception to the
+#616 operational requirement, issue owner, and `hardware-unverified` evidence
+status. Its task reference, review basis, and rationale must match the unique
+decision row under the designated `Explicit user scope decision` heading in
+the canonical goal record. Fenced Markdown examples do not count as rows. The
+validator rejects conflicting rows, unrelated sections/requirements, path
+traversal or symlink escape, missing records, malformed NUL paths, and missing
+provenance. The reference supports human audit; CI checks consistency, while
+approval remains subject to PR review. #616 stays hardware-unverified rather
+than being promoted to software success. CI invokes the self-test before
+accepting exact-target inventory output.
+
+### Local validation of the provenance follow-up
+
+These checks were rerun in the `corvo/issue-606-behavioral-advisory` worktree
+after the provenance-gate edits. Reference checkouts resolved to the exact
+active baseline Reticulum `ea98db4f53dcf0defc0e71a16e60d28b1229c4e6`, LXMF
+`727830cefda83d9c6e3982b48675425f3f988f9c`, and forward Reticulum target
+`99de23c040d507e3fefca19e87b182302902725d`.
+
 ```text
-python3 tools/scripts/python_surface_inventory.py --self-test                   PASS
-python3 tools/scripts/python_surface_inventory.py --check \
-  --json-out docs/status/python-surface-parity.json                              PASS
+python3 tools/scripts/python_surface_inventory.py --self-test                     PASS
+python3 tools/scripts/python_surface_inventory.py \
+  --python-rns-path /tmp/lxmf-606-parity-refs.hv0vPX/Reticulum/RNS \
+  --python-lxmf-path /tmp/lxmf-606-parity-refs.hv0vPX/LXMF/LXMF \
+  --mapping docs/status/python-surface-mapping.json \
+  --json-out docs/status/python-surface-parity.json --check                        PASS (1,858 / 1,857 complete)
+python3 tools/scripts/python_surface_inventory.py --check                         PASS
+python3 tools/scripts/python_surface_inventory.py \
+  --python-rns-path /tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0/RNS \
+  --python-lxmf-path /tmp/lxmf-606-parity-refs.hv0vPX/LXMF/LXMF \
+  --mapping docs/status/python-surface-mapping.json \
+  --json-out /tmp/lxmf-606-inventory.ugj10O/forward.json \
+  --rust-out /tmp/lxmf-606-inventory.ugj10O/forward.rs                            PASS (1,868 / 1,867 partial)
+cargo fmt --all -- --check                                                       PASS
+cargo test -p lxmf-reference --lib                                               PASS (2)
+python3 -m json.tool docs/status/python-surface-mapping.json                     PASS
+python3 -m json.tool docs/status/python-surface-parity.json                      PASS
+git diff --check                                                                 PASS
+```
+
+The forward-target generation wrote only to a temporary output directory; the
+committed parity artifact intentionally remains the canonical 1.5.2 active
+baseline. These local checks cover the current working diff, not a public PR
+head; hosted CI must rerun after the follow-up is pushed.
+
+```text
+forward reference: 99de23c040d507e3fefca19e87b182302902725d
+callable inventory: 1,868 total / 0 complete / 1,867 partial / 1 not-applicable
+behavioral contract: 10 requirements / 9 applicable / 0 verified
+```
+
+```text
+python3 tools/scripts/python_surface_inventory.py \
+  --python-rns-path Reticulum-parity/RNS \
+  --python-lxmf-path LXMF/LXMF \
+  --mapping docs/status/python-surface-mapping.json \
+  --json-out target/issue-605/python-surface-parity-1.5.4.json \
+  --rust-out target/issue-605/python_software_parity-1.5.4.rs                    PASS (1,868)
 cargo fmt --all -- --check                                                      PASS
 cargo test -p lxmf-reference --lib                                              PASS (2)
 cargo test -p lxmf-sdk --lib                                                    PASS (238)

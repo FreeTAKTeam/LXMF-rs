@@ -11,3 +11,14 @@ Core rules:
 - Do not promote a callable, runtime, utility, platform, or client row without executable behavior and evidence tied to the exact candidate.
 - Say `implemented but unproven`, `partial`, or `blocked/unverified` when the required evidence is missing.
 - Do not use `Closes #605` from a bounded child PR. This goal can close only its software acceptance scope; it does not certify the separately tracked physical/platform gate.
+
+## Explicit user scope decision
+
+The explicit user scope decision to exclude the #616 operational evidence axis
+is recorded for inventory provenance. The task reference aids human audit; CI
+checks consistency and scope binding, while approval remains subject to PR
+review rather than being cryptographically attested by the validator.
+
+| Requirement | Decision | Review basis | Approval reference | Rationale |
+| --- | --- | --- | --- | --- |
+| reticulum-605-616-operational-platform-evidence | exclude-from-software-goal | explicit-user-scope-direction | codex-task:01a0bf74-9050-70e1-b8bf-0e528184c9ad | The software goal excludes physical/platform/client/network-soak acceptance and tracks those requirements under issue 616 as hardware-unverified. |

@@ -66,7 +66,7 @@ Acceptance evidence gate: this goal may close only after #606’s deliberate-fai
 ### 1. #606 — Freeze reference and behavioral evidence contract (P0, first)
 
 - Files: existing reference-pin manifest/checker, inventory generator/mapping/generated files, `lxmf-reference`, active roadmap/matrices/ledger, and focused checker tests.
-- Output: exact 1.5.4 development target (or explicitly reviewed replacement); behavior rows covering protocol, state, configuration, persistence, private effects, interface families, utilities, and runtime integration; explicit statuses/evidence/owner/test/artifact fields; wildcard and fixed-count loopholes removed; unsupported and hardware-unverified states distinct; deliberate corrupt-fixture failures enforced by CI.
+- Output: exact 1.5.4 development target (or explicitly reviewed replacement); behavior rows covering protocol, state, configuration, persistence, private effects, interface families, utilities, and runtime integration; explicit statuses/evidence/owner/test/artifact fields; wildcard and fixed-count loopholes removed; unsupported and hardware-unverified states distinct; not-applicable rows backed by structured rationale and an in-repository decision record; deliberate corrupt-fixture failures enforced by CI.
 - Verification: exact source checkout assertions; pin-mirror checker; inventory regeneration/check; deliberate unmapped, stale-reference, malformed-summary, contradictory-status, and missing-evidence fixtures; generated Rust/status artifacts match exact inputs.
 - Evidence: committed contract/delta report and raw command outputs tied to exact reference commits.
 - Parallel safety: first; later implementation rows may proceed only against the frozen contract.

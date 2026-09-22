@@ -348,6 +348,13 @@
         "id": "reticulum-605-616-operational-platform-evidence",
         "implementation": "not-applicable",
         "kind": "behavioral-requirement",
+        "not_applicable_provenance": {
+          "approval_reference": "codex-task:01a0bf74-9050-70e1-b8bf-0e528184c9ad",
+          "decision": "exclude-from-software-goal",
+          "decision_record": "docs/goals/reticulum-reference-parity-605/GOAL.md",
+          "rationale": "The software goal excludes physical/platform/client/network-soak acceptance and tracks those requirements under issue 616 as hardware-unverified.",
+          "review_basis": "explicit-user-scope-direction"
+        },
         "notes": "Operational physical, platform, client, public-network, and soak evidence is a separate acceptance axis, not a software implementation status.",
         "owner_issue": 616,
         "reference": {
