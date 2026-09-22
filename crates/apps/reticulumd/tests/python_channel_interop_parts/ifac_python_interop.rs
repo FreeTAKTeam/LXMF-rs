@@ -85,6 +85,14 @@ async fn udp_ifac_ingress_counts_and_rejects_malformed_frames_before_admission()
         .expect("IFAC enabled");
     let mut tampered = ifac_context.encode(&[0x01; 32]).expect("encode test IFAC frame");
     tampered[2] ^= 0x01;
+    let mut wrong_credentials = ifac_shared_config();
+    wrong_credentials.passphrase = Some("wrong-ifac-passphrase".to_string());
+    let wrong_key = wrong_credentials
+        .ifac_context()
+        .expect("derive wrong-key IFAC context")
+        .expect("wrong-key IFAC enabled")
+        .encode(&[0x01; 32])
+        .expect("encode wrong-key IFAC frame");
     let plaintext = [0x01; 32];
     let truncated = [0x80, 0x01];
 
@@ -103,6 +111,7 @@ async fn udp_ifac_ingress_counts_and_rejects_malformed_frames_before_admission()
 
     sender.send_to(&plaintext, destination).expect("send missing-flag frame");
     sender.send_to(&tampered, destination).expect("send tampered frame");
+    sender.send_to(&wrong_key, destination).expect("send wrong-key frame");
     sender.send_to(&truncated, destination).expect("send truncated frame");
 
     tokio::time::timeout(Duration::from_secs(3), async {
@@ -114,7 +123,7 @@ async fn udp_ifac_ingress_counts_and_rejects_malformed_frames_before_admission()
                 .find(|snapshot| snapshot.address == address)
                 .map(|snapshot| snapshot.ifac_violations)
                 .unwrap_or_default();
-            if status["decode_errors"] == 3 && violations == 3 {
+            if status["decode_errors"] == 4 && violations == 4 {
                 assert_eq!(status["packets_rx"], 0);
                 break;
             }
@@ -122,7 +131,7 @@ async fn udp_ifac_ingress_counts_and_rejects_malformed_frames_before_admission()
         }
     })
     .await
-    .expect("malformed UDP frames were not rejected and counted before packet admission");
+    .expect("invalid UDP IFAC frames were not rejected and counted before packet admission");
 }
 
 #[tokio::test]

@@ -86,7 +86,7 @@ cargo test -p reticulum-rs-transport --lib iface::ifac_wire_tests
   6 passed; 0 failed
 cargo test -p reticulumd --test python_channel_interop \
   udp_ifac_ingress_counts_and_rejects_malformed_frames_before_admission -- --nocapture
-  1 passed; 0 failed; missing-flag, tampered, and truncated UDP frames rejected,
+  1 passed; 0 failed; missing-flag, tampered, wrong-key, and truncated UDP frames rejected,
   counted as decode errors and IFAC violations, with no packet admission
 RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
 LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
@@ -96,8 +96,10 @@ LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
 
 Short and invalid-length authenticated frames now map to `InvalidTag`, so the
 existing IFAC violation counter classifies them consistently with bad tags.
-Plaintext remains accepted when authentication is not configured, and the
-regression test covers that behavior. The Python/Rust UDP round-trip is also
+The raw UDP regression also proves that a frame encoded with a different
+passphrase is rejected and counted before packet admission. Plaintext remains
+accepted when authentication is not configured, and the regression test covers
+that behavior. The Python/Rust UDP round-trip is also
 registered in `.github/workflows/verify.yml` against the pinned parity checkout
 so it runs in PR CI. This follow-up adds UDP evidence; it does not close the
 remaining carrier-family, frozen support-matrix, or physical-device evidence

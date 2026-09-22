@@ -22,9 +22,10 @@ The 2026-09-21 behavior audit confirms that mapped surface coverage is **not
 full operational parity**. The implemented BLE/HDLC/rngit increment and explicit
 remaining acceptance gates are recorded in
 [`rns-1.5.4-delta.md`](rns-1.5.4-delta.md). The 1.5.4 development reference is
-not the canonical release baseline. IFAC daemon wiring, remaining remote
-utility behavior, transport policy differences, and platform validation remain
-open; the focused #611 `rncp` compression/send/fetch matrix, bounded
+not the canonical release baseline. IFAC carrier-family/support-matrix
+acceptance, remaining remote utility behavior, transport policy differences,
+and platform validation remain open; the focused #611 `rncp`
+compression/send/fetch matrix, bounded
 `rnprobe` packet/RPC workflow, and bounded native `rnsh` channel workflow,
 negative
 failure-category checks, path-discovery-timeout check, listener restart check,
