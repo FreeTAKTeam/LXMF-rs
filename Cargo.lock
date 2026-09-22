@@ -2817,6 +2817,7 @@ name = "test-support"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "hex",
  "jsonschema",
  "lxmf-sdk",
  "lxmf-wire",

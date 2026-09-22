@@ -45,6 +45,11 @@ enum XtaskCommand {
         #[arg(long)]
         update: bool,
     },
+    /// Run pinned Python↔Rust byte-level wire conformance and its Rust decoder gate.
+    Interop {
+        #[arg(long)]
+        output: Option<PathBuf>,
+    },
     /// Run network interoperability against an independently implemented Reticulum stack.
     InteropIndependent {
         #[arg(long, value_enum, default_value_t = IndependentInteropPeer::RnsRs)]
@@ -337,6 +342,7 @@ fn main() -> Result<()> {
         XtaskCommand::InteropMatrixCheck => run_interop_matrix_check(),
         XtaskCommand::InteropCorpusCheck => run_interop_corpus_check(),
         XtaskCommand::InteropDriftCheck { update } => run_interop_drift_check(update),
+        XtaskCommand::Interop { output } => run_wire_conformance(output.as_deref()),
         XtaskCommand::InteropIndependent { peer, level, output, keep } => {
             run_independent_interop(peer, level, output.as_deref(), keep)
         }

@@ -16,6 +16,11 @@ pub const PACKET_MDU: usize = 464usize;
 pub const LXMF_MAX_PAYLOAD: usize = PACKET_MDU - FERNET_OVERHEAD_SIZE - FERNET_MAX_PADDING_SIZE;
 pub const PACKET_IFAC_MAX_LENGTH: usize = 64usize;
 
+// Reticulum's PATHFINDER_M is 128. A packet with this hop count has already
+// exhausted the transport budget and the Python reference rejects it while
+// unpacking, before it reaches transport admission.
+const MAX_PACKET_HOPS: u8 = 128;
+
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum IfacFlag {
     Open = 0b0,
@@ -278,6 +283,9 @@ impl Packet {
 
         let flags = bytes[0];
         let hops = bytes[1];
+        if hops >= MAX_PACKET_HOPS {
+            return Err(RnsError::InvalidArgument);
+        }
 
         let mut header = Header::from_meta(flags);
         header.hops = hops;
@@ -307,6 +315,10 @@ impl Packet {
 
         let context = PacketContext::from(bytes[idx]);
         idx += 1;
+
+        if idx == bytes.len() {
+            return Err(RnsError::InvalidArgument);
+        }
 
         let data = PacketDataBuffer::new_from_slice(&bytes[idx..]);
 
@@ -407,5 +419,37 @@ mod tests {
         let decoded = Header::from_meta(meta);
         assert_eq!(decoded.context_flag, ContextFlag::Set);
         assert_eq!(decoded.propagation_type, PropagationType::Transport);
+    }
+
+    #[test]
+    fn packet_decoder_rejects_reference_invalid_hop_count_and_empty_data() {
+        let destination = [0x11; 16];
+        let empty_data = [
+            0x08,
+            0x00,
+            destination[0],
+            destination[1],
+            destination[2],
+            destination[3],
+            destination[4],
+            destination[5],
+            destination[6],
+            destination[7],
+            destination[8],
+            destination[9],
+            destination[10],
+            destination[11],
+            destination[12],
+            destination[13],
+            destination[14],
+            destination[15],
+            0x00,
+        ];
+        assert!(super::Packet::from_bytes(&empty_data).is_err());
+
+        let mut over_hop_limit = empty_data.to_vec();
+        over_hop_limit[1] = 128;
+        over_hop_limit.push(0x01);
+        assert!(super::Packet::from_bytes(&over_hop_limit).is_err());
     }
 }

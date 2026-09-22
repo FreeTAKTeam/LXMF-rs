@@ -9,6 +9,10 @@ use crate::hash::AddressHash;
 use crate::hash::Hash;
 use crate::hash::ADDRESS_HASH_SIZE;
 
+// Reticulum's PATHFINDER_M is 128. Keep packet decoding aligned with the
+// Python reference, which rejects this value before transport admission.
+const MAX_PACKET_HOPS: u8 = 128;
+
 // Match Python Reticulum default MTU (500) minus max header and IFAC sizes.
 // 500 - (2 + 1 + 16*2) - 1 = 464
 pub const PACKET_MDU: usize = 464usize;
@@ -194,6 +198,9 @@ impl Packet {
 
         let flags = bytes[0];
         let hops = bytes[1];
+        if hops >= MAX_PACKET_HOPS {
+            return Err(RnsError::InvalidArgument);
+        }
 
         let mut header = Header::from_meta(flags);
         header.hops = hops;
@@ -223,6 +230,10 @@ impl Packet {
 
         let context = PacketContext::from(bytes[idx]);
         idx += 1;
+
+        if idx == bytes.len() {
+            return Err(RnsError::InvalidArgument);
+        }
 
         if bytes.len() - idx > PACKET_DATA_MAX {
             return Err(RnsError::OutOfMemory);
@@ -463,5 +474,17 @@ mod tests {
 
         assert!(packet.serialized_len().is_err());
         assert!(packet.to_bytes().is_err());
+    }
+
+    #[test]
+    fn packet_decoder_rejects_reference_invalid_hop_count_and_empty_data() {
+        let empty_data =
+            [0x08, 0x00].into_iter().chain([0x11; 16]).chain([0x00]).collect::<Vec<_>>();
+        assert!(Packet::from_bytes(&empty_data).is_err());
+
+        let mut over_hop_limit = empty_data.to_vec();
+        over_hop_limit[1] = 128;
+        over_hop_limit.push(0x01);
+        assert!(Packet::from_bytes(&over_hop_limit).is_err());
     }
 }

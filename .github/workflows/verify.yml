@@ -102,6 +102,17 @@ jobs:
             --json-out target/issue-605/python-surface-parity-1.5.4.json \
             --rust-out target/issue-605/python_software_parity-1.5.4.rs
 
+      - name: Run byte-level Python and Rust wire conformance
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PY_REPO: ${{ github.workspace }}/LXMF
+        run: |
+          python3 tools/scripts/python_wire_conformance.py \
+            --python-rns-path Reticulum-parity \
+            --python-lxmf-path LXMF \
+            --output target/interop/python-rust-wire-conformance/verify-${{ github.run_id }}/report.json
+          cargo test -p test-support --test wire_conformance -- --nocapture
+
       - name: Run repository-native PR HIL controller
         run: cargo xtask hil run --level pr --all --output target/hil/runs/pr-${{ github.run_id }}
 
@@ -141,3 +152,9 @@ jobs:
           name: python-behavioral-inventory-${{ github.run_id }}
           path: target/issue-605/**
           if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: python-rust-wire-conformance-${{ github.run_id }}
+          path: target/interop/python-rust-wire-conformance/verify-${{ github.run_id }}/**
+          if-no-files-found: error
