@@ -143,13 +143,15 @@ async fn pinned_python_link_timeout_and_reconnect_after_dropped_keepalives() {
     let _guard = ChildGuard { child: Some(child) };
     wait_for_port(server_port, Duration::from_secs(5)).await;
 
-    let proxy = PythonResourceFaultProxy::bind(server_port, ResourceFaultMode::DropKeepAlive).await;
+    let proxy =
+        PythonResourceFaultProxy::bind(server_port, ResourceFaultMode::DropResourceAndKeepAlive).await;
     let target_hash =
         AddressHash::new_from_hex_string(&ready.destination_hash).expect("destination hash");
     let rust_identity = PrivateIdentity::new_from_rand(OsRng);
     let rust_identity = to_transport_private_identity(&rust_identity);
     let mut config = TransportConfig::new("python-link-timeout-rust", &rust_identity, true);
     config.set_path_request_timeout_secs(2);
+    config.set_resource_retry_interval_secs(30);
     let transport = Transport::new(config);
     transport
         .iface_manager()
@@ -162,6 +164,13 @@ async fn pinned_python_link_timeout_and_reconnect_after_dropped_keepalives() {
     let link = transport.link(destination).await;
     let link_id = wait_for_out_link_active(&mut link_events, &link, Duration::from_secs(8)).await;
 
+    let mut resource_events = transport.resource_events();
+    let stalled_payload = rust_resource_fixture(70_000);
+    let stalled_hash = transport
+        .send_resource(&link_id, stalled_payload, None)
+        .await
+        .expect("start Resource before dropping Link keepalives");
+
     tokio::time::timeout(Duration::from_secs(25), async {
         loop {
             let event = link_events.recv().await.expect("link event");
@@ -173,6 +182,9 @@ async fn pinned_python_link_timeout_and_reconnect_after_dropped_keepalives() {
     .await
     .expect("timed out waiting for Rust link timeout after dropped keepalives");
     assert_eq!(link.lock().await.status(), LinkStatus::Closed);
+    wait_for_outbound_resource_failed(&mut resource_events, stalled_hash, Duration::from_secs(10)).await;
+
+    proxy.resume_traffic();
 
     let reconnect_link = transport.link(destination).await;
     let reconnect_id = wait_for_out_link_active(
@@ -201,7 +213,6 @@ async fn pinned_python_link_timeout_and_reconnect_after_dropped_keepalives() {
     let payload = rust_resource_fixture(70_000);
     let expected_digest = digest_hex(&payload);
     let expected_size = payload.len();
-    let mut resource_events = transport.resource_events();
     let resource_hash = transport
         .send_resource(&reconnect_id, payload, None)
         .await

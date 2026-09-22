@@ -1,6 +1,8 @@
 use rns_transport::buffer::OutputBuffer;
 use rns_transport::iface::hdlc::Hdlc;
 use rns_transport::{Packet, PacketContext};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::task::JoinHandle;
@@ -12,7 +14,7 @@ pub(super) enum ResourceFaultMode {
     ReorderFirstTwo,
     DropAll,
     DropAllResourceTraffic,
-    DropKeepAlive,
+    DropResourceAndKeepAlive,
     DuplicateChannelFirst,
     DropLinkRequest,
 }
@@ -20,12 +22,16 @@ pub(super) enum ResourceFaultMode {
 pub(super) struct PythonResourceFaultProxy {
     port: u16,
     task: JoinHandle<()>,
+    fault_enabled: Arc<AtomicBool>,
 }
 
 impl PythonResourceFaultProxy {
     pub(super) async fn bind(target_port: u16, mode: ResourceFaultMode) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind resource fault proxy");
         let port = listener.local_addr().expect("resource fault proxy address").port();
+        let fault_enabled = Arc::new(AtomicBool::new(true));
+        let forward_fault_enabled = Arc::clone(&fault_enabled);
+        let reverse_fault_enabled = Arc::clone(&fault_enabled);
         let task = tokio::spawn(async move {
             let Ok((incoming, _)) = listener.accept().await else {
                 return;
@@ -35,20 +41,30 @@ impl PythonResourceFaultProxy {
             };
             let (incoming_read, incoming_write) = incoming.into_split();
             let (outgoing_read, outgoing_write) = outgoing.into_split();
-            let reverse_mode =
-                matches!(mode, ResourceFaultMode::DropAllResourceTraffic).then_some(mode);
-            let forward_to_target = forward_frames(incoming_read, outgoing_write, Some(mode));
-            let forward_to_client = forward_frames(outgoing_read, incoming_write, reverse_mode);
+            let reverse_mode = matches!(
+                mode,
+                ResourceFaultMode::DropAllResourceTraffic
+                    | ResourceFaultMode::DropResourceAndKeepAlive
+            )
+            .then_some(mode);
+            let forward_to_target =
+                forward_frames(incoming_read, outgoing_write, Some(mode), forward_fault_enabled);
+            let forward_to_client =
+                forward_frames(outgoing_read, incoming_write, reverse_mode, reverse_fault_enabled);
             tokio::select! {
                 _ = forward_to_target => {}
                 _ = forward_to_client => {}
             }
         });
-        Self { port, task }
+        Self { port, task, fault_enabled }
     }
 
     pub(super) fn port(&self) -> u16 {
         self.port
+    }
+
+    pub(super) fn resume_traffic(&self) {
+        self.fault_enabled.store(false, Ordering::Relaxed);
     }
 }
 
@@ -65,8 +81,12 @@ struct FaultState {
     reordered_first: Option<Vec<u8>>,
 }
 
-async fn forward_frames<R, W>(mut reader: R, mut writer: W, mode: Option<ResourceFaultMode>)
-where
+async fn forward_frames<R, W>(
+    mut reader: R,
+    mut writer: W,
+    mode: Option<ResourceFaultMode>,
+    fault_enabled: Arc<AtomicBool>,
+) where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
@@ -86,7 +106,7 @@ where
                 pending.drain(..start);
             }
             let frame = pending.drain(..=end - start).collect::<Vec<_>>();
-            if should_fault(&frame, mode) {
+            if fault_enabled.load(Ordering::Relaxed) && should_fault(&frame, mode) {
                 match mode.expect("fault mode present") {
                     ResourceFaultMode::DropFirst => {
                         if !state.first_resource_seen {
@@ -113,8 +133,9 @@ where
                             state.first_resource_seen = true;
                         }
                     }
-                    ResourceFaultMode::DropAll | ResourceFaultMode::DropAllResourceTraffic => {}
-                    ResourceFaultMode::DropKeepAlive => {}
+                    ResourceFaultMode::DropAll
+                    | ResourceFaultMode::DropAllResourceTraffic
+                    | ResourceFaultMode::DropResourceAndKeepAlive => {}
                     ResourceFaultMode::DuplicateChannelFirst => {
                         if !state.first_channel_seen {
                             state.first_channel_seen = true;
@@ -154,7 +175,10 @@ fn should_fault(frame: &[u8], mode: Option<ResourceFaultMode>) -> bool {
         return false;
     }
     Packet::from_bytes(output.as_slice()).is_ok_and(|packet| match mode {
-        Some(ResourceFaultMode::DropKeepAlive) => packet.context == PacketContext::KeepAlive,
+        Some(ResourceFaultMode::DropResourceAndKeepAlive) => matches!(
+            packet.context,
+            PacketContext::Resource | PacketContext::ResourceRequest | PacketContext::KeepAlive
+        ),
         Some(ResourceFaultMode::DuplicateChannelFirst) => packet.context == PacketContext::Channel,
         Some(ResourceFaultMode::DropLinkRequest) => packet.context == PacketContext::None,
         Some(ResourceFaultMode::DropAllResourceTraffic) => {
