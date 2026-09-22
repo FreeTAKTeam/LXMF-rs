@@ -297,6 +297,48 @@ fn resource_manager_receiver_cancel_emits_outbound_cancelled_event() {
 }
 
 #[test]
+fn resource_manager_remote_cancel_before_first_split_segment_completes_emits_failure() {
+    let signer = PrivateIdentity::new_from_rand(OsRng);
+    let identity = *signer.as_identity();
+    let destination = DestinationDesc {
+        identity,
+        address_hash: identity.address_hash,
+        name: DestinationName::new("lxmf", "resource"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(1);
+    let mut link = Link::new(destination, tx);
+    link.request();
+
+    let mut manager = ResourceManager::new_with_config(Duration::from_secs(1), 2);
+    let (advertisement, _part) = split_test_segment(b"first", None, 1, 2, 10);
+    let resource_hash = advertisement.hash;
+    let advertisement_packet = resource_packet(
+        PacketContext::ResourceAdvrtisement,
+        &advertisement.pack().expect("pack split advertisement"),
+        *link.id(),
+    );
+    assert_eq!(manager.handle_packet(&advertisement_packet, &mut link).len(), 1);
+
+    let cancel_packet = resource_packet(
+        PacketContext::ResourceInitiatorCancel,
+        resource_hash.as_slice(),
+        *link.id(),
+    );
+    assert!(manager.handle_packet(&cancel_packet, &mut link).is_empty());
+    assert!(!manager.incoming.contains_key(&resource_hash));
+
+    let events = manager.drain_events();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].hash, resource_hash);
+    assert_eq!(events[0].link_id, *link.id());
+    let ResourceEventKind::InboundFailed(failure) = &events[0].kind else {
+        panic!("expected inbound failure event");
+    };
+    assert_eq!(failure.reason, "remote_cancelled");
+    assert_eq!(failure.progress.received_parts, 0);
+}
+
+#[test]
 fn resource_manager_times_out_transferring_sender_after_retry_budget() {
     let signer = PrivateIdentity::new_from_rand(OsRng);
     let identity = *signer.as_identity();

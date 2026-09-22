@@ -73,6 +73,10 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
       - name: Install Linux BLE build dependencies
         run: |
           sudo apt-get update

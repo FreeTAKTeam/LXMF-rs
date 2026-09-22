@@ -437,7 +437,17 @@ impl ResourceManager {
             // remote cancel names the segment currently in flight, so remove
             // that assembly as well and report the abandoned payload instead
             // of leaving the caller waiting for a timeout.
-            self.fail_inbound_segments(receiver.original_hash, "remote_cancelled");
+            let original_hash = receiver.original_hash;
+            if !self.fail_inbound_segments(original_hash, "remote_cancelled") {
+                self.events.push(ResourceEvent {
+                    hash: original_hash,
+                    link_id: receiver.link_id,
+                    kind: ResourceEventKind::InboundFailed(ResourceFailure {
+                        reason: "remote_cancelled".to_string(),
+                        progress: receiver.progress(),
+                    }),
+                });
+            }
         }
         // Removed from both, as before: a hash lives in exactly one of these,
         // but which one depends on whether dispatch has been confirmed yet.

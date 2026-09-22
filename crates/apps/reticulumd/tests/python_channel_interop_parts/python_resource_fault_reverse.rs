@@ -90,10 +90,7 @@ async fn run_rust_resource_fault(
             &seen,
             resource_size,
             &expected_digest,
-            // Python invokes its resource-concluded callback after the final
-            // resource proof. Keep the acknowledgement window generous on
-            // shared hosted runners where that callback can be delayed.
-            Duration::from_secs(180),
+            Duration::from_secs(30),
         )
         .await;
     }

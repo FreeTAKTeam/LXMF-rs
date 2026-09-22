@@ -10,7 +10,7 @@ failure_class = "FAIL_PROTOCOL"
 
 [cases.command]
 program = "cargo"
-args = ["test", "-p", "reticulumd", "--test", "python_channel_interop", "--", "--ignored", "--nocapture", "--test-threads=1"]
+args = ["nextest", "run", "-j", "1", "-p", "reticulumd", "--test", "python_channel_interop", "--run-ignored", "only", "--no-capture"]
 
 [[cases]]
 id = "python-paper-interop"

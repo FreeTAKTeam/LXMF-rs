@@ -142,9 +142,9 @@ impl ResourceManager {
     /// quietly instead leaves whoever is awaiting the resource blocked until
     /// its own timeout expires, with nothing on either side saying the transfer
     /// is already dead (issue #369).
-    fn fail_inbound_segments(&mut self, original_hash: Hash, reason: &str) {
+    fn fail_inbound_segments(&mut self, original_hash: Hash, reason: &str) -> bool {
         let Some(assembly) = self.incoming_segments.remove(&original_hash) else {
-            return;
+            return false;
         };
         log::warn!("split resource assembly failed hash={original_hash} reason={reason}");
         self.events.push(ResourceEvent {
@@ -160,6 +160,7 @@ impl ResourceManager {
                 },
             }),
         });
+        true
     }
 
     pub fn confirm_outbound_dispatch(&mut self, resource_hash: Hash, sent: bool) {

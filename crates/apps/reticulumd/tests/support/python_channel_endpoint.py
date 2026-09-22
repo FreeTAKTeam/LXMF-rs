@@ -176,7 +176,15 @@ class ChannelEndpoint:
                 link.set_resource_started_callback(on_resource_started)
 
             def on_resource_concluded(resource) -> None:
-                if resource.status != RNS.Resource.COMPLETE:
+                # RNS 1.5.2 invokes this callback from the assembler, but a
+                # late duplicate part can race with that callback and restore
+                # the status to TRANSFERRING. The assembled part count is the
+                # stable completion signal in that narrow reference race.
+                assembled = resource.status == RNS.Resource.COMPLETE or (
+                    resource.status == RNS.Resource.TRANSFERRING
+                    and resource.received_count == resource.total_parts
+                )
+                if not assembled:
                     return
                 data = resource.data.read()
                 digest = hashlib.sha256(data).hexdigest()
@@ -423,11 +431,29 @@ class ChannelClient:
                 timeout=timeout,
             )
             if self.payload_kind == "cancel-resource":
-                # Leave enough time for the advertisement to be admitted by
-                # the Rust receiver, then exercise the reference initiator
-                # cancel packet and callback status.
-                time.sleep(0.25)
-                resource.cancel()
+                # Wait for the Rust receiver to request the advertised
+                # resource, then cancel while the reference transfer is
+                # still active. This avoids a scheduling-dependent sleep.
+                while resource.status < RNS.Resource.ADVERTISED:
+                    if time.time() > deadline:
+                        print(
+                            "python_channel_client: timed out waiting for resource request",
+                            file=sys.stderr,
+                            flush=True,
+                        )
+                        return 1
+                    time.sleep(0.01)
+                while resource.status == RNS.Resource.ADVERTISED:
+                    if time.time() > deadline:
+                        print(
+                            "python_channel_client: timed out waiting for resource transfer",
+                            file=sys.stderr,
+                            flush=True,
+                        )
+                        return 1
+                    time.sleep(0.01)
+                if resource.status < RNS.Resource.COMPLETE:
+                    resource.cancel()
             while not done.is_set():
                 if time.time() > deadline:
                     print("python_channel_client: timed out waiting for resource", file=sys.stderr, flush=True)
@@ -436,6 +462,9 @@ class ChannelClient:
             if self.payload_kind == "cancel-resource":
                 if result.get("status") == RNS.Resource.FAILED:
                     print(json.dumps({"resource": "cancelled"}), flush=True)
+                    # Let the asynchronous cancel packet reach the peer
+                    # before this short-lived reference client exits.
+                    time.sleep(0.5)
                     return 0
                 print(f"python_channel_client: resource cancellation failed: {result}", file=sys.stderr, flush=True)
                 return 1
