@@ -124,7 +124,7 @@
         "id": "reticulum-605-610-resource-stream-collision",
         "implementation": "partial",
         "kind": "behavioral-requirement",
-        "notes": "Deterministic collision regeneration, active-window fragment admission, collision-guard/hashmap/window unit coverage, link-close terminal event publication, local loss/duplication/reordering recovery, split cancellation cleanup, reader-backed bounded source retention, a pinned-Python file-backed split transfer with exact digest, bidirectional pinned-Python fragment-fault matrices for owned and reader-backed sources, reader-backed cancellation, a pinned-Python receiver-shutdown terminal-failure trace, an injected later reader-failure trace, a real-file truncation terminal-failure trace, a pinned-Python sender-side file-like-reader exception/terminal-failure trace, a pinned-Python keepalive terminal-timeout and fresh-Link recovery trace, and exact 50 MiB bidirectional peak-RSS measurements under a fixed Linux release-profile process budget are implemented. Broader timeout/reconnect coverage, every consumer callback/status assertion, and hosted/physical/soak coverage remain unverified; the debug 50 MiB run is slower than the release profile.",
+        "notes": "Deterministic collision regeneration, active-window fragment admission, collision-guard/hashmap/window unit coverage, link-close terminal event publication, local loss/duplication/reordering recovery, split cancellation cleanup, reader-backed bounded source retention, a pinned-Python file-backed split transfer with exact digest, bidirectional pinned-Python fragment-fault matrices for owned and reader-backed sources, reader-backed cancellation, a pinned-Python receiver-shutdown terminal-failure trace, an injected later reader-failure trace, a real-file truncation terminal-failure trace, a pinned-Python keepalive terminal-timeout and fresh-Link recovery trace, and exact 50 MiB bidirectional peak-RSS measurements under a fixed Linux release-profile process budget are implemented. Python-side file-adapter failure faults, broader timeout/reconnect coverage, every consumer callback/status assertion, and hosted/physical/soak coverage remain unverified; the debug 50 MiB run is slower than the release profile.",
         "owner_issue": 610,
         "reference": {
           "revision": "99de23c040d507e3fefca19e87b182302902725d",
@@ -146,8 +146,6 @@
           "RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test --release -p reticulumd --test python_channel_interop python_to_rust_resource_size_matrix_roundtrip -- --ignored --nocapture",
           "RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test --release -p reticulumd --test python_channel_interop rust_reader_to_python_50_mib_peak_memory -- --ignored --nocapture --test-threads=1",
           "RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test --release -p reticulumd --test python_channel_interop python_to_rust_50_mib_peak_memory -- --ignored --nocapture --test-threads=1",
-          "RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test --release -p reticulumd --test python_channel_interop rust_file_reader_reports_pinned_python_file_truncation -- --ignored --nocapture --test-threads=1",
-          "RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test --release -p reticulumd --test python_channel_interop rust_receiver_reports_pinned_python_file_reader_failure -- --ignored --nocapture --test-threads=1",
           "RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop rust_reader_to_python_split_resource_roundtrip -- --ignored --nocapture"
         ]
       },
@@ -164,7 +162,7 @@
         "id": "reticulum-605-611-utility-network-workflows",
         "implementation": "partial",
         "kind": "behavioral-requirement",
-        "notes": "The native rncp network slice now performs TCP discovery, Link establishment and identification, authenticated send/fetch Resource transfers, binary-safe metadata, jail/save side effects, adaptive timeouts, terminal failures, and flushed non-silent phase output across two independent processes. A pinned-Python trace covers authenticated binary sends in both directions plus an identified Rust fetch client receiving Python's metadata-bearing unassociated file Resource and rejecting a second identity. Commit 3c6757ba adds default and explicit no-compression send modes in both directions, a bzip2-compressed payload, and Python listener default/no-compression fetch responses into Rust. Commit 2b281b87 adds process-level missing-fetch and denied-sender failure-category assertions; commit 053ef246 adds malformed-identity and unusable-save-path assertions; commit 9dc9bd62 adds an unused-endpoint path-discovery-timeout assertion; commit d66b19d1 adds persisted listener identity and post-restart transfer coverage; commit 9b8e4ed6 adds a local fetch destination disk-error assertion; commit 397a9525 adds client Ctrl-C cancellation status; commit e668ae60 adds three concurrent client transfers with exact saved bytes; commit a5f57dba adds interrupted-Resource failure status and phase-output coverage; commit 27bb3fac adds readiness-gated medium-timeout selection after TCP interface activation; commit 708dc980 adds a Python-listener/Rust-client restart trace with stable identity and exact binary transfers before and after restart; commit a81f0cf6 serializes the Python interop fixtures to prevent listener/announce contention; commit e6f71d21 asserts the successful Python fetch-client Transfer complete callback. Commits e57afb99 and 662dcdbe add reciprocal pinned-Python rnsh initiator/listener role evidence over isolated TCP, including streamed output, terminal exit status, execute-before-stdin ordering, and immediate non-TTY EOF handling. Listener-side save-status/failure callback telemetry, the complete utility option matrix, rngit network workflows, and slow-interface/remote-disk-fault transcripts remain unverified or owned by #612/#613.",
+        "notes": "The native rncp network slice now performs TCP discovery, Link establishment and identification, authenticated send/fetch Resource transfers, binary-safe metadata, jail/save side effects, adaptive timeouts, terminal failures, and flushed non-silent phase output across two independent processes. A pinned-Python trace covers authenticated binary sends in both directions plus an identified Rust fetch client receiving Python's metadata-bearing unassociated file Resource and rejecting a second identity. Commit 3c6757ba adds default and explicit no-compression send modes in both directions, a bzip2-compressed payload, and Python listener default/no-compression fetch responses into Rust. Commit 2b281b87 adds process-level missing-fetch and denied-sender failure-category assertions; commit 053ef246 adds malformed-identity and unusable-save-path assertions; commit 9dc9bd62 adds an unused-endpoint path-discovery-timeout assertion; commit d66b19d1 adds persisted listener identity and post-restart transfer coverage; commit 9b8e4ed6 adds a local fetch destination disk-error assertion; commit 397a9525 adds client Ctrl-C cancellation status; commit e668ae60 adds three concurrent client transfers with exact saved bytes; commit a5f57dba adds interrupted-Resource failure status and phase-output coverage; commit 27bb3fac adds readiness-gated medium-timeout selection after TCP interface activation; commit 708dc980 adds a Python-listener/Rust-client restart trace with stable identity and exact binary transfers before and after restart; commit a81f0cf6 serializes the Python interop fixtures to prevent listener/announce contention; commit e6f71d21 asserts the successful Python fetch-client Transfer complete callback. Listener-side save-status/failure callback telemetry, the complete utility option matrix, rngit network workflows, and slow-interface/remote-disk-fault transcripts remain unverified or owned by #612/#613.",
         "owner_issue": 611,
         "reference": {
           "revision": "99de23c040d507e3fefca19e87b182302902725d",
@@ -195,10 +193,7 @@
           "cargo test -p rns-tools --test rncp_process --all-features -- --nocapture",
           "RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rncp_python_interop rncp_mixed_runtime_compression_matrix_roundtrips_binary_files -- --ignored --nocapture",
           "RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rncp_python_interop rncp_exchanges_binary_files_with_pinned_python_in_both_directions -- --ignored --nocapture",
-          "RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rncp_python_interop -- --ignored --nocapture",
-          "cargo test -p rns-tools --bin rnsh -- --nocapture",
-          "cargo test -p rns-tools --test rnsh_process -- --nocapture",
-          "RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rnsh_python_interop -- --ignored --nocapture --test-threads=1"
+          "RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rncp_python_interop -- --ignored --nocapture"
         ]
       },
       {
@@ -213,7 +208,7 @@
         "id": "reticulum-605-612-rngit-permission-work-storage",
         "implementation": "partial",
         "kind": "behavioral-requirement",
-        "notes": "Permission resolver bounds/failure propagation, configured-access merging, canonical companion paths, atomic permission refresh, production work-item handlers, Python-shaped MessagePack storage, and a Python-produced binary metadata fixture are implemented and locally verified. The live Reticulum adapter now carries the identified peer key for create/propose/edit signature validation, and a pinned Python Link trace exercises Git plus permission/work request shapes and lifecycle responses. The reciprocal native Rust-client trace now covers /git/list, raw /git/fetch Resource handling with exact git bundle verify, an oversized /git/push bundle with remote-ref verification, signed /mgmt/work, and the Python-compatible multi-step release create/init, artifact, finalize, list, view, artifact-fetch, latest, and delete requests through the production compatibility bridge. The hash-only local compatibility seam, restart/concurrency/fault transcripts, full Python CLI workflow, Reticulum-source cloning, and broader network matrix remain unverified.",
+        "notes": "Permission resolver bounds/failure propagation, configured-access merging, canonical companion paths, atomic permission refresh, production work-item handlers, Python-shaped MessagePack storage, and a Python-produced binary metadata fixture are implemented and locally verified. The live Reticulum adapter now carries the identified peer key for create/propose/edit signature validation, and a pinned Python Link trace exercises Git plus permission/work request shapes and lifecycle responses. The hash-only local compatibility seam, restart/concurrency/fault transcripts, full Python CLI workflow, and broader network matrix remain unverified.",
         "owner_issue": 612,
         "reference": {
           "revision": "99de23c040d507e3fefca19e87b182302902725d",
@@ -231,8 +226,7 @@
         "test_command": [
           "cargo fmt --all -- --check",
           "cargo test -p rns-tools --all-features",
-          "cargo clippy -p rns-tools --bin rngit --all-features --no-deps -- -D warnings",
-          "RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --bin rngit --all-features native_rust_client_requests_pinned_python_rngit -- --ignored --nocapture"
+          "cargo clippy -p rns-tools --bin rngit --all-features --no-deps -- -D warnings"
         ]
       },
       {
@@ -246,7 +240,7 @@
         "id": "reticulum-605-613-rngit-pages-media",
         "implementation": "partial",
         "kind": "behavioral-requirement",
-        "notes": "NomadNet destination/network mode, page and file paths, var_* request fields, access/no-identity behavior, image markup, media validation/filename metadata, bounded WebP conversion with raw fallback, link-scoped temporary cleanup, explicit no-compression Resource responses, and live malformed-media failure requests are implemented and locally verified. A pinned Python/NomadNet client transcript, live page/media checksums, encoder-success fixture, complete reference rendering, and end-to-end rngit network workflows remain unverified.",
+        "notes": "NomadNet destination/network mode, page and file paths, var_* request fields, access/no-identity behavior, image markup, media validation/filename metadata, bounded WebP conversion with raw fallback, link-scoped temporary cleanup, and explicit no-compression Resource responses are implemented and locally verified. A pinned Python/NomadNet client transcript, live page/media checksums, encoder-success fixture, complete reference rendering, and end-to-end rngit network workflows remain unverified.",
         "owner_issue": 613,
         "reference": {
           "revision": "99de23c040d507e3fefca19e87b182302902725d",
