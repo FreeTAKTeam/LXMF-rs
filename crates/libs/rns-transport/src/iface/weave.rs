@@ -1480,7 +1480,7 @@ mod tests {
     use crate::hash::AddressHash;
     use crate::identity::PrivateIdentity;
     use crate::iface::{InterfaceManager, TxMessage, TxMessageType};
-    use crate::packet::Packet;
+    use crate::packet::{Packet, PacketDataBuffer};
     use crate::serde::Serialize;
 
     use super::*;
@@ -1490,6 +1490,10 @@ mod tests {
         let mut output = OutputBuffer::new(&mut buffer);
         packet.serialize(&mut output).expect("serialize packet");
         output.as_slice().to_vec()
+    }
+
+    fn valid_test_packet() -> Packet {
+        Packet { data: PacketDataBuffer::new_from_slice(b"weave-test"), ..Packet::default() }
     }
 
     fn log_frame(target: [u8; 4], event: u16, data: &[u8]) -> Vec<u8> {
@@ -1909,7 +1913,7 @@ mod tests {
         peer.write_all(&log_frame(local_switch, ET_PROTO_WEAVE_EP_ALIVE, &endpoint))
             .await
             .expect("alive event");
-        let mut endpoint_payload = packet_payload(&Packet::default());
+        let mut endpoint_payload = packet_payload(&valid_test_packet());
         endpoint_payload.extend_from_slice(&endpoint);
         peer.write_all(&weave_wire_frame(&weave_wdcl_frame(
             local_switch,
@@ -2151,7 +2155,7 @@ mod tests {
         .await
         .expect("discovery response");
         let _ = peer.read(&mut bytes).await.expect("handshake frame");
-        let mut endpoint_payload = packet_payload(&Packet::default());
+        let mut endpoint_payload = packet_payload(&valid_test_packet());
         endpoint_payload.extend_from_slice(&endpoint);
         peer.write_all(&weave_wire_frame(&weave_wdcl_frame(
             local_switch,
@@ -2250,7 +2254,7 @@ mod tests {
         let mut discovery_payload = Vec::new();
         discovery_payload.extend_from_slice(remote.as_identity().verifying_key_bytes());
         discovery_payload.extend_from_slice(&remote.sign(&local_switch).to_bytes());
-        let mut endpoint_payload = packet_payload(&Packet::default());
+        let mut endpoint_payload = packet_payload(&valid_test_packet());
         endpoint_payload.extend_from_slice(&endpoint);
         let stream = FailingWeaveWriteStream::new(
             vec![

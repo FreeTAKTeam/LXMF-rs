@@ -1504,7 +1504,7 @@ mod tests {
 
     use crate::buffer::OutputBuffer;
     use crate::iface::{hdlc::Hdlc, IfaceRole, TxMessage, TxMessageType};
-    use crate::packet::Packet;
+    use crate::packet::{Packet, PacketDataBuffer};
     use base64::Engine;
     use sha2::Digest;
     use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
@@ -1518,6 +1518,10 @@ mod tests {
         let mut output = OutputBuffer::new(&mut buffer);
         Hdlc::encode(&raw, &mut output).expect("encode hdlc frame");
         output.as_slice().to_vec()
+    }
+
+    fn valid_test_packet() -> Packet {
+        Packet { data: PacketDataBuffer::new_from_slice(b"i2p-test"), ..Packet::default() }
     }
 
     #[test]
@@ -2038,7 +2042,7 @@ mod tests {
     async fn i2p_accept_loop_registers_incoming_peer_through_fake_sam_stream() {
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind fake SAM");
         let sam_addr = listener.local_addr().expect("local addr").to_string();
-        let packet = Packet::default();
+        let packet = valid_test_packet();
         let hdlc_frame = hdlc_frame_for_packet(&packet);
         let (release_stream_tx, release_stream_rx) = oneshot::channel::<()>();
         let server = tokio::spawn(async move {

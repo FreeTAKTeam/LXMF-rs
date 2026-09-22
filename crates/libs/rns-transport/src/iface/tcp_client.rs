@@ -1392,7 +1392,7 @@ mod tests {
     use crate::hash::AddressHash;
     use crate::iface::hdlc::Hdlc;
     use crate::iface::{InterfaceManager, TxMessage, TxMessageType};
-    use crate::packet::Packet;
+    use crate::packet::{Packet, PacketDataBuffer};
     use crate::serde::Serialize;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::{TcpListener, TcpStream};
@@ -1814,7 +1814,9 @@ mod tests {
         let mut raw_buffer = vec![0_u8; mtu];
         let raw_len = {
             let mut output = OutputBuffer::new(&mut raw_buffer[..]);
-            Packet::default().serialize(&mut output).expect("serialize packet");
+            Packet { data: PacketDataBuffer::new_from_slice(b"hdlc-test"), ..Packet::default() }
+                .serialize(&mut output)
+                .expect("serialize packet");
             output.offset()
         };
         let mut wire_buffer = vec![0_u8; tcp_wire_buffer_capacity(mtu)];

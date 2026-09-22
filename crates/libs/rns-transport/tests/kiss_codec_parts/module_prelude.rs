@@ -17,7 +17,7 @@ use rns_transport::kiss::{
     CMD_TXTAIL, FEND, FESC, TFEND, TFESC,
 };
 
-use rns_transport::packet::Packet;
+use rns_transport::packet::{Packet, PacketDataBuffer};
 use rns_transport::serde::Serialize;
 
 use tokio_util::sync::CancellationToken;
@@ -378,7 +378,12 @@ async fn run_kiss_stream_updates_runtime_status_for_data_rx_and_tx() {
 
     let mut packet_payload = [0_u8; 256];
     let mut output = OutputBuffer::new(&mut packet_payload);
-    Packet::default().serialize(&mut output).expect("serialize inbound packet");
+    Packet {
+        data: PacketDataBuffer::new_from_slice(b"kiss-test"),
+        ..Packet::default()
+    }
+    .serialize(&mut output)
+    .expect("serialize inbound packet");
     let inbound_frame = encode_data_frame(output.as_slice());
     tokio::io::AsyncWriteExt::write_all(&mut peer, &inbound_frame)
         .await

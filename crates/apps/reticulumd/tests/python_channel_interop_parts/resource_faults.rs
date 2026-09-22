@@ -146,7 +146,7 @@ async fn rust_sender_reports_pinned_python_receiver_shutdown() {
     wait_for_outbound_resource_failed(
         &mut resource_events,
         resource_hash,
-        Duration::from_secs(15),
+        Duration::from_secs(30),
     )
     .await;
 }

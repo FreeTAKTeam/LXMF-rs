@@ -1493,7 +1493,7 @@ mod tests {
     };
     use crate::iface::{IfaceRole, InterfaceManager, TxMessage, TxMessageType};
     use crate::kiss::decode_frames;
-    use crate::packet::Packet;
+    use crate::packet::{Packet, PacketDataBuffer};
     use crate::serde::Serialize;
 
     use super::*;
@@ -1503,6 +1503,10 @@ mod tests {
         let mut output = OutputBuffer::new(&mut buffer);
         packet.serialize(&mut output).expect("serialize packet");
         output.as_slice().to_vec()
+    }
+
+    fn valid_test_packet() -> Packet {
+        Packet { data: PacketDataBuffer::new_from_slice(b"rnode-test"), ..Packet::default() }
     }
 
     #[derive(Default)]
@@ -2306,7 +2310,7 @@ mod tests {
             Arc::new(tokio::sync::Mutex::new(tx_rx)),
         ));
 
-        let payload = packet_payload(&Packet::default());
+        let payload = packet_payload(&valid_test_packet());
         peer.write_all(&encode_command_frame(0x70, &payload)).await.expect("write inbound frame");
         let message = rx_rx.recv().await.expect("rx message");
         cancel.cancel();

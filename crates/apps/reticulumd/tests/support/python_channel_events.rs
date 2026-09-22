@@ -195,10 +195,18 @@ pub(super) async fn wait_for_outbound_resource_complete(
     timeout(duration, async {
         loop {
             let event = events.recv().await.expect("resource event");
-            if event.hash == expected_hash
-                && matches!(event.kind, ResourceEventKind::OutboundComplete)
-            {
-                return;
+            if event.hash != expected_hash {
+                continue;
+            }
+            match event.kind {
+                ResourceEventKind::OutboundComplete => return,
+                ResourceEventKind::OutboundFailed => {
+                    panic!("outbound resource failed before completion: {expected_hash}")
+                }
+                ResourceEventKind::OutboundCancelled => {
+                    panic!("outbound resource was cancelled before completion: {expected_hash}")
+                }
+                _ => {}
             }
         }
     })

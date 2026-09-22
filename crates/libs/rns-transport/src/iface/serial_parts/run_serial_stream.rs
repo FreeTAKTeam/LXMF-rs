@@ -516,7 +516,12 @@ mod tests {
 
         let mut packet_payload = vec![0_u8; 512];
         let mut packet_output = OutputBuffer::new(&mut packet_payload[..]);
-        Packet::default().serialize(&mut packet_output).expect("serialize packet");
+        Packet {
+            data: crate::packet::PacketDataBuffer::new_from_slice(b"serial-test"),
+            ..Packet::default()
+        }
+        .serialize(&mut packet_output)
+        .expect("serialize packet");
         let mut wire = vec![0_u8; 1024];
         let mut wire_output = OutputBuffer::new(&mut wire[..]);
         let wire_len =

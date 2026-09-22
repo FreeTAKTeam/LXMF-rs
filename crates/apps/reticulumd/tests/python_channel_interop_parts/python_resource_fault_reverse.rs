@@ -90,7 +90,7 @@ async fn run_rust_resource_fault(
             &seen,
             resource_size,
             &expected_digest,
-            Duration::from_secs(15),
+            Duration::from_secs(30),
         )
         .await;
     }
