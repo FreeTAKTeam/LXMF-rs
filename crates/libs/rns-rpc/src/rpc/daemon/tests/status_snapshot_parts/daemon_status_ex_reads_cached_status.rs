@@ -237,6 +237,18 @@ fn assert_status_snapshot_fields(result: &JsonValue) {
         json!({"numerator": 1857, "denominator": 1857})
     );
     assert_eq!(
+        result["reticulum"]["parity"]["forward_behavioral"]["level"],
+        json!("partial")
+    );
+    assert_eq!(
+        result["reticulum"]["parity"]["forward_behavioral"]["coverage_status"],
+        json!("incomplete")
+    );
+    assert_eq!(
+        result["reticulum"]["parity"]["forward_behavioral"]["reference"]["revision"],
+        json!("99de23c040d507e3fefca19e87b182302902725d")
+    );
+    assert_eq!(
         result["reticulum"]["parity"]["reticulum"]["inventory"],
         json!({
             "total": 1655,

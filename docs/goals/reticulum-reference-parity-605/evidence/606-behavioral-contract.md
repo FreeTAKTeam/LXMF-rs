@@ -72,3 +72,38 @@ exact-head execution, full behavioral evidence for every contract row, and
 independent review of the target delta remain outstanding. The parent issue
 therefore remains open, and later implementation evidence must link each row
 to observed behavior before any status promotion.
+
+## Public SDK/RPC advisory increment
+
+Branch `corvo/issue-606-behavioral-advisory`, based on merged main
+`a649f51e9671007c08aeff469877038e2db7a716`, adds the forward behavioral
+checkpoint to the typed SDK/RPC advisory without changing the active 1.5.2
+callable counts. The serialized member is optional for old payloads and is
+omitted when absent. OpenRPC, the projected RPC schema, the valid negotiation
+fixture, current status documentation, and the public API baseline now agree.
+This increment does not close #606: a complete behavior-by-behavior audit and
+independent target-delta review remain outstanding.
+
+The active inventory was regenerated from Reticulum
+`ea98db4f53dcf0defc0e71a16e60d28b1229c4e6` and LXMF
+`727830cefda83d9c6e3982b48675425f3f988f9c`. The separately pinned behavioral
+checkpoint reports RNS `1.5.4-dev` at
+`99de23c040d507e3fefca19e87b182302902725d`: `partial` / `incomplete`, 10
+requirements, 9 applicable, and 0 verified. This is an advisory status, not a
+claim that any behavioral row is complete.
+
+```text
+python3 tools/scripts/python_surface_inventory.py --self-test                   PASS
+python3 tools/scripts/python_surface_inventory.py --check \
+  --json-out docs/status/python-surface-parity.json                              PASS
+cargo fmt --all -- --check                                                      PASS
+cargo test -p lxmf-reference --lib                                              PASS (2)
+cargo test -p lxmf-sdk --lib                                                    PASS (238)
+cargo test -p reticulum-rs-rpc --lib                                            PASS (750)
+cargo run -p xtask -- sdk-schema-check                                          PASS (12)
+cargo run -p xtask -- sdk-api-break                                             PASS
+cargo run -p xtask -- sdk-docs-check                                            PASS
+cargo run -p xtask -- schema-client-generate --check                            PASS
+cargo clippy -p lxmf-reference -p lxmf-sdk -p reticulum-rs-rpc \
+  --all-targets --all-features --no-deps -- -D warnings                         PASS
+```

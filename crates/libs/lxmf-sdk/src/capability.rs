@@ -262,6 +262,13 @@ mod tests {
     #[test]
     fn negotiation_response_round_trips_typed_software_parity() {
         let expected = crate::current_software_parity_orientation();
+        let forward = expected.forward_behavioral.as_ref().expect("forward advisory");
+        assert_eq!(forward.level, crate::ParityLevel::Partial);
+        assert_eq!(forward.coverage_status, "incomplete");
+        assert_eq!(forward.inventory.total, 10);
+        assert_eq!(forward.inventory.partial, 9);
+        assert_eq!(forward.evidence_verified, 0);
+        assert_eq!(forward.reference.revision, "99de23c040d507e3fefca19e87b182302902725d");
         let mut payload = negotiation_response_payload();
         payload["software_parity"] =
             serde_json::to_value(&expected).expect("serialize software parity");
@@ -274,6 +281,26 @@ mod tests {
                 ["software_parity"],
             serde_json::to_value(expected).expect("serialize expected software parity")
         );
+    }
+
+    #[test]
+    fn negotiation_response_accepts_legacy_software_parity_without_forward_member() {
+        let mut payload = negotiation_response_payload();
+        let mut legacy_orientation =
+            serde_json::to_value(crate::current_software_parity_orientation())
+                .expect("serialize current parity orientation");
+        legacy_orientation
+            .as_object_mut()
+            .expect("orientation object")
+            .remove("forward_behavioral");
+        payload["software_parity"] = legacy_orientation;
+
+        let response: NegotiationResponse =
+            serde_json::from_value(payload).expect("legacy software parity should decode");
+        let orientation = response.software_parity.expect("legacy orientation");
+        assert_eq!(orientation.forward_behavioral, None);
+        let encoded = serde_json::to_value(orientation).expect("re-serialize legacy orientation");
+        assert!(encoded.get("forward_behavioral").is_none());
     }
 
     #[test]

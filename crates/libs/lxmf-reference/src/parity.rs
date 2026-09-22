@@ -56,6 +56,19 @@ pub struct SoftwareParityOrientation {
     pub overall: ParityCheckpoint,
     pub reticulum: ParityCheckpoint,
     pub lxmf: ParityCheckpoint,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub forward_behavioral: Option<BehavioralParityCheckpoint>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct BehavioralParityCheckpoint {
+    pub level: ParityLevel,
+    pub coverage_status: String,
+    pub complete_ratio: ParityRatio,
+    pub inventory: ParityInventory,
+    pub evidence_verified: u64,
+    pub reference: ReferenceRevision,
 }
 
 impl ParityCheckpoint {
@@ -92,6 +105,12 @@ fn inventory(
 }
 
 pub fn current_software_parity_orientation() -> SoftwareParityOrientation {
+    let behavioral_inventory = inventory(
+        crate::PYTHON_BEHAVIORAL_PARITY_REQUIREMENTS,
+        crate::PYTHON_BEHAVIORAL_PARITY_COMPLETE,
+        crate::PYTHON_BEHAVIORAL_PARITY_PARTIAL,
+        crate::PYTHON_BEHAVIORAL_PARITY_NOT_APPLICABLE,
+    );
     SoftwareParityOrientation {
         advisory: true,
         references: SoftwareParityReferences {
@@ -122,6 +141,25 @@ pub fn current_software_parity_orientation() -> SoftwareParityOrientation {
             crate::PYTHON_LXMF_PARITY_PARTIAL,
             crate::PYTHON_LXMF_PARITY_NOT_APPLICABLE,
         )),
+        forward_behavioral: Some(BehavioralParityCheckpoint {
+            level: match crate::PYTHON_BEHAVIORAL_PARITY_LEVEL {
+                "complete" => ParityLevel::Complete,
+                "partial" => ParityLevel::Partial,
+                _ => ParityLevel::Unknown,
+            },
+            coverage_status: crate::PYTHON_BEHAVIORAL_PARITY_COVERAGE_STATUS.to_owned(),
+            complete_ratio: ParityRatio {
+                numerator: behavioral_inventory.complete,
+                denominator: behavioral_inventory.complete + behavioral_inventory.partial,
+            },
+            inventory: behavioral_inventory,
+            evidence_verified: u64::try_from(crate::PYTHON_BEHAVIORAL_PARITY_VERIFIED)
+                .expect("verified behavioral requirement count fits u64"),
+            reference: ReferenceRevision {
+                version: crate::PYTHON_BEHAVIORAL_PARITY_REFERENCE_VERSION.to_owned(),
+                revision: crate::PYTHON_BEHAVIORAL_PARITY_REFERENCE_REF.to_owned(),
+            },
+        }),
     }
 }
 
@@ -161,6 +199,17 @@ mod tests {
             orientation.lxmf.inventory,
             ParityInventory { total: 202, complete: 202, partial: 0, not_applicable: 0 }
         );
+        let behavioral = orientation.forward_behavioral.expect("forward advisory");
+        assert_eq!(behavioral.level, ParityLevel::Partial);
+        assert_eq!(behavioral.coverage_status, "incomplete");
+        assert_eq!(behavioral.complete_ratio, ParityRatio { numerator: 0, denominator: 9 });
+        assert_eq!(
+            behavioral.inventory,
+            ParityInventory { total: 10, complete: 0, partial: 9, not_applicable: 1 }
+        );
+        assert_eq!(behavioral.evidence_verified, 0);
+        assert_eq!(behavioral.reference.version, "1.5.4-dev");
+        assert_eq!(behavioral.reference.revision, "99de23c040d507e3fefca19e87b182302902725d");
     }
 
     #[test]

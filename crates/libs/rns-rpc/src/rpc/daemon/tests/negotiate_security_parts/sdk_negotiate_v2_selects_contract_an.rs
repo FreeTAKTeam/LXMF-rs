@@ -36,6 +36,20 @@
             result["software_parity"],
             json!(crate::current_software_parity_orientation())
         );
+        assert_eq!(result["software_parity"]["overall"]["inventory"]["total"], json!(1858));
+        assert_eq!(result["software_parity"]["overall"]["level"], json!("complete"));
+        assert_eq!(
+            result["software_parity"]["forward_behavioral"]["level"],
+            json!("partial")
+        );
+        assert_eq!(
+            result["software_parity"]["forward_behavioral"]["coverage_status"],
+            json!("incomplete")
+        );
+        assert_eq!(
+            result["software_parity"]["forward_behavioral"]["inventory"]["partial"],
+            json!(9)
+        );
         assert_eq!(
             result["meta"]["python_reference"],
             result["python_reference"],

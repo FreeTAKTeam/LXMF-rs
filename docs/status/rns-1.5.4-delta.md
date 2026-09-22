@@ -84,10 +84,13 @@ incomplete requirements:
 | #615 | Run differential conformance and exact-candidate software release acceptance | partial / unverified |
 | #616 | Maintain separate physical, platform, client, network-soak, and operational evidence | not-applicable to software / hardware-unverified |
 
-The generated Rust constants expose the forward behavioral level and target
-revision for runtime consumers without changing the existing advisory SDK/RPC
-schema before the contract is proven. No row is promoted by a local parser,
-mock, attached-node-only check, or old release artifact.
+The SDK/RPC parity advisory now exposes an optional `forward_behavioral`
+checkpoint generated from this contract, including the exact target revision,
+partial/incomplete level, requirement counts, and verified-evidence count. The
+existing overall, Reticulum, and LXMF fields retain their active-baseline
+callable-inventory values and do not prove forward behavioral completion. No
+row is promoted by a local parser, mock, attached-node-only check, or old
+release artifact.
 
 The bounded contract-fixture evidence is recorded in
 [`evidence/606-behavioral-contract.md`](../goals/reticulum-reference-parity-605/evidence/606-behavioral-contract.md),

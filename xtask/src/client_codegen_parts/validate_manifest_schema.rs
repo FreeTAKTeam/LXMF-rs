@@ -372,6 +372,7 @@ fn legacy_projection_extra_components(
             ("ParityRatio", "parity_ratio"),
             ("ParityInventory", "parity_inventory"),
             ("ParityCheckpoint", "parity_checkpoint"),
+            ("BehavioralParityCheckpoint", "behavioral_parity_checkpoint"),
             ("ReferenceRevision", "reference_revision"),
             ("SoftwareParityReferences", "software_parity_references"),
             ("SoftwareParityOrientation", "software_parity_orientation"),

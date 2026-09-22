@@ -1,5 +1,44 @@
 {
   "$defs": {
+    "behavioral_parity_checkpoint": {
+      "additionalProperties": false,
+      "properties": {
+        "complete_ratio": {
+          "$ref": "#/$defs/parity_ratio"
+        },
+        "coverage_status": {
+          "enum": [
+            "complete",
+            "incomplete",
+            "blocked",
+            "hardware-unverified"
+          ],
+          "type": "string"
+        },
+        "evidence_verified": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "inventory": {
+          "$ref": "#/$defs/parity_inventory"
+        },
+        "level": {
+          "$ref": "#/$defs/parity_level"
+        },
+        "reference": {
+          "$ref": "#/$defs/reference_revision"
+        }
+      },
+      "required": [
+        "complete_ratio",
+        "coverage_status",
+        "evidence_verified",
+        "inventory",
+        "level",
+        "reference"
+      ],
+      "type": "object"
+    },
     "params": {
       "additionalProperties": true,
       "properties": {
@@ -387,6 +426,9 @@
       "properties": {
         "advisory": {
           "const": true
+        },
+        "forward_behavioral": {
+          "$ref": "#/$defs/behavioral_parity_checkpoint"
         },
         "lxmf": {
           "$ref": "#/$defs/parity_checkpoint"

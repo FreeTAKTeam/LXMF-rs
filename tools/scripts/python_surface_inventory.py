@@ -770,17 +770,31 @@ def rust_behavioral_constants(contract: dict[str, Any]) -> str:
         for requirement in requirements
         if isinstance(requirement, dict) and requirement.get("evidence_status") == "verified"
     )
+    complete = sum(
+        1
+        for requirement in requirements
+        if isinstance(requirement, dict) and requirement.get("implementation") == "complete"
+    )
     applicable = sum(
         1
         for requirement in requirements
         if isinstance(requirement, dict)
         and requirement.get("implementation") != "not-applicable"
     )
+    partial = sum(
+        1
+        for requirement in requirements
+        if isinstance(requirement, dict) and requirement.get("implementation") == "partial"
+    )
+    not_applicable = len(requirements) - applicable
     level = "unknown" if not applicable else ("complete" if coverage_status == "complete" else "partial")
     return (
         f'pub const PYTHON_BEHAVIORAL_PARITY_LEVEL: &str = "{level}";\n'
         f'pub const PYTHON_BEHAVIORAL_PARITY_COVERAGE_STATUS: &str = "{coverage_status}";\n'
         f"pub const PYTHON_BEHAVIORAL_PARITY_REQUIREMENTS: usize = {len(requirements)};\n"
+        f"pub const PYTHON_BEHAVIORAL_PARITY_COMPLETE: usize = {complete};\n"
+        f"pub const PYTHON_BEHAVIORAL_PARITY_PARTIAL: usize = {partial};\n"
+        f"pub const PYTHON_BEHAVIORAL_PARITY_NOT_APPLICABLE: usize = {not_applicable};\n"
         f"pub const PYTHON_BEHAVIORAL_PARITY_VERIFIED: usize = {verified};\n"
         f"pub const PYTHON_BEHAVIORAL_PARITY_APPLICABLE: usize = {applicable};\n"
         f'pub const PYTHON_BEHAVIORAL_PARITY_REFERENCE_VERSION: &str = "{reticulum["version"]}";\n'
@@ -904,6 +918,12 @@ def run_generator_self_tests() -> None:
         ],
     }
     expect(not validate_behavioral_contract(behavioral_contract), "behavioral contract schema")
+    behavioral_rust = rust_behavioral_constants(behavioral_contract)
+    expect(
+        "PYTHON_BEHAVIORAL_PARITY_PARTIAL: usize = 1" in behavioral_rust
+        and "PYTHON_BEHAVIORAL_PARITY_NOT_APPLICABLE: usize = 1" in behavioral_rust,
+        "behavioral Rust advisory counts derive from contract classifications",
+    )
     malformed_contract = dict(behavioral_contract)
     malformed_contract["requirements"] = [{"id": "broken"}]
     expect(validate_behavioral_contract(malformed_contract), "malformed behavioral contract")
