@@ -74,10 +74,10 @@ physical/public-network evidence remain outside the software-only pass.
 | Fetch | `fetch_file` Link request/response, `True`/`False`/`0xF0`/`nil` status mapping, the pinned Python rncp listener's ordinary metadata-bearing file Resource contract, correlated Rust response Resources for other callers, and metadata-driven save | `rncp_process` Rust client to Rust listener; pinned Python listener/client trace; pinned Python client fetching from Rust | verified for two independent Rust processes and the bounded Python↔Rust fetch paths |
 | Authentication | `--no-auth`, explicit `--allowed-identity`, rejected identified peers, nonzero sender failure, and reciprocal Python/Rust identity allow-lists for send and fetch roles | manual denied-transfer run; pinned Python interop | verified for the bounded send/fetch roles; broader option and callback parity remains open |
 | Jail and save safety | Canonical jail containment, traversal rejection, basename-only metadata, overwrite/suffix behavior | protocol unit tests and process test | verified locally |
-| Timeout/output | `--timeout`, silent mode, nonzero status for denied senders, preserved not-found failure output for missing fetches, malformed identity rejection, unusable save-path rejection, path-discovery timeout status, client Ctrl-C cancellation, interrupted Resource-link failure, medium-path timeout after an active TCP interface connects, Python fetch completion callback, and listener receive-save failure diagnostic | unit/process tests and pinned Python interop | bounded process-level failure/status and callback outcomes are verified; genuinely slow-interface timing and Python-peer receive-side cancellation/disk-fault transcripts remain open |
+| Timeout/output | `--timeout`, silent mode, nonzero status for denied senders, preserved not-found failure output for missing fetches, malformed identity rejection, unusable save-path rejection, path-discovery timeout status, client Ctrl-C cancellation, interrupted Resource-link failure, medium-path timeout after an active TCP interface connects, Python fetch completion callback, and listener receive-save failure diagnostic | unit/process tests and pinned Python interop | bounded process-level failure/status and callback outcomes are verified; genuinely slow-interface timing, Python-peer receive-side cancellation, and Python fetch-client save-failure callback remain open |
 | Status output | Non-silent path request, link-establishment, transfer, and fetch-request phase lines; silent mode suppresses them; the Python fetch client emits `Transfer complete` on successful save | `rncp_process`, CLI phase transcript, pinned Python interop | verified for the native Rust client path and the bounded Python fetch-client path |
 | Restart | Persisted listener identity, same TCP endpoint, stable destination hash, and a second binary transfer after listener restart | `rncp_process`; ignored `rncp_python_interop` restart process | verified for the bounded Rust listener/client path and the Python-listener/Rust-client role |
-| Disk failure | Client fetch save failure and listener receive-save failure when the overwrite target is a directory | `rncp_process`, including `rncp_listener_reports_received_file_disk_error` | verified: the client preserves its OS failure and the listener emits its save-failure diagnostic after Resource delivery; this does not claim an application-level negative acknowledgment to the sender |
+| Disk failure | Rust client fetch save failure; Rust listener receive-save failure when the overwrite target is a directory; pinned Python listener receive-save failure when its configured save root is not a directory | `rncp_process::rncp_listener_reports_received_file_disk_error`; ignored pinned-Python `rncp_python_interop::rncp_python_listener_reports_received_file_disk_error` | Rust process trace is locally verified; the pinned-Python receiver trace runs in PR Verify and asserts the sender sees successful Resource delivery while the Python receiver reports its callback save error. Neither behavior claims an application-level negative acknowledgment to the sender |
 | Multi-client | Three independent clients send distinct binary files concurrently to one listener | `rncp_process` | verified for the bounded Rust listener/client path |
 | Adaptive timeout | Initial TCP clients reach `connected` before network work begins, allowing `operation_timeout` to observe the active interface bitrate and apply the RNS medium-path lower bound | `rncp_process::rncp_uses_medium_timeout_after_interface_activation` | verified for an active local TCP interface; genuinely slow-interface timing remains open |
 | Packet probe exchange | Probe packet delivery and proof correlation between the native daemon path and the pinned Python utility, in both initiator/responder directions | ignored `rnprobe_python_interop` (2 tests, commit `f86ecc1c`) | verified for isolated Rust daemon/Python TCP roles; public/multi-hop, carrier-fault, and physical timing remain open |
@@ -114,6 +114,10 @@ RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   cargo test -p rns-tools --test rncp_python_interop \
   rncp_python_listener_restart_preserves_identity_and_transfer \
   -- --ignored --nocapture                         1 passed (1.62s)
+RETICULUM_PY_REPO=Reticulum-parity LXMF_PYTHON_BIN=python3 \
+  cargo test -p rns-tools --test rncp_python_interop \
+  rncp_python_listener_reports_received_file_disk_error \
+  -- --ignored --exact --nocapture                  1 passed (0.82s)
 ```
 
 The issue-specific receiver disk-failure increment was verified separately in
@@ -140,11 +144,15 @@ The same process binary persists a listener identity, restarts the listener on
 the same TCP endpoint, verifies the destination hash is stable, and completes a
 second binary transfer. The same run attempts a fetch with an overwrite target
 that is a directory and asserts nonzero status plus the `Is a directory` OS
-error. The receiver disk-failure regression sends a binary Resource whose
+error. The Rust receiver disk-failure regression sends a binary Resource whose
 basename collides with a directory while listener overwrite is enabled, then
-waits for and asserts the listener's save-failure diagnostic. It distinguishes
-successful transport delivery from the failed application save; this increment
-does not claim an application-level negative acknowledgment to the sender.
+waits for and asserts the listener's save-failure diagnostic. The ignored
+pinned-Python counterpart sends a binary Resource to a Python listener whose
+configured save root is a regular file; it asserts the sender's Resource
+delivery succeeds while the Python callback logs the save error. Both
+distinguish transport delivery from application save, and neither claims an
+application-level negative acknowledgment to the sender. PR Verify runs the
+pinned-Python regression against the frozen 1.5.4 development checkout.
 The Unix process regression also sends SIGINT during path discovery and asserts
 nonzero status plus `operation cancelled by user`. The concurrent-client case
 starts three independent senders and verifies every listener-side file byte for
@@ -379,11 +387,12 @@ coverage, and public or multi-hop transport remain unverified.
 The following #611 acceptance items remain open and are deliberately not
 classified as complete:
 
-- Add failure-side callback assertions and a stable listener-side save-status
-  callback trace around the completed Python fetch. `e6f71d21` now asserts the
-  successful Python fetch client's `Transfer complete` callback; the current
-  trace also proves the listener-side resource-conclusion/save side effect and
-  exact overwrite result through bytes on disk.
+- Add failure-side callback assertions for the Python fetch client receiving a
+  Resource, and correlate the completed Python fetch with stable listener-side
+  save-status evidence. `e6f71d21` asserts the successful Python fetch client's
+  `Transfer complete` callback; `rncp_python_listener_reports_received_file_disk_error`
+  now proves the distinct Python listener receive callback, not fetch-client
+  save failure or a sender-visible negative acknowledgment.
 - Build the complete utility option/behavior matrix from every frozen
   `RNS/Utilities` entry point. The current slice now covers the daemon-backed
   `rnpath` management subset, a bounded native `rnprobe` packet workflow with
@@ -398,10 +407,10 @@ classified as complete:
   `/git/mirror` requests now prove the `git.repositories`
   listing/bundle/mutation/clone seam, while the remaining Git/work network
   implementation belongs to #612/#613.
-- Add genuinely slow-interface and remote receive-side cancellation/disk-error
-  transcripts with exact failure/status assertions; the active-TCP
-  medium-timeout lower-bound case is covered, but it is not a slow-interface
-  or physical-link transcript.
+- Add genuinely slow-interface and remote receive-side cancellation
+  transcripts with exact failure/status assertions; Rust and pinned-Python
+  disk-error callbacks are covered, but the active-TCP medium-timeout lower
+  bound is not genuinely slow-interface or physical-link evidence.
 - Add process-level advertisement/transfer-size assertions for each remaining
   compression role if the utility evidence must independently expose the wire
   compression flag; the Resource unit tests already cover that direct flag.

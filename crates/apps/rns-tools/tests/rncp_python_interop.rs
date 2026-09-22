@@ -1,7 +1,8 @@
 use std::fs;
-use std::io::{self, Write};
+use std::io::{self, BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
+use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -168,6 +169,18 @@ struct PythonRuntime<'a> {
     repo: &'a Path,
 }
 
+struct PythonListenerOptions<'a> {
+    config_dir: &'a Path,
+    identity: &'a Path,
+    jail_root: &'a Path,
+    save_root: &'a Path,
+    allowed_identities: &'a [&'a str],
+    no_compress: bool,
+    announce_interval_seconds: u64,
+    verbose: bool,
+    capture_stdout: bool,
+}
+
 fn run_python_send(
     runtime: &PythonRuntime<'_>,
     config_dir: &Path,
@@ -294,27 +307,202 @@ fn spawn_python_listener(
     allowed_identities: &[&str],
     no_compress: bool,
 ) -> io::Result<Child> {
+    spawn_python_listener_with_save_root(
+        runtime,
+        PythonListenerOptions {
+            config_dir,
+            identity,
+            jail_root: root,
+            save_root: root,
+            allowed_identities,
+            no_compress,
+            announce_interval_seconds: 0,
+            verbose: false,
+            capture_stdout: false,
+        },
+    )
+}
+
+fn spawn_python_listener_with_save_root(
+    runtime: &PythonRuntime<'_>,
+    options: PythonListenerOptions<'_>,
+) -> io::Result<Child> {
     let mut command = Command::new(runtime.python);
     command.arg(runtime.script).arg("--listen");
-    for allowed_identity in allowed_identities {
+    for allowed_identity in options.allowed_identities {
         command.arg("-a").arg(allowed_identity);
     }
     command
         .arg("--allow-fetch")
         .arg("--jail")
-        .arg(root)
+        .arg(options.jail_root)
         .arg("--save")
-        .arg(root)
+        .arg(options.save_root)
         .arg("--config")
-        .arg(config_dir)
+        .arg(options.config_dir)
         .arg("-i")
-        .arg(identity)
+        .arg(options.identity)
         .arg("-b")
-        .arg("0");
-    if no_compress {
+        .arg(options.announce_interval_seconds.to_string());
+    if options.no_compress {
         command.arg("-C");
     }
-    command.env("PYTHONPATH", runtime.repo).stdout(Stdio::null()).stderr(Stdio::piped()).spawn()
+    if options.verbose {
+        command.arg("-v");
+    }
+    let stdout = if options.capture_stdout { Stdio::piped() } else { Stdio::null() };
+    command
+        .env("PYTHONPATH", runtime.repo)
+        .env("PYTHONUNBUFFERED", "1")
+        .stdout(stdout)
+        .stderr(Stdio::piped())
+        .spawn()
+}
+
+#[test]
+#[ignore = "requires local Python Reticulum checkout"]
+fn rncp_python_listener_reports_received_file_disk_error() -> io::Result<()> {
+    let _test_guard = PYTHON_INTEROP_TEST_LOCK.lock().expect("Python interop test lock poisoned");
+    let temp = tempfile::tempdir()?;
+    let repo = python_repo();
+    let python = python_bin();
+    let script = repo.join("RNS/Utilities/rncp.py");
+    if !script.is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("pinned Python rncp script not found: {}", script.display()),
+        ));
+    }
+    let python_runtime = PythonRuntime { python: &python, script: &script, repo: &repo };
+    let python_listener_root = temp.path().join("python-listener-root");
+    fs::create_dir_all(&python_listener_root)?;
+    let save_root = temp.path().join("python-save-root");
+    fs::create_dir_all(&save_root)?;
+
+    let python_listener_config = temp.path().join("python-listener-config");
+    fs::create_dir_all(&python_listener_config)?;
+    let port = free_port()?;
+    write_python_config(&python_listener_config, "server", port)?;
+    let python_identity = python_listener_config.join("identity");
+    let destination =
+        python_identity_output(&python, &python_listener_config, &python_identity, &repo)?;
+    let rust_sender_seed = "rncp-python-receiver-disk-error-sender";
+    let rust_sender_identity = rust_identity_hash(rust_sender_seed)?;
+    let mut listener = spawn_python_listener_with_save_root(
+        &python_runtime,
+        PythonListenerOptions {
+            config_dir: &python_listener_config,
+            identity: &python_identity,
+            jail_root: &python_listener_root,
+            save_root: &save_root,
+            allowed_identities: &[&rust_sender_identity],
+            no_compress: false,
+            announce_interval_seconds: 1,
+            verbose: true,
+            capture_stdout: true,
+        },
+    )?;
+    let stdout = listener
+        .stdout
+        .take()
+        .ok_or_else(|| io::Error::other("Python listener stdout was not captured"))?;
+    let stderr = listener
+        .stderr
+        .take()
+        .ok_or_else(|| io::Error::other("Python listener stderr was not captured"))?;
+    let (log_tx, log_rx) = mpsc::channel();
+    for stream in [Box::new(stdout) as Box<dyn Read + Send>, Box::new(stderr)] {
+        let log_tx = log_tx.clone();
+        thread::spawn(move || {
+            for line in BufReader::new(stream).lines() {
+                let Ok(line) = line else { break };
+                if log_tx.send(line).is_err() {
+                    break;
+                }
+            }
+        });
+    }
+    drop(log_tx);
+
+    let result = (|| {
+        wait_for_port(port, &mut listener)?;
+        let ready_deadline = Instant::now() + Duration::from_secs(8);
+        loop {
+            let remaining = ready_deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    format!(
+                        "Python rncp listener did not report readiness:\n{}",
+                        log_rx.try_iter().collect::<Vec<_>>().join("\n")
+                    ),
+                ));
+            }
+            match log_rx.recv_timeout(remaining) {
+                Ok(line) if line.contains("rncp listening on") => break,
+                Ok(_) => {}
+                Err(error) => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        format!("Python rncp listener did not become ready: {error}"),
+                    ));
+                }
+            }
+        }
+        fs::remove_dir(&save_root)?;
+        fs::write(&save_root, b"not a directory")?;
+        let source_root = temp.path().join("source");
+        fs::create_dir_all(&source_root)?;
+        let source = source_root.join("receiver-save-error.bin");
+        let payload = (0..4096).map(|index| (index as u8).wrapping_mul(31)).collect::<Vec<_>>();
+        fs::write(&source, &payload)?;
+
+        let sent = run_rust_send(&source, &destination, port, rust_sender_seed, true)?;
+        if !sent.status.success() {
+            return Err(io::Error::other(format!(
+                "Rust rncp sender failed before the Python receiver save callback: {}\nstdout:\n{}\nstderr:\n{}\nPython listener logs:\n{}",
+                sent.status,
+                String::from_utf8_lossy(&sent.stdout),
+                String::from_utf8_lossy(&sent.stderr),
+                log_rx.try_iter().collect::<Vec<_>>().join("\n")
+            )));
+        }
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut listener_logs = String::new();
+        loop {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    format!(
+                        "Python receiver did not report its completed-Resource save failure:\n{listener_logs}"
+                    ),
+                ));
+            }
+            match log_rx.recv_timeout(remaining) {
+                Ok(line) => {
+                    listener_logs.push_str(&line);
+                    listener_logs.push('\n');
+                    if line.contains("An error occurred while saving received resource:") {
+                        break;
+                    }
+                }
+                Err(error) => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        format!("Python listener log stream closed before save failure: {error}"),
+                    ));
+                }
+            }
+        }
+        Ok(())
+    })();
+
+    let _ = listener.kill();
+    let _ = listener.wait()?;
+    result?;
+    assert!(save_root.is_file());
+    Ok(())
 }
 
 #[test]

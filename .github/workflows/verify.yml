@@ -143,6 +143,15 @@ jobs:
             --output target/interop/python-compat-matrix/verify-${{ github.run_id }}/matrix.json \
             --timeout 420
 
+      - name: Verify pinned Python rncp receiver disk-failure callback
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+        run: >-
+          cargo test -p rns-tools --test rncp_python_interop
+          rncp_python_listener_reports_received_file_disk_error
+          -- --ignored --exact --nocapture
+
       - name: Generate PR HIL support report
         if: always()
         run: cargo xtask hil report --evidence target/hil/runs/pr-${{ github.run_id }} --output target/hil/runs/pr-${{ github.run_id }}/support-report
