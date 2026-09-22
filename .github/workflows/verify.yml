@@ -120,6 +120,16 @@ jobs:
       - name: Run repository-native PR HIL controller
         run: cargo xtask hil run --level pr --all --output target/hil/runs/pr-${{ github.run_id }}
 
+      - name: Exclude auxiliary checkouts from candidate status
+        run: |
+          cat >> .git/info/exclude <<'EOF'
+          /LXMF/
+          /Reticulum/
+          /Reticulum-parity/
+          /reticulum-conformance/
+          EOF
+          test -z "$(git status --porcelain --untracked-files=all)"
+
       - name: Run exact-target Python compatibility matrix
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
