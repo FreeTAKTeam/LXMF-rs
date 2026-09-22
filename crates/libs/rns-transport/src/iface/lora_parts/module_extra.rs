@@ -622,6 +622,8 @@ mod tests {
                 management_frame_rx,
                 rx_channel,
                 tx_channel: Arc::new(tokio::sync::Mutex::new(tx_recv)),
+                ifac_state: Arc::new(std::sync::RwLock::new(None)),
+                ifac_violations: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             },
         ));
 
