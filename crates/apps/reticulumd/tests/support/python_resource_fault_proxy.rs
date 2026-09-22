@@ -11,6 +11,7 @@ pub(super) enum ResourceFaultMode {
     DuplicateFirst,
     ReorderFirstTwo,
     DropAll,
+    DropAllResourceTraffic,
     DropKeepAlive,
     DuplicateChannelFirst,
     DropLinkRequest,
@@ -34,8 +35,10 @@ impl PythonResourceFaultProxy {
             };
             let (incoming_read, incoming_write) = incoming.into_split();
             let (outgoing_read, outgoing_write) = outgoing.into_split();
+            let reverse_mode =
+                matches!(mode, ResourceFaultMode::DropAllResourceTraffic).then_some(mode);
             let forward_to_target = forward_frames(incoming_read, outgoing_write, Some(mode));
-            let forward_to_client = forward_frames(outgoing_read, incoming_write, None);
+            let forward_to_client = forward_frames(outgoing_read, incoming_write, reverse_mode);
             tokio::select! {
                 _ = forward_to_target => {}
                 _ = forward_to_client => {}
@@ -110,7 +113,7 @@ where
                             state.first_resource_seen = true;
                         }
                     }
-                    ResourceFaultMode::DropAll => {}
+                    ResourceFaultMode::DropAll | ResourceFaultMode::DropAllResourceTraffic => {}
                     ResourceFaultMode::DropKeepAlive => {}
                     ResourceFaultMode::DuplicateChannelFirst => {
                         if !state.first_channel_seen {
@@ -154,6 +157,9 @@ fn should_fault(frame: &[u8], mode: Option<ResourceFaultMode>) -> bool {
         Some(ResourceFaultMode::DropKeepAlive) => packet.context == PacketContext::KeepAlive,
         Some(ResourceFaultMode::DuplicateChannelFirst) => packet.context == PacketContext::Channel,
         Some(ResourceFaultMode::DropLinkRequest) => packet.context == PacketContext::None,
+        Some(ResourceFaultMode::DropAllResourceTraffic) => {
+            matches!(packet.context, PacketContext::Resource | PacketContext::ResourceRequest)
+        }
         Some(_) => packet.context == PacketContext::Resource,
         None => false,
     })

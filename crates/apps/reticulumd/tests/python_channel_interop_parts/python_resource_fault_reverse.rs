@@ -17,7 +17,12 @@ async fn run_rust_resource_fault(
     let _guard = ChildGuard { child: Some(child) };
     wait_for_port(server_port, Duration::from_secs(5)).await;
 
-    let proxy = PythonResourceFaultProxy::bind(server_port, mode).await;
+    let proxy_mode = if expect_failure {
+        ResourceFaultMode::DropAllResourceTraffic
+    } else {
+        mode
+    };
+    let proxy = PythonResourceFaultProxy::bind(server_port, proxy_mode).await;
     let target_hash =
         AddressHash::new_from_hex_string(&ready.destination_hash).expect("destination hash");
     let rust_identity = PrivateIdentity::new_from_rand(OsRng);
