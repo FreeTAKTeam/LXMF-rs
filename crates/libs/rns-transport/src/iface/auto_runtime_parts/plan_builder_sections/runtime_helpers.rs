@@ -201,3 +201,33 @@ fn bind_host_and_scope(address: &str, fallback_scope_ifname: &str) -> (String, O
         .or_else(|| is_link_scope_ipv6_multicast(host).then(|| fallback_scope_ifname.to_string()));
     (host.to_string(), scope_ifname)
 }
+
+/// Gives the transport a route to a peer the moment its peering announce
+/// authenticates, which is where Python spawns its peer interface. Without it
+/// a peer that has not written to us first is undeliverable, so our announces
+/// reach nobody. Refreshes re-register too, which costs nothing and restores a
+/// route the link-local reconciler dropped along with an old socket.
+async fn register_discovered_peer_route(
+    event: &AutoDiscoveryLoopEvent,
+    bridge: &Option<AutoInterfaceTransportBridge>,
+    data_supervisor: &Arc<tokio::sync::Mutex<AutoPeerDataListenerSupervisor>>,
+    config: &AutoInterfaceConfig,
+) {
+    let (AutoDiscoveryLoopEvent::Processed(processed), Some(bridge)) = (event, bridge) else {
+        return;
+    };
+    if !matches!(processed.event, AutoDiscoveryEvent::Peer(_)) {
+        return;
+    }
+    let socket = data_supervisor.lock().await.socket_for(&processed.datagram.ifname);
+    match socket {
+        Some(socket) => {
+            bridge.register_discovered_peer(config, processed, socket).await;
+        }
+        None => log::debug!(
+            "[auto] no data socket on {} yet for peer {}",
+            processed.datagram.ifname,
+            processed.source_address
+        ),
+    }
+}

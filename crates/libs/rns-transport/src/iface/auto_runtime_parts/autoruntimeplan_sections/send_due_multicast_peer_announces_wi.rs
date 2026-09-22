@@ -944,6 +944,12 @@ impl AutoPeerDataListenerSupervisor {
         true
     }
 
+    /// The data socket bound for a device, which is what a peer heard on that
+    /// device is reached from.
+    pub fn socket_for(&self, ifname: &str) -> Option<Arc<tokio::net::UdpSocket>> {
+        self.listeners.get(ifname).map(|listener| Arc::clone(&listener.socket))
+    }
+
     #[allow(dead_code)]
     pub fn len(&self) -> usize {
         self.listeners.len()

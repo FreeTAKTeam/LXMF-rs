@@ -607,6 +607,7 @@ fn rnode_tcp_activity_probe() -> KissActivityProbeConfig {
     KissActivityProbeConfig {
         interval: R_NODE_TCP_ACTIVITY_KEEPALIVE,
         frames: vec![encode_command_frame(CMD_DETECT, &[DETECT_REQ])],
+        silence_timeout: Some(R_NODE_TCP_PEER_SILENCE_TIMEOUT),
     }
 }
 

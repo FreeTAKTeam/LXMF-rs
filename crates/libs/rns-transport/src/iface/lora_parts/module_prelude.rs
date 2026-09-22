@@ -222,6 +222,10 @@ const LORA_RNODE_MANAGEMENT_CHANNEL_CAPACITY: usize = 64;
 const R_NODE_STARTUP_RESPONSE_TIMEOUT: Duration = Duration::from_millis(1_500);
 
 const R_NODE_TCP_ACTIVITY_KEEPALIVE: Duration = Duration::from_millis(3_500);
+/// How long an RNode may go without answering the keepalive before its stream
+/// is torn down. Four intervals, so a single missed `CMD_DETECT` answer is not
+/// enough on its own.
+const R_NODE_TCP_PEER_SILENCE_TIMEOUT: Duration = Duration::from_millis(14_000);
 
 const R_NODE_FRAMEBUFFER_BYTES_PER_LINE: usize = 8;
 

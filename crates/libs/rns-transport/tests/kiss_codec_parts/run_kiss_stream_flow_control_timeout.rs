@@ -101,6 +101,7 @@ async fn run_kiss_stream_writes_activity_probe_after_idle_write_interval() {
             activity_probe: Some(KissActivityProbeConfig {
                 interval: std::time::Duration::from_millis(20),
                 frames: vec![encode_command_frame(0x08, &[0x73])],
+                silence_timeout: None,
             }),
             payload_adapter: KissPayloadAdapter::Raw,
             strip_command_port_nibble: false,

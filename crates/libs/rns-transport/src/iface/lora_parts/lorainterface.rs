@@ -187,6 +187,19 @@ impl LoraInterface {
         self.online
     }
 
+    /// Stop reporting the radio as online, because the link that was carrying
+    /// its answers has gone.
+    ///
+    /// `online` follows the radio's own `CMD_RADIO_STATE` echo, which can only
+    /// arrive over a running stream. The other place that clears it,
+    /// `begin_startup_response_collection`, runs when a stream *starts*, so
+    /// without this the last echo latches: a bearer that loses its peer and
+    /// then cannot reconnect keeps answering `runtime_status_json` with
+    /// `online: true` for as long as the reconnect keeps failing.
+    pub fn mark_link_offline(&mut self) {
+        self.online = false;
+    }
+
     #[must_use]
     pub fn flow_control(&self) -> bool {
         self.flow_control
@@ -521,6 +534,7 @@ impl LoraInterface {
                     )
                     .await;
                     online.store(false, std::sync::atomic::Ordering::Release);
+                    mark_lora_link_offline(&context.inner);
                 }
                 LoraEndpoint::Tcp { addr } => {
                     let stream = match TcpStream::connect(addr.clone()).await {
@@ -566,6 +580,7 @@ impl LoraInterface {
                     )
                     .await;
                     online.store(false, std::sync::atomic::Ordering::Release);
+                    mark_lora_link_offline(&context.inner);
                 }
             };
 
@@ -577,8 +592,13 @@ impl LoraInterface {
         }
 
         online.store(false, std::sync::atomic::Ordering::Release);
+        mark_lora_link_offline(&context.inner);
         iface_stop.cancel();
     }
+}
+
+fn mark_lora_link_offline(inner: &Arc<std::sync::Mutex<LoraInterface>>) {
+    inner.lock().expect("lora interface mutex poisoned").mark_link_offline();
 }
 
 fn rnode_management_channel() -> (RNodeManagementFrameSender, RNodeManagementFrameReceiver) {

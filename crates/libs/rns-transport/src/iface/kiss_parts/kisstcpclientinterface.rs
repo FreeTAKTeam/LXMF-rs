@@ -327,6 +327,13 @@ fn decode_ax25_ui_payload(payload: &[u8]) -> Option<&[u8]> {
 pub struct KissActivityProbeConfig {
     pub interval: Duration,
     pub frames: Vec<Vec<u8>>,
+    /// How long the peer may stay silent before the stream is treated as dead.
+    ///
+    /// A probe the peer answers makes silence meaningful: nothing arriving for
+    /// this long means the far end is gone, even though the socket has neither
+    /// closed nor errored. `None` keeps the probe write-only, which is what a
+    /// peer that does not answer it needs.
+    pub silence_timeout: Option<Duration>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -491,6 +498,22 @@ pub async fn run_kiss_stream_with_ifac<IO>(
                 let Some(probe) = options.activity_probe.as_ref() else {
                     continue;
                 };
+                if probe
+                    .silence_timeout
+                    .is_some_and(|timeout| last_read_at.elapsed() >= timeout)
+                {
+                    log::warn!(
+                        "KISS peer silent iface={} device={} silent_ms={}",
+                        options.iface_address,
+                        options.device,
+                        last_read_at.elapsed().as_millis()
+                    );
+                    update_kiss_status(&options, |status| {
+                        status.link_state = "peer_silent".to_string();
+                        status.last_error = Some("peer stopped answering the activity probe".to_string());
+                    });
+                    break;
+                }
                 if last_write_at.elapsed() >= probe.interval
                     && write_raw_kiss_frames(
                         &mut stream,
