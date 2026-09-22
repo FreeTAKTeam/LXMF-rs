@@ -15,6 +15,7 @@ pub(super) enum ResourceFaultMode {
     DropAll,
     DropAllResourceTraffic,
     DropResourceAndKeepAlive,
+    DropResourcePartsAndKeepAlive,
     DuplicateChannelFirst,
     DropLinkRequest,
 }
@@ -45,6 +46,7 @@ impl PythonResourceFaultProxy {
                 mode,
                 ResourceFaultMode::DropAllResourceTraffic
                     | ResourceFaultMode::DropResourceAndKeepAlive
+                    | ResourceFaultMode::DropResourcePartsAndKeepAlive
             )
             .then_some(mode);
             let forward_to_target =
@@ -136,6 +138,7 @@ async fn forward_frames<R, W>(
                     ResourceFaultMode::DropAll
                     | ResourceFaultMode::DropAllResourceTraffic
                     | ResourceFaultMode::DropResourceAndKeepAlive => {}
+                    ResourceFaultMode::DropResourcePartsAndKeepAlive => {}
                     ResourceFaultMode::DuplicateChannelFirst => {
                         if !state.first_channel_seen {
                             state.first_channel_seen = true;
@@ -179,6 +182,9 @@ fn should_fault(frame: &[u8], mode: Option<ResourceFaultMode>) -> bool {
             packet.context,
             PacketContext::Resource | PacketContext::ResourceRequest | PacketContext::KeepAlive
         ),
+        Some(ResourceFaultMode::DropResourcePartsAndKeepAlive) => {
+            matches!(packet.context, PacketContext::Resource | PacketContext::KeepAlive)
+        }
         Some(ResourceFaultMode::DuplicateChannelFirst) => packet.context == PacketContext::Channel,
         Some(ResourceFaultMode::DropLinkRequest) => packet.context == PacketContext::None,
         Some(ResourceFaultMode::DropAllResourceTraffic) => {

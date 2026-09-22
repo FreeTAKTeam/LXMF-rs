@@ -41,9 +41,12 @@ not promoted or rewritten by this change.
 The forward #610 Resource slice also has new pinned-Python evidence at
 `8b29132c`: a sender-side file-like reader raises during a split transfer,
 Rust reports terminal inbound failure, and the Python process exits
-unsuccessfully with the injected exception and bounded timeout preserved. This
-is local mixed-peer evidence only; the #605 candidate and its release posture
-remain open pending the documented broader gates.
+unsuccessfully with the injected exception and bounded timeout preserved. A
+reciprocal Python-initiated in-flight Resource trace now verifies reasoned
+inbound failure and Link closure after keepalive loss, followed by a distinct
+Link and exact-checksum Resource recovery. This is local mixed-peer evidence
+only; the #605 candidate and its release posture remain open pending the
+documented broader gates.
 
 The #623 byte-level conformance lane is now executable through
 `cargo xtask interop`. It checks exact Python Reticulum/LXMF pins, Python→Rust

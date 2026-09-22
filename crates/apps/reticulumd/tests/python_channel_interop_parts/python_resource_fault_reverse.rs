@@ -237,6 +237,123 @@ async fn pinned_python_link_timeout_and_reconnect_after_dropped_keepalives() {
 
 #[tokio::test]
 #[ignore = "requires local Python Reticulum checkout"]
+async fn pinned_python_initiated_link_timeout_fails_then_recovers_inbound_resource() {
+    let _interop_guard = python_interop_guard().await;
+    let paths = python_channel_interop_paths();
+
+    let server_port = free_tcp_port();
+    let temp = tempfile::tempdir().expect("tempdir");
+    let py_config_dir = temp.path().join("python-inbound-resource-link-timeout");
+    fs::create_dir_all(&py_config_dir).expect("python config dir");
+
+    let rust_identity = PrivateIdentity::new_from_rand(OsRng);
+    let rust_identity = to_transport_private_identity(&rust_identity);
+    let mut config = TransportConfig::new("python-inbound-resource-link-timeout", &rust_identity, true);
+    config.set_path_request_timeout_secs(2);
+    config.set_resource_retry_interval_secs(30);
+    let transport = Transport::new(config);
+    let iface_manager = transport.iface_manager();
+    transport.iface_manager().lock().await.spawn(
+        TcpServer::new(format!("127.0.0.1:{server_port}"), iface_manager),
+        TcpServer::spawn,
+    );
+    wait_for_port(server_port, Duration::from_secs(5)).await;
+
+    let destination = transport
+        .add_destination(rust_identity, DestinationName::new("test", "channel"))
+        .await;
+    let destination_hash = {
+        let destination = destination.lock().await;
+        hex::encode(destination.desc.address_hash.as_slice())
+    };
+    let proxy = PythonResourceFaultProxy::bind(
+        server_port,
+        ResourceFaultMode::DropResourcePartsAndKeepAlive,
+    )
+    .await;
+    write_python_client_config(&py_config_dir, proxy.port());
+
+    let child = paths.spawn_resource_client(&py_config_dir, &destination_hash, 70_000, 90.0);
+    let _guard = ChildGuard { child: Some(child) };
+    let mut in_events = transport.in_link_events();
+    let link_id = wait_for_in_link_active_with_announces(
+        &transport,
+        &destination,
+        &mut in_events,
+        Duration::from_secs(12),
+    )
+    .await;
+    let mut resource_events = transport.resource_events();
+    let failure = wait_for_inbound_resource_failure(
+        &mut resource_events,
+        link_id,
+        Duration::from_secs(60),
+    )
+    .await;
+    assert!(!failure.trim().is_empty(), "inbound failure must report a reason");
+
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let event = in_events.recv().await.expect("inbound link event");
+            if event.id == link_id && matches!(event.event, LinkEvent::Closed) {
+                return;
+            }
+        }
+    })
+    .await
+    .expect("inbound link did not close after keepalive loss");
+
+    let recovery_proxy = PythonResourceFaultProxy::bind(
+        server_port,
+        ResourceFaultMode::DropResourcePartsAndKeepAlive,
+    )
+    .await;
+    recovery_proxy.resume_traffic();
+    let recovery_config_dir = temp.path().join("python-inbound-resource-recovery");
+    fs::create_dir_all(&recovery_config_dir).expect("Python recovery config dir");
+    write_python_client_config(&recovery_config_dir, recovery_proxy.port());
+    let child = paths.spawn_resource_client(&recovery_config_dir, &destination_hash, 70_000, 90.0);
+    let mut recovery_guard = ChildGuard { child: Some(child) };
+    let recovery_link_id = wait_for_in_link_active_with_announces(
+        &transport,
+        &destination,
+        &mut in_events,
+        Duration::from_secs(12),
+    )
+    .await;
+    assert_ne!(recovery_link_id, link_id, "recovery must use a fresh Link");
+    let complete = wait_for_inbound_resource_data(
+        &mut resource_events,
+        recovery_link_id,
+        Duration::from_secs(30),
+    )
+    .await;
+    assert_eq!(complete.data.len(), 70_000);
+    let received_digest = digest_hex(&complete.data);
+
+    let child = recovery_guard.child.take().expect("Python recovery client");
+    let output = tokio::task::spawn_blocking(move || child.wait_with_output())
+        .await
+        .expect("join Python recovery client")
+        .expect("wait for Python recovery client");
+    assert!(
+        output.status.success(),
+        "Python recovery client failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains(&received_digest),
+        "Python sender checksum must match recovered Rust Resource bytes"
+    );
+
+    drop(proxy);
+    drop(recovery_proxy);
+    drop(transport);
+}
+
+#[tokio::test]
+#[ignore = "requires local Python Reticulum checkout"]
 async fn pinned_python_link_establishment_timeout_after_dropped_request() {
     let _interop_guard = python_interop_guard().await;
     let paths = python_channel_interop_paths();

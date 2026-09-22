@@ -148,11 +148,13 @@ after its bounded timeout. The current #610 candidate additionally drops
 Resource traffic and keepalives during an in-flight 70,000-byte transfer,
 observes `OutboundFailed` when the Link closes, restores forwarding, and proves
 a second Rust-to-Python Resource completes with the exact SHA-256 acknowledged
-on a fresh Link. The row remains partial and unverified because
-broader timeout/reconnect traces, every consumer callback/status assertion,
-and hosted/physical/soak coverage are still open; exact 50 MiB peak-RSS values
-in both directions are now recorded by the candidate's Linux release-profile
-memory probe.
+on a fresh Link. A reciprocal Python-initiated trace now observes inbound
+Resource failure and Link closure, reconnects with a distinct Link, and checks
+the exact recovered Resource checksum against the Python sender report. The row
+remains partial and unverified because broader timeout traces, every consumer
+callback/status assertion, and hosted/physical/soak coverage are still open;
+exact 50 MiB peak-RSS values in both directions are now recorded by the
+candidate's Linux release-profile memory probe.
 
 The #611 implementation slice now has committed local evidence in
 [`evidence/611-utilities.md`](../goals/reticulum-reference-parity-605/evidence/611-utilities.md):

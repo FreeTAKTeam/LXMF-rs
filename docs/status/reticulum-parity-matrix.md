@@ -70,8 +70,10 @@ inventory. The Rust resource sender enforces the Python
 collision-free map hashes, and has pinned Python release-profile transfer
 evidence from empty payloads through 50 MiB in both directions. The forward
 #610 row remains partial because broader timeout/reconnect and callback/status
-coverage are not yet proven; the pinned-Python suite now proves cancellation
-terminal events in both directions, exact 50 MiB peak-RSS values in both
+coverage are not yet proven; pinned-Python traces now prove timeout failure and
+fresh-Link Resource recovery in both Rust- and Python-initiated roles; pinned-
+Python tests prove cancellation terminal events in both directions, exact
+50 MiB peak-RSS values in both
 directions under a fixed release-profile process budget, a pinned-Python
 split reader-backed transfer covers the Rust reader/file adapter success path,
 and a pinned-Python file-like-reader fault reaches terminal failure.
