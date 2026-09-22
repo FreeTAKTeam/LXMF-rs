@@ -748,6 +748,10 @@ streams now expose a transport-local management dispatch handle that writes
 pre-encoded KISS command frames through the live KISS runtime; feature-gated
 BLE RNode streams expose the same management dispatch through the Nordic UART
 write path with BLE chunking.
+The regular PR workflow now includes a native Windows `rnode-ble` test lane,
+so target-gated WinRT compilation and deterministic pairing/runtime tests are
+checked on `windows-latest`; that software gate is distinct from physical
+paired-radio operation and remains pending until its hosted result is green.
 Radio-state query and blink dispatch are covered by local duplex/mock tests,
 daemon `rnode_management` RPC dispatch, `rnodeconf-rs` query/blink CLI tests,
 and prepared-host safe-management artifacts when the serial/TCP/BLE HIL gate is

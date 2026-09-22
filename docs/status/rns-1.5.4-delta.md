@@ -268,7 +268,10 @@ alias, or service matching; the full feature-gated transport test lane and
 Clippy pass. The row remains partial and hardware-unverified because this
 Linux host lacks a MinGW/Windows SDK sysroot, and native Windows, AutoInterface
 platform, cross-family, live Python/client, and physical carrier evidence are
-still open.
+still open. A dedicated `windows-rnode-ble` PR check now builds the target-gated
+WinRT resolver and runs the BLE library tests on a hosted Windows runner; its
+result is pending until this PR's check completes and does not replace physical
+paired-device evidence.
 
 The #615 implementation slice now has committed local evidence in
 [`evidence/615-release-acceptance.md`](../goals/reticulum-reference-parity-605/evidence/615-release-acceptance.md):

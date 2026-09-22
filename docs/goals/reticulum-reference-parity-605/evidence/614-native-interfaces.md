@@ -20,6 +20,7 @@ not claim the full #614 or #605 acceptance gate.
 | Windows backend boundary | The resolver is target-gated and uses the existing `btleplug` scan/connect/service-discovery path; Android's configured-peripheral path is unchanged. The implementation does not use `btleplug`'s unsupported Windows `add_peripheral` address shortcut. | local code verified |
 | Runtime cleanup | Existing BLE startup still clears stale session state, stops scans after selection or timeout, subscribes before startup writes, and aggregates unsubscribe/scan-stop/disconnect failures during cleanup. This increment applies the pairing constraint before those existing connect/reconnect paths. | local state-machine tests; native carrier unverified |
 | Interface inventory | The daemon has explicit startup branches for TCP/backbone, local TCP/Unix, UDP, AutoInterface, serial, Weave, KISS/AX.25, pipe, I2P, Meshtastic, BLE, LoRa, and RNodeMulti aliases; unknown kinds record an explicit unsupported-kind failure. | source inspection; cross-platform/live evidence open |
+| Native Windows CI | The PR workflow runs the `rnode-ble` library test filter on `windows-latest`, compiling the target-gated WinRT resolver and executing deterministic paired-ID/runtime tests on Windows. | hosted job pending for this PR; physical paired-RNode behavior remains unverified |
 
 ## Commands and results
 
@@ -34,14 +35,18 @@ cargo test -p reticulum-rs-transport --features rnode-ble --tests PASS
   (813 library tests and 169 integration tests)
 cargo clippy -p reticulum-rs-transport --features rnode-ble \
   --lib --all-targets --no-deps -- -D warnings                  PASS
+Windows hosted command (added by this increment; awaiting this PR's result):
+`cargo test -p reticulum-rs-transport --features rnode-ble --lib rnode_ble -- --nocapture`
 ```
 
 The Windows target is installed, but this Linux host has neither a MinGW
 compiler/sysroot nor Windows SDK headers. The normal target check stopped in
 `bzip2-sys` because `x86_64-w64-mingw32-gcc` is unavailable. A retry with the
 available `clang`/`llvm-ar` stopped before Rust crate checking because the
-Windows C headers `stdlib.h` and `stdio.h` were unavailable. Therefore this
-increment has no Windows compilation result from this host.
+Windows C headers `stdlib.h` and `stdio.h` were unavailable. Therefore the
+original local run has no Windows compilation result. The new hosted lane
+supplies that software compile/test evidence when its check passes; it does not
+establish physical Windows pairing or carrier behavior.
 
 ## Deliberate remaining gaps
 

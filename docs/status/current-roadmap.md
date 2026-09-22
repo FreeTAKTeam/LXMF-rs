@@ -61,6 +61,11 @@ open while its forward behavioral contract remains incomplete, and physical,
 platform, third-party-client, public-network, and long-soak evidence remains
 explicitly excluded under #616.
 
+The #614 Windows BLE software increment adds a dedicated `windows-latest` CI
+lane for the WinRT-backed resolver and deterministic BLE pairing/runtime tests.
+Its hosted result is pending on the implementing PR and does not substitute for
+paired-device/hardware evidence or promote #614/#605 to complete.
+
 LXMF-rs retains the v0.9.5 SDK-access baseline. The generated inventory records
 software-surface parity against Python RNS 1.5.2 at
 `ea98db4f53dcf0defc0e71a16e60d28b1229c4e6`. The 1.5 alignment adds bounded

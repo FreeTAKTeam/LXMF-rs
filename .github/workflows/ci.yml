@@ -77,6 +77,20 @@ jobs:
         run: cargo xtask ci --stage build-matrix
 
 
+  windows-rnode-ble:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+          cache-on-failure: false
+      - name: Build Windows RNode BLE and run pairing/runtime tests
+        run: cargo test -p reticulum-rs-transport --features rnode-ble --lib rnode_ble -- --nocapture
+
+
   test-nextest-unit:
     runs-on: ubuntu-latest
     steps:
