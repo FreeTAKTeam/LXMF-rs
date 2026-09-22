@@ -38,6 +38,13 @@ trace across a Rust `rngit` process restart, and the remaining acceptance
 gates.
 The stable reference pin is unchanged; physical evidence remains independent.
 
+The forward candidate's executable byte-level reference lane is recorded in
+[`evidence/623-wire-conformance.md`](../goals/reticulum-reference-parity-605/evidence/623-wire-conformance.md)
+and reproduced by `cargo xtask interop`. It is intentionally a bounded
+encoded-wire/negative corpus and does not replace the live compatibility matrix
+or the separate Resource, utility, restart, multi-hop, platform, and hardware
+evidence axes.
+
 ## RNS 1.5.2 baseline update
 
 The pinned Python baseline is RNS `1.5.2` at

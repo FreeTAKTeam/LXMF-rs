@@ -45,6 +45,13 @@ unsuccessfully with the injected exception and bounded timeout preserved. This
 is local mixed-peer evidence only; the #605 candidate and its release posture
 remain open pending the documented broader gates.
 
+The #623 byte-level conformance lane is now executable through
+`cargo xtask interop`. It checks exact Python Reticulum/LXMF pins, Python→Rust
+packet/LXMF bytes, Rust→Python LXMF bytes, identity/announce/link vectors, and
+deliberately malformed packet/MessagePack cases, with a machine-readable
+report and Verify artifact. This is a bounded wire gate, not a replacement for
+the broader live Resource, fault, restart, multi-hop, hosted, or HIL gates.
+
 LXMF-rs retains the v0.9.5 SDK-access baseline. The generated inventory records
 software-surface parity against Python RNS 1.5.2 at
 `ea98db4f53dcf0defc0e71a16e60d28b1229c4e6`. The 1.5 alignment adds bounded

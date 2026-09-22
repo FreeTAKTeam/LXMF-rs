@@ -286,6 +286,16 @@ exact-reference Python/Rust matrix on candidate `919d5924` records 30/30
 required cases passed with no failed, blocked, skipped, or ignored cases. These
 local results do not promote the row or the parent to complete.
 
+The #623 wire-conformance increment adds
+[`evidence/623-wire-conformance.md`](../goals/reticulum-reference-parity-605/evidence/623-wire-conformance.md),
+the committed byte corpus at
+`tools/interop/python-rust-wire-conformance-v1.json`, and the stable
+`cargo xtask interop` gate. Verify now runs the same Python decoder and Rust
+decoder test and uploads the report. The lane proves the bounded encoded-byte
+and malformed-frame contract only; it does not promote #615 or #605 while the
+broader live, fault, restart, multi-hop, platform, client, and hardware gates
+remain open.
+
 ## Merged base increment
 
 The candidate branch now includes the merged PR #604 base increment at
