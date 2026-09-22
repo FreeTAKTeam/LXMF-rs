@@ -144,7 +144,10 @@ accepted; the split success trace now reads from a real file handle. Commit
 `8b29132c` adds the reciprocal pinned-Python file-like-reader fault trace: the
 reference reader raises during later segment preparation, the Rust receiver
 emits a terminal inbound failure, and the Python sender exits unsuccessfully
-after its bounded timeout. The row remains partial and unverified because
+after its bounded timeout. The current #610 candidate additionally proves a
+fresh Link after dropped keepalives can carry a complete 70,000-byte Rust to
+Python Resource with the exact SHA-256 acknowledged by Python. The row remains
+partial and unverified because
 broader timeout/reconnect traces, every consumer callback/status assertion,
 and hosted/physical/soak coverage are still open; exact 50 MiB peak-RSS values
 in both directions are now recorded by the candidate's Linux release-profile

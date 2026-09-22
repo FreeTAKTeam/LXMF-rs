@@ -277,15 +277,38 @@ the remaining acceptance gaps stay explicit below. Commit
 keepalive fault trace from terminal watchdog closure to a fresh Link with a
 different identifier; the targeted release run passed in 15.38 seconds.
 
+## Resource recovery over a timed-out Link
+
+On the current #610 PR candidate, the ignored pinned-Python test
+`pinned_python_link_timeout_and_reconnect_after_dropped_keepalives` was
+extended to exercise a Resource consumer after Link recovery. The Rust Link
+first reaches terminal `Closed` after the proxy drops keepalives; a newly
+established Link has a different identifier, then carries a 70,000-byte Rust
+Resource to Python. The Rust transport emits `OutboundComplete`, and the
+Python endpoint returns the exact byte count and SHA-256 digest.
+
+```text
+RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
+  LXMF_PYTHON_BIN=python3 cargo test -p reticulumd \
+  --test python_channel_interop \
+  pinned_python_link_timeout_and_reconnect_after_dropped_keepalives \
+  -- --ignored --nocapture --test-threads=1
+# 1 passed; 0 failed; exact remote Resource digest acknowledged after reconnect
+```
+
+This adds one concrete Resource recovery trace, not a complete timeout matrix:
+the reverse initiated role and failures during an in-flight Resource still
+need their own terminal-event and fresh-transfer assertions.
+
 ## Remaining acceptance boundary
 
 The following #610 requirements remain unverified and are intentionally not
 represented as complete:
 
-- broader mixed-Python link-timeout recovery/reconnect coverage beyond the one
-  fresh-Link trace; the two pinned-Python matrices now cover loss, duplication,
-  reordering, and complete missing-fragment terminal failure in both
-  directions;
+- reverse-role and in-flight-Resource link-timeout recovery/reconnect coverage;
+  the new trace verifies a successful Rust-to-Python Resource on a fresh Link,
+  while the two pinned-Python matrices cover loss, duplication, reordering, and
+  complete missing-fragment terminal failure in both directions;
 - callbacks/status transitions observed through every library and daemon
   consumer after each injected failure;
 - hosted, physical-interface, public-network, and long-running soak evidence.

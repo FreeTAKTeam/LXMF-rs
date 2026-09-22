@@ -138,7 +138,7 @@ async fn pinned_python_link_timeout_and_reconnect_after_dropped_keepalives() {
     fs::create_dir_all(&py_config_dir).expect("python config dir");
     write_python_config(&py_config_dir, server_port);
 
-    let mut child = paths.spawn_endpoint(&py_config_dir, "channel");
+    let mut child = paths.spawn_endpoint(&py_config_dir, "resource");
     let ready = read_ready(&mut child).expect("python endpoint ready");
     let _guard = ChildGuard { child: Some(child) };
     wait_for_port(server_port, Duration::from_secs(5)).await;
@@ -182,6 +182,43 @@ async fn pinned_python_link_timeout_and_reconnect_after_dropped_keepalives() {
     )
     .await;
     assert_ne!(reconnect_id, link_id, "timeout recovery reused the closed Link");
+
+    let seen = Arc::new(StdMutex::new(Vec::<(String, String)>::new()));
+    let seen_clone = seen.clone();
+    transport
+        .channel(reconnect_id)
+        .register_handler(MSG_TYPE, move |envelope| {
+            if let Ok(decoded) = rmp_serde::from_slice::<(String, String)>(&envelope.payload) {
+                seen_clone.lock().expect("seen lock").push(decoded);
+                true
+            } else {
+                false
+            }
+        })
+        .await
+        .expect("register resource acknowledgement handler on recovered link");
+
+    let payload = rust_resource_fixture(70_000);
+    let expected_digest = digest_hex(&payload);
+    let expected_size = payload.len();
+    let mut resource_events = transport.resource_events();
+    let resource_hash = transport
+        .send_resource(&reconnect_id, payload, None)
+        .await
+        .expect("send Resource over recovered link");
+    wait_for_outbound_resource_complete(
+        &mut resource_events,
+        resource_hash,
+        Duration::from_secs(30),
+    )
+    .await;
+    wait_for_resource_digest_ack(
+        &seen,
+        expected_size,
+        &expected_digest,
+        Duration::from_secs(30),
+    )
+    .await;
 
     drop(proxy);
     drop(transport);
