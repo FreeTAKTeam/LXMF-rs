@@ -117,6 +117,15 @@ jobs:
             --output target/interop/python-rust-wire-conformance/verify-${{ github.run_id }}/report.json
           cargo test -p test-support --test wire_conformance -- --nocapture
 
+      - name: Run Python and Rust IFAC UDP channel interoperability
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+        run: >-
+          cargo test -p reticulumd --test python_channel_interop
+          python_rust_ifac_udp_channel_roundtrip -- --ignored --nocapture
+          --test-threads=1
+
       - name: Run repository-native PR HIL controller
         run: cargo xtask hil run --level pr --all --output target/hil/runs/pr-${{ github.run_id }}
 

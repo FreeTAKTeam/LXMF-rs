@@ -120,10 +120,12 @@ pub fn decode_ifac(state: &IfacState, raw: &[u8]) -> Result<Vec<u8>, IfacWireErr
             if !authenticated {
                 return Err(IfacWireError::MissingFlag);
             }
-            context
-                .decode(raw)
-                .map_err(IfacWireError::Codec)?
-                .ok_or(IfacWireError::InvalidTag)
+            let decoded = match context.decode(raw) {
+                Ok(decoded) => decoded,
+                Err(RnsError::InvalidArgument) => return Err(IfacWireError::InvalidTag),
+                Err(error) => return Err(IfacWireError::Codec(error)),
+            };
+            decoded.ok_or(IfacWireError::InvalidTag)
         }
         None => {
             if authenticated {
@@ -167,7 +169,9 @@ pub fn decode_packet_ifac(state: &IfacState, raw: &[u8]) -> Result<Packet, IfacW
 pub fn is_ifac_violation(error: &IfacWireError) -> bool {
     matches!(
         error,
-        IfacWireError::MissingFlag | IfacWireError::UnexpectedFlag | IfacWireError::InvalidTag
+        IfacWireError::MissingFlag
+            | IfacWireError::UnexpectedFlag
+            | IfacWireError::InvalidTag
     )
 }
 
@@ -240,15 +244,16 @@ mod ifac_wire_tests {
         let state = state(config);
         let framed = encode_ifac(&state, &[0x01_u8; 32]).expect("encode");
 
-        assert!(matches!(decode_ifac(&state, &framed[..1]), Err(IfacWireError::Codec(_))));
+        assert!(matches!(decode_ifac(&state, &framed[..1]), Err(IfacWireError::InvalidTag)));
         assert!(matches!(
             decode_ifac(&state, &framed[..framed.len() - 1]),
             Err(IfacWireError::InvalidTag)
         ));
         assert!(matches!(
             decode_ifac(&state, &[0x80, 0x01]),
-            Err(IfacWireError::Codec(_))
+            Err(IfacWireError::InvalidTag)
         ));
+        assert!(is_ifac_violation(&IfacWireError::InvalidTag));
     }
 
     #[test]
@@ -260,5 +265,12 @@ mod ifac_wire_tests {
         let plain = std::sync::Arc::new(std::sync::RwLock::new(None));
         let framed = encode_ifac(&authenticated, &[0x01_u8; 32]).expect("encode");
         assert!(matches!(decode_ifac(&plain, &framed), Err(IfacWireError::UnexpectedFlag)));
+    }
+
+    #[test]
+    fn unauthenticated_state_accepts_plaintext_frames() {
+        let plain = std::sync::Arc::new(std::sync::RwLock::new(None));
+        let raw = [0x01_u8; 32];
+        assert_eq!(decode_ifac(&plain, &raw).expect("plaintext frame"), raw);
     }
 }

@@ -37,6 +37,168 @@ async fn spawn_ifac_tcp_server(transport: &Transport, server_port: u16) -> Addre
     address
 }
 
+async fn spawn_ifac_udp(
+    transport: &Transport,
+    bind_port: u16,
+    forward_port: Option<u16>,
+) -> (AddressHash, rns_transport::iface::udp::UdpRuntimeStatusHandle) {
+    let bind_addr = format!("127.0.0.1:{bind_port}");
+    let forward_addr = forward_port.map(|port| format!("127.0.0.1:{port}"));
+    let interface = rns_transport::iface::udp::UdpInterface::new(bind_addr, forward_addr);
+    let status = interface.runtime_status_handle();
+    let iface_manager = transport.iface_manager();
+    let mut manager = iface_manager.lock().await;
+    let address = manager.spawn(interface, rns_transport::iface::udp::UdpInterface::spawn);
+    assert!(manager
+        .try_set_shared_config(address, ifac_shared_config())
+        .expect("configure Rust UDP IFAC"));
+    (address, status)
+}
+
+fn write_python_udp_config_with_ifac(
+    dir: &std::path::Path,
+    listen_port: u16,
+    rust_port: u16,
+) {
+    fs::write(
+        dir.join("config"),
+        format!(
+            "[reticulum]\nenable_transport = no\nshare_instance = no\n\n[logging]\nloglevel = 7\n\n[interfaces]\n  [[UDP IFAC Interface]]\n    type = UDPInterface\n    enabled = yes\n    listen_ip = 127.0.0.1\n    listen_port = {listen_port}\n    forward_ip = 127.0.0.1\n    forward_port = {rust_port}\n    networkname = {IFAC_NETWORK_NAME}\n    passphrase = {IFAC_PASSPHRASE}\n    ifac_size = {IFAC_SIZE_BITS}\n"
+        ),
+    )
+    .expect("write Python UDP IFAC config");
+}
+
+#[tokio::test]
+async fn udp_ifac_ingress_counts_and_rejects_malformed_frames_before_admission() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let identity = to_transport_private_identity(&identity);
+    let transport = Transport::new(TransportConfig::new("ifac-udp-rejection", &identity, true));
+    let port_reservation = std::net::UdpSocket::bind(("127.0.0.1", 0)).expect("reserve UDP port");
+    let port = port_reservation.local_addr().expect("UDP local address").port();
+    let sender = std::net::UdpSocket::bind(("127.0.0.1", 0)).expect("bind raw UDP sender");
+    let destination = ("127.0.0.1", port);
+
+    let ifac_context = ifac_shared_config()
+        .ifac_context()
+        .expect("derive IFAC context")
+        .expect("IFAC enabled");
+    let mut tampered = ifac_context.encode(&[0x01; 32]).expect("encode test IFAC frame");
+    tampered[2] ^= 0x01;
+    let plaintext = [0x01; 32];
+    let truncated = [0x80, 0x01];
+
+    drop(port_reservation);
+    let (address, runtime_status) = spawn_ifac_udp(&transport, port, None).await;
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if runtime_status.to_json()["link_state"] == "bound" {
+                break;
+            }
+            sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("UDP IFAC receiver did not bind");
+
+    sender.send_to(&plaintext, destination).expect("send missing-flag frame");
+    sender.send_to(&tampered, destination).expect("send tampered frame");
+    sender.send_to(&truncated, destination).expect("send truncated frame");
+
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            let status = runtime_status.to_json();
+            let snapshots = transport.interface_traffic_snapshots().await;
+            let violations = snapshots
+                .iter()
+                .find(|snapshot| snapshot.address == address)
+                .map(|snapshot| snapshot.ifac_violations)
+                .unwrap_or_default();
+            if status["decode_errors"] == 3 && violations == 3 {
+                assert_eq!(status["packets_rx"], 0);
+                break;
+            }
+            sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("malformed UDP frames were not rejected and counted before packet admission");
+}
+
+#[tokio::test]
+#[ignore = "requires local Python Reticulum checkout"]
+async fn python_rust_ifac_udp_channel_roundtrip() {
+    let _interop_guard = python_interop_guard().await;
+    let paths = python_channel_interop_paths();
+    let rust_port_reservation = std::net::UdpSocket::bind(("127.0.0.1", 0))
+        .expect("reserve Rust UDP port");
+    let python_port_reservation = std::net::UdpSocket::bind(("127.0.0.1", 0))
+        .expect("reserve Python UDP port");
+    let rust_port = rust_port_reservation.local_addr().expect("Rust UDP address").port();
+    let python_port = python_port_reservation.local_addr().expect("Python UDP address").port();
+    let temp = tempfile::tempdir().expect("tempdir");
+    let py_config_dir = temp.path().join("python-rns-ifac-udp");
+    fs::create_dir_all(&py_config_dir).expect("python config dir");
+    write_python_udp_config_with_ifac(&py_config_dir, python_port, rust_port);
+
+    let rust_identity = PrivateIdentity::new_from_rand(OsRng);
+    let rust_identity = to_transport_private_identity(&rust_identity);
+    let mut config = TransportConfig::new("python-rust-ifac-udp-interop", &rust_identity, true);
+    config.set_path_request_timeout_secs(2);
+    let transport = Transport::new(config);
+    drop(rust_port_reservation);
+    let (_, rust_status) = spawn_ifac_udp(&transport, rust_port, Some(python_port)).await;
+
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if rust_status.to_json()["link_state"] == "bound" {
+                break;
+            }
+            sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("Rust UDP IFAC carrier did not bind");
+
+    drop(python_port_reservation);
+    let mut child = paths.spawn_endpoint(&py_config_dir, "channel");
+    let ready = read_ready(&mut child).expect("Python UDP endpoint ready");
+    let _guard = ChildGuard { child: Some(child) };
+
+    let target_hash =
+        AddressHash::new_from_hex_string(&ready.destination_hash).expect("destination hash");
+    let destination = wait_for_announce(&transport, target_hash, Duration::from_secs(12)).await;
+    let mut link_events = transport.out_link_events();
+    let link = transport.link(destination).await;
+    let link_id = wait_for_out_link_active(&mut link_events, &link, Duration::from_secs(10)).await;
+    let channel = transport.channel(link_id);
+    let seen = Arc::new(StdMutex::new(Vec::<(String, String)>::new()));
+    let seen_clone = seen.clone();
+    channel
+        .register_handler(MSG_TYPE, move |envelope| {
+            if let Ok(decoded) = rmp_serde::from_slice::<(String, String)>(&envelope.payload) {
+                seen_clone.lock().expect("seen lock").push(decoded);
+                true
+            } else {
+                false
+            }
+        })
+        .await
+        .expect("register UDP IFAC channel handler");
+
+    let payload = rmp_serde::to_vec(&(String::from("rust-ifac-udp"), String::from("hello-python")))
+        .expect("encode UDP IFAC channel message");
+    let sequence = channel.send(MSG_TYPE, payload).await.expect("send UDP IFAC channel message");
+    wait_for_reply_tuple(
+        &seen,
+        Duration::from_secs(10),
+        "rust-ifac-udp",
+        "reply:hello-python",
+    )
+    .await;
+    wait_for_channel_delivery(&transport, link_id, sequence).await;
+}
+
 #[tokio::test]
 #[ignore = "requires local Python Reticulum checkout"]
 async fn rust_to_python_ifac_channel_roundtrip() {
