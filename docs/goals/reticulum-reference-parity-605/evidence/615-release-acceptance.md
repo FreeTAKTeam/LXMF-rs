@@ -1,24 +1,37 @@
 # #615 differential conformance and release-acceptance evidence
 
-Status: **local software gate green; hosted exact-head and publication acceptance
-pending**. This records the bounded software evidence for the tested code
-candidate `dcab8327ee9bf91c9ada1ed4a7041dfc790d7ca1` and the follow-up generated
-inventory commit `b61d86389937ac2f4519ab5a1465492eff9b7257`. It does not claim
-completion of #615 or #605.
+Status: **software acceptance complete for the scoped #615 goal**. This records
+the bounded software evidence for final PR #626 head
+`559e314c71306148352050a463d3db10407c89f0`; it does not claim completion of
+#605 or the excluded operational axis in #616.
 
 Physical carriers, platform certification, external-client validation,
 public-network operation, and long-running physical soak are explicitly
 excluded from this goal. They remain open under #616.
 
+## Hosted software acceptance
+
+The final published PR head passed every hosted software gate:
+
+- [Verify run 35759162501](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/35759162501): PR HIL `23/23` cases passed and the exact-target Python compatibility matrix reported `30/30` passed, `0` failed, `0` blocked, and `0` skipped.
+- [Independent interoperability run 35759162507](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/35759162507): passed.
+- [CI run 35759162664](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/35759162664): passed.
+
+The hosted matrix used Reticulum `1.5.4-dev`
+(`99de23c040d507e3fefca19e87b182302902725d`) and LXMF
+(`727830cefda83d9c6e3982b48675425f3f988f9c`), with no preflight errors. The
+Verify workflow also records the four reference checkouts as auxiliary paths
+so the clean candidate commit check is meaningful.
+
 ## Local release gate
 
-The complete `cargo xtask release-check` ran on 2026-09-22 against the exact
+The complete `cargo xtask release-check` ran on 2026-09-22 against the final
 software candidate above and exited with code 0. Its release scorecard records
 overall `PASS`, soak `pass` with zero E2E and mesh failures, 11 security pass
 rows, eight supply-chain artifacts, and performance `SKIPPED`/advisory. The
-release test phase reports 2,679 tests passed and one skipped; the Miri phase
-reports 29 passed and 14 intentionally ignored. The scorecard records the
-tested code candidate's full commit and a 77-second soak interval.
+release test phase reports 2,684 tests passed and one skipped; the Miri phase
+reports 29 passed and 14 intentionally ignored. The scorecard provenance is
+the final candidate commit and records a 77-second soak interval.
 
 The active pinned-baseline inventory is regenerated and checked at
 `1,858 total / 1,857 complete / 0 partial / 1 not-applicable`. The forward
@@ -26,9 +39,8 @@ Reticulum target remains separately classified as
 `1,868 total / 0 complete / 1,867 partial / 1 not-applicable`; it is not
 silently promoted into the baseline.
 
-This is local candidate evidence. It is not a hosted exact-head verdict and
-does not certify #616's physical, platform, client, public-network, or soak
-requirements.
+This is software evidence only. It does not certify #616's physical, platform,
+client, public-network, or long-running physical-soak requirements.
 
 ## Reference and ownership
 
@@ -101,17 +113,10 @@ CARGO_INCREMENTAL=0 cargo xtask release-check                               PASS
 
 ## Remaining acceptance gaps
 
-- Hosted exact-head workflows have not been run against the final published
-  branch head, and the machine-readable result/publication path has not been
-  completed. Therefore #615 remains open.
-- The candidate branch is currently local-only. A non-mutating push probe was
-  rejected by GitHub with `403 Permission denied to giu-platania`; the current
-  account has `READ` permission on `FreeTAKTeam/LXMF-rs`. This is an external
-  publication-authority gap, not a software-test failure.
-- The local evidence above does not certify physical carriers, platform
-  combinations, external clients, public-network behavior, or physical/long
-  soak. Those requirements are intentionally excluded here and remain open
-  under #616.
+- There is no remaining software acceptance gap for the scoped #615 goal.
+- Physical carriers, platform combinations, external clients, public-network
+  behavior, and long-running physical soak are intentionally excluded here and
+  remain open under #616.
 - Historical independent-peer traces and earlier candidate reports remain
   tied to their recorded commits; they are not silently relabeled as hosted
   exact-head evidence for this candidate.

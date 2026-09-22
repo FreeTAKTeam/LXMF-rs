@@ -52,6 +52,15 @@ deliberately malformed packet/MessagePack cases, with a machine-readable
 report and Verify artifact. This is a bounded wire gate, not a replacement for
 the broader live Resource, fault, restart, multi-hop, hosted, or HIL gates.
 
+The bounded #615 software acceptance is complete at PR #626 head
+`559e314c71306148352050a463d3db10407c89f0`: local release-check passed with
+the final candidate provenance, hosted PR HIL passed `23/23` cases, the exact
+pinned compatibility matrix passed `30/30`, and the Independent and CI gates
+also passed. This closes the software acceptance slice only; issue #605 stays
+open while its forward behavioral contract remains incomplete, and physical,
+platform, third-party-client, public-network, and long-soak evidence remains
+explicitly excluded under #616.
+
 LXMF-rs retains the v0.9.5 SDK-access baseline. The generated inventory records
 software-surface parity against Python RNS 1.5.2 at
 `ea98db4f53dcf0defc0e71a16e60d28b1229c4e6`. The 1.5 alignment adds bounded
