@@ -167,9 +167,13 @@ assertion also exercises the completed Python fetch resource-conclusion/save
 callback. Commit `3c6757ba` additionally covers default and explicit
 no-compression send modes in both Python↔Rust directions, a bzip2-compressed
 payload, and Python listener default/no-compression fetch responses into a Rust
-client. The row remains partial and unverified because direct callback
-telemetry, the complete utility option/behavior matrix, rngit network workflows,
-and slow-interface/remote fault transcripts remain open or owned by #612/#613.
+client. The issue-specific `rncp_listener_reports_received_file_disk_error`
+process regression forces the Rust listener's post-delivery file save to fail
+and asserts its diagnostic, keeping transport receipt distinct from app-level
+save status. The row remains partial and unverified because Python-peer failure
+callbacks, the complete utility option/behavior matrix, rngit network workflows,
+and genuinely slow-interface/remote cancellation transcripts remain open or
+owned by #612/#613.
 Commit
 `2b281b87` also adds process-level assertions for a missing fetch and a denied
 sender, including nonzero exit status and preserved failure categories.

@@ -168,8 +168,10 @@ Reticulum-source cloning, and public/multi-hop evidence remain open.
 The forward #611 `rncp` evidence also verifies readiness-gated medium-timeout
 selection after an active TCP interface connects (`27bb3fac`) and a
 Python-listener/Rust-client restart trace with stable identity (`708dc980`);
-genuinely slow interface timing and remote receive-side fault evidence remain
-open.
+the issue-specific process regression also forces a receiver-side save failure
+and asserts the listener diagnostic after successful Resource delivery.
+Genuinely slow interface timing, Python-peer receive-side fault evidence, and
+application-level failure acknowledgment remain open.
 
 The forward #611 `rnprobe` increment at `98e4eb63` replaces the former
 `rnpath` delegation wrapper with a bounded native packet-probe workflow:

@@ -411,6 +411,88 @@ fn rncp_fetch_reports_destination_disk_error() -> io::Result<()> {
     result
 }
 
+#[test]
+fn rncp_listener_reports_received_file_disk_error() -> io::Result<()> {
+    let temp = tempfile::tempdir()?;
+    let listener_root = temp.path().join("listener");
+    let client_root = temp.path().join("client");
+    fs::create_dir_all(&listener_root)?;
+    fs::create_dir_all(&client_root)?;
+    let source = client_root.join("receiver-disk-error.bin");
+    fs::write(&source, b"receiver disk error payload")?;
+    // A directory at the incoming filename forces the listener's completed
+    // Resource save callback to fail without relying on permission semantics.
+    fs::create_dir(listener_root.join("receiver-disk-error.bin"))?;
+
+    let port = free_port()?;
+    let binary = env!("CARGO_BIN_EXE_rncp");
+    let mut listener = Command::new(binary)
+        .args(["--listen", &format!("127.0.0.1:{port}"), "--no-auth", "--overwrite", "--save"])
+        .arg(&listener_root)
+        .args(["--identity-seed", "rncp-process-receiver-disk-error"])
+        .current_dir(temp.path())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let stderr = listener
+        .stderr
+        .take()
+        .ok_or_else(|| io::Error::other("rncp listener stderr was not captured"))?;
+    let (stderr_tx, stderr_rx) = mpsc::channel();
+    thread::spawn(move || {
+        for line in BufReader::new(stderr).lines() {
+            let Ok(line) = line else { break };
+            if stderr_tx.send(line).is_err() {
+                break;
+            }
+        }
+    });
+
+    let result = (|| {
+        wait_for_port(port, &mut listener)?;
+        let destination_output = Command::new(binary)
+            .args(["--print-identity", "--identity-seed", "rncp-process-receiver-disk-error"])
+            .output()?;
+        if !destination_output.status.success() {
+            return Err(io::Error::other("rncp identity query failed"));
+        }
+        let destination = String::from_utf8_lossy(&destination_output.stdout)
+            .lines()
+            .find_map(|line| line.strip_prefix("Listening on : "))
+            .ok_or_else(|| io::Error::other("rncp identity query omitted destination"))?
+            .to_owned();
+
+        // Resource delivery can succeed even though the application-level
+        // save fails; the listener must surface that distinct outcome.
+        run_client(&source, &destination, port, &client_root)?;
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "listener did not report the received-file save failure",
+                ));
+            }
+            match stderr_rx.recv_timeout(remaining) {
+                Ok(line) if line.contains("rncp: could not save received file:") => break,
+                Ok(_) => {}
+                Err(error) => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        format!("listener save-failure diagnostic was not observed: {error}"),
+                    ));
+                }
+            }
+        }
+        assert!(listener_root.join("receiver-disk-error.bin").is_dir());
+        Ok(())
+    })();
+    let _ = listener.kill();
+    let _ = listener.wait();
+    result
+}
+
 #[cfg(unix)]
 #[test]
 fn rncp_ctrl_c_reports_cancellation() -> io::Result<()> {
