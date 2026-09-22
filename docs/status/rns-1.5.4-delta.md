@@ -151,8 +151,9 @@ a second Rust-to-Python Resource completes with the exact SHA-256 acknowledged
 on a fresh Link. A reciprocal Python-initiated trace now observes inbound
 Resource failure and Link closure, reconnects with a distinct Link, and checks
 the exact recovered Resource checksum against the Python sender report. The row
-remains partial and unverified because broader timeout traces, every consumer
-callback/status assertion, and hosted/physical/soak coverage are still open;
+remains partial and unverified: both recovery directions now run in PR `Verify`,
+but broader timeout traces, every consumer callback/status assertion, and the
+full hosted/physical/soak matrix are still open;
 exact 50 MiB peak-RSS values in both directions are now recorded by the
 candidate's Linux release-profile memory probe.
 

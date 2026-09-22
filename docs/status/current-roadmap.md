@@ -376,8 +376,10 @@ Scoped release evidence is split as follows:
 - Candidate `e0d7249035a51b668ec88b9ce193b3fe0f3fc8e7` records exact 50 MiB
   pinned-Python Resource transfers in both directions with Linux high-water
   RSS values under a fixed 512 MiB per-process release-profile budget. This
-  closes the local mixed-peer memory-evidence gap without claiming broader
-  timeout/reconnect, callback, hosted, physical, or public-network coverage.
+  closes the local mixed-peer memory-evidence gap. PR `Verify` now runs pinned-
+  Python Resource timeout/failure/recovery traces in both initiation
+  directions; broader timeout/reconnect, callback, hosted, physical, and
+  public-network coverage remain open.
 - `Link::request_packet`/`response_packet` complete the request/response
   pair: the receive half already decrypted both contexts, but nothing could
   build either, so a peer had to send every request and every reply as a

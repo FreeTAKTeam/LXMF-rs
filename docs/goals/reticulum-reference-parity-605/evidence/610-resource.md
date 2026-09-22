@@ -320,6 +320,11 @@ RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
 # 1 passed; 0 failed; reverse-role terminal failure and fresh-Link recovery verified
 ```
 
+Both Rust-initiated and Python-initiated timeout/recovery traces now run in the
+PR `Verify` workflow against the frozen Reticulum target. This makes the two
+recovery directions a required hosted software check; it does not replace the
+broader timeout matrix or callback/status assertions across every consumer.
+
 ## Remaining acceptance boundary
 
 The following #610 requirements remain unverified and are intentionally not
