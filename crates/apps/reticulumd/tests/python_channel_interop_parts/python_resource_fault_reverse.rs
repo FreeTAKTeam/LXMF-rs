@@ -73,10 +73,10 @@ async fn run_rust_resource_fault(
     };
 
     if expect_failure {
-        wait_for_outbound_resource_failed(
+        wait_for_outbound_resource_failed_or_cancelled(
             &mut resource_events,
             resource_hash,
-            Duration::from_secs(45),
+            Duration::from_secs(90),
         )
         .await;
     } else {

@@ -252,6 +252,32 @@ pub(super) async fn wait_for_outbound_resource_failed(
     .expect("timed out waiting for outbound resource failure");
 }
 
+/// A peer that gives up after every resource part is dropped may terminate
+/// through its receiver-cancel packet before Rust's retry budget expires.
+/// Both outcomes are terminal for this fault-injection scenario; the reader,
+/// truncation, and shutdown regressions above still require OutboundFailed.
+pub(super) async fn wait_for_outbound_resource_failed_or_cancelled(
+    events: &mut tokio::sync::broadcast::Receiver<ResourceEvent>,
+    expected_hash: Hash,
+    duration: Duration,
+) {
+    timeout(duration, async {
+        loop {
+            let event = events.recv().await.expect("resource event");
+            if event.hash == expected_hash
+                && matches!(
+                    event.kind,
+                    ResourceEventKind::OutboundFailed | ResourceEventKind::OutboundCancelled
+                )
+            {
+                return;
+            }
+        }
+    })
+    .await
+    .expect("timed out waiting for outbound resource failure or cancellation");
+}
+
 pub(super) async fn wait_for_inbound_resource_failure(
     events: &mut tokio::sync::broadcast::Receiver<ResourceEvent>,
     link_id: AddressHash,
