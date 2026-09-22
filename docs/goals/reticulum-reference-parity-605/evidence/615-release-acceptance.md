@@ -1,180 +1,113 @@
 # #615 differential conformance and release-acceptance evidence
 
-Status: **partial / unverified**. This records the bounded evidence-contract
-increment, local release-gate repairs, exact-target inventory gate, and the
-clean local Python/Rust matrix through the latest software candidate
-`919d5924` and the latest full release-gate candidate `f45bb960` on
-`codex/issue-605-parity`; it does not claim completion of #615 or #605.
+Status: **local software gate green; hosted exact-head and publication acceptance
+pending**. This records the bounded software evidence for the tested code
+candidate `dcab8327ee9bf91c9ada1ed4a7041dfc790d7ca1` and the follow-up generated
+inventory commit `b61d86389937ac2f4519ab5a1465492eff9b7257`. It does not claim
+completion of #615 or #605.
 
-## Latest local release-gate run
+Physical carriers, platform certification, external-client validation,
+public-network operation, and long-running physical soak are explicitly
+excluded from this goal. They remain open under #616.
 
-The latest full `cargo xtask release-check` ran against software candidate
-`f45bb960881090085a4becda4bffc3b43632c0a9` on 2026-09-21 UTC and passed with
-exit code 0. The generated release scorecard records overall `PASS`, soak
-`pass` with zero E2E and mesh failures in 22 seconds, 11 security pass rows,
-and eight supply-chain artifacts. The gate reported 2,677 nextest tests
-passed, Miri 29 passed with
-14 ignored, exact baseline and forward Python pins, active surface inventory
-`1,858 total / 1,857 complete / 0 partial / 1 not-applicable`, reproducible
-packaging, audit, boundary, module-size, embedded-footprint, SDK,
-backup/restore, code-generation, compatibility-kit, and license/source checks
-passed. The generated provenance and scorecard both identify the exact
-candidate commit above.
+## Local release gate
 
-The scorecard marks performance as `SKIPPED` and advisory for this run, so no
-performance pass is claimed here. Other non-failing notices were existing
-allowed legacy-shim notices, dependency/license metadata warnings, and
-expected packaging dry-run/already-published-crate warnings.
+The complete `cargo xtask release-check` ran on 2026-09-22 against the exact
+software candidate above and exited with code 0. Its release scorecard records
+overall `PASS`, soak `pass` with zero E2E and mesh failures, 11 security pass
+rows, eight supply-chain artifacts, and performance `SKIPPED`/advisory. The
+release test phase reports 2,679 tests passed and one skipped; the Miri phase
+reports 29 passed and 14 intentionally ignored. The scorecard records the
+tested code candidate's full commit and a 77-second soak interval.
 
-This is local candidate evidence, not a hosted exact-head verdict and not
-physical, platform, external-client, public-network, or operational evidence.
+The active pinned-baseline inventory is regenerated and checked at
+`1,858 total / 1,857 complete / 0 partial / 1 not-applicable`. The forward
+Reticulum target remains separately classified as
+`1,868 total / 0 complete / 1,867 partial / 1 not-applicable`; it is not
+silently promoted into the baseline.
+
+This is local candidate evidence. It is not a hosted exact-head verdict and
+does not certify #616's physical, platform, client, public-network, or soak
+requirements.
 
 ## Reference and ownership
 
 - Forward target: Reticulum-Python `1.5.4-dev` at
-  `99de23c040d507e3fefca19e87b182302902725d`, with the active 1.5.2 baseline
-  retained separately at `ea98db4f53dcf0defc0e71a16e60d28b1229c4e6`.
-- Rust/tooling owners: `tools/scripts/python_surface_inventory.py`,
+  `99de23c040d507e3fefca19e87b182302902725d`.
+- Active baseline: Reticulum-Python `1.5.2` at
+  `ea98db4f53dcf0defc0e71a16e60d28b1229c4e6`.
+- LXMF-Python checkout: `727830cefda83d9c6e3982b48675425f3f988f9c`.
+- Inventory owners: `tools/scripts/python_surface_inventory.py`,
   `docs/status/python-surface-mapping.json`, generated parity artifacts, and
   the existing `xtask` release pipeline.
 
-## Implemented behavior
+## Verified local software evidence
 
-The inventory check now loads the authoritative behavioral mapping during
-`--check`, materializes it with the generated inventory's exact reference
-revisions, and rejects a generated JSON artifact whose behavioral contract is
-stale. The self-test covers both an equal materialization and a deliberate
-coverage-status drift. This closes the specific loophole where a changed
-mapping could leave an internally valid but outdated generated contract that
-still passed the check.
+The current candidate includes the Resource-link watchdog correction: resource
+proofs and resource data now refresh the owning link's inbound activity just
+like ordinary link traffic. This removes the observed long-transfer teardown
+at the link timeout boundary. The same candidate corrects invalid empty-packet
+fixtures rejected by the strict packet decoder and makes resource-fault tests
+fail fast on terminal failure events.
 
-The active-baseline generated JSON was regenerated from the pinned
-`Reticulum-1.5.2` and LXMF checkouts, and the forward candidate was generated
-separately under `target/issue-605/`; the candidate remains provisional and
-partial rather than being promoted into the active release baseline.
+The exact local software lanes completed as follows:
 
-The release-gate repair also moved link-scoped ResourceManager cleanup into its
-own included module. This preserves the existing split-resource terminal-event
-behavior while keeping each regular Rust module within the repository's
-500-line policy.
+- Full workspace nextest: `3,176` passed, `107` skipped.
+- Full serialized `rns-transport` suite: `979` passed.
+- Pinned-Python channel interoperability: `48/48` passed, including both
+  bidirectional 50 MiB resource transfers, fault/cancellation/shutdown paths,
+  and memory-budget checks.
+- Pinned-Python compatibility matrix: `30/30` passed; four non-selected
+  target-level tests were skipped by the test binary.
+- Pinned-Python paper interoperability: `12/12` passed.
+- LXMD remote relay interoperability: `6/6` passed.
+- `rns-tools` ignored Python interoperability lane: `10/10` passed.
+- SDK HTTP-versus-ZeroMQ transport stress: `1/1` passed at 1,000 iterations
+  with the matching local daemon configuration.
 
-The new `tools/scripts/python_compat_matrix.py` runner turns the previously
-individually ignored compatibility cases into an explicit evidence gate. It
-checks the dispatch contract, requires clean exact-reference checkouts, records
-the candidate and toolchain revisions, runs all 23 live Python/Rust cases plus
-the seven deterministic local transport cases, rejects missing reports and
-ignored/skipped tests, and writes per-case logs plus one aggregate JSON report.
-The Verify workflow now checks out the exact forward Reticulum target beside
-the existing 1.5.2 baseline checkout and runs this gate fail-closed on pull
-requests, uploading the aggregate report and raw case evidence without
-changing the baseline HIL lane.
-
-The current candidate adds a separate Verify step that scans the exact
-`Reticulum-parity` checkout with `python_surface_inventory.py`; newly exposed
-or unmapped callable rows fail before the compatibility matrix runs. The
-inventory validator also rejects repository-escaping evidence paths and
-requires an existing artifact whenever a behavioral row is marked verified.
-The same target scan is available to the `xtask` docs/release helper through
-the paired `PYTHON_RNS_PARITY_PATH` and `PYTHON_LXMF_PARITY_PATH` variables.
-
-The existing independent-implementation lane was also executed locally at
-nightly level. Against pinned rns-rs `6c6d79b83516feff271d15c97d39dd1de7798afe`,
-92 scenarios covered two-node, mixed and all-LXMF five-node, multi-hop,
-routing, restart, shared-daemon, and deterministic loss/latency/
-duplication/reordering topologies. It recorded 87 PASS, three explicitly
-classified rns-rs peer divergences, and two dependent teardown blocks; the
-explicit compatibility gate passed. Against pinned Reticulum-Go
-`48f15178f6fbc34aeb69ad428679db9deddae7f4`, 22 scenarios passed and two large
-peer-to-Rust Resource directions were recorded as `UNSUPPORTED` because the
-peer control API has a documented 1 MiB inbound limit; its explicit gate also
-passed. These are classified local evidence, not an unqualified claim that
-every independent peer direction is complete.
+The supporting repository gates also passed: format and diff checks, strict
+workspace Clippy, workspace boundaries, module-size policy, architecture
+checks, the issue-369 diagnostic scanner, wire-conformance artifacts, the
+active-baseline inventory check, and the complete release-check above.
 
 ## Commands and results
 
 All commands ran in the isolated `codex/issue-605-parity` worktree.
 
 ```text
-python3 tools/scripts/python_surface_inventory.py --self-test              PASS
 python3 tools/scripts/python_surface_inventory.py --check \
-  --json-out docs/status/python-surface-parity.json                          PASS
+  --json-out docs/status/python-surface-parity.json --require-complete       PASS
   (active baseline: 1,858 total; 1,857 complete; 0 partial; 1 not-applicable)
-python3 tools/scripts/python_surface_inventory.py \
-  --python-rns-path .tmp/python-refs/Reticulum/RNS \
-  --python-lxmf-path .tmp/python-refs/LXMF/LXMF \
-  --json-out target/issue-605/python-surface-parity-1.5.4.json \
-  --rust-out target/issue-605/python_software_parity-1.5.4.rs                  PASS
-  (forward candidate: 1,868 total; 0 complete; 1,867 partial; 1 not-applicable)
-PYTHON_RNS_PARITY_PATH=.tmp/python-refs/Reticulum/RNS \
-PYTHON_LXMF_PARITY_PATH=.tmp/python-refs/LXMF/LXMF \
-cargo xtask ci --stage doc                                             PASS
-  (baseline and exact-target inventories both passed; target: 1,868 total,
-   0 complete, 1,867 partial, 1 not-applicable)
-python3 -m py_compile tools/scripts/python_surface_inventory.py              PASS
-python3 tools/scripts/test_python_compat_matrix.py                            PASS
-python3 tools/scripts/python_compat_matrix.py --all \
-  --output target/interop/python-compat-matrix/full/matrix.json \
-  --timeout 420                                                               PASS
-  (candidate Rust `919d59248b3e864bddc95f2adbc142743d7acaf6`; Python
-   Reticulum `99de23c040d507e3fefca19e87b182302902725d`; Python LXMF
-   `727830cefda83d9c6e3982b48675425f3f988f9c`; 30/30 passed, 0 failed,
-   0 blocked, 0 skipped, 0 ignored; CPython 3.14.4; rustc/cargo 1.96.0;
-   Linux x86_64; 2026-09-21 UTC)
-python3 tools/scripts/independent_interop.py --peer rns-rs --level nightly \
-  --output target/interop/independent/issue-605-nightly --keep \
-  --skip-build --peer-root target/interop/independent/external/rns-rs     CLASSIFIED
-  (runner exit 1 for 3 allowlisted `peer_divergence` rows and 2 dependent
-   teardown blocks; 87 PASS of 92 scenarios; candidate
-   `4f968cb8af06661d9dd9831f8ec1cc29556f74df`; peer
-   `6c6d79b83516feff271d15c97d39dd1de7798afe`)
-python3 tools/scripts/independent_interop_gate.py \
-  target/interop/independent/issue-605-nightly/independent-interop.json      PASS
-python3 tools/scripts/independent_interop.py --peer reticulum-go \
-  --level nightly --output target/interop/independent/issue-605-reticulum-go \
-  --keep                                                                    PASS
-  (22 PASS, 2 explicit `UNSUPPORTED` peer-surface rows; candidate
-   `4f968cb8af06661d9dd9831f8ec1cc29556f74df`; peer
-   `48f15178f6fbc34aeb69ad428679db9deddae7f4`)
-python3 tools/scripts/independent_interop_gate.py \
-  target/interop/independent/issue-605-reticulum-go/independent-interop.json  PASS
-git diff --check                                                               PASS
-cargo test -p reticulum-rs-transport --lib resource                           PASS
-  (73 resource tests)
-cargo test -p reticulumd --test code_quality_issue_369                       PASS
-cargo test -p rns-tools --bin rngit --all-features                            PASS
-  (27 tests)
-cargo run -p xtask -- interop-artifacts                                       PASS
-cargo xtask release-check                                                      PASS
-  (local candidate run, 2026-09-21 UTC; software candidate
-   `f45bb960881090085a4becda4bffc3b43632c0a9`; nextest 2,677 passed; Miri
-   29 passed / 14 ignored; backup/restore, packaging, audit, boundary,
-   license/source, reproducible-build, embedded-footprint, code-generation,
-   compatibility-kit, SDK, and module-size gates passed; soak/mesh reported
-   zero failures in 22 seconds; scorecard overall `PASS`, performance
-   `SKIPPED`/advisory)
+
+CARGO_INCREMENTAL=0 cargo nextest run --workspace --test-threads 1 \
+  --no-fail-fast --status-level fail --final-status-level fail              PASS
+  (3,176 passed; 107 skipped)
+
+CARGO_INCREMENTAL=0 RETICULUM_PY_REPO=.tmp/python-refs/Reticulum \
+  LXMF_PY_REPO=.tmp/python-refs/LXMF LXMF_PYTHON_BIN=python3 \
+  cargo nextest run -p reticulumd --test python_channel_interop -j 1 \
+  --no-fail-fast --status-level fail --final-status-level fail -- \
+  --ignored --nocapture                                                       PASS
+  (48/48)
+
+CARGO_INCREMENTAL=0 cargo +nightly miri test -p lxmf-wire --lib -- \
+  --nocapture                                                               PASS
+  (29 passed; 14 intentionally ignored)
+
+CARGO_INCREMENTAL=0 cargo xtask release-check                               PASS
+  (2,679 passed; 1 skipped; scorecard overall PASS; code candidate
+   dcab8327ee9bf91c9ada1ed4a7041dfc790d7ca1)
 ```
 
-The earlier aggregate Python/Rust matrix run reported only non-failing
-environment notices: the measured
-loopback TCP opportunistic-delivery dispersion stayed in the warning band
-(Rust 18.19%, Python 16.77%), and the boundary report retained the repository's
-existing allowed legacy-shim notices. Packaging also emitted expected dry-run
-upload and already-published-crate warnings.
+## Remaining acceptance gaps
 
-## Deliberate remaining gaps
-
-- The broader #615 differential surface beyond this 30-case Python/Rust matrix,
-  including all-Rust/multi-hop scenarios, shared-daemon/restart/fault roles,
-  and hosted exact-head evidence, has not been certified by this increment. The
-  local independent lanes cover the declared local topologies and deterministic
-  fault proxy cases, but the reports do not yet carry a reproducible seed for
-  every fault run, and hosted exact-head evidence is still absent.
-- The matrix's machine-readable report and raw per-case logs are generated
-  under ignored `target/interop/python-compat-matrix/`; they are local evidence
-  for this candidate and are not a hosted exact-head verdict.
-- The local `cargo xtask release-check` now passes for this candidate, but it is
-  not a hosted exact-head verdict and does not satisfy #616's physical,
-  platform, external-client, or public-network evidence.
-- No row is promoted to verified or complete here; missing runners, platform
-  environments, Python/client roles, hardware, and operational evidence stay
-  separate under #615/#616.
+- Hosted exact-head workflows have not been run against the final published
+  branch head, and the machine-readable result/publication path has not been
+  completed. Therefore #615 remains open.
+- The local evidence above does not certify physical carriers, platform
+  combinations, external clients, public-network behavior, or physical/long
+  soak. Those requirements are intentionally excluded here and remain open
+  under #616.
+- Historical independent-peer traces and earlier candidate reports remain
+  tied to their recorded commits; they are not silently relabeled as hosted
+  exact-head evidence for this candidate.
