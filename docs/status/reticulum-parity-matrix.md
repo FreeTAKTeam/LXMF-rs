@@ -147,11 +147,13 @@ whose stderr retains both the injected reader exception and bounded timeout;
 the forward #610 row remains partial because broader timeout/reconnect,
 consumer-callback, and hosted/physical/soak evidence remain open.
 
-The forward #612 rngit trace at `409ef98e` now covers a pinned-Python signed
-work creation followed by Rust process restart and list/view persistence on the
-same root and identity. This is one restart trace only; concurrent-writer,
-fault-injection, broader network/CLI, and full utility-matrix evidence remain
-open.
+The forward #612 rngit trace at `409ef98e` covers pinned-Python signed work
+creation followed by Rust process restart and list/view persistence on the same
+root and identity. A new four-client pinned-Python trace concurrently creates
+signed work items over production Reticulum Links to one Rust service and
+checks distinct IDs and persisted roots; Verify now runs this trace on every
+PR. Fault-injection, broader network/CLI, and full utility-matrix evidence
+remain open until the hosted result and remaining scenarios pass.
 
 Commits `3dcd5259`, `869b8c84`, `02b75605`, and `f9c5b81e` add the reciprocal native
 Rust-client request path through `NativeRngitClient` and

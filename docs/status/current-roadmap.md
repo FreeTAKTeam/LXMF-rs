@@ -38,6 +38,11 @@ mixed-runtime restart check, and the #612 pinned-Python work-item persistence
 and do not promote the broader utility surface. Published inventory counts are
 not promoted or rewritten by this change.
 
+The #612 concurrency increment adds a pinned-Python Verify test in which four
+independent clients create signed work items simultaneously through one Rust
+`rngit` server and verify unique persisted IDs. Its hosted result is pending on
+the implementing PR; broader fault and CLI workflows remain open.
+
 The forward #610 Resource slice also has new pinned-Python evidence at
 `8b29132c`: a sender-side file-like reader raises during a split transfer,
 Rust reports terminal inbound failure, and the Python process exits

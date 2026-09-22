@@ -227,10 +227,13 @@ signature rejection and binary identity/signature round-trip. Commit
 independent node instances and rollback when proposed-document permission
 setup fails. Commit `409ef98e` adds a pinned-Python production trace that
 creates and signs a work item, restarts the Rust `rngit` process on the same
-root and identity, and verifies list/view persistence. The row remains partial
-and unverified because the hash-only compatibility seam, broader
-cross-process/network restart and concurrent-writer/fault transcripts, full
-Python CLI workflow, and complete end-to-end rngit network matrix remain open.
+root and identity, and verifies list/view persistence. A new Verify test runs
+four independent pinned-Python work creators concurrently against one Rust
+server, checks distinct assigned IDs and persisted root files, and is included
+in this issue's dedicated PR. The row remains partial and unverified because
+the hash-only compatibility seam, broader cross-process/network restart and
+fault transcripts, full Python CLI workflow, and complete end-to-end rngit
+network matrix remain open; hosted evidence for the new lane is pending.
 
 Commits `3dcd5259`, `869b8c84`, `02b75605`, and `f9c5b81e` also add a native Rust-client
 request adapter and a production compatibility bridge. Its pinned-Python trace
