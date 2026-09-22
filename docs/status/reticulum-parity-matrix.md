@@ -625,8 +625,11 @@ fan-out plus a direct application/restart trace. A pinned two-carrier Python
 Channel trace now covers discovery, link establishment, ordered delivery, and
 the reply path through one forwarding Rust transport; a companion split
 Resource trace waits for the remote endpoint's exact callback digest. Mixed
-multi-hop duplicate-suppression, persistence, close/reconnect, physical, and
-public-network evidence remains open.
+multi-hop duplicate-suppression, persistence, carrier-stream reconnect,
+physical, and public-network evidence remains open. Link close events now also
+expose the pinned reference's `TIMEOUT`, `INITIATOR_CLOSED`, and
+`DESTINATION_CLOSED` reason codes, covered by focused lifecycle and maintenance
+regressions.
 
 Enabled unknown interface kinds still parse so operators can see them in daemon
 status, but daemon startup marks them as failed with explicit

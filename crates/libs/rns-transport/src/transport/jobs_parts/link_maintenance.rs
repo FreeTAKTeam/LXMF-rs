@@ -27,7 +27,7 @@ pub(in crate::transport) async fn handle_check_links<'a>(
             }
             LinkStatus::Pending | LinkStatus::Handshake => {
                 if link.elapsed() > INTERVAL_INPUT_LINK_CLEANUP {
-                    link.close();
+                    link.close_with_reason(LinkCloseReason::Timeout);
                     links_to_remove.push(*link_entry.0);
                     closed_link_ids.push(*link.id());
                 }
@@ -102,7 +102,7 @@ pub(in crate::transport) async fn handle_check_links<'a>(
                     link.id()
                 );
                 let destination = link.destination().address_hash;
-                link.close();
+                link.close_with_reason(LinkCloseReason::Timeout);
                 links_to_remove.push(*link_entry.0);
                 closed_link_ids.push(*link.id());
                 if !handler.config.transport_enabled {

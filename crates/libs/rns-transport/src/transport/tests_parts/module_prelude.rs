@@ -57,6 +57,7 @@ async fn link_in_payload_is_forwarded_to_received_data() {
             id: link_id,
             address_hash,
             event: LinkEvent::Data(Box::new(payload)),
+            close_reason: None,
         })
         .is_ok(), "link input forwarder remains subscribed");
 
@@ -88,6 +89,7 @@ async fn link_out_payload_is_forwarded_to_received_data() {
             id: link_id,
             address_hash,
             event: LinkEvent::Data(Box::new(payload)),
+            close_reason: None,
         })
         .is_ok(), "link output forwarder remains subscribed");
 

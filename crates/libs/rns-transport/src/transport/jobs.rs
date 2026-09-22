@@ -3,7 +3,7 @@ use super::inbound_processing::{
     preprocess_inbound_message, process_inbound_message, rollback_rejected_inbound,
 };
 use super::*;
-use crate::destination::link::LinkWatchdogAction;
+use crate::destination::link::{LinkCloseReason, LinkWatchdogAction};
 
 #[allow(dead_code)]
 const MIN_LINKS_CHECK_DELAY: Duration = Duration::from_millis(10);

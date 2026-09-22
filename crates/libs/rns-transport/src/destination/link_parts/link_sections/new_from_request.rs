@@ -29,6 +29,8 @@ impl Link {
 
         let mut link = Self {
             id: link_id,
+            is_initiator: false,
+            close_reason: None,
             destination,
             ingress_iface: None,
             priv_identity: PrivateIdentity::new(StaticSecret::random_from_rng(OsRng), signing_key),

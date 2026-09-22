@@ -114,9 +114,11 @@ owned by one forwarding Rust transport; its companion trace forwards a split
 Resource and waits for the remote endpoint's exact size and SHA-256 callback.
 The same topology now proves application-link close/reconnect, and a separate
 fault-injected pinned-Python trace proves Rust pending-link establishment
-cleanup after the path is available. The row remains unverified until broader
-shared-instance and multi-hop production traces compare packet/proof duplicate
-suppression, announce persistence, caller-visible close reasons, and underlying
+cleanup after the path is available. Rust link events now expose the pinned
+`TIMEOUT`, `INITIATOR_CLOSED`, and `DESTINATION_CLOSED` reason codes, with
+role-aware and establishment-timeout regressions. The row remains unverified
+until broader shared-instance and multi-hop production traces compare
+packet/proof duplicate suppression, announce persistence, and underlying
 carrier-stream reconnect behavior.
 
 The #610 implementation slice now has committed local evidence in

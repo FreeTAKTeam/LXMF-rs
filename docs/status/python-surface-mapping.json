@@ -1644,12 +1644,14 @@
         "test_command": [
           "cargo test -p reticulum-rs-transport --lib",
           "cargo test -p reticulumd --bin reticulumd",
+          "cargo test -p reticulum-rs-transport --lib close_events_expose_python_teardown_reason_codes",
+          "cargo test -p reticulum-rs-transport --lib a_pending_out_link_that_outlives_its_establishment_timeout",
           "cargo clippy -p reticulum-rs-transport --lib --all-features --no-deps -- -D warnings",
           "RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop python_to_python_channel_roundtrip_through_rust_transport -- --ignored --nocapture"
         ],
         "evidence_artifact": "target/issue-605/evidence/609-shared-instance.json",
         "owner_issue": 609,
-        "notes": "Parent/child classification, immediate local-client retransmit, direct sibling fan-out, and local TCP/Unix parent marking are implemented; pinned Python-Rust shared-instance attachment/restart and two-carrier Python Channel, application-link reconnect, split-Resource, and link-establishment-timeout traces through one forwarding Rust transport are evidenced, while persistence, broader packet/proof duplicate suppression, caller-visible close reasons, carrier-stream reconnect, and broader production traces remain unverified."
+        "notes": "Parent/child classification, immediate local-client retransmit, direct sibling fan-out, and local TCP/Unix parent marking are implemented; pinned Python-Rust shared-instance attachment/restart and two-carrier Python Channel, application-link reconnect, split-Resource, link-establishment-timeout, and callback-visible close-reason traces are evidenced, while persistence, broader packet/proof duplicate suppression, carrier-stream reconnect, and broader production traces remain unverified."
       },
       {
         "id": "reticulum-605-610-resource-stream-collision",

@@ -182,8 +182,36 @@ application traffic across Rust daemon restart with stable delivery identity.
 The timeout pair covers both dropped link establishment requests and dropped
 keepalives reaching terminal `Closed` state. These are current software traces;
 they do not compare cached versus scheduled announce persistence, reconnect an
-underlying carrier stream, establish caller-visible close-reason taxonomy, or
-cover broader packet/proof duplicate handling.
+underlying carrier stream, or cover broader packet/proof duplicate handling.
+
+## Caller-visible close-reason parity
+
+The pinned Python reference exposes `Link.teardown_reason` to its closed-link
+callback, using `TIMEOUT = 0x01`, `INITIATOR_CLOSED = 0x02`, and
+`DESTINATION_CLOSED = 0x03`. Rust previously published only `LinkEvent::Closed`.
+`LinkCloseReason` now carries those values on `LinkEventData`, with role-aware
+local/remote close classification and explicit timeout classification for
+watchdog and establishment expiry.
+
+API compatibility note: adding the public `close_reason` field to
+`LinkEventData` is source-breaking for downstream struct literals and
+exhaustive destructuring. Callers constructing this type must provide
+`close_reason`; consumers that do not need the reason can use `None`. This is
+an intentional API change to make the Python callback-visible behavior
+available to Rust callers.
+
+```text
+cargo test -p reticulum-rs-transport --lib destination::link
+  59 passed; 0 failed; includes callback-visible reason code assertions
+cargo test -p reticulum-rs-transport --lib \
+  a_pending_out_link_that_outlives_its_establishment_timeout
+  1 passed; 0 failed; production maintenance emits Timeout (0x01)
+```
+
+This closes the previously unobservable close-reason slice without promoting
+the broader #609 row. Carrier-stream reconnect, cached-versus-scheduled
+announce persistence, broader packet/proof duplicate handling, and the wider
+transport matrix remain unverified.
 
 ## Remaining acceptance boundary
 
@@ -193,7 +221,7 @@ continuity, two-carrier multi-hop Python Channel and split Resource exchanges,
 and multi-hop Channel sequence deduplication through one forwarding Rust
 transport, and application-link close/reconnect over that forwarding path. It
 does not yet compare cached versus scheduled announce persistence or underlying
-carrier stream reconnect behavior, caller-visible close-reason taxonomy, and
-broader packet/proof duplicate handling remain separate. Those traces are still
-required before this row can be promoted.
+carrier stream reconnect behavior, and broader packet/proof duplicate handling
+remain separate. Those traces are still required before this row can be
+promoted.
 Hardware and public-network evidence remain separate acceptance axes.
