@@ -118,10 +118,12 @@ cleanup after the path is available. Rust link events now expose the pinned
 `TIMEOUT`, `INITIATOR_CLOSED`, and `DESTINATION_CLOSED` reason codes, with
 role-aware and establishment-timeout regressions. The row remains unverified
 until broader shared-instance and multi-hop production traces compare
-packet/proof duplicate suppression and underlying carrier-stream reconnect
-behavior. A focused transport save/restart regression now proves a newer
-cached `PATH_RESPONSE` announce supersedes scheduled state without becoming
-retransmission work after restore.
+packet/proof duplicate suppression and recovery across daemon replacement. A
+focused transport save/restart regression proves a newer cached `PATH_RESPONSE`
+announce supersedes scheduled state without becoming retransmission work after
+restore. A real-socket `TcpClient` regression also proves redial preserves the
+interface identity and resumes bidirectional HDLC packet traffic; it is
+carrier-level evidence, not the broader daemon-replacement trace.
 
 The #610 implementation slice now has committed local evidence in
 [`evidence/610-resource.md`](../goals/reticulum-reference-parity-605/evidence/610-resource.md):

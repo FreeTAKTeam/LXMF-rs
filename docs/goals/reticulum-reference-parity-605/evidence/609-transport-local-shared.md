@@ -182,7 +182,8 @@ application traffic across Rust daemon restart with stable delivery identity.
 The timeout pair covers both dropped link establishment requests and dropped
 keepalives reaching terminal `Closed` state. A separate transport restart test
 covers a newer cached path response superseding scheduled announce state.
-Underlying carrier-stream reconnect and broader packet/proof duplicate
+The real-socket carrier reconnect regression below verifies packet resumption;
+multi-hop daemon-replacement recovery and broader packet/proof duplicate
 handling remain unverified.
 
 ## Caller-visible close-reason parity
@@ -210,8 +211,9 @@ cargo test -p reticulum-rs-transport --lib \
 ```
 
 This closes the previously unobservable close-reason slice without promoting
-the broader #609 row. Carrier-stream reconnect, broader packet/proof duplicate
-handling, and the wider transport matrix remain unverified.
+the broader #609 row. Multi-hop recovery after daemon replacement, broader
+packet/proof duplicate handling, and the wider transport matrix remain
+unverified.
 
 ## Cached-versus-scheduled announce persistence
 
@@ -233,6 +235,23 @@ This closes that specific local persistence scenario; it is not a Python↔Rust
 restart trace, a carrier-stream reconnect result, or broad duplicate-proof
 coverage.
 
+## Underlying TCP carrier reconnect
+
+The real-socket integration test `tcp_carrier_reconnect_resumes_bidirectional_packet_traffic_on_same_iface`
+accepts and drops the first TCP stream, observes the production reconnect event
+with the original interface identity, then sends a framed packet from the
+manager over the replacement stream and another packet back through the
+manager receive channel. This verifies bidirectional packet traffic resumes
+after carrier redial, not merely that a socket reconnect event was emitted.
+
+```text
+cargo test -p reticulum-rs-transport --test tcp_client_reconnect -- --nocapture
+# 1 passed; 0 failed; repeated five times; bidirectional HDLC traffic resumed
+```
+
+This is carrier-level software evidence. Multi-hop Python/Rust recovery across
+daemon replacement and broader packet/proof duplicate handling remain open.
+
 ## Remaining acceptance boundary
 
 The combined evidence now proves pinned Python↔Rust local attachment, announce
@@ -240,8 +259,8 @@ fan-out, a direct application/link exchange, Rust daemon restart with identity
 continuity, two-carrier multi-hop Python Channel and split Resource exchanges,
 and multi-hop Channel sequence deduplication through one forwarding Rust
 transport, and application-link close/reconnect over that forwarding path. It
-does not yet cover carrier-stream reconnect behavior or broader packet/proof
-duplicate handling. Those traces are still required before this row can be
-promoted; scheduled-to-cached announce persistence is covered by the focused
-transport restart test above.
+does not yet cover multi-hop recovery across daemon replacement or broader
+packet/proof duplicate handling. Those traces are still required before this
+row can be promoted; scheduled-to-cached announce persistence and direct
+carrier redial are covered by the focused transport tests above.
 Hardware and public-network evidence remain separate acceptance axes.
