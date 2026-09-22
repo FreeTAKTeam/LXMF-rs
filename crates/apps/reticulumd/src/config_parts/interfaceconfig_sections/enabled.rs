@@ -494,7 +494,7 @@ impl InterfaceConfig {
             return Err(format!("interfaces[{index}].type is required"));
         }
         self.interface_mode().map_err(|err| format!("interfaces[{index}].{err}"))?;
-        self.validate_ifac_not_configured(index)?;
+        self.validate_ifac_configuration(index)?;
         self.validate_announce_pacing(index)?;
         match kind {
             "tcp_client" => self.validate_tcp_client(index),
@@ -521,7 +521,7 @@ impl InterfaceConfig {
         }
     }
 
-    fn validate_ifac_not_configured(&self, index: usize) -> Result<(), String> {
+    fn validate_ifac_configuration(&self, index: usize) -> Result<(), String> {
         let has_network_name = self
             .network_name
             .as_deref()
@@ -532,11 +532,22 @@ impl InterfaceConfig {
             .as_deref()
             .or(self.pass_phrase.as_deref())
             .is_some_and(|value| !value.trim().is_empty());
-        if self.ifac_size.is_some() || has_network_name || has_passphrase {
+        if self.ifac_size.is_some() && !has_network_name && !has_passphrase {
             return Err(format!(
-                "interfaces[{index}] configures Reticulum IFAC authentication, which this release does not implement; remove ifac_size/network_name/passphrase (including compatibility aliases)"
+                "interfaces[{index}].ifac_size requires network_name or passphrase"
             ));
         }
+        let config = rns_transport::iface::InterfaceSharedConfig {
+            ifac_size: self.ifac_size,
+            network_name: self.ifac_network_name().cloned(),
+            passphrase: self.ifac_passphrase().cloned(),
+            ..rns_transport::iface::InterfaceSharedConfig::default()
+        };
+        config.ifac_context().map_err(|_| {
+            format!(
+                "interfaces[{index}] has invalid Reticulum IFAC configuration; ifac_size is in whole bits (8..=512, divisible by 8) and credentials must be non-empty"
+            )
+        })?;
         Ok(())
     }
 

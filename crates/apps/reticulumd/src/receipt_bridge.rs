@@ -1,3 +1,4 @@
+use rns_rpc::ProbeReceiptRegistry;
 use rns_rpc::RpcDaemon;
 use rns_transport::receipt::{
     lookup_receipt_message_id, record_receipt_status,
@@ -117,16 +118,26 @@ impl ReceiptEvent {
 pub struct ReceiptBridge {
     map: Arc<Mutex<HashMap<String, String>>>,
     tx: Sender<ReceiptEvent>,
+    probe_receipts: Arc<ProbeReceiptRegistry>,
 }
 
 impl ReceiptBridge {
     pub fn new(map: Arc<Mutex<HashMap<String, String>>>, tx: Sender<ReceiptEvent>) -> Self {
-        Self { map, tx }
+        Self::with_probe_registry(map, tx, Arc::new(ProbeReceiptRegistry::default()))
+    }
+
+    pub fn with_probe_registry(
+        map: Arc<Mutex<HashMap<String, String>>>,
+        tx: Sender<ReceiptEvent>,
+        probe_receipts: Arc<ProbeReceiptRegistry>,
+    ) -> Self {
+        Self { map, tx, probe_receipts }
     }
 }
 
 impl ReceiptHandler for ReceiptBridge {
     fn on_receipt(&self, receipt: &DeliveryReceipt) {
+        self.probe_receipts.notify(receipt.message_id);
         let message_id = match lookup_receipt_message_id(&self.map, receipt) {
             Ok(id) => id,
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => return,

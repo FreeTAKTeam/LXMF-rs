@@ -101,7 +101,10 @@ async fn network_identity_discovery_and_packet_cache_match_python_management_con
     assert!(transport.discovery_enabled().await);
 
     let temp = tempfile::tempdir().expect("tempdir");
-    let packet = Packet::default();
+    let packet = Packet {
+        data: crate::packet::PacketDataBuffer::new_from_slice(b"cache-test"),
+        ..Packet::default()
+    };
     assert_eq!(
         transport
             .cache_packet(temp.path(), &packet, Some("iface"), false, false)

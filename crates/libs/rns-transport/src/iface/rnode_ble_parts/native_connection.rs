@@ -45,6 +45,7 @@ impl NativeRnodeBleBackend {
 
     async fn connect_session(&mut self) -> Result<(), String> {
         let adapter = Self::select_adapter(&self.settings).await?;
+        let paired_addresses = native_rnode_windows_paired_addresses().await?;
         // Own handles before fallible awaits, so even a partial connection or
         // service-discovery failure can be cleaned up by the caller.
         self.adapter = Some(adapter.clone());
@@ -76,6 +77,7 @@ impl NativeRnodeBleBackend {
                             Some(&self.settings.peripheral_id),
                             false,
                             &excluded_identifiers,
+                            paired_addresses.as_deref(),
                         )
                         .await
                         .map_err(|scan_err| {
@@ -94,8 +96,15 @@ impl NativeRnodeBleBackend {
                 }
             }
             None => {
-                let scanned =
-                    Self::scan_for_peripheral(&adapter, &self.settings, None, false, &[]).await?;
+                let scanned = Self::scan_for_peripheral(
+                    &adapter,
+                    &self.settings,
+                    None,
+                    false,
+                    &[],
+                    paired_addresses.as_deref(),
+                )
+                .await?;
                 self.peripheral = Some(scanned.clone());
                 Self::connect_selected_peripheral(&scanned, self.settings.connect_timeout).await?;
                 scanned

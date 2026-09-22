@@ -81,6 +81,7 @@ impl RpcDaemon {
             | "active_link_count"
             | "lowest_interface_bitrate"
             | "medium_path_timeout"
+            | "probe"
             | "announce_now"
             | "announce_delivery"
             | "announce_received"

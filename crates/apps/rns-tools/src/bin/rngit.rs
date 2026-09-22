@@ -1,41 +1,28 @@
 use clap::{Parser, Subcommand};
 use std::collections::{BTreeMap, BTreeSet};
-use std::io;
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitStatus};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::process::{Command, ExitStatus, Stdio};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-#[derive(Debug, Parser)]
-#[command(name = "rngit", about = "Run local Git workflows prepared for Reticulum file transport")]
-struct Cli {
-    #[arg(long)]
-    root: PathBuf,
-    #[command(subcommand)]
-    command: GitCommand,
+mod rngit_network {
+    include!("rngit_parts/network.rs");
 }
 
-#[derive(Debug, Subcommand)]
-enum GitCommand {
-    Init {
-        path: PathBuf,
-    },
-    Status {
-        path: PathBuf,
-    },
-    Bundle {
-        path: PathBuf,
-        output: PathBuf,
-        #[arg(default_value = "--all")]
-        revision: String,
-    },
-    Unbundle {
-        path: PathBuf,
-        bundle: PathBuf,
-    },
-}
+include!("rngit_parts/cli.rs");
 
 pub fn main() -> std::process::ExitCode {
-    match run(&Cli::parse()) {
+    let cli = Cli::parse();
+    if cli.network_mode() {
+        return match rngit_network::run(&cli) {
+            Ok(()) => std::process::ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("rngit: {error}");
+                std::process::ExitCode::FAILURE
+            }
+        };
+    }
+    match run(&cli) {
         Ok(status) => std::process::ExitCode::from(status.code().unwrap_or(1) as u8),
         Err(error) => {
             eprintln!("rngit: {error}");
@@ -46,7 +33,13 @@ pub fn main() -> std::process::ExitCode {
 
 fn run(cli: &Cli) -> io::Result<ExitStatus> {
     let root = cli.root.canonicalize()?;
-    match &cli.command {
+    let Some(command) = &cli.command else {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "missing Git subcommand or network interface",
+        ));
+    };
+    match command {
         GitCommand::Init { path } => git(&root, path, &["init"]),
         GitCommand::Status { path } => git(&root, path, &["status", "--short"]),
         GitCommand::Bundle { path, output, revision } => {
@@ -57,6 +50,16 @@ fn run(cli: &Cli) -> io::Result<ExitStatus> {
             let bundle = scoped(&root, bundle)?;
             git(&root, path, &["bundle", "unbundle", bundle.to_string_lossy().as_ref()])
         }
+    }
+}
+
+impl Cli {
+    fn network_mode(&self) -> bool {
+        !self.listen.is_empty()
+            || !self.connect.is_empty()
+            || self.print_identity
+            || self.identity_seed.is_some()
+            || self.identity.is_some()
     }
 }
 
@@ -149,7 +152,7 @@ include!("rngit_parts/compat.rs");
 #[cfg(test)]
 mod tests {
     use super::{
-        escape_for_stdout, san_ref, san_refs, san_sha, PermissionTarget, RemoteGroup,
+        escape_for_stdout, map_value, san_ref, san_refs, san_sha, PermissionTarget, RemoteGroup,
         RemoteRepository, RepositoryGroup, RepositoryRecord, ReticulumGitClient, ReticulumGitNode,
     };
     use std::collections::BTreeMap;
@@ -213,7 +216,8 @@ mod tests {
 
     #[test]
     fn permission_and_path_parsing_match_pinned_rngit_server() {
-        let node = ReticulumGitNode::default();
+        let mut node = ReticulumGitNode::default();
+        node.set_identity_alias("owner", [0xabu8; 16]);
         assert_eq!(
             node.parse_permission("rw:all"),
             Some((ReticulumGitNode::PERM_READWRITE, PermissionTarget::All))
@@ -233,6 +237,10 @@ mod tests {
             ))
         );
         assert!(node.parse_permission("read:bad").is_none());
+        assert_eq!(
+            node.parse_permission("read:owner"),
+            Some((ReticulumGitNode::PERM_READ, PermissionTarget::Identity([0xabu8; 16])))
+        );
         assert_eq!(
             node.parse_request_repository_path("group/repo"),
             Some(("group".to_string(), "repo".to_string()))
@@ -338,6 +346,10 @@ mod tests {
         assert!(!node.resolve_permission(&identity, "group", "repo", ReticulumGitNode::PERM_WRITE));
     }
 
+    include!("rngit_parts/issue_612_tests.rs");
+    include!("rngit_parts/issue_612_concurrency_tests.rs");
+    include!("rngit_parts/issue_613_tests.rs");
+
     #[test]
     fn statistics_hooks_record_python_rngit_event_buckets() {
         let mut node = ReticulumGitNode::default();
@@ -428,62 +440,6 @@ mod tests {
 
     include!("rngit_parts/document_permissions_tests.rs");
     include!("rngit_parts/rns_1_5_4_tests.rs");
-
-    #[test]
-    fn local_git_bundle_fetch_and_push_use_the_registered_request_paths() {
-        let temp = tempfile::tempdir().expect("tempdir");
-        let source = temp.path().join("source");
-        let group_path = temp.path().join("group");
-        fs::create_dir_all(&source).expect("source");
-        fs::create_dir_all(&group_path).expect("group");
-        for args in [
-            vec!["init", "-q"],
-            vec!["config", "user.email", "rngit@example.invalid"],
-            vec!["config", "user.name", "rngit-test"],
-        ] {
-            assert!(Command::new("git")
-                .args(&args)
-                .current_dir(&source)
-                .status()
-                .expect("git")
-                .success());
-        }
-        fs::write(source.join("README"), "round trip").expect("file");
-        for args in [vec!["add", "README"], vec!["commit", "-qm", "initial"]] {
-            assert!(Command::new("git")
-                .args(&args)
-                .current_dir(&source)
-                .status()
-                .expect("git")
-                .success());
-        }
-
-        let mut node = ReticulumGitNode::default();
-        node.load_repository_group("group", &group_path).expect("load group");
-        let group = node.groups.get_mut("group").expect("group state");
-        group.permissions.read.add(PermissionTarget::All);
-        group.permissions.write.add(PermissionTarget::All);
-        group.permissions.create.add(PermissionTarget::All);
-        let mut client = ReticulumGitClient::default();
-        client.attach_local_node(node);
-        let remote = "rns://00000000000000000000000000000000/group/repo";
-        client.create_repository(remote).expect("create repository");
-
-        let bundle = temp.path().join("source.bundle");
-        assert!(Command::new("git")
-            .args(["bundle", "create", bundle.to_string_lossy().as_ref(), "--all"])
-            .current_dir(&source)
-            .status()
-            .expect("bundle")
-            .success());
-        let bundle = fs::read(bundle).expect("bundle bytes");
-        let pushed = client
-            .process_push_queue(remote, "refs/heads/master", "refs/heads/main", &bundle, false)
-            .expect("push");
-        assert_eq!(pushed.first().copied(), Some(ReticulumGitNode::RES_OK));
-        let fetched =
-            client.process_fetch_queue(remote, &["refs/heads/main".to_string()]).expect("fetch");
-        assert_eq!(fetched.first().copied(), Some(ReticulumGitNode::RES_OK));
-        assert!(fetched.len() > 1, "fetch should return the Git bundle payload");
-    }
+    include!("rngit_parts/git_bundle_tests.rs");
+    include!("rngit_parts/native_client_tests.rs");
 }

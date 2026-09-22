@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last reassessed: 2026-09-20
+Last reassessed: 2026-09-21
 
 This file is the repository-level source of truth for parity posture, release
 confidence, and execution order. Detailed row-level status lives in:
@@ -18,13 +18,48 @@ override these status files.
 
 ## Current Position
 
-The 2026-09-20 behavior audit confirms that mapped surface coverage is **not
+The 2026-09-21 behavior audit confirms that mapped surface coverage is **not
 full operational parity**. The implemented BLE/HDLC/rngit increment and explicit
 remaining acceptance gates are recorded in
 [`rns-1.5.4-delta.md`](rns-1.5.4-delta.md). The 1.5.4 development reference is
 not the canonical release baseline. IFAC daemon wiring, remaining remote
 utility behavior, transport policy differences, and platform validation remain
-open; published inventory counts are not promoted or rewritten by this change.
+open; the focused #611 `rncp` compression/send/fetch matrix, bounded
+`rnprobe` packet/RPC workflow, and bounded native `rnsh` channel workflow,
+negative
+failure-category checks, path-discovery-timeout check, listener restart check,
+local disk-failure check, client-cancellation check, concurrent-client check,
+interrupted-link/status-output check, active-interface medium-timeout check,
+mixed-runtime restart check, and the #612 pinned-Python work-item persistence
+  trace across a Rust `rngit` process restart plus the reciprocal native
+  Rust-client `/git/list`/`/git/fetch`/`/git/push` and the bounded multi-step
+  release request trace (with exact bundle, artifact, and remote-ref
+  verification) are evidence for those slices only
+and do not promote the broader utility surface. Published inventory counts are
+not promoted or rewritten by this change.
+
+The forward #610 Resource slice also has new pinned-Python evidence at
+`8b29132c`: a sender-side file-like reader raises during a split transfer,
+Rust reports terminal inbound failure, and the Python process exits
+unsuccessfully with the injected exception and bounded timeout preserved. This
+is local mixed-peer evidence only; the #605 candidate and its release posture
+remain open pending the documented broader gates.
+
+The #623 byte-level conformance lane is now executable through
+`cargo xtask interop`. It checks exact Python Reticulum/LXMF pins, Python→Rust
+packet/LXMF bytes, Rust→Python LXMF bytes, identity/announce/link vectors, and
+deliberately malformed packet/MessagePack cases, with a machine-readable
+report and Verify artifact. This is a bounded wire gate, not a replacement for
+the broader live Resource, fault, restart, multi-hop, hosted, or HIL gates.
+
+The bounded #615 software acceptance is complete at PR #626 head
+`559e314c71306148352050a463d3db10407c89f0`: local release-check passed with
+the final candidate provenance, hosted PR HIL passed `23/23` cases, the exact
+pinned compatibility matrix passed `30/30`, and the Independent and CI gates
+also passed. This closes the software acceptance slice only; issue #605 stays
+open while its forward behavioral contract remains incomplete, and physical,
+platform, third-party-client, public-network, and long-soak evidence remains
+explicitly excluded under #616.
 
 LXMF-rs retains the v0.9.5 SDK-access baseline. The generated inventory records
 software-surface parity against Python RNS 1.5.2 at
@@ -254,6 +289,31 @@ interactive signing ceremonies are explicitly deferred to v1.0. Until then
 they remain hardware-unverified or human-validation targets and are not v0.9.5
 release blockers.
 
+## Issue #605 forward parity candidate
+
+The repository's current release posture remains anchored to the RNS 1.5.2
+baseline above, but the next full-parity target is the immutable RNS 1.5.4-dev
+development revision `99de23c040d507e3fefca19e87b182302902725d`. The target is
+recorded in the canonical `[parity_target]` section of
+`tools/interop/independent-implementations.toml`; changing it requires a
+reviewed reference update and a regenerated delta ledger.
+
+The callable inventory is now treated as historical navigation evidence for the
+active release, not as proof of forward behavioral parity. The generated
+`docs/status/python-surface-parity.json` carries a machine-checked behavioral
+contract covering issues #607–#616. Its current status is `incomplete`: each
+requirement names the exact reference path/commit, Rust owner, planned test
+command, evidence artifact, implementation status, and evidence status. The
+candidate inventory intentionally demotes inherited mappings to provisional
+`partial` until behavior is exercised.
+
+The forward ledger is [`docs/status/rns-1.5.4-delta.md`](rns-1.5.4-delta.md).
+No current release, SDK orientation, or runtime status may describe the
+1.5.4-development target as complete until the behavioral contract, exact
+candidate software gate, and independently reviewed child issues pass. Physical,
+platform, third-party-client, public-network, and soak evidence remain a
+separate operational axis.
+
 ## v0.9.0 Full Software-Parity Baseline
 
 The v0.9.0 release criterion was zero partial or unmapped entries in the
@@ -310,6 +370,11 @@ Scoped release evidence is split as follows:
   that steps between the slow, very-slow and fast maxima on measured rate.
   Measured against a real NomadNet node, the same 46 MB fetch runs at 234
   fragments/s where a fixed window of 4 managed 84.
+- Candidate `e0d7249035a51b668ec88b9ce193b3fe0f3fc8e7` records exact 50 MiB
+  pinned-Python Resource transfers in both directions with Linux high-water
+  RSS values under a fixed 512 MiB per-process release-profile budget. This
+  closes the local mixed-peer memory-evidence gap without claiming broader
+  timeout/reconnect, callback, hosted, physical, or public-network coverage.
 - `Link::request_packet`/`response_packet` complete the request/response
   pair: the receive half already decrypted both contexts, but nothing could
   build either, so a peer had to send every request and every reply as a
@@ -437,10 +502,22 @@ Scoped release evidence is split as follows:
   refreshing a destination the cache already holds no longer evicts an
   unrelated one. Measured against a public hub over six minutes, the queue grew
   14 -> 317 and never decremented; it now stays at 0 while the bounded cache
-  holds the same routes. Python's local-client announce timing
-  (`retransmit_timeout = now`, `retries = PATHFINDER_R`) is not implemented, and
-  the shared-instance condition reads the receiving interface rather than
-  Python's parent-interface `is_local_client_interface`.
+holds the same routes. The local-client implementation now applies Python's
+immediate single-retransmit timing (`retransmit_timeout = now`,
+`retries = PATHFINDER_R`) and parent-interface classification under focused
+regression tests. Pinned shared-instance evidence currently covers TCP/Unix
+attachment and announce fan-out, plus a pinned Python TCP application trace
+that exchanges LXMF messages in both directions before and after Rust daemon
+restart while preserving the delivery identity. A two-carrier Python Channel
+trace now also duplicates a real application frame and observes one endpoint
+delivery through the forwarding path. A companion trace closes that
+application link, establishes a fresh Python link over the same two carriers,
+and observes one delivery on each link. Broader multi-hop packet/proof/link
+duplicate handling, announce-persistence, caller-visible close reasons, and
+underlying carrier-stream reconnect traces remain open. A mixed pinned-Python
+link-establishment timeout trace now proves pending cleanup after the path is
+available; the two-carrier split Resource trace covers the multi-hop Resource
+direction.
 - Restored Reticulum path-table announces are now cache-only lookup material at
   startup, not fresh rebroadcast work, while still serving known-path response
   requests from the restored cache.
@@ -850,6 +927,23 @@ Scoped release evidence is split as follows:
   next-hop/interface metadata over the software RPC path, then reissues the
   lookup as a scoped/tagged path request on the learned outgoing interface and
   verifies the daemon echoes the scope fields.
+- `rnprobe` now exercises the native daemon packet-probe workflow:
+  the CLI sends configurable named-destination probes over the existing TCP or
+  Unix RPC surface, the daemon correlates delivery proofs without consuming
+  ordinary LXMF receipt mappings, and `respond_to_probes` registers and
+  announces the opt-in `rnstransport.probe` responder. Commit `f86ecc1c`
+  adds isolated TCP process exchanges in both pinned-Python→Rust and native
+  Rust→pinned-Python roles. The focused evidence is software-only;
+  public/physical-link timing and fault/restart coverage remain open.
+- `rnsh` now has a bounded native TCP/Link/Channel workflow at
+  `f24e0038`, hardened by `a32b6d71`: persisted or deterministic identities, allow-list/no-auth
+  listener modes, root-scoped command execution, frozen Python channel
+  envelopes, stream forwarding, timeout, and mirrored exit status are covered
+  by Rust process/auth tests plus reciprocal pinned-Python initiator→Rust
+  listener and Rust initiator→pinned-Python listener exchanges (`e57afb99`,
+  `662dcdbe`), including the immediate non-TTY EOF case. PTY/resize, full
+  fault/restart coverage, and public/multi-hop evidence remain open; this does
+  not promote the broader `RNS/Utilities/*` row.
 - The pinned Python compatibility matrix now includes
   `rns_path_request_rust_to_python`, a loopback TCP case where Rust
   `reticulumd` starts with an unknown Python delivery path, resolves it through

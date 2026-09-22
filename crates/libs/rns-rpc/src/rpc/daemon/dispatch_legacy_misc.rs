@@ -139,6 +139,7 @@ impl RpcDaemon {
             "get_blackholed_identities" | "blackhole_identity" | "unblackhole_identity" => {
                 self.handle_rpc_legacy_blackhole_identity(request)
             }
+            "probe" => self.handle_rpc_legacy_probe(request),
             "path_status" => {
                 let params = request.params.ok_or_else(|| {
                     std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing params")

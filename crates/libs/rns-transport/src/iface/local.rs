@@ -10,10 +10,8 @@ use std::time::Duration;
 
 use tokio::net::{UnixListener, UnixStream};
 
-use super::tcp_client::{
-    run_hdlc_stream, run_hdlc_stream_with_runtime, HdlcStreamRuntime, TcpClient,
-};
-use super::{Interface, InterfaceContext, InterfaceManager};
+use super::tcp_client::{run_hdlc_stream_with_runtime_and_ifac, HdlcStreamRuntime, TcpClient};
+use super::{IfacState, Interface, InterfaceContext, InterfaceManager};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum LocalUnixEndpoint {
@@ -374,6 +372,8 @@ impl LocalUnixClient {
     pub async fn spawn(context: InterfaceContext<Self>) {
         let iface_stop = context.channel.stop.clone();
         let iface_address = context.channel.address;
+        let ifac_state: IfacState = context.channel.ifac_state.clone();
+        let ifac_violations = context.channel.ifac_violations.clone();
         let (
             addr,
             mtu,
@@ -446,7 +446,7 @@ impl LocalUnixClient {
             }
 
             if let Some(bitrate_bps) = forced_bitrate_bps {
-                run_hdlc_stream_with_runtime(
+                run_hdlc_stream_with_runtime_and_ifac(
                     "local_unix".to_string(),
                     iface_address,
                     mtu,
@@ -454,13 +454,15 @@ impl LocalUnixClient {
                     iface_stop.clone(),
                     rx_channel.clone(),
                     tx_channel.clone(),
+                    ifac_state.clone(),
+                    ifac_violations.clone(),
                     read_stream,
                     write_stream,
                     HdlcStreamRuntime::new().with_forced_bitrate(bitrate_bps),
                 )
                 .await;
             } else {
-                run_hdlc_stream(
+                run_hdlc_stream_with_runtime_and_ifac(
                     "local_unix".to_string(),
                     iface_address,
                     mtu,
@@ -468,8 +470,11 @@ impl LocalUnixClient {
                     iface_stop.clone(),
                     rx_channel.clone(),
                     tx_channel.clone(),
+                    ifac_state.clone(),
+                    ifac_violations.clone(),
                     read_stream,
                     write_stream,
+                    HdlcStreamRuntime::default(),
                 )
                 .await;
             }

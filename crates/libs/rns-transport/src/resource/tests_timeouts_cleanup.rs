@@ -38,6 +38,16 @@ fn resource_manager_removes_link_scoped_state_on_link_close() {
     assert!(manager.pending_outgoing.is_empty());
     assert!(manager.outgoing.is_empty());
     assert!(manager.incoming.is_empty());
+    let events = manager.drain_events();
+    assert_eq!(events.len(), 2);
+    assert!(events.iter().any(|event| {
+        event.hash == resource_hash
+            && matches!(event.kind, ResourceEventKind::OutboundFailed)
+    }));
+    assert!(events.iter().any(|event| {
+        event.hash == adv.hash
+            && matches!(event.kind, ResourceEventKind::InboundFailed(_))
+    }));
 }
 
 #[test]

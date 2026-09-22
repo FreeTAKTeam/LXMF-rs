@@ -270,6 +270,32 @@ pub(crate) fn write_generated_reticulumd_config(
         if let Some(port) = interface.port {
             output.push_str(&format!("port = {port}\n"));
         }
+        if let Some(shared_instance_type) = interface.shared_instance_type.as_ref() {
+            output.push_str(&format!("shared_instance_type = {shared_instance_type:?}\n"));
+        }
+        if let Some(instance_name) = interface.instance_name.as_ref() {
+            output.push_str(&format!("instance_name = {instance_name:?}\n"));
+        }
+        if let Some(socket_path) = interface.socket_path.as_ref() {
+            output.push_str(&format!("socket_path = {socket_path:?}\n"));
+        }
+        if let Some(fixed_mtu) = interface.fixed_mtu {
+            output.push_str(&format!("fixed_mtu = {fixed_mtu}\n"));
+        }
+        if let Some(force_shared_instance_bitrate) = interface.force_shared_instance_bitrate {
+            output.push_str(&format!(
+                "force_shared_instance_bitrate = {force_shared_instance_bitrate}\n"
+            ));
+        }
+        if let Some(ifac_size) = interface.ifac_size {
+            output.push_str(&format!("ifac_size = {ifac_size}\n"));
+        }
+        if let Some(network_name) = interface.network_name.as_ref() {
+            output.push_str(&format!("network_name = {network_name:?}\n"));
+        }
+        if let Some(passphrase) = interface.passphrase.as_ref() {
+            output.push_str(&format!("passphrase = {passphrase:?}\n"));
+        }
         output.push('\n');
     }
     fs::write(output_path, output)

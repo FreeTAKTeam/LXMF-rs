@@ -16,8 +16,11 @@ use super::{
 use crate::buffer::{InputBuffer, OutputBuffer};
 use crate::hash::AddressHash;
 use crate::iface::hdlc::Hdlc;
-use crate::iface::{RxMessage, TxMessage, TxMessageType};
+use crate::iface::{
+    encode_packet_ifac, IfacState, IfaceSource, RxMessage, TxMessage, TxMessageType,
+};
 use crate::packet::{Packet, PacketDataBuffer};
+use crate::transport::IfacContext;
 
 struct ChunkedReader {
     chunks: VecDeque<Vec<u8>>,
@@ -86,12 +89,46 @@ fn frame_for_packet(packet: &Packet) -> Vec<u8> {
     wire
 }
 
+fn authenticated_state(network_name: &str) -> IfacState {
+    Arc::new(std::sync::RwLock::new(Some(
+        IfacContext::from_network_credentials(16, Some(network_name), None)
+            .expect("authenticated test context"),
+    )))
+}
+
+fn frame_for_ifac_packet(packet: &Packet, ifac_state: &IfacState) -> Vec<u8> {
+    let raw = encode_packet_ifac(ifac_state, packet).expect("apply IFAC");
+    let mut wire = vec![0_u8; tcp_wire_buffer_capacity(raw.len())];
+    let used = {
+        let mut output = OutputBuffer::new(wire.as_mut_slice());
+        Hdlc::encode(&raw, &mut output).expect("encode IFAC packet");
+        output.offset()
+    };
+    wire.truncate(used);
+    wire
+}
+
 async fn decode_chunks(chunks: impl IntoIterator<Item = Vec<u8>>, mtu: usize) -> Vec<RxMessage> {
+    decode_chunks_with_ifac(
+        chunks,
+        mtu,
+        Arc::new(std::sync::RwLock::new(None)),
+        Arc::new(std::sync::atomic::AtomicU64::new(0)),
+    )
+    .await
+}
+
+async fn decode_chunks_with_ifac(
+    chunks: impl IntoIterator<Item = Vec<u8>>,
+    mtu: usize,
+    ifac_state: IfacState,
+    ifac_violations: Arc<std::sync::atomic::AtomicU64>,
+) -> Vec<RxMessage> {
     let cancel = CancellationToken::new();
     let iface_stop = CancellationToken::new();
     let (rx_sender, mut rx_receiver) = tokio::sync::mpsc::channel(8);
     let (_tx_sender, tx_receiver) = tokio::sync::mpsc::channel(1);
-    run_hdlc_stream_with_runtime(
+    super::run_hdlc_stream_with_runtime_and_ifac(
         "memory-test".to_string(),
         AddressHash::new([0x51; 16]),
         mtu,
@@ -99,6 +136,8 @@ async fn decode_chunks(chunks: impl IntoIterator<Item = Vec<u8>>, mtu: usize) ->
         iface_stop,
         rx_sender,
         Arc::new(tokio::sync::Mutex::new(tx_receiver)),
+        ifac_state,
+        ifac_violations,
         ChunkedReader::new(chunks),
         tokio::io::sink(),
         HdlcStreamRuntime::new(),
@@ -110,6 +149,91 @@ async fn decode_chunks(chunks: impl IntoIterator<Item = Vec<u8>>, mtu: usize) ->
         messages.push(message);
     }
     messages
+}
+
+#[tokio::test]
+async fn authenticated_hdlc_payload_is_verified_before_packet_admission() {
+    let packet = Packet {
+        data: PacketDataBuffer::new_from_slice(b"authenticated-over-hdlc"),
+        ..Default::default()
+    };
+    let ifac_state = authenticated_state("tcp-memory-network");
+    let frame = frame_for_ifac_packet(&packet, &ifac_state);
+    let violations = Arc::new(std::sync::atomic::AtomicU64::new(0));
+
+    let messages = decode_chunks_with_ifac([frame], 4096, ifac_state, violations.clone()).await;
+
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0].packet.data, packet.data);
+    assert!(messages[0].packet.ifac.is_some());
+    assert_eq!(messages[0].source, IfaceSource::None);
+    assert_eq!(violations.load(std::sync::atomic::Ordering::Relaxed), 0);
+}
+
+#[tokio::test]
+async fn authenticated_hdlc_payload_rejects_plaintext_tampering_wrong_key_and_truncation() {
+    let packet = Packet {
+        data: PacketDataBuffer::new_from_slice(b"reject-invalid-ifac"),
+        ..Default::default()
+    };
+    let authenticated = authenticated_state("tcp-memory-network");
+    let wrong_key = authenticated_state("different-network");
+    let valid_ifac = encode_packet_ifac(&authenticated, &packet).expect("apply IFAC");
+
+    let mut tampered = valid_ifac.clone();
+    tampered[2] ^= 0x01;
+    let truncated = valid_ifac[..valid_ifac.len() - 1].to_vec();
+    let plaintext = packet.to_bytes().expect("serialize plaintext packet");
+
+    let mut frames = Vec::new();
+    for payload in [plaintext, tampered, truncated] {
+        let mut wire = vec![0_u8; tcp_wire_buffer_capacity(payload.len())];
+        let used = {
+            let mut output = OutputBuffer::new(wire.as_mut_slice());
+            Hdlc::encode(&payload, &mut output).expect("encode invalid IFAC test frame");
+            output.offset()
+        };
+        wire.truncate(used);
+        frames.extend_from_slice(&wire);
+    }
+    let wrong_key_frame = frame_for_ifac_packet(&packet, &wrong_key);
+    frames.extend_from_slice(&wrong_key_frame);
+
+    let violations = Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let messages = decode_chunks_with_ifac([frames], 4096, authenticated, violations.clone()).await;
+
+    assert!(messages.is_empty());
+    assert_eq!(violations.load(std::sync::atomic::Ordering::Relaxed), 4);
+}
+
+#[test]
+fn tx_buffer_applies_ifac_before_hdlc_framing() {
+    let packet = Packet {
+        data: PacketDataBuffer::new_from_slice(b"authenticated-egress"),
+        ..Default::default()
+    };
+    let ifac_state = authenticated_state("tcp-memory-network");
+    let mut buffers = TcpTxBuffers::default();
+
+    let (_, wire) = buffers
+        .encode_ifac_packet(&packet, 4096, &ifac_state)
+        .expect("encode authenticated egress");
+    let mut raw = vec![0_u8; 4096];
+    let raw_len = {
+        let mut output = OutputBuffer::new(raw.as_mut_slice());
+        Hdlc::decode(wire, &mut output).expect("decode HDLC egress");
+        output.offset()
+    };
+    let decoded = crate::transport::IfacContext::from_network_credentials(
+        16,
+        Some("tcp-memory-network"),
+        None,
+    )
+    .expect("decode context")
+    .decode(&raw[..raw_len])
+    .expect("decode IFAC egress")
+    .expect("valid IFAC egress");
+    assert_eq!(Packet::from_bytes(&decoded).expect("packet").data, packet.data);
 }
 
 #[test]

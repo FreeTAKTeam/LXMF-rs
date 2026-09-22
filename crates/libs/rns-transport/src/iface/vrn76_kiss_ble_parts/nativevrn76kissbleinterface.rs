@@ -39,6 +39,8 @@ impl NativeVrn76KissBleInterface {
     pub async fn spawn(context: InterfaceContext<Self>) {
         let iface_stop = context.channel.stop.clone();
         let iface_address = context.channel.address;
+        let ifac_state = context.channel.ifac_state.clone();
+        let ifac_violations = context.channel.ifac_violations.clone();
         let (rx_channel, mut tx_channel) = context.channel.split();
         let (label, settings, config, reconnect_backoff, max_reconnect_backoff, runtime_status) = {
             let guard = context.inner.lock().expect("VR-N76 interface mutex poisoned");
@@ -111,17 +113,18 @@ impl NativeVrn76KissBleInterface {
                 ),
             }
 
-            let mut tx_buffer = vec![0_u8; config.mtu];
             let mut reconnect_needed = false;
             let mut first_tx_at: Option<Instant> = None;
             while !context.cancel.is_cancelled() && !iface_stop.is_cancelled() {
                 while let Ok(message) = tx_channel.try_recv() {
-                    let mut output = OutputBuffer::new(&mut tx_buffer[..]);
-                    if message.packet.serialize(&mut output).is_err() {
-                        log::warn!("VR-N76 packet serialize failed iface={}", label);
-                        continue;
-                    }
-                    if let Err(err) = runtime.send_packet(output.as_slice()).await {
+                    let raw = match encode_packet_ifac(&ifac_state, &message.packet) {
+                        Ok(raw) => raw,
+                        Err(err) => {
+                            log::warn!("VR-N76 packet serialize failed iface={} err={err:?}", label);
+                            continue;
+                        }
+                    };
+                    if let Err(err) = runtime.send_packet(&raw).await {
                         runtime_status.update(runtime.status());
                         log::warn!("VR-N76 packet write failed iface={} err={:?}", label, err);
                         reconnect_needed = true;
@@ -158,20 +161,28 @@ impl NativeVrn76KissBleInterface {
                 match timeout(Duration::from_millis(100), runtime.poll_next_packet()).await {
                     Ok(Ok(Some(payload))) => {
                         runtime_status.update(runtime.status());
-                        if let Ok(packet) = Packet::deserialize(&mut InputBuffer::new(&payload)) {
-                            if rx_channel
-                                .send(RxMessage {
-                                    address: iface_address,
-                                    packet,
-                                    source: IfaceSource::None,
-                                })
-                                .await
-                                .is_err()
-                            {
-                                log::warn!(
-                                    "VR-N76 transport receive queue closed iface={label}"
-                                );
-                                iface_stop.cancel();
+                        match decode_packet_ifac(&ifac_state, &payload) {
+                            Ok(packet) => {
+                                if rx_channel
+                                    .send(RxMessage {
+                                        address: iface_address,
+                                        packet,
+                                        source: IfaceSource::None,
+                                    })
+                                    .await
+                                    .is_err()
+                                {
+                                    log::warn!(
+                                        "VR-N76 transport receive queue closed iface={label}"
+                                    );
+                                    iface_stop.cancel();
+                                }
+                            }
+                            Err(err) => {
+                                if is_ifac_violation(&err) {
+                                    record_ifac_violation(&ifac_violations, &err);
+                                }
+                                log::warn!("VR-N76 packet decode failed iface={} err={err:?}", label);
                             }
                         }
                     }
@@ -207,6 +218,10 @@ impl NativeVrn76KissBleInterface {
 
 #[cfg(feature = "vrn76-kiss-ble")]
 impl Interface for NativeVrn76KissBleInterface {
+    fn ifac_default_size_bytes() -> usize {
+        8
+    }
+
     fn mtu() -> usize {
         564
     }

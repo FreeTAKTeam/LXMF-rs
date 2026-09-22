@@ -64,30 +64,8 @@ impl ResourceSender {
         )
     }
 
-    pub(super) fn new_with_options_mtu(
-        link: &Link,
-        data: Vec<u8>,
-        metadata: Option<Vec<u8>>,
-        request_id: Option<Vec<u8>>,
-        is_response: bool,
-        interface_mtu: usize,
-    ) -> Result<Self, RnsError> {
-        Self::new_segment_with_options_mtu(
-            link,
-            data,
-            metadata,
-            request_id,
-            is_response,
-            interface_mtu,
-            None,
-            1,
-            1,
-            None,
-        )
-    }
-
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn new_segment_with_options_mtu(
+    pub(super) fn new_segment_with_options_mtu_and_compression(
         link: &Link,
         data: Vec<u8>,
         metadata: Option<Vec<u8>>,
@@ -98,6 +76,7 @@ impl ResourceSender {
         segment_index: u32,
         total_segments: u32,
         total_data_size: Option<u64>,
+        auto_compress: bool,
     ) -> Result<Self, RnsError> {
         let resource_mdu = resource_packet_mdu_for_mtu(interface_mtu)?;
         let hashmap_segment_len = resource_hashmap_segment_len_for_mtu(interface_mtu)?;
@@ -118,18 +97,7 @@ impl ResourceSender {
         };
         let mut combined = metadata_prefix.clone();
         combined.extend_from_slice(&data);
-        let random_hash = random_bytes::<RANDOM_HASH_SIZE>();
         let data_size = combined.len() as u64;
-        let mut hasher = sha2::Sha256::new();
-        hasher.update(&combined);
-        hasher.update(random_hash);
-        let resource_hash = Hash::new(copy_hash(&hasher.finalize())?);
-        let original_hash = original_hash.unwrap_or(resource_hash);
-
-        let mut proof_hasher = sha2::Sha256::new();
-        proof_hasher.update(&combined);
-        proof_hasher.update(resource_hash.as_slice());
-        let expected_proof = Hash::new(copy_hash(&proof_hasher.finalize())?);
 
         // Auto-compress before encrypting/chunking, matching real RNS's own
         // `Resource.__init__` exactly (`auto_compress=True` by default):
@@ -148,7 +116,9 @@ impl ResourceSender {
         // and decompresses back to exactly this same `combined` before
         // parsing metadata/data — this was the one half of that round trip
         // never previously exercised on send.
-        let compressed_candidate = if combined.len() as u64 <= AUTO_COMPRESS_MAX_SIZE as u64 {
+        let compressed_candidate = if auto_compress
+            && combined.len() as u64 <= AUTO_COMPRESS_MAX_SIZE as u64
+        {
             let mut encoder = BzEncoder::new(Vec::new(), Compression::best());
             match encoder.write_all(&combined).and_then(|_| encoder.finish()) {
                 Ok(compressed) => {
@@ -173,10 +143,11 @@ impl ResourceSender {
             None
         };
         let compressed = compressed_candidate.is_some();
-        let transfer_payload = compressed_candidate.unwrap_or(combined);
+        let transfer_payload = compressed_candidate.as_ref().unwrap_or(&combined);
 
-        let mut prefix = random_bytes::<RANDOM_HASH_SIZE>().to_vec();
-        prefix.extend_from_slice(&transfer_payload);
+        let mut prefix = Vec::with_capacity(RANDOM_HASH_SIZE + transfer_payload.len());
+        prefix.extend_from_slice(&random_bytes::<RANDOM_HASH_SIZE>());
+        prefix.extend_from_slice(transfer_payload);
 
         let mut cipher_buf = vec![0u8; prefix.len() + 128];
         let cipher = link.encrypt(&prefix, &mut cipher_buf).map_err(|_| RnsError::CryptoError)?;
@@ -187,10 +158,17 @@ impl ResourceSender {
             parts.push(chunk.to_vec());
         }
 
-        let mut map_hashes = Vec::with_capacity(parts.len());
-        for part in &parts {
-            map_hashes.push(map_hash(part, &random_hash));
-        }
+        // Reticulum's four-byte map hashes are only unique within a moving
+        // collision-guard window. If a collision is found in that window, it
+        // regenerates the resource's random hash and rebuilds the identity,
+        // proof, and complete map before advertising. Keeping this loop around
+        // all derived values is important: changing only the map would make a
+        // receiver accept fragments but reject the final resource proof.
+        let (random_hash, map_hashes, resource_hash, expected_proof) =
+            select_collision_free_random_hash(&combined, &parts, random_bytes::<RANDOM_HASH_SIZE>, |part, random_hash| {
+                map_hash(part, random_hash)
+            })?;
+        let original_hash = original_hash.unwrap_or(resource_hash);
 
         let advertisement = ResourceAdvertisement {
             transfer_size: parts.iter().map(|part| part.len() as u64).sum(),
@@ -433,5 +411,67 @@ impl ResourceSender {
             return true;
         }
         false
+    }
+}
+
+include!("sender_parts/builders.rs");
+
+/// Choose the resource random hash and derive every hash that depends on it.
+///
+/// The map hash is intentionally short, so uniqueness is required only in the
+/// same rolling window that the Python reference uses. The generic inputs keep
+/// the collision path deterministically testable without weakening production
+/// randomness or making a collision likely in normal transfers.
+type CollisionFreeHashSelection = (
+    [u8; RANDOM_HASH_SIZE],
+    Vec<[u8; MAPHASH_LEN]>,
+    Hash,
+    Hash,
+);
+
+fn select_collision_free_random_hash<F, H>(
+    identity_payload: &[u8],
+    parts: &[Vec<u8>],
+    mut next_random_hash: F,
+    map_hash_fn: H,
+) -> Result<CollisionFreeHashSelection, RnsError>
+where
+    F: FnMut() -> [u8; RANDOM_HASH_SIZE],
+    H: Fn(&[u8], &[u8; RANDOM_HASH_SIZE]) -> [u8; MAPHASH_LEN],
+{
+    loop {
+        let random_hash = next_random_hash();
+        let mut guard = VecDeque::with_capacity(COLLISION_GUARD_SIZE);
+        let mut map_hashes = Vec::with_capacity(parts.len());
+        let mut collision = false;
+
+        for part in parts {
+            let hash = map_hash_fn(part, &random_hash);
+            if guard.contains(&hash) {
+                collision = true;
+                break;
+            }
+            guard.push_back(hash);
+            if guard.len() > COLLISION_GUARD_SIZE {
+                guard.pop_front();
+            }
+            map_hashes.push(hash);
+        }
+
+        if collision {
+            log::debug!("resource map hash collision, regenerating resource random hash");
+            continue;
+        }
+
+        let mut hasher = sha2::Sha256::new();
+        hasher.update(identity_payload);
+        hasher.update(random_hash);
+        let resource_hash = Hash::new(copy_hash(&hasher.finalize())?);
+
+        let mut proof_hasher = sha2::Sha256::new();
+        proof_hasher.update(identity_payload);
+        proof_hasher.update(resource_hash.as_slice());
+        let expected_proof = Hash::new(copy_hash(&proof_hasher.finalize())?);
+        return Ok((random_hash, map_hashes, resource_hash, expected_proof));
     }
 }

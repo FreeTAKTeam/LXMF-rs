@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 
 import argparse
+import hashlib
 import json
+import os
+import random
 import tempfile
 import sys
 import threading
@@ -11,6 +14,55 @@ import RNS
 import RNS.Buffer
 from RNS.Channel import MessageBase
 from RNS.vendor import umsgpack
+
+
+class FaultingReader:
+    def __init__(self, data, fail_at):
+        self.data = data
+        self.offset = 0
+        self.fail_at = fail_at
+        backing_file = tempfile.NamedTemporaryFile(mode="wb", delete=False)
+        backing_file.write(data)
+        backing_file.close()
+        self.name = backing_file.name
+
+    def read(self, size=-1):
+        if self.offset >= self.fail_at:
+            raise OSError("synthetic Python file-reader failure")
+        if size is None or size < 0:
+            size = self.fail_at - self.offset
+        end = min(self.fail_at, self.offset + size)
+        chunk = self.data[self.offset:end]
+        self.offset = end
+        return chunk
+
+    def seek(self, offset, whence=0):
+        if whence == 0:
+            self.offset = offset
+        elif whence == 1:
+            self.offset += offset
+        elif whence == 2:
+            self.offset = len(self.data) + offset
+        else:
+            raise ValueError(f"unsupported seek mode: {whence}")
+        return self.offset
+
+    def close(self):
+        try:
+            os.unlink(self.name)
+        except FileNotFoundError:
+            pass
+
+
+def process_peak_rss_kib():
+    try:
+        import resource
+    except ImportError:
+        return None
+    value = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    if sys.platform == "darwin":
+        value /= 1024
+    return int(value)
 
 
 class MessageTest(MessageBase):
@@ -95,24 +147,64 @@ class ChannelEndpoint:
                 self.links.append(link)
             return
 
-        if self.payload_kind == "resource":
+        if self.payload_kind in (
+            "resource",
+            "resource-multi-hop",
+            "cancel-resource",
+            "resource-shutdown",
+            "resource-reader-failure",
+        ):
             link.set_resource_strategy(RNS.Link.ACCEPT_ALL)
 
+            if self.payload_kind == "cancel-resource":
+                def on_resource_started(resource) -> None:
+                    print(
+                        "python_channel_endpoint: cancelling incoming resource",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                    resource.cancel()
+
+                link.set_resource_started_callback(on_resource_started)
+
+            if self.payload_kind in ("resource-shutdown", "resource-reader-failure"):
+                channel.register_message_type(MessageTest)
+
+                def on_resource_started(_resource) -> None:
+                    channel.send(MessageTest("resource-started", "ready"))
+
+                link.set_resource_started_callback(on_resource_started)
+
             def on_resource_concluded(resource) -> None:
-                if resource.status != RNS.Resource.COMPLETE:
+                # RNS 1.5.2 invokes this callback from the assembler, but a
+                # late duplicate part can race with that callback and restore
+                # the status to TRANSFERRING. The assembled part count is the
+                # stable completion signal in that narrow reference race.
+                assembled = resource.status == RNS.Resource.COMPLETE or (
+                    resource.status == RNS.Resource.TRANSFERRING
+                    and resource.received_count == resource.total_parts
+                )
+                if not assembled:
                     return
                 data = resource.data.read()
+                digest = hashlib.sha256(data).hexdigest()
+                metadata = resource.metadata
                 with self.lock:
                     self.received.append(
                         {
-                            "data": data.decode("utf-8"),
-                            "metadata": resource.metadata,
+                            "data_size": len(data),
+                            "sha256": digest,
+                            "metadata": metadata,
                         }
                     )
+                if metadata is not None and len(data) < 1024 * 1024:
+                    reply_data = f"resource:{data.decode('utf-8')}:{metadata}"
+                else:
+                    reply_data = f"resource-sha256:{len(data)}:{digest}"
                 link.get_channel().send(
                     MessageTest(
                         "rust-resource",
-                        f"resource:{data.decode('utf-8')}:{resource.metadata}",
+                        reply_data,
                     )
                 )
 
@@ -194,6 +286,7 @@ class ChannelClient:
         destination_hash_hex: str,
         message_id: str,
         message_data: str,
+        resource_size,
         send_delay: float,
         timeout: float,
     ) -> int:
@@ -301,28 +394,110 @@ class ChannelClient:
         if self.payload_kind == "link-data":
             active_link.set_packet_callback(self._on_link_data)
             RNS.Packet(active_link, message_data.encode("utf-8")).send()
-        elif self.payload_kind == "resource":
+        elif self.payload_kind in (
+            "resource",
+            "resource-multi-hop",
+            "cancel-resource",
+            "resource-file-reader-failure",
+        ):
             done = threading.Event()
             result = {}
+
+            if resource_size is None:
+                resource_data = message_data.encode("utf-8")
+                resource_file = None
+            elif resource_size == 0:
+                resource_data = b""
+                resource_file = None
+            else:
+                resource_data = random.Random(605).randbytes(resource_size)
+                if self.payload_kind == "resource-file-reader-failure":
+                    resource_file = FaultingReader(resource_data, max(1, resource_size // 2))
+                else:
+                    resource_file = tempfile.TemporaryFile(mode="w+b")
+                    resource_file.write(resource_data)
+                    resource_file.flush()
+                    resource_file.seek(0)
 
             def resource_concluded(resource) -> None:
                 result["status"] = resource.status
                 done.set()
 
-            RNS.Resource(
-                message_data.encode("utf-8"),
+            resource = RNS.Resource(
+                resource_file if resource_file is not None else resource_data,
                 active_link,
                 metadata="python-meta",
                 callback=resource_concluded,
                 timeout=timeout,
             )
+            if self.payload_kind == "cancel-resource":
+                # Wait for the Rust receiver to request the advertised
+                # resource, then cancel while the reference transfer is
+                # still active. This avoids a scheduling-dependent sleep.
+                while resource.status < RNS.Resource.ADVERTISED:
+                    if time.time() > deadline:
+                        print(
+                            "python_channel_client: timed out waiting for resource request",
+                            file=sys.stderr,
+                            flush=True,
+                        )
+                        return 1
+                    time.sleep(0.01)
+                while resource.status == RNS.Resource.ADVERTISED:
+                    if time.time() > deadline:
+                        print(
+                            "python_channel_client: timed out waiting for resource transfer",
+                            file=sys.stderr,
+                            flush=True,
+                        )
+                        return 1
+                    time.sleep(0.01)
+                if resource.status < RNS.Resource.COMPLETE:
+                    resource.cancel()
             while not done.is_set():
                 if time.time() > deadline:
                     print("python_channel_client: timed out waiting for resource", file=sys.stderr, flush=True)
                     return 1
                 time.sleep(0.05)
+            if self.payload_kind == "cancel-resource":
+                if result.get("status") == RNS.Resource.FAILED:
+                    print(json.dumps({"resource": "cancelled"}), flush=True)
+                    # Let the asynchronous cancel packet reach the peer
+                    # before this short-lived reference client exits.
+                    time.sleep(0.5)
+                    return 0
+                print(f"python_channel_client: resource cancellation failed: {result}", file=sys.stderr, flush=True)
+                return 1
             if result.get("status") == RNS.Resource.COMPLETE:
-                print(json.dumps({"resource": "complete"}), flush=True)
+                if self.payload_kind == "resource-multi-hop":
+                    expected = f"resource-sha256:{len(resource_data)}:{hashlib.sha256(resource_data).hexdigest()}"
+                    while True:
+                        with self.lock:
+                            acknowledged = any(
+                                reply.get("id") == "rust-resource" and reply.get("data") == expected
+                                for reply in self.received
+                            )
+                        if acknowledged:
+                            break
+                        if time.time() > deadline:
+                            print(
+                                "python_channel_client: timed out waiting for endpoint Resource callback",
+                                file=sys.stderr,
+                                flush=True,
+                            )
+                            return 1
+                        time.sleep(0.05)
+                print(
+                    json.dumps(
+                        {
+                            "resource": "complete",
+                            "size": len(resource_data),
+                            "sha256": hashlib.sha256(resource_data).hexdigest(),
+                            "peak_rss_kib": process_peak_rss_kib(),
+                        }
+                    ),
+                    flush=True,
+                )
                 return 0
             print(f"python_channel_client: resource failed: {result}", file=sys.stderr, flush=True)
             return 1
@@ -336,8 +511,9 @@ class ChannelClient:
             for index in range(3):
                 channel.send(MessageTest(f"python-seq-{index}", f"hello-rust-{index}"))
                 time.sleep(0.25)
-        elif self.payload_kind == "channel":
+        elif self.payload_kind in ("channel", "channel-reconnect"):
             active_link.get_channel().send(MessageTest(message_id, message_data))
+        reconnect_started = False
         while True:
             with self.lock:
                 replies = list(self.received)
@@ -348,6 +524,39 @@ class ChannelClient:
                 if self.payload_kind == "buffer" and reply["data"] == f"{message_data} back at you":
                     print(json.dumps({"received": reply}), flush=True)
                     return 0
+                if self.payload_kind == "channel-reconnect":
+                    if (
+                        not reconnect_started
+                        and reply["id"] == message_id
+                        and reply["data"] == f"reply:{message_data}"
+                    ):
+                        reconnect_started = True
+                        with self.lock:
+                            self.link = None
+                        active_link.teardown()
+                        reconnect_link = RNS.Link(destination)
+                        reconnect_link.set_link_established_callback(self._on_link_established)
+                        reconnect_link.set_link_closed_callback(self._on_link_closed)
+                        reconnect_deadline = time.time() + timeout
+                        while True:
+                            with self.lock:
+                                reconnected_link = self.link
+                            if reconnected_link is not None:
+                                active_link = reconnected_link
+                                break
+                            if time.time() > reconnect_deadline:
+                                print(
+                                    "python_channel_client: timed out waiting for reconnected link",
+                                    file=sys.stderr,
+                                    flush=True,
+                                )
+                                return 1
+                            time.sleep(0.05)
+                        active_link.get_channel().send(MessageTest("python-reconnect", "hello-reconnect"))
+                        break
+                    if reply["id"] == "python-reconnect" and reply["data"] == "reply:hello-reconnect":
+                        print(json.dumps({"received": reply}), flush=True)
+                        return 0
                 if (
                     self.payload_kind == "channel"
                     and reply["id"] == message_id
@@ -428,8 +637,14 @@ def main() -> int:
         "--payload-kind",
         choices=(
             "channel",
+            "channel-reconnect",
             "buffer",
             "resource",
+            "resource-multi-hop",
+            "cancel-resource",
+            "resource-shutdown",
+            "resource-reader-failure",
+            "resource-file-reader-failure",
             "link-data",
             "request",
             "large-request",
@@ -444,6 +659,7 @@ def main() -> int:
     parser.add_argument("--destination-hash")
     parser.add_argument("--message-id", default="python-1")
     parser.add_argument("--message-data", default="hello-rust")
+    parser.add_argument("--resource-size", type=int)
     parser.add_argument("--send-delay", type=float, default=0.3)
     parser.add_argument("--timeout", type=float, default=8.0)
     args = parser.parse_args()
@@ -456,6 +672,7 @@ def main() -> int:
             args.destination_hash,
             args.message_id,
             args.message_data,
+            args.resource_size,
             args.send_delay,
             args.timeout,
         )

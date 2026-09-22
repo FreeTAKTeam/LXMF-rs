@@ -1,4 +1,4 @@
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ReticulumGitClient {
     pub destination_aliases: BTreeMap<String, String>,
     pub link_ready: bool,
@@ -8,6 +8,8 @@ pub struct ReticulumGitClient {
     pub medium_path_timeout_secs: Option<f64>,
     pub last_remote: Option<RemoteRepository>,
     pub local_node: Option<Arc<Mutex<ReticulumGitNode>>>,
+    native_identity: Option<rns_transport::identity::PrivateIdentity>,
+    native_interface: Option<String>,
 }
 
 impl Default for ReticulumGitClient {
@@ -21,6 +23,8 @@ impl Default for ReticulumGitClient {
             medium_path_timeout_secs: None,
             last_remote: None,
             local_node: None,
+            native_identity: None,
+            native_interface: None,
         }
     }
 }
@@ -111,7 +115,7 @@ impl ReticulumGitClient {
         self.link_ready = false;
         self.link_failed = false;
         self.last_remote = Some(parsed.clone());
-        if self.local_node.is_some() {
+        if self.local_node.is_some() || self.native_transport_attached() {
             self.link_established();
         }
         Ok(parsed)
@@ -119,6 +123,20 @@ impl ReticulumGitClient {
 
     pub fn attach_local_node(&mut self, node: ReticulumGitNode) {
         self.local_node = Some(Arc::new(Mutex::new(node)));
+        self.link_established();
+    }
+
+    /// Attach the real Reticulum request path used by the native client.
+    /// Existing synchronous operation methods use a short-lived runtime for
+    /// this compatibility bridge; async callers should use
+    /// [`NativeRngitClient`] directly so one transport can serve a session.
+    pub fn attach_native_tcp(
+        &mut self,
+        identity: rns_transport::identity::PrivateIdentity,
+        endpoint: impl Into<String>,
+    ) {
+        self.native_identity = Some(identity);
+        self.native_interface = Some(endpoint.into());
         self.link_established();
     }
 
@@ -144,7 +162,40 @@ impl ReticulumGitClient {
                 .map_err(|_| "Local rngit node lock is poisoned".to_string())
                 .map(|mut node| node.handle_request(path, data, [0_u8; 16]));
         }
+        if self.native_transport_attached() {
+            let remote = self
+                .last_remote
+                .as_ref()
+                .ok_or_else(|| "No rngit remote is selected".to_string())?;
+            let mut cursor = std::io::Cursor::new(data);
+            let value = rmpv::decode::read_value(&mut cursor)
+                .map_err(|error| format!("Invalid rngit request data: {error}"))?;
+            if cursor.position() != data.len() as u64 {
+                return Err("Invalid rngit request data: trailing bytes".to_string());
+            }
+            let identity = self
+                .native_identity
+                .clone()
+                .ok_or_else(|| "Native rngit identity is not configured".to_string())?;
+            let endpoint = self
+                .native_interface
+                .clone()
+                .ok_or_else(|| "Native rngit interface is not configured".to_string())?;
+            let runtime = tokio::runtime::Runtime::new()
+                .map_err(|error| format!("Could not start native rngit runtime: {error}"))?;
+            return runtime
+                .block_on(async move {
+                    let client = NativeRngitClient::new(identity, Duration::from_secs(30));
+                    client.add_tcp_client(endpoint).await;
+                    client.request(remote.destination, path, value).await
+                })
+                .map_err(|error| format!("Native rngit request failed: {error}"));
+        }
         Err("No Reticulum request transport is attached".to_string())
+    }
+
+    fn native_transport_attached(&self) -> bool {
+        self.native_identity.is_some() && self.native_interface.is_some()
     }
 
     fn request_repository(
@@ -235,7 +286,8 @@ impl ReticulumGitClient {
         let parsed = self.ensure_repository_remote(remote)?;
         let mut extra = vec![(rmpv::Value::String("operation".into()), rmpv::Value::String(operation.into()))];
         if let Some(target) = target {
-            extra.push((rmpv::Value::String("target".into()), rmpv::Value::String(target.into())));
+            let target_key = if self.native_transport_attached() { "tag" } else { "target" };
+            extra.push((rmpv::Value::String(target_key.into()), rmpv::Value::String(target.into())));
         }
         self.request_repository(
             RNGIT_PATH_RELEASE,
@@ -331,6 +383,18 @@ impl ReticulumGitClient {
         }
         if let Some(content) = content {
             extra.push((rmpv::Value::String("content".into()), rmpv::Value::String(content.into())));
+            if matches!(operation, "create" | "propose" | "edit") {
+                if let Some(identity) = &self.native_identity {
+                    extra.push((
+                        rmpv::Value::String("format".into()),
+                        rmpv::Value::String("markdown".into()),
+                    ));
+                    extra.push((
+                        rmpv::Value::String("signature".into()),
+                        rmpv::Value::Binary(identity.sign(content.as_bytes()).to_bytes().to_vec()),
+                    ));
+                }
+            }
         }
         self.request_repository(
             RNGIT_PATH_WORK,

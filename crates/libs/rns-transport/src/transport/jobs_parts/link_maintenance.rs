@@ -134,6 +134,8 @@ pub(in crate::transport) async fn handle_check_links<'a>(
     for link_id in &closed_link_ids {
         handler.resource_manager.remove_link_state(*link_id);
     }
+    let resource_events = handler.resource_manager.drain_events();
+    super::super::resource_wire::publish_resource_events(&handler, resource_events);
     closed_pending_destinations.sort();
     closed_pending_destinations.dedup();
     for destination in closed_pending_destinations {

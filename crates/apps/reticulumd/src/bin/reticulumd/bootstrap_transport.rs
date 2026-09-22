@@ -33,7 +33,7 @@ use reticulum_daemon::announce_names::PropagationNodeAnnounceConfig;
 use reticulum_daemon::config::DaemonConfig;
 use reticulum_daemon::receipt_bridge::ReceiptBridge;
 use rns_core::identity::PrivateIdentity;
-use rns_rpc::InterfaceRecord;
+use rns_rpc::{InterfaceRecord, ProbeReceiptRegistry};
 use rns_transport::destination::SingleInputDestination;
 use rns_transport::hash::AddressHash;
 use rns_transport::iface::tcp_client::TcpSocketTuning;
@@ -57,6 +57,7 @@ pub(super) struct TransportStartupArtifacts {
     pub(super) announce_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>>,
     pub(super) propagation_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>>,
     pub(super) control_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>>,
+    pub(super) probe_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>>,
     pub(super) delivery_destination_hash_hex: Option<String>,
     pub(super) propagation_destination_hash_hex: Option<String>,
     pub(super) control_destination_hash_hex: Option<String>,
@@ -97,7 +98,9 @@ pub(super) struct TransportStartupInput<'a> {
     pub(super) receipt_map: Arc<Mutex<HashMap<String, String>>>,
     pub(super) receipt_tx:
         tokio::sync::mpsc::Sender<reticulum_daemon::receipt_bridge::ReceiptEvent>,
+    pub(super) probe_receipts: Arc<ProbeReceiptRegistry>,
     pub(super) propagation_control_enabled: bool,
+    pub(super) respond_to_probes: bool,
     pub(super) propagation_announce_config: PropagationNodeAnnounceConfig,
     pub(super) local_hops_delta: bool,
     pub(super) inbound_queue_limits: InboundQueueLimits,
@@ -175,7 +178,9 @@ pub(super) async fn start_transport_and_interfaces(
         mut configured_interfaces,
         receipt_map,
         receipt_tx,
+        probe_receipts,
         propagation_control_enabled,
+        respond_to_probes,
         propagation_announce_config,
         local_hops_delta,
         inbound_queue_limits,
@@ -201,6 +206,7 @@ pub(super) async fn start_transport_and_interfaces(
     let mut announce_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>> = None;
     let mut propagation_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>> = None;
     let mut control_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>> = None;
+    let mut probe_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>> = None;
     let mut delivery_destination_hash_hex: Option<String> = None;
     let mut propagation_destination_hash_hex: Option<String> = None;
     let mut control_destination_hash_hex: Option<String> = None;
@@ -248,7 +254,11 @@ pub(super) async fn start_transport_and_interfaces(
             .expect("runtime policy validates inbound queue limits");
         let mut transport_instance = Transport::new(config);
         transport_instance
-            .set_receipt_handler(Box::new(ReceiptBridge::new(receipt_map, receipt_tx.clone())))
+            .set_receipt_handler(Box::new(ReceiptBridge::with_probe_registry(
+                receipt_map,
+                receipt_tx.clone(),
+                probe_receipts.clone(),
+            )))
             .await;
         let iface_manager = transport_instance.iface_manager();
         let (stream_reconnect_tx, stream_reconnect_rx) =
@@ -376,13 +386,17 @@ pub(super) async fn start_transport_and_interfaces(
             local_display_name,
             local_announce_capabilities,
             propagation_announce_app_data,
-            propagation_control_enabled,
+            transport_destinations::TransportDestinationPolicy {
+                propagation_control_enabled,
+                respond_to_probes,
+            },
             propagation_announce_config,
         )
         .await;
         announce_destination = Some(destinations.delivery);
         propagation_destination = destinations.propagation;
         control_destination = destinations.control;
+        probe_destination = destinations.probe;
         delivery_destination_hash_hex = Some(destinations.delivery_destination_hash_hex);
         propagation_destination_hash_hex = destinations.propagation_destination_hash_hex;
         control_destination_hash_hex = destinations.control_destination_hash_hex;
@@ -427,6 +441,7 @@ pub(super) async fn start_transport_and_interfaces(
         announce_destination,
         propagation_destination,
         control_destination,
+        probe_destination,
         delivery_destination_hash_hex,
         propagation_destination_hash_hex,
         control_destination_hash_hex,

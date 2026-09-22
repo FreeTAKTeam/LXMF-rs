@@ -1,3 +1,44 @@
+/// Correlates a transport delivery proof with an in-flight diagnostic probe.
+///
+/// The RPC crate deliberately stores only the packet hash here.  The concrete
+/// transport receipt type belongs to the daemon/transport boundary, while the
+/// legacy RPC contract only needs a completion signal for the probe request.
+#[derive(Clone, Default)]
+pub struct ProbeReceiptRegistry {
+    pending: Arc<Mutex<HashMap<[u8; 32], tokio::sync::oneshot::Sender<()>>>>,
+}
+
+impl ProbeReceiptRegistry {
+    pub fn register(&self, packet_hash: [u8; 32]) -> tokio::sync::oneshot::Receiver<()> {
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+        self.pending
+            .lock()
+            .expect("probe receipt registry mutex poisoned")
+            .insert(packet_hash, sender);
+        receiver
+    }
+
+    pub fn notify(&self, packet_hash: [u8; 32]) {
+        let sender = self
+            .pending
+            .lock()
+            .expect("probe receipt registry mutex poisoned")
+            .remove(&packet_hash);
+        if let Some(sender) = sender {
+            if sender.send(()).is_err() {
+                log::debug!("probe receipt waiter was dropped before delivery notification");
+            }
+        }
+    }
+
+    pub fn cancel(&self, packet_hash: [u8; 32]) {
+        self.pending
+            .lock()
+            .expect("probe receipt registry mutex poisoned")
+            .remove(&packet_hash);
+    }
+}
+
 pub trait PathLookupBridge: Send + Sync {
     fn has_path(&self, destination: &str) -> Result<bool, std::io::Error>;
 
@@ -35,6 +76,18 @@ pub trait PathLookupBridge: Send + Sync {
 
     fn transport_status(&self) -> Result<JsonValue, std::io::Error> {
         Err(std::io::Error::other("transport status bridge is not configured"))
+    }
+
+    fn probe(
+        &self,
+        _destination: &str,
+        _full_name: &str,
+        _size: usize,
+        _probes: usize,
+        _timeout_secs: f64,
+        _wait_secs: f64,
+    ) -> Result<JsonValue, std::io::Error> {
+        Err(std::io::Error::other("probe bridge is not configured"))
     }
 
     fn drop_path(&self, _destination: &str) -> Result<bool, std::io::Error> {

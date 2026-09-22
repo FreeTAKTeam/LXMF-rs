@@ -9,12 +9,14 @@ use tokio::time::Instant;
 use tokio_serial::{DataBits, FlowControl, Parity, SerialPortBuilderExt, StopBits};
 use tokio_util::sync::CancellationToken;
 
-use crate::buffer::{InputBuffer, OutputBuffer};
+use crate::buffer::OutputBuffer;
 use crate::hash::AddressHash;
 use crate::identity::{Identity, PrivateIdentity};
 use crate::iface::hdlc::Hdlc;
-use crate::packet::Packet;
-use crate::serde::Serialize;
+use crate::iface::{
+    decode_packet_ifac, encode_packet_ifac, is_ifac_violation, record_ifac_violation, IfacRuntime,
+    IfacState, MAX_IFAC_SIZE_BYTES,
+};
 
 use super::{
     IfaceRole, IfaceSource, Interface, InterfaceContext, InterfaceManager, RxMessage, TxMessage,
@@ -52,6 +54,12 @@ const WEAVE_MANAGEMENT_CHANNEL_CAPACITY: usize = 16;
 
 type WeaveManagementFrameSender = tokio::sync::mpsc::Sender<Vec<u8>>;
 type WeaveManagementFrameReceiver = Arc<tokio::sync::Mutex<tokio::sync::mpsc::Receiver<Vec<u8>>>>;
+
+#[derive(Clone)]
+struct WeaveStreamControl {
+    cancel: CancellationToken,
+    iface_stop: CancellationToken,
+}
 
 #[derive(Clone)]
 pub struct WeaveInterface {
@@ -164,6 +172,8 @@ impl WeaveInterface {
     pub async fn spawn(context: InterfaceContext<Self>) {
         let iface_stop = context.channel.stop.clone();
         let parent_iface = context.channel.address;
+        let ifac_state = context.channel.ifac_state.clone();
+        let ifac_violations = context.channel.ifac_violations.clone();
         let (
             device,
             baud_rate,
@@ -236,7 +246,7 @@ impl WeaveInterface {
                 status.last_error = None;
             });
 
-            run_weave_stream(
+            run_weave_stream_with_ifac(
                 port,
                 WeaveStreamOptions {
                     parent_iface,
@@ -246,11 +256,14 @@ impl WeaveInterface {
                     switch_identity: switch_identity.clone(),
                     runtime_status: runtime_status.clone(),
                 },
-                context.cancel.clone(),
-                iface_stop.clone(),
+                WeaveStreamControl {
+                    cancel: context.cancel.clone(),
+                    iface_stop: iface_stop.clone(),
+                },
                 rx_channel.clone(),
                 tx_channel.clone(),
                 management_frame_rx.clone(),
+                IfacRuntime::from_parts(ifac_state.clone(), ifac_violations.clone()),
             )
             .await;
             online.store(false, std::sync::atomic::Ordering::Release);
@@ -819,14 +832,41 @@ where
     true
 }
 
+#[cfg(test)]
 pub(crate) async fn run_weave_stream<IO>(
-    mut stream: IO,
+    stream: IO,
     options: WeaveStreamOptions,
     cancel: CancellationToken,
     iface_stop: CancellationToken,
     rx_channel: tokio::sync::mpsc::Sender<RxMessage>,
     tx_channel: Arc<tokio::sync::Mutex<tokio::sync::mpsc::Receiver<TxMessage>>>,
     management_frame_rx: WeaveManagementFrameReceiver,
+) where
+    IO: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
+    run_weave_stream_with_ifac(
+        stream,
+        options,
+        WeaveStreamControl { cancel, iface_stop },
+        rx_channel,
+        tx_channel,
+        management_frame_rx,
+        IfacRuntime::from_parts(
+            Arc::new(std::sync::RwLock::new(None)),
+            Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        ),
+    )
+    .await;
+}
+
+async fn run_weave_stream_with_ifac<IO>(
+    mut stream: IO,
+    options: WeaveStreamOptions,
+    control: WeaveStreamControl,
+    rx_channel: tokio::sync::mpsc::Sender<RxMessage>,
+    tx_channel: Arc<tokio::sync::Mutex<tokio::sync::mpsc::Receiver<TxMessage>>>,
+    management_frame_rx: WeaveManagementFrameReceiver,
+    ifac: IfacRuntime,
 ) where
     IO: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
@@ -858,9 +898,8 @@ pub(crate) async fn run_weave_stream<IO>(
 
     let state = Arc::new(tokio::sync::Mutex::new(WeaveRuntimeState::default()));
     let mut frame_buffer = Vec::<u8>::with_capacity(options.mtu * 4);
-    let mut hdlc_rx_buffer = vec![0_u8; options.mtu.max(DEFAULT_MTU) + 128];
+    let mut hdlc_rx_buffer = vec![0_u8; options.mtu.max(DEFAULT_MTU) + MAX_IFAC_SIZE_BYTES + 128];
     let mut read_buffer = vec![0_u8; READ_CAPACITY.max(options.mtu)];
-    let mut tx_buffer = vec![0_u8; options.mtu];
     let mut cleanup_interval = tokio::time::interval(WEAVE_ENDPOINT_CLEANUP_INTERVAL);
     let mut stopped_by_control = false;
 
@@ -868,11 +907,11 @@ pub(crate) async fn run_weave_stream<IO>(
         let mut tx_channel = tx_channel.lock().await;
         let mut management_frame_rx = management_frame_rx.lock().await;
         tokio::select! {
-            _ = cancel.cancelled() => {
+            _ = control.cancel.cancelled() => {
                 stopped_by_control = true;
                 break;
             }
-            _ = iface_stop.cancelled() => {
+            _ = control.iface_stop.cancelled() => {
                 stopped_by_control = true;
                 break;
             }
@@ -906,6 +945,8 @@ pub(crate) async fn run_weave_stream<IO>(
                                     state.clone(),
                                     &rx_channel,
                                     &mut stream,
+                                    &ifac.state,
+                                    &ifac.violations,
                                 )
                                 .await
                                 {
@@ -940,7 +981,9 @@ pub(crate) async fn run_weave_stream<IO>(
                 }
             }
             Some(message) = tx_channel.recv() => {
-                let Some(frames) = weave_tx_frames(&message, &options, state.clone(), &mut tx_buffer).await else {
+                let Some(frames) =
+                    weave_tx_frames(&message, &options, state.clone(), &ifac.state).await
+                else {
                     continue;
                 };
                 for frame in frames {
@@ -1010,6 +1053,8 @@ async fn process_weave_frame<IO>(
     state: Arc<tokio::sync::Mutex<WeaveRuntimeState>>,
     rx_channel: &tokio::sync::mpsc::Sender<RxMessage>,
     stream: &mut IO,
+    ifac_state: &IfacState,
+    ifac_violations: &Arc<std::sync::atomic::AtomicU64>,
 ) -> bool
 where
     IO: AsyncWrite + Unpin,
@@ -1069,23 +1114,34 @@ where
             endpoint.copy_from_slice(&payload[data_len..]);
             let address = ensure_weave_endpoint(endpoint, options, state.clone()).await;
             if let Some(address) = address {
-                if let Ok(packet) = Packet::deserialize(&mut InputBuffer::new(&payload[..data_len]))
-                {
-                    update_weave_status(&options.runtime_status, |status| {
-                        status.mark_endpoint_packet_rx(endpoint, address);
-                    });
-                    if rx_channel
-                        .send(RxMessage { address, packet, source: IfaceSource::None })
-                        .await
-                        .is_err()
-                    {
-                        log::warn!(
-                            "Weave receive queue closed iface={} device={} endpoint={}",
+                match decode_packet_ifac(ifac_state, &payload[..data_len]) {
+                    Ok(packet) => {
+                        update_weave_status(&options.runtime_status, |status| {
+                            status.mark_endpoint_packet_rx(endpoint, address);
+                        });
+                        if rx_channel
+                            .send(RxMessage { address, packet, source: IfaceSource::None })
+                            .await
+                            .is_err()
+                        {
+                            log::warn!(
+                                "Weave receive queue closed iface={} device={} endpoint={}",
+                                options.parent_iface,
+                                options.device,
+                                hex::encode(endpoint)
+                            );
+                            return false;
+                        }
+                    }
+                    Err(err) => {
+                        if is_ifac_violation(&err) {
+                            record_ifac_violation(ifac_violations, &err);
+                        }
+                        log::debug!(
+                            "Weave endpoint packet rejected iface={} endpoint={} error={err:?}",
                             options.parent_iface,
-                            options.device,
                             hex::encode(endpoint)
                         );
-                        return false;
                     }
                 }
             }
@@ -1191,11 +1247,15 @@ async fn weave_tx_frames(
     message: &TxMessage,
     _options: &WeaveStreamOptions,
     state: Arc<tokio::sync::Mutex<WeaveRuntimeState>>,
-    tx_buffer: &mut [u8],
+    ifac_state: &IfacState,
 ) -> Option<Vec<Vec<u8>>> {
-    let mut output = OutputBuffer::new(tx_buffer);
-    message.packet.serialize(&mut output).ok()?;
-    let payload = output.as_slice();
+    let payload = match encode_packet_ifac(ifac_state, &message.packet) {
+        Ok(payload) => payload,
+        Err(err) => {
+            log::warn!("Weave packet encode failed before transmit: {err:?}");
+            return None;
+        }
+    };
     let mut state = state.lock().await;
     let remote_switch_id = state.remote_switch_id?;
     let endpoints: Vec<[u8; ENDPOINT_ID_LEN]> = match message.tx_type {
@@ -1226,7 +1286,7 @@ async fn weave_tx_frames(
         frames.push(weave_wire_frame(&weave_endpoint_command_frame(
             remote_switch_id,
             endpoint,
-            payload,
+            &payload,
         )));
     }
     (!frames.is_empty()).then_some(frames)
@@ -1420,7 +1480,8 @@ mod tests {
     use crate::hash::AddressHash;
     use crate::identity::PrivateIdentity;
     use crate::iface::{InterfaceManager, TxMessage, TxMessageType};
-    use crate::packet::Packet;
+    use crate::packet::{Packet, PacketDataBuffer};
+    use crate::serde::Serialize;
 
     use super::*;
 
@@ -1429,6 +1490,10 @@ mod tests {
         let mut output = OutputBuffer::new(&mut buffer);
         packet.serialize(&mut output).expect("serialize packet");
         output.as_slice().to_vec()
+    }
+
+    fn valid_test_packet() -> Packet {
+        Packet { data: PacketDataBuffer::new_from_slice(b"weave-test"), ..Packet::default() }
     }
 
     fn log_frame(target: [u8; 4], event: u16, data: &[u8]) -> Vec<u8> {
@@ -1678,6 +1743,7 @@ mod tests {
     async fn weave_tx_frames_refreshes_endpoint_activity() {
         let (options, manager, _parent) = test_options().await;
         let state = Arc::new(tokio::sync::Mutex::new(WeaveRuntimeState::default()));
+        let ifac_state = Arc::new(std::sync::RwLock::new(None));
         let direct_endpoint = [0x34_u8; ENDPOINT_ID_LEN];
         let stale_endpoint = [0x35_u8; ENDPOINT_ID_LEN];
         let direct_address = ensure_weave_endpoint(direct_endpoint, &options, state.clone())
@@ -1695,7 +1761,6 @@ mod tests {
             }
         }
 
-        let mut tx_buffer = vec![0_u8; DEFAULT_MTU];
         let frames = weave_tx_frames(
             &TxMessage {
                 tx_type: TxMessageType::Direct(direct_address),
@@ -1703,7 +1768,7 @@ mod tests {
             },
             &options,
             state.clone(),
-            &mut tx_buffer,
+            &ifac_state,
         )
         .await
         .expect("direct tx frame");
@@ -1728,7 +1793,7 @@ mod tests {
             &TxMessage { tx_type: TxMessageType::Broadcast(None), packet: Packet::default() },
             &options,
             state.clone(),
-            &mut tx_buffer,
+            &ifac_state,
         )
         .await
         .expect("broadcast tx frames");
@@ -1848,7 +1913,7 @@ mod tests {
         peer.write_all(&log_frame(local_switch, ET_PROTO_WEAVE_EP_ALIVE, &endpoint))
             .await
             .expect("alive event");
-        let mut endpoint_payload = packet_payload(&Packet::default());
+        let mut endpoint_payload = packet_payload(&valid_test_packet());
         endpoint_payload.extend_from_slice(&endpoint);
         peer.write_all(&weave_wire_frame(&weave_wdcl_frame(
             local_switch,
@@ -2090,7 +2155,7 @@ mod tests {
         .await
         .expect("discovery response");
         let _ = peer.read(&mut bytes).await.expect("handshake frame");
-        let mut endpoint_payload = packet_payload(&Packet::default());
+        let mut endpoint_payload = packet_payload(&valid_test_packet());
         endpoint_payload.extend_from_slice(&endpoint);
         peer.write_all(&weave_wire_frame(&weave_wdcl_frame(
             local_switch,
@@ -2189,7 +2254,7 @@ mod tests {
         let mut discovery_payload = Vec::new();
         discovery_payload.extend_from_slice(remote.as_identity().verifying_key_bytes());
         discovery_payload.extend_from_slice(&remote.sign(&local_switch).to_bytes());
-        let mut endpoint_payload = packet_payload(&Packet::default());
+        let mut endpoint_payload = packet_payload(&valid_test_packet());
         endpoint_payload.extend_from_slice(&endpoint);
         let stream = FailingWeaveWriteStream::new(
             vec![

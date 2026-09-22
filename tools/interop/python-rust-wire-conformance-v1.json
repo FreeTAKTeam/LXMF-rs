@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "generator": {
+    "command": "python3 tools/scripts/python_wire_conformance.py --output target/interop/python-rust-wire-conformance/report.json",
+    "script": "tools/scripts/python_wire_conformance.py",
+    "reticulum_revision": "99de23c040d507e3fefca19e87b182302902725d",
+    "lxmf_revision": "727830cefda83d9c6e3982b48675425f3f988f9c",
+    "rust_fixture_source": "crates/libs/lxmf-core/tests/fixtures/lxmf_interop/fixtures.json"
+  },
+  "vectors": [
+    {
+      "id": "python_plain_packet",
+      "direction": "python_to_rust",
+      "kind": "reticulum_packet",
+      "wire_hex": "08001111111111111111111111111111111100776972652d636f6e666f726d616e6365",
+      "expected": {
+        "header_type": "type1",
+        "packet_type": "data",
+        "destination_type": "plain",
+        "context": "none",
+        "payload_utf8": "wire-conformance"
+      }
+    },
+    {
+      "id": "python_lxmf_wire",
+      "direction": "python_to_rust",
+      "kind": "lxmf_wire",
+      "wire_hex": "111111111111111111111111111111112222222222222222222222222222222266d91d3d5baadd662d28eeb430483e638479af84df23718d8dc812c2b7c595e3d06abd1c2389a550c97c6a9fa4bcc043b6339e15e11a4be9ec0a1a15113f500f94cb41da6f44e6100000c40d696e7465726f702d7469746c65c40f696e7465726f702d636f6e74656e74c0",
+      "expected": {
+        "destination_hex": "11111111111111111111111111111111",
+        "source_hex": "22222222222222222222222222222222",
+        "title_utf8": "interop-title",
+        "content_utf8": "interop-content",
+        "timestamp": 1773999000.25
+      }
+    },
+    {
+      "id": "rust_lxmf_wire",
+      "direction": "rust_to_python",
+      "kind": "lxmf_wire",
+      "source": "crates/libs/lxmf-core/tests/fixtures/lxmf_interop/fixtures.json:fixtures.direct_no_stamp",
+      "wire_hex": "11111111111111111111111111111111222222222222222222222222222222223333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333394cb41da6f44e6100000c40d696e7465726f702d7469746c65c40f696e7465726f702d636f6e74656e74c0",
+      "expected": {
+        "destination_hex": "11111111111111111111111111111111",
+        "source_hex": "22222222222222222222222222222222",
+        "title_utf8": "interop-title",
+        "content_utf8": "interop-content",
+        "timestamp": 1773999000.25
+      }
+    }
+  ],
+  "negative_vectors": [
+    {
+      "id": "packet_empty_payload",
+      "direction": "both",
+      "kind": "reticulum_packet",
+      "wire_hex": "08001111111111111111111111111111111100",
+      "failure_boundary": "packet decoder must reject empty data"
+    },
+    {
+      "id": "packet_pathfinder_limit",
+      "direction": "both",
+      "kind": "reticulum_packet",
+      "wire_hex": "0880111111111111111111111111111111110078",
+      "failure_boundary": "packet decoder must reject hop count 128"
+    },
+    {
+      "id": "lxmf_truncated_payload",
+      "direction": "both",
+      "kind": "lxmf_wire",
+      "base_vector": "python_lxmf_wire",
+      "truncate_bytes": 1,
+      "failure_boundary": "LXMF MessagePack payload must be complete"
+    },
+    {
+      "id": "lxmf_reserved_msgpack_code",
+      "direction": "both",
+      "kind": "lxmf_wire",
+      "base_vector": "python_lxmf_wire",
+      "replace_last_byte_hex": "c1",
+      "failure_boundary": "LXMF payload decoder must reject reserved MessagePack code"
+    }
+  ]
+}

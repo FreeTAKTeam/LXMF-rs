@@ -1,0 +1,1199 @@
+use std::fs;
+use std::io;
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command, Output, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
+
+static PYTHON_INTEROP_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn free_port() -> io::Result<u16> {
+    Ok(std::net::TcpListener::bind("127.0.0.1:0")?.local_addr()?.port())
+}
+
+fn wait_for_port(port: u16, child: &mut Child) -> io::Result<()> {
+    let deadline = Instant::now() + Duration::from_secs(8);
+    while Instant::now() < deadline {
+        if std::net::TcpStream::connect(("127.0.0.1", port)).is_ok() {
+            return Ok(());
+        }
+        if let Some(status) = child.try_wait()? {
+            return Err(io::Error::other(format!(
+                "rngit exited before opening its port: {status}"
+            )));
+        }
+        thread::sleep(Duration::from_millis(25));
+    }
+    Err(io::Error::new(io::ErrorKind::TimedOut, "rngit did not open its TCP port"))
+}
+
+fn python_repo() -> PathBuf {
+    let configured = std::env::var_os("RETICULUM_PY_REPO")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(".tmp/python-refs/Reticulum"));
+    if configured.is_absolute() {
+        configured
+    } else {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..").join(configured)
+    }
+}
+
+fn python_bin() -> String {
+    std::env::var("LXMF_PYTHON_BIN").unwrap_or_else(|_| "python3".to_string())
+}
+
+fn write_python_config(path: &Path, port: u16) -> io::Result<()> {
+    fs::write(
+        path.join("config"),
+        format!(
+            "[reticulum]\n\
+             enable_transport = no\n\
+             share_instance = no\n\
+             \n\
+             [logging]\n\
+             loglevel = 0\n\
+             \n\
+             [interfaces]\n\
+             [[TCP Client Interface]]\n\
+             type = TCPClientInterface\n\
+             enabled = yes\n\
+             target_host = 127.0.0.1\n\
+             target_port = {port}\n"
+        ),
+    )
+}
+
+fn run_git(directory: &Path, args: &[&str]) -> io::Result<()> {
+    let output = Command::new("git").args(args).current_dir(directory).output()?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(io::Error::other(format!(
+            "git {:?} failed: {}",
+            args,
+            String::from_utf8_lossy(&output.stderr).trim()
+        )))
+    }
+}
+
+fn create_repository_fixture(temp: &Path) -> io::Result<PathBuf> {
+    let root = temp.join("rngit-root");
+    let group = root.join("group");
+    let repository = group.join("repo");
+    let source = temp.join("source");
+    fs::create_dir_all(&group)?;
+    fs::create_dir_all(&source)?;
+
+    run_git(&source, &["init", "-q"])?;
+    run_git(&source, &["config", "user.email", "rngit-python@example.invalid"])?;
+    run_git(&source, &["config", "user.name", "rngit-python-interop"])?;
+    run_git(&source, &["checkout", "-qb", "main"])?;
+    fs::write(source.join("README.md"), b"# Python rngit interop\n")?;
+    let media = (0..8192).map(|index| (index as u8).wrapping_mul(29)).collect::<Vec<_>>();
+    fs::write(source.join("image.png"), &media)?;
+    fs::write(
+        source.join("valid.png"),
+        [
+            0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48,
+            0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x04, 0x00, 0x00,
+            0x00, 0xb5, 0x1c, 0x0c, 0x02, 0x00, 0x00, 0x00, 0x0b, 0x49, 0x44, 0x41, 0x54, 0x78,
+            0xda, 0x63, 0x64, 0xf8, 0x0f, 0x00, 0x01, 0x05, 0x01, 0x01, 0x27, 0x18, 0xe3, 0x66,
+            0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+        ],
+    )?;
+    run_git(&source, &["add", "README.md", "image.png", "valid.png"])?;
+    run_git(&source, &["commit", "-qm", "interop fixture"])?;
+
+    run_git(&group, &["init", "--bare", "-q", "repo"])?;
+    run_git(&repository, &["symbolic-ref", "HEAD", "refs/heads/main"])?;
+    let repository_url = repository.to_string_lossy().into_owned();
+    let source_url = source.to_string_lossy().into_owned();
+    run_git(&source, &["remote", "add", "origin", &repository_url])?;
+    run_git(&source, &["push", "-q", "origin", "main"])?;
+    run_git(&repository, &["remote", "add", "upstream", &source_url])?;
+
+    // The process-facing node has no test-only permission mutation hook. The
+    // group sidecar gives the Python client the same read access as the
+    // local page fixtures while keeping the production loader in the path.
+    fs::write(
+        root.join("group.allowed"),
+        "read:all\nwrite:all\ncreate:all\nstats:all\nrelease:all\ninteract:all\nadmin:all\n",
+    )?;
+    let private_group = root.join("private");
+    let private_repository = private_group.join("repo");
+    fs::create_dir_all(&private_group)?;
+    run_git(&private_group, &["init", "--bare", "-q", "repo"])?;
+    run_git(&private_repository, &["symbolic-ref", "HEAD", "refs/heads/main"])?;
+    fs::write(root.join("private.allowed"), "read:all\n")?;
+    fs::write(private_repository.with_extension("allowed"), "read:none\n")?;
+    Ok(root)
+}
+
+fn rust_destination(root: &Path, identity_seed: &str) -> io::Result<String> {
+    let output = Command::new(env!("CARGO_BIN_EXE_rngit"))
+        .args([
+            "--root",
+            root.to_string_lossy().as_ref(),
+            "--print-identity",
+            "--identity-seed",
+            identity_seed,
+        ])
+        .output()?;
+    if !output.status.success() {
+        return Err(io::Error::other(format!(
+            "rngit identity query failed: {}\nstdout:\n{}\nstderr:\n{}",
+            output.status,
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        )));
+    }
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .find_map(|line| line.strip_prefix("Listening on : "))
+        .map(ToOwned::to_owned)
+        .ok_or_else(|| {
+            io::Error::other(format!(
+                "rngit identity query omitted destination:\n{}",
+                String::from_utf8_lossy(&output.stdout)
+            ))
+        })
+}
+
+fn rust_git_destination(root: &Path, identity_seed: &str) -> io::Result<String> {
+    let output = Command::new(env!("CARGO_BIN_EXE_rngit"))
+        .args([
+            "--root",
+            root.to_string_lossy().as_ref(),
+            "--print-identity",
+            "--identity-seed",
+            identity_seed,
+        ])
+        .output()?;
+    if !output.status.success() {
+        return Err(io::Error::other(format!(
+            "rngit Git identity query failed: {}\nstdout:\n{}\nstderr:\n{}",
+            output.status,
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        )));
+    }
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .find_map(|line| line.strip_prefix("Git listening on : "))
+        .map(ToOwned::to_owned)
+        .ok_or_else(|| {
+            io::Error::other(format!(
+                "rngit identity query omitted Git destination:\n{}",
+                String::from_utf8_lossy(&output.stdout)
+            ))
+        })
+}
+
+fn run_python_client(
+    repo: &Path,
+    config_dir: &Path,
+    identity: &Path,
+    destination: &str,
+) -> io::Result<Output> {
+    const CLIENT: &str = r#"
+import hashlib
+import json
+import os
+import sys
+import threading
+import time
+import RNS
+
+config_dir, identity_path, destination_hex = sys.argv[1:4]
+RNS.Reticulum(configdir=config_dir, loglevel=0)
+identity = RNS.Identity.from_file(identity_path) if os.path.isfile(identity_path) else RNS.Identity()
+if not os.path.isfile(identity_path):
+    identity.to_file(identity_path)
+
+destination_hash = bytes.fromhex(destination_hex)
+if not RNS.Transport.await_path(destination_hash, timeout=30):
+    raise RuntimeError("could not resolve rngit destination")
+remote_identity = RNS.Identity.recall(destination_hash)
+if remote_identity is None:
+    raise RuntimeError("could not recall rngit identity")
+
+destination = RNS.Destination(
+    remote_identity,
+    RNS.Destination.OUT,
+    RNS.Destination.SINGLE,
+    "nomadnetwork",
+    "node",
+)
+link_ready = threading.Event()
+link_failed = []
+
+def established(link):
+    link.identify(identity)
+    link_ready.set()
+
+def closed(link):
+    if not link_ready.is_set():
+        link_failed.append("link closed before activation")
+        link_ready.set()
+
+link = RNS.Link(destination)
+link.set_link_established_callback(established)
+link.set_link_closed_callback(closed)
+if not link_ready.wait(30):
+    raise RuntimeError("rngit link establishment timed out")
+if link_failed:
+    raise RuntimeError(link_failed[0])
+
+def request(path, data):
+    finished = threading.Event()
+    result = {}
+    def response(receipt):
+        value = receipt.response
+        if hasattr(value, "read"):
+            payload = value.read()
+            metadata = receipt.metadata or {}
+            name = metadata.get("name", b"")
+            result["name"] = name.decode("utf-8") if isinstance(name, bytes) else str(name)
+        else:
+            payload = value
+            result["name"] = None
+        result["sha256"] = hashlib.sha256(payload).hexdigest()
+        result["size"] = len(payload)
+        result["page_has_repository"] = b"Repository" in payload
+        result["has_not_found"] = b"Not Found" in payload
+        result["has_ref_not_found"] = b"reference was not found" in payload
+        result["has_file_not_found"] = b"file was not found" in payload
+        result["is_readme"] = payload == b'# Python rngit interop\n'
+        result["is_webp"] = len(payload) >= 12 and payload[:4] == b"RIFF" and payload[8:12] == b"WEBP"
+        finished.set()
+    def failed(receipt):
+        result["error"] = "request failed"
+        finished.set()
+    receipt = link.request(
+        path,
+        data,
+        response_callback=response,
+        failed_callback=failed,
+        timeout=30,
+    )
+    if receipt is False:
+        raise RuntimeError("request was not sent")
+    if not finished.wait(30):
+        raise RuntimeError("request timed out: " + path)
+    if "error" in result:
+        raise RuntimeError(result["error"] + ": " + path)
+    return result
+
+def request_failure(path, data):
+    finished = threading.Event()
+    result = {"failed": False, "timed_out": False, "unexpected_response": False}
+    def response(receipt):
+        result["unexpected_response"] = True
+        finished.set()
+    def failed(receipt):
+        result["failed"] = True
+        finished.set()
+    receipt = link.request(
+        path,
+        data,
+        response_callback=response,
+        failed_callback=failed,
+        timeout=3,
+    )
+    if receipt is False:
+        result["failed"] = True
+        return result
+    if not finished.wait(5):
+        result["timed_out"] = True
+    return result
+
+page = request(
+    "/page/repo.mu",
+    {"var_g": "group", "var_r": "repo", "var_ref": "HEAD"},
+)
+missing_repository = request(
+    "/page/repo.mu",
+    {"var_g": "missing", "var_r": "repo", "var_ref": "HEAD"},
+)
+invalid_reference = request(
+    "/page/repo.mu",
+    {"var_g": "group", "var_r": "repo", "var_ref": "refs/heads/missing"},
+)
+missing_blob = request(
+    "/page/blob.mu",
+    {
+        "var_g": "group",
+        "var_r": "repo",
+        "var_ref": "HEAD",
+        "var_path": "missing.txt",
+    },
+)
+denied_repository = request(
+    "/page/repo.mu",
+    {"var_g": "private", "var_r": "repo", "var_ref": "HEAD"},
+)
+download = request(
+    "/file/download",
+    {
+        "var_g": "group",
+        "var_r": "repo",
+        "var_ref": "HEAD",
+        "var_path": "README.md",
+    },
+)
+media = request(
+    "/media",
+    {
+        "key": b"rngit-python-interop",
+        "path": "/media/group/repo/HEAD/image.png",
+    },
+)
+converted_media = request(
+    "/media",
+    {
+        "key": b"rngit-python-interop",
+        "path": "/media/group/repo/HEAD/valid.png",
+    },
+)
+missing_media_key = request_failure(
+    "/media",
+    {"path": "/media/group/repo/HEAD/image.png"},
+)
+missing_media_path = request_failure(
+    "/media",
+    {"key": b"rngit-python-interop"},
+)
+malformed_media_path = request_failure(
+    "/media",
+    {"key": b"rngit-python-interop", "path": "/media/group/repo"},
+)
+link.teardown()
+if not missing_repository["has_not_found"]:
+    raise RuntimeError("missing repository did not render a not-found page")
+if not invalid_reference["has_ref_not_found"]:
+    raise RuntimeError("invalid reference did not render a reference error")
+if not missing_blob["has_file_not_found"]:
+    raise RuntimeError("missing blob did not render a file error")
+if not denied_repository["has_not_found"]:
+    raise RuntimeError("denied repository exposed a page")
+if download["name"] != "README.md" or not download["is_readme"]:
+    raise RuntimeError("file download did not preserve content or filename metadata")
+if converted_media["name"] != "valid.webp" or not converted_media["is_webp"]:
+    raise RuntimeError("media conversion did not return validated WebP metadata/content")
+for label, result in [
+    ("missing media key", missing_media_key),
+    ("missing media path", missing_media_path),
+    ("malformed media path", malformed_media_path),
+]:
+    if (not result["failed"] and not result["timed_out"]) or result["unexpected_response"]:
+        raise RuntimeError(f"{label} did not fail closed: {result}")
+print(json.dumps({
+    "page": page,
+    "missing_repository": missing_repository,
+    "invalid_reference": invalid_reference,
+    "missing_blob": missing_blob,
+    "denied_repository": denied_repository,
+    "download": download,
+    "media": media,
+    "converted_media": converted_media,
+    "missing_media_key": missing_media_key,
+    "missing_media_path": missing_media_path,
+    "malformed_media_path": malformed_media_path,
+}, sort_keys=True))
+"#;
+    Command::new(python_bin())
+        .arg("-c")
+        .arg(CLIENT)
+        .arg(config_dir)
+        .arg(identity)
+        .arg(destination)
+        .env("PYTHONPATH", repo)
+        .output()
+}
+
+fn run_python_git_client(
+    repo: &Path,
+    config_dir: &Path,
+    identity: &Path,
+    destination: &str,
+    source: &Path,
+) -> io::Result<Output> {
+    const CLIENT: &str = r#"
+import hashlib
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+from RNS.vendor import umsgpack as mp
+import RNS
+
+config_dir, identity_path, destination_hex, source_path = sys.argv[1:5]
+RNS.Reticulum(configdir=config_dir, loglevel=0)
+identity = RNS.Identity.from_file(identity_path) if os.path.isfile(identity_path) else RNS.Identity()
+if not os.path.isfile(identity_path):
+    identity.to_file(identity_path)
+
+destination_hash = bytes.fromhex(destination_hex)
+if not RNS.Transport.await_path(destination_hash, timeout=30):
+    raise RuntimeError("could not resolve rngit Git destination")
+remote_identity = RNS.Identity.recall(destination_hash)
+if remote_identity is None:
+    raise RuntimeError("could not recall rngit Git identity")
+
+destination = RNS.Destination(
+    remote_identity,
+    RNS.Destination.OUT,
+    RNS.Destination.SINGLE,
+    "git",
+    "repositories",
+)
+link_ready = threading.Event()
+link_failed = []
+
+def established(link):
+    link.identify(identity)
+    link_ready.set()
+
+def closed(link):
+    if not link_ready.is_set():
+        link_failed.append("Git link closed before activation")
+        link_ready.set()
+
+link = RNS.Link(destination)
+link.set_link_established_callback(established)
+link.set_link_closed_callback(closed)
+if not link_ready.wait(30):
+    raise RuntimeError("rngit Git link establishment timed out")
+if link_failed:
+    raise RuntimeError(link_failed[0])
+
+def request(path, data):
+    finished = threading.Event()
+    result = {}
+    def response(receipt):
+        value = receipt.response
+        result["payload"] = value.read() if hasattr(value, "read") else value
+        finished.set()
+    def failed(receipt):
+        result["error"] = "request failed: " + path
+        finished.set()
+    receipt = link.request(
+        path,
+        data,
+        response_callback=response,
+        failed_callback=failed,
+        timeout=30,
+    )
+    if receipt is False:
+        raise RuntimeError("request was not sent: " + path)
+    if not finished.wait(30):
+        raise RuntimeError("request timed out: " + path)
+    if "error" in result:
+        raise RuntimeError(result["error"])
+    payload = result["payload"]
+    if not isinstance(payload, bytes):
+        raise RuntimeError("response was not bytes: " + path)
+    return payload
+
+listing = request(
+    "/git/list",
+    {0: "group/repo", "for_push": False},
+)
+if listing[0] != 0 or b"refs/heads/main" not in listing:
+    raise RuntimeError("Git list response was not successful")
+main_sha = next(
+    line.split(b" ", 1)[0]
+    for line in listing[1:].splitlines()
+    if line.endswith(b" refs/heads/main")
+)
+bundle_response = request(
+    "/git/fetch",
+    {
+        0: "group/repo",
+        "refs": [{"ref": "refs/heads/main", "sha": main_sha.decode("ascii")}],
+    },
+)
+bundle = bundle_response[1:] if bundle_response[0] == 0 else b""
+with tempfile.NamedTemporaryFile() as bundle_file:
+    bundle_file.write(bundle)
+    bundle_file.flush()
+    verification = subprocess.run(
+        ["git", "bundle", "verify", "-q", bundle_file.name],
+        capture_output=True,
+        check=False,
+    )
+
+result = {
+    "sha256": hashlib.sha256(listing).hexdigest(),
+    "status": listing[0],
+    "contains_main": b"refs/heads/main" in listing,
+    "fetch_status": bundle_response[0],
+    "fetch_size": len(bundle),
+    "fetch_sha256": hashlib.sha256(bundle).hexdigest(),
+    "fetch_valid": verification.returncode == 0,
+}
+push_response = request(
+    "/git/push",
+    {
+        0: "group/repo",
+        "local_ref": "refs/heads/main",
+        "remote_ref": "refs/heads/python",
+        "bundle": bundle,
+    },
+)
+if push_response[0] != 0:
+    raise RuntimeError("Git push response was not successful")
+after_push = request(
+    "/git/list",
+    {0: "group/repo", "for_push": False},
+)
+if after_push[0] != 0 or b"refs/heads/python" not in after_push:
+    raise RuntimeError("Git push did not create the requested ref")
+result["push_status"] = push_response[0]
+result["push_contains_python_ref"] = b"refs/heads/python" in after_push
+sync_response = request(
+    "/git/sync",
+    {0: "group/repo"},
+)
+if sync_response[0] != 0:
+    raise RuntimeError("Git sync response was not successful")
+after_sync = request(
+    "/git/list",
+    {0: "group/repo", "for_push": False},
+)
+if after_sync[0] != 0 or b"refs/remotes/upstream/main" not in after_sync:
+    raise RuntimeError("Git sync did not update the configured remote")
+fork_response = request(
+    "/git/fork",
+    {0: "group/fork", "source": source_path},
+)
+if fork_response[0] != 0:
+    raise RuntimeError("Git fork response was not successful")
+fork_listing = request(
+    "/git/list",
+    {0: "group/fork", "for_push": False},
+)
+if fork_listing[0] != 0 or b"refs/heads/main" not in fork_listing:
+    raise RuntimeError("Git fork did not register the copied repository")
+mirror_response = request(
+    "/git/mirror",
+    {0: "group/mirror", "source": source_path},
+)
+if mirror_response[0] != 0:
+    raise RuntimeError("Git mirror response was not successful")
+mirror_listing = request(
+    "/git/list",
+    {0: "group/mirror", "for_push": False},
+)
+if mirror_listing[0] != 0 or b"refs/heads/main" not in mirror_listing:
+    raise RuntimeError("Git mirror did not register the copied repository")
+delete_response = request(
+    "/git/delete",
+    {0: "group/repo", "ref": "refs/heads/python"},
+)
+if delete_response[0] != 0:
+    raise RuntimeError("Git delete response was not successful")
+after_delete = request(
+    "/git/list",
+    {0: "group/repo", "for_push": False},
+)
+if after_delete[0] != 0 or b"refs/heads/python" in after_delete:
+    raise RuntimeError("Git delete did not remove the requested ref")
+create_response = request(
+    "/git/create",
+    {0: "group/newrepo"},
+)
+if create_response[0] != 0:
+    raise RuntimeError("Git create response was not successful")
+created_listing = request(
+    "/git/list",
+    {0: "group/newrepo", "for_push": False},
+)
+if created_listing[0] != 0 or b" HEAD" not in created_listing:
+    raise RuntimeError("Git create did not register the new repository")
+result["delete_status"] = delete_response[0]
+result["delete_removed_python_ref"] = b"refs/heads/python" not in after_delete
+result["sync_status"] = sync_response[0]
+result["sync_contains_upstream_ref"] = b"refs/remotes/upstream/main" in after_sync
+result["fork_status"] = fork_response[0]
+result["fork_contains_main"] = b"refs/heads/main" in fork_listing
+result["mirror_status"] = mirror_response[0]
+result["mirror_contains_main"] = b"refs/heads/main" in mirror_listing
+result["create_status"] = create_response[0]
+result["create_registered_repository"] = created_listing[0] == 0
+
+group_permissions = request(
+    "/mgmt/perms",
+    {2: "group", "operation": "gperms", "step": "get"},
+)
+if group_permissions[0] != 0:
+    raise RuntimeError("group permissions response was not successful")
+group_permissions_payload = mp.unpackb(group_permissions[1:])
+if "read:all" not in group_permissions_payload.get("content", ""):
+    raise RuntimeError("group permissions did not round-trip")
+repository_permissions = request(
+    "/mgmt/perms",
+    {0: "group/repo", "operation": "rperms", "step": "get"},
+)
+if repository_permissions[0] != 0:
+    raise RuntimeError("repository permissions response was not successful")
+
+work_content = "Python work document body"
+invalid_work = request(
+    "/mgmt/work",
+    {
+        0: "group/repo",
+        "operation": "create",
+        "title": "Invalid work",
+        "content": work_content,
+        "format": "markdown",
+        "signature": bytes(64),
+    },
+)
+if invalid_work[0] != 2:
+    raise RuntimeError("invalid work signature was not rejected")
+work_signature = identity.sign(work_content.encode("utf-8"))
+work_create = request(
+    "/mgmt/work",
+    {
+        0: "group/repo",
+        "operation": "create",
+        "title": "Python work",
+        "content": work_content,
+        "format": "markdown",
+        "signature": work_signature,
+    },
+)
+if work_create[0] != 0:
+    raise RuntimeError("work create response was not successful")
+work_created = mp.unpackb(work_create[1:])
+work_id = work_created["id"]
+if work_created.get("scope") != "active":
+    raise RuntimeError("work create did not return the active scope")
+
+work_list = request(
+    "/mgmt/work",
+    {0: "group/repo", "operation": "list", "scope": "active"},
+)
+if work_list[0] != 0:
+    raise RuntimeError("work list response was not successful")
+work_list_payload = mp.unpackb(work_list[1:])
+if not any(document.get("id") == work_id for document in work_list_payload.get("active", [])):
+    raise RuntimeError("work list did not include the created document")
+
+work_view = request(
+    "/mgmt/work",
+    {0: "group/repo", "operation": "view", "doc_id": work_id, "scope": "active"},
+)
+if work_view[0] != 0:
+    raise RuntimeError("work view response was not successful")
+work_view_payload = mp.unpackb(work_view[1:])
+work_meta = work_view_payload["meta"]
+if work_view_payload.get("content") != work_content:
+    raise RuntimeError("work view content did not round-trip")
+if work_meta.get("signature") != work_signature:
+    raise RuntimeError("work signature did not round-trip")
+if work_meta.get("identity") != identity.get_public_key():
+    raise RuntimeError("work public identity did not round-trip")
+
+work_comment = request(
+    "/mgmt/work",
+    {
+        0: "group/repo",
+        "operation": "comment",
+        "doc_id": work_id,
+        "scope": "active",
+        "content": "Python comment",
+        "format": "markdown",
+    },
+)
+if work_comment[0] != 0:
+    raise RuntimeError("work comment response was not successful")
+comment_id = mp.unpackb(work_comment[1:])["id"]
+
+edited_content = "Python edited work document body"
+edited_signature = identity.sign(edited_content.encode("utf-8"))
+work_edit = request(
+    "/mgmt/work",
+    {
+        0: "group/repo",
+        "operation": "edit",
+        "doc_id": work_id,
+        "scope": "active",
+        "title": "Edited Python work",
+        "content": edited_content,
+        "signature": edited_signature,
+    },
+)
+if work_edit[0] != 0:
+    raise RuntimeError("work edit response was not successful")
+
+work_permissions = request(
+    "/mgmt/work",
+    {0: "group/repo", "operation": "perms", "doc_id": work_id, "step": "get"},
+)
+if work_permissions[0] != 0:
+    raise RuntimeError("work permissions get response was not successful")
+work_permission_content = "read:all\nwrite:all\ninteract:all\nadmin:all\n"
+work_permissions_set = request(
+    "/mgmt/work",
+    {
+        0: "group/repo",
+        "operation": "perms",
+        "doc_id": work_id,
+        "step": "set",
+        "content": work_permission_content,
+    },
+)
+if work_permissions_set[0] != 0:
+    raise RuntimeError("work permissions set response was not successful")
+work_permissions_after = request(
+    "/mgmt/work",
+    {0: "group/repo", "operation": "perms", "doc_id": work_id, "step": "get"},
+)
+if mp.unpackb(work_permissions_after[1:]).get("content") != work_permission_content:
+    raise RuntimeError("work permissions did not round-trip")
+
+work_complete = request(
+    "/mgmt/work",
+    {0: "group/repo", "operation": "complete", "doc_id": work_id},
+)
+if work_complete[0] != 0 or mp.unpackb(work_complete[1:]).get("scope") != "completed":
+    raise RuntimeError("work complete response was not successful")
+work_completed_view = request(
+    "/mgmt/work",
+    {0: "group/repo", "operation": "view", "doc_id": work_id, "scope": "completed"},
+)
+if work_completed_view[0] != 0 or mp.unpackb(work_completed_view[1:])["content"] != edited_content:
+    raise RuntimeError("completed work did not preserve the edited content")
+work_activate = request(
+    "/mgmt/work",
+    {0: "group/repo", "operation": "activate", "doc_id": work_id},
+)
+if work_activate[0] != 0 or mp.unpackb(work_activate[1:]).get("scope") != "active":
+    raise RuntimeError("work activate response was not successful")
+work_delete = request(
+    "/mgmt/work",
+    {0: "group/repo", "operation": "delete", "doc_id": work_id, "scope": "active"},
+)
+if work_delete[0] != 0:
+    raise RuntimeError("work delete response was not successful")
+work_after_delete = request(
+    "/mgmt/work",
+    {0: "group/repo", "operation": "list", "scope": "active"},
+)
+if work_after_delete[0] != 0 or mp.unpackb(work_after_delete[1:]).get("active"):
+    raise RuntimeError("work delete did not remove the document")
+
+result["group_permissions_status"] = group_permissions[0]
+result["repository_permissions_status"] = repository_permissions[0]
+result["invalid_work_signature_status"] = invalid_work[0]
+result["work_create_status"] = work_create[0]
+result["work_list_status"] = work_list[0]
+result["work_view_status"] = work_view[0]
+result["work_comment_status"] = work_comment[0]
+result["work_comment_id"] = comment_id
+result["work_edit_status"] = work_edit[0]
+result["work_permissions_status"] = work_permissions_after[0]
+result["work_complete_status"] = work_complete[0]
+result["work_activate_status"] = work_activate[0]
+result["work_delete_status"] = work_delete[0]
+link.teardown()
+print(json.dumps(result, sort_keys=True))
+"#;
+    Command::new(python_bin())
+        .arg("-c")
+        .arg(CLIENT)
+        .arg(config_dir)
+        .arg(identity)
+        .arg(destination)
+        .arg(source)
+        .env("PYTHONPATH", repo)
+        .output()
+}
+
+fn run_python_work_client(
+    repo: &Path,
+    config_dir: &Path,
+    identity: &Path,
+    destination: &str,
+    mode: &str,
+    work_id: Option<u64>,
+) -> io::Result<Output> {
+    const CLIENT: &str = r#"
+import json
+import os
+import sys
+import threading
+import RNS
+from RNS.vendor import umsgpack as mp
+
+config_dir, identity_path, destination_hex, mode = sys.argv[1:5]
+work_id = int(sys.argv[5]) if len(sys.argv) > 5 else None
+RNS.Reticulum(configdir=config_dir, loglevel=0)
+identity = RNS.Identity.from_file(identity_path) if os.path.isfile(identity_path) else RNS.Identity()
+if not os.path.isfile(identity_path):
+    identity.to_file(identity_path)
+
+destination_hash = bytes.fromhex(destination_hex)
+if not RNS.Transport.await_path(destination_hash, timeout=30):
+    raise RuntimeError("could not resolve rngit Git destination")
+remote_identity = RNS.Identity.recall(destination_hash)
+if remote_identity is None:
+    raise RuntimeError("could not recall rngit Git identity")
+
+destination = RNS.Destination(
+    remote_identity,
+    RNS.Destination.OUT,
+    RNS.Destination.SINGLE,
+    "git",
+    "repositories",
+)
+link_ready = threading.Event()
+link_failed = []
+
+def established(link):
+    link.identify(identity)
+    link_ready.set()
+
+def closed(link):
+    if not link_ready.is_set():
+        link_failed.append("Git link closed before activation")
+        link_ready.set()
+
+link = RNS.Link(destination)
+link.set_link_established_callback(established)
+link.set_link_closed_callback(closed)
+if not link_ready.wait(30):
+    raise RuntimeError("rngit Git link establishment timed out")
+if link_failed:
+    raise RuntimeError(link_failed[0])
+
+def request(data):
+    finished = threading.Event()
+    result = {}
+    def response(receipt):
+        result["payload"] = receipt.response
+        finished.set()
+    def failed(receipt):
+        result["error"] = "request failed"
+        finished.set()
+    receipt = link.request(
+        "/mgmt/work",
+        data,
+        response_callback=response,
+        failed_callback=failed,
+        timeout=30,
+    )
+    if receipt is False:
+        raise RuntimeError("work request was not sent")
+    if not finished.wait(30):
+        raise RuntimeError("work request timed out")
+    if "error" in result:
+        raise RuntimeError(result["error"])
+    return result["payload"]
+
+if mode == "create":
+    content = "Python restart work document body"
+    created = request({
+        0: "group/repo",
+        "operation": "create",
+        "title": "Python restart work",
+        "content": content,
+        "format": "markdown",
+        "signature": identity.sign(content.encode("utf-8")),
+    })
+    if created[0] != 0:
+        raise RuntimeError("work create response was not successful")
+    payload = mp.unpackb(created[1:])
+    result = {"id": payload["id"], "scope": payload["scope"]}
+else:
+    if work_id is None:
+        raise RuntimeError("verification requires a work ID")
+    listed = request({0: "group/repo", "operation": "list", "scope": "active"})
+    if listed[0] != 0:
+        raise RuntimeError("work list response was not successful")
+    listing = mp.unpackb(listed[1:])
+    active = listing.get("active", [])
+    persisted = any(document.get("id") == work_id for document in active)
+    viewed = request({
+        0: "group/repo",
+        "operation": "view",
+        "doc_id": work_id,
+        "scope": "active",
+    })
+    if viewed[0] != 0:
+        raise RuntimeError("work view response was not successful")
+    document = mp.unpackb(viewed[1:])
+    result = {
+        "id": work_id,
+        "persisted": persisted,
+        "content": document.get("content"),
+        "title": document.get("meta", {}).get("title"),
+    }
+link.teardown()
+print(json.dumps(result, sort_keys=True))
+"#;
+    let mut command = Command::new(python_bin());
+    command.arg("-c").arg(CLIENT).arg(config_dir).arg(identity).arg(destination).arg(mode);
+    if let Some(work_id) = work_id {
+        command.arg(work_id.to_string());
+    }
+    command.env("PYTHONPATH", repo).output()
+}
+
+fn spawn_rngit_server(root: &Path, port: u16, identity_seed: &str) -> io::Result<Child> {
+    Command::new(env!("CARGO_BIN_EXE_rngit"))
+        .args([
+            "--root",
+            root.to_string_lossy().as_ref(),
+            "--listen",
+            &format!("127.0.0.1:{port}"),
+            "--identity-seed",
+            identity_seed,
+            "--silent",
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+}
+
+#[test]
+#[ignore = "requires local Python Reticulum checkout"]
+fn rngit_work_survives_process_restart_for_pinned_python_client() -> io::Result<()> {
+    let _test_guard = PYTHON_INTEROP_TEST_LOCK.lock().expect("Python interop test lock poisoned");
+    let temp = tempfile::tempdir()?;
+    let root = create_repository_fixture(temp.path())?;
+    let python_repo = python_repo();
+    if !python_repo.join("RNS/Link.py").is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("pinned Python Reticulum checkout not found: {}", python_repo.display()),
+        ));
+    }
+
+    let port = free_port()?;
+    let identity_seed = "rngit-python-restart-server";
+    let config_dir = temp.path().join("python-client");
+    fs::create_dir_all(&config_dir)?;
+    write_python_config(&config_dir, port)?;
+    let identity = config_dir.join("identity");
+    let destination = rust_git_destination(&root, identity_seed)?;
+    let mut server = spawn_rngit_server(&root, port, identity_seed)?;
+
+    let result = (|| {
+        wait_for_port(port, &mut server)?;
+        let created = run_python_work_client(
+            &python_repo,
+            &config_dir,
+            &identity,
+            &destination,
+            "create",
+            None,
+        )?;
+        if !created.status.success() {
+            return Err(io::Error::other(format!(
+                "Python work creator failed: {}\nstdout:\n{}\nstderr:\n{}",
+                created.status,
+                String::from_utf8_lossy(&created.stdout),
+                String::from_utf8_lossy(&created.stderr)
+            )));
+        }
+        let created_json: serde_json::Value =
+            serde_json::from_slice(&created.stdout).map_err(|error| {
+                io::Error::other(format!(
+                    "Python work creator returned invalid JSON: {error}\nstdout:\n{}",
+                    String::from_utf8_lossy(&created.stdout)
+                ))
+            })?;
+        let work_id = created_json
+            .get("id")
+            .and_then(serde_json::Value::as_u64)
+            .ok_or_else(|| io::Error::other("Python work creator omitted numeric ID"))?;
+        if created_json.get("scope").and_then(serde_json::Value::as_str) != Some("active") {
+            return Err(io::Error::other("Python work creator did not return active scope"));
+        }
+
+        server.kill()?;
+        server.wait()?;
+        server = spawn_rngit_server(&root, port, identity_seed)?;
+        wait_for_port(port, &mut server)?;
+
+        let verified = run_python_work_client(
+            &python_repo,
+            &config_dir,
+            &identity,
+            &destination,
+            "verify",
+            Some(work_id),
+        )?;
+        if !verified.status.success() {
+            return Err(io::Error::other(format!(
+                "Python work verifier failed: {}\nstdout:\n{}\nstderr:\n{}",
+                verified.status,
+                String::from_utf8_lossy(&verified.stdout),
+                String::from_utf8_lossy(&verified.stderr)
+            )));
+        }
+        let verified_json: serde_json::Value =
+            serde_json::from_slice(&verified.stdout).map_err(|error| {
+                io::Error::other(format!(
+                    "Python work verifier returned invalid JSON: {error}\nstdout:\n{}",
+                    String::from_utf8_lossy(&verified.stdout)
+                ))
+            })?;
+        if verified_json.get("persisted") != Some(&serde_json::Value::Bool(true))
+            || verified_json.get("content").and_then(serde_json::Value::as_str)
+                != Some("Python restart work document body")
+            || verified_json.get("title").and_then(serde_json::Value::as_str)
+                != Some("Python restart work")
+        {
+            return Err(io::Error::other(format!(
+                "work document did not survive restart: {verified_json}"
+            )));
+        }
+        Ok(())
+    })();
+
+    let _ = server.kill();
+    let _ = server.wait();
+    result
+}
+
+#[test]
+#[ignore = "requires local Python Reticulum checkout"]
+fn rngit_serves_pages_and_media_to_pinned_python_client() -> io::Result<()> {
+    let _test_guard = PYTHON_INTEROP_TEST_LOCK.lock().expect("Python interop test lock poisoned");
+    let temp = tempfile::tempdir()?;
+    let root = create_repository_fixture(temp.path())?;
+    let python_repo = python_repo();
+    if !python_repo.join("RNS/Link.py").is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("pinned Python Reticulum checkout not found: {}", python_repo.display()),
+        ));
+    }
+
+    let port = free_port()?;
+    let identity_seed = "rngit-python-interop-server";
+    if !Command::new("ffmpeg")
+        .arg("-version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()?
+        .success()
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "pinned Python rngit interop requires ffmpeg for the conversion trace",
+        ));
+    }
+    let mut server = Command::new(env!("CARGO_BIN_EXE_rngit"))
+        .args([
+            "--root",
+            root.to_string_lossy().as_ref(),
+            "--listen",
+            &format!("127.0.0.1:{port}"),
+            "--identity-seed",
+            identity_seed,
+            "--silent",
+        ])
+        .env("RNGIT_MEDIA_BACKEND", "ffmpeg")
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()?;
+
+    let result = (|| {
+        wait_for_port(port, &mut server)?;
+        let destination = rust_destination(&root, identity_seed)?;
+        let config_dir = temp.path().join("python-client");
+        fs::create_dir_all(&config_dir)?;
+        write_python_config(&config_dir, port)?;
+        let identity = config_dir.join("identity");
+        let output = run_python_client(&python_repo, &config_dir, &identity, &destination)?;
+        if !output.status.success() {
+            return Err(io::Error::other(format!(
+                "Python rngit client failed: {}\nstdout:\n{}\nstderr:\n{}",
+                output.status,
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            )));
+        }
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("\"page_has_repository\": true"), "page response: {stdout}");
+        assert!(stdout.contains("\"name\": \"image.png\""), "media metadata: {stdout}");
+        assert!(
+            stdout.contains(
+                "\"sha256\": \"f8e920545e99cdc9bbc2650eb8282344e8971a7ff0c397c91355d0fcaf6c61fa\""
+            ),
+            "media checksum: {stdout}"
+        );
+        assert!(stdout.contains("\"size\": 8192"), "media size: {stdout}");
+        assert!(stdout.contains("\"name\": \"valid.webp\""), "converted media metadata: {stdout}");
+        assert!(stdout.contains("\"is_webp\": true"), "converted media payload: {stdout}");
+
+        let git_destination = rust_git_destination(&root, identity_seed)?;
+        let git_config_dir = temp.path().join("python-git-client");
+        fs::create_dir_all(&git_config_dir)?;
+        write_python_config(&git_config_dir, port)?;
+        let git_identity = git_config_dir.join("identity");
+        let git_output = run_python_git_client(
+            &python_repo,
+            &git_config_dir,
+            &git_identity,
+            &git_destination,
+            &temp.path().join("source"),
+        )?;
+        if !git_output.status.success() {
+            return Err(io::Error::other(format!(
+                "Python rngit Git client failed: {}\nstdout:\n{}\nstderr:\n{}",
+                git_output.status,
+                String::from_utf8_lossy(&git_output.stdout),
+                String::from_utf8_lossy(&git_output.stderr)
+            )));
+        }
+        let git_stdout = String::from_utf8_lossy(&git_output.stdout);
+        assert!(git_stdout.contains("\"status\": 0"), "Git list status: {git_stdout}");
+        assert!(git_stdout.contains("\"contains_main\": true"), "Git list payload: {git_stdout}");
+        assert!(git_stdout.contains("\"fetch_status\": 0"), "Git fetch status: {git_stdout}");
+        assert!(git_stdout.contains("\"fetch_valid\": true"), "Git fetch bundle: {git_stdout}");
+        assert!(!git_stdout.contains("\"fetch_size\": 0"), "Git fetch was empty: {git_stdout}");
+        assert!(git_stdout.contains("\"push_status\": 0"), "Git push status: {git_stdout}");
+        assert!(
+            git_stdout.contains("\"push_contains_python_ref\": true"),
+            "Git push ref listing: {git_stdout}"
+        );
+        assert!(git_stdout.contains("\"delete_status\": 0"), "Git delete status: {git_stdout}");
+        assert!(
+            git_stdout.contains("\"delete_removed_python_ref\": true"),
+            "Git delete ref listing: {git_stdout}"
+        );
+        assert!(git_stdout.contains("\"sync_status\": 0"), "Git sync status: {git_stdout}");
+        assert!(
+            git_stdout.contains("\"sync_contains_upstream_ref\": true"),
+            "Git sync ref listing: {git_stdout}"
+        );
+        assert!(git_stdout.contains("\"fork_status\": 0"), "Git fork status: {git_stdout}");
+        assert!(
+            git_stdout.contains("\"fork_contains_main\": true"),
+            "Git fork ref listing: {git_stdout}"
+        );
+        assert!(git_stdout.contains("\"mirror_status\": 0"), "Git mirror status: {git_stdout}");
+        assert!(
+            git_stdout.contains("\"mirror_contains_main\": true"),
+            "Git mirror ref listing: {git_stdout}"
+        );
+        assert!(git_stdout.contains("\"create_status\": 0"), "Git create status: {git_stdout}");
+        assert!(
+            git_stdout.contains("\"create_registered_repository\": true"),
+            "Git create listing: {git_stdout}"
+        );
+        Ok(())
+    })();
+    let _ = server.kill();
+    let _ = server.wait();
+    result
+}

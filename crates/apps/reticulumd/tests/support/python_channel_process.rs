@@ -9,10 +9,22 @@ use tokio::time::{sleep, Instant};
 
 static PYTHON_INTEROP_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
+pub(super) const IFAC_NETWORK_NAME: &str = "lxmf-rs-issue-605-ifac";
+pub(super) const IFAC_PASSPHRASE: &str = "lxmf-rs-issue-605-ifac-secret";
+pub(super) const IFAC_SIZE_BITS: u64 = 128;
+
 pub(super) struct PythonChannelInteropPaths {
     python_bin: String,
     reticulum_py_repo: PathBuf,
     helper: PathBuf,
+}
+
+struct PythonChannelClientConfig<'a> {
+    config_dir: &'a Path,
+    destination_hash: &'a str,
+    payload_kind: &'a str,
+    resource_size: Option<usize>,
+    timeout: f64,
 }
 
 impl PythonChannelInteropPaths {
@@ -36,9 +48,97 @@ impl PythonChannelInteropPaths {
             &self.python_bin,
             &self.reticulum_py_repo,
             &self.helper,
-            config_dir,
-            destination_hash,
-            payload_kind,
+            PythonChannelClientConfig {
+                config_dir,
+                destination_hash,
+                payload_kind,
+                resource_size: None,
+                timeout: 8.0,
+            },
+        )
+    }
+
+    pub(super) fn spawn_resource_client(
+        &self,
+        config_dir: &Path,
+        destination_hash: &str,
+        resource_size: usize,
+        timeout: f64,
+    ) -> Child {
+        spawn_python_channel_client(
+            &self.python_bin,
+            &self.reticulum_py_repo,
+            &self.helper,
+            PythonChannelClientConfig {
+                config_dir,
+                destination_hash,
+                payload_kind: "resource",
+                resource_size: Some(resource_size),
+                timeout,
+            },
+        )
+    }
+
+    pub(super) fn spawn_multi_hop_resource_client(
+        &self,
+        config_dir: &Path,
+        destination_hash: &str,
+        resource_size: usize,
+        timeout: f64,
+    ) -> Child {
+        spawn_python_channel_client(
+            &self.python_bin,
+            &self.reticulum_py_repo,
+            &self.helper,
+            PythonChannelClientConfig {
+                config_dir,
+                destination_hash,
+                payload_kind: "resource-multi-hop",
+                resource_size: Some(resource_size),
+                timeout,
+            },
+        )
+    }
+
+    pub(super) fn spawn_cancel_resource_client(
+        &self,
+        config_dir: &Path,
+        destination_hash: &str,
+        resource_size: usize,
+        timeout: f64,
+    ) -> Child {
+        spawn_python_channel_client(
+            &self.python_bin,
+            &self.reticulum_py_repo,
+            &self.helper,
+            PythonChannelClientConfig {
+                config_dir,
+                destination_hash,
+                payload_kind: "cancel-resource",
+                resource_size: Some(resource_size),
+                timeout,
+            },
+        )
+    }
+
+    pub(super) fn spawn_faulting_resource_client(
+        &self,
+        config_dir: &Path,
+        destination_hash: &str,
+        resource_size: usize,
+        timeout: f64,
+    ) -> Child {
+        spawn_python_channel_client(
+            &self.python_bin,
+            &self.reticulum_py_repo,
+            &self.helper,
+            PythonChannelClientConfig {
+                config_dir,
+                destination_hash,
+                payload_kind: "resource-file-reader-failure",
+                resource_size: Some(resource_size),
+                timeout,
+            },
         )
     }
 }
@@ -159,6 +259,11 @@ pub(super) fn python_channel_interop_paths() -> PythonChannelInteropPaths {
     let reticulum_py_repo = std::env::var("RETICULUM_PY_REPO")
         .map(PathBuf::from)
         .unwrap_or_else(|_| repo_root.join("../reticulum"));
+    let reticulum_py_repo = if reticulum_py_repo.is_absolute() {
+        reticulum_py_repo
+    } else {
+        repo_root.join(reticulum_py_repo)
+    };
     let helper =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/support/python_channel_endpoint.py");
 
@@ -186,29 +291,34 @@ pub(super) fn spawn_python_endpoint(
         .expect("spawn python endpoint")
 }
 
-pub(super) fn spawn_python_channel_client(
+fn spawn_python_channel_client(
     python_bin: &str,
     reticulum_py_repo: &Path,
     helper: &Path,
-    config_dir: &Path,
-    destination_hash: &str,
-    payload_kind: &str,
+    config: PythonChannelClientConfig<'_>,
 ) -> Child {
-    Command::new(python_bin)
+    let mut command = Command::new(python_bin);
+    command
         .arg("-u")
         .arg(helper)
         .arg("--mode")
         .arg("client")
         .arg("--payload-kind")
-        .arg(payload_kind)
+        .arg(config.payload_kind)
         .arg("--config-dir")
-        .arg(config_dir)
+        .arg(config.config_dir)
         .arg("--destination-hash")
-        .arg(destination_hash)
+        .arg(config.destination_hash)
         .arg("--message-id")
         .arg("python-1")
         .arg("--message-data")
         .arg("hello-rust")
+        .arg("--timeout")
+        .arg(config.timeout.to_string());
+    if let Some(resource_size) = config.resource_size {
+        command.arg("--resource-size").arg(resource_size.to_string());
+    }
+    command
         .env("PYTHONPATH", reticulum_py_repo)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -245,6 +355,10 @@ pub(super) fn write_python_config(dir: &Path, port: u16) {
     write_python_config_for_kind(dir, port, PythonInteropInterfaceKind::Tcp);
 }
 
+pub(super) fn write_python_config_with_ifac(dir: &Path, port: u16) {
+    write_python_config_for_kind_with_ifac(dir, port, PythonInteropInterfaceKind::Tcp);
+}
+
 pub(super) fn write_python_config_for_kind(
     dir: &Path,
     port: u16,
@@ -253,8 +367,21 @@ pub(super) fn write_python_config_for_kind(
     fs::write(dir.join("config"), kind.server_config(port)).expect("write python config");
 }
 
+pub(super) fn write_python_config_for_kind_with_ifac(
+    dir: &Path,
+    port: u16,
+    kind: PythonInteropInterfaceKind,
+) {
+    fs::write(dir.join("config"), with_ifac(kind.server_config(port)))
+        .expect("write Python IFAC config");
+}
+
 pub(super) fn write_python_client_config(dir: &Path, port: u16) {
     write_python_client_config_for_kind(dir, port, PythonInteropInterfaceKind::Tcp);
+}
+
+pub(super) fn write_python_client_config_with_ifac(dir: &Path, port: u16) {
+    write_python_client_config_for_kind_with_ifac(dir, port, PythonInteropInterfaceKind::Tcp);
 }
 
 pub(super) fn write_python_client_config_for_kind(
@@ -265,10 +392,49 @@ pub(super) fn write_python_client_config_for_kind(
     fs::write(dir.join("config"), kind.client_config(port)).expect("write python client config");
 }
 
+pub(super) fn write_python_client_config_for_kind_with_ifac(
+    dir: &Path,
+    port: u16,
+    kind: PythonInteropInterfaceKind,
+) {
+    fs::write(dir.join("config"), with_ifac(kind.client_config(port)))
+        .expect("write Python IFAC client config");
+}
+
+fn with_ifac(mut config: String) -> String {
+    config.push_str(&format!(
+        "                     networkname = {IFAC_NETWORK_NAME}\n\
+                     passphrase = {IFAC_PASSPHRASE}\n\
+                     ifac_size = {IFAC_SIZE_BITS}\n"
+    ));
+    config
+}
+
 pub(super) fn free_tcp_port() -> u16 {
     TcpListener::bind(("127.0.0.1", 0))
         .expect("bind ephemeral port")
         .local_addr()
         .expect("local addr")
         .port()
+}
+
+pub(super) fn process_peak_rss_kib(pid: u32) -> Option<u64> {
+    #[cfg(target_os = "linux")]
+    {
+        let status = fs::read_to_string(format!("/proc/{pid}/status")).ok()?;
+        status.lines().find_map(|line| {
+            line.strip_prefix("VmHWM:")
+                .and_then(|value| value.split_whitespace().next())
+                .and_then(|value| value.parse().ok())
+        })
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = pid;
+        None
+    }
+}
+
+pub(super) fn current_process_peak_rss_kib() -> Option<u64> {
+    process_peak_rss_kib(std::process::id())
 }

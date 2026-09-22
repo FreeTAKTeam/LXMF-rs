@@ -194,10 +194,23 @@ impl ResourceReceiver {
 
     fn handle_part(&mut self, part: &[u8], link: &Link) -> PartOutcome {
         let hash = map_hash(part, &self.random_hash);
-        let Some(index) = self.hashmap.iter().position(|entry| entry.as_ref() == Some(&hash))
+        // Reticulum only accepts a fragment while it is inside the current
+        // receive window. Searching the complete hashmap accepts delayed
+        // fragments from an already completed round (or fragments from a
+        // future round that arrived out of order), which advances
+        // `consecutive_completed_height` without the sender ever having been
+        // asked for that data. The reference searches
+        // `hashmap[consecutive_completed_height..][..window]` in
+        // `Resource.receive_part`; keep the same bounded admission here.
+        let search_start = self.consecutive_completed_height.min(self.hashmap.len());
+        let search_end = search_start.saturating_add(self.window).min(self.hashmap.len());
+        let Some(relative_index) = self.hashmap[search_start..search_end]
+            .iter()
+            .position(|entry| entry.as_ref() == Some(&hash))
         else {
             return PartOutcome::NoMatch;
         };
+        let index = search_start + relative_index;
 
         if self.parts[index].is_none() {
             self.parts[index] = Some(part.to_vec());

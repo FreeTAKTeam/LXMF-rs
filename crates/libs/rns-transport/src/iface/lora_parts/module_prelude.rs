@@ -11,13 +11,13 @@ use tokio::net::TcpStream;
 use tokio_serial::{DataBits, FlowControl, Parity, SerialPortBuilderExt, StopBits};
 
 use crate::iface::kiss::{
-    run_kiss_stream, KissActivityProbeConfig, KissCommandFrame, KissIdBeaconConfig,
+    run_kiss_stream_with_ifac, KissActivityProbeConfig, KissCommandFrame, KissIdBeaconConfig,
     KissPayloadAdapter, KissStreamOptions, KISS_FLOW_CONTROL_TIMEOUT, KISS_READ_FRAME_TIMEOUT,
 };
 
 use crate::kiss::encode_command_frame;
 
-use super::{Interface, InterfaceContext};
+use super::{IfacState, Interface, InterfaceContext};
 
 pub const CMD_FREQUENCY: u8 = 0x01;
 

@@ -148,6 +148,10 @@ async fn process_announce<'a>(
     // destination over a per-peer unicast UDP iface instead of back onto
     // the multicast group. Otherwise keep the original iface.
     let route_iface = handler.unicast_iface_for_source(iface, source).await.unwrap_or(iface);
+    let (from_local_client, local_client_interfaces) = {
+        let manager = handler.iface_manager.lock().await;
+        (manager.is_local_client_interface(&iface), manager.local_client_interfaces())
+    };
 
     let path_accepted = if local_destination_known {
         false
@@ -203,9 +207,7 @@ async fn process_announce<'a>(
         // path table on exactly the nodes this guard is meant to help. The
         // cache is the bounded half of the table (`announce_cache_capacity`),
         // which is what it is for.
-        let from_shared_instance =
-            { handler.iface_manager.lock().await.is_shared_instance(&route_iface) };
-        let queue_for_retransmission = (handler.config.transport_enabled || from_shared_instance)
+        let queue_for_retransmission = (handler.config.transport_enabled || from_local_client)
             && packet.context != PacketContext::PathResponse;
         let rate_blocked =
             handler.announce_limits.should_suppress_rebroadcast(packet, &shared_config);
@@ -219,7 +221,11 @@ async fn process_announce<'a>(
         }
 
         if queue_for_retransmission && !rate_blocked {
-            handler.announce_table.add(packet, dest_hash, route_iface);
+            if from_local_client {
+                handler.announce_table.add_local_client(packet, dest_hash, route_iface);
+            } else {
+                handler.announce_table.add(packet, dest_hash, route_iface);
+            }
         } else {
             handler.announce_table.add_cached(packet, dest_hash, route_iface);
         }
@@ -234,6 +240,38 @@ async fn process_announce<'a>(
             packet_hash: packet.hash(),
             now: std::time::Instant::now(),
         });
+
+        // Python Reticulum fans accepted announces out to every attached
+        // local client immediately. Use direct child targets rather than a
+        // broadcast so the announce cannot accidentally transit the network,
+        // and never echo it back to the child that supplied the announce.
+        for local_client_iface in local_client_interfaces {
+            if local_client_iface == iface {
+                continue;
+            }
+            let local_announce = Packet {
+                header: Header {
+                    ifac_flag: packet.header.ifac_flag,
+                    header_type: HeaderType::Type2,
+                    context_flag: packet.header.context_flag,
+                    propagation_type: PropagationType::Transport,
+                    destination_type: packet.header.destination_type,
+                    packet_type: packet.header.packet_type,
+                    hops: packet.header.hops,
+                },
+                ifac: None,
+                destination: packet.destination,
+                transport: Some(*handler.config.identity.address_hash()),
+                context: PacketContext::None,
+                data: packet.data.clone(),
+            };
+            handler
+                .send(TxMessage {
+                    tx_type: TxMessageType::Direct(local_client_iface),
+                    packet: local_announce,
+                })
+                .await;
+        }
     } else if remote_destination_known {
         log::trace!(
             "tp({}): ignored stale announce path refresh for {}",

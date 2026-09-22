@@ -3,17 +3,10 @@ use std::collections::VecDeque;
 use std::time::{Duration, Instant as StdInstant};
 
 #[cfg(feature = "vrn76-kiss-ble")]
-use crate::buffer::{InputBuffer, OutputBuffer};
-
-#[cfg(feature = "vrn76-kiss-ble")]
-use crate::iface::{IfaceSource, Interface, InterfaceContext, RxMessage};
-
-#[cfg(feature = "vrn76-kiss-ble")]
-use crate::packet::Packet;
-
-#[cfg(feature = "vrn76-kiss-ble")]
-use crate::serde::Serialize;
-
+use crate::iface::{
+    decode_packet_ifac, encode_packet_ifac, is_ifac_violation, record_ifac_violation, IfaceSource,
+    Interface, InterfaceContext, RxMessage,
+};
 #[cfg(feature = "vrn76-kiss-ble")]
 use btleplug::api::{
     Central, CharPropFlags, Characteristic, DEFAULT_MTU_SIZE, Manager as _, Peripheral as _,

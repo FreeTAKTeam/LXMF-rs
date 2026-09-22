@@ -289,6 +289,8 @@ impl NativeRnodeBleKissInterface {
     pub async fn spawn(context: InterfaceContext<Self>) {
         let iface_stop = context.channel.stop.clone();
         let iface_address = context.channel.address;
+        let ifac_state = context.channel.ifac_state.clone();
+        let ifac_violations = context.channel.ifac_violations.clone();
         let (rx_channel, mut tx_channel) = context.channel.split();
         let (
             label,
@@ -439,7 +441,7 @@ impl NativeRnodeBleKissInterface {
 
                 if rnode_ble_payload_writes_enabled(radio_config_sent, command_monitor.as_ref()) {
                     while let Ok(message) = tx_channel.try_recv() {
-                        let raw = match message.packet.to_bytes() {
+                        let raw = match encode_packet_ifac(&ifac_state, &message.packet) {
                             Ok(raw) => raw,
                             Err(err) => {
                                 log::warn!(
@@ -571,7 +573,7 @@ impl NativeRnodeBleKissInterface {
                             break;
                         }
                         for payload in notification.packets {
-                            match Packet::deserialize(&mut InputBuffer::new(&payload)) {
+                            match decode_packet_ifac(&ifac_state, &payload) {
                                 Ok(packet) => {
                                     log::debug!(
                                         "RNode BLE rx packet len={} iface={}",
@@ -595,16 +597,13 @@ impl NativeRnodeBleKissInterface {
                                     }
                                 }
                                 Err(err) => {
-                                    let hex: String = payload
-                                        .iter()
-                                        .map(|b| format!("{:02x}", b))
-                                        .collect::<Vec<_>>()
-                                        .join(" ");
+                                    if is_ifac_violation(&err) {
+                                        record_ifac_violation(&ifac_violations, &err);
+                                    }
                                     log::warn!(
-                                        "RNode BLE rx packet deserialize failed len={} err={:?} bytes=[{}] iface={}",
+                                        "RNode BLE rx packet deserialize failed len={} err={:?} iface={}",
                                         payload.len(),
                                         err,
-                                        hex,
                                         label
                                     );
                                 }
@@ -662,6 +661,10 @@ impl NativeRnodeBleKissInterface {
 
 #[cfg(feature = "rnode-ble")]
 impl Interface for NativeRnodeBleKissInterface {
+    fn ifac_default_size_bytes() -> usize {
+        8
+    }
+
     fn mtu() -> usize {
         508
     }

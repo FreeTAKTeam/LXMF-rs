@@ -7,13 +7,10 @@ use std::pin::Pin;
 use std::time::{Duration, Instant};
 
 #[cfg(feature = "rnode-ble")]
-use crate::buffer::InputBuffer;
-
-#[cfg(feature = "rnode-ble")]
-use crate::iface::{IfaceSource, Interface, InterfaceContext, RxMessage};
-
-#[cfg(feature = "rnode-ble")]
-use crate::packet::Packet;
+use crate::iface::{
+    decode_packet_ifac, encode_packet_ifac, is_ifac_violation, record_ifac_violation, IfaceSource,
+    Interface, InterfaceContext, RxMessage,
+};
 
 #[cfg(feature = "rnode-ble")]
 use btleplug::api::{
@@ -330,6 +327,7 @@ impl NativeRnodeBleBackend {
         exclude_exact_identifier: Option<&str>,
         allow_service_uuid_match: bool,
         excluded_identifiers: &[String],
+        paired_addresses: Option<&[String]>,
     ) -> Result<Peripheral, String> {
         adapter
             .start_scan(if allow_service_uuid_match {
@@ -352,6 +350,7 @@ impl NativeRnodeBleBackend {
                     settings.service_uuid,
                     allow_service_uuid_match,
                     excluded_identifiers,
+                    paired_addresses,
                 )
                 .await?
                 {

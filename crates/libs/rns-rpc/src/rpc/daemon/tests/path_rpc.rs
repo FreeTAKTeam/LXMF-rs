@@ -143,6 +143,57 @@ impl PathLookupBridge for MetadataPathLookupBridge {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+struct ProbeRequest {
+    destination: String,
+    full_name: String,
+    size: usize,
+    probes: usize,
+    timeout_secs: f64,
+    wait_secs: f64,
+}
+
+struct ProbePathLookupBridge {
+    requests: std::sync::Mutex<Vec<ProbeRequest>>,
+}
+
+impl PathLookupBridge for ProbePathLookupBridge {
+    fn has_path(&self, _destination: &str) -> Result<bool, std::io::Error> {
+        Ok(false)
+    }
+
+    fn request_path(&self, _destination: &str) -> Result<(), std::io::Error> {
+        Ok(())
+    }
+
+    fn probe(
+        &self,
+        destination: &str,
+        full_name: &str,
+        size: usize,
+        probes: usize,
+        timeout_secs: f64,
+        wait_secs: f64,
+    ) -> Result<JsonValue, std::io::Error> {
+        self.requests.lock().expect("probe requests mutex poisoned").push(ProbeRequest {
+            destination: destination.to_string(),
+            full_name: full_name.to_string(),
+            size,
+            probes,
+            timeout_secs,
+            wait_secs,
+        });
+        Ok(json!({
+            "destination": destination,
+            "full_name": full_name,
+            "size": size,
+            "probes": probes,
+            "replies": probes,
+            "packet_loss_percent": 0.0,
+        }))
+    }
+}
+
 struct RuntimeManagementBridge;
 
 impl PathLookupBridge for RuntimeManagementBridge {
@@ -201,6 +252,95 @@ fn path_status_reports_known_path() {
     assert_eq!(result["known"].as_bool(), Some(true));
     assert_eq!(result["path_found"].as_bool(), Some(true));
     assert_eq!(result["status"].as_str(), Some("found"));
+}
+
+#[test]
+fn probe_rpc_forwards_packet_probe_options_and_result() {
+    let daemon = RpcDaemon::test_instance();
+    let bridge = Arc::new(ProbePathLookupBridge { requests: std::sync::Mutex::new(Vec::new()) });
+    daemon.set_path_lookup_bridge(bridge.clone());
+
+    let response = daemon
+        .handle_rpc(rpc_request(
+            20,
+            "probe",
+            json!({
+                "destination_hash": "AABBCCDDEEFF00112233445566778899",
+                "full_name": "rnstransport.probe",
+                "size": 32,
+                "probes": 4,
+                "timeout_secs": 1.5,
+                "wait_secs": 0.25,
+            }),
+        ))
+        .expect("probe response");
+
+    assert!(response.error.is_none());
+    assert_eq!(response.id, 20);
+    let result = response.result.expect("probe result");
+    assert_eq!(result["destination"].as_str(), Some("aabbccddeeff00112233445566778899"));
+    assert_eq!(result["full_name"].as_str(), Some("rnstransport.probe"));
+    assert_eq!(result["replies"].as_u64(), Some(4));
+    assert_eq!(
+        bridge.requests.lock().expect("probe requests mutex poisoned").as_slice(),
+        [ProbeRequest {
+            destination: "aabbccddeeff00112233445566778899".to_string(),
+            full_name: "rnstransport.probe".to_string(),
+            size: 32,
+            probes: 4,
+            timeout_secs: 1.5,
+            wait_secs: 0.25,
+        }]
+    );
+}
+
+#[test]
+fn probe_rpc_uses_python_defaults_when_options_are_omitted() {
+    let daemon = RpcDaemon::test_instance();
+    let bridge = Arc::new(ProbePathLookupBridge { requests: std::sync::Mutex::new(Vec::new()) });
+    daemon.set_path_lookup_bridge(bridge.clone());
+
+    daemon
+        .handle_rpc(rpc_request(
+            21,
+            "probe",
+            json!({
+                "destination": "00112233445566778899aabbccddeeff",
+                "full_name": "rnstransport.probe",
+            }),
+        ))
+        .expect("probe response");
+
+    assert_eq!(
+        bridge.requests.lock().expect("probe requests mutex poisoned").as_slice(),
+        [ProbeRequest {
+            destination: "00112233445566778899aabbccddeeff".to_string(),
+            full_name: "rnstransport.probe".to_string(),
+            size: 16,
+            probes: 1,
+            timeout_secs: 12.0,
+            wait_secs: 0.0,
+        }]
+    );
+}
+
+#[test]
+fn probe_rpc_reports_unavailable_without_a_probe_bridge() {
+    let daemon = RpcDaemon::test_instance();
+
+    let response = daemon
+        .handle_rpc(rpc_request(
+            22,
+            "probe",
+            json!({
+                "destination": "00112233445566778899aabbccddeeff",
+                "full_name": "rnstransport.probe",
+            }),
+        ))
+        .expect("probe response");
+
+    let error = response.error.expect("probe unavailable error");
+    assert_eq!(error.code, "PROBE_UNAVAILABLE");
 }
 
 #[test]

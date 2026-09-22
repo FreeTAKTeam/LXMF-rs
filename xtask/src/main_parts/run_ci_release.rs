@@ -5,8 +5,9 @@ pub(super) fn run_release_check() -> Result<()> {
     run_correctness_check()?;
     run("python3", &["tools/scripts/check_python_reference_pins.py", "--self-test"])?;
     run("cargo", &["doc", "--workspace", "--no-deps", "--lib"])?;
-    // The inventory gate enforces the exact RNS 1.5.2 target rather than
-    // accepting a merely well-formed or partially mapped manifest.
+    // The tracked inventory gate enforces the exact RNS 1.5.2 baseline. When
+    // CI supplies the frozen parity checkouts, the same helper also scans the
+    // 1.5.4 target without allowing unmapped callables through.
     run_python_surface_parity_check(true)?;
     run_sdk_zmq_parity_check()?;
     run_performance_docs_check()?;

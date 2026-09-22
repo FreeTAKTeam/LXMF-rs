@@ -20,7 +20,13 @@ impl InterfaceManager {
         role: IfaceRole,
         mode: InterfaceMode,
     ) -> InterfaceChannel {
-        self.new_channel_with_role_mode_mtu(tx_cap, role, mode, DEFAULT_IFACE_MTU)
+        self.new_channel_with_role_mode_mtu_and_ifac_size(
+            tx_cap,
+            role,
+            mode,
+            DEFAULT_IFACE_MTU,
+            DEFAULT_IFAC_SIZE_BYTES,
+        )
     }
 
     pub fn new_channel_with_role_mode_mtu(
@@ -29,6 +35,23 @@ impl InterfaceManager {
         role: IfaceRole,
         mode: InterfaceMode,
         mtu: usize,
+    ) -> InterfaceChannel {
+        self.new_channel_with_role_mode_mtu_and_ifac_size(
+            tx_cap,
+            role,
+            mode,
+            mtu,
+            DEFAULT_IFAC_SIZE_BYTES,
+        )
+    }
+
+    fn new_channel_with_role_mode_mtu_and_ifac_size(
+        &mut self,
+        tx_cap: usize,
+        role: IfaceRole,
+        mode: InterfaceMode,
+        mtu: usize,
+        ifac_default_size_bytes: usize,
     ) -> InterfaceChannel {
         self.counter += 1;
 
@@ -42,6 +65,8 @@ impl InterfaceManager {
 
         let stop = CancellationToken::new();
         let online = Arc::new(AtomicBool::new(true));
+        let ifac_state = Arc::new(std::sync::RwLock::new(None));
+        let ifac_violations = Arc::new(AtomicU64::new(0));
 
         self.ifaces.push(LocalInterface {
             address,
@@ -60,18 +85,26 @@ impl InterfaceManager {
             announce_bitrate_bps: DEFAULT_IFACE_BITRATE_BPS,
             announce_cap_percent: DEFAULT_ANNOUNCE_CAP_PERCENT,
             shared_config: InterfaceSharedConfig::default(),
+            ifac_state: ifac_state.clone(),
+            ifac_violations: ifac_violations.clone(),
+            ifac_default_size_bytes,
             is_shared_instance: false,
             outgoing_pr_history: VecDeque::new(),
             traffic: InterfaceTraffic::default(),
         });
 
-        InterfaceChannel {
-            rx_channel: self.rx_send.clone(),
-            tx_channel: tx_recv,
+        InterfaceChannel::with_wire_state(
+            self.rx_send.clone(),
+            tx_recv,
             address,
             stop,
+            IfacRuntime {
+                state: ifac_state,
+                violations: ifac_violations,
+                default_size_bytes: ifac_default_size_bytes,
+            },
             online,
-        }
+        )
     }
 
     pub fn new_context<T: Interface>(&mut self, inner: T) -> InterfaceContext<T> {
@@ -93,8 +126,13 @@ impl InterfaceManager {
         mode: InterfaceMode,
     ) -> InterfaceContext<T> {
         let mtu = inner.configured_mtu();
-        let channel =
-            self.new_channel_with_role_mode_mtu(DEFAULT_IFACE_TX_QUEUE_CAPACITY, role, mode, mtu);
+        let channel = self.new_channel_with_role_mode_mtu_and_ifac_size(
+            DEFAULT_IFACE_TX_QUEUE_CAPACITY,
+            role,
+            mode,
+            mtu,
+            T::ifac_default_size_bytes(),
+        );
         let cancel = channel.stop.clone();
         let inner = Arc::new(Mutex::new(inner));
         InterfaceContext::<T> { inner: inner.clone(), channel, cancel }
@@ -246,7 +284,13 @@ impl InterfaceManager {
         let announce_bitrate_bps = source_iface.announce_bitrate_bps;
         let announce_cap_percent = source_iface.announce_cap_percent;
         let shared_config = source_iface.shared_config.clone();
+        let ifac_default_size_bytes = source_iface.ifac_default_size_bytes;
         let is_shared_instance = source_iface.is_shared_instance;
+        let ifac_context = source_iface
+            .ifac_state
+            .read()
+            .ok()
+            .and_then(|context| context.clone());
 
         let Some(target_iface) = self.ifaces.iter_mut().find(|i| i.address == target) else {
             return false;
@@ -258,6 +302,10 @@ impl InterfaceManager {
         target_iface.announce_bitrate_bps = announce_bitrate_bps;
         target_iface.announce_cap_percent = announce_cap_percent;
         target_iface.shared_config = shared_config;
+        target_iface.ifac_default_size_bytes = ifac_default_size_bytes;
+        if let Ok(mut target_context) = target_iface.ifac_state.write() {
+            *target_context = ifac_context;
+        }
         target_iface.is_shared_instance = is_shared_instance;
         true
     }
@@ -280,6 +328,9 @@ impl InterfaceManager {
         let host_iface = self.ifaces.iter().find(|i| i.address == host)?;
         let host_tx = host_iface.tx_send.clone();
         let host_online = host_iface.online.clone();
+        let host_ifac_state = host_iface.ifac_state.clone();
+        let host_ifac_violations = host_iface.ifac_violations.clone();
+        let ifac_default_size_bytes = host_iface.ifac_default_size_bytes;
         let mtu = host_iface.mtu;
         let mode = host_iface.mode;
         let gravity = host_iface.gravity;
@@ -320,6 +371,9 @@ impl InterfaceManager {
             announce_bitrate_bps: host_iface.announce_bitrate_bps,
             announce_cap_percent: host_iface.announce_cap_percent,
             shared_config: host_iface.shared_config.clone(),
+            ifac_state: host_ifac_state,
+            ifac_violations: host_ifac_violations,
+            ifac_default_size_bytes,
             is_shared_instance: host_iface.is_shared_instance,
             outgoing_pr_history: VecDeque::new(),
             traffic: InterfaceTraffic::default(),
@@ -427,61 +481,5 @@ impl InterfaceManager {
         while iface.outgoing_pr_history.len() > OUTGOING_PR_FREQ_SAMPLES {
             iface.outgoing_pr_history.pop_front();
         }
-    }
-
-    pub async fn release_queued_announces(&mut self) -> TxDispatchTrace {
-        self.cleanup();
-        let mut trace = TxDispatchTrace::default();
-        let now = Instant::now();
-        let mut saw_closed_queue = false;
-
-        for iface in &mut self.ifaces {
-            if iface.stop.is_cancelled()
-                || !iface.outgoing
-                || iface.is_shared_instance
-                || iface.announce_queue.is_empty()
-                || now < iface.announce_allowed_at
-            {
-                continue;
-            }
-
-            let Some(message) = Self::pop_next_announce(iface, now) else {
-                continue;
-            };
-            let wire_len = packet_wire_len_for_dispatch(&message);
-
-            trace.matched_ifaces += 1;
-            iface.announce_allowed_at = now
-                + announce_wait(
-                    &message.packet,
-                    iface.announce_bitrate_bps,
-                    iface.announce_cap_percent,
-                );
-            match Self::send_to_iface(iface, message).await {
-                TxIfaceSendResult::Sent => {
-                    trace.sent_ifaces += 1;
-                    if let Some(wire_len) = wire_len {
-                        Self::record_outbound_traffic(
-                            iface,
-                            PacketType::Announce,
-                            false,
-                            wire_len,
-                            now,
-                        );
-                    }
-                }
-                TxIfaceSendResult::Failed => trace.failed_ifaces += 1,
-                TxIfaceSendResult::Closed => {
-                    trace.failed_ifaces += 1;
-                    saw_closed_queue = true;
-                }
-            }
-        }
-
-        if saw_closed_queue {
-            self.cleanup_closed_tx_queues();
-        }
-        self.cleanup();
-        trace
     }
 }

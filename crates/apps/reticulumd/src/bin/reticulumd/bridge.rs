@@ -107,6 +107,7 @@ pub(super) struct TransportBridge {
     service_identities: Arc<RwLock<service_identity::ServiceIdentityRegistry>>,
     service_identity_dir: PathBuf,
     runtime_handle: tokio::runtime::Handle,
+    probe_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>>,
 }
 
 #[derive(Clone, Copy)]
@@ -122,6 +123,7 @@ impl TransportBridge {
         signer: PrivateIdentity,
         delivery_source_hash: [u8; 16],
         announce_destination: Arc<tokio::sync::Mutex<SingleInputDestination>>,
+        probe_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>>,
         announce_app_data: Option<Vec<u8>>,
         announce_capabilities: Vec<String>,
         propagation_announce_destination: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>>,
@@ -162,6 +164,7 @@ impl TransportBridge {
             )),
             service_identity_dir,
             runtime_handle: tokio::runtime::Handle::current(),
+            probe_destination,
         };
         bridge.initialize_default_service_identity(default_display_name);
         bridge

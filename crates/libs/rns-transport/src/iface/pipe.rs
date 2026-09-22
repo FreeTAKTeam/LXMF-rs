@@ -7,17 +7,22 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::process::Command;
 use tokio_util::sync::CancellationToken;
 
-use crate::buffer::{InputBuffer, OutputBuffer};
+use crate::buffer::OutputBuffer;
 use crate::hash::AddressHash;
-use crate::iface::{hdlc::Hdlc, IfaceRole, IfaceSource, InterfaceManager, RxMessage};
-use crate::packet::Packet;
-use crate::serde::Serialize;
+use crate::iface::{
+    decode_packet_ifac, encode_packet_ifac, hdlc::Hdlc, is_ifac_violation, record_ifac_violation,
+    IfacState, IfaceRole, IfaceSource, InterfaceManager, RxMessage, MAX_IFAC_SIZE_BYTES,
+};
 
 use super::{Interface, InterfaceContext, TxMessage};
 
 #[path = "pipe_parts/process_cleanup.rs"]
 mod process_cleanup;
 use process_cleanup::terminate_pipe_child;
+
+#[path = "pipe_parts/status.rs"]
+mod status;
+use status::update_pipe_status;
 
 pub struct PipeInterface {
     command: String,
@@ -84,6 +89,8 @@ impl PipeInterface {
     pub async fn spawn(context: InterfaceContext<Self>) {
         let iface_stop = context.channel.stop.clone();
         let iface_address = context.channel.address;
+        let ifac_state = context.channel.ifac_state.clone();
+        let ifac_violations = context.channel.ifac_violations.clone();
         let online = context.channel.online.clone();
         online.store(false, std::sync::atomic::Ordering::Release);
         let (rx_channel, tx_channel) = context.channel.split();
@@ -119,6 +126,8 @@ impl PipeInterface {
                 tx_channel.clone(),
                 runtime_status.clone(),
                 online.clone(),
+                ifac_state.clone(),
+                ifac_violations.clone(),
             )
             .await
             {
@@ -216,6 +225,10 @@ impl PipeRuntimeStatus {
 }
 
 impl Interface for PipeInterface {
+    fn ifac_default_size_bytes() -> usize {
+        8
+    }
+
     fn mtu() -> usize {
         Self::DEFAULT_MTU
     }
@@ -236,6 +249,8 @@ async fn run_pipe_process(
     tx_channel: Arc<tokio::sync::Mutex<tokio::sync::mpsc::Receiver<TxMessage>>>,
     runtime_status: Arc<std::sync::Mutex<PipeRuntimeStatus>>,
     online: Arc<std::sync::atomic::AtomicBool>,
+    ifac_state: IfacState,
+    ifac_violations: Arc<std::sync::atomic::AtomicU64>,
 ) -> Result<(), String> {
     let argv = PipeInterface::parse_command(command)?;
     let mut child = Command::new(&argv[0])
@@ -265,6 +280,8 @@ async fn run_pipe_process(
         rx_channel,
         tx_channel,
         runtime_status,
+        ifac_state,
+        ifac_violations,
     )
     .await;
     online.store(false, std::sync::atomic::Ordering::Release);
@@ -284,6 +301,8 @@ async fn run_pipe_stream<R, W>(
     rx_channel: tokio::sync::mpsc::Sender<RxMessage>,
     tx_channel: Arc<tokio::sync::Mutex<tokio::sync::mpsc::Receiver<TxMessage>>>,
     runtime_status: Arc<std::sync::Mutex<PipeRuntimeStatus>>,
+    ifac_state: IfacState,
+    ifac_violations: Arc<std::sync::atomic::AtomicU64>,
 ) where
     R: AsyncRead + Unpin + Send + 'static,
     W: AsyncWrite + Unpin + Send + 'static,
@@ -296,8 +315,10 @@ async fn run_pipe_stream<R, W>(
         let cancel = cancel.clone();
         let iface_stop = iface_stop.clone();
         let runtime_status = runtime_status.clone();
+        let ifac_state = ifac_state.clone();
+        let ifac_violations = ifac_violations.clone();
         tokio::spawn(async move {
-            let mut hdlc_rx_buffer = vec![0_u8; mtu];
+            let mut hdlc_rx_buffer = vec![0_u8; mtu.saturating_add(MAX_IFAC_SIZE_BYTES)];
             let mut frame_buffer = Vec::<u8>::with_capacity(mtu * 4);
             let mut read_buffer = vec![0_u8; mtu.clamp(256, 32_768)];
 
@@ -323,9 +344,8 @@ async fn run_pipe_stream<R, W>(
                                     let frame = &frame_buffer[start..=end];
                                     let mut output = OutputBuffer::new(&mut hdlc_rx_buffer[..]);
                                     if Hdlc::decode(frame, &mut output).is_ok() {
-                                        if let Ok(packet) =
-                                            Packet::deserialize(&mut InputBuffer::new(output.as_slice()))
-                                        {
+                                        match decode_packet_ifac(&ifac_state, output.as_slice()) {
+                                            Ok(packet) => {
                                             if rx_channel
                                                 .send(RxMessage {
                                                     address: iface_address,
@@ -347,6 +367,13 @@ async fn run_pipe_stream<R, W>(
                                                 });
                                                 rx_stop.cancel();
                                                 return;
+                                            }
+                                            }
+                                            Err(error) => {
+                                                if is_ifac_violation(&error) {
+                                                    record_ifac_violation(&ifac_violations, &error);
+                                                }
+                                                log::debug!("pipe packet rejected: {error}");
                                             }
                                         }
                                     }
@@ -379,14 +406,19 @@ async fn run_pipe_stream<R, W>(
         let iface_stop = iface_stop.clone();
         let tx_channel = tx_channel.clone();
         let runtime_status = runtime_status.clone();
+        let ifac_state = ifac_state.clone();
         tokio::spawn(async move {
             loop {
                 if tx_stop.is_cancelled() {
                     break;
                 }
 
-                let mut hdlc_tx_buffer = vec![0_u8; mtu.saturating_mul(2).saturating_add(16)];
-                let mut tx_buffer = vec![0_u8; mtu];
+                let mut hdlc_tx_buffer = vec![
+                    0_u8;
+                    mtu.saturating_add(MAX_IFAC_SIZE_BYTES)
+                        .saturating_mul(2)
+                        .saturating_add(16)
+                ];
                 let mut tx_channel = tx_channel.lock().await;
 
                 tokio::select! {
@@ -394,30 +426,38 @@ async fn run_pipe_stream<R, W>(
                     _ = iface_stop.cancelled() => break,
                     _ = tx_stop.cancelled() => break,
                     Some(message) = tx_channel.recv() => {
-                        let mut output = OutputBuffer::new(&mut tx_buffer[..]);
-                        if message.packet.serialize(&mut output).is_ok() {
-                            let mut hdlc_output = OutputBuffer::new(&mut hdlc_tx_buffer[..]);
-                            if Hdlc::encode(output.as_slice(), &mut hdlc_output).is_ok() {
-                                if let Err(err) = writer.write_all(hdlc_output.as_slice()).await {
-                                    log::warn!("pipe write error iface={} err={}", iface_address, err);
-                                    update_pipe_status(&runtime_status, |status| {
-                                        status.process_state = "write_error".to_string();
-                                        status.pipe_is_open = false;
-                                        status.last_error = Some(err.to_string());
-                                    });
-                                    tx_stop.cancel();
-                                    break;
-                                }
-                                if let Err(err) = writer.flush().await {
-                                    log::warn!("pipe flush error iface={} err={}", iface_address, err);
-                                    update_pipe_status(&runtime_status, |status| {
-                                        status.process_state = "write_error".to_string();
-                                        status.pipe_is_open = false;
-                                        status.last_error = Some(err.to_string());
-                                    });
-                                    tx_stop.cancel();
-                                    break;
-                                }
+                        let payload = match encode_packet_ifac(&ifac_state, &message.packet) {
+                            Ok(payload) => payload,
+                            Err(err) => {
+                                log::warn!(
+                                    "pipe packet encode failed iface={} err={:?}",
+                                    iface_address,
+                                    err
+                                );
+                                continue;
+                            }
+                        };
+                        let mut hdlc_output = OutputBuffer::new(&mut hdlc_tx_buffer[..]);
+                        if Hdlc::encode(&payload, &mut hdlc_output).is_ok() {
+                            if let Err(err) = writer.write_all(hdlc_output.as_slice()).await {
+                                log::warn!("pipe write error iface={} err={}", iface_address, err);
+                                update_pipe_status(&runtime_status, |status| {
+                                    status.process_state = "write_error".to_string();
+                                    status.pipe_is_open = false;
+                                    status.last_error = Some(err.to_string());
+                                });
+                                tx_stop.cancel();
+                                break;
+                            }
+                            if let Err(err) = writer.flush().await {
+                                log::warn!("pipe flush error iface={} err={}", iface_address, err);
+                                update_pipe_status(&runtime_status, |status| {
+                                    status.process_state = "write_error".to_string();
+                                    status.pipe_is_open = false;
+                                    status.last_error = Some(err.to_string());
+                                });
+                                tx_stop.cancel();
+                                break;
                             }
                         }
                     }
@@ -443,14 +483,6 @@ async fn run_pipe_stream<R, W>(
             status.last_error = Some(error.to_string());
         });
     }
-}
-
-fn update_pipe_status(
-    runtime_status: &Arc<std::sync::Mutex<PipeRuntimeStatus>>,
-    update: impl FnOnce(&mut PipeRuntimeStatus),
-) {
-    let mut guard = runtime_status.lock().expect("pipe runtime status mutex poisoned");
-    update(&mut guard);
 }
 
 pub fn spawn_pipe(

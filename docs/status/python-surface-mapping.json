@@ -1593,5 +1593,198 @@
       "kind": "provenance",
       "source": "pinned references"
     }
-  ]
+  ],
+  "behavioral_contract": {
+    "schema_version": 1,
+    "scope": "Issue #605 behavioral requirements and evidence gates; callable mappings remain a historical inventory and do not prove forward parity.",
+    "coverage_status": "incomplete",
+    "requirements": [
+      {
+        "id": "reticulum-605-607-reference-increment",
+        "kind": "behavioral-requirement",
+        "reference_project": "reticulum",
+        "reference_paths": ["RNS/Reticulum.py", "RNS/Transport.py", "RNS/Resource.py"],
+        "rust_surface": ["crates/libs/lxmf-reference", "docs/status/rns-1.5.4-delta.md"],
+        "implementation": "partial",
+        "evidence": ["planned"],
+        "evidence_status": "unverified",
+        "test_command": "python3 tools/scripts/python_surface_inventory.py --check",
+        "evidence_artifact": "target/issue-605/evidence/607-reference-review.json",
+        "owner_issue": 607,
+        "notes": "PR #604 is an initial increment and remains separately reviewable; this row does not claim that it closes the epic."
+      },
+      {
+        "id": "reticulum-605-608-ifac-carrier-wiring",
+        "kind": "behavioral-requirement",
+        "reference_project": "reticulum",
+        "reference_paths": ["RNS/Interfaces/Interface.py", "RNS/Transport.py"],
+        "rust_surface": ["crates/libs/rns-transport", "crates/apps/reticulumd"],
+        "implementation": "partial",
+        "evidence": ["unit", "simulated", "planned"],
+        "evidence_status": "unverified",
+        "test_command": [
+          "cargo test -p reticulum-rs-transport --lib",
+          "cargo test -p reticulum-rs-transport --all-features --lib",
+          "cargo test -p reticulumd --test config",
+          "cargo test -p reticulumd --bin reticulumd interface_hot_apply"
+        ],
+        "evidence_artifact": "target/issue-605/evidence/608-ifac.json",
+        "owner_issue": 608,
+        "notes": "Configured carrier ingress/egress and local fail-closed regressions are implemented; pinned Python-Rust daemon traffic and physical carrier evidence remain unverified."
+      },
+      {
+        "id": "reticulum-605-609-transport-local-shared",
+        "kind": "behavioral-requirement",
+        "reference_project": "reticulum",
+        "reference_paths": ["RNS/Transport.py", "RNS/Reticulum.py", "RNS/Interfaces/LocalInterface.py"],
+        "rust_surface": ["crates/libs/rns-transport", "crates/apps/reticulumd"],
+        "implementation": "partial",
+        "evidence": ["unit", "simulated", "pinned-python", "planned"],
+        "evidence_status": "unverified",
+        "test_command": [
+          "cargo test -p reticulum-rs-transport --lib",
+          "cargo test -p reticulumd --bin reticulumd",
+          "cargo clippy -p reticulum-rs-transport --lib --all-features --no-deps -- -D warnings",
+          "RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop python_to_python_channel_roundtrip_through_rust_transport -- --ignored --nocapture"
+        ],
+        "evidence_artifact": "target/issue-605/evidence/609-shared-instance.json",
+        "owner_issue": 609,
+        "notes": "Parent/child classification, immediate local-client retransmit, direct sibling fan-out, and local TCP/Unix parent marking are implemented; pinned Python-Rust shared-instance attachment/restart and two-carrier Python Channel, application-link reconnect, split-Resource, and link-establishment-timeout traces through one forwarding Rust transport are evidenced, while persistence, broader packet/proof duplicate suppression, caller-visible close reasons, carrier-stream reconnect, and broader production traces remain unverified."
+      },
+      {
+        "id": "reticulum-605-610-resource-stream-collision",
+        "kind": "behavioral-requirement",
+        "reference_project": "reticulum",
+        "reference_paths": ["RNS/Resource.py", "RNS/Link.py", "RNS/Transport.py"],
+        "rust_surface": ["crates/libs/rns-transport::resource"],
+        "implementation": "partial",
+        "evidence": ["unit", "pinned-python", "cross-implementation", "planned"],
+        "evidence_status": "unverified",
+        "test_command": [
+          "cargo test -p reticulum-rs-transport --all-features --lib",
+          "cargo clippy -p reticulum-rs-transport --lib --all-features --no-deps -- -D warnings",
+          "RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test --release -p reticulumd --test python_channel_interop rust_to_python_resource_size_matrix_roundtrip -- --ignored --nocapture",
+          "RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test --release -p reticulumd --test python_channel_interop python_to_rust_resource_size_matrix_roundtrip -- --ignored --nocapture",
+          "RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test --release -p reticulumd --test python_channel_interop rust_reader_to_python_50_mib_peak_memory -- --ignored --nocapture --test-threads=1",
+          "RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test --release -p reticulumd --test python_channel_interop python_to_rust_50_mib_peak_memory -- --ignored --nocapture --test-threads=1",
+          "RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop rust_reader_to_python_split_resource_roundtrip -- --ignored --nocapture"
+        ],
+        "evidence_artifact": "docs/goals/reticulum-reference-parity-605/evidence/610-resource.md",
+        "owner_issue": 610,
+        "notes": "Deterministic collision regeneration, active-window fragment admission, collision-guard/hashmap/window unit coverage, link-close terminal event publication, local loss/duplication/reordering recovery, split cancellation cleanup, reader-backed bounded source retention, a pinned-Python file-backed split transfer with exact digest, bidirectional pinned-Python fragment-fault matrices for owned and reader-backed sources, reader-backed cancellation, a pinned-Python receiver-shutdown terminal-failure trace, an injected later reader-failure trace, a real-file truncation terminal-failure trace, a pinned-Python keepalive terminal-timeout and fresh-Link recovery trace, and exact 50 MiB bidirectional peak-RSS measurements under a fixed Linux release-profile process budget are implemented. Python-side file-adapter failure faults, broader timeout/reconnect coverage, every consumer callback/status assertion, and hosted/physical/soak coverage remain unverified; the debug 50 MiB run is slower than the release profile."
+      },
+      {
+        "id": "reticulum-605-611-utility-network-workflows",
+        "kind": "behavioral-requirement",
+        "reference_project": "reticulum",
+        "reference_paths": ["RNS/Utilities/rncp.py", "RNS/Utilities/rnpath.py", "RNS/Utilities/rnprobe.py", "RNS/Utilities/rnsd.py", "RNS/Utilities/rnid.py", "RNS/Utilities/rnir.py", "RNS/Utilities/rnodeconf.py", "RNS/Utilities/rnpkg.py", "RNS/Utilities/rnsh.py", "RNS/Utilities/rnx.py", "RNS/Utilities/rngit/"],
+        "rust_surface": ["crates/apps/rns-tools", "tools/interop"],
+        "implementation": "partial",
+        "evidence": ["unit", "simulated", "pinned-python", "cross-implementation", "planned"],
+        "evidence_status": "unverified",
+        "test_command": [
+          "cargo test -p rns-tools --all-features",
+          "cargo clippy -p rns-tools --bin rncp --test rncp_process --all-features --no-deps -- -D warnings",
+          "cargo clippy -p rns-tools --test rncp_python_interop --all-features --no-deps -- -D warnings",
+          "cargo test -p rns-tools --test rncp_process --all-features -- --nocapture",
+          "RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rncp_python_interop rncp_mixed_runtime_compression_matrix_roundtrips_binary_files -- --ignored --nocapture",
+          "RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rncp_python_interop rncp_exchanges_binary_files_with_pinned_python_in_both_directions -- --ignored --nocapture",
+          "RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rncp_python_interop -- --ignored --nocapture"
+        ],
+        "evidence_artifact": "docs/goals/reticulum-reference-parity-605/evidence/611-utilities.md",
+        "owner_issue": 611,
+        "notes": "The native rncp network slice now performs TCP discovery, Link establishment and identification, authenticated send/fetch Resource transfers, binary-safe metadata, jail/save side effects, adaptive timeouts, terminal failures, and flushed non-silent phase output across two independent processes. A pinned-Python trace covers authenticated binary sends in both directions plus an identified Rust fetch client receiving Python's metadata-bearing unassociated file Resource and rejecting a second identity. Commit 3c6757ba adds default and explicit no-compression send modes in both directions, a bzip2-compressed payload, and Python listener default/no-compression fetch responses into Rust. Commit 2b281b87 adds process-level missing-fetch and denied-sender failure-category assertions; commit 053ef246 adds malformed-identity and unusable-save-path assertions; commit 9dc9bd62 adds an unused-endpoint path-discovery-timeout assertion; commit d66b19d1 adds persisted listener identity and post-restart transfer coverage; commit 9b8e4ed6 adds a local fetch destination disk-error assertion; commit 397a9525 adds client Ctrl-C cancellation status; commit e668ae60 adds three concurrent client transfers with exact saved bytes; commit a5f57dba adds interrupted-Resource failure status and phase-output coverage; commit 27bb3fac adds readiness-gated medium-timeout selection after TCP interface activation; commit 708dc980 adds a Python-listener/Rust-client restart trace with stable identity and exact binary transfers before and after restart; commit a81f0cf6 serializes the Python interop fixtures to prevent listener/announce contention; commit e6f71d21 asserts the successful Python fetch-client Transfer complete callback. Listener-side save-status/failure callback telemetry, the complete utility option matrix, rngit network workflows, and slow-interface/remote-disk-fault transcripts remain unverified or owned by #612/#613."
+      },
+      {
+        "id": "reticulum-605-612-rngit-permission-work-storage",
+        "kind": "behavioral-requirement",
+        "reference_project": "reticulum",
+        "reference_paths": ["RNS/Utilities/rngit/client.py", "RNS/Utilities/rngit/server.py", "RNS/Utilities/rngit/util.py"],
+        "rust_surface": ["crates/apps/rns-tools::rngit"],
+        "implementation": "partial",
+        "evidence": ["unit", "simulated", "pinned-python", "planned"],
+        "evidence_status": "unverified",
+        "test_command": [
+          "cargo fmt --all -- --check",
+          "cargo test -p rns-tools --all-features",
+          "cargo clippy -p rns-tools --bin rngit --all-features --no-deps -- -D warnings"
+        ],
+        "evidence_artifact": "docs/goals/reticulum-reference-parity-605/evidence/612-rngit.md",
+        "owner_issue": 612,
+        "notes": "Permission resolver bounds/failure propagation, configured-access merging, canonical companion paths, atomic permission refresh, production work-item handlers, Python-shaped MessagePack storage, and a Python-produced binary metadata fixture are implemented and locally verified. The live Reticulum adapter now carries the identified peer key for create/propose/edit signature validation, and a pinned Python Link trace exercises Git plus permission/work request shapes and lifecycle responses. The hash-only local compatibility seam, restart/concurrency/fault transcripts, full Python CLI workflow, and broader network matrix remain unverified."
+      },
+      {
+        "id": "reticulum-605-613-rngit-pages-media",
+        "kind": "behavioral-requirement",
+        "reference_project": "reticulum",
+        "reference_paths": ["RNS/Utilities/rngit/pages.py", "RNS/Utilities/rngit/media.py", "RNS/Utilities/rngit/highlight.py"],
+        "rust_surface": ["crates/apps/rns-tools::rngit"],
+        "implementation": "partial",
+        "evidence": ["unit", "simulated", "planned"],
+        "evidence_status": "unverified",
+        "test_command": [
+          "cargo fmt --all -- --check",
+          "cargo test -p rns-tools --all-features",
+          "cargo test -p rns-tools --bin rngit --all-features",
+          "cargo clippy -p rns-tools --all-targets --all-features --no-deps -- -D warnings",
+          "cargo test -p reticulum-rs-transport --lib resource:: --all-features",
+          "cargo clippy -p reticulum-rs-transport --lib --all-features --no-deps -- -D warnings"
+        ],
+        "evidence_artifact": "docs/goals/reticulum-reference-parity-605/evidence/613-rngit-pages.md",
+        "owner_issue": 613,
+        "notes": "NomadNet destination/network mode, page and file paths, var_* request fields, access/no-identity behavior, image markup, media validation/filename metadata, bounded WebP conversion with raw fallback, link-scoped temporary cleanup, and explicit no-compression Resource responses are implemented and locally verified. A pinned Python/NomadNet client transcript, live page/media checksums, encoder-success fixture, complete reference rendering, and end-to-end rngit network workflows remain unverified."
+      },
+      {
+        "id": "reticulum-605-614-native-interface-runtimes",
+        "kind": "behavioral-requirement",
+        "reference_project": "reticulum",
+        "reference_paths": ["RNS/Interfaces/AutoInterface.py", "RNS/Interfaces/BLEInterface.py", "RNS/Interfaces/RNodeInterface.py", "RNS/Interfaces/SerialInterface.py"],
+        "rust_surface": ["crates/libs/rns-transport::iface", "crates/apps/reticulumd"],
+        "implementation": "partial",
+        "evidence": ["unit", "planned", "hardware-unverified"],
+        "evidence_status": "hardware-unverified",
+        "test_command": [
+          "cargo fmt --all -- --check",
+          "cargo test -p reticulum-rs-transport --features rnode-ble --lib rnode_ble -- --nocapture",
+          "cargo test -p reticulum-rs-transport --features rnode-ble --tests",
+          "cargo clippy -p reticulum-rs-transport --features rnode-ble --lib --all-targets --no-deps -- -D warnings"
+        ],
+        "evidence_artifact": "docs/goals/reticulum-reference-parity-605/evidence/614-native-interfaces.md",
+        "owner_issue": 614,
+        "notes": "Windows paired-device selection now uses the WinRT bonded-device query and filters btleplug scan candidates by address; Android configured-peripheral behavior is unchanged. Local transport tests pass, but this Linux host lacks a MinGW/Windows SDK sysroot so the Windows target did not reach Rust crate checking. Native Windows, AutoInterface platform, cross-family, live Python/client, and physical carrier evidence remain unverified."
+      },
+      {
+        "id": "reticulum-605-615-differential-release-acceptance",
+        "kind": "behavioral-requirement",
+        "reference_project": "both",
+        "reference_paths": ["RNS/", "LXMF/", "RNS/Resource.py", "RNS/Transport.py"],
+        "rust_surface": ["tools/interop", "xtask", "crates/libs/test-support"],
+        "implementation": "partial",
+        "evidence": ["unit", "planned"],
+        "evidence_status": "unverified",
+        "test_command": [
+          "python3 tools/scripts/python_surface_inventory.py --self-test",
+          "python3 tools/scripts/python_surface_inventory.py --check --json-out docs/status/python-surface-parity.json",
+          "cargo xtask release-check"
+        ],
+        "evidence_artifact": "docs/goals/reticulum-reference-parity-605/evidence/615-release-acceptance.md",
+        "owner_issue": 615,
+        "notes": "The inventory check now rejects a stale generated behavioral contract by comparing it with the authoritative mapping and exact generated reference revisions. Self-tests and active/forward inventory generation pass locally, but the full differential matrix, exact provenance, hosted checks, and aggregate release gate remain unverified."
+      },
+      {
+        "id": "reticulum-605-616-operational-platform-evidence",
+        "kind": "behavioral-requirement",
+        "reference_project": "operational",
+        "reference_paths": ["RNS/Interfaces/", "RNS/Utilities/", "LXMF/"],
+        "rust_surface": ["tests/hil", "tools/interop", "docs/status"],
+        "implementation": "not-applicable",
+        "evidence": ["planned", "hardware-unverified"],
+        "evidence_status": "hardware-unverified",
+        "test_command": "cargo xtask hil --help",
+        "evidence_artifact": "target/issue-605/evidence/616-operational-matrix.json",
+        "owner_issue": 616,
+        "notes": "Operational physical, platform, client, public-network, and soak evidence is a separate acceptance axis, not a software implementation status."
+      }
+    ]
+  }
 }

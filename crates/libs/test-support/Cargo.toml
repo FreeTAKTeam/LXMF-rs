@@ -12,6 +12,7 @@ workspace = true
 
 [dev-dependencies]
 base64.workspace = true
+hex.workspace = true
 jsonschema = { version = "=0.17.0", default-features = false, features = ["draft202012"] }
 lxmf-core.workspace = true
 lxmf-sdk = { workspace = true, features = ["rpc-backend", "std", "sdk-async"] }

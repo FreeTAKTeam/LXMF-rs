@@ -10,6 +10,24 @@ const RNGIT_PATH_RELEASE: &str = "/mgmt/release";
 const RNGIT_PATH_WORK: &str = "/mgmt/work";
 const RNGIT_PATH_PERMS: &str = "/mgmt/perms";
 
+use rns_transport::identity::Identity;
+
+pub(crate) fn rngit_paths() -> &'static [&'static str] {
+    &[
+        RNGIT_PATH_LIST,
+        RNGIT_PATH_FETCH,
+        RNGIT_PATH_PUSH,
+        RNGIT_PATH_DELETE,
+        RNGIT_PATH_CREATE,
+        RNGIT_PATH_FORK,
+        RNGIT_PATH_SYNC,
+        RNGIT_PATH_MIRROR,
+        RNGIT_PATH_RELEASE,
+        RNGIT_PATH_WORK,
+        RNGIT_PATH_PERMS,
+    ]
+}
+
 const RNGIT_RES_OK: u8 = 0x00;
 const RNGIT_RES_DISALLOWED: u8 = 0x01;
 const RNGIT_RES_INVALID_REQ: u8 = 0x02;
@@ -85,6 +103,16 @@ impl ReticulumGitNode {
         data: &[u8],
         remote_identity: [u8; 16],
     ) -> Vec<u8> {
+        self.handle_request_with_peer_identity(path, data, remote_identity, None)
+    }
+
+    pub fn handle_request_with_peer_identity(
+        &mut self,
+        path: &str,
+        data: &[u8],
+        remote_identity: [u8; 16],
+        peer_identity: Option<Identity>,
+    ) -> Vec<u8> {
         let request = match unpack_request(data) {
             Ok(request) => request,
             Err(error) => return response(Self::RES_INVALID_REQ, error, None),
@@ -99,26 +127,18 @@ impl ReticulumGitNode {
             RNGIT_PATH_MIRROR => self.handle_mirror(&request, remote_identity),
             RNGIT_PATH_SYNC => self.handle_sync(&request, remote_identity),
             RNGIT_PATH_RELEASE => self.handle_release(&request, remote_identity),
-            RNGIT_PATH_WORK => self.handle_work(&request, remote_identity),
+            RNGIT_PATH_WORK => {
+                self.handle_work_with_peer_identity(&request, remote_identity, peer_identity)
+            }
             RNGIT_PATH_PERMS => self.handle_perms(&request, remote_identity),
             _ => response(Self::RES_NOT_FOUND, "Unknown request path", None),
         }
     }
 
     pub fn register_request_handlers(&self) -> Vec<&'static str> {
-        vec![
-            RNGIT_PATH_LIST,
-            RNGIT_PATH_FETCH,
-            RNGIT_PATH_PUSH,
-            RNGIT_PATH_DELETE,
-            RNGIT_PATH_CREATE,
-            RNGIT_PATH_FORK,
-            RNGIT_PATH_SYNC,
-            RNGIT_PATH_MIRROR,
-            RNGIT_PATH_RELEASE,
-            RNGIT_PATH_WORK,
-            RNGIT_PATH_PERMS,
-        ]
+        let mut paths = rngit_paths().to_vec();
+        paths.extend_from_slice(page_paths());
+        paths
     }
 
     pub fn remote_connected(&self) -> bool {
@@ -426,56 +446,17 @@ impl ReticulumGitNode {
         self.handle_release_request(request, remote)
     }
 
-    pub fn releases_list_data(&self, repository_path: &Path) -> Vec<u8> {
-        let releases_path = companion_path(repository_path, "releases");
-        let mut releases = Vec::new();
-        let mut latest = None;
-        if let Ok(entries) = fs::read_dir(&releases_path) {
-            for entry in entries.flatten() {
-                let directory = entry.path();
-                if !directory.is_dir() || !directory.join("META").is_file() {
-                    continue;
-                }
-                let metadata = fs::read_to_string(directory.join("META")).unwrap_or_default();
-                let mut values = BTreeMap::new();
-                for line in metadata.lines() {
-                    if let Some((key, value)) = line.split_once('=') {
-                        values.insert(key.trim().to_string(), value.trim().to_string());
-                    }
-                }
-                let tag = values
-                    .get("tag")
-                    .cloned()
-                    .or_else(|| directory.file_name().and_then(|name| name.to_str()).map(ToOwned::to_owned))
-                    .unwrap_or_default();
-                let status = values.get("status").cloned().unwrap_or_else(|| "unknown".to_string());
-                let created = values.get("created").and_then(|value| value.parse::<u64>().ok()).unwrap_or(0);
-                let artifacts = fs::read_dir(directory.join("artifacts"))
-                    .map(|entries| entries.flatten().filter(|entry| entry.path().is_file()).count() as u64)
-                    .unwrap_or(0);
-                releases.push(rmpv::Value::Map(vec![
-                    (rmpv::Value::String("tag".into()), rmpv::Value::String(tag.clone().into())),
-                    (rmpv::Value::String("status".into()), rmpv::Value::String(status.clone().into())),
-                    (rmpv::Value::String("created".into()), rmpv::Value::from(created)),
-                    (rmpv::Value::String("artifacts".into()), rmpv::Value::from(artifacts)),
-                ]));
-                if status == "published" && fs::read_to_string(releases_path.join("latest")).ok().as_deref() == Some(tag.as_str()) {
-                    latest = Some(tag);
-                }
-            }
-        }
-        let payload = rmpv::Value::Map(vec![
-            (rmpv::Value::String("releases".into()), rmpv::Value::Array(releases)),
-            (
-                rmpv::Value::String("latest".into()),
-                latest.map_or(rmpv::Value::Nil, |value| rmpv::Value::String(value.into())),
-            ),
-        ]);
-        response(Self::RES_OK, "", Some(&payload))
-    }
-
     pub fn handle_work(&mut self, request: &[(rmpv::Value, rmpv::Value)], remote: [u8; 16]) -> Vec<u8> {
         self.handle_work_request(request, remote)
+    }
+
+    pub fn handle_work_with_peer_identity(
+        &mut self,
+        request: &[(rmpv::Value, rmpv::Value)],
+        remote: [u8; 16],
+        peer_identity: Option<Identity>,
+    ) -> Vec<u8> {
+        self.handle_work_request_with_peer_identity(request, remote, peer_identity)
     }
 
     pub fn handle_perms(&mut self, request: &[(rmpv::Value, rmpv::Value)], remote: [u8; 16]) -> Vec<u8> {
@@ -483,7 +464,10 @@ impl ReticulumGitNode {
     }
 }
 
+include!("work_storage.rs");
 include!("work_service.rs");
+include!("work_documents.rs");
+include!("work_mutations.rs");
 include!("permissions_service.rs");
 include!("release_service.rs");
 include!("stats_service.rs");

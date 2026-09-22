@@ -297,6 +297,7 @@ async fn test_transport_bridge_fixture_with_peer_at(
         [0u8; 16],
         announce_destination,
         None,
+        None,
         Vec::new(),
         None,
         encode_propagation_node_app_data(

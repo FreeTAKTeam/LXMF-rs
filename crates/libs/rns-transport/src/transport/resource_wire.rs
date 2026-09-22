@@ -30,6 +30,10 @@ pub(super) async fn handle_resource_proof(
     let link = link_for_resource_packet(&handler, &packet).await;
     if let Some(link) = link {
         let mut link = link.lock().await;
+        // Resource proofs are handled here instead of through
+        // `Link::handle_packet`; keep the link watchdog's inbound activity
+        // anchor in sync with the wire traffic.
+        link.note_inbound(packet.context);
         let mut responses = std::mem::take(&mut handler.resource_response_packets);
         handler.resource_manager.handle_packet_into(&packet, &mut link, &mut responses);
         let events = handler.resource_manager.drain_events();
@@ -92,6 +96,11 @@ pub(super) async fn handle_link_resource_packet<'a>(
     };
 
     let mut link = link.lock().await;
+    // Resource advertisements, requests, hash updates and parts are routed
+    // through the ResourceManager rather than `Link::handle_packet`. They
+    // are still live link traffic and must prevent the active-link watchdog
+    // from closing a long transfer.
+    link.note_inbound(packet.context);
     log::debug!(
         "[resource-diag] wire_resource_packet node={} link={} ctx={:02x} has_ingress={}",
         handler.config.name,

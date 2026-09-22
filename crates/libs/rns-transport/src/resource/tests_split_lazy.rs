@@ -229,6 +229,10 @@ fn removing_a_link_drops_its_unbuilt_segments() {
     manager.remove_link_state(*link.id());
     assert!(manager.outgoing_segment_chains.is_empty());
     assert!(manager.has_no_outbound_state());
+    let events = manager.drain_events();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].hash, original_hash);
+    assert!(matches!(events[0].kind, ResourceEventKind::OutboundFailed));
 }
 
 /// A peer cancelling mid-transfer has to drop the unbuilt tail too.

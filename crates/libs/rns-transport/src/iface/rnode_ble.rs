@@ -2,6 +2,8 @@ include!("rnode_ble_parts/module_prelude.rs");
 
 include!("rnode_ble_parts/runtime_helpers.rs");
 
+include!("rnode_ble_parts/windows_paired.rs");
+
 include!("rnode_ble_parts/runtime_lifecycle.rs");
 
 include!("rnode_ble_parts/native_connection.rs");

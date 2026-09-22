@@ -3,9 +3,7 @@ mod lxmd_three_node;
 
 use lxmd_three_node::*;
 use serde_json::json;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-
-const REMOTE_PATH_RESPONSE_MIN: Duration = Duration::from_millis(900);
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[test]
 fn lxmd_four_node_tcp_remote_path_response_uses_relayed_route() {
@@ -131,13 +129,16 @@ fn lxmd_four_node_tcp_remote_path_response_uses_relayed_route() {
         let client_three_hash = status_hash(&client_three_status)
             .unwrap_or_else(|| panic!("client-three delivery hash: {client_three_status}"));
 
+        // #609 retransmits local-client announces immediately, so this
+        // topology can have a learned route before the message is sent. The
+        // configured four-node chain still proves the delivery crosses the
+        // relay; a fixed path-discovery delay would reject that valid case.
         rpc_call(client_two_rpc, "announce_now", None)?;
 
         let message_id = format!(
             "remote-path-{}",
             SystemTime::now().duration_since(UNIX_EPOCH).expect("time").as_millis()
         );
-        let delivery_started_at = Instant::now();
         rpc_call(
             client_three_rpc,
             "send_message_v2",
@@ -152,14 +153,6 @@ fn lxmd_four_node_tcp_remote_path_response_uses_relayed_route() {
         )?;
 
         wait_for_inbound_message(client_two_rpc, "hello world")?;
-
-        let delivery_elapsed = delivery_started_at.elapsed();
-        if delivery_elapsed < REMOTE_PATH_RESPONSE_MIN {
-            return Err(format!(
-                "remote path response completed too quickly: {:?} < {:?}",
-                delivery_elapsed, REMOTE_PATH_RESPONSE_MIN
-            ));
-        }
 
         Ok(())
     })();

@@ -24,6 +24,8 @@ use rns_transport::hash::{address_hash, AddressHash};
 
 use rns_transport::identity_bridge::to_transport_private_identity;
 
+use rns_transport::iface::InterfaceSharedConfig;
+
 use rns_transport::iface::tcp_client::{TcpClient, TcpSocketTuning};
 
 use rns_transport::iface::tcp_server::TcpServer;

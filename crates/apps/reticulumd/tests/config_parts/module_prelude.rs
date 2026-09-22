@@ -746,16 +746,17 @@ interfaces = [
 }
 
 #[test]
-fn rejects_unimplemented_reticulum_ifac_authentication() {
+fn parses_reticulum_ifac_authentication_configuration() {
     let input = r#"
 interfaces = [
   { type = "KISSInterface", enabled = true, name = "kiss-main", port = "/dev/ttyACM0", speed = 19200, ifac_size = 16, networkname = "field-net", pass_phrase = "shared-secret", announce_rate_target = 12, ingress_control = false, egress_control = true, ic_burst_hold = 1.5, ic_pr_burst_freq = 0.25, ec_pr_freq = 0.5, bootstrap_only = true }
 ]
 "#;
-    let error = DaemonConfig::from_toml(input).expect_err("IFAC must fail closed");
-    let error = error.to_string();
-    assert!(error.contains("does not implement"));
-    assert!(error.contains("ifac_size/network_name/passphrase"));
+    let cfg = DaemonConfig::from_toml(input).expect("IFAC configuration is supported");
+    let iface = &cfg.interfaces[0];
+    assert_eq!(iface.ifac_size, Some(16));
+    assert_eq!(iface.networkname.as_deref(), Some("field-net"));
+    assert_eq!(iface.pass_phrase.as_deref(), Some("shared-secret"));
 }
 
 #[test]
@@ -1203,14 +1204,16 @@ interfaces = [
 }
 
 #[test]
-fn rejects_i2p_ifac_compatibility_aliases() {
+fn parses_i2p_ifac_compatibility_aliases() {
     let input = r#"
 interfaces = [
   { type = "I2PInterface", enabled = true, name = "i2p-main", connectable = true, ifac_netname = "i2p-field", ifac_netkey = "i2p-secret" }
 ]
 "#;
-    let error = DaemonConfig::from_toml(input).expect_err("IFAC aliases must fail closed");
-    assert!(error.to_string().contains("does not implement"));
+    let cfg = DaemonConfig::from_toml(input).expect("I2P IFAC aliases are supported");
+    let iface = &cfg.interfaces[0];
+    assert_eq!(iface.network_name.as_deref(), Some("i2p-field"));
+    assert_eq!(iface.passphrase.as_deref(), Some("i2p-secret"));
 }
 
 #[test]

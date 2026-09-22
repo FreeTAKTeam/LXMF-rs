@@ -411,7 +411,12 @@ impl Link {
             Some(CachedFernet::new_from_slices(&key_bytes[..split], &key_bytes[split..]));
     }
 
-    fn note_inbound(&mut self, context: PacketContext) {
+    /// Record traffic that arrived through a path handled outside
+    /// `Link::handle_packet`, such as the Resource wire lane. Those packets
+    /// still keep an active link alive; otherwise a long Resource transfer
+    /// can be torn down by the watchdog while its requests and proofs are
+    /// flowing normally.
+    pub(crate) fn note_inbound(&mut self, context: PacketContext) {
         let now = Instant::now();
         self.last_inbound = Some(now);
         if self.status == LinkStatus::Stale {

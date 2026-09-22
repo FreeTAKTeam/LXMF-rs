@@ -7,7 +7,7 @@ use rns_transport::channel_buffer::RawChannelReader;
 use rns_transport::destination::link::{Link, LinkEvent, LinkEventData, LinkStatus};
 use rns_transport::destination::{DestinationDesc, SingleInputDestination};
 use rns_transport::hash::{AddressHash, Hash};
-use rns_transport::resource::{ResourceEvent, ResourceEventKind};
+use rns_transport::resource::{ResourceComplete, ResourceEvent, ResourceEventKind};
 use rns_transport::transport::{ReceivedData, Transport};
 use tokio::time::{sleep, timeout, Instant};
 
@@ -112,6 +112,29 @@ pub(super) async fn wait_for_resource_ack(
     .await;
 }
 
+pub(super) async fn wait_for_resource_digest_ack(
+    seen: &Arc<StdMutex<Vec<(String, String)>>>,
+    expected_size: usize,
+    expected_digest: &str,
+    duration: Duration,
+) {
+    let expected = format!("resource-sha256:{expected_size}:{expected_digest}");
+    wait_for_seen_tuple(seen, duration, "Python resource digest acknowledgement", |id, data| {
+        id == "rust-resource" && data == expected
+    })
+    .await;
+}
+
+pub(super) async fn wait_for_resource_started(
+    seen: &Arc<StdMutex<Vec<(String, String)>>>,
+    duration: Duration,
+) {
+    wait_for_seen_tuple(seen, duration, "Python resource-started acknowledgement", |id, data| {
+        id == "resource-started" && data == "ready"
+    })
+    .await;
+}
+
 pub(super) async fn wait_for_identify_ack(
     seen: &Arc<StdMutex<Vec<(String, String)>>>,
     duration: Duration,
@@ -172,15 +195,107 @@ pub(super) async fn wait_for_outbound_resource_complete(
     timeout(duration, async {
         loop {
             let event = events.recv().await.expect("resource event");
+            if event.hash != expected_hash {
+                continue;
+            }
+            match event.kind {
+                ResourceEventKind::OutboundComplete => return,
+                ResourceEventKind::OutboundFailed => {
+                    panic!("outbound resource failed before completion: {expected_hash}")
+                }
+                ResourceEventKind::OutboundCancelled => {
+                    panic!("outbound resource was cancelled before completion: {expected_hash}")
+                }
+                _ => {}
+            }
+        }
+    })
+    .await
+    .expect("timed out waiting for outbound resource completion");
+}
+
+pub(super) async fn wait_for_outbound_resource_cancelled(
+    events: &mut tokio::sync::broadcast::Receiver<ResourceEvent>,
+    expected_hash: Hash,
+    duration: Duration,
+) {
+    timeout(duration, async {
+        loop {
+            let event = events.recv().await.expect("resource event");
             if event.hash == expected_hash
-                && matches!(event.kind, ResourceEventKind::OutboundComplete)
+                && matches!(event.kind, ResourceEventKind::OutboundCancelled)
             {
                 return;
             }
         }
     })
     .await
-    .expect("timed out waiting for outbound resource completion");
+    .expect("timed out waiting for outbound resource cancellation");
+}
+
+pub(super) async fn wait_for_outbound_resource_failed(
+    events: &mut tokio::sync::broadcast::Receiver<ResourceEvent>,
+    expected_hash: Hash,
+    duration: Duration,
+) {
+    timeout(duration, async {
+        loop {
+            let event = events.recv().await.expect("resource event");
+            if event.hash == expected_hash
+                && matches!(event.kind, ResourceEventKind::OutboundFailed)
+            {
+                return;
+            }
+        }
+    })
+    .await
+    .expect("timed out waiting for outbound resource failure");
+}
+
+/// A peer that gives up after every resource part is dropped may terminate
+/// through its receiver-cancel packet before Rust's retry budget expires.
+/// Both outcomes are terminal for this fault-injection scenario; the reader,
+/// truncation, and shutdown regressions above still require OutboundFailed.
+pub(super) async fn wait_for_outbound_resource_failed_or_cancelled(
+    events: &mut tokio::sync::broadcast::Receiver<ResourceEvent>,
+    expected_hash: Hash,
+    duration: Duration,
+) {
+    timeout(duration, async {
+        loop {
+            let event = events.recv().await.expect("resource event");
+            if event.hash == expected_hash
+                && matches!(
+                    event.kind,
+                    ResourceEventKind::OutboundFailed | ResourceEventKind::OutboundCancelled
+                )
+            {
+                return;
+            }
+        }
+    })
+    .await
+    .expect("timed out waiting for outbound resource failure or cancellation");
+}
+
+pub(super) async fn wait_for_inbound_resource_failure(
+    events: &mut tokio::sync::broadcast::Receiver<ResourceEvent>,
+    link_id: AddressHash,
+    duration: Duration,
+) -> String {
+    timeout(duration, async {
+        loop {
+            let event = events.recv().await.expect("resource event");
+            if event.link_id != link_id {
+                continue;
+            }
+            if let ResourceEventKind::InboundFailed(failure) = event.kind {
+                return failure.reason;
+            }
+        }
+    })
+    .await
+    .expect("timed out waiting for inbound resource failure")
 }
 
 pub(super) async fn wait_for_inbound_resource_complete(
@@ -205,6 +320,26 @@ pub(super) async fn wait_for_inbound_resource_complete(
     })
     .await
     .expect("timed out waiting for inbound resource completion");
+}
+
+pub(super) async fn wait_for_inbound_resource_data(
+    events: &mut tokio::sync::broadcast::Receiver<ResourceEvent>,
+    link_id: AddressHash,
+    duration: Duration,
+) -> ResourceComplete {
+    timeout(duration, async {
+        loop {
+            let event = events.recv().await.expect("resource event");
+            if event.link_id != link_id {
+                continue;
+            }
+            if let ResourceEventKind::Complete(complete) = event.kind {
+                return complete;
+            }
+        }
+    })
+    .await
+    .expect("timed out waiting for inbound resource completion")
 }
 
 pub(super) async fn wait_for_inbound_resource_data_or_child_exit(

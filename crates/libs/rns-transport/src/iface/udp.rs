@@ -7,12 +7,13 @@ use tokio::net::UdpSocket;
 use tokio::sync::Mutex as TokioMutex;
 use tokio_util::sync::CancellationToken;
 
-use crate::buffer::{InputBuffer, OutputBuffer};
 use crate::error::RnsError;
 use crate::hash::AddressHash;
-use crate::iface::{IfaceRole, IfaceSource, InterfaceManager, RxMessage, TxMessageType};
+use crate::iface::{
+    decode_packet_ifac, encode_packet_ifac, is_ifac_violation, record_ifac_violation, IfaceRole,
+    IfaceSource, InterfaceManager, RxMessage, TxMessageType, MAX_IFAC_SIZE_BYTES,
+};
 use crate::packet::{Packet, PacketContext, PacketType};
-use crate::serde::Serialize;
 
 use super::{Interface, InterfaceContext};
 
@@ -323,6 +324,8 @@ impl UdpInterface {
             )
         };
         let iface_address = context.channel.address;
+        let ifac_state = context.channel.ifac_state.clone();
+        let ifac_violations = context.channel.ifac_violations.clone();
         runtime_status.update(|status| {
             status.iface = Some(iface_address.to_string());
         });
@@ -366,7 +369,7 @@ impl UdpInterface {
                 peer_routing.is_some(),
             );
 
-            const BUFFER_SIZE: usize = core::mem::size_of::<Packet>() * 3;
+            let buffer_size = <Self as Interface>::mtu().saturating_add(MAX_IFAC_SIZE_BYTES);
 
             // Start receive task
             let rx_task = {
@@ -376,10 +379,12 @@ impl UdpInterface {
                 let rx_channel = rx_channel.clone();
                 let peer_routing = peer_routing.clone();
                 let runtime_status = runtime_status.clone();
+                let ifac_state = ifac_state.clone();
+                let ifac_violations = ifac_violations.clone();
 
                 tokio::spawn(async move {
                     loop {
-                        let mut rx_buffer = [0u8; BUFFER_SIZE];
+                        let mut rx_buffer = vec![0_u8; buffer_size];
 
                         tokio::select! {
                             _ = cancel.cancelled() => {
@@ -399,7 +404,8 @@ impl UdpInterface {
                                         break;
                                     }
                                     Ok((n, in_addr)) => {
-                                        if let Ok(packet) = Packet::deserialize(&mut InputBuffer::new(&rx_buffer[..n])) {
+                                        match decode_packet_ifac(&ifac_state, &rx_buffer[..n]) {
+                                            Ok(packet) => {
                                             // Re-attribute to a virtual per-peer iface if
                                             // this source is in the routing map. This is
                                             // what makes link.iface_matches succeed for a
@@ -441,13 +447,18 @@ impl UdpInterface {
                                                     status.last_error = Some(err.to_string());
                                                 });
                                             }
-                                        } else {
-                                            log::warn!("couldn't decode packet");
-                                            runtime_status.update(|status| {
-                                                status.decode_errors = status.decode_errors.saturating_add(1);
-                                                status.bytes_rx = status.bytes_rx.saturating_add(n as u64);
-                                                status.last_error = Some("couldn't decode packet".to_string());
-                                            });
+                                            }
+                                            Err(error) => {
+                                                if is_ifac_violation(&error) {
+                                                    record_ifac_violation(&ifac_violations, &error);
+                                                }
+                                                log::debug!("couldn't decode UDP packet: {error}");
+                                                runtime_status.update(|status| {
+                                                    status.decode_errors = status.decode_errors.saturating_add(1);
+                                                    status.bytes_rx = status.bytes_rx.saturating_add(n as u64);
+                                                    status.last_error = Some("couldn't decode packet".to_string());
+                                                });
+                                            }
                                         }
                                     }
                                     Err(e) => {
@@ -475,14 +486,13 @@ impl UdpInterface {
                     let socket = write_socket;
                     let peer_routing = peer_routing.clone();
                     let runtime_status = runtime_status.clone();
+                    let ifac_state = ifac_state.clone();
 
                     tokio::spawn(async move {
                         loop {
                             if stop.is_cancelled() {
                                 break;
                             }
-
-                            let mut tx_buffer = [0u8; BUFFER_SIZE];
 
                             let mut tx_channel = tx_channel.lock().await;
 
@@ -558,9 +568,8 @@ impl UdpInterface {
                                                 iface_address, dest, packet
                                             );
                                         }
-                                        let mut output = OutputBuffer::new(&mut tx_buffer);
-                                        if packet.serialize(&mut output).is_ok() {
-                                            match socket.send_to(output.as_slice(), &dest).await {
+                                        match encode_packet_ifac(&ifac_state, &packet) {
+                                            Ok(payload) => match socket.send_to(&payload, &dest).await {
                                                 Ok(n) => {
                                                     runtime_status.update(|status| {
                                                         status.link_state = "bound".to_string();
@@ -575,6 +584,13 @@ impl UdpInterface {
                                                         status.last_error = Some(err.to_string());
                                                     });
                                                 }
+                                            },
+                                            Err(error) => {
+                                                log::warn!("couldn't encode UDP packet with IFAC: {error}");
+                                                runtime_status.update(|status| {
+                                                    status.tx_errors = status.tx_errors.saturating_add(1);
+                                                    status.last_error = Some("couldn't encode packet".to_string());
+                                                });
                                             }
                                         }
                                     }

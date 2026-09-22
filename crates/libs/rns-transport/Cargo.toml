@@ -50,6 +50,13 @@ uuid = { version = "1.16.0", optional = true }
 x25519-dalek = { workspace = true, features = ["static_secrets"] }
 rns-core.workspace = true
 
+[target.'cfg(target_os = "windows")'.dependencies]
+# The WinRT paired-device query is needed because btleplug's Windows adapter
+# cannot materialize a Peripheral from a Bluetooth address until it has seen an
+# advertisement.  Keep the platform-owned pairing lookup behind the Windows
+# target so other carriers do not acquire a native UI/runtime dependency.
+windows = { version = "0.62", features = ["Devices_Bluetooth", "Devices_Enumeration", "Foundation", "Foundation_Collections"] }
+
 [features]
 default = ["storage"]
 storage = ["dep:rusqlite"]

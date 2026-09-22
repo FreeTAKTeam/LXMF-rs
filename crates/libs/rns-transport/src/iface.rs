@@ -48,6 +48,8 @@ include!("iface_types.rs");
 
 include!("iface_parts/txmessagetype.rs");
 
+include!("iface_parts/ifac_wire.rs");
+
 include!("iface_parts/interface_traffic.rs");
 
 include!("iface_runtime.rs");
@@ -55,6 +57,8 @@ include!("iface_runtime.rs");
 include!("iface_parts/interfacemanager.rs");
 
 include!("iface_parts/interfacemanager_management.rs");
+
+include!("iface_parts/interfacemanager_traffic.rs");
 
 include!("iface_parts/interfacemanager_send.rs");
 

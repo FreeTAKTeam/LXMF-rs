@@ -10,7 +10,7 @@ failure_class = "FAIL_PROTOCOL"
 
 [cases.command]
 program = "cargo"
-args = ["test", "-p", "reticulumd", "--test", "python_channel_interop", "--", "--ignored", "--nocapture"]
+args = ["nextest", "run", "-j", "1", "-p", "reticulumd", "--test", "python_channel_interop", "--run-ignored", "only", "--no-capture"]
 
 [[cases]]
 id = "python-paper-interop"
@@ -52,7 +52,7 @@ failure_class = "FAIL_PROTOCOL"
 
 [cases.command]
 program = "cargo"
-args = ["test", "-p", "lxmf-cli", "--test", "python_lxmd_remote_relay", "--", "--ignored", "--skip", "python_to_rust_lxmd_relay_remote_path_e2e", "--nocapture"]
+args = ["test", "-p", "lxmf-cli", "--test", "python_lxmd_remote_relay", "--", "--ignored", "--skip", "python_to_rust_lxmd_relay_remote_path_e2e", "--nocapture", "--test-threads=1"]
 
 [[cases]]
 id = "python-reference-conformance"

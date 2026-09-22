@@ -13,7 +13,7 @@ where
         Some(run.startup_response_timeout),
     ));
 
-    run_kiss_stream(
+    run_kiss_stream_with_ifac(
         stream,
         KissStreamOptions {
             iface_address: run.iface_address,
@@ -36,6 +36,8 @@ where
         stream_cancel,
         run.rx_channel,
         run.tx_channel,
+        run.ifac_state,
+        run.ifac_violations,
     )
     .await;
     if let Err(err) = probe_status_task.await {
@@ -46,6 +48,10 @@ where
 }
 
 impl Interface for LoraInterface {
+    fn ifac_default_size_bytes() -> usize {
+        8
+    }
+
     fn mtu() -> usize {
         220
     }
@@ -440,6 +446,8 @@ mod tests {
                 management_frame_rx,
                 rx_channel,
                 tx_channel,
+                ifac_state: Arc::new(std::sync::RwLock::new(None)),
+                ifac_violations: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             },
         ));
 
@@ -614,6 +622,8 @@ mod tests {
                 management_frame_rx,
                 rx_channel,
                 tx_channel: Arc::new(tokio::sync::Mutex::new(tx_recv)),
+                ifac_state: Arc::new(std::sync::RwLock::new(None)),
+                ifac_violations: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             },
         ));
 

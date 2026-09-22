@@ -14,14 +14,40 @@ ROOT = Path(__file__).resolve().parents[2]
 MANIFEST = ROOT / "tools/interop/independent-implementations.toml"
 
 
-def canonical_pin() -> tuple[str, str]:
+def manifest_data() -> dict[str, object]:
     with MANIFEST.open("rb") as handle:
         data = tomllib.load(handle)
+    if not isinstance(data, dict):
+        raise ValueError("canonical manifest must be a TOML object")
+    return data
+
+
+def canonical_pin() -> tuple[str, str]:
+    data = manifest_data()
     version = data["rns_reference_version"]
     revision = data["rns_reference_revision"]
     python_reference = data["python_reference"]
     if python_reference["version"] != version or python_reference["revision"] != revision:
         raise ValueError("canonical top-level and python_reference pins differ")
+    return version, revision
+
+
+def parity_target_pin() -> tuple[str, str]:
+    target = manifest_data().get("parity_target")
+    if not isinstance(target, dict):
+        raise ValueError("canonical manifest is missing parity_target")
+    version = target.get("version")
+    revision = target.get("revision")
+    implementation = target.get("implementation")
+    repository = target.get("repository")
+    if not all(isinstance(value, str) and value for value in (version, revision)):
+        raise ValueError("parity_target version and revision must be non-empty strings")
+    if implementation != "Reticulum-Python":
+        raise ValueError("parity_target implementation must be Reticulum-Python")
+    if repository != "https://github.com/markqvist/Reticulum.git":
+        raise ValueError("parity_target repository is not the canonical Reticulum repository")
+    if target.get("owner_issue") != 605:
+        raise ValueError("parity_target owner_issue must be issue 605")
     return version, revision
 
 
@@ -84,16 +110,37 @@ def active_mirrors() -> dict[str, tuple[str, ...]]:
     }
 
 
+def parity_target_mirrors() -> dict[str, tuple[str, ...]]:
+    return {
+        ".github/workflows/verify.yml": ("PYTHON_RETICULUM_PARITY_REF: {revision}",),
+        "docs/status/current-roadmap.md": (
+            "immutable RNS {version}\ndevelopment revision `{revision}`",
+        ),
+        "docs/status/reticulum-parity-matrix.md": (
+            "`{revision}`, recorded as `{version}`",
+        ),
+        "docs/status/rns-1.5.4-delta.md": (
+            "| Forward parity candidate | Reticulum-Python | `{version}` | `{revision}` |",
+            "immutable development commit, not a release tag",
+        ),
+    }
+
+
 def verify() -> list[str]:
     try:
         version, revision = canonical_pin()
+        target_version, target_revision = parity_target_pin()
     except (KeyError, OSError, ValueError, tomllib.TOMLDecodeError) as error:
         return [f"cannot read canonical pin: {error}"]
 
-    if not re.fullmatch(r"[0-9a-f]{40}", revision):
-        return [f"canonical revision is not a full Git commit: {revision}"]
-
     errors: list[str] = []
+    if not re.fullmatch(r"[0-9a-f]{40}", revision):
+        errors.append(f"canonical revision is not a full Git commit: {revision}")
+    if not re.fullmatch(r"[0-9a-f]{40}", target_revision):
+        errors.append(f"parity target revision is not a full Git commit: {target_revision}")
+    if target_revision == revision:
+        errors.append("parity target must remain distinct from the active release baseline")
+
     for relative, needles in active_mirrors().items():
         path = ROOT / relative
         try:
@@ -105,11 +152,24 @@ def verify() -> list[str]:
             needle = template.format(version=version, revision=revision)
             if needle not in content:
                 errors.append(f"{relative}: missing canonical mirror {needle!r}")
+    for relative, needles in parity_target_mirrors().items():
+        path = ROOT / relative
+        try:
+            content = path.read_text(encoding="utf-8")
+        except OSError as error:
+            errors.append(f"{relative}: cannot read parity-target mirror: {error}")
+            continue
+        for template in needles:
+            needle = template.format(version=target_version, revision=target_revision)
+            if needle not in content:
+                errors.append(f"{relative}: missing parity-target mirror {needle!r}")
     return errors
 
 
 def self_test() -> None:
     assert "{version}" in active_mirrors()["crates/libs/lxmf-reference/src/lib.rs"][0]
+    assert "{revision}" in parity_target_mirrors()[".github/workflows/verify.yml"][0]
+    assert "{revision}" in parity_target_mirrors()["docs/status/rns-1.5.4-delta.md"][0]
     assert ROOT.name == "LXMF-rs-rns-1.5-alignment" or (ROOT / "Cargo.toml").is_file()
 
 
@@ -125,7 +185,12 @@ def main() -> int:
             print(f"python-reference-pins: {error}", file=sys.stderr)
         return 1
     version, revision = canonical_pin()
-    print(f"python-reference-pins: ok RNS {version} {revision}")
+    target_version, target_revision = parity_target_pin()
+    print(
+        "python-reference-pins: ok "
+        f"baseline RNS {version} {revision}; "
+        f"parity target RNS {target_version} {target_revision}"
+    )
     return 0
 
 

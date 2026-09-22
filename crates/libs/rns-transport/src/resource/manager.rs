@@ -52,17 +52,6 @@ impl ResourceManager {
         Ok(None)
     }
 
-    pub fn remove_link_state(&mut self, link_id: AddressHash) {
-        self.pending_outgoing.retain(|_, sender| sender.link_id != link_id);
-        self.outgoing.retain(|_, sender| sender.link_id != link_id);
-        // Was `senders.front().is_none_or(..)`, which also leaked: a chain
-        // drained to empty matched no link and so was retained forever.
-        self.outgoing_segment_chains.retain(|_, pending| pending.link_id != link_id);
-        self.incoming.retain(|_, receiver| receiver.link_id != link_id);
-        self.incoming_segments.retain(|_, assembly| assembly.link_id != link_id);
-        self.link_stats.remove(&link_id);
-    }
-
     pub fn drain_events(&mut self) -> Vec<ResourceEvent> {
         std::mem::take(&mut self.events)
     }
@@ -448,7 +437,17 @@ impl ResourceManager {
             // remote cancel names the segment currently in flight, so remove
             // that assembly as well and report the abandoned payload instead
             // of leaving the caller waiting for a timeout.
-            self.fail_inbound_segments(receiver.original_hash, "remote_cancelled");
+            let original_hash = receiver.original_hash;
+            if !self.fail_inbound_segments(original_hash, "remote_cancelled") {
+                self.events.push(ResourceEvent {
+                    hash: original_hash,
+                    link_id: receiver.link_id,
+                    kind: ResourceEventKind::InboundFailed(ResourceFailure {
+                        reason: "remote_cancelled".to_string(),
+                        progress: receiver.progress(),
+                    }),
+                });
+            }
         }
         // Removed from both, as before: a hash lives in exactly one of these,
         // but which one depends on whether dispatch has been confirmed yet.

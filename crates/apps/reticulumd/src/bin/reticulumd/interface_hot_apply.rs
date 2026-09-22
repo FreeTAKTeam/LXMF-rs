@@ -4,7 +4,7 @@ use rns_transport::iface::pipe::{PipeInterface, PipeRuntimeStatusHandle};
 use rns_transport::iface::tcp_client::TcpClient;
 use rns_transport::iface::tcp_server::{TcpListenerRuntimeStatusHandle, TcpServer};
 use rns_transport::iface::udp::{UdpInterface, UdpRuntimeStatusHandle};
-use rns_transport::iface::{IfaceRole, InterfaceManager};
+use rns_transport::iface::{IfaceRole, InterfaceManager, InterfaceSharedConfig};
 use rns_transport::transport::Transport;
 use std::collections::HashMap;
 use std::io;
@@ -31,7 +31,7 @@ use interface_hot_apply_parts::record_hot_apply::{
 use interface_hot_apply_parts::record_hot_apply::{
     tcp_server_bind_addr_with_device_resolver, udp_bind_and_forward_addr_with_device_resolver,
 };
-use interface_hot_apply_parts::record_settings::setting;
+use interface_hot_apply_parts::record_settings::{setting_string, setting_u64};
 #[cfg(test)]
 use interface_hot_apply_parts::tcp_runtime_refresh::refresh_hot_apply_tcp_listener_runtime_status_once;
 use interface_hot_apply_parts::tcp_runtime_refresh::{
@@ -150,7 +150,7 @@ impl InterfaceMutationBridge for InterfaceHotApplyBridge {
         interfaces: Vec<InterfaceRecord>,
     ) -> Result<Vec<InterfaceRecord>, io::Error> {
         validate_hot_apply_uniqueness(&interfaces)?;
-        validate_hot_apply_ifac_not_configured(&interfaces)?;
+        validate_hot_apply_ifac_configuration(&interfaces)?;
         let effective = interfaces
             .iter()
             .cloned()
@@ -186,23 +186,22 @@ impl InterfaceMutationBridge for InterfaceHotApplyBridge {
     }
 }
 
-fn validate_hot_apply_ifac_not_configured(interfaces: &[InterfaceRecord]) -> Result<(), io::Error> {
-    const IFAC_FIELDS: &[&str] = &[
-        "ifac_size",
-        "network_name",
-        "networkname",
-        "passphrase",
-        "pass_phrase",
-        "ifac_netname",
-        "ifac_netkey",
-    ];
+fn validate_hot_apply_ifac_configuration(interfaces: &[InterfaceRecord]) -> Result<(), io::Error> {
     for (index, record) in interfaces.iter().enumerate() {
-        if IFAC_FIELDS.iter().any(|field| setting(record, field).is_some()) {
+        let config = InterfaceSharedConfig {
+            ifac_size: setting_u64(record, "ifac_size"),
+            network_name: setting_string(record, "network_name")
+                .or_else(|| setting_string(record, "networkname"))
+                .or_else(|| setting_string(record, "ifac_netname")),
+            passphrase: setting_string(record, "passphrase")
+                .or_else(|| setting_string(record, "pass_phrase"))
+                .or_else(|| setting_string(record, "ifac_netkey")),
+            ..InterfaceSharedConfig::default()
+        };
+        if let Err(error) = config.ifac_context() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                format!(
-                    "interfaces[{index}] configures Reticulum IFAC authentication, which this release does not implement"
-                ),
+                format!("interfaces[{index}] has invalid Reticulum IFAC configuration: {error}"),
             ));
         }
     }

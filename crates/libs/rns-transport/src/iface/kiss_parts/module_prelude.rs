@@ -12,20 +12,17 @@ use tokio_serial::{DataBits, FlowControl, Parity, SerialPortBuilderExt, StopBits
 
 use tokio_util::sync::CancellationToken;
 
-use crate::buffer::{InputBuffer, OutputBuffer};
-
 use crate::hash::AddressHash;
 
-use crate::iface::{IfaceSource, RxMessage, TxMessage};
+use crate::iface::{
+    decode_packet_ifac, encode_packet_ifac, is_ifac_violation, record_ifac_violation, IfacState,
+    IfaceSource, RxMessage, TxMessage,
+};
 
 use crate::kiss::{
     encode_command_frame, encode_data_frame, KissCommand, KissFrame, KissStreamDecoder, CMD_P,
     CMD_READY, CMD_SLOTTIME, CMD_TXDELAY, CMD_TXTAIL,
 };
-
-use crate::packet::Packet;
-
-use crate::serde::Serialize;
 
 use super::{Interface, InterfaceContext};
 
@@ -522,6 +519,8 @@ impl KissInterface {
     pub async fn spawn(context: InterfaceContext<KissInterface>) {
         let iface_stop = context.channel.stop.clone();
         let iface_address = context.channel.address;
+        let ifac_state = context.channel.ifac_state.clone();
+        let ifac_violations = context.channel.ifac_violations.clone();
         let (
             device,
             baud_rate,
@@ -605,7 +604,7 @@ impl KissInterface {
             });
             online.store(true, std::sync::atomic::Ordering::Release);
 
-            run_kiss_stream(
+            run_kiss_stream_with_ifac(
                 port,
                 KissStreamOptions {
                     iface_address,
@@ -628,6 +627,8 @@ impl KissInterface {
                 context.cancel.clone(),
                 rx_channel.clone(),
                 tx_channel.clone(),
+                ifac_state.clone(),
+                ifac_violations.clone(),
             )
             .await;
             online.store(false, std::sync::atomic::Ordering::Release);
@@ -648,6 +649,10 @@ impl KissInterface {
 }
 
 impl Interface for KissInterface {
+    fn ifac_default_size_bytes() -> usize {
+        8
+    }
+
     fn mtu() -> usize {
         564
     }

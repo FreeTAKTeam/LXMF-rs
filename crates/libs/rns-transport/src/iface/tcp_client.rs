@@ -7,10 +7,14 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::{lookup_host, TcpStream};
 use tokio_util::sync::CancellationToken;
 
-use crate::buffer::{InputBuffer, OutputBuffer};
+use crate::buffer::OutputBuffer;
 use crate::error::RnsError;
-use crate::iface::{IfaceSource, RxMessage};
+use crate::iface::{
+    decode_packet_ifac, encode_packet_ifac, is_ifac_violation, record_ifac_violation, IfacState,
+    IfaceSource, RxMessage,
+};
 use crate::packet::Packet;
+#[cfg(test)]
 use crate::serde::Serialize;
 
 use alloc::string::String;
@@ -404,11 +408,13 @@ impl TcpRxBuffers {
 
 #[derive(Default)]
 struct TcpTxBuffers {
+    #[cfg(test)]
     raw: Vec<u8>,
     wire: Vec<u8>,
 }
 
 impl TcpTxBuffers {
+    #[cfg(test)]
     fn encode_packet<'a>(
         &'a mut self,
         packet: &Packet,
@@ -430,6 +436,31 @@ impl TcpTxBuffers {
         let wire_len = {
             let mut output = OutputBuffer::new(self.wire.as_mut_slice());
             Hdlc::encode(&self.raw[..raw_len], &mut output)?;
+            output.offset()
+        };
+        Ok((raw_len, &self.wire[..wire_len]))
+    }
+
+    fn encode_ifac_packet<'a>(
+        &'a mut self,
+        packet: &Packet,
+        mtu: usize,
+        ifac_state: &IfacState,
+    ) -> Result<(usize, &'a [u8]), RnsError> {
+        let raw_len = packet.serialized_len()?;
+        if raw_len > mtu {
+            return Err(RnsError::OutOfMemory);
+        }
+        let framed = encode_packet_ifac(ifac_state, packet).map_err(|error| match error {
+            crate::iface::IfacWireError::Codec(error) => error,
+            crate::iface::IfacWireError::MissingFlag
+            | crate::iface::IfacWireError::UnexpectedFlag
+            | crate::iface::IfacWireError::InvalidTag => RnsError::InvalidArgument,
+        })?;
+        self.wire.resize(tcp_wire_buffer_capacity(framed.len()), 0);
+        let wire_len = {
+            let mut output = OutputBuffer::new(self.wire.as_mut_slice());
+            Hdlc::encode(&framed, &mut output)?;
             output.offset()
         };
         Ok((raw_len, &self.wire[..wire_len]))
@@ -479,37 +510,7 @@ pub(crate) fn backbone_hdlc_watchdog() -> HdlcStreamWatchdog {
 }
 
 #[allow(clippy::too_many_arguments)]
-#[cfg_attr(not(unix), allow(dead_code))]
-pub(crate) async fn run_hdlc_stream<R, W>(
-    label: String,
-    iface_address: crate::hash::AddressHash,
-    mtu: usize,
-    cancel: CancellationToken,
-    iface_stop: CancellationToken,
-    rx_channel: InterfaceRxSender,
-    tx_channel: Arc<tokio::sync::Mutex<InterfaceTxReceiver>>,
-    read_stream: R,
-    write_stream: W,
-) where
-    R: AsyncRead + Unpin + Send + 'static,
-    W: AsyncWrite + Unpin + Send + 'static,
-{
-    run_hdlc_stream_with_runtime(
-        label,
-        iface_address,
-        mtu,
-        cancel,
-        iface_stop,
-        rx_channel,
-        tx_channel,
-        read_stream,
-        write_stream,
-        HdlcStreamRuntime::default(),
-    )
-    .await;
-}
-
-#[allow(clippy::too_many_arguments)]
+#[cfg(test)]
 pub(crate) async fn run_hdlc_stream_with_runtime<R, W>(
     label: String,
     iface_address: crate::hash::AddressHash,
@@ -525,9 +526,45 @@ pub(crate) async fn run_hdlc_stream_with_runtime<R, W>(
     R: AsyncRead + Unpin + Send + 'static,
     W: AsyncWrite + Unpin + Send + 'static,
 {
+    run_hdlc_stream_with_runtime_and_ifac(
+        label,
+        iface_address,
+        mtu,
+        cancel,
+        iface_stop,
+        rx_channel,
+        tx_channel,
+        Arc::new(std::sync::RwLock::new(None)),
+        Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        read_stream,
+        write_stream,
+        runtime,
+    )
+    .await;
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn run_hdlc_stream_with_runtime_and_ifac<R, W>(
+    label: String,
+    iface_address: crate::hash::AddressHash,
+    mtu: usize,
+    cancel: CancellationToken,
+    iface_stop: CancellationToken,
+    rx_channel: InterfaceRxSender,
+    tx_channel: Arc<tokio::sync::Mutex<InterfaceTxReceiver>>,
+    ifac_state: IfacState,
+    ifac_violations: Arc<std::sync::atomic::AtomicU64>,
+    read_stream: R,
+    write_stream: W,
+    runtime: HdlcStreamRuntime,
+) where
+    R: AsyncRead + Unpin + Send + 'static,
+    W: AsyncWrite + Unpin + Send + 'static,
+{
     let stop = CancellationToken::new();
     let iface_stop_rx = iface_stop.clone();
     let iface_stop_tx = iface_stop.clone();
+    let wire_mtu = mtu.saturating_add(crate::iface::MAX_IFAC_SIZE_BYTES);
     let last_read_at = Arc::new(std::sync::Mutex::new(Instant::now()));
     let events = runtime.events.clone();
 
@@ -539,9 +576,11 @@ pub(crate) async fn run_hdlc_stream_with_runtime<R, W>(
         let label = label.clone();
         let last_read_at = last_read_at.clone();
         let events = events.clone();
+        let ifac_state = ifac_state.clone();
+        let ifac_violations = ifac_violations.clone();
 
         tokio::spawn(async move {
-            let mut buffers = TcpRxBuffers::new(mtu);
+            let mut buffers = TcpRxBuffers::new(wire_mtu);
 
             loop {
                 tokio::select! {
@@ -576,7 +615,9 @@ pub(crate) async fn run_hdlc_stream_with_runtime<R, W>(
                                         // Removing the two HDLC flags is an upper bound for
                                         // decoded data; escaped frames decode to less. The MTU
                                         // remains the hard ceiling.
-                                        let decoded_len = (end - start + 1).saturating_sub(2).min(mtu);
+                                        let decoded_len = (end - start + 1)
+                                            .saturating_sub(2)
+                                            .min(wire_mtu);
                                         buffers.decoded.resize(decoded_len, 0);
                                         let frame = &buffers.frame[start..=end];
                                         let mut output = OutputBuffer::new(buffers.decoded.as_mut_slice());
@@ -590,9 +631,8 @@ pub(crate) async fn run_hdlc_stream_with_runtime<R, W>(
                                                 buffers.frame.drain(..=end);
                                                 continue;
                                             }
-                                            if let Ok(packet) =
-                                                Packet::deserialize(&mut InputBuffer::new(output.as_slice()))
-                                            {
+                                            match decode_packet_ifac(&ifac_state, output.as_slice()) {
+                                                Ok(packet) => {
                                                 if PACKET_TRACE {
                                                     log::trace!("rx << ({}) {}", iface_address, packet);
                                                 }
@@ -622,8 +662,13 @@ pub(crate) async fn run_hdlc_stream_with_runtime<R, W>(
                                                     stop.cancel();
                                                     return;
                                                 }
-                                            } else {
-                                                log::warn!("couldn't decode packet");
+                                                }
+                                                Err(error) => {
+                                                    if is_ifac_violation(&error) {
+                                                        record_ifac_violation(&ifac_violations, &error);
+                                                    }
+                                                    log::debug!("couldn't decode packet: {error}");
+                                                }
                                             }
                                         } else {
                                             log::warn!("couldn't decode hdlc frame");
@@ -634,12 +679,12 @@ pub(crate) async fn run_hdlc_stream_with_runtime<R, W>(
                                         buffers.frame.drain(..=end);
                                     }
 
-                                    let frame_buffer_limit = max_hdlc_frame_buffer_len(mtu);
+                                    let frame_buffer_limit = max_hdlc_frame_buffer_len(wire_mtu);
                                     let buffered = buffers.frame.len();
                                     if trim_malformed_hdlc_backlog(
                                         &mut buffers.frame,
                                         frame_buffer_limit,
-                                        mtu,
+                                        wire_mtu,
                                     ) {
                                         // Guard against unbounded growth on malformed
                                         // streams where no valid frame closes. Any
@@ -692,6 +737,7 @@ pub(crate) async fn run_hdlc_stream_with_runtime<R, W>(
         let events = events.clone();
         let watchdog = runtime.watchdog.clone();
         let forced_bitrate_bps = runtime.forced_bitrate_bps;
+        let ifac_state = ifac_state.clone();
 
         tokio::spawn(async move {
             let mut last_write_at = Instant::now();
@@ -780,7 +826,7 @@ pub(crate) async fn run_hdlc_stream_with_runtime<R, W>(
                             log::trace!("tx >> ({}) {}", iface_address, packet);
                         }
                         log::debug!("[tp-diag] {} tx_dequeue iface={} {}", label, iface_address, packet);
-                        match buffers.encode_packet(&packet, mtu) {
+                        match buffers.encode_ifac_packet(&packet, mtu, &ifac_state) {
                             Ok((raw_len, wire)) => {
                             if let Some(bitrate_bps) = forced_bitrate_bps {
                                 if let Some(delay) = forced_bitrate_delay(raw_len, bitrate_bps) {
@@ -1092,6 +1138,8 @@ impl TcpClient {
         };
         tracing::Span::current().record("addr", addr.as_str());
         let iface_address = context.channel.address;
+        let ifac_state = context.channel.ifac_state.clone();
+        let ifac_violations = context.channel.ifac_violations.clone();
         let online = context.channel.online.clone();
         online.store(false, std::sync::atomic::Ordering::Release);
         let (mut stream, reconnect_events) = {
@@ -1201,7 +1249,7 @@ impl TcpClient {
             }
             .with_events(event_tx);
 
-            run_hdlc_stream_with_runtime(
+            run_hdlc_stream_with_runtime_and_ifac(
                 "tcp_client".to_string(),
                 iface_address,
                 mtu,
@@ -1209,6 +1257,8 @@ impl TcpClient {
                 iface_stop.clone(),
                 rx_channel.clone(),
                 tx_channel.clone(),
+                ifac_state.clone(),
+                ifac_violations.clone(),
                 read_stream,
                 write_stream,
                 runtime,
@@ -1342,7 +1392,7 @@ mod tests {
     use crate::hash::AddressHash;
     use crate::iface::hdlc::Hdlc;
     use crate::iface::{InterfaceManager, TxMessage, TxMessageType};
-    use crate::packet::Packet;
+    use crate::packet::{Packet, PacketDataBuffer};
     use crate::serde::Serialize;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::{TcpListener, TcpStream};
@@ -1764,7 +1814,9 @@ mod tests {
         let mut raw_buffer = vec![0_u8; mtu];
         let raw_len = {
             let mut output = OutputBuffer::new(&mut raw_buffer[..]);
-            Packet::default().serialize(&mut output).expect("serialize packet");
+            Packet { data: PacketDataBuffer::new_from_slice(b"hdlc-test"), ..Packet::default() }
+                .serialize(&mut output)
+                .expect("serialize packet");
             output.offset()
         };
         let mut wire_buffer = vec![0_u8; tcp_wire_buffer_capacity(mtu)];

@@ -8,68 +8,87 @@ impl ReticulumGitNode {
             if existing.path != group_path {
                 return Ok(0);
             }
-        } else {
-            self.groups.insert(
-                group_name.to_string(),
-                RepositoryGroup {
-                    name: group_name.to_string(),
-                    path: group_path.to_path_buf(),
-                    permissions: PermissionSet::default(),
-                    repositories: BTreeMap::new(),
-                },
-            );
         }
-        let group_permissions = self.read_companion_permissions(group_path)?;
-        if let Some(group) = self.groups.get_mut(group_name) {
-            group.permissions = group_permissions;
+        let mut group_permissions = self.read_companion_permissions(group_path)?;
+        if let Some(configured) = self.configured_permissions.get(group_name) {
+            group_permissions.merge(configured);
         }
-        let mut loaded = 0;
+        let mut repositories = BTreeMap::new();
         for entry in fs::read_dir(group_path)? {
             let path = entry?.path();
-            if self.load_repository(group_name, &path)? {
-                loaded += 1;
+            if let Some(record) = self.load_repository_record(&path)? {
+                repositories.insert(record.name.clone(), record);
             }
         }
+        let loaded = repositories.len();
+        self.groups.insert(
+            group_name.to_string(),
+            RepositoryGroup {
+                name: group_name.to_string(),
+                path: group_path.to_path_buf(),
+                permissions: group_permissions,
+                repositories,
+            },
+        );
         Ok(loaded)
     }
 
     pub fn load_repository(&mut self, group_name: &str, path: &Path) -> io::Result<bool> {
-        if !path.is_dir()
-            || path.extension().is_some_and(|ext| ext == "work" || ext == "releases")
-        {
+        let Some(record) = self.load_repository_record(path)? else {
             return Ok(false);
-        }
-        let bare = Command::new("git")
-            .args(["config", "--bool", "core.bare"])
-            .current_dir(path)
-            .output()
-            .map(|output| output.status.success() && output.stdout == b"true\n")
-            .unwrap_or(false);
-        if !bare {
-            return Ok(false);
-        }
-        let name = path.file_name().and_then(|value| value.to_str()).unwrap_or_default();
-        let permissions = self.read_companion_permissions(path)?;
-        let record = RepositoryRecord {
-            name: name.to_string(),
-            path: path.to_path_buf(),
-            fork: None,
-            mirror: None,
-            permissions,
         };
         if let Some(group) = self.groups.get_mut(group_name) {
-            group.repositories.insert(name.to_string(), record);
+            group.repositories.insert(record.name.clone(), record);
             Ok(true)
         } else {
             Ok(false)
         }
     }
 
+    fn load_repository_record(&self, path: &Path) -> io::Result<Option<RepositoryRecord>> {
+        if !path.is_dir()
+            || path.extension().is_some_and(|ext| ext == "work" || ext == "releases")
+        {
+            return Ok(None);
+        }
+        let bare = Command::new("git")
+            .args(["config", "--bool", "core.bare"])
+            .current_dir(path)
+            .output()
+            .map_err(|error| {
+                io::Error::other(format!(
+                    "could not inspect Git repository {}: {error}",
+                    path.display()
+                ))
+            })
+            .map(|output| output.status.success() && output.stdout == b"true\n")?;
+        if !bare {
+            return Ok(None);
+        }
+        let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("repository path is not valid UTF-8: {}", path.display()),
+            ));
+        };
+        let permissions = self.read_companion_permissions(path)?;
+        Ok(Some(RepositoryRecord {
+            name: name.to_string(),
+            path: path.to_path_buf(),
+            fork: None,
+            mirror: None,
+            permissions,
+        }))
+    }
+
     pub fn update_group_permissions(&mut self, group_name: &str) -> io::Result<()> {
         let Some(path) = self.groups.get(group_name).map(|group| group.path.clone()) else {
             return Ok(());
         };
-        let permissions = self.read_companion_permissions(&path)?;
+        let mut permissions = self.read_companion_permissions(&path)?;
+        if let Some(configured) = self.configured_permissions.get(group_name) {
+            permissions.merge(configured);
+        }
         if let Some(group) = self.groups.get_mut(group_name) {
             group.permissions = permissions;
         }

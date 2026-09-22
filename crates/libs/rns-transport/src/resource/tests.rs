@@ -134,6 +134,43 @@ mod tests {
     }
 
     #[test]
+    fn resource_sender_can_disable_opportunistic_compression_for_binary_responses() {
+        let signer = PrivateIdentity::new_from_rand(OsRng);
+        let identity = *signer.as_identity();
+        let destination = DestinationDesc {
+            identity,
+            address_hash: identity.address_hash,
+            name: DestinationName::new("lxmf", "resource"),
+        };
+        let (tx, _) = tokio::sync::broadcast::channel(4);
+        let mut outbound = Link::new(destination, tx.clone());
+        let request = outbound.request();
+        let mut inbound = Link::new_from_request(&request, signer.sign_key().clone(), destination, tx)
+            .expect("link request should parse");
+        let iface = AddressHash::new_from_rand(OsRng);
+        assert!(matches!(
+            outbound.handle_packet(&inbound.prove(), iface),
+            LinkHandleResult::Activated
+        ));
+
+        let payload = b"already encoded image bytes ".repeat(500);
+        let metadata = b"{\"name\":\"image.webp\"}".to_vec();
+        let sender = ResourceSender::new_with_options_mtu_and_compression(
+            &outbound,
+            payload.clone(),
+            Some(metadata.clone()),
+            Some(vec![0x42; 16]),
+            true,
+            DEFAULT_RESOURCE_INTERFACE_MTU,
+            false,
+        )
+        .expect("resource sender");
+        let advertisement = decrypt_advertisement(&outbound, &sender.advertisement_packet());
+        assert!(!advertisement.compressed());
+        assert_eq!(advertisement.data_size, (payload.len() + 3 + metadata.len()) as u64);
+    }
+
+    #[test]
     fn resource_status_predicates_make_transfer_fsm_edges_explicit() {
         for status in [
             ResourceStatus::None,
@@ -1146,6 +1183,9 @@ mod tests {
     include!("tests_timeouts.rs");
     include!("tests_timeouts_cleanup.rs");
     include!("tests_timeouts_lifecycle.rs");
+    include!("tests_collision.rs");
+    include!("tests_fault_injection.rs");
+    include!("tests_reader.rs");
 
     fn resource_packet(context: PacketContext, payload: &[u8], destination: AddressHash) -> Packet {
         Packet {

@@ -8,9 +8,27 @@ struct SerialStreamOptions {
     runtime_status: SerialRuntimeStatusHandle,
 }
 
+#[cfg(test)]
 async fn run_serial_stream<IO>(
     stream: IO,
     options: SerialStreamOptions,
+) where
+    IO: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
+    run_serial_stream_with_ifac(
+        stream,
+        options,
+        Arc::new(std::sync::RwLock::new(None)),
+        Arc::new(std::sync::atomic::AtomicU64::new(0)),
+    )
+    .await;
+}
+
+async fn run_serial_stream_with_ifac<IO>(
+    stream: IO,
+    options: SerialStreamOptions,
+    ifac_state: IfacState,
+    ifac_violations: Arc<std::sync::atomic::AtomicU64>,
 ) where
     IO: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
@@ -37,8 +55,10 @@ async fn run_serial_stream<IO>(
         let stop = stop.clone();
         let rx_channel = rx_channel.clone();
         let runtime_status = runtime_status.clone();
+        let ifac_state = ifac_state.clone();
+        let ifac_violations = ifac_violations.clone();
         tokio::spawn(async move {
-            let mut hdlc_rx_buffer = vec![0_u8; mtu];
+            let mut hdlc_rx_buffer = vec![0_u8; mtu.saturating_add(MAX_IFAC_SIZE_BYTES)];
             let mut frame_buffer = Vec::<u8>::with_capacity(mtu * 4);
             let mut read_buffer = vec![0_u8; mtu.max(256)];
 
@@ -76,9 +96,8 @@ async fn run_serial_stream<IO>(
                                             status.frames_rx = status.frames_rx.saturating_add(1);
                                             status.last_error = None;
                                         });
-                                        if let Ok(packet) =
-                                            Packet::deserialize(&mut InputBuffer::new(output.as_slice()))
-                                        {
+                                        match decode_packet_ifac(&ifac_state, output.as_slice()) {
+                                            Ok(packet) => {
                                             match rx_channel
                                                 .send(RxMessage {
                                                     address: iface_address,
@@ -102,13 +121,18 @@ async fn run_serial_stream<IO>(
                                                     });
                                                 }
                                             }
-                                        } else {
-                                            runtime_status.update(|status| {
-                                                status.deserialize_errors =
-                                                    status.deserialize_errors.saturating_add(1);
-                                                status.last_error =
-                                                    Some("packet deserialize failed".to_string());
-                                            });
+                                            }
+                                            Err(error) => {
+                                                if is_ifac_violation(&error) {
+                                                    record_ifac_violation(&ifac_violations, &error);
+                                                }
+                                                runtime_status.update(|status| {
+                                                    status.deserialize_errors =
+                                                        status.deserialize_errors.saturating_add(1);
+                                                    status.last_error =
+                                                        Some("packet deserialize failed".to_string());
+                                                });
+                                            }
                                         }
                                     } else {
                                         runtime_status.update(|status| {
@@ -157,87 +181,92 @@ async fn run_serial_stream<IO>(
         let stop = stop.clone();
         let tx_channel = tx_channel.clone();
         let runtime_status = runtime_status.clone();
+        let ifac_state = ifac_state.clone();
         tokio::spawn(async move {
             loop {
                 if stop.is_cancelled() {
                     break;
                 }
 
-                let mut hdlc_tx_buffer = vec![0_u8; serial_wire_buffer_capacity(mtu)];
-                let mut tx_buffer = vec![0_u8; mtu];
+                let mut hdlc_tx_buffer =
+                    vec![0_u8; serial_wire_buffer_capacity(mtu.saturating_add(MAX_IFAC_SIZE_BYTES))];
                 let mut tx_channel = tx_channel.lock().await;
 
                 tokio::select! {
                     _ = cancel.cancelled() => break,
                     _ = stop.cancelled() => break,
                     Some(message) = tx_channel.recv() => {
-                        let mut output = OutputBuffer::new(&mut tx_buffer[..]);
-                        if message.packet.serialize(&mut output).is_ok() {
-                            let mut hdlc_output = OutputBuffer::new(&mut hdlc_tx_buffer[..]);
-                            if Hdlc::encode(output.as_slice(), &mut hdlc_output).is_ok() {
-                                if let Err(err) = write_port.write_all(hdlc_output.as_slice()).await {
+                        match encode_packet_ifac(&ifac_state, &message.packet) {
+                            Ok(payload) => {
+                                let mut hdlc_output = OutputBuffer::new(&mut hdlc_tx_buffer[..]);
+                                if Hdlc::encode(&payload, &mut hdlc_output).is_ok() {
+                                    if let Err(err) = write_port.write_all(hdlc_output.as_slice()).await {
+                                        log::warn!(
+                                            "write error iface={} device={} err={}",
+                                            iface_address,
+                                            tx_device,
+                                            err
+                                        );
+                                        runtime_status.update(|status| {
+                                            status.link_state = "write_error".to_string();
+                                            status.tx_errors = status.tx_errors.saturating_add(1);
+                                            status.last_error = Some(err.to_string());
+                                        });
+                                        stop.cancel();
+                                        break;
+                                    }
+                                    if let Err(err) = write_port.flush().await {
+                                        log::warn!(
+                                            "flush error iface={} device={} err={}",
+                                            iface_address,
+                                            tx_device,
+                                            err
+                                        );
+                                        runtime_status.update(|status| {
+                                            status.link_state = "flush_error".to_string();
+                                            status.tx_errors = status.tx_errors.saturating_add(1);
+                                            status.last_error = Some(err.to_string());
+                                        });
+                                        stop.cancel();
+                                        break;
+                                    }
+                                    runtime_status.update(|status| {
+                                        status.link_state = "running".to_string();
+                                        status.packets_tx = status.packets_tx.saturating_add(1);
+                                        status.frames_tx = status.frames_tx.saturating_add(1);
+                                        status.bytes_tx = status
+                                            .bytes_tx
+                                            .saturating_add(hdlc_output.as_slice().len() as u64);
+                                        status.last_error = None;
+                                    });
+                                } else {
                                     log::warn!(
-                                        "write error iface={} device={} err={}",
+                                        "hdlc encode failed iface={} device={} payload_len={}",
                                         iface_address,
                                         tx_device,
-                                        err
+                                        payload.len()
                                     );
                                     runtime_status.update(|status| {
-                                        status.link_state = "write_error".to_string();
-                                        status.tx_errors = status.tx_errors.saturating_add(1);
-                                        status.last_error = Some(err.to_string());
+                                        status.hdlc_encode_errors =
+                                            status.hdlc_encode_errors.saturating_add(1);
+                                        status.last_error = Some("hdlc encode failed".to_string());
                                     });
-                                    stop.cancel();
-                                    break;
                                 }
-                                if let Err(err) = write_port.flush().await {
-                                    log::warn!(
-                                        "flush error iface={} device={} err={}",
-                                        iface_address,
-                                        tx_device,
-                                        err
-                                    );
-                                    runtime_status.update(|status| {
-                                        status.link_state = "flush_error".to_string();
-                                        status.tx_errors = status.tx_errors.saturating_add(1);
-                                        status.last_error = Some(err.to_string());
-                                    });
-                                    stop.cancel();
-                                    break;
-                                }
-                                runtime_status.update(|status| {
-                                    status.link_state = "running".to_string();
-                                    status.packets_tx = status.packets_tx.saturating_add(1);
-                                    status.frames_tx = status.frames_tx.saturating_add(1);
-                                    status.bytes_tx =
-                                        status.bytes_tx.saturating_add(hdlc_output.as_slice().len() as u64);
-                                    status.last_error = None;
-                                });
-                            } else {
+                            }
+                            Err(error) => {
                                 log::warn!(
-                                    "hdlc encode failed iface={} device={} payload_len={}",
+                                    "packet encode failed iface={} device={} mtu={} error={}",
                                     iface_address,
                                     tx_device,
-                                    output.as_slice().len()
+                                    mtu,
+                                    error
                                 );
                                 runtime_status.update(|status| {
-                                    status.hdlc_encode_errors =
-                                        status.hdlc_encode_errors.saturating_add(1);
-                                    status.last_error = Some("hdlc encode failed".to_string());
+                                    status.serialize_errors =
+                                        status.serialize_errors.saturating_add(1);
+                                    status.last_error = Some("packet serialize failed".to_string());
                                 });
                             }
-                        } else {
-                            log::warn!(
-                                "packet serialize failed iface={} device={} mtu={}",
-                                iface_address,
-                                tx_device,
-                                mtu
-                            );
-                            runtime_status.update(|status| {
-                                status.serialize_errors =
-                                    status.serialize_errors.saturating_add(1);
-                                status.last_error = Some("packet serialize failed".to_string());
-                            });
                         }
                     }
                 }
@@ -487,7 +516,12 @@ mod tests {
 
         let mut packet_payload = vec![0_u8; 512];
         let mut packet_output = OutputBuffer::new(&mut packet_payload[..]);
-        Packet::default().serialize(&mut packet_output).expect("serialize packet");
+        Packet {
+            data: crate::packet::PacketDataBuffer::new_from_slice(b"serial-test"),
+            ..Packet::default()
+        }
+        .serialize(&mut packet_output)
+        .expect("serialize packet");
         let mut wire = vec![0_u8; 1024];
         let mut wire_output = OutputBuffer::new(&mut wire[..]);
         let wire_len =

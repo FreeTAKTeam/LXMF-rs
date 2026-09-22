@@ -8,6 +8,14 @@ repository = "https://github.com/markqvist/Reticulum.git"
 version = "1.5.2"
 revision = "ea98db4f53dcf0defc0e71a16e60d28b1229c4e6"
 
+[parity_target]
+implementation = "Reticulum-Python"
+repository = "https://github.com/markqvist/Reticulum.git"
+version = "1.5.4-dev"
+revision = "99de23c040d507e3fefca19e87b182302902725d"
+scope = "issue-605-forward-parity"
+owner_issue = 605
+
 [peers.rns_rs]
 implementation = "rns-rs"
 repository = "https://github.com/lelloman/rns-rs.git"

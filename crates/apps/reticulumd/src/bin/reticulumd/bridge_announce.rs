@@ -111,6 +111,7 @@ impl TransportBridge {
         let propagation_destination = self.propagation_announce_destination.clone();
         let propagation_app_data = self.current_propagation_announce_app_data();
         let control_destination = self.control_announce_destination.clone();
+        let probe_destination = self.probe_destination.clone();
         tokio::spawn(async move {
             if let Some(destination) = propagation_destination.as_ref() {
                 transport
@@ -119,6 +120,9 @@ impl TransportBridge {
                 transport.send_announce(destination, propagation_app_data.as_deref()).await;
             }
             if let Some(destination) = control_destination.as_ref() {
+                transport.send_announce(destination, None).await;
+            }
+            if let Some(destination) = probe_destination.as_ref() {
                 transport.send_announce(destination, None).await;
             }
         });
@@ -134,6 +138,7 @@ impl AnnounceBridge for TransportBridge {
         let propagation_destination = self.propagation_announce_destination.clone();
         let propagation_app_data = self.current_propagation_announce_app_data();
         let control_destination = self.control_announce_destination.clone();
+        let probe_destination = self.probe_destination.clone();
         tokio::spawn(async move {
             transport.set_destination_announce_app_data(&destination, app_data.clone()).await;
             transport.send_announce(&destination, app_data.as_deref()).await;
@@ -144,6 +149,9 @@ impl AnnounceBridge for TransportBridge {
                 transport.send_announce(destination, propagation_app_data.as_deref()).await;
             }
             if let Some(destination) = control_destination.as_ref() {
+                transport.send_announce(destination, None).await;
+            }
+            if let Some(destination) = probe_destination.as_ref() {
                 transport.send_announce(destination, None).await;
             }
         });

@@ -22,7 +22,7 @@ const RPC_READ_HEADROOM: Duration = Duration::from_secs(2);
 #[command(name = "rnpath-rs", about = "Request Reticulum path discovery through daemon RPC.")]
 struct Cli {
     #[arg(value_name = "DESTINATION_HASH", value_parser = parse_destination_hash)]
-    destination_hash: String,
+    destination_hash: Option<String>,
 
     #[arg(long, value_name = "ADDR", help = "Daemon TCP RPC address (default: 127.0.0.1:4243)")]
     rpc: Option<String>,
@@ -42,7 +42,36 @@ struct Cli {
 
     #[arg(long, value_name = "TAG_HEX", value_parser = parse_request_tag_hex)]
     tag_hex: Option<String>,
+
+    #[arg(short = 'r', long)]
+    rates: bool,
+
+    #[arg(short = 'd', long)]
+    drop: bool,
+
+    #[arg(short = 'D', long = "drop-announces")]
+    drop_announces: bool,
+
+    #[arg(short = 'x', long = "drop-via", value_name = "TRANSPORT_HASH", value_parser = parse_destination_hash)]
+    drop_via: Option<String>,
+
+    #[arg(short = 'b', long = "blackholed")]
+    blackholed: bool,
+
+    #[arg(short = 'B', long = "blackhole", value_name = "IDENTITY_HASH", value_parser = parse_destination_hash)]
+    blackhole: Option<String>,
+
+    #[arg(short = 'U', long = "unblackhole", value_name = "IDENTITY_HASH", value_parser = parse_destination_hash)]
+    unblackhole: Option<String>,
+
+    #[arg(long, value_name = "HOURS")]
+    duration: Option<f64>,
+
+    #[arg(long)]
+    reason: Option<String>,
 }
+
+include!("rnpath_management.rs");
 
 fn main() -> std::process::ExitCode {
     let cli = Cli::parse();
@@ -56,6 +85,17 @@ fn main() -> std::process::ExitCode {
 }
 
 fn run(cli: &Cli, output: &mut dyn Write) -> io::Result<()> {
+    if let Some(action) = cli.management_action()? {
+        return run_management(cli, output, action);
+    }
+
+    let destination_hash = cli.destination_hash.as_deref().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "a destination hash is required unless a management option is selected",
+        )
+    })?;
+
     let medium_timeout = rpc_call(cli, 0, "medium_path_timeout", None)
         .ok()
         .and_then(|response| response.result)
@@ -63,7 +103,7 @@ fn run(cli: &Cli, output: &mut dyn Write) -> io::Result<()> {
         .unwrap_or(0.0);
     let timeout = adaptive_timeout(cli.timeout, medium_timeout);
     let params = json!({
-        "destination_hash": cli.destination_hash,
+        "destination_hash": destination_hash,
         "timeout_secs": timeout,
         "on_iface": cli.on_iface,
         "tag_hex": cli.tag_hex,
@@ -82,14 +122,14 @@ fn run(cli: &Cli, output: &mut dyn Write) -> io::Result<()> {
         let status = value_str(&result, "status").unwrap_or("unknown");
         return Err(io::Error::new(
             io::ErrorKind::TimedOut,
-            format!("path discovery for {} did not complete: {status}", cli.destination_hash),
+            format!("path discovery for {destination_hash} did not complete: {status}"),
         ));
     }
 
     if cli.json {
         writeln!(output, "{}", serde_json::to_string_pretty(&result)?)?;
     } else {
-        write_human_path_result(output, &cli.destination_hash, &result)?;
+        write_human_path_result(output, destination_hash, &result)?;
     }
     Ok(())
 }
@@ -278,7 +318,6 @@ impl Cli {
     fn rpc_timeout(&self) -> Duration {
         Duration::from_secs(self.timeout.max(1))
     }
-
 }
 
 #[cfg(test)]

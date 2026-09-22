@@ -1,7 +1,7 @@
 use super::{encode_propagation_node_app_data, pretty_daemon_line};
 use reticulum_daemon::announce_names::encode_delivery_announce_app_data_with_capabilities;
 use reticulum_daemon::announce_names::PropagationNodeAnnounceConfig;
-use rns_transport::destination::{DestinationName, SingleInputDestination};
+use rns_transport::destination::{DestinationName, ProofStrategy, SingleInputDestination};
 use rns_transport::identity::PrivateIdentity;
 use rns_transport::transport::Transport;
 use std::sync::Arc;
@@ -10,10 +10,16 @@ pub(super) struct RegisteredTransportDestinations {
     pub(super) delivery: Arc<tokio::sync::Mutex<SingleInputDestination>>,
     pub(super) propagation: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>>,
     pub(super) control: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>>,
+    pub(super) probe: Option<Arc<tokio::sync::Mutex<SingleInputDestination>>>,
     pub(super) delivery_destination_hash_hex: String,
     pub(super) propagation_destination_hash_hex: Option<String>,
     pub(super) control_destination_hash_hex: Option<String>,
     pub(super) delivery_source_hash: [u8; 16],
+}
+
+pub(super) struct TransportDestinationPolicy {
+    pub(super) propagation_control_enabled: bool,
+    pub(super) respond_to_probes: bool,
 }
 
 pub(super) async fn register_transport_destinations(
@@ -22,7 +28,7 @@ pub(super) async fn register_transport_destinations(
     local_display_name: Option<&str>,
     local_announce_capabilities: &[String],
     propagation_announce_app_data: Option<Vec<u8>>,
-    propagation_control_enabled: bool,
+    policy: TransportDestinationPolicy,
     propagation_announce_config: PropagationNodeAnnounceConfig,
 ) -> RegisteredTransportDestinations {
     let delivery = transport
@@ -49,9 +55,21 @@ pub(super) async fn register_transport_destinations(
 
     let mut propagation = None;
     let mut control = None;
+    let mut probe = None;
     let mut propagation_destination_hash_hex = None;
     let mut control_destination_hash_hex = None;
-    if propagation_control_enabled {
+    if policy.respond_to_probes {
+        let probe_destination = transport
+            .add_destination(
+                transport_identity.clone(),
+                DestinationName::new("rnstransport", "probe"),
+            )
+            .await;
+        probe_destination.lock().await.set_proof_strategy(ProofStrategy::All);
+        let _ = destination_hash("probe", &probe_destination).await;
+        probe = Some(probe_destination);
+    }
+    if policy.propagation_control_enabled {
         let propagation_destination = transport
             .add_destination(
                 transport_identity.clone(),
@@ -79,7 +97,7 @@ pub(super) async fn register_transport_destinations(
 
         let control_destination = transport
             .add_destination(
-                transport_identity,
+                transport_identity.clone(),
                 DestinationName::new("lxmf", "propagation.control"),
             )
             .await;
@@ -92,6 +110,7 @@ pub(super) async fn register_transport_destinations(
         delivery,
         propagation,
         control,
+        probe,
         delivery_destination_hash_hex,
         propagation_destination_hash_hex,
         control_destination_hash_hex,
@@ -118,11 +137,58 @@ fn daemon_destination_hash_line(label: &str, hash_hex: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rns_transport::transport::TransportConfig;
 
     #[test]
     fn destination_hash_line_keeps_smoke_script_marker() {
         let line = daemon_destination_hash_line("delivery", "0123456789abcdef");
 
         assert!(line.contains("delivery destination hash=0123456789abcdef"));
+    }
+
+    #[tokio::test]
+    async fn probe_destination_is_opt_in_and_uses_rnstransport_probe_name() {
+        let identity = PrivateIdentity::new_from_name("probe-destination-test");
+        let mut transport = Transport::new(TransportConfig::new("probe-test", &identity, true));
+        let expected = SingleInputDestination::new(
+            identity.clone(),
+            DestinationName::new("rnstransport", "probe"),
+        );
+
+        let destinations = register_transport_destinations(
+            &mut transport,
+            identity,
+            None,
+            &[],
+            None,
+            TransportDestinationPolicy {
+                propagation_control_enabled: false,
+                respond_to_probes: true,
+            },
+            PropagationNodeAnnounceConfig::default(),
+        )
+        .await;
+
+        let probe = destinations.probe.expect("probe destination");
+        assert_eq!(probe.lock().await.desc.address_hash, expected.desc.address_hash);
+
+        let identity = PrivateIdentity::new_from_name("probe-destination-disabled-test");
+        let mut transport =
+            Transport::new(TransportConfig::new("probe-disabled-test", &identity, true));
+        let destinations = register_transport_destinations(
+            &mut transport,
+            identity,
+            None,
+            &[],
+            None,
+            TransportDestinationPolicy {
+                propagation_control_enabled: false,
+                respond_to_probes: false,
+            },
+            PropagationNodeAnnounceConfig::default(),
+        )
+        .await;
+
+        assert!(destinations.probe.is_none());
     }
 }

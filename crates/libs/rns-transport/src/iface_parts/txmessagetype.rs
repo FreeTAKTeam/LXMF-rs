@@ -197,11 +197,23 @@ pub struct RxMessage {
     pub source: IfaceSource,
 }
 
+/// Live IFAC configuration shared by a carrier and its manager entry.
+pub type IfacState = Arc<std::sync::RwLock<Option<crate::transport::IfacContext>>>;
+
 pub struct InterfaceChannel {
     pub address: AddressHash,
     pub rx_channel: InterfaceRxSender,
     pub tx_channel: InterfaceTxReceiver,
     pub stop: CancellationToken,
+    /// Shared wire-authentication state for this physical interface.
+    ///
+    /// The state is updated by `InterfaceManager::set_shared_config` so a
+    /// carrier that is already running observes a configuration change
+    /// without having to restart its read/write tasks. Virtual interfaces
+    /// inherit the host state and therefore cannot accidentally bypass IFAC.
+    pub ifac_state: IfacState,
+    pub ifac_violations: Arc<AtomicU64>,
+    pub ifac_default_size_bytes: usize,
     online: Arc<AtomicBool>,
 }
 
@@ -220,7 +232,34 @@ impl InterfaceChannel {
         address: AddressHash,
         stop: CancellationToken,
     ) -> Self {
-        Self { address, rx_channel, tx_channel, stop, online: Arc::new(AtomicBool::new(true)) }
+        Self::with_wire_state(
+            rx_channel,
+            tx_channel,
+            address,
+            stop,
+            IfacRuntime::disabled(crate::iface::DEFAULT_IFAC_SIZE_BYTES),
+            Arc::new(AtomicBool::new(true)),
+        )
+    }
+
+    fn with_wire_state(
+        rx_channel: InterfaceRxSender,
+        tx_channel: InterfaceTxReceiver,
+        address: AddressHash,
+        stop: CancellationToken,
+        ifac: IfacRuntime,
+        online: Arc<AtomicBool>,
+    ) -> Self {
+        Self {
+            address,
+            rx_channel,
+            tx_channel,
+            stop,
+            ifac_state: ifac.state,
+            ifac_violations: ifac.violations,
+            ifac_default_size_bytes: ifac.default_size_bytes,
+            online,
+        }
     }
 
     pub fn address(&self) -> &AddressHash {
@@ -239,6 +278,10 @@ impl InterfaceChannel {
 
 pub trait Interface {
     fn mtu() -> usize;
+
+    fn ifac_default_size_bytes() -> usize {
+        crate::iface::DEFAULT_IFAC_SIZE_BYTES
+    }
 
     fn configured_mtu(&self) -> usize {
         Self::mtu()
@@ -262,6 +305,9 @@ struct LocalInterface {
     announce_bitrate_bps: u64,
     announce_cap_percent: u64,
     shared_config: InterfaceSharedConfig,
+    ifac_state: IfacState,
+    ifac_violations: Arc<AtomicU64>,
+    ifac_default_size_bytes: usize,
     is_shared_instance: bool,
     outgoing_pr_history: VecDeque<Instant>,
     traffic: InterfaceTraffic,

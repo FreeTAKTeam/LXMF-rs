@@ -4,9 +4,10 @@ use std::time::Duration;
 
 use tokio::time::{sleep, Instant};
 
-use crate::buffer::InputBuffer;
-use crate::iface::{IfaceSource, Interface, InterfaceContext, RxMessage};
-use crate::packet::Packet;
+use crate::iface::{
+    decode_packet_ifac, encode_packet_ifac, is_ifac_violation, record_ifac_violation, IfaceSource,
+    Interface, InterfaceContext, RxMessage,
+};
 
 use super::lora::LoraConfig;
 use super::rnode_bearer::{
@@ -68,6 +69,8 @@ impl<B> RnodeBearerKissInterface<B> {
     {
         let iface_stop = context.channel.stop.clone();
         let iface_address = context.channel.address;
+        let ifac_state = context.channel.ifac_state.clone();
+        let ifac_violations = context.channel.ifac_violations.clone();
         let (rx_channel, mut tx_channel) = context.channel.split();
         let (label, endpoint, backend, config, lora, status) = {
             let mut guard = context.inner.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -165,7 +168,7 @@ impl<B> RnodeBearerKissInterface<B> {
 
             if rnode_ble_payload_writes_enabled(radio_config_sent, Some(&monitor)) {
                 while let Ok(message) = tx_channel.try_recv() {
-                    let raw = match message.packet.to_bytes() {
+                    let raw = match encode_packet_ifac(&ifac_state, &message.packet) {
                         Ok(raw) => raw,
                         Err(error) => {
                             log::warn!(
@@ -325,7 +328,7 @@ impl<B> RnodeBearerKissInterface<B> {
                             io.read_chunks,
                             io.read_bytes
                         );
-                        match Packet::deserialize(&mut InputBuffer::new(&payload)) {
+                        match decode_packet_ifac(&ifac_state, &payload) {
                             Ok(packet) => {
                                 if rx_channel
                                     .send(RxMessage {
@@ -340,11 +343,16 @@ impl<B> RnodeBearerKissInterface<B> {
                                     break;
                                 }
                             }
-                            Err(error) => log::warn!(
-                                "RNode packet deserialize failed iface={} len={} error={error:?}",
-                                label,
-                                payload.len()
-                            ),
+                            Err(error) => {
+                                if is_ifac_violation(&error) {
+                                    record_ifac_violation(&ifac_violations, &error);
+                                }
+                                log::warn!(
+                                    "RNode packet deserialize failed iface={} len={} error={error:?}",
+                                    label,
+                                    payload.len()
+                                );
+                            }
                         }
                     }
                 }
@@ -392,6 +400,10 @@ async fn run_or_cancel<T>(
 }
 
 impl<B> Interface for RnodeBearerKissInterface<B> {
+    fn ifac_default_size_bytes() -> usize {
+        8
+    }
+
     fn mtu() -> usize {
         508
     }

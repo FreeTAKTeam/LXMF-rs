@@ -134,6 +134,16 @@ pub(crate) struct SingleTomlInterface {
     pub(crate) name: Option<String>,
     pub(crate) host: Option<String>,
     pub(crate) port: Option<u16>,
+    pub(crate) shared_instance_type: Option<String>,
+    pub(crate) instance_name: Option<String>,
+    pub(crate) socket_path: Option<String>,
+    pub(crate) fixed_mtu: Option<u64>,
+    pub(crate) force_shared_instance_bitrate: Option<u64>,
+    pub(crate) ifac_size: Option<u64>,
+    #[serde(alias = "networkname")]
+    pub(crate) network_name: Option<String>,
+    #[serde(alias = "pass_phrase")]
+    pub(crate) passphrase: Option<String>,
 }
 
 fn default_true_bool() -> bool {
