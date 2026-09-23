@@ -569,6 +569,26 @@ RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/R
 # 1 passed
 ```
 
+## Missing-fragment retry exhaustion after partial progress
+
+The production Rust `ResourceManager` regression in
+`resource/tests_timeouts_cleanup.rs` accepts the first of two advertised parts,
+leaves the second absent, advances its injected clock past the configured
+retry interval, and verifies the exact terminal `retry_limit_exhausted`
+failure with one received part and no retained inbound transfer state. This
+matches frozen Reticulum `99de23c040d507e3fefca19e87b182302902725d`'s
+`Resource.__watchdog_job` transition: a receiver with no retries remaining
+cancels when the missing-part timeout expires. The test uses no wall-clock
+sleep and does not broaden accepted outcomes. It covers this receiver-side
+terminal slice only; cross-peer timeout timing and the rest of the #610
+failure matrix remain open.
+
+```text
+cargo test -p reticulum-rs-transport --lib \
+  resource_manager_exhausts_missing_fragment_retries_after_partial_progress
+# 1 passed
+```
+
 ## Resource compression size-limit boundary
 
 The focused 2026-09-23 differential checks the inclusive compression size
