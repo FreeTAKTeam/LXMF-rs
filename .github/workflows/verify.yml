@@ -204,6 +204,10 @@ jobs:
             cargo test -p rns-tools --test rncp_python_missing_source \
             rncp_missing_source_records_python_and_rust_cli_transcripts \
             -- --ignored --exact --nocapture --test-threads=1
+          RETICULUM_PY_REPO="$GITHUB_WORKSPACE/Reticulum-parity" \
+            cargo test -p rns-tools --test rncp_python_unknown_destination \
+            rncp_unknown_destination_records_python_and_rust_cli_transcripts \
+            -- --ignored --exact --nocapture --test-threads=1
 
       - name: Generate PR HIL support report
         if: always()

@@ -56,6 +56,18 @@ stderr. Neither process creates files in its isolated home/config roots. This
 is an intentionally recorded stdout/stderr divergence, not transcript parity
 or proof of the broader missing-destination/network failure matrix. Verify runs
 this exact-target case.
+The ignored `rncp_python_unknown_destination::rncp_unknown_destination_records_python_and_rust_cli_transcripts`
+regression separately requests an unannounced destination from both production
+send CLIs. With pinned Reticulum, Python exits 1 after printing only the
+“Path to … requested” stdout line; its expected terminal “Path not found” line
+is absent from captured output and stderr is empty. Rust exits 1 with its
+“Path to … requested” line on stdout and `path discovery timed out` on stderr.
+The transcript and exit status are recorded as observable differences, not
+parity. Reticulum's generated identity/cache directories remain inside the
+isolated Python config root; neither process creates or changes the source
+payload, and the Rust home/config roots remain empty. Verify runs this exact
+pinned-target case. This is an unknown-destination CLI failure slice, not
+evidence for every timeout, cancellation, interface, or network failure mode.
 The pinned Python fetch client receiving from the Rust listener and
 interrupted after partial Resource bytes arrive is covered by the ignored
 exact-target `rncp_python_fetch_cancel` transcript: Python exits 0, emits
