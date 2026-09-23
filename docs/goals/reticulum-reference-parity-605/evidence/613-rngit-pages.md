@@ -28,7 +28,7 @@ and a pinned-Python cancellation trace for an in-flight `/media` Resource.
 | Access control | Repository read/stats/release checks, work-document read checks, and the frozen `pages.py` rule that renders `no_ident` only for an unidentified peer when the derived null-identity hash is blocked | unit cases cover blocked/unblocked anonymous and identified-blocked behavior; pinned Python real-Link traces cover both the unblocked front page and exact blocked `no_ident` response with private-content exclusion; denied repository trace remains covered |
 | Media/files | `/media` key and path validation, URL decoding, ref/blob resolution, binary-safe filename metadata, download/artifact/work-doc endpoints, published-release filtering and absent-blob handling | local verified; pinned Python Resource payload/metadata and `/file/download` content/filename trace evidenced; same-Link production differential verifies a valid nested-path Resource control and scalar-False denials for missing key/path, malformed/insufficient/empty path, denied private access, absent blob, and invalid ref |
 | WebP conversion | Backend preference and `RNGIT_MEDIA_BACKEND`, argv-only process construction, quality/max-dimension options, 8-second pipeline bound, bounded stderr, output validation, temporary-directory cleanup, raw fallback | local code/tests; pinned Python live `ffmpeg` conversion of a valid PNG returns validated WebP; pinned-Python production-Link test with an explicitly unavailable backend returns the original `image.png` name and all 8,192 raw bytes unchanged; timeout regression verifies both pipeline children are terminated and reaped; other backends and visual parity remain unverified |
-| Resource wire | Explicit outbound compression control, with `/media` responses sent uncompressed and a regression asserting no compressed advertisement | local verified; live Python Resource delivery and metadata evidenced |
+| Resource wire | Explicit outbound compression control, with `/media` responses sent uncompressed and a regression asserting no compressed advertisement | local verified; pinned Python inspects the production Resource advertisement and confirms no compression for a precompressed PNG |
 | Link-scoped cleanup | Converted-media temp data is retained for an active Link and removed on `Closed`, `Stale`, or missing-link state; graceful teardown and in-flight `/media` Resource cancellation are exercised against pinned Python | deterministic cleanup tests plus ignored `rngit_python_interop::rngit_serves_pages_and_media_to_pinned_python_client` and `rngit_python_interop::rngit_cancels_in_flight_media_resource_on_python_link_teardown` | active, stale, closed, missing-link, graceful-disconnect, and synchronized partial-Resource cancellation paths verified; abrupt-process stale transition and other filesystem failures remain open |
 | Removal errors | Failed directory deletion retains the Link registry entry; conversion-fallback and link-cleanup errors log path/link context for diagnosis and retry, even with `--silent` | deterministic `page_link_cleanup_retries_failed_removal` injects a failure then verifies successful retry on link cleanup | one deletion-error retry path verified; other filesystem fault paths remain open |
 
@@ -74,6 +74,27 @@ media requests with a missing key, missing path, and insufficient path
 components. Each receives the reference's scalar `False` response, with no
 Resource metadata or media bytes. This does not promote visual-rendering
 parity.
+
+The focused precompressed-media regression uses the deterministic, valid 1x1
+PNG already committed as `valid.png` in the interop fixture, with server-side
+image conversion disabled so the original media reaches the Resource
+boundary. The pinned reference registers `PATH_MEDIA` with
+`auto_compress=False`; the Rust production handler passes `false` to
+`send_response_resource_with_compression`. A real pinned-Python TCP Link
+observes the response Resource advertisement before acceptance and confirms
+its compressed flag is false, then verifies the `valid.png` metadata, all 68
+original bytes, and SHA-256
+`431ced6916a2a21a156e38701afe55bbd7f88969fbbfc56d7fe099d47f265460`.
+This is distinct from the unavailable-backend raw-fallback regression and
+proves the emitted Resource is not compressed; it does not assert whether an
+internal compression attempt occurred.
+
+```text
+RETICULUM_PY_REPO=<checkout at 99de23c040d507e3fefca19e87b182302902725d> \
+LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
+  issue_613_media_compression::rngit_media_resource_preserves_precompressed_png_without_resource_compression \
+  -- --ignored --nocapture                                             PASS
+```
 
 For the cleanup assertion, the Rust server uses an isolated `TMPDIR`/`TEMP`.
 The Python client observes exactly one `rngit-media-*` directory after the

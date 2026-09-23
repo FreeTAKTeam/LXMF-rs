@@ -181,6 +181,16 @@ jobs:
             issue_613_media_invalid_ref::rngit_media_validation_denials_return_false_over_python_link \
             -- --ignored --exact --nocapture --test-threads=1
 
+      - name: Verify pinned Python rngit precompressed media Resource flag
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+          PYTHONPATH: ${{ github.workspace }}/Reticulum-parity
+        run: |
+          cargo test -p rns-tools --test rngit_python_interop \
+            issue_613_media_compression::rngit_media_resource_preserves_precompressed_png_without_resource_compression \
+            -- --ignored --exact --nocapture --test-threads=1
+
       - name: Generate PR HIL support report
         if: always()
         run: cargo xtask hil report --evidence target/hil/runs/pr-${{ github.run_id }} --output target/hil/runs/pr-${{ github.run_id }}/support-report

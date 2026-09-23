@@ -186,8 +186,17 @@ down, and verifies the production Rust server removes the directory. This
 proves graceful disconnect cleanup. A second pinned-Python production-Link case
 forces `RNGIT_MEDIA_BACKEND` to an unavailable executable and verifies that the
 successful `/media` Resource retains the original filename and all 8,192 raw
-fixture bytes, matching the pinned handler's conversion-failure fallback. The
-periodic sweep now removes stale,
+fixture bytes, matching the pinned handler's conversion-failure fallback.
+
+The precompressed-media differential separately captures the actual Resource
+response advertisement on a real pinned-Python Link for the deterministic
+valid PNG: its compressed flag is false, and the response retains `valid.png`,
+all 68 original bytes, and SHA-256
+`431ced6916a2a21a156e38701afe55bbd7f88969fbbfc56d7fe099d47f265460`. This
+matches the pinned `PATH_MEDIA` registration's `auto_compress=False`; image
+conversion is disabled in this focused case. The assertion proves no
+Resource compression flag/payload was emitted; it does not assert whether
+compression was internally attempted. The periodic sweep now removes stale,
 closed, and missing-link temp directories while retaining active-link media,
 covered by a deterministic regression. Abrupt-process stale transition and
 A failure-injection regression also proves a failed directory deletion remains
