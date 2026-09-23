@@ -230,9 +230,12 @@ asserts its default tag size and runtime counters. These supplement (but do not
 replace) the pinned Python/Rust TCP and UDP traces. The outbound I2P peer loop
 also has fake-SAM regressions for wrong-key rejection, authenticated
 ingress/egress, and shared parent IFAC rotation on an established virtual peer;
-these are not public-I2P or prepared-router evidence.
-Physical-device and remaining carrier-family/support-matrix requirements stay
-partial.
+these are not public-I2P or prepared-router evidence. Additional deterministic
+worker tests now cover wrong-key rejection and authenticated ingress/egress for
+Meshtastic tunnel reassembly, Weave streams, and incoming I2P accepted streams;
+the I2P test uses a local stream pair, not a SAM router. These tests do not
+replace pinned Python/Rust TCP and UDP traces. Physical-device and remaining
+carrier-family/support-matrix requirements stay partial.
 
 ### v0.9.0 interface evidence boundary
 
@@ -646,9 +649,10 @@ status, but daemon startup marks them as failed with explicit
 `unsupported interface kind` runtime metadata instead of silently dropping the
 record.
 
-`RNS/Interfaces/*` includes implemented, tested carrier runtimes, but the
-missing daemon IFAC path remains a software gap, not just a hardware-evidence
-boundary. Backbone
+`RNS/Interfaces/*` includes implemented, tested carrier runtimes. The forward
+candidate now exercises the daemon IFAC path on pinned Python/Rust TCP and UDP
+and selected software carrier adapters, while remaining carrier-family
+coverage is still a software parity gap, distinct from hardware evidence. Backbone
 now has Python selector/epoll and live Python Reticulum BackboneClientInterface
 slow-reader probes for the same qualitative backpressure workload, plus focused
 live Rust/Python Backbone channel, link-data, request/response, and resource

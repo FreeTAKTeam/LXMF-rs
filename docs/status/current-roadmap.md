@@ -115,6 +115,12 @@ The project is best described by capability level:
 | Independent implementation evidence | published for stable `v0.10.1` | Pinned rns-rs and Reticulum-Go release profiles cover two-node/multi-hop behavior; rns-rs additionally covers mixed/all-Rust five-node chains, routing policy, restart, shared daemon, exact large Resources, and deterministic chaos. Explicit peer divergences remain failures owned by the peer and are allowlisted narrowly by CI. |
 | Performance evidence | published for stable `v0.10.1` | Tag workflow [`33254264175`](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/33254264175) passed with the bounded checksummed JSON, HTML, raw evidence, and regression-gate result. The gate is `pass_with_warnings` for one documented 13.99% Rust resource-sized encode dispersion; throughput/CPU/RSS ratios are `1.013x`/`1.010x`/`1.084x`. |
 
+The #608 IFAC software follow-up now also tests wrong-key rejection and
+authenticated ingress/egress through Meshtastic tunnel, Weave stream, and
+incoming I2P accepted-stream workers. These deterministic tests use software
+seams only; uncovered carrier families and physical/public-network evidence
+remain open. See the [#608 evidence record](../goals/reticulum-reference-parity-605/evidence/608-ifac.md).
+
 The independent evidence axis is documented in [`docs/interop`](../interop/README.md).
 It does not promote Python parity rows, third-party clients, physical interfaces,
 or public-network soak. Pull requests run the bounded rns-rs profile; nightly and

@@ -74,7 +74,7 @@ incomplete requirements:
 | Owner | Requirement | Current status |
 | ---: | --- | --- |
 | #607 | Review and integrate the initial PR increment | partial / unverified |
-| #608 | Wire IFAC into production carrier ingress and egress | partial; pinned Python TCP/UDP Channel and Resource evidence, UDP daemon success/rejection including valid-frame tampering, live credential rotation and restart, shared-instance and virtual-child policy traces, a Unix PipeInterface worker IFAC/HDLC loopback, serial-stream wrong-key rejection plus authenticated ingress/egress, KISS/AX.25 stream wrong-key rejection plus authenticated ingress/egress with runtime-counter assertions, and outbound I2P fake-SAM stream wrong-key rejection plus authenticated ingress/egress; other carrier families remain pending |
+| #608 | Wire IFAC into production carrier ingress and egress | partial; pinned Python TCP/UDP Channel and Resource evidence, UDP daemon success/rejection including valid-frame tampering, live credential rotation and restart, shared-instance and virtual-child policy traces, a Unix PipeInterface worker IFAC/HDLC loopback, serial-stream wrong-key rejection plus authenticated ingress/egress, KISS/AX.25 stream wrong-key rejection plus authenticated ingress/egress with runtime-counter assertions, outbound I2P fake-SAM stream and incoming accepted-stream worker regressions, plus Meshtastic tunnel and Weave stream wrong-key rejection/authenticated ingress/egress; other carrier families remain pending |
 | #609 | Close transport, local-client, and shared-instance gaps | implemented but unproven; mixed-peer evidence pending |
 | #610 | Prove Resource collision, stream, and mixed-peer behavior | partial / unverified |
 | #611 | Exercise every reference utility through real network workflows | partial / unverified |
@@ -131,6 +131,14 @@ authenticated ingress/egress, and shared parent IFAC rotation on an established
 virtual peer. These are software stream tests, not public I2P evidence, and do
 not cover broader tunnel lifecycle behavior. Other carrier families remain
 open; hardware and public-network evidence remain separate acceptance gates.
+Commit `49b7999f` adds software-only production-worker regressions for
+Meshtastic tunnel reassembly, Weave streams, and the incoming I2P accepted
+stream. Each rejects wrong-key traffic before admission and verifies
+authenticated ingress/egress; the I2P case uses a local TCP pair rather than a
+SAM router, so the SAM accept-loop integration remains unverified. The transport library passes 823 unit tests, including 394 tests
+matching the `ifac` filter, with all-feature Clippy, architecture boundaries,
+module-size, and formatting checks passing. These new adapter cases narrow but
+do not close the remaining carrier-family or physical acceptance gaps.
 
 The #609 implementation slice now has committed local software evidence in
 [`evidence/609-transport-local-shared.md`](../goals/reticulum-reference-parity-605/evidence/609-transport-local-shared.md):

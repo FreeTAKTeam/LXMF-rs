@@ -4,9 +4,11 @@ Status: **authenticated TCP/UDP daemon paths and shared-instance/virtual-child
 IFAC policy evidenced; serial and KISS stream runtime paths have deterministic
 software regressions; outbound I2P fake-SAM stream IFAC rejection,
 authenticated ingress/egress, and live parent-state rotation on a virtual peer
-are covered; invalid live IFAC reconfiguration
-returns a structured RPC error without disabling the active authenticated
-configuration; full interface-family acceptance remains open**.
+are covered; Meshtastic tunnel, Weave stream, and incoming I2P accepted-stream
+workers now also have deterministic wrong-key rejection and authenticated
+ingress/egress regressions; invalid live IFAC reconfiguration returns a
+structured RPC error without disabling the active authenticated configuration;
+full interface-family acceptance remains open**.
 
 The implementation is based on the frozen Reticulum `1.5.4-dev` reference at
 `99de23c040d507e3fefca19e87b182302902725d`. It wires the existing Rust
@@ -359,8 +361,43 @@ git diff --check
 
 The fake-SAM regressions add software evidence for outbound and virtual-child
 IFAC behavior on one tunneled carrier path;
-remaining I2P lifecycle, incoming-peer, interface-family, support-matrix, and
-operational acceptance remain open.
+remaining I2P lifecycle and SAM accept-loop integration, interface-family,
+support-matrix, and operational acceptance remain open.
+
+## Additional carrier-adapter IFAC regressions
+
+Commit `49b7999f` adds three deterministic production-worker regressions on the
+existing #628 branch. The Meshtastic tunnel test uses its injected interface
+handle and verifies wrong-key rejection/error evidence, authenticated ingress,
+and authenticated egress after tunnel reassembly. The Weave stream test
+performs its signed discovery handshake, rejects a wrong-key endpoint packet
+with an IFAC-violation count, admits a valid authenticated packet, and checks
+authenticated egress. The I2P incoming accepted-stream test uses a local TCP
+pair to exercise the production HDLC worker, verifies wrong-key rejection
+before admission and authenticated ingress/egress, and checks child cleanup.
+These are software adapter tests only: they do not exercise a radio, a public
+I2P router, or a full hardware/support matrix. #616 remains a separate
+operational gate.
+
+```text
+cargo fmt --all -- --check
+# passed
+cargo test -p reticulum-rs-transport ifac -- --nocapture
+# 394 passed; 0 failed
+cargo test -p reticulum-rs-transport --lib
+# 823 passed; 0 failed
+cargo clippy -p reticulum-rs-transport --all-targets --all-features --no-deps -- -D warnings
+# passed
+bash tools/scripts/check-boundaries.sh
+# passed
+bash tools/scripts/check-module-size.sh
+# passed
+git diff --check
+# passed
+```
+
+The uncovered carrier families and broad startup/configuration/error matrix
+remain open, so these additions do not close #608 or promote #605.
 
 ## Rejected live IFAC reconfiguration and fail-closed restart
 
