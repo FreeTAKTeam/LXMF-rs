@@ -228,10 +228,29 @@ signature rejection and binary identity/signature round-trip. Commit
 independent node instances and rollback when proposed-document permission
 setup fails. Commit `409ef98e` adds a pinned-Python production trace that
 creates and signs a work item, restarts the Rust `rngit` process on the same
-root and identity, and verifies list/view persistence. The row remains partial
+root and identity, and verifies list/view persistence. That trace now also
+creates a numbered MessagePack comment before shutdown and verifies its ID and
+content in the pinned Python `work_view` response after restart. A new Verify
+test runs
+four independent pinned-Python work creators concurrently against one Rust
+server, checks distinct assigned IDs and persisted root files, and is included
+in this issue's dedicated PR. It also exercises invalid list scope, malformed
+document IDs, unknown operations, and the pinned Python `rngit work` CLI
+lifecycle (create/list/view/edit/comment/perms/complete/activate/propose/delete)
+over production Links with deterministic editor input. The row remains partial
 and unverified because the hash-only compatibility seam, broader
-cross-process/network restart and concurrent-writer/fault transcripts, full
-Python CLI workflow, and complete end-to-end rngit network matrix remain open.
+cross-process/network restart and fault transcripts, non-work CLI paths, and
+complete end-to-end rngit network matrix remain open; hosted evidence for the
+new lane is pending. The local permission-update follow-up fixes a failed-read
+transaction: configured state is committed only after the current sidecar is
+successfully read, validated, and merged. Regressions verify that a malformed
+sidecar read, failing resolver refresh, and failed atomic replacement do not
+change the loaded permission policy. This is one verified software slice, not
+completion of #612. A follow-up work-storage regression rejects malformed
+MessagePack roots and trailing bytes; over a production Reticulum Link, the
+pinned Python `rngit work view` command receives the reference-compatible
+`REMOTE_FAIL` response `Error loading document`. Other malformed-document
+shapes and operations remain unverified.
 
 Commits `3dcd5259`, `869b8c84`, `02b75605`, and `f9c5b81e` also add a native Rust-client
 request adapter and a production compatibility bridge. Its pinned-Python trace

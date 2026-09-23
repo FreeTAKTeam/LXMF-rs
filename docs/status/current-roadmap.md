@@ -38,6 +38,19 @@ mixed-runtime restart check, and the #612 pinned-Python work-item persistence
 and do not promote the broader utility surface. Published inventory counts are
 not promoted or rewritten by this change.
 
+The #612 mixed-peer increment adds pinned-Python Verify coverage for four
+concurrent signed work creators, malformed work requests, and the Python
+`rngit work` CLI lifecycle through production Reticulum Links. Its hosted
+result is pending on the implementing PR. Local tests now also verify that a
+failed configured-permission refresh, resolver execution, or atomic sidecar
+replacement leaves the cached policy unchanged. Storage regressions also reject
+malformed MessagePack roots and trailing bytes; an exact-reference Python CLI
+request over a production Link observes `Remote error: Error loading document`
+for a corrupt persisted root. The process-restart trace now also writes a
+Python-shaped numbered comment before shutdown and verifies its ID/content from
+the pinned Python view response after restart. Broader disk-fault, restart, and
+non-work CLI workflows remain open.
+
 The forward #610 Resource slice also has new pinned-Python evidence at
 `8b29132c`: a sender-side file-like reader raises during a split transfer,
 Rust reports terminal inbound failure, and the Python process exits
