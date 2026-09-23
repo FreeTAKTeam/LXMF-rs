@@ -317,9 +317,7 @@ impl ReticulumGitNode {
         if !PAGE_PATHS[..13].contains(&path) {
             return None;
         }
-        if null_identity(&remote_identity)
-            && self.blocked_identities.contains(&remote_identity)
-        {
+        if null_identity(&remote_identity) || self.blocked_identities.contains(&remote_identity) {
             return Some(self.no_ident());
         }
         match path {

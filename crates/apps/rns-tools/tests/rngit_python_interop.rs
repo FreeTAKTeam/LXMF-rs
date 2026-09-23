@@ -13,6 +13,8 @@ mod issue_613_media_access;
 mod issue_613_media_invalid_ref;
 #[path = "rngit_python_interop/issue_613_media_url.rs"]
 mod issue_613_media_url;
+#[path = "rngit_python_interop/issue_613_no_ident.rs"]
+mod issue_613_no_ident;
 
 static PYTHON_INTEROP_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
