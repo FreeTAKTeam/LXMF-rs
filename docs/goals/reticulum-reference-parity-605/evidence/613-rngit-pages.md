@@ -26,7 +26,7 @@ and a pinned-Python cancellation trace for an in-flight `/media` Resource.
 | NomadNet node | Persistent/seeded identity, `nomadnetwork.node` destination, TCP listen/connect interfaces, periodic announce app data, request-path decoding, page/file dispatch, packet or Resource response selection | local verified; pinned Python live TCP page/media trace evidenced |
 | Pages | Index/group/repository/tree/blob/commits/commit/refs/stats/releases/release/work/work-doc paths, `var_*` query fields, ref/path validation, not-found/error rendering, custom static and bounded executable templates, binary-image `/media` markup | local verified; pinned Python live trace covers missing repository, invalid ref, missing blob, and visual/reference rendering remains incomplete |
 | Access control | Repository read/stats/release checks, work-document read checks, blocked unidentified-client no-identity template, malformed/denied/missing request paths fail closed | local verified; pinned Python live trace covers a denied repository |
-| Media/files | `/media` key and path validation, URL decoding, ref/blob resolution, binary-safe filename metadata, download/artifact/work-doc endpoints, published-release filtering and absent-blob handling | local verified; pinned Python Resource payload/metadata and `/file/download` content/filename trace evidenced |
+| Media/files | `/media` key and path validation, URL decoding, ref/blob resolution, binary-safe filename metadata, download/artifact/work-doc endpoints, published-release filtering and absent-blob handling | local verified; pinned Python Resource payload/metadata and `/file/download` content/filename trace evidenced; separate production-Link case verifies percent-decoded nested media path, bytes, digest, filename and absent-blob rejection |
 | WebP conversion | Backend preference and `RNGIT_MEDIA_BACKEND`, argv-only process construction, quality/max-dimension options, 8-second pipeline bound, bounded stderr, output validation, temporary-directory cleanup, raw fallback | local code/tests; pinned Python live `ffmpeg` conversion of a valid PNG returns validated WebP; timeout regression verifies both pipeline children are terminated and reaped; other backends and visual parity remain unverified |
 | Resource wire | Explicit outbound compression control, with `/media` responses sent uncompressed and a regression asserting no compressed advertisement | local verified; live Python Resource delivery and metadata evidenced |
 | Link-scoped cleanup | Converted-media temp data is retained for an active Link and removed on `Closed`, `Stale`, or missing-link state; graceful teardown and in-flight `/media` Resource cancellation are exercised against pinned Python | deterministic cleanup tests plus ignored `rngit_python_interop::rngit_serves_pages_and_media_to_pinned_python_client` and `rngit_python_interop::rngit_cancels_in_flight_media_resource_on_python_link_teardown` | active, stale, closed, missing-link, graceful-disconnect, and synchronized partial-Resource cancellation paths verified; abrupt-process stale transition and other filesystem failures remain open |
@@ -108,6 +108,24 @@ LXMF_PYTHON_BIN=python3 PYTHONPATH=<pinned-checkout> cargo test \
   rngit_serves_pages_and_media_to_pinned_python_client \
   -- --ignored --nocapture                                      PASS (1 test)
 git diff --check; tools/scripts/check-module-size.sh             PASS
+```
+
+The separate media URL acceptance slice starts the production `rngit` binary
+and uses the frozen Python RNS client over a real TCP Reticulum Link. It
+requests `/media/group/repo/HEAD/assets%2Fspace+name.bin` and verifies the
+Resource metadata name `space name.bin`, 29 binary bytes, and SHA-256
+`78acd6db2006e4da7531327f95f5b00b97c53d18e59326e90dacdee2cba1e1a7`. A
+second request for an absent encoded blob returns no payload. The pinned
+`pages.py` decodes the file-path tail with `urllib.parse.unquote_plus` but does
+not decode the group, repository, or ref components; accordingly this case
+uses the literal ref `HEAD`. This is a focused acceptance slice only and does
+not establish complete `/media` parity or #613 completion.
+
+```text
+RETICULUM_PY_REPO=<checkout at 99de23c040d507e3fefca19e87b182302902725d> \
+LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
+  rngit_media_decodes_encoded_path_and_returns_resource_metadata \
+  -- --ignored --nocapture                                      PASS (1 test)
 ```
 
 The periodic service sweep now treats `LinkStatus::Stale` the same as `Closed`
