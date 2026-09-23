@@ -86,10 +86,68 @@ class ChannelEndpoint:
         self.links = []
         self.received = []
         self.buffers = []
+        self.resource_wire_segments = []
+
+    def _install_resource_wire_capture(self) -> None:
+        """Capture decoded Resource segment bytes before pinned RNS strips metadata."""
+        capture_context = threading.local()
+        original_full_hash = RNS.Identity.full_hash
+        original_assemble = RNS.Resource.assemble
+
+        def capture_full_hash(data):
+            active_resource = getattr(capture_context, "resource", None)
+            already_captured = getattr(capture_context, "captured", False)
+            if active_resource is not None and not already_captured:
+                payload = bytes(data[:-RNS.Resource.RANDOM_HASH_SIZE])
+                metadata_prefix_size = 0
+                if active_resource.has_metadata and active_resource.segment_index == 1:
+                    if len(payload) < 3:
+                        raise AssertionError("metadata-bearing first segment lacks its 3-byte length")
+                    metadata_size = int.from_bytes(payload[:3], "big")
+                    metadata_prefix_size = 3 + metadata_size
+                    if metadata_prefix_size > len(payload):
+                        raise AssertionError("first segment ends inside its metadata block")
+
+                with self.lock:
+                    self.resource_wire_segments.append(
+                        {
+                            "segment_index": active_resource.segment_index,
+                            "total_segments": active_resource.total_segments,
+                            "has_metadata": active_resource.has_metadata,
+                            "compressed": active_resource.compressed,
+                            "payload_size": len(payload),
+                            "payload_sha256": hashlib.sha256(payload).hexdigest(),
+                            "metadata_prefix_hex": payload[:metadata_prefix_size].hex(),
+                            "first_content_hex": payload[
+                                metadata_prefix_size : metadata_prefix_size + 32
+                            ].hex(),
+                        }
+                    )
+                capture_context.captured = True
+            return original_full_hash(data)
+
+        def capture_assemble(resource):
+            previous_resource = getattr(capture_context, "resource", None)
+            previous_captured = getattr(capture_context, "captured", False)
+            capture_context.resource = resource
+            capture_context.captured = False
+            try:
+                return original_assemble(resource)
+            finally:
+                capture_context.resource = previous_resource
+                capture_context.captured = previous_captured
+
+        # Resource.assemble calls full_hash(data + random_hash) immediately
+        # before parsing/removing the metadata prefix. Thread-local scoping
+        # keeps unrelated identity hashes in the live endpoint out of capture.
+        RNS.Identity.full_hash = staticmethod(capture_full_hash)
+        RNS.Resource.assemble = capture_assemble
 
     def start(self, config_dir: str) -> RNS.Destination:
         print("python_channel_endpoint: starting Reticulum", file=sys.stderr, flush=True)
         RNS.Reticulum(configdir=config_dir, loglevel=7)
+        if self.payload_kind == "resource-wire":
+            self._install_resource_wire_capture()
 
         identity = RNS.Identity()
         destination = RNS.Destination(
@@ -149,6 +207,7 @@ class ChannelEndpoint:
 
         if self.payload_kind in (
             "resource",
+            "resource-wire",
             "resource-compression",
             "resource-multi-hop",
             "cancel-resource",
@@ -217,7 +276,27 @@ class ChannelEndpoint:
                             "compressed": resource.compressed,
                         }
                     )
-                if (
+                if self.payload_kind == "resource-wire":
+                    with self.lock:
+                        wire_segments = sorted(
+                            self.resource_wire_segments,
+                            key=lambda segment: segment["segment_index"],
+                        )
+                    if not wire_segments or wire_segments[0]["segment_index"] != 1:
+                        raise AssertionError("first Resource segment was not captured before metadata parsing")
+                    reply_data = "resource-wire:" + json.dumps(
+                        {
+                            "wire_segments": wire_segments,
+                            "data_size": len(data),
+                            "sha256": digest,
+                            "metadata": metadata,
+                            "compressed": resource.compressed,
+                            "total_size": resource.total_size,
+                            "segments": resource.total_segments,
+                        },
+                        sort_keys=True,
+                    )
+                elif (
                     metadata is not None
                     and len(data) < 1024 * 1024
                     and self.payload_kind != "resource-compression"
@@ -735,6 +814,7 @@ def main() -> int:
             "channel-reconnect",
             "buffer",
             "resource",
+            "resource-wire",
             "resource-compression",
             "resource-compression-compressible",
             "resource-compression-threshold",

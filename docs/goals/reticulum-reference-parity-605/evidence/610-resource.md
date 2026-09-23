@@ -644,9 +644,10 @@ metadata_wire_size + 1`, so pinned Python reports `total_size =
 MAX_EFFICIENT_SIZE + 1` and exactly two segments. Rust observes accepted
 segment indexes `[1, 2]`, reassembles the exact encoded `python-meta` value,
 and its content SHA-256 matches the pinned Python sender's report. This
-confirms segment 1 reserves the 3-byte metadata length and encoded metadata,
-leaving one content byte for segment 2. It is a focused mixed-peer boundary
-case; it does not close broader size/chunking or request/response selection.
+confirms the receiver's boundary accounting and reassembly. It does not by
+itself inspect the transmitted first-segment payload bytes or prove their
+metadata placement. It is a focused mixed-peer boundary case; it does not
+close broader size/chunking or request/response selection.
 
 ```text
 RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
@@ -655,6 +656,38 @@ RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
   -- --ignored --nocapture --test-threads=1
 # 1 passed; two exact segment indexes, metadata, total size, and content digest
 ```
+
+### Rust-to-Python first-segment metadata bytes
+
+`rust_to_python_split_resource_first_segment_metadata_wire_matches_reference`
+uses the production Rust `Transport::send_resource_with_compression` path and
+the pinned Python Link/Resource receiver over loopback. Its test-only Python
+wrapper scopes capture to `Resource.assemble` and observes the argument to
+`Identity.full_hash` immediately before the pinned implementation parses and
+strips metadata. It removes only the trailing four-byte Resource random hash
+from that hash input and records each decoded/decompressed segment payload;
+the pinned checkout itself is not modified.
+
+Rust sends an uncompressed two-segment Resource with MessagePack metadata.
+The test verifies both segment captures and checks the complete first-segment
+payload SHA-256 against the expected three-byte metadata length, encoded
+metadata, and first data slice. It also compares the exact metadata-prefix
+bytes, the immediately following 32 content bytes, and the completed
+Resource's digest/metadata. This observes the Resource segment payload after
+packet reassembly and Link decryption (and after decompression, disabled for
+this case), not encrypted Link packets or individual Resource part packets.
+No production protocol behavior was changed.
+
+```text
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+  LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
+  rust_to_python_split_resource_first_segment_metadata_wire_matches_reference \
+  -- --ignored --exact --nocapture --test-threads=1
+# 1 passed against frozen Reticulum 99de23c040d507e3fefca19e87b182302902725d
+```
+
+The same exact ignored test is wired into Verify's pinned-1.5.4 job as
+“Verify frozen 1.5.4 first-segment Resource metadata wire placement.”
 
 ## Link request/response packet-versus-Resource selection
 
