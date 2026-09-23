@@ -30,10 +30,14 @@ results with Rust. This confirms the classification predicate only; it does
 not claim that the broader shared-instance acceptance is complete. The pinned
 Python source sets a local-client announce deadline to `now`, sets retries to
 `PATHFINDER_R` (1), and checks announce deadlines every 1.0 s from its 0.25 s
-jobs loop. The source-derived ideal polling bound is the check interval plus
-one jobs poll: 1.25 s, with no runtime-jitter allowance. A focused pinned-source
-test asserts those assignments/constants and verifies Rust's 1.0 s worker
-interval is strictly inside that bound.
+jobs loop. Its deadline comparison is strict (`time.time() > deadline`), so
+equality does not retransmit. The source-derived ideal polling bound is the
+check interval plus one jobs poll: 1.25 s, with no runtime-jitter allowance.
+The pinned differential executes the announce-processing branch with a
+controlled clock: no send at equality, one send just after the deadline, and
+removal without another send on the following check. Rust's deterministic
+production-tick test asserts the same strict boundary; its 1.0 s worker
+interval remains inside Python's source-derived bound.
 
 Rust's production tick and announce-table drain now accept an explicit
 monotonic `Instant`. The deterministic worker-tick regression schedules the
@@ -44,24 +48,23 @@ the entry only in the bounded cache. This also covers the passive shared
 instance path: the retransmit worker now drains local-client announcements even
 when transport forwarding is disabled.
 
-A paired executable differential is not included. Invoking pinned Python's
-`Transport.jobs()` would run its process-global jobs loop and mutate shared
-transport tables; the test instead executes assertions against the pinned
-Python class constants and source AST, without simulating Python output or
-using wall-clock sleeps. The deterministic Rust tick test proves the worker
-action and count; the pinned test proves the corresponding reference contract
-and strict source-derived bound.
+The differential executes the exact announce-check branch extracted from the
+pinned `Transport.jobs()` source, not the full process-global jobs loop. This
+keeps the schedule deterministic while exercising the reference branch's
+deadline comparator, retry counter, and one-retransmit completion rule without
+wall-clock sleeps. It does not claim a full live Python/Rust daemon schedule
+trace or account for runtime scheduling jitter.
 
 ## Local software evidence
 
-- `cargo test -p reticulum-rs-transport --lib` — 819 passed, 2 ignored.
+- `cargo test -p reticulum-rs-transport --lib` — 823 passed, 2 ignored.
 - `cargo test -p reticulumd --bin reticulumd` — 465 passed.
 - Focused regressions cover parent/child classification, passive shared-client
   retransmission on the first controlled worker tick, exact one-send routing,
   sibling direct fan-out, passive transport admission, and announce-table
   response/cache behavior.
 - `cargo test -p reticulum-rs-transport --lib local_client_announce_retransmits_on_first_worker_tick_once` — 1 passed.
-- `RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test -p reticulum-rs-transport --lib pinned_python_local_client_schedule_bounds_the_rust_worker_tick -- --ignored --nocapture` — 1 passed against Python Reticulum `99de23c040d507e3fefca19e87b182302902725d`.
+- `RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test -p reticulum-rs-transport --lib pinned_python_local_client_schedule_bounds_the_rust_worker_tick -- --ignored --nocapture` — 1 passed against Python Reticulum `99de23c040d507e3fefca19e87b182302902725d`; executes the pinned announce-processing AST branch at deadline equality, just after, and at the following check.
 - `RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test -p reticulum-rs-transport --lib pinned_python_local_client_classification_matches_parent_relationship -- --ignored --nocapture` — 1 passed against Python Reticulum `99de23c040d507e3fefca19e87b182302902725d`.
 - `cargo clippy -p reticulum-rs-transport --all-targets --all-features --no-deps -- -D warnings` — passed.
 - `tools/scripts/check-module-size.sh` and

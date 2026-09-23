@@ -648,12 +648,12 @@ responses read the announce the path table accepted. Refreshing a destination
 the cache already holds no longer evicts an unrelated one. A local-client
 announce is drained on the first controlled production-worker tick after its
 immediate deadline, including on a passive shared instance; the regression
-proves no pre-deadline send, exactly one broadcast to the receiving child, and
-no later retry. The drain/tick accepts a controlled monotonic instant. A pinned
-Python source test verifies its `now` deadline, one-retry limit, 1.0 s announce
-check and 0.25 s jobs poll, deriving the strict 1.25 s ideal polling bound; a
-paired executable `Transport.jobs()` differential is not included because it
-is a process-global threaded loop. Parent-interface classification is covered
+proves no send before or at the strict deadline, exactly one broadcast just
+after it to the receiving child, and no later retry. The pinned Python
+differential executes the announce-job branch with a controlled clock and
+verifies the same strict comparator, one-retry limit, 1.0 s announce check and
+0.25 s jobs poll; the ideal polling bound remains 1.25 s. This is not a full
+live daemon schedule trace. Parent-interface classification is covered
 by the pinned-Python predicate differential. Pinned
 shared-instance evidence currently covers TCP/Unix attachment and announce
 fan-out plus a direct application/restart trace. A pinned two-carrier Python

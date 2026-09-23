@@ -24,7 +24,8 @@ pub struct AnnounceEntry {
 
 impl AnnounceEntry {
     fn retransmit_at(&mut self, transport_id: &AddressHash, now: Instant) -> Option<TxMessage> {
-        if now < self.timeout {
+        // Python checks `time.time() > deadline`; equality is still early.
+        if now <= self.timeout {
             return None;
         }
 

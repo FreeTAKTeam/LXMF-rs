@@ -41,6 +41,10 @@ remains open. A separate transport-disabled shared-daemon regression delivers
 a locally hosted LinkRequest from one virtual child and emits exactly one
 LinkRequestProof back to that child, with no sibling/transit packet; this is
 one additional matrix cell, not full shared-routing acceptance. The focused
+local-client announce differential now executes Python's announce-job branch
+at deadline equality and just after it; Rust matches Python's strict
+`now > deadline` comparison and emits only one immediate retransmit. This
+closes one timing-boundary gap, not the broader #609 matrix. The focused
 #611 `rncp` compression/send/fetch matrix, bounded `rnprobe` packet/RPC workflow, and
 bounded native `rnsh` channel workflow, negative failure-category checks,
 path-discovery-timeout check, listener restart check, local disk-failure check,
