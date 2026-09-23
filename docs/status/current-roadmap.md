@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last reassessed: 2026-09-21
+Last reassessed: 2026-09-23
 
 This file is the repository-level source of truth for parity posture, release
 confidence, and execution order. Detailed row-level status lives in:
@@ -24,8 +24,10 @@ remaining acceptance gates are recorded in
 [`rns-1.5.4-delta.md`](rns-1.5.4-delta.md). The 1.5.4 development reference is
 not the canonical release baseline. Pinned Python/Rust IFAC Channel and
 Resource interoperability is exercised over TCP and UDP; the `lxmd`/`reticulumd`
-UDP path also has bidirectional IFAC direct-message evidence. Broader
-carrier-family/support-matrix acceptance, remaining remote utility behavior,
+UDP path also has bidirectional IFAC direct-message evidence, valid-frame tamper
+rejection, live credential rotation, and fail-closed restart evidence.
+Shared-instance exceptions and broader software carrier-family/support-matrix
+acceptance, remaining remote utility behavior,
 transport policy differences, and platform validation remain open; the
 focused #611 `rncp`
 compression/send/fetch matrix, bounded

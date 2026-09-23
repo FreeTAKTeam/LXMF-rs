@@ -73,13 +73,12 @@ both directions, observes an active Python link, and records zero live IFAC
 violations. A second daemon trace verifies wrong-passphrase rejection before
 peer or message admission. A third daemon trace rejects plaintext, invalid-tag,
 and truncated UDP datagrams and confirms the violations are counted without
-peer or message admission. The UDP daemon traces do not yet exercise a valid
-authenticated frame tampered in transit, UDP reconfiguration/restart,
-shared-instance exceptions, or every carrier family through that production
-path; lower-level UDP regressions cover valid-frame tampering and wrong-key
-frames. Attached serial, RNode,
-BLE, KISS, LoRa, Meshtastic, Weave, and public-network evidence is outside this
-local software run. Those rows remain `partial / unverified` or
+peer or message admission. The initial UDP daemon traces did not exercise a
+valid authenticated frame tampered in transit or credential rotation/restart;
+the later PR #628 follow-up below now covers both. Shared-instance exceptions
+and every carrier family through production paths remain open. Attached serial,
+RNode, BLE, KISS, LoRa, Meshtastic, Weave, and public-network evidence is
+outside this local software run. Those rows remain `partial / unverified` or
 `hardware-unverified` in the forward ledger.
 
 ## Mainline follow-up: UDP software coverage
@@ -159,8 +158,30 @@ bash tools/scripts/check-module-size.sh
 ```
 
 The Verify PR job now runs the ignored IFAC daemon scenarios against the
-pinned Python checkouts. Production-path UDP success, wrong-credential
-rejection, and malformed-frame rejection are evidenced; valid authenticated
-frame tampering through `lxmd`, UDP reconfiguration/restart, and the remaining
-software carrier-family and support-matrix gaps are still open. This does not
-claim physical verification under #616.
+pinned Python checkouts. At PR #628 head
+`657f9bde0aae5bc0cdcc0f26e4101b359af8d9d0`, two additional production-path UDP
+checks passed locally against Reticulum
+`99de23c040d507e3fefca19e87b182302902725d` and LXMF
+`727830cefda83d9c6e3982b48675425f3f988f9c`:
+
+```text
+RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
+LXMF_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/LXMF LXMF_PYTHON_BIN=python3 \
+cargo test -p lxmf-cli --test python_lxmd_remote_relay \
+python_rust_lxmd_ifac_udp_valid_frame_tampering_is_rejected_before_admission \
+-- --ignored --nocapture --test-threads=1
+# 1 passed; tampered valid IFAC frame counted and rejected before routing/delivery
+
+RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
+LXMF_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/LXMF LXMF_PYTHON_BIN=python3 \
+cargo test -p lxmf-cli --test python_lxmd_remote_relay \
+python_rust_lxmd_ifac_udp_credential_rotation_and_restart_e2e \
+-- --ignored --nocapture --test-threads=1
+# 1 passed; live credential rotation, old-key rejection, restart, stable identity,
+# and successful delivery under the rotated credentials
+```
+
+These traces close the UDP-tamper and UDP-rotation/restart software gaps for
+this daemon path. Shared-instance exceptions and the full software
+carrier-family/support matrix remain open; this does not claim physical
+verification under #616.
