@@ -75,3 +75,68 @@ async fn native_stream_eof_is_distinct_from_idle_and_idle_read_recovers() {
     ));
     assert!(!runtime.status().connected, "EOF resets the active session");
 }
+
+struct PartialSetupBackend {
+    fail_subscription_once: bool,
+    events: Vec<&'static str>,
+}
+
+impl RnodeBleBackend for PartialSetupBackend {
+    async fn connect(&mut self) -> Result<(), String> {
+        self.events.push("connect");
+        Ok(())
+    }
+
+    async fn subscribe_notifications(&mut self) -> Result<(), String> {
+        self.events.push("subscribe");
+        if self.fail_subscription_once {
+            self.fail_subscription_once = false;
+            Err("scripted partial setup failure".to_string())
+        } else {
+            Ok(())
+        }
+    }
+
+    async fn write(&mut self, _write: RnodeBleWrite) -> Result<(), String> {
+        self.events.push("write");
+        Ok(())
+    }
+
+    async fn next_notification(&mut self) -> Result<Option<Vec<u8>>, String> {
+        Ok(None)
+    }
+
+    async fn close(&mut self) -> Result<(), String> {
+        self.events.push("close");
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn failed_partial_setup_is_closed_before_runtime_reconnects() {
+    let backend = PartialSetupBackend { fail_subscription_once: true, events: Vec::new() };
+    let mut runtime = RnodeBleKissRuntime::new(backend, RnodeBleKissConfig::default());
+
+    let first = runtime.startup().await.expect_err("first subscription fails");
+    assert!(matches!(
+        first,
+        RnodeBleKissError::Backend { operation: "subscribe_notifications", .. }
+    ));
+    assert!(!runtime.status().connected);
+    assert_eq!(runtime.backend().events, ["connect", "subscribe", "close"]);
+
+    runtime.startup().await.expect("a fresh setup succeeds after partial-session cleanup");
+    assert!(runtime.status().connected);
+    assert_eq!(
+        &runtime.backend().events[..5],
+        ["connect", "subscribe", "close", "connect", "subscribe"]
+    );
+    assert!(runtime.backend().events[5..].iter().all(|event| *event == "write"));
+
+    runtime.close().await.expect("close the recovered session");
+    assert_eq!(
+        runtime.backend().events.last(),
+        Some(&"close"),
+        "the recovered connection is also released"
+    );
+}
