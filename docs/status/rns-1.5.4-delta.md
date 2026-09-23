@@ -237,7 +237,12 @@ over production Links with deterministic editor input. The row remains partial
 and unverified because the hash-only compatibility seam, broader
 cross-process/network restart and fault transcripts, non-work CLI paths, and
 complete end-to-end rngit network matrix remain open; hosted evidence for the
-new lane is pending.
+new lane is pending. The local permission-update follow-up fixes a failed-read
+transaction: configured state is committed only after the current sidecar is
+successfully read, validated, and merged. Regressions verify that a malformed
+sidecar read, failing resolver refresh, and failed atomic replacement do not
+change the loaded permission policy. This is one verified software slice, not
+completion of #612.
 
 Commits `3dcd5259`, `869b8c84`, `02b75605`, and `f9c5b81e` also add a native Rust-client
 request adapter and a production compatibility bridge. Its pinned-Python trace

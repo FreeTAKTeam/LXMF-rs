@@ -35,8 +35,8 @@ sourced from `f26ce90d`; the full native `create/init` → `artifact` →
 | Area | Implemented and tested behavior | Status |
 | --- | --- | --- |
 | Permission sidecars | Canonical suffix paths (`.allowed`, `.work`, `.releases`), dotted repository names, ambiguous legacy file rejection, and legacy sidecar directories ignored | local verified |
-| Dynamic permissions | Executable node-owned resolvers, bounded stdout/stderr (64 KiB), two-second execution limit, UTF-8/exit-status failure propagation, and no remote replacement | local verified on Unix; Python execution parity unverified |
-| Permission state | Identity aliases, strict remote content validation, configured-group merging, deny preservation, blocked identities, administrator fallback, atomic replacement, and immediate in-memory refresh | local verified; differential parity unverified |
+| Dynamic permissions | Executable node-owned resolvers, bounded stdout/stderr (64 KiB), two-second execution limit, UTF-8/exit-status failure propagation, no remote replacement, and failed resolver refresh preserving the loaded policy | local verified on Unix; Python execution parity unverified |
+| Permission state | Identity aliases, strict remote content validation, configured-group merging, deny preservation, blocked identities, administrator fallback, atomic replacement, immediate in-memory refresh, and transactional configured-policy updates when sidecar reads fail | local verified, including failed read/replacement rollback; differential parity unverified |
 | Work storage | Python-shaped root and response maps, binary identity/signature fields, integer IDs, floating-point timestamps, separate numeric comment files, 256 KiB document bound, atomic MessagePack writes, node reload persistence, atomic work-directory reservation across independent writers, rollback when proposed-document permission setup fails, and pinned-Python process-restart persistence | local and pinned-Python restart trace verified |
 | Work operations | List/view/create/propose/edit/comment/delete/complete/activate/perms through `handle_work_request`, with scope/ID validation, document ownership/permissions, atomic transitions, canonical document permission files, and authenticated-peer signature validation for create/propose/edit | local and pinned-Python production-path verified; full service matrix unverified |
 | Python work CLI | The pinned Python `rngit work` CLI runs create/list/view/edit/update/perms/complete/activate/propose/delete against the Rust service over real Reticulum Links; a deterministic editor and piped confirmation verify signed content, permission sidecars, transitions, and cleanup | local exact-reference trace verified; hosted result pending |
@@ -53,10 +53,11 @@ The recorded baseline commands below ran in the isolated
 
 ```text
 cargo fmt --all -- --check                                      PASS
-cargo test -p rns-tools --bin rngit --all-features -- --nocapture PASS (39 tests)
+cargo test -p rns-tools --bin rngit --all-features                  PASS (42 passed, 1 ignored)
 cargo test -p rns-tools --tests                                  PASS
 cargo clippy -p rns-tools --bin rngit --all-features --no-deps \
   -- -D warnings                                                 PASS
+tools/scripts/check-module-size.sh                               PASS
 RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   cargo test -p rns-tools --bin rngit \
   native_rust_client_requests_pinned_python_rngit -- --ignored --nocapture PASS \
@@ -86,7 +87,11 @@ The focused `rngit` binary suite contains the resolver failure/remote-
 replacement cases, configured access merging, dotted-name path safety, work
 transitions, Python-produced MessagePack storage, an identified-peer
 signature regression, independent-writer ID reservation, and proposed-work
-rollback. The ignored Python traces passed after exercising both the Git and
+rollback. `issue_612_permission_failure_tests` additionally verifies that a
+failed configured-policy refresh after a malformed sidecar read is not applied
+after repair/reload, a resolver execution failure preserves loaded permissions,
+and a failed sidecar replacement does not alter cached permission state. The
+ignored Python traces passed after exercising both the Git and
 work service paths through real Reticulum Links, including work persistence
 across a Rust server process restart and four concurrent Python clients creating
 distinct persisted work items through one Rust service process. The native
@@ -102,10 +107,9 @@ new commit. The same session creates a Python-compatible release through the
 view responses, fetches the uploaded artifact through a raw Resource, updates
 latest, and deletes the release directory.
 
-The repository module-size script still reports the pre-existing
-`crates/libs/rns-transport/src/resource/manager.rs:555` over-budget baseline;
-the changed `rngit.rs` test split and all new `rngit_parts` modules are within
-the active 500-line module limit.
+The module-size gate passes. The new permission-failure regressions are split
+into `issue_612_permission_failure_tests.rs`; all changed `rngit_parts` modules
+remain within the active 500-line module limit.
 
 ## Deliberate remaining gaps
 
@@ -126,8 +130,9 @@ the active 500-line module limit.
   A separate exact-reference Python CLI trace covers the work-document
   lifecycle over real production Links with deterministic editor input.
   Broader cross-process/network restart behavior, malformed persisted-document
-  error transcripts, disk-fault injection, non-work Python CLI commands, and
-  the complete utility workflow remain unverified.
+  error transcripts, disk-fault injection beyond the permission refresh and
+  replacement cases, non-work Python CLI commands, and the complete utility
+  workflow remain unverified.
 - Static malformed permission sidecars fail closed in Rust rather than being
   silently ignored like the pinned Python loader; this is an intentional safety
   difference and is not being called exact parity.

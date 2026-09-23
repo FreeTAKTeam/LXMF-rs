@@ -41,8 +41,10 @@ not promoted or rewritten by this change.
 The #612 mixed-peer increment adds pinned-Python Verify coverage for four
 concurrent signed work creators, malformed work requests, and the Python
 `rngit work` CLI lifecycle through production Reticulum Links. Its hosted
-result is pending on the implementing PR; disk-fault, broader restart, and
-non-work CLI workflows remain open.
+result is pending on the implementing PR. Local tests now also verify that a
+failed configured-permission refresh, resolver execution, or atomic sidecar
+replacement leaves the cached policy unchanged. Broader disk-fault, restart,
+and non-work CLI workflows remain open.
 
 The forward #610 Resource slice also has new pinned-Python evidence at
 `8b29132c`: a sender-side file-like reader raises during a split transfer,
