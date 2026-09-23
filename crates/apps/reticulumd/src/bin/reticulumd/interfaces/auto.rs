@@ -24,7 +24,7 @@ pub(crate) fn build_native_startup_plan(
     AutoRuntimePlan::from_system(config, filter)
 }
 
-fn auto_config(iface: &InterfaceConfig) -> Result<AutoInterfaceConfig, String> {
+pub(crate) fn auto_config(iface: &InterfaceConfig) -> Result<AutoInterfaceConfig, String> {
     Ok(AutoInterfaceConfig {
         group_id: iface.group_id.clone().unwrap_or_else(|| "reticulum".to_string()),
         discovery_scope: AutoDiscoveryScope::parse(
