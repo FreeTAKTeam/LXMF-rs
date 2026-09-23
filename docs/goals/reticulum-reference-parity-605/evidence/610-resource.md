@@ -522,6 +522,23 @@ RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/R
 Above-limit compression selection and the remaining #610 transfer-selection
 and failure matrix remain unverified.
 
+## Pinned-Python cancellation after the first split segment
+
+The Rust sender now has a later-segment cancellation regression against frozen
+Reticulum `99de23c040d507e3fefca19e87b182302902725d`. Python accepts the first
+part of a split Resource, then cancels while the second segment is in flight;
+Rust observes the terminal `OutboundRejected`. This proves cancellation is
+handled after transfer progress, rather than only before or during the first
+part. It is one focused fault trace, not the complete segment/callback matrix.
+
+```text
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+  LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
+  rust_sender_observes_pinned_python_cancel_on_second_resource_segment \
+  -- --ignored --exact --nocapture --test-threads=1
+# 1 passed
+```
+
 ## Resource compression size-limit boundary
 
 The focused 2026-09-23 differential checks the inclusive compression size

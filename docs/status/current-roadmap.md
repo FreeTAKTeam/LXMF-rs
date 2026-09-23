@@ -82,6 +82,11 @@ uncompressed, and the explicit disable option remains uncompressed, all with
 exact payload digests. No production mismatch was found; compression-threshold
 behavior remains unverified, and #610 stays partial.
 
+A pinned-Python split-Resource fault trace now accepts the first segment and
+cancels during the second; the Rust sender observes terminal
+`OutboundRejected`. This extends cancellation evidence beyond the first part,
+but the broader #610 segment/callback matrix remains open.
+
 The #623 byte-level conformance lane is now executable through
 `cargo xtask interop`. It checks exact Python Reticulum/LXMF pins, Python→Rust
 packet/LXMF bytes, Rust→Python LXMF bytes, identity/announce/link vectors, and
