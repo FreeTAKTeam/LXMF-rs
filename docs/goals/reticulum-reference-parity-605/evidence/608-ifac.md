@@ -34,7 +34,15 @@ received packets and before KISS transmission.
 cargo test -p reticulum-rs-transport --features rnode-ble --lib \
   rnode_ble_kiss_worker_authenticates_ifac_egress_and_admission -- --nocapture
 # 1 passed; wrong key rejected/counted, matching key routed, egress authenticated
+cargo test -p reticulum-rs-transport --features rnode-ble --lib \
+  rnode_ble_worker_cleans_up_failed_startup_before_retry_and_stop -- --nocapture
+# failed startup cleanup precedes retry; active retry backend is cleaned on stop
 ```
+
+The separate lifecycle regression injects a BLE connect failure, checks backend
+cleanup before a retry starts, then cancels the successfully retried worker and
+checks cleanup on stop. This is software-only fault injection, not physical
+BLE/RNode or radio acceptance.
 
 This closes one mocked BLE worker case only. Other carrier-family/startup
 acceptance and physical/public-network evidence remain open; #608 and #605

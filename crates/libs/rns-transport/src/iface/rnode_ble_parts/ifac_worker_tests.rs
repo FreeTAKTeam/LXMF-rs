@@ -1,7 +1,7 @@
 use crate::hash::AddressHash;
 use crate::iface::{IfacState, InterfaceManager, InterfaceSharedConfig, TxMessage, TxMessageType};
 use crate::packet::{Packet, PacketDataBuffer};
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::Mutex as AsyncMutex;
 
 #[derive(Clone, Default)]
@@ -139,4 +139,83 @@ async fn rnode_ble_kiss_worker_authenticates_ifac_egress_and_admission() {
         .await
         .expect("worker stops on cancellation")
         .expect("worker task joins");
+}
+
+#[derive(Default)]
+struct StartupRetryState {
+    attempts: AtomicUsize,
+    cleanups: AtomicUsize,
+}
+
+struct StartupRetryBackend {
+    state: Arc<StartupRetryState>,
+    fail_connect: bool,
+}
+
+impl RnodeBleBackend for StartupRetryBackend {
+    async fn connect(&mut self) -> Result<(), String> {
+        if self.fail_connect {
+            Err("injected BLE connect failure".into())
+        } else {
+            Ok(())
+        }
+    }
+
+    async fn subscribe_notifications(&mut self) -> Result<(), String> {
+        Ok(())
+    }
+
+    async fn write(&mut self, _write: RnodeBleWrite) -> Result<(), String> {
+        Ok(())
+    }
+
+    async fn next_notification(&mut self) -> Result<Option<Vec<u8>>, String> {
+        Ok(None)
+    }
+
+    async fn cleanup(&mut self) -> Result<(), String> {
+        self.state.cleanups.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn rnode_ble_worker_cleans_up_failed_startup_before_retry_and_stop() {
+    let mut manager = InterfaceManager::new(8);
+    let interface = NativeRnodeBleKissInterface::new(
+        "software-rnode-ble-startup-retry",
+        NativeRnodeBleSettings::for_peripheral("fake-peripheral"),
+        RnodeBleKissConfig { max_write_len: 508, ..RnodeBleKissConfig::default() },
+    )
+    .with_reconnect_backoff(std::time::Duration::from_millis(1));
+    let context = manager.new_context(interface);
+    let cancel = context.cancel.clone();
+    let state = Arc::new(StartupRetryState::default());
+    let worker_state = state.clone();
+    let task = tokio::spawn(NativeRnodeBleKissInterface::spawn_with_backend_factory(
+        context,
+        move |_| {
+            let attempt = worker_state.attempts.fetch_add(1, Ordering::SeqCst);
+            StartupRetryBackend { state: worker_state.clone(), fail_connect: attempt == 0 }
+        },
+    ));
+
+    timeout(std::time::Duration::from_secs(1), async {
+        while state.attempts.load(Ordering::SeqCst) < 2 {
+            sleep(std::time::Duration::from_millis(1)).await;
+        }
+    })
+    .await
+    .expect("worker retries after a failed BLE startup");
+    assert!(state.cleanups.load(Ordering::SeqCst) >= 1,
+        "failed startup backend is cleaned before another backend is created");
+
+    cancel.cancel();
+    timeout(std::time::Duration::from_secs(1), task)
+        .await
+        .expect("worker stops after cancellation")
+        .expect("worker task joins");
+    assert_eq!(state.attempts.load(Ordering::SeqCst), 2);
+    assert!(state.cleanups.load(Ordering::SeqCst) >= 2,
+        "active retry backend is cleaned when the worker stops");
 }
