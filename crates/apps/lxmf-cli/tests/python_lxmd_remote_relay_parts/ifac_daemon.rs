@@ -17,13 +17,13 @@ fn write_python_client_rns_config_with_ifac_passphrase(
     .expect("write Python IFAC client RNS config");
 }
 
-fn tcp_server_ifac_interface_with_passphrase(
+fn backbone_ifac_interface_with_passphrase(
     name: &str,
     listen_port: u16,
     passphrase: &str,
 ) -> String {
     format!(
-        "[[interfaces]]\ntype = \"tcp_server\"\nenabled = true\nname = \"{name}\"\nhost = \"127.0.0.1\"\nport = {listen_port}\nifac_size = {IFAC_SIZE_BITS}\nnetwork_name = \"{IFAC_NETWORK_NAME}\"\npassphrase = \"{passphrase}\"\n"
+        "[[interfaces]]\ntype = \"backbone\"\nenabled = true\nname = \"{name}\"\nhost = \"127.0.0.1\"\nport = {listen_port}\nifac_size = {IFAC_SIZE_BITS}\nnetwork_name = \"{IFAC_NETWORK_NAME}\"\npassphrase = \"{passphrase}\"\n"
     )
 }
 
@@ -103,7 +103,7 @@ fn wait_for_ifac_violations_at_least(rpc_port: u16, expected: u64) -> Result<u64
 
 #[test]
 #[ignore = "requires local Python Reticulum/LXMF repos and daemon runtime"]
-fn python_rust_lxmd_ifac_bidirectional_daemon_e2e() {
+fn python_rust_lxmd_backbone_ifac_bidirectional_daemon_e2e() {
     let lxmd_bin = resolve_test_binary("lxmd", option_env!("CARGO_BIN_EXE_lxmd"));
     let reticulumd_bin = resolve_test_binary("reticulumd", option_env!("CARGO_BIN_EXE_reticulumd"));
     let workspace_root =
@@ -142,7 +142,11 @@ fn python_rust_lxmd_ifac_bidirectional_daemon_e2e() {
             "rust-ifac-daemon",
             rust_rpc_port,
             None,
-            &[tcp_server_ifac_interface("ifac-server", rust_transport_port)],
+            &[backbone_ifac_interface_with_passphrase(
+                "ifac-backbone",
+                rust_transport_port,
+                IFAC_PASSPHRASE,
+            )],
         ),
     );
     write_python_client_rns_config_with_ifac(&python_rns, rust_transport_port);
@@ -241,8 +245,8 @@ fn python_rust_lxmd_ifac_bidirectional_daemon_e2e() {
                 "rust-ifac-daemon-wrong-restart-credential",
                 rust_rpc_port,
                 None,
-                &[tcp_server_ifac_interface_with_passphrase(
-                    "ifac-server",
+                &[backbone_ifac_interface_with_passphrase(
+                    "ifac-backbone",
                     rust_transport_port,
                     WRONG_IFAC_PASSPHRASE,
                 )],
@@ -281,7 +285,11 @@ fn python_rust_lxmd_ifac_bidirectional_daemon_e2e() {
                 "rust-ifac-daemon",
                 rust_rpc_port,
                 None,
-                &[tcp_server_ifac_interface("ifac-server", rust_transport_port)],
+                &[backbone_ifac_interface_with_passphrase(
+                    "ifac-backbone",
+                    rust_transport_port,
+                    IFAC_PASSPHRASE,
+                )],
             ),
         );
         rust_node = Some(spawn_lxmd(

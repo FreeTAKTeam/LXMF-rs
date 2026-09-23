@@ -10,7 +10,9 @@ ingress/egress regressions; AutoInterface peer-data, LoRa, RNode bearer, and
 RNodeMulti KISS-vport paths now have software wrong-key rejection and
 authenticated ingress/egress regressions; invalid live IFAC reconfiguration
 returns a structured RPC error without disabling the active authenticated
-configuration; full interface-family acceptance remains open**.
+configuration; pinned-Python Backbone daemon traffic now verifies bidirectional
+IFAC delivery and wrong-key rejection after restart; full interface-family
+acceptance remains open**.
 
 ## RNode BLE production KISS-worker IFAC fault injection
 
@@ -591,6 +593,36 @@ cargo test -p reticulum-rs-transport --all-features --lib \
 This adds one accepted-child software reconfiguration case only. It does not
 complete the broader startup/error-reporting or carrier-family matrix, and it
 is not physical-carrier evidence; #608 remains open and partial.
+
+## Backbone daemon IFAC ingress and egress
+
+The ignored pinned-Python daemon regression
+`python_rust_lxmd_backbone_ifac_bidirectional_daemon_e2e` now selects the
+production Rust `backbone` adapter rather than the generic `tcp_server` kind.
+Against frozen Reticulum
+`99de23c040d507e3fefca19e87b182302902725d`, a Python
+`TCPClientInterface` and Rust Backbone listener exchange LXMF messages in
+both directions under matching IFAC credentials. The test restarts the Rust
+daemon with a wrong credential, verifies the Python announce is counted as an
+IFAC violation before peer admission, then restores the matching credentials
+and verifies bidirectional delivery again. This covers the Backbone listener
+and its accepted-client IFAC inheritance through the production adapter; it
+does not add new physical-device evidence or complete the remaining
+carrier-family/startup matrix.
+
+```text
+TMPDIR=/dev/shm TMP=/dev/shm \
+RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
+LXMF_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/LXMF LXMF_PYTHON_BIN=python3 \
+cargo test -p lxmf-cli --test python_lxmd_remote_relay \
+  python_rust_lxmd_backbone_ifac_bidirectional_daemon_e2e \
+  -- --ignored --exact --nocapture --test-threads=1
+# 1 passed; bidirectional IFAC delivery, wrong-credential rejection, restart recovery
+```
+
+The baseline generic TCP daemon test also passed once with `/dev/shm` temporary
+storage before applying this Backbone-only adaptation. #608 remains open and
+partial.
 
 ## PR #628 hosted PR-HIL fixture follow-up
 
