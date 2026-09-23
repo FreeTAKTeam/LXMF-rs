@@ -48,34 +48,42 @@ fn executable_allowed_resolver_matches_pinned_python_permission_decisions() {
         let hash: [u8; 16] = bytes.try_into().expect("16-byte identity");
         rust_node.resolve_permission(&hash, "group", "repo", ReticulumGitNode::PERM_READ)
     });
+    let rust_stdout = crate::run_permission_resolver(&resolver)
+        .expect("Rust bounded resolver execution");
 
     let python = std::env::var_os("LXMF_PYTHON_BIN").unwrap_or_else(|| "python3".into());
     let script = r#"
 import json
+import subprocess
 import sys
 from types import SimpleNamespace
 from RNS.Utilities.rngit.server import ReticulumGitNode
 
 reference_group_path, allowed_identity, denied_identity = sys.argv[1:]
+resolver_path = reference_group_path + ".allowed"
+resolver_outputs = []
+original_run = subprocess.run
+def capture_resolver(command, *args, **kwargs):
+    result = original_run(command, *args, **kwargs)
+    if command == [resolver_path]:
+        resolver_outputs.append(result.stdout)
+    return result
+subprocess.run = capture_resolver
 node = ReticulumGitNode.__new__(ReticulumGitNode)
 node.groups = {}
 node.blocked_identities = {}
 node.config = {}
 node.load_repository_group("group", reference_group_path)
 group = node.groups["group"]
-captured, dynamic = node.load_allowed_permissions(reference_group_path + ".allowed")
-stdout = "read:" + allowed_identity + "\n"
-assert dynamic is True
-assert captured["read"] == node.groups["group"]["read"]
-assert stdout == open(reference_group_path + ".stdout-expected", encoding="utf-8").read()
+assert group["dynamic_perms"] is True
+assert len(resolver_outputs) == 1
+stdout = resolver_outputs[0].decode("utf-8")
 decisions = [
     node.resolve_permission(SimpleNamespace(hash=bytes.fromhex(identity)), "group", "repo", node.PERM_READ)
     for identity in (allowed_identity, denied_identity)
 ]
 print(json.dumps({"stdout": stdout, "decisions": decisions}))
 "#;
-    let expected_stdout = group_path.with_extension("stdout-expected");
-    fs::write(&expected_stdout, resolver_output.replace("\\n", "\n")).expect("expected resolver output");
     let output = Command::new(python)
         .env("PYTHONPATH", &reference)
         .arg("-c")
@@ -92,7 +100,8 @@ print(json.dumps({"stdout": stdout, "decisions": decisions}))
     );
     let python_result: serde_json::Value =
         serde_json::from_slice(&output.stdout).expect("Python differential JSON");
-    assert_eq!(python_result["stdout"], resolver_output.replace("\\n", "\n"));
+    let python_stdout = python_result["stdout"].as_str().expect("Python resolver stdout");
+    assert_eq!(rust_stdout, python_stdout, "resolver stdout differs");
     let python_decisions = python_result["decisions"]
         .as_array()
         .expect("Python decisions")
