@@ -1,0 +1,258 @@
+{
+  "git_revision": "93ec0eac4065fe2f7953cbe5fee67cace73eb4b4",
+  "results": [
+    {
+      "activity": "idle",
+      "after_activity": {
+        "cpu_ticks": 0,
+        "elapsed_ms": 300,
+        "memory": {
+          "peak_rss_kib": 7828,
+          "rss_kib": 7828,
+          "virtual_kib": 2109312
+        },
+        "packets_per_second": 0.0,
+        "received_packets": 0,
+        "tokio_tasks": 403,
+        "wire_bytes": 0,
+        "wire_bytes_per_second": 0.0
+      },
+      "baseline": {
+        "memory": {
+          "peak_rss_kib": 4244,
+          "rss_kib": 4244,
+          "virtual_kib": 1492756
+        },
+        "tokio_tasks": 3
+      },
+      "broadcasts": {
+        "attempts": 0,
+        "failed_ifaces": 0,
+        "matched_ifaces": 0,
+        "sent_ifaces": 0
+      },
+      "connected": {
+        "memory": {
+          "peak_rss_kib": 7828,
+          "rss_kib": 7828,
+          "virtual_kib": 2109312
+        },
+        "tokio_tasks": 403
+      },
+      "connections": 100,
+      "mtu": 262144,
+      "server_iface": "/7c9fa136d4413fa6173637e883b6998d/"
+    },
+    {
+      "activity": "idle",
+      "after_activity": {
+        "cpu_ticks": 0,
+        "elapsed_ms": 300,
+        "memory": {
+          "peak_rss_kib": 20964,
+          "rss_kib": 20964,
+          "virtual_kib": 4575248
+        },
+        "packets_per_second": 0.0,
+        "received_packets": 0,
+        "tokio_tasks": 2003,
+        "wire_bytes": 0,
+        "wire_bytes_per_second": 0.0
+      },
+      "baseline": {
+        "memory": {
+          "peak_rss_kib": 4232,
+          "rss_kib": 4232,
+          "virtual_kib": 1492756
+        },
+        "tokio_tasks": 3
+      },
+      "broadcasts": {
+        "attempts": 0,
+        "failed_ifaces": 0,
+        "matched_ifaces": 0,
+        "sent_ifaces": 0
+      },
+      "connected": {
+        "memory": {
+          "peak_rss_kib": 20964,
+          "rss_kib": 20964,
+          "virtual_kib": 4575248
+        },
+        "tokio_tasks": 2003
+      },
+      "connections": 500,
+      "mtu": 262144,
+      "server_iface": "/7c9fa136d4413fa6173637e883b6998d/"
+    },
+    {
+      "activity": "idle",
+      "after_activity": {
+        "cpu_ticks": 0,
+        "elapsed_ms": 300,
+        "memory": {
+          "peak_rss_kib": 37272,
+          "rss_kib": 37272,
+          "virtual_kib": 7657724
+        },
+        "packets_per_second": 0.0,
+        "received_packets": 0,
+        "tokio_tasks": 4003,
+        "wire_bytes": 0,
+        "wire_bytes_per_second": 0.0
+      },
+      "baseline": {
+        "memory": {
+          "peak_rss_kib": 4176,
+          "rss_kib": 4176,
+          "virtual_kib": 1492756
+        },
+        "tokio_tasks": 2
+      },
+      "broadcasts": {
+        "attempts": 0,
+        "failed_ifaces": 0,
+        "matched_ifaces": 0,
+        "sent_ifaces": 0
+      },
+      "connected": {
+        "memory": {
+          "peak_rss_kib": 37268,
+          "rss_kib": 37268,
+          "virtual_kib": 7657724
+        },
+        "tokio_tasks": 4003
+      },
+      "connections": 1000,
+      "mtu": 262144,
+      "server_iface": "/7c9fa136d4413fa6173637e883b6998d/"
+    },
+    {
+      "activity": "small",
+      "after_activity": {
+        "cpu_ticks": 0,
+        "elapsed_ms": 313,
+        "memory": {
+          "peak_rss_kib": 7828,
+          "rss_kib": 7828,
+          "virtual_kib": 2109312
+        },
+        "packets_per_second": 318.58641728410066,
+        "received_packets": 100,
+        "tokio_tasks": 403,
+        "wire_bytes": 8500,
+        "wire_bytes_per_second": 27079.845469148557
+      },
+      "baseline": {
+        "memory": {
+          "peak_rss_kib": 4324,
+          "rss_kib": 4324,
+          "virtual_kib": 1492756
+        },
+        "tokio_tasks": 3
+      },
+      "broadcasts": {
+        "attempts": 0,
+        "failed_ifaces": 0,
+        "matched_ifaces": 0,
+        "sent_ifaces": 0
+      },
+      "connected": {
+        "memory": {
+          "peak_rss_kib": 7816,
+          "rss_kib": 7816,
+          "virtual_kib": 2109312
+        },
+        "tokio_tasks": 403
+      },
+      "connections": 100,
+      "mtu": 262144,
+      "server_iface": "/7c9fa136d4413fa6173637e883b6998d/"
+    },
+    {
+      "activity": "small",
+      "after_activity": {
+        "cpu_ticks": 1,
+        "elapsed_ms": 316,
+        "memory": {
+          "peak_rss_kib": 20884,
+          "rss_kib": 20884,
+          "virtual_kib": 4575248
+        },
+        "packets_per_second": 1581.1322901954297,
+        "received_packets": 500,
+        "tokio_tasks": 2003,
+        "wire_bytes": 42500,
+        "wire_bytes_per_second": 134396.2446666115
+      },
+      "baseline": {
+        "memory": {
+          "peak_rss_kib": 4232,
+          "rss_kib": 4232,
+          "virtual_kib": 1492756
+        },
+        "tokio_tasks": 3
+      },
+      "broadcasts": {
+        "attempts": 0,
+        "failed_ifaces": 0,
+        "matched_ifaces": 0,
+        "sent_ifaces": 0
+      },
+      "connected": {
+        "memory": {
+          "peak_rss_kib": 20880,
+          "rss_kib": 20880,
+          "virtual_kib": 4575248
+        },
+        "tokio_tasks": 2003
+      },
+      "connections": 500,
+      "mtu": 262144,
+      "server_iface": "/7c9fa136d4413fa6173637e883b6998d/"
+    },
+    {
+      "activity": "small",
+      "after_activity": {
+        "cpu_ticks": 2,
+        "elapsed_ms": 317,
+        "memory": {
+          "peak_rss_kib": 37312,
+          "rss_kib": 37312,
+          "virtual_kib": 7657716
+        },
+        "packets_per_second": 3145.5691717109275,
+        "received_packets": 1000,
+        "tokio_tasks": 4003,
+        "wire_bytes": 85000,
+        "wire_bytes_per_second": 267373.3795954288
+      },
+      "baseline": {
+        "memory": {
+          "peak_rss_kib": 4212,
+          "rss_kib": 4212,
+          "virtual_kib": 1492756
+        },
+        "tokio_tasks": 3
+      },
+      "broadcasts": {
+        "attempts": 0,
+        "failed_ifaces": 0,
+        "matched_ifaces": 0,
+        "sent_ifaces": 0
+      },
+      "connected": {
+        "memory": {
+          "peak_rss_kib": 37300,
+          "rss_kib": 37300,
+          "virtual_kib": 7657716
+        },
+        "tokio_tasks": 4003
+      },
+      "connections": 1000,
+      "mtu": 262144,
+      "server_iface": "/7c9fa136d4413fa6173637e883b6998d/"
+    }
+  ],
+  "schema": "lxmf-rs-tcp-connection-memory-v1"
+}
