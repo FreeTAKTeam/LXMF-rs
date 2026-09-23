@@ -102,8 +102,9 @@
                 sent_status: "sent: link resource".to_string(),
             },
         );
-        let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+        let (tx, mut rx) = tokio::sync::mpsc::channel(2);
 
+        super::handle_outbound_resource_completion(&daemon, &map, &tx, &resource_hash);
         super::handle_outbound_resource_completion(&daemon, &map, &tx, &resource_hash);
 
         assert!(super::super::outbound_resources::take_outbound_resource_tracking(

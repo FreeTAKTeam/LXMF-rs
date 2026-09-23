@@ -331,8 +331,9 @@ The `reticulumd` outbound Resource completion consumer now has a focused unit
 regression, `outbound_resource_completion_event_records_receipt_and_peer_bytes`.
 It verifies one `resource-complete` receipt with the original message ID,
 Resource hash, peer, byte count, and non-terminal `sent: link resource` status;
-it also verifies the peer byte counter advances and Resource tracking is
-removed. This is a transport-completion receipt, not a remote LXMF delivery
+it also verifies that a duplicate completion notification emits no second
+receipt or byte-accounting update, and that Resource tracking is removed.
+This is a transport-completion receipt, not a remote LXMF delivery
 acknowledgement, and does not stand in for the remaining consumer callback
 matrix.
 
