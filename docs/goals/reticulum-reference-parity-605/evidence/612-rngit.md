@@ -35,7 +35,7 @@ sourced from `f26ce90d`; the full native `create/init` → `artifact` →
 | Area | Implemented and tested behavior | Status |
 | --- | --- | --- |
 | Permission sidecars and companion roots | Canonical suffix paths (`.allowed`, `.work`, `.releases`); `repo` and `repo.git` are simultaneously registered and receive distinct service-written permission files, work documents, and release fixtures under isolated roots; the legacy `repo.git.with_extension("allowed")` path is shown to alias `repo.allowed` and is not used or migrated | local verified |
-| Dynamic permissions | Executable node-owned resolvers, bounded stdout/stderr (64 KiB), two-second execution limit, UTF-8/exit-status failure propagation, no remote replacement, and failed resolver refresh preserving the loaded policy | local verified on Unix; Python execution parity unverified |
+| Dynamic permissions | Executable node-owned resolvers, bounded stdout/stderr (64 KiB), two-second execution limit, UTF-8/exit-status failure propagation, no remote replacement, and failed resolver refresh preserving the loaded policy. A focused differential runs the same executable group `.allowed` with pinned Python `ReticulumGitNode.load_repository_group` / `resolve_permission` and Rust `ReticulumGitNode::load_repository_group` / `resolve_permission`; both allow the listed identity and deny an unlisted identity, with the exact resolver stdout `read:<listed-identity>\n` asserted | local verified on Unix; this ordinary resolver decision slice is differentially verified; broader execution parity remains unverified |
 | Permission state | Identity aliases, strict remote content validation, configured-group merging, deny preservation, blocked identities, administrator fallback, atomic replacement, immediate in-memory refresh, and transactional configured-policy updates when sidecar reads fail | local verified, including failed read/replacement rollback; differential parity unverified |
 | Work storage | Python-shaped root and response maps, binary identity/signature fields, integer IDs, floating-point timestamps, separate numeric comment files, 256 KiB document bound, atomic MessagePack writes, rejection of trailing bytes and non-map roots, node reload persistence, atomic work-directory reservation across independent writers, rollback when proposed-document permission setup fails, and pinned-Python process-restart persistence | local and pinned-Python restart trace verified |
 | Work operations | List/view/create/propose/edit/comment/delete/complete/activate/perms through `handle_work_request`, with scope/ID validation, document ownership/permissions, atomic transitions, canonical document permission files, and authenticated-peer signature validation for create/propose/edit | local and pinned-Python production-path verified; full service matrix unverified |
@@ -89,6 +89,10 @@ RETICULUM_PY_REPO=<checkout at 99de23c040d507e3fefca19e87b182302902725d> \
 LXMF_PYTHON_BIN=python3 cargo test -p rns-tools \
   --test rngit_concurrent_python_interop \
   -- --ignored --nocapture --test-threads=1                         PASS (2 tests: concurrency and CLI/storage error response)
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --bin rngit \
+  executable_allowed_resolver_matches_pinned_python_permission_decisions \
+  -- --ignored --nocapture                                          PASS (same executable group resolver; listed/unlisted read decisions match)
 RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   cargo test -p rns-tools --test rngit_python_interop \
   -- --ignored --nocapture --test-threads=1                      PASS (2 tests: page/media and work restart)
@@ -155,6 +159,11 @@ remain within the active 500-line module limit.
 - Static malformed permission sidecars fail closed in Rust rather than being
   silently ignored like the pinned Python loader; this is an intentional safety
   difference and is not being called exact parity.
+- The executable-permission differential covers ordinary successful stdout
+  interpretation and one allowed plus one denied identity through each
+  implementation's production loader and permission resolver. It does not
+  establish parity for timeout, output bounds, decoding/exit failures, or all
+  permission combinations; those broader acceptance criteria remain open.
 - The live service wiring now covers the pinned Python Git paths and
   `/mgmt/perms` plus `/mgmt/work` requests through `git.repositories`,
   including Link identification, the Python integer-key request shape, bundle

@@ -347,6 +347,7 @@ mod tests {
     }
 
     include!("rngit_parts/issue_612_tests.rs");
+    include!("rngit_parts/issue_612_executable_python_differential_tests.rs");
     include!("rngit_parts/issue_612_companion_collision_tests.rs");
     include!("rngit_parts/issue_612_permission_failure_tests.rs");
     include!("rngit_parts/issue_612_work_storage_failure_tests.rs");
