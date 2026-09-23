@@ -51,6 +51,13 @@ Python-shaped numbered comment before shutdown and verifies its ID/content from
 the pinned Python view response after restart. Broader disk-fault, restart, and
 non-work CLI workflows remain open.
 
+A separate local #612 follow-up now covers Python-shaped work metadata
+defaults/errors (including the missing `edited` timestamp default), malformed
+top-level request responses without filesystem changes, corrupt-root
+completion failure, and special permission-alias casing. These are unit-level
+additions only; hosted checks and mixed-peer
+coverage for these specific cases remain pending, so #612 stays partial.
+
 The forward #610 Resource slice also has new pinned-Python evidence at
 `8b29132c`: a sender-side file-like reader raises during a split transfer,
 Rust reports terminal inbound failure, and the Python process exits

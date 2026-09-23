@@ -47,10 +47,15 @@ impl ReticulumGitNode {
                 let Some(document) = self.work_load_document(&document_dir.join("root")) else {
                     continue;
                 };
+                if document.as_map().is_none_or(|map| map.is_empty())
+                    || !Self::work_metadata_shape_is_valid(&document)
+                {
+                    continue;
+                }
                 let created = Self::work_meta_value(&document, "created")
                     .unwrap_or_else(|| rmpv::Value::from(0_u64));
                 let edited = Self::work_meta_value(&document, "edited")
-                    .unwrap_or_else(|| created.clone());
+                    .unwrap_or_else(|| rmpv::Value::from(0_u64));
                 let comments = fs::read_dir(&document_dir)
                     .into_iter()
                     .flatten()
@@ -66,7 +71,11 @@ impl ReticulumGitNode {
                     (rmpv::Value::String("id".into()), rmpv::Value::from(id)),
                     (
                         rmpv::Value::String("title".into()),
-                        rmpv::Value::String(Self::work_meta_string(&document, "title").into()),
+                        Self::work_meta_value_or_default(
+                            &document,
+                            "title",
+                            rmpv::Value::String("Untitled".into()),
+                        ),
                     ),
                     (rmpv::Value::String("created".into()), created),
                     (rmpv::Value::String("edited".into()), edited),
@@ -76,7 +85,11 @@ impl ReticulumGitNode {
                     ),
                     (
                         rmpv::Value::String("format".into()),
-                        rmpv::Value::String(Self::work_meta_string(&document, "format").into()),
+                        Self::work_meta_value_or_default(
+                            &document,
+                            "format",
+                            rmpv::Value::String("markdown".into()),
+                        ),
                     ),
                     (
                         rmpv::Value::String("comments".into()),
@@ -128,6 +141,12 @@ impl ReticulumGitNode {
         let Some(document) = self.work_load_document(&root_path) else {
             return response(Self::RES_REMOTE_FAIL, "Error loading document", None);
         };
+        if document.as_map().is_none_or(|map| map.is_empty()) {
+            return response(Self::RES_REMOTE_FAIL, "Error loading document", None);
+        }
+        if !Self::work_metadata_shape_is_valid(&document) {
+            return response(Self::RES_REMOTE_FAIL, "Remote error", None);
+        }
         let payload = self.work_view_payload(&scope, id, &directory, &document);
         response(Self::RES_OK, "", Some(&payload))
     }

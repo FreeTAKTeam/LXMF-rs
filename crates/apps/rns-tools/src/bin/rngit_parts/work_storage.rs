@@ -96,6 +96,33 @@ impl ReticulumGitNode {
             .cloned()
     }
 
+    fn work_document_value(
+        document: &rmpv::Value,
+        key: &str,
+        default: rmpv::Value,
+    ) -> rmpv::Value {
+        document
+            .as_map()
+            .and_then(|map| map_value(map, &rmpv::Value::String(key.into())))
+            .cloned()
+            .unwrap_or(default)
+    }
+
+    fn work_meta_value_or_default(
+        document: &rmpv::Value,
+        key: &str,
+        default: rmpv::Value,
+    ) -> rmpv::Value {
+        Self::work_meta_value(document, key).unwrap_or(default)
+    }
+
+    fn work_metadata_shape_is_valid(document: &rmpv::Value) -> bool {
+        document
+            .as_map()
+            .and_then(|map| map_value(map, &rmpv::Value::String("meta".into())))
+            .is_none_or(|metadata| metadata.as_map().is_some())
+    }
+
     fn work_author_matches(document: &rmpv::Value, remote: &[u8; 16]) -> bool {
         let Some(author) = Self::work_meta_value(document, "author") else {
             return false;
@@ -161,19 +188,22 @@ impl ReticulumGitNode {
                 let id = entry.file_name().to_str()?.parse::<u64>().ok()?;
                 let path = entry.path();
                 let document = self.work_load_document(&path)?;
-                let content = document
-                    .as_map()
-                    .and_then(|map| map_string(map, &rmpv::Value::String("content".into())))
-                    .unwrap_or_default();
+                if document.as_map().is_none_or(|map| map.is_empty())
+                    || !Self::work_metadata_shape_is_valid(&document)
+                {
+                    return None;
+                }
+                let content =
+                    Self::work_document_value(&document, "content", rmpv::Value::String("".into()));
                 let created = Self::work_meta_value(&document, "created")
                     .unwrap_or_else(|| rmpv::Value::from(0_u64));
                 let edited = Self::work_meta_value(&document, "edited")
-                    .unwrap_or_else(|| created.clone());
+                    .unwrap_or_else(|| rmpv::Value::from(0_u64));
                 Some(rmpv::Value::Map(vec![
                     (rmpv::Value::String("id".into()), rmpv::Value::from(id)),
                     (
                         rmpv::Value::String("content".into()),
-                        rmpv::Value::String(content.into()),
+                        content,
                     ),
                     (rmpv::Value::String("created".into()), created),
                     (rmpv::Value::String("edited".into()), edited),
@@ -183,7 +213,11 @@ impl ReticulumGitNode {
                     ),
                     (
                         rmpv::Value::String("format".into()),
-                        rmpv::Value::String(Self::work_meta_string(&document, "format").into()),
+                        Self::work_meta_value_or_default(
+                            &document,
+                            "format",
+                            rmpv::Value::String("markdown".into()),
+                        ),
                     ),
                 ]))
             })
@@ -205,18 +239,20 @@ impl ReticulumGitNode {
         document_dir: &Path,
         document: &rmpv::Value,
     ) -> rmpv::Value {
-        let content = document
-            .as_map()
-            .and_then(|map| map_string(map, &rmpv::Value::String("content".into())))
-            .unwrap_or_default();
+        let content =
+            Self::work_document_value(document, "content", rmpv::Value::String("".into()));
         let created = Self::work_meta_value(document, "created")
             .unwrap_or_else(|| rmpv::Value::from(0_u64));
         let edited = Self::work_meta_value(document, "edited")
-            .unwrap_or_else(|| created.clone());
+            .unwrap_or_else(|| rmpv::Value::from(0_u64));
         let meta = rmpv::Value::Map(vec![
             (
                 rmpv::Value::String("title".into()),
-                rmpv::Value::String(Self::work_meta_string(document, "title").into()),
+                Self::work_meta_value_or_default(
+                    document,
+                    "title",
+                    rmpv::Value::String("Untitled".into()),
+                ),
             ),
             (rmpv::Value::String("created".into()), created),
             (rmpv::Value::String("edited".into()), edited),
@@ -234,7 +270,11 @@ impl ReticulumGitNode {
             ),
             (
                 rmpv::Value::String("format".into()),
-                rmpv::Value::String(Self::work_meta_string(document, "format").into()),
+                Self::work_meta_value_or_default(
+                    document,
+                    "format",
+                    rmpv::Value::String("markdown".into()),
+                ),
             ),
         ]);
         rmpv::Value::Map(vec![
@@ -245,7 +285,7 @@ impl ReticulumGitNode {
             ),
             (
                 rmpv::Value::String("content".into()),
-                rmpv::Value::String(content.into()),
+                content,
             ),
             (
                 rmpv::Value::String("comments".into()),

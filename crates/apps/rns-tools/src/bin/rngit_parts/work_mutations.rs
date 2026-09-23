@@ -100,12 +100,15 @@ impl ReticulumGitNode {
         } else {
             &["active"]
         };
-        let Some((source, document)) = source_scopes.iter().find_map(|scope| {
-            let directory = root.join(scope).join(id.to_string());
-            let document = self.work_load_document(&directory.join("root"))?;
-            Some((directory, document))
-        }) else {
+        let Some(source) = source_scopes
+            .iter()
+            .map(|scope| root.join(scope).join(id.to_string()))
+            .find(|directory| directory.is_dir())
+        else {
             return response(Self::RES_NOT_FOUND, "Document not found", None);
+        };
+        let Some(document) = self.work_load_document(&source.join("root")) else {
+            return response(Self::RES_REMOTE_FAIL, "Error loading document", None);
         };
         let is_author = Self::work_author_matches(&document, &remote);
         let admin = self.resolve_doc_permission(
@@ -225,3 +228,6 @@ fn set_map_value(map: &mut Vec<(rmpv::Value, rmpv::Value)>, key: &str, value: rm
         map.push((rmpv::Value::String(key.into()), value));
     }
 }
+
+#[cfg(test)]
+include!("issue_612_work_mutation_compat_tests.rs");

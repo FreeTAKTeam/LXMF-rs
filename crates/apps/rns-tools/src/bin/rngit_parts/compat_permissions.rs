@@ -31,7 +31,7 @@ impl ReticulumGitNode {
             "adm" | "admin" => Self::PERM_ADMIN,
             _ => return None,
         };
-        let target = match target.to_ascii_lowercase().as_str() {
+        let target = match target {
             "n" | "none" | "nobody" => PermissionTarget::None,
             "a" | "all" | "everyone" => PermissionTarget::All,
             _ => {
