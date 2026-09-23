@@ -30,26 +30,40 @@ results with Rust. This confirms the classification predicate only; it does
 not claim that the broader shared-instance acceptance is complete. The pinned
 Python source sets a local-client announce deadline to `now`, sets retries to
 `PATHFINDER_R` (1), and checks announce deadlines every 1.0 s from its 0.25 s
-jobs loop. Rust likewise queues the entry as due with its retry limit consumed;
-its retransmit worker wakes every 1.0 s. The Rust table regression proves one
-rebroadcast and its route by directly draining the table, but does not exercise
-either worker's deadline-to-send bound. No pinned-Python end-to-end timing
-differential is present: Python's `Transport.jobs()` is a global threaded job
-loop, while Rust's table and worker currently read runtime clocks directly, so
-a cross-language bound cannot be asserted without a clock/worker injection seam.
-Do not treat the table-level immediate-due assertion as proof of bounded
-production scheduling latency.
+jobs loop. The source-derived ideal polling bound is the check interval plus
+one jobs poll: 1.25 s, with no runtime-jitter allowance. A focused pinned-source
+test asserts those assignments/constants and verifies Rust's 1.0 s worker
+interval is strictly inside that bound.
+
+Rust's production tick and announce-table drain now accept an explicit
+monotonic `Instant`. The deterministic worker-tick regression schedules the
+prior tick just before the immediate deadline, verifies no send, then drives
+the first 1.0 s tick after due and verifies exactly one transport broadcast to
+the receiving local-client interface. A later tick emits nothing and leaves
+the entry only in the bounded cache. This also covers the passive shared
+instance path: the retransmit worker now drains local-client announcements even
+when transport forwarding is disabled.
+
+A paired executable differential is not included. Invoking pinned Python's
+`Transport.jobs()` would run its process-global jobs loop and mutate shared
+transport tables; the test instead executes assertions against the pinned
+Python class constants and source AST, without simulating Python output or
+using wall-clock sleeps. The deterministic Rust tick test proves the worker
+action and count; the pinned test proves the corresponding reference contract
+and strict source-derived bound.
 
 ## Local software evidence
 
-- `cargo test -p reticulum-rs-transport --lib` — 794 passed.
+- `cargo test -p reticulum-rs-transport --lib` — 819 passed, 2 ignored.
 - `cargo test -p reticulumd --bin reticulumd` — 465 passed.
-- Focused regressions cover parent/child classification, immediate single
-  retransmit, sibling direct fan-out, passive transport admission, and the
-  existing announce-table response/cache behavior.
+- Focused regressions cover parent/child classification, passive shared-client
+  retransmission on the first controlled worker tick, exact one-send routing,
+  sibling direct fan-out, passive transport admission, and announce-table
+  response/cache behavior.
+- `cargo test -p reticulum-rs-transport --lib local_client_announce_retransmits_on_first_worker_tick_once` — 1 passed.
+- `RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test -p reticulum-rs-transport --lib pinned_python_local_client_schedule_bounds_the_rust_worker_tick -- --ignored --nocapture` — 1 passed against Python Reticulum `99de23c040d507e3fefca19e87b182302902725d`.
 - `RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test -p reticulum-rs-transport --lib pinned_python_local_client_classification_matches_parent_relationship -- --ignored --nocapture` — 1 passed against Python Reticulum `99de23c040d507e3fefca19e87b182302902725d`.
-- `cargo clippy -p reticulum-rs-transport --lib --all-features --no-deps -- -D warnings`
-  — passed.
+- `cargo clippy -p reticulum-rs-transport --all-targets --all-features --no-deps -- -D warnings` — passed.
 - `tools/scripts/check-module-size.sh` and
   `tools/scripts/check-boundaries.sh` — passed.
 - `RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LOG_DIR=target/interop/local-interface-python-shared-605 REPORT_PATH=target/interop/local-interface-python-shared-605/report.json TIMEOUT_SECS=45 bash tools/scripts/local-interface-python-shared-smoke.sh` — passed.

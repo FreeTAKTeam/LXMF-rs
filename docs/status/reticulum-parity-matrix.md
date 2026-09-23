@@ -627,12 +627,16 @@ dropped, since path-table persistence rebuilds the announce packet from the
 announce table instead of from a packet hash, and a cached announce that
 supersedes a queued one refreshes it in place so persistence and later path
 responses read the announce the path table accepted. Refreshing a destination
-the cache already holds no longer evicts an unrelated one. The local-client
-implementation queues an immediately-due single retransmit, with table-level
-count/routing coverage; production scheduler latency is not yet proven by a
-pinned-Python differential because neither worker has a controllable clock
-seam. Parent-interface classification is covered by the pinned-Python
-predicate differential. Pinned
+the cache already holds no longer evicts an unrelated one. A local-client
+announce is drained on the first controlled production-worker tick after its
+immediate deadline, including on a passive shared instance; the regression
+proves no pre-deadline send, exactly one broadcast to the receiving child, and
+no later retry. The drain/tick accepts a controlled monotonic instant. A pinned
+Python source test verifies its `now` deadline, one-retry limit, 1.0 s announce
+check and 0.25 s jobs poll, deriving the strict 1.25 s ideal polling bound; a
+paired executable `Transport.jobs()` differential is not included because it
+is a process-global threaded loop. Parent-interface classification is covered
+by the pinned-Python predicate differential. Pinned
 shared-instance evidence currently covers TCP/Unix attachment and announce
 fan-out plus a direct application/restart trace. A pinned two-carrier Python
 Channel trace now covers discovery, link establishment, ordered delivery, and

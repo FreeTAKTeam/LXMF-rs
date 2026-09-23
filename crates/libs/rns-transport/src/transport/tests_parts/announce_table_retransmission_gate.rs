@@ -1,3 +1,5 @@
+use super::announce::announce_retransmit_tick;
+
 async fn feed_announce(transport: &Transport, iface: crate::hash::AddressHash, aspect: &str) -> Packet {
     let mut destination = SingleInputDestination::new(
         PrivateIdentity::new_from_rand(OsRng),
@@ -17,6 +19,10 @@ async fn feed_announce(transport: &Transport, iface: crate::hash::AddressHash, a
 async fn tier_sizes(transport: &Transport) -> (usize, usize) {
     transport.get_handler().lock().await.announce_table.tier_sizes()
 }
+
+// Pinned Python: 1.0 s announce check + one 0.25 s jobs-loop poll. The
+// ignored source-contract test below verifies both inputs against the pin.
+const PYTHON_LOCAL_ANNOUNCE_POLL_BOUND: Duration = Duration::from_millis(1_250);
 
 /// A node that will never retransmit must not accumulate a retransmission
 /// queue. `map` is pruned only by `drain_retransmissions`, and the retransmit
@@ -85,6 +91,152 @@ async fn a_shared_instance_iface_still_queues_on_a_passive_node() {
     let (queued, cached) = tier_sizes(&transport).await;
     assert_eq!(queued, 1, "the reference queues a local client's announce even when not transport-enabled");
     assert_eq!(cached, 0);
+}
+
+#[tokio::test]
+async fn local_client_announce_retransmits_on_first_worker_tick_once() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let transport = Transport::new(TransportConfig::new("passive-worker-tick", &identity, false));
+    let (mut host_channel, local_client) = {
+        let manager = transport.iface_manager();
+        let mut manager = manager.lock().await;
+        let host_channel = manager.new_channel(16);
+        let parent = *host_channel.address();
+        assert!(manager.set_shared_instance(parent, true));
+        let local_client = manager
+            .register_virtual_iface(parent, crate::iface::IfaceRole::Unicast)
+            .expect("local client iface");
+        (host_channel, local_client)
+    };
+
+    let announce = feed_announce(&transport, local_client, "local-client-worker-tick").await;
+    let handler = transport.get_handler();
+    let due = handler
+        .lock()
+        .await
+        .announce_table
+        .timeout_for_destination(&announce.destination)
+        .expect("local-client announce is queued immediately");
+    let prior_tick = due - Duration::from_nanos(1);
+    let first_tick_after_due = prior_tick + INTERVAL_ANNOUNCES_RETRANSMIT;
+
+    assert!(prior_tick < due);
+    assert!(first_tick_after_due > due);
+    assert!(
+        first_tick_after_due - due < INTERVAL_ANNOUNCES_RETRANSMIT,
+        "the first worker tick after an immediate deadline is within one worker interval"
+    );
+    assert!(
+        first_tick_after_due - due < PYTHON_LOCAL_ANNOUNCE_POLL_BOUND,
+        "the deterministic Rust tick is strictly inside Python's source-derived polling bound"
+    );
+
+    announce_retransmit_tick(&handler, prior_tick).await;
+    assert!(
+        host_channel.tx_channel.try_recv().is_err(),
+        "no local-client rebroadcast is sent before its deadline"
+    );
+    assert_eq!(tier_sizes(&transport).await, (1, 0));
+
+    announce_retransmit_tick(&handler, first_tick_after_due).await;
+    let message = host_channel
+        .tx_channel
+        .try_recv()
+        .expect("the first worker tick after the deadline emits the local-client rebroadcast");
+    assert!(matches!(
+        message.tx_type,
+        TxMessageType::Broadcast(Some(iface)) if iface == local_client
+    ));
+    assert_eq!(message.packet.destination, announce.destination);
+    assert_eq!(message.packet.data, announce.data);
+    assert_eq!(message.packet.transport, Some(*identity.address_hash()));
+    assert_eq!(message.packet.header.propagation_type, crate::packet::PropagationType::Transport);
+    assert_eq!(tier_sizes(&transport).await, (0, 1));
+
+    announce_retransmit_tick(
+        &handler,
+        first_tick_after_due + INTERVAL_ANNOUNCES_RETRANSMIT,
+    )
+    .await;
+    assert!(
+        host_channel.tx_channel.try_recv().is_err(),
+        "the one local-client retry is not emitted again on a later worker tick"
+    );
+    assert_eq!(tier_sizes(&transport).await, (0, 1));
+}
+
+#[test]
+#[ignore = "requires pinned Python Reticulum checkout at RETICULUM_PY_REPO"]
+fn pinned_python_local_client_schedule_bounds_the_rust_worker_tick() {
+    const PINNED_RETICULUM: &str = "99de23c040d507e3fefca19e87b182302902725d";
+    let python_repo = std::env::var("RETICULUM_PY_REPO")
+        .expect("set RETICULUM_PY_REPO to the pinned Python Reticulum checkout");
+    let revision = std::process::Command::new("git")
+        .args(["-C", &python_repo, "rev-parse", "HEAD"])
+        .output()
+        .expect("read pinned Python Reticulum revision");
+    assert!(revision.status.success(), "git rev-parse failed for {python_repo}");
+    assert_eq!(
+        String::from_utf8_lossy(&revision.stdout).trim(),
+        PINNED_RETICULUM,
+        "schedule contract must be read from the issue's pinned Python reference"
+    );
+
+    let script = r#"
+import ast
+import inspect
+from RNS.Transport import Transport
+
+tree = ast.parse(inspect.getsource(Transport))
+assert any(
+    isinstance(node, ast.If)
+    and "transport_enabled" in ast.unparse(node.test)
+    and "is_from_local_client" in ast.unparse(node.test)
+    for node in ast.walk(tree)
+), "local-client announces must be queued even when transport forwarding is disabled"
+local_client_due_entry = False
+for node in ast.walk(tree):
+    if isinstance(node, ast.If) and isinstance(node.test, ast.Name) and node.test.id == "is_from_local_client":
+        assignments = [ast.unparse(child) for child in ast.walk(node) if isinstance(child, ast.Assign)]
+        if "retransmit_timeout = now" in assignments and "retries = Transport.PATHFINDER_R" in assignments:
+            local_client_due_entry = True
+assert local_client_due_entry, "local-client announce must be due at now with PATHFINDER_R retries"
+assert Transport.PATHFINDER_R == 1
+assert Transport.announces_check_interval == 1.0
+assert Transport.job_interval == 0.25
+jobs = inspect.getsource(Transport.jobs)
+assert "time.time() > announce_entry[IDX_AT_RTRNS_TMO]" in jobs
+assert "announce_entry[IDX_AT_RETRIES] > Transport.PATHFINDER_R" in jobs
+print(f"{Transport.PATHFINDER_R},{int(Transport.announces_check_interval * 1000)},{int(Transport.job_interval * 1000)}")
+"#;
+    let python = std::env::var("LXMF_PYTHON_BIN").unwrap_or_else(|_| "python3".to_string());
+    let output = std::process::Command::new(python)
+        .args(["-c", script])
+        .env(
+            "PYTHONPATH",
+            format!("{python_repo}:{}", std::env::var("PYTHONPATH").unwrap_or_default()),
+        )
+        .output()
+        .expect("run pinned Python local-client schedule contract");
+    assert!(
+        output.status.success(),
+        "pinned Python schedule contract failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let constants = String::from_utf8_lossy(&output.stdout);
+    let values: Vec<u64> = constants
+        .trim()
+        .split(',')
+        .map(|value| value.parse().expect("Python schedule value is an integer"))
+        .collect();
+    assert_eq!(values, [1, 1_000, 250]);
+    let python_poll_bound = Duration::from_millis(values[1] + values[2]);
+    assert_eq!(python_poll_bound, PYTHON_LOCAL_ANNOUNCE_POLL_BOUND);
+    assert!(
+        INTERVAL_ANNOUNCES_RETRANSMIT < python_poll_bound,
+        "Rust's first 1.0 s worker tick is inside Python's source-derived 1.0 s check + 0.25 s poll bound"
+    );
 }
 
 #[tokio::test]
