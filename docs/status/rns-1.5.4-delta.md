@@ -74,7 +74,7 @@ incomplete requirements:
 | Owner | Requirement | Current status |
 | ---: | --- | --- |
 | #607 | Review and integrate the initial PR increment | partial / unverified |
-| #608 | Wire IFAC into production carrier ingress and egress | partial; pinned Python TCP/UDP Channel and Resource evidence, UDP daemon success/rejection including valid-frame tampering, live credential rotation and restart, shared-instance and virtual-child policy traces, a Unix PipeInterface worker IFAC/HDLC loopback, and serial-stream wrong-key rejection plus authenticated ingress/egress; other carrier families remain pending |
+| #608 | Wire IFAC into production carrier ingress and egress | partial; pinned Python TCP/UDP Channel and Resource evidence, UDP daemon success/rejection including valid-frame tampering, live credential rotation and restart, shared-instance and virtual-child policy traces, a Unix PipeInterface worker IFAC/HDLC loopback, serial-stream wrong-key rejection plus authenticated ingress/egress, and KISS/AX.25 stream wrong-key rejection plus authenticated ingress/egress with runtime-counter assertions; other carrier families remain pending |
 | #609 | Close transport, local-client, and shared-instance gaps | implemented but unproven; mixed-peer evidence pending |
 | #610 | Prove Resource collision, stream, and mixed-peer behavior | partial / unverified |
 | #611 | Exercise every reference utility through real network workflows | partial / unverified |
@@ -118,8 +118,11 @@ the reference 8-byte default IFAC tag and authenticated HDLC echo; this is
 loopback carrier evidence, not a Python-peer trace. A separate deterministic
 serial-stream test rejects a wrong-key frame before admission and verifies
 authenticated ingress and egress through the production serial stream worker;
-it does not claim physical serial evidence. Other carrier families remain
-open; hardware and public-network evidence remain separate acceptance gates.
+it does not claim physical serial evidence. The KISS/AX.25 stream worker also
+has a deterministic duplex regression for wrong-key rejection, authenticated
+ingress/egress, the 8-byte default tag, and runtime counters; it is not modem,
+radio, or Python-peer KISS evidence. Other carrier families remain open;
+hardware and public-network evidence remain separate acceptance gates.
 
 The #609 implementation slice now has committed local software evidence in
 [`evidence/609-transport-local-shared.md`](../goals/reticulum-reference-parity-605/evidence/609-transport-local-shared.md):

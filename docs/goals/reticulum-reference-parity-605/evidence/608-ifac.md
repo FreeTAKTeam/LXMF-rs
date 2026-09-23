@@ -1,6 +1,8 @@
 # Issue #608 — IFAC carrier wiring evidence
 
-Status: **authenticated TCP/UDP daemon paths and shared-instance/virtual-child IFAC policy evidenced; full interface-family acceptance remains open**.
+Status: **authenticated TCP/UDP daemon paths and shared-instance/virtual-child
+IFAC policy evidenced; serial and KISS stream runtime paths have deterministic
+software regressions; full interface-family acceptance remains open**.
 
 The implementation is based on the frozen Reticulum `1.5.4-dev` reference at
 `99de23c040d507e3fefca19e87b182302902725d`. It wires the existing Rust
@@ -289,3 +291,31 @@ cargo test -p reticulum-rs-transport --lib \
 Serial now has stream-level IFAC software evidence alongside the Pipe worker
 loopback and pinned Python/Rust TCP/UDP traces. Physical serial/RNode and the
 other carrier-family acceptance remain open.
+
+## KISS TCP stream IFAC admission, rejection, and egress
+
+Implementation and test commit: `e77285811838ee0d4efa24514fa22915e02504b8`
+on the existing PR #628 branch.
+
+`kiss_stream_ifac_rejects_wrong_key_and_authenticates_ingress_egress` exercises
+the production `run_kiss_stream_with_ifac` worker over an in-memory duplex
+stream using the AX.25 KISS payload adapter. With no explicit IFAC size, the
+runtime uses the reference 8-byte default. A frame authenticated under a
+different key increments the violation and deserialize-error counters and is
+not admitted; an authenticated frame is admitted with IFAC provenance; and a
+Rust-originated packet is authenticated before AX.25/KISS framing and decodes
+under the configured context. Runtime packet/frame counters are asserted.
+This is deterministic KISS stream software evidence, not a modem, radio, or
+physical-carrier test.
+
+```text
+cargo test -p reticulum-rs-transport \
+  kiss_stream_ifac_rejects_wrong_key_and_authenticates_ingress_egress -- --nocapture
+# 1 passed; wrong-key rejection, authenticated ingress/egress, and runtime counters
+cargo test -p reticulum-rs-transport --all-features --lib
+# 833 passed; 0 failed
+```
+
+The KISS stream regression supplements serial and Pipe software evidence. It
+does not establish Python-peer KISS interoperability or close the remaining
+carrier-family/support-matrix requirements; issue #608 remains open.
