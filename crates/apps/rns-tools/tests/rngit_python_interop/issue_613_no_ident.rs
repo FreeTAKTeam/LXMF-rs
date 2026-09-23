@@ -128,7 +128,7 @@ fn rngit_returns_reference_no_ident_page_to_blocked_anonymous_python_link() -> i
         let response: serde_json::Value = serde_json::from_slice(&output.stdout)
             .map_err(|error| io::Error::other(format!("invalid client JSON: {error}")))?;
         assert_eq!(response["reference_null_identity_hash"], NULL_IDENTITY_HASH, "{response}");
-        assert_eq!(response["request_status"], 4, "{response}");
+        assert_eq!(response["request_status"], "READY", "{response}");
         let expected = format!(
             "#!c=0\n> Anonymous Git Node\n\n\n>>No Identity\n\nThis page requires identification, and none was received.\n\n<\n-\n`a`F666`[Served by rngit {}`:/page/index.mu] - local`f",
             env!("CARGO_PKG_VERSION")
@@ -224,7 +224,7 @@ if not ready.wait(30) or closed_early:
 finished = threading.Event()
 result = {"request_status": None, "body": None}
 def response(receipt):
-    result["request_status"] = receipt.status
+    result["request_status"] = "READY" if receipt.status == RNS.RequestReceipt.READY else receipt.status
     value = receipt.response
     result["body"] = value.decode("utf-8") if isinstance(value, bytes) else value.read().decode("utf-8")
     finished.set()
