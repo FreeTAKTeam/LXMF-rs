@@ -94,6 +94,37 @@ it does not promote the full #610 acceptance contract or close parent issue
   frames after link establishment, leaves setup and teardown control intact,
   and observes Rust's watchdog close the link with `LinkEvent::Closed`.
 
+## 64 MiB outbound compression threshold correction
+
+The pinned reference at `99de23c040d507e3fefca19e87b182302902725d` defines
+`AUTO_COMPRESS_MAX_SIZE` as the maximum source-data size for attempting bz2
+compression. In `Resource.__init__`, `data_size` is the known source length;
+`total_size` adds metadata for split selection. File-like resources above
+`MAX_EFFICIENT_SIZE` calculate `total_segments`, read only the current
+segment, and retain the file for the next segment. There is no 64 MiB
+outbound admission check. The live pinned-reference probe already on PR #638
+observed a 64 MiB + 1 source with compression disabled, `total_size` equal to
+the source length, 65 segments, and only the first segment prepared.
+
+The production reader sender now uses the 64 MiB source-size threshold only to
+select compression and continues to retain larger known-size sources as a
+reader. The byte-slice sender likewise no longer treats the compression
+threshold as an admission ceiling. Both split paths use checked conversion of
+segment counts into the Rust sender's `u32` segment-index representation;
+this is a representational failure boundary, not a new reference-derived
+resource-size policy. Inbound transfer limits are unchanged.
+
+The Rust boundary regression verifies admission of 64 MiB + 1, exact logical
+size and 65 segments, an uncompressed advertisement, and exactly one first
+segment read. A separate test verifies a typed failure if segment count cannot
+fit the sender's representation. These checks do not exercise a complete
+64 MiB + 1 transfer with a Python peer and do not complete the broader #610
+acceptance matrix.
+
+Fix commit: `4902b304f5d36f9a16a99538faed96a6b5272c6c` on the existing PR #638
+branch, based on the live PR head `740ee35e22f7f8ec989fe87ba8e147a7430ad9ae`.
+Validation results for that candidate are recorded below.
+
 ## SDK consumer terminal-event regressions
 
 Added at Rust commit `4bc7188e515d1dc14a8f1437080134c020ba5877` in
@@ -534,8 +565,9 @@ RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/R
 # 1 passed; Rust received and verified Python's exact payloads/digests and flags
 ```
 
-The distinct 64 MiB-plus-one admission/compression-cap edge and the remaining
-#610 transfer-selection and failure matrix remain unverified.
+The distinct 64 MiB-plus-one edge was subsequently probed and corrected in
+the PR #638 follow-up recorded below. The remaining #610 transfer-selection
+and failure matrix remains open.
 
 ### Compression selection above the efficient-segment boundary
 
@@ -550,9 +582,8 @@ to each segment (subject to the 64 MiB whole-resource cap), setting
 same: segment accounting precedes per-segment compression. The receivers
 verify the assembled payload digest and logical `total_size`; sender-side
 compression choices are `true` for repeating bytes and `false` for the
-deterministic incompressible payload. No production mismatch was found; no
-production change was needed. This closes only the above-`MAX_EFFICIENT_SIZE`
-selection gap, not the broader #610 contract or the distinct 64 MiB cap edge.
+deterministic incompressible payload. This closes only the above-
+`MAX_EFFICIENT_SIZE` selection gap, not the broader #610 contract.
 
 ```text
 RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
@@ -786,23 +817,12 @@ size=67108865  total_size=67108865  segments=65  compressed=false
 status=NONE  advertised=false  parts_built=1
 ```
 
-The focused Rust production-reader test
-`resource_sender_compression_cap_boundary_has_no_over_limit_advertisement`
-prepares the exact-cap Resource from a repeat reader that is read only through
-the first segment. It confirms a compressed advertisement packet carrying the
-full logical size, with no completion event. At 64 MiB + 1 the same production
-preparation path returns exactly `RnsError::InvalidArgument`; there is no
-prepared sender state, advertisement packet, or success event. The reference
-probe demonstrates that Python's constructor accepts that size and disables
-compression. Its network advertisement was intentionally suppressed, so no
-claim is made that a +1 wire transfer was completed.
-
-This is an exact, boundedly observed behavioral divergence. The Rust cap is
-unchanged; matching Python's larger-resource admission is not part of this
-test, and the forward-candidate parity gap remains open. The probe and Rust
-state regression avoid an unnecessary mixed-peer 64 MiB transfer. The existing
-mixed-peer 64 MiB test remains separate evidence for actual on-wire compression
-and successful reassembly.
+The initial Rust preparation regression expected 64 MiB + 1 to fail. The
+production change below supersedes that assertion: outbound reader and
+byte-slice senders now admit known-size sources beyond the compression
+threshold, disable automatic compression based on the full source size, and
+retain lazy segmentation. The existing pinned-Python probe suppresses network
+advertisement; no full mixed-peer 64 MiB + 1 transfer is claimed.
 
 ```text
 RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
@@ -814,9 +834,34 @@ RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/R
 # first segment only, no advertisement
 
 cargo test -p reticulum-rs-transport --lib \
-  resource_sender_compression_cap_boundary_has_no_over_limit_advertisement \
+  compression_threshold_does_not_cap_outbound_resource_admission \
   -- --nocapture
-# 1 passed; bounded production reader preparation at the cap and +1
+# 1 passed; exact-cap and +1 production reader advertisements
+
+cargo test -p reticulum-rs-transport --lib \
+  reader_backed_send_admits_one_byte_above_compression_threshold_lazily \
+  -- --nocapture
+# 1 passed; exact logical size/segment count, uncompressed, first segment only
+
+cargo test -p reticulum-rs-transport --lib resource::tests
+# 75 passed; focused Resource unit suite, including lazy 64 MiB + 1 source
+
+cargo fmt --all -- --check
+# passed
+
+cargo clippy --workspace --all-targets --all-features --no-deps -- -D warnings
+# passed
+
+tools/scripts/check-module-size.sh
+# module-size checks: ok
+
+TMPDIR=/home/pgiuseppe/.codex/worktrees/issue-610-resource-metadata-ack/target \
+  tools/scripts/check-boundaries.sh
+# boundary checks: ok (two existing legacy-boundary notices); /tmp was over
+# its per-user quota, so the script's temporary metadata file used target/
+
+git diff --check
+# passed
 ```
 
 ## Remaining acceptance boundary

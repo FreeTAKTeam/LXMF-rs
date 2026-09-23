@@ -83,8 +83,13 @@ exact payload digests. It also verifies compressible and deterministic
 incompressible two-segment payloads above `MAX_EFFICIENT_SIZE`, including
 assembled digests, logical size, and the final segment's compression flag.
 Pinned Python and Rust agree on segment-first accounting and per-segment
-compression, so no production change was required. The distinct 64 MiB cap
-edge and the broader #610 acceptance matrix remain open; #610 stays partial.
+compression. A pinned-reference boundary probe found that 64 MiB is the
+automatic-compression threshold, not an outbound admission ceiling; the
+reader-backed sender now accepts a 64 MiB + 1 source, leaves it uncompressed,
+and prepares only its first segment. The exact local Resource regression and
+validation record are in the #610 evidence file. No full mixed-peer transfer
+at that size has been run, and the broader #610 acceptance matrix remains
+open; #610 stays partial.
 
 A pinned-Python split-Resource fault trace now accepts the first segment and
 cancels during the second; the Rust sender observes terminal
