@@ -266,8 +266,8 @@ mod tests {
         assert_eq!(forward.level, crate::ParityLevel::Partial);
         assert_eq!(forward.coverage_status, "incomplete");
         assert_eq!(forward.inventory.total, 10);
-        assert_eq!(forward.inventory.partial, 9);
-        assert_eq!(forward.evidence_verified, 0);
+        assert_eq!(forward.inventory.partial, 8);
+        assert_eq!(forward.evidence_verified, 1);
         assert_eq!(forward.reference.revision, "99de23c040d507e3fefca19e87b182302902725d");
         let mut payload = negotiation_response_payload();
         payload["software_parity"] =
