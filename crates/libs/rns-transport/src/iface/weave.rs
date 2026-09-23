@@ -1935,6 +1935,8 @@ mod tests {
         assert_eq!(status.last_log_event, Some(ET_PROTO_WEAVE_EP_ALIVE));
     }
 
+    include!("weave_ifac_runtime_tests.rs");
+
     #[tokio::test]
     async fn weave_stream_sends_handshake_for_valid_discovery_response() {
         let (options, _manager, _parent) = test_options().await;
