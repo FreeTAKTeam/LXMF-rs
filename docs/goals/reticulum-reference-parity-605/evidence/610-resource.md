@@ -596,9 +596,32 @@ RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
 # 1 passed; exact file bytes and decoded metadata
 ```
 
-The selected cases establish clearly-small and clearly-oversized behavior but
-do not yet test exact `mdu - 1`, `mdu`, and `mdu + 1` packet lengths over a
-production peer link. That inclusive-edge differential remains open.
+### Exact negotiated-MDU boundary (production mixed-peer sessions)
+
+Three isolated one-request Python client processes connect sequentially to one
+Rust TCP service. After each Link negotiates, the Python client sizes its
+request so the Rust response envelope `[request_id, response]`, encoded with
+MessagePack, is exactly `MDU-1`, `MDU`, or `MDU+1`. Rust verifies the packed
+envelope size against the Python peer's reported negotiated MDU and asserts
+packet selection for the first two cases and a Resource hash for the last.
+The Python request is Resource-backed due to its size; the response is
+observed by the Python request callback, and outbound Resource completion is
+required for `MDU+1`. All three responses match exact bytes, UTF-8 size, and
+SHA-256.
+
+This matches pinned Reticulum
+`99de23c040d507e3fefca19e87b182302902725d`, `RNS/Link.py::handle_request`:
+ordinary responses use a packet when packed response length is `<= mdu`, and
+a response Resource above it. These are three one-request peer sessions; no
+multi-hop HIL job was run.
+
+```text
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+  LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
+  python_to_rust_request_response_matches_exact_negotiated_mdu_boundary \
+  -- --ignored --nocapture --test-threads=1
+# 1 passed; three sessions at negotiated MDU-1, MDU, MDU+1
+```
 
 ## Remaining acceptance boundary
 

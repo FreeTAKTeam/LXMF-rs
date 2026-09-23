@@ -292,8 +292,9 @@ class ChannelEndpoint:
 
 
 class ChannelClient:
-    def __init__(self, payload_kind: str):
+    def __init__(self, payload_kind: str, response_envelope_delta: int = 0):
         self.payload_kind = payload_kind
+        self.response_envelope_delta = response_envelope_delta
         self.lock = threading.Lock()
         self.link = None
         self.received = []
@@ -365,7 +366,7 @@ class ChannelClient:
                     return 1
                 time.sleep(0.05)
 
-        if self.payload_kind in ("request", "large-request"):
+        if self.payload_kind in ("request", "large-request", "mdu-boundary"):
             done = threading.Event()
             result = {}
             request_data = message_data
@@ -374,6 +375,19 @@ class ChannelClient:
                 # support: a fixed 900-byte payload is a normal packet on
                 # TCP/Backbone links whose MDU is several kilobytes.
                 request_data = "large:" + ("x" * (active_link.mdu + 1024))
+            if self.payload_kind == "mdu-boundary":
+                target_size = active_link.mdu + self.response_envelope_delta
+                request_data = None
+                for candidate_size in range(max(0, target_size - 64), target_size + 1):
+                    candidate = "x" * candidate_size
+                    envelope = umsgpack.packb([bytes(16), f"reply:{candidate}"])
+                    if len(envelope) == target_size:
+                        request_data = candidate
+                        break
+                if request_data is None:
+                    raise AssertionError(
+                        f"could not encode response envelope of {target_size} bytes"
+                    )
             print(
                 f"python_channel_client: sending {self.payload_kind} request len={len(request_data)} mdu={active_link.mdu}",
                 file=sys.stderr,
@@ -412,6 +426,7 @@ class ChannelClient:
                             "response": result["response"],
                             "response_size": len(response_bytes),
                             "response_sha256": hashlib.sha256(response_bytes).hexdigest(),
+                            "negotiated_mdu": active_link.mdu,
                         }
                     ),
                     flush=True,
@@ -707,6 +722,7 @@ def main() -> int:
             "link-data",
             "request",
             "large-request",
+            "mdu-boundary",
             "file-response",
             "identify",
             "channel-sequence",
@@ -721,12 +737,13 @@ def main() -> int:
     parser.add_argument("--resource-size", type=int)
     parser.add_argument("--send-delay", type=float, default=0.3)
     parser.add_argument("--timeout", type=float, default=8.0)
+    parser.add_argument("--response-envelope-delta", type=int, default=0)
     args = parser.parse_args()
 
     if args.mode == "client":
         if args.destination_hash is None:
             parser.error("--destination-hash is required in client mode")
-        return ChannelClient(args.payload_kind).run(
+        return ChannelClient(args.payload_kind, args.response_envelope_delta).run(
             args.config_dir,
             args.destination_hash,
             args.message_id,
