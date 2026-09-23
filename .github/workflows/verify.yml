@@ -98,6 +98,9 @@ jobs:
           cargo test -p rns-tools --bin rngit \
             tests::executable_allowed_resolver_matches_pinned_python_permission_decisions \
             -- --ignored --exact --nocapture
+          cargo test -p rns-tools --bin rngit \
+            tests::permission_handler_revocation_and_blocked_identity_match_pinned_python \
+            -- --ignored --exact --nocapture
 
       - name: Run pinned Python rngit concurrency, CLI, and malformed-request interoperability
         env:

@@ -36,7 +36,7 @@ sourced from `f26ce90d`; the full native `create/init` → `artifact` →
 | --- | --- | --- |
 | Permission sidecars and companion roots | Canonical suffix paths (`.allowed`, `.work`, `.releases`); `repo` and `repo.git` are simultaneously registered and receive distinct service-written permission files, work documents, and release fixtures under isolated roots; the legacy `repo.git.with_extension("allowed")` path is shown to alias `repo.allowed` and is not used or migrated | local verified |
 | Dynamic permissions | Executable node-owned resolvers, bounded stdout/stderr (64 KiB), two-second execution limit, UTF-8/exit-status failure propagation, no remote replacement, and failed resolver refresh preserving the loaded policy. A focused differential runs the same executable group `.allowed` through pinned Python `ReticulumGitNode.load_repository_group` and Rust `ReticulumGitNode::load_repository_group`; it captures and compares actual resolver stdout, then verifies both allow the listed identity and deny an unlisted identity | local verified on Unix; this ordinary resolver decision slice is differentially verified; broader execution parity remains unverified |
-| Permission state | Identity aliases, strict remote content validation, configured-group merging, deny preservation, blocked identities, administrator fallback, atomic replacement, immediate in-memory refresh, and transactional configured-policy updates when sidecar reads fail. `repository_permission_set_takes_effect_before_handler_returns_without_restart` verifies an allowed decision before production `rperms` set and denial immediately after success on the same node; pinned Python's `_repository_set_permissions` likewise calls `update_repository_permissions` before returning success | local verified, including failed read/replacement rollback and the before/after service-handler transition; mixed-peer differential unverified |
+| Permission state | Identity aliases, strict remote content validation, configured-group merging, deny preservation, blocked identities, administrator fallback, atomic replacement, immediate in-memory refresh, and transactional configured-policy updates when sidecar reads fail. Production Rust and pinned Python `handle_perms` / `resolve_permission` differentially verify an allowed read, successful `read:none` update, immediate denial, and blocked-identity denial | local and pinned-Python handler differential verified for this revocation/block slice; failed read/replacement rollback verified locally; broader permission combinations remain unverified |
 | Work storage | Python-shaped root and response maps, binary identity/signature fields, integer IDs, Python-compatible integer timestamps for new records (while retaining legacy MessagePack float values on read), separate numeric comment files, 256 KiB document bound, atomic MessagePack writes, rejection of trailing bytes and non-map roots, node reload persistence, atomic work-directory reservation across independent writers, rollback when proposed-document permission setup fails, and pinned-Python process-restart persistence | local, pinned-Python restart, and bidirectional typed-value request/storage traces verified |
 | Work operations | List/view/create/propose/edit/comment/delete/complete/activate/perms through `handle_work_request`, with scope/ID validation, document ownership/permissions, atomic transitions, canonical document permission files, and authenticated-peer signature validation for create/propose/edit | local and pinned-Python production-path verified; full service matrix unverified |
 | Work document shape defaults and errors | Missing `meta` uses Python's `Untitled`/`markdown` defaults in view/list; missing `edited` defaults to zero even when `created` is present in document, list, and comment responses; malformed comment metadata is skipped, malformed root metadata returns `REMOTE_FAIL` / `Remote error` on view and is skipped in list, and an empty persisted root returns `REMOTE_FAIL` / `Error loading document` | local handler regression verified; malformed-shape mixed-peer behavior remains unverified |
@@ -133,16 +133,21 @@ RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/R
 LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --bin rngit \
   executable_allowed_resolver_matches_pinned_python_permission_decisions \
   -- --ignored --nocapture                                          PASS (same executable group resolver; listed/unlisted read decisions match)
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --bin rngit \
+  permission_handler_revocation_and_blocked_identity_match_pinned_python \
+  -- --ignored --exact --nocapture                                  PASS (permission revocation refreshes immediately; blocked identity denied)
 RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   cargo test -p rns-tools --test rngit_python_interop \
   -- --ignored --nocapture --test-threads=1                      PASS (2 tests: page/media and work restart)
 ```
 
-The Verify workflow now has a dedicated step for the ignored executable-
-resolver differential. It verifies that `Reticulum-parity` HEAD equals
+The Verify workflow has a dedicated step for ignored permission differentials.
+It verifies that `Reticulum-parity` HEAD equals
 `PYTHON_RETICULUM_PARITY_REF` (`99de23c040d507e3fefca19e87b182302902725d`)
-before running the exact `rngit` binary test name. Hosted results for the
-updated PR head are pending.
+before running the exact `rngit` binary test names. The revocation/block
+differential passes locally against that pinned revision; hosted results for
+the updated PR head are pending.
 
 The focused `rngit` binary suite contains the resolver failure/remote-
 replacement cases, configured access merging, dotted-name path safety, work
