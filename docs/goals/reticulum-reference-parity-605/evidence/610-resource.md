@@ -55,6 +55,10 @@ it does not promote the full #610 acceptance contract or close parent issue
   `OutboundCancelled` terminal event, while a Python sender cancels after
   advertisement and Rust emits `InboundFailed(reason=remote_cancelled)`.
   The Python sender also reports its own `FAILED` callback status.
+- The `lxmf-runtime` Resource-event consumer now has an explicit cancellation
+  regression: `OutboundCancelled` becomes an SDK transport error with the
+  caller-visible `resource transfer cancelled` message, and the failure path
+  attempts cleanup rather than reporting success.
 - A pinned-Python shutdown trace now waits for the receiver's
   `resource_started` callback, terminates that exact Python process after the
   Rust advertisement is admitted, and observes one Rust `OutboundFailed`
@@ -74,6 +78,19 @@ it does not promote the full #610 acceptance contract or close parent issue
 - A pinned-Python keepalive fault trace drops only `PacketContext::KeepAlive`
   frames after link establishment, leaves setup and teardown control intact,
   and observes Rust's watchdog close the link with `LinkEvent::Closed`.
+
+## SDK consumer cancellation regression
+
+Added at Rust commit `6c2f96a12239dc4c5be7203ae699555c2abde774` in
+`crates/libs/lxmf-runtime/src/tests.rs`. A real `ResourceEventKind::OutboundCancelled`
+is passed through the SDK consumer's `await_resource_completion_with_cancel`;
+the test asserts the transport-category error and cleanup callback. This is a
+focused library-consumer result, not completion of the broader consumer matrix.
+
+```text
+cargo test -p lxmf-runtime  # 14 passed
+cargo clippy -p lxmf-runtime --all-targets --all-features --no-deps -- -D warnings
+```
 
 ## Local evidence
 

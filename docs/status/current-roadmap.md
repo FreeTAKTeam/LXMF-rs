@@ -49,7 +49,9 @@ only; the #605 candidate and its release posture remain open pending the
 documented broader gates. A daemon Resource-completion regression now checks
 receipt metadata, peer byte accounting, exactly-once emission, and tracking
 cleanup, including suppression of a repeated completion notification; other
-consumer callback/status paths remain open.
+consumer callback/status paths remain open. A focused `lxmf-runtime` test also
+confirms `OutboundCancelled` becomes an SDK transport error and cleanup is
+attempted, without claiming the remaining consumer matrix.
 
 The #623 byte-level conformance lane is now executable through
 `cargo xtask interop`. It checks exact Python Reticulum/LXMF pins, Python→Rust
