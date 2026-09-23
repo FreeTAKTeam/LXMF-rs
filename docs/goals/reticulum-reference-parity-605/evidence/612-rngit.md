@@ -69,7 +69,7 @@ RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
 RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   cargo test -p rns-tools --test rngit_python_interop \
   rngit_work_survives_process_restart_for_pinned_python_client \
-  -- --ignored --nocapture                                     PASS (work create, Rust process restart, list/view persistence)
+  -- --ignored --nocapture                                     PASS (work create/comment, Rust process restart, list/view/comment persistence)
 RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   cargo test -p rns-tools --test rngit_concurrent_python_interop \
   -- --ignored --nocapture --test-threads=1                     PASS (3 runs; 3 invalid requests per client and 4 concurrent signed clients with unique persisted IDs)
@@ -96,9 +96,11 @@ failed configured-policy refresh after a malformed sidecar read is not applied
 after repair/reload, a resolver execution failure preserves loaded permissions,
 and a failed sidecar replacement does not alter cached permission state. The
 ignored Python traces passed after exercising both the Git and
-work service paths through real Reticulum Links, including work persistence
-across a Rust server process restart and four concurrent Python clients creating
-distinct persisted work items through one Rust service process. The native
+work service paths through real Reticulum Links, including work and numbered
+comment persistence across a Rust server process restart and four concurrent
+Python clients creating distinct persisted work items through one Rust service
+process. The restart check verifies the comment ID and content in Python's
+`work_view` response after restart. The native
 Rust-client trace additionally
 uses the production synchronous compatibility bridge, a direct request packet,
 an oversized request Resource, identity identification, Python signature

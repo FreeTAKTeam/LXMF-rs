@@ -909,6 +909,7 @@ if mode == "create":
     if created[0] != 0:
         raise RuntimeError("work create response was not successful")
     payload = mp.unpackb(created[1:])
+    comment = request({0: "group/repo", "operation": "comment", "doc_id": payload["id"], "scope": "active", "content": "Python restart persisted comment", "format": "markdown"})
     result = {"id": payload["id"], "scope": payload["scope"]}
 else:
     if work_id is None:
@@ -928,11 +929,13 @@ else:
     if viewed[0] != 0:
         raise RuntimeError("work view response was not successful")
     document = mp.unpackb(viewed[1:])
+    comments = document.get("comments", [])
     result = {
         "id": work_id,
         "persisted": persisted,
         "content": document.get("content"),
         "title": document.get("meta", {}).get("title"),
+        "comment_persisted": len(comments) == 1 and comments[0].get("id") == 1 and comments[0].get("content") == "Python restart persisted comment",
     }
 link.teardown()
 print(json.dumps(result, sort_keys=True))
@@ -1016,12 +1019,10 @@ fn rngit_work_survives_process_restart_for_pinned_python_client() -> io::Result<
         if created_json.get("scope").and_then(serde_json::Value::as_str) != Some("active") {
             return Err(io::Error::other("Python work creator did not return active scope"));
         }
-
         server.kill()?;
         server.wait()?;
         server = spawn_rngit_server(&root, port, identity_seed)?;
         wait_for_port(port, &mut server)?;
-
         let verified = run_python_work_client(
             &python_repo,
             &config_dir,
@@ -1050,6 +1051,7 @@ fn rngit_work_survives_process_restart_for_pinned_python_client() -> io::Result<
                 != Some("Python restart work document body")
             || verified_json.get("title").and_then(serde_json::Value::as_str)
                 != Some("Python restart work")
+            || verified_json.get("comment_persisted") != Some(&serde_json::Value::Bool(true))
         {
             return Err(io::Error::other(format!(
                 "work document did not survive restart: {verified_json}"
@@ -1062,7 +1064,6 @@ fn rngit_work_survives_process_restart_for_pinned_python_client() -> io::Result<
     let _ = server.wait();
     result
 }
-
 #[test]
 #[ignore = "requires local Python Reticulum checkout"]
 fn rngit_serves_pages_and_media_to_pinned_python_client() -> io::Result<()> {
