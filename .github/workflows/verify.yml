@@ -89,7 +89,7 @@ jobs:
           ref: ${{ env.PYTHON_RETICULUM_PARITY_REF }}
           path: Reticulum-parity
 
-      - name: Run concurrent rngit work interoperability
+      - name: Run concurrent and malformed rngit work interoperability
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PYTHON_BIN: python

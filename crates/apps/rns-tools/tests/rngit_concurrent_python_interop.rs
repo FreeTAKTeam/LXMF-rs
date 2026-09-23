@@ -162,9 +162,39 @@ def response(receipt):
 def failed(receipt):
     result["error"] = "work request failed"
     completed.set()
+def request(data):
+    completed.clear()
+    result.clear()
+    receipt = link.request(
+        "/mgmt/work",
+        data,
+        response_callback=response,
+        failed_callback=failed,
+        timeout=30,
+    )
+    if receipt is False:
+        raise RuntimeError("work request was not sent")
+    if not completed.wait(30):
+        raise RuntimeError("work request timed out")
+    if "error" in result:
+        raise RuntimeError(result["error"])
+    return result["payload"]
+
+malformed_requests = [
+    ("invalid list scope", {0: "group/repo", "operation": "list", "scope": "unknown"}),
+    (
+        "malformed document ID",
+        {0: "group/repo", "operation": "view", "doc_id": "not-a-number"},
+    ),
+    ("unknown operation", {0: "group/repo", "operation": "unknown"}),
+]
+for label, data in malformed_requests:
+    payload = request(data)
+    if not payload or payload[0] != 2:
+        raise RuntimeError(label + " was not rejected as an invalid request: " + repr(payload))
+
 content = "Concurrent Python work body " + client_number
-receipt = link.request(
-    "/mgmt/work",
+payload = request(
     {
         0: "group/repo",
         "operation": "create",
@@ -172,23 +202,17 @@ receipt = link.request(
         "content": content,
         "format": "markdown",
         "signature": identity.sign(content.encode("utf-8")),
-    },
-    response_callback=response,
-    failed_callback=failed,
-    timeout=30,
+    }
 )
-if receipt is False:
-    raise RuntimeError("work request was not sent")
-if not completed.wait(30):
-    raise RuntimeError("work request timed out")
-if "error" in result:
-    raise RuntimeError(result["error"])
-payload = result["payload"]
 if payload[0] != 0:
     raise RuntimeError("work create response was not successful: " + repr(payload))
 document = mp.unpackb(payload[1:])
 link.teardown()
-print(json.dumps({"id": document["id"], "scope": document["scope"]}))
+print(json.dumps({
+    "id": document["id"],
+    "scope": document["scope"],
+    "malformed_request_cases": len(malformed_requests),
+}))
 "#;
     Command::new(python_bin())
         .arg("-c")
@@ -271,6 +295,12 @@ fn concurrent_python_clients_reserve_distinct_persisted_work_ids() -> io::Result
             );
             if result.get("scope").and_then(serde_json::Value::as_str) != Some("active") {
                 return Err(io::Error::other("Python creator did not receive active work scope"));
+            }
+            if result.get("malformed_request_cases").and_then(serde_json::Value::as_u64) != Some(3)
+            {
+                return Err(io::Error::other(
+                    "Python creator did not verify all malformed work request cases",
+                ));
             }
         }
         ids.sort_unstable();
