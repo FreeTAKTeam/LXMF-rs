@@ -43,7 +43,10 @@ media temporary data exists only for the serving Reticulum Link and is removed
 by the production disconnect path against the frozen Python reference. The
 periodic sweep now also removes stale/closed/missing-link directories while
 preserving active-link media, with a deterministic regression; abrupt-process
-stale transition and fault/cancellation cleanup remain unverified. The utility
+stale transition, other filesystem failures, and cancellation cleanup remain
+unverified. A failure-injection regression proves a failed directory deletion
+stays tracked and succeeds on a later link-cleanup retry; cleanup handlers log the path and
+Link ID, including under `--silent`. The utility
 and full operational parity rows remain partial.
 
 The forward #610 Resource slice also has new pinned-Python evidence at

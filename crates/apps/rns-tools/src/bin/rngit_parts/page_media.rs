@@ -142,10 +142,19 @@ impl ReticulumGitNode {
                         return Self::file_response(converted_data, &response_name);
                     }
                 }
-                if let Some(paths) = self.active_page_links.get_mut(&link_id) {
-                    paths.remove(&directory);
+                if let Err(error) = Self::remove_tracked_page_media_directory(
+                    &mut self.active_page_links,
+                    link_id,
+                    &directory,
+                    |path| fs::remove_dir_all(path),
+                ) {
+                    log_page_media_cleanup_failure(
+                        "WebP conversion fallback",
+                        link_id,
+                        &directory,
+                        &error,
+                    );
                 }
-                let _ = fs::remove_dir_all(directory);
             }
         }
 

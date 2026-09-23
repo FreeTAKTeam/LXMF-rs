@@ -1,5 +1,6 @@
 use super::{decode_page_request, page_paths};
 use rns_transport::destination::link::Link;
+use std::io;
 use std::path::Path;
 
 fn run_git(directory: &Path, args: &[&str]) {
@@ -220,7 +221,9 @@ fn media_conversion_failure_falls_back_to_raw_and_link_cleanup_removes_temp_file
     node.page_link_connected(link);
     let directory = node.next_media_directory(link).expect("media directory");
     assert!(directory.is_dir());
-    assert_eq!(node.page_link_closed(link), 1);
+    let cleanup = node.page_link_closed(link);
+    assert_eq!(cleanup.removed_directories, 1);
+    assert!(cleanup.failures.is_empty());
     assert!(!directory.exists());
 
     node.page_link_connected(link);
@@ -243,6 +246,33 @@ fn media_conversion_failure_falls_back_to_raw_and_link_cleanup_removes_temp_file
 }
 
 #[test]
+fn page_link_cleanup_retries_failed_removal() {
+    let (_temporary, mut node) = page_fixture();
+    let link = [9_u8; 16];
+    let directory = node.next_media_directory(link).expect("media directory");
+
+    let first_attempt = ReticulumGitNode::remove_tracked_page_media_directory(
+        &mut node.active_page_links,
+        link,
+        &directory,
+        |_| Err(io::Error::new(io::ErrorKind::PermissionDenied, "injected removal failure")),
+    );
+
+    assert!(first_attempt.is_err());
+    assert!(directory.is_dir());
+    assert!(node
+        .active_page_links
+        .get(&link)
+        .is_some_and(|paths| paths.contains(&directory)));
+
+    let retry = node.page_link_closed(link);
+    assert_eq!(retry.removed_directories, 1);
+    assert!(retry.failures.is_empty());
+    assert!(!directory.exists());
+    assert!(!node.active_page_links.contains_key(&link));
+}
+
+#[test]
 fn stale_page_links_are_cleaned_while_active_links_keep_media() {
     let (temporary, mut node) = page_fixture();
     let base_link_id = rns_transport::hash::address_hash(
@@ -262,7 +292,7 @@ fn stale_page_links_are_cleaned_while_active_links_keep_media() {
     let closed_directory = node.next_media_directory(closed).expect("closed media directory");
     let missing_directory = node.next_media_directory(missing).expect("missing media directory");
 
-    let removed = super::rngit_network::clean_stale_page_links(
+    let cleanup = super::rngit_network::clean_stale_page_links(
         &mut node,
         [
             (active, Some(LinkStatus::Active)),
@@ -272,14 +302,17 @@ fn stale_page_links_are_cleaned_while_active_links_keep_media() {
         ],
     );
 
-    assert_eq!(removed, 3);
+    assert_eq!(cleanup.removed_directories, 3);
+    assert!(cleanup.failures.is_empty());
     assert!(active_directory.is_dir());
     assert!(!stale_directory.exists());
     assert!(!closed_directory.exists());
     assert!(!missing_directory.exists());
     assert!(node.active_page_links.contains_key(&active));
     assert!(!node.active_page_links.contains_key(&stale));
-    assert_eq!(node.page_link_closed(active), 1);
+    let cleanup = node.page_link_closed(active);
+    assert_eq!(cleanup.removed_directories, 1);
+    assert!(cleanup.failures.is_empty());
     assert!(!active_directory.exists());
 }
 

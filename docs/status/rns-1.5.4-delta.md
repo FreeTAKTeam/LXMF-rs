@@ -254,13 +254,16 @@ downloads raw media, checks metadata, size, and SHA-256, and validates a live
 `ffmpeg` PNG-to-WebP response with filename metadata. The periodic cleanup sweep
 now removes tracked temporary directories for stale, closed, or missing links;
 a deterministic regression proves those states are cleaned while active-link
-media is retained. An abrupt Python process exit still left the Rust link
+media is retained. A new injected deletion-failure regression verifies the
+directory remains tracked and is removed on the subsequent Link cleanup retry;
+the conversion-fallback and link-cleanup handlers log path/Link context.
+An abrupt Python process exit still left the Rust link
 `Active` after 104 seconds without inbound traffic, so the live stale-transition
-path and fault/cancellation cleanup remain unverified. The separate
+path, other filesystem failures, and cancellation cleanup remain unverified. The separate
 `git.repositories` list/fetch/push/delete/create/sync/fork/mirror trace does
 not complete the page issue's broader Git/work acceptance. The row remains
 partial and unverified because other conversion backends, complete reference
-rendering, remaining page/file cases, restart/fault cleanup, and end-to-end
+rendering, remaining page/file cases, other restart/fault cleanup paths, and end-to-end
 rngit Git/work network workflows remain open. Commit `e41189c8` adds live
 malformed-media requests with missing keys, missing paths, and insufficient
 path components; each fails closed without an unexpected response. The

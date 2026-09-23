@@ -1,4 +1,7 @@
-use super::{decode_page_request, page_paths, rngit_paths, Cli, PageResponse, ReticulumGitNode};
+use super::{
+    decode_page_request, log_page_media_cleanup_failure, page_paths, rngit_paths, Cli,
+    PageLinkCleanup, PageResponse, ReticulumGitNode,
+};
 use rns_transport::destination::link::{LinkEvent, LinkStatus};
 use rns_transport::destination::DestinationName;
 use rns_transport::hash::AddressHash;
@@ -165,13 +168,15 @@ async fn serve(runtime: Runtime) -> io::Result<()> {
                     };
                     statuses.push((link_id, status));
                 }
-                let removed = {
+                let cleanup = {
                     let mut node = runtime.node.lock().await;
                     clean_stale_page_links(&mut node, statuses)
                 };
-                if removed > 0 && !runtime.silent {
+                log_page_link_cleanup_failures(&cleanup);
+                if cleanup.removed_directories > 0 && !runtime.silent {
                     eprintln!("rngit: cleaned {removed} temporary media director{suffix}",
-                        suffix = if removed == 1 { "y" } else { "ies" });
+                        removed = cleanup.removed_directories,
+                        suffix = if cleanup.removed_directories == 1 { "y" } else { "ies" });
                 }
             }
             result = link_events.recv() => match result {
@@ -184,10 +189,12 @@ async fn serve(runtime: Runtime) -> io::Result<()> {
                             }
                         }
                         LinkEvent::Closed if event.address_hash == runtime.page_destination_hash => {
-                            let removed = runtime.node.lock().await.page_link_closed(address_array(&event.id));
-                            if removed > 0 && !runtime.silent {
+                            let cleanup = runtime.node.lock().await.page_link_closed(address_array(&event.id));
+                            log_page_link_cleanup_failures(&cleanup);
+                            if cleanup.removed_directories > 0 && !runtime.silent {
                                 eprintln!("rngit: cleaned {removed} temporary media director{suffix}",
-                                    suffix = if removed == 1 { "y" } else { "ies" });
+                                    removed = cleanup.removed_directories,
+                                    suffix = if cleanup.removed_directories == 1 { "y" } else { "ies" });
                             }
                         }
                         LinkEvent::Closed => {}
@@ -234,7 +241,7 @@ async fn serve(runtime: Runtime) -> io::Result<()> {
 pub(super) fn clean_stale_page_links(
     node: &mut ReticulumGitNode,
     links: impl IntoIterator<Item = ([u8; 16], Option<LinkStatus>)>,
-) -> usize {
+) -> PageLinkCleanup {
     let stale = links
         .into_iter()
         .filter_map(|(link_id, status)| {
@@ -244,6 +251,17 @@ pub(super) fn clean_stale_page_links(
         })
         .collect::<Vec<_>>();
     node.clean_page_links(&stale)
+}
+
+fn log_page_link_cleanup_failures(cleanup: &PageLinkCleanup) {
+    for failure in &cleanup.failures {
+        log_page_media_cleanup_failure(
+            "link cleanup",
+            failure.link_id,
+            &failure.directory,
+            &failure.error,
+        );
+    }
 }
 
 async fn process_request(

@@ -13,7 +13,7 @@ struct Cli {
     identity: Option<PathBuf>,
     #[arg(long)]
     print_identity: bool,
-    #[arg(long)]
+    #[arg(long, help = "Suppress routine status output; cleanup failures remain visible")]
     silent: bool,
     #[arg(long)]
     no_media_conversion: bool,

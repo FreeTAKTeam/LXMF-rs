@@ -59,6 +59,32 @@ pub(crate) struct DecodedPageRequest {
     pub data: rmpv::Value,
 }
 
+#[derive(Default)]
+pub(crate) struct PageLinkCleanup {
+    pub removed_directories: usize,
+    pub failures: Vec<PageLinkCleanupFailure>,
+}
+
+pub(crate) struct PageLinkCleanupFailure {
+    pub link_id: [u8; 16],
+    pub directory: PathBuf,
+    pub error: io::Error,
+}
+
+fn log_page_media_cleanup_failure(
+    context: &str,
+    link_id: [u8; 16],
+    directory: &Path,
+    error: &io::Error,
+) {
+    // Keep unrecovered temp-data failures visible even when routine output is silent.
+    eprintln!(
+        "rngit: failed to remove temporary media directory {} for link {} during {context}; retained for retry: {error}",
+        directory.display(),
+        hex::encode(link_id),
+    );
+}
+
 pub(crate) fn page_paths() -> &'static [&'static str] {
     PAGE_PATHS
 }
@@ -183,19 +209,41 @@ impl ReticulumGitNode {
         self.active_page_links.keys().copied().collect()
     }
 
-    pub(crate) fn clean_page_links(&mut self, link_ids: &[[u8; 16]]) -> usize {
-        link_ids.iter().map(|link_id| self.page_link_closed(*link_id)).sum()
+    pub(crate) fn clean_page_links(&mut self, link_ids: &[[u8; 16]]) -> PageLinkCleanup {
+        let mut cleanup = PageLinkCleanup::default();
+        for link_id in link_ids {
+            let link_cleanup = self.page_link_closed(*link_id);
+            cleanup.removed_directories += link_cleanup.removed_directories;
+            cleanup.failures.extend(link_cleanup.failures);
+        }
+        cleanup
     }
 
-    pub fn page_link_closed(&mut self, link_id: [u8; 16]) -> usize {
-        let Some(paths) = self.active_page_links.remove(&link_id) else { return 0 };
-        let mut removed = 0;
-        for path in paths {
-            if fs::remove_dir_all(&path).is_ok() {
-                removed += 1;
+    pub(crate) fn page_link_closed(&mut self, link_id: [u8; 16]) -> PageLinkCleanup {
+        let paths = self
+            .active_page_links
+            .get(&link_id)
+            .map(|paths| paths.iter().cloned().collect::<Vec<_>>())
+            .unwrap_or_default();
+        let mut cleanup = PageLinkCleanup::default();
+        for directory in paths {
+            match Self::remove_tracked_page_media_directory(
+                &mut self.active_page_links,
+                link_id,
+                &directory,
+                |path| fs::remove_dir_all(path),
+            ) {
+                Ok(true) => cleanup.removed_directories += 1,
+                Ok(false) => {}
+                Err(error) => {
+                    cleanup.failures.push(PageLinkCleanupFailure { link_id, directory, error })
+                }
             }
         }
-        removed
+        if cleanup.failures.is_empty() {
+            self.active_page_links.remove(&link_id);
+        }
+        cleanup
     }
 
     pub(crate) fn next_media_directory(&mut self, link_id: [u8; 16]) -> io::Result<PathBuf> {
@@ -285,6 +333,24 @@ impl ReticulumGitNode {
             PAGE_WORK_DOC => Some(self.serve_work_doc(map, remote_identity)),
             _ => None,
         }
+    }
+
+    fn remove_tracked_page_media_directory(
+        active_page_links: &mut BTreeMap<[u8; 16], BTreeSet<PathBuf>>,
+        link_id: [u8; 16],
+        directory: &Path,
+        remove_directory: impl FnOnce(&Path) -> io::Result<()>,
+    ) -> io::Result<bool> {
+        let removed = match remove_directory(directory) {
+            Ok(()) => true,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => false,
+            Err(error) => return Err(error),
+        };
+
+        if let Some(directories) = active_page_links.get_mut(&link_id) {
+            directories.remove(directory);
+        }
+        Ok(removed)
     }
 
     #[allow(dead_code)]
