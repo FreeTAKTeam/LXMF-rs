@@ -577,8 +577,12 @@ Scoped release evidence is split as follows:
   14 -> 317 and never decremented; it now stays at 0 while the bounded cache
 holds the same routes. The local-client implementation now applies Python's
 immediate single-retransmit timing (`retransmit_timeout = now`,
-`retries = PATHFINDER_R`) and parent-interface classification under focused
-regression tests. Pinned shared-instance evidence currently covers TCP/Unix
+`retries = PATHFINDER_R`). A pinned-Python differential through production
+announce ingress confirms the parent-interface predicate: ordinary, shared-
+owner, and ordinary-child announces are cached, while accepted and virtual
+children of a shared owner enter the local-client retry queue. The existing
+predicate required no production change; this focused classification evidence
+does not complete #609. Pinned shared-instance evidence currently covers TCP/Unix
 attachment and announce fan-out, plus a pinned Python TCP application trace
 that exchanges LXMF messages in both directions before and after Rust daemon
 restart while preserving the delivery identity. A two-carrier Python Channel

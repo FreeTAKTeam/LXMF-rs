@@ -93,6 +93,124 @@ async fn a_shared_instance_iface_still_queues_on_a_passive_node() {
     assert_eq!(cached, 0);
 }
 
+async fn production_announce_ingress_client_classification() -> Vec<bool> {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let transport = Transport::new(TransportConfig::new("classification", &identity, false));
+    let (shared_host, _attached_channel, _ordinary_parent_channel, _ordinary_child_channel, cases) = {
+        let manager = transport.iface_manager();
+        let mut manager = manager.lock().await;
+        let shared_host = manager.new_channel(16);
+        let shared_owner = *shared_host.address();
+        assert!(manager.set_shared_instance(shared_owner, true));
+
+        let attached_channel = manager.new_channel(16);
+        let attached_child = *attached_channel.address();
+        assert!(manager.inherit_runtime_config(shared_owner, attached_child));
+        let virtual_child = manager
+            .register_virtual_iface(shared_owner, crate::iface::IfaceRole::Unicast)
+            .expect("register virtual child of shared owner");
+
+        let ordinary = *manager.new_channel(16).address();
+        let ordinary_parent_channel = manager.new_channel(16);
+        let ordinary_parent = *ordinary_parent_channel.address();
+        let ordinary_child_channel = manager.new_channel(16);
+        let ordinary_child = *ordinary_child_channel.address();
+        assert!(manager.inherit_runtime_config(ordinary_parent, ordinary_child));
+
+        assert!(manager.is_local_client_interface(&attached_child));
+        assert!(manager.is_local_client_interface(&virtual_child));
+        (
+            shared_host,
+            attached_channel,
+            ordinary_parent_channel,
+            ordinary_child_channel,
+            [ordinary, shared_owner, attached_child, virtual_child, ordinary_child],
+        )
+    };
+
+    let mut observed = Vec::with_capacity(cases.len());
+    let mut queued = 0;
+    let mut cached = 0;
+    for (index, iface) in cases.into_iter().enumerate() {
+        feed_announce(&transport, iface, &format!("classification-{index}")).await;
+        let (next_queued, next_cached) = tier_sizes(&transport).await;
+        let entered_queue = next_queued == queued + 1;
+        let entered_cache = next_cached == cached + 1;
+        assert_ne!(
+            entered_queue, entered_cache,
+            "each unique ingress announce must be either queued as local-client traffic or cached as ordinary traffic"
+        );
+        observed.push(entered_queue);
+        queued = next_queued;
+        cached = next_cached;
+    }
+
+    drop(shared_host);
+    observed
+}
+
+#[tokio::test]
+async fn announce_ingress_uses_parent_classification_for_ordinary_owner_and_children() {
+    assert_eq!(
+        production_announce_ingress_client_classification().await,
+        [false, false, true, true, false],
+        "ordinary and shared-owner ingress are not local clients; attached/virtual children of a shared owner are"
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires pinned Python Reticulum checkout at RETICULUM_PY_REPO"]
+async fn pinned_python_parent_predicate_matches_production_announce_ingress() {
+    const PINNED_RETICULUM: &str = "99de23c040d507e3fefca19e87b182302902725d";
+    let python_repo = std::env::var("RETICULUM_PY_REPO")
+        .expect("set RETICULUM_PY_REPO to the pinned Python Reticulum checkout");
+    let revision = std::process::Command::new("git")
+        .args(["-C", &python_repo, "rev-parse", "HEAD"])
+        .output()
+        .expect("read pinned Python Reticulum revision");
+    assert!(revision.status.success(), "git rev-parse failed for {python_repo}");
+    assert_eq!(
+        String::from_utf8_lossy(&revision.stdout).trim(),
+        PINNED_RETICULUM,
+        "production ingress differential must use the pinned reference"
+    );
+
+    let script = r#"
+from types import SimpleNamespace
+from RNS.Transport import Transport
+shared_owner = SimpleNamespace(is_local_shared_instance=True)
+ordinary_parent = SimpleNamespace()
+ordinary = SimpleNamespace()
+attached_child = SimpleNamespace(parent_interface=shared_owner)
+virtual_child = SimpleNamespace(parent_interface=shared_owner)
+ordinary_child = SimpleNamespace(parent_interface=ordinary_parent)
+interfaces = (ordinary, shared_owner, attached_child, virtual_child, ordinary_child)
+print(",".join(str(Transport.is_local_client_interface(iface)).lower() for iface in interfaces))
+"#;
+    let python = std::env::var("LXMF_PYTHON_BIN").unwrap_or_else(|_| "python3".to_string());
+    let reference = std::process::Command::new(python)
+        .args(["-c", script])
+        .env(
+            "PYTHONPATH",
+            format!("{python_repo}:{}", std::env::var("PYTHONPATH").unwrap_or_default()),
+        )
+        .output()
+        .expect("run pinned Python local-client classification");
+    assert!(
+        reference.status.success(),
+        "pinned Python classification failed: {}",
+        String::from_utf8_lossy(&reference.stderr)
+    );
+    let expected: Vec<bool> = String::from_utf8_lossy(&reference.stdout)
+        .trim()
+        .split(',')
+        .map(|value| value == "true")
+        .collect();
+
+    assert_eq!(expected, [false, false, true, true, false]);
+    assert_eq!(production_announce_ingress_client_classification().await, expected);
+}
+
 #[tokio::test]
 async fn local_client_announce_retransmits_on_first_worker_tick_once() {
     let identity = PrivateIdentity::new_from_rand(OsRng);

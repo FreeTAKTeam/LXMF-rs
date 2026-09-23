@@ -39,6 +39,19 @@ removal without another send on the following check. Rust's deterministic
 production-tick test asserts the same strict boundary; its 1.0 s worker
 interval remains inside Python's source-derived bound.
 
+The focused parent-interface differential now also traverses Rust's production
+`handle_announce` path with forwarding disabled. It compares Python's exact
+`Transport.is_local_client_interface` predicate against observable announce
+queue/cache outcomes for an ordinary interface, a shared-instance owner, an
+accepted child, a virtual child, and an ordinary child. Pinned Python returns
+`false,false,true,true,false`; production Rust queues only the two children of
+the shared owner and caches the other three. No production correction was
+needed: the existing Rust predicate checks the receiving interface's parent
+and that parent's shared-instance marker. The channel handles stay live for
+the duration of the trace so transport cleanup cannot remove an accepted
+child between setup and ingress. This verifies this specific classifier only;
+it does not complete #609's broader routing and recovery acceptance.
+
 Rust's production tick and announce-table drain now accept an explicit
 monotonic `Instant`. The deterministic worker-tick regression schedules the
 prior tick just before the immediate deadline, verifies no send, then drives
@@ -59,10 +72,13 @@ trace or account for runtime scheduling jitter.
 
 - `cargo test -p reticulum-rs-transport --lib` — 823 passed, 2 ignored.
 - `cargo test -p reticulumd --bin reticulumd` — 465 passed.
-- Focused regressions cover parent/child classification, passive shared-client
-  retransmission on the first controlled worker tick, exact one-send routing,
-  sibling direct fan-out, passive transport admission, and announce-table
-  response/cache behavior.
+- Focused regressions cover the production announce-ingress parent predicate
+  across ordinary, shared-owner, accepted-child, virtual-child, and ordinary-
+  child cases; passive shared-client retransmission on the first controlled
+  worker tick; exact one-send routing; sibling direct fan-out; passive
+  transport admission; and announce-table response/cache behavior.
+- `cargo test -p reticulum-rs-transport --lib announce_ingress_uses_parent_classification_for_ordinary_owner_and_children` — 1 passed; production announce outcomes match the pinned predicate's five expected classifications.
+- `RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs/.tmp/python-refs/Reticulum-99de23c LXMF_PYTHON_BIN=python3 cargo test -p reticulum-rs-transport --lib pinned_python_parent_predicate_matches_production_announce_ingress -- --ignored --nocapture` — 1 passed against Python Reticulum `99de23c040d507e3fefca19e87b182302902725d`.
 - `cargo test -p reticulum-rs-transport --lib local_client_announce_retransmits_on_first_worker_tick_once` — 1 passed.
 - `RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test -p reticulum-rs-transport --lib pinned_python_local_client_schedule_bounds_the_rust_worker_tick -- --ignored --nocapture` — 1 passed against Python Reticulum `99de23c040d507e3fefca19e87b182302902725d`; executes the pinned announce-processing AST branch at deadline equality, just after, and at the following check.
 - `RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test -p reticulum-rs-transport --lib pinned_python_local_client_classification_matches_parent_relationship -- --ignored --nocapture` — 1 passed against Python Reticulum `99de23c040d507e3fefca19e87b182302902725d`.
