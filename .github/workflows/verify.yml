@@ -200,6 +200,10 @@ jobs:
           cargo test -p rns-tools --test rnprobe_python_interop \
             rnprobe_invalid_destination_identity_matches_pinned_python_failure \
             -- --ignored --exact --nocapture --test-threads=1
+          RETICULUM_PY_REPO="$GITHUB_WORKSPACE/Reticulum-parity" \
+            cargo test -p rns-tools --test rncp_python_missing_source \
+            rncp_missing_source_records_python_and_rust_cli_transcripts \
+            -- --ignored --exact --nocapture --test-threads=1
 
       - name: Generate PR HIL support report
         if: always()

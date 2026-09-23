@@ -47,6 +47,15 @@ prints its destination-hash validation diagnostic to stderr and exits 2. The
 differing exit statuses are captured as reference behavior, not normalized.
 Verify runs this exact-target differential against the pinned checkout. This
 is narrow validation evidence, not broad `rnprobe` failure-path parity.
+The ignored `rncp_python_missing_source::rncp_missing_source_records_python_and_rust_cli_transcripts`
+regression compares both production CLI processes against frozen Reticulum
+`99de23c040d507e3fefca19e87b182302902725d` for a nonexistent send source.
+Python exits 1 with exactly `File not found` on stdout and empty stderr; Rust
+exits 1 with empty stdout and its OS-specific missing-file diagnostic on
+stderr. Neither process creates files in its isolated home/config roots. This
+is an intentionally recorded stdout/stderr divergence, not transcript parity
+or proof of the broader missing-destination/network failure matrix. Verify runs
+this exact-target case.
 The pinned Python fetch client receiving from the Rust listener and
 interrupted after partial Resource bytes arrive is covered by the ignored
 exact-target `rncp_python_fetch_cancel` transcript: Python exits 0, emits
