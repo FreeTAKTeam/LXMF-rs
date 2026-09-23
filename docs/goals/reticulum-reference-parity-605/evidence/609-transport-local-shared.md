@@ -23,6 +23,14 @@ to the bounded cache. Accepted announces are sent directly to sibling local
 clients as Type-2 transport announces, excluding the receiving child, so this
 fan-out does not become accidental network broadcast/transit.
 
+The local-client classification regression now invokes
+`Transport.is_local_client_interface` from the pinned Python checkout and
+compares its parent, attached-child, ordinary-parent, and ordinary-child
+results with Rust. This confirms the classification predicate only; it does
+not claim that the broader shared-instance acceptance is complete. Immediate
+single-retransmit timing remains covered by deterministic Rust table tests, not
+yet by a pinned-Python end-to-end timing differential.
+
 ## Local software evidence
 
 - `cargo test -p reticulum-rs-transport --lib` — 794 passed.
@@ -30,6 +38,7 @@ fan-out does not become accidental network broadcast/transit.
 - Focused regressions cover parent/child classification, immediate single
   retransmit, sibling direct fan-out, passive transport admission, and the
   existing announce-table response/cache behavior.
+- `RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test -p reticulum-rs-transport --lib pinned_python_local_client_classification_matches_parent_relationship -- --ignored --nocapture` — 1 passed against Python Reticulum `99de23c040d507e3fefca19e87b182302902725d`.
 - `cargo clippy -p reticulum-rs-transport --lib --all-features --no-deps -- -D warnings`
   — passed.
 - `tools/scripts/check-module-size.sh` and
