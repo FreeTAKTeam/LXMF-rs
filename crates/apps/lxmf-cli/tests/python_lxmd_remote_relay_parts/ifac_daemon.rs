@@ -38,11 +38,25 @@ fn write_python_udp_rns_config_with_ifac(
     listen_port: u16,
     forward_port: u16,
 ) {
+    write_python_udp_rns_config_with_ifac_passphrase(
+        dir,
+        listen_port,
+        forward_port,
+        IFAC_PASSPHRASE,
+    );
+}
+
+fn write_python_udp_rns_config_with_ifac_passphrase(
+    dir: &Path,
+    listen_port: u16,
+    forward_port: u16,
+    passphrase: &str,
+) {
     fs::create_dir_all(dir).expect("create Python UDP IFAC RNS dir");
     fs::write(
         dir.join("config"),
         format!(
-            "[reticulum]\nenable_transport = no\nshare_instance = no\n\n[logging]\nloglevel = 7\n\n[interfaces]\n  [[UDP IFAC Interface]]\n    type = UDPInterface\n    enabled = yes\n    listen_ip = 127.0.0.1\n    listen_port = {listen_port}\n    forward_ip = 127.0.0.1\n    forward_port = {forward_port}\n    networkname = {IFAC_NETWORK_NAME}\n    passphrase = {IFAC_PASSPHRASE}\n    ifac_size = {IFAC_SIZE_BITS}\n"
+            "[reticulum]\nenable_transport = no\nshare_instance = no\n\n[logging]\nloglevel = 7\n\n[interfaces]\n  [[UDP IFAC Interface]]\n    type = UDPInterface\n    enabled = yes\n    listen_ip = 127.0.0.1\n    listen_port = {listen_port}\n    forward_ip = 127.0.0.1\n    forward_port = {forward_port}\n    networkname = {IFAC_NETWORK_NAME}\n    passphrase = {passphrase}\n    ifac_size = {IFAC_SIZE_BITS}\n"
         ),
     )
     .expect("write Python UDP IFAC RNS config");
@@ -519,6 +533,142 @@ fn python_rust_lxmd_ifac_udp_bidirectional_daemon_e2e() {
 
     if let Some(details) = failure_details {
         panic!("Python/Rust UDP IFAC daemon flow failed:\n{details}");
+    }
+}
+
+#[test]
+#[ignore = "requires local Python Reticulum/LXMF repos and daemon runtime"]
+fn python_rust_lxmd_ifac_udp_wrong_credentials_are_rejected_before_routing() {
+    let lxmd_bin = resolve_test_binary("lxmd", option_env!("CARGO_BIN_EXE_lxmd"));
+    let reticulumd_bin = resolve_test_binary("reticulumd", option_env!("CARGO_BIN_EXE_reticulumd"));
+    let workspace_root =
+        Path::new(env!("CARGO_MANIFEST_DIR")).ancestors().nth(3).expect("workspace root");
+
+    let python_bin = env::var("LXMF_PYTHON_BIN").unwrap_or_else(|_| "python3".to_string());
+    let reticulum_repo = env::var("RETICULUM_PY_REPO").unwrap_or_else(|_| {
+        workspace_root.parent().expect("workspace parent").join("reticulum").display().to_string()
+    });
+    let lxmf_repo = env::var("LXMF_PY_REPO").unwrap_or_else(|_| {
+        workspace_root.parent().expect("workspace parent").join("lxmf").display().to_string()
+    });
+    let helper_script = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("support")
+        .join("python_lxmf_endpoint.py");
+
+    assert!(Path::new(&reticulum_repo).exists(), "reticulum repo not found: {reticulum_repo}");
+    assert!(Path::new(&lxmf_repo).exists(), "lxmf repo not found: {lxmf_repo}");
+    assert!(helper_script.exists(), "python helper script not found: {}", helper_script.display());
+
+    let temp = tempfile::tempdir().expect("tempdir");
+    let rust_rpc = ReservedPort::reserve();
+    let python_control = ReservedPort::reserve();
+    let rust_udp_reservation =
+        std::net::UdpSocket::bind(("127.0.0.1", 0)).expect("reserve Rust UDP port");
+    let python_udp_reservation =
+        std::net::UdpSocket::bind(("127.0.0.1", 0)).expect("reserve Python UDP port");
+    let rust_rpc_port = rust_rpc.port();
+    let rust_udp_port = rust_udp_reservation.local_addr().expect("Rust UDP address").port();
+    let python_udp_port = python_udp_reservation.local_addr().expect("Python UDP address").port();
+    let python_control_port = python_control.port();
+
+    let rust_dir = temp.path().join("rust-ifac-udp-wrong-credential-daemon");
+    let python_storage = temp.path().join("python-ifac-udp-wrong-credential-storage");
+    let python_rns = temp.path().join("python-ifac-udp-wrong-credential-rns");
+    write_rust_config(
+        &rust_dir,
+        &rust_node_config(
+            "rust-ifac-udp-wrong-credential-daemon",
+            rust_rpc_port,
+            None,
+            &[udp_ifac_interface("ifac-udp", rust_udp_port, python_udp_port)],
+        ),
+    );
+    write_python_udp_rns_config_with_ifac_passphrase(
+        &python_rns,
+        python_udp_port,
+        rust_udp_port,
+        WRONG_IFAC_PASSPHRASE,
+    );
+
+    let mut rust_node = None;
+    let mut python_node = None;
+    let outcome: Result<(), String> = (|| {
+        drop(rust_udp_reservation);
+        rust_node = Some(spawn_lxmd(
+            &lxmd_bin,
+            &reticulumd_bin,
+            rust_rpc_port,
+            &rust_dir,
+            &mut [rust_rpc],
+        ));
+        wait_for_ready(
+            rust_rpc_port,
+            rust_node.as_mut().expect("Rust UDP IFAC daemon"),
+            "rust-ifac-udp-wrong-credential-daemon",
+        )?;
+
+        drop(python_udp_reservation);
+        python_node = Some(spawn_python_endpoint(
+            &python_bin,
+            &reticulum_repo,
+            &lxmf_repo,
+            &helper_script,
+            "python-ifac-udp-wrong-credential-peer",
+            "Python UDP wrong IFAC credential peer",
+            &python_rns,
+            &python_storage,
+            python_control_port,
+            &mut [python_control],
+        ));
+        wait_for_python_endpoint_ready(
+            python_control_port,
+            python_node.as_mut().expect("Python UDP wrong IFAC credential peer"),
+            "python-ifac-udp-wrong-credential-peer",
+        )?;
+
+        python_control_call(python_control_port, "announce", None)?;
+        let violations = wait_for_ifac_violation(rust_rpc_port)?;
+        let status = daemon_status(rust_rpc_port)?;
+        if status.get("peer_count").and_then(Value::as_u64) != Some(0) {
+            return Err(format!("wrong UDP IFAC credentials reached routing: {status}"));
+        }
+        if status.get("message_count").and_then(Value::as_u64) != Some(0) {
+            return Err(format!("wrong UDP IFAC credentials reached message delivery: {status}"));
+        }
+        if violations == 0 {
+            return Err(format!("daemon reported no UDP IFAC violations: {status}"));
+        }
+        Ok(())
+    })();
+
+    let failure_details = if let Err(err) = &outcome {
+        Some(format!(
+            "{err}\n\n{}\n\n{}",
+            collect_node_diagnostics(
+                "rust-ifac-udp-wrong-credential-daemon",
+                rust_rpc_port,
+                rust_node.as_mut(),
+            ),
+            collect_python_endpoint_diagnostics(
+                "python-ifac-udp-wrong-credential-peer",
+                python_control_port,
+                python_node.as_mut(),
+            ),
+        ))
+    } else {
+        None
+    };
+
+    if let Some(node) = python_node.as_mut() {
+        terminate_child(&mut node.child);
+    }
+    if let Some(node) = rust_node.as_mut() {
+        terminate_child(&mut node.child);
+    }
+
+    if let Some(details) = failure_details {
+        panic!("Python/Rust UDP IFAC rejection flow failed:\n{details}");
     }
 }
 
