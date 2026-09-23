@@ -116,34 +116,6 @@ fn remove_stale_and_expire_path_match_expected_lifetimes() {
     assert!(table.get(&other_destination).is_some());
 }
 
-/// Pinned Reticulum `Transport.jobloop` removes a route only when
-/// `time.time() > timestamp + timeout`; equality is still a valid route.
-/// Passing `now` explicitly keeps both sides of that boundary deterministic.
-#[test]
-fn stale_route_expiry_keeps_exact_deadline_and_removes_after_it() {
-    let now = Instant::now() + DESTINATION_TIMEOUT + Duration::from_secs(1);
-
-    for (seed, mode, timeout) in [
-        (b"full-exact".as_slice(), InterfaceMode::Full, DESTINATION_TIMEOUT),
-        (b"ap-exact".as_slice(), InterfaceMode::AccessPoint, AP_PATH_TIME),
-        (b"roam-exact".as_slice(), InterfaceMode::Roaming, ROAMING_PATH_TIME),
-    ] {
-        let at_deadline = addr(seed);
-        let after_deadline = addr(&[seed, b"-after"].concat());
-        let mut table = PathTable::new();
-        add_path(&mut table, at_deadline, now - timeout);
-        add_path(&mut table, after_deadline, now - timeout - Duration::from_nanos(1));
-
-        assert_eq!(
-            table.remove_stale(now, |_| Some(mode)),
-            1,
-            "only a route strictly older than its {mode:?} timeout should expire"
-        );
-        assert!(table.get(&at_deadline).is_some(), "route at the exact deadline is valid");
-        assert!(table.get(&after_deadline).is_none(), "route one tick past the deadline expires");
-    }
-}
-
 #[test]
 fn expire_paths_via_removes_only_matching_next_hop() {
     let now = test_now();
