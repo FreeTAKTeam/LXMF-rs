@@ -174,6 +174,8 @@ mod tests {
 
     use super::*;
 
+    include!("ifac_runtime_tests.rs");
+
     #[tokio::test]
     async fn command_response_task_cancels_stream_on_fatal_rnode_error() {
         let iface =
