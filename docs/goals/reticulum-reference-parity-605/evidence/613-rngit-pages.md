@@ -128,6 +128,24 @@ LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
   -- --ignored --nocapture                                      PASS (1 test)
 ```
 
+A separate pinned-Python differential case exercises `/media` authorization
+over a production Rust TCP Link. The fixture contains a committed
+`secret.bin` in a repository whose `read:none` policy denies access; the Python
+client leaves its Link unidentified and requests that valid blob at
+`/media/private/repo/HEAD/secret.bin`. The request receives no response, and
+the client also checks that the private canary bytes are absent. This records
+the reference behavior from `pages.py` (repository access is checked before
+ref/blob resolution and denial returns `False`) for this one denied-media
+case. It does not complete the `/media` acceptance set or the overall #613
+acceptance.
+
+```text
+RETICULUM_PY_REPO=<checkout at 99de23c040d507e3fefca19e87b182302902725d> \
+LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
+  rngit_denies_private_media_over_unidentified_python_link \
+  -- --ignored --nocapture                                      PASS (1 test)
+```
+
 The periodic service sweep now treats `LinkStatus::Stale` the same as `Closed`
 and a missing transport link, matching pinned Python `clean_links()`, which
 removes tracked links whose status is not `ACTIVE`. A deterministic service

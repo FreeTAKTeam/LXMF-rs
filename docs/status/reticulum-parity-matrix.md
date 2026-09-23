@@ -140,6 +140,12 @@ missing key, missing path, and insufficient path components; each fails closed
 without an unexpected response. This removes that specific live-evidence gap
 without promoting the broader #613 row.
 
+A separate production-Link differential case sends a valid private media path
+from an unidentified pinned-Python client to a repository with `read:none`.
+The Rust service returns no media response and the private canary bytes are
+absent. This covers denied `/media` access only; invalid media refs and the
+other named acceptance cases remain unproven, and #613 remains partial.
+
 The issue-specific #613 live trace also observes one WebP conversion temporary
 directory while the pinned-Python Reticulum Link is active, tears that Link
 down, and verifies the production Rust server removes the directory. This

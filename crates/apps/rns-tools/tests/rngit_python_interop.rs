@@ -7,6 +7,8 @@ use std::time::{Duration, Instant};
 
 #[path = "rngit_python_interop/issue_613_cleanup.rs"]
 mod issue_613_cleanup;
+#[path = "rngit_python_interop/issue_613_media_access.rs"]
+mod issue_613_media_access;
 #[path = "rngit_python_interop/issue_613_media_url.rs"]
 mod issue_613_media_url;
 
