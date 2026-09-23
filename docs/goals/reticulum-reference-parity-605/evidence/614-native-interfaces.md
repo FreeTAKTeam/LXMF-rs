@@ -20,7 +20,7 @@ acceptance gate.
 | --- | --- | --- |
 | Windows paired-device lookup | The Windows BLE backend asks WinRT for the paired-device selector, enumerates `DeviceInformation`, extracts only strict Bluetooth address suffixes from each device ID, and filters scan candidates by the paired address before configured ID, alias, or service matching. Deterministic coverage verifies a stale paired address cannot authorize a different scanned device, while a matching address remains eligible. A Windows-only hosted test queries the native paired-device list and compares Rust suffix extraction against the pinned reference rule without logging device addresses. | Linux parser/filter tests verified; hosted native query/test passed on `ca6b6bba`; actual stale Windows pairing removal and physical paired-device behavior unverified |
 | Windows backend boundary | The resolver is target-gated and uses the existing `btleplug` scan/connect/service-discovery path; Android's configured-peripheral path is unchanged. The implementation does not use `btleplug`'s unsupported Windows `add_peripheral` address shortcut. | local code verified |
-| Runtime cleanup | Existing BLE startup still clears stale session state, stops scans after selection or timeout, subscribes before startup writes, and aggregates unsubscribe/scan-stop/disconnect failures during cleanup. This increment applies the pairing constraint before those existing connect/reconnect paths. | local state-machine tests; native carrier unverified |
+| Runtime cleanup and read states | BLE notification timeout is an idle read: it returns no event while preserving the live session, allowing a later notification to be delivered. Native notification-stream EOF is tracked separately, resets the session, and is returned to the caller as a `next_notification` backend error. A deterministic scripted-backend regression exercises idle → data → EOF without hardware. This aligns with the pinned Python loop, which treats an empty BLE receive queue as no bytes and continues polling; connection/read exceptions remain terminal. | focused fake-backend regression; native carrier unverified |
 | Interface inventory | The daemon has explicit startup branches for TCP/backbone, local TCP/Unix, UDP, AutoInterface, serial, Weave, KISS/AX.25, pipe, I2P, Meshtastic, BLE, LoRa, and RNodeMulti aliases; unknown kinds record an explicit unsupported-kind failure. | source inspection; cross-platform/live evidence open |
 | Native Windows CI | The PR workflow runs the `rnode-ble` library test filter on `windows-latest`, compiling the target-gated WinRT resolver, executing deterministic paired-ID/runtime tests, and invoking the real WinRT paired-device query. A runner with no paired radios may validly return an empty set; this does not verify physical pairing. | passed on `ca6b6bba` (18 tests); physical paired-RNode behavior remains unverified |
 | AutoInterface software lifecycle | A loopback-only library regression keeps the returned `AutoDiscoveryRuntime` stop handle, awaits `stop()`, and restarts on the same discovery and data ports. A daemon-binary regression now calls the same private activation helper used after native plan construction: it registers the daemon multicast channel, creates the AutoInterface transport adapter, starts two discovery sockets and one data listener, awaits runtime/task teardown and channel removal, then restarts on the identical test-owned ports. Native discovery and production device filtering are unchanged. | both focused software regressions pass locally; full daemon process/signal shutdown, native link-local enumeration, carrier-loss equivalence, platform coverage, and physical carrier behavior remain unverified |
@@ -65,6 +65,13 @@ tools/scripts/check-module-size.sh                                    PASS
 git diff --check                                                     PASS
 ```
 
+The software-only BLE idle/EOF regression ran on the current PR #634 head:
+
+```text
+cargo test -p reticulum-rs-transport --features rnode-ble --lib \
+  native_stream_eof_is_distinct_from_idle_and_idle_read_recovers -- --nocapture PASS
+```
+
 The daemon activation lifecycle regression ran in the same worktree:
 
 ```text
@@ -96,8 +103,9 @@ establish physical Windows pairing or carrier behavior.
 ## Deliberate remaining gaps
 
 - A native Windows build and paired RNode test still need to prove bonded
-  selection, stale paired references, partial service discovery, EOF versus
-  idle reads, detection timeout, cancellation, reconnect, and bounded cleanup.
+  selection, stale paired references, partial service discovery, detection
+  timeout, cancellation, reconnect, and bounded cleanup. The EOF/idle semantic
+  distinction is covered by the software regression above, not a native trace.
 - AutoInterface still needs native link-local enumeration, carrier-loss
   recovery, and stop/restart evidence on each supported host. The daemon test
   exercises the production activation helper and its explicit stop handle,

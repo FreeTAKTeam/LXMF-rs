@@ -264,6 +264,7 @@ pub struct NativeRnodeBleBackend {
     write_char: Option<Characteristic>,
     notify_char: Option<Characteristic>,
     notification_stream: Option<NativeNotificationStream>,
+    notification_stream_ended: bool,
     negotiated_mtu: Option<u16>,
 }
 
@@ -278,6 +279,7 @@ impl NativeRnodeBleBackend {
             write_char: None,
             notify_char: None,
             notification_stream: None,
+            notification_stream_ended: false,
             negotiated_mtu: None,
         }
     }
@@ -293,6 +295,7 @@ impl NativeRnodeBleBackend {
         self.write_char = None;
         self.notify_char = None;
         self.notification_stream = None;
+        self.notification_stream_ended = false;
         self.negotiated_mtu = None;
     }
 
@@ -549,15 +552,14 @@ impl RnodeBleBackend for NativeRnodeBleBackend {
             .notification_stream
             .as_mut()
             .ok_or_else(|| "notification stream not initialized".to_string())?;
-        let notification = timeout(self.settings.notification_timeout, stream.as_mut().next())
+        let notification = match timeout(self.settings.notification_timeout, stream.as_mut().next())
             .await
-            .map_err(|_| {
-                format!(
-                    "notification timeout after {} ms",
-                    self.settings.notification_timeout.as_millis()
-                )
-            })?;
+        {
+            Ok(notification) => notification,
+            Err(_) => return Ok(None),
+        };
         let Some(notification) = notification else {
+            self.notification_stream_ended = true;
             return Ok(None);
         };
         if notification.uuid != notify_uuid {
@@ -570,7 +572,7 @@ impl RnodeBleBackend for NativeRnodeBleBackend {
     }
 
     fn notification_stream_ends_on_none(&self) -> bool {
-        true
+        self.notification_stream_ended
     }
 
     fn drains_stale_startup_notifications(&self) -> bool {
