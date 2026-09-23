@@ -24,7 +24,12 @@ while both pinned-Python initiator/listener roles are covered by the ignored
 interop fixture at `e57afb99`, with the command-before-stdin and bounded EOF
 grace fix at `662dcdbe`.
 The two-direction pinned-Python/native `rnprobe` process exchange is covered
-by `f86ecc1c`.
+by `f86ecc1c`. The focused
+`rnprobe_invalid_probe_count_matches_pinned_python_process_failure` regression
+also compares malformed `--probes` handling at the process boundary: Rust and
+the frozen Python utility both exit with status 2 and report their respective
+invalid-integer diagnostics. Verify runs this test against the exact pinned
+Reticulum checkout; it does not complete the broader `rnprobe` option matrix.
 The pinned Python fetch client receiving from the Rust listener and
 interrupted after partial Resource bytes arrive is covered by the ignored
 exact-target `rncp_python_fetch_cancel` transcript: Python exits 0, emits

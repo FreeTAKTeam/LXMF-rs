@@ -25,7 +25,8 @@ remaining acceptance gates are recorded in
 not the canonical release baseline. IFAC daemon wiring, remaining remote
 utility behavior, transport policy differences, and platform validation remain
 open; the focused #611 `rncp` compression/send/fetch matrix, bounded
-`rnprobe` packet/RPC workflow, and bounded native `rnsh` channel workflow,
+`rnprobe` packet/RPC workflow plus one exact-target invalid-option comparison,
+and bounded native `rnsh` channel workflow,
 negative
 failure-category checks, path-discovery-timeout check, listener restart check,
 local and Rust/Python receiver-side disk-failure callback checks,
@@ -50,6 +51,11 @@ The current #631 `rncp` increment observes packed and received Resource
 advertisement sizes/flags for all six Python/Rust compression roles, with a
 focused exact-target Verify step; the utility row remains partial because its
 other workflows and failure/restart gaps are still open.
+
+The #631 `rnprobe` follow-up compares `--probes not-an-integer` across the Rust
+and frozen Python processes. Both return exit status 2 with their corresponding
+invalid-integer diagnostics, and Verify runs the focused ignored test against
+the exact reference checkout. The broader #611 utility matrix remains partial.
 
 The exact-target Python fetch-client disk-error trace also now reproduces the
 pinned callback printing its save failure while leaving the fetch unresolved;

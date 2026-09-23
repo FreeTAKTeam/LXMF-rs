@@ -248,8 +248,8 @@ loss. Public/multi-hop, physical-carrier, and probe fault/restart evidence
 remain open.
 
 The #631 `rnpath` follow-up adds one software network trace beyond the existing
-mock-RPC tests: a separate pinned-Python Reticulum process delays its announce
-until the Rust `rnpath-rs` client has started discovery through a separate
+mock-RPC tests: a separate pinned-Python Reticulum process waits to announce
+until after the Rust `rnpath-rs` client process is launched, using a separate
 `reticulumd` process's live TCP RPC. The CLI returns the announced destination
 and one-hop result. Verify runs the exact-target trace against the frozen
 1.5.4 development checkout; path-table, remote-management, and broader utility

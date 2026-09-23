@@ -187,6 +187,9 @@ jobs:
           cargo test -p rns-tools --test rnpath_python_interop \
             rnpath_discovers_late_pinned_python_announce_through_live_daemon_rpc \
             -- --ignored --exact --nocapture --test-threads=1
+          cargo test -p rns-tools --test rnprobe_python_interop \
+            rnprobe_invalid_probe_count_matches_pinned_python_process_failure \
+            -- --ignored --exact --nocapture --test-threads=1
 
       - name: Generate PR HIL support report
         if: always()
