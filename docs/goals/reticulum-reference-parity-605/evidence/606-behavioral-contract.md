@@ -187,3 +187,25 @@ generation against the pinned reference. This closes the hosted-execution gap
 for the contract gate; it does not provide missing behavioral observations,
 freeze the external support matrix, or replace independent review of the target
 delta.
+
+### Reference-pin mirror corruption fixtures
+
+Source commit `2190571f` extends the exact-pin checker self-test. It builds a
+temporary repository fixture from the canonical manifest and mirror templates,
+confirms the intact fixture passes, then corrupts the forward-target workflow
+pin and the active-baseline Rust source pin independently. Each corrupted
+mirror must be reported by `verify()` as missing the canonical revision. The
+fixtures therefore exercise the same checker used by CI rather than only
+asserting that the expected template strings exist.
+
+```text
+python3 -m py_compile tools/scripts/check_python_reference_pins.py             PASS
+python3 tools/scripts/check_python_reference_pins.py --self-test               PASS
+python3 tools/scripts/check_python_reference_pins.py                           PASS
+python3 tools/scripts/python_surface_inventory.py --self-test                  PASS
+git diff --check                                                                PASS
+```
+
+The checker hardening does not change the frozen pins or promote a behavioral
+requirement. The finite support matrix, full behavioral observations, and
+independent target-delta review remain open; #606 and #605 remain open.
