@@ -20,10 +20,11 @@ pub(super) use interface_startup::LoraRuntimeStatusSource;
 #[cfg(feature = "vrn76-kiss-ble")]
 pub(super) use interface_startup::Vrn76RuntimeRefresh;
 pub(super) use interface_startup::{
-    AutoRuntimeRefresh, BleGattRuntimeRefresh, I2pRuntimeRefresh, KissRuntimeRefresh,
-    LoraRuntimeRefresh, MeshtasticRuntimeRefresh, PipeRuntimeRefresh, RNodeManagementBinding,
-    RNodeMultiRuntimeRefresh, ReticulumBleRuntimeRefresh, SerialRuntimeRefresh, TcpRuntimeRefresh,
-    TcpRuntimeStatusSource, UdpRuntimeRefresh, WeaveControlBinding, WeaveRuntimeRefresh,
+    AutoRuntimeRefresh, AutoRuntimeShutdown, BleGattRuntimeRefresh, I2pRuntimeRefresh,
+    KissRuntimeRefresh, LoraRuntimeRefresh, MeshtasticRuntimeRefresh, PipeRuntimeRefresh,
+    RNodeManagementBinding, RNodeMultiRuntimeRefresh, ReticulumBleRuntimeRefresh,
+    SerialRuntimeRefresh, TcpRuntimeRefresh, TcpRuntimeStatusSource, UdpRuntimeRefresh,
+    WeaveControlBinding, WeaveRuntimeRefresh,
 };
 use path_restore::{
     mark_path_table_restore_status, mark_path_table_restore_status_on_enabled_interfaces,
@@ -68,6 +69,7 @@ pub(super) struct TransportStartupArtifacts {
     pub(super) startup_failures: Vec<InterfaceStartupFailure>,
     pub(super) seeded_hot_apply_interfaces: Vec<(String, InterfaceRecord, AddressHash)>,
     pub(super) auto_runtime_refreshes: Vec<AutoRuntimeRefresh>,
+    pub(super) auto_runtime_shutdowns: Vec<AutoRuntimeShutdown>,
     pub(super) pipe_runtime_refreshes: Vec<PipeRuntimeRefresh>,
     pub(super) udp_runtime_refreshes: Vec<UdpRuntimeRefresh>,
     pub(super) serial_runtime_refreshes: Vec<SerialRuntimeRefresh>,
@@ -216,6 +218,7 @@ pub(super) async fn start_transport_and_interfaces(
     let mut startup_failures = Vec::new();
     let mut seeded_hot_apply_interfaces = Vec::new();
     let mut auto_runtime_refreshes = Vec::new();
+    let mut auto_runtime_shutdowns = Vec::new();
     let mut pipe_runtime_refreshes = Vec::new();
     let mut udp_runtime_refreshes = Vec::new();
     let mut serial_runtime_refreshes = Vec::new();
@@ -312,6 +315,7 @@ pub(super) async fn start_transport_and_interfaces(
             }
             seeded_hot_apply_interfaces.extend(startup.seeded_hot_apply_interfaces);
             auto_runtime_refreshes.extend(startup.auto_runtime_refreshes);
+            auto_runtime_shutdowns.extend(startup.auto_runtime_shutdowns);
             pipe_runtime_refreshes.extend(startup.pipe_runtime_refreshes);
             udp_runtime_refreshes.extend(startup.udp_runtime_refreshes);
             serial_runtime_refreshes.extend(startup.serial_runtime_refreshes);
@@ -452,6 +456,7 @@ pub(super) async fn start_transport_and_interfaces(
         startup_failures,
         seeded_hot_apply_interfaces,
         auto_runtime_refreshes,
+        auto_runtime_shutdowns,
         pipe_runtime_refreshes,
         udp_runtime_refreshes,
         serial_runtime_refreshes,

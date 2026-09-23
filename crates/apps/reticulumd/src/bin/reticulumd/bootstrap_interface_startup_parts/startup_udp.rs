@@ -81,14 +81,18 @@ async fn startup_udp(
     true
 }
 
-async fn startup_auto(
+async fn startup_auto<F>(
     iface: &InterfaceConfig,
     label: &str,
     iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
     record: &mut InterfaceRecord,
     startup_failures: &mut Vec<InterfaceStartupFailure>,
-) -> Option<AutoRuntimeRefresh> {
-    match auto::build_native_startup_plan(iface) {
+    plan_builder: &mut F,
+) -> Option<(AutoRuntimeRefresh, AutoRuntimeShutdown)>
+where
+    F: FnMut(&InterfaceConfig) -> Result<auto::AutoRuntimePlan, String>,
+{
+    match plan_builder(iface) {
         Ok(plan) => {
             let adopted_count = plan.adopted_devices.len();
             let candidate_count = plan.candidates.len();
@@ -127,10 +131,14 @@ async fn startup_auto(
                         Some(runtime_iface.as_str()),
                     );
                     mark_interface_runtime_fields(record, "running", 0);
-                    Some(AutoRuntimeRefresh {
-                        runtime_iface: host_iface,
-                        status: activation.status.clone(),
-                    })
+                    Some((
+                        AutoRuntimeRefresh { runtime_iface: host_iface, status: activation.status },
+                        AutoRuntimeShutdown {
+                            host_iface,
+                            runtime: activation.runtime,
+                            iface_manager: Arc::clone(iface_manager),
+                        },
+                    ))
                 }
                 Err(err) => {
                     record_startup_failure(

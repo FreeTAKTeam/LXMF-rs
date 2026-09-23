@@ -27,7 +27,7 @@ acceptance gate.
 | Interface inventory | The daemon has explicit startup branches for TCP/backbone, local TCP/Unix, UDP, AutoInterface, serial, Weave, KISS/AX.25, pipe, I2P, Meshtastic, BLE, LoRa, and RNodeMulti aliases; unknown kinds record an explicit unsupported-kind failure. | source inspection; cross-platform/live evidence open |
 | Native Windows CI | The PR workflow runs the `rnode-ble` library test filter on `windows-latest`, compiling the target-gated WinRT resolver, executing deterministic paired-ID/runtime tests, and invoking the real WinRT paired-device query. A runner with no paired radios may validly return an empty set; this does not verify physical pairing. | passed on `ca6b6bba` (18 tests); physical paired-RNode behavior remains unverified |
 | AutoInterface software lifecycle | A loopback-only library regression keeps the returned `AutoDiscoveryRuntime` stop handle, awaits `stop()`, and restarts on the same discovery and data ports. A daemon-binary regression now calls the same private activation helper used after native plan construction: it registers the daemon multicast channel, creates the AutoInterface transport adapter, starts two discovery sockets and one data listener, awaits runtime/task teardown and channel removal, then restarts on the identical test-owned ports. Native discovery and production device filtering are unchanged. | both focused software regressions pass locally; full daemon process/signal shutdown, native link-local enumeration, carrier-loss equivalence, platform coverage, and physical carrier behavior remain unverified |
-| Daemon-configured AutoInterface restart | A separate daemon-binary regression parses a real `AutoInterface` TOML stanza with test-owned loopback ports, maps it through the daemon's production AutoInterface config mapper, supplies deterministic loopback listener bindings, and activates/stops/restarts through the production daemon adapter. It verifies the configured ports and group ID reach runtime config, both discovery sockets and the data listener start, and the configured ports are reusable after stop. This avoids nondeterministic OS interface enumeration while exercising config parsing/mapping plus daemon activation. | focused software-only config-to-adapter regression; does not invoke the complete `startup_configured_interfaces` OS-discovery branch, prove native enumeration, or establish platform/physical carrier behavior |
+| Daemon-configured AutoInterface ownership and restart | The daemon retains each started `AutoDiscoveryRuntime` stop handle separately from the status refresher, carries it through bootstrap into `BootstrapContext`, then awaits `stop()` before removing the InterfaceManager host channel after RPC shutdown. A deterministic plan-builder seam is limited to configured-interface startup; production still calls the unchanged native `build_native_startup_plan`. The regression parses a real `AutoInterface` TOML stanza, maps its config, injects loopback listener bindings, invokes `startup_configured_interfaces`, verifies running/status handles and channel registration, calls the same async shutdown helper as daemon main, confirms socket release/channel removal, and restarts on the same ports. | focused software-only configured-startup/shutdown/restart regression; full process signal/RPC integration, native enumeration, platform coverage, and physical carrier behavior remain unverified |
 | AutoInterface partial-startup socket rollback | A loopback library regression lets production startup bind its discovery sockets, then injects an invalid data-listener address so startup returns an error before yielding a runtime handle. It immediately binds the same discovery port with a standard UDP socket, repairs the data address, and successfully starts/stops the same plan. This demonstrates cleanup of already-bound discovery sockets on a later bind failure. | focused Unix loopback regression; does not test native interface enumeration, multicast delivery, Windows/macOS socket semantics, or full daemon process/signal teardown |
 
 ## Commands and results
@@ -134,6 +134,17 @@ cargo fmt --all -- --check PASS
 tools/scripts/check-module-size.sh PASS
 cargo run -p xtask -- architecture-checks PASS
 tools/scripts/check-boundaries.sh PASS
+git diff --check PASS
+```
+
+The daemon-owned configured-startup/shutdown regression was added on PR #634:
+
+```text
+cargo test -p reticulumd --bin reticulumd configured_daemon_auto_shutdown_releases_sockets_and_allows_restart -- --nocapture PASS (1 test)
+cargo test -p reticulumd --bin reticulumd auto_ -- --nocapture PASS (5 tests)
+cargo clippy -p reticulumd --all-targets --no-deps -- -D warnings PASS
+cargo fmt --all -- --check PASS
+tools/scripts/check-module-size.sh PASS
 git diff --check PASS
 ```
 

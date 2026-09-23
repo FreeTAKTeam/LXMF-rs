@@ -42,6 +42,7 @@ pub(super) struct InterfaceStartupBatch {
     pub(super) tunnel_synth_ifaces: Vec<AddressHash>,
     pub(super) connected_to_shared_instance: bool,
     pub(super) auto_runtime_refreshes: Vec<AutoRuntimeRefresh>,
+    pub(super) auto_runtime_shutdowns: Vec<AutoRuntimeShutdown>,
     pub(super) pipe_runtime_refreshes: Vec<PipeRuntimeRefresh>,
     pub(super) udp_runtime_refreshes: Vec<UdpRuntimeRefresh>,
     pub(super) serial_runtime_refreshes: Vec<SerialRuntimeRefresh>,
@@ -60,10 +61,22 @@ pub(super) struct InterfaceStartupBatch {
     pub(super) weave_control_bindings: Vec<WeaveControlBinding>,
 }
 
-#[derive(Clone)]
 pub(crate) struct AutoRuntimeRefresh {
     pub(crate) runtime_iface: AddressHash,
     pub(crate) status: auto::AutoRuntimeStatusHandle,
+}
+
+pub(crate) struct AutoRuntimeShutdown {
+    pub(crate) host_iface: AddressHash,
+    pub(crate) runtime: rns_transport::iface::auto_runtime::AutoDiscoveryRuntime,
+    pub(crate) iface_manager: Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
+}
+
+impl AutoRuntimeShutdown {
+    pub(crate) async fn stop(self) -> bool {
+        self.runtime.stop().await;
+        self.iface_manager.lock().await.stop_interface(self.host_iface)
+    }
 }
 
 #[derive(Clone)]
@@ -222,12 +235,46 @@ pub(super) async fn startup_configured_interfaces(
     shared_reconnect_events: Option<tokio::sync::mpsc::Sender<AddressHash>>,
     transport_identity_hash: Option<[u8; 16]>,
 ) -> InterfaceStartupBatch {
+    startup_configured_interfaces_with_auto_plan_builder(
+        args,
+        config,
+        selected_tcp_server,
+        transport,
+        iface_manager,
+        server_iface,
+        configured_interfaces,
+        reticulum_storage_path,
+        shared_reconnect_events,
+        transport_identity_hash,
+        auto::build_native_startup_plan,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn startup_configured_interfaces_with_auto_plan_builder<F>(
+    args: &Args,
+    config: &DaemonConfig,
+    selected_tcp_server: &TcpServerSelection,
+    transport: &Transport,
+    iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
+    server_iface: Option<&AddressHash>,
+    configured_interfaces: &mut [InterfaceRecord],
+    reticulum_storage_path: &std::path::Path,
+    shared_reconnect_events: Option<tokio::sync::mpsc::Sender<AddressHash>>,
+    transport_identity_hash: Option<[u8; 16]>,
+    mut auto_plan_builder: F,
+) -> InterfaceStartupBatch
+where
+    F: FnMut(&InterfaceConfig) -> Result<auto::AutoRuntimePlan, String>,
+{
     let mut startup_successes = 0usize;
     let mut startup_failures = Vec::new();
     let mut seeded_hot_apply_interfaces = Vec::new();
     let mut tunnel_synth_ifaces = Vec::new();
     let mut connected_to_shared_instance = false;
     let mut auto_runtime_refreshes = Vec::new();
+    let mut auto_runtime_shutdowns = Vec::new();
     let mut pipe_runtime_refreshes = Vec::new();
     let mut udp_runtime_refreshes = Vec::new();
     let mut serial_runtime_refreshes = Vec::new();
@@ -441,17 +488,19 @@ pub(super) async fn startup_configured_interfaces(
                 }
             }
             "auto" => {
-                if let Some(refresh) = startup_auto(
+                if let Some((refresh, shutdown)) = startup_auto(
                     iface,
                     &label,
                     iface_manager,
                     &mut configured_interfaces[index],
                     &mut startup_failures,
+                    &mut auto_plan_builder,
                 )
                 .await
                 {
                     startup_successes += 1;
                     auto_runtime_refreshes.push(refresh);
+                    auto_runtime_shutdowns.push(shutdown);
                 }
             }
             "serial" => {
@@ -663,6 +712,7 @@ pub(super) async fn startup_configured_interfaces(
         tunnel_synth_ifaces,
         connected_to_shared_instance,
         auto_runtime_refreshes,
+        auto_runtime_shutdowns,
         pipe_runtime_refreshes,
         udp_runtime_refreshes,
         serial_runtime_refreshes,
