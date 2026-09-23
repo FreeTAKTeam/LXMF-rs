@@ -221,6 +221,12 @@ so the utilities row stays partial/unverified.
 Implemented interface families are active runtime code, not parser-only
 placeholders:
 
+Forward-candidate IFAC evidence now also includes a Unix subprocess loopback
+through the spawned Rust `PipeInterface` worker, checking the reference
+8-byte default tag, authenticated HDLC packet admission, and child shutdown.
+This supplements (but does not replace) the pinned Python/Rust TCP and UDP
+traces; remaining carrier-family and support-matrix requirements stay partial.
+
 ### v0.9.0 interface evidence boundary
 
 | Evidence slice | Applies here | Boundary |

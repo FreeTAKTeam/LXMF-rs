@@ -248,3 +248,23 @@ These checks exercise the common decoder through Rust/Python TCP and UDP
 Channel, Resource, daemon, credential-rotation, tampering, and shared-instance
 paths. They do not complete the remaining carrier-family or physical-support
 matrix.
+
+## PR #628 follow-up: PipeInterface IFAC runtime
+
+The spawned Rust `PipeInterface` worker now has a Unix loopback regression
+using a real `cat` subprocess. It configures IFAC without an explicit size,
+checks the Python reference Pipe default of 8 bytes on the runtime channel,
+then sends an authenticated packet through the production worker's IFAC and
+HDLC transmit/receive path. The echoed packet is admitted with IFAC provenance,
+the violation counter remains zero, and stopping the interface terminates the
+child process.
+
+```text
+cargo test -p reticulum-rs-transport --lib \
+  pipe_worker_roundtrips_authenticated_packet_with_reference_default_tag_size -- --nocapture
+  1 passed; Unix-only subprocess loopback
+```
+
+This is carrier-runtime evidence, not Python-peer interoperability. TCP and
+UDP retain the mixed Python/Rust evidence above; other carrier-family software
+paths and physical-support rows remain open.

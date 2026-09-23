@@ -28,8 +28,10 @@ UDP path also has bidirectional IFAC direct-message evidence, valid-frame tamper
 rejection, live credential rotation, fail-closed restart evidence, and an
 IFAC-protected shared-instance path with an attached Rust client. Packet-level
 IFAC decoding now uses one locked context for frame authentication and
-verified-wire provenance across live reconfiguration. Other carrier families
-and the broader software support matrix, remaining remote utility behavior,
+verified-wire provenance across live reconfiguration. The spawned
+`PipeInterface` worker also has a Unix subprocess loopback regression for its
+8-byte IFAC default and authenticated HDLC packet admission. Other carrier
+families and the broader software support matrix, remaining remote utility behavior,
 transport policy differences, and platform validation remain open; the
 focused #611 `rncp`
 compression/send/fetch matrix, bounded
