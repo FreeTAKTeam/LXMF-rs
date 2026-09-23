@@ -250,9 +250,11 @@ the frozen null-identity hash in its blocked set, then requests the front page
 from a pinned Python client that has not identified its Link. The Python side
 independently derives and checks the same null-identity hash, and the test
 asserts request status `READY`, the exact complete rendered `no_ident` page
-including the base template/footer, and absence of private repository canaries.
-This tests the process, request dispatch, access gate, and response framing;
-the acceptance item remains partial beyond this behavior.
+including the base template/footer, and absence of seeded private content. The
+test fixture commits `private-canary: secret-repository content must not be
+disclosed` into the private bare repository, whose repository-level policy is
+`read:none`. This tests the process, request dispatch, access gate, and
+response framing; the acceptance item remains partial beyond this behavior.
 
 ```text
 RETICULUM_PY_REPO=<checkout at 99de23c040d507e3fefca19e87b182302902725d> \

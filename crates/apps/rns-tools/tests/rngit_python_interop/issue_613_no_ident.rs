@@ -1,9 +1,10 @@
 use super::{
-    create_repository_fixture, free_port, python_bin, python_repo, rust_destination, wait_for_port,
-    write_python_config,
+    create_repository_fixture, free_port, python_bin, python_repo, run_git, rust_destination,
+    wait_for_port, write_python_config,
 };
 use std::fs;
 use std::io;
+use std::path::Path;
 use std::process::{Command, Stdio};
 
 #[test]
@@ -78,6 +79,7 @@ fn rngit_returns_reference_no_ident_page_to_blocked_anonymous_python_link() -> i
         super::PYTHON_INTEROP_TEST_LOCK.lock().expect("Python interop test lock poisoned");
     let temp = tempfile::tempdir()?;
     let root = create_repository_fixture(temp.path())?;
+    seed_private_repository_canary(&root, temp.path())?;
     let python_repo = python_repo();
     if !python_repo.join("RNS/Link.py").is_file() {
         return Err(io::Error::new(
@@ -141,6 +143,26 @@ fn rngit_returns_reference_no_ident_page_to_blocked_anonymous_python_link() -> i
     let _ = server.kill();
     let _ = server.wait();
     result
+}
+
+fn seed_private_repository_canary(root: &Path, temp: &Path) -> io::Result<()> {
+    let repository = root.join("private/repo");
+    let source = temp.join("private-canary-source");
+    fs::create_dir_all(&source)?;
+    run_git(&source, &["init", "-q"])?;
+    run_git(&source, &["config", "user.email", "rngit-private@example.invalid"])?;
+    run_git(&source, &["config", "user.name", "rngit-private-fixture"])?;
+    run_git(&source, &["checkout", "-qb", "main"])?;
+    fs::write(
+        source.join("README.md"),
+        b"private-canary: secret-repository content must not be disclosed\n",
+    )?;
+    run_git(&source, &["add", "README.md"])?;
+    run_git(&source, &["commit", "-qm", "seed private response canary"])?;
+    let repository_url = repository.to_string_lossy().into_owned();
+    run_git(&source, &["remote", "add", "private", &repository_url])?;
+    run_git(&source, &["push", "-q", "private", "main"])?;
+    Ok(())
 }
 
 const PYTHON_CLIENT: &str = r#"
