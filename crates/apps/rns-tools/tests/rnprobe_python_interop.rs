@@ -147,6 +147,43 @@ fn wait_for_output(mut child: Child, timeout: Duration, label: &str) -> io::Resu
     )))
 }
 
+#[test]
+#[ignore = "requires the pinned Python Reticulum checkout"]
+fn rnprobe_invalid_probe_count_matches_pinned_python_process_failure() -> io::Result<()> {
+    let repo = python_repo();
+    let script = repo.join("RNS/Utilities/rnprobe.py");
+    if !script.is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("pinned Python rnprobe script not found: {}", script.display()),
+        ));
+    }
+
+    let args =
+        ["rnstransport.probe", "00112233445566778899aabbccddeeff", "--probes", "not-an-integer"];
+    let python =
+        Command::new(python_bin()).arg(script).args(args).env("PYTHONPATH", &repo).output()?;
+    let rust = Command::new(env!("CARGO_BIN_EXE_rnprobe")).args(args).output()?;
+
+    assert_eq!(
+        python.status.code(),
+        Some(2),
+        "pinned Python stderr: {}",
+        String::from_utf8_lossy(&python.stderr)
+    );
+    assert_eq!(
+        rust.status.code(),
+        Some(2),
+        "Rust stderr: {}",
+        String::from_utf8_lossy(&rust.stderr)
+    );
+    let python_error = String::from_utf8_lossy(&python.stderr);
+    let rust_error = String::from_utf8_lossy(&rust.stderr);
+    assert!(python_error.contains("argument -n/--probes: invalid int value"), "{python_error}");
+    assert!(rust_error.contains("invalid value 'not-an-integer' for '--probes"), "{rust_error}");
+    Ok(())
+}
+
 fn spawn_rust_daemon(
     config: &Path,
     db: &Path,
