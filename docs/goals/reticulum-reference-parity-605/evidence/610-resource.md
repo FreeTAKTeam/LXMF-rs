@@ -51,14 +51,15 @@ it does not promote the full #610 acceptance contract or close parent issue
   Rust transport with forwarding enabled. The client waits for the remote
   Python endpoint callback and verifies the exact size and SHA-256 digest.
 - The pinned-Python interop suite now drives cancellation in both directions:
-  a Python receiver cancels a Rust reader-backed split send and Rust emits one
-  `OutboundCancelled` terminal event, while a Python sender cancels after
+  a Python receiver rejects a Rust reader-backed split send and Rust emits one
+  `OutboundRejected` terminal event, while a Python sender cancels after
   advertisement and Rust emits `InboundFailed(reason=remote_cancelled)`.
-  The Python sender also reports its own `FAILED` callback status.
+  The Python sender also reports its own `FAILED` callback status. A local Rust
+  caller cancellation remains the distinct `OutboundCancelled` event.
 - The `lxmf-runtime` Resource-event consumer now has explicit terminal-event
-  regressions: `OutboundFailed` and `OutboundCancelled` become SDK transport
-  errors with distinct caller-visible messages, and both failure paths attempt
-  cleanup rather than reporting success.
+  regressions: `OutboundFailed`, `OutboundRejected`, and `OutboundCancelled`
+  become SDK transport errors with distinct caller-visible messages, and each
+  terminal path attempts cleanup rather than reporting success.
 - A pinned-Python shutdown trace now waits for the receiver's
   `resource_started` callback, terminates that exact Python process after the
   Rust advertisement is admitted, and observes one Rust `OutboundFailed`
@@ -371,6 +372,50 @@ cargo test -p reticulumd --bin reticulumd \
   outbound_resource_failure_event_marks_tracking_failed
 # 1 passed; 466 filtered out
 ```
+
+## Python RCL/ICL terminal-event distinction
+
+The 2026-09-23 candidate aligns remote cancellation with the pinned Python
+`RNS/Link.py` context routing. `RESOURCE_ICL` applies only to an incoming
+Resource and reports `InboundFailed(reason=remote_cancelled)`;
+`RESOURCE_RCL` applies only to an outgoing Resource and reports
+`OutboundRejected`. The Rust-local outgoing cancel API continues to report
+`OutboundCancelled`. This prevents a peer rejection from being mislabeled as a
+local cancellation or from clearing a Resource in the wrong direction.
+
+The `OutboundRejected` event is propagated as a distinct SDK transport error,
+remote-control error, daemon `resource-rejected` terminal receipt with tracking
+cleanup, `rncp` client/server failure, and independent-interop event. A pinned
+Python receiver exercises the RCL path over the real interop harness; focused
+unit tests cover context isolation, split-tail cleanup, and the preserved local
+cancel event.
+
+```text
+cargo test -p reticulum-rs-transport --all-features --lib  # 828 passed
+cargo test -p lxmf-runtime  # 15 passed
+cargo test -p reticulumd --bin reticulumd --all-features  # 470 passed
+cargo test -p reticulumd --test python_channel_interop --no-run
+RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
+  LXMF_PYTHON_BIN=python3 cargo test -p reticulumd \
+  --test python_channel_interop \
+  rust_sender_maps_pinned_python_receiver_cancel_to_rejection \
+  -- --ignored --nocapture --test-threads=1
+# 1 passed; pinned Python receiver RCL maps to Rust OutboundRejected
+cargo check -p rns-tools --all-targets --all-features
+cargo clippy -p reticulum-rs-transport --all-targets --all-features --no-deps -- -D warnings
+cargo clippy -p lxmf-runtime --all-targets --all-features --no-deps -- -D warnings
+cargo clippy -p reticulumd --bin reticulumd --all-targets --all-features --no-deps -- -D warnings
+cargo clippy -p rns-tools --all-targets --all-features --no-deps -- -D warnings
+tools/scripts/check-module-size.sh
+tools/scripts/check-boundaries.sh  # passes; two existing legacy-boundary notices
+python3 tools/scripts/python_surface_inventory.py --check
+cargo fmt --all -- --check
+git diff --check
+```
+
+This is a focused terminal-event fidelity increment, not completion of the
+broader timeout, callback/status, mixed-peer size, or operational acceptance
+matrix.
 
 ## Remaining acceptance boundary
 

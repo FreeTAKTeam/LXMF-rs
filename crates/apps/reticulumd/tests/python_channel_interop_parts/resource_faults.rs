@@ -30,7 +30,7 @@ impl std::io::Read for FaultingResourceReader {
 
 #[tokio::test]
 #[ignore = "requires local Python Reticulum checkout"]
-async fn rust_sender_observes_pinned_python_receiver_cancellation() {
+async fn rust_sender_maps_pinned_python_receiver_cancel_to_rejection() {
     let _interop_guard = python_interop_guard().await;
     let paths = python_channel_interop_paths();
 
@@ -75,7 +75,7 @@ async fn rust_sender_observes_pinned_python_receiver_cancellation() {
         .await
         .expect("send cancellable reader-backed resource");
 
-    wait_for_outbound_resource_cancelled(&mut resource_events, resource_hash, Duration::from_secs(15))
+    wait_for_outbound_resource_rejected(&mut resource_events, resource_hash, Duration::from_secs(15))
         .await;
 }
 

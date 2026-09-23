@@ -166,6 +166,14 @@ remaining consumer callback/status matrix. Separate `lxmf-runtime` consumer regr
 distinct transport errors and cleanup is attempted; broader SDK/daemon consumer
 matrices remain open.
 
+The 2026-09-23 #610 candidate adds the Python `RESOURCE_ICL`/`RESOURCE_RCL`
+terminal distinction: inbound remote cancellation maps to `InboundFailed`,
+outbound peer rejection maps to `OutboundRejected`, and local cancellation
+remains `OutboundCancelled`. A pinned-Python receiver exercises the RCL path;
+transport, SDK, daemon receipt/remote-control, `rncp`, and independent-event
+consumers preserve the rejection outcome and cleanup. This is focused software
+evidence and does not close the wider #610 callback/status or operational gates.
+
 The #611 implementation slice now has committed local evidence in
 [`evidence/611-utilities.md`](../goals/reticulum-reference-parity-605/evidence/611-utilities.md):
 native `rncp` listener, discovery, Link identification, authenticated send and

@@ -163,6 +163,13 @@ pub(super) fn spawn_inbound_worker(
                             &event.hash,
                         );
                     }
+                    ResourceEventKind::OutboundRejected => {
+                        handle_outbound_resource_rejection(
+                            &outbound_resource_map,
+                            &receipt_tx,
+                            &event.hash,
+                        );
+                    }
                     ResourceEventKind::OutboundCancelled => {
                         let resource_hash_hex = hex::encode(event.hash.as_slice());
                         match take_outbound_resource_tracking(
@@ -286,6 +293,29 @@ fn handle_outbound_resource_failure(
         }
         Err(err) => {
             log::warn!("[daemon-rx] outbound resource failure without tracking hash={}: {err}", resource_hash_hex);
+        }
+    }
+}
+
+fn handle_outbound_resource_rejection(
+    outbound_resource_map: &OutboundResourceMap,
+    receipt_tx: &tokio::sync::mpsc::Sender<ReceiptEvent>,
+    resource_hash: &Hash,
+) {
+    let resource_hash_hex = hex::encode(resource_hash.as_slice());
+    match take_outbound_resource_tracking(outbound_resource_map, resource_hash_hex.as_str()) {
+        Ok(tracking) => {
+            emit_receipt_event(
+                receipt_tx,
+                ReceiptEvent::new(tracking.message_id, "rejected")
+                    .with_resource_hash(resource_hash_hex)
+                    .with_peer(tracking.peer)
+                    .with_delivery_kind("resource-rejected")
+                    .with_bytes(tracking.bytes),
+            );
+        }
+        Err(err) => {
+            log::warn!("[daemon-rx] outbound resource rejection without tracking hash={}: {err}", resource_hash_hex);
         }
     }
 }

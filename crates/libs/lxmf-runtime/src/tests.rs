@@ -259,6 +259,37 @@ async fn cancelled_resource_is_reported_and_cleanup_is_attempted() {
 }
 
 #[tokio::test]
+async fn rejected_resource_is_reported_and_cleanup_is_attempted() {
+    let (sender, mut receiver) = broadcast::channel(2);
+    let expected_hash = Hash::new_from_slice(b"expected");
+    sender
+        .send(ResourceEvent {
+            hash: expected_hash,
+            link_id: AddressHash::new_from_slice(b"link"),
+            kind: ResourceEventKind::OutboundRejected,
+        })
+        .expect("queue rejection");
+    let cleanup_attempted = Arc::new(AtomicBool::new(false));
+    let cleanup_observer = cleanup_attempted.clone();
+
+    let error = await_resource_completion_with_cancel(
+        &mut receiver,
+        expected_hash,
+        Duration::from_secs(1),
+        async move {
+            cleanup_observer.store(true, Ordering::SeqCst);
+            Ok(())
+        },
+    )
+    .await
+    .expect_err("rejected resource must not appear successful");
+
+    assert_eq!(error.category, lxmf_sdk::ErrorCategory::Transport);
+    assert_eq!(error.message, "resource transfer rejected");
+    assert!(cleanup_attempted.load(Ordering::SeqCst));
+}
+
+#[tokio::test]
 async fn delivery_updates_drive_status_snapshot_and_events() {
     let identity = rns_transport::identity::PrivateIdentity::new_from_rand(OsRng);
     let transport = std::sync::Arc::new(Transport::new(TransportConfig::new(

@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last reassessed: 2026-09-21
+Last reassessed: 2026-09-23
 
 This file is the repository-level source of truth for parity posture, release
 confidence, and execution order. Detailed row-level status lives in:
@@ -54,7 +54,13 @@ coverage, including peer backoff status; other consumer callback/status paths
 remain open. Focused `lxmf-runtime` tests also
 confirm `OutboundFailed` and `OutboundCancelled` become distinct SDK transport
 errors and cleanup is attempted, without claiming the remaining consumer
-matrix.
+matrix. The 2026-09-23 #610 increment aligns Python Resource cancellation
+contexts: `RESOURCE_RCL` is an outbound rejection (`OutboundRejected`),
+`RESOURCE_ICL` is an inbound remote cancellation (`InboundFailed`), and a
+Rust-local outgoing cancel remains `OutboundCancelled`. Pinned-Python,
+transport, SDK, daemon receipt, remote-control, and utility-consumer regressions
+cover the distinction; the wider timeout and consumer-status matrix remains
+open.
 
 The #623 byte-level conformance lane is now executable through
 `cargo xtask interop`. It checks exact Python Reticulum/LXMF pins, Python→Rust
