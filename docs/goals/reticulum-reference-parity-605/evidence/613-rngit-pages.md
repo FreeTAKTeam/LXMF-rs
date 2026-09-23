@@ -132,17 +132,37 @@ A separate pinned-Python differential case exercises `/media` authorization
 over a production Rust TCP Link. The fixture contains a committed
 `secret.bin` in a repository whose `read:none` policy denies access; the Python
 client leaves its Link unidentified and requests that valid blob at
-`/media/private/repo/HEAD/secret.bin`. The request receives no response, and
-the client also checks that the private canary bytes are absent. This records
-the reference behavior from `pages.py` (repository access is checked before
-ref/blob resolution and denial returns `False`) for this one denied-media
-case. It does not complete the `/media` acceptance set or the overall #613
-acceptance.
+`/media/private/repo/HEAD/secret.bin`. The Rust service sends no response, and
+the client checks that the private canary bytes are absent. The pinned
+`pages.py` handler returns `False` on access denial; pinned `Link.py` serializes
+that non-`None` value as a scalar response. This case therefore evidences
+Rust-side confidentiality, not matching denial wire semantics. It does not
+complete the `/media` acceptance set or the overall #613 acceptance.
 
 ```text
 RETICULUM_PY_REPO=<checkout at 99de23c040d507e3fefca19e87b182302902725d> \
 LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
   rngit_denies_private_media_over_unidentified_python_link \
+  -- --ignored --nocapture                                      PASS (1 test)
+```
+
+The invalid-ref differential uses one production Rust service and one pinned
+Python TCP Link for both requests. First, `/media/group/repo/main/assets%2Fspace+name.bin`
+returns a Resource named `space name.bin` with the exact 29-byte fixture
+(`70657263656e74206465636f646564206d65646961207061746800ff0a`). Then the same
+path with ref `no-such-ref-613` returns the reference's scalar `False`, with no
+Resource metadata or media bytes. The pinned `pages.py` checks repository
+access before `resolve_ref` and returns `False` for an unresolved ref; pinned
+`Link.py` sends any non-`None` handler result as a response. The Rust handler
+now emits that false-valued response for an invalid resolved ref and accepts
+ordinary short Git refs such as `main` in its ref validation. This covers only
+the invalid-ref case; other named media validations and the overall #613
+acceptance remain open.
+
+```text
+RETICULUM_PY_REPO=<checkout at 99de23c040d507e3fefca19e87b182302902725d> \
+LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
+  rngit_invalid_media_ref_returns_reference_denial_over_python_link \
   -- --ignored --nocapture                                      PASS (1 test)
 ```
 

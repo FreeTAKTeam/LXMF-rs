@@ -101,7 +101,9 @@ impl ReticulumGitNode {
         let (group, repository, reference, file_path) = Self::media_request_path(&request_path)?;
         let record = self.accessible_repository(&remote, &group, &repository)?;
         let repository_path = record.path.clone();
-        let resolved = Self::resolve_page_ref(&repository_path, &reference)?;
+        let Some(resolved) = Self::resolve_page_ref(&repository_path, &reference) else {
+            return Some(page_denial_response());
+        };
         let blob = Self::page_blob(&repository_path, &resolved, &file_path, MEDIA_BLOB_LIMIT)?;
         let original_name = filename(&file_path)?;
         let extension = Path::new(&file_path)

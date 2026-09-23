@@ -50,6 +50,7 @@ static MEDIA_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 pub(crate) struct PageResponse {
     pub data: Vec<u8>,
     pub metadata: Option<Vec<u8>>,
+    pub response_is_false: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -142,7 +143,11 @@ fn null_identity(identity: &[u8; 16]) -> bool {
 }
 
 fn page_response(data: Vec<u8>, metadata: Option<Vec<u8>>) -> PageResponse {
-    PageResponse { data, metadata }
+    PageResponse { data, metadata, response_is_false: false }
+}
+
+fn page_denial_response() -> PageResponse {
+    PageResponse { data: Vec::new(), metadata: None, response_is_false: true }
 }
 
 impl ReticulumGitNode {
@@ -362,7 +367,14 @@ impl ReticulumGitNode {
     ) -> Vec<u8> {
         let value = rmpv::Value::Map(data.to_vec());
         match self.handle_page_request(path, &value, remote_identity, [0; 16]) {
-            Some(PageResponse { data, .. }) => response(Self::RES_OK, "", Some(&rmpv::Value::Binary(data))),
+            Some(page_response) => {
+                let value = if page_response.response_is_false {
+                    rmpv::Value::Boolean(false)
+                } else {
+                    rmpv::Value::Binary(page_response.data)
+                };
+                response(Self::RES_OK, "", Some(&value))
+            }
             None => response(Self::RES_NOT_FOUND, "Not found", None),
         }
     }

@@ -35,10 +35,13 @@ impl ReticulumGitNode {
         }
         reference == "HEAD"
             || san_sha(reference).is_some()
-            || (reference.starts_with("refs/")
-                && reference.split('/').all(|component| {
-                    !component.is_empty() && component != "." && component != ".."
-                }))
+            || reference.split('/').all(|component| {
+                !component.is_empty()
+                    && !component.starts_with('.')
+                    && !component.ends_with('.')
+                    && !component.ends_with(".lock")
+                    && component != "@"
+            })
     }
 
     fn resolve_page_ref(path: &Path, reference: &str) -> Option<String> {

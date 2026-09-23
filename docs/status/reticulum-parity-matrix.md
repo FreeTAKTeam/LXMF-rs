@@ -143,8 +143,16 @@ without promoting the broader #613 row.
 A separate production-Link differential case sends a valid private media path
 from an unidentified pinned-Python client to a repository with `read:none`.
 The Rust service returns no media response and the private canary bytes are
-absent. This covers denied `/media` access only; invalid media refs and the
-other named acceptance cases remain unproven, and #613 remains partial.
+absent. Pinned `pages.py` returns `False` for this denial, which pinned
+`Link.py` sends as a scalar response; this case establishes Rust confidentiality
+but not identical denial wire semantics.
+
+A separate same-Link media differential first verifies the exact Resource name
+and bytes from valid ref `main`, then verifies ref `no-such-ref-613` yields the
+reference's `False` response without Resource metadata or media bytes. The Rust
+page handler now emits that false-valued response for unresolved refs and
+accepts short Git ref names. Other named media cases remain unproven, so #613
+remains partial.
 
 The issue-specific #613 live trace also observes one WebP conversion temporary
 directory while the pinned-Python Reticulum Link is active, tears that Link

@@ -305,7 +305,7 @@ async fn process_request(
                 remote,
                 peer_identity,
             );
-            Some(PageResponse { data, metadata: None })
+            Some(PageResponse { data, metadata: None, response_is_false: false })
         }
     };
     if let Some(response) = response {
@@ -409,10 +409,12 @@ async fn send_response(
         return Ok(());
     }
 
-    let envelope = rmpv::Value::Array(vec![
-        rmpv::Value::Binary(request_id.clone()),
-        rmpv::Value::Binary(response.data),
-    ]);
+    let response_value = if response.response_is_false {
+        rmpv::Value::Boolean(false)
+    } else {
+        rmpv::Value::Binary(response.data)
+    };
+    let envelope = rmpv::Value::Array(vec![rmpv::Value::Binary(request_id.clone()), response_value]);
     let mut encoded = Vec::new();
     rmpv::encode::write_value(&mut encoded, &envelope).map_err(io::Error::other)?;
     let link = runtime.transport.find_in_link(&link_id).await.ok_or_else(|| {
