@@ -167,6 +167,87 @@ struct PythonRuntime<'a> {
     python: &'a str,
     script: &'a Path,
     repo: &'a Path,
+    resource_observation: Option<(&'a Path, &'a Path)>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct ResourceAdvertisementObservation {
+    direction: String,
+    transfer_size: u64,
+    data_size: u64,
+    compressed: bool,
+    is_request: bool,
+    is_response: bool,
+}
+
+fn configure_python_runtime(command: &mut Command, runtime: &PythonRuntime<'_>) -> io::Result<()> {
+    let mut python_paths = Vec::new();
+    if let Some((recorder_dir, log_path)) = runtime.resource_observation {
+        python_paths.push(recorder_dir.to_path_buf());
+        command.env("LXMF_RNCP_RESOURCE_ADVERTISEMENTS", log_path);
+    }
+    python_paths.push(runtime.repo.to_path_buf());
+    command.env("PYTHONPATH", std::env::join_paths(python_paths).map_err(io::Error::other)?);
+    Ok(())
+}
+
+fn read_resource_advertisement_observations(
+    path: &Path,
+) -> io::Result<Vec<ResourceAdvertisementObservation>> {
+    fs::read_to_string(path)?
+        .lines()
+        .map(|line| {
+            let fields = line.split('\t').collect::<Vec<_>>();
+            if fields.len() != 6 {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("invalid Resource advertisement observation: {line}"),
+                ));
+            }
+            Ok(ResourceAdvertisementObservation {
+                direction: fields[0].to_owned(),
+                transfer_size: fields[1].parse().map_err(io::Error::other)?,
+                data_size: fields[2].parse().map_err(io::Error::other)?,
+                compressed: fields[3].parse().map_err(io::Error::other)?,
+                is_request: fields[4].parse().map_err(io::Error::other)?,
+                is_response: fields[5].parse().map_err(io::Error::other)?,
+            })
+        })
+        .collect()
+}
+
+fn assert_resource_advertisements(
+    path: &Path,
+    expected: &[(&str, bool, bool, bool)],
+) -> io::Result<()> {
+    let mut observed = read_resource_advertisement_observations(path)?;
+    assert_eq!(observed.len(), expected.len(), "unexpected Resource advertisements: {observed:?}");
+    for (direction, compressed, is_request, is_response) in expected {
+        let Some(index) = observed.iter().position(|observation| {
+            observation.direction == *direction
+                && observation.compressed == *compressed
+                && observation.is_request == *is_request
+                && observation.is_response == *is_response
+        }) else {
+            return Err(io::Error::other(format!(
+                "missing Resource advertisement direction={direction} compressed={compressed} request={is_request} response={is_response}; observed {observed:?}"
+            )));
+        };
+        let observation = observed.remove(index);
+        assert!(observation.data_size > 0, "empty advertised Resource data: {observation:?}");
+        if *compressed {
+            assert!(
+                observation.transfer_size < observation.data_size,
+                "compressed Resource did not reduce advertised transfer size: {observation:?}"
+            );
+        } else {
+            assert!(
+                observation.transfer_size >= observation.data_size,
+                "uncompressed Resource transfer is smaller than its source data: {observation:?}"
+            );
+        }
+    }
+    Ok(())
 }
 
 struct PythonListenerOptions<'a> {
@@ -202,7 +283,8 @@ fn run_python_send(
     if no_compress {
         command.arg("-C");
     }
-    let output = command.env("PYTHONPATH", runtime.repo).output()?;
+    configure_python_runtime(&mut command, runtime)?;
+    let output = command.output()?;
     Ok(output)
 }
 
@@ -351,12 +433,8 @@ fn spawn_python_listener_with_save_root(
         command.arg("-v");
     }
     let stdout = if options.capture_stdout { Stdio::piped() } else { Stdio::null() };
-    command
-        .env("PYTHONPATH", runtime.repo)
-        .env("PYTHONUNBUFFERED", "1")
-        .stdout(stdout)
-        .stderr(Stdio::piped())
-        .spawn()
+    configure_python_runtime(&mut command, runtime)?;
+    command.env("PYTHONUNBUFFERED", "1").stdout(stdout).stderr(Stdio::piped()).spawn()
 }
 
 #[test]
@@ -373,7 +451,8 @@ fn rncp_python_listener_reports_received_file_disk_error() -> io::Result<()> {
             format!("pinned Python rncp script not found: {}", script.display()),
         ));
     }
-    let python_runtime = PythonRuntime { python: &python, script: &script, repo: &repo };
+    let python_runtime =
+        PythonRuntime { python: &python, script: &script, repo: &repo, resource_observation: None };
     let python_listener_root = temp.path().join("python-listener-root");
     fs::create_dir_all(&python_listener_root)?;
     let save_root = temp.path().join("python-save-root");
@@ -541,7 +620,8 @@ fn rncp_exchanges_binary_files_with_pinned_python_in_both_directions() -> io::Re
             format!("pinned Python rncp script not found: {}", script.display()),
         ));
     }
-    let python_runtime = PythonRuntime { python: &python, script: &script, repo: &repo };
+    let python_runtime =
+        PythonRuntime { python: &python, script: &script, repo: &repo, resource_observation: None };
 
     let python_sender_config = temp.path().join("python-sender");
     fs::create_dir_all(&python_sender_config)?;
@@ -733,7 +813,16 @@ fn rncp_mixed_runtime_compression_matrix_roundtrips_binary_files() -> io::Result
             format!("pinned Python rncp script not found: {}", script.display()),
         ));
     }
-    let python_runtime = PythonRuntime { python: &python, script: &script, repo: &repo };
+    let resource_recorder_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/python_resource_advertisement_recorder");
+    let resource_observation_log = temp.path().join("resource-advertisements.tsv");
+    fs::write(&resource_observation_log, b"")?;
+    let python_runtime = PythonRuntime {
+        python: &python,
+        script: &script,
+        repo: &repo,
+        resource_observation: Some((&resource_recorder_dir, &resource_observation_log)),
+    };
 
     let compressible_payload = b"reticulum rncp mixed-runtime compression payload ".repeat(600);
     let already_compressed_source = b"already compressed source material ".repeat(600);
@@ -789,6 +878,7 @@ fn rncp_mixed_runtime_compression_matrix_roundtrips_binary_files() -> io::Result
         for (source, no_compress) in
             [(&python_default_source, false), (&python_no_compress_source, true)]
         {
+            fs::write(&resource_observation_log, b"")?;
             let output = run_python_send(
                 &python_runtime,
                 &python_sender_config,
@@ -805,6 +895,10 @@ fn rncp_mixed_runtime_compression_matrix_roundtrips_binary_files() -> io::Result
                     String::from_utf8_lossy(&output.stderr)
                 )));
             }
+            assert_resource_advertisements(
+                &resource_observation_log,
+                &[("sent", !no_compress, false, false)],
+            )?;
         }
         assert_eq!(fs::read(rust_listener_root.join("python-default.bin"))?, compressible_payload);
         assert_eq!(
@@ -832,6 +926,7 @@ fn rncp_mixed_runtime_compression_matrix_roundtrips_binary_files() -> io::Result
     let rust_fetch_seed = "rncp-python-compression-rust-fetcher";
     let rust_sender_hash = rust_identity_hash(rust_sender_seed)?;
     let rust_fetch_hash = rust_identity_hash(rust_fetch_seed)?;
+    fs::write(&resource_observation_log, b"")?;
     let mut python_listener = spawn_python_listener(
         &python_runtime,
         &python_listener_config,
@@ -893,6 +988,14 @@ fn rncp_mixed_runtime_compression_matrix_roundtrips_binary_files() -> io::Result
             )));
         }
         assert_eq!(fs::read(rust_fetch_root.join("fetch-default.bin"))?, compressible_payload);
+        assert_resource_advertisements(
+            &resource_observation_log,
+            &[
+                ("received", true, false, false),
+                ("received", false, false, false),
+                ("sent", true, false, false),
+            ],
+        )?;
         Ok(())
     })();
     let _ = python_listener.kill();
@@ -910,6 +1013,7 @@ fn rncp_mixed_runtime_compression_matrix_roundtrips_binary_files() -> io::Result
         &python_no_compress_identity,
         &repo,
     )?;
+    fs::write(&resource_observation_log, b"")?;
     let mut python_no_compress_listener = spawn_python_listener(
         &python_runtime,
         &python_no_compress_config,
@@ -939,6 +1043,10 @@ fn rncp_mixed_runtime_compression_matrix_roundtrips_binary_files() -> io::Result
             )));
         }
         assert_eq!(fs::read(rust_fetch_root.join("fetch-default.bin"))?, compressible_payload);
+        assert_resource_advertisements(
+            &resource_observation_log,
+            &[("sent", false, false, false)],
+        )?;
         Ok(())
     })();
     let _ = python_no_compress_listener.kill();
@@ -960,7 +1068,8 @@ fn rncp_python_listener_restart_preserves_identity_and_transfer() -> io::Result<
             format!("pinned Python rncp script not found: {}", script.display()),
         ));
     }
-    let python_runtime = PythonRuntime { python: &python, script: &script, repo: &repo };
+    let python_runtime =
+        PythonRuntime { python: &python, script: &script, repo: &repo, resource_observation: None };
     let listener_root = temp.path().join("python-listener");
     let source_root = temp.path().join("rust-source");
     let config_dir = temp.path().join("python-config");

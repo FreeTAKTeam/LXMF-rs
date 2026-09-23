@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last reassessed: 2026-09-21
+Last reassessed: 2026-09-23
 
 This file is the repository-level source of truth for parity posture, release
 confidence, and execution order. Detailed row-level status lives in:
@@ -39,6 +39,11 @@ mixed-runtime restart check, and the #612 pinned-Python work-item persistence
   verification) are evidence for those slices only
 and do not promote the broader utility surface. Published inventory counts are
 not promoted or rewritten by this change.
+
+The current #631 `rncp` increment observes packed and received Resource
+advertisement sizes/flags for all six Python/Rust compression roles, with a
+focused exact-target Verify step; the utility row remains partial because its
+other workflows and failure/restart gaps are still open.
 
 The forward #610 Resource slice also has new pinned-Python evidence at
 `8b29132c`: a sender-side file-like reader raises during a split transfer,

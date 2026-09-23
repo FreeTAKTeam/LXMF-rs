@@ -210,10 +210,43 @@ root; every received file matches the original bytes exactly. The Resource
 unit tests remain the direct wire-flag proof; this process trace proves the
 utility flags and mixed-runtime decompression/save behavior.
 
-The three ignored Python interop fixtures share a process-level lock
+PR #631 extends this process trace with test-only instrumentation of the pinned
+Python `ResourceAdvertisement.pack()` path and the Link's resource-advertised
+callback. It observes the actual packed or received advertisement fields and
+deduplicates outgoing retries by Resource hash and segment. The six roles now
+assert `compressed`, `transfer_size`, and `data_size`: Python→Rust sends in
+default/`-C` modes, Rust→Python sends in default/`--no-compress` modes, and
+Python fetch responses in default/`-C` modes. Compressed payloads advertise a
+smaller transfer than data size; uncompressed payloads preserve at least the
+data size (the Python reference's transfer size also includes metadata and
+random-hash overhead). The recorder is confined to the test's Python path and
+does not change production behavior.
+
+```text
+RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
+  LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rncp_python_interop \
+  rncp_mixed_runtime_compression_matrix_roundtrips_binary_files \
+  -- --ignored --exact --nocapture --test-threads=1
+# 1 passed; repeated 3 consecutive times
+
+RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
+  LXMF_PYTHON_BIN=python3 \
+  cargo test -p rns-tools --test rncp_python_interop \
+  -- --ignored --nocapture --test-threads=1
+# 4 passed (38.16s)
+
+cargo test -p rns-tools --test rncp_process -- --nocapture
+# 11 passed (6.19s)
+```
+
+Verify now runs the focused compression command as an explicit exact-target
+gate. Its hosted result is required before treating this CI increment as
+complete.
+
+The ignored Python interop fixtures share a process-level lock
 (`a81f0cf6`) because an earlier parallel run allowed listener/announce
 contention to produce one compression-matrix path-discovery timeout. With the
-lock in place, the default three-test command completed all tests in 37.26
+lock in place, the four-test command completed all tests in 38.16
 seconds; the process isolation and exact file assertions are unchanged.
 
 The `2b281b87` process increment also proves two negative categories through
@@ -411,9 +444,6 @@ classified as complete:
   transcripts with exact failure/status assertions; Rust and pinned-Python
   disk-error callbacks are covered, but the active-TCP medium-timeout lower
   bound is not genuinely slow-interface or physical-link evidence.
-- Add process-level advertisement/transfer-size assertions for each remaining
-  compression role if the utility evidence must independently expose the wire
-  compression flag; the Resource unit tests already cover that direct flag.
 
 These are evidence or implementation gaps, not claims that the local Rust
 process test represents Python interoperability or complete utility parity.

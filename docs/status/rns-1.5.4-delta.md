@@ -172,8 +172,12 @@ process regression forces the Rust listener's post-delivery file save to fail
 and asserts its diagnostic, keeping transport receipt distinct from app-level
 save status. The ignored exact-target `rncp_python_listener_reports_received_file_disk_error`
 trace also verifies that a pinned Python receiver logs its save callback error
-after a Rust sender reports successful Resource delivery. The row remains
-partial and unverified because Python fetch-client failure callbacks, the
+after a Rust sender reports successful Resource delivery. PR #631 adds
+exact-target process assertions for packed and received Resource advertisement
+transfer/data sizes and compression flags across Python→Rust sends, Rust→Python
+sends, and Python default/`-C` fetch responses. Verify now runs that focused
+compression matrix automatically. The row remains partial and unverified
+because Python fetch-client failure callbacks, the
 complete utility option/behavior matrix, rngit network workflows, and genuinely
 slow-interface/remote cancellation transcripts remain open or owned by
 #612/#613.

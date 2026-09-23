@@ -1,6 +1,6 @@
 # Reticulum Parity Matrix
 
-Last reassessed: 2026-09-22
+Last reassessed: 2026-09-23
 
 This is the maintained row-level status for Python Reticulum compatibility.
 Repository-level posture and execution order live in
@@ -139,6 +139,12 @@ Commit `e41189c8` adds live pinned-Python malformed-media requests with a
 missing key, missing path, and insufficient path components; each fails closed
 without an unexpected response. This removes that specific live-evidence gap
 without promoting the broader #613 row.
+
+The #611 `rncp` compression process matrix now instruments the frozen Python
+Resource pack and Link advertisement callback to assert transfer/data sizes
+and the compressed flag in both send directions and in default/disabled Python
+fetch responses. PR Verify runs the exact-target focused test; this evidence
+does not complete the wider Utilities row.
 
 Commit `8b29132c` adds a live pinned-Python sender-side file-like Resource
 reader that raises after a partial split transfer. The focused release test
