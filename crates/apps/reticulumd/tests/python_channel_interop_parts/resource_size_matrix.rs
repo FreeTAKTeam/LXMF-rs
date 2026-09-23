@@ -147,6 +147,18 @@ async fn rust_resource_compression_defaults_match_pinned_python() {
     let mut cases = vec![
         ("compressible-default", b"resource compression default ".repeat(4096), true, true),
         ("incompressible-default", rust_resource_fixture(64 * 1024), true, false),
+        (
+            "compressible-split-segments",
+            vec![b'R'; MAX_EFFICIENT_SIZE * 2],
+            true,
+            true,
+        ),
+        (
+            "incompressible-split-segments",
+            rust_resource_fixture(MAX_EFFICIENT_SIZE * 2),
+            true,
+            false,
+        ),
         ("compressible-disabled", b"resource compression disabled ".repeat(4096), false, false),
     ];
     for (label, payload, auto_compress, expected_compressed) in cases.drain(..) {
@@ -244,10 +256,12 @@ async fn pinned_python_resource_compression_defaults_match_rust() {
     };
     let mut resource_events = transport.resource_events();
 
-    for (kind, should_compress) in [
-        ("resource-compression-compressible", true),
-        ("resource-compression-incompressible", false),
-        ("resource-compression-disabled", false),
+    for (kind, size, should_compress) in [
+        ("resource-compression-compressible", 64 * 1024, true),
+        ("resource-compression-incompressible", 64 * 1024, false),
+        ("resource-compression-compressible", MAX_EFFICIENT_SIZE * 2, true),
+        ("resource-compression-incompressible", MAX_EFFICIENT_SIZE * 2, false),
+        ("resource-compression-disabled", 64 * 1024, false),
     ] {
         let py_config_dir = temp.path().join(kind);
         fs::create_dir_all(&py_config_dir).expect("python config dir");
@@ -256,7 +270,7 @@ async fn pinned_python_resource_compression_defaults_match_rust() {
             &py_config_dir,
             &destination_hash,
             kind,
-            64 * 1024,
+            size,
             45.0,
         );
         let mut guard = ChildGuard { child: Some(child) };
@@ -274,7 +288,7 @@ async fn pinned_python_resource_compression_defaults_match_rust() {
             Duration::from_secs(30),
         )
         .await;
-        assert_eq!(complete.data.len(), 64 * 1024, "payload length for {kind}");
+        assert_eq!(complete.data.len(), size, "payload length for {kind}");
         let received_digest = digest_hex(&complete.data);
         let child = guard.child.take().expect("Python resource client");
         let output = tokio::task::spawn_blocking(move || child.wait_with_output())

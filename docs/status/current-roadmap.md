@@ -79,8 +79,12 @@ The focused #610 compression regression now exercises the production Resource
 path in both directions against pinned Python: compressible input follows the
 default compressed path, deterministic incompressible input remains
 uncompressed, and the explicit disable option remains uncompressed, all with
-exact payload digests. No production mismatch was found; compression-threshold
-behavior remains unverified, and #610 stays partial.
+exact payload digests. It also verifies compressible and deterministic
+incompressible two-segment payloads above `MAX_EFFICIENT_SIZE`, including
+assembled digests, logical size, and the final segment's compression flag.
+Pinned Python and Rust agree on segment-first accounting and per-segment
+compression, so no production change was required. The distinct 64 MiB cap
+edge and the broader #610 acceptance matrix remain open; #610 stays partial.
 
 A pinned-Python split-Resource fault trace now accepts the first segment and
 cancels during the second; the Rust sender observes terminal

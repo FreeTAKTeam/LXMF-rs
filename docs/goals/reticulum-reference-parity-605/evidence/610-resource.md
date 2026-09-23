@@ -519,8 +519,38 @@ RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/R
 # 1 passed; Rust received and verified Python's exact payloads/digests and flags
 ```
 
-Above-limit compression selection and the remaining #610 transfer-selection
-and failure matrix remain unverified.
+The distinct 64 MiB-plus-one admission/compression-cap edge and the remaining
+#610 transfer-selection and failure matrix remain unverified.
+
+### Compression selection above the efficient-segment boundary
+
+The production Rust-to-pinned-Python and pinned-Python-to-Rust compression
+differential now sends compressible and deterministic incompressible payloads
+of exactly `2 * MAX_EFFICIENT_SIZE`. Both cross the split boundary into two
+full segments (Python-to-Rust also includes its metadata wire prefix).
+The pinned `RNS/Resource.py` sender first selects the segment using the
+uncompressed `MAX_EFFICIENT_SIZE` accounting, then applies bz2 independently
+to each segment (subject to the 64 MiB whole-resource cap), setting
+`compressed` only when that segment shrinks. Rust's production sender does the
+same: segment accounting precedes per-segment compression. The receivers
+verify the assembled payload digest and logical `total_size`; sender-side
+compression choices are `true` for repeating bytes and `false` for the
+deterministic incompressible payload. No production mismatch was found; no
+production change was needed. This closes only the above-`MAX_EFFICIENT_SIZE`
+selection gap, not the broader #610 contract or the distinct 64 MiB cap edge.
+
+```text
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+  LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
+  rust_resource_compression_defaults_match_pinned_python \
+  -- --ignored --nocapture --test-threads=1
+# 1 passed; Rust-to-Python split cases matched compression flags, size, and digest
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+  LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
+  pinned_python_resource_compression_defaults_match_rust \
+  -- --ignored --nocapture --test-threads=1
+# 1 passed; Python-to-Rust split cases matched sender flags, logical size, and digest
+```
 
 ## Pinned-Python cancellation after the first split segment
 
@@ -552,8 +582,8 @@ reported logical/accounted size 67,108,864 and the exact SHA-256 of the
 uncompressed bytes. Rust also rejects a 64 MiB + 1 send before advertisement,
 matching its production Resource admission limit. Since that rejection
 prevents an above-limit Rust-to-Python transfer, the reference's uncompressed
-decision above the threshold is not observed end to end; above-limit selection
-parity remains open.
+decision specifically above the 64 MiB compression cap is not observed end to
+end. This separate cap-edge evidence remains open.
 
 ```text
 RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
