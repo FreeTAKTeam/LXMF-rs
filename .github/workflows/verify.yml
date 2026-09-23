@@ -161,6 +161,16 @@ jobs:
             rngit_serves_pages_and_media_to_pinned_python_client \
             -- --ignored --nocapture
 
+      - name: Run pinned Python rngit media validation differential
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+          PYTHONPATH: ${{ github.workspace }}/Reticulum-parity
+        run: |
+          cargo test -p rns-tools --test rngit_python_interop \
+            issue_613_media_invalid_ref::rngit_media_validation_denials_return_false_over_python_link \
+            -- --ignored --exact --nocapture --test-threads=1
+
       - name: Generate PR HIL support report
         if: always()
         run: cargo xtask hil report --evidence target/hil/runs/pr-${{ github.run_id }} --output target/hil/runs/pr-${{ github.run_id }}/support-report
