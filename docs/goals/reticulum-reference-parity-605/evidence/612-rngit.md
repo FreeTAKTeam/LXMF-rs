@@ -167,6 +167,21 @@ new commit. The same session creates a Python-compatible release through the
 view responses, fetches the uploaded artifact through a raw Resource, updates
 latest, and deletes the release directory.
 
+The focused `dotted_repository_release_requests_isolate_colliding_sibling_companion`
+regression is an authorized production `handle_release_request` test for the
+dotted `group/repo.git` repository. It pre-seeds the colliding sibling
+`repo.releases` with a published `v-collision` release and latest marker, then
+creates `v-dotted` and exercises `list`, `view`, and `latest`. It asserts the
+new metadata and latest marker are under `repo.git.releases`, the sibling latest
+marker remains byte-for-byte unchanged, the dotted list/latest responses contain
+only the canonical release, and viewing the sibling-only tag returns
+`RES_NOT_FOUND`. At PR head `b98511388da52315bf2b9f0570c2487ad6b17378`, the
+handler already routes these operations through `companion_path`; this test
+exposes no production behavior bug, so no implementation change was needed.
+This deterministic local filesystem regression does not establish pinned-Python
+or mixed-peer behavior for the new collision case, nor non-Unix filesystem
+semantics.
+
 The module-size gate passes. The new permission-failure regressions are split
 into `issue_612_permission_failure_tests.rs`; all changed `rngit_parts` modules
 remain within the active 500-line module limit.
