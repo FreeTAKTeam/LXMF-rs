@@ -33,7 +33,9 @@ verified-wire provenance across live reconfiguration. The spawned
 8-byte IFAC default and authenticated HDLC packet admission. Other carrier
 families now include duplex-stream serial and KISS IFAC regressions for wrong-key
 rejection and authenticated ingress/egress, with the KISS test also checking
-runtime counters; these are not physical-carrier evidence. The broader software
+runtime counters. The outbound I2P peer loop now also has a fake-SAM stream
+regression for wrong-key rejection and authenticated ingress/egress; none of
+these tests is physical-carrier or public-I2P evidence. The broader software
 support matrix, remaining remote utility behavior,
 transport policy differences, and platform validation remain open; the
 focused #611 `rncp`

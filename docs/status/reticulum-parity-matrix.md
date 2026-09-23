@@ -227,8 +227,11 @@ through the spawned Rust `PipeInterface` worker, checking the reference
 The production serial and KISS stream workers also have deterministic duplex
 regressions for wrong-key rejection and authenticated ingress/egress; KISS
 asserts its default tag size and runtime counters. These supplement (but do not
-replace) the pinned Python/Rust TCP and UDP traces; physical-device and
-remaining carrier-family/support-matrix requirements stay partial.
+replace) the pinned Python/Rust TCP and UDP traces. The outbound I2P peer loop
+also has a fake-SAM regression for wrong-key rejection and authenticated
+ingress/egress; this is not public-I2P or incoming-peer evidence.
+Physical-device and remaining carrier-family/support-matrix requirements stay
+partial.
 
 ### v0.9.0 interface evidence boundary
 

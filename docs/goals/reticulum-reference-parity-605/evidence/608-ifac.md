@@ -2,7 +2,9 @@
 
 Status: **authenticated TCP/UDP daemon paths and shared-instance/virtual-child
 IFAC policy evidenced; serial and KISS stream runtime paths have deterministic
-software regressions; full interface-family acceptance remains open**.
+software regressions; outbound I2P fake-SAM stream IFAC rejection and
+authenticated ingress/egress are covered; full interface-family acceptance
+remains open**.
 
 The implementation is based on the frozen Reticulum `1.5.4-dev` reference at
 `99de23c040d507e3fefca19e87b182302902725d`. It wires the existing Rust
@@ -319,3 +321,22 @@ cargo test -p reticulum-rs-transport --all-features --lib
 The KISS stream regression supplements serial and Pipe software evidence. It
 does not establish Python-peer KISS interoperability or close the remaining
 carrier-family/support-matrix requirements; issue #608 remains open.
+
+## Outbound I2P tunneled-stream IFAC
+
+`i2p_peer_stream_ifac_rejects_wrong_key_and_roundtrips_authenticated_packets`
+drives the production outbound I2P peer loop through a local fake SAM server.
+A wrong-key HDLC frame increments the shared IFAC violation counter without
+reaching packet admission; a frame authenticated with the configured context is
+admitted; and a Rust-originated packet is verified after authenticated IFAC
+encoding and HDLC framing. This is a deterministic outbound tunnel-stream
+regression, not public I2P connectivity, incoming-peer acceptance, or hardware
+evidence.
+
+Validation passed: the focused test, all 834 `rns-transport` all-feature
+library tests, all-target/all-feature Clippy with warnings denied, workspace
+format check, module-size check, and `git diff --check`.
+
+The fake-SAM regression adds software evidence for one tunneled carrier path;
+remaining I2P lifecycle, incoming-peer, interface-family, support-matrix, and
+operational acceptance remain open.
