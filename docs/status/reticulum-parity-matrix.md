@@ -97,20 +97,23 @@ are deliberately provisional `partial` rows because wildcard matches and
 callable presence do not prove behavior.
 
 The generated Python surface artifact now carries the issue #605 behavioral
-contract for child issues #607–#616. The contract is `incomplete` with no
-verified applicable requirements. It is the authoritative forward status for
-this matrix; the baseline rows below remain historical/current-release claims
-and must not be read as completion of the 1.5.4 candidate. See
+contract for child issues #607–#616. The contract remains `incomplete`; its
+scoped #615 software-acceptance requirement is verified, while the remaining
+forward behavior and operational rows remain separately tracked. It is the
+authoritative forward status for this matrix; the baseline rows below remain
+historical/current-release claims and must not be read as completion of the
+1.5.4 candidate. See
 [`rns-1.5.4-delta.md`](rns-1.5.4-delta.md) for the exact target, measured delta,
 evidence fields, and acceptance boundary.
 
 The bounded software acceptance tracked by #615 is complete at PR #626 head
-`559e314c71306148352050a463d3db10407c89f0`: local release-check passed, hosted
-PR HIL passed `23/23` cases, the exact pinned compatibility matrix passed
-`30/30`, and the Independent and CI gates passed. This does not change the
-forward contract to complete: #605 and its remaining behavioral child rows stay
-open, while the physical/platform/client/public-network/long-soak axis remains
-explicitly excluded under #616.
+`b863e1d115395232a41445dbdfe1ccb08ee6abeb` (merged as
+`a649f51e9671007c08aeff469877038e2db7a716`): local release-check passed with
+2,684 tests and one skip, hosted PR HIL passed `23/23`, the exact pinned matrix
+passed `30/30`, and the Independent and CI gates passed. This does not change
+the forward contract to complete: #605 and its remaining behavioral child
+rows stay incomplete, while the physical/platform/client/public-network/long-
+soak axis remains explicitly excluded under #616.
 
 ## Surface Matrix
 

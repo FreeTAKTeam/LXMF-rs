@@ -1759,9 +1759,9 @@
         "reference_project": "both",
         "reference_paths": ["RNS/", "LXMF/", "RNS/Resource.py", "RNS/Transport.py"],
         "rust_surface": ["tools/interop", "xtask", "crates/libs/test-support"],
-        "implementation": "partial",
-        "evidence": ["unit", "planned"],
-        "evidence_status": "unverified",
+        "implementation": "complete",
+        "evidence": ["unit", "pinned-python", "prepared-host", "cross-implementation"],
+        "evidence_status": "verified",
         "test_command": [
           "python3 tools/scripts/python_surface_inventory.py --self-test",
           "python3 tools/scripts/python_surface_inventory.py --check --json-out docs/status/python-surface-parity.json",
@@ -1769,7 +1769,7 @@
         ],
         "evidence_artifact": "docs/goals/reticulum-reference-parity-605/evidence/615-release-acceptance.md",
         "owner_issue": 615,
-        "notes": "The inventory check now rejects a stale generated behavioral contract by comparing it with the authoritative mapping and exact generated reference revisions. Self-tests and active/forward inventory generation pass locally, but the full differential matrix, exact provenance, hosted checks, and aggregate release gate remain unverified."
+        "notes": "Scoped #615 software acceptance is complete at PR #626 head b863e1d115395232a41445dbdfe1ccb08ee6abeb: the final release check passed, hosted PR HIL passed 23/23, the exact pinned matrix passed 30/30 with zero skips, and Independent interoperability plus CI passed. This verifies the software gate only; the wider #605 contract remains incomplete and #616 operational evidence is separate."
       },
       {
         "id": "reticulum-605-616-operational-platform-evidence",

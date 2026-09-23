@@ -68,8 +68,9 @@ The machine-checked contract is stored in
 in the generated [`python-surface-parity.json`](python-surface-parity.json).
 It requires every forward requirement to name its Python reference path, exact
 reference commit, Rust owner surface, implementation status, evidence status,
-test command, evidence artifact, and owning issue. It currently contains ten
-incomplete requirements:
+test command, evidence artifact, and owning issue. It contains ten tracked
+requirements; the scoped #615 software gate is verified, while overall
+behavioral coverage remains incomplete:
 
 | Owner | Requirement | Current status |
 | ---: | --- | --- |
@@ -81,7 +82,7 @@ incomplete requirements:
 | #612 | Match rngit permission, resolver, work, storage, and wire schemas | partial / unverified |
 | #613 | Match rngit NomadNet pages, media, and link cleanup | partial / unverified |
 | #614 | Validate native interface runtimes and Windows BLE behavior | partial / hardware-unverified |
-| #615 | Run differential conformance and exact-candidate software release acceptance | partial / unverified |
+| #615 | Run differential conformance and exact-candidate software release acceptance | complete / verified (scoped software gate; #616 excluded) |
 | #616 | Maintain separate physical, platform, client, network-soak, and operational evidence | not-applicable to software / hardware-unverified |
 
 The generated Rust constants expose the forward behavioral level and target
@@ -270,31 +271,27 @@ Linux host lacks a MinGW/Windows SDK sysroot, and native Windows, AutoInterface
 platform, cross-family, live Python/client, and physical carrier evidence are
 still open.
 
-The #615 implementation slice now has committed local evidence in
-[`evidence/615-release-acceptance.md`](../goals/reticulum-reference-parity-605/evidence/615-release-acceptance.md):
-the inventory `--check` path compares generated behavioral requirements with
-the authoritative mapping and rejects stale artifacts; self-tests cover both
-matching and deliberate drift, and the active-baseline plus forward-candidate
-inventories regenerate at their pinned references. The row remains partial and
-unverified because the broader all-Rust/multi-hop/shared-daemon matrix, exact
-provenance and hosted exact-head workflows, and #616 operational evidence are
-still open. The local aggregate release gate passes on fully gated software
-candidate `f45bb960`, including 2,677 nextest tests, Miri, exact
-pinned-reference checks, packaging, audit, boundary, reproducible-build,
-embedded-footprint, and soak/mesh checks with zero soak failures. A current
-exact-reference Python/Rust matrix on candidate `919d5924` records 30/30
-required cases passed with no failed, blocked, skipped, or ignored cases. These
-local results do not promote the row or the parent to complete.
+The scoped #615 software gate is complete at PR #626 head
+`b863e1d115395232a41445dbdfe1ccb08ee6abeb` (merged as
+`a649f51e9671007c08aeff469877038e2db7a716`), with detailed local and hosted
+evidence in
+[`evidence/615-release-acceptance.md`](../goals/reticulum-reference-parity-605/evidence/615-release-acceptance.md).
+The final release check passed with 2,684 tests and one skip; hosted PR HIL
+passed `23/23`, the exact pinned matrix passed `30/30` with zero skips, and the
+Independent and CI workflows passed. This completes only #615's software
+acceptance gate. The remaining forward behavior rows keep their own statuses,
+the #605 contract remains incomplete, and physical/platform/client/network-soak
+evidence remains separate under #616.
 
 The #623 wire-conformance increment adds
 [`evidence/623-wire-conformance.md`](../goals/reticulum-reference-parity-605/evidence/623-wire-conformance.md),
 the committed byte corpus at
 `tools/interop/python-rust-wire-conformance-v1.json`, and the stable
 `cargo xtask interop` gate. Verify now runs the same Python decoder and Rust
-decoder test and uploads the report. The lane proves the bounded encoded-byte
-and malformed-frame contract only; it does not promote #615 or #605 while the
-broader live, fault, restart, multi-hop, platform, client, and hardware gates
-remain open.
+decoder test and uploads the report. This bounded wire lane is one input to the
+completed #615 software gate; it does not complete #605 while broader live,
+fault, restart, multi-hop, platform, client, and hardware requirements remain
+open under their respective rows and #616.
 
 ## Merged base increment
 
@@ -302,9 +299,9 @@ The candidate branch now includes the merged PR #604 base increment at
 `3ed5932d` (RNS 1.5.4 BLE lifecycle/EOF handling, HDLC framing vectors, and
 rngit work-transition and companion-sidecar corrections). Those changes are
 preserved here as a bounded increment; they do not promote the forward
-candidate or close issue #605. Their local tests and provenance checks remain
-inputs to the #615 software gate, while native hardware and public-network
-claims remain outside local validation.
+candidate or close issue #605. Their local tests and provenance checks were
+inputs to the completed #615 software gate, while native hardware and
+public-network claims remain outside local validation.
 
 ## Acceptance gate
 
