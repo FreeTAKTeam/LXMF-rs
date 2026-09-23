@@ -161,7 +161,8 @@ async fn rust_resource_compression_defaults_match_pinned_python() {
         .expect("send Resource");
         wait_for_outbound_resource_complete(&mut resource_events, resource_hash, Duration::from_secs(30)).await;
         let expected = format!(
-            "resource-sha256:{}:{digest}:compressed={}",
+            "resource-sha256:{}:{digest}:total_size={}:compressed={}",
+            payload.len(),
             payload.len(),
             expected_compressed
         );
@@ -257,6 +258,158 @@ async fn pinned_python_resource_compression_defaults_match_rust() {
             "Python compression decision for {kind} differed: {output}"
         );
     }
+}
+
+#[tokio::test]
+#[ignore = "requires local Python Reticulum checkout"]
+async fn rust_resource_compression_size_limit_matches_pinned_python() {
+    let _interop_guard = python_interop_guard().await;
+    let paths = python_channel_interop_paths();
+    let server_port = free_tcp_port();
+    let temp = tempfile::tempdir().expect("tempdir");
+    let py_config_dir = temp.path().join("python-rns-resource-compression-limit");
+    fs::create_dir_all(&py_config_dir).expect("python config dir");
+    write_python_config(&py_config_dir, server_port);
+    let mut child = paths.spawn_endpoint(&py_config_dir, "resource-compression");
+    let ready = read_ready(&mut child).expect("python endpoint ready");
+    let _guard = ChildGuard { child: Some(child) };
+    wait_for_port(server_port, Duration::from_secs(5)).await;
+
+    let target_hash = AddressHash::new_from_hex_string(&ready.destination_hash)
+        .expect("destination hash");
+    let rust_identity = PrivateIdentity::new_from_rand(OsRng);
+    let rust_identity = to_transport_private_identity(&rust_identity);
+    let mut config = TransportConfig::new("python-resource-compression-limit", &rust_identity, true);
+    config.set_path_request_timeout_secs(2);
+    config.set_resource_retry_interval_secs(1);
+    let transport = Transport::new(config);
+    transport
+        .iface_manager()
+        .lock()
+        .await
+        .spawn(TcpClient::new(format!("127.0.0.1:{server_port}")), TcpClient::spawn);
+    let destination = wait_for_announce(&transport, target_hash, Duration::from_secs(8)).await;
+    let mut link_events = transport.out_link_events();
+    let link = transport.link(destination).await;
+    let link_id = wait_for_out_link_active(&mut link_events, &link, Duration::from_secs(8)).await;
+    let seen = Arc::new(StdMutex::new(Vec::<(String, String)>::new()));
+    let seen_clone = seen.clone();
+    transport
+        .channel(link_id)
+        .register_handler(MSG_TYPE, move |envelope| {
+            if let Ok(decoded) = rmp_serde::from_slice::<(String, String)>(&envelope.payload) {
+                seen_clone.lock().expect("seen lock").push(decoded);
+                true
+            } else {
+                false
+            }
+        })
+        .await
+        .expect("register channel handler");
+
+    let mut resource_events = transport.resource_events();
+    for (label, size, compressed) in [("at-limit", 64 * 1024 * 1024, true)] {
+        let payload = vec![b'R'; size];
+        let digest = digest_hex(&payload);
+        let resource_hash = transport
+            .send_resource(&link_id, payload, None)
+            .await
+            .expect("send threshold Resource");
+        wait_for_outbound_resource_complete(
+            &mut resource_events,
+            resource_hash,
+            Duration::from_secs(240),
+        )
+        .await;
+        let expected = format!(
+            "resource-sha256:{size}:{digest}:total_size={size}:compressed={compressed}"
+        );
+        tokio::time::timeout(Duration::from_secs(240), async {
+            loop {
+                if seen.lock().expect("seen lock").iter().any(|(id, data)| {
+                    id == "rust-resource" && data == &expected
+                }) {
+                    break;
+                }
+                sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .unwrap_or_else(|_| panic!("Python did not confirm {label} compression: {expected}"));
+    }
+
+    let above_limit = vec![b'R'; 64 * 1024 * 1024 + 1];
+    assert!(
+        transport.send_resource(&link_id, above_limit, None).await.is_err(),
+        "Rust must reject a Resource above its production size limit before advertisement"
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires local Python Reticulum checkout"]
+async fn pinned_python_resource_compression_limit_matches_rust() {
+    let _interop_guard = python_interop_guard().await;
+    let paths = python_channel_interop_paths();
+    let server_port = free_tcp_port();
+    let temp = tempfile::tempdir().expect("tempdir");
+    let rust_identity = PrivateIdentity::new_from_rand(OsRng);
+    let rust_identity = to_transport_private_identity(&rust_identity);
+    let mut config = TransportConfig::new("python-resource-compression-limit-rust", &rust_identity, true);
+    config.set_path_request_timeout_secs(2);
+    config.set_resource_retry_interval_secs(1);
+    let transport = Transport::new(config);
+    let iface_manager = transport.iface_manager();
+    transport
+        .iface_manager()
+        .lock()
+        .await
+        .spawn(TcpServer::new(format!("127.0.0.1:{server_port}"), iface_manager), TcpServer::spawn);
+    wait_for_port(server_port, Duration::from_secs(5)).await;
+    let destination = transport
+        .add_destination(rust_identity.clone(), DestinationName::new("test", "channel"))
+        .await;
+    let destination_hash = {
+        let destination = destination.lock().await;
+        hex::encode(destination.desc.address_hash.as_slice())
+    };
+    let py_config_dir = temp.path().join("python-resource-compression-at-limit");
+    fs::create_dir_all(&py_config_dir).expect("python config dir");
+    write_python_client_config(&py_config_dir, server_port);
+    let child = paths.spawn_resource_client_with_kind(
+        &py_config_dir,
+        &destination_hash,
+        "resource-compression-threshold",
+        64 * 1024 * 1024,
+        240.0,
+    );
+    let mut guard = ChildGuard { child: Some(child) };
+    let mut in_events = transport.in_link_events();
+    let link_id = wait_for_in_link_active_with_announces(
+        &transport,
+        &destination,
+        &mut in_events,
+        Duration::from_secs(8),
+    )
+    .await;
+    let complete = wait_for_inbound_resource_data(
+        &mut transport.resource_events(),
+        link_id,
+        Duration::from_secs(240),
+    )
+    .await;
+    assert_eq!(complete.data.len(), 64 * 1024 * 1024, "received logical size");
+    let received_digest = digest_hex(&complete.data);
+    let child = guard.child.take().expect("Python resource client");
+    let output = tokio::task::spawn_blocking(move || child.wait_with_output())
+        .await
+        .expect("join Python client")
+        .expect("wait for Python client");
+    assert!(output.status.success(), "Python sender failed: {}", String::from_utf8_lossy(&output.stderr));
+    let output = String::from_utf8_lossy(&output.stdout);
+    assert!(output.contains("\"size\": 67108864"), "Python size differed: {output}");
+    assert!(output.contains("\"total_size\": 67108864"), "Python accounting differed: {output}");
+    assert!(output.contains(&format!("\"sha256\": \"{received_digest}\"")), "Python/Rust digest differed: {output}");
+    assert!(output.contains("\"compressed\": true"), "Python compression decision differed: {output}");
 }
 
 #[tokio::test]

@@ -216,7 +216,10 @@ class ChannelEndpoint:
                 else:
                     reply_data = f"resource-sha256:{len(data)}:{digest}"
                 if self.payload_kind == "resource-compression":
-                    reply_data += f":compressed={str(resource.compressed).lower()}"
+                    reply_data += (
+                        f":total_size={resource.total_size}"
+                        f":compressed={str(resource.compressed).lower()}"
+                    )
                 link.get_channel().send(
                     MessageTest(
                         "rust-resource",
@@ -413,6 +416,7 @@ class ChannelClient:
         elif self.payload_kind in (
             "resource",
             "resource-compression-compressible",
+            "resource-compression-threshold",
             "resource-compression-incompressible",
             "resource-compression-disabled",
             "resource-multi-hop",
@@ -430,6 +434,7 @@ class ChannelClient:
                 resource_file = None
             elif self.payload_kind in (
                 "resource-compression-compressible",
+                "resource-compression-threshold",
                 "resource-compression-disabled",
             ):
                 resource_data = (b"pinned Python Resource compression fixture " * (resource_size // 43 + 1))[:resource_size]
@@ -444,7 +449,11 @@ class ChannelClient:
                     resource_file.flush()
                     resource_file.seek(0)
 
-            resource_metadata = "python-meta"
+            resource_metadata = (
+                None
+                if self.payload_kind == "resource-compression-threshold"
+                else "python-meta"
+            )
 
             def resource_concluded(resource) -> None:
                 result["status"] = resource.status
@@ -677,6 +686,7 @@ def main() -> int:
             "resource",
             "resource-compression",
             "resource-compression-compressible",
+            "resource-compression-threshold",
             "resource-compression-incompressible",
             "resource-compression-disabled",
             "resource-multi-hop",

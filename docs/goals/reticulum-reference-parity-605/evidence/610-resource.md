@@ -510,8 +510,31 @@ RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/R
 # 1 passed; Rust received and verified Python's exact payloads/digests and flags
 ```
 
-Compression-threshold-limit behavior and the remaining #610 transfer-selection
+Above-limit compression selection and the remaining #610 transfer-selection
 and failure matrix remain unverified.
+
+## Resource compression size-limit boundary
+
+The focused 2026-09-23 differential checks the inclusive compression size
+limit through production Link/Resource transfers in both directions. Frozen
+Reticulum `99de23c040d507e3fefca19e87b182302902725d`
+(`RNS/Resource.py::Resource.__init__`) sets the default limit to 64 MiB,
+attempts `bz2.compress` when `data_size <= auto_compress_limit`, and sets the
+compressed flag only when the result is smaller. Rust and pinned Python both
+compressed the deterministic 64 MiB repeating-byte payload. Each receiver
+reported logical/accounted size 67,108,864 and the exact SHA-256 of the
+uncompressed bytes. Rust also rejects a 64 MiB + 1 send before advertisement,
+matching its production Resource admission limit. Since that rejection
+prevents an above-limit Rust-to-Python transfer, the reference's uncompressed
+decision above the threshold is not observed end to end; above-limit selection
+parity remains open.
+
+```text
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+  LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
+  resource_compression -- --ignored --nocapture --test-threads=1
+# 4 passed; threshold boundary verified in both directions, default cases retained
+```
 
 ## First-segment metadata boundary
 
