@@ -115,11 +115,11 @@ impl ReticulumGitNode {
     }
 
     fn work_now() -> rmpv::Value {
-        rmpv::Value::F64(
+        rmpv::Value::from(
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
-                .map(|value| value.as_secs_f64())
-                .unwrap_or(0.0),
+                .map(|value| value.as_secs())
+                .unwrap_or(0),
         )
     }
 

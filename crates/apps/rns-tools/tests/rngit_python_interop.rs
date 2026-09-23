@@ -7,6 +7,9 @@ use std::time::{Duration, Instant};
 
 static PYTHON_INTEROP_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+#[path = "rngit_python_interop_typed_msgpack.rs"]
+mod typed_msgpack;
+
 fn free_port() -> io::Result<u16> {
     Ok(std::net::TcpListener::bind("127.0.0.1:0")?.local_addr()?.port())
 }
@@ -898,19 +901,45 @@ def request(data):
 
 if mode == "create":
     content = "Python restart work document body"
+    signature = identity.sign(content.encode("utf-8"))
     created = request({
         0: "group/repo",
         "operation": "create",
         "title": "Python restart work",
         "content": content,
         "format": "markdown",
-        "signature": identity.sign(content.encode("utf-8")),
+        "signature": signature,
     })
     if created[0] != 0:
         raise RuntimeError("work create response was not successful")
     payload = mp.unpackb(created[1:])
     comment = request({0: "group/repo", "operation": "comment", "doc_id": payload["id"], "scope": "active", "content": "Python restart persisted comment", "format": "markdown"})
-    result = {"id": payload["id"], "scope": payload["scope"]}
+    result = {
+        "id": payload["id"],
+        "scope": payload["scope"],
+        "author_hex": identity.hash.hex(),
+        "identity_hex": identity.get_public_key().hex(),
+        "signature_hex": signature.hex(),
+    }
+elif mode == "verify_typed":
+    viewed = request({0: "group/repo", "operation": "view", "doc_id": work_id, "scope": "active"})
+    if viewed[0] != 0:
+        raise RuntimeError("Rust-seeded typed work view failed")
+    document = mp.unpackb(viewed[1:])
+    meta = document["meta"]
+    if type(document["id"]) is not int or document["id"] != work_id:
+        raise RuntimeError("work ID did not remain an integer")
+    if type(meta["created"]) is not int or meta["created"] != 1_700_000_123:
+        raise RuntimeError("created timestamp did not remain the expected integer")
+    if type(meta["edited"]) is not int or meta["edited"] != 1_700_000_456:
+        raise RuntimeError("edited timestamp did not remain the expected integer")
+    if meta["author"] != "000102030405060708090a0b0c0d0e0f":
+        raise RuntimeError("author identity hash did not remain the expected value")
+    if type(meta["identity"]) is not bytes or meta["identity"] != bytes(range(64)):
+        raise RuntimeError("identity did not remain the expected MessagePack binary")
+    if type(meta["signature"]) is not bytes or meta["signature"] != bytes(reversed(range(64))):
+        raise RuntimeError("signature did not remain the expected MessagePack binary")
+    result = {"typed_values": True}
 else:
     if work_id is None:
         raise RuntimeError("verification requires a work ID")
@@ -964,106 +993,6 @@ fn spawn_rngit_server(root: &Path, port: u16, identity_seed: &str) -> io::Result
         .spawn()
 }
 
-#[test]
-#[ignore = "requires local Python Reticulum checkout"]
-fn rngit_work_survives_process_restart_for_pinned_python_client() -> io::Result<()> {
-    let _test_guard = PYTHON_INTEROP_TEST_LOCK.lock().expect("Python interop test lock poisoned");
-    let temp = tempfile::tempdir()?;
-    let root = create_repository_fixture(temp.path())?;
-    let python_repo = python_repo();
-    if !python_repo.join("RNS/Link.py").is_file() {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            format!("pinned Python Reticulum checkout not found: {}", python_repo.display()),
-        ));
-    }
-
-    let port = free_port()?;
-    let identity_seed = "rngit-python-restart-server";
-    let config_dir = temp.path().join("python-client");
-    fs::create_dir_all(&config_dir)?;
-    write_python_config(&config_dir, port)?;
-    let identity = config_dir.join("identity");
-    let destination = rust_git_destination(&root, identity_seed)?;
-    let mut server = spawn_rngit_server(&root, port, identity_seed)?;
-
-    let result = (|| {
-        wait_for_port(port, &mut server)?;
-        let created = run_python_work_client(
-            &python_repo,
-            &config_dir,
-            &identity,
-            &destination,
-            "create",
-            None,
-        )?;
-        if !created.status.success() {
-            return Err(io::Error::other(format!(
-                "Python work creator failed: {}\nstdout:\n{}\nstderr:\n{}",
-                created.status,
-                String::from_utf8_lossy(&created.stdout),
-                String::from_utf8_lossy(&created.stderr)
-            )));
-        }
-        let created_json: serde_json::Value =
-            serde_json::from_slice(&created.stdout).map_err(|error| {
-                io::Error::other(format!(
-                    "Python work creator returned invalid JSON: {error}\nstdout:\n{}",
-                    String::from_utf8_lossy(&created.stdout)
-                ))
-            })?;
-        let work_id = created_json
-            .get("id")
-            .and_then(serde_json::Value::as_u64)
-            .ok_or_else(|| io::Error::other("Python work creator omitted numeric ID"))?;
-        if created_json.get("scope").and_then(serde_json::Value::as_str) != Some("active") {
-            return Err(io::Error::other("Python work creator did not return active scope"));
-        }
-        server.kill()?;
-        server.wait()?;
-        server = spawn_rngit_server(&root, port, identity_seed)?;
-        wait_for_port(port, &mut server)?;
-        let verified = run_python_work_client(
-            &python_repo,
-            &config_dir,
-            &identity,
-            &destination,
-            "verify",
-            Some(work_id),
-        )?;
-        if !verified.status.success() {
-            return Err(io::Error::other(format!(
-                "Python work verifier failed: {}\nstdout:\n{}\nstderr:\n{}",
-                verified.status,
-                String::from_utf8_lossy(&verified.stdout),
-                String::from_utf8_lossy(&verified.stderr)
-            )));
-        }
-        let verified_json: serde_json::Value =
-            serde_json::from_slice(&verified.stdout).map_err(|error| {
-                io::Error::other(format!(
-                    "Python work verifier returned invalid JSON: {error}\nstdout:\n{}",
-                    String::from_utf8_lossy(&verified.stdout)
-                ))
-            })?;
-        if verified_json.get("persisted") != Some(&serde_json::Value::Bool(true))
-            || verified_json.get("content").and_then(serde_json::Value::as_str)
-                != Some("Python restart work document body")
-            || verified_json.get("title").and_then(serde_json::Value::as_str)
-                != Some("Python restart work")
-            || verified_json.get("comment_persisted") != Some(&serde_json::Value::Bool(true))
-        {
-            return Err(io::Error::other(format!(
-                "work document did not survive restart: {verified_json}"
-            )));
-        }
-        Ok(())
-    })();
-
-    let _ = server.kill();
-    let _ = server.wait();
-    result
-}
 #[test]
 #[ignore = "requires local Python Reticulum checkout"]
 fn rngit_serves_pages_and_media_to_pinned_python_client() -> io::Result<()> {

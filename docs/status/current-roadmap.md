@@ -58,6 +58,14 @@ completion failure, and special permission-alias casing. These are unit-level
 additions only; hosted checks and mixed-peer
 coverage for these specific cases remain pending, so #612 stays partial.
 
+The new bidirectional MessagePack work-record regression verifies exact binary
+author/identity/signature values and integer document IDs/timestamps across
+Python↔Rust storage and production Link response boundaries. It also corrected
+Rust's newly generated timestamps to integer seconds, matching frozen Python;
+legacy float-valued records remain readable and no data migration is applied.
+This closes only that typed-value compatibility seam; #612 and #605 remain
+partial.
+
 The forward #610 Resource slice also has new pinned-Python evidence at
 `8b29132c`: a sender-side file-like reader raises during a split transfer,
 Rust reports terminal inbound failure, and the Python process exits
