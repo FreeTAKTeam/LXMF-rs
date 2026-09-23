@@ -75,6 +75,10 @@ fn transport_ifac_violations(status: &Value) -> Option<u64> {
 }
 
 fn wait_for_ifac_violation(rpc_port: u16) -> Result<u64, String> {
+    wait_for_ifac_violations_at_least(rpc_port, 1)
+}
+
+fn wait_for_ifac_violations_at_least(rpc_port: u16, expected: u64) -> Result<u64, String> {
     let deadline = Instant::now() + Duration::from_secs(15);
     let mut last_status = String::from("not queried");
     while Instant::now() < deadline {
@@ -82,7 +86,7 @@ fn wait_for_ifac_violation(rpc_port: u16) -> Result<u64, String> {
             Ok(status) => {
                 last_status = status.to_string();
                 if let Some(violations) = transport_ifac_violations(&status) {
-                    if violations > 0 {
+                    if violations >= expected {
                         return Ok(violations);
                     }
                 }
@@ -92,7 +96,9 @@ fn wait_for_ifac_violation(rpc_port: u16) -> Result<u64, String> {
         thread::sleep(Duration::from_millis(250));
     }
 
-    Err(format!("daemon did not record an IFAC violation; last status: {last_status}"))
+    Err(format!(
+        "daemon did not record at least {expected} IFAC violations; last status: {last_status}"
+    ))
 }
 
 #[test]
@@ -669,6 +675,95 @@ fn python_rust_lxmd_ifac_udp_wrong_credentials_are_rejected_before_routing() {
 
     if let Some(details) = failure_details {
         panic!("Python/Rust UDP IFAC rejection flow failed:\n{details}");
+    }
+}
+
+#[test]
+#[ignore = "requires lxmd/reticulumd daemon runtime"]
+fn lxmd_ifac_udp_malformed_frames_are_rejected_before_admission() {
+    let lxmd_bin = resolve_test_binary("lxmd", option_env!("CARGO_BIN_EXE_lxmd"));
+    let reticulumd_bin = resolve_test_binary("reticulumd", option_env!("CARGO_BIN_EXE_reticulumd"));
+
+    let temp = tempfile::tempdir().expect("tempdir");
+    let rust_rpc = ReservedPort::reserve();
+    let rust_udp_reservation =
+        std::net::UdpSocket::bind(("127.0.0.1", 0)).expect("reserve Rust UDP port");
+    let forward_reservation =
+        std::net::UdpSocket::bind(("127.0.0.1", 0)).expect("reserve unused forward port");
+    let rust_rpc_port = rust_rpc.port();
+    let rust_udp_port = rust_udp_reservation.local_addr().expect("Rust UDP address").port();
+    let forward_port = forward_reservation.local_addr().expect("forward UDP address").port();
+    let rust_dir = temp.path().join("rust-ifac-udp-malformed-daemon");
+
+    write_rust_config(
+        &rust_dir,
+        &rust_node_config(
+            "rust-ifac-udp-malformed-daemon",
+            rust_rpc_port,
+            None,
+            &[udp_ifac_interface("ifac-udp", rust_udp_port, forward_port)],
+        ),
+    );
+
+    let mut rust_node = None;
+    let outcome: Result<(), String> = (|| {
+        drop(rust_udp_reservation);
+        drop(forward_reservation);
+        rust_node = Some(spawn_lxmd(
+            &lxmd_bin,
+            &reticulumd_bin,
+            rust_rpc_port,
+            &rust_dir,
+            &mut [rust_rpc],
+        ));
+        wait_for_ready(
+            rust_rpc_port,
+            rust_node.as_mut().expect("Rust UDP IFAC daemon"),
+            "rust-ifac-udp-malformed-daemon",
+        )?;
+
+        let sender = std::net::UdpSocket::bind(("127.0.0.1", 0)).map_err(|err| err.to_string())?;
+        let destination = ("127.0.0.1", rust_udp_port);
+        let plaintext = [0x01; 32];
+        let bad_tag = [0x42; 34];
+        let truncated = [0x80, 0x01];
+        sender.send_to(&plaintext, destination).map_err(|err| err.to_string())?;
+        sender.send_to(&bad_tag, destination).map_err(|err| err.to_string())?;
+        sender.send_to(&truncated, destination).map_err(|err| err.to_string())?;
+
+        let violations = wait_for_ifac_violations_at_least(rust_rpc_port, 3)?;
+        let status = daemon_status(rust_rpc_port)?;
+        if status.get("peer_count").and_then(Value::as_u64) != Some(0) {
+            return Err(format!("malformed UDP IFAC frames reached routing: {status}"));
+        }
+        if status.get("message_count").and_then(Value::as_u64) != Some(0) {
+            return Err(format!("malformed UDP IFAC frames reached message delivery: {status}"));
+        }
+        if violations < 3 {
+            return Err(format!("daemon recorded only {violations} UDP IFAC violations: {status}"));
+        }
+        Ok(())
+    })();
+
+    let failure_details = if let Err(err) = &outcome {
+        Some(format!(
+            "{err}\n\n{}",
+            collect_node_diagnostics(
+                "rust-ifac-udp-malformed-daemon",
+                rust_rpc_port,
+                rust_node.as_mut(),
+            ),
+        ))
+    } else {
+        None
+    };
+
+    if let Some(node) = rust_node.as_mut() {
+        terminate_child(&mut node.child);
+    }
+
+    if let Some(details) = failure_details {
+        panic!("Malformed UDP IFAC daemon flow failed:\n{details}");
     }
 }
 
