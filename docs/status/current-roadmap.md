@@ -64,9 +64,13 @@ explicitly excluded under #616.
 The #614 Windows BLE software increment adds a dedicated `windows-latest` CI
 lane for the WinRT-backed resolver and deterministic BLE pairing/runtime tests;
 the pairing filter regression also proves that a listed stale address cannot
-authorize a different currently scanned device.
-Its hosted result is pending on the implementing PR and does not substitute for
-paired-device/hardware evidence or promote #614/#605 to complete.
+authorize a different currently scanned device. The lane passed on PR #634 head
+`8d5d3586`; a rerun for the follow-up daemon activation increment is pending.
+A new daemon-binary loopback regression also exercises the production
+AutoInterface activation helper, manager channel registration/removal, runtime
+task/socket teardown, and restart on the same test-owned ports. It does not
+replace the remaining native-interface, broader #614 lifecycle, platform, or
+paired-device/hardware evidence and does not promote #614/#605 to complete.
 
 LXMF-rs retains the v0.9.5 SDK-access baseline. The generated inventory records
 software-surface parity against Python RNS 1.5.2 at

@@ -375,6 +375,13 @@ placeholders:
   added at runtime, stale outbound route pruning after restart/removal, dynamic
   multicast/reverse announce source refresh after replacement, and Python-style
   fallback from unknown `multicast_address_type` values to `temporary`.
+- A daemon-binary loopback regression calls the same activation helper used by
+  native startup, registers the daemon's multicast `InterfaceManager` channel
+  and transport adapter, waits for runtime task/socket teardown and channel
+  removal, then restarts on the same test-owned discovery/data ports. Native
+  plan discovery and device filtering are unchanged. This is one software
+  lifecycle slice; full daemon process shutdown, native carrier loss, platform
+  coverage, and the broader #614 interface-family matrix remain open.
 - Serial, TCP/Wi-Fi, and feature-gated BLE LoRa/RNode with startup probes,
   Python and Android-style selector aliases, configuration validation,
   telemetry, flow control, teardown, display-capable BLE external-framebuffer

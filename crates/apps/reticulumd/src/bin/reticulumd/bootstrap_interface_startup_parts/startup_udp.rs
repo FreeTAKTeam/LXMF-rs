@@ -92,39 +92,18 @@ async fn startup_auto(
         Ok(plan) => {
             let adopted_count = plan.adopted_devices.len();
             let candidate_count = plan.candidates.len();
-            let runtime_status =
-                auto::AutoRuntimeStatusHandle::from_startup_plan(&plan.startup_plan);
             with_interface_runtime_metadata(record, |runtime| {
                 runtime.insert("auto".to_string(), plan.runtime_json());
             });
-            let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
-            let (host_iface, transport_runtime) = {
-                let mut manager = iface_manager.lock().await;
-                let channel =
-                    manager.new_channel_with_role_and_mode(128, IfaceRole::Multicast, mode);
-                let host_iface = channel.address;
-                apply_interface_runtime_config(&mut manager, host_iface, iface);
-                (
-                    host_iface,
-                    auto::AutoInterfaceTransportRuntime::from_channel(
-                        channel,
-                        Arc::clone(iface_manager),
-                    ),
-                )
-            };
-            let runtime_iface = host_iface.to_string();
-            match plan
-                .spawn_discovery_runtime_with_native_scope_ids_and_transport(Some(
-                    transport_runtime,
-                ), Some(runtime_status.clone()))
-                .await
-            {
-                Ok(runtime) => {
-                    let summary = runtime.summary;
+            match activate_auto_plan(&plan, iface, iface_manager).await {
+                Ok(activation) => {
+                    let summary = &activation.runtime.summary;
+                    let host_iface = activation.host_iface;
+                    let runtime_iface = host_iface.to_string();
                     with_interface_runtime_metadata(record, |runtime| {
                         runtime.insert(
                             "auto_discovery_runtime".to_string(),
-                            auto::discovery_runtime_summary_json(&summary),
+                            auto::discovery_runtime_summary_json(summary),
                         );
                     });
                     log::info!(
@@ -148,14 +127,12 @@ async fn startup_auto(
                         Some(runtime_iface.as_str()),
                     );
                     mark_interface_runtime_fields(record, "running", 0);
-                    Some(AutoRuntimeRefresh { runtime_iface: host_iface, status: runtime_status })
+                    Some(AutoRuntimeRefresh {
+                        runtime_iface: host_iface,
+                        status: activation.status.clone(),
+                    })
                 }
                 Err(err) => {
-                    if !iface_manager.lock().await.stop_interface(host_iface) {
-                        log::debug!(
-                            "AutoInterface host already absent after startup failure iface={host_iface}"
-                        );
-                    }
                     record_startup_failure(
                         record,
                         startup_failures,
@@ -177,6 +154,63 @@ async fn startup_auto(
             );
             None
         }
+    }
+}
+
+/// Activates an already-built AutoInterface plan through the daemon's
+/// InterfaceManager channel and transport adapter. Native discovery remains
+/// the caller's responsibility so software tests can supply owned bindings.
+async fn activate_auto_plan(
+    plan: &auto::AutoRuntimePlan,
+    iface: &InterfaceConfig,
+    iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
+) -> Result<AutoInterfaceActivation, String> {
+    let runtime_status = auto::AutoRuntimeStatusHandle::from_startup_plan(&plan.startup_plan);
+    let mode = iface.interface_mode().unwrap_or(InterfaceMode::Full);
+    let (host_iface, transport_runtime) = {
+        let mut manager = iface_manager.lock().await;
+        let channel = manager.new_channel_with_role_and_mode(128, IfaceRole::Multicast, mode);
+        let host_iface = channel.address;
+        apply_interface_runtime_config(&mut manager, host_iface, iface);
+        (
+            host_iface,
+            auto::AutoInterfaceTransportRuntime::from_channel(channel, Arc::clone(iface_manager)),
+        )
+    };
+
+    match plan
+        .spawn_discovery_runtime_with_native_scope_ids_and_transport(
+            Some(transport_runtime),
+            Some(runtime_status.clone()),
+        )
+        .await
+    {
+        Ok(runtime) => Ok(AutoInterfaceActivation { host_iface, runtime, status: runtime_status }),
+        Err(error) => {
+            if !iface_manager.lock().await.stop_interface(host_iface) {
+                log::debug!(
+                    "AutoInterface host already absent after startup failure iface={host_iface}"
+                );
+            }
+            Err(error)
+        }
+    }
+}
+
+struct AutoInterfaceActivation {
+    host_iface: rns_transport::hash::AddressHash,
+    runtime: rns_transport::iface::auto_runtime::AutoDiscoveryRuntime,
+    status: auto::AutoRuntimeStatusHandle,
+}
+
+impl AutoInterfaceActivation {
+    #[cfg(test)]
+    async fn stop(
+        self,
+        iface_manager: &Arc<tokio::sync::Mutex<rns_transport::iface::InterfaceManager>>,
+    ) -> bool {
+        self.runtime.stop().await;
+        iface_manager.lock().await.stop_interface(self.host_iface)
     }
 }
 
