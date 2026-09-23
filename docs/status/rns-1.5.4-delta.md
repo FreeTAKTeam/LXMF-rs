@@ -257,6 +257,9 @@ a deterministic regression proves those states are cleaned while active-link
 media is retained. A new injected deletion-failure regression verifies the
 directory remains tracked and is removed on the subsequent Link cleanup retry;
 the conversion-fallback and link-cleanup handlers log path/Link context.
+A focused Unix timeout regression also verifies that both WebP pipeline child
+processes are terminated and reaped after a bounded deadline; cancellation of
+an in-flight Resource response remains unverified.
 An abrupt Python process exit still left the Rust link
 `Active` after 104 seconds without inbound traffic, so the live stale-transition
 path, other filesystem failures, and cancellation cleanup remain unverified. The separate

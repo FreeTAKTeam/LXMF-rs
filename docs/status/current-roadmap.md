@@ -46,8 +46,10 @@ preserving active-link media, with a deterministic regression; abrupt-process
 stale transition, other filesystem failures, and cancellation cleanup remain
 unverified. A failure-injection regression proves a failed directory deletion
 stays tracked and succeeds on a later link-cleanup retry; cleanup handlers log the path and
-Link ID, including under `--silent`. The utility
-and full operational parity rows remain partial.
+Link ID, including under `--silent`. A focused timeout regression also proves
+both WebP pipeline subprocesses are terminated and reaped; it does not prove
+cancellation of an in-flight Resource response. The utility and full
+operational parity rows remain partial.
 
 The forward #610 Resource slice also has new pinned-Python evidence at
 `8b29132c`: a sender-side file-like reader raises during a split transfer,

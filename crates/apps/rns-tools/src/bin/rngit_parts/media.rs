@@ -383,7 +383,9 @@ pub(crate) fn convert_file_to_webp(
 
 #[cfg(test)]
 mod media_tests {
-    use super::webp_info;
+    use super::{read_stderr_tail, wait_pipeline, webp_info};
+    use std::process::{Command, Stdio};
+    use std::time::Duration;
 
     #[test]
     fn webp_header_dimensions_match_reference_chunk_layouts() {
@@ -408,5 +410,40 @@ mod media_tests {
     fn malformed_webp_headers_are_rejected() {
         assert_eq!(webp_info(&[0_u8; 30]), None);
         assert_eq!(webp_info(b"RIFF"), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn webp_pipeline_timeout_terminates_and_reaps_both_processes() {
+        let mut input = Command::new("/bin/sh")
+            .args(["-c", "exec sleep 30"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("start test blob reader");
+        let input_stdout = input.stdout.take().expect("blob reader stdout");
+        let input_stderr = input.stderr.take().expect("blob reader stderr");
+
+        let mut encoder = Command::new("/bin/sh")
+            .args(["-c", "exec sleep 30"])
+            .stdin(input_stdout)
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("start test encoder");
+        let encoder_stderr = encoder.stderr.take().expect("encoder stderr");
+
+        let completed = wait_pipeline(
+            "test-backend",
+            &mut input,
+            &mut encoder,
+            read_stderr_tail(input_stderr),
+            read_stderr_tail(encoder_stderr),
+            Duration::from_millis(50),
+        );
+
+        assert!(!completed, "a timed-out conversion pipeline must fail");
+        assert!(input.try_wait().expect("wait for blob reader").is_some());
+        assert!(encoder.try_wait().expect("wait for encoder").is_some());
     }
 }

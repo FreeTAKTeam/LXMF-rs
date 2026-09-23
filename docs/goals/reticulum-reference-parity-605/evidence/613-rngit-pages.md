@@ -26,7 +26,7 @@ deterministic failure-injection regression for temporary-directory cleanup.
 | Pages | Index/group/repository/tree/blob/commits/commit/refs/stats/releases/release/work/work-doc paths, `var_*` query fields, ref/path validation, not-found/error rendering, custom static and bounded executable templates, binary-image `/media` markup | local verified; pinned Python live trace covers missing repository, invalid ref, missing blob, and visual/reference rendering remains incomplete |
 | Access control | Repository read/stats/release checks, work-document read checks, blocked unidentified-client no-identity template, malformed/denied/missing request paths fail closed | local verified; pinned Python live trace covers a denied repository |
 | Media/files | `/media` key and path validation, URL decoding, ref/blob resolution, binary-safe filename metadata, download/artifact/work-doc endpoints, published-release filtering and absent-blob handling | local verified; pinned Python Resource payload/metadata and `/file/download` content/filename trace evidenced |
-| WebP conversion | Backend preference and `RNGIT_MEDIA_BACKEND`, argv-only process construction, quality/max-dimension options, 8-second pipeline bound, bounded stderr, output validation, temporary-directory cleanup, raw fallback | local code/tests; pinned Python live `ffmpeg` conversion of a valid PNG returns validated WebP; other backends and visual parity remain unverified |
+| WebP conversion | Backend preference and `RNGIT_MEDIA_BACKEND`, argv-only process construction, quality/max-dimension options, 8-second pipeline bound, bounded stderr, output validation, temporary-directory cleanup, raw fallback | local code/tests; pinned Python live `ffmpeg` conversion of a valid PNG returns validated WebP; timeout regression verifies both pipeline children are terminated and reaped; other backends and visual parity remain unverified |
 | Resource wire | Explicit outbound compression control, with `/media` responses sent uncompressed and a regression asserting no compressed advertisement | local verified; live Python Resource delivery and metadata evidenced |
 | Link-scoped cleanup | Converted-media temp data is retained for an active Link and removed on `Closed`, `Stale`, or missing-link state; graceful teardown is exercised against a pinned Python peer | deterministic `stale_page_links_are_cleaned_while_active_links_keep_media` plus ignored `rngit_python_interop::rngit_serves_pages_and_media_to_pinned_python_client` | status-to-cleanup behavior and graceful production teardown verified; abrupt-process stale transition, other filesystem failures, and cancellation cleanup remain open |
 | Removal errors | Failed directory deletion retains the Link registry entry; conversion-fallback and link-cleanup errors log path/link context for diagnosis and retry, even with `--silent` | deterministic `page_link_cleanup_retries_failed_removal` injects a failure then verifies successful retry on link cleanup | one deletion-error retry path verified; other filesystem fault and cancellation paths remain open |
@@ -122,8 +122,17 @@ eventual stale transition, so abrupt-exit timing remains explicitly unverified.
 The new failure-injection regression proves that a failed `remove_dir_all`
 leaves its directory tracked and the subsequent Link cleanup removes it. The
 conversion-fallback and link-cleanup handlers log path and Link ID on failure,
-including when routine output is silent; other filesystem fault and
-cancellation paths remain open.
+including when routine output is silent. A focused Unix regression now holds
+both pipeline subprocesses open past a 50 ms test deadline and observes the
+production timeout helper terminate and reap each child. This proves bounded
+subprocess cleanup only; cancellation of a live Resource response and other
+filesystem fault paths remain open.
+
+```text
+cargo test -p rns-tools --bin rngit --all-features \
+  webp_pipeline_timeout_terminates_and_reaps_both_processes -- --nocapture
+  PASS (1 test; both timeout child processes reaped)
+```
 
 The module-size script now reports only the existing
 `crates/libs/rns-transport/src/resource/manager.rs:555` over-budget baseline;
@@ -140,7 +149,9 @@ limit.
   This is one bounded role trace, not proof of every page, file, or
   public-network path. Status-driven stale cleanup is deterministically
   covered, but abrupt-process stale transition, other filesystem-failure
-  paths, cancellation cleanup, and the complete media lifecycle remain open.
+  paths, cancellation of an in-flight Resource response, and the complete
+  media lifecycle remain open. The timeout regression establishes only that
+  both conversion subprocesses are terminated and reaped.
 - The Rust page rendering is intentionally a compact service implementation;
   full Markdown highlighting, pagination, diff rendering, signed work-document
   presentation, and every reference template detail remain open.
