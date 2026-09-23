@@ -571,29 +571,35 @@ RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/R
 
 ## Missing-fragment retry exhaustion after partial progress
 
-The executable regression is Rust-only: production `ResourceManager` accepts
-the first of two advertised parts, leaves the second absent, advances its
-injected clock past the configured retry interval, and verifies the exact
-terminal `retry_limit_exhausted` failure with one received part and no retained
-inbound transfer state. It uses no wall-clock sleep and does not broaden
-accepted outcomes.
+Both production Rust and frozen Python now have executable regressions for
+this transition. The Rust `ResourceManager` test accepts the first of two
+advertised parts, leaves the second absent, advances its injected clock past
+the configured retry interval, and verifies the exact terminal
+`retry_limit_exhausted` failure with one received part and no retained inbound
+state.
 
-Separately, source inspection of frozen Reticulum
-`99de23c040d507e3fefca19e87b182302902725d`'s
-`Resource.__watchdog_job` shows that an inbound receiver with no retries left
-calls `cancel()` when its missing-part timeout expires. This is not an
-executable Python differential for the partial-progress case: the reference
-watchdog runs as a thread and reads module-level wall-clock/sleep functions,
-and no isolated fake-clock harness for this transition was added. The nearby
-pinned-Python split-cancellation test exercises explicit cancellation, not
-retry exhaustion. Therefore timeout parity against Python remains unverified;
-cross-peer timeout timing and the rest of the #610 failure matrix also remain
-open.
+The ignored pinned-Python test invokes the reference
+`Resource._Resource__watchdog_job` directly on a two-part `Resource.__new__`
+fixture with one received part, `retries_left == 0`, and an expired missing-part
+deadline. In a separate Python subprocess it replaces the module's clock and
+sleep functions, does not start the watchdog thread, and uses an inactive stub
+Link so the real `Resource.cancel()` takes its receiver cleanup path without
+network I/O. It asserts exactly one cancel from `TRANSFERRING`, terminal
+`FAILED`, removal from the Link's incoming-resource list, one fake clock read,
+and only the no-op post-transition sleep request. This is a deterministic
+state-machine differential, not an end-to-end network timeout test. Cross-peer
+timeout timing and the rest of the #610 failure matrix remain open.
 
 ```text
 cargo test -p reticulum-rs-transport --lib \
   resource_manager_exhausts_missing_fragment_retries_after_partial_progress
 # 1 passed
+
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+  LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
+  pinned_python_resource_cancels_after_missing_part_retry_budget \
+  -- --ignored --exact --nocapture --test-threads=1
+# 1 passed against frozen Reticulum 99de23c040d507e3fefca19e87b182302902725d
 ```
 
 ## Resource compression size-limit boundary
