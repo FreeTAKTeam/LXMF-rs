@@ -48,7 +48,7 @@
         );
         assert_eq!(
             result["software_parity"]["forward_behavioral"]["inventory"]["partial"],
-            json!(9)
+            json!(8)
         );
         assert_eq!(
             result["meta"]["python_reference"],
