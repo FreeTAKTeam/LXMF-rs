@@ -111,8 +111,10 @@ authenticated delivery across daemon restart. Another pinned-Python trace
 exercises an IFAC-protected UDP shared-instance owner, an attached Rust local
 client, and a separate Python peer, with bidirectional delivery and zero IFAC
 violations; a focused ingress regression verifies inherited policy on a
-virtual child. Other carrier families remain open; hardware and public-network
-evidence remain separate acceptance gates.
+virtual child. The packet decoder now derives authentication and verified-wire
+provenance from one IFAC-state snapshot across hot reconfiguration. Other
+carrier families remain open; hardware and public-network evidence remain
+separate acceptance gates.
 
 The #609 implementation slice now has committed local software evidence in
 [`evidence/609-transport-local-shared.md`](../goals/reticulum-reference-parity-605/evidence/609-transport-local-shared.md):

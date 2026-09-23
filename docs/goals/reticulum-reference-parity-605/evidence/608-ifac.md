@@ -214,3 +214,37 @@ remote Python peer and the attached Rust client; the owner and Rust client both
 reported zero IFAC violations. The virtual-child regression verifies inherited
 policy at transport ingress. Other carrier families through production paths
 remain open; this does not claim physical verification under #616.
+
+## PR #628 follow-up: coherent packet authentication snapshot
+
+`decode_packet_ifac` now uses one read-locked IFAC context for both frame
+authentication and the packet's verified-wire provenance marker. This avoids
+using different live configurations for those two decisions during
+reconfiguration; the read lock is released before packet deserialization.
+Packet-level tests cover authenticated decoding, plaintext rejection on an
+authenticated interface, IFAC-frame rejection on a plaintext interface, and
+plain packet provenance.
+
+```text
+cargo test -p reticulum-rs-transport --all-features --lib
+  830 passed; 0 failed
+cargo clippy -p reticulum-rs-transport --all-targets --all-features --no-deps -- -D warnings
+  passed
+cargo test -p reticulumd --bin reticulumd interface_hot_apply
+  35 passed; 0 failed
+RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
+LXMF_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/LXMF LXMF_PYTHON_BIN=python3 \
+cargo test -p lxmf-cli --test python_lxmd_remote_relay ifac -- \
+  --ignored --nocapture --test-threads=1
+  8 passed; 0 failed
+RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
+LXMF_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/LXMF LXMF_PYTHON_BIN=python3 \
+cargo test -p reticulumd --test python_channel_interop ifac -- \
+  --ignored --nocapture --test-threads=1
+  6 passed; 0 failed
+```
+
+These checks exercise the common decoder through Rust/Python TCP and UDP
+Channel, Resource, daemon, credential-rotation, tampering, and shared-instance
+paths. They do not complete the remaining carrier-family or physical-support
+matrix.

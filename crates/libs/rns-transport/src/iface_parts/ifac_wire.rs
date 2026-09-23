@@ -113,9 +113,16 @@ pub fn encode_ifac(state: &IfacState, raw: &[u8]) -> Result<Vec<u8>, IfacWireErr
 
 /// Authenticate and remove IFAC before packet deserialization.
 pub fn decode_ifac(state: &IfacState, raw: &[u8]) -> Result<Vec<u8>, IfacWireError> {
-    let authenticated = raw.first().is_some_and(|byte| byte & 0x80 != 0);
     let guard = state.read().map_err(|_| RnsError::ConnectionError)?;
-    match guard.as_ref() {
+    decode_ifac_with_context(guard.as_ref(), raw)
+}
+
+fn decode_ifac_with_context(
+    context: Option<&IfacContext>,
+    raw: &[u8],
+) -> Result<Vec<u8>, IfacWireError> {
+    let authenticated = raw.first().is_some_and(|byte| byte & 0x80 != 0);
+    match context {
         Some(context) => {
             if !authenticated {
                 return Err(IfacWireError::MissingFlag);
@@ -150,11 +157,13 @@ pub fn encode_packet_ifac(
 /// packet bytes. This is deliberately the only packet admission helper used
 /// by carrier receive loops.
 pub fn decode_packet_ifac(state: &IfacState, raw: &[u8]) -> Result<Packet, IfacWireError> {
-    let authenticated = state
-        .read()
-        .map_err(|_| RnsError::ConnectionError)?
-        .is_some();
-    let raw = decode_ifac(state, raw)?;
+    // Hold one policy snapshot across wire decoding and provenance marking.
+    // Reconfiguration must not change the context between those decisions.
+    let (raw, authenticated) = {
+        let context = state.read().map_err(|_| RnsError::ConnectionError)?;
+        let authenticated = context.is_some();
+        (decode_ifac_with_context(context.as_ref(), raw)?, authenticated)
+    };
     let mut packet = Packet::from_bytes(&raw).map_err(IfacWireError::Codec)?;
     if authenticated {
         // `Packet::header.ifac_flag` describes the packet bytes after IFAC has
@@ -272,5 +281,36 @@ mod ifac_wire_tests {
         let plain = std::sync::Arc::new(std::sync::RwLock::new(None));
         let raw = [0x01_u8; 32];
         assert_eq!(decode_ifac(&plain, &raw).expect("plaintext frame"), raw);
+    }
+
+    #[test]
+    fn packet_decode_keeps_ifac_policy_and_authentication_provenance_together() {
+        let packet = Packet {
+            destination: crate::hash::AddressHash::new_from_slice(&[0x42; 16]),
+            data: crate::packet::PacketDataBuffer::new_from_slice(b"packet-ifac-test"),
+            ..Packet::default()
+        };
+        let raw = packet.to_bytes().expect("serialize packet");
+        let authenticated = state(InterfaceSharedConfig {
+            network_name: Some("field-net".to_string()),
+            ..InterfaceSharedConfig::default()
+        });
+        let framed = encode_packet_ifac(&authenticated, &packet).expect("encode IFAC packet");
+
+        assert!(matches!(
+            decode_packet_ifac(&authenticated, &raw),
+            Err(IfacWireError::MissingFlag)
+        ));
+        let decoded = decode_packet_ifac(&authenticated, &framed).expect("decode IFAC packet");
+        assert_eq!(decoded.data.as_slice(), b"packet-ifac-test");
+        assert_eq!(decoded.ifac.map(|ifac| ifac.length), Some(0));
+
+        let plaintext = std::sync::Arc::new(std::sync::RwLock::new(None));
+        assert!(matches!(
+            decode_packet_ifac(&plaintext, &framed),
+            Err(IfacWireError::UnexpectedFlag)
+        ));
+        let decoded_plaintext = decode_packet_ifac(&plaintext, &raw).expect("decode plaintext");
+        assert!(decoded_plaintext.ifac.is_none());
     }
 }
