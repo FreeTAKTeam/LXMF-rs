@@ -75,6 +75,19 @@ request/transfer progress without a terminal result, leaves no completed save
 file, and retains the partial Resource staging file; the Rust sender reports
 `rncp: outgoing Resource failed`.
 
+The ignored exact-target `rncp_python_fetch_failure` regression now forces the
+fetch client's validated save directory to become a regular file after the
+request starts. A test-local Python startup hook hashes the bytes passed to the
+pinned `shutil.move` call before the original move fails. The pinned client
+prints both `An error occurred while saving received resource` and
+`Transfer complete`, but never prints the terminal `fetched from` line and is
+still running when observed. The Rust listener independently reports its
+production `OutboundComplete` event, and its Resource hash matches the hash in
+the Python staging path. The payload digest, intact collision sentinel, absent
+destination file, and empty Python Resource staging directory distinguish
+complete transport delivery from failed local save. This captures the pinned
+behavior; it does not add or imply a negative-ack protocol.
+
 ## Reference and ownership
 
 - Forward reference: Reticulum `99de23c040d507e3fefca19e87b182302902725d`
@@ -123,10 +136,10 @@ physical/public-network evidence remain outside the software-only pass.
 | Fetch | `fetch_file` Link request/response, `True`/`False`/`0xF0`/`nil` status mapping, the pinned Python rncp listener's ordinary metadata-bearing file Resource contract, correlated Rust response Resources for other callers, and metadata-driven save | `rncp_process` Rust client to Rust listener; pinned Python listener/client trace; pinned Python client fetching from Rust | verified for two independent Rust processes and the bounded Python↔Rust fetch paths |
 | Authentication | `--no-auth`, explicit `--allowed-identity`, rejected identified peers, nonzero sender failure, and reciprocal Python/Rust identity allow-lists for send and fetch roles | manual denied-transfer run; pinned Python interop | verified for the bounded send/fetch roles; broader option and callback parity remains open |
 | Jail and save safety | Canonical jail containment, traversal rejection, basename-only metadata, overwrite/suffix behavior | protocol unit tests and process tests, including network denial status and no output side effect | verified locally |
-| Timeout/output | `--timeout`, silent mode, nonzero status for denied senders, preserved not-found failure output for missing fetches, malformed identity rejection, unusable save-path rejection, path-discovery timeout status, client Ctrl-C during discovery and an active Resource transfer, interrupted Resource-link failure, medium-path timeout after an active TCP interface connects, delayed/rate-limited TCP-path transfer, Python fetch completion, save-failure callback and active-cancellation outcome, and listener receive-save failure diagnostics | unit/process tests and pinned Python interop | active-transfer cancellation is evidenced for native Rust and pinned-Python fetch clients; the Python client exits successfully without a terminal cancellation result and retains its partial staging Resource; broader utility status parity remains open; the pinned Python fetch save-error callback still leaves the operation unresolved |
-| Status output | Non-silent path request, link-establishment, transfer, and fetch-request phase lines; silent mode suppresses them; the Python fetch client emits `Transfer complete` on successful save, while an interrupted active fetch emits no terminal result | `rncp_process`, CLI phase transcript, pinned Python interop and `rncp_python_fetch_cancel` | verified for the native Rust client path and bounded Python fetch-client completion/cancellation transcripts; Python cancellation exit status is 0 despite the missing completed file |
+| Timeout/output | `--timeout`, silent mode, nonzero status for denied senders, preserved not-found failure output for missing fetches, malformed identity rejection, unusable save-path rejection, path-discovery timeout status, client Ctrl-C during discovery and an active Resource transfer, interrupted Resource-link failure, medium-path timeout after an active TCP interface connects, delayed/rate-limited TCP-path transfer, Python fetch completion, save-failure callback and active-cancellation outcome, and listener receive-save failure diagnostics | unit/process tests and pinned Python interop | active-transfer cancellation is evidenced for native Rust and pinned-Python fetch clients; the Python client exits successfully without a terminal cancellation result and retains its partial staging Resource; after a completed fetch's local save error, pinned Python prints `Transfer complete` and the save error but remains unresolved; broader utility status parity remains open |
+| Status output | Non-silent path request, link-establishment, transfer, and fetch-request phase lines; silent mode suppresses them; the Rust fetch listener reports its production `OutboundComplete` event; pinned Python can print `Transfer complete` before its local save callback reports failure | `rncp_process`, CLI phase transcript, pinned Python interop and `rncp_python_fetch_failure` | verified for the native Rust client path and bounded Python fetch-client completion/cancellation transcripts; the save-failure trace correlates the listener's event hash with the Python staging hash and records transport completion separately from local save failure and the unresolved Python terminal state |
 | Restart | Persisted listener identity, same TCP endpoint, stable destination hash, and a second binary transfer after listener restart | `rncp_process`; ignored `rncp_python_interop` restart process | verified for the bounded Rust listener/client path and the Python-listener/Rust-client role |
-| Disk failure | Rust client/listener save failures; pinned Python listener receive-save failure; pinned Python fetch-client save callback failure after the save directory becomes unusable mid-transfer | `rncp_process::rncp_listener_reports_received_file_disk_error`; ignored `rncp_python_interop::rncp_python_listener_reports_received_file_disk_error`; ignored `rncp_python_fetch_failure::rncp_python_fetch_client_save_error_is_reported_but_never_resolved` | The Python fetch callback emits its save error but never resolves the completed transfer and the CLI remains running; the regression records this pinned-reference defect, not successful terminal failure handling. No case claims an application-level negative acknowledgment to the sender |
+| Disk failure | Rust client/listener save failures; pinned Python listener receive-save failure; pinned Python fetch-client save callback failure after the save directory becomes unusable mid-transfer | `rncp_process::rncp_listener_reports_received_file_disk_error`; ignored `rncp_python_interop::rncp_python_listener_reports_received_file_disk_error`; ignored `rncp_python_fetch_failure::rncp_python_fetch_client_save_error_is_reported_but_never_resolved` | The pinned Python callback observes the exact 2 MiB payload and its digest, reports the failed local move, then remains unresolved; the Rust listener reports a matching-hash `OutboundComplete`, reflecting Resource delivery. The save-root collision sentinel remains intact and Python Resource staging is cleaned after callback. This records reference behavior, not successful terminal failure handling or an application-level negative acknowledgment |
 | Multi-client | Three independent clients send distinct binary files concurrently to one listener | `rncp_process` | verified for the bounded Rust listener/client path |
 | Adaptive timeout | Initial TCP clients reach `connected` before network work begins, allowing `operation_timeout` to observe the active interface bitrate and apply the RNS medium-path lower bound; a slow proxy delays the first server response and rate-limits both directions during a real send | `rncp_process::rncp_uses_medium_timeout_after_interface_activation`; `rncp_process::rncp_completes_after_delayed_first_hop_on_a_rate_limited_tcp_path` | verified for active local TCP and a delayed/rate-limited software TCP path; carrier-specific and physical timing are not claimed |
 | Packet probe exchange | Probe packet delivery and proof correlation between the native daemon path and the pinned Python utility, in both initiator/responder directions | ignored `rnprobe_python_interop` (2 tests, commit `f86ecc1c`) | verified for isolated Rust daemon/Python TCP roles; public/multi-hop, carrier-fault, and physical timing remain open |
@@ -584,17 +597,42 @@ stdin-close cleanup path. This is a bounded software/TCP slice: PTY allocation
 and resize, native outbound compression, full restart/fault/cancellation
 coverage, and public or multi-hop transport remain unverified.
 
+## Fetch-client save-failure process result
+
+The exact-target run used the already available frozen checkout at
+`/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum`
+(`99de23c040d507e3fefca19e87b182302902725d`) and kept the test's temporary
+configuration, identity, listener, hook, and output roots under `/dev/shm`:
+
+```text
+TMPDIR=/dev/shm \
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+LXMF_PYTHON_BIN=python3 \
+cargo test -p rns-tools --test rncp_python_fetch_failure \
+  rncp_python_fetch_client_save_error_is_reported_but_never_resolved \
+  -- --ignored --exact --nocapture --test-threads=1
+PASS: 1 passed (1.29s)
+```
+
+Observed callback Resource hash matched Rust listener's `OutboundComplete`
+event hash. Its payload was 2,097,152 bytes with SHA-256
+`ab1240e840358af7a53b92d95aeb9def8c19ab68436627ddac205e6e7e42c0da`.
+Python stdout contains the `Not a directory` save error followed by `Transfer
+complete` progress at 100%, but no `fetch-failure.bin fetched from` terminal
+line. Python stderr is empty; its status is still `None` before cleanup and
+test cleanup ends it with SIGKILL. Rust listener stdout is empty and stderr
+contains `rncp: outgoing Resource complete (<resource-hash>)`. The replacement
+save-root sentinel remains byte-for-byte intact, no fetched destination file
+exists, and pinned RNS removes its completed Resource staging file after the
+callback returns. These observations separate Resource transport completion
+from local save success and leave the reference's unresolved client state
+visible.
+
 ## Unresolved requirements
 
 The following #611 acceptance items remain open and are deliberately not
 classified as complete:
 
-- Add failure-side callback assertions for the Python fetch client receiving a
-  Resource, and correlate the completed Python fetch with stable listener-side
-  save-status evidence. `e6f71d21` asserts the successful Python fetch client's
-  `Transfer complete` callback; `rncp_python_listener_reports_received_file_disk_error`
-  now proves the distinct Python listener receive callback, not fetch-client
-  save failure or a sender-visible negative acknowledgment.
 - Build the complete utility option/behavior matrix from every frozen
   `RNS/Utilities` entry point. The current slice now covers the daemon-backed
   `rnpath` management subset, a bounded native `rnprobe` packet workflow with

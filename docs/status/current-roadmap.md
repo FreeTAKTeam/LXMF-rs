@@ -62,10 +62,13 @@ probe results against the exact `99de23c...` peer in Verify. These bounded
 increments do not complete the broader #611 utility matrix, which remains
 partial.
 
-The exact-target Python fetch-client disk-error trace also now reproduces the
-pinned callback printing its save failure while leaving the fetch unresolved;
-the bounded test records this as a reference defect, not passing terminal
-failure handling, and the #611 utility row remains partial.
+The exact-target Python fetch-client disk-error trace now verifies the full
+payload digest at the pinned save callback, the callback's local save error,
+the pinned client's subsequent `Transfer complete` progress and unresolved
+process state, and the Rust listener's `OutboundComplete` event with a matching
+Resource hash. This records transport delivery separately from local save
+success; it does not add a negative acknowledgment or complete the broader
+#611 utility row.
 
 The #612 mixed-peer increment adds pinned-Python Verify coverage for four
 concurrent signed work creators, malformed work requests, and the Python
