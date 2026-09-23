@@ -513,6 +513,27 @@ RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/R
 Compression-threshold-limit behavior and the remaining #610 transfer-selection
 and failure matrix remain unverified.
 
+## First-segment metadata boundary
+
+The focused `pinned_python_resource_metadata_boundary_matches_rust_accounting`
+case places the Python MessagePack metadata block across the first segment
+boundary. The deterministic payload size is `MAX_EFFICIENT_SIZE -
+metadata_wire_size + 1`, so pinned Python reports `total_size =
+MAX_EFFICIENT_SIZE + 1` and exactly two segments. Rust observes accepted
+segment indexes `[1, 2]`, reassembles the exact encoded `python-meta` value,
+and its content SHA-256 matches the pinned Python sender's report. This
+confirms segment 1 reserves the 3-byte metadata length and encoded metadata,
+leaving one content byte for segment 2. It is a focused mixed-peer boundary
+case; it does not close broader size/chunking or request/response selection.
+
+```text
+RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
+  LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
+  pinned_python_resource_metadata_boundary_matches_rust_accounting \
+  -- --ignored --nocapture --test-threads=1
+# 1 passed; two exact segment indexes, metadata, total size, and content digest
+```
+
 ## Remaining acceptance boundary
 
 The following #610 requirements remain unverified and are intentionally not

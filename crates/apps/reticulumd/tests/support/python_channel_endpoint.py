@@ -444,14 +444,19 @@ class ChannelClient:
                     resource_file.flush()
                     resource_file.seek(0)
 
+            resource_metadata = "python-meta"
+
             def resource_concluded(resource) -> None:
                 result["status"] = resource.status
+                result["total_size"] = resource.get_data_size()
+                result["segments"] = resource.get_segments()
+                result["metadata"] = resource_metadata
                 done.set()
 
             resource = RNS.Resource(
                 resource_file if resource_file is not None else resource_data,
                 active_link,
-                metadata="python-meta",
+                metadata=resource_metadata,
                 auto_compress=self.payload_kind != "resource-compression-disabled",
                 callback=resource_concluded,
                 timeout=timeout,
@@ -520,6 +525,9 @@ class ChannelClient:
                             "size": len(resource_data),
                             "sha256": hashlib.sha256(resource_data).hexdigest(),
                             "compressed": resource.compressed,
+                            "total_size": result.get("total_size"),
+                            "segments": result.get("segments"),
+                            "metadata": result.get("metadata"),
                             "peak_rss_kib": process_peak_rss_kib(),
                         }
                     ),
