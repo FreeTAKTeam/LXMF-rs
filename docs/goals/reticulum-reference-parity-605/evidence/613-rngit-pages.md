@@ -195,6 +195,22 @@ The follow-up also reran the updated encoded-path, private-access, and main
 pinned-Python page/media interop cases against the exact reference checkout at
 `99de23c040d507e3fefca19e87b182302902725d`; all four focused tests passed.
 
+The media validation differential now also covers a literal malformed escape
+in a repository filename (`literal%zz.bin`). Python's
+`urllib.parse.unquote_plus` preserves malformed `%` sequences; the Rust media
+decoder now matches that behavior locally, while retaining the existing path
+validation and the stricter decoder used by other page routes. The response
+matches the Python Link Resource filename metadata and exact binary payload.
+This does not remove Rust's bounded 32 MiB media-response limit; the pinned
+Python stream path has no corresponding explicit size cap.
+
+```text
+RETICULUM_PY_REPO=<checkout at 99de23c040d507e3fefca19e87b182302902725d> \
+LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
+  issue_613_media_invalid_ref::rngit_media_validation_denials_return_false_over_python_link \
+  -- --ignored --nocapture --test-threads=1                     PASS (1 test)
+```
+
 The periodic service sweep now treats `LinkStatus::Stale` the same as `Closed`
 and a missing transport link, matching pinned Python `clean_links()`, which
 removes tracked links whose status is not `ACTIVE`. A deterministic service

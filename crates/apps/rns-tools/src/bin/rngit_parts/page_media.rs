@@ -41,6 +41,36 @@ fn percent_decode_plus(value: &str) -> Option<String> {
     }
 }
 
+// Match urllib.parse.unquote_plus for /media only: malformed escapes remain
+// literal and invalid UTF-8 is replaced, without relaxing path validation.
+fn media_unquote_plus(value: &str) -> String {
+    let bytes = value.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'+' => {
+                decoded.push(b' ');
+                index += 1;
+            }
+            b'%' if index + 2 < bytes.len() => {
+                if let (Some(high), Some(low)) = (hex_nibble(bytes[index + 1]), hex_nibble(bytes[index + 2])) {
+                    decoded.push((high << 4) | low);
+                    index += 3;
+                } else {
+                    decoded.push(bytes[index]);
+                    index += 1;
+                }
+            }
+            byte => {
+                decoded.push(byte);
+                index += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&decoded).into_owned()
+}
+
 fn percent_encode_plus(value: &str) -> String {
     let mut encoded = String::with_capacity(value.len());
     for byte in value.as_bytes() {
@@ -81,7 +111,7 @@ impl ReticulumGitNode {
         let group = components.next()?.to_string();
         let repository = components.next()?.to_string();
         let reference = components.next()?.to_string();
-        let file_path = percent_decode_plus(components.next()?)?;
+        let file_path = media_unquote_plus(components.next()?);
         if group.is_empty() || repository.is_empty() || reference.is_empty() {
             return None;
         }

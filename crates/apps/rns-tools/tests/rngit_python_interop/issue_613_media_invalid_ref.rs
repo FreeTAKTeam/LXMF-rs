@@ -13,6 +13,7 @@ fn rngit_media_validation_denials_return_false_over_python_link() -> io::Result<
         super::PYTHON_INTEROP_TEST_LOCK.lock().expect("Python interop test lock poisoned");
     let temp = tempfile::tempdir()?;
     let root = create_repository_fixture(temp.path())?;
+    seed_malformed_escape_media(temp.path())?;
     seed_private_media_repository(&root, &temp.path().join("private-source"))?;
     let python_repo = python_repo();
     if !python_repo.join("RNS/Link.py").is_file() {
@@ -70,6 +71,19 @@ fn rngit_media_validation_denials_return_false_over_python_link() -> io::Result<
         assert_eq!(result["valid_ref"]["media_bytes_received"], true);
         assert_eq!(result["valid_ref"]["failed"], false);
         assert_eq!(
+            result["malformed_escape_filename"]["response_received"], true,
+            "client result: {result}"
+        );
+        assert_eq!(
+            result["malformed_escape_filename"]["name"], "literal%zz.bin",
+            "client result: {result}"
+        );
+        assert_eq!(
+            result["malformed_escape_filename"]["payload_hex"],
+            "6c69746572616c2070657263656e7420657363617065",
+            "client result: {result}"
+        );
+        assert_eq!(
             result["present_null_key"]["response_received"], true,
             "client result: {result}"
         );
@@ -125,6 +139,14 @@ fn seed_private_media_repository(
     let private_repo_url = private_repo.to_string_lossy().into_owned();
     run_git(source, &["remote", "add", "origin", &private_repo_url])?;
     run_git(source, &["push", "-q", "origin", "HEAD:main"])
+}
+
+fn seed_malformed_escape_media(temp: &std::path::Path) -> io::Result<()> {
+    let source = temp.join("source");
+    fs::write(source.join("literal%zz.bin"), b"literal percent escape")?;
+    run_git(&source, &["add", "literal%zz.bin"])?;
+    run_git(&source, &["commit", "-qm", "add literal percent escape media"])?;
+    run_git(&source, &["push", "-q", "origin", "main"])
 }
 
 fn run_git(directory: &std::path::Path, args: &[&str]) -> io::Result<()> {
@@ -205,6 +227,9 @@ valid_path = "/media/group/repo/main/assets%2Fspace+name.bin"
 valid = request({"key": key, "path": valid_path}, "valid_ref")
 if not valid["response_received"] or valid.get("failed"):
     raise RuntimeError("known readable main-ref media request did not return a Resource")
+malformed_escape_filename = request({"key": key, "path": "/media/group/repo/main/literal%zz.bin"}, "malformed_escape_filename")
+if not malformed_escape_filename["response_received"] or malformed_escape_filename.get("failed"):
+    raise RuntimeError("literal malformed percent escape filename did not return a Resource")
 present_null_key = request({"key": None, "path": valid_path}, "present_null_key")
 denials = {
     "missing_key": request({"path": valid_path}, "missing_key"),
@@ -218,5 +243,5 @@ denials = {
     "invalid_ref": request({"key": key, "path": "/media/group/repo/no-such-ref-613/assets%2Fspace+name.bin"}, "invalid_ref"),
 }
 link.teardown()
-print(json.dumps({"valid_ref": valid, "present_null_key": present_null_key, **denials}, sort_keys=True))
+print(json.dumps({"valid_ref": valid, "malformed_escape_filename": malformed_escape_filename, "present_null_key": present_null_key, **denials}, sort_keys=True))
 "#;
