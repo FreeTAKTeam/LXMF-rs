@@ -1,8 +1,10 @@
 # #614 native interface runtimes and Windows BLE evidence
 
-Status: **partial / hardware-unverified**. This records the bounded software
-increment at candidate commit `f753c4d7` on `codex/issue-605-parity`; it does
-not claim the full #614 or #605 acceptance gate.
+Status: **partial / hardware-unverified**. The bounded pairing implementation
+originated at `f753c4d7` on `codex/issue-605-parity`; the follow-up hosted
+Windows query/test evidence below is from `ca6b6bba` on
+`corvo/issue-614-windows-ci`. This does not claim the full #614 or #605
+acceptance gate.
 
 ## Reference and ownership
 
@@ -16,15 +18,16 @@ not claim the full #614 or #605 acceptance gate.
 
 | Area | Implemented and tested behavior | Status |
 | --- | --- | --- |
-| Windows paired-device lookup | The Windows BLE backend asks WinRT for the paired-device selector, enumerates `DeviceInformation`, extracts only strict Bluetooth address suffixes from each device ID, and filters scan candidates by the paired address before configured ID, alias, or service matching. A Windows-only hosted test now queries the native paired-device list and compares the Rust suffix extraction against the pinned reference rule without logging device addresses. | Linux parser tests verified; hosted Windows query pending; physical paired-device behavior unverified |
+| Windows paired-device lookup | The Windows BLE backend asks WinRT for the paired-device selector, enumerates `DeviceInformation`, extracts only strict Bluetooth address suffixes from each device ID, and filters scan candidates by the paired address before configured ID, alias, or service matching. A Windows-only hosted test queries the native paired-device list and compares Rust suffix extraction against the pinned reference rule without logging device addresses. | Linux parser tests verified; hosted native query/test passed on `ca6b6bba`; physical paired-device behavior unverified |
 | Windows backend boundary | The resolver is target-gated and uses the existing `btleplug` scan/connect/service-discovery path; Android's configured-peripheral path is unchanged. The implementation does not use `btleplug`'s unsupported Windows `add_peripheral` address shortcut. | local code verified |
 | Runtime cleanup | Existing BLE startup still clears stale session state, stops scans after selection or timeout, subscribes before startup writes, and aggregates unsubscribe/scan-stop/disconnect failures during cleanup. This increment applies the pairing constraint before those existing connect/reconnect paths. | local state-machine tests; native carrier unverified |
 | Interface inventory | The daemon has explicit startup branches for TCP/backbone, local TCP/Unix, UDP, AutoInterface, serial, Weave, KISS/AX.25, pipe, I2P, Meshtastic, BLE, LoRa, and RNodeMulti aliases; unknown kinds record an explicit unsupported-kind failure. | source inspection; cross-platform/live evidence open |
-| Native Windows CI | The PR workflow runs the `rnode-ble` library test filter on `windows-latest`, compiling the target-gated WinRT resolver, executing deterministic paired-ID/runtime tests, and invoking the real WinRT paired-device query. A runner with no paired radios may validly return an empty set; this does not verify physical pairing. | hosted job pending for this PR; physical paired-RNode behavior remains unverified |
+| Native Windows CI | The PR workflow runs the `rnode-ble` library test filter on `windows-latest`, compiling the target-gated WinRT resolver, executing deterministic paired-ID/runtime tests, and invoking the real WinRT paired-device query. A runner with no paired radios may validly return an empty set; this does not verify physical pairing. | passed on `ca6b6bba` (18 tests); physical paired-RNode behavior remains unverified |
 
 ## Commands and results
 
-All commands ran in the isolated `codex/issue-605-parity` worktree.
+The initial implementation checks below ran in the isolated
+`codex/issue-605-parity` worktree at `f753c4d7`:
 
 ```text
 cargo fmt --all -- --check                                      PASS
@@ -35,19 +38,34 @@ cargo test -p reticulum-rs-transport --features rnode-ble --tests PASS
   (813 library tests and 169 integration tests)
 cargo clippy -p reticulum-rs-transport --features rnode-ble \
   --lib --all-targets --no-deps -- -D warnings                  PASS
-Windows hosted command (added by this increment; awaiting this PR's result):
-cargo test -p reticulum-rs-transport --features rnode-ble --lib rnode_ble -- --nocapture
 ```
 
-The new WinRT query test is target-gated and was not executed by the local Linux run.
+Follow-up checks for PR #634 ran in the isolated
+`corvo/issue-614-windows-ci` worktree at `ca6b6bba`:
+
+```text
+cargo fmt --all -- --check                                      PASS
+cargo test -p reticulum-rs-transport --features rnode-ble --lib \
+  rnode_ble -- --nocapture                                      PASS (16 Linux tests)
+cargo clippy -p reticulum-rs-transport --features rnode-ble \
+  --all-targets --no-deps -- -D warnings                       PASS
+tools/scripts/check-module-size.sh                              PASS
+git diff --check                                                 PASS
+```
+
+The hosted [Windows RNode BLE job](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/35803940756/job/107000373907)
+passed on commit `ca6b6bbab13007ca6d9adb55b525ce978f763043` and ran 18 tests,
+including `native_windows_paired_device_query_matches_reference_id_suffixes`
+and `extracts_sorted_unique_addresses_from_reference_device_ids`. The new
+WinRT query test is target-gated and was not executed by the local Linux run.
 
 The Windows target is installed, but this Linux host has neither a MinGW
 compiler/sysroot nor Windows SDK headers. The normal target check stopped in
 `bzip2-sys` because `x86_64-w64-mingw32-gcc` is unavailable. A retry with the
 available `clang`/`llvm-ar` stopped before Rust crate checking because the
 Windows C headers `stdlib.h` and `stdio.h` were unavailable. Therefore the
-original local run has no Windows compilation result. The new hosted lane
-supplies that software compile/test evidence when its check passes; it does not
+original local run has no Windows compilation result. The hosted lane supplies
+Windows software compile/test evidence for the recorded commit; it does not
 establish physical Windows pairing or carrier behavior.
 
 ## Deliberate remaining gaps
