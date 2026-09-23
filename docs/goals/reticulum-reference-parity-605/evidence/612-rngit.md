@@ -39,6 +39,7 @@ sourced from `f26ce90d`; the full native `create/init` → `artifact` →
 | Permission state | Identity aliases, strict remote content validation, configured-group merging, deny preservation, blocked identities, administrator fallback, atomic replacement, and immediate in-memory refresh | local verified; differential parity unverified |
 | Work storage | Python-shaped root and response maps, binary identity/signature fields, integer IDs, floating-point timestamps, separate numeric comment files, 256 KiB document bound, atomic MessagePack writes, node reload persistence, atomic work-directory reservation across independent writers, rollback when proposed-document permission setup fails, and pinned-Python process-restart persistence | local and pinned-Python restart trace verified |
 | Work operations | List/view/create/propose/edit/comment/delete/complete/activate/perms through `handle_work_request`, with scope/ID validation, document ownership/permissions, atomic transitions, canonical document permission files, and authenticated-peer signature validation for create/propose/edit | local and pinned-Python production-path verified; full service matrix unverified |
+| Python work CLI | The pinned Python `rngit work` CLI runs create/list/view/edit/update/perms/complete/activate/propose/delete against the Rust service over real Reticulum Links; a deterministic editor and piped confirmation verify signed content, permission sidecars, transitions, and cleanup | local exact-reference trace verified; hosted result pending |
 | Malformed work requests | Pinned Python clients send invalid list scope, malformed document ID, and unknown operation through identified production Links; all receive invalid-request status and do not consume IDs before valid creates | automated mixed-peer trace; hosted result pending |
 | Concurrent network work creation | Four independent pinned-Python processes simultaneously establish identified Links to one production Rust `rngit` server, create signed work documents, and verify unique numeric IDs each have persisted root files | local test and PR Verify automation added; hosted result pending |
 | Cross-language data | A MessagePack fixture generated with Python `msgpack` is loaded and rendered by Rust, retaining binary author/signature/identity values; pinned Python Link requests reach Rust `git.repositories` Git paths plus `/mgmt/perms` and `/mgmt/work`, verify invalid and valid signatures, round-trip binary work metadata, exercise list/view/comment/edit/perms/complete/activate/delete, verify the Git bundle, mutate refs, register repositories, synchronize a configured remote, and clone fork/mirror targets. The native Rust client now sends Python-compatible `/git/list`, `/git/fetch`, and oversized `/git/push` plus signed `/mgmt/work` and the multi-step release protocol to a pinned Python `git.repositories` server, including raw Git bundle and artifact Resource handling, exact `git bundle verify`, remote-ref verification after push, release creation/upload/finalization/list/view/latest/delete, and the production compatibility-client bridge. | fixture, both bounded request directions, and one process-restart persistence trace verified; broader cross-process/network restart/concurrency/fault matrix unverified |
@@ -71,6 +72,11 @@ RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
 RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   cargo test -p rns-tools --test rngit_concurrent_python_interop \
   -- --ignored --nocapture --test-threads=1                     PASS (3 runs; 3 invalid requests per client and 4 concurrent signed clients with unique persisted IDs)
+RETICULUM_PY_REPO=<checkout at 99de23c040d507e3fefca19e87b182302902725d> \
+LXMF_PYTHON_BIN=python3 cargo test -p rns-tools \
+  --test rngit_concurrent_python_interop \
+  pinned_python_rngit_work_cli_round_trips_production_service_lifecycle \
+  -- --ignored --nocapture --exact --test-threads=1                PASS (create/list/view/edit/comment/perms/complete/activate/propose/delete)
 RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   cargo test -p rns-tools --test rngit_python_interop \
   -- --ignored --nocapture --test-threads=1                      PASS (2 tests: page/media and work restart)
@@ -117,9 +123,11 @@ the active 500-line module limit.
   both directions through real Links, including one Rust process restart with
   list/view persistence. The concurrent trace also covers invalid list scope,
   malformed document ID, and unknown operation responses before valid creates.
+  A separate exact-reference Python CLI trace covers the work-document
+  lifecycle over real production Links with deterministic editor input.
   Broader cross-process/network restart behavior, malformed persisted-document
-  error transcripts, disk-fault injection, and the full Python CLI workflow
-  remain unverified.
+  error transcripts, disk-fault injection, non-work Python CLI commands, and
+  the complete utility workflow remain unverified.
 - Static malformed permission sidecars fail closed in Rust rather than being
   silently ignored like the pinned Python loader; this is an intentional safety
   difference and is not being called exact parity.
@@ -135,5 +143,5 @@ the active 500-line module limit.
   and artifact fetch are covered for one bounded fixture. Reticulum-source
   cloning and the remaining release workflows,
   broader cross-process/network restart and concurrent-writer/fault transcripts,
-  the full Python CLI workflow, and the broader #611 utility matrix remain
+  non-work Python CLI command paths, and the broader #611 utility matrix remain
   open.

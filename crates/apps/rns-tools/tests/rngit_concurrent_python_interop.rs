@@ -1,11 +1,12 @@
 use std::fs;
-use std::io;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
 const CLIENT_COUNT: usize = 4;
+static PYTHON_RNGIT_INTEROP_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 fn python_repo() -> PathBuf {
     std::env::var_os("RETICULUM_PY_REPO").map(PathBuf::from).unwrap_or_else(|| {
@@ -228,6 +229,7 @@ print(json.dumps({
 #[test]
 #[ignore = "requires the pinned Python Reticulum checkout"]
 fn concurrent_python_clients_reserve_distinct_persisted_work_ids() -> io::Result<()> {
+    let _test_guard = PYTHON_RNGIT_INTEROP_LOCK.lock().expect("Python rngit test lock poisoned");
     let python_repo = python_repo();
     if !python_repo.join("RNS/Link.py").is_file() {
         return Err(io::Error::new(
@@ -317,6 +319,168 @@ fn concurrent_python_clients_reserve_distinct_persisted_work_ids() -> io::Result
                     "work ID {id} was returned but its document was not persisted"
                 )));
             }
+        }
+        Ok(())
+    })();
+    let _ = server.kill();
+    let _ = server.wait();
+    result
+}
+
+#[cfg(unix)]
+fn write_cli_editor(path: &Path, content: &str) -> io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let script = format!(
+        "#!/usr/bin/env python3\nfrom pathlib import Path\nimport sys\nPath(sys.argv[1]).write_text({content:?}, encoding=\"utf-8\")\n"
+    );
+    fs::write(path, script)?;
+    fs::set_permissions(path, fs::Permissions::from_mode(0o700))
+}
+
+#[cfg(unix)]
+struct PythonWorkCli<'a> {
+    repo: &'a Path,
+    config: &'a Path,
+    identity: &'a Path,
+    editor: &'a Path,
+    remote: &'a str,
+}
+
+#[cfg(unix)]
+impl PythonWorkCli<'_> {
+    fn run(
+        &self,
+        options: &[&str],
+        operation: &str,
+        confirmation: Option<&str>,
+    ) -> io::Result<std::process::Output> {
+        let mut command = Command::new(python_bin());
+        command
+            .arg(self.repo.join("RNS/Utilities/rngit/server.py"))
+            .arg("work")
+            .arg("--config")
+            .arg(self.config)
+            .arg("--rnsconfig")
+            .arg(self.config)
+            .arg("--identity")
+            .arg(self.identity)
+            .args(options)
+            .arg(self.remote)
+            .arg(operation)
+            .env("PYTHONPATH", self.repo)
+            .env("EDITOR", self.editor)
+            .stdin(if confirmation.is_some() { Stdio::piped() } else { Stdio::null() })
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let mut child = command.spawn()?;
+        if let Some(confirmation) = confirmation {
+            if let Some(mut stdin) = child.stdin.take() {
+                stdin.write_all(confirmation.as_bytes())?;
+            }
+        }
+        child.wait_with_output()
+    }
+}
+
+#[cfg(unix)]
+fn assert_python_cli_output(output: &std::process::Output, expected: &str) -> io::Result<()> {
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if output.status.success() && stdout.contains(expected) {
+        Ok(())
+    } else {
+        Err(io::Error::other(format!(
+            "pinned Python rngit CLI did not report {expected:?}: {}\nstdout:\n{stdout}\nstderr:\n{}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        )))
+    }
+}
+
+#[cfg(unix)]
+#[test]
+#[ignore = "requires the pinned Python Reticulum checkout"]
+fn pinned_python_rngit_work_cli_round_trips_production_service_lifecycle() -> io::Result<()> {
+    let _test_guard = PYTHON_RNGIT_INTEROP_LOCK.lock().expect("Python rngit test lock poisoned");
+    let python_repo = python_repo();
+    if !python_repo.join("RNS/Utilities/rngit/server.py").is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("pinned Python rngit checkout not found: {}", python_repo.display()),
+        ));
+    }
+
+    let temp = tempfile::tempdir()?;
+    let root = create_repository_root(temp.path())?;
+    let identity_seed = "rngit-python-cli-work-server";
+    let port = free_port()?;
+    let destination = rust_destination(&root, identity_seed)?;
+    let mut server = spawn_rngit_server(&root, port, identity_seed)?;
+    let result = (|| {
+        wait_for_port(port, &mut server)?;
+        let config = temp.path().join("python-cli-client");
+        write_python_config(&config, port)?;
+        let identity = config.join("rngit-identity");
+        let editor = temp.path().join("rngit-test-editor.py");
+        let remote = format!("rns://{destination}/group/repo");
+        let cli = PythonWorkCli {
+            repo: &python_repo,
+            config: &config,
+            identity: &identity,
+            editor: &editor,
+            remote: &remote,
+        };
+
+        write_cli_editor(&editor, "CLI-created work body")?;
+        let created = cli.run(&["--title", "CLI work item"], "create", None)?;
+        assert_python_cli_output(&created, "created as active #1")?;
+
+        let listed = cli.run(&["--scope", "active"], "list", None)?;
+        assert_python_cli_output(&listed, "CLI work item")?;
+
+        let viewed = cli.run(&["--id", "1"], "view", None)?;
+        assert_python_cli_output(&viewed, "CLI-created work body")?;
+        assert_python_cli_output(&viewed, "Signature : Valid")?;
+
+        write_cli_editor(&editor, "CLI-edited work body")?;
+        let edited = cli.run(&["--title", "CLI edited item", "--id", "1"], "edit", None)?;
+        assert_python_cli_output(&edited, "updated")?;
+
+        write_cli_editor(&editor, "CLI comment body")?;
+        let commented = cli.run(&["--id", "1"], "update", None)?;
+        assert_python_cli_output(&commented, "Update #1 added")?;
+
+        write_cli_editor(&editor, "read:all\nwrite:all\ninteract:all\nadmin:all\n")?;
+        let permissions = cli.run(&["--id", "1"], "perms", None)?;
+        assert_python_cli_output(&permissions, "Permissions updated for work document #1")?;
+        assert_eq!(
+            fs::read_to_string(root.join("group/repo.work/1.allowed"))?,
+            "read:all\nwrite:all\ninteract:all\nadmin:all\n"
+        );
+
+        let completed = cli.run(&["--id", "1"], "complete", None)?;
+        assert_python_cli_output(&completed, "Work document #1 completed")?;
+        let completed_list = cli.run(&["--scope", "completed"], "list", None)?;
+        assert_python_cli_output(&completed_list, "CLI edited item")?;
+
+        let activated = cli.run(&["--id", "1"], "activate", None)?;
+        assert_python_cli_output(&activated, "Work document #1 activated")?;
+
+        write_cli_editor(&editor, "CLI proposal body")?;
+        let proposed = cli.run(&["--title", "CLI proposal"], "propose", None)?;
+        assert_python_cli_output(&proposed, "created as proposed #2")?;
+        let proposed_list = cli.run(&["--scope", "proposed"], "list", None)?;
+        assert_python_cli_output(&proposed_list, "CLI proposal")?;
+
+        let deleted = cli.run(&["--id", "1"], "delete", Some("y\n"))?;
+        assert_python_cli_output(&deleted, "Work document active #1 deleted")?;
+        let deleted_proposal =
+            cli.run(&["--scope", "proposed", "--id", "2"], "delete", Some("y\n"))?;
+        assert_python_cli_output(&deleted_proposal, "Work document proposed #2 deleted")?;
+        if root.join("group/repo.work/active/1/root").exists()
+            || root.join("group/repo.work/proposed/2/root").exists()
+        {
+            return Err(io::Error::other("Python CLI delete left work document files"));
         }
         Ok(())
     })();

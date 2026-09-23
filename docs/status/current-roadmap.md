@@ -38,10 +38,11 @@ mixed-runtime restart check, and the #612 pinned-Python work-item persistence
 and do not promote the broader utility surface. Published inventory counts are
 not promoted or rewritten by this change.
 
-The #612 concurrency increment adds a pinned-Python Verify test in which four
-independent clients create signed work items simultaneously through one Rust
-`rngit` server and verify unique persisted IDs. Its hosted result is pending on
-the implementing PR; broader fault and CLI workflows remain open.
+The #612 mixed-peer increment adds pinned-Python Verify coverage for four
+concurrent signed work creators, malformed work requests, and the Python
+`rngit work` CLI lifecycle through production Reticulum Links. Its hosted
+result is pending on the implementing PR; disk-fault, broader restart, and
+non-work CLI workflows remain open.
 
 The forward #610 Resource slice also has new pinned-Python evidence at
 `8b29132c`: a sender-side file-like reader raises during a split transfer,
