@@ -97,7 +97,7 @@ fn remote_cancel_clears_the_partial_split_assembly_and_reports_failure() {
     assert!(manager.incoming.contains_key(&second_adv.hash));
 
     let cancel_packet = resource_packet(
-        PacketContext::ResourceReceiverCancel,
+        PacketContext::ResourceInitiatorCancel,
         second_adv.hash.as_slice(),
         *link.id(),
     );

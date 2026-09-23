@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last reassessed: 2026-09-21
+Last reassessed: 2026-09-23
 
 This file is the repository-level source of truth for parity posture, release
 confidence, and execution order. Detailed row-level status lives in:
@@ -60,12 +60,49 @@ maps to `False`; a later media-content read failure still maps to no response
 and has not been separately fault-injected. The utility and full operational
 parity rows remain partial.
 
+The #612 mixed-peer increment adds pinned-Python Verify coverage for four
+concurrent signed work creators, malformed work requests, and the Python
+`rngit work` CLI lifecycle through production Reticulum Links. Its hosted
+result is pending on the implementing PR. Local tests now also verify that a
+failed configured-permission refresh, resolver execution, or atomic sidecar
+replacement leaves the cached policy unchanged. Storage regressions also reject
+malformed MessagePack roots and trailing bytes; an exact-reference Python CLI
+request over a production Link observes `Remote error: Error loading document`
+for a corrupt persisted root. The process-restart trace now also writes a
+Python-shaped numbered comment before shutdown and verifies its ID/content from
+the pinned Python view response after restart. Broader disk-fault, restart, and
+non-work CLI workflows remain open.
+
 The forward #610 Resource slice also has new pinned-Python evidence at
 `8b29132c`: a sender-side file-like reader raises during a split transfer,
 Rust reports terminal inbound failure, and the Python process exits
-unsuccessfully with the injected exception and bounded timeout preserved. This
-is local mixed-peer evidence only; the #605 candidate and its release posture
-remain open pending the documented broader gates.
+unsuccessfully with the injected exception and bounded timeout preserved. A
+reciprocal Python-initiated in-flight Resource trace now verifies reasoned
+inbound failure and Link closure after keepalive loss, followed by a distinct
+Link and exact-checksum Resource recovery. This is local mixed-peer evidence
+only; the #605 candidate and its release posture remain open pending the
+documented broader gates. A daemon Resource-completion regression now checks
+receipt metadata, peer byte accounting, exactly-once emission, and tracking
+cleanup, including suppression of a repeated completion notification. The
+timeout-failure receipt path now has the same exactly-once metadata and cleanup
+coverage, including peer backoff status; other consumer callback/status paths
+remain open. Focused `lxmf-runtime` tests also
+confirm `OutboundFailed` and `OutboundCancelled` become distinct SDK transport
+errors and cleanup is attempted, without claiming the remaining consumer
+matrix. The 2026-09-23 #610 increment aligns Python Resource cancellation
+contexts: `RESOURCE_RCL` is an outbound rejection (`OutboundRejected`),
+`RESOURCE_ICL` is an inbound remote cancellation (`InboundFailed`), and a
+Rust-local outgoing cancel remains `OutboundCancelled`. Pinned-Python,
+transport, SDK, daemon receipt, remote-control, and utility-consumer regressions
+cover the distinction; the wider timeout and consumer-status matrix remains
+open.
+
+The focused #610 compression regression now exercises the production Resource
+path in both directions against pinned Python: compressible input follows the
+default compressed path, deterministic incompressible input remains
+uncompressed, and the explicit disable option remains uncompressed, all with
+exact payload digests. No production mismatch was found; compression-threshold
+behavior remains unverified, and #610 stays partial.
 
 The #623 byte-level conformance lane is now executable through
 `cargo xtask interop`. It checks exact Python Reticulum/LXMF pins, Python→Rust
@@ -75,7 +112,8 @@ report and Verify artifact. This is a bounded wire gate, not a replacement for
 the broader live Resource, fault, restart, multi-hop, hosted, or HIL gates.
 
 The bounded #615 software acceptance is complete at PR #626 head
-`559e314c71306148352050a463d3db10407c89f0`: local release-check passed with
+`b863e1d115395232a41445dbdfe1ccb08ee6abeb` (merged as
+`a649f51e9671007c08aeff469877038e2db7a716`): local release-check passed with
 the final candidate provenance, hosted PR HIL passed `23/23` cases, the exact
 pinned compatibility matrix passed `30/30`, and the Independent and CI gates
 also passed. This closes the software acceptance slice only; issue #605 stays
@@ -392,19 +430,34 @@ Scoped release evidence is split as follows:
   that steps between the slow, very-slow and fast maxima on measured rate.
   Measured against a real NomadNet node, the same 46 MB fetch runs at 234
   fragments/s where a fixed window of 4 managed 84.
+- The #610 sender regression now advances the receiver-minimum serving anchor
+  at a deterministic hashmap boundary, decodes the resulting global hashmap
+  segment, and checks the exclusive lower/upper collision-guard window edges
+  against the pinned `Resource.py` formula. The broader #610 contract remains
+  partial.
 - Candidate `e0d7249035a51b668ec88b9ce193b3fe0f3fc8e7` records exact 50 MiB
   pinned-Python Resource transfers in both directions with Linux high-water
   RSS values under a fixed 512 MiB per-process release-profile budget. This
-  closes the local mixed-peer memory-evidence gap without claiming broader
-  timeout/reconnect, callback, hosted, physical, or public-network coverage.
-- `Link::request_packet`/`response_packet` complete the request/response
-  pair: the receive half already decrypted both contexts, but nothing could
-  build either, so a peer had to send every request and every reply as a
-  resource transfer even when the packed form fits a single packet. Python
-  chooses per message (`Link.request`/`handle_request`); the choice is the
-  caller's here, and the crate now exposes both options. Note the id
-  asymmetry — a packet-borne request has no id field, so the responder
-  derives one from the packet hash.
+  closes the local mixed-peer memory-evidence gap. PR `Verify` now runs pinned-
+  Python Resource timeout/failure/recovery traces in both initiation
+  directions. A local daemon-consumer test now checks Resource-completion
+  receipt metadata and cleanup; broader timeout/reconnect, callback, hosted,
+  physical, and public-network coverage remain open.
+- Re-ran both exact 50 MiB pinned-Python Resource directions at PR #630 head
+  `0d9b5dd6ee87b0529b37e4ec4f40f14d74faffbe`: both SHA-256 digests matched,
+  with Rust/Python peak RSS of 20,504/105,328 KiB (Rust reader -> Python) and
+  110,432/249,400 KiB (Python -> Rust), each below the 512 MiB per-process
+  budget. See `evidence/610-resource.md`; broader consumer and timeout gaps
+  remain open.
+- `Transport::send_response` now mirrors pinned `Link.handle_request`
+  selection: the packed `[request_id, response]` envelope uses a Response
+  packet at or below negotiated MDU and a response Resource above it; a
+  metadata-bearing file response always uses Resource. Production mixed-peer
+  tests cover clearly-small, oversized, and metadata-bearing responses in both
+  directions with exact response content and digest checks. The exact
+  `mdu - 1` / `mdu` / `mdu + 1` wire boundary remains unverified. Note the
+  request-id asymmetry — a packet-borne request has no id field, so the
+  responder derives one from the packet hash.
 - Cached remote path responses now keep the cached announce payload while
   stamping the direct response packet as `PATH_RESPONSE`, aligning another
   Python announce/path discovery edge policy.

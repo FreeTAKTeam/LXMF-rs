@@ -263,7 +263,7 @@ fn resource_manager_cancel_outgoing_emits_initiator_cancel_packet_and_event() {
 }
 
 #[test]
-fn resource_manager_receiver_cancel_emits_outbound_cancelled_event() {
+fn resource_manager_receiver_cancel_emits_outbound_rejected_event() {
     let signer = PrivateIdentity::new_from_rand(OsRng);
     let identity = *signer.as_identity();
     let destination = DestinationDesc {
@@ -293,7 +293,37 @@ fn resource_manager_receiver_cancel_emits_outbound_cancelled_event() {
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].hash, resource_hash);
     assert_eq!(events[0].link_id, *link.id());
-    assert!(matches!(events[0].kind, ResourceEventKind::OutboundCancelled));
+    assert!(matches!(events[0].kind, ResourceEventKind::OutboundRejected));
+}
+
+#[test]
+fn resource_manager_initiator_cancel_does_not_cancel_an_outbound_sender() {
+    let signer = PrivateIdentity::new_from_rand(OsRng);
+    let identity = *signer.as_identity();
+    let destination = DestinationDesc {
+        identity,
+        address_hash: identity.address_hash,
+        name: DestinationName::new("lxmf", "resource"),
+    };
+    let (tx, _) = tokio::sync::broadcast::channel(1);
+    let mut link = Link::new(destination, tx);
+    link.request();
+
+    let mut manager = ResourceManager::new_with_config(Duration::from_secs(1), 2);
+    let (resource_hash, _) = manager
+        .start_send(&link, b"initiator cancel targets incoming only".to_vec(), None)
+        .expect("start sender");
+    manager.confirm_outbound_dispatch(resource_hash, true);
+
+    let cancel_packet = resource_packet(
+        PacketContext::ResourceInitiatorCancel,
+        resource_hash.as_slice(),
+        *link.id(),
+    );
+    assert!(manager.handle_packet(&cancel_packet, &mut link).is_empty());
+
+    assert!(manager.outgoing.contains_key(&resource_hash));
+    assert!(manager.drain_events().is_empty());
 }
 
 #[test]

@@ -294,6 +294,10 @@ fn a_remote_cancel_drops_the_unbuilt_tail() {
         "a cancelled split send must not keep holding the rest of the payload"
     );
     assert!(manager.has_no_outbound_state());
+    assert!(manager
+        .drain_events()
+        .iter()
+        .any(|event| matches!(event.kind, ResourceEventKind::OutboundRejected)));
 }
 
 /// The same cancel, arriving before the first advertisement has been confirmed
@@ -329,4 +333,8 @@ fn a_remote_cancel_before_dispatch_drops_the_unbuilt_tail() {
 
     assert!(manager.outgoing_segment_chains.is_empty());
     assert!(manager.has_no_outbound_state());
+    assert!(manager
+        .drain_events()
+        .iter()
+        .any(|event| matches!(event.kind, ResourceEventKind::OutboundRejected)));
 }

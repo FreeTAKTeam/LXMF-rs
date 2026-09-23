@@ -68,20 +68,21 @@ The machine-checked contract is stored in
 in the generated [`python-surface-parity.json`](python-surface-parity.json).
 It requires every forward requirement to name its Python reference path, exact
 reference commit, Rust owner surface, implementation status, evidence status,
-test command, evidence artifact, and owning issue. It currently contains ten
-incomplete requirements:
+test command, evidence artifact, and owning issue. It contains ten tracked
+requirements; the scoped #615 software gate is verified, while overall
+behavioral coverage remains incomplete:
 
 | Owner | Requirement | Current status |
 | ---: | --- | --- |
 | #607 | Review and integrate the initial PR increment | partial / unverified |
 | #608 | Wire IFAC into production carrier ingress and egress | implemented but unproven; mixed-peer evidence pending |
 | #609 | Close transport, local-client, and shared-instance gaps | implemented but unproven; mixed-peer evidence pending |
-| #610 | Prove Resource collision, stream, and mixed-peer behavior | partial / unverified |
+| #610 | Prove Resource collision, stream, and mixed-peer behavior | partial; exact-checksum 50 MiB pinned-Python transfers rerun in both directions at PR #630 head `0d9b5dd6`, within the 512 MiB per-process peak-RSS bound; deterministic sender-window anchor and global hashmap-segment indexing are now regression-tested; broader timeout/reconnect and consumer callback/status evidence remains open |
 | #611 | Exercise every reference utility through real network workflows | partial / unverified |
 | #612 | Match rngit permission, resolver, work, storage, and wire schemas | partial / unverified |
 | #613 | Match rngit NomadNet pages, media, and link cleanup | partial / unverified |
 | #614 | Validate native interface runtimes and Windows BLE behavior | partial / hardware-unverified |
-| #615 | Run differential conformance and exact-candidate software release acceptance | partial / unverified |
+| #615 | Run differential conformance and exact-candidate software release acceptance | complete / verified (scoped software gate; #616 excluded) |
 | #616 | Maintain separate physical, platform, client, network-soak, and operational evidence | not-applicable to software / hardware-unverified |
 
 The generated Rust constants expose the forward behavioral level and target
@@ -122,8 +123,9 @@ carrier-stream reconnect behavior.
 The #610 implementation slice now has committed local evidence in
 [`evidence/610-resource.md`](../goals/reticulum-reference-parity-605/evidence/610-resource.md):
 deterministic collision regeneration, window-bounded fragment admission,
-link-close terminal resource events, local loss/duplication/reordering recovery,
-split cancellation cleanup, pinned-Python cancellation terminal events in both
+the exact moving sender-window anchor and hashmap-segment index at a segment
+boundary, link-close terminal resource events, local loss/duplication/
+reordering recovery, split cancellation cleanup, pinned-Python cancellation terminal events in both
 directions, reader-backed source retention, a pinned-Python split reader-backed
 transfer with an exact SHA-256 acknowledgement, and
 two-carrier pinned-Python split Resource forwarding with an exact remote
@@ -144,11 +146,35 @@ accepted; the split success trace now reads from a real file handle. Commit
 `8b29132c` adds the reciprocal pinned-Python file-like-reader fault trace: the
 reference reader raises during later segment preparation, the Rust receiver
 emits a terminal inbound failure, and the Python sender exits unsuccessfully
-after its bounded timeout. The row remains partial and unverified because
-broader timeout/reconnect traces, every consumer callback/status assertion,
-and hosted/physical/soak coverage are still open; exact 50 MiB peak-RSS values
-in both directions are now recorded by the candidate's Linux release-profile
-memory probe.
+after its bounded timeout. The current #610 candidate additionally drops
+Resource traffic and keepalives during an in-flight 70,000-byte transfer,
+observes `OutboundFailed` when the Link closes, restores forwarding, and proves
+a second Rust-to-Python Resource completes with the exact SHA-256 acknowledged
+on a fresh Link. A reciprocal Python-initiated trace now observes inbound
+Resource failure and Link closure, reconnects with a distinct Link, and checks
+the exact recovered Resource checksum against the Python sender report. The row
+remains partial and unverified: both recovery directions now run in PR `Verify`,
+but broader timeout traces, every consumer callback/status assertion, and the
+full hosted/physical/soak matrix are still open;
+exact 50 MiB peak-RSS values in both directions are now recorded by the
+candidate's Linux release-profile memory probe. A focused daemon completion
+consumer test now also verifies the transport-completion receipt metadata, peer
+byte accounting, duplicate-notification suppression, exactly-once event, and
+tracking cleanup. A companion timeout-failure consumer regression verifies the
+single `resource-failed` receipt metadata, duplicate suppression, tracking
+cleanup, and peer backoff state. These focused tests do not certify the
+remaining consumer callback/status matrix. Separate `lxmf-runtime` consumer regressions verify that actual
+`OutboundFailed` and `OutboundCancelled` Resource events reach callers as
+distinct transport errors and cleanup is attempted; broader SDK/daemon consumer
+matrices remain open.
+
+The 2026-09-23 #610 candidate adds the Python `RESOURCE_ICL`/`RESOURCE_RCL`
+terminal distinction: inbound remote cancellation maps to `InboundFailed`,
+outbound peer rejection maps to `OutboundRejected`, and local cancellation
+remains `OutboundCancelled`. A pinned-Python receiver exercises the RCL path;
+transport, SDK, daemon receipt/remote-control, `rncp`, and independent-event
+consumers preserve the rejection outcome and cleanup. This is focused software
+evidence and does not close the wider #610 callback/status or operational gates.
 
 The #611 implementation slice now has committed local evidence in
 [`evidence/611-utilities.md`](../goals/reticulum-reference-parity-605/evidence/611-utilities.md):
@@ -227,10 +253,29 @@ signature rejection and binary identity/signature round-trip. Commit
 independent node instances and rollback when proposed-document permission
 setup fails. Commit `409ef98e` adds a pinned-Python production trace that
 creates and signs a work item, restarts the Rust `rngit` process on the same
-root and identity, and verifies list/view persistence. The row remains partial
+root and identity, and verifies list/view persistence. That trace now also
+creates a numbered MessagePack comment before shutdown and verifies its ID and
+content in the pinned Python `work_view` response after restart. A new Verify
+test runs
+four independent pinned-Python work creators concurrently against one Rust
+server, checks distinct assigned IDs and persisted root files, and is included
+in this issue's dedicated PR. It also exercises invalid list scope, malformed
+document IDs, unknown operations, and the pinned Python `rngit work` CLI
+lifecycle (create/list/view/edit/comment/perms/complete/activate/propose/delete)
+over production Links with deterministic editor input. The row remains partial
 and unverified because the hash-only compatibility seam, broader
-cross-process/network restart and concurrent-writer/fault transcripts, full
-Python CLI workflow, and complete end-to-end rngit network matrix remain open.
+cross-process/network restart and fault transcripts, non-work CLI paths, and
+complete end-to-end rngit network matrix remain open; hosted evidence for the
+new lane is pending. The local permission-update follow-up fixes a failed-read
+transaction: configured state is committed only after the current sidecar is
+successfully read, validated, and merged. Regressions verify that a malformed
+sidecar read, failing resolver refresh, and failed atomic replacement do not
+change the loaded permission policy. This is one verified software slice, not
+completion of #612. A follow-up work-storage regression rejects malformed
+MessagePack roots and trailing bytes; over a production Reticulum Link, the
+pinned Python `rngit work view` command receives the reference-compatible
+`REMOTE_FAIL` response `Error loading document`. Other malformed-document
+shapes and operations remain unverified.
 
 Commits `3dcd5259`, `869b8c84`, `02b75605`, and `f9c5b81e` also add a native Rust-client
 request adapter and a production compatibility bridge. Its pinned-Python trace
@@ -293,31 +338,27 @@ Linux host lacks a MinGW/Windows SDK sysroot, and native Windows, AutoInterface
 platform, cross-family, live Python/client, and physical carrier evidence are
 still open.
 
-The #615 implementation slice now has committed local evidence in
-[`evidence/615-release-acceptance.md`](../goals/reticulum-reference-parity-605/evidence/615-release-acceptance.md):
-the inventory `--check` path compares generated behavioral requirements with
-the authoritative mapping and rejects stale artifacts; self-tests cover both
-matching and deliberate drift, and the active-baseline plus forward-candidate
-inventories regenerate at their pinned references. The row remains partial and
-unverified because the broader all-Rust/multi-hop/shared-daemon matrix, exact
-provenance and hosted exact-head workflows, and #616 operational evidence are
-still open. The local aggregate release gate passes on fully gated software
-candidate `f45bb960`, including 2,677 nextest tests, Miri, exact
-pinned-reference checks, packaging, audit, boundary, reproducible-build,
-embedded-footprint, and soak/mesh checks with zero soak failures. A current
-exact-reference Python/Rust matrix on candidate `919d5924` records 30/30
-required cases passed with no failed, blocked, skipped, or ignored cases. These
-local results do not promote the row or the parent to complete.
+The scoped #615 software gate is complete at PR #626 head
+`b863e1d115395232a41445dbdfe1ccb08ee6abeb` (merged as
+`a649f51e9671007c08aeff469877038e2db7a716`), with detailed local and hosted
+evidence in
+[`evidence/615-release-acceptance.md`](../goals/reticulum-reference-parity-605/evidence/615-release-acceptance.md).
+The final release check passed with 2,684 tests and one skip; hosted PR HIL
+passed `23/23`, the exact pinned matrix passed `30/30` with zero skips, and the
+Independent and CI workflows passed. This completes only #615's software
+acceptance gate. The remaining forward behavior rows keep their own statuses,
+the #605 contract remains incomplete, and physical/platform/client/network-soak
+evidence remains separate under #616.
 
 The #623 wire-conformance increment adds
 [`evidence/623-wire-conformance.md`](../goals/reticulum-reference-parity-605/evidence/623-wire-conformance.md),
 the committed byte corpus at
 `tools/interop/python-rust-wire-conformance-v1.json`, and the stable
 `cargo xtask interop` gate. Verify now runs the same Python decoder and Rust
-decoder test and uploads the report. The lane proves the bounded encoded-byte
-and malformed-frame contract only; it does not promote #615 or #605 while the
-broader live, fault, restart, multi-hop, platform, client, and hardware gates
-remain open.
+decoder test and uploads the report. This bounded wire lane is one input to the
+completed #615 software gate; it does not complete #605 while broader live,
+fault, restart, multi-hop, platform, client, and hardware requirements remain
+open under their respective rows and #616.
 
 ## Merged base increment
 
@@ -325,9 +366,9 @@ The candidate branch now includes the merged PR #604 base increment at
 `3ed5932d` (RNS 1.5.4 BLE lifecycle/EOF handling, HDLC framing vectors, and
 rngit work-transition and companion-sidecar corrections). Those changes are
 preserved here as a bounded increment; they do not promote the forward
-candidate or close issue #605. Their local tests and provenance checks remain
-inputs to the #615 software gate, while native hardware and public-network
-claims remain outside local validation.
+candidate or close issue #605. Their local tests and provenance checks were
+inputs to the completed #615 software gate, while native hardware and
+public-network claims remain outside local validation.
 
 ## Acceptance gate
 

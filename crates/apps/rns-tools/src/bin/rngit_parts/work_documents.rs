@@ -118,9 +118,15 @@ impl ReticulumGitNode {
     }
 
     fn work_view(&self, root: &Path, request: &[(rmpv::Value, rmpv::Value)]) -> Vec<u8> {
-        let Some((scope, id, directory, document)) = self.work_request_document(root, request)
-        else {
+        let Some((scope, id, directory)) = Self::work_view_location(root, request) else {
             return response(Self::RES_NOT_FOUND, "Document not found", None);
+        };
+        let root_path = directory.join("root");
+        if !root_path.is_file() {
+            return response(Self::RES_NOT_FOUND, "Document not found", None);
+        }
+        let Some(document) = self.work_load_document(&root_path) else {
+            return response(Self::RES_REMOTE_FAIL, "Error loading document", None);
         };
         let payload = self.work_view_payload(&scope, id, &directory, &document);
         response(Self::RES_OK, "", Some(&payload))

@@ -27,6 +27,11 @@ it does not promote the full #610 acceptance contract or close parent issue
 - Unit coverage forces a collision instead of relying on probability and
   verifies that the guard permits a repeated map hash only after the complete
   guarded window has left scope.
+- A deterministic sender regression requests a hashmap update at the second
+  segment boundary. It asserts the exact moving
+  `receiver_min_consecutive_height` formula, decodes the emitted global segment
+  index and hash slice, and verifies the first in-range request plus rejection
+  just below the lower bound and at the exclusive upper bound.
 - Link-state removal now emits terminal inbound and outbound resource failure
   events, deduplicates split-resource state, preserves unrelated links, and
   publishes the events through the production maintenance and reset paths.
@@ -51,10 +56,15 @@ it does not promote the full #610 acceptance contract or close parent issue
   Rust transport with forwarding enabled. The client waits for the remote
   Python endpoint callback and verifies the exact size and SHA-256 digest.
 - The pinned-Python interop suite now drives cancellation in both directions:
-  a Python receiver cancels a Rust reader-backed split send and Rust emits one
-  `OutboundCancelled` terminal event, while a Python sender cancels after
+  a Python receiver rejects a Rust reader-backed split send and Rust emits one
+  `OutboundRejected` terminal event, while a Python sender cancels after
   advertisement and Rust emits `InboundFailed(reason=remote_cancelled)`.
-  The Python sender also reports its own `FAILED` callback status.
+  The Python sender also reports its own `FAILED` callback status. A local Rust
+  caller cancellation remains the distinct `OutboundCancelled` event.
+- The `lxmf-runtime` Resource-event consumer now has explicit terminal-event
+  regressions: `OutboundFailed`, `OutboundRejected`, and `OutboundCancelled`
+  become SDK transport errors with distinct caller-visible messages, and each
+  terminal path attempts cleanup rather than reporting success.
 - A pinned-Python shutdown trace now waits for the receiver's
   `resource_started` callback, terminates that exact Python process after the
   Rust advertisement is admitted, and observes one Rust `OutboundFailed`
@@ -74,6 +84,20 @@ it does not promote the full #610 acceptance contract or close parent issue
 - A pinned-Python keepalive fault trace drops only `PacketContext::KeepAlive`
   frames after link establishment, leaves setup and teardown control intact,
   and observes Rust's watchdog close the link with `LinkEvent::Closed`.
+
+## SDK consumer terminal-event regressions
+
+Added at Rust commit `4bc7188e515d1dc14a8f1437080134c020ba5877` in
+`crates/libs/lxmf-runtime/src/tests.rs`. Real `OutboundFailed` and
+`OutboundCancelled` events are passed through the SDK consumer's
+`await_resource_completion_with_cancel`; the tests assert transport-category
+errors, distinct messages, and cleanup callbacks. This is focused
+library-consumer evidence, not completion of the broader consumer matrix.
+
+```text
+cargo test -p lxmf-runtime  # 14 passed
+cargo clippy -p lxmf-runtime --all-targets --all-features --no-deps -- -D warnings
+```
 
 ## Local evidence
 
@@ -277,17 +301,339 @@ the remaining acceptance gaps stay explicit below. Commit
 keepalive fault trace from terminal watchdog closure to a fresh Link with a
 different identifier; the targeted release run passed in 15.38 seconds.
 
+## Exact 50 MiB rerun on PR #630 head
+
+Both release-profile pinned-Python directions were rerun on the exact current
+PR #630 head `0d9b5dd6ee87b0529b37e4ec4f40f14d74faffbe`, against Reticulum
+`99de23c040d507e3fefca19e87b182302902725d`. Each test transferred exactly
+52,428,800 bytes, matched the receiver's SHA-256, and stayed below the
+524,288 KiB per-process peak-RSS budget:
+
+```text
+RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
+LXMF_PYTHON_BIN=python3 cargo test --release -p reticulumd \
+  --test python_channel_interop rust_reader_to_python_50_mib_peak_memory \
+  -- --ignored --nocapture --test-threads=1
+# 1 passed; 0 failed; 7.79s
+# Rust sender peak RSS: 20,504 KiB; Python receiver peak RSS: 105,328 KiB
+# SHA-256: eae47d4d847479acfbdf72c2c26ff457e57a377c4c5a7f2ee756510541c8026f
+
+RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
+LXMF_PYTHON_BIN=python3 cargo test --release -p reticulumd \
+  --test python_channel_interop python_to_rust_50_mib_peak_memory \
+  -- --ignored --nocapture --test-threads=1
+# 1 passed; 0 failed; 11.76s
+# Python sender peak RSS: 249,400 KiB; Rust receiver peak RSS: 110,432 KiB
+# SHA-256: d1833c62bbdb9e3467d20466e31b616385c3d97484cc1737ac68fbb44595554
+```
+
+This refreshes the exact-checksum and bounded-memory evidence at the current
+PR head; it does not close the remaining broader timeout/reconnect or
+consumer callback/status requirements.
+
+## Resource recovery over a timed-out Link
+
+On the current #610 PR candidate, the ignored pinned-Python test
+`pinned_python_link_timeout_and_reconnect_after_dropped_keepalives` now drops
+Resource traffic and keepalives together while a 70,000-byte Rust Resource is
+in flight. The Rust Link reaches terminal `Closed`, and the transport emits
+the specific `OutboundFailed` terminal event for that Resource. The proxy then
+restores forwarding; a newly established Link has a different identifier and
+carries a second 70,000-byte Rust Resource to Python. The transport emits
+`OutboundComplete`, and the Python endpoint acknowledges the exact byte count
+and SHA-256 digest.
+
+```text
+RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
+  LXMF_PYTHON_BIN=python3 cargo test -p reticulumd \
+  --test python_channel_interop \
+  pinned_python_link_timeout_and_reconnect_after_dropped_keepalives \
+  -- --ignored --nocapture --test-threads=1
+# 1 passed; 0 failed; in-flight failure and fresh-Link Resource digest verified
+```
+
+This adds one concrete Rust-initiated Resource timeout/recovery trace, not a
+complete timeout matrix.
+
+The reciprocal recovery path is now exercised by the ignored pinned-Python test
+`pinned_python_initiated_link_timeout_fails_then_recovers_inbound_resource`.
+Python initiates a Link and sends a 70,000-byte Resource through a fault proxy.
+The proxy allows Resource requests but drops Resource parts and keepalives.
+Rust observes an inbound Resource failure with a non-empty reason, and the
+same inbound Link then emits `Closed`. The test restores forwarding through a
+fresh proxy, starts another Python sender, verifies a new Link identifier, and
+compares the recovered Rust Resource's exact size and SHA-256 with the Python
+sender's completion report.
+
+```text
+RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
+  LXMF_PYTHON_BIN=python3 cargo test -p reticulumd \
+  --test python_channel_interop \
+  pinned_python_initiated_link_timeout_fails_then_recovers_inbound_resource \
+  -- --ignored --nocapture --test-threads=1
+# 1 passed; 0 failed; reverse-role terminal failure and fresh-Link recovery verified
+```
+
+Both Rust-initiated and Python-initiated timeout/recovery traces now run in the
+PR `Verify` workflow against the frozen Reticulum target. This makes the two
+recovery directions a required hosted software check; it does not replace the
+broader timeout matrix or callback/status assertions across every consumer.
+
+## Daemon Resource completion and failure receipts
+
+The `reticulumd` outbound Resource completion consumer now has a focused unit
+regression, `outbound_resource_completion_event_records_receipt_and_peer_bytes`.
+It verifies one `resource-complete` receipt with the original message ID,
+Resource hash, peer, byte count, and non-terminal `sent: link resource` status;
+it also verifies that a duplicate completion notification emits no second
+receipt or byte-accounting update, and that Resource tracking is removed.
+This is a transport-completion receipt, not a remote LXMF delivery
+acknowledgement, and does not stand in for the remaining consumer callback
+matrix.
+
+The companion `outbound_resource_failure_event_marks_tracking_failed`
+regression verifies one `resource-failed` receipt with the original message ID,
+Resource hash, peer, byte count, and `failed: resource transfer timed out`
+status. A repeated failure notification emits no duplicate receipt; tracking
+is removed, transmitted-byte accounting is retained, and the peer is marked
+inactive with the expected backoff. Other failure and consumer paths remain
+outside this focused regression.
+
+```text
+cargo test -p reticulumd --bin reticulumd \
+  outbound_resource_completion_event_records_receipt_and_peer_bytes
+# 1 passed; 466 filtered out
+cargo test -p reticulumd --bin reticulumd \
+  outbound_resource_failure_event_marks_tracking_failed
+# 1 passed; 466 filtered out
+```
+
+## Python RCL/ICL terminal-event distinction
+
+The 2026-09-23 candidate aligns remote cancellation with the pinned Python
+`RNS/Link.py` context routing. `RESOURCE_ICL` applies only to an incoming
+Resource and reports `InboundFailed(reason=remote_cancelled)`;
+`RESOURCE_RCL` applies only to an outgoing Resource and reports
+`OutboundRejected`. The Rust-local outgoing cancel API continues to report
+`OutboundCancelled`. This prevents a peer rejection from being mislabeled as a
+local cancellation or from clearing a Resource in the wrong direction.
+
+The `OutboundRejected` event is propagated as a distinct SDK transport error,
+remote-control error, daemon `resource-rejected` terminal receipt with tracking
+cleanup, `rncp` client/server failure, and independent-interop event. A pinned
+Python receiver exercises the RCL path over the real interop harness; focused
+unit tests cover context isolation, split-tail cleanup, and the preserved local
+cancel event. The independent `rns-rs` PR probe names this peer outcome
+`Resource rejection` and requires `outbound_rejected`; `outbound_cancelled`
+remains reserved for local cancellation.
+
+```text
+cargo test -p reticulum-rs-transport --all-features --lib  # 828 passed
+cargo test -p lxmf-runtime  # 15 passed
+cargo test -p reticulumd --bin reticulumd --all-features  # 470 passed
+cargo test -p reticulumd --test python_channel_interop --no-run
+RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
+  LXMF_PYTHON_BIN=python3 cargo test -p reticulumd \
+  --test python_channel_interop \
+  rust_sender_maps_pinned_python_receiver_cancel_to_rejection \
+  -- --ignored --nocapture --test-threads=1
+# 1 passed; pinned Python receiver RCL maps to Rust OutboundRejected
+cargo check -p rns-tools --all-targets --all-features
+cargo clippy -p reticulum-rs-transport --all-targets --all-features --no-deps -- -D warnings
+cargo clippy -p lxmf-runtime --all-targets --all-features --no-deps -- -D warnings
+cargo clippy -p reticulumd --bin reticulumd --all-targets --all-features --no-deps -- -D warnings
+cargo clippy -p rns-tools --all-targets --all-features --no-deps -- -D warnings
+tools/scripts/check-module-size.sh
+tools/scripts/check-boundaries.sh  # passes; two existing legacy-boundary notices
+python3 tools/scripts/python_surface_inventory.py --check
+cargo fmt --all -- --check
+git diff --check
+```
+
+This is a focused terminal-event fidelity increment, not completion of the
+broader timeout, callback/status, mixed-peer size, or operational acceptance
+matrix.
+
+## Split Resource metadata placement and size accounting
+
+The 2026-09-23 focused trace verifies the metadata-bearing split transfer in
+both directions over production Link and Resource paths against pinned
+Reticulum `99de23c040d507e3fefca19e87b182302902725d`. Rust's reader-backed
+sender is received by Python with the exact decoded metadata and payload
+digest; the Python receiver also reports `total_size` equal to payload bytes
+plus the encoded metadata block and its single 3-byte length prefix. In the
+reverse direction, the pinned Python sender's split transfer is assembled by
+Rust with the expected data length and decoded metadata, while each accepted
+segment reports a `total_data_size` equal to that same accounting formula.
+The reverse trace repeats this assertion under first-part loss, duplication,
+and reordering. No behavioral mismatch was found, so this increment changes
+interop assertions and evidence only; it does not alter Resource production
+code or claim general large-resource parity.
+
+```text
+cargo test -p reticulum-rs-transport resource_receiver_strips_split_metadata_from_the_first_segment_only
+# 1 passed
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+  LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
+  rust_reader_to_python_split_resource_roundtrip -- --ignored --nocapture
+# 1 passed; exact Python metadata, data digest, and total_size
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+  LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
+  pinned_python_resource_fault_matrix -- --ignored --nocapture
+# 1 passed; reverse split metadata and total_data_size under loss, duplication,
+# reordering, plus the existing all-parts-missing terminal-failure case
+```
+
+## Default Resource compression against pinned Python
+
+At the current PR #630 candidate, `rust_resource_compression_defaults_match_pinned_python`
+uses the production TCP/Link/Resource path in both directions. Rust-to-Python
+checks default compression of compressible bytes, default handling of
+deterministic incompressible bytes, and explicit `auto_compress=false`; the
+Python receiver confirms the advertised `compressed` flag and exact received
+length/SHA-256. Python-to-Rust repeats those three cases with the Python
+`Resource(auto_compress=True)` default and explicit disabled mode; Rust verifies
+the exact received length and its digest matches the Python sender's digest.
+Both sides report `true, false, false` for the cases. No production mismatch
+was demonstrated, so this increment is regression/evidence only.
+
+```text
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+  LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
+  rust_resource_compression_defaults_match_pinned_python \
+  -- --ignored --nocapture --test-threads=1
+# 1 passed; Python observed compressed=true, false, false for the three cases
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+  LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
+  pinned_python_resource_compression_defaults_match_rust \
+  -- --ignored --nocapture --test-threads=1
+# 1 passed; Rust received and verified Python's exact payloads/digests and flags
+```
+
+Above-limit compression selection and the remaining #610 transfer-selection
+and failure matrix remain unverified.
+
+## Resource compression size-limit boundary
+
+The focused 2026-09-23 differential checks the inclusive compression size
+limit through production Link/Resource transfers in both directions. Frozen
+Reticulum `99de23c040d507e3fefca19e87b182302902725d`
+(`RNS/Resource.py::Resource.__init__`) sets the default limit to 64 MiB,
+attempts `bz2.compress` when `data_size <= auto_compress_limit`, and sets the
+compressed flag only when the result is smaller. Rust and pinned Python both
+compressed the deterministic 64 MiB repeating-byte payload. Each receiver
+reported logical/accounted size 67,108,864 and the exact SHA-256 of the
+uncompressed bytes. Rust also rejects a 64 MiB + 1 send before advertisement,
+matching its production Resource admission limit. Since that rejection
+prevents an above-limit Rust-to-Python transfer, the reference's uncompressed
+decision above the threshold is not observed end to end; above-limit selection
+parity remains open.
+
+```text
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+  LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
+  resource_compression -- --ignored --nocapture --test-threads=1
+# 4 passed; threshold boundary verified in both directions, default cases retained
+```
+
+## First-segment metadata boundary
+
+The focused `pinned_python_resource_metadata_boundary_matches_rust_accounting`
+case places the Python MessagePack metadata block across the first segment
+boundary. The deterministic payload size is `MAX_EFFICIENT_SIZE -
+metadata_wire_size + 1`, so pinned Python reports `total_size =
+MAX_EFFICIENT_SIZE + 1` and exactly two segments. Rust observes accepted
+segment indexes `[1, 2]`, reassembles the exact encoded `python-meta` value,
+and its content SHA-256 matches the pinned Python sender's report. This
+confirms segment 1 reserves the 3-byte metadata length and encoded metadata,
+leaving one content byte for segment 2. It is a focused mixed-peer boundary
+case; it does not close broader size/chunking or request/response selection.
+
+```text
+RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
+  LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
+  pinned_python_resource_metadata_boundary_matches_rust_accounting \
+  -- --ignored --nocapture --test-threads=1
+# 1 passed; two exact segment indexes, metadata, total size, and content digest
+```
+
+## Link request/response packet-versus-Resource selection
+
+Pinned Reticulum `99de23c040d507e3fefca19e87b182302902725d`
+`RNS/Link.py::handle_request` defines a deterministic ordinary-response
+boundary: pack `[request_id, response]`; send one `Response` packet when the
+packed envelope length is `<= link.mdu`, otherwise send it as a response
+Resource. A file-handle response is always a metadata-bearing Resource,
+independent of its size. The Resource transfer matrix does not establish this
+Link-level selection behavior.
+
+Rust now exposes `Transport::send_response`, which applies that rule using the
+negotiated Link MDU and reports whether it sent a packet or advertised a
+Resource. The mixed-peer request/response cases exercise the production Link
+and Request paths in both directions: ordinary small responses are delivered
+as packets; oversized ordinary responses are delivered as Resources; and the
+Python file response arrives as Resource content with its exact decoded
+`python-file-meta` metadata. The oversized Python response case checks exact
+response content, UTF-8 byte length, and SHA-256 reported by the Python peer;
+Rust verifies these against the expected response. Rust's Resource response
+case verifies the selected Resource hash reaches completion and Python reports
+the exact response bytes. Existing tests cover a clearly-small and a clearly-
+oversized response; they do not probe `mdu - 1`, `mdu`, and `mdu + 1` with
+production peers, so the exact inclusive edge remains open. This closes the
+missing automatic Rust selection path but does not claim edge-boundary proof.
+
+```text
+RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
+  LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
+  request_response -- --ignored --nocapture --test-threads=1
+# 7 passed; packet and Resource response paths in both directions, including
+# Rust Resource selection and exact response size/content/SHA-256 assertions
+
+RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
+  LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
+  rust_to_python_file_response_resource_roundtrip \
+  -- --ignored --nocapture --test-threads=1
+# 1 passed; exact file bytes and decoded metadata
+```
+
+### Exact negotiated-MDU boundary (production mixed-peer sessions)
+
+Three isolated one-request Python client processes connect sequentially to one
+Rust TCP service. After each Link negotiates, the Python client sizes its
+request so the Rust response envelope `[request_id, response]`, encoded with
+MessagePack, is exactly `MDU-1`, `MDU`, or `MDU+1`. Rust verifies the packed
+envelope size against the Python peer's reported negotiated MDU and asserts
+packet selection for the first two cases and a Resource hash for the last.
+The Python request is Resource-backed due to its size; the response is
+observed by the Python request callback, and outbound Resource completion is
+required for `MDU+1`. All three responses match exact bytes, UTF-8 size, and
+SHA-256.
+
+This matches pinned Reticulum
+`99de23c040d507e3fefca19e87b182302902725d`, `RNS/Link.py::handle_request`:
+ordinary responses use a packet when packed response length is `<= mdu`, and
+a response Resource above it. These are three one-request peer sessions; no
+multi-hop HIL job was run.
+
+```text
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+  LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
+  python_to_rust_request_response_matches_exact_negotiated_mdu_boundary \
+  -- --ignored --nocapture --test-threads=1
+# 1 passed; three sessions at negotiated MDU-1, MDU, MDU+1
+```
+
 ## Remaining acceptance boundary
 
 The following #610 requirements remain unverified and are intentionally not
 represented as complete:
 
-- broader mixed-Python link-timeout recovery/reconnect coverage beyond the one
-  fresh-Link trace; the two pinned-Python matrices now cover loss, duplication,
-  reordering, and complete missing-fragment terminal failure in both
-  directions;
+- broader timeout/reconnect coverage beyond the reciprocal traces, while the
+  two pinned-Python matrices cover loss, duplication, reordering, and complete
+  missing-fragment terminal failure in both directions;
 - callbacks/status transitions observed through every library and daemon
-  consumer after each injected failure;
+  consumer after each injected failure; outbound completion and timeout-failure
+  receipt paths now have focused daemon-consumer regressions;
 - hosted, physical-interface, public-network, and long-running soak evidence.
 
 The current conclusion is therefore: collision regeneration, shutdown cleanup,

@@ -225,6 +225,9 @@ async fn handle_resource_event(
         ResourceEventKind::OutboundFailed if !runtime.silent => {
             eprintln!("rncp: outgoing Resource failed");
         }
+        ResourceEventKind::OutboundRejected if !runtime.silent => {
+            eprintln!("rncp: outgoing Resource rejected");
+        }
         ResourceEventKind::OutboundCancelled if !runtime.silent => {
             eprintln!("rncp: outgoing Resource cancelled");
         }

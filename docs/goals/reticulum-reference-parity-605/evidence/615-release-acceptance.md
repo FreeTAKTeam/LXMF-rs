@@ -2,7 +2,8 @@
 
 Status: **software acceptance complete for the scoped #615 goal**. This records
 the bounded software evidence for final PR #626 head
-`559e314c71306148352050a463d3db10407c89f0`; it does not claim completion of
+`b863e1d115395232a41445dbdfe1ccb08ee6abeb`, merged into `main` as
+`a649f51e9671007c08aeff469877038e2db7a716`; it does not claim completion of
 #605 or the excluded operational axis in #616.
 
 Physical carriers, platform certification, external-client validation,
@@ -13,9 +14,9 @@ excluded from this goal. They remain open under #616.
 
 The final published PR head passed every hosted software gate:
 
-- [Verify run 35759162501](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/35759162501): PR HIL `23/23` cases passed and the exact-target Python compatibility matrix reported `30/30` passed, `0` failed, `0` blocked, and `0` skipped.
-- [Independent interoperability run 35759162507](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/35759162507): passed.
-- [CI run 35759162664](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/35759162664): passed.
+- [Verify run 35763741527](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/35763741527): PR HIL `23/23` cases passed and the exact-target Python compatibility matrix reported `30/30` passed, `0` failed, `0` blocked, and `0` skipped.
+- [Independent interoperability run 35763741463](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/35763741463): passed.
+- [CI run 35763741663](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/35763741663): passed.
 
 The hosted matrix used Reticulum `1.5.4-dev`
 (`99de23c040d507e3fefca19e87b182302902725d`) and LXMF
@@ -69,8 +70,8 @@ The exact local software lanes completed as follows:
 - Pinned-Python channel interoperability: `48/48` passed, including both
   bidirectional 50 MiB resource transfers, fault/cancellation/shutdown paths,
   and memory-budget checks.
-- Pinned-Python compatibility matrix: `30/30` passed; four non-selected
-  target-level tests were skipped by the test binary.
+- Pinned-Python compatibility matrix: all `30/30` required cases passed; the
+  hosted Verify report records zero skipped cases.
 - Pinned-Python paper interoperability: `12/12` passed.
 - LXMD remote relay interoperability: `6/6` passed.
 - `rns-tools` ignored Python interoperability lane: `10/10` passed.
@@ -107,8 +108,8 @@ CARGO_INCREMENTAL=0 cargo +nightly miri test -p lxmf-wire --lib -- \
   (29 passed; 14 intentionally ignored)
 
 CARGO_INCREMENTAL=0 cargo xtask release-check                               PASS
-  (2,679 passed; 1 skipped; scorecard overall PASS; code candidate
-   dcab8327ee9bf91c9ada1ed4a7041dfc790d7ca1)
+  (2,684 passed; 1 skipped; scorecard overall PASS; final candidate
+   b863e1d115395232a41445dbdfe1ccb08ee6abeb)
 ```
 
 ## Remaining acceptance gaps

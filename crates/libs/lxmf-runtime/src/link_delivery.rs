@@ -169,6 +169,9 @@ pub(crate) async fn await_resource_completion(
                 ResourceEventKind::OutboundFailed => {
                     return Err(transport_error("resource transfer failed"))
                 }
+                ResourceEventKind::OutboundRejected => {
+                    return Err(transport_error("resource transfer rejected"))
+                }
                 ResourceEventKind::OutboundCancelled => {
                     return Err(transport_error("resource transfer cancelled"))
                 }

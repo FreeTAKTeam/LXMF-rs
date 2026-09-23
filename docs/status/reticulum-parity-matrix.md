@@ -1,6 +1,6 @@
 # Reticulum Parity Matrix
 
-Last reassessed: 2026-09-22
+Last reassessed: 2026-09-23
 
 This is the maintained row-level status for Python Reticulum compatibility.
 Repository-level posture and execution order live in
@@ -70,8 +70,13 @@ inventory. The Rust resource sender enforces the Python
 collision-free map hashes, and has pinned Python release-profile transfer
 evidence from empty payloads through 50 MiB in both directions. The forward
 #610 row remains partial because broader timeout/reconnect and callback/status
-coverage are not yet proven; the pinned-Python suite now proves cancellation
-terminal events in both directions, exact 50 MiB peak-RSS values in both
+coverage are not yet proven; a daemon completion-consumer regression verifies
+receipt metadata, peer byte accounting, duplicate-notification suppression,
+exactly-once emission, and tracking cleanup. Pinned-Python traces now prove
+timeout failure and fresh-Link Resource recovery in both Rust- and
+Python-initiated roles; pinned-Python tests prove cancellation terminal events
+in both directions, exact
+50 MiB peak-RSS values in both
 directions under a fixed release-profile process budget, a pinned-Python
 split reader-backed transfer covers the Rust reader/file adapter success path,
 and a pinned-Python file-like-reader fault reaches terminal failure.
@@ -97,20 +102,23 @@ are deliberately provisional `partial` rows because wildcard matches and
 callable presence do not prove behavior.
 
 The generated Python surface artifact now carries the issue #605 behavioral
-contract for child issues #607–#616. The contract is `incomplete` with no
-verified applicable requirements. It is the authoritative forward status for
-this matrix; the baseline rows below remain historical/current-release claims
-and must not be read as completion of the 1.5.4 candidate. See
+contract for child issues #607–#616. The contract remains `incomplete`; its
+scoped #615 software-acceptance requirement is verified, while the remaining
+forward behavior and operational rows remain separately tracked. It is the
+authoritative forward status for this matrix; the baseline rows below remain
+historical/current-release claims and must not be read as completion of the
+1.5.4 candidate. See
 [`rns-1.5.4-delta.md`](rns-1.5.4-delta.md) for the exact target, measured delta,
 evidence fields, and acceptance boundary.
 
 The bounded software acceptance tracked by #615 is complete at PR #626 head
-`559e314c71306148352050a463d3db10407c89f0`: local release-check passed, hosted
-PR HIL passed `23/23` cases, the exact pinned compatibility matrix passed
-`30/30`, and the Independent and CI gates passed. This does not change the
-forward contract to complete: #605 and its remaining behavioral child rows stay
-open, while the physical/platform/client/public-network/long-soak axis remains
-explicitly excluded under #616.
+`b863e1d115395232a41445dbdfe1ccb08ee6abeb` (merged as
+`a649f51e9671007c08aeff469877038e2db7a716`): local release-check passed with
+2,684 tests and one skip, hosted PR HIL passed `23/23`, the exact pinned matrix
+passed `30/30`, and the Independent and CI gates passed. This does not change
+the forward contract to complete: #605 and its remaining behavioral child
+rows stay incomplete, while the physical/platform/client/public-network/long-
+soak axis remains explicitly excluded under #616.
 
 ## Surface Matrix
 
@@ -125,7 +133,11 @@ explicitly excluded under #616.
 | `RNS/Transport.py` | `crates/libs/rns-transport`, `crates/apps/reticulumd` | partial | unit, simulated, pinned-python | Path and announce handling, bounded four-class priority ingress, early filtering, protocol accounting, same-destination request batching, gravity-aware replacement, dynamic path rebalancing, boundary path requests, path replacement/state/await semantics, routed links/resources/receipts/tunnels, next-hop formulas, interface lifecycle, discovery and blackhole state, persistence, runtime jobs, graceful shutdown, RNS 1.5.2 shared-instance dataplane control, queue defaults, IFAC helpers, profiling results, `announces_from_internal`/`announces_to_internal` policy propagation, and focused scoped-request, pacing, duplicate-suppression, MTU, restore/restart, transport-disabled, local-client timing/classification, shared-boundary receive-hop, direct application/restart, announce-table-admission, and shared-transport receipt-handler evidence. | No generated 1.5.2 callable software gap remains; the forward local-client implementation slice now has focused timing and parent/child classification regressions plus pinned TCP/Unix attach-and-fanout, direct application/restart, two-carrier Python Channel/split-Resource forwarding, and multi-hop Channel duplicate-delivery, application-link reconnect, and link-establishment-timeout evidence. Cached announce persistence, underlying carrier-stream reconnect, caller-visible close reasons, broader packet/proof duplicate handling, and broader network evidence remain separate. |
 | `RNS/Link.py` | `crates/libs/rns-transport` | complete | unit, pinned-python | Establishment, `Link::request_payload` and `Link::identify_payload` construction, proof validation, bounded request/response correlation, bound-interface enforcement for data/channel fan-out, RTT-derived liveness, protocol close, cleanup, and the focused dynamic path-rebalancing slice. | No generated callable software gap remains; cross-implementation and external-client evidence is separate. |
 | `RNS/Link.py` | `crates/libs/rns-transport` | complete | unit, pinned-python | Establishment, proof validation, bounded request/response correlation, bound-interface enforcement for data/channel fan-out, RTT-derived liveness, protocol close, cleanup, and the focused dynamic path-rebalancing slice. | No generated callable software gap remains; cross-implementation and external-client evidence is separate. |
-| `RNS/Resource.py` | `crates/libs/rns-transport` | complete | unit, simulated, pinned-python | Bounded receive allocation, advertisement validation, retries, receiver-minimum collision-guard serving window, window-local fragment admission and hashmap exhaustion gating, deterministic collision-list regeneration, bz2 compression, adaptive fragment scheduling, timeout/failure events, cancellation, cleanup, split-resource sequencing, ordered reassembly, per-segment metadata, reader-backed source retention, and whole-resource completion. | The active 1.5.2 baseline has its software contract; forward #610 remains partial. The bounded #615 software gate passed the hosted Resource/HIL and exact pinned compatibility lanes, but it does not promote #610 to complete. A bounded independent `rns-rs` profile covers 1 MiB direct/multi-hop transfers, loss recovery, terminal timeout, and latency; pinned-Python cancellation terminal events, bidirectional loss/duplication/reordering and missing-fragment terminal evidence, two-carrier split-Resource forwarding with an exact remote callback, receiver-shutdown terminal outbound failure, reader-backed loss/duplication/reordering and cancellation, terminal source-read failure, a real file-backed split transfer, a real-file truncation terminal-failure trace, a pinned-Python file-like-reader exception/terminal-failure trace, a keepalive terminal-timeout and fresh-Link recovery trace, and exact 50 MiB peak-RSS values in both directions under a fixed release-profile process budget are now covered, while broader timeout/reconnect traces, every consumer callback/status assertion, and hosted/physical/soak coverage remain open. |
+| `RNS/Resource.py` | `crates/libs/rns-transport` | complete | unit, simulated, pinned-python | Bounded receive allocation, advertisement validation, retries, receiver-minimum collision-guard serving window, window-local fragment admission and hashmap exhaustion gating, deterministic collision-list regeneration, bz2 compression, adaptive fragment scheduling, timeout/failure events, cancellation, cleanup, split-resource sequencing, ordered reassembly, per-segment metadata, reader-backed source retention, and whole-resource completion. | The active 1.5.2 baseline has its software contract; forward #610 remains partial. The bounded #615 software gate passed the hosted Resource/HIL and exact pinned compatibility lanes, but it does not promote #610 to complete. A bounded independent `rns-rs` profile covers 1 MiB direct/multi-hop transfers, loss recovery, terminal timeout, and latency; pinned-Python cancellation terminal events, bidirectional loss/duplication/reordering and missing-fragment terminal evidence, two-carrier split-Resource forwarding with an exact remote callback, receiver-shutdown terminal outbound failure, reader-backed loss/duplication/reordering and cancellation, terminal source-read failure, a real file-backed split transfer, a real-file truncation terminal-failure trace, a pinned-Python file-like-reader exception/terminal-failure trace, a keepalive-triggered in-flight `OutboundFailed` and successful fresh-Link Resource retry with exact digest, reciprocal Python-initiated timeout/failure/recovery, exact 50 MiB peak-RSS values in both directions under a fixed release-profile process budget (rerun at PR #630 head `0d9b5dd6` with matching SHA-256), and `lxmf-runtime` handling for `OutboundFailed`, `OutboundRejected`, and `OutboundCancelled` are now covered. Python RCL now maps to outbound rejection while ICL maps to inbound failure; local cancel remains distinct. Broader timeout/reconnect matrices, every consumer callback/status assertion, and broader hosted/physical/soak coverage remain open. |
+| `#610 Resource sender serving-window anchor` | `crates/libs/rns-transport/src/resource/sender.rs` | verified | unit | A deterministic second-hashmap-boundary request advances `receiver_min_consecutive_height` to the reference formula, emits the matching global hashmap segment/slice, and verifies requests just below, at the inclusive lower bound, and at the exclusive upper bound. | Focused regression evidence only; the broader #610 contract remains partial. |
+| `#610 Resource compression default` | `crates/apps/reticulumd/tests/python_channel_interop_parts/resource_size_matrix.rs` | verified | pinned-python | Production Rust/Python Resource paths in both directions verify default compression for compressible input, no compression for incompressible input, and explicit compression disablement, with exact payload digests. | Focused compression evidence only; compression-threshold behavior and the broader #610 contract remain partial. |
+| `#610 Link response packet/Resource selection` | `Transport::send_response` and `crates/apps/reticulumd/tests/python_channel_interop_parts` | verified | pinned-python | Applies the pinned `RNS/Link.py::handle_request` rule to the packed response envelope: packet at or below negotiated MDU, response Resource above it; metadata-bearing file responses always use Resource. Mixed-peer small, oversized, and file-metadata paths exercise production Links. | Clearly-small and clearly-oversized paths pass; exact `mdu - 1`, `mdu`, and `mdu + 1` peer-boundary cases remain unverified, as does broader #610 acceptance. |
+| `#610 daemon Resource failure receipt` | `crates/apps/reticulumd/src/bin/reticulumd/inbound_worker_parts` | verified | unit | Timeout failure emits one `resource-failed` receipt and peer rejection emits one `resource-rejected` terminal receipt, with resource/peer/byte metadata and tracking cleanup; duplicate terminal notifications do not emit a second receipt. | Focused daemon-consumer evidence only; broader failure and consumer callback/status matrix remains partial. |
 | `RNS/Channel.py` | `crates/libs/rns-transport` | complete | unit, pinned-python | Channel packet handling, retry scheduling, negotiated full-link MDU, buffering, ordered receive delivery, callback ordering/short-circuit/panic containment, delivery-on-proof, timeout retry, exhaustion cleanup, and live Rust/Python channel sequence tests. | No confirmed channel parity blocker. |
 | `RNS/Buffer.py` | `crates/libs/rns-core`, `crates/libs/rns-transport` | complete | unit, pinned-python | Packet buffers and stream readers/writers use the negotiated Channel MDU minus the two-byte stream header while retaining compression bounds. | No confirmed parity blocker. |
 | `RNS/Interfaces/*` | `crates/libs/rns-transport`, `crates/apps/reticulumd` | partial | unit, simulated, prepared-host, pinned-python, hardware-unverified | Configuration, framing, startup, reconnect, runtime status/mutation, management, teardown, interface gravity, live IFAC flag-policy accounting, configured TCP carrier ingress/egress with pinned Python Channel/Resource and daemon LXMF bidirectional evidence, Backbone child traffic/limiter aggregation and blocked-IP statistics, loopback carriers, fake-SAM, PTY/fake-TCP, deterministic Meshtastic faults, BLE mocks, device-management state machines, per-interface `announces_from_internal`/`announces_to_internal` policy carried through startup and hot-apply onto virtual children, and pinned-Python interface probes. | Mixed software evidence currently covers explicit authenticated TCP; UDP, negative daemon-path cases, restart/reconfiguration, physical devices, and public networks remain `partial / unverified` or `hardware-unverified`. |
@@ -133,6 +145,9 @@ explicitly excluded under #616.
 | `RNS/Resolver.py` | `crates/libs/rns-transport`, `crates/apps/reticulumd` | complete | unit, pinned-python | The pinned Python surface contains only the intentionally no-op `resolve_identity`; the active Python-reference workflow probes that behavior. Rust additionally provides cache lookup, restored path-table identity lookup from cached announces, cacheless path save filtering, Python-format stale path-table row suppression, missing/malformed/mismatched cached-announce tolerance for active and tunnel restore, persisted announce-identity lookup, daemon `path_status`/already-known `request_path` visibility, and `_runtime.reticulum.path_table_restore` status. | No confirmed parity blocker. |
 | `RNS/Cryptography/*` | `crates/libs/rns-core` | complete | unit, pinned-python | Required Reticulum primitives used by identities, packets, links, and receipts. | No confirmed parity blocker. |
 | `RNS/Utilities/*` | `crates/apps/rns-tools` | complete | unit, simulated, pinned-python, hardware-unverified | Canonical `rnx`, `rnsd`, `rnstatus`, `rnpath`, `rnodeconf`, `rncp`, `rnid`, `rnir`, `rnpkg`, `rnprobe`, `rnsh`, and `rngit` binaries cover daemon/status delegation, scoped path requests, gravity display, blocked-IP statistics, radio-management software, identity persistence, binary-safe copy, probe status, isolated shell execution plus a bounded native `rnsh` TCP/Link/Channel listener/initiator with frozen channel envelopes, authentication, command policy, stream forwarding, timeout, mirrored exit status, channel-window retry, and bounded queue failure handling, and transport-neutral repository, release, permission, work-item, and Git-bundle workflows. The forward #611 slice adds a native two-process `rncp` TCP/Link/Resource send/fetch path with identity authorization and file side effects, plus pinned-Python authenticated send/fetch roles covering default and explicit no-compression modes, a bzip2-compressed payload, overwrite, and metadata-driven save; its Rust process tests also assert nonzero status and failure categories for missing fetches, denied senders, malformed allowed identities, unusable save paths, path-discovery timeout, a local destination disk error, client Ctrl-C cancellation, and an interrupted Resource link, verify a persisted listener identity and second transfer after listener restart, verify three concurrent clients with exact saved bytes, and cover non-silent client phase output. The #612 slice adds bounded node-owned permission resolvers, canonical companion storage, production work-item handlers, and Python-shaped MessagePack persistence with a Python-produced binary metadata fixture, plus pinned-Python `git.repositories` `/git/list`, `/git/fetch`, `/git/push`, `/git/delete`, `/git/create`, `/git/sync`, `/git/fork`, and `/git/mirror` requests with bundle verification, remote-ref mutation, repository registration, configured-remote synchronization, and local-source cloning. The #613 slice now also has a pinned-Python NomadNet-compatible TCP Link trace for successful and negative page/file requests, denied access, rendered-page content, raw `/media` Resource metadata/content, and live `ffmpeg` PNG-to-WebP conversion with filename metadata. | The active 1.5.2 callable baseline remains complete; forward #611/#612/#613 are partial/unverified pending the full `rnsh` PTY/resize/fault/restart matrix and reverse Python listener role, Python allow-list/jail/overwrite roles, remaining media cases including injected stream-open failure, complete rngit page/media/error and release/work network workflows, Reticulum-source cloning, signature validation, restart/fault evidence, other conversion-backend and rendering parity, and the complete utility behavior matrix. Physical radio commands and operator/public-network evidence remain `hardware-unverified` or deferred. |
+| `#612 rngit permission-update failures` | `crates/apps/rns-tools/src/bin/rngit_parts` | verified | unit | A failed configured-policy refresh after malformed sidecar input, resolver execution failure during refresh, and failed atomic sidecar replacement preserve the loaded policy/cache. | Local failure-path evidence only; the broader #612 network, storage-fault, and behavioral matrix remains partial. |
+| `#612 rngit malformed persisted work view` | `crates/apps/rns-tools/src/bin/rngit_parts` | verified | unit, pinned-python | Rejects invalid MessagePack and trailing bytes, and returns the reference-compatible `REMOTE_FAIL` / `Error loading document` response through a production Link to the pinned Python CLI. | Bounded view-path evidence only; other corrupt-document operations and the broader #612 matrix remain partial. |
+| `#612 rngit comment persistence across process restart` | `crates/apps/rns-tools/tests/rngit_python_interop.rs` | verified | pinned-python | A pinned Python client creates a work item, writes its numbered MessagePack comment through the production Link, then verifies comment ID and content from `work_view` after the Rust `rngit` process restarts on the same root. | One comment and one process restart; broader storage-fault, concurrency, and network matrices remain partial. |
 | `CRNS/*` | none | not-applicable | pinned-python | No `CRNS` package exists in either pinned reference tree. | Provenance is resolved; no Rust implementation is required. |
 
 The #613 production-Link media-validation differential uses a single pinned
@@ -173,11 +188,17 @@ whose stderr retains both the injected reader exception and bounded timeout;
 the forward #610 row remains partial because broader timeout/reconnect,
 consumer-callback, and hosted/physical/soak evidence remain open.
 
-The forward #612 rngit trace at `409ef98e` now covers a pinned-Python signed
-work creation followed by Rust process restart and list/view persistence on the
-same root and identity. This is one restart trace only; concurrent-writer,
-fault-injection, broader network/CLI, and full utility-matrix evidence remain
-open.
+The forward #612 rngit trace at `409ef98e` covers pinned-Python signed work
+creation followed by Rust process restart and list/view persistence on the same
+root and identity. A new four-client pinned-Python trace concurrently creates
+signed work items over production Reticulum Links to one Rust service and
+checks distinct IDs and persisted roots. The same Verify target now covers
+malformed work-request responses and a pinned Python `rngit work` CLI lifecycle
+through production Links using deterministic editor input. A follow-up storage
+regression rejects invalid/trailing MessagePack and checks the Python CLI's
+reference-compatible remote failure for a corrupt persisted view. Fault-
+injection, broader restart/non-work CLI, and full utility-matrix evidence
+remain open until the hosted result and remaining scenarios pass.
 
 Commits `3dcd5259`, `869b8c84`, `02b75605`, and `f9c5b81e` add the reciprocal native
 Rust-client request path through `NativeRngitClient` and

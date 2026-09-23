@@ -587,9 +587,9 @@ def run_resource_lifecycle_scenarios(
     link_id: str,
 ) -> None:
     evidence.run(
-        "Resource cancellation",
+        "Resource rejection",
         "rns-rs receiver -> LXMF-rs sender",
-        lambda: cancel_resource_rns_to_rust(rust, rns, rns_control, link_id),
+        lambda: reject_resource_rns_to_rust(rust, rns, rns_control, link_id),
     )
 
 
@@ -751,7 +751,7 @@ def request_timeout(
     return {"timeout_observed_seconds": round(time.monotonic() - started, 3)}
 
 
-def cancel_resource_rns_to_rust(
+def reject_resource_rns_to_rust(
     rust: RustProbe,
     rns: RnsRsNode,
     rns_control: RnsRsControl,
@@ -767,8 +767,8 @@ def cancel_resource_rns_to_rust(
             rust,
             lambda event: event.get("type") == "resource"
             and event.get("resource_hash") == sent["resource_hash"]
-            and event.get("details", {}).get("state") == "outbound_cancelled",
-            "LXMF-rs outbound Resource cancellation",
+            and event.get("details", {}).get("state") == "outbound_rejected",
+            "LXMF-rs outbound Resource rejection",
             timeout=30,
         )
     finally:
@@ -777,8 +777,8 @@ def cancel_resource_rns_to_rust(
         "resource_hash": sent["resource_hash"],
         "sender_state": sender["details"]["state"],
         "peer_strategy": "AcceptNone",
-        "cancelled_payload_bytes": len(payload),
-        "cancelled_payload_sha256": sha256(payload),
+        "rejected_payload_bytes": len(payload),
+        "rejected_payload_sha256": sha256(payload),
     }
 
 

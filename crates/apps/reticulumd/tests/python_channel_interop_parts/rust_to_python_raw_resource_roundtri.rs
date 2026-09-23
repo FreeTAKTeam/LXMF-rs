@@ -640,6 +640,119 @@ async fn python_to_rust_request_response_roundtrip() {
 
 #[tokio::test]
 #[ignore = "requires local Python Reticulum checkout"]
+async fn python_to_rust_request_response_matches_exact_negotiated_mdu_boundary() {
+    let _interop_guard = python_interop_guard().await;
+    let paths = python_channel_interop_paths();
+    let server_port = free_tcp_port();
+    let temp = tempfile::tempdir().expect("tempdir");
+    let rust_identity = to_transport_private_identity(&PrivateIdentity::new_from_rand(OsRng));
+    let transport = Transport::new(TransportConfig::new(
+        "python-request-mdu-boundary-rust-server",
+        &rust_identity,
+        true,
+    ));
+    let iface_manager = transport.iface_manager();
+    transport
+        .iface_manager()
+        .lock()
+        .await
+        .spawn(TcpServer::new(format!("127.0.0.1:{server_port}"), iface_manager), TcpServer::spawn);
+    wait_for_port(server_port, Duration::from_secs(5)).await;
+
+    let destination = transport
+        .add_destination(rust_identity, DestinationName::new("test", "channel"))
+        .await;
+    let destination_hash = {
+        let destination = destination.lock().await;
+        hex::encode(destination.desc.address_hash.as_slice())
+    };
+    let mut in_events = transport.in_link_events();
+    let mut resource_events = transport.resource_events();
+
+    for delta in [-1_i8, 0, 1] {
+        let config_dir = temp.path().join(format!("python-mdu-boundary-{delta}"));
+        fs::create_dir_all(&config_dir).expect("python config directory");
+        write_python_client_config(&config_dir, server_port);
+        let child = paths.spawn_mdu_boundary_client(&config_dir, &destination_hash, delta);
+        let mut guard = ChildGuard { child: Some(child) };
+        let link_id = wait_for_in_link_active_with_announces(
+            &transport,
+            &destination,
+            &mut in_events,
+            Duration::from_secs(12),
+        )
+        .await;
+        let inbound_request = wait_for_inbound_resource_data_or_child_exit(
+            &mut resource_events,
+            link_id,
+            guard.child.as_mut().expect("Python client child"),
+            Duration::from_secs(12),
+        )
+        .await;
+        let request_id = address_hash(&inbound_request.data);
+        let request_data =
+            parse_request_payload(&inbound_request.data).expect("Python boundary request payload");
+        let request_text = rmpv_to_string(&request_data).expect("Python request string");
+        let response_text = format!("reply:{request_text}");
+        let response = rmpv::Value::String(response_text.clone().into());
+        let response_payload = rmp_serde::to_vec(&rmpv::Value::Array(vec![
+            rmpv::Value::Binary(request_id.to_vec()),
+            response,
+        ]))
+        .expect("packed Link response envelope");
+        let response_size = response_payload.len();
+
+        let resource_hash = transport
+            .send_response(&link_id, request_id.to_vec(), response_payload, None)
+            .await
+            .expect("select Link response transport");
+        assert_eq!(
+            resource_hash.is_some(),
+            delta > 0,
+            "pinned Python uses a Response packet at envelope_size <= negotiated MDU and a Resource above it (delta={delta}, envelope_size={response_size})"
+        );
+        if let Some(hash) = resource_hash {
+            wait_for_outbound_resource_complete(
+                &mut resource_events,
+                hash,
+                Duration::from_secs(12),
+            )
+            .await;
+        }
+
+        let child = guard.child.take().expect("Python client child");
+        let output = tokio::task::spawn_blocking(move || child.wait_with_output())
+            .await
+            .expect("join Python client")
+            .expect("wait for Python client");
+        assert!(
+            output.status.success(),
+            "Python boundary client failed for delta={delta}\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let report: serde_json::Value = stdout
+            .lines()
+            .find_map(|line| serde_json::from_str(line).ok())
+            .unwrap_or_else(|| panic!("Python response report missing: {stdout}"));
+        let negotiated_mdu = report["negotiated_mdu"]
+            .as_u64()
+            .expect("Python must report actual negotiated Link MDU") as usize;
+        assert_eq!(response_size, negotiated_mdu.checked_add_signed(delta as isize).unwrap());
+        let response_bytes = response_text.as_bytes();
+        use sha2::Digest as _;
+        assert_eq!(report["response"].as_str(), Some(response_text.as_str()));
+        assert_eq!(report["response_size"].as_u64(), Some(response_bytes.len() as u64));
+        assert_eq!(
+            report["response_sha256"].as_str(),
+            Some(hex::encode(sha2::Sha256::digest(response_bytes)).as_str())
+        );
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires local Python Reticulum checkout"]
 async fn python_to_rust_backbone_request_response_roundtrip() {
     let _interop_guard = python_interop_guard().await;
     let paths = python_channel_interop_paths();
@@ -794,9 +907,10 @@ async fn python_to_rust_resource_backed_request_response_roundtrip() {
     ]))
     .expect("large response payload");
     let response_hash = transport
-        .send_response_resource(&link_id, request_id.to_vec(), response_payload, None)
+        .send_response(&link_id, request_id.to_vec(), response_payload, None)
         .await
-        .expect("send large response resource");
+        .expect("select response packet or Resource")
+        .expect("large response should use a Resource");
     wait_for_outbound_resource_complete(
         &mut resource_events,
         response_hash,
@@ -817,9 +931,19 @@ async fn python_to_rust_resource_backed_request_response_roundtrip() {
         );
     }
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("\"reply:large:"),
-        "python client did not report large request response"
+    let report: serde_json::Value = stdout
+        .lines()
+        .find_map(|line| serde_json::from_str(line).ok())
+        .unwrap_or_else(|| panic!("Python response report missing from stdout: {stdout}"));
+    let expected_response = format!("reply:{request_text}");
+    let expected_bytes = expected_response.as_bytes();
+    use sha2::Digest as _;
+    assert_eq!(report["response"].as_str(), Some(expected_response.as_str()));
+    assert_eq!(report["response_size"].as_u64(), Some(expected_bytes.len() as u64));
+    assert_eq!(
+        report["response_sha256"].as_str(),
+        Some(hex::encode(sha2::Sha256::digest(expected_bytes)).as_str()),
+        "Python must report the exact response digest"
     );
 }
 
@@ -905,9 +1029,10 @@ async fn python_to_rust_backbone_resource_backed_request_response_roundtrip() {
     ]))
     .expect("large response payload");
     let response_hash = transport
-        .send_response_resource(&link_id, request_id.to_vec(), response_payload, None)
+        .send_response(&link_id, request_id.to_vec(), response_payload, None)
         .await
-        .expect("send Backbone large response resource");
+        .expect("select Backbone response packet or Resource")
+        .expect("large Backbone response should use a Resource");
     wait_for_outbound_resource_complete(
         &mut resource_events,
         response_hash,

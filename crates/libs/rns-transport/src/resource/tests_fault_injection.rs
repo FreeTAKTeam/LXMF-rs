@@ -269,7 +269,7 @@ fn split_resource_cancellation_clears_state_at_each_segment() {
             events
                 .iter()
                 .filter(|event| event.hash == original_hash
-                    && matches!(event.kind, ResourceEventKind::OutboundCancelled))
+                    && matches!(event.kind, ResourceEventKind::OutboundRejected))
                 .count(),
             1,
             "cancelled segment {target_segment} must emit one terminal event: {events:?}"
