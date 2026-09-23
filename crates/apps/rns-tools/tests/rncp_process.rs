@@ -1,11 +1,73 @@
 use std::fs;
-use std::io::{self, BufRead, BufReader};
-use std::net::TcpListener;
+use std::io::{self, BufRead, BufReader, Read, Write};
+use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
+
+const SLOW_PATH_CHUNK_SIZE: usize = 256;
+const SLOW_PATH_CHUNK_DELAY: Duration = Duration::from_millis(25);
+const SLOW_PATH_FIRST_RESPONSE_DELAY: Duration = Duration::from_secs(2);
+
+struct SlowTcpProxy {
+    port: u16,
+    worker: thread::JoinHandle<io::Result<(usize, usize)>>,
+}
+
+impl SlowTcpProxy {
+    fn start(upstream: SocketAddr) -> io::Result<Self> {
+        let listener = TcpListener::bind("127.0.0.1:0")?;
+        let port = listener.local_addr()?.port();
+        let worker = thread::spawn(move || {
+            let (client, _) = listener.accept()?;
+            let server = TcpStream::connect(upstream)?;
+            let client_reader = client.try_clone()?;
+            let server_writer = server.try_clone()?;
+            let downstream = thread::spawn(move || {
+                relay_with_delay(server, client, Some(SLOW_PATH_FIRST_RESPONSE_DELAY))
+            });
+            let upstream_bytes = relay_with_delay(client_reader, server_writer, None)?;
+            let downstream_bytes = downstream
+                .join()
+                .map_err(|_| io::Error::other("slow TCP proxy downstream thread panicked"))??;
+            Ok((upstream_bytes, downstream_bytes))
+        });
+        Ok(Self { port, worker })
+    }
+
+    fn join(self) -> io::Result<(usize, usize)> {
+        self.worker.join().map_err(|_| io::Error::other("slow TCP proxy worker panicked"))?
+    }
+}
+
+fn relay_with_delay(
+    mut reader: TcpStream,
+    mut writer: TcpStream,
+    first_chunk_delay: Option<Duration>,
+) -> io::Result<usize> {
+    let mut first_chunk_delay = first_chunk_delay;
+    let mut forwarded_bytes = 0;
+    let mut buffer = [0; SLOW_PATH_CHUNK_SIZE];
+    loop {
+        match reader.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(read) => {
+                if let Some(delay) = first_chunk_delay.take() {
+                    thread::sleep(delay);
+                }
+                thread::sleep(SLOW_PATH_CHUNK_DELAY);
+                writer.write_all(&buffer[..read])?;
+                forwarded_bytes += read;
+            }
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error),
+        }
+    }
+    writer.shutdown(Shutdown::Write)?;
+    Ok(forwarded_bytes)
+}
 
 fn free_port() -> io::Result<u16> {
     Ok(TcpListener::bind("127.0.0.1:0")?.local_addr()?.port())
@@ -767,6 +829,93 @@ fn rncp_uses_medium_timeout_after_interface_activation() -> io::Result<()> {
             "adaptive-timeout stderr did not preserve path discovery failure: {}",
             String::from_utf8_lossy(&output.stderr)
         );
+        Ok(())
+    })();
+    let _ = listener.kill();
+    let _ = listener.wait();
+    result
+}
+
+#[test]
+fn rncp_completes_after_delayed_first_hop_on_a_rate_limited_tcp_path() -> io::Result<()> {
+    let temp = tempfile::tempdir()?;
+    let listener_root = temp.path().join("listener");
+    let client_root = temp.path().join("client");
+    fs::create_dir_all(&listener_root)?;
+    fs::create_dir_all(&client_root)?;
+    let source = client_root.join("slow-path.bin");
+    let payload = (0..8_192)
+        .map(|index| (index as u8).wrapping_mul(71).wrapping_add((index >> 3) as u8))
+        .collect::<Vec<_>>();
+    fs::write(&source, &payload)?;
+
+    let port = free_port()?;
+    let binary = env!("CARGO_BIN_EXE_rncp");
+    let identity_seed = "rncp-process-slow-path-server";
+    let mut listener = Command::new(binary)
+        .args(["--listen", &format!("127.0.0.1:{port}"), "--no-auth"])
+        .args(["--identity-seed", identity_seed, "--silent", "--timeout", "5"])
+        .current_dir(&listener_root)
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()?;
+
+    let result = (|| {
+        wait_for_port(port, &mut listener)?;
+        let identity_output = Command::new(binary)
+            .args(["--print-identity", "--identity-seed", identity_seed])
+            .output()?;
+        if !identity_output.status.success() {
+            return Err(io::Error::other(format!(
+                "slow-path listener identity query failed: {}\n{}",
+                identity_output.status,
+                String::from_utf8_lossy(&identity_output.stderr)
+            )));
+        }
+        let destination = String::from_utf8_lossy(&identity_output.stdout)
+            .lines()
+            .find_map(|line| line.strip_prefix("Listening on : "))
+            .ok_or_else(|| io::Error::other("slow-path listener identity omitted destination"))?
+            .to_owned();
+        let upstream =
+            format!("127.0.0.1:{port}").parse::<SocketAddr>().map_err(io::Error::other)?;
+        let proxy = SlowTcpProxy::start(upstream)?;
+        let proxy_address = format!("127.0.0.1:{}", proxy.port);
+        let started = Instant::now();
+        let output = Command::new(binary)
+            .arg(&source)
+            .arg(&destination)
+            .args([
+                "--connect",
+                &proxy_address,
+                "--no-compress",
+                "--silent",
+                "--timeout",
+                "1",
+                "--identity-seed",
+                "rncp-process-slow-path-client",
+            ])
+            .current_dir(&client_root)
+            .output()?;
+        let elapsed = started.elapsed();
+        let (client_to_server_bytes, server_to_client_bytes) = proxy.join()?;
+
+        if !output.status.success() {
+            return Err(io::Error::other(format!(
+                "rncp failed over the delayed, rate-limited path: {}\nstdout:\n{}\nstderr:\n{}",
+                output.status,
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            )));
+        }
+        if elapsed < SLOW_PATH_FIRST_RESPONSE_DELAY {
+            return Err(io::Error::other(format!(
+                "test path did not apply its first-response delay: {elapsed:?}"
+            )));
+        }
+        assert!(client_to_server_bytes > 0, "slow proxy did not forward client traffic");
+        assert!(server_to_client_bytes > 0, "slow proxy did not forward server traffic");
+        assert_eq!(fs::read(listener_root.join("slow-path.bin"))?, payload);
         Ok(())
     })();
     let _ = listener.kill();

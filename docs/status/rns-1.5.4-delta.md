@@ -183,9 +183,11 @@ callback's save-error output. The pinned callback returns without resolving the
 transfer, leaving the client running; this is recorded as a reference defect,
 not accepted terminal failure handling. The row remains partial and unverified
 because accurate Python fetch-client terminal failure status, the
-complete utility option/behavior matrix, rngit network workflows, and genuinely
-slow-interface/remote cancellation transcripts remain open or owned by
-#612/#613.
+complete utility option/behavior matrix, rngit network workflows, and remote
+receive-side cancellation remain open or owned by #612/#613. A slow-proxy
+`rncp` regression now proves one delayed/rate-limited TCP send completes under
+the adaptive timeout; this is software-path evidence only and makes no
+carrier-specific or physical timing claim.
 Commit
 `2b281b87` also adds process-level assertions for a missing fetch and a denied
 sender, including nonzero exit status and preserved failure categories.

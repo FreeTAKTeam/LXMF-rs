@@ -74,12 +74,12 @@ physical/public-network evidence remain outside the software-only pass.
 | Fetch | `fetch_file` Link request/response, `True`/`False`/`0xF0`/`nil` status mapping, the pinned Python rncp listener's ordinary metadata-bearing file Resource contract, correlated Rust response Resources for other callers, and metadata-driven save | `rncp_process` Rust client to Rust listener; pinned Python listener/client trace; pinned Python client fetching from Rust | verified for two independent Rust processes and the bounded Python↔Rust fetch paths |
 | Authentication | `--no-auth`, explicit `--allowed-identity`, rejected identified peers, nonzero sender failure, and reciprocal Python/Rust identity allow-lists for send and fetch roles | manual denied-transfer run; pinned Python interop | verified for the bounded send/fetch roles; broader option and callback parity remains open |
 | Jail and save safety | Canonical jail containment, traversal rejection, basename-only metadata, overwrite/suffix behavior | protocol unit tests and process test | verified locally |
-| Timeout/output | `--timeout`, silent mode, nonzero status for denied senders, preserved not-found failure output for missing fetches, malformed identity rejection, unusable save-path rejection, path-discovery timeout status, client Ctrl-C cancellation, interrupted Resource-link failure, medium-path timeout after an active TCP interface connects, Python fetch completion and save-failure callbacks, and listener receive-save failure diagnostics | unit/process tests and pinned Python interop | bounded process-level outcomes are verified; the pinned Python fetch callback prints its save error but leaves the operation unresolved, so accurate terminal failure status remains a gap; genuinely slow-interface timing and Python-peer receive-side cancellation also remain open |
+| Timeout/output | `--timeout`, silent mode, nonzero status for denied senders, preserved not-found failure output for missing fetches, malformed identity rejection, unusable save-path rejection, path-discovery timeout status, client Ctrl-C cancellation, interrupted Resource-link failure, medium-path timeout after an active TCP interface connects, delayed/rate-limited TCP-path transfer, Python fetch completion and save-failure callbacks, and listener receive-save failure diagnostics | unit/process tests and pinned Python interop | bounded process-level outcomes are verified; the pinned Python fetch callback prints its save error but leaves the operation unresolved, so accurate terminal failure status remains a gap; Python-peer receive-side cancellation remains open |
 | Status output | Non-silent path request, link-establishment, transfer, and fetch-request phase lines; silent mode suppresses them; the Python fetch client emits `Transfer complete` on successful save | `rncp_process`, CLI phase transcript, pinned Python interop | verified for the native Rust client path and the bounded Python fetch-client path |
 | Restart | Persisted listener identity, same TCP endpoint, stable destination hash, and a second binary transfer after listener restart | `rncp_process`; ignored `rncp_python_interop` restart process | verified for the bounded Rust listener/client path and the Python-listener/Rust-client role |
 | Disk failure | Rust client/listener save failures; pinned Python listener receive-save failure; pinned Python fetch-client save callback failure after the save directory becomes unusable mid-transfer | `rncp_process::rncp_listener_reports_received_file_disk_error`; ignored `rncp_python_interop::rncp_python_listener_reports_received_file_disk_error`; ignored `rncp_python_fetch_failure::rncp_python_fetch_client_save_error_is_reported_but_never_resolved` | The Python fetch callback emits its save error but never resolves the completed transfer and the CLI remains running; the regression records this pinned-reference defect, not successful terminal failure handling. No case claims an application-level negative acknowledgment to the sender |
 | Multi-client | Three independent clients send distinct binary files concurrently to one listener | `rncp_process` | verified for the bounded Rust listener/client path |
-| Adaptive timeout | Initial TCP clients reach `connected` before network work begins, allowing `operation_timeout` to observe the active interface bitrate and apply the RNS medium-path lower bound | `rncp_process::rncp_uses_medium_timeout_after_interface_activation` | verified for an active local TCP interface; genuinely slow-interface timing remains open |
+| Adaptive timeout | Initial TCP clients reach `connected` before network work begins, allowing `operation_timeout` to observe the active interface bitrate and apply the RNS medium-path lower bound; a slow proxy delays the first server response and rate-limits both directions during a real send | `rncp_process::rncp_uses_medium_timeout_after_interface_activation`; `rncp_process::rncp_completes_after_delayed_first_hop_on_a_rate_limited_tcp_path` | verified for active local TCP and a delayed/rate-limited software TCP path; carrier-specific and physical timing are not claimed |
 | Packet probe exchange | Probe packet delivery and proof correlation between the native daemon path and the pinned Python utility, in both initiator/responder directions | ignored `rnprobe_python_interop` (2 tests, commit `f86ecc1c`) | verified for isolated Rust daemon/Python TCP roles; public/multi-hop, carrier-fault, and physical timing remain open |
 | Compression option | `--no-compress` disables opportunistic Resource compression for outbound sends and fetch responses while preserving the default auto-compression path | Resource compression regression, `rncp_process`, mixed Python/Rust compression matrix | verified for the focused Python↔Rust send and listener-side fetch-response roles; the successful Python fetch-client completion callback and native listener save-failure diagnostic are asserted, while Python-peer failure callbacks and the complete utility matrix remain open |
 | Path management | `rnpath-rs`/`rnpath` discovers paths through daemon RPC and now exposes daemon-backed rate inspection, path and announce-queue eviction, path-via eviction, blackhole listing, and timed/reasoned blackhole add/remove operations with human and JSON output | `rnpath_cli` mock-RPC and parser/process regressions | verified for the Rust client/daemon RPC boundary; pinned-Python utility roles and the remaining reference path-table/remote-management options remain open |
@@ -163,6 +163,14 @@ case starts a real listener, waits for the client-side TCP interface to become
 connected, requests an unknown destination with `--timeout 1`, and observes
 the medium-path timeout lower bound: the run took 6.18 seconds and returned
 `path discovery timed out`.
+
+The delayed-path regression transfers an 8 KiB binary file through a TCP proxy
+that delays the first server response by two seconds and waits 25 ms per
+forwarded 256-byte chunk in both directions. The Rust client uses
+`--timeout 1`, yet completes with exact saved bytes and nonzero traffic in both
+directions; this exercises the adaptive timeout on a slow software path rather
+than only checking its lower bound during a path-discovery timeout. It does not
+claim carrier-specific or physical-link timing.
 
 The mixed-runtime restart regression starts the pinned Python listener with a
 persisted identity and an allow-listed Rust sender, sends a binary file, stops
@@ -449,10 +457,10 @@ classified as complete:
   `/git/mirror` requests now prove the `git.repositories`
   listing/bundle/mutation/clone seam, while the remaining Git/work network
   implementation belongs to #612/#613.
-- Add genuinely slow-interface and remote receive-side cancellation
-  transcripts with exact failure/status assertions; Rust and pinned-Python
-  disk-error callbacks are covered, but the active-TCP medium-timeout lower
-  bound is not genuinely slow-interface or physical-link evidence.
+- Add remote receive-side cancellation transcripts with exact failure/status
+  assertions. The delayed/rate-limited TCP proxy now exercises the adaptive
+  timeout on a slow software path; carrier-specific and physical-link timing
+  are not claimed. Rust and pinned-Python disk-error callbacks are covered.
 
 These are evidence or implementation gaps, not claims that the local Rust
 process test represents Python interoperability or complete utility parity.

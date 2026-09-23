@@ -31,7 +31,7 @@ failure-category checks, path-discovery-timeout check, listener restart check,
 local and Rust/Python receiver-side disk-failure callback checks,
 client-cancellation check,
 concurrent-client check, interrupted-link/status-output check,
-active-interface medium-timeout check,
+active-interface medium-timeout and delayed/rate-limited TCP-path checks,
 mixed-runtime restart check, and the #612 pinned-Python work-item persistence
   trace across a Rust `rngit` process restart plus the reciprocal native
   Rust-client `/git/list`/`/git/fetch`/`/git/push` and the bounded multi-step
