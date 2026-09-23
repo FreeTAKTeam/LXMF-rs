@@ -395,6 +395,12 @@ Scoped release evidence is split as follows:
   directions. A local daemon-consumer test now checks Resource-completion
   receipt metadata and cleanup; broader timeout/reconnect, callback, hosted,
   physical, and public-network coverage remain open.
+- Re-ran both exact 50 MiB pinned-Python Resource directions at PR #630 head
+  `0d9b5dd6ee87b0529b37e4ec4f40f14d74faffbe`: both SHA-256 digests matched,
+  with Rust/Python peak RSS of 20,504/105,328 KiB (Rust reader -> Python) and
+  110,432/249,400 KiB (Python -> Rust), each below the 512 MiB per-process
+  budget. See `evidence/610-resource.md`; broader consumer and timeout gaps
+  remain open.
 - `Link::request_packet`/`response_packet` complete the request/response
   pair: the receive half already decrypted both contexts, but nothing could
   build either, so a peer had to send every request and every reply as a

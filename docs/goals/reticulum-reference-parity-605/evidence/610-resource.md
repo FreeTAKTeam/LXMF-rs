@@ -296,6 +296,36 @@ the remaining acceptance gaps stay explicit below. Commit
 keepalive fault trace from terminal watchdog closure to a fresh Link with a
 different identifier; the targeted release run passed in 15.38 seconds.
 
+## Exact 50 MiB rerun on PR #630 head
+
+Both release-profile pinned-Python directions were rerun on the exact current
+PR #630 head `0d9b5dd6ee87b0529b37e4ec4f40f14d74faffbe`, against Reticulum
+`99de23c040d507e3fefca19e87b182302902725d`. Each test transferred exactly
+52,428,800 bytes, matched the receiver's SHA-256, and stayed below the
+524,288 KiB per-process peak-RSS budget:
+
+```text
+RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
+LXMF_PYTHON_BIN=python3 cargo test --release -p reticulumd \
+  --test python_channel_interop rust_reader_to_python_50_mib_peak_memory \
+  -- --ignored --nocapture --test-threads=1
+# 1 passed; 0 failed; 7.79s
+# Rust sender peak RSS: 20,504 KiB; Python receiver peak RSS: 105,328 KiB
+# SHA-256: eae47d4d847479acfbdf72c2c26ff457e57a377c4c5a7f2ee756510541c8026f
+
+RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
+LXMF_PYTHON_BIN=python3 cargo test --release -p reticulumd \
+  --test python_channel_interop python_to_rust_50_mib_peak_memory \
+  -- --ignored --nocapture --test-threads=1
+# 1 passed; 0 failed; 11.76s
+# Python sender peak RSS: 249,400 KiB; Rust receiver peak RSS: 110,432 KiB
+# SHA-256: d1833c62bbdb9e3467d20466e31b616385c3d97484cc1737ac68fbb44595554
+```
+
+This refreshes the exact-checksum and bounded-memory evidence at the current
+PR head; it does not close the remaining broader timeout/reconnect or
+consumer callback/status requirements.
+
 ## Resource recovery over a timed-out Link
 
 On the current #610 PR candidate, the ignored pinned-Python test
