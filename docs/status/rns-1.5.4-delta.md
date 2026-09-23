@@ -159,9 +159,10 @@ candidate's Linux release-profile memory probe. A focused daemon completion
 consumer test now also verifies the transport-completion receipt metadata, peer
 byte accounting, duplicate-notification suppression, exactly-once event, and
 tracking cleanup; it does not certify the remaining consumer callback/status
-matrix. A separate `lxmf-runtime` consumer regression verifies that an actual
-`OutboundCancelled` Resource event reaches the caller as a transport error and
-that cleanup is attempted; broader SDK/daemon consumer matrices remain open.
+matrix. Separate `lxmf-runtime` consumer regressions verify that actual
+`OutboundFailed` and `OutboundCancelled` Resource events reach callers as
+distinct transport errors and cleanup is attempted; broader SDK/daemon consumer
+matrices remain open.
 
 The #611 implementation slice now has committed local evidence in
 [`evidence/611-utilities.md`](../goals/reticulum-reference-parity-605/evidence/611-utilities.md):
