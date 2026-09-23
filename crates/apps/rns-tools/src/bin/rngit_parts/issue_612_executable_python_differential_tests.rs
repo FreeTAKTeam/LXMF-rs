@@ -75,7 +75,7 @@ decisions = [
 print(json.dumps({"stdout": stdout, "decisions": decisions}))
 "#;
     let expected_stdout = group_path.with_extension("stdout-expected");
-    fs::write(&expected_stdout, &resolver_output.replace("\\n", "\n")).expect("expected resolver output");
+    fs::write(&expected_stdout, resolver_output.replace("\\n", "\n")).expect("expected resolver output");
     let output = Command::new(python)
         .env("PYTHONPATH", &reference)
         .arg("-c")
