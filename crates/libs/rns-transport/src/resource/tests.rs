@@ -30,7 +30,7 @@ mod tests {
     }
 
     #[test]
-    fn resource_sender_compression_cap_boundary_has_no_over_limit_advertisement() {
+    fn compression_threshold_does_not_cap_outbound_resource_admission() {
         use std::io::{Repeat, Take};
 
         let signer = PrivateIdentity::new_from_rand(OsRng);
@@ -80,18 +80,22 @@ mod tests {
 
         let above_limit = ResourceManager::prepare_send_from_reader(
             &outbound,
-            std::io::empty(),
+            std::io::repeat(b'R').take(CAP + 1),
             CAP + 1,
             None,
             None,
             false,
             DEFAULT_RESOURCE_INTERFACE_MTU,
             true,
-        );
-        assert!(matches!(above_limit, Err(RnsError::InvalidArgument)));
-        let mut rejected_manager = ResourceManager::new();
-        assert!(rejected_manager.drain_events().is_empty(), "rejection must not report a terminal success");
-        assert!(rejected_manager.has_no_outbound_state(), "over-limit input must not enter sender state");
+        )
+        .expect("the compression threshold is not an outbound admission limit");
+        let mut manager = ResourceManager::new();
+        let (_, advertisement_packet) = manager.track_prepared(above_limit);
+        let advertisement = decrypt_advertisement(&outbound, &advertisement_packet);
+        assert_eq!(advertisement.data_size, CAP + 1);
+        assert_eq!(advertisement.total_segments, 65);
+        assert!(!advertisement.compressed());
+        assert!(manager.drain_events().is_empty());
     }
 
     #[test]
