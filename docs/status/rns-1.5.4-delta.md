@@ -77,7 +77,7 @@ behavioral coverage remains incomplete:
 | #607 | Review and integrate the initial PR increment | partial / unverified |
 | #608 | Wire IFAC into production carrier ingress and egress | implemented but unproven; mixed-peer evidence pending |
 | #609 | Close transport, local-client, and shared-instance gaps | implemented but unproven; mixed-peer evidence pending |
-| #610 | Prove Resource collision, stream, and mixed-peer behavior | partial / unverified |
+| #610 | Prove Resource collision, stream, and mixed-peer behavior | partial; exact-checksum 50 MiB pinned-Python transfers rerun in both directions at PR #630 head `0d9b5dd6`, within the 512 MiB per-process peak-RSS bound; deterministic sender-window anchor and global hashmap-segment indexing are now regression-tested; broader timeout/reconnect and consumer callback/status evidence remains open |
 | #611 | Exercise every reference utility through real network workflows | partial / unverified |
 | #612 | Match rngit permission, resolver, work, storage, and wire schemas | partial / unverified |
 | #613 | Match rngit NomadNet pages, media, and link cleanup | partial / unverified |
@@ -123,8 +123,9 @@ carrier-stream reconnect behavior.
 The #610 implementation slice now has committed local evidence in
 [`evidence/610-resource.md`](../goals/reticulum-reference-parity-605/evidence/610-resource.md):
 deterministic collision regeneration, window-bounded fragment admission,
-link-close terminal resource events, local loss/duplication/reordering recovery,
-split cancellation cleanup, pinned-Python cancellation terminal events in both
+the exact moving sender-window anchor and hashmap-segment index at a segment
+boundary, link-close terminal resource events, local loss/duplication/
+reordering recovery, split cancellation cleanup, pinned-Python cancellation terminal events in both
 directions, reader-backed source retention, a pinned-Python split reader-backed
 transfer with an exact SHA-256 acknowledgement, and
 two-carrier pinned-Python split Resource forwarding with an exact remote
@@ -145,11 +146,35 @@ accepted; the split success trace now reads from a real file handle. Commit
 `8b29132c` adds the reciprocal pinned-Python file-like-reader fault trace: the
 reference reader raises during later segment preparation, the Rust receiver
 emits a terminal inbound failure, and the Python sender exits unsuccessfully
-after its bounded timeout. The row remains partial and unverified because
-broader timeout/reconnect traces, every consumer callback/status assertion,
-and hosted/physical/soak coverage are still open; exact 50 MiB peak-RSS values
-in both directions are now recorded by the candidate's Linux release-profile
-memory probe.
+after its bounded timeout. The current #610 candidate additionally drops
+Resource traffic and keepalives during an in-flight 70,000-byte transfer,
+observes `OutboundFailed` when the Link closes, restores forwarding, and proves
+a second Rust-to-Python Resource completes with the exact SHA-256 acknowledged
+on a fresh Link. A reciprocal Python-initiated trace now observes inbound
+Resource failure and Link closure, reconnects with a distinct Link, and checks
+the exact recovered Resource checksum against the Python sender report. The row
+remains partial and unverified: both recovery directions now run in PR `Verify`,
+but broader timeout traces, every consumer callback/status assertion, and the
+full hosted/physical/soak matrix are still open;
+exact 50 MiB peak-RSS values in both directions are now recorded by the
+candidate's Linux release-profile memory probe. A focused daemon completion
+consumer test now also verifies the transport-completion receipt metadata, peer
+byte accounting, duplicate-notification suppression, exactly-once event, and
+tracking cleanup. A companion timeout-failure consumer regression verifies the
+single `resource-failed` receipt metadata, duplicate suppression, tracking
+cleanup, and peer backoff state. These focused tests do not certify the
+remaining consumer callback/status matrix. Separate `lxmf-runtime` consumer regressions verify that actual
+`OutboundFailed` and `OutboundCancelled` Resource events reach callers as
+distinct transport errors and cleanup is attempted; broader SDK/daemon consumer
+matrices remain open.
+
+The 2026-09-23 #610 candidate adds the Python `RESOURCE_ICL`/`RESOURCE_RCL`
+terminal distinction: inbound remote cancellation maps to `InboundFailed`,
+outbound peer rejection maps to `OutboundRejected`, and local cancellation
+remains `OutboundCancelled`. A pinned-Python receiver exercises the RCL path;
+transport, SDK, daemon receipt/remote-control, `rncp`, and independent-event
+consumers preserve the rejection outcome and cleanup. This is focused software
+evidence and does not close the wider #610 callback/status or operational gates.
 
 The #611 implementation slice now has committed local evidence in
 [`evidence/611-utilities.md`](../goals/reticulum-reference-parity-605/evidence/611-utilities.md):

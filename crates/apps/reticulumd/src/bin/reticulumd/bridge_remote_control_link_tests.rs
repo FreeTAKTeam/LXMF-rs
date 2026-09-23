@@ -70,6 +70,14 @@ async fn wait_for_link_request_response_fails_on_resource_cancel() {
 }
 
 #[tokio::test]
+async fn wait_for_link_request_response_fails_on_resource_rejection() {
+    let err = resource_terminal_error(ResourceEventKind::OutboundRejected).await;
+
+    assert_eq!(err.kind(), std::io::ErrorKind::BrokenPipe);
+    assert_eq!(err.to_string(), "propagation control resource transfer rejected");
+}
+
+#[tokio::test]
 async fn wait_for_link_request_response_ignores_terminal_resource_without_policy() {
     let (data_tx, mut data_rx) = tokio::sync::broadcast::channel(4);
     let (resource_tx, mut resource_rx) = tokio::sync::broadcast::channel(4);
