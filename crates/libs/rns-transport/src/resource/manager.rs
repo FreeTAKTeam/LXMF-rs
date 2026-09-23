@@ -431,34 +431,40 @@ impl ResourceManager {
             return;
         };
         let hash = Hash::new(hash_bytes);
-        if let Some(receiver) = self.incoming.remove(&hash) {
-            // A split receiver keeps the already-completed segments in a
-            // separate assembly keyed by the original resource hash. A
-            // remote cancel names the segment currently in flight, so remove
-            // that assembly as well and report the abandoned payload instead
-            // of leaving the caller waiting for a timeout.
-            let original_hash = receiver.original_hash;
-            if !self.fail_inbound_segments(original_hash, "remote_cancelled") {
-                self.events.push(ResourceEvent {
-                    hash: original_hash,
-                    link_id: receiver.link_id,
-                    kind: ResourceEventKind::InboundFailed(ResourceFailure {
-                        reason: "remote_cancelled".to_string(),
-                        progress: receiver.progress(),
-                    }),
-                });
+        match packet.context {
+            PacketContext::ResourceInitiatorCancel => {
+                if let Some(receiver) = self.incoming.remove(&hash) {
+                    // A split receiver keeps completed segments in an assembly
+                    // keyed by the original hash. The initiator cancel names
+                    // the in-flight segment, so remove and report that assembly.
+                    let original_hash = receiver.original_hash;
+                    if !self.fail_inbound_segments(original_hash, "remote_cancelled") {
+                        self.events.push(ResourceEvent {
+                            hash: original_hash,
+                            link_id: receiver.link_id,
+                            kind: ResourceEventKind::InboundFailed(ResourceFailure {
+                                reason: "remote_cancelled".to_string(),
+                                progress: receiver.progress(),
+                            }),
+                        });
+                    }
+                }
             }
-        }
-        // Removed from both, as before: a hash lives in exactly one of these,
-        // but which one depends on whether dispatch has been confirmed yet.
-        let cancelled = self.pending_outgoing.remove(&hash);
-        if let Some(sender) = self.outgoing.remove(&hash).or(cancelled) {
-            self.outgoing_segment_chains.remove(&sender.original_hash);
-            self.events.push(ResourceEvent {
-                hash: sender.original_hash,
-                link_id: sender.link_id,
-                kind: ResourceEventKind::OutboundCancelled,
-            });
+            PacketContext::ResourceReceiverCancel => {
+                // Python Reticulum routes RCL only to outgoing resources and
+                // reports Resource.REJECTED. Keep rejection distinct from a
+                // local cancel and from ICL, which terminates an inbound one.
+                let pending = self.pending_outgoing.remove(&hash);
+                if let Some(sender) = self.outgoing.remove(&hash).or(pending) {
+                    self.outgoing_segment_chains.remove(&sender.original_hash);
+                    self.events.push(ResourceEvent {
+                        hash: sender.original_hash,
+                        link_id: sender.link_id,
+                        kind: ResourceEventKind::OutboundRejected,
+                    });
+                }
+            }
+            _ => {}
         }
     }
 }

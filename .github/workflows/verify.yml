@@ -89,6 +89,14 @@ jobs:
           ref: ${{ env.PYTHON_RETICULUM_PARITY_REF }}
           path: Reticulum-parity
 
+      - name: Run pinned Python rngit concurrency, CLI, and malformed-request interoperability
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+        run: >-
+          cargo test -p rns-tools --test rngit_concurrent_python_interop
+          -- --ignored --nocapture
+
       - name: Record pinned revisions
         run: |
           git -C reticulum-conformance rev-parse HEAD
@@ -173,6 +181,18 @@ jobs:
       - name: Generate PR HIL support report
         if: always()
         run: cargo xtask hil report --evidence target/hil/runs/pr-${{ github.run_id }} --output target/hil/runs/pr-${{ github.run_id }}/support-report
+
+      - name: Verify bidirectional Resource timeout and recovery
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+        run: |
+          cargo test -p reticulumd --test python_channel_interop \
+            pinned_python_link_timeout_and_reconnect_after_dropped_keepalives \
+            -- --ignored --nocapture --test-threads=1
+          cargo test -p reticulumd --test python_channel_interop \
+            pinned_python_initiated_link_timeout_fails_then_recovers_inbound_resource \
+            -- --ignored --nocapture --test-threads=1
 
       - name: Upload PR HIL evidence
         if: always()
