@@ -138,6 +138,12 @@ RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   -- --ignored --nocapture --test-threads=1                      PASS (2 tests: page/media and work restart)
 ```
 
+The Verify workflow now has a dedicated step for the ignored executable-
+resolver differential. It verifies that `Reticulum-parity` HEAD equals
+`PYTHON_RETICULUM_PARITY_REF` (`99de23c040d507e3fefca19e87b182302902725d`)
+before running the exact `rngit` binary test name. Hosted results for the
+updated PR head are pending.
+
 The focused `rngit` binary suite contains the resolver failure/remote-
 replacement cases, configured access merging, dotted-name path safety, work
 transitions, Python-produced MessagePack storage, an identified-peer
