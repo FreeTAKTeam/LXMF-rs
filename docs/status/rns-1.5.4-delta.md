@@ -75,7 +75,7 @@ incomplete requirements:
 | ---: | --- | --- |
 | #607 | Review and integrate the initial PR increment | partial / unverified |
 | #608 | Wire IFAC into production carrier ingress and egress | implemented but unproven; mixed-peer evidence pending |
-| #609 | Close transport, local-client, and shared-instance gaps | partial; two-peer shared-instance recovery including one queued opportunistic LXMF delivery after relay replacement, attached-client duplicate delegation, and standalone repeated-LinkRequest suppression are evidenced; direct/resource retry modes, deeper relay replacement, and other duplicate cases remain open |
+| #609 | Close transport, local-client, and shared-instance gaps | partial; two-peer shared-instance recovery including one queued opportunistic LXMF delivery after relay replacement, attached-client duplicate delegation, standalone repeated-LinkRequest suppression, and pinned-Python clean-close reason mapping over TCP are evidenced; live Python retry-exhaustion, direct/resource retry modes, deeper relay replacement, and other duplicate cases remain open |
 | #610 | Prove Resource collision, stream, and mixed-peer behavior | partial / unverified |
 | #611 | Exercise every reference utility through real network workflows | partial / unverified |
 | #612 | Match rngit permission, resolver, work, storage, and wire schemas | partial / unverified |
@@ -123,12 +123,12 @@ ingress tests also verify attached clients accept duplicates for owner-side
 filtering. These cases do not close the remaining packet/proof classes. Rust
 link events now expose the pinned
 `TIMEOUT`, `INITIATOR_CLOSED`, and `DESTINATION_CLOSED` reason codes, with
-role-aware and establishment-timeout regressions. A channel retry-exhaustion
-test also verifies the single caller-visible close event and role-specific
-reason. The pinned Python path additionally sends a LinkClose packet for an
-active link; the regression now verifies the timeout emits that packet and a
-paired Rust peer Link closes. A pinned-Python retry-exhaustion trace over a live
-carrier remains unverified. The row remains partial; broader shared-instance
+role-aware and establishment-timeout regressions. A pinned-Python clean-close
+trace over TCP verifies that Python `Link.teardown()` reaches the Rust caller
+as `INITIATOR_CLOSED`; a separate channel retry-exhaustion test verifies the
+single caller-visible close event and role-specific reason. The pinned Python
+retry-exhaustion trace over a live carrier remains unverified. The row remains
+partial; broader shared-instance
 and multi-hop production traces comparing other packet/proof duplicate classes
 remain unverified. A new two-peer pinned-Python shared-instance
 trace verifies path relearning, fresh links, and raw packet exchange in both

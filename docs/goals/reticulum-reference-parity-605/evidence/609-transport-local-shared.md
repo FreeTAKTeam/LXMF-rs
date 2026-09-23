@@ -260,6 +260,31 @@ instance path/link/raw-packet recovery after daemon replacement; LXMF queue
 retry, deeper relay replacement, broader packet/proof duplicate handling, and
 the wider transport matrix remain unverified.
 
+## Pinned-Python initiated close reason over TCP
+
+On source commit `93c3dc39`, the ignored Python/Rust integration test
+`python_initiated_link_close_reports_initiator_reason_to_rust` starts the
+production Rust TCP listener, establishes an outbound Python link, and invokes
+the pinned reference's `Link.teardown()`. The Python process remains alive on a
+stdin gate until Rust observes the production inbound-link event, avoiding a
+sleep-based packet-flush assumption. Rust reports
+`LinkCloseReason::InitiatorClosed` (`0x02`), matching Python's
+`Link.INITIATOR_CLOSED`; after the test releases the process, Python confirms
+its own teardown reason is `2`.
+
+```text
+RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
+LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
+  python_initiated_link_close_reports_initiator_reason_to_rust -- \
+  --ignored --nocapture --test-threads=1
+# 1 passed; 0 failed; 0.78s
+```
+
+Reference: Reticulum `99de23c040d507e3fefca19e87b182302902725d`. This verifies
+an explicit clean close from the Python initiator only; it does not verify
+Python Channel retry-exhaustion over a live carrier. Broader #609 routing,
+retry, duplicate packet/proof, and shared-instance recovery cases remain open.
+
 ## Cached-versus-scheduled announce persistence
 
 `newer_cached_path_announce_survives_scheduled_queue_restart` exercises the
