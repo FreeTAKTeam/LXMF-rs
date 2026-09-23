@@ -126,6 +126,16 @@ jobs:
           ifac_udp -- --ignored --nocapture
           --test-threads=1
 
+      - name: Run Python and Rust IFAC daemon interoperability
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PY_REPO: ${{ github.workspace }}/LXMF
+          LXMF_PYTHON_BIN: python
+        run: >-
+          cargo test -p lxmf-cli --test python_lxmd_remote_relay
+          ifac -- --ignored --nocapture
+          --test-threads=1
+
       - name: Run repository-native PR HIL controller
         run: cargo xtask hil run --level pr --all --output target/hil/runs/pr-${{ github.run_id }}
 
