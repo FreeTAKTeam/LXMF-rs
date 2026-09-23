@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 static PYTHON_INTEROP_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-#[path = "rngit_python_interop_typed_msgpack.rs"]
+#[path = "rngit_python_interop/typed_msgpack.rs"]
 mod typed_msgpack;
 
 fn free_port() -> io::Result<u16> {
