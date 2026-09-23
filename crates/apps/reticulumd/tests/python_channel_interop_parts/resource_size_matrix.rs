@@ -3,6 +3,37 @@ use sha2::{Digest, Sha256};
 use rns_transport::resource::ResourceEventKind;
 use rns_transport::resource::MAX_EFFICIENT_SIZE;
 
+#[tokio::test]
+#[ignore = "requires local Python Reticulum checkout"]
+async fn pinned_python_resource_compression_cap_boundary_probe() {
+    let _interop_guard = python_interop_guard().await;
+    let output = python_channel_interop_paths().resource_boundary_probe();
+    assert!(
+        output.status.success(),
+        "pinned Python boundary probe failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let results: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("Python boundary probe JSON");
+    let at_limit = &results[0];
+    assert_eq!(at_limit["size"], 64 * 1024 * 1024);
+    assert_eq!(at_limit["total_size"], 64 * 1024 * 1024);
+    assert_eq!(at_limit["segments"], 65);
+    assert_eq!(at_limit["compressed"], true);
+    assert_eq!(at_limit["status"], 0, "advertise=False leaves Python Resource at NONE");
+    assert_eq!(at_limit["advertised"], false);
+    assert_eq!(at_limit["parts_built"], 1, "probe constructs only the first split segment");
+
+    let above_limit = &results[1];
+    assert_eq!(above_limit["size"], 64 * 1024 * 1024 + 1);
+    assert_eq!(above_limit["total_size"], 64 * 1024 * 1024 + 1);
+    assert_eq!(above_limit["segments"], 65);
+    assert_eq!(above_limit["compressed"], false);
+    assert_eq!(above_limit["status"], 0, "probe suppresses network advertisement");
+    assert_eq!(above_limit["advertised"], false);
+    assert_eq!(above_limit["parts_built"], 1, "probe constructs only the first split segment");
+}
+
 fn rust_resource_fixture(size: usize) -> Vec<u8> {
     let mut state = 0x6051_5eed_u64;
     let mut data = vec![0u8; size];

@@ -29,6 +29,16 @@ struct PythonChannelClientConfig<'a> {
 }
 
 impl PythonChannelInteropPaths {
+    pub(super) fn resource_boundary_probe(&self) -> std::process::Output {
+        Command::new(&self.python_bin)
+            .arg("-u")
+            .arg(&self.helper)
+            .arg("--resource-boundary-probe")
+            .env("PYTHONPATH", &self.reticulum_py_repo)
+            .output()
+            .expect("run pinned Python Resource boundary probe")
+    }
+
     pub(super) fn spawn_endpoint(&self, config_dir: &Path, payload_kind: &str) -> Child {
         spawn_python_endpoint(
             &self.python_bin,

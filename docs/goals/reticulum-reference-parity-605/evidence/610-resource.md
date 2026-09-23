@@ -770,6 +770,55 @@ RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/R
 # 1 passed; three sessions at negotiated MDU-1, MDU, MDU+1
 ```
 
+## 64 MiB outbound admission versus compression boundary
+
+Pinned Reticulum `99de23c040d507e3fefca19e87b182302902725d`
+`RNS/Resource.py::Resource.__init__` treats 64 MiB as the automatic
+compression threshold, not as an outbound admission limit. A sparse-file
+probe ran the production constructor with `advertise=False` and a synthetic
+large-MDU Link. It built only the first segment for each case, without
+materializing a 64 MiB payload or sending fragments:
+
+```text
+size=67108864  total_size=67108864  segments=65  compressed=true
+status=NONE  advertised=false  parts_built=1
+size=67108865  total_size=67108865  segments=65  compressed=false
+status=NONE  advertised=false  parts_built=1
+```
+
+The focused Rust production-reader test
+`resource_sender_compression_cap_boundary_has_no_over_limit_advertisement`
+prepares the exact-cap Resource from a repeat reader that is read only through
+the first segment. It confirms a compressed advertisement packet carrying the
+full logical size, with no completion event. At 64 MiB + 1 the same production
+preparation path returns exactly `RnsError::InvalidArgument`; there is no
+prepared sender state, advertisement packet, or success event. The reference
+probe demonstrates that Python's constructor accepts that size and disables
+compression. Its network advertisement was intentionally suppressed, so no
+claim is made that a +1 wire transfer was completed.
+
+This is an exact, boundedly observed behavioral divergence. The Rust cap is
+unchanged; matching Python's larger-resource admission is not part of this
+test, and the forward-candidate parity gap remains open. The probe and Rust
+state regression avoid an unnecessary mixed-peer 64 MiB transfer. The existing
+mixed-peer 64 MiB test remains separate evidence for actual on-wire compression
+and successful reassembly.
+
+```text
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+  LXMF_PYTHON_BIN=python3 \
+  cargo test -p reticulumd --test python_channel_interop \
+  pinned_python_resource_compression_cap_boundary_probe \
+  -- --ignored --nocapture --test-threads=1
+# 1 passed; pinned Python production Resource constructor, sparse source,
+# first segment only, no advertisement
+
+cargo test -p reticulum-rs-transport --lib \
+  resource_sender_compression_cap_boundary_has_no_over_limit_advertisement \
+  -- --nocapture
+# 1 passed; bounded production reader preparation at the cap and +1
+```
+
 ## Remaining acceptance boundary
 
 The following #610 requirements remain unverified and are intentionally not

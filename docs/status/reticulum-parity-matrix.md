@@ -17,6 +17,14 @@ Parity is recorded on two independent axes:
 Evidence labels describe validation scope independently of implementation status;
 they do not downgrade a complete software surface.
 
+Forward-candidate #610 Resource boundary evidence: pinned Python treats 64 MiB
+as its automatic-compression limit, not an outbound admission limit. It builds
+a 64 MiB + 1 Resource with compression disabled, while Rust rejects that size
+before advertisement. The bounded first-segment state differential is recorded
+in `docs/goals/reticulum-reference-parity-605/evidence/610-resource.md`; this
+forward-candidate parity difference remains open and does not change the
+baseline classification below.
+
 Workspace paths are used for navigation. Published package names are
 `reticulum-rs-core`, `reticulum-rs-transport`, and `reticulum-rs-rpc`.
 

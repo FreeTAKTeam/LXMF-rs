@@ -812,6 +812,7 @@ class ChannelClient:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=("server", "client"), default="server")
+    parser.add_argument("--resource-boundary-probe", action="store_true")
     parser.add_argument(
         "--payload-kind",
         choices=(
@@ -841,7 +842,7 @@ def main() -> int:
         ),
         default="channel",
     )
-    parser.add_argument("--config-dir", required=True)
+    parser.add_argument("--config-dir")
     parser.add_argument("--announce-interval", type=float, default=0.25)
     parser.add_argument("--destination-hash")
     parser.add_argument("--message-id", default="python-1")
@@ -852,7 +853,42 @@ def main() -> int:
     parser.add_argument("--response-envelope-delta", type=int, default=0)
     args = parser.parse_args()
 
+    if args.resource_boundary_probe:
+        class ProbeLink:
+            type = RNS.Destination.LINK
+            hash = b"x" * 16
+            mtu = 4 * 1024 * 1024
+            mdu = mtu
+            traffic_timeout_factor = 1
+            rtt = 1
+
+            @staticmethod
+            def encrypt(data: bytes) -> bytes:
+                return data
+
+        results = []
+        for size in (64 * 1024 * 1024, 64 * 1024 * 1024 + 1):
+            with tempfile.TemporaryFile() as source:
+                source.truncate(size)
+                source.seek(0)
+                resource = RNS.Resource(source, ProbeLink(), advertise=False, auto_compress=True)
+                results.append(
+                    {
+                        "size": size,
+                        "total_size": resource.total_size,
+                        "segments": resource.total_segments,
+                        "compressed": resource.compressed,
+                        "status": resource.status,
+                        "parts_built": len(resource.parts),
+                        "advertised": resource.status >= RNS.Resource.ADVERTISED,
+                    }
+                )
+        print(json.dumps(results, sort_keys=True), flush=True)
+        return 0
+
     if args.mode == "client":
+        if args.config_dir is None:
+            parser.error("--config-dir is required outside boundary-probe mode")
         if args.destination_hash is None:
             parser.error("--destination-hash is required in client mode")
         return ChannelClient(args.payload_kind, args.response_envelope_delta).run(
@@ -865,6 +901,8 @@ def main() -> int:
             args.timeout,
         )
 
+    if args.config_dir is None:
+        parser.error("--config-dir is required outside boundary-probe mode")
     endpoint = ChannelEndpoint(args.payload_kind)
     destination = endpoint.start(args.config_dir)
     print(json.dumps({"ready": True, "destination_hash": destination.hash.hex()}), flush=True)
