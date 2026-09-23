@@ -51,6 +51,27 @@ This closes one mocked BLE worker case only. Other carrier-family/startup
 acceptance and physical/public-network evidence remain open; #608 and #605
 remain partial.
 
+The additional regression
+`rnode_ble_startup_retry_keeps_ifac_required_and_counts_plaintext_rejection`
+injects a failed first BLE connection followed by a successful retry through
+the production KISS worker. It verifies the failed backend is cleaned, a
+plaintext KISS packet is rejected and increments the interface IFAC-violation
+counter, no plaintext packet reaches transport routing, and a matching-key
+packet is admitted after the retry. This is deterministic fake-backend
+software evidence for one BLE startup-retry path; it does not verify runtime
+error-status reporting, other startup/stop/restart paths, other carrier
+families, physical BLE/RNode behavior, or public-network behavior. Acceptance
+item 4 and issue #608 therefore remain open.
+
+```text
+cargo test -p reticulum-rs-transport --features rnode-ble --lib rnode_ble_ -- --nocapture
+  5 passed; 0 failed (all current RNode BLE unit regressions)
+cargo fmt --all -- --check
+  passed
+git diff --check
+  passed
+```
+
 The virtual-child regression creates a production `InterfaceManager` virtual
 peer on the BLE host, verifies that it inherits the host configuration and
 shares its live IFAC state, then sends wrong-key and matching-key KISS ingress

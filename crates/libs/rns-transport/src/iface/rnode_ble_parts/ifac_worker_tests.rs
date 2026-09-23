@@ -262,6 +262,7 @@ async fn rnode_ble_virtual_child_uses_inherited_ifac_for_ingress_and_egress() {
 struct StartupRetryState {
     attempts: AtomicUsize,
     cleanups: AtomicUsize,
+    io: IfacWorkerBackendState,
 }
 
 struct StartupRetryBackend {
@@ -287,7 +288,7 @@ impl RnodeBleBackend for StartupRetryBackend {
     }
 
     async fn next_notification(&mut self) -> Result<Option<Vec<u8>>, String> {
-        Ok(None)
+        Ok(self.state.io.incoming.lock().await.pop_front())
     }
 
     async fn cleanup(&mut self) -> Result<(), String> {
@@ -335,4 +336,78 @@ async fn rnode_ble_worker_cleans_up_failed_startup_before_retry_and_stop() {
     assert_eq!(state.attempts.load(Ordering::SeqCst), 2);
     assert!(state.cleanups.load(Ordering::SeqCst) >= 2,
         "active retry backend is cleaned when the worker stops");
+}
+
+#[tokio::test]
+async fn rnode_ble_startup_retry_keeps_ifac_required_and_counts_plaintext_rejection() {
+    let shared = InterfaceSharedConfig {
+        network_name: Some("rnode-ble-retry-ifac".into()),
+        passphrase: Some("retry-test-key".into()),
+        ..InterfaceSharedConfig::default()
+    };
+    let mut manager = InterfaceManager::new(8);
+    let interface = NativeRnodeBleKissInterface::new(
+        "software-rnode-ble-ifac-restart",
+        NativeRnodeBleSettings::for_peripheral("fake-peripheral"),
+        RnodeBleKissConfig { max_write_len: 508, ..RnodeBleKissConfig::default() },
+    )
+    .with_reconnect_backoff(std::time::Duration::from_millis(1));
+    let context = manager.new_context(interface);
+    let address = *context.channel.address();
+    let ifac_state = context.channel.ifac_state.clone();
+    let violations = context.channel.ifac_violations.clone();
+    assert!(manager.set_shared_config(address, shared));
+
+    let plaintext = Packet {
+        destination: AddressHash::new_from_slice(&[0x94; 16]),
+        data: PacketDataBuffer::new_from_slice(b"plaintext after failed startup"),
+        ..Packet::default()
+    };
+    let authenticated = Packet {
+        destination: AddressHash::new_from_slice(&[0x95; 16]),
+        data: PacketDataBuffer::new_from_slice(b"authenticated after retry"),
+        ..Packet::default()
+    };
+    let state = Arc::new(StartupRetryState::default());
+    {
+        let mut incoming = state.io.incoming.lock().await;
+        incoming.push_back(
+            encode_data_frame(&plaintext.to_bytes().expect("serialize plaintext test packet")),
+        );
+        incoming.push_back(worker_wire_packet(&ifac_state, &authenticated));
+    }
+    let receiver = manager.receiver();
+    let cancel = context.cancel.clone();
+    let worker_state = state.clone();
+    let task = tokio::spawn(NativeRnodeBleKissInterface::spawn_with_backend_factory(
+        context,
+        move |_| {
+            let attempt = worker_state.attempts.fetch_add(1, Ordering::SeqCst);
+            StartupRetryBackend { state: worker_state.clone(), fail_connect: attempt == 0 }
+        },
+    ));
+
+    let ingress = timeout(std::time::Duration::from_secs(1), async {
+        loop {
+            let mut rx = receiver.lock().await;
+            if let Ok(message) = rx.try_recv() {
+                break message;
+            }
+            drop(rx);
+            sleep(std::time::Duration::from_millis(1)).await;
+        }
+    })
+    .await
+    .expect("authenticated ingress is admitted after the failed startup retry");
+    assert_eq!(ingress.packet.destination, authenticated.destination);
+    assert_eq!(ingress.packet.data.as_slice(), b"authenticated after retry");
+    assert_eq!(violations.load(Ordering::Relaxed), 1);
+    assert!(receiver.lock().await.try_recv().is_err(), "plaintext never reaches transport routing");
+    assert!(state.cleanups.load(Ordering::SeqCst) >= 1, "failed startup backend is cleaned");
+
+    cancel.cancel();
+    timeout(std::time::Duration::from_secs(1), task)
+        .await
+        .expect("worker stops after cancellation")
+        .expect("worker task joins");
 }
