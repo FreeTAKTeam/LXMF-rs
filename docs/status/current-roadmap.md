@@ -25,9 +25,9 @@ remaining acceptance gates are recorded in
 not the canonical release baseline. Pinned Python/Rust IFAC Channel and
 Resource interoperability is exercised over TCP and UDP; the `lxmd`/`reticulumd`
 UDP path also has bidirectional IFAC direct-message evidence, valid-frame tamper
-rejection, live credential rotation, and fail-closed restart evidence.
-Shared-instance exceptions and broader software carrier-family/support-matrix
-acceptance, remaining remote utility behavior,
+rejection, live credential rotation, fail-closed restart evidence, and an
+IFAC-protected shared-instance path with an attached Rust client. Other carrier
+families and the broader software support matrix, remaining remote utility behavior,
 transport policy differences, and platform validation remain open; the
 focused #611 `rncp`
 compression/send/fetch matrix, bounded

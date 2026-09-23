@@ -74,7 +74,7 @@ incomplete requirements:
 | Owner | Requirement | Current status |
 | ---: | --- | --- |
 | #607 | Review and integrate the initial PR increment | partial / unverified |
-| #608 | Wire IFAC into production carrier ingress and egress | partial; pinned Python TCP/UDP Channel and Resource evidence, UDP daemon success/rejection including valid-frame tampering, live credential rotation, and restart through `lxmd`/`reticulumd`; shared-instance and broader carrier-family/support matrix pending |
+| #608 | Wire IFAC into production carrier ingress and egress | partial; pinned Python TCP/UDP Channel and Resource evidence, UDP daemon success/rejection including valid-frame tampering, live credential rotation and restart, plus shared-instance and virtual-child policy traces; other carrier families remain pending |
 | #609 | Close transport, local-client, and shared-instance gaps | implemented but unproven; mixed-peer evidence pending |
 | #610 | Prove Resource collision, stream, and mixed-peer behavior | partial / unverified |
 | #611 | Exercise every reference utility through real network workflows | partial / unverified |
@@ -107,9 +107,12 @@ bidirectional authenticated UDP direct-message delivery through separate
 live IFAC violations. Its later regressions also reject a valid authenticated
 UDP frame tampered in transit before routing, rotate credentials through live
 interface reconfiguration, reject the old key, and preserve identity plus
-authenticated delivery across daemon restart. Shared-instance exceptions and
-the broader software carrier-family matrix remain open; hardware and public-
-network evidence remain separate acceptance gates.
+authenticated delivery across daemon restart. Another pinned-Python trace
+exercises an IFAC-protected UDP shared-instance owner, an attached Rust local
+client, and a separate Python peer, with bidirectional delivery and zero IFAC
+violations; a focused ingress regression verifies inherited policy on a
+virtual child. Other carrier families remain open; hardware and public-network
+evidence remain separate acceptance gates.
 
 The #609 implementation slice now has committed local software evidence in
 [`evidence/609-transport-local-shared.md`](../goals/reticulum-reference-parity-605/evidence/609-transport-local-shared.md):

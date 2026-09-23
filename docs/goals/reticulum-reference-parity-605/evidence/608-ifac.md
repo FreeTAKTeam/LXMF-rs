@@ -1,6 +1,6 @@
 # Issue #608 — IFAC carrier wiring evidence
 
-Status: **authenticated TCP and UDP daemon software paths evidenced; forward-parity acceptance remains open**.
+Status: **authenticated TCP/UDP daemon paths and shared-instance/virtual-child IFAC policy evidenced; full interface-family acceptance remains open**.
 
 The implementation is based on the frozen Reticulum `1.5.4-dev` reference at
 `99de23c040d507e3fefca19e87b182302902725d`. It wires the existing Rust
@@ -75,8 +75,10 @@ peer or message admission. A third daemon trace rejects plaintext, invalid-tag,
 and truncated UDP datagrams and confirms the violations are counted without
 peer or message admission. The initial UDP daemon traces did not exercise a
 valid authenticated frame tampered in transit or credential rotation/restart;
-the later PR #628 follow-up below now covers both. Shared-instance exceptions
-and every carrier family through production paths remain open. Attached serial,
+later PR #628 follow-ups cover both. A further PR #628 trace covers an
+IFAC-protected UDP owner shared with an attached Rust client and a separate
+pinned-Python peer, plus the virtual-child inherited IFAC admission policy.
+Other carrier families through production paths remain open. Attached serial,
 RNode, BLE, KISS, LoRa, Meshtastic, Weave, and public-network evidence is
 outside this local software run. Those rows remain `partial / unverified` or
 `hardware-unverified` in the forward ledger.
@@ -182,6 +184,33 @@ python_rust_lxmd_ifac_udp_credential_rotation_and_restart_e2e \
 ```
 
 These traces close the UDP-tamper and UDP-rotation/restart software gaps for
-this daemon path. Shared-instance exceptions and the full software
-carrier-family/support matrix remain open; this does not claim physical
-verification under #616.
+this daemon path. The shared-instance test also passed at candidate
+`9d8726d0cab8a9eff96bb3e4ece3b47641351557`, using the same pinned Python RNS
+and LXMF revisions:
+
+```text
+RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
+LXMF_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/LXMF LXMF_PYTHON_BIN=python3 \
+cargo test -p lxmf-cli --test python_lxmd_remote_relay ifac \
+-- --ignored --nocapture --test-threads=1
+# 8 passed; includes Python owner -> Rust local client -> Python IFAC UDP peer
+
+cargo test -p reticulum-rs-transport --lib \
+rns_1_5_virtual_ifac_child_enforces_inherited_authentication_policy -- --nocapture
+# 1 passed; inherited child rejects open packet, admits authenticated form
+
+cargo test -p reticulum-rs-transport --lib
+# 815 passed; 0 failed
+
+cargo clippy -p reticulum-rs-transport --lib --all-features --no-deps -- -D warnings
+cargo clippy -p lxmf-cli --test python_lxmd_remote_relay --all-features --no-deps -- -D warnings
+tools/scripts/check-boundaries.sh
+tools/scripts/check-module-size.sh
+# all passed; cargo fmt --all -- --check and git diff --check also passed
+```
+
+The IFAC-protected UDP owner forwarded bidirectional LXMF traffic between the
+remote Python peer and the attached Rust client; the owner and Rust client both
+reported zero IFAC violations. The virtual-child regression verifies inherited
+policy at transport ingress. Other carrier families through production paths
+remain open; this does not claim physical verification under #616.
