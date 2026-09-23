@@ -45,6 +45,11 @@ advertisement sizes/flags for all six Python/Rust compression roles, with a
 focused exact-target Verify step; the utility row remains partial because its
 other workflows and failure/restart gaps are still open.
 
+The exact-target Python fetch-client disk-error trace also now reproduces the
+pinned callback printing its save failure while leaving the fetch unresolved;
+the bounded test records this as a reference defect, not passing terminal
+failure handling, and the #611 utility row remains partial.
+
 The forward #610 Resource slice also has new pinned-Python evidence at
 `8b29132c`: a sender-side file-like reader raises during a split transfer,
 Rust reports terminal inbound failure, and the Python process exits

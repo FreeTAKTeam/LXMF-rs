@@ -176,8 +176,13 @@ after a Rust sender reports successful Resource delivery. PR #631 adds
 exact-target process assertions for packed and received Resource advertisement
 transfer/data sizes and compression flags across Python→Rust sends, Rust→Python
 sends, and Python default/`-C` fetch responses. Verify now runs that focused
-compression matrix automatically. The row remains partial and unverified
-because Python fetch-client failure callbacks, the
+compression matrix automatically. The new exact-target
+`rncp_python_fetch_client_save_error_is_reported_but_never_resolved` trace
+forces the Python fetch save directory to fail after preflight and observes the
+callback's save-error output. The pinned callback returns without resolving the
+transfer, leaving the client running; this is recorded as a reference defect,
+not accepted terminal failure handling. The row remains partial and unverified
+because accurate Python fetch-client terminal failure status, the
 complete utility option/behavior matrix, rngit network workflows, and genuinely
 slow-interface/remote cancellation transcripts remain open or owned by
 #612/#613.

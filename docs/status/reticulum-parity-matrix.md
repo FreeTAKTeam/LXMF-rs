@@ -146,6 +146,12 @@ and the compressed flag in both send directions and in default/disabled Python
 fetch responses. PR Verify runs the exact-target focused test; this evidence
 does not complete the wider Utilities row.
 
+The exact-target Python fetch-client disk-error regression now reaches the
+save callback after invalidating its validated output directory. It observes
+the pinned client print the save exception but remain unresolved; this exposes
+a reference failure-path defect and does not satisfy terminal error-status
+parity or close #611.
+
 Commit `8b29132c` adds a live pinned-Python sender-side file-like Resource
 reader that raises after a partial split transfer. The focused release test
 observes Rust's terminal inbound failure and a non-successful Python process
