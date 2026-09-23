@@ -54,12 +54,20 @@ pub(crate) fn available_backends() -> Vec<(String, bool)> {
 }
 
 fn selected_backend() -> Option<&'static Backend> {
-    if let Ok(requested) = media_env::var("RNGIT_MEDIA_BACKEND") {
+    let requested = media_env::var("RNGIT_MEDIA_BACKEND").ok();
+    select_backend(requested.as_deref(), command_available)
+}
+
+fn select_backend(
+    requested: Option<&str>,
+    mut is_available: impl FnMut(&str) -> bool,
+) -> Option<&'static Backend> {
+    if let Some(requested) = requested.filter(|requested| !requested.is_empty()) {
         return BACKENDS
             .iter()
-            .find(|backend| backend.name == requested && command_available(backend.argv[0]));
+            .find(|backend| backend.name == requested && is_available(backend.argv[0]));
     }
-    BACKENDS.iter().find(|backend| command_available(backend.argv[0]))
+    BACKENDS.iter().find(|backend| is_available(backend.argv[0]))
 }
 
 fn configured_argv(
@@ -84,10 +92,7 @@ fn configured_argv(
         let format_index = argv.iter().position(|value| value == "-f").unwrap_or(argv.len());
         let mut options = Vec::new();
         if let Some(quality) = quality {
-            let qscale = 31_u32.saturating_sub(
-                (quality.saturating_sub(1) as u32 * 29) / 99,
-            );
-            options.extend(["-q:v".to_string(), qscale.to_string()]);
+            options.extend(["-quality".to_string(), quality.to_string()]);
         }
         if let Some(dimension) = dimension {
             options.extend([
@@ -382,68 +387,5 @@ pub(crate) fn convert_file_to_webp(
 }
 
 #[cfg(test)]
-mod media_tests {
-    use super::{read_stderr_tail, wait_pipeline, webp_info};
-    use std::process::{Command, Stdio};
-    use std::time::Duration;
-
-    #[test]
-    fn webp_header_dimensions_match_reference_chunk_layouts() {
-        let mut vp8x = [0_u8; 30];
-        vp8x[..4].copy_from_slice(b"RIFF");
-        vp8x[8..12].copy_from_slice(b"WEBP");
-        vp8x[12..16].copy_from_slice(b"VP8X");
-        vp8x[24..27].copy_from_slice(&[9, 0, 0]);
-        vp8x[27..30].copy_from_slice(&[19, 0, 0]);
-        assert_eq!(webp_info(&vp8x), Some((10, 20)));
-
-        let mut vp8l = [0_u8; 30];
-        vp8l[..4].copy_from_slice(b"RIFF");
-        vp8l[8..12].copy_from_slice(b"WEBP");
-        vp8l[12..16].copy_from_slice(b"VP8L");
-        let bits = 31_u32 | (41_u32 << 14);
-        vp8l[21..25].copy_from_slice(&bits.to_le_bytes());
-        assert_eq!(webp_info(&vp8l), Some((32, 42)));
-    }
-
-    #[test]
-    fn malformed_webp_headers_are_rejected() {
-        assert_eq!(webp_info(&[0_u8; 30]), None);
-        assert_eq!(webp_info(b"RIFF"), None);
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn webp_pipeline_timeout_terminates_and_reaps_both_processes() {
-        let mut input = Command::new("/bin/sh")
-            .args(["-c", "exec sleep 30"])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .expect("start test blob reader");
-        let input_stdout = input.stdout.take().expect("blob reader stdout");
-        let input_stderr = input.stderr.take().expect("blob reader stderr");
-
-        let mut encoder = Command::new("/bin/sh")
-            .args(["-c", "exec sleep 30"])
-            .stdin(input_stdout)
-            .stdout(Stdio::null())
-            .stderr(Stdio::piped())
-            .spawn()
-            .expect("start test encoder");
-        let encoder_stderr = encoder.stderr.take().expect("encoder stderr");
-
-        let completed = wait_pipeline(
-            "test-backend",
-            &mut input,
-            &mut encoder,
-            read_stderr_tail(input_stderr),
-            read_stderr_tail(encoder_stderr),
-            Duration::from_millis(50),
-        );
-
-        assert!(!completed, "a timed-out conversion pipeline must fail");
-        assert!(input.try_wait().expect("wait for blob reader").is_some());
-        assert!(encoder.try_wait().expect("wait for encoder").is_some());
-    }
-}
+#[path = "media_backend_tests.rs"]
+mod media_backend_tests;

@@ -27,7 +27,7 @@ and a pinned-Python cancellation trace for an in-flight `/media` Resource.
 | Pages | Index/group/repository/tree/blob/commits/commit/refs/stats/releases/release/work/work-doc paths, `var_*` query fields, ref/path validation, not-found/error rendering, custom static and bounded executable templates, binary-image `/media` markup | local verified; pinned Python live trace covers missing repository, invalid ref, missing blob, and visual/reference rendering remains incomplete |
 | Access control | Repository read/stats/release checks, work-document read checks, and the frozen `pages.py` rule that renders `no_ident` only for an unidentified peer when the derived null-identity hash is blocked | unit cases cover blocked/unblocked anonymous and identified-blocked behavior; pinned Python real-Link traces cover both the unblocked front page and exact blocked `no_ident` response with private-content exclusion; denied repository trace remains covered |
 | Media/files | `/media` key and path validation, URL decoding, ref/blob resolution, binary-safe filename metadata, download/artifact/work-doc endpoints, published-release filtering and absent-blob handling | local verified; pinned Python Resource payload/metadata and `/file/download` content/filename trace evidenced; same-Link production differential verifies a valid nested-path Resource control and scalar-False denials for missing key/path, malformed/insufficient/empty path, denied private access, absent blob, and invalid ref |
-| WebP conversion | Backend preference and `RNGIT_MEDIA_BACKEND`, argv-only process construction, quality/max-dimension options, 8-second pipeline bound, bounded stderr, output validation, temporary-directory cleanup, raw fallback | local code/tests; pinned Python live `ffmpeg` conversion of a valid PNG returns validated WebP; pinned-Python production-Link test with an explicitly unavailable backend returns the original `image.png` name and all 8,192 raw bytes unchanged; timeout regression verifies both pipeline children are terminated and reaped; other backends and visual parity remain unverified |
+| WebP conversion | Backend preference and `RNGIT_MEDIA_BACKEND`, argv-only process construction, quality/max-dimension options, 8-second pipeline bound, bounded stderr, output validation, temporary-directory cleanup, raw fallback | local code/tests; deterministic software differential coverage matches pinned-Python backend selection and configured argv for all five backend families; pinned Python live `ffmpeg` conversion of a valid PNG returns validated WebP; pinned-Python production-Link test with an explicitly unavailable backend returns the original `image.png` name and all 8,192 raw bytes unchanged; timeout regression verifies both pipeline children are terminated and reaped; real encoder operation for `magick`, `convert`, `gm`, and `avconv`, plus visual parity, remain unverified |
 | Resource wire | Explicit outbound compression control, with `/media` responses sent uncompressed and a regression asserting no compressed advertisement | local verified; pinned Python inspects the production Resource advertisement and confirms no compression for a precompressed PNG |
 | Link-scoped cleanup | Converted-media temp data is retained for an active Link and removed on `Closed`, `Stale`, or missing-link state; graceful teardown and in-flight `/media` Resource cancellation are exercised against pinned Python | deterministic cleanup tests plus ignored `rngit_python_interop::rngit_serves_pages_and_media_to_pinned_python_client` and `rngit_python_interop::rngit_cancels_in_flight_media_resource_on_python_link_teardown` | active, stale, closed, missing-link, graceful-disconnect, and synchronized partial-Resource cancellation paths verified; abrupt-process stale transition and other filesystem failures remain open |
 | Removal errors | Failed directory deletion retains the Link registry entry; conversion-fallback and link-cleanup errors log path/link context for diagnosis and retry, even with `--silent` | deterministic `page_link_cleanup_retries_failed_removal` injects a failure then verifies successful retry on link cleanup | one deletion-error retry path verified; other filesystem fault paths remain open |
@@ -389,4 +389,37 @@ RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/R
   LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
   rngit_media_validation_denials_return_false_over_python_link \
   -- --ignored --nocapture --test-threads=1                       PASS (1 test)
+```
+
+### Media backend selection and configured argv
+
+The pinned helper at Reticulum
+`99de23c040d507e3fefca19e87b182302902725d`,
+`RNS/Utilities/rngit/media.py::_selected_backend` and
+`_configured_backend`, defines the five-family preference order, explicit
+`RNGIT_MEDIA_BACKEND` behavior, and backend-specific quality and dimension
+arguments. Software-only Rust unit cases inject available programs, so they
+cover each automatic preference position and explicit selection without
+installing or launching image tools. Exact argv vectors cover quality 85 and a
+640-pixel maximum for all five families, with separate checks for clamping and
+omitted nonpositive dimensions. Comparison exposed two mismatches: an empty
+backend environment value did not follow Python's automatic-selection behavior,
+and ffmpeg-family argv used `-q:v` instead of the reference `-quality`; both
+were corrected. This establishes argument and selection parity only, not
+successful encoding by every backend.
+
+The local environment reports `/usr/bin/ffmpeg`; `magick`, `convert`, `gm`, and
+`avconv` are unavailable. The pinned helper source was read from the exact
+GitHub commit because its local reference checkout was absent. The installed
+ffmpeg help lists `-quality`; this check did not run a conversion.
+
+```text
+cargo test -p rns-tools --bin rngit --all-features media_backend_tests -- --nocapture
+  PASS (7 passed)
+TMPDIR="$PWD/target/tmp" cargo test -p rns-tools --bin rngit --all-features -- --test-threads=1
+  PASS (55 passed, 2 ignored)
+cargo clippy -p rns-tools --bin rngit --all-features --no-deps -- -D warnings
+  PASS
+cargo fmt --all -- --check; tools/scripts/check-module-size.sh; git diff --check
+  PASS
 ```
