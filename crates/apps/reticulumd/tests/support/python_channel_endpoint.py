@@ -421,6 +421,7 @@ class ChannelClient:
 
             def resource_concluded(resource) -> None:
                 result["status"] = resource.status
+                result["total_size"] = resource.get_data_size()
                 done.set()
 
             resource = RNS.Resource(
@@ -470,11 +471,16 @@ class ChannelClient:
                 return 1
             if result.get("status") == RNS.Resource.COMPLETE:
                 if self.payload_kind == "resource-multi-hop":
-                    expected = f"resource-sha256:{len(resource_data)}:{hashlib.sha256(resource_data).hexdigest()}"
+                    digest = hashlib.sha256(resource_data).hexdigest()
+                    expected = {
+                        f"resource-sha256:{len(resource_data)}:{digest}",
+                        f"resource-sha256-metadata:{len(resource_data)}:{digest}:"
+                        f"{result['total_size']}:python-meta",
+                    }
                     while True:
                         with self.lock:
                             acknowledged = any(
-                                reply.get("id") == "rust-resource" and reply.get("data") == expected
+                                reply.get("id") == "rust-resource" and reply.get("data") in expected
                                 for reply in self.received
                             )
                         if acknowledged:

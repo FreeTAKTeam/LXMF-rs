@@ -140,3 +140,63 @@ async fn failed_partial_setup_is_closed_before_runtime_reconnects() {
         "the recovered connection is also released"
     );
 }
+
+struct PartialConnectBackend {
+    fail_connect_once: bool,
+    events: Vec<&'static str>,
+}
+
+impl RnodeBleBackend for PartialConnectBackend {
+    async fn connect(&mut self) -> Result<(), String> {
+        self.events.push("connect");
+        if self.fail_connect_once {
+            self.fail_connect_once = false;
+            Err("scripted failure after partial connection acquisition".to_string())
+        } else {
+            Ok(())
+        }
+    }
+
+    async fn subscribe_notifications(&mut self) -> Result<(), String> {
+        self.events.push("subscribe");
+        Ok(())
+    }
+
+    async fn write(&mut self, _write: RnodeBleWrite) -> Result<(), String> {
+        self.events.push("write");
+        Ok(())
+    }
+
+    async fn next_notification(&mut self) -> Result<Option<Vec<u8>>, String> {
+        Ok(None)
+    }
+
+    async fn close(&mut self) -> Result<(), String> {
+        self.events.push("close");
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn failed_partial_connect_is_closed_before_runtime_retries() {
+    let backend = PartialConnectBackend { fail_connect_once: true, events: Vec::new() };
+    let mut runtime = RnodeBleKissRuntime::new(backend, RnodeBleKissConfig::default());
+
+    let first = runtime.startup().await.expect_err("first connection attempt fails");
+    assert!(matches!(
+        first,
+        RnodeBleKissError::Backend { operation: "connect", .. }
+    ));
+    assert!(!runtime.status().connected);
+    assert_eq!(runtime.backend().events, ["connect", "close"]);
+
+    runtime.startup().await.expect("fresh connection succeeds after partial-session cleanup");
+    assert!(runtime.status().connected);
+    assert_eq!(
+        &runtime.backend().events[..4],
+        ["connect", "close", "connect", "subscribe"]
+    );
+
+    runtime.close().await.expect("release recovered session");
+    assert_eq!(runtime.backend().events.last(), Some(&"close"));
+}
