@@ -22,6 +22,7 @@ acceptance gate.
 | Windows backend boundary | The resolver is target-gated and uses the existing `btleplug` scan/connect/service-discovery path; Android's configured-peripheral path is unchanged. The implementation does not use `btleplug`'s unsupported Windows `add_peripheral` address shortcut. | local code verified |
 | Runtime cleanup and read states | BLE notification timeout is an idle read: it returns no event while preserving the live session, allowing a later notification to be delivered. Native notification-stream EOF is tracked separately, resets the session, and is returned to the caller as a `next_notification` backend error. A deterministic scripted-backend regression exercises idle → data → EOF without hardware. This aligns with the pinned Python loop, which treats an empty BLE receive queue as no bytes and continues polling; connection/read exceptions remain terminal. | focused fake-backend regression; native carrier unverified |
 | BLE partial setup and retry | Deterministic backends fail once during notification setup and during connection acquisition, recording cleanup before a second startup. Each runtime reconnects successfully, becomes connected, and releases the recovered session on close. This verifies reusable-runtime cleanup/retry after a backend-reported partial setup/connect failure; it does not execute native GATT service discovery or prove Windows/macOS/Android cancellation behavior. | focused fake-backend regressions; native carrier unverified |
+| BLE service-discovery cancellation recovery | The production interface worker receives a deterministic backend cancellation error during its service-discovery/connect phase, closes that partial session before retrying, creates exactly one fresh backend after the configured 1 ms backoff, completes notification subscription/startup writes, and closes the recovered session when stopped. The test is radio-free and bounds both recovery and shutdown. It models a backend-reported cancellation result; it does not cancel/drop the Rust startup future or exercise native GATT cancellation/cleanup. | focused fake-backend worker regression; native carrier unverified |
 | BLE worker detection fallback | A private backend factory, used only by this worker and defaulting to the unchanged native backend constructor, lets a deterministic fake run through the actual worker loop. With CMD_DETECT withheld, the configured bounded deadline emits deferred radio configuration; a scripted disconnect verifies cleanup before the worker creates a fresh backend, and cancellation closes that second session. This is software fault injection only, not physical BLE support or device evidence. Behavior was compared with pinned Python's five-second `ble_detect_timeout` wait at `99de23c040d507e3fefca19e87b182302902725d`; Rust's configured fallback remains separately bounded and tested without waiting five seconds. | focused fake-backend worker regression; no physical device |
 | Interface inventory | The daemon has explicit startup branches for TCP/backbone, local TCP/Unix, UDP, AutoInterface, serial, Weave, KISS/AX.25, pipe, I2P, Meshtastic, BLE, LoRa, and RNodeMulti aliases; unknown kinds record an explicit unsupported-kind failure. | source inspection; cross-platform/live evidence open |
 | Native Windows CI | The PR workflow runs the `rnode-ble` library test filter on `windows-latest`, compiling the target-gated WinRT resolver, executing deterministic paired-ID/runtime tests, and invoking the real WinRT paired-device query. A runner with no paired radios may validly return an empty set; this does not verify physical pairing. | passed on `ca6b6bba` (18 tests); physical paired-RNode behavior remains unverified |
@@ -94,6 +95,19 @@ cargo test -p reticulum-rs-transport --features rnode-ble --lib \
   failed_partial_connect_is_closed_before_runtime_retries -- --nocapture PASS
 ```
 
+The software-only worker service-discovery cancellation/recovery regression
+ran on the current PR branch. It injects a backend-reported cancellation at
+discovery, asserts partial-session cleanup precedes exactly one fresh-backend
+retry, observes successful subscription/startup writes, then stops the worker
+and checks recovered-session cleanup. The configured backoff is 1 ms and the
+overall recovery/stop waits are bounded at one second. It does not model
+cancellation by dropping the Rust startup future or native GATT cancellation:
+
+```text
+cargo test -p reticulum-rs-transport --features rnode-ble --lib \
+  worker_cleans_up_cancelled_service_discovery_before_bounded_retry -- --nocapture PASS
+```
+
 The software-only worker detection-timeout regression ran on the current PR
 #634 branch. It withholds `CMD_DETECT`, observes fallback configuration after
 the configured deadline, then cancels the worker and verifies backend closure.
@@ -137,12 +151,13 @@ establish physical Windows pairing or carrier behavior.
 ## Deliberate remaining gaps
 
 - A native Windows build and paired RNode test still need to prove bonded
-  selection, stale paired references, partial service discovery, physical
-  detection timeout, cancellation, and bounded cleanup. The software worker
+  selection, stale paired references, native partial service discovery,
+  physical detection timeout, native cancellation, and bounded cleanup. The software worker
   fault-injection test now covers timeout fallback and cancellation cleanup,
   but proves no native GATT or physical-device behavior. The software runtime reconnect
-  regression above covers retry after notification-setup failure, not native
-  service discovery or native cancellation. The EOF/idle semantic distinction
+  regressions above cover retry after notification-setup failure and a
+  backend-reported service-discovery cancellation, not native GATT cancellation
+  or cleanup. The EOF/idle semantic distinction
   is covered by the software regression above, not a native trace.
 - AutoInterface still needs native link-local enumeration, carrier-loss
   recovery, and stop/restart evidence on each supported host. The daemon test
