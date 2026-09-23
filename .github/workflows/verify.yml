@@ -97,6 +97,15 @@ jobs:
           cargo test -p rns-tools --test rngit_concurrent_python_interop
           -- --ignored --nocapture
 
+      - name: Verify pinned Python rngit optional-signature wire schema
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+        run: >-
+          cargo test -p rns-tools --bin rngit
+          tests::rngit_work_view_preserves_explicit_nil_optional_signature
+          -- --ignored --exact --nocapture
+
       - name: Record pinned revisions
         run: |
           git -C reticulum-conformance rev-parse HEAD
