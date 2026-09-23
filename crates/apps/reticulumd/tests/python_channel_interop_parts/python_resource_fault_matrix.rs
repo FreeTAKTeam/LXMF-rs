@@ -50,15 +50,22 @@ async fn run_python_resource_fault(mode: ResourceFaultMode, expect_failure: bool
                 .await;
         assert!(!reason.is_empty(), "missing Resource failure reason");
     } else {
-        let complete =
-            wait_for_inbound_resource_data(&mut resource_events, link_id, Duration::from_secs(30))
-                .await;
+        let (complete, total_data_size) = wait_for_inbound_split_resource_data_and_size(
+            &mut resource_events,
+            link_id,
+            Duration::from_secs(30),
+        )
+        .await;
         assert_eq!(complete.data.len(), resource_size);
+        let metadata = complete.metadata.as_deref().expect("split metadata");
         assert_eq!(
-            complete.metadata.as_deref().and_then(|metadata| {
-                rmp_serde::from_slice::<String>(metadata).ok()
-            }),
+            rmp_serde::from_slice::<String>(metadata).ok(),
             Some("python-meta".to_string())
+        );
+        assert_eq!(
+            total_data_size,
+            (complete.data.len() + metadata.len() + 3) as u64,
+            "split Resource accounting includes exactly one metadata length prefix and metadata block"
         );
     }
 

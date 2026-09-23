@@ -125,6 +125,23 @@ pub(super) async fn wait_for_resource_digest_ack(
     .await;
 }
 
+pub(super) async fn wait_for_resource_metadata_digest_ack(
+    seen: &Arc<StdMutex<Vec<(String, String)>>>,
+    expected_size: usize,
+    expected_digest: &str,
+    expected_total_size: usize,
+    expected_metadata: &str,
+    duration: Duration,
+) {
+    let expected = format!(
+        "resource-sha256-metadata:{expected_size}:{expected_digest}:{expected_total_size}:{expected_metadata}"
+    );
+    wait_for_seen_tuple(seen, duration, "Python Resource metadata acknowledgement", |id, data| {
+        id == "rust-resource" && data == expected
+    })
+    .await;
+}
+
 pub(super) async fn wait_for_resource_started(
     seen: &Arc<StdMutex<Vec<(String, String)>>>,
     duration: Duration,
@@ -352,6 +369,36 @@ pub(super) async fn wait_for_inbound_resource_data(
     })
     .await
     .expect("timed out waiting for inbound resource completion")
+}
+
+pub(super) async fn wait_for_inbound_split_resource_data_and_size(
+    events: &mut tokio::sync::broadcast::Receiver<ResourceEvent>,
+    link_id: AddressHash,
+    duration: Duration,
+) -> (ResourceComplete, u64) {
+    timeout(duration, async {
+        let mut total_data_size = None;
+        loop {
+            let event = events.recv().await.expect("resource event");
+            if event.link_id != link_id {
+                continue;
+            }
+            match event.kind {
+                ResourceEventKind::SegmentComplete(progress) => {
+                    total_data_size = Some(progress.total_data_size);
+                }
+                ResourceEventKind::Complete(complete) => {
+                    return (
+                        complete,
+                        total_data_size.expect("split transfer emitted segment accounting"),
+                    );
+                }
+                _ => {}
+            }
+        }
+    })
+    .await
+    .expect("timed out waiting for inbound split Resource completion")
 }
 
 pub(super) async fn wait_for_inbound_resource_data_or_child_exit(

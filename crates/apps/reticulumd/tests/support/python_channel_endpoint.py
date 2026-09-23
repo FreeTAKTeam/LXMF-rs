@@ -199,6 +199,18 @@ class ChannelEndpoint:
                     )
                 if metadata is not None and len(data) < 1024 * 1024:
                     reply_data = f"resource:{data.decode('utf-8')}:{metadata}"
+                elif metadata is not None:
+                    metadata_wire_size = len(umsgpack.packb(metadata)) + 3
+                    expected_total_size = len(data) + metadata_wire_size
+                    if resource.total_size != expected_total_size:
+                        raise AssertionError(
+                            f"Resource size accounting mismatch: advertised={resource.total_size} "
+                            f"data={len(data)} metadata_wire={metadata_wire_size}"
+                        )
+                    reply_data = (
+                        f"resource-sha256-metadata:{len(data)}:{digest}:"
+                        f"{resource.total_size}:{metadata}"
+                    )
                 else:
                     reply_data = f"resource-sha256:{len(data)}:{digest}"
                 link.get_channel().send(

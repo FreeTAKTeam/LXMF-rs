@@ -454,6 +454,36 @@ This is a focused terminal-event fidelity increment, not completion of the
 broader timeout, callback/status, mixed-peer size, or operational acceptance
 matrix.
 
+## Split Resource metadata placement and size accounting
+
+The 2026-09-23 focused trace verifies the metadata-bearing split transfer in
+both directions over production Link and Resource paths against pinned
+Reticulum `99de23c040d507e3fefca19e87b182302902725d`. Rust's reader-backed
+sender is received by Python with the exact decoded metadata and payload
+digest; the Python receiver also reports `total_size` equal to payload bytes
+plus the encoded metadata block and its single 3-byte length prefix. In the
+reverse direction, the pinned Python sender's split transfer is assembled by
+Rust with the expected data length and decoded metadata, while each accepted
+segment reports a `total_data_size` equal to that same accounting formula.
+The reverse trace repeats this assertion under first-part loss, duplication,
+and reordering. No behavioral mismatch was found, so this increment changes
+interop assertions and evidence only; it does not alter Resource production
+code or claim general large-resource parity.
+
+```text
+cargo test -p reticulum-rs-transport resource_receiver_strips_split_metadata_from_the_first_segment_only
+# 1 passed
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+  LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
+  rust_reader_to_python_split_resource_roundtrip -- --ignored --nocapture
+# 1 passed; exact Python metadata, data digest, and total_size
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+  LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
+  pinned_python_resource_fault_matrix -- --ignored --nocapture
+# 1 passed; reverse split metadata and total_data_size under loss, duplication,
+# reordering, plus the existing all-parts-missing terminal-failure case
+```
+
 ## Remaining acceptance boundary
 
 The following #610 requirements remain unverified and are intentionally not
