@@ -35,9 +35,11 @@ equality does not retransmit. The source-derived ideal polling bound is the
 check interval plus one jobs poll: 1.25 s, with no runtime-jitter allowance.
 The pinned differential executes the announce-processing branch with a
 controlled clock: no send at equality, one send just after the deadline, and
-removal without another send on the following check. Rust's deterministic
-production-tick test asserts the same strict boundary; its 1.0 s worker
-interval remains inside Python's source-derived bound.
+removal without another send on the following check. The fake Python packet
+also asserts the exact announce destination hash, originating local-client
+`attached_interface`, and transport ID. Rust's deterministic production-tick
+test asserts the same strict boundary, exact one-send count, and broadcast
+target; its 1.0 s worker interval remains inside Python's source-derived bound.
 
 The focused parent-interface differential now also traverses Rust's production
 `handle_announce` path with forwarding disabled. It compares Python's exact
@@ -80,7 +82,7 @@ trace or account for runtime scheduling jitter.
 - `cargo test -p reticulum-rs-transport --lib announce_ingress_uses_parent_classification_for_ordinary_owner_and_children` — 1 passed; production announce outcomes match the pinned predicate's five expected classifications.
 - `RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs/.tmp/python-refs/Reticulum-99de23c LXMF_PYTHON_BIN=python3 cargo test -p reticulum-rs-transport --lib pinned_python_parent_predicate_matches_production_announce_ingress -- --ignored --nocapture` — 1 passed against Python Reticulum `99de23c040d507e3fefca19e87b182302902725d`.
 - `cargo test -p reticulum-rs-transport --lib local_client_announce_retransmits_on_first_worker_tick_once` — 1 passed.
-- `RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test -p reticulum-rs-transport --lib pinned_python_local_client_schedule_bounds_the_rust_worker_tick -- --ignored --nocapture` — 1 passed against Python Reticulum `99de23c040d507e3fefca19e87b182302902725d`; executes the pinned announce-processing AST branch at deadline equality, just after, and at the following check.
+- `RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test -p reticulum-rs-transport --lib pinned_python_local_client_schedule_bounds_the_rust_worker_tick -- --ignored --nocapture` — 1 passed against Python Reticulum `99de23c040d507e3fefca19e87b182302902725d`; executes the pinned announce-processing AST branch at deadline equality, just after, and at the following check, asserting exactly one packet with the expected destination hash, local-client route, and transport ID.
 - `RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test -p reticulum-rs-transport --lib pinned_python_local_client_classification_matches_parent_relationship -- --ignored --nocapture` — 1 passed against Python Reticulum `99de23c040d507e3fefca19e87b182302902725d`.
 - `cargo clippy -p reticulum-rs-transport --all-targets --all-features --no-deps -- -D warnings` — passed.
 - `tools/scripts/check-module-size.sh` and

@@ -52,10 +52,11 @@ class FakeDestination:
 
 def run_python_announce_check(now):
     destination_hash = b"destination"
+    local_client = object()
     announce = types.SimpleNamespace(
         data=b"announce", destination_hash=destination_hash, context_flag=0
     )
-    entry = [0, 10.0, Transport.PATHFINDER_R, None, 3, announce, 0, False, None]
+    entry = [0, 10.0, Transport.PATHFINDER_R, None, 3, announce, 0, False, local_client]
     fake_transport = types.SimpleNamespace(
         announces_last_checked=0.0,
         announces_check_interval=Transport.announces_check_interval,
@@ -87,12 +88,17 @@ def run_python_announce_check(now):
     FakeClock.current = now
     code = compile(ast.Module(body=[announce_check], type_ignores=[]), "pinned-Transport.jobs", "exec")
     exec(code, namespace)
-    return namespace["outgoing"], entry, fake_transport.announce_table, namespace, code
+    return namespace["outgoing"], entry, fake_transport.announce_table, namespace, code, local_client
 
-at_deadline, equal_entry, _, _, _ = run_python_announce_check(10.0)
+at_deadline, equal_entry, _, _, _, _ = run_python_announce_check(10.0)
 assert not at_deadline and equal_entry[2] == Transport.PATHFINDER_R
-after_deadline, after_entry, after_table, after_namespace, code = run_python_announce_check(10.000001)
-assert len(after_deadline) == 1 and after_entry[2] == Transport.LOCAL_REBROADCASTS_MAX
+after_deadline, after_entry, after_table, after_namespace, code, local_client = run_python_announce_check(10.000001)
+assert len(after_deadline) == 1, "Python must emit exactly one immediate retransmit"
+python_packet = after_deadline[0]
+assert python_packet.args[0].hash == b"destination"
+assert python_packet.kwargs["attached_interface"] is local_client, "retransmit must route to the originating local client"
+assert python_packet.kwargs["transport_id"] == b"transport"
+assert after_entry[2] == Transport.LOCAL_REBROADCASTS_MAX
 after_namespace["outgoing"] = []
 FakeClock.current = 11.000002
 exec(code, after_namespace)
