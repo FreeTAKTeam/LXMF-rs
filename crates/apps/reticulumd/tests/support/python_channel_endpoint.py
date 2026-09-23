@@ -279,6 +279,8 @@ class ChannelClient:
         self.link = None
         self.received = []
         self.buffer = None
+        self.closed = threading.Event()
+        self.close_reason = None
 
     def run(
         self,
@@ -526,6 +528,34 @@ class ChannelClient:
                 time.sleep(0.25)
         elif self.payload_kind in ("channel", "channel-reconnect"):
             active_link.get_channel().send(MessageTest(message_id, message_data))
+        elif self.payload_kind == "channel-retry-exhaustion":
+            envelope = active_link.get_channel().send(MessageTest(message_id, message_data))
+            while not self.closed.wait(0.05):
+                if time.time() > deadline:
+                    print(
+                        "python_channel_client: timed out waiting for Channel retry exhaustion",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                    return 1
+            if self.close_reason != RNS.Link.INITIATOR_CLOSED:
+                print(
+                    f"python_channel_client: unexpected retry-exhaustion close reason {self.close_reason}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                return 1
+            print(
+                json.dumps(
+                    {
+                        "channel": "retry-exhausted",
+                        "tries": envelope.tries,
+                        "teardown_reason": self.close_reason,
+                    }
+                ),
+                flush=True,
+            )
+            return 0
         reconnect_started = False
         while True:
             with self.lock:
@@ -624,6 +654,8 @@ class ChannelClient:
             self.link = link
 
     def _on_link_closed(self, _link) -> None:
+        self.close_reason = _link.teardown_reason
+        self.closed.set()
         print("python_channel_client: link closed", file=sys.stderr, flush=True)
 
     def _on_link_data(self, message, _packet) -> None:
@@ -651,6 +683,7 @@ def main() -> int:
         choices=(
             "channel",
             "channel-reconnect",
+            "channel-retry-exhaustion",
             "buffer",
             "resource",
             "resource-multi-hop",

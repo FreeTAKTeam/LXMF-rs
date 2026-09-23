@@ -108,7 +108,6 @@ async fn python_initiated_link_close_reports_initiator_reason_to_rust() {
         Duration::from_secs(8),
     )
     .await;
-
     let closed = tokio::time::timeout(Duration::from_secs(8), async {
         loop {
             let event = in_events.recv().await.expect("inbound link event");
@@ -150,6 +149,98 @@ async fn python_initiated_link_close_reports_initiator_reason_to_rust() {
         stdout.contains("\"teardown_reason\": 2"),
         "Python should report Link.INITIATOR_CLOSED (2): {stdout}"
     );
+}
+
+#[tokio::test]
+#[ignore = "requires local Python Reticulum checkout"]
+async fn python_channel_retry_exhaustion_sends_link_close_over_tcp() {
+    let _interop_guard = python_interop_guard().await;
+    let paths = python_channel_interop_paths();
+
+    let server_port = free_tcp_port();
+    let proxy = python_resource_fault_proxy::PythonResourceFaultProxy::bind(
+        server_port,
+        python_resource_fault_proxy::ResourceFaultMode::DropLinkProofs,
+    )
+    .await;
+    let temp = tempfile::tempdir().expect("tempdir");
+    let py_config_dir = temp.path().join("python-rns-channel-retry-exhaustion");
+    fs::create_dir_all(&py_config_dir).expect("python config dir");
+    write_python_client_config(&py_config_dir, proxy.port());
+
+    let rust_identity = PrivateIdentity::new_from_rand(OsRng);
+    let rust_identity = to_transport_private_identity(&rust_identity);
+    let config = TransportConfig::new("python-channel-retry-exhaustion-rust-server", &rust_identity, true);
+    let transport = Transport::new(config);
+    let iface_manager = transport.iface_manager();
+    transport
+        .iface_manager()
+        .lock()
+        .await
+        .spawn(TcpServer::new(format!("127.0.0.1:{server_port}"), iface_manager), TcpServer::spawn);
+    wait_for_port(server_port, Duration::from_secs(5)).await;
+
+    let destination = transport
+        .add_destination(rust_identity.clone(), DestinationName::new("test", "channel"))
+        .await;
+    let destination_hash = {
+        let destination = destination.lock().await;
+        hex::encode(destination.desc.address_hash.as_slice())
+    };
+
+    let mut in_events = transport.in_link_events();
+    let child = paths.spawn_channel_client(
+        &py_config_dir,
+        &destination_hash,
+        "channel-retry-exhaustion",
+    );
+    let mut guard = ChildGuard { child: Some(child) };
+    let link_id = wait_for_in_link_active_with_announces(
+        &transport,
+        &destination,
+        &mut in_events,
+        Duration::from_secs(8),
+    )
+    .await;
+    transport.channel(link_id).open().await.expect("open Rust channel peer");
+
+    let closed = tokio::time::timeout(Duration::from_secs(8), async {
+        loop {
+            let event = in_events.recv().await.expect("inbound link event");
+            if event.id == link_id
+                && matches!(event.event, rns_transport::destination::link::LinkEvent::Closed)
+            {
+                break event;
+            }
+        }
+    })
+    .await
+    .expect("timed out waiting for Python Channel retry-exhaustion LinkClose");
+    assert_eq!(
+        closed.close_reason,
+        Some(rns_transport::destination::link::LinkCloseReason::InitiatorClosed),
+        "Python Channel retry exhaustion must close its initiating link"
+    );
+    assert!(proxy.matched_frame_count() > 0, "the TCP proxy must drop Link proofs");
+
+    let child = guard.child.take().expect("python client child");
+    let output = tokio::task::spawn_blocking(move || child.wait_with_output())
+        .await
+        .expect("join python client")
+        .expect("wait for python client");
+    assert!(
+        output.status.success(),
+        "Python retry-exhaustion client failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("\"channel\": \"retry-exhausted\""), "{stdout}");
+    assert!(stdout.contains("\"tries\": 5"), "expected five Python attempts: {stdout}");
+    assert!(stdout.contains("\"teardown_reason\": 2"), "{stdout}");
+
+    drop(proxy);
+    drop(transport);
 }
 
 #[tokio::test]

@@ -15,6 +15,7 @@ pub(super) enum ResourceFaultMode {
     DropAll,
     DropAllResourceTraffic,
     DropKeepAlive,
+    DropLinkProofs,
     DuplicateChannelFirst,
     DuplicateLinkRequestFirst,
     CountLinkRequest,
@@ -47,6 +48,7 @@ impl PythonResourceFaultProxy {
             let reverse_mode = matches!(
                 mode,
                 ResourceFaultMode::DropAllResourceTraffic
+                    | ResourceFaultMode::DropLinkProofs
                     | ResourceFaultMode::CountLinkRequestProof
                     | ResourceFaultMode::CountLinkRequest
             )
@@ -148,6 +150,9 @@ async fn forward_frames<R, W>(
                         }
                     }
                     ResourceFaultMode::DropAll | ResourceFaultMode::DropAllResourceTraffic => {}
+                    ResourceFaultMode::DropLinkProofs => {
+                        matched_frames.fetch_add(1, Ordering::SeqCst);
+                    }
                     ResourceFaultMode::DropKeepAlive => {}
                     ResourceFaultMode::DuplicateChannelFirst => {
                         if !state.first_channel_seen {
@@ -217,6 +222,9 @@ fn should_match(frame: &[u8], mode: Option<ResourceFaultMode>) -> bool {
     }
     Packet::from_bytes(output.as_slice()).is_ok_and(|packet| match mode {
         Some(ResourceFaultMode::DropKeepAlive) => packet.context == PacketContext::KeepAlive,
+        Some(ResourceFaultMode::DropLinkProofs) => {
+            packet.header.packet_type == PacketType::Proof && packet.context == PacketContext::None
+        }
         Some(ResourceFaultMode::DuplicateChannelFirst) => packet.context == PacketContext::Channel,
         Some(ResourceFaultMode::DuplicateLinkRequestFirst)
         | Some(ResourceFaultMode::CountLinkRequest) => {
