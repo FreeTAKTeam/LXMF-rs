@@ -149,6 +149,7 @@ class ChannelEndpoint:
 
         if self.payload_kind in (
             "resource",
+            "resource-compression",
             "resource-multi-hop",
             "cancel-resource",
             "resource-shutdown",
@@ -195,6 +196,7 @@ class ChannelEndpoint:
                             "data_size": len(data),
                             "sha256": digest,
                             "metadata": metadata,
+                            "compressed": resource.compressed,
                         }
                     )
                 if metadata is not None and len(data) < 1024 * 1024:
@@ -213,6 +215,8 @@ class ChannelEndpoint:
                     )
                 else:
                     reply_data = f"resource-sha256:{len(data)}:{digest}"
+                if self.payload_kind == "resource-compression":
+                    reply_data += f":compressed={str(resource.compressed).lower()}"
                 link.get_channel().send(
                     MessageTest(
                         "rust-resource",
@@ -408,6 +412,9 @@ class ChannelClient:
             RNS.Packet(active_link, message_data.encode("utf-8")).send()
         elif self.payload_kind in (
             "resource",
+            "resource-compression-compressible",
+            "resource-compression-incompressible",
+            "resource-compression-disabled",
             "resource-multi-hop",
             "cancel-resource",
             "resource-file-reader-failure",
@@ -420,6 +427,12 @@ class ChannelClient:
                 resource_file = None
             elif resource_size == 0:
                 resource_data = b""
+                resource_file = None
+            elif self.payload_kind in (
+                "resource-compression-compressible",
+                "resource-compression-disabled",
+            ):
+                resource_data = (b"pinned Python Resource compression fixture " * (resource_size // 43 + 1))[:resource_size]
                 resource_file = None
             else:
                 resource_data = random.Random(605).randbytes(resource_size)
@@ -439,6 +452,7 @@ class ChannelClient:
                 resource_file if resource_file is not None else resource_data,
                 active_link,
                 metadata="python-meta",
+                auto_compress=self.payload_kind != "resource-compression-disabled",
                 callback=resource_concluded,
                 timeout=timeout,
             )
@@ -505,6 +519,7 @@ class ChannelClient:
                             "resource": "complete",
                             "size": len(resource_data),
                             "sha256": hashlib.sha256(resource_data).hexdigest(),
+                            "compressed": resource.compressed,
                             "peak_rss_kib": process_peak_rss_kib(),
                         }
                     ),
@@ -652,6 +667,10 @@ def main() -> int:
             "channel-reconnect",
             "buffer",
             "resource",
+            "resource-compression",
+            "resource-compression-compressible",
+            "resource-compression-incompressible",
+            "resource-compression-disabled",
             "resource-multi-hop",
             "cancel-resource",
             "resource-shutdown",

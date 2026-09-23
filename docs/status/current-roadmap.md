@@ -62,6 +62,13 @@ transport, SDK, daemon receipt, remote-control, and utility-consumer regressions
 cover the distinction; the wider timeout and consumer-status matrix remains
 open.
 
+The focused #610 compression regression now exercises the production Resource
+path in both directions against pinned Python: compressible input follows the
+default compressed path, deterministic incompressible input remains
+uncompressed, and the explicit disable option remains uncompressed, all with
+exact payload digests. No production mismatch was found; compression-threshold
+behavior remains unverified, and #610 stays partial.
+
 The #623 byte-level conformance lane is now executable through
 `cargo xtask interop`. It checks exact Python Reticulum/LXMF pins, Python→Rust
 packet/LXMF bytes, Rust→Python LXMF bytes, identity/announce/link vectors, and

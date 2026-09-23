@@ -484,6 +484,35 @@ RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/R
 # reordering, plus the existing all-parts-missing terminal-failure case
 ```
 
+## Default Resource compression against pinned Python
+
+At the current PR #630 candidate, `rust_resource_compression_defaults_match_pinned_python`
+uses the production TCP/Link/Resource path in both directions. Rust-to-Python
+checks default compression of compressible bytes, default handling of
+deterministic incompressible bytes, and explicit `auto_compress=false`; the
+Python receiver confirms the advertised `compressed` flag and exact received
+length/SHA-256. Python-to-Rust repeats those three cases with the Python
+`Resource(auto_compress=True)` default and explicit disabled mode; Rust verifies
+the exact received length and its digest matches the Python sender's digest.
+Both sides report `true, false, false` for the cases. No production mismatch
+was demonstrated, so this increment is regression/evidence only.
+
+```text
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+  LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
+  rust_resource_compression_defaults_match_pinned_python \
+  -- --ignored --nocapture --test-threads=1
+# 1 passed; Python observed compressed=true, false, false for the three cases
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+  LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
+  pinned_python_resource_compression_defaults_match_rust \
+  -- --ignored --nocapture --test-threads=1
+# 1 passed; Rust received and verified Python's exact payloads/digests and flags
+```
+
+Compression-threshold-limit behavior and the remaining #610 transfer-selection
+and failure matrix remain unverified.
+
 ## Remaining acceptance boundary
 
 The following #610 requirements remain unverified and are intentionally not
