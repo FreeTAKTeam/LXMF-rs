@@ -126,9 +126,11 @@ link events now expose the pinned
 role-aware and establishment-timeout regressions. A channel retry-exhaustion
 test also verifies the single caller-visible close event and role-specific
 reason. The pinned Python path additionally sends a LinkClose packet for an
-active link; this regression does not verify that wire behavior. The row remains
-unverified until broader shared-instance and multi-hop production traces compare other
-packet/proof duplicate classes. A new two-peer pinned-Python shared-instance
+active link; the regression now verifies the timeout emits that packet and a
+paired Rust peer Link closes. A pinned-Python retry-exhaustion trace over a live
+carrier remains unverified. The row remains partial; broader shared-instance
+and multi-hop production traces comparing other packet/proof duplicate classes
+remain unverified. A new two-peer pinned-Python shared-instance
 trace verifies path relearning, fresh links, and raw packet exchange in both
 directions after replacing the transport-enabled Rust daemon. It also queues
 one short opportunistic LXMF message while the relay is down and verifies the

@@ -302,7 +302,7 @@
     }
 
     #[test]
-    fn channel_retry_exhaustion_closes_link_and_fails_pending_messages() {
+    fn channel_retry_exhaustion_sends_link_close_and_fails_pending_messages() {
         let signer = PrivateIdentity::new_from_rand(OsRng);
         let identity = *signer.as_identity();
         let destination = DestinationDesc {
@@ -342,9 +342,10 @@
             assert_eq!(outbound.channel_state(sequence), ChannelMessageState::Sent);
         }
 
-        let resend_packets =
+        let close_packets =
             outbound.poll_channel_timeouts(Instant::now() + Duration::from_secs(5));
-        assert!(resend_packets.is_empty());
+        assert_eq!(close_packets.len(), 1);
+        assert_eq!(close_packets[0].context, crate::packet::PacketContext::LinkClose);
         assert_eq!(outbound.status(), LinkStatus::Closed);
         assert_eq!(outbound.channel_state(sequence), ChannelMessageState::Failed);
         assert_eq!(outbound.close_reason(), Some(LinkCloseReason::InitiatorClosed));
@@ -352,6 +353,17 @@
         assert!(matches!(close_event.event, LinkEvent::Closed));
         assert_eq!(close_event.id, *outbound.id());
         assert_eq!(close_event.close_reason, Some(LinkCloseReason::InitiatorClosed));
+
+        assert!(matches!(
+            inbound.handle_packet(&close_packets[0], iface),
+            LinkHandleResult::None
+        ));
+        assert_eq!(inbound.status(), LinkStatus::Closed);
+        assert_eq!(inbound.close_reason(), Some(LinkCloseReason::InitiatorClosed));
+        let peer_close_event = events.try_recv().expect("peer link close event");
+        assert!(matches!(peer_close_event.event, LinkEvent::Closed));
+        assert_eq!(peer_close_event.id, *inbound.id());
+        assert_eq!(peer_close_event.close_reason, Some(LinkCloseReason::InitiatorClosed));
 
         outbound.close();
         assert!(matches!(

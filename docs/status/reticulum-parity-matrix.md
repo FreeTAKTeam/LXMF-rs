@@ -551,8 +551,9 @@ retransmit, so an automatic repeat of a still-pending request leaves it running
 while an explicit restart begins a new one. Python's `teardown_reason = TIMEOUT`
 is surfaced to callers as `LinkEventData.close_reason`; a retry-exhausted
 channel likewise preserves the role-specific teardown reason on its single
-closed-link event. This regression does not verify the LinkClose packet that
-the Python active-link teardown sends on the wire.
+closed-link event and returns a LinkClose packet that closes a paired Rust peer
+Link. A pinned-Python retry-exhaustion trace over a live carrier remains
+unverified.
 `Transport::set_receipt_handler` takes `&self`. The handler it installs already
 lives behind the transport's own lock, so exclusive access bought nothing,
 while a `Transport` is an `Arc` by the time a client is ready to install one
