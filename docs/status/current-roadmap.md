@@ -48,8 +48,10 @@ Link and exact-checksum Resource recovery. This is local mixed-peer evidence
 only; the #605 candidate and its release posture remain open pending the
 documented broader gates. A daemon Resource-completion regression now checks
 receipt metadata, peer byte accounting, exactly-once emission, and tracking
-cleanup, including suppression of a repeated completion notification; other
-consumer callback/status paths remain open. Focused `lxmf-runtime` tests also
+cleanup, including suppression of a repeated completion notification. The
+timeout-failure receipt path now has the same exactly-once metadata and cleanup
+coverage, including peer backoff status; other consumer callback/status paths
+remain open. Focused `lxmf-runtime` tests also
 confirm `OutboundFailed` and `OutboundCancelled` become distinct SDK transport
 errors and cleanup is attempted, without claiming the remaining consumer
 matrix.

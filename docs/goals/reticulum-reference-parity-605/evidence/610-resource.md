@@ -343,7 +343,7 @@ PR `Verify` workflow against the frozen Reticulum target. This makes the two
 recovery directions a required hosted software check; it does not replace the
 broader timeout matrix or callback/status assertions across every consumer.
 
-## Daemon Resource completion receipt
+## Daemon Resource completion and failure receipts
 
 The `reticulumd` outbound Resource completion consumer now has a focused unit
 regression, `outbound_resource_completion_event_records_receipt_and_peer_bytes`.
@@ -355,9 +355,20 @@ This is a transport-completion receipt, not a remote LXMF delivery
 acknowledgement, and does not stand in for the remaining consumer callback
 matrix.
 
+The companion `outbound_resource_failure_event_marks_tracking_failed`
+regression verifies one `resource-failed` receipt with the original message ID,
+Resource hash, peer, byte count, and `failed: resource transfer timed out`
+status. A repeated failure notification emits no duplicate receipt; tracking
+is removed, transmitted-byte accounting is retained, and the peer is marked
+inactive with the expected backoff. Other failure and consumer paths remain
+outside this focused regression.
+
 ```text
 cargo test -p reticulumd --bin reticulumd \
   outbound_resource_completion_event_records_receipt_and_peer_bytes
+# 1 passed; 466 filtered out
+cargo test -p reticulumd --bin reticulumd \
+  outbound_resource_failure_event_marks_tracking_failed
 # 1 passed; 466 filtered out
 ```
 
@@ -370,8 +381,8 @@ represented as complete:
   two pinned-Python matrices cover loss, duplication, reordering, and complete
   missing-fragment terminal failure in both directions;
 - callbacks/status transitions observed through every library and daemon
-  consumer after each injected failure; the outbound completion receipt path
-  now has one focused daemon-consumer regression;
+  consumer after each injected failure; outbound completion and timeout-failure
+  receipt paths now have focused daemon-consumer regressions;
 - hosted, physical-interface, public-network, and long-running soak evidence.
 
 The current conclusion is therefore: collision regeneration, shutdown cleanup,

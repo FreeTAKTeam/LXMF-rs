@@ -159,8 +159,9 @@
                 sent_status: "sent: link resource".to_string(),
             },
         );
-        let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+        let (tx, mut rx) = tokio::sync::mpsc::channel(2);
 
+        super::handle_outbound_resource_failure(&daemon, &map, &tx, &resource_hash);
         super::handle_outbound_resource_failure(&daemon, &map, &tx, &resource_hash);
 
         assert!(super::super::outbound_resources::take_outbound_resource_tracking(
@@ -171,6 +172,14 @@
         let event = rx.try_recv().expect("failed receipt event");
         assert_eq!(event.message_id, "resource-timeout-message");
         assert_eq!(event.status, "failed: resource transfer timed out");
+        assert_eq!(event.resource_hash.as_deref(), Some(resource_hash_hex.as_str()));
+        assert_eq!(event.peer.as_deref(), Some("peer-resource-timeout"));
+        assert_eq!(event.delivery_kind.as_deref(), Some("resource-failed"));
+        assert_eq!(event.bytes, Some(512));
+        assert!(matches!(
+            rx.try_recv(),
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+        ));
         let peers = daemon
             .handle_rpc(RpcRequest { id: 2, method: "list_peers".to_string(), params: None })
             .expect("list peers")
