@@ -132,6 +132,11 @@ authenticated ingress/egress, and shared parent IFAC rotation on an established
 virtual peer. These are software stream tests, not public I2P evidence, and do
 not cover broader tunnel lifecycle behavior. Other carrier families remain
 open; hardware and public-network evidence remain separate acceptance gates.
+The transport ingress suite also verifies that an already-attached accepted
+child decoder rejects the old parent IFAC key and admits the newly configured
+key after a live parent update. The existing config propagation was sufficient,
+so this increment adds regression evidence without a production behavior
+change; #608 remains partial.
 Commit `49b7999f` adds software-only production-worker regressions for
 Meshtastic tunnel reassembly, Weave streams, and the incoming I2P accepted
 stream. Each rejects wrong-key traffic before admission and verifies

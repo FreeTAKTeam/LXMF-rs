@@ -41,6 +41,10 @@ regression for wrong-key rejection and authenticated ingress/egress; none of
 these tests is physical-carrier or public-I2P evidence. A second fake-SAM test
 verifies an established virtual I2P peer observes parent IFAC credential
 rotation, rejects stale credentials, and uses the rotated key for egress. The
+transport ingress suite also verifies an already-attached accepted child
+channel rejects the previous parent credential and admits frames under the
+rotated credential after live configuration change. This is software-only
+coverage of the child decoder state; no production-code fix was required. The
 broader software support matrix, remaining remote utility behavior,
 transport policy differences, and platform validation remain open; the
 focused #611 `rncp`

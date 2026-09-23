@@ -259,6 +259,10 @@ replace pinned Python/Rust TCP and UDP traces. Additional local software
 regressions cover AutoInterface peer-data, the LoRa production stream, an RNode
 bearer with startup-gated egress, and RNodeMulti KISS vports. Physical-device
 and remaining carrier-family/support-matrix requirements stay partial.
+The transport ingress suite additionally rotates the parent IFAC credentials
+of an attached accepted-stream child and verifies old-key rejection and
+rotated-key admission using the child's wire decoder state; this does not
+extend the physical or public-network evidence boundary.
 
 ### v0.9.0 interface evidence boundary
 

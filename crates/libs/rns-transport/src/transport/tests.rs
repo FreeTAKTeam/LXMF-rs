@@ -36,6 +36,7 @@ include!("tests_parts/inbound_link_request_registers_unicast.rs");
 include!("tests_parts/blackhole_path_eviction.rs");
 
 include!("tests_parts/rns_1_5_ingress_admission.rs");
+include!("tests_parts/accepted_child_ifac_rotation.rs");
 
 include!("tests_parts/reticulum_runtime_management.rs");
 

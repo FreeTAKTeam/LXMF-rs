@@ -478,3 +478,23 @@ cargo clippy -p lxmf-cli --test python_lxmd_remote_relay --all-features --no-dep
 This closes the invalid-reconfiguration error-reporting and rollback subpath;
 it does not complete #608's broader carrier-family, startup/error matrix, or
 physical/public-network acceptance.
+
+## Accepted-child credential rotation follow-up
+
+The transport ingress suite now exercises the accepted-stream configuration
+path independently of the virtual-peer path: it creates a child channel,
+inherits the configured parent policy through `InterfaceManager`, rotates the
+parent credentials while the child remains attached, then decodes actual IFAC
+wire frames using the child's production `IfacState`. The former credential is
+rejected and the rotated credential is admitted. This confirms the existing
+`set_shared_config` propagation behavior; no production-code change was needed.
+
+```text
+cargo test -p reticulum-rs-transport --all-features --lib \
+  rns_1_5_accepted_child_uses_parent_ifac_rotation_for_wire_admission -- --nocapture
+# 1 passed; old-key frame rejected, rotated-key frame admitted
+```
+
+This adds one accepted-child software reconfiguration case only. It does not
+complete the broader startup/error-reporting or carrier-family matrix, and it
+is not physical-carrier evidence; #608 remains open and partial.
