@@ -445,6 +445,35 @@ partial.
 
 ## Remaining acceptance boundary
 
+### Stale route expiry and cached announce restore
+
+Pinned Reticulum `99de23c040d507e3fefca19e87b182302902725d`,
+`RNS/Transport.py::jobloop`, removes a destination path only when
+`time.time() > timestamp + mode_timeout`. The deterministic
+`stale_route_expiry_keeps_exact_deadline_and_removes_after_it` regression
+passes an explicit monotonic clock value and checks Full, Access Point, and
+Roaming paths at the exact deadline and one nanosecond past it; equality is
+retained and strictly stale paths are removed.
+
+Cached-announce restore validity is covered by
+`reticulum_path_table_restore_skips_malformed_cached_announce_entry` (valid
+and malformed cache entries in one restore), plus the existing missing-cache
+and mismatched-destination restore cases. Pinned Python only installs a path
+when its cached announce exists and successfully unpacks, and when the
+receiving interface is still available. These tests cover the Rust restore
+accept/reject behavior; they do not claim parity for all Python cache or
+announce semantics.
+
+```text
+cargo test -p reticulum-rs-transport --lib stale_route_expiry_keeps_exact_deadline_and_removes_after_it
+cargo test -p reticulum-rs-transport --lib reticulum_path_table_restore_skips_
+```
+
+This closes only the stale-route exact-time boundary and the cited cached
+announce restore cases; #609 remains partial.
+
+## Remaining acceptance boundary
+
 The combined evidence now proves pinned Python↔Rust local attachment, announce
 fan-out, a direct application/link exchange, Rust daemon restart with identity
 continuity, two-carrier multi-hop Python Channel and split Resource exchanges,
