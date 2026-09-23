@@ -273,6 +273,72 @@ fn rncp_denied_sender_reports_nonzero_status() -> io::Result<()> {
 }
 
 #[test]
+fn rncp_fetch_jail_escape_reports_denial_without_creating_output() -> io::Result<()> {
+    let temp = tempfile::tempdir()?;
+    let jail_root = temp.path().join("jail");
+    let client_root = temp.path().join("client");
+    let fetch_root = temp.path().join("fetch");
+    fs::create_dir_all(&jail_root)?;
+    fs::create_dir_all(&client_root)?;
+    fs::create_dir_all(&fetch_root)?;
+    fs::write(temp.path().join("outside-secret.bin"), b"must not escape fetch jail")?;
+
+    let port = free_port()?;
+    let binary = env!("CARGO_BIN_EXE_rncp");
+    let mut listener = Command::new(binary)
+        .args(["--listen", &format!("127.0.0.1:{port}"), "--allow-fetch", "--no-auth", "--jail"])
+        .arg(&jail_root)
+        .args(["--identity-seed", "rncp-process-fetch-jail", "--silent"])
+        .current_dir(temp.path())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let result = (|| {
+        wait_for_port(port, &mut listener)?;
+        let destination_output = Command::new(binary)
+            .args(["--print-identity", "--identity-seed", "rncp-process-fetch-jail"])
+            .output()?;
+        if !destination_output.status.success() {
+            return Err(io::Error::other("rncp identity query failed"));
+        }
+        let destination = String::from_utf8_lossy(&destination_output.stdout)
+            .lines()
+            .find_map(|line| line.strip_prefix("Listening on : "))
+            .ok_or_else(|| io::Error::other("rncp identity query omitted destination"))?
+            .to_owned();
+        let fetched = Command::new(binary)
+            .arg("../outside-secret.bin")
+            .arg(destination)
+            .args(["--fetch", "--connect", &format!("127.0.0.1:{port}"), "--save"])
+            .arg(&fetch_root)
+            .args([
+                "--no-compress",
+                "--silent",
+                "--identity-seed",
+                "rncp-process-fetch-jail-client",
+            ])
+            .current_dir(&client_root)
+            .output()?;
+
+        assert!(!fetched.status.success(), "fetch outside the jail unexpectedly succeeded");
+        assert!(
+            String::from_utf8_lossy(&fetched.stderr).contains("remote fetch was not allowed"),
+            "jail denial category missing from stderr: {}",
+            String::from_utf8_lossy(&fetched.stderr)
+        );
+        assert_eq!(
+            fs::read(temp.path().join("outside-secret.bin"))?,
+            b"must not escape fetch jail"
+        );
+        assert_eq!(fs::read_dir(&fetch_root)?.count(), 0, "denied fetch created an output file");
+        Ok(())
+    })();
+    let _ = listener.kill();
+    let _ = listener.wait();
+    result
+}
+
+#[test]
 fn rncp_rejects_invalid_identity_and_unusable_save_path() -> io::Result<()> {
     let temp = tempfile::tempdir()?;
     let binary = env!("CARGO_BIN_EXE_rncp");

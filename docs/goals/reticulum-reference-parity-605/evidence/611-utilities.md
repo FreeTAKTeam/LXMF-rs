@@ -73,7 +73,7 @@ physical/public-network evidence remain outside the software-only pass.
 | Send | TCP announce discovery, Link establishment, local identity identification, Resource send with `{"name": <binary filename>}` metadata, adaptive timeout and terminal failure status | Rust↔Rust process test; pinned Python client/service trace | verified for two independent processes and the bounded Python roles |
 | Fetch | `fetch_file` Link request/response, `True`/`False`/`0xF0`/`nil` status mapping, the pinned Python rncp listener's ordinary metadata-bearing file Resource contract, correlated Rust response Resources for other callers, and metadata-driven save | `rncp_process` Rust client to Rust listener; pinned Python listener/client trace; pinned Python client fetching from Rust | verified for two independent Rust processes and the bounded Python↔Rust fetch paths |
 | Authentication | `--no-auth`, explicit `--allowed-identity`, rejected identified peers, nonzero sender failure, and reciprocal Python/Rust identity allow-lists for send and fetch roles | manual denied-transfer run; pinned Python interop | verified for the bounded send/fetch roles; broader option and callback parity remains open |
-| Jail and save safety | Canonical jail containment, traversal rejection, basename-only metadata, overwrite/suffix behavior | protocol unit tests and process test | verified locally |
+| Jail and save safety | Canonical jail containment, traversal rejection, basename-only metadata, overwrite/suffix behavior | protocol unit tests and process tests, including network denial status and no output side effect | verified locally |
 | Timeout/output | `--timeout`, silent mode, nonzero status for denied senders, preserved not-found failure output for missing fetches, malformed identity rejection, unusable save-path rejection, path-discovery timeout status, client Ctrl-C during discovery and an active Resource transfer, interrupted Resource-link failure, medium-path timeout after an active TCP interface connects, delayed/rate-limited TCP-path transfer, Python fetch completion and save-failure callbacks, and listener receive-save failure diagnostics | unit/process tests and pinned Python interop | active-transfer cancellation is verified for the native Rust sender/receiver path; Python-peer receive-side cancellation and broader utility status parity remain open; the pinned Python fetch callback prints its save error but leaves the operation unresolved |
 | Status output | Non-silent path request, link-establishment, transfer, and fetch-request phase lines; silent mode suppresses them; the Python fetch client emits `Transfer complete` on successful save | `rncp_process`, CLI phase transcript, pinned Python interop | verified for the native Rust client path and the bounded Python fetch-client path |
 | Restart | Persisted listener identity, same TCP endpoint, stable destination hash, and a second binary transfer after listener restart | `rncp_process`; ignored `rncp_python_interop` restart process | verified for the bounded Rust listener/client path and the Python-listener/Rust-client role |
@@ -128,6 +128,15 @@ cargo fmt --all -- --check                         PASS
 cargo test -p rns-tools --test rncp_process \
   rncp_listener_reports_received_file_disk_error \
   -- --nocapture                                    1 passed
+cargo test -p rns-tools --test rncp_process \
+  rncp_fetch_jail_escape_reports_denial_without_creating_output \
+  -- --exact --nocapture                            1 passed
+cargo test -p rns-tools --test rncp_process \
+  -- --test-threads=1                              14 passed (29.54s)
+cargo clippy -p rns-tools --test rncp_process \
+  --all-features --no-deps -- -D warnings           PASS
+tools/scripts/check-module-size.sh                  PASS
+git diff --check                                    PASS
 ```
 
 The process tests start independent listener and client processes with isolated
@@ -153,6 +162,12 @@ delivery succeeds while the Python callback logs the save error. Both
 distinguish transport delivery from application save, and neither claims an
 application-level negative acknowledgment to the sender. PR Verify runs the
 pinned-Python regression against the frozen 1.5.4 development checkout.
+The jail-escape process regression requests an existing file outside the
+listener's configured fetch root through the real Link request/response path;
+the client exits nonzero with `remote fetch was not allowed`, the outside file
+remains unchanged, and its isolated save root remains empty. This records the
+Rust CLI's denial/status and no-output behavior; it does not expand the pinned-
+Python interoperability matrix.
 The Unix process regression also sends SIGINT during path discovery and asserts
 nonzero status plus `operation cancelled by user`. The concurrent-client case
 starts three independent senders and verifies every listener-side file byte for
