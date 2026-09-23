@@ -76,9 +76,11 @@ impl ReticulumGitNode {
     fn media_request_path(path: &str) -> Option<(String, String, String, String)> {
         let remainder = path.strip_prefix(PAGE_MEDIA)?.trim_start_matches('/');
         let mut components = remainder.splitn(4, '/');
-        let group = percent_decode_plus(components.next()?)?;
-        let repository = percent_decode_plus(components.next()?)?;
-        let reference = percent_decode_plus(components.next()?)?;
+        // The pinned Python handler treats these path components literally;
+        // only the file-path tail is URL-decoded with unquote_plus.
+        let group = components.next()?.to_string();
+        let repository = components.next()?.to_string();
+        let reference = components.next()?.to_string();
         let file_path = percent_decode_plus(components.next()?)?;
         if group.is_empty() || repository.is_empty() || reference.is_empty() {
             return None;

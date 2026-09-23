@@ -41,7 +41,11 @@ not promoted or rewritten by this change.
 The issue-specific #613 software trace additionally confirms that converted
 media temporary data exists only for the serving Reticulum Link and is removed
 by the production disconnect path against the frozen Python reference. A new
-separate-process pinned-Python regression synchronizes on partial `/media`
+media-path differential also verifies that group, repository, and ref
+components remain literal while only the file-path tail is URL-decoded, as in
+the pinned Python `serve_media`; encoded `%67roup` is denied rather than
+resolving the `group` repository. #613 remains partial.
+A new separate-process pinned-Python regression synchronizes on partial `/media`
 Resource progress, closes the Link, and verifies no false completion, receiver
 Resource/file state, Linux server child process, or media temp directory
 remains; the transport link-close unit regression also verifies its Resource

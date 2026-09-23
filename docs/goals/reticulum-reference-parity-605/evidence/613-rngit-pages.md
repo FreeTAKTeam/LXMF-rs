@@ -204,6 +204,21 @@ The module-size script now reports only the existing
 the changed `rngit` and Resource sender files are within the active 500-line
 limit.
 
+The pinned `pages.py::serve_media` decodes only the joined file-path tail with
+`urllib.parse.unquote_plus`; group, repository, and ref components are literal.
+The Rust parser now preserves those components verbatim and decodes only the
+file path. The live differential adds `/media/%67roup/repo/main/...`: Python
+treats `%67roup` literally and returns scalar `False` instead of resolving the
+`group` repository. This is one focused media-parity increment; #613 remains
+partial.
+
+```text
+RETICULUM_PY_REPO=<checkout at 99de23c040d507e3fefca19e87b182302902725d> \
+LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
+  rngit_media_validation_denials_return_false_over_python_link \
+  -- --ignored --nocapture                                  PASS (1 test)
+```
+
 ## Deliberate remaining gaps
 
 The new cancellation trace uses the pinned Python `Link.request` progress

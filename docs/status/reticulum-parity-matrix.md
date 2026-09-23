@@ -162,6 +162,10 @@ absent blobs map to `False`; a later content-read failure remains no-response.
 The media-denial and updated URL/access/page-media interop tests passed against
 the exact pinned checkout. The later content-read failure has not been
 fault-injected, and the broader #613 row remains partial.
+The same differential now covers component decoding: pinned `serve_media`
+leaves group/repository/ref literal and decodes only the file-path tail, so
+`%67roup` must not resolve the `group` repository; the Rust path parser follows
+that behavior and the pinned-Python test expects scalar `False`.
 
 The issue-specific #613 live trace also observes one WebP conversion temporary
 directory while the pinned-Python Reticulum Link is active, tears that Link
