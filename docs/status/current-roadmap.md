@@ -37,8 +37,11 @@ verifies Rust receives the initiator close reason. This does not cover physical
 carriers or public-network recovery. A focused shared-instance regression also
 proves that an announce for a locally hosted destination is neither learned as
 a remote route nor fanned out to sibling clients; the broader #609 matrix
-remains open. The focused #611 `rncp`
-compression/send/fetch matrix, bounded `rnprobe` packet/RPC workflow, and
+remains open. A separate transport-disabled shared-daemon regression delivers
+a locally hosted LinkRequest from one virtual child and emits exactly one
+LinkRequestProof back to that child, with no sibling/transit packet; this is
+one additional matrix cell, not full shared-routing acceptance. The focused
+#611 `rncp` compression/send/fetch matrix, bounded `rnprobe` packet/RPC workflow, and
 bounded native `rnsh` channel workflow, negative failure-category checks,
 path-discovery-timeout check, listener restart check, local disk-failure check,
 client-cancellation check, concurrent-client check, interrupted-link/status-

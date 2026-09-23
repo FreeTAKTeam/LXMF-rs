@@ -75,7 +75,7 @@ incomplete requirements:
 | ---: | --- | --- |
 | #607 | Review and integrate the initial PR increment | partial / unverified |
 | #608 | Wire IFAC into production carrier ingress and egress | implemented but unproven; mixed-peer evidence pending |
-| #609 | Close transport, local-client, and shared-instance gaps | partial; two-peer shared-instance recovery including one queued opportunistic LXMF delivery after relay replacement, attached-client duplicate delegation, standalone repeated-LinkRequest suppression, pinned-Python clean-close reason mapping, and five-attempt Channel retry exhaustion over localhost TCP are evidenced; direct/resource retry modes, deeper relay replacement, and other duplicate cases remain open |
+| #609 | Close transport, local-client, and shared-instance gaps | partial; two-peer shared-instance recovery including one queued opportunistic LXMF delivery after relay replacement, attached-client duplicate delegation, standalone repeated-LinkRequest suppression, pinned-Python clean-close reason mapping, five-attempt Channel retry exhaustion over localhost TCP, and transport-disabled local LinkRequest delivery from a virtual child are evidenced; direct/resource retry modes, deeper relay replacement, and other duplicate cases remain open |
 | #610 | Prove Resource collision, stream, and mixed-peer behavior | partial / unverified |
 | #611 | Exercise every reference utility through real network workflows | partial / unverified |
 | #612 | Match rngit permission, resolver, work, storage, and wire schemas | partial / unverified |
@@ -146,6 +146,15 @@ An additional focused regression verifies that a locally hosted destination's
 valid announce, when received through a shared-instance child, does not become
 a remote route or fan out to a sibling client. This proves one software matrix
 cell only and does not promote the #609 row.
+
+A disjoint transport-disabled regression now covers a different local/shared
+matrix cell: a LinkRequest arriving from one shared-instance virtual child for
+a locally hosted destination produces exactly one `LinkRequestProof` routed to
+that child; the sibling receives no transit copy. This matches the frozen
+Python source path in `Transport._inbound`, `Destination.receive`, and
+`Link.validate_request` at Reticulum `99de23c040d507e3fefca19e87b182302902725d`.
+It is a source-level comparison plus production Rust packet-processing test,
+not a live Python/Rust socket trace, and does not promote #609.
 
 The #610 implementation slice now has committed local evidence in
 [`evidence/610-resource.md`](../goals/reticulum-reference-parity-605/evidence/610-resource.md):

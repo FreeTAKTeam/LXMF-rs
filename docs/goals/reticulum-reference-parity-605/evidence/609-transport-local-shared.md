@@ -476,3 +476,38 @@ locally-hosted/remote-destination matrix in #609.
 cargo test -p reticulum-rs-transport --lib locally_hosted_announce_is_not_learned_or_fanned_out -- --nocapture
 # 1 passed; 0 failed
 ```
+
+## Transport-disabled local LinkRequest from a shared child
+
+`disabled_shared_daemon_delivers_local_link_request_only_to_requesting_child`
+drives a LinkRequest through Rust's production inbound admission and packet
+processing path. The daemon has transport disabled, the ingress is one virtual
+child of a shared-instance parent, the destination is hosted locally, and a
+sibling child is attached. The test observes exactly one outbound packet: a
+`LinkRequestProof` addressed to the request's derived link ID and directed to
+the requesting child. The destination records the inbound link, and the shared
+parent's transmit queue has no second packet, so the proof is not broadcast or
+transit-forwarded to the sibling.
+
+The frozen Python reference at Reticulum
+`99de23c040d507e3fefca19e87b182302902725d` has the matching control flow:
+`Transport._inbound` marks a packet from `local_client_interfaces` as
+`from_local_client` and admits it to general handling even when transport is
+disabled (`RNS/Transport.py` lines 1965-1997). Its local LinkRequest branch
+matches the destination and calls `destination.receive(packet)` rather than
+selecting a remote route (lines 2540-2567). `Destination.receive` dispatches to
+`incoming_link_request` (`RNS/Destination.py` lines 414-435), and
+`Link.validate_request` binds the link to the packet's receiving interface
+before sending its proof (`RNS/Link.py` lines 186-218). The outbound path
+filters link packets to that attached interface (`RNS/Transport.py` lines
+1439-1454). This is a source-level reference comparison, not a live mixed
+Python/Rust socket trace.
+
+```text
+cargo test -p reticulum-rs-transport --lib \
+  disabled_shared_daemon_delivers_local_link_request_only_to_requesting_child -- --nocapture
+# 1 passed; 0 failed
+```
+
+This proves one transport-disabled/shared-child/locally-hosted software matrix
+cell. It does not establish the wider transport matrix or promote issue #609.
