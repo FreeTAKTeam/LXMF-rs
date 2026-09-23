@@ -232,6 +232,14 @@ pub(super) async fn wait_for_link_request_response_with_terminal_policy(
                                     ));
                                 }
                             }
+                            rns_transport::resource::ResourceEventKind::OutboundRejected => {
+                                if fail_on_terminal_resource_events {
+                                    return Err(std::io::Error::new(
+                                        std::io::ErrorKind::BrokenPipe,
+                                        "propagation control resource transfer rejected",
+                                    ));
+                                }
+                            }
                             rns_transport::resource::ResourceEventKind::OutboundCancelled => {
                                 if fail_on_terminal_resource_events {
                                     return Err(std::io::Error::new(

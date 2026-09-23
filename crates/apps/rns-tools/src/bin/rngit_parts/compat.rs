@@ -356,17 +356,20 @@ impl ReticulumGitNode {
         content: &str,
     ) -> Result<(), String> {
         let permissions = self.parse_permissions_strict(content)?;
+        let effective = if let Some(group) = self.groups.get(group_name) {
+            let mut effective = self
+                .read_companion_permissions(&group.path)
+                .map_err(|error| error.to_string())?;
+            effective.merge(&permissions);
+            Some(effective)
+        } else {
+            None
+        };
+
         self.configured_permissions
             .insert(group_name.to_string(), permissions);
-        if let Some(group) = self.groups.get(group_name) {
-            let path = group.path.clone();
-            let mut merged = self.read_companion_permissions(&path).map_err(|error| error.to_string())?;
-            if let Some(configured) = self.configured_permissions.get(group_name) {
-                merged.merge(configured);
-            }
-            if let Some(group) = self.groups.get_mut(group_name) {
-                group.permissions = merged;
-            }
+        if let (Some(group), Some(effective)) = (self.groups.get_mut(group_name), effective) {
+            group.permissions = effective;
         }
         Ok(())
     }

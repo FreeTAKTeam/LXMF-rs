@@ -434,7 +434,7 @@ def resource_a_to_c(
                 for item in endpoint_a.events()
                 if item.get("type") == "resource"
                 and item.get("details", {}).get("state")
-                in {"outbound_failed", "outbound_cancelled"}
+                in {"outbound_failed", "outbound_rejected", "outbound_cancelled"}
             ),
             None,
         )
