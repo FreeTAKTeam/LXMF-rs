@@ -46,7 +46,9 @@ reciprocal Python-initiated in-flight Resource trace now verifies reasoned
 inbound failure and Link closure after keepalive loss, followed by a distinct
 Link and exact-checksum Resource recovery. This is local mixed-peer evidence
 only; the #605 candidate and its release posture remain open pending the
-documented broader gates.
+documented broader gates. A daemon Resource-completion regression now checks
+receipt metadata, peer byte accounting, exactly-once emission, and tracking
+cleanup; other consumer callback/status paths remain open.
 
 The #623 byte-level conformance lane is now executable through
 `cargo xtask interop`. It checks exact Python Reticulum/LXMF pins, Python→Rust
@@ -378,8 +380,9 @@ Scoped release evidence is split as follows:
   RSS values under a fixed 512 MiB per-process release-profile budget. This
   closes the local mixed-peer memory-evidence gap. PR `Verify` now runs pinned-
   Python Resource timeout/failure/recovery traces in both initiation
-  directions; broader timeout/reconnect, callback, hosted, physical, and
-  public-network coverage remain open.
+  directions. A local daemon-consumer test now checks Resource-completion
+  receipt metadata and cleanup; broader timeout/reconnect, callback, hosted,
+  physical, and public-network coverage remain open.
 - `Link::request_packet`/`response_packet` complete the request/response
   pair: the receive half already decrypted both contexts, but nothing could
   build either, so a peer had to send every request and every reply as a

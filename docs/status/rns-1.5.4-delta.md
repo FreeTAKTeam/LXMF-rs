@@ -155,7 +155,10 @@ remains partial and unverified: both recovery directions now run in PR `Verify`,
 but broader timeout traces, every consumer callback/status assertion, and the
 full hosted/physical/soak matrix are still open;
 exact 50 MiB peak-RSS values in both directions are now recorded by the
-candidate's Linux release-profile memory probe.
+candidate's Linux release-profile memory probe. A focused daemon completion
+consumer test now also verifies the transport-completion receipt metadata, peer
+byte accounting, exactly-once event, and tracking cleanup; it does not certify
+the remaining consumer callback/status matrix.
 
 The #611 implementation slice now has committed local evidence in
 [`evidence/611-utilities.md`](../goals/reticulum-reference-parity-605/evidence/611-utilities.md):

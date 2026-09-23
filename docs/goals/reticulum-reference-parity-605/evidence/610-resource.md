@@ -325,6 +325,23 @@ PR `Verify` workflow against the frozen Reticulum target. This makes the two
 recovery directions a required hosted software check; it does not replace the
 broader timeout matrix or callback/status assertions across every consumer.
 
+## Daemon Resource completion receipt
+
+The `reticulumd` outbound Resource completion consumer now has a focused unit
+regression, `outbound_resource_completion_event_records_receipt_and_peer_bytes`.
+It verifies one `resource-complete` receipt with the original message ID,
+Resource hash, peer, byte count, and non-terminal `sent: link resource` status;
+it also verifies the peer byte counter advances and Resource tracking is
+removed. This is a transport-completion receipt, not a remote LXMF delivery
+acknowledgement, and does not stand in for the remaining consumer callback
+matrix.
+
+```text
+cargo test -p reticulumd --bin reticulumd \
+  outbound_resource_completion_event_records_receipt_and_peer_bytes
+# 1 passed; 466 filtered out
+```
+
 ## Remaining acceptance boundary
 
 The following #610 requirements remain unverified and are intentionally not
@@ -334,7 +351,8 @@ represented as complete:
   two pinned-Python matrices cover loss, duplication, reordering, and complete
   missing-fragment terminal failure in both directions;
 - callbacks/status transitions observed through every library and daemon
-  consumer after each injected failure;
+  consumer after each injected failure; the outbound completion receipt path
+  now has one focused daemon-consumer regression;
 - hosted, physical-interface, public-network, and long-running soak evidence.
 
 The current conclusion is therefore: collision regeneration, shutdown cleanup,
