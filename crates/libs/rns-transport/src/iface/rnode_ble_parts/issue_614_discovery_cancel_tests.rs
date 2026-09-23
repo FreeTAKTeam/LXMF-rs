@@ -82,13 +82,14 @@ async fn worker_cleans_up_cancelled_service_discovery_before_bounded_retry() {
 
     tokio::time::timeout(Duration::from_secs(1), async {
         loop {
-            let events = events.lock().expect("events lock");
-            if events.contains(&DiscoveryRetryEvent::Subscribed)
-                && events.contains(&DiscoveryRetryEvent::Wrote)
-            {
+            let recovered = {
+                let events = events.lock().expect("events lock");
+                events.contains(&DiscoveryRetryEvent::Subscribed)
+                    && events.contains(&DiscoveryRetryEvent::Wrote)
+            };
+            if recovered {
                 break;
             }
-            drop(events);
             tokio::time::sleep(Duration::from_millis(2)).await;
         }
     })
