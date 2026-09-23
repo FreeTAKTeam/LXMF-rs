@@ -27,9 +27,18 @@ The local-client classification regression now invokes
 `Transport.is_local_client_interface` from the pinned Python checkout and
 compares its parent, attached-child, ordinary-parent, and ordinary-child
 results with Rust. This confirms the classification predicate only; it does
-not claim that the broader shared-instance acceptance is complete. Immediate
-single-retransmit timing remains covered by deterministic Rust table tests, not
-yet by a pinned-Python end-to-end timing differential.
+not claim that the broader shared-instance acceptance is complete. The pinned
+Python source sets a local-client announce deadline to `now`, sets retries to
+`PATHFINDER_R` (1), and checks announce deadlines every 1.0 s from its 0.25 s
+jobs loop. Rust likewise queues the entry as due with its retry limit consumed;
+its retransmit worker wakes every 1.0 s. The Rust table regression proves one
+rebroadcast and its route by directly draining the table, but does not exercise
+either worker's deadline-to-send bound. No pinned-Python end-to-end timing
+differential is present: Python's `Transport.jobs()` is a global threaded job
+loop, while Rust's table and worker currently read runtime clocks directly, so
+a cross-language bound cannot be asserted without a clock/worker injection seam.
+Do not treat the table-level immediate-due assertion as proof of bounded
+production scheduling latency.
 
 ## Local software evidence
 

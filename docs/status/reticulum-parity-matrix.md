@@ -628,8 +628,11 @@ announce table instead of from a packet hash, and a cached announce that
 supersedes a queued one refreshes it in place so persistence and later path
 responses read the announce the path table accepted. Refreshing a destination
 the cache already holds no longer evicts an unrelated one. The local-client
-implementation now applies the immediate single-retransmit timing and
-parent-interface classification under focused regression tests. Pinned
+implementation queues an immediately-due single retransmit, with table-level
+count/routing coverage; production scheduler latency is not yet proven by a
+pinned-Python differential because neither worker has a controllable clock
+seam. Parent-interface classification is covered by the pinned-Python
+predicate differential. Pinned
 shared-instance evidence currently covers TCP/Unix attachment and announce
 fan-out plus a direct application/restart trace. A pinned two-carrier Python
 Channel trace now covers discovery, link establishment, ordered delivery, and
