@@ -26,7 +26,7 @@ fn authenticated_hdlc_frame(ifac_state: &IfacState, packet: &Packet) -> Vec<u8> 
 }
 
 #[tokio::test]
-async fn i2p_peer_stream_ifac_rejects_wrong_key_and_roundtrips_authenticated_packets() {
+async fn i2p_virtual_peer_inherits_parent_ifac_rotation_and_rejects_stale_credentials() {
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind fake SAM");
     let sam_addr = listener.local_addr().expect("SAM address").to_string();
     let shared_config = InterfaceSharedConfig {
@@ -35,11 +35,22 @@ async fn i2p_peer_stream_ifac_rejects_wrong_key_and_roundtrips_authenticated_pac
         passphrase: Some("i2p-test-credential".to_string()),
         ..InterfaceSharedConfig::default()
     };
-    let ifac_state: IfacState = Arc::new(std::sync::RwLock::new(Some(
+    let parent_ifac_state: IfacState = Arc::new(std::sync::RwLock::new(Some(
         shared_config
             .ifac_context_with_default_size(8)
-            .expect("derive IFAC context")
-            .expect("IFAC enabled"),
+            .expect("derive parent IFAC context")
+            .expect("parent IFAC enabled"),
+    )));
+    let child_ifac_state = Arc::clone(&parent_ifac_state);
+    let rotated_config = InterfaceSharedConfig {
+        passphrase: Some("i2p-rotated-test-credential".to_string()),
+        ..shared_config.clone()
+    };
+    let rotated_ifac_state: IfacState = Arc::new(std::sync::RwLock::new(Some(
+        rotated_config
+            .ifac_context_with_default_size(8)
+            .expect("derive rotated IFAC context")
+            .expect("rotated IFAC enabled"),
     )));
     let wrong_config = InterfaceSharedConfig {
         passphrase: Some("wrong-i2p-test-credential".to_string()),
@@ -57,9 +68,14 @@ async fn i2p_peer_stream_ifac_rejects_wrong_key_and_roundtrips_authenticated_pac
         data: PacketDataBuffer::new_from_slice(b"wrong I2P IFAC key"),
         ..Packet::default()
     };
-    let inbound_packet = Packet {
+    let stale_packet = Packet {
         destination: AddressHash::new([0x52; 16]),
-        data: PacketDataBuffer::new_from_slice(b"authenticated I2P IFAC ingress"),
+        data: PacketDataBuffer::new_from_slice(b"stale parent IFAC credential"),
+        ..Packet::default()
+    };
+    let inbound_packet = Packet {
+        destination: AddressHash::new([0x54; 16]),
+        data: PacketDataBuffer::new_from_slice(b"rotated child IFAC ingress"),
         ..Packet::default()
     };
     let outbound_packet = Packet {
@@ -68,8 +84,9 @@ async fn i2p_peer_stream_ifac_rejects_wrong_key_and_roundtrips_authenticated_pac
         ..Packet::default()
     };
     let wrong_frame = authenticated_hdlc_frame(&wrong_ifac_state, &rejected_packet);
-    let inbound_frame = authenticated_hdlc_frame(&ifac_state, &inbound_packet);
-    let expected_outbound = authenticated_hdlc_frame(&ifac_state, &outbound_packet);
+    let stale_frame = authenticated_hdlc_frame(&parent_ifac_state, &stale_packet);
+    let inbound_frame = authenticated_hdlc_frame(&rotated_ifac_state, &inbound_packet);
+    let expected_outbound = authenticated_hdlc_frame(&rotated_ifac_state, &outbound_packet);
     let (release_inbound_tx, release_inbound_rx) = oneshot::channel();
     let expected_outbound_len = expected_outbound.len();
     let server = tokio::spawn(async move {
@@ -117,6 +134,7 @@ async fn i2p_peer_stream_ifac_rejects_wrong_key_and_roundtrips_authenticated_pac
         let stream = connect_reader.get_mut();
         stream.write_all(&wrong_frame).await.expect("write wrong-key frame");
         let _ = release_inbound_rx.await;
+        stream.write_all(&stale_frame).await.expect("write stale parent-key frame");
         stream.write_all(&inbound_frame).await.expect("write valid IFAC frame");
         let mut outbound = vec![0; expected_outbound_len];
         stream.read_exact(&mut outbound).await.expect("read authenticated egress");
@@ -147,7 +165,7 @@ async fn i2p_peer_stream_ifac_rejects_wrong_key_and_roundtrips_authenticated_pac
         iface_stop.clone(),
         rx_channel,
         peer_rx,
-        ifac_state.clone(),
+        child_ifac_state,
         ifac_violations.clone(),
     ));
 
@@ -174,6 +192,12 @@ async fn i2p_peer_stream_ifac_rejects_wrong_key_and_roundtrips_authenticated_pac
     .await
     .expect("wrong-key IFAC frame was rejected");
     assert!(rx_messages.try_recv().is_err(), "wrong-key frame must not reach packet admission");
+    *parent_ifac_state.write().expect("rotate parent IFAC state") = Some(
+        rotated_config
+            .ifac_context_with_default_size(8)
+            .expect("derive rotated parent IFAC context")
+            .expect("rotated parent IFAC enabled"),
+    );
     release_inbound_tx.send(()).expect("fake SAM waits for valid-frame release");
 
     let received = tokio::time::timeout(Duration::from_secs(1), rx_messages.recv())
@@ -182,8 +206,10 @@ async fn i2p_peer_stream_ifac_rejects_wrong_key_and_roundtrips_authenticated_pac
         .expect("I2P receive channel closed");
     assert_eq!(received.address, iface_address);
     assert_eq!(received.packet.destination, inbound_packet.destination);
-    assert_eq!(received.packet.data.as_slice(), b"authenticated I2P IFAC ingress");
+    assert_eq!(received.packet.data.as_slice(), b"rotated child IFAC ingress");
     assert_eq!(received.packet.ifac.map(|ifac| ifac.length), Some(0));
+    assert_eq!(ifac_violations.load(Ordering::Relaxed), 2);
+    assert!(rx_messages.try_recv().is_err(), "stale parent-key frame must not reach packet admission");
 
     peer_tx
         .send(TxMessage { tx_type: TxMessageType::Broadcast(None), packet: outbound_packet.clone() })
@@ -197,10 +223,11 @@ async fn i2p_peer_stream_ifac_rejects_wrong_key_and_roundtrips_authenticated_pac
     let mut decoded_frame = vec![0; actual_outbound.len()];
     let mut output = OutputBuffer::new(&mut decoded_frame);
     Hdlc::decode(&actual_outbound, &mut output).expect("decode egress HDLC");
-    let decoded = decode_packet_ifac(&ifac_state, output.as_slice()).expect("decode egress IFAC");
+    let decoded =
+        decode_packet_ifac(&parent_ifac_state, output.as_slice()).expect("decode rotated egress IFAC");
     assert_eq!(decoded.destination, outbound_packet.destination);
     assert_eq!(decoded.data.as_slice(), b"authenticated I2P IFAC egress");
-    assert_eq!(ifac_violations.load(Ordering::Relaxed), 1);
+    assert_eq!(ifac_violations.load(Ordering::Relaxed), 2);
 
     cancel.cancel();
     iface_stop.cancel();

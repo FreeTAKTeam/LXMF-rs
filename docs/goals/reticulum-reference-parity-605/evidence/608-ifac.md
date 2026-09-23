@@ -2,8 +2,9 @@
 
 Status: **authenticated TCP/UDP daemon paths and shared-instance/virtual-child
 IFAC policy evidenced; serial and KISS stream runtime paths have deterministic
-software regressions; outbound I2P fake-SAM stream IFAC rejection and
-authenticated ingress/egress are covered; invalid live IFAC reconfiguration
+software regressions; outbound I2P fake-SAM stream IFAC rejection,
+authenticated ingress/egress, and live parent-state rotation on a virtual peer
+are covered; invalid live IFAC reconfiguration
 returns a structured RPC error without disabling the active authenticated
 configuration; full interface-family acceptance remains open**.
 
@@ -325,20 +326,39 @@ carrier-family/support-matrix requirements; issue #608 remains open.
 
 ## Outbound I2P tunneled-stream IFAC
 
-`i2p_peer_stream_ifac_rejects_wrong_key_and_roundtrips_authenticated_packets`
+`i2p_virtual_peer_inherits_parent_ifac_rotation_and_rejects_stale_credentials`
 drives the production outbound I2P peer loop through a local fake SAM server.
-A wrong-key HDLC frame increments the shared IFAC violation counter without
-reaching packet admission; a frame authenticated with the configured context is
-admitted; and a Rust-originated packet is verified after authenticated IFAC
-encoding and HDLC framing. This is a deterministic outbound tunnel-stream
-regression, not public I2P connectivity, incoming-peer acceptance, or hardware
-evidence.
+The pinned Python `I2PInterface.incoming_connection` copies the parent's IFAC
+size and credentials to its spawned peer. Rust shares the parent's `IfacState`
+with the child; after the parent rotates credentials, the established child
+rejects a wrong-key frame and a stale pre-rotation frame, admits a frame
+authenticated with the rotated context, and emits egress under that new
+context. This is deterministic virtual-child tunnel-stream evidence, not public
+I2P connectivity, incoming-peer acceptance, or hardware evidence.
 
-Validation passed: the focused test, all 834 `rns-transport` all-feature
-library tests, all-target/all-feature Clippy with warnings denied, workspace
-format check, module-size check, and `git diff --check`.
+Validation passed on the updated #628 worktree:
 
-The fake-SAM regression adds software evidence for one tunneled carrier path;
+```text
+cargo test -p reticulum-rs-transport \
+  i2p_virtual_peer_inherits_parent_ifac_rotation_and_rejects_stale_credentials \
+  -- --nocapture
+  1 passed; 0 failed
+cargo test -p reticulum-rs-transport --all-features --lib
+  834 passed; 0 failed
+cargo clippy -p reticulum-rs-transport --all-targets --all-features --no-deps -- -D warnings
+  passed
+cargo fmt --all -- --check
+  passed
+bash tools/scripts/check-boundaries.sh
+  passed
+bash tools/scripts/check-module-size.sh
+  passed
+git diff --check
+  passed
+```
+
+The fake-SAM regressions add software evidence for outbound and virtual-child
+IFAC behavior on one tunneled carrier path;
 remaining I2P lifecycle, incoming-peer, interface-family, support-matrix, and
 operational acceptance remain open.
 

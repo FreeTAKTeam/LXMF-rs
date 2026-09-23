@@ -125,11 +125,12 @@ authenticated ingress and egress through the production serial stream worker;
 it does not claim physical serial evidence. The KISS/AX.25 stream worker also
 has a deterministic duplex regression for wrong-key rejection, authenticated
 ingress/egress, the 8-byte default tag, and runtime counters; it is not modem,
-radio, or Python-peer KISS evidence. The outbound I2P peer loop now also has a
-fake-SAM stream regression for wrong-key rejection before packet admission and
-authenticated ingress/egress. It is not public I2P evidence and does not cover
-incoming-peer or broader tunnel lifecycle behavior. Other carrier families remain open;
-hardware and public-network evidence remain separate acceptance gates.
+radio, or Python-peer KISS evidence. The outbound I2P peer loop now also has
+fake-SAM regressions for wrong-key rejection before packet admission,
+authenticated ingress/egress, and shared parent IFAC rotation on an established
+virtual peer. These are software stream tests, not public I2P evidence, and do
+not cover broader tunnel lifecycle behavior. Other carrier families remain
+open; hardware and public-network evidence remain separate acceptance gates.
 
 The #609 implementation slice now has committed local software evidence in
 [`evidence/609-transport-local-shared.md`](../goals/reticulum-reference-parity-605/evidence/609-transport-local-shared.md):

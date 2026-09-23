@@ -38,8 +38,10 @@ families now include duplex-stream serial and KISS IFAC regressions for wrong-ke
 rejection and authenticated ingress/egress, with the KISS test also checking
 runtime counters. The outbound I2P peer loop now also has a fake-SAM stream
 regression for wrong-key rejection and authenticated ingress/egress; none of
-these tests is physical-carrier or public-I2P evidence. The broader software
-support matrix, remaining remote utility behavior,
+these tests is physical-carrier or public-I2P evidence. A second fake-SAM test
+verifies an established virtual I2P peer observes parent IFAC credential
+rotation, rejects stale credentials, and uses the rotated key for egress. The
+broader software support matrix, remaining remote utility behavior,
 transport policy differences, and platform validation remain open; the
 focused #611 `rncp`
 compression/send/fetch matrix, bounded
