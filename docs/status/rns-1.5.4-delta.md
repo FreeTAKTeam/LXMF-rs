@@ -258,11 +258,15 @@ media is retained. A new injected deletion-failure regression verifies the
 directory remains tracked and is removed on the subsequent Link cleanup retry;
 the conversion-fallback and link-cleanup handlers log path/Link context.
 A focused Unix timeout regression also verifies that both WebP pipeline child
-processes are terminated and reaped after a bounded deadline; cancellation of
-an in-flight Resource response remains unverified.
+processes are terminated and reaped after a bounded deadline. A separate-process
+pinned-Python test now synchronizes on partial `/media` Resource progress,
+tears down the Link, and verifies no false completion, receiver Resource state
+or files, Linux server child processes, or serving temp directory remain; the
+transport Resource-manager link-close regression asserts tracked sender and
+receiver state is cleared.
 An abrupt Python process exit still left the Rust link
 `Active` after 104 seconds without inbound traffic, so the live stale-transition
-path, other filesystem failures, and cancellation cleanup remain unverified. The separate
+path and other filesystem failures remain unverified. The separate
 `git.repositories` list/fetch/push/delete/create/sync/fork/mirror trace does
 not complete the page issue's broader Git/work acceptance. The row remains
 partial and unverified because other conversion backends, complete reference

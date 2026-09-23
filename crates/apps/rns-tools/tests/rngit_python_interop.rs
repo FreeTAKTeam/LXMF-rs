@@ -110,6 +110,7 @@ fn create_repository_fixture(temp: &Path) -> io::Result<PathBuf> {
     fs::write(source.join("README.md"), b"# Python rngit interop\n")?;
     let media = (0..8192).map(|index| (index as u8).wrapping_mul(29)).collect::<Vec<_>>();
     fs::write(source.join("image.png"), &media)?;
+    fs::write(source.join("large.png"), vec![0x5a; 8 * 1024 * 1024])?;
     fs::write(
         source.join("valid.png"),
         [
@@ -120,7 +121,7 @@ fn create_repository_fixture(temp: &Path) -> io::Result<PathBuf> {
             0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
         ],
     )?;
-    run_git(&source, &["add", "README.md", "image.png", "valid.png"])?;
+    run_git(&source, &["add", "README.md", "image.png", "large.png", "valid.png"])?;
     run_git(&source, &["commit", "-qm", "interop fixture"])?;
 
     run_git(&group, &["init", "--bare", "-q", "repo"])?;

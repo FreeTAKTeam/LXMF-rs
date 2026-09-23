@@ -149,10 +149,14 @@ covered by a deterministic regression. Abrupt-process stale transition and
 A failure-injection regression also proves a failed directory deletion remains
 tracked and succeeds on a later cleanup retry; the cleanup handlers log path
 and Link ID, including under `--silent`. A focused Unix timeout regression
-proves both WebP pipeline child processes are terminated and reaped. Abrupt
-process stale transition, other filesystem failures, and cancellation of an
-in-flight Resource response remain unverified; the broader
-#613 row stays partial.
+proves both WebP pipeline child processes are terminated and reaped. A new
+separate-process pinned-Python test synchronizes on observed partial `/media`
+Resource progress before tearing down the Link, then verifies no response
+completion, receiver-side Resource state/files, server child processes on
+Linux, or serving media temp directory remain; the Resource-manager link-close
+unit test also verifies its tracked state is empty. Abrupt-process stale
+transition and other filesystem failures remain unverified; the broader #613
+row stays partial.
 
 Commit `8b29132c` adds a live pinned-Python sender-side file-like Resource
 reader that raises after a partial split transfer. The focused release test

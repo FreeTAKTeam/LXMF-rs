@@ -40,16 +40,19 @@ not promoted or rewritten by this change.
 
 The issue-specific #613 software trace additionally confirms that converted
 media temporary data exists only for the serving Reticulum Link and is removed
-by the production disconnect path against the frozen Python reference. The
-periodic sweep now also removes stale/closed/missing-link directories while
-preserving active-link media, with a deterministic regression; abrupt-process
-stale transition, other filesystem failures, and cancellation cleanup remain
-unverified. A failure-injection regression proves a failed directory deletion
-stays tracked and succeeds on a later link-cleanup retry; cleanup handlers log the path and
-Link ID, including under `--silent`. A focused timeout regression also proves
-both WebP pipeline subprocesses are terminated and reaped; it does not prove
-cancellation of an in-flight Resource response. The utility and full
-operational parity rows remain partial.
+by the production disconnect path against the frozen Python reference. A new
+separate-process pinned-Python regression synchronizes on partial `/media`
+Resource progress, closes the Link, and verifies no false completion, receiver
+Resource/file state, Linux server child process, or media temp directory
+remains; the transport link-close unit regression also verifies its Resource
+state maps are empty. The periodic sweep removes stale/closed/missing-link
+directories while preserving active-link media, with a deterministic
+regression; abrupt-process stale transition and other filesystem failures
+remain unverified. A failure-injection regression proves a failed directory
+deletion stays tracked and succeeds on a later link-cleanup retry; cleanup
+handlers log the path and Link ID, including under `--silent`. A focused
+timeout regression also proves both WebP pipeline subprocesses are terminated
+and reaped. The utility and full operational parity rows remain partial.
 
 The forward #610 Resource slice also has new pinned-Python evidence at
 `8b29132c`: a sender-side file-like reader raises during a split transfer,
