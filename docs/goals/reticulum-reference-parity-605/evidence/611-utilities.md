@@ -24,7 +24,16 @@ while both pinned-Python initiator/listener roles are covered by the ignored
 interop fixture at `e57afb99`, with the command-before-stdin and bounded EOF
 grace fix at `662dcdbe`.
 The two-direction pinned-Python/native `rnprobe` process exchange is covered
-by `f86ecc1c`. The focused
+by `f86ecc1c`. A separate late-announce process test starts the pinned Python
+peer without announcing its `rnstransport.probe` destination, starts native
+`rnprobe` through the live Rust daemon RPC, and only then releases the Python
+announce. It pins the checkout to
+`99de23c040d507e3fefca19e87b182302902725d`, asserts the destination, two sent
+probes, two delivered replies and both per-probe delivered statuses, and uses
+isolated TCP/state plus bounded process waits and cleanup. Verify runs this
+exact regression. This is software loopback evidence of successful path
+discovery and packet probing; it does not complete the broader `rnprobe`
+options, failure/restart, multi-hop, public-network, or physical matrix. The focused
 `rnprobe_invalid_probe_count_matches_pinned_python_process_failure` regression
 also compares malformed `--probes` handling at the process boundary: Rust and
 the frozen Python utility both exit with status 2 and report their respective
@@ -466,9 +475,12 @@ probe option envelope, human RTT formatting, JSON preservation, malformed
 destination rejection, and exit status `2` for partial loss. The focused
 daemon tests verify RPC defaults/aliases, the unavailable-bridge error, the
 receipt-registry handoff, and opt-in responder naming. The ignored process
-test starts a Rust daemon with an announced probe responder for pinned Python,
-then starts a pinned-Python `PROVE_ALL` responder for native `rnprobe`; both
-directions deliver two probes with zero loss over isolated TCP interfaces.
+tests start a Rust daemon with an announced probe responder for pinned Python,
+then start a pinned-Python `PROVE_ALL` responder for native `rnprobe`; both
+directions deliver two probes with zero loss over isolated TCP interfaces. The
+new native direction delays that responder's first announce until after
+`rnprobe` starts, so successful output demonstrates the path-discovery
+workflow as well.
 This is still software-only evidence: no carrier fault matrix, multi-hop/
 public-network run, hardware run, or performance claim is included.
 

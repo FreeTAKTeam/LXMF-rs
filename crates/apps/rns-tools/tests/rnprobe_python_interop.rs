@@ -210,6 +210,7 @@ fn spawn_python_probe_responder(
     config: &Path,
     identity: &Path,
     hash_path: &Path,
+    announce_trigger: &Path,
 ) -> io::Result<Child> {
     let script = r#"
 import pathlib
@@ -217,7 +218,7 @@ import sys
 import time
 import RNS
 
-config_dir, identity_path, hash_path = sys.argv[1:4]
+config_dir, identity_path, hash_path, announce_trigger = sys.argv[1:5]
 identity_file = pathlib.Path(identity_path)
 identity = RNS.Identity.from_file(identity_path) if identity_file.is_file() else RNS.Identity()
 identity.to_file(identity_path)
@@ -230,8 +231,10 @@ destination = RNS.Destination(
     "probe",
 )
 destination.set_proof_strategy(RNS.Destination.PROVE_ALL)
-destination.announce()
 pathlib.Path(hash_path).write_text(destination.hash.hex(), encoding="ascii")
+while not pathlib.Path(announce_trigger).exists():
+    time.sleep(0.025)
+destination.announce()
 while True:
     time.sleep(1)
 "#;
@@ -241,6 +244,7 @@ while True:
         .arg(config)
         .arg(identity)
         .arg(hash_path)
+        .arg(announce_trigger)
         .env("PYTHONPATH", repo)
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
@@ -331,7 +335,7 @@ fn pinned_python_rnprobe_reaches_rust_daemon_responder() -> io::Result<()> {
 
 #[test]
 #[ignore = "requires local Python Reticulum checkout and a built reticulumd and rnprobe binary"]
-fn native_rnprobe_reaches_pinned_python_responder() -> io::Result<()> {
+fn native_rnprobe_discovers_late_pinned_python_announce() -> io::Result<()> {
     let _test_guard = PYTHON_INTEROP_TEST_LOCK.lock().expect("Python interop test lock poisoned");
     let temp = tempfile::tempdir()?;
     let python_interface_port = free_port()?;
@@ -341,16 +345,37 @@ fn native_rnprobe_reaches_pinned_python_responder() -> io::Result<()> {
     fs::create_dir_all(&python_config)?;
     write_python_server_config(&python_config, python_interface_port)?;
     let hash_path = temp.path().join("destination.hash");
+    let announce_trigger = temp.path().join("announce.trigger");
     let mut python = spawn_python_probe_responder(
         &repo,
         &python_config,
         &python_config.join("identity"),
         &hash_path,
+        &announce_trigger,
     )?;
     let result = (|| {
+        let pin =
+            Command::new("git").args(["-C"]).arg(&repo).args(["rev-parse", "HEAD"]).output()?;
+        if !pin.status.success() {
+            return Err(io::Error::other(format!(
+                "could not identify pinned Python Reticulum checkout: {}",
+                String::from_utf8_lossy(&pin.stderr)
+            )));
+        }
+        let actual_pin = String::from_utf8_lossy(&pin.stdout).trim().to_owned();
+        if actual_pin != "99de23c040d507e3fefca19e87b182302902725d" {
+            return Err(io::Error::other(format!(
+                "rnprobe interop requires pinned Reticulum 99de23c040d507e3fefca19e87b182302902725d, found {actual_pin}"
+            )));
+        }
         wait_for_port(python_interface_port, &mut python)?;
         let destination_hash =
             wait_for_file_value(&hash_path, &mut python, "Python probe responder")?;
+        if announce_trigger.exists() {
+            return Err(io::Error::other(
+                "Python responder announced before the Rust probe started",
+            ));
+        }
         let rust_config = temp.path().join("reticulumd.toml");
         fs::write(
             &rust_config,
@@ -401,6 +426,10 @@ fn native_rnprobe_reaches_pinned_python_responder() -> io::Result<()> {
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()?;
+            // Start the real CLI with no known announce/path; release the peer only after
+            // its daemon-side probe request has begun waiting for discovery.
+            thread::sleep(Duration::from_millis(300));
+            fs::write(&announce_trigger, "announce")?;
             let output = wait_for_output(child, Duration::from_secs(30), "native rnprobe")?;
             if !output.status.success() {
                 return Err(io::Error::other(format!(
@@ -411,6 +440,13 @@ fn native_rnprobe_reaches_pinned_python_responder() -> io::Result<()> {
                 )));
             }
             let stdout = String::from_utf8_lossy(&output.stdout);
+            let response: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+            assert_eq!(response["destination"], destination_hash);
+            assert_eq!(response["probes"], 2);
+            assert_eq!(response["sent"], 2);
+            assert_eq!(response["replies"], 2);
+            assert_eq!(response["results"][0]["status"], "delivered");
+            assert_eq!(response["results"][1]["status"], "delivered");
             assert!(stdout.contains("\"replies\": 2"), "native rnprobe output: {stdout}");
             assert!(
                 stdout.contains("\"packet_loss_percent\": 0.0"),

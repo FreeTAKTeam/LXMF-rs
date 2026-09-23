@@ -55,7 +55,12 @@ other workflows and failure/restart gaps are still open.
 The #631 `rnprobe` follow-up compares `--probes not-an-integer` across the Rust
 and frozen Python processes. Both return exit status 2 with their corresponding
 invalid-integer diagnostics, and Verify runs the focused ignored test against
-the exact reference checkout. The broader #611 utility matrix remains partial.
+the exact reference checkout. Its successful-path counterpart now withholds a
+pinned Python probe destination announce until native `rnprobe` starts through
+the Rust daemon, then asserts two discovered-path deliveries and structured
+probe results against the exact `99de23c...` peer in Verify. These bounded
+increments do not complete the broader #611 utility matrix, which remains
+partial.
 
 The exact-target Python fetch-client disk-error trace also now reproduces the
 pinned callback printing its save failure while leaving the fetch unresolved;

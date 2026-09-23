@@ -184,8 +184,12 @@ jobs:
           LXMF_PYTHON_BIN: python
         run: |
           cargo build -p reticulumd --bin reticulumd
+          cargo build -p rns-tools --bin rnprobe
           cargo test -p rns-tools --test rnpath_python_interop \
             rnpath_discovers_late_pinned_python_announce_through_live_daemon_rpc \
+            -- --ignored --exact --nocapture --test-threads=1
+          cargo test -p rns-tools --test rnprobe_python_interop \
+            native_rnprobe_discovers_late_pinned_python_announce \
             -- --ignored --exact --nocapture --test-threads=1
           cargo test -p rns-tools --test rnprobe_python_interop \
             rnprobe_invalid_probe_count_matches_pinned_python_process_failure \
