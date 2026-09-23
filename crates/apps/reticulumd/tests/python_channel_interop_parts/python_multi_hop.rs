@@ -316,6 +316,89 @@ async fn python_to_python_duplicate_link_request_proof_is_filtered_by_rust_trans
     drop(transport);
 }
 
+/// A byte-identical ordinary LinkRequest must be filtered at the forwarding
+/// transport, matching the pinned reference's packet-hash list behavior.
+#[tokio::test]
+#[ignore = "requires local Python Reticulum checkout"]
+async fn python_to_python_duplicate_link_request_is_filtered_by_rust_transport() {
+    let _interop_guard = python_interop_guard().await;
+    let paths = python_channel_interop_paths();
+
+    let endpoint_port = free_tcp_port();
+    let client_port = free_tcp_port();
+    let temp = tempfile::tempdir().expect("tempdir");
+    let endpoint_config_dir = temp.path().join("python-rns-link-request-duplicate-endpoint");
+    let client_config_dir = temp.path().join("python-rns-link-request-duplicate-client");
+    fs::create_dir_all(&endpoint_config_dir).expect("endpoint config dir");
+    fs::create_dir_all(&client_config_dir).expect("client config dir");
+
+    let rust_identity = PrivateIdentity::new_from_rand(OsRng);
+    let rust_identity = to_transport_private_identity(&rust_identity);
+    let mut config = TransportConfig::new("python-link-request-duplicate", &rust_identity, true);
+    config.set_transport_enabled(true);
+    config.set_path_request_timeout_secs(2);
+    let transport = Transport::new(config);
+    let iface_manager = transport.iface_manager();
+    transport.iface_manager().lock().await.spawn(
+        TcpServer::new(format!("127.0.0.1:{endpoint_port}"), iface_manager.clone()),
+        TcpServer::spawn,
+    );
+    transport.iface_manager().lock().await.spawn(
+        TcpServer::new(format!("127.0.0.1:{client_port}"), iface_manager),
+        TcpServer::spawn,
+    );
+    wait_for_port(endpoint_port, Duration::from_secs(5)).await;
+    wait_for_port(client_port, Duration::from_secs(5)).await;
+
+    let endpoint_proxy =
+        PythonResourceFaultProxy::bind(endpoint_port, ResourceFaultMode::CountLinkRequest).await;
+    let client_proxy = PythonResourceFaultProxy::bind(
+        client_port,
+        ResourceFaultMode::DuplicateLinkRequestFirst,
+    )
+    .await;
+    write_python_client_config(&endpoint_config_dir, endpoint_proxy.port());
+    write_python_client_config(&client_config_dir, client_proxy.port());
+
+    let mut endpoint = paths.spawn_endpoint(&endpoint_config_dir, "channel");
+    let ready = read_ready(&mut endpoint).expect("Python duplicate-link-request endpoint ready");
+    let mut endpoint_guard = ChildGuard { child: Some(endpoint) };
+
+    let client = paths.spawn_channel_client(&client_config_dir, &ready.destination_hash, "channel");
+    let client = tokio::task::spawn_blocking(move || client.wait_with_output())
+        .await
+        .expect("join Python duplicate-link-request client")
+        .expect("wait for Python duplicate-link-request client");
+    assert!(
+        client.status.success(),
+        "Python duplicate-link-request client failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&client.stdout),
+        String::from_utf8_lossy(&client.stderr)
+    );
+    assert_eq!(client_proxy.matched_frame_count(), 1, "proxy did not duplicate one LinkRequest");
+    assert_eq!(
+        endpoint_proxy.matched_frame_count(),
+        1,
+        "Rust transport forwarded an exact duplicate LinkRequest to the Python endpoint"
+    );
+
+    let mut endpoint = endpoint_guard.child.take().expect("Python endpoint");
+    endpoint.kill().expect("stop Python endpoint process");
+    let endpoint = tokio::task::spawn_blocking(move || endpoint.wait_with_output())
+        .await
+        .expect("join Python endpoint")
+        .expect("wait for Python endpoint");
+    let endpoint_stderr = String::from_utf8_lossy(&endpoint.stderr);
+    let deliveries = endpoint_stderr
+        .matches("python_channel_endpoint: received channel message python-1 hello-rust")
+        .count();
+    assert_eq!(deliveries, 1, "duplicate request changed application delivery: {endpoint_stderr}");
+
+    drop(endpoint_proxy);
+    drop(client_proxy);
+    drop(transport);
+}
+
 /// The same two independent Python nodes also have to carry a split Resource
 /// through the Rust transport, not only a Channel message. This exercises the
 /// production forwarding path and the Python sender/receiver roles together.

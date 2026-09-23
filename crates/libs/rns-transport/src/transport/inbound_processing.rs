@@ -11,16 +11,17 @@ use ifac_admission::violates_ifac_policy;
 mod traffic_class;
 use traffic_class::inbound_traffic_class;
 
-async fn filter_duplicate_packet(
+pub(super) async fn filter_duplicate_packet(
     packet_cache: Arc<Mutex<PacketCache>>,
     in_link: Option<Arc<Mutex<Link>>>,
     node_name: &str,
     packet: &Packet,
+    connected_to_shared_instance: bool,
 ) -> (bool, bool) {
     let mut allow_duplicate = false;
     match packet.header.packet_type {
         PacketType::Announce => return (true, false),
-        PacketType::LinkRequest => allow_duplicate = true,
+        PacketType::LinkRequest => {}
         PacketType::Data => {
             allow_duplicate = matches!(
                 packet.context,
@@ -60,7 +61,10 @@ async fn filter_duplicate_packet(
             packet.context as u8
         );
     }
-    (is_new || allow_duplicate, is_new)
+    // An attached client delegates packet deduplication to the shared-instance
+    // owner. Reticulum's packet_filter accepts these packets and add_packet_hash
+    // deliberately does not populate the local duplicate list in this mode.
+    (is_new || allow_duplicate || connected_to_shared_instance, is_new)
 }
 
 pub(super) async fn preprocess_inbound_message(
@@ -254,7 +258,14 @@ pub(super) async fn preprocess_inbound_message(
     let (accepted, packet_cache_inserted) = if is_path_request {
         (true, false)
     } else {
-        filter_duplicate_packet(packet_cache, in_link, &node_name, &message.packet).await
+        filter_duplicate_packet(
+            packet_cache,
+            in_link,
+            &node_name,
+            &message.packet,
+            connected_to_shared_instance,
+        )
+        .await
     };
     if !accepted {
         iface_manager.lock().await.record_packet_filter_hit(message.address);

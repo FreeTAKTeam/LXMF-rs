@@ -75,7 +75,7 @@ incomplete requirements:
 | ---: | --- | --- |
 | #607 | Review and integrate the initial PR increment | partial / unverified |
 | #608 | Wire IFAC into production carrier ingress and egress | implemented but unproven; mixed-peer evidence pending |
-| #609 | Close transport, local-client, and shared-instance gaps | partial; two-peer shared-instance path/link/raw-packet recovery through Rust daemon replacement is evidenced; LXMF queue recovery, deeper relay replacement, and broader duplicate cases remain open |
+| #609 | Close transport, local-client, and shared-instance gaps | partial; two-peer shared-instance recovery, attached-client duplicate delegation, and standalone repeated-LinkRequest suppression are evidenced; LXMF queue recovery, deeper relay replacement, and other duplicate cases remain open |
 | #610 | Prove Resource collision, stream, and mixed-peer behavior | partial / unverified |
 | #611 | Exercise every reference utility through real network workflows | partial / unverified |
 | #612 | Match rngit permission, resolver, work, storage, and wire schemas | partial / unverified |
@@ -117,7 +117,11 @@ fault-injected pinned-Python trace proves Rust pending-link establishment
 cleanup after the path is available. A pinned two-carrier Python trace now
 injects a duplicate link-request proof and asserts Rust forwards it exactly
 once before the Python client completes a single Channel delivery; this case
-runs in PR `Verify` CI. Rust link events now expose the pinned
+runs in PR `Verify` CI. Another exact-target trace duplicates an ordinary
+LinkRequest on ingress and verifies the Rust forwarder emits one copy; focused
+ingress tests also verify attached clients accept duplicates for owner-side
+filtering. These cases do not close the remaining packet/proof classes. Rust
+link events now expose the pinned
 `TIMEOUT`, `INITIATOR_CLOSED`, and `DESTINATION_CLOSED` reason codes, with
 role-aware and establishment-timeout regressions. The row remains unverified
 until broader shared-instance and multi-hop production traces compare other

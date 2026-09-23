@@ -16,6 +16,8 @@ pub(super) enum ResourceFaultMode {
     DropAllResourceTraffic,
     DropKeepAlive,
     DuplicateChannelFirst,
+    DuplicateLinkRequestFirst,
+    CountLinkRequest,
     DuplicateLinkRequestProofFirst,
     CountLinkRequestProof,
     DropLinkRequest,
@@ -46,6 +48,7 @@ impl PythonResourceFaultProxy {
                 mode,
                 ResourceFaultMode::DropAllResourceTraffic
                     | ResourceFaultMode::CountLinkRequestProof
+                    | ResourceFaultMode::CountLinkRequest
             )
             .then_some(mode);
             let forward_to_target = forward_frames(
@@ -87,6 +90,7 @@ impl Drop for PythonResourceFaultProxy {
 struct FaultState {
     first_resource_seen: bool,
     first_channel_seen: bool,
+    first_link_request_seen: bool,
     first_link_request_proof_seen: bool,
     reordered_first: Option<Vec<u8>>,
 }
@@ -154,6 +158,20 @@ async fn forward_frames<R, W>(
                             write_frame(&mut writer, &frame).await;
                         }
                     }
+                    ResourceFaultMode::DuplicateLinkRequestFirst => {
+                        if !state.first_link_request_seen {
+                            state.first_link_request_seen = true;
+                            matched_frames.fetch_add(1, Ordering::SeqCst);
+                            write_frame(&mut writer, &frame).await;
+                            write_frame(&mut writer, &frame).await;
+                        } else {
+                            write_frame(&mut writer, &frame).await;
+                        }
+                    }
+                    ResourceFaultMode::CountLinkRequest => {
+                        matched_frames.fetch_add(1, Ordering::SeqCst);
+                        write_frame(&mut writer, &frame).await;
+                    }
                     ResourceFaultMode::DuplicateLinkRequestProofFirst => {
                         if !state.first_link_request_proof_seen {
                             state.first_link_request_proof_seen = true;
@@ -200,6 +218,10 @@ fn should_match(frame: &[u8], mode: Option<ResourceFaultMode>) -> bool {
     Packet::from_bytes(output.as_slice()).is_ok_and(|packet| match mode {
         Some(ResourceFaultMode::DropKeepAlive) => packet.context == PacketContext::KeepAlive,
         Some(ResourceFaultMode::DuplicateChannelFirst) => packet.context == PacketContext::Channel,
+        Some(ResourceFaultMode::DuplicateLinkRequestFirst)
+        | Some(ResourceFaultMode::CountLinkRequest) => {
+            packet.header.packet_type == PacketType::LinkRequest
+        }
         Some(ResourceFaultMode::DuplicateLinkRequestProofFirst) => {
             packet.header.packet_type == PacketType::Proof
                 && packet.context == PacketContext::LinkRequestProof

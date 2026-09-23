@@ -231,61 +231,16 @@ impl TransportHandler {
 
     #[cfg(test)]
     pub(super) async fn filter_duplicate_packets(&self, packet: &Packet) -> bool {
-        let mut allow_duplicate = false;
-
-        match packet.header.packet_type {
-            PacketType::Announce => {
-                return true;
-            }
-            PacketType::LinkRequest => {
-                allow_duplicate = true;
-            }
-            PacketType::Data => {
-                allow_duplicate = matches!(
-                    packet.context,
-                    PacketContext::KeepAlive
-                        | PacketContext::LinkClose
-                        | PacketContext::ResourceRequest
-                        // The channel protocol has its own sequencing/dedup, so
-                        // transport-level dedup must not suppress channel frames.
-                        // Otherwise a retransmit needed after the receiver's
-                        // channel opens (link-activation race) is dropped as a
-                        // duplicate of the pre-open copy, stalling auth.
-                        | PacketContext::Channel
-                );
-            }
-            PacketType::Proof => {
-                if packet.context == PacketContext::LinkRequestProof {
-                    if let Some(link) = self.in_links.get(&packet.destination) {
-                        if link.lock().await.status().not_yet_active() {
-                            allow_duplicate = true;
-                        }
-                    }
-                }
-            }
-        }
-
-        let is_new = self.packet_cache.lock().await.update(packet);
-        if !is_new
-            && packet.header.destination_type == DestinationType::Link
-            && matches!(
-                packet.context,
-                PacketContext::Resource
-                    | PacketContext::ResourceAdvrtisement
-                    | PacketContext::ResourceRequest
-                    | PacketContext::ResourceHashUpdate
-                    | PacketContext::ResourceProof
-            )
-        {
-            log::debug!(
-                "[resource-diag] duplicate_drop_candidate node={} link={} ctx={:02x}",
-                self.config.name,
-                packet.destination,
-                packet.context as u8
-            );
-        }
-
-        is_new || allow_duplicate
+        let in_link = self.in_links.get(&packet.destination).cloned();
+        super::inbound_processing::filter_duplicate_packet(
+            self.packet_cache.clone(),
+            in_link,
+            &self.config.name,
+            packet,
+            self.config.connected_to_shared_instance,
+        )
+        .await
+        .0
     }
 
     #[allow(dead_code)]

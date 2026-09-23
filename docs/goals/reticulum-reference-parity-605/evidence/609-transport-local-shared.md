@@ -306,14 +306,54 @@ The same pinned-reference test is now part of the PR `Verify` workflow. This
 closes only the link-request-proof duplicate case; other packet/proof classes
 remain unverified.
 
+## Shared-instance duplicate delegation and LinkRequest replay filtering
+
+At the frozen Python target `99de23c040d507e3fefca19e87b182302902725d`,
+`RNS/Transport.py::packet_filter` accepts packets unconditionally when this
+node is attached to a shared instance; the shared owner performs duplicate
+filtering. For a standalone transport, an exact repeated ordinary LinkRequest
+is rejected by the packet-hash list. Rust now preserves both behaviors: it
+continues packet-cache bookkeeping for receipt/routing context while attached
+clients do not reject duplicates locally, and standalone duplicate
+LinkRequests are filtered. The test-only filter helper delegates to the same
+production policy.
+
+Focused unit regressions cover both decisions:
+
+```text
+cargo test -p reticulum-rs-transport --lib duplicate_filter -- --nocapture
+# 4 passed; includes shared-instance duplicate delegation and LinkRequest replay suppression
+```
+
+`python_to_python_duplicate_link_request_is_filtered_by_rust_transport`
+starts two independent Python nodes on separate carriers through the Rust
+forwarder. A TCP fault proxy duplicates the client's first LinkRequest; the
+endpoint-facing proxy observes exactly one forwarded request, and the client
+still completes the Channel exchange. It passed against the exact frozen
+Reticulum target:
+
+```text
+RETICULUM_PY_REPO=Reticulum-parity LXMF_PYTHON_BIN=python \
+  cargo test -p reticulumd --test python_channel_interop \
+  python_to_python_duplicate_link_request_is_filtered_by_rust_transport \
+  -- --ignored --nocapture --test-threads=1
+# 1 passed; 0 failed; one injected request, one forwarded request
+```
+
+The same command is now a required step in PR `Verify`. Other packet/proof
+classes and LXMF queue retry after daemon replacement remain open; #609 stays
+partial.
+
 ## Remaining acceptance boundary
 
 The combined evidence now proves pinned Python↔Rust local attachment, announce
 fan-out, a direct application/link exchange, Rust daemon restart with identity
 continuity, two-carrier multi-hop Python Channel and split Resource exchanges,
 and multi-hop Channel sequence deduplication through one forwarding Rust
-transport, application-link close/reconnect, and one link-request-proof
-duplicate through that forwarding path. The two-peer shared-instance trace
+transport, application-link close/reconnect, one link-request-proof duplicate,
+and ordinary LinkRequest duplicate suppression through that forwarding path.
+Attached shared-instance mode also now accepts duplicate data for owner-side
+filtering, matching the pinned reference. The two-peer shared-instance trace
 also verifies path relearning, fresh links, and raw packets in both directions
 after replacing the Rust daemon. It does not cover post-restart LXMF queue
 retry/delivery, deeper multi-relay replacement, or broader packet/proof

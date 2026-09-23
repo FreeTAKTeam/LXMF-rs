@@ -522,6 +522,12 @@ this node over a boundary unless that boundary sets `announces_to_internal`.
 Applying shared config to a live interface reaches the virtual children already
 registered on it, so a discovered peer carries the new policy without being
 recreated.
+Duplicate filtering now matches two additional pinned-reference cases: attached
+shared-instance clients defer duplicate rejection to their owner, while a
+standalone transport suppresses an exact repeated `LinkRequest`. Both have
+focused Rust regressions, and the latter also has a fault-injected Python→Rust→
+Python forwarding trace in Verify CI. Other packet/proof duplicate classes and
+post-restart LXMF queue delivery remain unverified.
 Incoming announces now carry their Python-format random blob through validation
 into the path table. The table preserves bounded random-blob history for
 Python-format persistence, ignores duplicate/stale blobs, refreshes known paths

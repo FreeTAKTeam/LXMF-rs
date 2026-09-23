@@ -1,6 +1,6 @@
 # Current Roadmap Status
 
-Last reassessed: 2026-09-21
+Last reassessed: 2026-09-23
 
 This file is the repository-level source of truth for parity posture, release
 confidence, and execution order. Detailed row-level status lives in:
@@ -24,13 +24,16 @@ remaining acceptance gates are recorded in
 [`rns-1.5.4-delta.md`](rns-1.5.4-delta.md). The 1.5.4 development reference is
 not the canonical release baseline. IFAC daemon wiring, remaining remote
 utility behavior, transport policy differences, and platform validation remain
-open; the focused #611 `rncp` compression/send/fetch matrix, bounded
-`rnprobe` packet/RPC workflow, and bounded native `rnsh` channel workflow,
-negative
-failure-category checks, path-discovery-timeout check, listener restart check,
-local disk-failure check, client-cancellation check, concurrent-client check,
-interrupted-link/status-output check, active-interface medium-timeout check,
-mixed-runtime restart check, and the #612 pinned-Python work-item persistence
+open. The #609 software slice now additionally proves that attached shared-
+instance clients defer duplicate filtering to their owner and that standalone
+transports suppress identical LinkRequests; other packet/proof classes and
+post-restart LXMF queue delivery remain unverified. The focused #611 `rncp`
+compression/send/fetch matrix, bounded `rnprobe` packet/RPC workflow, and
+bounded native `rnsh` channel workflow, negative failure-category checks,
+path-discovery-timeout check, listener restart check, local disk-failure check,
+client-cancellation check, concurrent-client check, interrupted-link/status-
+output check, active-interface medium-timeout check, mixed-runtime restart
+check, and the #612 pinned-Python work-item persistence
   trace across a Rust `rngit` process restart plus the reciprocal native
   Rust-client `/git/list`/`/git/fetch`/`/git/push` and the bounded multi-step
   release request trace (with exact bundle, artifact, and remote-ref
