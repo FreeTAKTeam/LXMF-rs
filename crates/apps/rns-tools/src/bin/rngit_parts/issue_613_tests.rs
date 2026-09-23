@@ -194,7 +194,9 @@ fn media_and_file_endpoints_enforce_keys_refs_permissions_and_metadata() {
             remote,
             link,
         )
-        .is_none());
+        .is_some_and(|response| {
+            response.response_is_false && response.data.is_empty() && response.metadata.is_none()
+        }));
     assert!(node
         .handle_page_request(
             "/media",
@@ -205,12 +207,16 @@ fn media_and_file_endpoints_enforce_keys_refs_permissions_and_metadata() {
             remote,
             link,
         )
-        .is_none());
+        .is_some_and(|response| {
+            response.response_is_false && response.data.is_empty() && response.metadata.is_none()
+        }));
 
     node.groups.get_mut("group").expect("group").permissions.read = Default::default();
     assert!(node
         .handle_page_request("/media", &media_request, remote, link)
-        .is_none());
+        .is_some_and(|response| {
+            response.response_is_false && response.data.is_empty() && response.metadata.is_none()
+        }));
 }
 
 #[test]
