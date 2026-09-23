@@ -519,8 +519,98 @@ RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/R
 # 1 passed; Rust received and verified Python's exact payloads/digests and flags
 ```
 
-Above-limit compression selection and the remaining #610 transfer-selection
-and failure matrix remain unverified.
+The distinct 64 MiB-plus-one admission/compression-cap edge and the remaining
+#610 transfer-selection and failure matrix remain unverified.
+
+### Compression selection above the efficient-segment boundary
+
+The production Rust-to-pinned-Python and pinned-Python-to-Rust compression
+differential now sends compressible and deterministic incompressible payloads
+of exactly `2 * MAX_EFFICIENT_SIZE`. Both cross the split boundary into two
+full segments (Python-to-Rust also includes its metadata wire prefix).
+The pinned `RNS/Resource.py` sender first selects the segment using the
+uncompressed `MAX_EFFICIENT_SIZE` accounting, then applies bz2 independently
+to each segment (subject to the 64 MiB whole-resource cap), setting
+`compressed` only when that segment shrinks. Rust's production sender does the
+same: segment accounting precedes per-segment compression. The receivers
+verify the assembled payload digest and logical `total_size`; sender-side
+compression choices are `true` for repeating bytes and `false` for the
+deterministic incompressible payload. No production mismatch was found; no
+production change was needed. This closes only the above-`MAX_EFFICIENT_SIZE`
+selection gap, not the broader #610 contract or the distinct 64 MiB cap edge.
+
+```text
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+  LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
+  rust_resource_compression_defaults_match_pinned_python \
+  -- --ignored --nocapture --test-threads=1
+# 1 passed; Rust-to-Python split cases matched compression flags, size, and digest
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+  LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
+  pinned_python_resource_compression_defaults_match_rust \
+  -- --ignored --nocapture --test-threads=1
+# 1 passed; Python-to-Rust split cases matched sender flags, logical size, and digest
+```
+
+## Pinned-Python cancellation after the first split segment
+
+The Rust sender now has a later-segment cancellation regression against frozen
+Reticulum `99de23c040d507e3fefca19e87b182302902725d`. Python accepts the first
+part of a split Resource, then cancels while the second segment is in flight;
+Rust observes the terminal `OutboundRejected`. This proves cancellation is
+handled after transfer progress, rather than only before or during the first
+part. It is one focused fault trace, not the complete segment/callback matrix.
+
+```text
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+  LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
+  rust_sender_observes_pinned_python_cancel_on_second_resource_segment \
+  -- --ignored --exact --nocapture --test-threads=1
+# 1 passed
+```
+
+## Missing-fragment retry exhaustion after partial progress
+
+Both production Rust and frozen Python now have executable regressions for
+this transition. The Rust `ResourceManager` test accepts the first of two
+advertised parts, leaves the second absent, advances its injected clock past
+the configured retry interval, and verifies the exact terminal
+`retry_limit_exhausted` failure with one received part and no retained inbound
+state.
+
+The ignored pinned-Python test invokes the reference
+`Resource._Resource__watchdog_job` directly on a two-part `Resource.__new__`
+fixture with one received part, `retries_left == 0`, and an expired missing-part
+deadline. In a separate Python subprocess it replaces the module's clock and
+sleep functions, does not start the watchdog thread, and uses an inactive stub
+Link so the real `Resource.cancel()` takes its receiver cleanup path without
+network I/O. It asserts exactly one cancel from `TRANSFERRING`, terminal
+`FAILED`, removal from the Link's incoming-resource list, one fake clock read,
+and only the no-op post-transition sleep request. This is a deterministic
+state-machine differential, not an end-to-end network timeout test. Cross-peer
+timeout timing and the rest of the #610 failure matrix remain open.
+
+Hosted lane ownership is intentionally split by reference pin. The generic
+`python-channel-interop` HIL case inherits canonical Reticulum 1.5.2
+(`ea98db4f53dcf0defc0e71a16e60d28b1229c4e6`) and skips only this regression.
+The exact ignored test is instead run by Verify's dedicated
+`Verify frozen 1.5.4 missing-part Resource retry exhaustion` step with
+`RETICULUM_PY_REPO` set to `Reticulum-parity`, checked out at
+`99de23c040d507e3fefca19e87b182302902725d`. Its in-test revision assertion
+remains enabled; the canonical 1.5.2 checkout and unrelated interop cases are
+unchanged.
+
+```text
+cargo test -p reticulum-rs-transport --lib \
+  resource_manager_exhausts_missing_fragment_retries_after_partial_progress
+# 1 passed
+
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+  LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
+  pinned_python_resource_cancels_after_missing_part_retry_budget \
+  -- --ignored --exact --nocapture --test-threads=1
+# 1 passed against frozen Reticulum 99de23c040d507e3fefca19e87b182302902725d
+```
 
 ## Resource compression size-limit boundary
 
@@ -535,8 +625,8 @@ reported logical/accounted size 67,108,864 and the exact SHA-256 of the
 uncompressed bytes. Rust also rejects a 64 MiB + 1 send before advertisement,
 matching its production Resource admission limit. Since that rejection
 prevents an above-limit Rust-to-Python transfer, the reference's uncompressed
-decision above the threshold is not observed end to end; above-limit selection
-parity remains open.
+decision specifically above the 64 MiB compression cap is not observed end to
+end. This separate cap-edge evidence remains open.
 
 ```text
 RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
@@ -554,9 +644,10 @@ metadata_wire_size + 1`, so pinned Python reports `total_size =
 MAX_EFFICIENT_SIZE + 1` and exactly two segments. Rust observes accepted
 segment indexes `[1, 2]`, reassembles the exact encoded `python-meta` value,
 and its content SHA-256 matches the pinned Python sender's report. This
-confirms segment 1 reserves the 3-byte metadata length and encoded metadata,
-leaving one content byte for segment 2. It is a focused mixed-peer boundary
-case; it does not close broader size/chunking or request/response selection.
+confirms the receiver's boundary accounting and reassembly. It does not by
+itself inspect the transmitted first-segment payload bytes or prove their
+metadata placement. It is a focused mixed-peer boundary case; it does not
+close broader size/chunking or request/response selection.
 
 ```text
 RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
@@ -565,6 +656,38 @@ RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
   -- --ignored --nocapture --test-threads=1
 # 1 passed; two exact segment indexes, metadata, total size, and content digest
 ```
+
+### Rust-to-Python first-segment metadata bytes
+
+`rust_to_python_split_resource_first_segment_metadata_wire_matches_reference`
+uses the production Rust `Transport::send_resource_with_compression` path and
+the pinned Python Link/Resource receiver over loopback. Its test-only Python
+wrapper scopes capture to `Resource.assemble` and observes the argument to
+`Identity.full_hash` immediately before the pinned implementation parses and
+strips metadata. It removes only the trailing four-byte Resource random hash
+from that hash input and records each decoded/decompressed segment payload;
+the pinned checkout itself is not modified.
+
+Rust sends an uncompressed two-segment Resource with MessagePack metadata.
+The test verifies both segment captures and checks the complete first-segment
+payload SHA-256 against the expected three-byte metadata length, encoded
+metadata, and first data slice. It also compares the exact metadata-prefix
+bytes, the immediately following 32 content bytes, and the completed
+Resource's digest/metadata. This observes the Resource segment payload after
+packet reassembly and Link decryption (and after decompression, disabled for
+this case), not encrypted Link packets or individual Resource part packets.
+No production protocol behavior was changed.
+
+```text
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+  LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
+  rust_to_python_split_resource_first_segment_metadata_wire_matches_reference \
+  -- --ignored --exact --nocapture --test-threads=1
+# 1 passed against frozen Reticulum 99de23c040d507e3fefca19e87b182302902725d
+```
+
+The same exact ignored test is wired into Verify's pinned-1.5.4 job as
+“Verify frozen 1.5.4 first-segment Resource metadata wire placement.”
 
 ## Link request/response packet-versus-Resource selection
 

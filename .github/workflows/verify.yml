@@ -155,7 +155,7 @@ jobs:
         if: always()
         run: cargo xtask hil report --evidence target/hil/runs/pr-${{ github.run_id }} --output target/hil/runs/pr-${{ github.run_id }}/support-report
 
-      - name: Verify bidirectional Resource timeout and recovery
+      - name: Verify frozen 1.5.4 missing-part Resource retry exhaustion
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PYTHON_BIN: python
@@ -166,6 +166,18 @@ jobs:
           cargo test -p reticulumd --test python_channel_interop \
             pinned_python_initiated_link_timeout_fails_then_recovers_inbound_resource \
             -- --ignored --nocapture --test-threads=1
+          cargo test -p reticulumd --test python_channel_interop \
+            pinned_python_resource_cancels_after_missing_part_retry_budget \
+            -- --ignored --exact --nocapture --test-threads=1
+
+      - name: Verify frozen 1.5.4 first-segment Resource metadata wire placement
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+        run: >-
+          cargo test -p reticulumd --test python_channel_interop
+          rust_to_python_split_resource_first_segment_metadata_wire_matches_reference
+          -- --ignored --exact --nocapture --test-threads=1
 
       - name: Upload PR HIL evidence
         if: always()
