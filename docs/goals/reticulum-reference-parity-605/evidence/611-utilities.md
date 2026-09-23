@@ -168,6 +168,31 @@ the client exits nonzero with `remote fetch was not allowed`, the outside file
 remains unchanged, and its isolated save root remains empty. This records the
 Rust CLI's denial/status and no-output behavior; it does not expand the pinned-
 Python interoperability matrix.
+The jailed-fetch interop probe was also run against Rust head
+`3711771434e8c6bd30c7e8fe1fcbf97f304b6456` and pinned Python Reticulum
+`99de23c040d507e3fefca19e87b182302902725d`. The Rust listener returns the
+normal Link response envelope `[request_id, 0xF0]` for an out-of-jail path;
+the Python client recognizes that value as `fetch_not_allowed`. In the frozen
+client, that branch prints the denial and then calls `RNS.exit(0)`, whose
+`os._exit(0)` bypasses buffered stdout flushing. Thus a captured, normally
+buffered run exits successfully with the denial line missing; the same probe
+with `PYTHONUNBUFFERED=1` exposes the expected denial text but still exits 0.
+The denied fetch creates no saved file. This is a pinned-reference CLI
+diagnostic/exit-status limitation, not a Rust response-contract mismatch; Rust
+native `rncp` denial remains nonzero. Do not claim Python/Rust denial-status
+parity from this evidence.
+
+The temporary diagnostic probe reused the existing ignored interop test and was
+not retained as a repository test. Its exact invocations were:
+
+```text
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rncp_python_interop rncp_exchanges_binary_files_with_pinned_python_in_both_directions -- --ignored --exact --nocapture
+PYTHONUNBUFFERED=1 RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rncp_python_interop rncp_exchanges_binary_files_with_pinned_python_in_both_directions -- --ignored --exact --nocapture
+```
+
+On the first invocation the temporary assertion observed child exit status 0
+but no denial line in captured stdout; with `PYTHONUNBUFFERED=1` the same
+probe observed the denial line, exit status 0, and an empty save directory.
 The Unix process regression also sends SIGINT during path discovery and asserts
 nonzero status plus `operation cancelled by user`. The concurrent-client case
 starts three independent senders and verifies every listener-side file byte for
