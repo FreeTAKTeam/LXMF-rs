@@ -549,7 +549,10 @@ with the closed-pending path expiry and rediscovery. Inside the timeout the
 request is repeated as before. The clock measures an attempt, not its latest
 retransmit, so an automatic repeat of a still-pending request leaves it running
 while an explicit restart begins a new one. Python's `teardown_reason = TIMEOUT`
-is not surfaced to callers as a distinct close reason.
+is surfaced to callers as `LinkEventData.close_reason`; a retry-exhausted
+channel likewise preserves the role-specific teardown reason on its single
+closed-link event. This regression does not verify the LinkClose packet that
+the Python active-link teardown sends on the wire.
 `Transport::set_receipt_handler` takes `&self`. The handler it installs already
 lives behind the transport's own lock, so exclusive access bought nothing,
 while a `Transport` is an `Arc` by the time a client is ready to install one

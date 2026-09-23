@@ -239,10 +239,20 @@ cargo test -p reticulum-rs-transport --lib destination::link
 cargo test -p reticulum-rs-transport --lib \
   a_pending_out_link_that_outlives_its_establishment_timeout
   1 passed; 0 failed; production maintenance emits Timeout (0x01)
+cargo test -p reticulum-rs-transport --lib \
+  channel_retry_exhaustion_closes_link_and_fails_pending_messages
+  1 passed; 0 failed; caller receives one close event with role-specific reason
 ```
 
-This closes the previously unobservable close-reason slice without promoting
-the broader #609 row. The later two-peer trace below covers bounded shared-
+The pinned Python `RNS/Channel.py::_packet_timeout` shuts down the channel and
+calls the link outlet's `timed_out()`, which reaches `Link.teardown()` and sends
+a LinkClose packet for an active link. The Rust retry-exhaustion regression
+verifies only the caller-visible local `LinkEventData.close_reason`, its
+initiator role code, and idempotence when `close()` is called again; it does
+not verify equivalent wire-level LinkClose delivery.
+
+This closes only the local caller-observability slice without promoting the
+broader #609 row or claiming wire-level teardown parity. The later two-peer trace below covers bounded shared-
 instance path/link/raw-packet recovery after daemon replacement; LXMF queue
 retry, deeper relay replacement, broader packet/proof duplicate handling, and
 the wider transport matrix remain unverified.

@@ -29,7 +29,9 @@ instance clients defer duplicate filtering to their owner and that standalone
 transports suppress identical LinkRequests. A two-peer pinned-Python scenario
 also verifies one queued opportunistic LXMF message is delivered after Rust
 relay replacement; direct/resource retry modes and other packet/proof classes
-remain unverified. The focused #611 `rncp`
+remain unverified. Channel retry exhaustion also has a regression for the
+single caller-visible close event and role-specific reason; Python's active-link
+wire-level LinkClose behavior is not covered by that test. The focused #611 `rncp`
 compression/send/fetch matrix, bounded `rnprobe` packet/RPC workflow, and
 bounded native `rnsh` channel workflow, negative failure-category checks,
 path-discovery-timeout check, listener restart check, local disk-failure check,

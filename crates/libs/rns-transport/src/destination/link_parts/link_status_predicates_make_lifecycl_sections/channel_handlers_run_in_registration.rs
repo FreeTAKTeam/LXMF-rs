@@ -310,7 +310,7 @@
             address_hash: identity.address_hash,
             name: DestinationName::new("lxmf", "delivery"),
         };
-        let (tx, _) = tokio::sync::broadcast::channel(8);
+        let (tx, mut events) = tokio::sync::broadcast::channel(8);
 
         let mut outbound = Link::new(destination, tx.clone());
         let request = outbound.request();
@@ -322,6 +322,12 @@
             outbound.handle_packet(&inbound.prove(), iface),
             LinkHandleResult::Activated
         ));
+        for _ in 0..2 {
+            assert!(matches!(
+                events.try_recv().expect("endpoint activation event").event,
+                LinkEvent::Activated
+            ));
+        }
         outbound.rtt = Duration::from_millis(10);
 
         let (sequence, _packet) = outbound
@@ -341,6 +347,17 @@
         assert!(resend_packets.is_empty());
         assert_eq!(outbound.status(), LinkStatus::Closed);
         assert_eq!(outbound.channel_state(sequence), ChannelMessageState::Failed);
+        assert_eq!(outbound.close_reason(), Some(LinkCloseReason::InitiatorClosed));
+        let close_event = events.try_recv().expect("channel retry exhaustion close event");
+        assert!(matches!(close_event.event, LinkEvent::Closed));
+        assert_eq!(close_event.id, *outbound.id());
+        assert_eq!(close_event.close_reason, Some(LinkCloseReason::InitiatorClosed));
+
+        outbound.close();
+        assert!(matches!(
+            events.try_recv(),
+            Err(tokio::sync::broadcast::error::TryRecvError::Empty)
+        ));
     }
 
     #[test]

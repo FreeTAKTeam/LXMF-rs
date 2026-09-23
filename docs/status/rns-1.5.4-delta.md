@@ -123,8 +123,11 @@ ingress tests also verify attached clients accept duplicates for owner-side
 filtering. These cases do not close the remaining packet/proof classes. Rust
 link events now expose the pinned
 `TIMEOUT`, `INITIATOR_CLOSED`, and `DESTINATION_CLOSED` reason codes, with
-role-aware and establishment-timeout regressions. The row remains unverified
-until broader shared-instance and multi-hop production traces compare other
+role-aware and establishment-timeout regressions. A channel retry-exhaustion
+test also verifies the single caller-visible close event and role-specific
+reason. The pinned Python path additionally sends a LinkClose packet for an
+active link; this regression does not verify that wire behavior. The row remains
+unverified until broader shared-instance and multi-hop production traces compare other
 packet/proof duplicate classes. A new two-peer pinned-Python shared-instance
 trace verifies path relearning, fresh links, and raw packet exchange in both
 directions after replacing the transport-enabled Rust daemon. It also queues
