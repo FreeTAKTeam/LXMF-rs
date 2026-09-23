@@ -70,7 +70,8 @@ complete. The daemon evidence covers authenticated TCP with wrong-credential
 rejection and stop/reconfigure/restart, plus a separate-process Python/Rust UDP
 IFAC path through `lxmd` and `reticulumd` that delivers direct LXMF messages in
 both directions, observes an active Python link, and records zero live IFAC
-violations. The UDP daemon trace does not yet exercise wrong UDP credentials,
+violations. A second daemon trace verifies wrong-passphrase rejection before
+peer or message admission. The UDP daemon traces do not yet exercise
 tampered/truncated frames, UDP reconfiguration/restart, shared-instance
 exceptions, or every carrier family through that production path; lower-level
 UDP regressions cover malformed and wrong-key frames. Attached serial, RNode,
@@ -112,9 +113,10 @@ gaps and does not mark #608 or #605 complete.
 
 ## PR #628 follow-up: UDP through the `lxmd` daemon path
 
-The implementation is recorded at candidate commit
-`83d3d885e775f84b415b6f41d003cae8251c12e4`, based on the exact Python
-references above. The regression starts separate Rust `lxmd`/`reticulumd` and
+The UDP success-path implementation is recorded at
+`83d3d885e775f84b415b6f41d003cae8251c12e4`; the wrong-credential rejection
+extension is at candidate commit `d5c84ac7aaff696c119398422a39496ea7a2c648`,
+based on the exact Python references above. The regression starts separate Rust `lxmd`/`reticulumd` and
 Python LXMF/Reticulum processes over authenticated UDP and verifies successful
 direct-message delivery both ways, an active Python delivery link, and zero
 live Rust IFAC violations. The failure that motivated it exposed dropped UDP
@@ -122,9 +124,11 @@ forwarding endpoints in `lxmd`'s generated `reticulumd` configuration; the fix
 preserves the endpoints and parses Python `UDPInterface` listen/forward aliases
 and its shared-port form. A diagnostic regression also ensures nested
 passphrase, IFAC key, secret, and token fields are redacted in failure snapshots.
+A second UDP daemon trace uses a Python peer with a wrong passphrase and verifies
+that the IFAC violation is counted while peer and message counts remain zero.
 
 ```text
-candidate: 83d3d885e775f84b415b6f41d003cae8251c12e4
+candidate: d5c84ac7aaff696c119398422a39496ea7a2c648
 Python Reticulum: 99de23c040d507e3fefca19e87b182302902725d
 Python LXMF: 727830cefda83d9c6e3982b48675425f3f988f9c
 cargo fmt --all -- --check
@@ -138,7 +142,7 @@ RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
 LXMF_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/LXMF LXMF_PYTHON_BIN=python3 \
 cargo test -p lxmf-cli --test python_lxmd_remote_relay ifac -- \
   --ignored --nocapture --test-threads=1
-  3 passed; 0 failed (serial process execution required)
+  4 passed; 0 failed (serial process execution required)
 cargo clippy -p lxmf-cli --all-targets --all-features --no-deps -- -D warnings
   passed
 bash tools/scripts/check-module-size.sh
@@ -148,7 +152,8 @@ bash tools/scripts/check-module-size.sh
 ```
 
 The Verify PR job now runs the ignored IFAC daemon scenarios against the
-pinned Python checkouts. This adds production-path UDP success evidence; it
-does not establish UDP negative/reconfiguration parity or close the remaining
-software carrier-family and support-matrix gaps, and does not claim physical
-verification under #616.
+pinned Python checkouts. Production-path UDP success and wrong-credential
+rejection are evidenced; UDP tampered/truncated and invalid-flag frames through
+the daemon, UDP reconfiguration/restart, and the remaining software
+carrier-family and support-matrix gaps are still open. This does not claim
+physical verification under #616.
