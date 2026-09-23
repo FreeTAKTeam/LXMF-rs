@@ -23,6 +23,7 @@ acceptance gate.
 | Runtime cleanup | Existing BLE startup still clears stale session state, stops scans after selection or timeout, subscribes before startup writes, and aggregates unsubscribe/scan-stop/disconnect failures during cleanup. This increment applies the pairing constraint before those existing connect/reconnect paths. | local state-machine tests; native carrier unverified |
 | Interface inventory | The daemon has explicit startup branches for TCP/backbone, local TCP/Unix, UDP, AutoInterface, serial, Weave, KISS/AX.25, pipe, I2P, Meshtastic, BLE, LoRa, and RNodeMulti aliases; unknown kinds record an explicit unsupported-kind failure. | source inspection; cross-platform/live evidence open |
 | Native Windows CI | The PR workflow runs the `rnode-ble` library test filter on `windows-latest`, compiling the target-gated WinRT resolver, executing deterministic paired-ID/runtime tests, and invoking the real WinRT paired-device query. A runner with no paired radios may validly return an empty set; this does not verify physical pairing. | passed on `ca6b6bba` (18 tests); physical paired-RNode behavior remains unverified |
+| AutoInterface software lifecycle | A loopback-only library regression keeps the returned `AutoDiscoveryRuntime` stop handle, awaits `stop()`, and restarts on the same discovery and data ports. The runtime summary confirms two discovery sockets and one data socket in each run; successful restart exercises supervisor completion and socket release without native interface enumeration or timing sleeps. | passed locally in this PR update; daemon ownership/shutdown wiring, native link-local enumeration, carrier-loss equivalence, and physical carrier behavior remain unverified |
 
 ## Commands and results
 
@@ -53,6 +54,17 @@ tools/scripts/check-module-size.sh                              PASS
 git diff --check                                                 PASS
 ```
 
+The additional loopback lifecycle slice ran in the same isolated worktree:
+
+```text
+cargo test -p reticulum-rs-transport auto_runtime_stop_releases_loopback_sockets_for_restart --lib -- --nocapture PASS (1 test)
+cargo test -p reticulum-rs-transport auto --lib                      PASS (112 tests)
+cargo fmt --all -- --check                                           PASS
+cargo clippy -p reticulum-rs-transport --all-targets --no-deps -- -D warnings PASS
+tools/scripts/check-module-size.sh                                    PASS
+git diff --check                                                     PASS
+```
+
 The hosted [Windows RNode BLE job](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/35803940756/job/107000373907)
 passed on commit `ca6b6bbab13007ca6d9adb55b525ce978f763043` and ran 18 tests,
 including `native_windows_paired_device_query_matches_reference_id_suffixes`
@@ -74,9 +86,11 @@ establish physical Windows pairing or carrier behavior.
   selection, stale paired references, partial service discovery, EOF versus
   idle reads, detection timeout, cancellation, reconnect, and bounded cleanup.
 - AutoInterface still needs native link-local enumeration, socket reuse,
-  carrier-loss recovery, and stop/restart evidence on each supported host;
-  the library-level runtime tests are not a substitute for those platform
-  traces or for retaining a daemon stop handle through its full lifecycle.
+  carrier-loss recovery, and stop/restart evidence on each supported host.
+  This loopback slice proves the library runtime's returned stop handle can
+  stop and restart the bound discovery/data runtime; it does not prove the
+  daemon retains that handle through process shutdown or establish platform
+  traces.
 - The complete TCP, local/shared, UDP, pipe, serial/KISS/AX.25, RNode,
   Weave, I2P, mobile, and other reference-family matrix remains only partly
   covered by local source/tests. Hosted/native platform combinations and

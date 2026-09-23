@@ -336,6 +336,53 @@
         assert_eq!(summary.adopted_interface_reconciler_count, 1);
     }
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn auto_runtime_stop_releases_loopback_sockets_for_restart() {
+        let discovery_reservation = std::net::UdpSocket::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+            .expect("reserve discovery loopback UDP port");
+        let data_reservation = std::net::UdpSocket::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+            .expect("reserve data loopback UDP port");
+        let discovery_port =
+            discovery_reservation.local_addr().expect("read discovery port").port();
+        let data_port = data_reservation.local_addr().expect("read data port").port();
+        drop(data_reservation);
+        drop(discovery_reservation);
+        let mut plan = build_startup_plan_from_candidates(&auto_iface(), Vec::new())
+            .expect("startup plan");
+        plan.startup_plan.discovery_listeners.push(AutoDiscoveryListenerBinding {
+            ifname: "lo".to_string(),
+            link_local_address: "127.0.0.1".to_string(),
+            unicast_bind_address: "127.0.0.1".to_string(),
+            unicast_bind_port: discovery_port,
+            multicast_group_address: "239.255.0.1".to_string(),
+            multicast_bind_address: "239.255.0.1".to_string(),
+            multicast_bind_port: discovery_port,
+        });
+        plan.startup_plan.data_listeners.push(AutoDataListenerBinding {
+            ifname: "lo".to_string(),
+            link_local_address: "127.0.0.1".to_string(),
+            bind_address: "127.0.0.1".to_string(),
+            bind_port: data_port,
+        });
+
+        let first = plan
+            .spawn_discovery_runtime_with_native_scope_ids()
+            .await
+            .expect("start loopback AutoInterface runtime");
+        assert_eq!(first.summary.bound_socket_count, 2);
+        assert_eq!(first.summary.data_socket_count, 1);
+        first.stop().await;
+
+        let restarted = plan
+            .spawn_discovery_runtime_with_native_scope_ids()
+            .await
+            .expect("restart after stop released discovery and data sockets");
+        assert_eq!(restarted.summary.bound_socket_count, 2);
+        assert_eq!(restarted.summary.data_socket_count, 1);
+        restarted.stop().await;
+    }
+
     #[test]
     fn auto_carrier_runtime_json_exposes_events_and_link_local_restart() {
         let plan = build_startup_plan_from_candidates(
