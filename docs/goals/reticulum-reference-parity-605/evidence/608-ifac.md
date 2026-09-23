@@ -498,3 +498,16 @@ cargo test -p reticulum-rs-transport --all-features --lib \
 This adds one accepted-child software reconfiguration case only. It does not
 complete the broader startup/error-reporting or carrier-family matrix, and it
 is not physical-carrier evidence; #608 remains open and partial.
+
+## PR #628 hosted PR-HIL fixture follow-up
+
+Run `35907636125` failed one virtual `python-channel-interop` case,
+`python_to_python_resource_roundtrip_through_rust_transport`. Its uploaded
+`hil-pr` artifact records the client receiving
+`resource-sha256-metadata:1048832:3a4739461afba12d31aaceffc313cac937feb465456d0cc483b55b2b6c319271:1048847:python-meta`
+and then timing out while awaiting the endpoint callback. The endpoint had
+delivered its acknowledgment; the client fixture was still matching the old
+metadata-free `resource-sha256` format. PR #638's metadata-aware expectation
+confirms the same fixture mismatch. This #628 follow-up updates only that
+Python test-client expectation; it does not change Resource or IFAC production
+behavior. No physical device was used, and local HIL was not run.
