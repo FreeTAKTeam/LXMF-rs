@@ -23,7 +23,8 @@ full operational parity**. The implemented BLE/HDLC/rngit increment and explicit
 remaining acceptance gates are recorded in
 [`rns-1.5.4-delta.md`](rns-1.5.4-delta.md). The 1.5.4 development reference is
 not the canonical release baseline. Pinned Python/Rust IFAC Channel and
-Resource interoperability is now exercised over TCP and UDP, while
+Resource interoperability is exercised over TCP and UDP; the `lxmd`/`reticulumd`
+UDP path also has bidirectional IFAC direct-message evidence. Broader
 carrier-family/support-matrix acceptance, remaining remote utility behavior,
 transport policy differences, and platform validation remain open; the
 focused #611 `rncp`
@@ -92,7 +93,7 @@ The project is best described by capability level:
 | Wire compatible | achieved | Core Reticulum packet/identity primitives and LXMF message encodings are implemented and tested. |
 | Direct-message interoperable | achieved | Selected bidirectional Rust/Python direct, link, channel, paper, and daemon paths are exercised in CI. |
 | Propagation interoperable | achieved | Propagated delivery, complete Python-only `LXMPeer.py` lifecycle coverage, and Python-reference propagation router fetch/download/sync lifecycle coverage are implemented and tested. |
-| Operationally substitutable | partial | IFAC daemon authentication, remaining remote utility workflows, and recorded transport-policy differences still prevent unconditional substitution. See the 1.5.4 delta acceptance gates. |
+| Operationally substitutable | partial | IFAC carrier-family/support-matrix acceptance, remaining remote utility workflows, and recorded transport-policy differences still prevent unconditional substitution. See the 1.5.4 delta acceptance gates. |
 | Python callable inventory coverage | mapped, not a full behavior guarantee | The strict inventory reports 1,857 complete, 0 partial, and 1 provenance-backed not-applicable entry; runtime exclusions and failed differential tests take precedence over these classifications. |
 | ZeroMQ SDK-access parity | achieved in v0.9.5 implementation | Generated classification and daemon-operation inventory live in `sdk-zmq-parity.json`; release evidence must still pass all gates. |
 | Independent implementation evidence | published for stable `v0.10.1` | Pinned rns-rs and Reticulum-Go release profiles cover two-node/multi-hop behavior; rns-rs additionally covers mixed/all-Rust five-node chains, routing policy, restart, shared daemon, exact large Resources, and deterministic chaos. Explicit peer divergences remain failures owned by the peer and are allowlisted narrowly by CI. |

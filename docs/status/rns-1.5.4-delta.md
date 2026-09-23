@@ -74,7 +74,7 @@ incomplete requirements:
 | Owner | Requirement | Current status |
 | ---: | --- | --- |
 | #607 | Review and integrate the initial PR increment | partial / unverified |
-| #608 | Wire IFAC into production carrier ingress and egress | partial; pinned Python TCP/UDP Channel and Resource evidence plus raw UDP rejection tests; carrier-family/support matrix pending |
+| #608 | Wire IFAC into production carrier ingress and egress | partial; pinned Python TCP/UDP Channel and Resource evidence, raw UDP rejection tests, and bidirectional UDP IFAC direct-message delivery through `lxmd`/`reticulumd`; broader carrier-family/support matrix pending |
 | #609 | Close transport, local-client, and shared-instance gaps | implemented but unproven; mixed-peer evidence pending |
 | #610 | Prove Resource collision, stream, and mixed-peer behavior | partial / unverified |
 | #611 | Exercise every reference utility through real network workflows | partial / unverified |
@@ -101,8 +101,11 @@ configured carrier ingress/egress, live reconfiguration, child inheritance,
 fail-closed malformed- and wrong-key-frame handling, and feature-gated carrier
 builds are covered. Pinned Python↔Rust TCP Channel/Resource and UDP
 Channel/Resource software traffic is evidenced; UDP Resources transfer in both
-directions on the same Rust-initiated Link. Remaining carrier-family/support-
-matrix, hardware, and public-network evidence remain separate acceptance gates.
+directions on the same Rust-initiated Link. PR #628 additionally verifies
+bidirectional authenticated UDP direct-message delivery through separate
+`lxmd`/`reticulumd` and Python processes, with an active Python link and zero
+live IFAC violations. Broader carrier-family/support-matrix, hardware, and
+public-network evidence remain separate acceptance gates.
 
 The #609 implementation slice now has committed local software evidence in
 [`evidence/609-transport-local-shared.md`](../goals/reticulum-reference-parity-605/evidence/609-transport-local-shared.md):

@@ -1,6 +1,6 @@
 # Issue #608 — IFAC carrier wiring evidence
 
-Status: **mixed software path evidenced; forward-parity acceptance remains open**.
+Status: **authenticated TCP and UDP daemon software paths evidenced; forward-parity acceptance remains open**.
 
 The implementation is based on the frozen Reticulum `1.5.4-dev` reference at
 `99de23c040d507e3fefca19e87b182302902725d`. It wires the existing Rust
@@ -66,14 +66,17 @@ serially because they use the shared Reticulum local-instance socket.
 ## Evidence boundary
 
 This artifact does not promote the #605 behavioral row or child #608 to
-complete. The daemon evidence covers one explicit authenticated TCP server and
-one Python LXMF client, including wrong-credential rejection and a
-stop/reconfigure/restart path; separate software-carrier tests now cover UDP,
-but they do not exercise the UDP daemon-process configuration path or raw
-tampered/truncated frames through the daemon process, and they do not cover
-every carrier family. Attached serial, RNode, BLE, KISS, LoRa, Meshtastic, Weave, and public-network
-evidence is also outside this local software run. Those rows remain
-`partial / unverified` or `hardware-unverified` in the forward ledger.
+complete. The daemon evidence covers authenticated TCP with wrong-credential
+rejection and stop/reconfigure/restart, plus a separate-process Python/Rust UDP
+IFAC path through `lxmd` and `reticulumd` that delivers direct LXMF messages in
+both directions, observes an active Python link, and records zero live IFAC
+violations. The UDP daemon trace does not yet exercise wrong UDP credentials,
+tampered/truncated frames, UDP reconfiguration/restart, shared-instance
+exceptions, or every carrier family through that production path; lower-level
+UDP regressions cover malformed and wrong-key frames. Attached serial, RNode,
+BLE, KISS, LoRa, Meshtastic, Weave, and public-network evidence is outside this
+local software run. Those rows remain `partial / unverified` or
+`hardware-unverified` in the forward ledger.
 
 ## Mainline follow-up: UDP software coverage
 
@@ -106,3 +109,46 @@ registered in `.github/workflows/verify.yml` against the pinned parity checkout
 so it runs in PR CI. This follow-up adds UDP evidence; it does not close the
 remaining carrier-family, frozen support-matrix, or physical-device evidence
 gaps and does not mark #608 or #605 complete.
+
+## PR #628 follow-up: UDP through the `lxmd` daemon path
+
+The implementation is recorded at candidate commit
+`83d3d885e775f84b415b6f41d003cae8251c12e4`, based on the exact Python
+references above. The regression starts separate Rust `lxmd`/`reticulumd` and
+Python LXMF/Reticulum processes over authenticated UDP and verifies successful
+direct-message delivery both ways, an active Python delivery link, and zero
+live Rust IFAC violations. The failure that motivated it exposed dropped UDP
+forwarding endpoints in `lxmd`'s generated `reticulumd` configuration; the fix
+preserves the endpoints and parses Python `UDPInterface` listen/forward aliases
+and its shared-port form. A diagnostic regression also ensures nested
+passphrase, IFAC key, secret, and token fields are redacted in failure snapshots.
+
+```text
+candidate: 83d3d885e775f84b415b6f41d003cae8251c12e4
+Python Reticulum: 99de23c040d507e3fefca19e87b182302902725d
+Python LXMF: 727830cefda83d9c6e3982b48675425f3f988f9c
+cargo fmt --all -- --check
+  passed
+cargo test -p lxmf-cli --bin lxmd
+  16 passed; 0 failed
+cargo test -p lxmf-cli --test python_lxmd_remote_relay \
+  rpc_diagnostics_redact_ifac_credentials_recursively -- --nocapture
+  1 passed; 0 failed
+RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
+LXMF_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/LXMF LXMF_PYTHON_BIN=python3 \
+cargo test -p lxmf-cli --test python_lxmd_remote_relay ifac -- \
+  --ignored --nocapture --test-threads=1
+  3 passed; 0 failed (serial process execution required)
+cargo clippy -p lxmf-cli --all-targets --all-features --no-deps -- -D warnings
+  passed
+bash tools/scripts/check-module-size.sh
+  passed
+.github/workflows/verify.yml YAML parse
+  passed
+```
+
+The Verify PR job now runs the ignored IFAC daemon scenarios against the
+pinned Python checkouts. This adds production-path UDP success evidence; it
+does not establish UDP negative/reconfiguration parity or close the remaining
+software carrier-family and support-matrix gaps, and does not claim physical
+verification under #616.
