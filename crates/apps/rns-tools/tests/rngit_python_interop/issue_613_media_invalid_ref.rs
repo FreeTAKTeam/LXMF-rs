@@ -8,11 +8,12 @@ use std::process::{Command, Stdio};
 
 #[test]
 #[ignore = "requires local Python Reticulum checkout"]
-fn rngit_invalid_media_ref_returns_reference_denial_over_python_link() -> io::Result<()> {
+fn rngit_media_validation_denials_return_false_over_python_link() -> io::Result<()> {
     let _test_guard =
         super::PYTHON_INTEROP_TEST_LOCK.lock().expect("Python interop test lock poisoned");
     let temp = tempfile::tempdir()?;
     let root = create_repository_fixture(temp.path())?;
+    seed_private_media_repository(&root, &temp.path().join("private-source"))?;
     let python_repo = python_repo();
     if !python_repo.join("RNS/Link.py").is_file() {
         return Err(io::Error::new(
@@ -67,16 +68,58 @@ fn rngit_invalid_media_ref_returns_reference_denial_over_python_link() -> io::Re
         );
         assert_eq!(result["valid_ref"]["metadata_present"], true);
         assert_eq!(result["valid_ref"]["media_bytes_received"], true);
-        assert_eq!(result["invalid_ref"]["response_received"], true);
-        assert_eq!(result["invalid_ref"]["failed"], false);
-        assert_eq!(result["invalid_ref"]["response_is_false"], true);
-        assert_eq!(result["invalid_ref"]["metadata_present"], false);
-        assert_eq!(result["invalid_ref"]["media_bytes_received"], false);
+        assert_eq!(result["valid_ref"]["failed"], false);
+        for case in [
+            "missing_key",
+            "missing_path",
+            "insufficient_path",
+            "malformed_path",
+            "empty_file_path",
+            "denied_private_access",
+            "absent_blob",
+            "invalid_ref",
+        ] {
+            assert_eq!(result[case]["response_received"], true, "case {case}: {result}");
+            assert_eq!(result[case]["failed"], false, "case {case}: {result}");
+            assert_eq!(result[case]["response_is_false"], true, "case {case}: {result}");
+            assert_eq!(result[case]["metadata_present"], false, "case {case}: {result}");
+            assert_eq!(result[case]["media_bytes_received"], false, "case {case}: {result}");
+            assert_eq!(result[case]["private_canary_leaked"], false, "case {case}: {result}");
+        }
         Ok(())
     })();
     let _ = server.kill();
     let _ = server.wait();
     result
+}
+
+fn seed_private_media_repository(
+    root: &std::path::Path,
+    source: &std::path::Path,
+) -> io::Result<()> {
+    fs::create_dir_all(source)?;
+    run_git(source, &["init", "-q"])?;
+    run_git(source, &["config", "user.email", "private-media@example.invalid"])?;
+    run_git(source, &["config", "user.name", "private-media-fixture"])?;
+    fs::write(source.join("secret.bin"), b"PRIVATE_MEDIA_CANARY_613")?;
+    run_git(source, &["add", "secret.bin"])?;
+    run_git(source, &["commit", "-qm", "private media fixture"])?;
+    let private_repo = root.join("private/repo");
+    let private_repo_url = private_repo.to_string_lossy().into_owned();
+    run_git(source, &["remote", "add", "origin", &private_repo_url])?;
+    run_git(source, &["push", "-q", "origin", "HEAD:main"])
+}
+
+fn run_git(directory: &std::path::Path, args: &[&str]) -> io::Result<()> {
+    let output = Command::new("git").args(args).current_dir(directory).output()?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(io::Error::other(format!(
+            "git {args:?} failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        )))
+    }
 }
 
 const PYTHON_CLIENT: &str = r#"
@@ -108,9 +151,9 @@ link.set_link_closed_callback(closed)
 if not ready.wait(30) or closed_early:
     raise RuntimeError("invalid-ref Link did not establish")
 
-def request(path):
+def request(data, label):
     completed = threading.Event()
-    result = {"response_received": False, "failed": False}
+    result = {"case": label, "response_received": False, "failed": False}
     def response(receipt):
         value = receipt.response
         result["response_received"] = True
@@ -120,24 +163,41 @@ def request(path):
             result["payload_hex"] = payload.hex()
             result["media_bytes_received"] = bool(payload)
             result["name"] = (receipt.metadata or {}).get("name", b"").decode("utf-8")
+            result["private_canary_leaked"] = b"PRIVATE_MEDIA_CANARY_613" in payload
+        elif isinstance(value, (bytes, bytearray)):
+            result["media_bytes_received"] = bool(value)
+            result["private_canary_leaked"] = b"PRIVATE_MEDIA_CANARY_613" in value
         else:
             result["response_is_false"] = value is False
-            result["media_bytes_received"] = isinstance(value, (bytes, bytearray)) and bool(value)
+            result["media_bytes_received"] = False
+            result["private_canary_leaked"] = False
         completed.set()
     def failed(receipt):
         result["failed"] = True
         completed.set()
-    receipt = link.request("/media", {"key": b"invalid-ref-differential", "path": path}, response_callback=response, failed_callback=failed, timeout=8)
+    receipt = link.request("/media", data, response_callback=response, failed_callback=failed, timeout=4)
     if receipt is False:
         result["failed"] = True
     else:
-        completed.wait(10)
+        if not completed.wait(7):
+            result["timed_out"] = True
     return result
 
-valid = request("/media/group/repo/main/assets%2Fspace+name.bin")
+key = b"issue-613-media-validation"
+valid_path = "/media/group/repo/main/assets%2Fspace+name.bin"
+valid = request({"key": key, "path": valid_path}, "valid_ref")
 if not valid["response_received"] or valid.get("failed"):
     raise RuntimeError("known readable main-ref media request did not return a Resource")
-invalid = request("/media/group/repo/no-such-ref-613/assets%2Fspace+name.bin")
+denials = {
+    "missing_key": request({"path": valid_path}, "missing_key"),
+    "missing_path": request({"key": key}, "missing_path"),
+    "insufficient_path": request({"key": key, "path": "/media/group/repo"}, "insufficient_path"),
+    "malformed_path": request({"key": key, "path": "/not-media/group/repo/main/file.bin"}, "malformed_path"),
+    "empty_file_path": request({"key": key, "path": "/media/group/repo/main/"}, "empty_file_path"),
+    "denied_private_access": request({"key": key, "path": "/media/private/repo/main/secret.bin"}, "denied_private_access"),
+    "absent_blob": request({"key": key, "path": "/media/group/repo/main/assets%2Fabsent+file.bin"}, "absent_blob"),
+    "invalid_ref": request({"key": key, "path": "/media/group/repo/no-such-ref-613/assets%2Fspace+name.bin"}, "invalid_ref"),
+}
 link.teardown()
-print(json.dumps({"valid_ref": valid, "invalid_ref": invalid}, sort_keys=True))
+print(json.dumps({"valid_ref": valid, **denials}, sort_keys=True))
 "#;

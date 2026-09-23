@@ -52,7 +52,13 @@ remain unverified. A failure-injection regression proves a failed directory
 deletion stays tracked and succeeds on a later link-cleanup retry; cleanup
 handlers log the path and Link ID, including under `--silent`. A focused
 timeout regression also proves both WebP pipeline subprocesses are terminated
-and reaped. The utility and full operational parity rows remain partial.
+and reaped. A same-Link pinned-Python media differential now verifies the
+successful `main` Resource control and scalar-`False` denials for missing or
+malformed request fields, denied private access, absent blobs, and invalid
+refs, with no Resource metadata or media bytes on denial. Object-info failure
+maps to `False`; a later media-content read failure still maps to no response
+and has not been separately fault-injected. The utility and full operational
+parity rows remain partial.
 
 The forward #610 Resource slice also has new pinned-Python evidence at
 `8b29132c`: a sender-side file-like reader raises during a split transfer,

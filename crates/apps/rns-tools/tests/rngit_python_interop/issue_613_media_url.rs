@@ -75,7 +75,9 @@ fn rngit_media_decodes_encoded_path_and_returns_resource_metadata() -> io::Resul
             response["sha256"],
             "78acd6db2006e4da7531327f95f5b00b97c53d18e59326e90dacdee2cba1e1a7"
         );
-        assert_eq!(response["absent_blob_failed_closed"], true);
+        assert_eq!(response["absent_blob_response_is_false"], true);
+        assert_eq!(response["absent_blob_metadata_present"], false);
+        assert_eq!(response["absent_blob_media_bytes_received"], false);
         Ok(())
     })();
 
@@ -130,12 +132,20 @@ def request(path, data, timeout=30):
     result = {}
     def response(receipt):
         value = receipt.response
+        result["response_received"] = True
+        result["metadata_present"] = receipt.metadata is not None
+        if value is False:
+            result["response_is_false"] = True
+            result["media_bytes_received"] = False
+            finished.set()
+            return
         payload = value.read() if hasattr(value, "read") else value
         metadata = receipt.metadata or {}
         name = metadata.get("name", b"")
         result["name"] = name.decode("utf-8") if isinstance(name, bytes) else str(name)
         result["sha256"] = hashlib.sha256(payload).hexdigest()
         result["size"] = len(payload)
+        result["media_bytes_received"] = bool(payload)
         finished.set()
     def failed(receipt):
         result["failed"] = True
@@ -161,13 +171,15 @@ missing_blob = request("/media", {
     "path": "/media/group/repo/HEAD/assets%2Fabsent+file.bin",
 }, timeout=3)
 link.teardown()
-if "sha256" in missing_blob:
-    raise RuntimeError("absent media blob unexpectedly returned a response")
+if not missing_blob.get("response_is_false"):
+    raise RuntimeError("absent media blob did not return the reference False response")
 print(json.dumps({
     "encoded_path": encoded_path,
     "name": media["name"],
     "sha256": media["sha256"],
     "size": media["size"],
-    "absent_blob_failed_closed": "failed" in missing_blob or "timed_out" in missing_blob,
+    "absent_blob_response_is_false": missing_blob.get("response_is_false", False),
+    "absent_blob_metadata_present": missing_blob.get("metadata_present", False),
+    "absent_blob_media_bytes_received": missing_blob.get("media_bytes_received", True),
 }, sort_keys=True))
 "#;

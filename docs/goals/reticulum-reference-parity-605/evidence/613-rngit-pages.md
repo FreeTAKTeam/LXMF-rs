@@ -26,7 +26,7 @@ and a pinned-Python cancellation trace for an in-flight `/media` Resource.
 | NomadNet node | Persistent/seeded identity, `nomadnetwork.node` destination, TCP listen/connect interfaces, periodic announce app data, request-path decoding, page/file dispatch, packet or Resource response selection | local verified; pinned Python live TCP page/media trace evidenced |
 | Pages | Index/group/repository/tree/blob/commits/commit/refs/stats/releases/release/work/work-doc paths, `var_*` query fields, ref/path validation, not-found/error rendering, custom static and bounded executable templates, binary-image `/media` markup | local verified; pinned Python live trace covers missing repository, invalid ref, missing blob, and visual/reference rendering remains incomplete |
 | Access control | Repository read/stats/release checks, work-document read checks, blocked unidentified-client no-identity template, malformed/denied/missing request paths fail closed | local verified; pinned Python live trace covers a denied repository |
-| Media/files | `/media` key and path validation, URL decoding, ref/blob resolution, binary-safe filename metadata, download/artifact/work-doc endpoints, published-release filtering and absent-blob handling | local verified; pinned Python Resource payload/metadata and `/file/download` content/filename trace evidenced; separate production-Link case verifies percent-decoded nested media path, bytes, digest, filename and absent-blob rejection |
+| Media/files | `/media` key and path validation, URL decoding, ref/blob resolution, binary-safe filename metadata, download/artifact/work-doc endpoints, published-release filtering and absent-blob handling | local verified; pinned Python Resource payload/metadata and `/file/download` content/filename trace evidenced; same-Link production differential verifies a valid nested-path Resource control and scalar-False denials for missing key/path, malformed/insufficient/empty path, denied private access, absent blob, and invalid ref |
 | WebP conversion | Backend preference and `RNGIT_MEDIA_BACKEND`, argv-only process construction, quality/max-dimension options, 8-second pipeline bound, bounded stderr, output validation, temporary-directory cleanup, raw fallback | local code/tests; pinned Python live `ffmpeg` conversion of a valid PNG returns validated WebP; timeout regression verifies both pipeline children are terminated and reaped; other backends and visual parity remain unverified |
 | Resource wire | Explicit outbound compression control, with `/media` responses sent uncompressed and a regression asserting no compressed advertisement | local verified; live Python Resource delivery and metadata evidenced |
 | Link-scoped cleanup | Converted-media temp data is retained for an active Link and removed on `Closed`, `Stale`, or missing-link state; graceful teardown and in-flight `/media` Resource cancellation are exercised against pinned Python | deterministic cleanup tests plus ignored `rngit_python_interop::rngit_serves_pages_and_media_to_pinned_python_client` and `rngit_python_interop::rngit_cancels_in_flight_media_resource_on_python_link_teardown` | active, stale, closed, missing-link, graceful-disconnect, and synchronized partial-Resource cancellation paths verified; abrupt-process stale transition and other filesystem failures remain open |
@@ -71,9 +71,9 @@ returns `name=valid.webp` and a validated `RIFF/WEBP` payload. The invalid
 image fixture still follows raw fallback, and both Resource responses use the
 explicit `auto_compress=False` boundary. The same pinned client then submits
 media requests with a missing key, missing path, and insufficient path
-components; each receives no response/failure callback rather than an
-unexpected payload, proving the live malformed-request boundary fails closed.
-This does not promote visual-rendering parity.
+components. Each receives the reference's scalar `False` response, with no
+Resource metadata or media bytes. This does not promote visual-rendering
+parity.
 
 For the cleanup assertion, the Rust server uses an isolated `TMPDIR`/`TEMP`.
 The Python client observes exactly one `rngit-media-*` directory after the
@@ -115,7 +115,8 @@ and uses the frozen Python RNS client over a real TCP Reticulum Link. It
 requests `/media/group/repo/HEAD/assets%2Fspace+name.bin` and verifies the
 Resource metadata name `space name.bin`, 29 binary bytes, and SHA-256
 `78acd6db2006e4da7531327f95f5b00b97c53d18e59326e90dacdee2cba1e1a7`. A
-second request for an absent encoded blob returns no payload. The pinned
+second request for an absent encoded blob returns scalar `False` without
+Resource metadata or media bytes. The pinned
 `pages.py` decodes the file-path tail with `urllib.parse.unquote_plus` but does
 not decode the group, repository, or ref components; accordingly this case
 uses the literal ref `HEAD`. This is a focused acceptance slice only and does
@@ -132,12 +133,10 @@ A separate pinned-Python differential case exercises `/media` authorization
 over a production Rust TCP Link. The fixture contains a committed
 `secret.bin` in a repository whose `read:none` policy denies access; the Python
 client leaves its Link unidentified and requests that valid blob at
-`/media/private/repo/HEAD/secret.bin`. The Rust service sends no response, and
-the client checks that the private canary bytes are absent. The pinned
-`pages.py` handler returns `False` on access denial; pinned `Link.py` serializes
-that non-`None` value as a scalar response. This case therefore evidences
-Rust-side confidentiality, not matching denial wire semantics. It does not
-complete the `/media` acceptance set or the overall #613 acceptance.
+`/media/private/repo/HEAD/secret.bin`. Rust returns scalar `False`, with no
+Resource metadata, media bytes, or private canary. This matches the pinned
+`pages.py` denial and `Link.py` scalar-response behavior. The focused case does
+not by itself complete the `/media` acceptance set or overall #613 acceptance.
 
 ```text
 RETICULUM_PY_REPO=<checkout at 99de23c040d507e3fefca19e87b182302902725d> \
@@ -146,25 +145,34 @@ LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
   -- --ignored --nocapture                                      PASS (1 test)
 ```
 
-The invalid-ref differential uses one production Rust service and one pinned
-Python TCP Link for both requests. First, `/media/group/repo/main/assets%2Fspace+name.bin`
-returns a Resource named `space name.bin` with the exact 29-byte fixture
-(`70657263656e74206465636f646564206d65646961207061746800ff0a`). Then the same
-path with ref `no-such-ref-613` returns the reference's scalar `False`, with no
-Resource metadata or media bytes. The pinned `pages.py` checks repository
-access before `resolve_ref` and returns `False` for an unresolved ref; pinned
-`Link.py` sends any non-`None` handler result as a response. The Rust handler
-now emits that false-valued response for an invalid resolved ref and accepts
-ordinary short Git refs such as `main` in its ref validation. This covers only
-the invalid-ref case; other named media validations and the overall #613
-acceptance remain open.
+The expanded media-validation differential uses one production Rust service
+and one pinned Python TCP Link. It first fetches
+`/media/group/repo/main/assets%2Fspace+name.bin` and verifies the Resource name
+`space name.bin` and exact bytes
+(`70657263656e74206465636f646564206d65646961207061746800ff0a`). On that same
+Link it then requests missing key, missing path, insufficient and malformed
+paths, an empty file path, a valid blob denied by private-repository policy, an
+absent blob, and `no-such-ref-613`. Each denial returns scalar `False` with no
+Resource metadata or media bytes; the private case also verifies that the
+committed canary does not leak. The cases correspond to the pinned
+`pages.py::serve_media` false-return branches, and pinned `Link.py` sends each
+non-`None` value as a scalar response. Rust checks object presence before
+reading media bytes: failed object-info resolution returns `False`, while a
+later `page_blob` read failure remains no-response. That latter failure path
+is preserved in code but is not separately fault-injected by this suite. The
+whole #613 acceptance remains partial pending other named page/media and
+network-workflow conditions.
 
 ```text
 RETICULUM_PY_REPO=<checkout at 99de23c040d507e3fefca19e87b182302902725d> \
 LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
-  rngit_invalid_media_ref_returns_reference_denial_over_python_link \
+  rngit_media_validation_denials_return_false_over_python_link \
   -- --ignored --nocapture                                      PASS (1 test)
 ```
+
+The follow-up also reran the updated encoded-path, private-access, and main
+pinned-Python page/media interop cases against the exact reference checkout at
+`99de23c040d507e3fefca19e87b182302902725d`; all four focused tests passed.
 
 The periodic service sweep now treats `LinkStatus::Stale` the same as `Closed`
 and a missing transport link, matching pinned Python `clean_links()`, which

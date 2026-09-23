@@ -313,11 +313,25 @@ def request(path, data):
         raise RuntimeError(result["error"] + ": " + path)
     return result
 
-def request_failure(path, data):
+def request_media_denial(path, data):
     finished = threading.Event()
-    result = {"failed": False, "timed_out": False, "unexpected_response": False}
+    result = {
+        "failed": False,
+        "timed_out": False,
+        "response_received": False,
+        "response_is_false": False,
+        "metadata_present": False,
+        "media_bytes_received": False,
+    }
     def response(receipt):
-        result["unexpected_response"] = True
+        value = receipt.response
+        result["response_received"] = True
+        result["response_is_false"] = value is False
+        result["metadata_present"] = receipt.metadata is not None
+        if hasattr(value, "read"):
+            result["media_bytes_received"] = bool(value.read())
+        elif isinstance(value, (bytes, bytearray)):
+            result["media_bytes_received"] = bool(value)
         finished.set()
     def failed(receipt):
         result["failed"] = True
@@ -389,15 +403,15 @@ media_temp_directories_during_link = [
 ]
 if not media_temp_directories_during_link:
     raise RuntimeError("successful WebP conversion did not retain link-scoped temporary data")
-missing_media_key = request_failure(
+missing_media_key = request_media_denial(
     "/media",
     {"path": "/media/group/repo/HEAD/image.png"},
 )
-missing_media_path = request_failure(
+missing_media_path = request_media_denial(
     "/media",
     {"key": b"rngit-python-interop"},
 )
-malformed_media_path = request_failure(
+malformed_media_path = request_media_denial(
     "/media",
     {"key": b"rngit-python-interop", "path": "/media/group/repo"},
 )
@@ -419,8 +433,15 @@ for label, result in [
     ("missing media path", missing_media_path),
     ("malformed media path", malformed_media_path),
 ]:
-    if (not result["failed"] and not result["timed_out"]) or result["unexpected_response"]:
-        raise RuntimeError(f"{label} did not fail closed: {result}")
+    if (
+        result["failed"]
+        or result["timed_out"]
+        or not result["response_received"]
+        or not result["response_is_false"]
+        or result["metadata_present"]
+        or result["media_bytes_received"]
+    ):
+        raise RuntimeError(f"{label} did not return the reference False denial: {result}")
 print(json.dumps({
     "page": page,
     "missing_repository": missing_repository,

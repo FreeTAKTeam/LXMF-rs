@@ -74,7 +74,11 @@ fn rngit_denies_private_media_over_unidentified_python_link() -> io::Result<()> 
         let response: serde_json::Value = serde_json::from_slice(&output.stdout)
             .map_err(|error| io::Error::other(format!("invalid client JSON: {error}")))?;
         assert_eq!(response["denied"], true);
-        assert_eq!(response["response_received"], false);
+        assert_eq!(response["response_received"], true);
+        assert_eq!(response["failed"], false);
+        assert_eq!(response["response_is_false"], true);
+        assert_eq!(response["metadata_present"], false);
+        assert_eq!(response["media_bytes_received"], false);
         assert_eq!(response["private_canary_leaked"], false);
         Ok(())
     })();
@@ -127,9 +131,16 @@ finished = threading.Event()
 result = {"response_received": False, "failed": False}
 def response(receipt):
     value = receipt.response
-    payload = value.read() if hasattr(value, "read") else value
     result["response_received"] = True
-    result["private_canary_leaked"] = b"PRIVATE_MEDIA_CANARY_613" in payload
+    result["metadata_present"] = receipt.metadata is not None
+    if value is False:
+        result["response_is_false"] = True
+        result["media_bytes_received"] = False
+        result["private_canary_leaked"] = False
+    else:
+        payload = value.read() if hasattr(value, "read") else value
+        result["private_canary_leaked"] = b"PRIVATE_MEDIA_CANARY_613" in payload
+        result["media_bytes_received"] = bool(payload)
     finished.set()
 def failed(receipt):
     result["failed"] = True
@@ -140,7 +151,7 @@ if receipt is False:
 else:
     finished.wait(6)
 link.teardown()
-result["denied"] = result["failed"] or not result["response_received"]
+result["denied"] = result.get("response_is_false", False) and not result.get("media_bytes_received", True)
 result.setdefault("private_canary_leaked", False)
 print(json.dumps(result, sort_keys=True))
 "#;

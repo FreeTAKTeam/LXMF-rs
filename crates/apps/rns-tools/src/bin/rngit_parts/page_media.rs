@@ -80,7 +80,7 @@ impl ReticulumGitNode {
         let repository = percent_decode_plus(components.next()?)?;
         let reference = percent_decode_plus(components.next()?)?;
         let file_path = percent_decode_plus(components.next()?)?;
-        if group.is_empty() || repository.is_empty() || reference.is_empty() || file_path.is_empty() {
+        if group.is_empty() || repository.is_empty() || reference.is_empty() {
             return None;
         }
         Some((group, repository, reference, file_path))
@@ -96,16 +96,44 @@ impl ReticulumGitNode {
         remote: [u8; 16],
         link_id: [u8; 16],
     ) -> Option<PageResponse> {
-        map_value(map, &rmpv::Value::String("key".into()))?;
-        let request_path = map_string_value(map, "path")?;
-        let (group, repository, reference, file_path) = Self::media_request_path(&request_path)?;
-        let record = self.accessible_repository(&remote, &group, &repository)?;
+        if map_value(map, &rmpv::Value::String("key".into())).is_none() {
+            return Some(page_denial_response());
+        }
+        let Some(request_path) = map_string_value(map, "path") else {
+            return Some(page_denial_response());
+        };
+        let Some((group, repository, reference, file_path)) = Self::media_request_path(&request_path) else {
+            return Some(page_denial_response());
+        };
+        let Some(record) = self.accessible_repository(&remote, &group, &repository) else {
+            return Some(page_denial_response());
+        };
         let repository_path = record.path.clone();
         let Some(resolved) = Self::resolve_page_ref(&repository_path, &reference) else {
             return Some(page_denial_response());
         };
+        if file_path.is_empty() {
+            return Some(page_denial_response());
+        }
+        if !Self::valid_page_path(&file_path) {
+            return Some(page_denial_response());
+        }
+        let blob_spec = format!("{resolved}:{file_path}");
+        if Self::page_git_output(
+            &repository_path,
+            &["cat-file".into(), "-s".into(), blob_spec.clone()],
+            64,
+        )
+        .is_none()
+        {
+            return Some(page_denial_response());
+        }
+        // A missing object is the pinned handler's False response above. Once
+        // it is known to exist, a failed content read remains no-response.
         let blob = Self::page_blob(&repository_path, &resolved, &file_path, MEDIA_BLOB_LIMIT)?;
-        let original_name = filename(&file_path)?;
+        let Some(original_name) = filename(&file_path) else {
+            return Some(page_denial_response());
+        };
         let extension = Path::new(&file_path)
             .extension()
             .and_then(|value| value.to_str())

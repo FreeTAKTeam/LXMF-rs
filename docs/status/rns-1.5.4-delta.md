@@ -271,9 +271,12 @@ path and other filesystem failures remain unverified. The separate
 not complete the page issue's broader Git/work acceptance. The row remains
 partial and unverified because other conversion backends, complete reference
 rendering, remaining page/file cases, other restart/fault cleanup paths, and end-to-end
-rngit Git/work network workflows remain open. Commit `e41189c8` adds live
-malformed-media requests with missing keys, missing paths, and insufficient
-path components; each fails closed without an unexpected response. The
+rngit Git/work network workflows remain open. Commit `e41189c8` initially added
+live malformed-media requests with missing keys, missing paths, and
+insufficient path components. The later #613 production-handler follow-up
+updates those cases to require the pinned scalar `False` response, with no
+Resource metadata or media bytes, and adds same-Link coverage for private
+access, absent blobs, malformed/empty paths, and invalid refs. The
 issue-specific follow-up observes the converted-media temp directory during
 the active Python Link and verifies the production `LinkEvent::Closed` handler
 removes it after teardown, against frozen Python commit
