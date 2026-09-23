@@ -40,12 +40,15 @@ These fixtures make the intended boundaries executable: unavailable hardware
 or a blocked runner cannot become success, a new target callable cannot be
 silently omitted, and a matching symbol is not behavioral evidence by itself.
 
-The roadmap and parity matrix inventory platform and interface families, but
-the exact required platform/device/client rows have not been frozen as a finite
-support matrix. #606 acceptance item 6 remains open pending an owner decision;
-excluding #616 verification from this software goal does not make that matrix
-decision complete. Hardware-unverified and unavailable rows remain separate
-from software-contract results.
+The finite verification inventory is declared in
+[`606-support-matrix.md`](606-support-matrix.md). It is grounded in configured
+hosted workflow OS families, daemon interface/HIL profile names, the pinned
+Reticulum 1.5.4-dev target, and the configured independent peers. Hosted runner
+architectures are not pinned, so the matrix explicitly records architecture as
+not declared/not verified rather than inferring it. Physical and direct
+external-network rows are **NOT RUN / excluded** from this software goal under
+the explicit #616 scope decision in `GOAL.md`; the matrix is not operational
+acceptance and does not close #606 or #616.
 
 ## Commands and results
 
@@ -68,12 +71,13 @@ behavioral requirement is marked verified by this increment.
 
 ## Remaining acceptance boundary
 
-The checker, local deliberate-failure fixtures, and hosted exact-head execution
-are in place. Full behavioral evidence for every contract row, an owner-frozen
-finite platform/device/client support matrix, and independent review of the
-target delta remain outstanding. The parent issue therefore remains open, and
-later implementation evidence must link each row to observed behavior before
-any status promotion.
+The checker, local deliberate-failure fixtures, hosted exact-head execution,
+and finite verification inventory are in place. Full behavioral evidence for
+every contract row and independent review of the target delta remain
+outstanding. Platform runtime and physical/client operation remain separately
+unverified under #616. The parent issue therefore remains open, and later
+implementation evidence must link each row to observed behavior before any
+status promotion.
 
 ## Public SDK/RPC advisory increment
 
@@ -207,5 +211,9 @@ git diff --check                                                                
 ```
 
 The checker hardening does not change the frozen pins or promote a behavioral
-requirement. The finite support matrix, full behavioral observations, and
-independent target-delta review remain open; #606 and #605 remain open.
+requirement. The finite verification inventory is recorded in
+[`606-support-matrix.md`](606-support-matrix.md); it makes no platform-support
+claim beyond configured workflow coverage and claims no physical/client
+result. Full behavioral observations and independent target-delta review
+remain open; #606 and #605 remain open, and #616 remains excluded and
+hardware-unverified.
