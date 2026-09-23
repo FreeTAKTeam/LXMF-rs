@@ -152,6 +152,7 @@ class ChannelEndpoint:
             "resource-compression",
             "resource-multi-hop",
             "cancel-resource",
+            "cancel-resource-segment-two",
             "resource-shutdown",
             "resource-reader-failure",
         ):
@@ -165,6 +166,23 @@ class ChannelEndpoint:
                         flush=True,
                     )
                     resource.cancel()
+
+                link.set_resource_started_callback(on_resource_started)
+
+            if self.payload_kind == "cancel-resource-segment-two":
+                channel.register_message_type(MessageTest)
+
+                def on_resource_started(resource) -> None:
+                    if resource.segment_index != 2:
+                        return
+
+                    def cancel_after_first_part(progress_resource) -> None:
+                        if progress_resource.received_count == 0:
+                            return
+                        channel.send(MessageTest("resource-segment-cancel", "2"))
+                        progress_resource.cancel()
+
+                    resource.progress_callback(cancel_after_first_part)
 
                 link.set_resource_started_callback(on_resource_started)
 
@@ -724,6 +742,7 @@ def main() -> int:
             "resource-compression-disabled",
             "resource-multi-hop",
             "cancel-resource",
+            "cancel-resource-segment-two",
             "resource-shutdown",
             "resource-reader-failure",
             "resource-file-reader-failure",
