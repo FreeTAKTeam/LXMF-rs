@@ -561,3 +561,28 @@ cargo test -p reticulum-rs-transport --lib \
 
 This proves one transport-disabled/shared-child/locally-hosted software matrix
 cell. It does not establish the wider transport matrix or promote issue #609.
+
+## Transport-enabled local LinkRequest from a shared child
+
+`enabled_shared_daemon_delivers_local_link_request_only_to_requesting_child`
+repeats the production-path scenario with transit forwarding enabled. It
+asserts exactly one outbound packet, a `LinkRequestProof` directed to the
+requesting child, for the derived link ID, with no transport header. The local
+destination accepts the link and no second packet is emitted for the sibling;
+the delivery/forwarding counts are therefore one local response and zero
+transit copies.
+
+The frozen Python source takes the same local-destination branch independent
+of transit policy: `Transport._inbound` calls `destination.receive(packet)` for
+a matching local LinkRequest (lines 2540-2567), and `Link.validate_request`
+binds the new link to `packet.receiving_interface` before generating its
+proof (lines 186-218). This is a source-level comparison, not a live Python
+socket differential. Together with the preceding disabled case, it verifies
+both forwarding-policy settings for this one shared-child/locally-hosted
+combination; issue #609's broader matrix remains open.
+
+```text
+cargo test -p reticulum-rs-transport --lib \
+  enabled_shared_daemon_delivers_local_link_request_only_to_requesting_child -- --nocapture
+# 1 passed; 0 failed
+```
