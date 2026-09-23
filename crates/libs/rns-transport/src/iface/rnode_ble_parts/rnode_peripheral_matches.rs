@@ -287,6 +287,17 @@ impl NativeRnodeBleKissInterface {
     }
 
     pub async fn spawn(context: InterfaceContext<Self>) {
+        Self::spawn_with_backend_factory(context, |settings| {
+            NativeRnodeBleBackend::new(settings)
+        })
+        .await;
+    }
+
+    async fn spawn_with_backend_factory<B, F>(context: InterfaceContext<Self>, mut backend_factory: F)
+    where
+        B: RnodeBleBackend,
+        F: FnMut(NativeRnodeBleSettings) -> B,
+    {
         let iface_stop = context.channel.stop.clone();
         let iface_address = context.channel.address;
         let ifac_state = context.channel.ifac_state.clone();
@@ -325,7 +336,7 @@ impl NativeRnodeBleKissInterface {
                 break;
             }
 
-            let backend = NativeRnodeBleBackend::new(settings.clone());
+            let backend = backend_factory(settings.clone());
             let mut runtime = RnodeBleKissRuntime::new(backend, config.clone());
             if let Err(err) = runtime.startup().await {
                 log::warn!(
@@ -335,7 +346,7 @@ impl NativeRnodeBleKissInterface {
                     err
                 );
                 let mut backend = runtime.into_backend();
-                if let Err(cleanup_error) = backend.cleanup().await {
+                if let Err(cleanup_error) = backend.close().await {
                     log::warn!(
                         "RNode BLE cleanup failed after setup error iface={} error={cleanup_error:?}",
                         label
@@ -643,7 +654,7 @@ impl NativeRnodeBleKissInterface {
                 log::warn!("RNode BLE shutdown failed iface={} error={error:?}", label);
             }
             let mut backend = runtime.into_backend();
-            if let Err(error) = backend.cleanup().await {
+            if let Err(error) = backend.close().await {
                 log::warn!("RNode BLE cleanup failed iface={} error={error:?}", label);
             }
             if context.cancel.is_cancelled() || iface_stop.is_cancelled() {

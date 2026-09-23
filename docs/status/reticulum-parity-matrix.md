@@ -399,6 +399,13 @@ placeholders:
   close-failure status during aborted startup. Native Android callback/resource
   behavior, physical RNode BLE/SPP lifecycle cycling, and long-running hardware
   soak evidence remain `hardware-unverified` external mobile/HIL work.
+- A private factory at the native BLE worker boundary supports deterministic
+  software fault injection of missing `CMD_DETECT`: the actual worker reaches
+  its configured bounded fallback, sends deferred configuration, and verifies
+  cleanup followed by fresh-backend restart after an injected disconnect. This
+  does not exercise native GATT or a
+  physical BLE device; pinned Python `ble_detect_timeout` behavior is five
+  seconds at Reticulum `99de23c040d507e3fefca19e87b182302902725d`.
 - Meshtastic tunnel support includes the reference `RETICULUM_TUNNEL_APP`
   framing/reassembly layer, modem-preset pacing, missing-chunk requests,
   node/destination route learning, an injectable bearer handle, daemon config

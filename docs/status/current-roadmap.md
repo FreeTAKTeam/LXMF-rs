@@ -71,6 +71,13 @@ AutoInterface activation helper, manager channel registration/removal, runtime
 task/socket teardown, and restart on the same test-owned ports. It does not
 replace the remaining native-interface, broader #614 lifecycle, platform, or
 paired-device/hardware evidence and does not promote #614/#605 to complete.
+A private, worker-scoped backend factory now enables software-only fault
+injection through the actual BLE worker loop: withholding `CMD_DETECT` triggers
+the configured bounded fallback, a scripted disconnect exercises cleanup and
+fresh-backend restart, and cancellation closes the restarted backend. This was
+compared with pinned Python `99de23c040d507e3fefca19e87b182302902725d`'s
+five-second `ble_detect_timeout`; it is not physical BLE support or device
+evidence, and #614/#605 remain partial.
 
 LXMF-rs retains the v0.9.5 SDK-access baseline. The generated inventory records
 software-surface parity against Python RNS 1.5.2 at
