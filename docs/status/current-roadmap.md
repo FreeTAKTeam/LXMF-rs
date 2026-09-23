@@ -34,7 +34,10 @@ Python `Link.teardown()` reaches the Rust caller as `INITIATOR_CLOSED`.
 Channel retry exhaustion also has a pinned-Python localhost TCP trace: the
 test drops delivery proofs, observes all five default Python attempts, and
 verifies Rust receives the initiator close reason. This does not cover physical
-carriers or public-network recovery. The focused #611 `rncp`
+carriers or public-network recovery. A focused shared-instance regression also
+proves that an announce for a locally hosted destination is neither learned as
+a remote route nor fanned out to sibling clients; the broader #609 matrix
+remains open. The focused #611 `rncp`
 compression/send/fetch matrix, bounded `rnprobe` packet/RPC workflow, and
 bounded native `rnsh` channel workflow, negative failure-category checks,
 path-discovery-timeout check, listener restart check, local disk-failure check,

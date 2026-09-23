@@ -429,3 +429,18 @@ required before this row can be promoted; scheduled-to-cached announce
 persistence and direct carrier redial are covered by the focused transport
 tests above.
 Hardware and public-network evidence remain separate acceptance axes.
+
+## Locally hosted destination is not learned or fanned out
+
+`locally_hosted_announce_is_not_learned_or_fanned_out` creates a locally hosted
+destination on a transport-enabled daemon, then feeds its valid announce back
+through one shared-instance child while a sibling client is attached. The
+daemon does not install a remote path, queue the announce for retransmission,
+or transmit it to the sibling. This covers one locally-hosted/attached-client
+combination; it does not prove the full transport-enabled/disabled and
+locally-hosted/remote-destination matrix in #609.
+
+```text
+cargo test -p reticulum-rs-transport --lib locally_hosted_announce_is_not_learned_or_fanned_out -- --nocapture
+# 1 passed; 0 failed
+```

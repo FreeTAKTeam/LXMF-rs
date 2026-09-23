@@ -129,9 +129,59 @@ async fn accepted_announce_fans_out_directly_to_other_local_clients() {
     assert!(timeout(Duration::from_millis(25), host_channel.tx_channel.recv()).await.is_err());
 }
 
-/// The third clause of the same reference condition. A path response is a
-/// directed reply, not something to rebroadcast, so it is cached rather than
-/// queued even on a transport node.
+/// A locally hosted destination is not a remote route, even when its valid
+/// announce re-enters through one shared-instance child. It must not be
+/// retransmitted or fanned out to sibling local clients.
+#[tokio::test]
+async fn locally_hosted_announce_is_not_learned_or_fanned_out() {
+    let identity = PrivateIdentity::new_from_rand(OsRng);
+    let mut config = TransportConfig::new("local-destination-no-transit", &identity, false);
+    config.set_transport_enabled(true);
+    let transport = Transport::new(config);
+    let (mut host_channel, local_client, other_local_client) = {
+        let manager = transport.iface_manager();
+        let mut manager = manager.lock().await;
+        let host_channel = manager.new_channel(16);
+        let parent = *host_channel.address();
+        assert!(manager.set_shared_instance(parent, true));
+        let local_client = manager
+            .register_virtual_iface(parent, crate::iface::IfaceRole::Unicast)
+            .expect("first local client iface");
+        let other_local_client = manager
+            .register_virtual_iface(parent, crate::iface::IfaceRole::Unicast)
+            .expect("second local client iface");
+        (host_channel, local_client, other_local_client)
+    };
+
+    let destination = transport
+        .add_destination(identity, DestinationName::new("lxmf", "locally-hosted"))
+        .await;
+    let announce = destination.lock().await.announce(OsRng, None).expect("local announce");
+    handle_announce(
+        &announce,
+        transport.get_handler().lock().await,
+        local_client,
+        crate::iface::IfaceSource::None,
+    )
+    .await;
+
+    let handler = transport.get_handler();
+    let handler = handler.lock().await;
+    assert!(
+        handler.path_table.get(&announce.destination).is_none(),
+        "a local destination must not acquire a remote route from its own announce"
+    );
+    assert_eq!(handler.announce_table.tier_sizes(), (0, 0));
+    drop(handler);
+    assert!(
+        timeout(Duration::from_millis(25), host_channel.tx_channel.recv()).await.is_err(),
+        "a local destination announce must not transit to sibling clients"
+    );
+    assert_ne!(local_client, other_local_client);
+}
+
+/// A path response is a directed reply, not something to rebroadcast, so it is
+/// cached rather than queued even on a transport node.
 #[tokio::test]
 async fn a_path_response_announce_is_never_queued_for_retransmission() {
     let identity = PrivateIdentity::new_from_rand(OsRng);

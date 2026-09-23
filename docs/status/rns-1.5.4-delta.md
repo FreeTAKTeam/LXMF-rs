@@ -142,6 +142,10 @@ announce supersedes scheduled state without becoming retransmission work after
 restore. A real-socket `TcpClient` regression also proves redial preserves the
 interface identity and resumes bidirectional HDLC packet traffic; it is
 carrier-level evidence, not the broader duplicate or queue-recovery cases.
+An additional focused regression verifies that a locally hosted destination's
+valid announce, when received through a shared-instance child, does not become
+a remote route or fan out to a sibling client. This proves one software matrix
+cell only and does not promote the #609 row.
 
 The #610 implementation slice now has committed local evidence in
 [`evidence/610-resource.md`](../goals/reticulum-reference-parity-605/evidence/610-resource.md):
