@@ -25,7 +25,7 @@ and a pinned-Python cancellation trace for an in-flight `/media` Resource.
 | --- | --- | --- |
 | NomadNet node | Persistent/seeded identity, `nomadnetwork.node` destination, TCP listen/connect interfaces, periodic announce app data, request-path decoding, page/file dispatch, packet or Resource response selection | local verified; pinned Python live TCP page/media trace evidenced |
 | Pages | Index/group/repository/tree/blob/commits/commit/refs/stats/releases/release/work/work-doc paths, `var_*` query fields, ref/path validation, not-found/error rendering, custom static and bounded executable templates, binary-image `/media` markup | local verified; pinned Python live trace covers missing repository, invalid ref, missing blob, and visual/reference rendering remains incomplete |
-| Access control | Repository read/stats/release checks, work-document read checks, blocked unidentified-client no-identity template, malformed/denied/missing request paths fail closed | local verified; pinned Python live trace covers a denied repository |
+| Access control | Repository read/stats/release checks, work-document read checks, and the frozen `pages.py` rule that renders `no_ident` only for an unidentified peer when the derived null-identity hash is blocked | unit cases cover blocked/unblocked anonymous and identified-blocked behavior; pinned Python real-Link trace covers the unblocked anonymous front page; denied repository trace remains covered |
 | Media/files | `/media` key and path validation, URL decoding, ref/blob resolution, binary-safe filename metadata, download/artifact/work-doc endpoints, published-release filtering and absent-blob handling | local verified; pinned Python Resource payload/metadata and `/file/download` content/filename trace evidenced; same-Link production differential verifies a valid nested-path Resource control and scalar-False denials for missing key/path, malformed/insufficient/empty path, denied private access, absent blob, and invalid ref |
 | WebP conversion | Backend preference and `RNGIT_MEDIA_BACKEND`, argv-only process construction, quality/max-dimension options, 8-second pipeline bound, bounded stderr, output validation, temporary-directory cleanup, raw fallback | local code/tests; pinned Python live `ffmpeg` conversion of a valid PNG returns validated WebP; timeout regression verifies both pipeline children are terminated and reaped; other backends and visual parity remain unverified |
 | Resource wire | Explicit outbound compression control, with `/media` responses sent uncompressed and a regression asserting no compressed advertisement | local verified; live Python Resource delivery and metadata evidenced |
@@ -220,6 +220,41 @@ LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
 ```
 
 ## Deliberate remaining gaps
+
+### Frozen `no_ident` page behavior
+
+The exact target `99de23c040d507e3fefca19e87b182302902725d` implements this
+page guard in `RNS/Utilities/rngit/pages.py`: render `no_ident` only when the
+remote identity is absent and `self.null_ident.hash` is in
+`owner.blocked_identities`. `RNS.Identity.from_bytes(bytes(64)).hash` at that
+target is `d7db22f63b453c23bb0688dde565b7c1`. Therefore an unblocked anonymous
+client receives the normal front page, while an identified-but-blocked client
+does not receive `no_ident` and is still filtered by normal permission checks.
+Rust now follows that condition exactly. Unit regressions cover all three
+states, including no repository/document marker in the blocked-anonymous
+response; the real-Link Python trace covers the unblocked anonymous case.
+
+Validation against the exact frozen checkout at
+`/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0` (HEAD
+`99de23c040d507e3fefca19e87b182302902725d`) derived the null hash with
+`PYTHONPATH=<checkout> python3 -c 'import RNS; print(RNS.Identity.from_bytes(bytes(64)).hash.hex())'`
+and returned `d7db22f63b453c23bb0688dde565b7c1`. The three Rust handler cases
+passed: exact-hash blocked anonymous returns the no-identity template without
+repository markers; unblocked anonymous receives the front page; identified
+blocked receives no no-identity template and no repository content. A real
+Python Link against the same frozen checkout confirms the normal unblocked
+anonymous front page and visible group are preserved.
+
+```text
+cargo fmt --all -- --check                                           PASS
+cargo test -p rns-tools --bin rngit anonymous -- --nocapture         PASS (2 tests)
+cargo test -p rns-tools --bin rngit identified_blocked_client -- --nocapture PASS (1 test)
+RETICULUM_PY_REPO=<checkout at 99de23c040d507e3fefca19e87b182302902725d> \
+LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
+  rngit_preserves_unblocked_anonymous_front_page_for_python_link \
+  -- --ignored --nocapture --test-threads=1                          PASS (1 test)
+git diff --check                                                     PASS
+```
 
 The new cancellation trace uses the pinned Python `Link.request` progress
 callback as its synchronization point. The callback holds the client at

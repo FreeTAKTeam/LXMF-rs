@@ -15,6 +15,10 @@ const PAGE_RELEASES: &str = "/page/releases.mu";
 const PAGE_RELEASE: &str = "/page/release.mu";
 const PAGE_WORK: &str = "/page/work.mu";
 const PAGE_WORK_DOC: &str = "/page/work_doc.mu";
+const NULL_IDENTITY_HASH: [u8; 16] = [
+    0xd7, 0xdb, 0x22, 0xf6, 0x3b, 0x45, 0x3c, 0x23, 0xbb, 0x06, 0x88, 0xdd, 0xe5, 0x65, 0xb7,
+    0xc1,
+];
 const PAGE_MEDIA: &str = "/media";
 const FILE_ARTIFACT: &str = "/file/artifact";
 const FILE_DOWNLOAD: &str = "/file/download";
@@ -317,7 +321,9 @@ impl ReticulumGitNode {
         if !PAGE_PATHS[..13].contains(&path) {
             return None;
         }
-        if null_identity(&remote_identity) || self.blocked_identities.contains(&remote_identity) {
+        if null_identity(&remote_identity)
+            && self.blocked_identities.contains(&NULL_IDENTITY_HASH)
+        {
             return Some(self.no_ident());
         }
         match path {

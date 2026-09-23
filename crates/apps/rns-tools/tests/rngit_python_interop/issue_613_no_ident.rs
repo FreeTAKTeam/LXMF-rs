@@ -8,8 +8,7 @@ use std::process::{Command, Stdio};
 
 #[test]
 #[ignore = "requires local Python Reticulum checkout"]
-fn rngit_returns_no_identity_page_without_repository_content_to_unidentified_python_link(
-) -> io::Result<()> {
+fn rngit_preserves_unblocked_anonymous_front_page_for_python_link() -> io::Result<()> {
     let _test_guard =
         super::PYTHON_INTEROP_TEST_LOCK.lock().expect("Python interop test lock poisoned");
     let temp = tempfile::tempdir()?;
@@ -62,8 +61,8 @@ fn rngit_returns_no_identity_page_without_repository_content_to_unidentified_pyt
         let response: serde_json::Value = serde_json::from_slice(&output.stdout)
             .map_err(|error| io::Error::other(format!("invalid client JSON: {error}")))?;
         assert_eq!(response["response_received"], true, "{response}");
-        assert_eq!(response["no_identity_page"], true, "{response}");
-        assert_eq!(response["repository_content_leaked"], false, "{response}");
+        assert_eq!(response["front_page"], true, "{response}");
+        assert_eq!(response["group_visible"], true, "{response}");
         Ok(())
     })();
     let _ = server.kill();
@@ -105,8 +104,8 @@ def response(receipt):
     value = receipt.response
     payload = value.read() if hasattr(value, "read") else value
     result["response_received"] = True
-    result["no_identity_page"] = b"No Identity" in payload and b"requires identification" in payload
-    result["repository_content_leaked"] = b"Python rngit interop" in payload or b"Repository" in payload
+    result["front_page"] = b"Groups" in payload and b"No Identity" not in payload
+    result["group_visible"] = b"group" in payload
     finished.set()
 def failed(receipt):
     result["request_failed"] = True

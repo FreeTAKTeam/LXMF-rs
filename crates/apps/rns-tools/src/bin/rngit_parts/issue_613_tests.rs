@@ -323,9 +323,12 @@ fn stale_page_links_are_cleaned_while_active_links_keep_media() {
 }
 
 #[test]
-fn blocked_unidentified_clients_receive_no_identity_template() {
+fn blocked_anonymous_client_receives_no_identity_template_for_frozen_null_identity_hash() {
     let (_temporary, mut node) = page_fixture();
-    node.blocked_identities.insert([0_u8; 16]);
+    node.blocked_identities.insert([
+        0xd7, 0xdb, 0x22, 0xf6, 0x3b, 0x45, 0x3c, 0x23, 0xbb, 0x06, 0x88, 0xdd, 0xe5, 0x65,
+        0xb7, 0xc1,
+    ]);
     let response = node
         .handle_page_request(
             "/page/index.mu",
@@ -334,7 +337,44 @@ fn blocked_unidentified_clients_receive_no_identity_template() {
             [9_u8; 16],
         )
         .expect("no-identity response");
-    assert!(String::from_utf8_lossy(&response.data).contains("No Identity"));
+    let rendered = String::from_utf8_lossy(&response.data);
+    assert!(rendered.contains("No Identity"));
+    assert!(!rendered.contains("repo"), "repository content leaked: {rendered}");
+    assert!(!rendered.contains("Python rngit interop"));
+}
+
+#[test]
+fn unblocked_anonymous_client_receives_the_front_page() {
+    let (_temporary, mut node) = page_fixture();
+    let response = node
+        .handle_page_request(
+            "/page/index.mu",
+            &rmpv::Value::Map(Vec::new()),
+            [0_u8; 16],
+            [9_u8; 16],
+        )
+        .expect("front page response");
+    let rendered = String::from_utf8_lossy(&response.data);
+    assert!(!rendered.contains("No Identity"));
+    assert!(rendered.contains("Groups"));
+}
+
+#[test]
+fn identified_blocked_client_does_not_receive_no_identity_template() {
+    let (_temporary, mut node) = page_fixture();
+    let blocked_identity = [0xa5_u8; 16];
+    node.blocked_identities.insert(blocked_identity);
+    let response = node
+        .handle_page_request(
+            "/page/index.mu",
+            &rmpv::Value::Map(Vec::new()),
+            blocked_identity,
+            [9_u8; 16],
+        )
+        .expect("front page response");
+    let rendered = String::from_utf8_lossy(&response.data);
+    assert!(!rendered.contains("No Identity"));
+    assert!(!rendered.contains("repo"), "blocked repository content leaked: {rendered}");
 }
 
 #[test]

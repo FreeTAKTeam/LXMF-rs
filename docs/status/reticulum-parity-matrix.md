@@ -150,6 +150,14 @@ soak axis remains explicitly excluded under #616.
 | `#612 rngit comment persistence across process restart` | `crates/apps/rns-tools/tests/rngit_python_interop.rs` | verified | pinned-python | A pinned Python client creates a work item, writes its numbered MessagePack comment through the production Link, then verifies comment ID and content from `work_view` after the Rust `rngit` process restarts on the same root. | One comment and one process restart; broader storage-fault, concurrency, and network matrices remain partial. |
 | `CRNS/*` | none | not-applicable | pinned-python | No `CRNS` package exists in either pinned reference tree. | Provenance is resolved; no Rust implementation is required. |
 
+The #613 frozen `pages.py::serve_front_page` gate renders `no_ident` only for
+an absent remote identity when the pinned null-identity hash
+`d7db22f63b453c23bb0688dde565b7c1` is in the blocked set. Rust matches this
+exact predicate. Local tests cover blocked/unblocked anonymous clients and an
+identified-but-blocked client; a pinned-Python real-Link trace confirms the
+unblocked anonymous front page remains compatible, without exposing
+repository/document content in the blocked-anonymous response.
+
 The #613 production-Link media-validation differential uses a single pinned
 Python Link and first verifies the exact Resource name and bytes from valid ref
 `main`. On the same Link, missing key/path, malformed/insufficient/empty paths,

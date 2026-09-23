@@ -45,6 +45,13 @@ media-path differential also verifies that group, repository, and ref
 components remain literal while only the file-path tail is URL-decoded, as in
 the pinned Python `serve_media`; encoded `%67roup` is denied rather than
 resolving the `group` repository. #613 remains partial.
+The frozen `pages.py::serve_front_page` gate also now matches its exact
+condition: the remote identity must be absent and the pinned null-identity
+hash (`d7db22f63b453c23bb0688dde565b7c1`) must be blocked before `no_ident` is
+rendered. Unit cases cover blocked/unblocked anonymous clients and
+identified-but-blocked behavior; a pinned-Python real-Link trace preserves the
+unblocked anonymous front page. The earlier unconditional guard was
+incompatible and has been corrected; #613 remains partial.
 A new separate-process pinned-Python regression synchronizes on partial `/media`
 Resource progress, closes the Link, and verifies no false completion, receiver
 Resource/file state, Linux server child process, or media temp directory
