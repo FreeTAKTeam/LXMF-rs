@@ -42,7 +42,12 @@ impl ReticulumGitNode {
         if bytes.len() > Self::WORK_DOC_LIMIT {
             return None;
         }
-        rmpv::decode::read_value(&mut std::io::Cursor::new(bytes)).ok()
+        let mut cursor = std::io::Cursor::new(bytes.as_slice());
+        let document = rmpv::decode::read_value(&mut cursor).ok()?;
+        if cursor.position() != bytes.len() as u64 || !matches!(document, rmpv::Value::Map(_)) {
+            return None;
+        }
+        Some(document)
     }
 
     pub fn work_save_document(&self, path: &Path, document: &rmpv::Value) -> Result<(), String> {
@@ -122,6 +127,29 @@ impl ReticulumGitNode {
             let document = self.work_load_document(&directory.join("root"))?;
             Some((scope.to_string(), id, directory, document))
         })
+    }
+
+    fn work_view_location(
+        root: &Path,
+        request: &[(rmpv::Value, rmpv::Value)],
+    ) -> Option<(String, u64, PathBuf)> {
+        let id = map_value(request, &rmpv::Value::String("doc_id".into()))
+            .and_then(|value| value.as_u64().or_else(|| value.as_str()?.parse::<u64>().ok()))?;
+        let requested_scope = map_string(request, &rmpv::Value::String("scope".into()));
+        if !matches!(
+            requested_scope.as_deref(),
+            None | Some("active" | "completed" | "proposed" | "all")
+        ) {
+            return None;
+        }
+        ["active", "completed", "proposed"]
+            .into_iter()
+            .find_map(|scope| {
+                let directory = root.join(scope).join(id.to_string());
+                directory
+                    .is_dir()
+                    .then(|| (scope.to_string(), id, directory))
+            })
     }
 
     fn work_comments(&self, document_dir: &Path) -> Vec<rmpv::Value> {

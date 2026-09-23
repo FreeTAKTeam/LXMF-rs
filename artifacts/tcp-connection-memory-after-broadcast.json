@@ -1,0 +1,48 @@
+{
+  "git_revision": "93ec0eac4065fe2f7953cbe5fee67cace73eb4b4",
+  "results": [
+    {
+      "activity": "idle",
+      "after_activity": {
+        "cpu_ticks": 0,
+        "elapsed_ms": 0,
+        "memory": {
+          "peak_rss_kib": 7212,
+          "rss_kib": 7212,
+          "virtual_kib": 1492916
+        },
+        "packets_per_second": 0.0,
+        "received_packets": 0,
+        "tokio_tasks": 403,
+        "wire_bytes": 0,
+        "wire_bytes_per_second": 0.0
+      },
+      "baseline": {
+        "memory": {
+          "peak_rss_kib": 4192,
+          "rss_kib": 4192,
+          "virtual_kib": 1492760
+        },
+        "tokio_tasks": 3
+      },
+      "broadcasts": {
+        "attempts": 1,
+        "failed_ifaces": 0,
+        "matched_ifaces": 101,
+        "sent_ifaces": 101
+      },
+      "connected": {
+        "memory": {
+          "peak_rss_kib": 7156,
+          "rss_kib": 7156,
+          "virtual_kib": 1492916
+        },
+        "tokio_tasks": 403
+      },
+      "connections": 100,
+      "mtu": 262144,
+      "server_iface": "/7c9fa136d4413fa6173637e883b6998d/"
+    }
+  ],
+  "schema": "lxmf-rs-tcp-connection-memory-v1"
+}

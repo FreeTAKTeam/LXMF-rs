@@ -287,6 +287,9 @@ async fn wait_for_outbound(
                 ResourceEventKind::OutboundFailed => {
                     Err(io::Error::other("Resource transfer failed"))
                 }
+                ResourceEventKind::OutboundRejected => {
+                    Err(io::Error::other("Resource transfer rejected"))
+                }
                 ResourceEventKind::OutboundCancelled => {
                     Err(io::Error::other("Resource transfer cancelled"))
                 }

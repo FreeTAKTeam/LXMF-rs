@@ -202,12 +202,12 @@ mod tests {
         let behavioral = orientation.forward_behavioral.expect("forward advisory");
         assert_eq!(behavioral.level, ParityLevel::Partial);
         assert_eq!(behavioral.coverage_status, "incomplete");
-        assert_eq!(behavioral.complete_ratio, ParityRatio { numerator: 0, denominator: 9 });
+        assert_eq!(behavioral.complete_ratio, ParityRatio { numerator: 1, denominator: 9 });
         assert_eq!(
             behavioral.inventory,
-            ParityInventory { total: 10, complete: 0, partial: 9, not_applicable: 1 }
+            ParityInventory { total: 10, complete: 1, partial: 8, not_applicable: 1 }
         );
-        assert_eq!(behavioral.evidence_verified, 0);
+        assert_eq!(behavioral.evidence_verified, 1);
         assert_eq!(behavioral.reference.version, "1.5.4-dev");
         assert_eq!(behavioral.reference.revision, "99de23c040d507e3fefca19e87b182302902725d");
     }
