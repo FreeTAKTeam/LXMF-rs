@@ -95,8 +95,9 @@ The active inventory was regenerated from Reticulum
 `727830cefda83d9c6e3982b48675425f3f988f9c`. The separately pinned behavioral
 checkpoint reports RNS `1.5.4-dev` at
 `99de23c040d507e3fefca19e87b182302902725d`: `partial` / `incomplete`, 10
-requirements, 9 applicable, and 0 verified. This is an advisory status, not a
-claim that any behavioral row is complete.
+requirements, 9 applicable, and 1 verified (#615 release acceptance). The
+eight behavior-owner rows (#607–#614) remain unverified; this advisory status
+does not claim full parity.
 
 The inventory validator now restricts this `not-applicable` exception to the
 #616 operational requirement, issue owner, and `hardware-unverified` evidence
@@ -147,7 +148,8 @@ head and successful hosted run on that exact SHA are recorded below.
 ```text
 forward reference: 99de23c040d507e3fefca19e87b182302902725d
 callable inventory: 1,868 total / 0 complete / 1,867 partial / 1 not-applicable
-behavioral contract: 10 requirements / 9 applicable / 0 verified
+behavioral contract: 10 requirements / 9 applicable / 1 verified (#615 release acceptance)
+behavior-owner rows: 8 / 8 unverified (#607–#614)
 ```
 
 ```text
