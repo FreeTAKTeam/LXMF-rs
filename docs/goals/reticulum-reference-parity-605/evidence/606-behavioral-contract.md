@@ -68,11 +68,12 @@ behavioral requirement is marked verified by this increment.
 
 ## Remaining acceptance boundary
 
-The checker and local deliberate-failure fixtures are in place, but hosted
-exact-head execution, full behavioral evidence for every contract row, and
-independent review of the target delta remain outstanding. The parent issue
-therefore remains open, and later implementation evidence must link each row
-to observed behavior before any status promotion.
+The checker, local deliberate-failure fixtures, and hosted exact-head execution
+are in place. Full behavioral evidence for every contract row, an owner-frozen
+finite platform/device/client support matrix, and independent review of the
+target delta remain outstanding. The parent issue therefore remains open, and
+later implementation evidence must link each row to observed behavior before
+any status promotion.
 
 ## Public SDK/RPC advisory increment
 
@@ -136,8 +137,8 @@ git diff --check                                                                
 
 The forward-target generation wrote only to a temporary output directory; the
 committed parity artifact intentionally remains the canonical 1.5.2 active
-baseline. These local checks cover the current working diff, not a public PR
-head; hosted CI must rerun after the follow-up is pushed.
+baseline. These commands record the local pre-push validation. The pushed PR
+head and successful hosted run on that exact SHA are recorded below.
 
 ```text
 forward reference: 99de23c040d507e3fefca19e87b182302902725d
@@ -163,3 +164,26 @@ cargo run -p xtask -- schema-client-generate --check                            
 cargo clippy -p lxmf-reference -p lxmf-sdk -p reticulum-rs-rpc \
   --all-targets --all-features --no-deps -- -D warnings                         PASS
 ```
+
+### Hosted exact-head validation
+
+PR #627 head `7593a1847d01128b9b6e23397e5449828e59b03f` completed the hosted
+Verify workflow successfully on 2026-09-22. The runs used that exact head SHA:
+
+```text
+HIL PR level                 PASS  run 35779677720
+evidence (rns-rs)            PASS  run 35779677718
+architecture-checks         PASS  run 35779677777
+build-matrix (stable)        PASS  run 35779677777
+contracts                    PASS  run 35779677777
+quality                      PASS  run 35779677777
+test-nextest-unit            PASS  run 35779677777
+publish                      SKIPPED
+peer-lifecycle-essential     SKIPPED
+```
+
+The workflow ran the behavioral-inventory self-test and exact-target inventory
+generation against the pinned reference. This closes the hosted-execution gap
+for the contract gate; it does not provide missing behavioral observations,
+freeze the external support matrix, or replace independent review of the target
+delta.
