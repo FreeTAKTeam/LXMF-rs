@@ -42,6 +42,7 @@ sourced from `f26ce90d`; the full native `create/init` → `artifact` →
 | Python work CLI | The pinned Python `rngit work` CLI runs create/list/view/edit/update/perms/complete/activate/propose/delete against the Rust service over real Reticulum Links; a deterministic editor and piped confirmation verify signed content, permission sidecars, transitions, and cleanup | local exact-reference trace verified; hosted result pending |
 | Malformed work requests and storage | Pinned Python clients send invalid list scope, malformed document ID, and unknown operation through identified production Links; Rust rejects malformed persisted MessagePack roots and trailing bytes, and the Python `rngit work view` client receives `Remote error: Error loading document` | local unit and exact-reference mixed-peer trace; hosted result pending |
 | Concurrent network work creation | Four independent pinned-Python processes simultaneously establish identified Links to one production Rust `rngit` server, create signed work documents, and verify unique numeric IDs each have persisted root files | local test and PR Verify automation added; hosted result pending |
+| Production work authorization | The pinned Python `rngit work` CLI sets an explicit document `write:none` deny over a live Link, attempts a signed edit, receives a failed `Not allowed` response, and verifies both byte-identical persisted MessagePack and unchanged content from a subsequent service view; permissions are restored for remaining lifecycle checks | local production-network regression verified |
 | Cross-language data | A MessagePack fixture generated with Python `msgpack` is loaded and rendered by Rust, retaining binary author/signature/identity values; pinned Python Link requests reach Rust `git.repositories` Git paths plus `/mgmt/perms` and `/mgmt/work`, verify invalid and valid signatures, round-trip binary work metadata, exercise list/view/comment/edit/perms/complete/activate/delete, verify the Git bundle, mutate refs, register repositories, synchronize a configured remote, and clone fork/mirror targets. The native Rust client now sends Python-compatible `/git/list`, `/git/fetch`, and oversized `/git/push` plus signed `/mgmt/work` and the multi-step release protocol to a pinned Python `git.repositories` server, including raw Git bundle and artifact Resource handling, exact `git bundle verify`, remote-ref verification after push, release creation/upload/finalization/list/view/latest/delete, and the production compatibility-client bridge. | fixture, both bounded request directions, and one process-restart persistence trace verified; broader cross-process/network restart/concurrency/fault matrix unverified |
 
 ## Commands and results
@@ -78,6 +79,11 @@ LXMF_PYTHON_BIN=python3 cargo test -p rns-tools \
   --test rngit_concurrent_python_interop \
   pinned_python_rngit_work_cli_round_trips_production_service_lifecycle \
   -- --ignored --nocapture --exact --test-threads=1                PASS (create/list/view/edit/comment/perms/complete/activate/propose/delete)
+RETICULUM_PY_REPO=<checkout at 99de23c040d507e3fefca19e87b182302902725d> \
+LXMF_PYTHON_BIN=python3 cargo test -p rns-tools \
+  --test rngit_concurrent_python_interop \
+  pinned_python_rngit_work_cli_round_trips_production_service_lifecycle \
+  -- --ignored --nocapture --exact --test-threads=1                PASS (denied signed edit reports Not allowed; stored bytes and subsequent view unchanged)
 RETICULUM_PY_REPO=<checkout at 99de23c040d507e3fefca19e87b182302902725d> \
 LXMF_PYTHON_BIN=python3 cargo test -p rns-tools \
   --test rngit_concurrent_python_interop \

@@ -458,6 +458,46 @@ fn pinned_python_rngit_work_cli_round_trips_production_service_lifecycle() -> io
             "read:all\nwrite:all\ninteract:all\nadmin:all\n"
         );
 
+        // Exercise a denied edit through the pinned Python CLI and the live
+        // production Link. Keep admin access so the client can restore policy
+        // after proving that explicit write denial takes effect.
+        write_cli_editor(&editor, "read:all\nwrite:none\ninteract:all\nadmin:all\n")?;
+        let denied_permissions = cli.run(&["--id", "1"], "perms", None)?;
+        assert_python_cli_output(&denied_permissions, "Permissions updated for work document #1")?;
+        let document_path = root.join("group/repo.work/active/1/root");
+        let persisted_before_denied_edit = fs::read(&document_path)?;
+
+        write_cli_editor(&editor, "Unauthorized Python edit must not persist")?;
+        let denied_edit = cli.run(&["--title", "Unauthorized edit", "--id", "1"], "edit", None)?;
+        let denied_output = format!(
+            "{}\n{}",
+            String::from_utf8_lossy(&denied_edit.stdout),
+            String::from_utf8_lossy(&denied_edit.stderr)
+        );
+        if denied_edit.status.success() || !denied_output.contains("Not allowed") {
+            return Err(io::Error::other(format!(
+                "pinned Python CLI did not report the denied edit: {}\n{denied_output}",
+                denied_edit.status
+            )));
+        }
+        if fs::read(&document_path)? != persisted_before_denied_edit {
+            return Err(io::Error::other("denied Python edit changed the persisted work document"));
+        }
+        let unchanged = cli.run(&["--id", "1"], "view", None)?;
+        assert_python_cli_output(&unchanged, "CLI-edited work body")?;
+        if String::from_utf8_lossy(&unchanged.stdout)
+            .contains("Unauthorized Python edit must not persist")
+        {
+            return Err(io::Error::other("denied Python edit changed the in-memory work document"));
+        }
+
+        write_cli_editor(&editor, "read:all\nwrite:all\ninteract:all\nadmin:all\n")?;
+        let restored_permissions = cli.run(&["--id", "1"], "perms", None)?;
+        assert_python_cli_output(
+            &restored_permissions,
+            "Permissions updated for work document #1",
+        )?;
+
         let completed = cli.run(&["--id", "1"], "complete", None)?;
         assert_python_cli_output(&completed, "Work document #1 completed")?;
         let completed_list = cli.run(&["--scope", "completed"], "list", None)?;
