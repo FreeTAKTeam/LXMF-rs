@@ -188,6 +188,9 @@ jobs:
           cargo test -p rns-tools --test rnpath_python_interop \
             rnpath_discovers_late_pinned_python_announce_through_live_daemon_rpc \
             -- --ignored --exact --nocapture --test-threads=1
+          cargo test -p rns-tools --test rnpath_python_missing_destination \
+            rnpath_missing_destination_matches_pinned_python_failure_over_live_tcp \
+            -- --ignored --exact --nocapture --test-threads=1
           cargo test -p rns-tools --test rnprobe_python_interop \
             native_rnprobe_discovers_late_pinned_python_announce \
             -- --ignored --exact --nocapture --test-threads=1

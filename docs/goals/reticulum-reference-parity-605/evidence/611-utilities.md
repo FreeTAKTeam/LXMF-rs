@@ -414,6 +414,19 @@ RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \\
 # 1 passed; separate Rust CLI, daemon, and pinned-Python peer
 ```
 
+The missing-destination failure is covered separately by
+`rnpath_python_missing_destination::rnpath_missing_destination_matches_pinned_python_failure_over_live_tcp`.
+It starts an isolated pinned-Python TCP network, then runs the production Rust
+`rnpath-rs` CLI through a separately configured Rust daemon and the frozen
+Python `rnpath` utility with independent config/storage roots. Both request the
+same absent destination over live TCP; the test requires Python's exit status
+1 and `Path not found`, and requires Rust to exit nonzero with the destination
+and timeout failure on stderr and no stdout that could imply success. The
+existing `rnpath_cli::rnpath_times_out_when_daemon_does_not_find_path` is only
+a mock-RPC regression and does not cover this network/reference negative path.
+Verify runs this ignored exact-target differential alongside the successful
+discovery case.
+
 ## Current `rnprobe` packet increment
 
 Commit `98e4eb63` replaces the old `rnpath` delegation wrapper with the first
