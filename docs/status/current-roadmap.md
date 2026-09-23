@@ -62,7 +62,9 @@ platform, third-party-client, public-network, and long-soak evidence remains
 explicitly excluded under #616.
 
 The #614 Windows BLE software increment adds a dedicated `windows-latest` CI
-lane for the WinRT-backed resolver and deterministic BLE pairing/runtime tests.
+lane for the WinRT-backed resolver and deterministic BLE pairing/runtime tests;
+the pairing filter regression also proves that a listed stale address cannot
+authorize a different currently scanned device.
 Its hosted result is pending on the implementing PR and does not substitute for
 paired-device/hardware evidence or promote #614/#605 to complete.
 

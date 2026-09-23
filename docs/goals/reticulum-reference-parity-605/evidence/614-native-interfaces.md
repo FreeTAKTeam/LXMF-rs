@@ -18,7 +18,7 @@ acceptance gate.
 
 | Area | Implemented and tested behavior | Status |
 | --- | --- | --- |
-| Windows paired-device lookup | The Windows BLE backend asks WinRT for the paired-device selector, enumerates `DeviceInformation`, extracts only strict Bluetooth address suffixes from each device ID, and filters scan candidates by the paired address before configured ID, alias, or service matching. A Windows-only hosted test queries the native paired-device list and compares Rust suffix extraction against the pinned reference rule without logging device addresses. | Linux parser tests verified; hosted native query/test passed on `ca6b6bba`; physical paired-device behavior unverified |
+| Windows paired-device lookup | The Windows BLE backend asks WinRT for the paired-device selector, enumerates `DeviceInformation`, extracts only strict Bluetooth address suffixes from each device ID, and filters scan candidates by the paired address before configured ID, alias, or service matching. Deterministic coverage verifies a stale paired address cannot authorize a different scanned device, while a matching address remains eligible. A Windows-only hosted test queries the native paired-device list and compares Rust suffix extraction against the pinned reference rule without logging device addresses. | Linux parser/filter tests verified; hosted native query/test passed on `ca6b6bba`; actual stale Windows pairing removal and physical paired-device behavior unverified |
 | Windows backend boundary | The resolver is target-gated and uses the existing `btleplug` scan/connect/service-discovery path; Android's configured-peripheral path is unchanged. The implementation does not use `btleplug`'s unsupported Windows `add_peripheral` address shortcut. | local code verified |
 | Runtime cleanup | Existing BLE startup still clears stale session state, stops scans after selection or timeout, subscribes before startup writes, and aggregates unsubscribe/scan-stop/disconnect failures during cleanup. This increment applies the pairing constraint before those existing connect/reconnect paths. | local state-machine tests; native carrier unverified |
 | Interface inventory | The daemon has explicit startup branches for TCP/backbone, local TCP/Unix, UDP, AutoInterface, serial, Weave, KISS/AX.25, pipe, I2P, Meshtastic, BLE, LoRa, and RNodeMulti aliases; unknown kinds record an explicit unsupported-kind failure. | source inspection; cross-platform/live evidence open |
@@ -46,7 +46,7 @@ Follow-up checks for PR #634 ran in the isolated
 ```text
 cargo fmt --all -- --check                                      PASS
 cargo test -p reticulum-rs-transport --features rnode-ble --lib \
-  rnode_ble -- --nocapture                                      PASS (16 Linux tests)
+  rnode_ble -- --nocapture                                      PASS (17 Linux tests)
 cargo clippy -p reticulum-rs-transport --features rnode-ble \
   --all-targets --no-deps -- -D warnings                       PASS
 tools/scripts/check-module-size.sh                              PASS
