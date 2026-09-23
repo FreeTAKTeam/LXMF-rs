@@ -144,7 +144,8 @@ RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
 RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   cargo test -p reticulumd --test python_channel_interop \
   python_to_python_resource_roundtrip_through_rust_transport -- --ignored --nocapture
-  # 1 passed; split Resource crosses two Python endpoints over one forwarding Rust transport
+  # 1 passed; split Resource crosses two Python endpoints over one forwarding
+  # Rust transport; client verifies digest and metadata-bearing size/metadata ack
 
 RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   cargo test -p reticulumd --test python_channel_interop \
