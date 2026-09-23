@@ -472,6 +472,25 @@ fn pinned_python_rngit_work_cli_round_trips_production_service_lifecycle() -> io
         let proposed_list = cli.run(&["--scope", "proposed"], "list", None)?;
         assert_python_cli_output(&proposed_list, "CLI proposal")?;
 
+        let root_document = root.join("group/repo.work/active/1/root");
+        let original_document = fs::read(&root_document)?;
+        fs::write(&root_document, [0x80, 0xc1])?;
+        let malformed_view = cli.run(&["--id", "1"], "view", None)?;
+        let malformed_output = format!(
+            "{}\n{}",
+            String::from_utf8_lossy(&malformed_view.stdout),
+            String::from_utf8_lossy(&malformed_view.stderr)
+        );
+        if malformed_view.status.success()
+            || !malformed_output.contains("Remote error: Error loading document")
+        {
+            return Err(io::Error::other(format!(
+                "pinned Python CLI did not receive the persisted-document failure: {}\n{malformed_output}",
+                malformed_view.status
+            )));
+        }
+        fs::write(&root_document, original_document)?;
+
         let deleted = cli.run(&["--id", "1"], "delete", Some("y\n"))?;
         assert_python_cli_output(&deleted, "Work document active #1 deleted")?;
         let deleted_proposal =

@@ -43,8 +43,11 @@ concurrent signed work creators, malformed work requests, and the Python
 `rngit work` CLI lifecycle through production Reticulum Links. Its hosted
 result is pending on the implementing PR. Local tests now also verify that a
 failed configured-permission refresh, resolver execution, or atomic sidecar
-replacement leaves the cached policy unchanged. Broader disk-fault, restart,
-and non-work CLI workflows remain open.
+replacement leaves the cached policy unchanged. Storage regressions also reject
+malformed MessagePack roots and trailing bytes; an exact-reference Python CLI
+request over a production Link observes `Remote error: Error loading document`
+for a corrupt persisted root. Broader disk-fault, restart, and non-work CLI
+workflows remain open.
 
 The forward #610 Resource slice also has new pinned-Python evidence at
 `8b29132c`: a sender-side file-like reader raises during a split transfer,
