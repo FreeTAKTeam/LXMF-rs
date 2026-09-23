@@ -74,7 +74,7 @@ incomplete requirements:
 | Owner | Requirement | Current status |
 | ---: | --- | --- |
 | #607 | Review and integrate the initial PR increment | partial / unverified |
-| #608 | Wire IFAC into production carrier ingress and egress | partial; pinned Python TCP/UDP Channel and Resource evidence, raw UDP rejection tests, and UDP daemon success/wrong-key rejection through `lxmd`/`reticulumd`; broader carrier-family/support matrix pending |
+| #608 | Wire IFAC into production carrier ingress and egress | partial; pinned Python TCP/UDP Channel and Resource evidence, raw UDP rejection tests, and UDP daemon success/wrong-key/malformed-frame rejection through `lxmd`/`reticulumd`; broader carrier-family/support matrix pending |
 | #609 | Close transport, local-client, and shared-instance gaps | implemented but unproven; mixed-peer evidence pending |
 | #610 | Prove Resource collision, stream, and mixed-peer behavior | partial / unverified |
 | #611 | Exercise every reference utility through real network workflows | partial / unverified |
