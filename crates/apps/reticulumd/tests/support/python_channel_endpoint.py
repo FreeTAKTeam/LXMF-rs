@@ -289,6 +289,7 @@ class ChannelClient:
         resource_size,
         send_delay: float,
         timeout: float,
+        hold_after_close: bool,
     ) -> int:
         print("python_channel_client: starting Reticulum", file=sys.stderr, flush=True)
         RNS.Reticulum(configdir=config_dir, loglevel=7)
@@ -330,6 +331,18 @@ class ChannelClient:
             time.sleep(0.05)
 
         time.sleep(send_delay)
+        if self.payload_kind == "link-close":
+            active_link.teardown()
+            print(
+                json.dumps({"closed": True, "teardown_reason": active_link.teardown_reason}),
+                flush=True,
+            )
+            # Keep Reticulum's interface worker alive until the Rust peer has
+            # observed the close packet; the integration test releases stdin.
+            if hold_after_close:
+                sys.stdin.buffer.readline()
+            return 0
+
         if self.payload_kind == "identify":
             self.identity = RNS.Identity()
             active_link.set_packet_callback(self._on_link_data)
@@ -650,6 +663,7 @@ def main() -> int:
             "large-request",
             "file-response",
             "identify",
+            "link-close",
             "channel-sequence",
         ),
         default="channel",
@@ -662,6 +676,7 @@ def main() -> int:
     parser.add_argument("--resource-size", type=int)
     parser.add_argument("--send-delay", type=float, default=0.3)
     parser.add_argument("--timeout", type=float, default=8.0)
+    parser.add_argument("--hold-after-close", action="store_true")
     args = parser.parse_args()
 
     if args.mode == "client":
@@ -675,6 +690,7 @@ def main() -> int:
             args.resource_size,
             args.send_delay,
             args.timeout,
+            args.hold_after_close,
         )
 
     endpoint = ChannelEndpoint(args.payload_kind)
