@@ -155,8 +155,9 @@ an absent remote identity when the pinned null-identity hash
 `d7db22f63b453c23bb0688dde565b7c1` is in the blocked set. Rust matches this
 exact predicate. Local tests cover blocked/unblocked anonymous clients and an
 identified-but-blocked client; a pinned-Python real-Link trace confirms the
-unblocked anonymous front page remains compatible, without exposing
-repository/document content in the blocked-anonymous response.
+unblocked anonymous front page remains compatible, and a second production
+Link trace asserts the exact `READY` no-ident body for a blocked anonymous
+client without exposing private repository content.
 
 The #613 production-Link media-validation differential uses a single pinned
 Python Link and first verifies the exact Resource name and bytes from valid ref

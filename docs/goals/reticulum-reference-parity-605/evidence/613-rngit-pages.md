@@ -25,7 +25,7 @@ and a pinned-Python cancellation trace for an in-flight `/media` Resource.
 | --- | --- | --- |
 | NomadNet node | Persistent/seeded identity, `nomadnetwork.node` destination, TCP listen/connect interfaces, periodic announce app data, request-path decoding, page/file dispatch, packet or Resource response selection | local verified; pinned Python live TCP page/media trace evidenced |
 | Pages | Index/group/repository/tree/blob/commits/commit/refs/stats/releases/release/work/work-doc paths, `var_*` query fields, ref/path validation, not-found/error rendering, custom static and bounded executable templates, binary-image `/media` markup | local verified; pinned Python live trace covers missing repository, invalid ref, missing blob, and visual/reference rendering remains incomplete |
-| Access control | Repository read/stats/release checks, work-document read checks, and the frozen `pages.py` rule that renders `no_ident` only for an unidentified peer when the derived null-identity hash is blocked | unit cases cover blocked/unblocked anonymous and identified-blocked behavior; pinned Python real-Link trace covers the unblocked anonymous front page; denied repository trace remains covered |
+| Access control | Repository read/stats/release checks, work-document read checks, and the frozen `pages.py` rule that renders `no_ident` only for an unidentified peer when the derived null-identity hash is blocked | unit cases cover blocked/unblocked anonymous and identified-blocked behavior; pinned Python real-Link traces cover both the unblocked front page and exact blocked `no_ident` response with private-content exclusion; denied repository trace remains covered |
 | Media/files | `/media` key and path validation, URL decoding, ref/blob resolution, binary-safe filename metadata, download/artifact/work-doc endpoints, published-release filtering and absent-blob handling | local verified; pinned Python Resource payload/metadata and `/file/download` content/filename trace evidenced; same-Link production differential verifies a valid nested-path Resource control and scalar-False denials for missing key/path, malformed/insufficient/empty path, denied private access, absent blob, and invalid ref |
 | WebP conversion | Backend preference and `RNGIT_MEDIA_BACKEND`, argv-only process construction, quality/max-dimension options, 8-second pipeline bound, bounded stderr, output validation, temporary-directory cleanup, raw fallback | local code/tests; pinned Python live `ffmpeg` conversion of a valid PNG returns validated WebP; timeout regression verifies both pipeline children are terminated and reaped; other backends and visual parity remain unverified |
 | Resource wire | Explicit outbound compression control, with `/media` responses sent uncompressed and a regression asserting no compressed advertisement | local verified; live Python Resource delivery and metadata evidenced |
@@ -244,6 +244,22 @@ repository markers; unblocked anonymous receives the front page; identified
 blocked receives no no-identity template and no repository content. A real
 Python Link against the same frozen checkout confirms the normal unblocked
 anonymous front page and visible group are preserved.
+
+A second production-Link differential configures the Rust `rngit` process with
+the frozen null-identity hash in its blocked set, then requests the front page
+from a pinned Python client that has not identified its Link. The Python side
+independently derives and checks the same null-identity hash, and the test
+asserts request status `READY`, the exact complete rendered `no_ident` page
+including the base template/footer, and absence of private repository canaries.
+This tests the process, request dispatch, access gate, and response framing;
+the acceptance item remains partial beyond this behavior.
+
+```text
+RETICULUM_PY_REPO=<checkout at 99de23c040d507e3fefca19e87b182302902725d> \
+LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
+  issue_613_no_ident::rngit_returns_reference_no_ident_page_to_blocked_anonymous_python_link \
+  -- --ignored --exact --nocapture --test-threads=1                     PASS (1 test)
+```
 
 ```text
 cargo fmt --all -- --check                                           PASS

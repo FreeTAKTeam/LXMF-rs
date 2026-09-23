@@ -50,7 +50,9 @@ condition: the remote identity must be absent and the pinned null-identity
 hash (`d7db22f63b453c23bb0688dde565b7c1`) must be blocked before `no_ident` is
 rendered. Unit cases cover blocked/unblocked anonymous clients and
 identified-but-blocked behavior; a pinned-Python real-Link trace preserves the
-unblocked anonymous front page. The earlier unconditional guard was
+unblocked anonymous front page, and a second pinned-Python real-Link trace
+asserts the exact `READY` no-identity response for a blocked anonymous client
+without private repository content. The earlier unconditional guard was
 incompatible and has been corrected; #613 remains partial.
 A new separate-process pinned-Python regression synchronizes on partial `/media`
 Resource progress, closes the Link, and verifies no false completion, receiver

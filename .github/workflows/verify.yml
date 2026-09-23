@@ -161,6 +161,16 @@ jobs:
             rngit_serves_pages_and_media_to_pinned_python_client \
             -- --ignored --nocapture
 
+      - name: Run pinned Python blocked anonymous no-ident page interoperability
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+          PYTHONPATH: ${{ github.workspace }}/Reticulum-parity
+        run: |
+          cargo test -p rns-tools --test rngit_python_interop \
+            issue_613_no_ident::rngit_returns_reference_no_ident_page_to_blocked_anonymous_python_link \
+            -- --ignored --exact --nocapture --test-threads=1
+
       - name: Run pinned Python rngit media validation differential
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity

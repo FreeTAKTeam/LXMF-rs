@@ -11,6 +11,8 @@ struct Cli {
     identity_seed: Option<String>,
     #[arg(long, value_name = "PATH")]
     identity: Option<PathBuf>,
+    #[arg(long, value_name = "HASH", action = clap::ArgAction::Append)]
+    blocked_identity_hash: Vec<String>,
     #[arg(long)]
     print_identity: bool,
     #[arg(long, help = "Suppress routine status output; cleanup failures remain visible")]

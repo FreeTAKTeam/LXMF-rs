@@ -66,6 +66,21 @@ async fn run_async(cli: &Cli) -> io::Result<()> {
     let mut node = ReticulumGitNode::default();
     node.load_repository_root(&root)?;
     node.load_page_templates(&root.join("templates"))?;
+    for value in &cli.blocked_identity_hash {
+        let bytes = hex::decode(value).map_err(|error| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("invalid blocked identity hash {value:?}: {error}"),
+            )
+        })?;
+        let identity: [u8; 16] = bytes.try_into().map_err(|bytes: Vec<u8>| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("blocked identity hash must be 16 bytes, got {}", bytes.len()),
+            )
+        })?;
+        node.blocked_identities.insert(identity);
+    }
     node.media_conversion = !cli.no_media_conversion;
     node.media_quality = cli.media_quality;
     node.media_max_dimension = cli.media_max_dimension.filter(|value| *value > 0);
