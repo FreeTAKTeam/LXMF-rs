@@ -40,7 +40,7 @@ RNS_RS_REQUIRED_PR_PASS: set[ScenarioSignature] = {
     ("two-node", "rns-rs -> LXMF-rs", "packet-sized request response and correlation"),
     ("two-node", "LXMF-rs -> rns-rs -> LXMF-rs", "compressed resource-sized request response"),
     ("two-node", "rns-rs -> LXMF-rs", "request timeout"),
-    ("two-node", "rns-rs receiver -> LXMF-rs sender", "Resource cancellation"),
+    ("two-node", "rns-rs receiver -> LXMF-rs sender", "Resource rejection"),
     ("two-node", "bidirectional", "Link data"),
     ("two-node", "rns-rs -> LXMF-rs", "Resource small"),
     ("two-node", "LXMF-rs -> rns-rs", "Resource small"),

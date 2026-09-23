@@ -388,7 +388,9 @@ remote-control error, daemon `resource-rejected` terminal receipt with tracking
 cleanup, `rncp` client/server failure, and independent-interop event. A pinned
 Python receiver exercises the RCL path over the real interop harness; focused
 unit tests cover context isolation, split-tail cleanup, and the preserved local
-cancel event.
+cancel event. The independent `rns-rs` PR probe names this peer outcome
+`Resource rejection` and requires `outbound_rejected`; `outbound_cancelled`
+remains reserved for local cancellation.
 
 ```text
 cargo test -p reticulum-rs-transport --all-features --lib  # 828 passed
