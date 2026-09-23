@@ -29,6 +29,16 @@ LINK_REASON_NAMES = {
 
 RAW_LINK_TEST_PREFIX = b"\x00lxmf-rs-test:"
 
+OUTBOUND_STATE_NAMES = {
+    LXMF.LXMessage.OUTBOUND: "outbound",
+    LXMF.LXMessage.SENDING: "sending",
+    LXMF.LXMessage.SENT: "sent",
+    LXMF.LXMessage.DELIVERED: "delivered",
+    LXMF.LXMessage.REJECTED: "rejected",
+    LXMF.LXMessage.CANCELLED: "cancelled",
+    LXMF.LXMessage.FAILED: "failed",
+}
+
 
 class EndpointState:
     def __init__(self, display_name: str, storage: Path):
@@ -36,6 +46,7 @@ class EndpointState:
         self.storage = storage
         self.lock = threading.Lock()
         self.messages = []
+        self.outbound_messages = {}
         self.reticulum = None
         self.router = None
         self.delivery_destination = None
@@ -258,23 +269,42 @@ class EndpointState:
 
         raise RuntimeError(f"timed out waiting for inbound message content {content!r}")
 
-    def send_message(self, destination_hex: str, title: str, content: str) -> dict:
+    def send_message(
+        self,
+        destination_hex: str,
+        title: str,
+        content: str,
+        wait_for_path: bool = True,
+        method: str = "direct",
+    ) -> dict:
         destination_hash = bytes.fromhex(destination_hex)
 
-        if not RNS.Transport.has_path(destination_hash):
-            RNS.Transport.request_path(destination_hash)
+        if wait_for_path:
+            if not RNS.Transport.has_path(destination_hash):
+                RNS.Transport.request_path(destination_hash)
 
-        deadline = time.time() + 60
-        recipient_identity = None
-        while time.time() < deadline:
-            if RNS.Transport.has_path(destination_hash):
-                recipient_identity = RNS.Identity.recall(destination_hash)
-                if recipient_identity is not None:
-                    break
-            time.sleep(0.1)
+            deadline = time.time() + 60
+            recipient_identity = None
+            while time.time() < deadline:
+                if RNS.Transport.has_path(destination_hash):
+                    recipient_identity = RNS.Identity.recall(destination_hash)
+                    if recipient_identity is not None:
+                        break
+                time.sleep(0.1)
+        else:
+            recipient_identity = RNS.Identity.recall(destination_hash)
 
         if recipient_identity is None:
-            raise RuntimeError(f"timed out waiting for path/identity to {destination_hex}")
+            raise RuntimeError(
+                f"no cached identity for {destination_hex} while sending without a path wait"
+            )
+
+        desired_method = {
+            "direct": LXMF.LXMessage.DIRECT,
+            "opportunistic": LXMF.LXMessage.OPPORTUNISTIC,
+        }.get(method)
+        if desired_method is None:
+            raise RuntimeError(f"unsupported LXMF delivery method {method!r}")
 
         destination = RNS.Destination(
             recipient_identity,
@@ -288,11 +318,54 @@ class EndpointState:
             self.delivery_destination,
             content,
             title,
-            desired_method=LXMF.LXMessage.DIRECT,
+            desired_method=desired_method,
             include_ticket=True,
         )
         self.router.handle_outbound(message)
-        return {"accepted": True, "destination": destination_hex}
+        message_hash = message.hash.hex()
+        with self.lock:
+            self.outbound_messages[message_hash] = message
+        return {
+            "accepted": True,
+            "destination": destination_hex,
+            "message_hash": message_hash,
+        }
+
+    def outbound_status(self, message_hash: str) -> dict:
+        with self.lock:
+            message = self.outbound_messages.get(message_hash)
+        if message is None:
+            raise RuntimeError(f"unknown outbound message {message_hash}")
+
+        state = message.state
+        return {
+            "message_hash": message_hash,
+            "destination": message.destination_hash.hex(),
+            "state": state,
+            "state_name": OUTBOUND_STATE_NAMES.get(state, f"unknown_{state}"),
+            "delivery_attempts": message.delivery_attempts,
+            "progress": message.progress,
+        }
+
+    def wait_outbound_state(
+        self,
+        message_hash: str,
+        expected_state: str,
+        timeout: float = 60.0,
+    ) -> dict:
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            status = self.outbound_status(message_hash)
+            if status["state_name"] == expected_state:
+                return status
+            if status["state_name"] in {"rejected", "cancelled", "failed"}:
+                raise RuntimeError(f"outbound message reached terminal state: {status}")
+            time.sleep(0.1)
+
+        raise RuntimeError(
+            f"outbound message did not reach {expected_state!r} within {timeout}s: "
+            f"{self.outbound_status(message_hash)}"
+        )
 
     def open_link(self, destination_hex: str, timeout: float = 60.0) -> dict:
         destination_hash = bytes.fromhex(destination_hex)
@@ -485,6 +558,16 @@ class ControlHandler(socketserver.StreamRequestHandler):
                     params["destination"],
                     params.get("title", ""),
                     params.get("content", ""),
+                    bool(params.get("wait_for_path", True)),
+                    params.get("method", "direct"),
+                )
+            elif method == "outbound_status":
+                result = self.server.state.outbound_status(params["message_hash"])
+            elif method == "wait_outbound_state":
+                result = self.server.state.wait_outbound_state(
+                    params["message_hash"],
+                    params["state"],
+                    float(params.get("timeout", 60.0)),
                 )
             elif method == "open_link":
                 result = self.server.state.open_link(

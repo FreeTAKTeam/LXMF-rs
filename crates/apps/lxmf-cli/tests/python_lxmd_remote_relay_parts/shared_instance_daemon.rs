@@ -201,6 +201,7 @@ fn python_shared_instance_rust_lxmd_application_and_restart_e2e() {
         if let Some(node) = rust_node.as_mut() {
             terminate_child(&mut node.child);
         }
+
         thread::sleep(Duration::from_secs(1));
 
         rust_node = Some(spawn_lxmd(
@@ -485,7 +486,35 @@ fn python_shared_instance_two_peer_relay_recovers_after_daemon_restart_e2e() {
         if let Some(node) = rust_node.as_mut() {
             terminate_child(&mut node.child);
         }
-        thread::sleep(Duration::from_secs(1));
+
+        let queued_message = python_control_call(
+            python_control_a_port,
+            "send_message",
+            Some(json!({
+                "destination": &hash_b,
+                "title": "",
+                "content": "queued-a-to-b-across-restart",
+                "wait_for_path": false,
+                "method": "opportunistic"
+            })),
+        )?;
+        let queued_message_hash = queued_message
+            .get("message_hash")
+            .and_then(Value::as_str)
+            .ok_or_else(|| format!("Python peer A returned no queued message hash: {queued_message}"))?;
+        let queued_status = python_control_call(
+            python_control_a_port,
+            "outbound_status",
+            Some(json!({ "message_hash": queued_message_hash })),
+        )?;
+        if matches!(
+            queued_status.get("state_name").and_then(Value::as_str),
+            Some("delivered" | "rejected" | "cancelled" | "failed")
+        ) {
+            return Err(format!(
+                "LXMF message did not remain queued while the Rust relay was stopped: {queued_status}"
+            ));
+        }
 
         rust_node = Some(spawn_lxmd(
             &lxmd_bin,
@@ -506,6 +535,24 @@ fn python_shared_instance_two_peer_relay_recovers_after_daemon_restart_e2e() {
         for destination in [&hash_a, &hash_b] {
             require_known_path(rust_rpc_port, destination, "Rust relay relearned")?;
         }
+
+        python_control_call(
+            python_control_b_port,
+            "wait_message",
+            Some(json!({
+                "content": "queued-a-to-b-across-restart",
+                "timeout": 45.0
+            })),
+        )?;
+        python_control_call(
+            python_control_a_port,
+            "wait_outbound_state",
+            Some(json!({
+                "message_hash": queued_message_hash,
+                "state": "delivered",
+                "timeout": 45.0
+            })),
+        )?;
 
         for (sender, receiver, destination, content) in [
             (
