@@ -141,6 +141,123 @@ async fn rnode_ble_kiss_worker_authenticates_ifac_egress_and_admission() {
         .expect("worker task joins");
 }
 
+#[tokio::test]
+async fn rnode_ble_virtual_child_uses_inherited_ifac_for_ingress_and_egress() {
+    let inherited = InterfaceSharedConfig {
+        network_name: Some("rnode-ble-child-ifac".into()),
+        passphrase: Some("inherited-child-key".into()),
+        ..InterfaceSharedConfig::default()
+    };
+    let wrong = worker_ifac_state(InterfaceSharedConfig {
+        network_name: inherited.network_name.clone(),
+        passphrase: Some("wrong-child-key".into()),
+        ..InterfaceSharedConfig::default()
+    });
+    let mut manager = InterfaceManager::new(8);
+    let interface = NativeRnodeBleKissInterface::new(
+        "software-rnode-ble-child-ifac",
+        NativeRnodeBleSettings::for_peripheral("fake-peripheral"),
+        RnodeBleKissConfig { max_write_len: 508, ..RnodeBleKissConfig::default() },
+    );
+    let context = manager.new_context(interface);
+    let host = *context.channel.address();
+    assert!(manager.set_shared_config(host, inherited.clone()));
+    let host_ifac_state = context.channel.ifac_state.clone();
+    let child = manager
+        .register_virtual_iface(host, crate::iface::IfaceRole::VirtualUnicast)
+        .expect("virtual peer is registered on BLE host");
+    let child_runtime = manager
+        .ifaces
+        .iter()
+        .find(|iface| iface.address == child)
+        .expect("virtual child runtime");
+    assert_eq!(manager.shared_config(&child), Some(&inherited));
+    assert!(Arc::ptr_eq(&host_ifac_state, &child_runtime.ifac_state));
+    let child_ifac_state = child_runtime.ifac_state.clone();
+
+    let rejected = Packet {
+        destination: AddressHash::new_from_slice(&[0x91; 16]),
+        data: PacketDataBuffer::new_from_slice(b"wrong inherited key"),
+        ..Packet::default()
+    };
+    let accepted = Packet {
+        destination: AddressHash::new_from_slice(&[0x92; 16]),
+        data: PacketDataBuffer::new_from_slice(b"inherited key"),
+        ..Packet::default()
+    };
+    let backend_state = IfacWorkerBackendState::default();
+    {
+        let mut incoming = backend_state.incoming.lock().await;
+        incoming.push_back(worker_wire_packet(&wrong, &rejected));
+        incoming.push_back(worker_wire_packet(&host_ifac_state, &accepted));
+    }
+    let receiver = manager.receiver();
+    let violations = context.channel.ifac_violations.clone();
+    let cancel = context.cancel.clone();
+    let backend = backend_state.clone();
+    let task = tokio::spawn(NativeRnodeBleKissInterface::spawn_with_backend_factory(
+        context,
+        move |_| IfacWorkerBackend(backend.clone()),
+    ));
+
+    let ingress = timeout(std::time::Duration::from_secs(1), async {
+        loop {
+            let mut rx = receiver.lock().await;
+            if let Ok(message) = rx.try_recv() {
+                break message;
+            }
+            drop(rx);
+            sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("matching inherited-key ingress is admitted");
+    assert_eq!(ingress.packet.destination, accepted.destination);
+    assert_eq!(ingress.packet.data.as_slice(), b"inherited key");
+    assert_eq!(violations.load(Ordering::Relaxed), 1);
+    assert!(receiver.lock().await.try_recv().is_err(), "wrong-key child traffic is never delivered");
+
+    let outbound = Packet {
+        destination: AddressHash::new_from_slice(&[0x93; 16]),
+        data: PacketDataBuffer::new_from_slice(b"virtual child egress"),
+        ..Packet::default()
+    };
+    let trace = manager
+        .send(TxMessage { packet: outbound.clone(), tx_type: TxMessageType::Direct(child) })
+        .await;
+    assert_eq!(trace.sent_ifaces, 1, "virtual-child route uses the BLE host transmit channel");
+    let wire = timeout(std::time::Duration::from_secs(1), async {
+        loop {
+            for write in backend_state.writes.lock().await.iter() {
+                if let Ok(frames) = decode_frames(write, 508) {
+                    for frame in frames {
+                        if let KissFrame::Data(bytes) = frame {
+                            if let Ok(packet) = decode_packet_ifac(&child_ifac_state, &bytes) {
+                                if packet.destination == outbound.destination {
+                                    return bytes;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("BLE worker emits egress authenticated by the inherited child policy");
+    let decoded = decode_packet_ifac(&child_ifac_state, &wire)
+        .expect("virtual-child IFAC policy authenticates egress");
+    assert_eq!(decoded.destination, outbound.destination);
+    assert_eq!(decoded.data.as_slice(), b"virtual child egress");
+
+    cancel.cancel();
+    timeout(std::time::Duration::from_secs(1), task)
+        .await
+        .expect("worker stops on cancellation")
+        .expect("worker task joins");
+}
+
 #[derive(Default)]
 struct StartupRetryState {
     attempts: AtomicUsize,

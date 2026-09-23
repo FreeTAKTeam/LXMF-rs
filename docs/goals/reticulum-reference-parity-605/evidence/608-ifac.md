@@ -35,6 +35,9 @@ cargo test -p reticulum-rs-transport --features rnode-ble --lib \
   rnode_ble_kiss_worker_authenticates_ifac_egress_and_admission -- --nocapture
 # 1 passed; wrong key rejected/counted, matching key routed, egress authenticated
 cargo test -p reticulum-rs-transport --features rnode-ble --lib \
+  rnode_ble_virtual_child_uses_inherited_ifac_for_ingress_and_egress -- --nocapture
+# virtual child shares host IFAC state; wrong-key ingress is not delivered and child-routed egress authenticates
+cargo test -p reticulum-rs-transport --features rnode-ble --lib \
   rnode_ble_worker_cleans_up_failed_startup_before_retry_and_stop -- --nocapture
 # failed startup cleanup precedes retry; active retry backend is cleaned on stop
 ```
@@ -47,6 +50,15 @@ BLE/RNode or radio acceptance.
 This closes one mocked BLE worker case only. Other carrier-family/startup
 acceptance and physical/public-network evidence remain open; #608 and #605
 remain partial.
+
+The virtual-child regression creates a production `InterfaceManager` virtual
+peer on the BLE host, verifies that it inherits the host configuration and
+shares its live IFAC state, then sends wrong-key and matching-key KISS ingress
+through the fake BLE worker. The wrong-key packet increments the violation
+counter and never reaches transport delivery. A direct send addressed to the
+virtual child is routed through the host worker and its emitted KISS packet
+authenticates under the inherited child policy. This is software-only coverage;
+it does not claim physical BLE or radio acceptance.
 
 The implementation is based on the frozen Reticulum `1.5.4-dev` reference at
 `99de23c040d507e3fefca19e87b182302902725d`. It wires the existing Rust
