@@ -571,17 +571,24 @@ RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/R
 
 ## Missing-fragment retry exhaustion after partial progress
 
-The production Rust `ResourceManager` regression in
-`resource/tests_timeouts_cleanup.rs` accepts the first of two advertised parts,
-leaves the second absent, advances its injected clock past the configured
-retry interval, and verifies the exact terminal `retry_limit_exhausted`
-failure with one received part and no retained inbound transfer state. This
-matches frozen Reticulum `99de23c040d507e3fefca19e87b182302902725d`'s
-`Resource.__watchdog_job` transition: a receiver with no retries remaining
-cancels when the missing-part timeout expires. The test uses no wall-clock
-sleep and does not broaden accepted outcomes. It covers this receiver-side
-terminal slice only; cross-peer timeout timing and the rest of the #610
-failure matrix remain open.
+The executable regression is Rust-only: production `ResourceManager` accepts
+the first of two advertised parts, leaves the second absent, advances its
+injected clock past the configured retry interval, and verifies the exact
+terminal `retry_limit_exhausted` failure with one received part and no retained
+inbound transfer state. It uses no wall-clock sleep and does not broaden
+accepted outcomes.
+
+Separately, source inspection of frozen Reticulum
+`99de23c040d507e3fefca19e87b182302902725d`'s
+`Resource.__watchdog_job` shows that an inbound receiver with no retries left
+calls `cancel()` when its missing-part timeout expires. This is not an
+executable Python differential for the partial-progress case: the reference
+watchdog runs as a thread and reads module-level wall-clock/sleep functions,
+and no isolated fake-clock harness for this transition was added. The nearby
+pinned-Python split-cancellation test exercises explicit cancellation, not
+retry exhaustion. Therefore timeout parity against Python remains unverified;
+cross-peer timeout timing and the rest of the #610 failure matrix also remain
+open.
 
 ```text
 cargo test -p reticulum-rs-transport --lib \
