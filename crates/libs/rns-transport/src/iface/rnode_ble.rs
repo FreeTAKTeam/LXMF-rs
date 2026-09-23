@@ -16,3 +16,6 @@ include!("rnode_ble_parts/rnodeblecommandmonitor.rs");
 
 #[cfg(all(test, feature = "rnode-ble"))]
 include!("rnode_ble_parts/runtime_tests.rs");
+
+#[cfg(all(test, feature = "rnode-ble"))]
+include!("rnode_ble_parts/ifac_worker_tests.rs");

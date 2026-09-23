@@ -12,6 +12,34 @@ authenticated ingress/egress regressions; invalid live IFAC reconfiguration
 returns a structured RPC error without disabling the active authenticated
 configuration; full interface-family acceptance remains open**.
 
+## RNode BLE production KISS-worker IFAC fault injection
+
+The feature-gated regression
+`rnode_ble_kiss_worker_authenticates_ifac_egress_and_admission` invokes the
+actual `NativeRnodeBleKissInterface` worker with a private backend factory and
+an in-memory fake BLE backend. It verifies that wrong-key KISS notification
+data increments the worker's IFAC violation counter and is not routed, matching
+key data is admitted, and a packet sent through the interface manager is
+written as KISS data that authenticates with the configured IFAC context. This
+is deterministic software fault-injection evidence only; it does not verify a
+physical BLE adapter, RNode radio, or over-the-air behavior.
+
+The processing order matches frozen Reticulum
+`99de23c040d507e3fefca19e87b182302902725d`: Android `RNodeInterface.process_incoming`
+hands received packet bytes to `owner.inbound`, while `process_outgoing`
+frames packets before writing; the Rust worker authenticates before enqueueing
+received packets and before KISS transmission.
+
+```text
+cargo test -p reticulum-rs-transport --features rnode-ble --lib \
+  rnode_ble_kiss_worker_authenticates_ifac_egress_and_admission -- --nocapture
+# 1 passed; wrong key rejected/counted, matching key routed, egress authenticated
+```
+
+This closes one mocked BLE worker case only. Other carrier-family/startup
+acceptance and physical/public-network evidence remain open; #608 and #605
+remain partial.
+
 The implementation is based on the frozen Reticulum `1.5.4-dev` reference at
 `99de23c040d507e3fefca19e87b182302902725d`. It wires the existing Rust
 `IfacContext` through configured carrier ingress and egress, keeps the live

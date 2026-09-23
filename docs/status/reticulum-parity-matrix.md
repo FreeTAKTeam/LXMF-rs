@@ -252,6 +252,10 @@ replace) the pinned Python/Rust TCP and UDP traces. The outbound I2P peer loop
 also has fake-SAM regressions for wrong-key rejection, authenticated
 ingress/egress, and shared parent IFAC rotation on an established virtual peer;
 these are not public-I2P or prepared-router evidence. Additional deterministic
+software fault injection now drives the actual RNode BLE KISS worker through a
+private fake backend, covering wrong-key rejection/countering, matching-key
+admission, and authenticated egress; this is not physical BLE verification.
+Additional deterministic
 worker tests now cover wrong-key rejection and authenticated ingress/egress for
 Meshtastic tunnel reassembly, Weave streams, and incoming I2P accepted streams;
 the I2P test uses a local stream pair, not a SAM router. These tests do not

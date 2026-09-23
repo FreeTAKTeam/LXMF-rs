@@ -161,7 +161,10 @@ The #608 IFAC software follow-up now also tests wrong-key rejection and
 authenticated ingress/egress through Meshtastic tunnel, Weave stream, incoming
 I2P accepted-stream workers, AutoInterface peer-data, LoRa streams, RNode
 bearers, and RNodeMulti KISS vports. These deterministic tests use software
-seams only; uncovered carrier families and physical/public-network evidence
+seams only. A fake backend also drives the actual RNode BLE KISS worker to
+prove wrong-key rejection/countering, matching-key admission, and authenticated
+egress; this is software fault-injection evidence, not physical BLE
+verification. Uncovered carrier families and physical/public-network evidence
 remain open. See the [#608 evidence record](../goals/reticulum-reference-parity-605/evidence/608-ifac.md).
 
 The independent evidence axis is documented in [`docs/interop`](../interop/README.md).

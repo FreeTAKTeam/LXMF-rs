@@ -287,6 +287,19 @@ impl NativeRnodeBleKissInterface {
     }
 
     pub async fn spawn(context: InterfaceContext<Self>) {
+        Self::spawn_with_backend_factory(context, move |settings| {
+            NativeRnodeBleBackend::new(settings)
+        })
+        .await;
+    }
+
+    async fn spawn_with_backend_factory<B, F>(
+        context: InterfaceContext<Self>,
+        mut backend_factory: F,
+    ) where
+        B: RnodeBleBackend,
+        F: FnMut(NativeRnodeBleSettings) -> B,
+    {
         let iface_stop = context.channel.stop.clone();
         let iface_address = context.channel.address;
         let ifac_state = context.channel.ifac_state.clone();
@@ -325,7 +338,7 @@ impl NativeRnodeBleKissInterface {
                 break;
             }
 
-            let backend = NativeRnodeBleBackend::new(settings.clone());
+            let backend = backend_factory(settings.clone());
             let mut runtime = RnodeBleKissRuntime::new(backend, config.clone());
             if let Err(err) = runtime.startup().await {
                 log::warn!(
