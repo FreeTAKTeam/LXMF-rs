@@ -155,7 +155,7 @@ jobs:
         if: always()
         run: cargo xtask hil report --evidence target/hil/runs/pr-${{ github.run_id }} --output target/hil/runs/pr-${{ github.run_id }}/support-report
 
-      - name: Verify bidirectional Resource timeout and recovery
+      - name: Verify frozen 1.5.4 missing-part Resource retry exhaustion
         env:
           RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
           LXMF_PYTHON_BIN: python

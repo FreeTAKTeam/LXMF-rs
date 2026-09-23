@@ -590,6 +590,16 @@ and only the no-op post-transition sleep request. This is a deterministic
 state-machine differential, not an end-to-end network timeout test. Cross-peer
 timeout timing and the rest of the #610 failure matrix remain open.
 
+Hosted lane ownership is intentionally split by reference pin. The generic
+`python-channel-interop` HIL case inherits canonical Reticulum 1.5.2
+(`ea98db4f53dcf0defc0e71a16e60d28b1229c4e6`) and skips only this regression.
+The exact ignored test is instead run by Verify's dedicated
+`Verify frozen 1.5.4 missing-part Resource retry exhaustion` step with
+`RETICULUM_PY_REPO` set to `Reticulum-parity`, checked out at
+`99de23c040d507e3fefca19e87b182302902725d`. Its in-test revision assertion
+remains enabled; the canonical 1.5.2 checkout and unrelated interop cases are
+unchanged.
+
 ```text
 cargo test -p reticulum-rs-transport --lib \
   resource_manager_exhausts_missing_fragment_retries_after_partial_progress
