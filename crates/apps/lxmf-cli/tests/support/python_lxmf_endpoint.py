@@ -27,6 +27,9 @@ LINK_REASON_NAMES = {
 }
 
 
+RAW_LINK_TEST_PREFIX = b"\x00lxmf-rs-test:"
+
+
 class EndpointState:
     def __init__(self, display_name: str, storage: Path):
         self.display_name = display_name
@@ -36,6 +39,8 @@ class EndpointState:
         self.reticulum = None
         self.router = None
         self.delivery_destination = None
+        self.raw_link = None
+        self.raw_messages = []
         self.link = None
         self.link_established_count = 0
         self.link_closed_count = 0
@@ -62,9 +67,34 @@ class EndpointState:
             if router_link_established is not None:
                 router_link_established(link)
             self._on_link_established(link)
+            self._on_raw_link_established(link)
 
         self.delivery_destination.set_link_established_callback(observe_delivery_link)
         print("python_lxmf_endpoint: endpoint state ready", file=sys.stderr, flush=True)
+
+    def _on_raw_link_established(self, link) -> None:
+        if not getattr(link, "_codex_raw_packet_capture_installed", False):
+            original_packet_callback = link.callbacks.packet
+
+            def observe_packet(data, packet):
+                payload = bytes(data)
+                if payload.startswith(RAW_LINK_TEST_PREFIX):
+                    self._on_raw_packet(payload[len(RAW_LINK_TEST_PREFIX) :], packet)
+                    return
+                try:
+                    if original_packet_callback is not None:
+                        original_packet_callback(data, packet)
+                finally:
+                    self._on_raw_packet(data, packet)
+
+            link.set_packet_callback(observe_packet)
+            link._codex_raw_packet_capture_installed = True
+        with self.lock:
+            self.raw_link = link
+
+    def _on_raw_packet(self, data, _packet) -> None:
+        with self.lock:
+            self.raw_messages.append(bytes(data).hex())
 
     def _on_delivery(self, message) -> None:
         with self.lock:
@@ -314,7 +344,81 @@ class EndpointState:
                 requested = True
             time.sleep(0.1)
 
-        raise RuntimeError(f"timed out waiting for path/identity to {destination_hex}")
+        path_found = RNS.Transport.has_path(destination_hash)
+        identity_found = RNS.Identity.recall(destination_hash) is not None
+        raise RuntimeError(
+            f"timed out waiting for path/identity to {destination_hex} "
+            f"(path_found={path_found}, identity_found={identity_found})"
+        )
+
+    def open_raw_link(self, destination_hex: str, timeout: float = 60.0) -> dict:
+        destination_hash = bytes.fromhex(destination_hex)
+        path_deadline = time.time() + timeout
+        identity = None
+        while time.time() < path_deadline:
+            if not RNS.Transport.has_path(destination_hash):
+                RNS.Transport.request_path(destination_hash)
+            if RNS.Transport.has_path(destination_hash):
+                identity = RNS.Identity.recall(destination_hash)
+                if identity is not None:
+                    break
+            time.sleep(0.1)
+
+        if identity is None:
+            raise RuntimeError(f"timed out waiting for raw link destination {destination_hex}")
+
+        destination = RNS.Destination(
+            identity,
+            RNS.Destination.OUT,
+            RNS.Destination.SINGLE,
+            "lxmf",
+            "delivery",
+        )
+        link = RNS.Link(destination, established_callback=self._on_raw_link_established)
+        with self.lock:
+            self.raw_link = link
+
+        link_deadline = time.time() + timeout
+        while time.time() < link_deadline:
+            if link.status == RNS.Link.ACTIVE:
+                return {"status": "active", "link_id": link.link_id.hex()}
+            if link.status == RNS.Link.CLOSED:
+                raise RuntimeError(f"raw link to {destination_hex} closed before activation")
+            time.sleep(0.1)
+
+        raise RuntimeError(f"timed out establishing raw link to {destination_hex}")
+
+    def send_raw(self, content: str) -> dict:
+        with self.lock:
+            link = self.raw_link
+        if link is None or link.status != RNS.Link.ACTIVE:
+            raise RuntimeError("no active raw link")
+
+        receipt = RNS.Packet(link, RAW_LINK_TEST_PREFIX + content.encode("utf-8")).send()
+        if receipt is False:
+            raise RuntimeError("raw link packet was not dispatched")
+        return {"sent": True, "content": content}
+
+    def raw_link_status(self) -> dict:
+        with self.lock:
+            link = self.raw_link
+        if link is None:
+            return {"status_name": None}
+        return {
+            "status_name": LINK_STATUS_NAMES.get(link.status, str(link.status)),
+            "link_id": link.link_id.hex(),
+        }
+
+    def wait_raw_message(self, content: str, timeout: float = 60.0) -> dict:
+        expected = content.encode("utf-8").hex()
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            with self.lock:
+                if expected in self.raw_messages:
+                    return {"received": True, "content": content}
+            time.sleep(0.1)
+
+        raise RuntimeError(f"timed out waiting for raw link packet {content!r}")
 
     def link_status(self) -> dict:
         return self._link_snapshot()
@@ -390,6 +494,20 @@ class ControlHandler(socketserver.StreamRequestHandler):
             elif method == "wait_path":
                 result = self.server.state.wait_path(
                     params["destination"],
+                    float(params.get("timeout", 60.0)),
+                )
+            elif method == "open_raw_link":
+                result = self.server.state.open_raw_link(
+                    params["destination"],
+                    float(params.get("timeout", 60.0)),
+                )
+            elif method == "send_raw":
+                result = self.server.state.send_raw(params["content"])
+            elif method == "raw_link_status":
+                result = self.server.state.raw_link_status()
+            elif method == "wait_raw_message":
+                result = self.server.state.wait_raw_message(
+                    params["content"],
                     float(params.get("timeout", 60.0)),
                 )
             elif method == "link_status":

@@ -36,7 +36,7 @@ impl AnnounceEntry {
                 ifac_flag: self.packet.header.ifac_flag,
                 header_type: HeaderType::Type2,
                 context_flag: self.packet.header.context_flag,
-                propagation_type: PropagationType::Broadcast,
+                propagation_type: PropagationType::Transport,
                 destination_type: self.packet.header.destination_type,
                 packet_type: self.packet.header.packet_type,
                 hops: self.hops,
