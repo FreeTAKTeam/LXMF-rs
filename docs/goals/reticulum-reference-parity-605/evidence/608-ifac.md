@@ -548,6 +548,30 @@ This closes the invalid-reconfiguration error-reporting and rollback subpath;
 it does not complete #608's broader carrier-family, startup/error matrix, or
 physical/public-network acceptance.
 
+## IFAC-enabled UDP startup bind-error reporting
+
+The production daemon bootstrap regression
+`bootstrap_reports_bind_failure_for_ifac_enabled_udp_interface` reserves the
+configured loopback UDP port, starts an IFAC-enabled UDP interface in
+best-effort mode, and reads live `list_interfaces` status until the worker
+reports `bind_failed`. It asserts that daemon startup distinguishes interface
+creation (`startup_status=spawned`) from worker health, exposes the socket
+failure through UDP `last_error`, and does not reflect the configured
+passphrase in that error. This covers one software startup/error-reporting
+case; it does not exercise strict-startup policy, runtime configuration
+rollback, credential rotation, child inheritance, restart, or other carriers.
+
+```text
+cargo fmt --all -- --check
+# passed
+TMPDIR=/var/tmp cargo test -p reticulumd --bin reticulumd \
+  bootstrap_reports_bind_failure_for_ifac_enabled_udp_interface -- --nocapture
+# 1 passed; IFAC UDP bind failure and redacted runtime error reported
+```
+
+This narrows one startup/error-reporting gap only. The remaining lifecycle and
+carrier-family matrix remains open; #608 and #605 remain partial.
+
 ## Accepted-child credential rotation follow-up
 
 The transport ingress suite now exercises the accepted-stream configuration

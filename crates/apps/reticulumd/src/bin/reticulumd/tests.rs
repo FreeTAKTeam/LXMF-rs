@@ -10,6 +10,8 @@ include!("tests_parts/vrn76_builder_rejects_missing_periph.rs");
 
 include!("tests_parts/bootstrap_best_effort_marks_vrn76_ki.rs");
 
+include!("tests_parts/bootstrap_ifac_udp_startup_error.rs");
+
 include!("tests_parts/bootstrap_reports_auto_interface_as.rs");
 
 include!("tests_parts/bootstrap_restores_path_cache.rs");
