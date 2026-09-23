@@ -302,14 +302,16 @@
       {
         "evidence": [
           "unit",
-          "planned"
+          "pinned-python",
+          "prepared-host",
+          "cross-implementation"
         ],
         "evidence_artifact": "docs/goals/reticulum-reference-parity-605/evidence/615-release-acceptance.md",
-        "evidence_status": "unverified",
+        "evidence_status": "verified",
         "id": "reticulum-605-615-differential-release-acceptance",
-        "implementation": "partial",
+        "implementation": "complete",
         "kind": "behavioral-requirement",
-        "notes": "The inventory check now rejects a stale generated behavioral contract by comparing it with the authoritative mapping and exact generated reference revisions. Self-tests and active/forward inventory generation pass locally, but the full differential matrix, exact provenance, hosted checks, and aggregate release gate remain unverified.",
+        "notes": "Scoped #615 software acceptance is complete at PR #626 head b863e1d115395232a41445dbdfe1ccb08ee6abeb: the final release check passed, hosted PR HIL passed 23/23, the exact pinned matrix passed 30/30 with zero skips, and Independent interoperability plus CI passed. This verifies the software gate only; the wider #605 contract remains incomplete and #616 operational evidence is separate.",
         "owner_issue": 615,
         "reference": {
           "lxmf": {
