@@ -6,9 +6,11 @@ software regressions; outbound I2P fake-SAM stream IFAC rejection,
 authenticated ingress/egress, and live parent-state rotation on a virtual peer
 are covered; Meshtastic tunnel, Weave stream, and incoming I2P accepted-stream
 workers now also have deterministic wrong-key rejection and authenticated
-ingress/egress regressions; invalid live IFAC reconfiguration returns a
-structured RPC error without disabling the active authenticated configuration;
-full interface-family acceptance remains open**.
+ingress/egress regressions; AutoInterface peer-data, LoRa, RNode bearer, and
+RNodeMulti KISS-vport paths now have software wrong-key rejection and
+authenticated ingress/egress regressions; invalid live IFAC reconfiguration
+returns a structured RPC error without disabling the active authenticated
+configuration; full interface-family acceptance remains open**.
 
 The implementation is based on the frozen Reticulum `1.5.4-dev` reference at
 `99de23c040d507e3fefca19e87b182302902725d`. It wires the existing Rust
@@ -398,6 +400,41 @@ git diff --check
 
 The uncovered carrier families and broad startup/configuration/error matrix
 remain open, so these additions do not close #608 or promote #605.
+
+## AutoInterface and RNode-family IFAC regressions
+
+The follow-up software tests exercise the AutoInterface peer-data bridge and
+the production LoRa stream, RNode bearer, and RNodeMulti KISS-vport workers.
+Each injects a packet authenticated with a different key and verifies it is
+not admitted; authenticated ingress and egress are then checked against the
+configured context. The bearer test also waits for its production startup
+monitor to validate before asserting packet egress. These use local sockets,
+streams, and a fake bearer; they do not establish Python-peer interoperability,
+radio behavior, hardware support, or the complete carrier lifecycle matrix.
+
+```text
+cargo fmt --all -- --check
+# passed
+cargo test -p reticulum-rs-transport ifac -- --nocapture
+# 397 passed; 0 failed
+cargo test -p reticulum-rs-transport --lib
+# 826 passed; 0 failed
+cargo test -p reticulum-rs-transport --all-features --lib
+# 840 passed; 0 failed
+cargo clippy -p reticulum-rs-transport --all-targets --all-features --no-deps -- -D warnings
+# passed
+bash tools/scripts/check-boundaries.sh
+# passed
+bash tools/scripts/check-module-size.sh
+# passed
+git diff --check
+# passed
+```
+
+Issue #608 remains open for its broader carrier-family and
+startup/configuration/child-inheritance/stop-restart/error matrix. Physical
+acceptance remains outside this software evidence and is separately tracked by
+#616.
 
 ## Rejected live IFAC reconfiguration and fail-closed restart
 

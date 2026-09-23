@@ -234,8 +234,10 @@ these are not public-I2P or prepared-router evidence. Additional deterministic
 worker tests now cover wrong-key rejection and authenticated ingress/egress for
 Meshtastic tunnel reassembly, Weave streams, and incoming I2P accepted streams;
 the I2P test uses a local stream pair, not a SAM router. These tests do not
-replace pinned Python/Rust TCP and UDP traces. Physical-device and remaining
-carrier-family/support-matrix requirements stay partial.
+replace pinned Python/Rust TCP and UDP traces. Additional local software
+regressions cover AutoInterface peer-data, the LoRa production stream, an RNode
+bearer with startup-gated egress, and RNodeMulti KISS vports. Physical-device
+and remaining carrier-family/support-matrix requirements stay partial.
 
 ### v0.9.0 interface evidence boundary
 

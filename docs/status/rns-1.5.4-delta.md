@@ -68,20 +68,20 @@ The machine-checked contract is stored in
 in the generated [`python-surface-parity.json`](python-surface-parity.json).
 It requires every forward requirement to name its Python reference path, exact
 reference commit, Rust owner surface, implementation status, evidence status,
-test command, evidence artifact, and owning issue. It currently contains ten
-incomplete requirements:
+test command, evidence artifact, and owning issue. Eight tracked requirements
+remain open; physical acceptance remains separately scoped under #616:
 
 | Owner | Requirement | Current status |
 | ---: | --- | --- |
-| #607 | Review and integrate the initial PR increment | partial / unverified |
-| #608 | Wire IFAC into production carrier ingress and egress | partial; pinned Python TCP/UDP Channel and Resource evidence, UDP daemon success/rejection including valid-frame tampering, live credential rotation and restart, shared-instance and virtual-child policy traces, a Unix PipeInterface worker IFAC/HDLC loopback, serial-stream wrong-key rejection plus authenticated ingress/egress, KISS/AX.25 stream wrong-key rejection plus authenticated ingress/egress with runtime-counter assertions, outbound I2P fake-SAM stream and incoming accepted-stream worker regressions, plus Meshtastic tunnel and Weave stream wrong-key rejection/authenticated ingress/egress; other carrier families remain pending |
+| #607 | Review and integrate the initial PR increment | closed; merged PR #604 and its acceptance checks are recorded |
+| #608 | Wire IFAC into production carrier ingress and egress | partial; pinned Python TCP/UDP Channel and Resource evidence, UDP daemon success/rejection including valid-frame tampering, live credential rotation and restart, shared-instance and virtual-child policy traces, a Unix PipeInterface worker IFAC/HDLC loopback, serial-stream wrong-key rejection plus authenticated ingress/egress, KISS/AX.25 stream wrong-key rejection plus authenticated ingress/egress with runtime-counter assertions, outbound I2P fake-SAM stream and incoming accepted-stream worker regressions, Meshtastic tunnel and Weave stream regressions, and AutoInterface peer-data, LoRa, RNode bearer, and RNodeMulti KISS-vport wrong-key rejection/authenticated ingress/egress; broader carrier and lifecycle matrices remain pending |
 | #609 | Close transport, local-client, and shared-instance gaps | implemented but unproven; mixed-peer evidence pending |
 | #610 | Prove Resource collision, stream, and mixed-peer behavior | partial / unverified |
 | #611 | Exercise every reference utility through real network workflows | partial / unverified |
 | #612 | Match rngit permission, resolver, work, storage, and wire schemas | partial / unverified |
 | #613 | Match rngit NomadNet pages, media, and link cleanup | partial / unverified |
 | #614 | Validate native interface runtimes and Windows BLE behavior | partial / hardware-unverified |
-| #615 | Run differential conformance and exact-candidate software release acceptance | partial / unverified |
+| #615 | Run differential conformance and exact-candidate software release acceptance | closed; scoped software acceptance completed, with physical/platform/public-network/soak work tracked separately |
 | #616 | Maintain separate physical, platform, client, network-soak, and operational evidence | not-applicable to software / hardware-unverified |
 
 The generated Rust constants expose the forward behavioral level and target
