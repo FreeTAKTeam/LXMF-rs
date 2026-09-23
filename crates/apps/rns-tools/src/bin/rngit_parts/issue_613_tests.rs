@@ -3,6 +3,10 @@ use rns_transport::destination::link::Link;
 use std::io;
 use std::path::Path;
 
+const PYTHON_NULL_IDENTITY_HASH: [u8; 16] = [
+    0xd7, 0xdb, 0x22, 0xf6, 0x3b, 0x45, 0x3c, 0x23, 0xbb, 0x06, 0x88, 0xdd, 0xe5, 0x65, 0xb7, 0xc1,
+];
+
 fn run_git(directory: &Path, args: &[&str]) {
     assert!(
         std::process::Command::new("git")
@@ -325,10 +329,7 @@ fn stale_page_links_are_cleaned_while_active_links_keep_media() {
 #[test]
 fn blocked_anonymous_client_receives_no_identity_template_for_frozen_null_identity_hash() {
     let (_temporary, mut node) = page_fixture();
-    node.blocked_identities.insert([
-        0xd7, 0xdb, 0x22, 0xf6, 0x3b, 0x45, 0x3c, 0x23, 0xbb, 0x06, 0x88, 0xdd, 0xe5, 0x65,
-        0xb7, 0xc1,
-    ]);
+    node.blocked_identities.insert(PYTHON_NULL_IDENTITY_HASH);
     let response = node
         .handle_page_request(
             "/page/index.mu",
@@ -384,7 +385,7 @@ fn custom_page_templates_replace_the_default_no_identity_page() {
     std::fs::write(templates.path().join("no_ident.mu"), "custom identity required")
         .expect("custom template");
     assert_eq!(node.load_page_templates(templates.path()).expect("load template"), 1);
-    node.blocked_identities.insert([0_u8; 16]);
+    node.blocked_identities.insert(PYTHON_NULL_IDENTITY_HASH);
     let response = node
         .handle_page_request(
             "/page/index.mu",
