@@ -34,7 +34,7 @@ sourced from `f26ce90d`; the full native `create/init` → `artifact` →
 
 | Area | Implemented and tested behavior | Status |
 | --- | --- | --- |
-| Permission sidecars | Canonical suffix paths (`.allowed`, `.work`, `.releases`), dotted repository names, ambiguous legacy file rejection, and legacy sidecar directories ignored | local verified |
+| Permission sidecars and companion roots | Canonical suffix paths (`.allowed`, `.work`, `.releases`); `repo` and `repo.git` are simultaneously registered and receive distinct service-written permission files, work documents, and release fixtures under isolated roots; the legacy `repo.git.with_extension("allowed")` path is shown to alias `repo.allowed` and is not used or migrated | local verified |
 | Dynamic permissions | Executable node-owned resolvers, bounded stdout/stderr (64 KiB), two-second execution limit, UTF-8/exit-status failure propagation, no remote replacement, and failed resolver refresh preserving the loaded policy | local verified on Unix; Python execution parity unverified |
 | Permission state | Identity aliases, strict remote content validation, configured-group merging, deny preservation, blocked identities, administrator fallback, atomic replacement, immediate in-memory refresh, and transactional configured-policy updates when sidecar reads fail | local verified, including failed read/replacement rollback; differential parity unverified |
 | Work storage | Python-shaped root and response maps, binary identity/signature fields, integer IDs, floating-point timestamps, separate numeric comment files, 256 KiB document bound, atomic MessagePack writes, rejection of trailing bytes and non-map roots, node reload persistence, atomic work-directory reservation across independent writers, rollback when proposed-document permission setup fails, and pinned-Python process-restart persistence | local and pinned-Python restart trace verified |
@@ -54,7 +54,8 @@ The recorded baseline commands below ran in the isolated
 
 ```text
 cargo fmt --all -- --check                                      PASS
-cargo test -p rns-tools --bin rngit --all-features                  PASS (43 passed, 1 ignored)
+cargo test -p rns-tools --bin rngit --all-features                  PASS (44 passed, 1 ignored)
+cargo test -p rns-tools --bin rngit canonical_companion_roots_isolate_repo_and_repo_git_through_service_reload --all-features PASS
 cargo test -p rns-tools --tests                                  PASS
 cargo clippy -p rns-tools --bin rngit --all-features --no-deps \
   -- -D warnings                                                 PASS
@@ -97,8 +98,11 @@ The focused `rngit` binary suite contains the resolver failure/remote-
 replacement cases, configured access merging, dotted-name path safety, work
 transitions, Python-produced MessagePack storage, an identified-peer
 signature regression, independent-writer ID reservation, and proposed-work
-rollback. `issue_612_permission_failure_tests` additionally verifies that a
-failed configured-policy refresh after a malformed sidecar read is not applied
+rollback. The companion collision regression drives both canonical permission
+files through the permission service, creates work and release data for both
+repositories, reloads the group, and verifies the roots remain separate without
+legacy-path migration. `issue_612_permission_failure_tests` additionally
+verifies that a failed configured-policy refresh after a malformed sidecar read is not applied
 after repair/reload, a resolver execution failure preserves loaded permissions,
 and a failed sidecar replacement does not alter cached permission state. The
 ignored Python traces passed after exercising both the Git and
