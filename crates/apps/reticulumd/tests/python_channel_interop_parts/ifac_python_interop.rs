@@ -210,6 +210,95 @@ async fn python_rust_ifac_udp_channel_roundtrip() {
 
 #[tokio::test]
 #[ignore = "requires local Python Reticulum checkout"]
+async fn rust_to_python_ifac_udp_resource_roundtrip() {
+    let _interop_guard = python_interop_guard().await;
+    let paths = python_channel_interop_paths();
+    let rust_port_reservation = std::net::UdpSocket::bind(("127.0.0.1", 0))
+        .expect("reserve Rust UDP port");
+    let python_port_reservation = std::net::UdpSocket::bind(("127.0.0.1", 0))
+        .expect("reserve Python UDP port");
+    let rust_port = rust_port_reservation.local_addr().expect("Rust UDP address").port();
+    let python_port = python_port_reservation.local_addr().expect("Python UDP address").port();
+    let temp = tempfile::tempdir().expect("tempdir");
+    let py_config_dir = temp.path().join("python-rns-ifac-udp-resource");
+    fs::create_dir_all(&py_config_dir).expect("python config dir");
+    write_python_udp_config_with_ifac(&py_config_dir, python_port, rust_port);
+
+    let rust_identity = PrivateIdentity::new_from_rand(OsRng);
+    let rust_identity = to_transport_private_identity(&rust_identity);
+    let mut config = TransportConfig::new("rust-python-ifac-udp-resource", &rust_identity, true);
+    config.set_path_request_timeout_secs(2);
+    config.set_resource_retry_interval_secs(1);
+    let transport = Transport::new(config);
+    drop(rust_port_reservation);
+    let (_, rust_status) = spawn_ifac_udp(&transport, rust_port, Some(python_port)).await;
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if rust_status.to_json()["link_state"] == "bound" {
+                break;
+            }
+            sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("Rust UDP IFAC carrier did not bind");
+
+    drop(python_port_reservation);
+    let mut child = paths.spawn_endpoint(&py_config_dir, "resource-bidirectional");
+    let ready = read_ready(&mut child).expect("Python UDP resource endpoint ready");
+    let _guard = ChildGuard { child: Some(child) };
+    let target_hash =
+        AddressHash::new_from_hex_string(&ready.destination_hash).expect("destination hash");
+    let destination = wait_for_announce(&transport, target_hash, Duration::from_secs(12)).await;
+    let mut link_events = transport.out_link_events();
+    let link = transport.link(destination).await;
+    let link_id = wait_for_out_link_active(&mut link_events, &link, Duration::from_secs(10)).await;
+    let channel = transport.channel(link_id);
+    let seen = Arc::new(StdMutex::new(Vec::<(String, String)>::new()));
+    let seen_clone = seen.clone();
+    channel
+        .register_handler(MSG_TYPE, move |envelope| {
+            if let Ok(decoded) = rmp_serde::from_slice::<(String, String)>(&envelope.payload) {
+                seen_clone.lock().expect("seen lock").push(decoded);
+                true
+            } else {
+                false
+            }
+        })
+        .await
+        .expect("register UDP IFAC resource acknowledgement handler");
+
+    let mut resource_events = transport.resource_events();
+    let metadata = rmp_serde::to_vec(&String::from("rust-meta")).expect("metadata");
+    let resource_hash = transport
+        .send_resource(&link_id, b"rust-resource-data".to_vec(), Some(metadata))
+        .await
+        .expect("send UDP IFAC resource");
+    wait_for_outbound_resource_complete(
+        &mut resource_events,
+        resource_hash,
+        Duration::from_secs(12),
+    )
+    .await;
+    wait_for_resource_ack(&seen, Duration::from_secs(12)).await;
+    let payload = rmp_serde::to_vec(&(
+        String::from("request-python-resource"),
+        String::from("now"),
+    ))
+    .expect("encode UDP IFAC resource request");
+    let sequence = channel.send(MSG_TYPE, payload).await.expect("request Python resource");
+    wait_for_channel_delivery(&transport, link_id, sequence).await;
+    wait_for_inbound_resource_complete(
+        &mut resource_events,
+        b"python-resource-data",
+        "python-meta",
+        Duration::from_secs(12),
+    )
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "requires local Python Reticulum checkout"]
 async fn rust_to_python_ifac_channel_roundtrip() {
     let _interop_guard = python_interop_guard().await;
     let paths = python_channel_interop_paths();

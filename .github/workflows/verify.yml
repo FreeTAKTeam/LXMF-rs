@@ -123,7 +123,7 @@ jobs:
           LXMF_PYTHON_BIN: python
         run: >-
           cargo test -p reticulumd --test python_channel_interop
-          python_rust_ifac_udp_channel_roundtrip -- --ignored --nocapture
+          ifac_udp -- --ignored --nocapture
           --test-threads=1
 
       - name: Run repository-native PR HIL controller

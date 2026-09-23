@@ -68,9 +68,10 @@ serially because they use the shared Reticulum local-instance socket.
 This artifact does not promote the #605 behavioral row or child #608 to
 complete. The daemon evidence covers one explicit authenticated TCP server and
 one Python LXMF client, including wrong-credential rejection and a
-stop/reconfigure/restart path; it does not cover UDP, raw tampered or
-truncated frames through the daemon process, or every carrier family.
-Attached serial, RNode, BLE, KISS, LoRa, Meshtastic, Weave, and public-network
+stop/reconfigure/restart path; separate software-carrier tests now cover UDP,
+but they do not exercise the UDP daemon-process configuration path or raw
+tampered/truncated frames through the daemon process, and they do not cover
+every carrier family. Attached serial, RNode, BLE, KISS, LoRa, Meshtastic, Weave, and public-network
 evidence is also outside this local software run. Those rows remain
 `partial / unverified` or `hardware-unverified` in the forward ledger.
 
@@ -90,8 +91,9 @@ cargo test -p reticulumd --test python_channel_interop \
   counted as decode errors and IFAC violations, with no packet admission
 RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
 LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
-  python_rust_ifac_udp_channel_roundtrip -- --ignored --nocapture --test-threads=1
-  1 passed; 0 failed; Python/Rust authenticated UDP channel request and reply
+  ifac_udp -- --ignored --nocapture --test-threads=1
+  2 passed; 0 failed; Python/Rust authenticated UDP Channel request/reply and
+  Resource payload/metadata transfers in both directions on a Rust-initiated Link
 ```
 
 Short and invalid-length authenticated frames now map to `InvalidTag`, so the
