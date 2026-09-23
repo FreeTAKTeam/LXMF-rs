@@ -387,6 +387,11 @@ Scoped release evidence is split as follows:
   that steps between the slow, very-slow and fast maxima on measured rate.
   Measured against a real NomadNet node, the same 46 MB fetch runs at 234
   fragments/s where a fixed window of 4 managed 84.
+- The #610 sender regression now advances the receiver-minimum serving anchor
+  at a deterministic hashmap boundary, decodes the resulting global hashmap
+  segment, and checks the exclusive lower/upper collision-guard window edges
+  against the pinned `Resource.py` formula. The broader #610 contract remains
+  partial.
 - Candidate `e0d7249035a51b668ec88b9ce193b3fe0f3fc8e7` records exact 50 MiB
   pinned-Python Resource transfers in both directions with Linux high-water
   RSS values under a fixed 512 MiB per-process release-profile budget. This

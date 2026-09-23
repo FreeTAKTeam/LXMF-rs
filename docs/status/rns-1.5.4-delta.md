@@ -76,7 +76,7 @@ incomplete requirements:
 | #607 | Review and integrate the initial PR increment | partial / unverified |
 | #608 | Wire IFAC into production carrier ingress and egress | implemented but unproven; mixed-peer evidence pending |
 | #609 | Close transport, local-client, and shared-instance gaps | implemented but unproven; mixed-peer evidence pending |
-| #610 | Prove Resource collision, stream, and mixed-peer behavior | partial; exact-checksum 50 MiB pinned-Python transfers rerun in both directions at PR #630 head `0d9b5dd6`, within the 512 MiB per-process peak-RSS bound; broader timeout/reconnect and consumer callback/status evidence remains open |
+| #610 | Prove Resource collision, stream, and mixed-peer behavior | partial; exact-checksum 50 MiB pinned-Python transfers rerun in both directions at PR #630 head `0d9b5dd6`, within the 512 MiB per-process peak-RSS bound; deterministic sender-window anchor and global hashmap-segment indexing are now regression-tested; broader timeout/reconnect and consumer callback/status evidence remains open |
 | #611 | Exercise every reference utility through real network workflows | partial / unverified |
 | #612 | Match rngit permission, resolver, work, storage, and wire schemas | partial / unverified |
 | #613 | Match rngit NomadNet pages, media, and link cleanup | partial / unverified |
@@ -122,8 +122,9 @@ carrier-stream reconnect behavior.
 The #610 implementation slice now has committed local evidence in
 [`evidence/610-resource.md`](../goals/reticulum-reference-parity-605/evidence/610-resource.md):
 deterministic collision regeneration, window-bounded fragment admission,
-link-close terminal resource events, local loss/duplication/reordering recovery,
-split cancellation cleanup, pinned-Python cancellation terminal events in both
+the exact moving sender-window anchor and hashmap-segment index at a segment
+boundary, link-close terminal resource events, local loss/duplication/
+reordering recovery, split cancellation cleanup, pinned-Python cancellation terminal events in both
 directions, reader-backed source retention, a pinned-Python split reader-backed
 transfer with an exact SHA-256 acknowledgement, and
 two-carrier pinned-Python split Resource forwarding with an exact remote

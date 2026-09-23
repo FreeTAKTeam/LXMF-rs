@@ -27,6 +27,11 @@ it does not promote the full #610 acceptance contract or close parent issue
 - Unit coverage forces a collision instead of relying on probability and
   verifies that the guard permits a repeated map hash only after the complete
   guarded window has left scope.
+- A deterministic sender regression requests a hashmap update at the second
+  segment boundary. It asserts the exact moving
+  `receiver_min_consecutive_height` formula, decodes the emitted global segment
+  index and hash slice, and verifies the first in-range request plus rejection
+  just below the lower bound and at the exclusive upper bound.
 - Link-state removal now emits terminal inbound and outbound resource failure
   events, deduplicates split-resource state, preserves unrelated links, and
   publishes the events through the production maintenance and reset paths.
