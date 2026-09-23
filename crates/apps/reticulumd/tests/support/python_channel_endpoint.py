@@ -535,7 +535,12 @@ class ChannelClient:
                 return 1
             if result.get("status") == RNS.Resource.COMPLETE:
                 if self.payload_kind == "resource-multi-hop":
-                    expected = f"resource-sha256:{len(resource_data)}:{hashlib.sha256(resource_data).hexdigest()}"
+                    metadata = "python-meta"
+                    total_size = len(resource_data) + len(umsgpack.packb(metadata)) + 3
+                    expected = (
+                        f"resource-sha256-metadata:{len(resource_data)}:"
+                        f"{hashlib.sha256(resource_data).hexdigest()}:{total_size}:{metadata}"
+                    )
                     while True:
                         with self.lock:
                             acknowledged = any(
