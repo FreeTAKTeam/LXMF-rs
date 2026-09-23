@@ -58,6 +58,14 @@ where frozen Python `server.py` stores `int(time.time())`; new Rust timestamps
 now use integer seconds. Existing records are not migrated, and the Python
 float-valued fixture remains covered as a readable legacy representation.
 
+The dedicated `rngit_work_view_preserves_explicit_nil_optional_signature`
+regression stores a MessagePack `nil` for the optional work signature, submits
+a Rust-encoded production `/mgmt/work` view request through
+`ReticulumGitNode::handle_request`, and passes the production response payload
+to the frozen Python msgpack decoder. Python decodes the field as `None`,
+confirming explicit nil remains distinct from a byte string. The binary identity
+hash is already covered by the bidirectional production-Link regression above.
+
 ## Commands and results
 
 The following validation ran in the current #612 follow-up worktree:
