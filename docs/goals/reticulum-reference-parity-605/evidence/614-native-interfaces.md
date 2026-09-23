@@ -113,6 +113,14 @@ cargo test -p reticulum-rs-transport --features rnode-ble --lib \
   worker_cleans_up_cancelled_service_discovery_before_bounded_retry -- --nocapture PASS
 ```
 
+On the dispatched PR #634 head `acf53c19`, the Linux BLE-focused library
+filter ran all 22 BLE runtime tests successfully. This includes the fake
+partial-connect cleanup/retry and worker service-discovery cancellation/retry
+cases above. Formatting, transport-library clippy, module-size, and diff checks
+also passed on that head. These results exercise deterministic software
+backends only; they do not establish native GATT cleanup or physical-radio
+behavior.
+
 The software-only worker detection-timeout regression ran on the current PR
 #634 branch. It withholds `CMD_DETECT`, observes fallback configuration after
 the configured deadline, then cancels the worker and verifies backend closure.
