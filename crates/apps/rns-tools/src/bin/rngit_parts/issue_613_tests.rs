@@ -147,6 +147,21 @@ fn pages_accept_nomadnet_var_fields_and_render_not_found_errors() {
 }
 
 #[test]
+fn unknown_page_request_returns_the_protocol_not_found_response() {
+    let (_temporary, mut node) = page_fixture();
+    let request = request_map(&[]);
+
+    let response =
+        node.handle_page_map_request("/page/unknown.mu", request.as_map().expect("request map"), [7_u8; 16]);
+
+    let expected = [ReticulumGitNode::RES_NOT_FOUND]
+        .into_iter()
+        .chain(b"Not found".iter().copied())
+        .collect::<Vec<_>>();
+    assert_eq!(response, expected, "unexpected unknown-page response");
+}
+
+#[test]
 fn media_and_file_endpoints_enforce_keys_refs_permissions_and_metadata() {
     let (_temporary, mut node) = page_fixture();
     node.media_conversion = false;
