@@ -63,7 +63,7 @@ fn rngit_work_view_preserves_explicit_nil_optional_signature() {
     let mut child = Command::new(python)
         .env("PYTHONPATH", &reference)
         .arg("-c")
-        .arg("import msgpack,sys; from RNS.Utilities.rngit import server; value=msgpack.unpackb(sys.stdin.buffer.read(), raw=False); assert value['meta']['signature'] is None; print('nil-signature-ok')")
+        .arg("import sys; from RNS.vendor import umsgpack; value=umsgpack.unpackb(sys.stdin.buffer.read()); assert value['meta']['signature'] is None; print('nil-signature-ok')")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

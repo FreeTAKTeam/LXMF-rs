@@ -62,7 +62,8 @@ The dedicated `rngit_work_view_preserves_explicit_nil_optional_signature`
 regression stores a MessagePack `nil` for the optional work signature, submits
 a Rust-encoded production `/mgmt/work` view request through
 `ReticulumGitNode::handle_request`, and passes the production response payload
-to the frozen Python msgpack decoder. Python decodes the field as `None`,
+to the frozen Reticulum checkout's vendored `RNS.vendor.umsgpack` decoder (the
+codec imported as `mp` by rngit's server). Python decodes the field as `None`,
 confirming explicit nil remains distinct from a byte string. The binary identity
 hash is already covered by the bidirectional production-Link regression above.
 
