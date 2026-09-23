@@ -39,6 +39,14 @@ also compares malformed `--probes` handling at the process boundary: Rust and
 the frozen Python utility both exit with status 2 and report their respective
 invalid-integer diagnostics. Verify runs this test against the exact pinned
 Reticulum checkout; it does not complete the broader `rnprobe` option matrix.
+The `rnprobe_invalid_destination_identity_matches_pinned_python_failure`
+regression instead passes a 32-character non-hex destination identity hash to
+both production CLI processes. Frozen Python prints exactly
+`Invalid destination entered. Check your input.` to stdout and exits 0; Rust
+prints its destination-hash validation diagnostic to stderr and exits 2. The
+differing exit statuses are captured as reference behavior, not normalized.
+Verify runs this exact-target differential against the pinned checkout. This
+is narrow validation evidence, not broad `rnprobe` failure-path parity.
 The pinned Python fetch client receiving from the Rust listener and
 interrupted after partial Resource bytes arrive is covered by the ignored
 exact-target `rncp_python_fetch_cancel` transcript: Python exits 0, emits
@@ -472,6 +480,12 @@ RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
   cargo test -p rns-tools --test rnprobe_python_interop \
   -- --ignored --nocapture
 # 2 passed; 0 failed (Python→Rust and native Rust→Python)
+
+RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
+  cargo test -p rns-tools --test rnprobe_python_interop \
+  rnprobe_invalid_destination_identity_matches_pinned_python_failure \
+  -- --ignored --exact --nocapture --test-threads=1
+# 1 passed; 0 failed (malformed destination identity hash process differential)
 
 cargo clippy -p reticulumd -p reticulum-rs-rpc -p rns-tools --all-targets --all-features --no-deps -- -D warnings
 # passed

@@ -197,6 +197,9 @@ jobs:
           cargo test -p rns-tools --test rnprobe_python_interop \
             rnprobe_invalid_probe_count_matches_pinned_python_process_failure \
             -- --ignored --exact --nocapture --test-threads=1
+          cargo test -p rns-tools --test rnprobe_python_interop \
+            rnprobe_invalid_destination_identity_matches_pinned_python_failure \
+            -- --ignored --exact --nocapture --test-threads=1
 
       - name: Generate PR HIL support report
         if: always()

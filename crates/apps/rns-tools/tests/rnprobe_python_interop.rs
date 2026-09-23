@@ -184,6 +184,42 @@ fn rnprobe_invalid_probe_count_matches_pinned_python_process_failure() -> io::Re
     Ok(())
 }
 
+#[test]
+#[ignore = "requires the pinned Python Reticulum checkout"]
+fn rnprobe_invalid_destination_identity_matches_pinned_python_failure() -> io::Result<()> {
+    let repo = python_repo();
+    let script = repo.join("RNS/Utilities/rnprobe.py");
+    if !script.is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("pinned Python rnprobe script not found: {}", script.display()),
+        ));
+    }
+
+    let args = ["rnstransport.probe", "gg112233445566778899aabbccddeeff"];
+    let python =
+        Command::new(python_bin()).arg(script).args(args).env("PYTHONPATH", &repo).output()?;
+    let rust = Command::new(env!("CARGO_BIN_EXE_rnprobe")).args(args).output()?;
+
+    assert_eq!(python.status.code(), Some(0));
+    assert_eq!(rust.status.code(), Some(2));
+    assert_eq!(
+        String::from_utf8_lossy(&python.stdout).trim(),
+        "Invalid destination entered. Check your input."
+    );
+    assert!(
+        python.stderr.is_empty(),
+        "pinned Python stderr: {}",
+        String::from_utf8_lossy(&python.stderr)
+    );
+    assert!(rust.stdout.is_empty(), "Rust stdout: {}", String::from_utf8_lossy(&rust.stdout));
+    assert_eq!(
+        String::from_utf8_lossy(&rust.stderr),
+        "error: invalid value 'gg112233445566778899aabbccddeeff' for '[DESTINATION_HASH]': destination hash must be hexadecimal\n\nFor more information, try '--help'.\n"
+    );
+    Ok(())
+}
+
 fn spawn_rust_daemon(
     config: &Path,
     db: &Path,
