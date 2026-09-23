@@ -197,7 +197,7 @@ async fn resource_send_only_succeeds_after_matching_outbound_completion() {
 }
 
 #[tokio::test]
-async fn resource_failure_is_not_reported_as_success() {
+async fn failed_resource_is_reported_and_cleanup_is_attempted() {
     let (sender, mut receiver) = broadcast::channel(2);
     let expected_hash = Hash::new_from_slice(b"expected");
     sender
@@ -207,11 +207,24 @@ async fn resource_failure_is_not_reported_as_success() {
             kind: ResourceEventKind::OutboundFailed,
         })
         .expect("queue failure");
+    let cleanup_attempted = Arc::new(AtomicBool::new(false));
+    let cleanup_observer = cleanup_attempted.clone();
 
-    let error = await_resource_completion(&mut receiver, expected_hash, Duration::from_secs(1))
-        .await
-        .expect_err("failed resource must fail send");
+    let error = await_resource_completion_with_cancel(
+        &mut receiver,
+        expected_hash,
+        Duration::from_secs(1),
+        async move {
+            cleanup_observer.store(true, Ordering::SeqCst);
+            Ok(())
+        },
+    )
+    .await
+    .expect_err("failed resource must fail send and attempt cleanup");
+
     assert_eq!(error.category, lxmf_sdk::ErrorCategory::Transport);
+    assert_eq!(error.message, "resource transfer failed");
+    assert!(cleanup_attempted.load(Ordering::SeqCst));
 }
 
 #[tokio::test]
