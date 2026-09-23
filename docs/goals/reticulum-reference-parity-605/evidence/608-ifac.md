@@ -268,3 +268,24 @@ cargo test -p reticulum-rs-transport --lib \
 This is carrier-runtime evidence, not Python-peer interoperability. TCP and
 UDP retain the mixed Python/Rust evidence above; other carrier-family software
 paths and physical-support rows remain open.
+
+## Serial stream IFAC admission, rejection, and egress
+
+`serial_stream_ifac_rejects_wrong_key_and_roundtrips_authenticated_packets`
+exercises the production `run_serial_stream_with_ifac` worker over an in-memory
+duplex serial stream. A frame authenticated with a distinct wrong-key context
+increments the IFAC violation counter and never reaches transport admission; a
+valid frame is admitted with IFAC provenance. A Rust-originated packet then
+crosses the worker's IFAC/HDLC egress path and decodes under the configured
+context. This is deterministic serial-stream software evidence only; it does
+not claim a physical serial device or radio test.
+
+```text
+cargo test -p reticulum-rs-transport --lib \
+  serial_stream_ifac_rejects_wrong_key_and_roundtrips_authenticated_packets -- --nocapture
+# 1 passed; wrong-key rejection, authenticated ingress, and authenticated egress
+```
+
+Serial now has stream-level IFAC software evidence alongside the Pipe worker
+loopback and pinned Python/Rust TCP/UDP traces. Physical serial/RNode and the
+other carrier-family acceptance remain open.
