@@ -26,8 +26,10 @@ not the canonical release baseline. IFAC daemon wiring, remaining remote
 utility behavior, transport policy differences, and platform validation remain
 open. The #609 software slice now additionally proves that attached shared-
 instance clients defer duplicate filtering to their owner and that standalone
-transports suppress identical LinkRequests; other packet/proof classes and
-post-restart LXMF queue delivery remain unverified. The focused #611 `rncp`
+transports suppress identical LinkRequests. A two-peer pinned-Python scenario
+also verifies one queued opportunistic LXMF message is delivered after Rust
+relay replacement; direct/resource retry modes and other packet/proof classes
+remain unverified. The focused #611 `rncp`
 compression/send/fetch matrix, bounded `rnprobe` packet/RPC workflow, and
 bounded native `rnsh` channel workflow, negative failure-category checks,
 path-discovery-timeout check, listener restart check, local disk-failure check,
@@ -524,10 +526,11 @@ without being requeued after restore. A real-socket TCP carrier regression
 also proves redial preserves interface identity and resumes bidirectional
 HDLC packet traffic. A two-peer pinned-Python shared-instance test also
 exchanges LXMF in both directions before Rust daemon replacement, then verifies
-both paths are relearned and fresh RNS links and raw packets pass in both
-directions afterward. It does not verify LXMF queue retry after restart.
-Broader multi-hop packet/proof/link duplicate cases and deeper relay replacement
-remain open. A mixed pinned-Python
+both paths are relearned, a short opportunistic LXMF message queued during relay
+downtime reaches the peer and is acknowledged as delivered, and fresh RNS links
+and raw packets pass in both directions. Direct/resource retry modes, broader
+multi-hop packet/proof/link duplicate cases and deeper relay replacement remain
+open. A mixed pinned-Python
 link-establishment timeout trace now proves pending cleanup after the path is
 available; the two-carrier split Resource trace covers the multi-hop Resource
 direction.

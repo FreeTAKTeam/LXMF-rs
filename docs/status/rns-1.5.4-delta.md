@@ -75,7 +75,7 @@ incomplete requirements:
 | ---: | --- | --- |
 | #607 | Review and integrate the initial PR increment | partial / unverified |
 | #608 | Wire IFAC into production carrier ingress and egress | implemented but unproven; mixed-peer evidence pending |
-| #609 | Close transport, local-client, and shared-instance gaps | partial; two-peer shared-instance recovery, attached-client duplicate delegation, and standalone repeated-LinkRequest suppression are evidenced; LXMF queue recovery, deeper relay replacement, and other duplicate cases remain open |
+| #609 | Close transport, local-client, and shared-instance gaps | partial; two-peer shared-instance recovery including one queued opportunistic LXMF delivery after relay replacement, attached-client duplicate delegation, and standalone repeated-LinkRequest suppression are evidenced; direct/resource retry modes, deeper relay replacement, and other duplicate cases remain open |
 | #610 | Prove Resource collision, stream, and mixed-peer behavior | partial / unverified |
 | #611 | Exercise every reference utility through real network workflows | partial / unverified |
 | #612 | Match rngit permission, resolver, work, storage, and wire schemas | partial / unverified |
@@ -127,9 +127,11 @@ role-aware and establishment-timeout regressions. The row remains unverified
 until broader shared-instance and multi-hop production traces compare other
 packet/proof duplicate classes. A new two-peer pinned-Python shared-instance
 trace verifies path relearning, fresh links, and raw packet exchange in both
-directions after replacing the transport-enabled Rust daemon; it does not prove
-LXMF queue retry/delivery after restart or deeper multi-relay replacement. A
-focused transport save/restart regression proves a newer cached `PATH_RESPONSE`
+directions after replacing the transport-enabled Rust daemon. It also queues
+one short opportunistic LXMF message while the relay is down and verifies the
+same message is received and acknowledged after restart. This does not establish
+direct/resource retry modes or deeper multi-relay replacement. A focused
+transport save/restart regression proves a newer cached `PATH_RESPONSE`
 announce supersedes scheduled state without becoming retransmission work after
 restore. A real-socket `TcpClient` regression also proves redial preserves the
 interface identity and resumes bidirectional HDLC packet traffic; it is
