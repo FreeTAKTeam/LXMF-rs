@@ -182,9 +182,37 @@ application traffic across Rust daemon restart with stable delivery identity.
 The timeout pair covers both dropped link establishment requests and dropped
 keepalives reaching terminal `Closed` state. A separate transport restart test
 covers a newer cached path response superseding scheduled announce state.
-The real-socket carrier reconnect regression below verifies packet resumption;
-multi-hop daemon-replacement recovery and broader packet/proof duplicate
-handling remain unverified.
+The real-socket carrier reconnect regression below verifies packet resumption.
+The two-peer shared-instance daemon-replacement trace below was added afterward;
+broader packet/proof duplicate handling and LXMF queue recovery across daemon
+replacement remain unverified.
+
+## Two-peer shared-instance recovery after Rust daemon replacement
+
+`python_shared_instance_two_peer_relay_recovers_after_daemon_restart_e2e`
+starts two independent pinned-Python shared-instance peers and attaches both as
+local clients to one transport-enabled Rust relay. LXMF messages pass in both
+directions before restart. The Rust daemon is then replaced using the same
+configuration and state while both Python peers remain running. After each
+peer re-announces and the Rust relay relearns both paths, fresh Python RNS links
+and raw link packets pass in both directions.
+
+```text
+RETICULUM_PY_REPO=Reticulum-parity LXMF_PY_REPO=LXMF LXMF_PYTHON_BIN=python \
+  cargo test -p lxmf-cli --test python_lxmd_remote_relay \
+  python_shared_instance_two_peer_relay_recovers_after_daemon_restart_e2e \
+  -- --ignored --nocapture --test-threads=1
+# 1 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; 5.15s
+```
+
+Verified on Rust source commit `f8a1ee1a6f32b6a5a5f3aae8916e1495b4e94fae`,
+Reticulum `99de23c040d507e3fefca19e87b182302902725d`, and LXMF
+`727830cefda83d9c6e3982b48675425f3f988f9c`. This is bounded shared-instance
+path/link/packet recovery through one Rust relay, not a deeper multi-relay
+restart test. The post-restart probe uses raw RNS link packets, so it does not
+prove the still-live Python LXMRouter retries or delivers queued LXMF messages
+after relay replacement. Broader packet/proof duplicate classes also remain
+open; the #609 row stays partial.
 
 ## Caller-visible close-reason parity
 
@@ -211,9 +239,10 @@ cargo test -p reticulum-rs-transport --lib \
 ```
 
 This closes the previously unobservable close-reason slice without promoting
-the broader #609 row. Multi-hop recovery after daemon replacement, broader
-packet/proof duplicate handling, and the wider transport matrix remain
-unverified.
+the broader #609 row. The later two-peer trace below covers bounded shared-
+instance path/link/raw-packet recovery after daemon replacement; LXMF queue
+retry, deeper relay replacement, broader packet/proof duplicate handling, and
+the wider transport matrix remain unverified.
 
 ## Cached-versus-scheduled announce persistence
 
@@ -249,8 +278,10 @@ cargo test -p reticulum-rs-transport --test tcp_client_reconnect -- --nocapture
 # 1 passed; 0 failed; repeated five times; bidirectional HDLC traffic resumed
 ```
 
-This is carrier-level software evidence. Multi-hop Python/Rust recovery across
-daemon replacement and broader packet/proof duplicate handling remain open.
+This is carrier-level software evidence. The bounded shared-instance relay
+restart trace above separately verifies path, link, and raw packet recovery;
+broader packet/proof duplicate handling and LXMF queue retry across daemon
+replacement remain open.
 
 ## Multi-hop link-request-proof duplicate suppression
 
@@ -273,7 +304,7 @@ RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \
 
 The same pinned-reference test is now part of the PR `Verify` workflow. This
 closes only the link-request-proof duplicate case; other packet/proof classes
-and multi-hop recovery after daemon replacement remain unverified.
+remain unverified.
 
 ## Remaining acceptance boundary
 
@@ -282,9 +313,12 @@ fan-out, a direct application/link exchange, Rust daemon restart with identity
 continuity, two-carrier multi-hop Python Channel and split Resource exchanges,
 and multi-hop Channel sequence deduplication through one forwarding Rust
 transport, application-link close/reconnect, and one link-request-proof
-duplicate through that forwarding path. It does not yet cover multi-hop
-recovery across daemon replacement or broader packet/proof duplicate handling.
-Those traces are still required before this row can be promoted;
-scheduled-to-cached announce persistence and direct carrier redial are covered
-by the focused transport tests above.
+duplicate through that forwarding path. The two-peer shared-instance trace
+also verifies path relearning, fresh links, and raw packets in both directions
+after replacing the Rust daemon. It does not cover post-restart LXMF queue
+retry/delivery, deeper multi-relay replacement, or broader packet/proof
+duplicate classes. Those cases and the remaining transport matrix are still
+required before this row can be promoted; scheduled-to-cached announce
+persistence and direct carrier redial are covered by the focused transport
+tests above.
 Hardware and public-network evidence remain separate acceptance axes.

@@ -519,8 +519,12 @@ runs this regression against the frozen target. A transport save/restart regress
 now verifies a newer cached path response supersedes scheduled announce state
 without being requeued after restore. A real-socket TCP carrier regression
 also proves redial preserves interface identity and resumes bidirectional
-HDLC packet traffic. Other multi-hop packet/proof/link duplicate cases and
-recovery after daemon replacement remain open. A mixed pinned-Python
+HDLC packet traffic. A two-peer pinned-Python shared-instance test also
+exchanges LXMF in both directions before Rust daemon replacement, then verifies
+both paths are relearned and fresh RNS links and raw packets pass in both
+directions afterward. It does not verify LXMF queue retry after restart.
+Broader multi-hop packet/proof/link duplicate cases and deeper relay replacement
+remain open. A mixed pinned-Python
 link-establishment timeout trace now proves pending cleanup after the path is
 available; the two-carrier split Resource trace covers the multi-hop Resource
 direction.

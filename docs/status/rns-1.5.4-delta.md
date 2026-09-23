@@ -75,7 +75,7 @@ incomplete requirements:
 | ---: | --- | --- |
 | #607 | Review and integrate the initial PR increment | partial / unverified |
 | #608 | Wire IFAC into production carrier ingress and egress | implemented but unproven; mixed-peer evidence pending |
-| #609 | Close transport, local-client, and shared-instance gaps | partial; pinned Python multi-hop and carrier-recovery evidence; daemon-replacement and broader duplicate cases pending |
+| #609 | Close transport, local-client, and shared-instance gaps | partial; two-peer shared-instance path/link/raw-packet recovery through Rust daemon replacement is evidenced; LXMF queue recovery, deeper relay replacement, and broader duplicate cases remain open |
 | #610 | Prove Resource collision, stream, and mixed-peer behavior | partial / unverified |
 | #611 | Exercise every reference utility through real network workflows | partial / unverified |
 | #612 | Match rngit permission, resolver, work, storage, and wire schemas | partial / unverified |
@@ -121,12 +121,15 @@ runs in PR `Verify` CI. Rust link events now expose the pinned
 `TIMEOUT`, `INITIATOR_CLOSED`, and `DESTINATION_CLOSED` reason codes, with
 role-aware and establishment-timeout regressions. The row remains unverified
 until broader shared-instance and multi-hop production traces compare other
-packet/proof duplicate classes and recovery across daemon replacement. A
+packet/proof duplicate classes. A new two-peer pinned-Python shared-instance
+trace verifies path relearning, fresh links, and raw packet exchange in both
+directions after replacing the transport-enabled Rust daemon; it does not prove
+LXMF queue retry/delivery after restart or deeper multi-relay replacement. A
 focused transport save/restart regression proves a newer cached `PATH_RESPONSE`
 announce supersedes scheduled state without becoming retransmission work after
 restore. A real-socket `TcpClient` regression also proves redial preserves the
 interface identity and resumes bidirectional HDLC packet traffic; it is
-carrier-level evidence, not the broader daemon-replacement trace.
+carrier-level evidence, not the broader duplicate or queue-recovery cases.
 
 The #610 implementation slice now has committed local evidence in
 [`evidence/610-resource.md`](../goals/reticulum-reference-parity-605/evidence/610-resource.md):

@@ -1648,11 +1648,12 @@
           "cargo test -p reticulum-rs-transport --lib a_pending_out_link_that_outlives_its_establishment_timeout",
           "cargo clippy -p reticulum-rs-transport --lib --all-features --no-deps -- -D warnings",
           "RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop python_to_python_channel_roundtrip_through_rust_transport -- --ignored --nocapture",
-          "RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop python_to_python_duplicate_link_request_proof_is_filtered_by_rust_transport -- --ignored --nocapture --test-threads=1"
+          "RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop python_to_python_duplicate_link_request_proof_is_filtered_by_rust_transport -- --ignored --nocapture --test-threads=1",
+          "RETICULUM_PY_REPO=Reticulum-parity LXMF_PY_REPO=LXMF LXMF_PYTHON_BIN=python cargo test -p lxmf-cli --test python_lxmd_remote_relay python_shared_instance_two_peer_relay_recovers_after_daemon_restart_e2e -- --ignored --nocapture --test-threads=1"
         ],
         "evidence_artifact": "target/issue-605/evidence/609-shared-instance.json",
         "owner_issue": 609,
-        "notes": "Parent/child classification, immediate local-client retransmit, direct sibling fan-out, and local TCP/Unix parent marking are implemented; pinned Python-Rust shared-instance attachment/restart, two-carrier Python Channel and split-Resource, application-link reconnect, link-establishment-timeout, callback-visible close-reason, carrier redial, and duplicate link-request-proof filtering traces are evidenced, while multi-hop daemon-replacement recovery and broader packet/proof duplicate suppression remain unverified."
+        "notes": "Parent/child classification, immediate local-client retransmit, direct sibling fan-out, and local TCP/Unix parent marking are implemented; pinned Python-Rust shared-instance attachment/restart, two-carrier Python Channel and split-Resource, application-link reconnect, link-establishment-timeout, callback-visible close-reason, carrier redial, duplicate link-request-proof filtering, and two-peer shared-instance path/link/raw-packet recovery after Rust daemon replacement are evidenced. The restart test does not prove LXMF queue retry/delivery after replacement; deeper multi-relay recovery and broader packet/proof duplicate suppression remain unverified."
       },
       {
         "id": "reticulum-605-610-resource-stream-collision",
