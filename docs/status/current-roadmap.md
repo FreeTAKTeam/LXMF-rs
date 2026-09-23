@@ -31,10 +31,10 @@ also verifies one queued opportunistic LXMF message is delivered after Rust
 relay replacement; direct/resource retry modes and other packet/proof classes
 remain unverified. A pinned-Python clean-close trace over TCP verifies that
 Python `Link.teardown()` reaches the Rust caller as `INITIATOR_CLOSED`.
-Channel retry exhaustion also has a regression for the single caller-visible
-close event and role-specific reason plus a LinkClose packet accepted by the
-paired peer Link; a live pinned-Python retry-exhaustion trace over a carrier
-remains unverified. The focused #611 `rncp`
+Channel retry exhaustion also has a pinned-Python localhost TCP trace: the
+test drops delivery proofs, observes all five default Python attempts, and
+verifies Rust receives the initiator close reason. This does not cover physical
+carriers or public-network recovery. The focused #611 `rncp`
 compression/send/fetch matrix, bounded `rnprobe` packet/RPC workflow, and
 bounded native `rnsh` channel workflow, negative failure-category checks,
 path-discovery-timeout check, listener restart check, local disk-failure check,

@@ -285,6 +285,32 @@ an explicit clean close from the Python initiator only; it does not verify
 Python Channel retry-exhaustion over a live carrier. Broader #609 routing,
 retry, duplicate packet/proof, and shared-instance recovery cases remain open.
 
+## Pinned-Python Channel retry exhaustion over TCP
+
+On source commit `5df915c3`,
+`python_channel_retry_exhaustion_sends_link_close_over_tcp` opens the production
+Rust inbound Channel and routes the Python peer through the test TCP carrier
+proxy. The proxy drops ordinary Link delivery proofs (`PacketType::Proof` with
+context `None`) while preserving Link establishment proofs and other traffic.
+The pinned Python Channel sends one message, exhausts its default five-attempt
+budget, and tears down the initiating Link. The test verifies that at least one
+delivery proof was dropped, Python reports exactly five attempts and close
+reason `2`, and the Rust caller receives one closed-link event with
+`InitiatorClosed`.
+
+```text
+RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
+LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
+  python_channel_retry_exhaustion_sends_link_close_over_tcp -- \
+  --ignored --nocapture --test-threads=1
+# 2 consecutive runs; each 1 passed in 5.33s
+```
+
+Reference: Reticulum `99de23c040d507e3fefca19e87b182302902725d`. This is
+localhost software-carrier evidence, not physical-radio, public-network, or
+broader relay-recovery evidence; other #609 routing, retry, duplicate, and
+shared-instance gaps remain open.
+
 ## Cached-versus-scheduled announce persistence
 
 `newer_cached_path_announce_survives_scheduled_queue_restart` exercises the
