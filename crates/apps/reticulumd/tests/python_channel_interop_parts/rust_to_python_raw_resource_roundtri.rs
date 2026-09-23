@@ -794,9 +794,10 @@ async fn python_to_rust_resource_backed_request_response_roundtrip() {
     ]))
     .expect("large response payload");
     let response_hash = transport
-        .send_response_resource(&link_id, request_id.to_vec(), response_payload, None)
+        .send_response(&link_id, request_id.to_vec(), response_payload, None)
         .await
-        .expect("send large response resource");
+        .expect("select response packet or Resource")
+        .expect("large response should use a Resource");
     wait_for_outbound_resource_complete(
         &mut resource_events,
         response_hash,
@@ -817,9 +818,19 @@ async fn python_to_rust_resource_backed_request_response_roundtrip() {
         );
     }
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("\"reply:large:"),
-        "python client did not report large request response"
+    let report: serde_json::Value = stdout
+        .lines()
+        .find_map(|line| serde_json::from_str(line).ok())
+        .unwrap_or_else(|| panic!("Python response report missing from stdout: {stdout}"));
+    let expected_response = format!("reply:{request_text}");
+    let expected_bytes = expected_response.as_bytes();
+    use sha2::Digest as _;
+    assert_eq!(report["response"].as_str(), Some(expected_response.as_str()));
+    assert_eq!(report["response_size"].as_u64(), Some(expected_bytes.len() as u64));
+    assert_eq!(
+        report["response_sha256"].as_str(),
+        Some(hex::encode(sha2::Sha256::digest(expected_bytes)).as_str()),
+        "Python must report the exact response digest"
     );
 }
 
@@ -905,9 +916,10 @@ async fn python_to_rust_backbone_resource_backed_request_response_roundtrip() {
     ]))
     .expect("large response payload");
     let response_hash = transport
-        .send_response_resource(&link_id, request_id.to_vec(), response_payload, None)
+        .send_response(&link_id, request_id.to_vec(), response_payload, None)
         .await
-        .expect("send Backbone large response resource");
+        .expect("select Backbone response packet or Resource")
+        .expect("large Backbone response should use a Resource");
     wait_for_outbound_resource_complete(
         &mut resource_events,
         response_hash,

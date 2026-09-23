@@ -405,7 +405,17 @@ class ChannelClient:
                 time.sleep(0.05)
             expected_response = f"reply:{request_data}"
             if result.get("response") == expected_response:
-                print(json.dumps({"response": result["response"]}), flush=True)
+                response_bytes = expected_response.encode("utf-8")
+                print(
+                    json.dumps(
+                        {
+                            "response": result["response"],
+                            "response_size": len(response_bytes),
+                            "response_sha256": hashlib.sha256(response_bytes).hexdigest(),
+                        }
+                    ),
+                    flush=True,
+                )
                 return 0
             print(f"python_channel_client: request failed: {result}", file=sys.stderr, flush=True)
             return 1

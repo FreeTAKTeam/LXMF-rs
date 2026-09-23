@@ -557,6 +557,49 @@ RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
 # 1 passed; two exact segment indexes, metadata, total size, and content digest
 ```
 
+## Link request/response packet-versus-Resource selection
+
+Pinned Reticulum `99de23c040d507e3fefca19e87b182302902725d`
+`RNS/Link.py::handle_request` defines a deterministic ordinary-response
+boundary: pack `[request_id, response]`; send one `Response` packet when the
+packed envelope length is `<= link.mdu`, otherwise send it as a response
+Resource. A file-handle response is always a metadata-bearing Resource,
+independent of its size. The Resource transfer matrix does not establish this
+Link-level selection behavior.
+
+Rust now exposes `Transport::send_response`, which applies that rule using the
+negotiated Link MDU and reports whether it sent a packet or advertised a
+Resource. The mixed-peer request/response cases exercise the production Link
+and Request paths in both directions: ordinary small responses are delivered
+as packets; oversized ordinary responses are delivered as Resources; and the
+Python file response arrives as Resource content with its exact decoded
+`python-file-meta` metadata. The oversized Python response case checks exact
+response content, UTF-8 byte length, and SHA-256 reported by the Python peer;
+Rust verifies these against the expected response. Rust's Resource response
+case verifies the selected Resource hash reaches completion and Python reports
+the exact response bytes. Existing tests cover a clearly-small and a clearly-
+oversized response; they do not probe `mdu - 1`, `mdu`, and `mdu + 1` with
+production peers, so the exact inclusive edge remains open. This closes the
+missing automatic Rust selection path but does not claim edge-boundary proof.
+
+```text
+RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
+  LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
+  request_response -- --ignored --nocapture --test-threads=1
+# 7 passed; packet and Resource response paths in both directions, including
+# Rust Resource selection and exact response size/content/SHA-256 assertions
+
+RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
+  LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
+  rust_to_python_file_response_resource_roundtrip \
+  -- --ignored --nocapture --test-threads=1
+# 1 passed; exact file bytes and decoded metadata
+```
+
+The selected cases establish clearly-small and clearly-oversized behavior but
+do not yet test exact `mdu - 1`, `mdu`, and `mdu + 1` packet lengths over a
+production peer link. That inclusive-edge differential remains open.
+
 ## Remaining acceptance boundary
 
 The following #610 requirements remain unverified and are intentionally not
