@@ -472,15 +472,14 @@ class ChannelClient:
             if result.get("status") == RNS.Resource.COMPLETE:
                 if self.payload_kind == "resource-multi-hop":
                     digest = hashlib.sha256(resource_data).hexdigest()
-                    expected = {
-                        f"resource-sha256:{len(resource_data)}:{digest}",
+                    expected = (
                         f"resource-sha256-metadata:{len(resource_data)}:{digest}:"
-                        f"{result['total_size']}:python-meta",
-                    }
+                        f"{result['total_size']}:python-meta"
+                    )
                     while True:
                         with self.lock:
                             acknowledged = any(
-                                reply.get("id") == "rust-resource" and reply.get("data") in expected
+                                reply.get("id") == "rust-resource" and reply.get("data") == expected
                                 for reply in self.received
                             )
                         if acknowledged:
