@@ -139,3 +139,113 @@ fn rngit_serves_pages_and_media_to_pinned_python_client() -> io::Result<()> {
     let _ = server.wait();
     result
 }
+
+#[test]
+#[ignore = "requires local Python Reticulum checkout"]
+fn rngit_returns_raw_media_when_webp_backend_is_unavailable() -> io::Result<()> {
+    let _test_guard = PYTHON_INTEROP_TEST_LOCK.lock().expect("Python interop test lock poisoned");
+    let temp = tempfile::tempdir()?;
+    let root = create_repository_fixture(temp.path())?;
+    let python_repo = python_repo();
+    if !python_repo.join("RNS/Link.py").is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("pinned Python Reticulum checkout not found: {}", python_repo.display()),
+        ));
+    }
+
+    let port = free_port()?;
+    let identity_seed = "rngit-python-unavailable-media-backend";
+    let mut server = Command::new(env!("CARGO_BIN_EXE_rngit"))
+        .args([
+            "--root",
+            root.to_string_lossy().as_ref(),
+            "--listen",
+            &format!("127.0.0.1:{port}"),
+            "--identity-seed",
+            identity_seed,
+            "--silent",
+        ])
+        .env("RNGIT_MEDIA_BACKEND", "codex-test-backend-that-does-not-exist")
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()?;
+
+    let result = (|| {
+        wait_for_port(port, &mut server)?;
+        let destination = rust_destination(&root, identity_seed)?;
+        let config_dir = temp.path().join("python-client");
+        fs::create_dir_all(&config_dir)?;
+        write_python_config(&config_dir, port)?;
+        let output = Command::new(python_bin())
+            .arg("-c")
+            .arg(RAW_FALLBACK_PYTHON_CLIENT)
+            .arg(&config_dir)
+            .arg(&destination)
+            .env("PYTHONPATH", &python_repo)
+            .output()?;
+        if !output.status.success() {
+            return Err(io::Error::other(format!(
+                "Python unavailable-backend media client failed: {}\nstdout:\n{}\nstderr:\n{}",
+                output.status,
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            )));
+        }
+        let response: serde_json::Value = serde_json::from_slice(&output.stdout).map_err(|error| {
+            io::Error::other(format!(
+                "Python unavailable-backend client returned invalid JSON: {error}\nstdout:\n{}",
+                String::from_utf8_lossy(&output.stdout)
+            ))
+        })?;
+        assert_eq!(response["name"], "image.png");
+        assert_eq!(response["size"], 8192);
+        assert_eq!(response["matches_expected_raw_bytes"], true);
+        Ok(())
+    })();
+    let _ = server.kill();
+    let _ = server.wait();
+    result
+}
+
+const RAW_FALLBACK_PYTHON_CLIENT: &str = r#"
+import hashlib
+import json
+import sys
+import threading
+import RNS
+
+config_dir, destination_hex = sys.argv[1:3]
+RNS.Reticulum(configdir=config_dir, loglevel=0)
+destination_hash = bytes.fromhex(destination_hex)
+if not RNS.Transport.await_path(destination_hash, timeout=30):
+    raise RuntimeError("could not resolve rngit destination")
+remote_identity = RNS.Identity.recall(destination_hash)
+if remote_identity is None:
+    raise RuntimeError("could not recall rngit identity")
+destination = RNS.Destination(remote_identity, RNS.Destination.OUT, RNS.Destination.SINGLE, "nomadnetwork", "node")
+ready = threading.Event()
+link = RNS.Link(destination)
+link.set_link_established_callback(lambda _link: ready.set())
+if not ready.wait(30):
+    raise RuntimeError("media Link establishment timed out")
+finished = threading.Event()
+result = {}
+def response(receipt):
+    value = receipt.response
+    payload = value.read() if hasattr(value, "read") else value
+    expected = bytes((index * 29) & 0xff for index in range(8192))
+    result["name"] = receipt.metadata.get("name", b"").decode("utf-8") if receipt.metadata else None
+    result["size"] = len(payload)
+    result["sha256"] = hashlib.sha256(payload).hexdigest()
+    result["matches_expected_raw_bytes"] = payload == expected
+    finished.set()
+def failed(_receipt):
+    result["failed"] = True
+    finished.set()
+receipt = link.request("/media", {"key": b"raw-fallback", "path": "/media/group/repo/HEAD/image.png"}, response_callback=response, failed_callback=failed, timeout=4)
+if receipt is False or not finished.wait(8):
+    raise RuntimeError("raw media Resource did not complete")
+link.teardown()
+print(json.dumps(result, sort_keys=True))
+"#;

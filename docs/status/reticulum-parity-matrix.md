@@ -183,7 +183,11 @@ that behavior and the pinned-Python test expects scalar `False`.
 The issue-specific #613 live trace also observes one WebP conversion temporary
 directory while the pinned-Python Reticulum Link is active, tears that Link
 down, and verifies the production Rust server removes the directory. This
-proves graceful disconnect cleanup. The periodic sweep now removes stale,
+proves graceful disconnect cleanup. A second pinned-Python production-Link case
+forces `RNGIT_MEDIA_BACKEND` to an unavailable executable and verifies that the
+successful `/media` Resource retains the original filename and all 8,192 raw
+fixture bytes, matching the pinned handler's conversion-failure fallback. The
+periodic sweep now removes stale,
 closed, and missing-link temp directories while retaining active-link media,
 covered by a deterministic regression. Abrupt-process stale transition and
 A failure-injection regression also proves a failed directory deletion remains

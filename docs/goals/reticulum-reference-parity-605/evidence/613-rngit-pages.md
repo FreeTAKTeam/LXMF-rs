@@ -27,7 +27,7 @@ and a pinned-Python cancellation trace for an in-flight `/media` Resource.
 | Pages | Index/group/repository/tree/blob/commits/commit/refs/stats/releases/release/work/work-doc paths, `var_*` query fields, ref/path validation, not-found/error rendering, custom static and bounded executable templates, binary-image `/media` markup | local verified; pinned Python live trace covers missing repository, invalid ref, missing blob, and visual/reference rendering remains incomplete |
 | Access control | Repository read/stats/release checks, work-document read checks, and the frozen `pages.py` rule that renders `no_ident` only for an unidentified peer when the derived null-identity hash is blocked | unit cases cover blocked/unblocked anonymous and identified-blocked behavior; pinned Python real-Link traces cover both the unblocked front page and exact blocked `no_ident` response with private-content exclusion; denied repository trace remains covered |
 | Media/files | `/media` key and path validation, URL decoding, ref/blob resolution, binary-safe filename metadata, download/artifact/work-doc endpoints, published-release filtering and absent-blob handling | local verified; pinned Python Resource payload/metadata and `/file/download` content/filename trace evidenced; same-Link production differential verifies a valid nested-path Resource control and scalar-False denials for missing key/path, malformed/insufficient/empty path, denied private access, absent blob, and invalid ref |
-| WebP conversion | Backend preference and `RNGIT_MEDIA_BACKEND`, argv-only process construction, quality/max-dimension options, 8-second pipeline bound, bounded stderr, output validation, temporary-directory cleanup, raw fallback | local code/tests; pinned Python live `ffmpeg` conversion of a valid PNG returns validated WebP; timeout regression verifies both pipeline children are terminated and reaped; other backends and visual parity remain unverified |
+| WebP conversion | Backend preference and `RNGIT_MEDIA_BACKEND`, argv-only process construction, quality/max-dimension options, 8-second pipeline bound, bounded stderr, output validation, temporary-directory cleanup, raw fallback | local code/tests; pinned Python live `ffmpeg` conversion of a valid PNG returns validated WebP; pinned-Python production-Link test with an explicitly unavailable backend returns the original `image.png` name and all 8,192 raw bytes unchanged; timeout regression verifies both pipeline children are terminated and reaped; other backends and visual parity remain unverified |
 | Resource wire | Explicit outbound compression control, with `/media` responses sent uncompressed and a regression asserting no compressed advertisement | local verified; live Python Resource delivery and metadata evidenced |
 | Link-scoped cleanup | Converted-media temp data is retained for an active Link and removed on `Closed`, `Stale`, or missing-link state; graceful teardown and in-flight `/media` Resource cancellation are exercised against pinned Python | deterministic cleanup tests plus ignored `rngit_python_interop::rngit_serves_pages_and_media_to_pinned_python_client` and `rngit_python_interop::rngit_cancels_in_flight_media_resource_on_python_link_teardown` | active, stale, closed, missing-link, graceful-disconnect, and synchronized partial-Resource cancellation paths verified; abrupt-process stale transition and other filesystem failures remain open |
 | Removal errors | Failed directory deletion retains the Link registry entry; conversion-fallback and link-cleanup errors log path/link context for diagnosis and retry, even with `--silent` | deterministic `page_link_cleanup_retries_failed_removal` injects a failure then verifies successful retry on link cleanup | one deletion-error retry path verified; other filesystem fault paths remain open |
@@ -328,9 +328,26 @@ cargo test -p rns-tools --bin rngit page_link_cleanup_retries_failed_removal PAS
   presentation, and every reference template detail remain open.
 - Only the `ffmpeg` backend has a live encoder-success fixture; the other
   configured backend families, visual-rendering parity, and full image corpus
-  remain unverified. Invalid conversion fallback, WebP header validation,
-  timeout/cleanup code paths, and argument construction are also covered
-  locally.
+  remain unverified. Invalid conversion fallback, explicitly unavailable
+  backend raw fallback over a pinned-Python production Link, WebP header
+  validation, timeout/cleanup code paths, and argument construction are also
+  covered.
+
+The unavailable-backend case starts the Rust service with
+`RNGIT_MEDIA_BACKEND=codex-test-backend-that-does-not-exist` while leaving media
+conversion enabled. A client using pinned Reticulum
+`99de23c040d507e3fefca19e87b182302902725d` requests the valid-path
+`/media/group/repo/HEAD/image.png` Resource and verifies the original filename,
+8,192-byte size, and byte-for-byte match against the committed fixture. This
+supports only disabled-backend raw fallback; other encoder families and the
+broader image corpus remain unverified.
+
+```text
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+  LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
+  rngit_returns_raw_media_when_webp_backend_is_unavailable \
+  -- --ignored --exact --nocapture                                  PASS (1 test)
+```
 - Reticulum public-key work-document signature verification,
   restart/concurrent-writer/fault
   transcripts, and end-to-end rngit Git/work network workflows remain open
