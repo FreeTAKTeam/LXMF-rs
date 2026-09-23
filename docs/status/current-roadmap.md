@@ -40,6 +40,12 @@ mixed-runtime restart check, and the #612 pinned-Python work-item persistence
 and do not promote the broader utility surface. Published inventory counts are
 not promoted or rewritten by this change.
 
+The current #631 increment adds one isolated `rnpath` discovery trace: the Rust
+CLI calls a live `reticulumd` TCP RPC while a separate pinned-Python peer
+announces the target over a TCP interface. This closes only the mocked-boundary
+gap for that discovery path; #611's broader utility and management matrix stays
+partial.
+
 The current #631 `rncp` increment observes packed and received Resource
 advertisement sizes/flags for all six Python/Rust compression roles, with a
 focused exact-target Verify step; the utility row remains partial because its

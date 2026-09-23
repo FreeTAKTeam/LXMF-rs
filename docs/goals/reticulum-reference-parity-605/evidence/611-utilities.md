@@ -55,7 +55,7 @@ option family; it is not a callable-surface completion claim.
 | Frozen entry point | Reference behavior families | Rust implementation and evidence | Current classification |
 | --- | --- | --- | --- |
 | `rncp` | Local copy; authenticated listener/send/fetch; jail/save/overwrite; compression; identity allow-list; progress, timeout, cancellation, and file failure status | Native TCP/Link/Resource send/fetch plus isolated Rust processes and pinned-Python send/fetch roles in this record | partial / bounded network slice evidenced |
-| `rnpath` | Path table/rates; discovery; path and announce eviction; transport-via eviction; blackhole list/add/remove; remote management identity and timeout; JSON/human output | `rnpath-rs`/`rnpath` discovery and daemon-backed rate/eviction/blackhole subset; `rnpath_cli` and daemon RPC tests | partial / local daemon management subset evidenced |
+| `rnpath` | Path table/rates; discovery; path and announce eviction; transport-via eviction; blackhole list/add/remove; remote management identity and timeout; JSON/human output | `rnpath-rs`/`rnpath` discovery and daemon-backed rate/eviction/blackhole subset; `rnpath_cli` regressions; `rnpath_python_interop::rnpath_discovers_late_pinned_python_announce_through_live_daemon_rpc` exercises the Rust CLI, live daemon TCP RPC, and a separate pinned-Python Reticulum peer | partial / one live network-discovery workflow evidenced; remaining management and reference options open |
 | `rnprobe` | Resolve full destination name and hash, send probe payloads of configurable size/count, wait between probes, report RTT/hops/loss and status | Native `rnprobe` sends a `probe` RPC with Python-compatible defaults and options; the daemon resolves the destination identity/path, validates the name/hash and packet limits, sends random payload packets, correlates delivery proofs through the existing receipt bridge, and returns per-probe RTT/hops/loss. `respond_to_probes = true` registers the `rnstransport.probe` destination with `ProofStrategy::All` and announces it through the existing transport schedule. `f86ecc1c` exercises pinned Python→Rust and native Rust→pinned Python probe roles over isolated TCP interfaces. | partial / bounded software workflow evidenced; physical/public-network and fault/restart evidence remain open |
 | `rnsd` | Configured daemon launch, service/interactive modes, verbosity, example configuration | Rust compatibility shim resolves and delegates to `reticulumd`; delegation/help/status tests exist | partial / daemon delegation evidenced |
 | `rnid` | Generate/import/export identities; announce/hash; sign/validate; encrypt/decrypt; metadata; optional network identity request and encoding modes | Rust `rnid` generates and displays persisted private identities with overwrite protection | partial / local identity subset evidenced |
@@ -88,7 +88,7 @@ physical/public-network evidence remain outside the software-only pass.
 | Adaptive timeout | Initial TCP clients reach `connected` before network work begins, allowing `operation_timeout` to observe the active interface bitrate and apply the RNS medium-path lower bound; a slow proxy delays the first server response and rate-limits both directions during a real send | `rncp_process::rncp_uses_medium_timeout_after_interface_activation`; `rncp_process::rncp_completes_after_delayed_first_hop_on_a_rate_limited_tcp_path` | verified for active local TCP and a delayed/rate-limited software TCP path; carrier-specific and physical timing are not claimed |
 | Packet probe exchange | Probe packet delivery and proof correlation between the native daemon path and the pinned Python utility, in both initiator/responder directions | ignored `rnprobe_python_interop` (2 tests, commit `f86ecc1c`) | verified for isolated Rust daemon/Python TCP roles; public/multi-hop, carrier-fault, and physical timing remain open |
 | Compression option | `--no-compress` disables opportunistic Resource compression for outbound sends and fetch responses while preserving the default auto-compression path | Resource compression regression, `rncp_process`, mixed Python/Rust compression matrix | verified for the focused Python↔Rust send and listener-side fetch-response roles; the successful Python fetch-client completion callback and native listener save-failure diagnostic are asserted, while Python-peer failure callbacks and the complete utility matrix remain open |
-| Path management | `rnpath-rs`/`rnpath` discovers paths through daemon RPC and now exposes daemon-backed rate inspection, path and announce-queue eviction, path-via eviction, blackhole listing, and timed/reasoned blackhole add/remove operations with human and JSON output | `rnpath_cli` mock-RPC and parser/process regressions | verified for the Rust client/daemon RPC boundary; pinned-Python utility roles and the remaining reference path-table/remote-management options remain open |
+| Path management | `rnpath-rs`/`rnpath` discovers paths through daemon RPC and exposes daemon-backed rate inspection, path and announce-queue eviction, path-via eviction, blackhole listing, and timed/reasoned blackhole add/remove operations with human and JSON output | `rnpath_cli` regressions; ignored exact-target `rnpath_python_interop::rnpath_discovers_late_pinned_python_announce_through_live_daemon_rpc` | one Rust CLI-to-live-daemon discovery over TCP, resolved from a late announce by a separate pinned-Python process; table/rates, remote management, and remaining reference options remain open |
 | Remote shell | Native authenticated listener/initiator, frozen channel message numbers, root-scoped process launch, stdin/stdout/stderr stream framing, command policy, timeout, mirrored exit status, and allow-list rejection | `rnsh` unit tests; `rnsh_process`; ignored `rnsh_python_interop` (`e57afb99`, `662dcdbe`) | verified for the bounded software/TCP slice in both pinned-Python roles, including the immediate EOF case; PTY/resize and the full option/fault/restart matrix remain open |
 | Other shipped utilities | `rnsd`, `rnid`, `rnir`, `rnodeconf`, `rnpkg`, `rnsh`, `rnx`, and `rngit` | existing tests and callable inventory; `rnprobe` is recorded in the row above | not promoted by this slice; network/reference gaps remain |
 
@@ -381,6 +381,24 @@ tools/scripts/check-module-size.sh
 These are implementation-backed daemon-RPC tests with a mock server; they do
 not claim a physical carrier or a Python utility process. `rnsh`, `rnir`, `rnpkg`,
 and hardware-facing `rnodeconf` remain separate parity rows.
+
+The live discovery follow-up is exercised by
+`rnpath_python_interop::rnpath_discovers_late_pinned_python_announce_through_live_daemon_rpc`.
+It starts an isolated pinned-Python TCP listener and responder, a separate
+Rust daemon with its own TCP client interface and RPC endpoint, then invokes
+the Rust `rnpath-rs --json` process before the Python destination announces.
+The CLI receives a successful path result for that destination with one hop.
+Verify runs this ignored exact-target test against the frozen 1.5.4 checkout;
+the broader path-table, remote-management, and failure matrix remains open.
+
+```text
+cargo build -p reticulumd --bin reticulumd
+RETICULUM_PY_REPO=.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 \\
+  cargo test -p rns-tools --test rnpath_python_interop \\
+  rnpath_discovers_late_pinned_python_announce_through_live_daemon_rpc \\
+  -- --ignored --exact --nocapture --test-threads=1
+# 1 passed; separate Rust CLI, daemon, and pinned-Python peer
+```
 
 ## Current `rnprobe` packet increment
 

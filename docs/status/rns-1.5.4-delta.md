@@ -247,6 +247,14 @@ exchange: a Python `rnprobe` reaches the Rust daemon's opt-in
 loss. Public/multi-hop, physical-carrier, and probe fault/restart evidence
 remain open.
 
+The #631 `rnpath` follow-up adds one software network trace beyond the existing
+mock-RPC tests: a separate pinned-Python Reticulum process delays its announce
+until the Rust `rnpath-rs` client has started discovery through a separate
+`reticulumd` process's live TCP RPC. The CLI returns the announced destination
+and one-hop result. Verify runs the exact-target trace against the frozen
+1.5.4 development checkout; path-table, remote-management, and broader utility
+acceptance remain partial.
+
 Commits `f24e0038` and `a32b6d71` add a bounded native `rnsh` TCP/Link/Channel workflow with
 the frozen Python message family, exact no-aspect destination hashing,
 authenticated/no-auth listener modes, root-scoped command launch, stream
