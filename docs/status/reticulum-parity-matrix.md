@@ -170,6 +170,10 @@ absent blobs map to `False`; a later content-read failure remains no-response.
 The media-denial and updated URL/access/page-media interop tests passed against
 the exact pinned checkout. The later content-read failure has not been
 fault-injected, and the broader #613 row remains partial.
+The frozen handler checks only whether `key` is present, so `key: None` with a
+valid path must still return the exact media Resource and filename metadata;
+the production-Link differential now proves that falsey-present case alongside
+missing-key denial. Rust matches without a production change.
 The same differential now covers component decoding: pinned `serve_media`
 leaves group/repository/ref literal and decodes only the file-path tail, so
 `%67roup` must not resolve the `group` repository; the Rust path parser follows

@@ -322,6 +322,9 @@ insufficient path components. The later #613 production-handler follow-up
 updates those cases to require the pinned scalar `False` response, with no
 Resource metadata or media bytes, and adds same-Link coverage for private
 access, absent blobs, malformed/empty paths, and invalid refs. The
+key-presence contract is now explicit too: a present `None` key is accepted
+and returns the expected Resource bytes and filename metadata, while an absent
+key is denied; the Rust handler already matches. The
 issue-specific follow-up observes the converted-media temp directory during
 the active Python Link and verifies the production `LinkEvent::Closed` handler
 removes it after teardown, against frozen Python commit

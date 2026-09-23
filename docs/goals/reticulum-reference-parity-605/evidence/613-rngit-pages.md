@@ -317,3 +317,20 @@ cargo test -p rns-tools --bin rngit page_link_cleanup_retries_failed_removal PAS
   restart/concurrent-writer/fault
   transcripts, and end-to-end rngit Git/work network workflows remain open
   under #612/#613.
+
+### `/media` key presence
+
+At frozen Reticulum `99de23c040d507e3fefca19e87b182302902725d`,
+`pages.py::serve_media` validates `"key" in data`; it does not validate the
+value. The production-Link regression therefore sends a valid media path with
+`key: None` and verifies the same Resource filename (`space name.bin`) and
+exact binary payload as the ordinary valid-key request. The absent-key control
+still returns scalar `False`, without metadata or media bytes. Rust already
+matches, so this slice changes only regression coverage and evidence.
+
+```text
+RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
+  LXMF_PYTHON_BIN=python3 cargo test -p rns-tools --test rngit_python_interop \
+  rngit_media_validation_denials_return_false_over_python_link \
+  -- --ignored --nocapture --test-threads=1                       PASS (1 test)
+```

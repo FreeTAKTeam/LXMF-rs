@@ -70,6 +70,10 @@ refs, with no Resource metadata or media bytes on denial. Object-info failure
 maps to `False`; a later media-content read failure still maps to no response
 and has not been separately fault-injected. The utility and full operational
 parity rows remain partial.
+The frozen handler's key check is presence-only: a `None` value with a valid
+media path still returns the Resource and filename metadata. A production-Link
+regression now proves that response alongside absent-key denial; Rust already
+matches, so this slice required no production change.
 
 The #612 mixed-peer increment adds pinned-Python Verify coverage for four
 concurrent signed work creators, malformed work requests, and the Python

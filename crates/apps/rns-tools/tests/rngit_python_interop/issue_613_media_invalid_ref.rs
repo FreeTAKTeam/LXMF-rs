@@ -69,6 +69,22 @@ fn rngit_media_validation_denials_return_false_over_python_link() -> io::Result<
         assert_eq!(result["valid_ref"]["metadata_present"], true);
         assert_eq!(result["valid_ref"]["media_bytes_received"], true);
         assert_eq!(result["valid_ref"]["failed"], false);
+        assert_eq!(
+            result["present_null_key"]["response_received"], true,
+            "client result: {result}"
+        );
+        assert_eq!(result["present_null_key"]["failed"], false, "client result: {result}");
+        assert_eq!(result["present_null_key"]["name"], "space name.bin", "client result: {result}");
+        assert_eq!(
+            result["present_null_key"]["payload_hex"],
+            "70657263656e74206465636f646564206d65646961207061746800ff0a",
+            "client result: {result}"
+        );
+        assert_eq!(result["present_null_key"]["metadata_present"], true, "client result: {result}");
+        assert_eq!(
+            result["present_null_key"]["media_bytes_received"], true,
+            "client result: {result}"
+        );
         for case in [
             "missing_key",
             "missing_path",
@@ -189,6 +205,7 @@ valid_path = "/media/group/repo/main/assets%2Fspace+name.bin"
 valid = request({"key": key, "path": valid_path}, "valid_ref")
 if not valid["response_received"] or valid.get("failed"):
     raise RuntimeError("known readable main-ref media request did not return a Resource")
+present_null_key = request({"key": None, "path": valid_path}, "present_null_key")
 denials = {
     "missing_key": request({"path": valid_path}, "missing_key"),
     "missing_path": request({"key": key}, "missing_path"),
@@ -201,5 +218,5 @@ denials = {
     "invalid_ref": request({"key": key, "path": "/media/group/repo/no-such-ref-613/assets%2Fspace+name.bin"}, "invalid_ref"),
 }
 link.teardown()
-print(json.dumps({"valid_ref": valid, **denials}, sort_keys=True))
+print(json.dumps({"valid_ref": valid, "present_null_key": present_null_key, **denials}, sort_keys=True))
 "#;
