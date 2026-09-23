@@ -236,6 +236,10 @@ pub enum ResourceEventKind {
     InboundFailed(ResourceFailure),
     OutboundComplete,
     OutboundFailed,
+    /// The remote receiver rejected the outbound resource. Reticulum uses
+    /// `RESOURCE_RCL` for this terminal outcome; it is distinct from a local
+    /// cancellation and from a transfer that failed after starting.
+    OutboundRejected,
     OutboundCancelled,
 }
 

@@ -6,7 +6,7 @@ fn local_git_bundle_fetch_and_push_use_the_registered_request_paths() {
     fs::create_dir_all(&source).expect("source");
     fs::create_dir_all(&group_path).expect("group");
     for args in [
-        vec!["init", "-q"],
+        vec!["init", "-q", "-b", "master"],
         vec!["config", "user.email", "rngit@example.invalid"],
         vec!["config", "user.name", "rngit-test"],
     ] {

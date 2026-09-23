@@ -56,6 +56,7 @@ async fn rust_reader_to_python_split_resource_roundtrip() {
     let payload = rust_resource_fixture(MAX_EFFICIENT_SIZE + 257);
     let expected_digest = digest_hex(&payload);
     let metadata = rmp_serde::to_vec(&String::from("rust-reader-meta")).expect("metadata");
+    let expected_total_size = payload.len() + metadata.len() + 3;
     let payload_path = temp.path().join("reader-resource.bin");
     fs::write(&payload_path, &payload).expect("write reader-backed resource fixture");
     let reader = fs::File::open(&payload_path).expect("open reader-backed resource fixture");
@@ -70,10 +71,12 @@ async fn rust_reader_to_python_split_resource_roundtrip() {
         Duration::from_secs(30),
     )
     .await;
-    wait_for_resource_digest_ack(
+    wait_for_resource_metadata_digest_ack(
         &seen,
         payload.len(),
         &expected_digest,
+        expected_total_size,
+        "rust-reader-meta",
         Duration::from_secs(30),
     )
     .await;

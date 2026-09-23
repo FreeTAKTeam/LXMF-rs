@@ -31,6 +31,16 @@ def required_rns_rows(level: str = "pr") -> list[dict]:
 
 
 class IndependentInteropGateTests(unittest.TestCase):
+    def test_peer_receiver_cancel_is_required_as_resource_rejection(self) -> None:
+        self.assertIn(
+            ("two-node", "rns-rs receiver -> LXMF-rs sender", "Resource rejection"),
+            RNS_RS_REQUIRED_PR_PASS,
+        )
+        self.assertNotIn(
+            ("two-node", "rns-rs receiver -> LXMF-rs sender", "Resource cancellation"),
+            RNS_RS_REQUIRED_PR_PASS,
+        )
+
     def test_exact_peer_divergences_are_allowed(self) -> None:
         rows = [
             {
