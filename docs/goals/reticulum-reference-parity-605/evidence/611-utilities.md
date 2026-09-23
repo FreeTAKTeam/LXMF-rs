@@ -74,7 +74,7 @@ physical/public-network evidence remain outside the software-only pass.
 | Fetch | `fetch_file` Link request/response, `True`/`False`/`0xF0`/`nil` status mapping, the pinned Python rncp listener's ordinary metadata-bearing file Resource contract, correlated Rust response Resources for other callers, and metadata-driven save | `rncp_process` Rust client to Rust listener; pinned Python listener/client trace; pinned Python client fetching from Rust | verified for two independent Rust processes and the bounded Python↔Rust fetch paths |
 | Authentication | `--no-auth`, explicit `--allowed-identity`, rejected identified peers, nonzero sender failure, and reciprocal Python/Rust identity allow-lists for send and fetch roles | manual denied-transfer run; pinned Python interop | verified for the bounded send/fetch roles; broader option and callback parity remains open |
 | Jail and save safety | Canonical jail containment, traversal rejection, basename-only metadata, overwrite/suffix behavior | protocol unit tests and process test | verified locally |
-| Timeout/output | `--timeout`, silent mode, nonzero status for denied senders, preserved not-found failure output for missing fetches, malformed identity rejection, unusable save-path rejection, path-discovery timeout status, client Ctrl-C cancellation, interrupted Resource-link failure, medium-path timeout after an active TCP interface connects, delayed/rate-limited TCP-path transfer, Python fetch completion and save-failure callbacks, and listener receive-save failure diagnostics | unit/process tests and pinned Python interop | bounded process-level outcomes are verified; the pinned Python fetch callback prints its save error but leaves the operation unresolved, so accurate terminal failure status remains a gap; Python-peer receive-side cancellation remains open |
+| Timeout/output | `--timeout`, silent mode, nonzero status for denied senders, preserved not-found failure output for missing fetches, malformed identity rejection, unusable save-path rejection, path-discovery timeout status, client Ctrl-C during discovery and an active Resource transfer, interrupted Resource-link failure, medium-path timeout after an active TCP interface connects, delayed/rate-limited TCP-path transfer, Python fetch completion and save-failure callbacks, and listener receive-save failure diagnostics | unit/process tests and pinned Python interop | active-transfer cancellation is verified for the native Rust sender/receiver path; Python-peer receive-side cancellation and broader utility status parity remain open; the pinned Python fetch callback prints its save error but leaves the operation unresolved |
 | Status output | Non-silent path request, link-establishment, transfer, and fetch-request phase lines; silent mode suppresses them; the Python fetch client emits `Transfer complete` on successful save | `rncp_process`, CLI phase transcript, pinned Python interop | verified for the native Rust client path and the bounded Python fetch-client path |
 | Restart | Persisted listener identity, same TCP endpoint, stable destination hash, and a second binary transfer after listener restart | `rncp_process`; ignored `rncp_python_interop` restart process | verified for the bounded Rust listener/client path and the Python-listener/Rust-client role |
 | Disk failure | Rust client/listener save failures; pinned Python listener receive-save failure; pinned Python fetch-client save callback failure after the save directory becomes unusable mid-transfer | `rncp_process::rncp_listener_reports_received_file_disk_error`; ignored `rncp_python_interop::rncp_python_listener_reports_received_file_disk_error`; ignored `rncp_python_fetch_failure::rncp_python_fetch_client_save_error_is_reported_but_never_resolved` | The Python fetch callback emits its save error but never resolves the completed transfer and the CLI remains running; the regression records this pinned-reference defect, not successful terminal failure handling. No case claims an application-level negative acknowledgment to the sender |
@@ -252,8 +252,13 @@ RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
   -- --ignored --nocapture --test-threads=1
 # 4 passed (38.16s)
 
-cargo test -p rns-tools --test rncp_process -- --nocapture
-# 11 passed (6.19s)
+cargo test -p rns-tools --test rncp_process -- --nocapture --test-threads=1
+# 13 passed (29.34s)
+
+cargo test -p rns-tools --test rncp_process \
+  rncp_ctrl_c_during_resource_transfer_reports_cancellation \
+  -- --exact --nocapture --test-threads=1
+# 1 passed
 ```
 
 Verify now runs the focused compression command as an explicit exact-target
@@ -272,7 +277,13 @@ found`, and a sender rejected by the listener's identity policy exits nonzero
 with `Resource transfer failed` without creating a destination file. These
 checks, together with `053ef246`, `9dc9bd62`, and `9b8e4ed6`, also cover
 malformed identity, unusable save-path, path-discovery timeout, and local disk
-failures; `397a9525` covers client Ctrl-C cancellation; and `e668ae60` covers
+failures; `397a9525` covers Ctrl-C during path discovery. The new
+`rncp_ctrl_c_during_resource_transfer_reports_cancellation` process regression
+waits for the production CLI's transfer-phase output, sends SIGINT while the
+Resource is in flight, requires nonzero exit plus `operation cancelled by
+user`, and verifies the receiver has no completed file. This proves local
+Rust-to-Rust active-transfer cancellation; a pinned-Python receiver-side
+cancellation transcript remains open. `e668ae60` covers
 the bounded multi-client path. Commit `27bb3fac` covers readiness-gated medium
 timeout selection after TCP interface activation. Slow-interface, interrupted-
 link follow-up behavior beyond the bounded local process, and remote
@@ -457,10 +468,12 @@ classified as complete:
   `/git/mirror` requests now prove the `git.repositories`
   listing/bundle/mutation/clone seam, while the remaining Git/work network
   implementation belongs to #612/#613.
-- Add remote receive-side cancellation transcripts with exact failure/status
-  assertions. The delayed/rate-limited TCP proxy now exercises the adaptive
-  timeout on a slow software path; carrier-specific and physical-link timing
-  are not claimed. Rust and pinned-Python disk-error callbacks are covered.
+- Add pinned-Python receive-side cancellation transcripts with exact
+  failure/status assertions. Native Rust-to-Rust active-Resource cancellation
+  now has a process-level status and no-completed-file assertion. The
+  delayed/rate-limited TCP proxy exercises adaptive timeout on a slow software
+  path; carrier-specific and physical-link timing are not claimed. Rust and
+  pinned-Python disk-error callbacks are covered.
 
 These are evidence or implementation gaps, not claims that the local Rust
 process test represents Python interoperability or complete utility parity.

@@ -183,8 +183,8 @@ callback's save-error output. The pinned callback returns without resolving the
 transfer, leaving the client running; this is recorded as a reference defect,
 not accepted terminal failure handling. The row remains partial and unverified
 because accurate Python fetch-client terminal failure status, the
-complete utility option/behavior matrix, rngit network workflows, and remote
-receive-side cancellation remain open or owned by #612/#613. A slow-proxy
+complete utility option/behavior matrix, rngit network workflows, and
+pinned-Python receive-side cancellation remain open or owned by #612/#613. A slow-proxy
 `rncp` regression now proves one delayed/rate-limited TCP send completes under
 the adaptive timeout; this is software-path evidence only and makes no
 carrier-specific or physical timing claim.
@@ -199,7 +199,13 @@ listener restart check on the same TCP endpoint with a second binary transfer.
 Commit `9b8e4ed6` adds a fetch save-directory disk-error check with nonzero
 status and preserved `Is a directory` output. Commit `397a9525` adds explicit
 client Ctrl-C cancellation handling with a nonzero status and preserved
-`operation cancelled by user` output. Commit `e668ae60` adds three concurrent
+`operation cancelled by user` output during path discovery. The new
+`rncp_ctrl_c_during_resource_transfer_reports_cancellation` process test sends
+SIGINT after the CLI announces the active Resource-transfer phase, requires
+the same explicit cancellation error and nonzero status, and verifies the
+receiver did not expose a completed file. It covers the native Rust-to-Rust
+workflow; pinned-Python receiver cancellation remains open. Commit `e668ae60`
+adds three concurrent
 client processes with exact listener-side byte verification. Commit `a5f57dba`
 adds flushed non-silent client phase output and an interrupted-Resource process
 check with nonzero status and no partial saved file. Commit `27bb3fac` gates

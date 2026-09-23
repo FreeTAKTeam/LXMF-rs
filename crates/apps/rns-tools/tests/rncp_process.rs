@@ -777,6 +777,117 @@ fn rncp_interrupted_link_reports_resource_failure() -> io::Result<()> {
     result
 }
 
+#[cfg(unix)]
+#[test]
+fn rncp_ctrl_c_during_resource_transfer_reports_cancellation() -> io::Result<()> {
+    let temp = tempfile::tempdir()?;
+    let listener_root = temp.path().join("listener");
+    let client_root = temp.path().join("client");
+    fs::create_dir_all(&listener_root)?;
+    fs::create_dir_all(&client_root)?;
+    let source = client_root.join("cancel-during-transfer.bin");
+    let payload = (0..(16 * 1024 * 1024))
+        .map(|index| (index as u8).wrapping_mul(61).wrapping_add(23))
+        .collect::<Vec<_>>();
+    fs::write(&source, payload)?;
+
+    let port = free_port()?;
+    let binary = env!("CARGO_BIN_EXE_rncp");
+    let mut listener = Command::new(binary)
+        .args(["--listen", &format!("127.0.0.1:{port}"), "--no-auth", "--no-compress", "--save"])
+        .arg(&listener_root)
+        .args(["--identity-seed", "rncp-process-cancel-transfer-server", "--silent"])
+        .current_dir(temp.path())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let result = (|| {
+        wait_for_port(port, &mut listener)?;
+        let destination_output = Command::new(binary)
+            .args(["--print-identity", "--identity-seed", "rncp-process-cancel-transfer-server"])
+            .output()?;
+        if !destination_output.status.success() {
+            return Err(io::Error::other("rncp transfer-cancellation identity query failed"));
+        }
+        let destination = String::from_utf8_lossy(&destination_output.stdout)
+            .lines()
+            .find_map(|line| line.strip_prefix("Listening on : "))
+            .map(str::to_owned)
+            .ok_or_else(|| io::Error::other("rncp transfer-cancellation identity was omitted"))?;
+        let mut client = Command::new(binary)
+            .arg(&source)
+            .arg(&destination)
+            .args([
+                "--connect",
+                &format!("127.0.0.1:{port}"),
+                "--no-compress",
+                "--timeout",
+                "30",
+                "--identity-seed",
+                "rncp-process-cancel-transfer-client",
+            ])
+            .current_dir(&client_root)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
+        let stdout = client
+            .stdout
+            .take()
+            .ok_or_else(|| io::Error::other("rncp cancellation client stdout was not captured"))?;
+        let (phase_tx, phase_rx) = mpsc::channel();
+        let stdout_reader = thread::spawn(move || -> io::Result<Vec<u8>> {
+            let mut reader = BufReader::new(stdout);
+            let mut captured = Vec::new();
+            loop {
+                let mut line = String::new();
+                let read = reader.read_line(&mut line)?;
+                if read == 0 {
+                    break;
+                }
+                if line.contains("Transferring file...") {
+                    let _ = phase_tx.send(());
+                }
+                captured.extend_from_slice(line.as_bytes());
+            }
+            Ok(captured)
+        });
+        if phase_rx.recv_timeout(Duration::from_secs(20)).is_err() {
+            let _ = client.kill();
+            let _ = client.wait();
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "rncp client did not begin the Resource transfer before cancellation",
+            ));
+        }
+
+        let signal = Command::new("kill").args(["-INT", &client.id().to_string()]).status()?;
+        if !signal.success() {
+            let _ = client.kill();
+            let _ = client.wait();
+            return Err(io::Error::other("failed to send SIGINT during rncp Resource transfer"));
+        }
+        let output = client.wait_with_output()?;
+        let stdout = stdout_reader
+            .join()
+            .map_err(|_| io::Error::other("rncp cancellation stdout reader panicked"))??;
+        assert!(!output.status.success(), "cancelled rncp transfer unexpectedly succeeded");
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains("operation cancelled by user"),
+            "active-transfer cancellation did not preserve its error category: {}\nstdout:\n{}",
+            String::from_utf8_lossy(&output.stderr),
+            String::from_utf8_lossy(&stdout)
+        );
+        assert!(
+            !listener_root.join("cancel-during-transfer.bin").exists(),
+            "receiver exposed a file for the cancelled Resource"
+        );
+        Ok(())
+    })();
+    let _ = listener.kill();
+    let _ = listener.wait();
+    result
+}
+
 #[test]
 fn rncp_uses_medium_timeout_after_interface_activation() -> io::Result<()> {
     let temp = tempfile::tempdir()?;
