@@ -148,6 +148,7 @@ impl PythonChannelInteropPaths {
         destination_hash: &str,
         resource_size: usize,
         timeout: f64,
+        payload_kind: &str,
     ) -> Child {
         spawn_python_channel_client(
             &self.python_bin,
@@ -156,7 +157,7 @@ impl PythonChannelInteropPaths {
             PythonChannelClientConfig {
                 config_dir,
                 destination_hash,
-                payload_kind: "cancel-resource",
+                payload_kind,
                 resource_size: Some(resource_size),
                 timeout,
                 response_envelope_delta: None,

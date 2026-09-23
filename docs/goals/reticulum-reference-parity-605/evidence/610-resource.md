@@ -61,6 +61,15 @@ it does not promote the full #610 acceptance contract or close parent issue
   advertisement and Rust emits `InboundFailed(reason=remote_cancelled)`.
   The Python sender also reports its own `FAILED` callback status. A local Rust
   caller cancellation remains the distinct `OutboundCancelled` event.
+- The new pinned-Python sender regression waits until data has been sent in
+  split segment 2 before calling `Resource.cancel()`. Through the production
+  TCP/Link/Resource receiver, Rust observes `InboundFailed` with the exact
+  reference-compatible reason `remote_cancelled`; Python independently reports
+  `FAILED` and segment 2. Existing
+  `remote_cancel_clears_the_partial_split_assembly_and_reports_failure`
+  directly asserts that cancellation on segment 2 removes the active receiver
+  and split assembly and reports one `remote_cancelled` failure. The interop
+  test adds no production state introspection API.
 - The `lxmf-runtime` Resource-event consumer now has explicit terminal-event
   regressions: `OutboundFailed`, `OutboundRejected`, and `OutboundCancelled`
   become SDK transport errors with distinct caller-visible messages, and each
@@ -439,6 +448,12 @@ RETICULUM_PY_REPO=/tmp/lxmf-606-parity-refs.hv0vPX/Reticulum-target-99de23c0 \
   rust_sender_maps_pinned_python_receiver_cancel_to_rejection \
   -- --ignored --nocapture --test-threads=1
 # 1 passed; pinned Python receiver RCL maps to Rust OutboundRejected
+RETICULUM_PY_REPO=.tmp/python-refs/Reticulum-99de23c LXMF_PYTHON_BIN=python3 \
+  cargo test -p reticulumd --test python_channel_interop \
+  rust_receiver_reports_pinned_python_cancel_on_second_resource_segment \
+  -- --ignored --nocapture --test-threads=1
+# 1 passed; cancellation after data in segment 2, Rust remote_cancelled and
+# Python FAILED callback both observed
 cargo check -p rns-tools --all-targets --all-features
 cargo clippy -p reticulum-rs-transport --all-targets --all-features --no-deps -- -D warnings
 cargo clippy -p lxmf-runtime --all-targets --all-features --no-deps -- -D warnings

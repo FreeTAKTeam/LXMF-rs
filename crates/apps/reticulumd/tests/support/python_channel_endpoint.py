@@ -211,7 +211,6 @@ class ChannelEndpoint:
             "resource-compression",
             "resource-multi-hop",
             "cancel-resource",
-            "cancel-resource-segment-two",
             "resource-shutdown",
             "resource-reader-failure",
         ):
@@ -225,23 +224,6 @@ class ChannelEndpoint:
                         flush=True,
                     )
                     resource.cancel()
-
-                link.set_resource_started_callback(on_resource_started)
-
-            if self.payload_kind == "cancel-resource-segment-two":
-                channel.register_message_type(MessageTest)
-
-                def on_resource_started(resource) -> None:
-                    if resource.segment_index != 2:
-                        return
-
-                    def cancel_after_first_part(progress_resource) -> None:
-                        if progress_resource.received_count == 0:
-                            return
-                        channel.send(MessageTest("resource-segment-cancel", "2"))
-                        progress_resource.cancel()
-
-                    resource.progress_callback(cancel_after_first_part)
 
                 link.set_resource_started_callback(on_resource_started)
 
@@ -547,6 +529,7 @@ class ChannelClient:
             "resource-compression-disabled",
             "resource-multi-hop",
             "cancel-resource",
+            "cancel-resource-segment-two",
             "resource-file-reader-failure",
         ):
             done = threading.Event()
@@ -620,6 +603,21 @@ class ChannelClient:
                     time.sleep(0.01)
                 if resource.status < RNS.Resource.COMPLETE:
                     resource.cancel()
+            elif self.payload_kind == "cancel-resource-segment-two":
+                cancel_requested = threading.Event()
+
+                def cancel_on_second_segment(progress_resource) -> None:
+                    if (
+                        progress_resource.segment_index == 2
+                        and progress_resource.sent_parts > 0
+                        and progress_resource.status < RNS.Resource.COMPLETE
+                        and not cancel_requested.is_set()
+                    ):
+                        cancel_requested.set()
+                        result["cancel_segment"] = progress_resource.segment_index
+                        progress_resource.cancel()
+
+                resource.progress_callback(cancel_on_second_segment)
             while not done.is_set():
                 if time.time() > deadline:
                     print("python_channel_client: timed out waiting for resource", file=sys.stderr, flush=True)
@@ -633,6 +631,13 @@ class ChannelClient:
                     time.sleep(0.5)
                     return 0
                 print(f"python_channel_client: resource cancellation failed: {result}", file=sys.stderr, flush=True)
+                return 1
+            if self.payload_kind == "cancel-resource-segment-two":
+                if result.get("status") == RNS.Resource.FAILED and result.get("cancel_segment") == 2:
+                    print(json.dumps({"resource": "cancelled", "segment": 2}), flush=True)
+                    time.sleep(0.5)
+                    return 0
+                print(f"python_channel_client: second-segment cancellation failed: {result}", file=sys.stderr, flush=True)
                 return 1
             if result.get("status") == RNS.Resource.COMPLETE:
                 if self.payload_kind == "resource-multi-hop":
