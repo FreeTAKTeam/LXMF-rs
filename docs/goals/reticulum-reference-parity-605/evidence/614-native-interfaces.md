@@ -26,9 +26,10 @@ acceptance gate.
 | BLE worker detection fallback | A private backend factory, used only by this worker and defaulting to the unchanged native backend constructor, lets a deterministic fake run through the actual worker loop. With CMD_DETECT withheld, the configured bounded deadline emits deferred radio configuration; a scripted disconnect verifies cleanup before the worker creates a fresh backend, and cancellation closes that second session. This is software fault injection only, not physical BLE support or device evidence. Behavior was compared with pinned Python's five-second `ble_detect_timeout` wait at `99de23c040d507e3fefca19e87b182302902725d`; Rust's configured fallback remains separately bounded and tested without waiting five seconds. | focused fake-backend worker regression; no physical device |
 | Interface inventory | The daemon has explicit startup branches for TCP/backbone, local TCP/Unix, UDP, AutoInterface, serial, Weave, KISS/AX.25, pipe, I2P, Meshtastic, BLE, LoRa, and RNodeMulti aliases; unknown kinds record an explicit unsupported-kind failure. | source inspection; cross-platform/live evidence open |
 | Native Windows CI | The PR workflow runs the `rnode-ble` library test filter on `windows-latest`, compiling the target-gated WinRT resolver, executing deterministic paired-ID/runtime tests, and invoking the real WinRT paired-device query. A runner with no paired radios may validly return an empty set; this does not verify physical pairing. | passed on `ca6b6bba` (18 tests); physical paired-RNode behavior remains unverified |
-| AutoInterface software lifecycle | A loopback-only library regression keeps the returned `AutoDiscoveryRuntime` stop handle, awaits `stop()`, and restarts on the same discovery and data ports. A daemon-binary regression now calls the same private activation helper used after native plan construction: it registers the daemon multicast channel, creates the AutoInterface transport adapter, starts two discovery sockets and one data listener, awaits runtime/task teardown and channel removal, then restarts on the identical test-owned ports. Native discovery and production device filtering are unchanged. | both focused software regressions pass locally; full daemon process/signal shutdown, native link-local enumeration, carrier-loss equivalence, platform coverage, and physical carrier behavior remain unverified |
+| AutoInterface software lifecycle | A loopback-only library regression keeps the returned `AutoDiscoveryRuntime` stop handle, awaits `stop()`, and restarts on the same discovery and data ports. A daemon-binary regression now calls the same private activation helper used after native plan construction: it registers the daemon multicast channel, creates the AutoInterface transport adapter, starts two discovery sockets and one data listener, awaits runtime/task teardown and channel removal, then restarts on the identical test-owned ports. Native discovery and production device filtering are unchanged. | focused software lifecycle regressions pass locally; full daemon process/signal shutdown, native link-local enumeration and multicast carrier observation, platform coverage, and physical carrier behavior remain unverified |
 | Daemon-configured AutoInterface ownership and restart | The daemon retains each started `AutoDiscoveryRuntime` stop handle separately from the status refresher, carries it through bootstrap into `BootstrapContext`, then awaits `stop()` before removing the InterfaceManager host channel after RPC shutdown. A deterministic plan-builder seam is limited to configured-interface startup; production still calls the unchanged native `build_native_startup_plan`. The regression parses a real `AutoInterface` TOML stanza, maps its config, injects loopback listener bindings, invokes `startup_configured_interfaces`, verifies running/status handles and channel registration, calls the same async shutdown helper as daemon main, confirms socket release/channel removal, and restarts on the same ports. | focused software-only configured-startup/shutdown/restart regression; full process signal/RPC integration, native enumeration, platform coverage, and physical carrier behavior remain unverified |
 | AutoInterface partial-startup socket rollback | A loopback library regression lets production startup bind its discovery sockets, then injects an invalid data-listener address so startup returns an error before yielding a runtime handle. It immediately binds the same discovery port with a standard UDP socket, repairs the data address, and successfully starts/stops the same plan. This demonstrates cleanup of already-bound discovery sockets on a later bind failure. | focused Unix loopback regression; does not test native interface enumeration, multicast delivery, Windows/macOS socket semantics, or full daemon process/signal teardown |
+| AutoInterface per-device carrier echo loss/recovery | A deterministic library regression primes the production peer-job timeout state, passes a valid group token through `process_discovery_datagram` for one adopted test device, advances the production peer-job path past the configured echo deadline without another echo, and then supplies a valid echo to recover. It asserts the observable status changes and exact `carrier_lost`/`carrier_recovered` events name only that device. In the same regression, the actual AutoDiscoveryRuntime binds loopback sockets, awaits explicit `stop()`, proves discovery/data ports can be rebound, and restarts/stops on those same ports. | focused software regression; does not exercise native multicast receipt, OS carrier detection, native link-local enumeration, cross-platform semantics, or physical carrier behavior |
 
 ## Commands and results
 
@@ -64,7 +65,8 @@ The additional loopback lifecycle slice ran in the same isolated worktree:
 ```text
 cargo test -p reticulum-rs-transport auto_runtime_stop_releases_loopback_sockets_for_restart --lib -- --nocapture PASS (1 test)
 cargo test -p reticulum-rs-transport auto_runtime_startup_failure_releases_discovery_socket_before_retry --lib -- --nocapture PASS (1 test)
-cargo test -p reticulum-rs-transport auto --lib                      PASS (112 tests)
+cargo test -p reticulum-rs-transport auto_runtime_reports_per_device_echo_loss_and_recovery_and_restarts_cleanly --lib -- --nocapture PASS (1 test)
+cargo test -p reticulum-rs-transport auto --lib                      PASS (114 tests, current head)
 cargo fmt --all -- --check                                           PASS
 cargo clippy -p reticulum-rs-transport --all-targets --no-deps -- -D warnings PASS
 tools/scripts/check-module-size.sh                                    PASS
@@ -148,6 +150,20 @@ tools/scripts/check-module-size.sh PASS
 git diff --check PASS
 ```
 
+The per-device AutoInterface carrier echo regression and final checks ran on
+the current PR #634 working head:
+
+```text
+cargo test -p reticulum-rs-transport auto_runtime_reports_per_device_echo_loss_and_recovery_and_restarts_cleanly --lib -- --nocapture PASS (1 test)
+cargo test -p reticulum-rs-transport auto --lib PASS (114 tests)
+cargo fmt --all -- --check PASS
+cargo clippy -p reticulum-rs-transport --all-targets --no-deps -- -D warnings PASS
+TMPDIR=/dev/shm tools/scripts/check-boundaries.sh PASS
+TMPDIR=/dev/shm cargo run -p xtask -- architecture-checks PASS
+tools/scripts/check-module-size.sh PASS
+git diff --check PASS
+```
+
 The hosted [Windows RNode BLE job](https://github.com/FreeTAKTeam/LXMF-rs/actions/runs/35803940756/job/107000373907)
 passed on commit `ca6b6bbab13007ca6d9adb55b525ce978f763043` and ran 18 tests,
 including `native_windows_paired_device_query_matches_reference_id_suffixes`
@@ -174,12 +190,13 @@ establish physical Windows pairing or carrier behavior.
   backend-reported service-discovery cancellation, not native GATT cancellation
   or cleanup. The EOF/idle semantic distinction
   is covered by the software regression above, not a native trace.
-- AutoInterface still needs native link-local enumeration, carrier-loss
-  recovery, and stop/restart evidence on each supported host. The daemon test
-  exercises the production activation helper and its explicit stop handle,
-  manager channel removal, task/socket teardown, and same-port restart. It does
-  not run the full `bootstrap::bootstrap` plus daemon RPC/signal shutdown path,
-  and it establishes no native-interface or cross-platform trace.
+- AutoInterface still needs native link-local enumeration and carrier echo
+  observation/recovery, plus stop/restart evidence on each supported host. The
+  new deterministic software regression exercises the production peer-job and
+  status paths for one device's missing/returning authenticated echo, while the
+  loopback runtime proves explicit task/socket teardown and same-port restart.
+  Neither test runs the full `bootstrap::bootstrap` plus daemon RPC/signal
+  shutdown path or establishes a native-interface or cross-platform trace.
 - The complete TCP, local/shared, UDP, pipe, serial/KISS/AX.25, RNode,
   Weave, I2P, mobile, and other reference-family matrix remains only partly
   covered by local source/tests. Hosted/native platform combinations and
