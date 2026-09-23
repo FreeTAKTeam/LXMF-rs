@@ -23,6 +23,7 @@ include!("tests_parts/announce_table_retransmission_gate.rs");
 include!("tests_parts/pinned_python_local_announce_schedule.rs");
 include!("tests_parts/disabled_transport_shared_child_local_destination.rs");
 include!("tests_parts/enabled_transport_shared_child_local_destination.rs");
+include!("tests_parts/shared_child_remote_link_request.rs");
 
 include!("tests_parts/encrypted_resource_control_packet.rs");
 

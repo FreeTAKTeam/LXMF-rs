@@ -582,7 +582,12 @@ announce ingress confirms the parent-interface predicate: ordinary, shared-
 owner, and ordinary-child announces are cached, while accepted and virtual
 children of a shared owner enter the local-client retry queue. The existing
 predicate required no production change; this focused classification evidence
-does not complete #609. Pinned shared-instance evidence currently covers TCP/Unix
+does not complete #609. A further production LinkRequest regression now matches
+the pinned `Transport._inbound` rule for shared local children targeting a
+known remote destination with transport policy both enabled and disabled: each
+packet is sent once as a direct next-hop frame and is not fanned out to sibling
+clients. This does not establish the remaining packet-class or recovery matrix.
+Pinned shared-instance evidence currently covers TCP/Unix
 attachment and announce fan-out, plus a pinned Python TCP application trace
 that exchanges LXMF messages in both directions before and after Rust daemon
 restart while preserving the delivery identity. A two-carrier Python Channel

@@ -58,6 +58,22 @@ the duration of the trace so transport cleanup cannot remove an accepted
 child between setup and ingress. This verifies this specific classifier only;
 it does not complete #609's broader routing and recovery acceptance.
 
+The uncovered shared-child-to-remote-destination LinkRequest cell now matches
+the pinned inbound policy. At Reticulum
+`99de23c040d507e3fefca19e87b182302902725d`, `Transport._inbound` admits routing
+when `transport_enabled or from_local_client`; for an addressed Type-2 packet
+whose transport ID is this instance, its known-path branch strips the transport
+header at a one-hop destination and transmits on the path table's received
+interface. Thus a local child remains able to use the shared parent's known
+remote route even when the parent's ordinary transit-forwarding policy is
+disabled. Rust's production LinkRequest handler now preserves that exception
+only for an interface classified as a local child, while ordinary ingress
+still obeys the disabled policy. Two deterministic regressions exercise both
+policy values with a remote known route: each asserts exactly one Type-1
+LinkRequest on the selected next-hop interface, and no transmission on the
+parent channel to sibling local clients. This does not cover other packet
+classes, public-network behavior, or the remaining #609 acceptance matrix.
+
 Rust's production tick and announce-table drain now accept an explicit
 monotonic `Instant`. The deterministic worker-tick regression schedules the
 prior tick just before the immediate deadline, verifies no send, then drives
@@ -86,6 +102,7 @@ trace or account for runtime scheduling jitter.
 - `cargo test -p reticulum-rs-transport --lib announce_ingress_uses_parent_classification_for_ordinary_owner_and_children` — 1 passed; production announce outcomes match the pinned predicate's five expected classifications.
 - `RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs/.tmp/python-refs/Reticulum-99de23c LXMF_PYTHON_BIN=python3 cargo test -p reticulum-rs-transport --lib pinned_python_parent_predicate_matches_production_announce_ingress -- --ignored --nocapture` — 1 passed against Python Reticulum `99de23c040d507e3fefca19e87b182302902725d`.
 - `cargo test -p reticulum-rs-transport --lib local_client_announce_retransmits_on_first_worker_tick_once` — 1 passed.
+- `cargo test -p reticulum-rs-transport --lib routes_remote_link_request -- --nocapture` — 2 passed; shared local children route a known remote LinkRequest to the next hop with transport policy enabled and disabled, with no sibling-client transmission.
 - `RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test -p reticulum-rs-transport --lib pinned_python_local_client_schedule_matches_production_worker_tick -- --ignored --nocapture` — 1 passed against Python Reticulum `99de23c040d507e3fefca19e87b182302902725d`; the extracted `Transport.jobs()` branch and Rust production tick agree on `[0, 0, 1, 0]` sends before/equal/after/later. The Verify workflow repeats this command with `RETICULUM_PY_REPO` explicitly set to `${{ github.workspace }}/Reticulum-parity` and checks that checkout's HEAD equals `PYTHON_RETICULUM_PARITY_REF` before running it, rather than using the job-default 1.5.2 checkout. This is deterministic source/fake-clock evidence, not live socket timing.
 - `RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum LXMF_PYTHON_BIN=python3 cargo test -p reticulum-rs-transport --lib pinned_python_local_client_classification_matches_parent_relationship -- --ignored --nocapture` — 1 passed against Python Reticulum `99de23c040d507e3fefca19e87b182302902725d`.
 - `cargo clippy -p reticulum-rs-transport --all-targets --all-features --no-deps -- -D warnings` — passed.
