@@ -155,6 +155,7 @@ mod tests {
         escape_for_stdout, map_value, san_ref, san_refs, san_sha, PermissionTarget, RemoteGroup,
         RemoteRepository, RepositoryGroup, RepositoryRecord, ReticulumGitClient, ReticulumGitNode,
     };
+    use rns_transport::destination::link::LinkStatus;
     use std::collections::BTreeMap;
     use std::fs;
     use std::process::Command;

@@ -28,11 +28,13 @@ production-link teardown assertion for conversion temporary files.
 | Media/files | `/media` key and path validation, URL decoding, ref/blob resolution, binary-safe filename metadata, download/artifact/work-doc endpoints, published-release filtering and absent-blob handling | local verified; pinned Python Resource payload/metadata and `/file/download` content/filename trace evidenced |
 | WebP conversion | Backend preference and `RNGIT_MEDIA_BACKEND`, argv-only process construction, quality/max-dimension options, 8-second pipeline bound, bounded stderr, output validation, temporary-directory cleanup, raw fallback | local code/tests; pinned Python live `ffmpeg` conversion of a valid PNG returns validated WebP; other backends and visual parity remain unverified |
 | Resource wire | Explicit outbound compression control, with `/media` responses sent uncompressed and a regression asserting no compressed advertisement | local verified; live Python Resource delivery and metadata evidenced |
-| Link-scoped cleanup | A converted-media temp directory exists while its serving Link is active and is removed after the pinned Python client tears down that production Link | ignored `rngit_python_interop::rngit_serves_pages_and_media_to_pinned_python_client` | verified twice against the frozen Python commit; periodic stale-link recovery and fault/cancellation cleanup remain open |
+| Link-scoped cleanup | Converted-media temp data is retained for an active Link and removed on `Closed`, `Stale`, or missing-link state; graceful teardown is exercised against a pinned Python peer | deterministic `stale_page_links_are_cleaned_while_active_links_keep_media` plus ignored `rngit_python_interop::rngit_serves_pages_and_media_to_pinned_python_client` | status-to-cleanup behavior and graceful production teardown verified; abrupt-process stale transition and fault/cancellation cleanup remain open |
 
 ## Commands and results
 
-All commands ran in the isolated `codex/issue-605-parity` worktree.
+The original bounded implementation commands below ran in the isolated
+`codex/issue-605-parity` worktree; the #613 cleanup follow-up ran in its own
+`corvo/issue-613-rngit-link-cleanup` worktree.
 
 ```text
 cargo fmt --all -- --check                                      PASS
@@ -84,8 +86,36 @@ RETICULUM_PY_REPO=<checkout at 99de23c040d507e3fefca19e87b182302902725d> \
   LXMF_PYTHON_BIN=python3 cargo test -p rns-tools \
   --test rngit_python_interop \
   rngit_serves_pages_and_media_to_pinned_python_client \
-  -- --ignored --nocapture                            2 passed
+  -- --ignored --nocapture                            PASS (prior run)
 ```
+
+The #613 follow-up validation in `corvo/issue-613-rngit-link-cleanup`:
+
+```text
+cargo fmt --all -- --check                                      PASS
+cargo test -p rns-tools --bin rngit --all-features              PASS (40 passed, 1 ignored)
+cargo test -p rns-tools --bin rngit \
+  stale_page_links_are_cleaned_while_active_links_keep_media     PASS
+cargo clippy -p rns-tools --all-targets --all-features --no-deps \
+  -- -D warnings                                                 PASS
+RETICULUM_PY_REPO=<checkout at 99de23c040d507e3fefca19e87b182302902725d> \
+LXMF_PYTHON_BIN=python3 PYTHONPATH=<pinned-checkout> cargo test \
+  -p rns-tools --test rngit_python_interop \
+  rngit_serves_pages_and_media_to_pinned_python_client \
+  -- --ignored --nocapture                                      PASS (1 test)
+git diff --check; tools/scripts/check-module-size.sh             PASS
+```
+
+The periodic service sweep now treats `LinkStatus::Stale` the same as `Closed`
+and a missing transport link, matching pinned Python `clean_links()`, which
+removes tracked links whose status is not `ACTIVE`. A deterministic service
+regression gives separate media directories to active, stale, closed, and
+missing links; only the active link's directory remains. The ignored
+pinned-Python process test runs in Verify CI and covers the real graceful
+`LinkEvent::Closed` path. Two abrupt-process-exit traces did not observe cleanup
+within 90 or 150 seconds; the latter observed the Rust Link still `Active` after
+104 seconds without inbound traffic. This does not prove the transport's
+eventual stale transition, so abrupt-exit timing remains explicitly unverified.
 
 The module-size script now reports only the existing
 `crates/libs/rns-transport/src/resource/manager.rs:555` over-budget baseline;
@@ -98,9 +128,11 @@ limit.
   Reticulum link, identifies, exercises successful and negative page/file
   requests, and downloads raw media as a Resource with deterministic
   metadata/content checks. It also proves one generated conversion directory
-  is present during the active link and gone after client teardown. This is
-  one bounded role trace, not proof of every page, file, or public-network
-  path; periodic stale-link and fault/cancellation cleanup remain open.
+  is present during the active link and gone after graceful client teardown.
+  This is one bounded role trace, not proof of every page, file, or
+  public-network path. Status-driven stale cleanup is deterministically
+  covered, but abrupt-process stale transition, fault/cancellation cleanup,
+  and the complete media lifecycle remain open.
 - The Rust page rendering is intentionally a compact service implementation;
   full Markdown highlighting, pagination, diff rendering, signed work-document
   presentation, and every reference template detail remain open.

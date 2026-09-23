@@ -251,7 +251,12 @@ explicit no-compression Resource responses. A new pinned Python/NomadNet
 client trace establishes and identifies a real TCP Reticulum Link, checks
 successful and negative repository/page/file requests, verifies denied access,
 downloads raw media, checks metadata, size, and SHA-256, and validates a live
-`ffmpeg` PNG-to-WebP response with filename metadata. The separate
+`ffmpeg` PNG-to-WebP response with filename metadata. The periodic cleanup sweep
+now removes tracked temporary directories for stale, closed, or missing links;
+a deterministic regression proves those states are cleaned while active-link
+media is retained. An abrupt Python process exit still left the Rust link
+`Active` after 104 seconds without inbound traffic, so the live stale-transition
+path and fault/cancellation cleanup remain unverified. The separate
 `git.repositories` list/fetch/push/delete/create/sync/fork/mirror trace does
 not complete the page issue's broader Git/work acceptance. The row remains
 partial and unverified because other conversion backends, complete reference

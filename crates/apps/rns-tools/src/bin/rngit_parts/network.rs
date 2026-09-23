@@ -156,23 +156,22 @@ async fn serve(runtime: Runtime) -> io::Result<()> {
             }
             _ = cleanup_timer.tick() => {
                 let candidates = runtime.node.lock().await.active_page_link_ids();
-                let mut stale = Vec::new();
+                let mut statuses = Vec::with_capacity(candidates.len());
                 for link_id in candidates {
                     let address = AddressHash::new(link_id);
-                    let closed = match runtime.transport.find_in_link(&address).await {
-                        Some(link) => link.lock().await.status() == LinkStatus::Closed,
-                        None => true,
+                    let status = match runtime.transport.find_in_link(&address).await {
+                        Some(link) => Some(link.lock().await.status()),
+                        None => None,
                     };
-                    if closed {
-                        stale.push(link_id);
-                    }
+                    statuses.push((link_id, status));
                 }
-                if !stale.is_empty() {
-                    let removed = runtime.node.lock().await.clean_page_links(&stale);
-                    if removed > 0 && !runtime.silent {
-                        eprintln!("rngit: cleaned {removed} temporary media director{suffix}",
-                            suffix = if removed == 1 { "y" } else { "ies" });
-                    }
+                let removed = {
+                    let mut node = runtime.node.lock().await;
+                    clean_stale_page_links(&mut node, statuses)
+                };
+                if removed > 0 && !runtime.silent {
+                    eprintln!("rngit: cleaned {removed} temporary media director{suffix}",
+                        suffix = if removed == 1 { "y" } else { "ies" });
                 }
             }
             result = link_events.recv() => match result {
@@ -230,6 +229,21 @@ async fn serve(runtime: Runtime) -> io::Result<()> {
             },
         }
     }
+}
+
+pub(super) fn clean_stale_page_links(
+    node: &mut ReticulumGitNode,
+    links: impl IntoIterator<Item = ([u8; 16], Option<LinkStatus>)>,
+) -> usize {
+    let stale = links
+        .into_iter()
+        .filter_map(|(link_id, status)| {
+            status
+                .is_none_or(|status| matches!(status, LinkStatus::Closed | LinkStatus::Stale))
+                .then_some(link_id)
+        })
+        .collect::<Vec<_>>();
+    node.clean_page_links(&stale)
 }
 
 async fn process_request(

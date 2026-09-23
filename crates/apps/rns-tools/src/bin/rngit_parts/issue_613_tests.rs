@@ -243,6 +243,47 @@ fn media_conversion_failure_falls_back_to_raw_and_link_cleanup_removes_temp_file
 }
 
 #[test]
+fn stale_page_links_are_cleaned_while_active_links_keep_media() {
+    let (temporary, mut node) = page_fixture();
+    let base_link_id = rns_transport::hash::address_hash(
+        temporary.path().to_string_lossy().as_bytes(),
+    );
+    let link_id = |discriminator: u8| {
+        let mut link_id = base_link_id;
+        link_id[15] ^= discriminator;
+        link_id
+    };
+    let active = link_id(1);
+    let stale = link_id(2);
+    let closed = link_id(3);
+    let missing = link_id(4);
+    let active_directory = node.next_media_directory(active).expect("active media directory");
+    let stale_directory = node.next_media_directory(stale).expect("stale media directory");
+    let closed_directory = node.next_media_directory(closed).expect("closed media directory");
+    let missing_directory = node.next_media_directory(missing).expect("missing media directory");
+
+    let removed = super::rngit_network::clean_stale_page_links(
+        &mut node,
+        [
+            (active, Some(LinkStatus::Active)),
+            (stale, Some(LinkStatus::Stale)),
+            (closed, Some(LinkStatus::Closed)),
+            (missing, None),
+        ],
+    );
+
+    assert_eq!(removed, 3);
+    assert!(active_directory.is_dir());
+    assert!(!stale_directory.exists());
+    assert!(!closed_directory.exists());
+    assert!(!missing_directory.exists());
+    assert!(node.active_page_links.contains_key(&active));
+    assert!(!node.active_page_links.contains_key(&stale));
+    assert_eq!(node.page_link_closed(active), 1);
+    assert!(!active_directory.exists());
+}
+
+#[test]
 fn blocked_unidentified_clients_receive_no_identity_template() {
     let (_temporary, mut node) = page_fixture();
     node.blocked_identities.insert([0_u8; 16]);

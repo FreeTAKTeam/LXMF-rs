@@ -143,8 +143,11 @@ without promoting the broader #613 row.
 The issue-specific #613 live trace also observes one WebP conversion temporary
 directory while the pinned-Python Reticulum Link is active, tears that Link
 down, and verifies the production Rust server removes the directory. This
-proves the bounded disconnect cleanup path only; periodic stale-link recovery
-and fault/cancellation cleanup remain open.
+proves graceful disconnect cleanup. The periodic sweep now removes stale,
+closed, and missing-link temp directories while retaining active-link media,
+covered by a deterministic regression. Abrupt-process stale transition and
+fault/cancellation cleanup remain unverified; the broader #613 row stays
+partial.
 
 Commit `8b29132c` adds a live pinned-Python sender-side file-like Resource
 reader that raises after a partial split transfer. The focused release test

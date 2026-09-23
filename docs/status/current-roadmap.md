@@ -41,7 +41,10 @@ not promoted or rewritten by this change.
 The issue-specific #613 software trace additionally confirms that converted
 media temporary data exists only for the serving Reticulum Link and is removed
 by the production disconnect path against the frozen Python reference. The
-utility and full operational parity rows remain partial.
+periodic sweep now also removes stale/closed/missing-link directories while
+preserving active-link media, with a deterministic regression; abrupt-process
+stale transition and fault/cancellation cleanup remain unverified. The utility
+and full operational parity rows remain partial.
 
 The forward #610 Resource slice also has new pinned-Python evidence at
 `8b29132c`: a sender-side file-like reader raises during a split transfer,
