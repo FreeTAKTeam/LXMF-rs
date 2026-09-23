@@ -211,8 +211,7 @@ print(",".join(str(Transport.is_local_client_interface(iface)).lower() for iface
     assert_eq!(production_announce_ingress_client_classification().await, expected);
 }
 
-#[tokio::test]
-async fn local_client_announce_retransmits_on_first_worker_tick_once() {
+async fn rust_local_client_announce_schedule() -> [usize; 4] {
     let identity = PrivateIdentity::new_from_rand(OsRng);
     let transport = Transport::new(TransportConfig::new("passive-worker-tick", &identity, false));
     let (mut host_channel, local_client) = {
@@ -250,17 +249,13 @@ async fn local_client_announce_retransmits_on_first_worker_tick_once() {
     );
 
     announce_retransmit_tick(&handler, prior_tick).await;
-    assert!(
-        host_channel.tx_channel.try_recv().is_err(),
-        "no local-client rebroadcast is sent before its deadline"
-    );
+    let before_deadline = usize::from(host_channel.tx_channel.try_recv().is_ok());
+    assert_eq!(before_deadline, 0, "no rebroadcast before deadline");
     assert_eq!(tier_sizes(&transport).await, (1, 0));
 
     announce_retransmit_tick(&handler, due).await;
-    assert!(
-        host_channel.tx_channel.try_recv().is_err(),
-        "the pinned Python deadline comparison is strict: equality is not due"
-    );
+    let at_deadline = usize::from(host_channel.tx_channel.try_recv().is_ok());
+    assert_eq!(at_deadline, 0, "deadline equality is not due");
     assert_eq!(tier_sizes(&transport).await, (1, 0));
 
     announce_retransmit_tick(&handler, first_tick_after_due).await;
@@ -277,17 +272,22 @@ async fn local_client_announce_retransmits_on_first_worker_tick_once() {
     assert_eq!(message.packet.transport, Some(*identity.address_hash()));
     assert_eq!(message.packet.header.propagation_type, crate::packet::PropagationType::Transport);
     assert_eq!(tier_sizes(&transport).await, (0, 1));
+    let after_deadline = 1;
 
     announce_retransmit_tick(
         &handler,
         first_tick_after_due + INTERVAL_ANNOUNCES_RETRANSMIT,
     )
     .await;
-    assert!(
-        host_channel.tx_channel.try_recv().is_err(),
-        "the one local-client retry is not emitted again on a later worker tick"
-    );
+    let later_tick = usize::from(host_channel.tx_channel.try_recv().is_ok());
+    assert_eq!(later_tick, 0, "the retry is not emitted a second time");
     assert_eq!(tier_sizes(&transport).await, (0, 1));
+    [before_deadline, at_deadline, after_deadline, later_tick]
+}
+
+#[tokio::test]
+async fn local_client_announce_retransmits_on_first_worker_tick_once() {
+    assert_eq!(rust_local_client_announce_schedule().await, [0, 0, 1, 0]);
 }
 
 #[tokio::test]

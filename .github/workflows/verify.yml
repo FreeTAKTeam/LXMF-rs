@@ -188,6 +188,16 @@ jobs:
           pinned_python_local_client_classification_matches_parent_relationship
           -- --ignored --nocapture
 
+      - name: Verify local-client announce schedule against pinned Python
+        env:
+          RETICULUM_PY_REPO: ${{ github.workspace }}/Reticulum-parity
+          LXMF_PYTHON_BIN: python
+        run: |
+          test "$(git -C "$RETICULUM_PY_REPO" rev-parse HEAD)" = "$PYTHON_RETICULUM_PARITY_REF"
+          cargo test -p reticulum-rs-transport --lib \
+            pinned_python_local_client_schedule_matches_production_worker_tick \
+            -- --ignored --nocapture
+
       - name: Generate PR HIL support report
         if: always()
         run: cargo xtask hil report --evidence target/hil/runs/pr-${{ github.run_id }} --output target/hil/runs/pr-${{ github.run_id }}/support-report

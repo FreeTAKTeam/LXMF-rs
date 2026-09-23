@@ -90,10 +90,15 @@ def run_python_announce_check(now):
     exec(code, namespace)
     return namespace["outgoing"], entry, fake_transport.announce_table, namespace, code, local_client
 
+before_deadline, before_entry, _, _, _, _ = run_python_announce_check(9.999999)
+assert not before_deadline and before_entry[2] == Transport.PATHFINDER_R
+observed_counts = [len(before_deadline)]
 at_deadline, equal_entry, _, _, _, _ = run_python_announce_check(10.0)
 assert not at_deadline and equal_entry[2] == Transport.PATHFINDER_R
+observed_counts.append(len(at_deadline))
 after_deadline, after_entry, after_table, after_namespace, code, local_client = run_python_announce_check(10.000001)
 assert len(after_deadline) == 1, "Python must emit exactly one immediate retransmit"
+observed_counts.append(len(after_deadline))
 python_packet = after_deadline[0]
 assert python_packet.args[0].hash == b"destination"
 assert python_packet.kwargs["attached_interface"] is local_client, "retransmit must route to the originating local client"
@@ -103,4 +108,10 @@ after_namespace["outgoing"] = []
 FakeClock.current = 11.000002
 exec(code, after_namespace)
 assert not after_namespace["outgoing"] and not after_table
-print(f"{Transport.PATHFINDER_R},{int(Transport.announces_check_interval * 1000)},{int(Transport.job_interval * 1000)},strict-boundary,one-retransmit")
+observed_counts.append(len(after_namespace["outgoing"]))
+assert observed_counts == [0, 0, 1, 0]
+print(
+    f"{Transport.PATHFINDER_R},{int(Transport.announces_check_interval * 1000)},"
+    f"{int(Transport.job_interval * 1000)},strict-boundary,one-retransmit,"
+    f"{','.join(map(str, observed_counts))}"
+)

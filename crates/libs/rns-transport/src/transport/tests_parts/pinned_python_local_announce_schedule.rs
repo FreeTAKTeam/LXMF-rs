@@ -1,6 +1,6 @@
-#[test]
+#[tokio::test]
 #[ignore = "requires pinned Python Reticulum checkout at RETICULUM_PY_REPO"]
-fn pinned_python_local_client_schedule_bounds_the_rust_worker_tick() {
+async fn pinned_python_local_client_schedule_matches_production_worker_tick() {
     const PINNED_RETICULUM: &str = "99de23c040d507e3fefca19e87b182302902725d";
     let python_repo = std::env::var("RETICULUM_PY_REPO")
         .expect("set RETICULUM_PY_REPO to the pinned Python Reticulum checkout");
@@ -32,17 +32,33 @@ fn pinned_python_local_client_schedule_bounds_the_rust_worker_tick() {
     );
 
     let constants = String::from_utf8_lossy(&output.stdout);
-    assert!(constants.contains("strict-boundary,one-retransmit"));
-    let values: Vec<u64> = constants
+    let values: Vec<&str> = constants
+        .trim()
         .split(',')
         .take(3)
+        .collect();
+    let numeric_values: Vec<u64> = values
+        .iter()
         .map(|value| value.parse().expect("Python schedule value is an integer"))
         .collect();
-    assert_eq!(values, [1, 1_000, 250]);
-    let python_poll_bound = Duration::from_millis(values[1] + values[2]);
+    assert_eq!(numeric_values, [1, 1_000, 250]);
+    assert!(constants.contains(",strict-boundary,one-retransmit,"));
+    let python_poll_bound = Duration::from_millis(numeric_values[1] + numeric_values[2]);
     assert_eq!(python_poll_bound, PYTHON_LOCAL_ANNOUNCE_POLL_BOUND);
     assert!(
         INTERVAL_ANNOUNCES_RETRANSMIT < python_poll_bound,
         "Rust's first 1.0 s worker tick is inside Python's source-derived 1.0 s check + 0.25 s poll bound"
+    );
+
+    let python_observations: Vec<usize> = constants
+        .trim()
+        .split(',')
+        .skip(5)
+        .map(|value| value.parse().expect("Python observation is a packet count"))
+        .collect();
+    assert_eq!(
+        python_observations,
+        rust_local_client_announce_schedule().await,
+        "production Rust tick packet counts must match the pinned Python announce job"
     );
 }
