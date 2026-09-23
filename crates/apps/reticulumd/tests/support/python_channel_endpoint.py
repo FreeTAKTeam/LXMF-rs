@@ -149,6 +149,7 @@ class ChannelEndpoint:
 
         if self.payload_kind in (
             "resource",
+            "resource-compression",
             "resource-multi-hop",
             "cancel-resource",
             "resource-shutdown",
@@ -195,12 +196,30 @@ class ChannelEndpoint:
                             "data_size": len(data),
                             "sha256": digest,
                             "metadata": metadata,
+                            "compressed": resource.compressed,
                         }
                     )
                 if metadata is not None and len(data) < 1024 * 1024:
                     reply_data = f"resource:{data.decode('utf-8')}:{metadata}"
+                elif metadata is not None:
+                    metadata_wire_size = len(umsgpack.packb(metadata)) + 3
+                    expected_total_size = len(data) + metadata_wire_size
+                    if resource.total_size != expected_total_size:
+                        raise AssertionError(
+                            f"Resource size accounting mismatch: advertised={resource.total_size} "
+                            f"data={len(data)} metadata_wire={metadata_wire_size}"
+                        )
+                    reply_data = (
+                        f"resource-sha256-metadata:{len(data)}:{digest}:"
+                        f"{resource.total_size}:{metadata}"
+                    )
                 else:
                     reply_data = f"resource-sha256:{len(data)}:{digest}"
+                if self.payload_kind == "resource-compression":
+                    reply_data += (
+                        f":total_size={resource.total_size}"
+                        f":compressed={str(resource.compressed).lower()}"
+                    )
                 link.get_channel().send(
                     MessageTest(
                         "rust-resource",
@@ -273,8 +292,9 @@ class ChannelEndpoint:
 
 
 class ChannelClient:
-    def __init__(self, payload_kind: str):
+    def __init__(self, payload_kind: str, response_envelope_delta: int = 0):
         self.payload_kind = payload_kind
+        self.response_envelope_delta = response_envelope_delta
         self.lock = threading.Lock()
         self.link = None
         self.received = []
@@ -361,7 +381,7 @@ class ChannelClient:
                     return 1
                 time.sleep(0.05)
 
-        if self.payload_kind in ("request", "large-request"):
+        if self.payload_kind in ("request", "large-request", "mdu-boundary"):
             done = threading.Event()
             result = {}
             request_data = message_data
@@ -370,6 +390,19 @@ class ChannelClient:
                 # support: a fixed 900-byte payload is a normal packet on
                 # TCP/Backbone links whose MDU is several kilobytes.
                 request_data = "large:" + ("x" * (active_link.mdu + 1024))
+            if self.payload_kind == "mdu-boundary":
+                target_size = active_link.mdu + self.response_envelope_delta
+                request_data = None
+                for candidate_size in range(max(0, target_size - 64), target_size + 1):
+                    candidate = "x" * candidate_size
+                    envelope = umsgpack.packb([bytes(16), f"reply:{candidate}"])
+                    if len(envelope) == target_size:
+                        request_data = candidate
+                        break
+                if request_data is None:
+                    raise AssertionError(
+                        f"could not encode response envelope of {target_size} bytes"
+                    )
             print(
                 f"python_channel_client: sending {self.payload_kind} request len={len(request_data)} mdu={active_link.mdu}",
                 file=sys.stderr,
@@ -401,7 +434,18 @@ class ChannelClient:
                 time.sleep(0.05)
             expected_response = f"reply:{request_data}"
             if result.get("response") == expected_response:
-                print(json.dumps({"response": result["response"]}), flush=True)
+                response_bytes = expected_response.encode("utf-8")
+                print(
+                    json.dumps(
+                        {
+                            "response": result["response"],
+                            "response_size": len(response_bytes),
+                            "response_sha256": hashlib.sha256(response_bytes).hexdigest(),
+                            "negotiated_mdu": active_link.mdu,
+                        }
+                    ),
+                    flush=True,
+                )
                 return 0
             print(f"python_channel_client: request failed: {result}", file=sys.stderr, flush=True)
             return 1
@@ -411,6 +455,10 @@ class ChannelClient:
             RNS.Packet(active_link, message_data.encode("utf-8")).send()
         elif self.payload_kind in (
             "resource",
+            "resource-compression-compressible",
+            "resource-compression-threshold",
+            "resource-compression-incompressible",
+            "resource-compression-disabled",
             "resource-multi-hop",
             "cancel-resource",
             "resource-file-reader-failure",
@@ -424,6 +472,13 @@ class ChannelClient:
             elif resource_size == 0:
                 resource_data = b""
                 resource_file = None
+            elif self.payload_kind in (
+                "resource-compression-compressible",
+                "resource-compression-threshold",
+                "resource-compression-disabled",
+            ):
+                resource_data = (b"pinned Python Resource compression fixture " * (resource_size // 43 + 1))[:resource_size]
+                resource_file = None
             else:
                 resource_data = random.Random(605).randbytes(resource_size)
                 if self.payload_kind == "resource-file-reader-failure":
@@ -434,14 +489,24 @@ class ChannelClient:
                     resource_file.flush()
                     resource_file.seek(0)
 
+            resource_metadata = (
+                None
+                if self.payload_kind == "resource-compression-threshold"
+                else "python-meta"
+            )
+
             def resource_concluded(resource) -> None:
                 result["status"] = resource.status
+                result["total_size"] = resource.get_data_size()
+                result["segments"] = resource.get_segments()
+                result["metadata"] = resource_metadata
                 done.set()
 
             resource = RNS.Resource(
                 resource_file if resource_file is not None else resource_data,
                 active_link,
-                metadata="python-meta",
+                metadata=resource_metadata,
+                auto_compress=self.payload_kind != "resource-compression-disabled",
                 callback=resource_concluded,
                 timeout=timeout,
             )
@@ -508,6 +573,10 @@ class ChannelClient:
                             "resource": "complete",
                             "size": len(resource_data),
                             "sha256": hashlib.sha256(resource_data).hexdigest(),
+                            "compressed": resource.compressed,
+                            "total_size": result.get("total_size"),
+                            "segments": result.get("segments"),
+                            "metadata": result.get("metadata"),
                             "peak_rss_kib": process_peak_rss_kib(),
                         }
                     ),
@@ -686,6 +755,11 @@ def main() -> int:
             "channel-retry-exhaustion",
             "buffer",
             "resource",
+            "resource-compression",
+            "resource-compression-compressible",
+            "resource-compression-threshold",
+            "resource-compression-incompressible",
+            "resource-compression-disabled",
             "resource-multi-hop",
             "cancel-resource",
             "resource-shutdown",
@@ -694,6 +768,7 @@ def main() -> int:
             "link-data",
             "request",
             "large-request",
+            "mdu-boundary",
             "file-response",
             "identify",
             "link-close",
@@ -710,12 +785,13 @@ def main() -> int:
     parser.add_argument("--send-delay", type=float, default=0.3)
     parser.add_argument("--timeout", type=float, default=8.0)
     parser.add_argument("--hold-after-close", action="store_true")
+    parser.add_argument("--response-envelope-delta", type=int, default=0)
     args = parser.parse_args()
 
     if args.mode == "client":
         if args.destination_hash is None:
             parser.error("--destination-hash is required in client mode")
-        return ChannelClient(args.payload_kind).run(
+        return ChannelClient(args.payload_kind, args.response_envelope_delta).run(
             args.config_dir,
             args.destination_hash,
             args.message_id,

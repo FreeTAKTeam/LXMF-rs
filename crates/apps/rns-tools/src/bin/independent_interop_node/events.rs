@@ -192,6 +192,7 @@ async fn record_resource_event(state: &SharedState, event: ResourceEvent) {
         }),
         ResourceEventKind::OutboundComplete => json!({"state": "outbound_complete"}),
         ResourceEventKind::OutboundFailed => json!({"state": "outbound_failed"}),
+        ResourceEventKind::OutboundRejected => json!({"state": "outbound_rejected"}),
         ResourceEventKind::OutboundCancelled => json!({"state": "outbound_cancelled"}),
     };
     state

@@ -124,46 +124,15 @@ pub(super) async fn send_link_response(
     request_id: [u8; 16],
     response: rmpv::Value,
 ) -> Result<(), io::Error> {
-    let link = transport
-        .find_in_link(&link_id)
-        .await
-        .ok_or_else(|| io::Error::other("inbound link not found"))?;
     let frame = rmpv::Value::Array(vec![rmpv::Value::Binary(request_id.to_vec()), response]);
     let payload = rmp_serde::to_vec(&frame).map_err(io::Error::other)?;
-    let (packet, iface) = {
-        let guard = link.lock().await;
-        let iface = guard
-            .ingress_iface()
-            .ok_or_else(|| io::Error::other("inbound link ingress iface missing"))?;
-        let mut packet_data = PacketDataBuffer::new();
-        let cipher_len = {
-            let ciphertext = guard
-                .encrypt(payload.as_slice(), packet_data.accuire_buf_max())
-                .map_err(|_| io::Error::other("failed to encrypt response"))?;
-            ciphertext.len()
-        };
-        packet_data.resize(cipher_len);
-        (
-            Packet {
-                header: Header {
-                    ifac_flag: IfacFlag::Open,
-                    header_type: HeaderType::Type1,
-                    context_flag: ContextFlag::Unset,
-                    propagation_type: PropagationType::Broadcast,
-                    destination_type: DestinationType::Link,
-                    packet_type: PacketType::Data,
-                    hops: 0,
-                },
-                ifac: None,
-                destination: *guard.id(),
-                transport: None,
-                context: PacketContext::Response,
-                data: packet_data,
-            },
-            iface,
-        )
-    };
-    transport.send_direct(iface, packet).await;
+    let selected_resource = transport
+        .send_response(&link_id, request_id.to_vec(), payload, None)
+        .await
+        .map_err(io::Error::other)?;
+    if selected_resource.is_some() {
+        return Err(io::Error::other("small request response unexpectedly selected a Resource"));
+    }
     Ok(())
 }
 

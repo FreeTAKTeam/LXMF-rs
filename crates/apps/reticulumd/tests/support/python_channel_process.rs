@@ -26,6 +26,7 @@ struct PythonChannelClientConfig<'a> {
     resource_size: Option<usize>,
     timeout: f64,
     hold_after_close: bool,
+    response_envelope_delta: Option<i8>,
 }
 
 impl PythonChannelInteropPaths {
@@ -56,6 +57,7 @@ impl PythonChannelInteropPaths {
                 resource_size: None,
                 timeout: 8.0,
                 hold_after_close: false,
+                response_envelope_delta: None,
             },
         )
     }
@@ -76,6 +78,29 @@ impl PythonChannelInteropPaths {
                 resource_size: None,
                 timeout: 8.0,
                 hold_after_close: true,
+                response_envelope_delta: None,
+            },
+        )
+    }
+
+    pub(super) fn spawn_mdu_boundary_client(
+        &self,
+        config_dir: &Path,
+        destination_hash: &str,
+        delta: i8,
+    ) -> Child {
+        spawn_python_channel_client(
+            &self.python_bin,
+            &self.reticulum_py_repo,
+            &self.helper,
+            PythonChannelClientConfig {
+                config_dir,
+                destination_hash,
+                payload_kind: "mdu-boundary",
+                resource_size: None,
+                timeout: 20.0,
+                hold_after_close: false,
+                response_envelope_delta: Some(delta),
             },
         )
     }
@@ -87,6 +112,23 @@ impl PythonChannelInteropPaths {
         resource_size: usize,
         timeout: f64,
     ) -> Child {
+        self.spawn_resource_client_with_kind(
+            config_dir,
+            destination_hash,
+            "resource",
+            resource_size,
+            timeout,
+        )
+    }
+
+    pub(super) fn spawn_resource_client_with_kind(
+        &self,
+        config_dir: &Path,
+        destination_hash: &str,
+        payload_kind: &str,
+        resource_size: usize,
+        timeout: f64,
+    ) -> Child {
         spawn_python_channel_client(
             &self.python_bin,
             &self.reticulum_py_repo,
@@ -94,10 +136,11 @@ impl PythonChannelInteropPaths {
             PythonChannelClientConfig {
                 config_dir,
                 destination_hash,
-                payload_kind: "resource",
+                payload_kind,
                 resource_size: Some(resource_size),
                 timeout,
                 hold_after_close: false,
+                response_envelope_delta: None,
             },
         )
     }
@@ -120,6 +163,7 @@ impl PythonChannelInteropPaths {
                 resource_size: Some(resource_size),
                 timeout,
                 hold_after_close: false,
+                response_envelope_delta: None,
             },
         )
     }
@@ -142,6 +186,7 @@ impl PythonChannelInteropPaths {
                 resource_size: Some(resource_size),
                 timeout,
                 hold_after_close: false,
+                response_envelope_delta: None,
             },
         )
     }
@@ -164,6 +209,7 @@ impl PythonChannelInteropPaths {
                 resource_size: Some(resource_size),
                 timeout,
                 hold_after_close: false,
+                response_envelope_delta: None,
             },
         )
     }
@@ -346,6 +392,9 @@ fn spawn_python_channel_client(
     }
     if let Some(resource_size) = config.resource_size {
         command.arg("--resource-size").arg(resource_size.to_string());
+    }
+    if let Some(delta) = config.response_envelope_delta {
+        command.arg("--response-envelope-delta").arg(delta.to_string());
     }
     command
         .env("PYTHONPATH", reticulum_py_repo)

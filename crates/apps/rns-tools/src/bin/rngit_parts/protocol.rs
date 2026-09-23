@@ -469,5 +469,7 @@ include!("work_service.rs");
 include!("work_documents.rs");
 include!("work_mutations.rs");
 include!("permissions_service.rs");
+#[cfg(test)]
+include!("issue_612_permission_refresh_tests.rs");
 include!("release_service.rs");
 include!("stats_service.rs");
