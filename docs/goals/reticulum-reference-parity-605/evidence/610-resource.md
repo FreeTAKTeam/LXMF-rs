@@ -498,12 +498,20 @@ the exact received length and its digest matches the Python sender's digest.
 Both sides report `true, false, false` for the cases. No production mismatch
 was demonstrated, so this increment is regression/evidence only.
 
+The Rust-to-Python defaults case additionally sends a compressible Resource
+with MessagePack metadata. The pinned Python receiver recovered the exact
+content and metadata, report `compressed=true`, and report `total_size` as the
+uncompressed content length plus the three-byte metadata-length prefix and
+encoded metadata. This covers the composition of compression and metadata
+accounting; it does not close the broader #610 acceptance matrix.
+
 ```text
 RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
   LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
   rust_resource_compression_defaults_match_pinned_python \
   -- --ignored --nocapture --test-threads=1
-# 1 passed; Python observed compressed=true, false, false for the three cases
+# 1 passed; Python observed compressed=true, false, false for the three cases,
+# including compressed metadata and exact total_size accounting
 RETICULUM_PY_REPO=/home/pgiuseppe/Documents/LXMF-rs-issue-605/.tmp/python-refs/Reticulum \
   LXMF_PYTHON_BIN=python3 cargo test -p reticulumd --test python_channel_interop \
   pinned_python_resource_compression_defaults_match_rust \

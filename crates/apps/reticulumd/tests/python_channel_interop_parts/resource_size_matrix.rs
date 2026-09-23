@@ -179,6 +179,40 @@ async fn rust_resource_compression_defaults_match_pinned_python() {
         .await
         .unwrap_or_else(|_| panic!("Python did not confirm {label} compression: {expected}"));
     }
+
+    // The metadata wire prefix is part of the compressed Resource payload,
+    // while the advertisement's logical size remains data + metadata. Verify
+    // both properties against Python's production Resource receiver.
+    let payload = b"compressed resource with metadata ".repeat(2048);
+    let metadata = rmp_serde::to_vec(&"python-meta").expect("encode Resource metadata");
+    let metadata_wire_size = metadata.len() + 3;
+    let digest = digest_hex(&payload);
+    let resource_hash = transport
+        .send_resource(&link_id, payload.clone(), Some(metadata))
+        .await
+        .expect("send metadata-bearing Resource");
+    wait_for_outbound_resource_complete(&mut resource_events, resource_hash, Duration::from_secs(30)).await;
+    let expected = format!(
+        "resource-sha256-metadata:{}:{digest}:{}:python-meta:total_size={}:compressed=true",
+        payload.len(),
+        payload.len() + metadata_wire_size,
+        payload.len() + metadata_wire_size,
+    );
+    tokio::time::timeout(Duration::from_secs(30), async {
+        loop {
+            if seen
+                .lock()
+                .expect("seen lock")
+                .iter()
+                .any(|(id, data)| id == "rust-resource" && data == &expected)
+            {
+                break;
+            }
+            sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .unwrap_or_else(|_| panic!("Python did not confirm compressed metadata accounting: {expected}"));
 }
 
 #[tokio::test]

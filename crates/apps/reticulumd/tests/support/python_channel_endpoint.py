@@ -199,7 +199,11 @@ class ChannelEndpoint:
                             "compressed": resource.compressed,
                         }
                     )
-                if metadata is not None and len(data) < 1024 * 1024:
+                if (
+                    metadata is not None
+                    and len(data) < 1024 * 1024
+                    and self.payload_kind != "resource-compression"
+                ):
                     reply_data = f"resource:{data.decode('utf-8')}:{metadata}"
                 elif metadata is not None:
                     metadata_wire_size = len(umsgpack.packb(metadata)) + 3
